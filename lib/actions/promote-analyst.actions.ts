@@ -83,7 +83,12 @@ export async function getPromotionPreview(
     prisma.thesis.findMany({
       where: {
         status: "ACTIVE",
-        direction: { not: "PASS" },
+        // Exclude PASS (institutional memory — never traded) and PENDING
+        // (user/builder/editor seed awaiting first research — no
+        // conviction yet, no paper position). Both should remain untouched
+        // by promotion; the first live run handles them via the normal
+        // per-thesis review.
+        direction: { notIn: ["PASS", "PENDING"] },
         researchRun: { agentConfigId: analystId },
       },
       select: { id: true, ticker: true },

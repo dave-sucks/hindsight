@@ -20,6 +20,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildDiscoverySystemPrompt } from "@/lib/agent/system-prompts/discovery";
 import { MODES } from "@/lib/agent/modes";
+import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 
 export const discoveryRun = inngest.createFunction(
   {
@@ -154,10 +155,11 @@ export const discoveryRun = inngest.createFunction(
           .then((rows: Array<{ symbol: string }>) =>
             rows.map((r) => r.symbol.toUpperCase()),
           );
+        const watchlistSymbols = await getWatchlistSymbols(config.id);
         const coveredTickers = Array.from(
           new Set([
             ...existingTickers.map((t: string) => t.toUpperCase()),
-            ...(config.watchlist ?? []).map((t: string) => t.toUpperCase()),
+            ...watchlistSymbols.map((t) => t.toUpperCase()),
             ...openPositionTickers,
           ]),
         );
@@ -167,7 +169,7 @@ export const discoveryRun = inngest.createFunction(
           userId: config.userId,
           accountId: config.accountId,
           analystId: config.id,
-          watchlist: config.watchlist ?? [],
+          watchlist: watchlistSymbols,
           positionTickers: openPositionTickers,
           exclusionList: config.exclusionList ?? [],
           sectors: config.sectors ?? [],
@@ -220,7 +222,7 @@ export const discoveryRun = inngest.createFunction(
             maxPositionSize: Number(config.maxPositionSize),
             maxOpenPositions: config.maxOpenPositions,
             signalTypes: config.signalTypes,
-            watchlist: config.watchlist,
+            watchlist: watchlistSymbols,
           },
           existingTickers,
         });

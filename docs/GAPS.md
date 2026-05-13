@@ -125,9 +125,8 @@ SESSION_AUDIT items 33-35. Intraday Momentum Scalper analyst exists but mints th
 Crons run on independent schedules — no Inngest `.after()` or `.waitFor()` between firm-market-sweep → portfolio-watchlist-monitor → domain-monitor → signal-router. If one lags, downstream still fires on schedule with stale data. Today this is theoretical; flag it as a known fragility. ~2 hours to add chaining. Largely mitigated by P1-10's event-emission (signals get routed immediately when each producer finishes), but the cron-schedule ordering isn't itself enforced.
 
 
-### P2-12 — Discovery prompt doesn't mention `manage_watchlist` (blocked)
-**Blocked on:** [`docs/WATCHLIST_COLLAPSE_PLAN.md`](./WATCHLIST_COLLAPSE_PLAN.md).
-`manage_watchlist` is in `MODES.discovery.toolAllowlist` but the prompt never names it. After the watchlist collapse, this gap resolves itself: `record_thesis(status: WATCHING)` IS the watchlist add. The tool either becomes a wrapper or is removed entirely. Do not fix in isolation.
+~~### P2-12 — Discovery prompt doesn't mention `manage_watchlist` (blocked)~~
+**CLOSED 2026-05-13** by the watchlist collapse. `manage_watchlist` was deleted; Discovery's prompt now uses `record_thesis(status: WATCHING)` for adds. See [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
 
 ---
 ---

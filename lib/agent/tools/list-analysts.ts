@@ -43,17 +43,69 @@ export const listAnalysts = defineTool({
         directionBias: true,
         holdDurations: true,
         sectors: true,
-        watchlist: true,
         maxOpenPositions: true,
         createdAt: true,
-        _count: {
-          select: {
-            positions: { where: { status: "OPEN" } },
-            researchRuns: true,
-          },
-        },
       },
     });
+
+    // Replacement for the _count include (Prisma doesn't allow _count
+    // alongside selected scalars on every model in our version).
+    const countsByAnalyst = new Map<
+      string,
+      { openPositions: number; researchRuns: number }
+    >();
+    if (analysts.length > 0) {
+      const [openPositions, runCounts] = await Promise.all([
+        prisma.position.groupBy({
+          by: ["analystId"],
+          where: { analystId: { in: analysts.map((a) => a.id) }, status: "OPEN" },
+          _count: true,
+        }),
+        prisma.researchRun.groupBy({
+          by: ["agentConfigId"],
+          where: { agentConfigId: { in: analysts.map((a) => a.id) } },
+          _count: true,
+        }),
+      ]);
+      for (const op of openPositions) {
+        if (!op.analystId) continue;
+        countsByAnalyst.set(op.analystId, {
+          openPositions: op._count,
+          researchRuns: 0,
+        });
+      }
+      for (const rc of runCounts) {
+        if (!rc.agentConfigId) continue;
+        const existing = countsByAnalyst.get(rc.agentConfigId) ?? {
+          openPositions: 0,
+          researchRuns: 0,
+        };
+        existing.researchRuns = rc._count;
+        countsByAnalyst.set(rc.agentConfigId, existing);
+      }
+    }
+
+    // Watchlist tickers per analyst — WATCHING theses (post-collapse).
+    const watchlistByAnalyst = new Map<string, string[]>();
+    if (analysts.length > 0) {
+      const watchingTheses = await prisma.thesis.findMany({
+        where: {
+          status: "WATCHING",
+          researchRun: { agentConfigId: { in: analysts.map((a) => a.id) } },
+        },
+        select: {
+          ticker: true,
+          researchRun: { select: { agentConfigId: true } },
+        },
+      });
+      for (const t of watchingTheses) {
+        const aid = t.researchRun.agentConfigId;
+        if (!aid) continue;
+        const arr = watchlistByAnalyst.get(aid) ?? [];
+        if (!arr.includes(t.ticker)) arr.push(t.ticker);
+        watchlistByAnalyst.set(aid, arr);
+      }
+    }
 
     // Active thesis counts per analyst (via ResearchRun → Thesis)
     const analystIds = analysts.map((a) => a.id);
@@ -111,7 +163,8 @@ export const listAnalysts = defineTool({
         ? new Date(lastRunAt).toISOString().slice(0, 10)
         : "no completed runs";
       const enabled = a.enabled ? "enabled" : "disabled";
-      const text = `${a.name} — ${enabled} · ${a._count.positions} open · ${activeThesisCount} active theses · last run ${lastRunStr}`;
+      const counts = countsByAnalyst.get(a.id) ?? { openPositions: 0, researchRuns: 0 };
+      const text = `${a.name} — ${enabled} · ${counts.openPositions} open · ${activeThesisCount} active theses · last run ${lastRunStr}`;
       return { id: a.id, name: a.name, text };
     });
 
@@ -127,21 +180,24 @@ export const listAnalysts = defineTool({
       summary: headline,
       data: {
         items,
-        analysts: analysts.map((a) => ({
-          id: a.id,
-          name: a.name,
-          description: a.description,
-          enabled: a.enabled,
-          directionBias: a.directionBias,
-          holdDurations: a.holdDurations,
-          sectors: a.sectors,
-          watchlist: a.watchlist,
-          maxOpenPositions: a.maxOpenPositions,
-          activeTheses: thesisByAnalyst.get(a.id) ?? 0,
-          openPositions: a._count.positions,
-          totalRuns: a._count.researchRuns,
-          lastRunAt: lastRunByAnalyst.get(a.id) ?? null,
-        })),
+        analysts: analysts.map((a) => {
+          const counts = countsByAnalyst.get(a.id) ?? { openPositions: 0, researchRuns: 0 };
+          return {
+            id: a.id,
+            name: a.name,
+            description: a.description,
+            enabled: a.enabled,
+            directionBias: a.directionBias,
+            holdDurations: a.holdDurations,
+            sectors: a.sectors,
+            watchlist: watchlistByAnalyst.get(a.id) ?? [],
+            maxOpenPositions: a.maxOpenPositions,
+            activeTheses: thesisByAnalyst.get(a.id) ?? 0,
+            openPositions: counts.openPositions,
+            totalRuns: counts.researchRuns,
+            lastRunAt: lastRunByAnalyst.get(a.id) ?? null,
+          };
+        }),
       },
       sources: [],
     };

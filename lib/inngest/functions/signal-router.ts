@@ -352,9 +352,13 @@ export const signalRouter = inngest.createFunction(
             where: { status: "OPEN" },
             select: { symbol: true },
           },
-          watchlistItems: {
-            where: { status: "ACTIVE" },
-            select: { symbol: true },
+          researchRuns: {
+            select: {
+              theses: {
+                where: { status: "WATCHING" },
+                select: { ticker: true },
+              },
+            },
           },
         },
       })
@@ -363,10 +367,12 @@ export const signalRouter = inngest.createFunction(
         const positionSet = new Set<string>(
           a.positions.map((p) => p.symbol.toUpperCase())
         )
+        const watchingTickers = a.researchRuns.flatMap((rr) =>
+          rr.theses.map((t) => t.ticker.toUpperCase()),
+        )
         const watchlistSet = new Set<string>([
-          ...a.watchlist.map((t) => t.toUpperCase()),
           ...a.tickerUniverse.map((t) => t.toUpperCase()),
-          ...a.watchlistItems.map((w) => w.symbol.toUpperCase()),
+          ...watchingTickers,
         ])
         for (const p of positionSet) watchlistSet.delete(p)
 

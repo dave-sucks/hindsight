@@ -374,7 +374,7 @@ export async function getAnalystDetail(
   });
   if (!config) return null;
 
-  const [recentRuns, recentPositions, totalRuns, totalTheses, briefings, morningBriefs, monitors] = await Promise.all([
+  const [recentRuns, recentPositions, totalRuns, totalTheses, watchlistTheses, briefings, morningBriefs, monitors] = await Promise.all([
     // Last 20 runs with their theses (join trade info via decisions)
     prisma.researchRun.findMany({
       where: { agentConfigId: analystId, accountId },
@@ -449,6 +449,16 @@ export async function getAnalystDetail(
     prisma.researchRun.count({ where: { agentConfigId: analystId, accountId } }),
     prisma.thesis.count({
       where: { researchRun: { agentConfigId: analystId }, accountId },
+    }),
+    // Watchlist = active WATCHING theses for this analyst (post-collapse).
+    prisma.thesis.findMany({
+      where: {
+        accountId,
+        status: "WATCHING",
+        researchRun: { agentConfigId: analystId },
+      },
+      select: { ticker: true },
+      orderBy: { createdAt: "desc" },
     }),
     // Load briefings (most recent 20)
     prisma.analystBriefing.findMany({
@@ -598,7 +608,7 @@ export async function getAnalystDetail(
     maxRiskPct: config.maxRiskPct,
     minMarketCapTier: config.minMarketCapTier,
     exchanges: (config.exchanges as string[]) ?? [],
-    watchlist: (config.watchlist as string[]) ?? [],
+    watchlist: watchlistTheses.map((t) => t.ticker),
     exclusionList: (config.exclusionList as string[]) ?? [],
     industries: (config.industries as string[]) ?? [],
     themes: (config.themes as string[]) ?? [],
@@ -791,7 +801,6 @@ export async function createAnalystFromWizard(
       markets: ["US_EQUITIES"],
       exchanges: ["NASDAQ", "NYSE"],
       sectors: [],
-      watchlist: [],
       exclusionList: [],
       maxPositionSize: data.maxPositionSize,
       maxOpenPositions: 5,
@@ -1005,7 +1014,8 @@ export async function createAnalystFromBuilder(
         marketCapMin,
         marketCapMax,
         feeds,
-        watchlist: watchlistSymbols,
+        // Watchlist removed from AgentConfig — Thesis(status=WATCHING) is
+        // the single store now. Seed theses are minted below.
         exclusionList: combinedExclusions,
         maxPositionSize: posSize,
         maxOpenPositions: maxPos,
@@ -1030,35 +1040,82 @@ export async function createAnalystFromBuilder(
       },
     });
 
-    // 2. Create structured watchlist items
-    if (structuredWatchlist.length > 0) {
-      await tx.analystWatchlistItem.createMany({
-        data: structuredWatchlist.map((w) => ({
-          analystId: newAnalyst.id,
+    // 2. Watchlist-collapse: builder seeds as Thesis(PENDING/WATCHING,
+    //    source_kind='BUILDER_SEED') under a fresh BUILDER_SEED ResearchRun.
+    //    Thesis is the single store; AnalystWatchlistItem is gone.
+    const seedItems: Array<{ symbol: string; reason: string }> =
+      structuredWatchlist.length > 0
+        ? structuredWatchlist.map((w) => ({
+            symbol: w.symbol,
+            reason: w.reason,
+          }))
+        : watchlistSymbols.map((sym) => ({
+            symbol: sym,
+            reason: "Added during analyst creation",
+          }));
+
+    if (seedItems.length > 0) {
+      const builderRun = await tx.researchRun.create({
+        data: {
           userId,
           accountId,
-          symbol: w.symbol,
-          reason: w.reason,
-          addedBy: "BUILDER",
-          priority: w.priority,
-          status: "ACTIVE",
+          agentConfigId: newAnalyst.id,
+          source: "BUILDER",
+          status: "COMPLETE",
+          mode: "BUILDER_SEED",
+          environment: "PAPER",
+          parameters: {
+            note: "Analyst-creation watchlist seed; one PENDING WATCHING thesis per ticker.",
+            seedCount: seedItems.length,
+          },
+          completedAt: new Date(),
+        },
+        select: { id: true },
+      });
+
+      const now = new Date();
+      const createdTheses = await Promise.all(
+        seedItems.map((w) =>
+          tx.thesis.create({
+            data: {
+              researchRunId: builderRun.id,
+              userId,
+              accountId,
+              ticker: w.symbol,
+              source: "BUILDER",
+              direction: "PENDING",
+              status: "WATCHING",
+              holdDuration: "SWING",
+              confidenceScore: 50,
+              reasoningSummary: w.reason || "Builder-seeded — awaiting first research",
+              thesisBullets: [],
+              riskFlags: [],
+              signalTypes: [],
+              sourcesUsed: [],
+              modelUsed: "builder",
+              sourceKind: "BUILDER_SEED",
+              sourceRationale: w.reason || "Builder-seeded during analyst creation",
+              nextReviewAt: now,
+            },
+            select: { id: true, ticker: true },
+          }),
+        ),
+      );
+
+      await tx.thesisUpdate.createMany({
+        data: createdTheses.map((t) => ({
+          thesisId: t.id,
+          type: "CREATED",
+          summary: `Builder-seeded ${t.ticker} on analyst creation (PENDING — awaiting research)`,
+          rationale: "Analyst was created with this ticker on the suggested watchlist. The first daily run will research it.",
+          fieldChanges: {},
+          runId: builderRun.id,
         })),
       });
-      console.log(`[analyst] Created ${structuredWatchlist.length} watchlist items for analyst ${newAnalyst.id}`);
-    } else if (watchlistSymbols.length > 0) {
-      await tx.analystWatchlistItem.createMany({
-        data: watchlistSymbols.map((sym) => ({
-          analystId: newAnalyst.id,
-          userId,
-          accountId,
-          symbol: sym,
-          reason: "Added during analyst creation",
-          addedBy: "BUILDER",
-          priority: "NORMAL",
-          status: "ACTIVE",
-        })),
-      });
-      console.log(`[analyst] Created ${watchlistSymbols.length} watchlist items (legacy format) for analyst ${newAnalyst.id}`);
+
+      console.log(
+        `[analyst] Created ${createdTheses.length} PENDING watchlist theses for analyst ${newAnalyst.id}`,
+      );
     }
 
     // 3. Create domain monitors from domain monitor proposal
@@ -1299,6 +1356,29 @@ export async function removeAnalystMonitor(monitorId: string) {
 }
 
 // ── updateAnalystWatchlist (add/remove single symbol) ────────────────────────
+// Now thin wrappers around addWatchlistItem / removeWatchlistItem from
+// lib/actions/watchlist.actions.ts. Returns the live WATCHING symbol list.
+
+import {
+  addWatchlistItem,
+  removeWatchlistItem,
+} from "@/lib/actions/watchlist.actions";
+
+async function getAnalystWatchingSymbols(
+  analystId: string,
+  accountId: string,
+): Promise<string[]> {
+  const theses = await prisma.thesis.findMany({
+    where: {
+      accountId,
+      status: "WATCHING",
+      researchRun: { agentConfigId: analystId },
+    },
+    select: { ticker: true },
+    orderBy: { createdAt: "desc" },
+  });
+  return Array.from(new Set(theses.map((t) => t.ticker)));
+}
 
 export async function addToWatchlist(
   id: string,
@@ -1309,24 +1389,8 @@ export async function addToWatchlist(
   const accountId = await getAccountId(userId);
   if (!accountId) throw new Error("No account");
 
-  const config = await prisma.agentConfig.findFirst({
-    where: { id, accountId },
-    select: { watchlist: true },
-  });
-  if (!config) throw new Error("Analyst not found");
-
-  const current = (config.watchlist as string[]) ?? [];
-  const upper = symbol.toUpperCase();
-  if (current.includes(upper)) return current;
-
-  const updated = [...current, upper];
-  await prisma.agentConfig.update({
-    where: { id },
-    data: { watchlist: updated },
-  });
-
-  revalidatePath(`/analysts/${id}`);
-  return updated;
+  await addWatchlistItem(id, symbol, "Added manually", "USER", "NORMAL");
+  return getAnalystWatchingSymbols(id, accountId);
 }
 
 export async function removeFromWatchlist(
@@ -1338,23 +1402,8 @@ export async function removeFromWatchlist(
   const accountId = await getAccountId(userId);
   if (!accountId) throw new Error("No account");
 
-  const config = await prisma.agentConfig.findFirst({
-    where: { id, accountId },
-    select: { watchlist: true },
-  });
-  if (!config) throw new Error("Analyst not found");
-
-  const current = (config.watchlist as string[]) ?? [];
-  const upper = symbol.toUpperCase();
-  const updated = current.filter((s) => s !== upper);
-
-  await prisma.agentConfig.update({
-    where: { id },
-    data: { watchlist: updated },
-  });
-
-  revalidatePath(`/analysts/${id}`);
-  return updated;
+  await removeWatchlistItem(id, symbol, "Removed manually");
+  return getAnalystWatchingSymbols(id, accountId);
 }
 
 // ── deleteAnalyst (cascade delete all related data) ─────────────────────────
@@ -1512,41 +1561,118 @@ export async function updateAnalystFromBuilder(
         });
       }
     }
-    updateData.watchlist = watchlistSymbols;
-
-    // Update the AnalystWatchlistItem table — mark old items REMOVED, create new ones
+    // Editor watchlist diff against current WATCHING theses.
+    // Adds → PENDING WATCHING under a fresh EDITOR_SEED ResearchRun.
+    // Removes → status='ARCHIVED' on the paired thesis.
     if (structuredItems.length > 0 || watchlistSymbols.length > 0) {
-      // Soft-remove existing items not in the new list
-      const existingItems = await prisma.analystWatchlistItem.findMany({
-        where: { analystId: id, status: "ACTIVE" },
-        select: { id: true, symbol: true },
+      const existingWatching = await prisma.thesis.findMany({
+        where: {
+          status: "WATCHING",
+          researchRun: { agentConfigId: id },
+        },
+        select: { id: true, ticker: true, status: true },
       });
       const newSymbolSet = new Set(watchlistSymbols);
-      const toRemove = existingItems.filter((i) => !newSymbolSet.has(i.symbol));
-      if (toRemove.length > 0) {
-        await prisma.analystWatchlistItem.updateMany({
-          where: { id: { in: toRemove.map((i) => i.id) } },
-          data: { status: "REMOVED", removedAt: new Date(), removeReason: "Removed via editor" },
-        });
+      const toArchive = existingWatching.filter((t) => !newSymbolSet.has(t.ticker));
+      const existingSymbolSet = new Set(existingWatching.map((t) => t.ticker));
+      const toCreate = (
+        structuredItems.length > 0
+          ? structuredItems
+          : watchlistSymbols.map((s) => ({ symbol: s, reason: "Updated via editor" }))
+      ).filter((w) => !existingSymbolSet.has(w.symbol));
+
+      // Archive removed names.
+      for (const t of toArchive) {
+        try {
+          await prisma.thesis.update({
+            where: { id: t.id },
+            data: {
+              status: "ARCHIVED",
+              closedAt: new Date(),
+              closeReason: "Removed via editor chat",
+            },
+          });
+          await prisma.thesisUpdate.create({
+            data: {
+              thesisId: t.id,
+              type: "STATUS_CHANGED",
+              summary: `Removed ${t.ticker} from watchlist via editor chat`,
+              rationale: "Editor removed this ticker from the analyst's watchlist.",
+              fieldChanges: { status: { from: t.status, to: "ARCHIVED" } },
+            },
+          });
+        } catch (err) {
+          console.error(
+            `[analyst:editor-update] ARCHIVED FAILED for ${t.ticker} (analyst ${id}):`,
+            err,
+          );
+        }
       }
 
-      // Create new items that don't already exist
-      const existingSymbolSet = new Set(existingItems.map((i) => i.symbol));
-      const toCreate = (structuredItems.length > 0 ? structuredItems : watchlistSymbols.map((s) => ({ symbol: s, reason: "Updated via editor", priority: "NORMAL" })))
-        .filter((w) => !existingSymbolSet.has(w.symbol));
+      // Create newly-added names.
       if (toCreate.length > 0) {
-        await prisma.analystWatchlistItem.createMany({
-          data: toCreate.map((w) => ({
-            analystId: id,
-            userId,
-            accountId,
-            symbol: w.symbol,
-            reason: w.reason,
-            addedBy: "BUILDER",
-            priority: w.priority,
-            status: "ACTIVE",
-          })),
-        });
+        try {
+          const editorRun = await prisma.researchRun.create({
+            data: {
+              userId,
+              accountId,
+              agentConfigId: id,
+              source: "EDITOR",
+              status: "COMPLETE",
+              mode: "EDITOR_SEED",
+              environment: "PAPER",
+              parameters: {
+                note: "Editor analyst-update watchlist additions; one PENDING WATCHING thesis per ticker.",
+                addCount: toCreate.length,
+              },
+              completedAt: new Date(),
+            },
+            select: { id: true },
+          });
+
+          const now = new Date();
+          for (const w of toCreate) {
+            const thesis = await prisma.thesis.create({
+              data: {
+                researchRunId: editorRun.id,
+                userId,
+                accountId,
+                ticker: w.symbol,
+                source: "EDITOR",
+                direction: "PENDING",
+                status: "WATCHING",
+                holdDuration: "SWING",
+                confidenceScore: 50,
+                reasoningSummary: w.reason || "Editor-seeded — awaiting first research",
+                thesisBullets: [],
+                riskFlags: [],
+                signalTypes: [],
+                sourcesUsed: [],
+                modelUsed: "editor",
+                sourceKind: "EDITOR_SEED",
+                sourceRationale: w.reason || "Editor-seeded via analyst-edit chat",
+                nextReviewAt: now,
+              },
+              select: { id: true },
+            });
+
+            await prisma.thesisUpdate.create({
+              data: {
+                thesisId: thesis.id,
+                type: "CREATED",
+                summary: `Editor added ${w.symbol} to watchlist (PENDING — awaiting research)`,
+                rationale: w.reason,
+                fieldChanges: {},
+                runId: editorRun.id,
+              },
+            });
+          }
+        } catch (err) {
+          console.error(
+            `[analyst:editor-update] PENDING create FAILED for analyst ${id}:`,
+            err,
+          );
+        }
       }
     }
   }

@@ -30,7 +30,6 @@ import { closePosition } from "./close-position";
 import { managePosition } from "./manage-position";
 import { recordRunSummary } from "./record-run-summary";
 import { completeRun } from "./complete-run";
-import { manageWatchlist } from "./manage-watchlist";
 import { getPortfolioContext } from "./get-portfolio-context";
 import { readKnowledgeLibrary } from "./read-knowledge-library";
 import { askQuestion } from "./ask-question";
@@ -129,7 +128,6 @@ export function createResearchTools(ctx: ToolCtx) {
     get_portfolio_context: getPortfolioContext(newCtx),
     record_run_summary: recordRunSummary(newCtx),
     complete_run: completeRun(newCtx),
-    manage_watchlist: manageWatchlist(newCtx),
     read_knowledge_library: readKnowledgeLibrary(newCtx),
     ask_question: askQuestion(newCtx),
     discover_signals_for_fence: discoverSignalsForFence(newCtx),
@@ -182,7 +180,6 @@ export { managePosition } from "./manage-position";
 export { getPortfolioContext } from "./get-portfolio-context";
 export { recordRunSummary } from "./record-run-summary";
 export { completeRun } from "./complete-run";
-export { manageWatchlist } from "./manage-watchlist";
 export { readKnowledgeLibrary } from "./read-knowledge-library";
 export { askQuestion } from "./ask-question";
 export { discoverSignalsForFence } from "./discover-signals-for-fence";

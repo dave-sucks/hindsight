@@ -261,7 +261,7 @@ Composite = sum, max 10. **Threshold to trade: composite ≥ 7 AND R/R ≥ 2:1 A
   // The HELD-vs-WATCHING semantics are now load-bearing per #217 +
   // Root Cause #1. Trigger semantics differ by state.
   if (runInput.activeTheses && runInput.activeTheses.length > 0) {
-    let thesesSection = `## Live Theses\nYour durable beliefs. **Status + direction determine semantics:**\n- **ACTIVE** (held) — EXIT/TRIM/MOVE_STOP/ADD triggers operate on the open position. ENTER triggers don't apply.\n- **WATCHING + LONG/SHORT** (entry-gated) — ENTER triggers fire when the entry condition is met (PRICE_ABOVE for LONG, PRICE_BELOW for SHORT). Your YES action on ENTER is PROMOTE: \`update_thesis(thesis_id, change_status: "ACTIVE", target_price: <new>, stop_loss: <new>, ...)\` → \`place_trade\`. The \`update_thesis\` call requires recomputed target_price + stop_loss (the WATCHING target was the ENTER trigger level, behind you now). \`record_thesis(status: ACTIVE)\` on the same direction is rejected (USE_UPDATE_THESIS redirect).\n- **WATCHING + PASS** (institutional memory + watching for material change) — you researched, decided not to trade. Catalyst triggers (earnings/filings/signals) revisit. Each run, audit \`invalidation_conditions\` and \`key_assumptions\` against today's data: if any have flipped (e.g., assumption "guidance not cut" was the basis for the pass, now guidance WAS cut → assumption broken), that's the trigger to flip direction. Use \`record_thesis\` to mint the new-direction thesis (the PASS gets superseded automatically). If no conditions flipped, REVIEWED-only is correct.\n\n**Re-researching a held name? Use \`update_thesis(thesis_id, ...)\`, not record_thesis.** Each row evolves over time via update_thesis (refining target, tightening stop, lowering confidence). \`record_thesis\` on a same-direction held thesis is rejected at the tool layer.\n\n**update_thesis hard rejects to know about:**\n- **Zero-trigger guard:** updating a thesis with no triggers requires either adding triggers OR closing it via \`change_status: "INVALIDATED"\`. A pure rationale-only review on a zero-trigger thesis is rejected (it's a no-op that wastes the closeout slot).\n- **Goalpost-moving guard:** raising \`target_price\` on a WATCHING thesis whose entry condition is currently met (price has crossed the old target) is REJECTED. Your action there is PROMOTE or close, not move the bar.\n\n`;
+    let thesesSection = `## Live Theses\nYour durable beliefs. **Status + direction determine semantics:**\n- **ACTIVE** (held) — EXIT/TRIM/MOVE_STOP/ADD triggers operate on the open position. ENTER triggers don't apply.\n- **WATCHING + LONG/SHORT** (entry-gated) — ENTER triggers fire when the entry condition is met (PRICE_ABOVE for LONG, PRICE_BELOW for SHORT). Your YES action on ENTER is PROMOTE: \`update_thesis(thesis_id, change_status: "ACTIVE", target_price: <new>, stop_loss: <new>, ...)\` → \`place_trade\`. The \`update_thesis\` call requires recomputed target_price + stop_loss (the WATCHING target was the ENTER trigger level, behind you now). \`record_thesis(status: ACTIVE)\` on the same direction is rejected (USE_UPDATE_THESIS redirect).\n- **WATCHING + PENDING** (first-research seed — user/builder/editor added this ticker, you haven't committed a view yet) — your action is to research and commit. \`get_stock_data\` → score → \`update_thesis(thesis_id, direction: "LONG"|"SHORT", horizon, entry_price, target_price, stop_loss, core_belief, key_assumptions, invalidation_conditions, triggers, rationale)\` to flip PENDING → committed view (stays WATCHING). Or \`update_thesis(thesis_id, direction: "PASS", invalidation_conditions, rationale)\` to decline coverage (auto-flips status to ARCHIVED, off the watchlist). \`place_trade\` on a PENDING thesis is rejected — promote first.\n\n**Re-researching a held name? Use \`update_thesis(thesis_id, ...)\`, not record_thesis.** Each row evolves over time via update_thesis (refining target, tightening stop, lowering confidence). \`record_thesis\` on a same-direction held thesis is rejected at the tool layer.\n\n**update_thesis hard rejects to know about:**\n- **Zero-trigger guard:** updating a thesis with no triggers requires either adding triggers OR closing it via \`change_status: "INVALIDATED" / "ARCHIVED"\`. PENDING theses are exempt (zero triggers is the expected seed shape).\n- **Goalpost-moving guard:** raising \`target_price\` on a WATCHING thesis whose entry condition is currently met (price has crossed the old target) is REJECTED. Your action there is PROMOTE or close, not move the bar.\n- **Direction change:** only legal when current direction is PENDING. Direction flips on committed (LONG ↔ SHORT) theses go through \`record_thesis\` with \`parent_thesis_id\`.\n\n`;
     thesesSection += `| Ticker | Status | Direction | Horizon | Confidence | Entry | Target | Stop | Schedule | Created | Thesis ID |\n`;
     thesesSection += `|--------|--------|-----------|---------|-----------|-------|--------|------|----------|---------|----------|\n`;
     for (const t of runInput.activeTheses) {
@@ -287,29 +287,10 @@ Composite = sum, max 10. **Threshold to trade: composite ≥ 7 AND R/R ≥ 2:1 A
     sections.push(thesesSection);
   }
 
-  // ── Section 9: Watchlist (legacy) ────────────────────────────────────
-  // The legacy AnalystWatchlistItem table. Most rows here are also
-  // mirrored as WATCHING theses in Live Theses above (PR #203 wired
-  // manage_watchlist ADD → mints WATCHING thesis). Kept for analysts
-  // whose watchlist predates that migration. Watchlist-collapse PR
-  // pending — when shipped, this section deletes entirely.
-  if (runInput.watchlist.length > 0) {
-    let watchSection = `## Watchlist\nLegacy view. Most names here are also in Live Theses as WATCHING — when a name appears in both, **the thesis is the source of truth.** Use this section only for the priority/days-on-list metadata that doesn't exist on the thesis row.\n\n`;
-    for (const w of runInput.watchlist) {
-      const dirTag = w.thesisDirection ? ` ${w.thesisDirection}` : "";
-      const priceInfo = [
-        w.targetPrice != null ? `target $${w.targetPrice.toFixed(2)}` : null,
-        w.stopPrice != null ? `stop $${w.stopPrice.toFixed(2)}` : null,
-      ]
-        .filter(Boolean)
-        .join(", ");
-      const catalystTag = w.catalyst ? ` | catalyst: ${w.catalyst}` : "";
-      const convTag =
-        w.conviction != null ? ` | conviction: ${w.conviction}%` : "";
-      watchSection += `- $${w.symbol} [${w.priority}]${dirTag} — "${w.reason}" (${w.daysOnList}d on list, reviewed ${w.lastReviewedDaysAgo}d ago)${priceInfo ? ` | ${priceInfo}` : ""}${catalystTag}${convTag}\n`;
-    }
-    sections.push(watchSection);
-  }
+  // Watchlist-collapse: the "Watchlist" section was a legacy mirror of
+  // the AnalystWatchlistItem table. Post-collapse, the watchlist IS the
+  // WATCHING theses in Live Theses above (PENDING + LONG + SHORT). The
+  // separate section was duplicating information; deleted entirely.
 
   // ── Section 10: Performance & Calibration ────────────────────────────
   // Calibration nudges (e.g. "overconfident at 80%, reduce size 15%")
@@ -530,7 +511,7 @@ If you reject the entry, your \`record_run_summary\` decision_rationale MUST cit
 
 **Opt-out path: \`update_thesis(thesis_id, change_status: "WATCHING", rationale: "<why>")\`.** Only legal alternative. Use ONLY when (a) current price is within 5% of the paper-era target — the move you wanted has been captured and re-entering would chase — or (b) you find concrete new evidence that invalidates the thesis. "Looks fine, holding off" is not acceptable; the analyst was actively buying this yesterday. WATCHING preserves the conviction in the library; the agent will re-evaluate on subsequent runs as price moves.
 
-**Forbidden transitions on PROMOTED, REJECTED at the tool layer:** \`change_status: "INVALIDATED"\` and \`change_status: "CLOSED"\`. The analyst held this name; "kill it without a position" is the wrong shape. If you truly believe the thesis is dead, downgrade to WATCHING first; the next run can invalidate it once it's back in the watching pool. Reasoning-only \`update_thesis\` calls (no \`change_status\`) on a PROMOTED row are also rejected — PROMOTED requires explicit resolution this run.
+**Forbidden transitions on PROMOTED, REJECTED at the tool layer:** \`change_status: "INVALIDATED"\`, \`change_status: "CLOSED"\`, and \`change_status: "ARCHIVED"\`. The analyst held this name; "kill it without a position" or "walk away without revisiting" are both the wrong shape. If you truly believe the thesis is dead, downgrade to WATCHING first; the next run can invalidate or archive it once it's back in the watching pool. Reasoning-only \`update_thesis\` calls (no \`change_status\`) on a PROMOTED row are also rejected — PROMOTED requires explicit resolution this run.
 
 **B. Position management (only if ACTIVE with an open position)**
 
@@ -589,7 +570,7 @@ Most actions execute inline in Steps 2–4. This step is for cross-thesis sequen
 
 **Narrated trade decisions that skip the place_trade call are a run failure.** If primary_decision is ADD or ROTATE, you MUST call place_trade for every NEW entry before record_run_summary — and close_position/manage_position for the corresponding exit/scale on a ROTATE. Writing "Added $XYZ" or "Rotating into $XYZ" without calling the tool means no order will be sent — the trade-execution gate will reject the run. The rationale describes WHAT YOU DID, not what you intend to do.
 
-**Narrated watchlist updates that skip the manage_watchlist call are a run failure.** Same rule — call the tool, don't write prose.
+**To remove a name from the watchlist, call \`update_thesis(change_status: 'ARCHIVED')\` on the existing WATCHING thesis.** Daily Run cannot ADD names to the watchlist — that's Discovery's job (Sunday cron, or \`app/discovery.run.manual\` on demand).
 
 ### Step 6 — Record and close
 \`record_run_summary\` with:

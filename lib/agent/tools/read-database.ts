@@ -28,7 +28,6 @@ const READ_MODELS = [
   "signal",
   "analystSignalRoute",
   "morningBrief",
-  "analystWatchlistItem",
   "analystBriefing",
   "artifact",
   "accuracyReport",
@@ -52,7 +51,6 @@ const ACCOUNT_SCOPED: Record<ReadModel, boolean> = {
   signal: false, // not account-owned (FIRM-wide signals)
   analystSignalRoute: false, // scoped via analyst relation
   morningBrief: false, // scoped via analyst relation
-  analystWatchlistItem: false, // scoped via analyst relation
   analystBriefing: true,
   artifact: false, // not account-owned
   accuracyReport: true,
@@ -71,7 +69,6 @@ const ACCOUNT_RELATION: Partial<Record<ReadModel, (accountId: string) => Record<
   }),
   analystSignalRoute: (accountId) => ({ analyst: { accountId } }),
   morningBrief: (accountId) => ({ analyst: { accountId } }),
-  analystWatchlistItem: (accountId) => ({ analyst: { accountId } }),
 };
 
 export const readDatabase = defineTool({

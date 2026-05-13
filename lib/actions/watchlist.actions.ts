@@ -4,6 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { getAccountId } from "@/lib/auth/account";
+import { getOrCreateManualRun } from "@/lib/agent/manual-run-anchor";
+import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+
+// Watchlist collapse — Thesis is the single store. AnalystWatchlistItem is
+// gone. The "watchlist" is now the query:
+//   Thesis WHERE researchRun.agentConfigId = X AND status = 'WATCHING'
+// Includes PENDING (awaiting first research), LONG WATCHING (entry pending),
+// SHORT WATCHING (entry pending). See docs/WATCHLIST_COLLAPSE_PLAN.md.
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
 
@@ -17,6 +25,13 @@ async function getCurrentUserId(): Promise<string | null> {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * What the analyst page renders for each watchlist row. Sourced from a
+ * `status='WATCHING'` Thesis. `direction` is `LONG|SHORT|PENDING`; PASS
+ * theses never appear here (they're ARCHIVED, off the watchlist).
+ *
+ * `id` is now the underlying Thesis id (was AnalystWatchlistItem.id pre-collapse).
+ */
 export interface WatchlistItemView {
   id: string;
   symbol: string;
@@ -40,7 +55,7 @@ export interface WatchlistItemView {
   } | null;
 }
 
-// ── Legacy compat (used by old user-level watchlist) ─────────────────────────
+// ── Legacy compat (used by old user-level watchlist on supabase) ─────────────
 
 export async function getWatchlistSymbolsByEmail(
   email: string,
@@ -79,27 +94,42 @@ export async function getWatchlistStatusForSymbol(
 
   const analysts = await prisma.agentConfig.findMany({
     where: { accountId },
-    select: {
-      id: true,
-      name: true,
-      watchlistItems: {
-        where: { symbol: upper, status: "ACTIVE" },
-        select: { id: true },
-      },
-    },
+    select: { id: true, name: true },
     orderBy: { name: "asc" },
   });
+
+  if (analysts.length === 0) return [];
+
+  // One query: every WATCHING thesis for the user's analysts on this symbol.
+  const watchingTheses = await prisma.thesis.findMany({
+    where: {
+      ticker: upper,
+      status: "WATCHING",
+      researchRun: { agentConfigId: { in: analysts.map((a) => a.id) } },
+    },
+    select: { researchRun: { select: { agentConfigId: true } } },
+  });
+  const watchingByAnalyst = new Set(
+    watchingTheses
+      .map((t) => t.researchRun.agentConfigId)
+      .filter((id): id is string => id !== null),
+  );
 
   return analysts.map((a) => ({
     id: a.id,
     name: a.name,
-    isWatched: a.watchlistItems.length > 0,
+    isWatched: watchingByAnalyst.has(a.id),
   }));
 }
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 
-/** Get all active watchlist items for an analyst, with thesis counts. */
+/**
+ * Get all watchlist items for an analyst. The "watchlist" is `Thesis WHERE
+ * status='WATCHING'` — includes PENDING (awaiting research), LONG WATCHING,
+ * and SHORT WATCHING. PASS theses live at status='ARCHIVED' and are not on
+ * the watchlist.
+ */
 export async function getWatchlistItems(
   analystId: string,
 ): Promise<WatchlistItemView[]> {
@@ -108,79 +138,87 @@ export async function getWatchlistItems(
   const accountId = await getAccountId(userId);
   if (!accountId) throw new Error("No account");
 
-  const items = await prisma.analystWatchlistItem.findMany({
-    where: { analystId, accountId, status: "ACTIVE" },
-    orderBy: [
-      { priority: "asc" }, // HIGH first (alphabetically: H < L < N)
-      { createdAt: "desc" },
-    ],
+  const theses = await prisma.thesis.findMany({
+    where: {
+      accountId,
+      status: "WATCHING",
+      researchRun: { agentConfigId: analystId },
+    },
+    select: {
+      id: true,
+      ticker: true,
+      direction: true,
+      targetPrice: true,
+      stopLoss: true,
+      confidenceScore: true,
+      reasoningSummary: true,
+      sourceKind: true,
+      sourceRationale: true,
+      catalystDate: true,
+      createdAt: true,
+      nextReviewAt: true,
+    },
+    orderBy: [{ direction: "asc" }, { createdAt: "desc" }],
   });
 
-  if (items.length === 0) return [];
+  if (theses.length === 0) return [];
 
-  // Get thesis counts and latest thesis per symbol for this analyst
-  const symbols = items.map((i) => i.symbol);
-  const runIds = await prisma.researchRun.findMany({
-    where: { agentConfigId: analystId, accountId },
-    select: { id: true },
+  // Count of historical theses per ticker for this analyst (any status,
+  // any time). Surfaces "this is the 3rd time the analyst has looked at NVDA"
+  // in the UI.
+  const tickers = Array.from(new Set(theses.map((t) => t.ticker)));
+  const allTheses = await prisma.thesis.findMany({
+    where: {
+      accountId,
+      ticker: { in: tickers },
+      researchRun: { agentConfigId: analystId },
+    },
+    select: { ticker: true, direction: true, confidenceScore: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
   });
-  const runIdList = runIds.map((r) => r.id);
 
-  const theses =
-    runIdList.length > 0
-      ? await prisma.thesis.findMany({
-          where: {
-            accountId,
-            ticker: { in: symbols },
-            researchRunId: { in: runIdList },
-          },
-          select: {
-            ticker: true,
-            direction: true,
-            confidenceScore: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: "desc" },
-        })
-      : [];
-
-  // Group by symbol
-  const thesisBySymbol = new Map<
+  const histBySymbol = new Map<
     string,
-    { count: number; latest: (typeof theses)[0] | null }
+    { count: number; latest: (typeof allTheses)[0] | null }
   >();
-  for (const t of theses) {
-    const existing = thesisBySymbol.get(t.ticker);
-    if (existing) {
-      existing.count++;
-    } else {
-      thesisBySymbol.set(t.ticker, { count: 1, latest: t });
-    }
+  for (const t of allTheses) {
+    const existing = histBySymbol.get(t.ticker);
+    if (existing) existing.count++;
+    else histBySymbol.set(t.ticker, { count: 1, latest: t });
   }
 
-  return items.map((item) => {
-    const thesisData = thesisBySymbol.get(item.symbol);
+  return theses.map((t) => {
+    const hist = histBySymbol.get(t.ticker);
+    // Map source_kind → "addedBy" display string the UI expects.
+    const addedBy =
+      t.sourceKind === "BUILDER_SEED"
+        ? "BUILDER"
+        : t.sourceKind === "USER_ADDED"
+          ? "USER"
+          : t.sourceKind === "EDITOR_SEED"
+            ? "BUILDER"
+            : "AGENT";
     return {
-      id: item.id,
-      symbol: item.symbol,
-      reason: item.reason,
-      notes: item.notes,
-      addedBy: item.addedBy,
-      priority: item.priority,
-      status: item.status,
-      thesisDirection: item.thesisDirection,
-      targetPrice: item.targetPrice,
-      stopPrice: item.stopPrice,
-      conviction: item.conviction,
-      catalyst: item.catalyst,
-      lastReviewedAt: item.lastReviewedAt,
-      createdAt: item.createdAt,
-      thesisCount: thesisData?.count ?? 0,
-      latestThesis: thesisData?.latest
+      id: t.id,
+      symbol: t.ticker,
+      reason: t.reasoningSummary,
+      notes: null,
+      addedBy,
+      priority: "NORMAL",
+      status: "ACTIVE", // legacy contract — UI ignores
+      thesisDirection: t.direction === "PENDING" ? null : t.direction,
+      targetPrice: t.targetPrice,
+      stopPrice: t.stopLoss,
+      conviction: t.confidenceScore,
+      catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
+      lastReviewedAt: t.nextReviewAt,
+      createdAt: t.createdAt,
+      thesisCount: hist?.count ?? 1,
+      latestThesis: hist?.latest
         ? {
-            direction: thesisData.latest.direction,
-            confidenceScore: thesisData.latest.confidenceScore,
-            createdAt: thesisData.latest.createdAt,
+            direction: hist.latest.direction,
+            confidenceScore: hist.latest.confidenceScore,
+            createdAt: hist.latest.createdAt,
           }
         : null,
     };
@@ -189,13 +227,21 @@ export async function getWatchlistItems(
 
 // ── Mutations ────────────────────────────────────────────────────────────────
 
-/** Add a stock to an analyst's watchlist. Reactivates if previously removed. */
+/**
+ * Add a stock to an analyst's watchlist. Mints a `Thesis(direction:'PENDING',
+ * status:'WATCHING', sourceKind:'USER_ADDED')` anchored to the analyst's
+ * synthetic MANUAL ResearchRun. The next daily run will research it
+ * (nextReviewAt = createdAt, surfaces as REVIEW_DUE via needsAction).
+ *
+ * Idempotent: if any ACTIVE/WATCHING thesis already exists on (analyst,
+ * ticker), returns the existing view.
+ */
 export async function addWatchlistItem(
   analystId: string,
   symbol: string,
   reason: string = "Added manually",
   addedBy: string = "USER",
-  priority: string = "NORMAL",
+  _priority: string = "NORMAL",
 ): Promise<WatchlistItemView> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
@@ -211,70 +257,122 @@ export async function addWatchlistItem(
 
   const upper = symbol.toUpperCase();
 
-  // Check for existing ACTIVE item
-  const existing = await prisma.analystWatchlistItem.findFirst({
-    where: { analystId, symbol: upper, status: "ACTIVE" },
+  // Idempotent — existing non-terminal thesis short-circuits.
+  const existing = await prisma.thesis.findFirst({
+    where: {
+      ticker: upper,
+      status: { in: ["ACTIVE", "WATCHING"] },
+      researchRun: { agentConfigId: analystId },
+    },
+    select: {
+      id: true,
+      ticker: true,
+      direction: true,
+      targetPrice: true,
+      stopLoss: true,
+      confidenceScore: true,
+      reasoningSummary: true,
+      sourceKind: true,
+      createdAt: true,
+      nextReviewAt: true,
+    },
   });
   if (existing) {
+    const addedByDisplay =
+      existing.sourceKind === "BUILDER_SEED"
+        ? "BUILDER"
+        : existing.sourceKind === "USER_ADDED"
+          ? "USER"
+          : "AGENT";
     return {
       id: existing.id,
-      symbol: existing.symbol,
-      reason: existing.reason,
-      notes: existing.notes,
-      addedBy: existing.addedBy,
-      priority: existing.priority,
-      status: existing.status,
-      thesisDirection: existing.thesisDirection,
+      symbol: existing.ticker,
+      reason: existing.reasoningSummary,
+      notes: null,
+      addedBy: addedByDisplay,
+      priority: "NORMAL",
+      status: "ACTIVE",
+      thesisDirection: existing.direction === "PENDING" ? null : existing.direction,
       targetPrice: existing.targetPrice,
-      stopPrice: existing.stopPrice,
-      conviction: existing.conviction,
-      catalyst: existing.catalyst,
-      lastReviewedAt: existing.lastReviewedAt,
+      stopPrice: existing.stopLoss,
+      conviction: existing.confidenceScore,
+      catalyst: null,
+      lastReviewedAt: existing.nextReviewAt,
       createdAt: existing.createdAt,
-      thesisCount: 0,
+      thesisCount: 1,
       latestThesis: null,
     };
   }
 
-  // Create new item
-  const item = await prisma.analystWatchlistItem.create({
+  const sourceKind =
+    addedBy === "BUILDER"
+      ? "BUILDER_SEED"
+      : addedBy === "AGENT"
+        ? "WATCHLIST_REVIEW"
+        : "USER_ADDED";
+
+  const runId = await getOrCreateManualRun({ analystId, userId, accountId });
+
+  const now = new Date();
+  const thesis = await prisma.thesis.create({
     data: {
-      analystId,
+      researchRunId: runId,
       userId,
       accountId,
-      symbol: upper,
-      reason,
-      addedBy,
-      priority,
-      status: "ACTIVE",
+      ticker: upper,
+      source: "MANUAL",
+      direction: "PENDING",
+      status: "WATCHING",
+      holdDuration: "SWING",
+      confidenceScore: 50,
+      reasoningSummary: reason || "Added manually — awaiting first research",
+      thesisBullets: [],
+      riskFlags: [],
+      signalTypes: [],
+      sourcesUsed: [],
+      modelUsed: "manual",
+      sourceKind,
+      sourceRationale: reason || "Manual watchlist add",
+      // Surface as REVIEW_DUE on the next daily run via the existing
+      // needsAction pipeline. No special TIME_ELAPSED day=0 trigger.
+      nextReviewAt: now,
     },
   });
 
-  // Keep the legacy String[] in sync
-  await syncLegacyWatchlist(analystId);
+  await writeThesisUpdate({
+    thesisId: thesis.id,
+    type: "CREATED",
+    summary: `Added ${upper} to watchlist (PENDING — awaiting research)`,
+    rationale: reason,
+    runId,
+  });
 
   revalidatePath(`/analysts/${analystId}`);
   return {
-    id: item.id,
-    symbol: item.symbol,
-    reason: item.reason,
-    notes: item.notes,
-    addedBy: item.addedBy,
-    priority: item.priority,
-    status: item.status,
-    thesisDirection: item.thesisDirection,
-    targetPrice: item.targetPrice,
-    stopPrice: item.stopPrice,
-    conviction: item.conviction,
-    catalyst: item.catalyst,
-    lastReviewedAt: item.lastReviewedAt,
-    createdAt: item.createdAt,
-    thesisCount: 0,
+    id: thesis.id,
+    symbol: thesis.ticker,
+    reason: thesis.reasoningSummary,
+    notes: null,
+    addedBy,
+    priority: "NORMAL",
+    status: "ACTIVE",
+    thesisDirection: null,
+    targetPrice: null,
+    stopPrice: null,
+    conviction: thesis.confidenceScore,
+    catalyst: null,
+    lastReviewedAt: thesis.nextReviewAt,
+    createdAt: thesis.createdAt,
+    thesisCount: 1,
     latestThesis: null,
   };
 }
 
-/** Remove a stock from an analyst's watchlist (soft delete). */
+/**
+ * Remove a stock from an analyst's watchlist. Sets the underlying Thesis
+ * to `status='ARCHIVED'` (not INVALIDATED — INVALIDATED implies the view
+ * was disproven by evidence; agent/user walk-away is ARCHIVED).
+ */
 export async function removeWatchlistItem(
   analystId: string,
   symbol: string,
@@ -287,25 +385,46 @@ export async function removeWatchlistItem(
 
   const upper = symbol.toUpperCase();
 
-  const item = await prisma.analystWatchlistItem.findFirst({
-    where: { analystId, symbol: upper, status: "ACTIVE", accountId },
+  const target = await prisma.thesis.findFirst({
+    where: {
+      ticker: upper,
+      status: "WATCHING",
+      accountId,
+      researchRun: { agentConfigId: analystId },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, status: true, direction: true },
   });
-  if (!item) return;
+  if (!target) return;
 
-  await prisma.analystWatchlistItem.update({
-    where: { id: item.id },
+  await prisma.thesis.update({
+    where: { id: target.id },
     data: {
-      status: "REMOVED",
-      removedAt: new Date(),
-      removeReason,
+      status: "ARCHIVED",
+      closedAt: new Date(),
+      closeReason: removeReason,
     },
   });
 
-  await syncLegacyWatchlist(analystId);
+  await writeThesisUpdate({
+    thesisId: target.id,
+    type: "STATUS_CHANGED",
+    summary: `Removed ${upper} from watchlist`,
+    rationale: removeReason,
+    fieldChanges: { status: { from: target.status, to: "ARCHIVED" } },
+  });
+
   revalidatePath(`/analysts/${analystId}`);
 }
 
-/** Update priority or notes on a watchlist item. */
+/**
+ * Update display fields on a watchlist item. Under the unified model, the
+ * "item" is a Thesis row; the only updateable field via this path is
+ * `reasoningSummary` (the user's note). Priority and notes are not stored
+ * on the Thesis row — they were UI metadata on the legacy table that nothing
+ * actually consumed. Callers that need the old behavior should call
+ * `update_thesis` directly.
+ */
 export async function updateWatchlistItem(
   itemId: string,
   data: { priority?: string; notes?: string; reason?: string },
@@ -315,73 +434,39 @@ export async function updateWatchlistItem(
   const accountId = await getAccountId(userId);
   if (!accountId) throw new Error("No account");
 
-  // First confirm ownership via accountId before updating by primary key.
-  // Prisma's `update.where` requires a unique constraint, so we can't
-  // mix `accountId` into the same call.
-  const owned = await prisma.analystWatchlistItem.findFirst({
+  const owned = await prisma.thesis.findFirst({
     where: { id: itemId, accountId },
     select: { id: true },
   });
   if (!owned) throw new Error("Watchlist item not found");
 
-  await prisma.analystWatchlistItem.update({
-    where: { id: itemId },
-    data: {
-      ...(data.priority !== undefined ? { priority: data.priority } : {}),
-      ...(data.notes !== undefined ? { notes: data.notes } : {}),
-      ...(data.reason !== undefined ? { reason: data.reason } : {}),
-    },
-  });
+  if (data.reason !== undefined) {
+    await prisma.thesis.update({
+      where: { id: itemId },
+      data: { reasoningSummary: data.reason },
+    });
+  }
+  // priority + notes are no-ops under the unified model.
 }
 
-/** Graduate a watchlist item (stock was traded). Called by place_trade tool. */
-export async function graduateWatchlistItem(
-  analystId: string,
-  symbol: string,
-): Promise<void> {
-  const upper = symbol.toUpperCase();
-
-  const item = await prisma.analystWatchlistItem.findFirst({
-    where: { analystId, symbol: upper, status: "ACTIVE" },
-  });
-  if (!item) return;
-
-  await prisma.analystWatchlistItem.update({
-    where: { id: item.id },
-    data: {
-      status: "GRADUATED",
-      removeReason: "Promoted to active position",
-      removedAt: new Date(),
-    },
-  });
-
-  await syncLegacyWatchlist(analystId);
-}
-
-/** Mark a watchlist item as reviewed (updates lastReviewedAt). */
+/**
+ * Mark a watchlist item as reviewed (updates `nextReviewAt`).
+ *
+ * Under the unified model, this resets the review cadence for an existing
+ * WATCHING thesis. Used by `place_trade` to drop the ticker off the
+ * "awaiting review" surface once a position is opened.
+ */
 export async function markWatchlistReviewed(
   analystId: string,
   symbol: string,
 ): Promise<void> {
   const upper = symbol.toUpperCase();
-
-  await prisma.analystWatchlistItem.updateMany({
-    where: { analystId, symbol: upper, status: "ACTIVE" },
-    data: { lastReviewedAt: new Date() },
-  });
-}
-
-// ── Internal helpers ─────────────────────────────────────────────────────────
-
-/** Keep AgentConfig.watchlist String[] in sync with the new table. */
-async function syncLegacyWatchlist(analystId: string): Promise<void> {
-  const activeItems = await prisma.analystWatchlistItem.findMany({
-    where: { analystId, status: "ACTIVE" },
-    select: { symbol: true },
-  });
-  const symbols = activeItems.map((i) => i.symbol);
-  await prisma.agentConfig.update({
-    where: { id: analystId },
-    data: { watchlist: symbols },
+  await prisma.thesis.updateMany({
+    where: {
+      ticker: upper,
+      status: "WATCHING",
+      researchRun: { agentConfigId: analystId },
+    },
+    data: { nextReviewAt: new Date() },
   });
 }

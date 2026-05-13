@@ -62,7 +62,16 @@ export type NeedsAction =
       predicateSummary: string;
       livePrice: number | null;
     }
-  | { kind: "REVIEW_DUE"; daysOverdue: number };
+  | {
+      kind: "REVIEW_DUE";
+      daysOverdue: number;
+      /**
+       * True when this is a PENDING thesis's first review — user/builder/
+       * editor seeded the ticker and the agent hasn't researched it yet.
+       * UI renders "Awaiting first research" instead of "Review overdue."
+       */
+      pendingFirstReview?: boolean;
+    };
 
 // ─── Predicate-side filters ──────────────────────────────────────────────────
 // Mirror of trigger-evaluator's isPriceSidePredicate. A price-side
@@ -129,6 +138,12 @@ export function describePredicate(p: TriggerPredicate): string {
 export interface NeedsActionInput {
   thesis: {
     id: string;
+    /**
+     * Direction is needed so PENDING theses (user/builder/editor seeds
+     * awaiting first research) surface as REVIEW_DUE with the
+     * `pendingFirstReview` discriminator.
+     */
+    direction?: string;
     triggers: Trigger[];
     createdAt: Date;
     nextReviewAt: Date | null;
@@ -197,11 +212,18 @@ export function computeNeedsAction(
   // 3) REVIEW_DUE — agent-set cadence (nextReviewAt) elapsed. The agent
   //    chose this clock when minting the thesis; surfacing it is showing
   //    the agent its own schedule, not imposing a generic rule.
+  //    Special case: PENDING theses (user/builder/editor seeds) carry
+  //    nextReviewAt = createdAt so they surface as REVIEW_DUE on the
+  //    next daily run with the pendingFirstReview discriminator.
   if (thesis.nextReviewAt && thesis.nextReviewAt.getTime() <= now.getTime()) {
     const daysOverdue = Math.floor(
       (now.getTime() - thesis.nextReviewAt.getTime()) / 86_400_000,
     );
-    return { kind: "REVIEW_DUE", daysOverdue };
+    const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue };
+    if (thesis.direction === "PENDING") {
+      result.pendingFirstReview = true;
+    }
+    return result;
   }
 
   // Nothing to act on. Yesterday's thesis stands.

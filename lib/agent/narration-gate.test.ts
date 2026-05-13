@@ -84,7 +84,7 @@ describe("detectNarrationHits", () => {
     expect(hits.some((h) => h.expectedTool === "manage_position" && h.ticker === "AVGO")).toBe(true);
   });
 
-  it("'added to' attributes to manage_position, not manage_watchlist", () => {
+  it("'added to' attributes to manage_position", () => {
     const hits = detectNarrationHits(
       "Added to $MU after the post-print follow-through.",
       "rationale",
@@ -92,27 +92,30 @@ describe("detectNarrationHits", () => {
       KNOWN(["MU"]),
     );
     expect(hits.some((h) => h.expectedTool === "manage_position" && h.ticker === "MU")).toBe(true);
-    expect(hits.some((h) => h.expectedTool === "manage_watchlist")).toBe(false);
   });
 
-  it("'added $X to watchlist' attributes to manage_watchlist", () => {
+  it("'added $X to watchlist' — no narration hit (watchlist verbs dropped post-collapse)", () => {
+    // Pre-collapse this attributed to manage_watchlist. Under the new
+    // model, watchlist add is record_thesis(PENDING/WATCHING) — and the
+    // tool gates enforce that the call happens. The narration gate no
+    // longer monitors watchlist verbs.
     const hits = detectNarrationHits(
       "Added $SMCI to the watchlist for next week's print.",
       "rationale",
       undefined,
       KNOWN(["SMCI"]),
     );
-    expect(hits.some((h) => h.expectedTool === "manage_watchlist" && h.ticker === "SMCI")).toBe(true);
+    expect(hits.length).toBe(0);
   });
 
-  it("'removing $X from watchlist' attributes to manage_watchlist", () => {
+  it("'removing $X from watchlist' — no narration hit (watchlist verbs dropped post-collapse)", () => {
     const hits = detectNarrationHits(
       "Removing $FIVN from the watchlist — thesis no longer holds.",
       "rationale",
       undefined,
       KNOWN(["FIVN"]),
     );
-    expect(hits.some((h) => h.expectedTool === "manage_watchlist" && h.ticker === "FIVN")).toBe(true);
+    expect(hits.length).toBe(0);
   });
 
   it("returns empty for benign reasoning text", () => {
@@ -223,10 +226,17 @@ describe("findGaps", () => {
   it("catches the 5/07 ROTATE rationale gaps end-to-end", () => {
     // Real text from runId=cmovfq790006904l8bio4izjv on 2026-05-07.
     // Status was COMPLETE despite zero tool calls firing for any of these.
+    // 2026-05-13 update (GAPS P0-8): \badjusted\b now requires a
+    // position-management noun (stop/trail/size/qty/position). The original
+    // "MU adjusted with ongoing demand validation" no longer triggers a
+    // manage_position gap — that prose is correctly an update_thesis
+    // adjustment, not a position adjustment. To preserve the regression-
+    // test intent, swap MU's verb to "MU's stop adjusted" so the
+    // manage_position-flavored gap still fires for the MU clause.
     const text =
       "Added $AMD and $ASML as new positions with strong signals based on recent earnings. " +
       "Attempted updates to $AVGO, $TSM blocked due to entry conditions met without trading. " +
-      "MU adjusted with ongoing demand validation, $INTC closed due to overextension, " +
+      "MU's stop adjusted with ongoing demand validation, $INTC closed due to overextension, " +
       "$QCOM invalidated due to weak performance and competition.";
     const known = KNOWN(["AMD", "ASML", "AVGO", "TSM", "MU", "INTC", "QCOM"]);
     const hits = detectNarrationHits(text, "rationale", undefined, known);
@@ -236,6 +246,43 @@ describe("findGaps", () => {
     const adjustMu = gaps.find((g) => g.ticker === "MU" && g.expectedTool === "manage_position");
     expect(closeIntc).toBeDefined();
     expect(adjustMu).toBeDefined();
+  });
+
+  it("does NOT flag 'adjusted' for thesis-state adjustments (GAPS P0-8)", () => {
+    // 2026-05-13 EV Catalyst Event Trader failed when "Adjusted target based
+    // on strategic expansion" matched the old bare \badjusted\b regex and
+    // demanded a manage_position call. Adjusting a thesis target is
+    // update_thesis territory, not manage_position. Verify the tightened
+    // regex no longer fires on these patterns.
+    const cases = [
+      "Adjusted target based on strategic expansion.",
+      "Adjusted thesis to reflect new sector reality.",
+      "Adjusted my outlook on TSLA.",
+      "Adjusted the plan to wait for confirmation.",
+    ];
+    const known = KNOWN(["TSLA", "AMD"]);
+    for (const text of cases) {
+      const hits = detectNarrationHits(text, "rationale", "TSLA", known);
+      const adjustHits = hits.filter((h) => h.expectedTool === "manage_position");
+      expect(adjustHits).toHaveLength(0);
+    }
+  });
+
+  it("STILL flags 'adjusted' when followed by a position-management noun", () => {
+    // Defense-in-depth: confirm we didn't over-tighten. These should still
+    // fire because they're real manage_position actions.
+    const cases = [
+      { text: "Adjusted the stop on $MU to $640.", expectGap: true },
+      { text: "$AMD position adjusted (trim to 50%).", expectGap: true },
+      { text: "Trailing stop adjusted on $TSLA.", expectGap: true },
+      { text: "Adjusted size on $NVDA from 100 to 50 shares.", expectGap: true },
+    ];
+    const known = KNOWN(["MU", "AMD", "TSLA", "NVDA"]);
+    for (const { text } of cases) {
+      const hits = detectNarrationHits(text, "rationale", undefined, known);
+      const adjustHits = hits.filter((h) => h.expectedTool === "manage_position");
+      expect(adjustHits.length).toBeGreaterThan(0);
+    }
   });
 
   it("does not flag when complete tool coverage exists for the run", () => {

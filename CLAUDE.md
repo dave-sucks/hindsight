@@ -190,7 +190,7 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 - /api/stocks/search — Finnhub symbol search
 - /api/inngest — Inngest webhook handler
 
-## Agent Tools — 25 trading tools (lib/agent/tools/)
+## Agent Tools — 24 trading tools (lib/agent/tools/)
 Each tool is defined in its own file using `defineTool()` from
 `lib/agent/define-tool.ts`. The factory wraps execute() in timing/
 logging/try-catch and returns a `ToolResult<T>` envelope with a `ui`
@@ -222,21 +222,22 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 12. get_sec_filings — SEC EDGAR filings
 
 ### Action Tools
-13. record_thesis — mint a NEW thesis (LONG/SHORT/PASS) for net-new coverage or direction flip
-14. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, INVALIDATED, or CLOSED). The single most-used tool — every daily-run REVIEWED entry and every tactical close-out is one of these
-15. place_trade — Alpaca market order, create Position
-16. close_position — close an existing open position fully
-17. manage_position — partial close, scale in/out, move stop, trail stop, adjust target
-18. manage_watchlist — add/remove/update watchlist items
-19. record_run_summary — persist run summary + ranked picks + decision rationale; runs the narration-gate verb→tool gate
-20. complete_run — mark run COMPLETE (only allowed from RUNNING; FAILED status set by the narration-gate sticks)
+13. record_thesis — mint a NEW thesis (LONG/SHORT/PASS/PENDING) for net-new coverage or direction flip. PASS lands ARCHIVED (institutional memory). PENDING is reserved for non-agent code paths (UI/builder/editor seeds).
+14. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, INVALIDATED, ARCHIVED, or CLOSED via STATUS_CHANGED). The single most-used tool — every daily-run REVIEWED entry, every tactical close-out, and every "remove from watchlist" is one of these.
+15. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→ACTIVE and writes STATUS_CHANGED audit row.
+16. close_position — close an existing open position fully; flips Thesis ACTIVE→CLOSED.
+17. manage_position — partial close, scale in/out, move stop, trail stop, adjust target.
+18. record_run_summary — persist run summary + ranked picks + decision rationale; runs the narration-gate verb→tool gate.
+19. complete_run — mark run COMPLETE (only allowed from RUNNING; FAILED status set by the narration-gate sticks).
+
+NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To add to a watchlist, mint a `Thesis(direction='PENDING', status='WATCHING')`. To remove, call `update_thesis(change_status='ARCHIVED')`.
 
 ### Builder/Editor-only Tools
-21. read_knowledge_library — strategy archetypes, source catalog, signal types
-22. ask_question — structured 2-5 quick-reply interview, one call per turn
-23. discover_signals_for_fence — validate a proposed sectors/industries/themes/tickers fence against the past 30d of routed signals
-24. read_analyst_inbox_stats — 30-day routing rollup for THIS analyst (top tickers, dead themes, hot unwatched tickers)
-25. suggest_config — emit the full proposed analyst config as a side-panel diff
+20. read_knowledge_library — strategy archetypes, source catalog, signal types
+21. ask_question — structured 2-5 quick-reply interview, one call per turn
+22. discover_signals_for_fence — validate a proposed sectors/industries/themes/tickers fence against the past 30d of routed signals
+23. read_analyst_inbox_stats — 30-day routing rollup for THIS analyst (top tickers, dead themes, hot unwatched tickers)
+24. suggest_config — emit the full proposed analyst config as a side-panel diff
 
 ## How to Add a New Agent Tool
 
@@ -451,8 +452,9 @@ it with a ticker chip as if it were a traded security.
      record_thesis only for net-new coverage or direction flips
      (source_kind + source_signal_ids required)
    Stage 4 — Act: close_position / manage_position for held names that
-     warrant action; place_trade for new entries; manage_watchlist
-     for adds/removes
+     warrant action; place_trade for new entries; update_thesis with
+     change_status='ARCHIVED' to remove from watchlist. Daily run can't
+     ADD to watchlist — that's Discovery's job.
    Stage 5 — Recap: record_run_summary (ranked picks + exposure)
    Stage 6 — Complete: complete_run. Old "blocked until every
      researched ticker has a thesis" gate was relaxed in #205 as a
@@ -473,11 +475,6 @@ it with a ticker chip as if it were a traded security.
 - Replacing the `###` headers with inline bold (e.g. `**Record theses —**`) has been tried and **destroys the run**: the model narrates the transition as prose ("I'll proceed to thesis drafting…"), generateText terminates on that text-only step, and the run ends with 0 theses, 0 trades, 0 summary. Every analyst fails identically. Do not do this — it was attempted in commit 364b63a (Apr 20 2026) and broke the entire 8 AM cron the next morning.
 - GPT-4o occasionally leaks `### Stage N — NAME` verbatim into its narration output. That cosmetic issue is handled at the renderer — the h3 filter in `cited-markdown-text.tsx` (around line 342) strips any heading matching `/^(Stage|Phase)\s+\d+\s*[—–\-]/`. That renderer filter is the durable defense; it's safe to keep the headers in the prompt.
 - The `FORBIDDEN OUTPUT PATTERNS` list in Section 8 of the prompt is belt-and-suspenders. Keep it. Do not rely on it alone.
-
-**manage_watchlist tool call not showing** (`lib/agent/system-prompt.ts`)
-- GPT-4o narrates "I'll add $X to the watchlist" as prose instead of calling manage_watchlist.
-- FIXED BY: explicit prohibition in Stage 4 — "narrated watchlist updates that skip the tool call are a run failure."
-- If the prohibition language is softened or removed, the regression returns immediately.
 
 **Prose-termination after Step 1's parallel data tools** (`lib/agent/system-prompt.ts`, `lib/inngest/functions/morning-research.ts`)
 - 2026-05-07: 3 of 7 morning-cron runs (Catalyst Event Raider, Global Event-Driven ETF Strategist, EV Catalyst Event Trader) terminated after one round of tool calls. Toolstats showed exactly 3 calls per run: read_signals + get_portfolio_context + get_theses (all parallel). Then the model emitted a markdown thesis-by-thesis review ending with phrases like "Next, I'll proceed to..." or "Let me now focus on..." — text-only assistant turn, no tool call. AI SDK v6's generateText loop terminates when an assistant turn produces no tool calls, so the run ended at msg=4 (user → asst-with-tools → tool-results → asst-text-only).
@@ -511,12 +508,15 @@ it with a ticker chip as if it were a traded security.
 new, file it there — not here.)
 
 ## Active multi-PR plans
-- **`docs/WATCHLIST_COLLAPSE_PLAN.md`** — Delete `AnalystWatchlistItem`. `Thesis` becomes the single store. New `direction='PENDING'` for user/builder/editor-added tickers awaiting first research. 3 sequenced PRs. Drafted 2026-05-13, not yet implemented. **A fresh session picking this up should read the doc top to bottom and answer the 8 open questions with the user first.**
-- **`docs/THESIS_ARCHITECTURE_PLAN.md`** — Thesis-driven analyst architecture. PR 1 merged (durable thesis state + activity log + tools). PR 2 (trigger evaluator + tactical mode) and PR 3 (housekeeping + discovery + watchlist collapse) — note that watchlist collapse has been spun out into its own plan above. Daily-run V2 (PR #244 / #249) and Discovery rework (PR #253) are the most recent landings.
+- **`docs/MORNING_RUN_V2_DESIGN.md`** — Daily-run prompt rewrite + `needsAction` tool field + mode allowlist locking. Fix #0 (per-thesis triggers authoritative) shipped unflagged. Fixes #1–#6 ship behind per-analyst `useV2Prompt` flag.
+- **`docs/THESIS_ARCHITECTURE.md`** — **The live reference for the thesis system.** Read this before touching anything thesis-related. Documents the end-to-end lifecycle (state machine + 9 canonical scenarios), legal `(direction, status)` pairs, producers + gates, consumers, and the 5-bucket run-summary derivation.
+
+### Recently closed
+- **Watchlist collapse (2026-05-13)** — `AnalystWatchlistItem` deleted, `manage_watchlist` deleted, `Thesis` is now the single watchlist store. `direction='PENDING'` for seeds awaiting first research; `status='ARCHIVED'` for terminal-without-trade. See `docs/THESIS_ARCHITECTURE.md` for the post-collapse model.
 
 ## Key Files
 ### Agent System
-- lib/agent/tools/ — 19 individual tool files, each using defineTool()
+- lib/agent/tools/ — 18 individual tool files, each using defineTool()
 - lib/agent/tools/index.ts — single export + createResearchTools() wrapper
 - lib/agent/define-tool.ts — defineTool() factory with timing/logging
 - lib/universe/feeds.ts — canonical FEEDS enum + normalizeFeeds (mirrors Signal.aggregateType)

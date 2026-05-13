@@ -81,7 +81,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     //   Stage 1: 2–3 steps (brief + signals)
     //   Stage 2: 4–7 steps (holdings + watchlist + discovery get_stock_data)
     //   Stage 3: 3–5 steps (theses per researched ticker, batched)
-    //   Stage 4: 3–5 steps (manage_position / place_trade / manage_watchlist)
+    //   Stage 4: 3–5 steps (manage_position / place_trade / update_thesis ARCHIVED)
     //   Stage 5: 1 step (record_run_summary)
     //   Stage 6: 1 step (complete_run)
     // Plus retry overhead if the text-only death retry fires, plus some
@@ -90,7 +90,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     maxSteps: 65,
     // Fix #5 (docs/MORNING_RUN_V2_DESIGN.md). The Daily Run manages the
     // existing book; minting NEW coverage is the Discovery cron's job
-    // (Sundays). record_thesis + manage_watchlist intentionally excluded.
+    // (Sundays). record_thesis intentionally excluded.
     // Three paths still mint new coverage:
     //   (a) Tactical promotion — ENTER trigger fires on a WATCHING thesis
     //       (already minted by Discovery), tactical-run flips status to
@@ -121,8 +121,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "record_run_summary",
       "complete_run",
       // EXCLUDED:
-      //   record_thesis    — minting new coverage is Discovery's job
-      //   manage_watchlist — adding watchlist names is Discovery's job
+      //   record_thesis — minting new coverage is Discovery's job
     ] as const,
     hasSuggestConfig: false,
     maxDuration: 300,
@@ -176,8 +175,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   // Weekly cron, finds NEW coverage candidates. NEVER touches existing
   // theses (no update_thesis, no close_position, no manage_position).
   // record_thesis IS allowed — that's the primary output. place_trade
-  // allowed for high-conviction starters. manage_watchlist allowed for
-  // adds.
+  // allowed for high-conviction starters.
   "discovery": {
     model: "gpt-4o",
     provider: "openai",
@@ -195,11 +193,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_sec_filings",
       "web_search",
       "get_theses",
-      // Mint new coverage
+      // Mint new coverage (LONG/SHORT WATCHING or PASS ARCHIVED)
       "record_thesis",
       // Optional starter trade for high-conviction picks
       "place_trade",
-      "manage_watchlist",
       // Finalize
       "record_run_summary",
       "complete_run",
@@ -290,7 +287,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "place_trade",
       "manage_position",
       "close_position",
-      "manage_watchlist",
     ] as const,
     // suggest_config wires the side-panel diff for analyst edits — works
     // with or without analyst scope.
@@ -392,7 +388,7 @@ export function buildPrincipalSystemPrompt(opts: {
 ## CURRENT SCOPE — pinned to ${scope.name}
 ══════════════════════════════════════════════════════════════════════
 
-This chat is pinned to one analyst. Every write tool (place_trade, close_position, manage_position, manage_watchlist, record_thesis, update_thesis) executes AGAINST this analyst. You don't need to pass analyst_id — the route handles it.
+This chat is pinned to one analyst. Every write tool (place_trade, close_position, manage_position, record_thesis, update_thesis) executes AGAINST this analyst. You don't need to pass analyst_id — the route handles it.
 
   • Analyst ID: \`${scope.id}\`
   • Direction bias: ${scope.directionBias}
@@ -415,7 +411,7 @@ Use \`get_theses\`, \`get_portfolio_context\`, and \`read_signals\` to pull curr
 ## CURRENT SCOPE — Portfolio (unscoped)
 ══════════════════════════════════════════════════════════════════════
 
-This chat is at the portfolio level — not pinned to any single analyst. You can read across every analyst the user owns. Writes that require an analyst FK (place_trade, manage_watchlist, update_thesis, etc.) will FAIL in this scope — tell the user to scope the chat first via the URL \`/chat?analyst=<id>\` or by clicking an analyst chip in the chat header.
+This chat is at the portfolio level — not pinned to any single analyst. You can read across every analyst the user owns. Writes that require an analyst FK (place_trade, record_thesis, update_thesis, etc.) will FAIL in this scope — tell the user to scope the chat first via the URL \`/chat?analyst=<id>\` or by clicking an analyst chip in the chat header.
 
 Start every fresh session with \`list_analysts\` so you know who exists. Then pick the right read tool for the question.\n`;
 
@@ -507,8 +503,9 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
   • \`place_trade\` — Alpaca paper market order. Requires thesis_id.
   • \`close_position\` — full exit via Alpaca. Records outcome.
   • \`manage_position\` — partial close / scale-in / move stop / set trailing / update targets. Every action audit-logged.
-  • \`manage_watchlist\` — add/remove/update watchlist entries. Also mints a WATCHING thesis on ADD.
   • \`suggest_config\` — analyst-config edit. Emits a side-panel diff the user accepts. Works in any scope.
+
+To add a ticker to an analyst's watchlist, call \`record_thesis\` with direction='PENDING', status='WATCHING', sourceKind='USER_ADDED', and a one-line reason. To remove, call \`update_thesis(change_status: 'ARCHIVED')\`.
 
 ══════════════════════════════════════════════════════════════════════
 ## HOW TO OPERATE — the depth bar
@@ -520,7 +517,7 @@ You answer the user's actual question, not a generic restatement. Match the dept
   • **"What did Catalyst Event Raider do this morning?"** → \`list_runs\` filtered to that analyst, latest first → \`read_run\` on the most recent MORNING_PLAN. Summarize the decisions, name the trades, flag failures.
   • **"Review my @AnalystName's monitors"** → \`read_analyst_config\` + \`list_monitors\` filtered to that analyst. Sort by successScore. Call out dead monitors (0 trades in 30 days), low-ROI monitors (score < 0), and high-ROI keepers. Make a concrete suggestion: "Disable X, Y, Z. Add a monitor for Z because [reason]."
   • **"What do my analysts think about $NVDA?"** → \`list_theses_all\` ticker=NVDA. One line per analyst, direction + confidence + last update.
-  • **"Add this article to my analyst's watchlist"** (with URL or paste) → if scoped, \`web_search\` or paste-parse to extract candidate tickers, present them, then \`manage_watchlist\` to ADD. If not scoped, ask which analyst.
+  • **"Add this article to my analyst's watchlist"** (with URL or paste) → if scoped, \`web_search\` or paste-parse to extract candidate tickers, present them, then \`record_thesis\` with direction='PENDING' + status='WATCHING' for each. If not scoped, ask which analyst.
   • **"Audit this run"** → \`read_run\` + spot-check the theses + the toolStats in parameters. Look for the patterns the user audits in their PRs: silent timeouts (totalToolCalls=0), narration→execution gaps, structural defects (coreBelief NULL on directional theses, ENTER triggers above target), goalpost moves (raised target on WATCHING when entry condition is met).
   • **"My system is doing X poorly"** → start with the relevant Done-since item in docs/GAPS.md context (you don't have to call out doc names, just know the pattern). Trace causally: data → routing → mint → run → trigger → tactical → eval.
 

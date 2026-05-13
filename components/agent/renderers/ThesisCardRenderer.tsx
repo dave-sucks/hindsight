@@ -203,6 +203,14 @@ function collectReadTheses(
  * Write-side parts: record_thesis (+show_thesis alias) carry their card
  * data on the input args. update_thesis returns it under data.card. Both
  * shapes flow through a single mapper.
+ *
+ * 2026-05-13 — suppress failed-attempt cards. A failed record_thesis call
+ * (Zod rejection at the AI SDK layer, or a gate-rejection inside execute()
+ * returning status: "FAILED" / "USE_UPDATE_THESIS" / "CROSS_ANALYST_OVERLAP")
+ * previously rendered as a full thesis card alongside the successful retry —
+ * which is how the 2026-05-13 INTC run showed "Wrote 2 theses" for what
+ * was actually 1 success + 1 pe_ratio-null rejection. The DB only ever has
+ * the one row; the second card is a UI lie.
  */
 function collectWriteTheses(
   parts: Record<string, unknown>[],
@@ -211,10 +219,30 @@ function collectWriteTheses(
   for (const p of parts) {
     const r = (p.result ?? p.output) as Record<string, unknown> | undefined;
     if (!r) continue;
+
+    // AI SDK error envelope — Zod input validation failures land here with
+    // `type: "error-text"` and no `data` payload. Skip without rendering.
+    if (r.type === "error-text") continue;
+
+    // Explicit failure envelope from defineTool — `ok === false` means
+    // execute() threw and the error was caught upstream.
+    if (r.ok === false) continue;
+
     const data = (r.ok === true && r.data ? r.data : r) as Record<
       string,
       unknown
     >;
+
+    // Tool-internal rejection envelopes return a normal-shaped result with
+    // status set to one of these non-success values + thesis_id: null. We
+    // do NOT want to render a thesis card for any of them — the rejection
+    // narration in the chat already tells the user what happened.
+    const status = data.status as string | undefined;
+    const isRejection =
+      status === "FAILED" ||
+      status === "USE_UPDATE_THESIS" ||
+      status === "CROSS_ANALYST_OVERLAP";
+    if (isRejection) continue;
 
     // update_thesis: data.card holds the post-update snapshot.
     if (data.card && (data.card as ThesisCardData).ticker) {
@@ -230,10 +258,17 @@ function collectWriteTheses(
       inputArgs.ticker && inputArgs.direction ? inputArgs : data;
     if (!display.ticker || !display.direction) continue;
 
+    // Belt + suspenders: if we reached here without a thesis_id AND we
+    // don't have an existing_thesis_id (which the USE_UPDATE_THESIS branch
+    // already skipped), the call didn't actually persist a row — don't
+    // render the card.
+    const persistedId =
+      (data.thesis_id as string | undefined) ??
+      (data.existing_thesis_id as string | undefined);
+    if (!persistedId && status !== undefined) continue;
+
     out.push({
-      thesis_id:
-        (data.thesis_id as string | undefined) ??
-        (data.existing_thesis_id as string | undefined),
+      thesis_id: persistedId,
       ticker: display.ticker as string,
       direction: display.direction as "LONG" | "SHORT" | "PASS",
       confidence_score:

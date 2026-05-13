@@ -76,10 +76,10 @@ export const placeTrade = defineTool({
     // which bypasses the duplicate check and hits Alpaca with a 422.
     const ticker = args.ticker.toUpperCase().trim();
 
-    // Principal-chat override: the agent passes analyst_id explicitly because
-    // the route context isn't scoped to one analyst. Within an analyst run,
-    // ctx.analystId is set and args.analyst_id is omitted.
-    const effectiveAnalystId: string | undefined = args.analyst_id ?? ctx.analystId;
+    // P0-9a: ctx.analystId wins for daily/tactical runs (it's always set from
+    // the ResearchRun). args.analyst_id is the principal-chat fallback for
+    // contexts where no run is scoped to one analyst.
+    const effectiveAnalystId: string | undefined = ctx.analystId ?? args.analyst_id;
     try {
       // 0a. Universe exclusion check — hard reject
       // exclusionList is the hard block dimension of Universe. The analyst's
@@ -128,6 +128,38 @@ export const placeTrade = defineTool({
       // prompt) and the model could ignore them. Now they're hard gates:
       // a violation returns a FAILED trade result. This protects the
       // paper book from the model overriding its own stated rules.
+
+      // ── Guardrail 0: thesis direction is committed (not PENDING) ────
+      // A PENDING thesis is a user/builder/editor seed awaiting first
+      // research. It has no target/stop/triggers/belief. place_trade on
+      // a PENDING row would create an open position with no exit plan AND
+      // violate the legal (direction, status) pairs (PENDING + ACTIVE is
+      // not legal). Agent must promote PENDING → LONG/SHORT via
+      // update_thesis first.
+      {
+        const directionCheck = await prisma.thesis.findUnique({
+          where: { id: args.thesis_id },
+          select: { direction: true },
+        });
+        if (directionCheck && directionCheck.direction === "PENDING") {
+          const msg =
+            `$${ticker}: cannot place_trade on a PENDING thesis. PENDING is a user/builder/editor seed awaiting first research — no target, no stop, no committed view. ` +
+            `Promote it first: call update_thesis(thesis_id="${args.thesis_id}", direction: "${args.direction}", horizon: ..., entry_price: ..., target_price: ..., stop_loss: ..., core_belief: ..., key_assumptions: [...], invalidation_conditions: [...]) ` +
+            `to commit. Then retry place_trade on the same thesis_id once the structural fields are set.`;
+          return {
+            summary: `Trade blocked: $${ticker} — thesis is PENDING (promote via update_thesis first)`,
+            data: {
+              success: false,
+              ticker,
+              status: "FAILED" as const,
+              direction: args.direction,
+              message: msg,
+              tickers: [{ ticker, tag: "Failed", summary: msg, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+      }
 
       // ── Guardrail 1: thesis confidence ≥ minConfidence ─────────────
       if (ctx.minConfidence != null) {
@@ -676,27 +708,40 @@ export const placeTrade = defineTool({
       // suppress unused warning if a path doesn't read submitOutcome
       void submitOutcome;
 
-      // Graduate watchlist item (non-fatal)
+      // Watchlist-collapse: WATCHING → ACTIVE promotion is the new "graduation."
+      // The thesis row's status flip is what takes it off the watchlist view
+      // (which is just `Thesis WHERE status='WATCHING'`). Write a PROMOTED
+      // audit row so the run summary's "Promoted (now active)" bucket can
+      // derive from ThesisUpdate.
       try {
-        const watchlistItem = await prisma.analystWatchlistItem.findFirst({
-          where: { analystId, symbol: ticker, status: "ACTIVE" },
+        const watchingThesis = await prisma.thesis.findFirst({
+          where: {
+            ticker,
+            status: "WATCHING",
+            researchRun: { agentConfigId: analystId },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, direction: true },
         });
-        if (watchlistItem) {
-          await prisma.analystWatchlistItem.update({
-            where: { id: watchlistItem.id },
-            data: { status: "GRADUATED", removeReason: "Promoted to active position", removedAt: new Date(), promotedToPositionId: position.id },
+        if (watchingThesis) {
+          await prisma.thesis.update({
+            where: { id: watchingThesis.id },
+            data: { status: "ACTIVE" },
           });
-          const activeItems = await prisma.analystWatchlistItem.findMany({
-            where: { analystId, status: "ACTIVE" },
-            select: { symbol: true },
-          });
-          await prisma.agentConfig.update({
-            where: { id: analystId },
-            data: { watchlist: activeItems.map((i) => i.symbol) },
+          await prisma.thesisUpdate.create({
+            data: {
+              thesisId: watchingThesis.id,
+              type: "STATUS_CHANGED",
+              summary: `Promoted ${ticker} ${watchingThesis.direction} WATCHING → ACTIVE on place_trade`,
+              rationale: `Position opened (id ${position.id}). Watchlist row archived; live position now active.`,
+              fieldChanges: { status: { from: "WATCHING", to: "ACTIVE" } },
+              runId: ctx.runId,
+              tradeId: position.id,
+            },
           });
         }
       } catch (err) {
-        console.warn(`[tool] place_trade watchlist graduation failed:`, err instanceof Error ? err.message : err);
+        console.warn(`[tool] place_trade WATCHING→ACTIVE promotion failed:`, err instanceof Error ? err.message : err);
       }
 
       // Fetch post-trade portfolio context (non-fatal)

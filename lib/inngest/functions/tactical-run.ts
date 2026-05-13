@@ -24,6 +24,7 @@ import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-t
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { describeTriggerFire } from "@/lib/agent/triggers/format";
 import { MODES } from "@/lib/agent/modes";
+import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 // ── Types ───────────────────────────────────────────────────────────────
@@ -116,7 +117,6 @@ export const tacticalRun = inngest.createFunction(
             minConfidence: true,
             maxPositionSize: true,
             maxOpenPositions: true,
-            watchlist: true,
             exclusionList: true,
             tradingEnvironment: true,
             realMaxPosition: true,
@@ -269,12 +269,13 @@ export const tacticalRun = inngest.createFunction(
         (await resolveAlpacaCredentials(agentConfig.userId, runEnvironment)) ??
         undefined;
 
+      const watchlistSymbols = await getWatchlistSymbols(agentConfig.id);
       const allTools = createResearchTools({
         runId: run.id,
         userId: agentConfig.userId,
         accountId: agentConfig.accountId,
         analystId: agentConfig.id,
-        watchlist: agentConfig.watchlist ?? [],
+        watchlist: watchlistSymbols,
         exclusionList: agentConfig.exclusionList ?? [],
         sectors: agentConfig.sectors ?? [],
         maxPositionSize: Number(agentConfig.maxPositionSize),

@@ -122,13 +122,13 @@ export async function GET() {
         select: { symbol: true },
       }),
 
-      // Watchlist — for watchlist ticker classification
-      prisma.analystWatchlistItem.findMany({
+      // Watchlist — Thesis(status='WATCHING') post-collapse.
+      prisma.thesis.findMany({
         where: {
           accountId,
-          status: "ACTIVE",
+          status: "WATCHING",
         },
-        select: { symbol: true },
+        select: { ticker: true },
       }),
 
       // All monitors (scoped to this user)
@@ -196,7 +196,7 @@ export async function GET() {
     positions.map((p: { symbol: string }) => p.symbol.toUpperCase())
   );
   const watchlistSet = new Set<string>(
-    watchlistItems.map((w: { symbol: string }) => w.symbol.toUpperCase())
+    watchlistItems.map((w: { ticker: string }) => w.ticker.toUpperCase())
   );
 
   // ── Signals by day ─────────────────────────────────────────────────────────
