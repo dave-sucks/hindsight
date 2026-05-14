@@ -1,9 +1,10 @@
 # Hindsight — Thesis Architecture
 
 > **What this is:** the live reference for how the thesis system works.
-> Updated 2026-05-13 to reflect the watchlist collapse. Update this doc
-> whenever a thesis-system component changes. For target state, read
-> [`VISION.md`](./VISION.md). For known gaps, read [`GAPS.md`](./GAPS.md).
+> Updated 2026-05-13 to reflect the watchlist collapse (PR #265) and the
+> complete_run preflight (PR #266). Update this doc whenever a thesis-system
+> component changes. For target state, read [`VISION.md`](./VISION.md). For
+> known gaps, read [`GAPS.md`](./GAPS.md).
 >
 > **Last verified:** 2026-05-13
 
@@ -380,7 +381,19 @@ Gates (in order):
 - No existing OPEN position on (analyst, ticker).
 - Shape, sizing, available buying power.
 
-On success: creates Position, flips paired WATCHING thesis → ACTIVE, writes `ThesisUpdate(type='STATUS_CHANGED')` with tradeId.
+On success: creates Position, **atomically flips paired WATCHING thesis → ACTIVE** (PR #265 — inside the same transaction), sets `thesis.entryPrice / targetPrice / stopLoss` from the trade arguments, writes `ThesisUpdate(type='STATUS_CHANGED', summary='Promoted … WATCHING → ACTIVE on place_trade')` with tradeId.
+
+**Position-thesis desync class (closed by PR #265):** before this auto-promotion was added, `place_trade` created the Position but left the thesis in WATCHING status. This caused the agent to read `get_theses` (WATCHING) and `get_portfolio_context` (position OPEN) simultaneously and treat an already-held name as a watchlist candidate needing entry. Symptoms: agent narrates "Entry executed…" in `reasoningSummary` while `status = WATCHING`, then re-evaluates an ENTER trigger on a position it already holds. Four production theses (AMD, AVGO, GOOGL, TSM) required a manual DB patch on 2026-05-13 (`mfix*` ThesisUpdate IDs). PR #265 makes this impossible for new trades by doing the flip inside the same transaction as the Alpaca order.
+
+### `complete_run` — marks a ResearchRun COMPLETE (PR #266 preflight)
+
+Before flipping `status: RUNNING → COMPLETE`, `complete_run` runs a Layer-1 preflight that refuses if any of the following are true:
+
+- **`record_run_summary` not called** — the run has no summary written yet. Agent must call `record_run_summary` first.
+- **Run already FAILED** — if a prior gate (narration-gate, promotion gate) already marked the run FAILED, `complete_run` is rejected. The run can't be retroactively completed.
+- **Unaddressed `needsAction` theses** — any ACTIVE or WATCHING thesis for this analyst that `computeNeedsAction` marks non-null (TRIGGER_FIRED / TRIGGER_MATCHING_NOW / REVIEW_DUE) AND that has no `update_thesis` call recorded in this run's tool calls is flagged. The agent must address all triggered theses before completing.
+
+The preflight uses the same `computeNeedsAction` logic as `get_theses` (no more Layer-1 / Layer-2 inconsistency on cooldown math or quote sources).
 
 ### Non-agent writers (server actions)
 
@@ -445,7 +458,11 @@ The redesign considered several larger changes that were deliberately NOT pursue
 
 ### Done since (2026-05-13)
 
-- **Collapsed `manage_watchlist` + `AnalystWatchlistItem`.** Thesis is the single store. PENDING direction + ARCHIVED status added. UI, prompts, crons, intelligence routes all flipped to Thesis queries. Tool count drops to 18.
+- **Collapsed `manage_watchlist` + `AnalystWatchlistItem` (PR #265).** Thesis is the single store. PENDING direction + ARCHIVED status added. UI, prompts, crons, intelligence routes all flipped to Thesis queries. Tool count drops to 18.
+  - **`PENDING` direction** — new state for user/builder/editor-added tickers awaiting first research. Agent's first action on a PENDING thesis is `update_thesis(direction: LONG|SHORT|PASS, …)`. PASS auto-flips status to ARCHIVED and clears triggers.
+  - **`ARCHIVED` status** — terminal state for tickers removed from the watchlist without a trade. Covers PASS theses at write, manual UI removes, editor removes, and explicit "walk away" decisions (`change_status: 'ARCHIVED'`). Replaces the deleted `manage_watchlist` for all removal paths.
+- **`place_trade` auto-promotes WATCHING → ACTIVE (PR #265).** Atomic; the thesis flip, entryPrice/targetPrice/stopLoss assignment, and ThesisUpdate audit row all happen in the same DB transaction as the Alpaca order. Closes the position-thesis desync class of bugs.
+- **`complete_run` preflight (PR #266).** Enforces record_run_summary called + run not already FAILED + no unaddressed needsAction theses before the RUNNING→COMPLETE transition. See producers §`complete_run` above for the full gate spec.
 - **Killed "PASS WATCHING" as institutional memory.** PASS is always ARCHIVED at write. Institutional-memory value preserved via stock-page visibility + `get_theses(include_history)` + `parentThesisId` chains on re-encounter.
 
 The principle: **the system was fundamentally sound, not fundamentally broken.** Triggers were the right primitive; horizon was the right discriminator; the lifecycle states worked; the audit log worked. What was missing was structural-belief discipline, the promotion enum, surfacing in the daily-run prompt, the trade evaluator reading the belief, and a single watchlist store. Those have shipped.
@@ -456,6 +473,7 @@ The principle: **the system was fundamentally sound, not fundamentally broken.**
 
 - [`VISION.md`](./VISION.md) Pillar 2 — what "thesis quality" is supposed to look like
 - [`GAPS.md`](./GAPS.md) — the open punch list
-- [`MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — the three-layer principle (tool gates / tool result shape / prompt as judgment only) that drives where each invariant lives
-- [`WATCHLIST_COLLAPSE_PLAN.md`](./WATCHLIST_COLLAPSE_PLAN.md) — the implementation plan for the 2026-05-13 collapse (closed; this doc supersedes it)
+- [`PRINCIPLES.md`](./PRINCIPLES.md) — the three-layer principle (tool gates / tool result shape / prompt as judgment only) that drives where each invariant lives
+- [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/MORNING_RUN_V2_DESIGN.md) — the V2 prompt rewrite that applied the three-layer principle to the daily run
+- [`legacy/WATCHLIST_COLLAPSE_PLAN.md`](./legacy/WATCHLIST_COLLAPSE_PLAN.md) — the implementation plan for the 2026-05-13 collapse (closed; this doc supersedes it)
 - [`/agent-workflow`](../app/(root)/agent-workflow/page.tsx) — the live operational view, driven by [`workflow-registry.ts`](../lib/agent/workflow-registry.ts)
