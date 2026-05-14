@@ -8,7 +8,7 @@
 > - "What shipped in PR #X?" → GitHub PRs (search by label or date).
 > - Product north star → [`VISION.md`](./VISION.md).
 > - Live thesis-system reference → [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
-> - Big multi-PR plans → `docs/<NAME>_PLAN.md` (e.g., [`WATCHLIST_COLLAPSE_PLAN.md`](./WATCHLIST_COLLAPSE_PLAN.md)).
+> - Big multi-PR plans → `docs/plans/<NAME>.md` (e.g., [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/MORNING_RUN_V2_DESIGN.md)).
 >
 > **How to use it:** start at P0. P0s block the rework's correctness. P1s degrade quality. P2s are papercuts but still part of the rework. Don't skip levels. When something closes, **move it** to a "Done since" section below, not strike-through inline.
 >
@@ -113,7 +113,7 @@ systemPrompt = runInput
   : buildV2SystemPrompt(agentConfig, { ... });
 ```
 
-Both ternary branches call `buildV2SystemPrompt`. The `useV2Prompt` flag is never checked. Every analyst has `useV2Prompt: true` in the DB, but **clicking "Run" from the UI gets the 600-line legacy prompt**, not the V2 designed in MORNING_RUN_V2_DESIGN.md. The 8 AM cron is correct; the user-facing run button is not.
+Both ternary branches call `buildV2SystemPrompt`. The `useV2Prompt` flag is never checked. Every analyst has `useV2Prompt: true` in the DB, but **clicking "Run" from the UI gets the 600-line legacy prompt**, not the V2 designed in `docs/plans/MORNING_RUN_V2_DESIGN.md`. The 8 AM cron is correct; the user-facing run button is not.
 
 **Fix path:** mirror the morning-research dispatch in route.ts. ~3-line change.
 
@@ -170,7 +170,7 @@ Run produced 0 tool calls in 241s, then timed out. No RunMessage rows, no RunEve
 **Fix path:** delete the keyword scan from `record_run_summary`. The preflight is the canonical check now. Two gates asking the same question with different rules = run failures the agent can't recover from.
 
 ### P1-14 — No Layer-1 closeout enforcement for `needs_action: null` theses
-**Source:** Design follow-up from MORNING_RUN_V2_DESIGN.md.
+**Source:** Design follow-up from `docs/plans/MORNING_RUN_V2_DESIGN.md`.
 
 The V2 prompt says *"Theses with `needsAction == null` don't need to be touched."* This is correct as designed. But the legacy V1 prompt's *"every Live Theses row produces one tool call"* contract is still present in code paths that V2 hasn't replaced (the manual run path, per P0-11; the V1 fallback prompt). Decision needed: is the V2 design's "null = skip" the official rule, or is the V1 contract still operational somewhere? Today the two coexist contradictorily.
 
