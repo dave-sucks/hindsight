@@ -322,6 +322,67 @@ export const updateThesis = defineTool({
       };
     }
 
+    // ── Position-thesis pairing guard ─────────────────────────────────────
+    // Invalidating an ACTIVE thesis without closing its position creates a
+    // zombie position: the position stays OPEN but the live thesis backing
+    // it is terminal. The agent's been doing this — Earnings Drift / TSM
+    // on 2026-05-14, Secular Theme / GOOGL on 2026-05-13. Refuse the
+    // INVALIDATED transition unless a close_position fired on the same
+    // ticker in this run, then surface a clear two-step fix.
+    //
+    // Carve-outs:
+    //   - WATCHING thesis being invalidated (no position by definition) — pass.
+    //   - The thesis's status is already CLOSED (handled by terminal guard above).
+    if (
+      args.change_status === "INVALIDATED" &&
+      existing.status === "ACTIVE" &&
+      ctx.analystId
+    ) {
+      const openPosition = await prisma.position.findFirst({
+        where: {
+          analystId: ctx.analystId,
+          symbol: existing.ticker,
+          status: "OPEN",
+        },
+        select: { id: true, direction: true, quantity: true },
+      });
+      if (openPosition) {
+        // Did close_position fire on this ticker in THIS run? If so, the
+        // pair is intact — let the INVALIDATED through. Otherwise refuse.
+        const closeInRun = ctx.runId
+          ? await prisma.thesisUpdate.findFirst({
+              where: {
+                runId: ctx.runId,
+                type: "CLOSED",
+                thesis: { ticker: existing.ticker },
+              },
+              select: { id: true },
+            })
+          : null;
+        if (!closeInRun) {
+          return {
+            summary: `Cannot INVALIDATE $${existing.ticker} — open position requires close_position first.`,
+            data: {
+              ok: false,
+              error: "invalidate_active_without_close",
+              ticker: existing.ticker,
+              position: {
+                id: openPosition.id,
+                direction: openPosition.direction,
+                quantity: openPosition.quantity,
+              },
+              message:
+                `$${existing.ticker} has an open ${openPosition.direction} position (${openPosition.quantity} sh) backed by this ACTIVE thesis. ` +
+                `Invalidating the thesis without closing the position creates a zombie — open position with no live thesis to manage it. ` +
+                `Correct sequence: call \`close_position\` first to exit Alpaca, then retry \`update_thesis(thesis_id, change_status: "INVALIDATED", rationale: "...")\` to mark the thesis dead. ` +
+                `If the position should stay open (just refining the thesis), drop change_status and pass the fields you want to change instead.`,
+            },
+            sources: [],
+          };
+        }
+      }
+    }
+
     // ── PENDING-promotion guard ───────────────────────────────────────────
     // The only legal direction change is OUT of PENDING (user/builder/editor
     // seed → agent committed to a view). Direction flips on committed
