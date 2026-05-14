@@ -322,7 +322,101 @@ export const updateThesis = defineTool({
       };
     }
 
-    // ── PENDING-promotion guard ───────────────────────────────────────────
+    // ── Position-thesis pairing guard ─────────────────────────────────────
+    // Invalidating an ACTIVE thesis without closing its position creates a
+    // zombie position: the position stays OPEN but the live thesis backing
+    // it is terminal. The agent's been doing this — Earnings Drift / TSM
+    // on 2026-05-14, Secular Theme / GOOGL on 2026-05-13. Refuse the
+    // INVALIDATED transition unless a close_position fired on the same
+    // ticker in this run, then surface a clear two-step fix.
+    //
+    // Carve-outs:
+    //   - WATCHING thesis being invalidated (no position by definition) — pass.
+    //   - The thesis's status is already CLOSED (handled by terminal guard above).
+    if (
+      args.change_status === "INVALIDATED" &&
+      existing.status === "ACTIVE" &&
+      ctx.analystId
+    ) {
+      const openPosition = await prisma.position.findFirst({
+        where: {
+          analystId: ctx.analystId,
+          symbol: existing.ticker,
+          status: "OPEN",
+        },
+        select: { id: true, direction: true, quantity: true },
+      });
+      if (openPosition) {
+        // Did close_position fire on this ticker in THIS run? If so, the
+        // pair is intact — let the INVALIDATED through. Otherwise refuse.
+        const closeInRun = ctx.runId
+          ? await prisma.thesisUpdate.findFirst({
+              where: {
+                runId: ctx.runId,
+                type: "CLOSED",
+                thesis: { ticker: existing.ticker },
+              },
+              select: { id: true },
+            })
+          : null;
+        if (!closeInRun) {
+          return {
+            summary: `Cannot INVALIDATE $${existing.ticker} — open position requires close_position first.`,
+            data: {
+              ok: false,
+              error: "invalidate_active_without_close",
+              ticker: existing.ticker,
+              position: {
+                id: openPosition.id,
+                direction: openPosition.direction,
+                quantity: openPosition.quantity,
+              },
+              message:
+                `$${existing.ticker} has an open ${openPosition.direction} position (${openPosition.quantity} sh) backed by this ACTIVE thesis. ` +
+                `Invalidating the thesis without closing the position creates a zombie — open position with no live thesis to manage it. ` +
+                `Correct sequence: call \`close_position\` first to exit Alpaca, then retry \`update_thesis(thesis_id, change_status: "INVALIDATED", rationale: "...")\` to mark the thesis dead. ` +
+                `If the position should stay open (just refining the thesis), drop change_status and pass the fields you want to change instead.`,
+            },
+            sources: [],
+          };
+        }
+      }
+    }
+
+    // ── PENDING-must-commit guard ─────────────────────────────────────────
+    // 2026-05-14: observed the agent calling update_thesis on PENDING theses
+    // with reasoning/bullets/nextReviewAt set but NO `direction` arg. The
+    // call succeeded (patch was non-empty so the empty-patch auto-bump
+    // didn't fire), the agent set nextReviewAt forward 30 days, and the
+    // PENDING got buried for a month with no commitment. F1 in the V2
+    // prompt tells the agent to commit; this gate ENFORCES it tool-side.
+    //
+    // Rule: any update_thesis call on a PENDING thesis MUST include
+    // `direction`. PENDING is "awaiting first research" — there's nothing
+    // to refine until the agent commits to a view. Refining the seed's
+    // reasoning/bullets/nextReviewAt without committing is the wrong
+    // shape regardless of how good the rationale is.
+    if (existing.direction === "PENDING" && !args.direction) {
+      return {
+        summary: `Thesis ${args.thesis_id} is PENDING — update_thesis must include direction.`,
+        data: {
+          ok: false,
+          error: "pending_update_without_direction",
+          current_direction: "PENDING",
+          ticker: existing.ticker,
+          message:
+            `$${existing.ticker} is a PENDING seed awaiting first research. update_thesis calls on PENDING theses MUST include \`direction\` to commit to a view. ` +
+            `Three legal commitments:\n` +
+            `  • \`direction: "LONG"\` + horizon + entry_price + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
+            `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
+            `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to ARCHIVED.\n` +
+            `Refining a PENDING's reasoning/bullets/nextReviewAt without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`,
+        },
+        sources: [],
+      };
+    }
+
+    // ── PENDING-promotion direction guard ─────────────────────────────────
     // The only legal direction change is OUT of PENDING (user/builder/editor
     // seed → agent committed to a view). Direction flips on committed
     // (LONG ↔ SHORT) theses go through record_thesis with parent_thesis_id
