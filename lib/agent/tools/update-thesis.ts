@@ -383,7 +383,40 @@ export const updateThesis = defineTool({
       }
     }
 
-    // ── PENDING-promotion guard ───────────────────────────────────────────
+    // ── PENDING-must-commit guard ─────────────────────────────────────────
+    // 2026-05-14: observed the agent calling update_thesis on PENDING theses
+    // with reasoning/bullets/nextReviewAt set but NO `direction` arg. The
+    // call succeeded (patch was non-empty so the empty-patch auto-bump
+    // didn't fire), the agent set nextReviewAt forward 30 days, and the
+    // PENDING got buried for a month with no commitment. F1 in the V2
+    // prompt tells the agent to commit; this gate ENFORCES it tool-side.
+    //
+    // Rule: any update_thesis call on a PENDING thesis MUST include
+    // `direction`. PENDING is "awaiting first research" — there's nothing
+    // to refine until the agent commits to a view. Refining the seed's
+    // reasoning/bullets/nextReviewAt without committing is the wrong
+    // shape regardless of how good the rationale is.
+    if (existing.direction === "PENDING" && !args.direction) {
+      return {
+        summary: `Thesis ${args.thesis_id} is PENDING — update_thesis must include direction.`,
+        data: {
+          ok: false,
+          error: "pending_update_without_direction",
+          current_direction: "PENDING",
+          ticker: existing.ticker,
+          message:
+            `$${existing.ticker} is a PENDING seed awaiting first research. update_thesis calls on PENDING theses MUST include \`direction\` to commit to a view. ` +
+            `Three legal commitments:\n` +
+            `  • \`direction: "LONG"\` + horizon + entry_price + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
+            `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
+            `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to ARCHIVED.\n` +
+            `Refining a PENDING's reasoning/bullets/nextReviewAt without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`,
+        },
+        sources: [],
+      };
+    }
+
+    // ── PENDING-promotion direction guard ─────────────────────────────────
     // The only legal direction change is OUT of PENDING (user/builder/editor
     // seed → agent committed to a view). Direction flips on committed
     // (LONG ↔ SHORT) theses go through record_thesis with parent_thesis_id
