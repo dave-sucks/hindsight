@@ -225,7 +225,23 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "complete_run",
     ] as const,
     hasSuggestConfig: false,
-    maxDuration: 240,
+    // 2026-05-14 — raised 240→480 after GPT-5.5 + new prompt swap.
+    //
+    // First run on GPT-5.5 with the triage + research-floor + mandatory-row
+    // prompt (run cmp698wva000004l73qgtk1z3) hit the 240s ceiling at exactly
+    // the right moment: 16 theses written (7 LONG WATCHING + 9 PASS+ARCHIVED,
+    // every structural gate satisfied), but record_run_summary + complete_run
+    // never got to fire. The run is marked FAILED purely because of the
+    // missing finisher tools — the work itself was the best discovery run
+    // we've ever produced.
+    //
+    // GPT-5.5 with implicit reasoning takes ~13s/tool-call on average vs
+    // GPT-4o's ~3-5s/call. Same step count, longer wall clock. Doubling
+    // the budget gives the agent comfortable headroom to finish even on
+    // a rich week (16-20 mints + summary + complete). If a future model
+    // gets faster, this can come back down — for now it's the right
+    // trade vs the 240s squeeze.
+    maxDuration: 480,
   },
   // ── Tactical (PR 2) ─────────────────────────────────────────────────────
   // Event-driven, single-thesis, single-decision. Spawned by tactical-run
