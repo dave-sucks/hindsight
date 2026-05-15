@@ -225,23 +225,41 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "complete_run",
     ] as const,
     hasSuggestConfig: false,
-    // 2026-05-14 — raised 240→480 after GPT-5.5 + new prompt swap.
+    // 2026-05-15 — set to 270 to fit inside the Vercel Hobby plan's
+    // 300s function-timeout ceiling.
     //
-    // First run on GPT-5.5 with the triage + research-floor + mandatory-row
-    // prompt (run cmp698wva000004l73qgtk1z3) hit the 240s ceiling at exactly
-    // the right moment: 16 theses written (7 LONG WATCHING + 9 PASS+ARCHIVED,
-    // every structural gate satisfied), but record_run_summary + complete_run
-    // never got to fire. The run is marked FAILED purely because of the
-    // missing finisher tools — the work itself was the best discovery run
-    // we've ever produced.
+    // PR #271 mistakenly raised this to 480 thinking that would give
+    // GPT-5.5 more time. It did the opposite: the in-code AbortSignal
+    // formula is `(maxDuration - 30) * 1000`, so 480 means the abort
+    // fires at 450s — but Vercel kills the function ungracefully at
+    // ~300s, well before the abort can hand control to the catch
+    // block to write record_run_summary + complete_run. Net effect:
+    // less graceful failure.
     //
-    // GPT-5.5 with implicit reasoning takes ~13s/tool-call on average vs
-    // GPT-4o's ~3-5s/call. Same step count, longer wall clock. Doubling
-    // the budget gives the agent comfortable headroom to finish even on
-    // a rich week (16-20 mints + summary + complete). If a future model
-    // gets faster, this can come back down — for now it's the right
-    // trade vs the 240s squeeze.
-    maxDuration: 480,
+    // 270 puts the AbortSignal at 240s — 60s LATER than the 210s wall
+    // that killed both Tech Momentum (cmp698wva) and Secular Theme
+    // (cmp6bryy) under the prior 240 setting, AND 30s before Vercel's
+    // 300s hard kill. The catch block then has 30s of headroom to
+    // persist messages + mark the run COMPLETE/FAILED cleanly.
+    //
+    // GPT-5.5 with implicit reasoning takes ~13s/tool-call (measured
+    // from Tech Momentum's 16 calls in 211s). 240s of actual agent
+    // budget = 240/13 ≈ 18 tool calls. Discovery's shape is 3 parallel
+    // pulls + 2N candidate research + N record_thesis + 2 finishers =
+    // 3N + 5. Fits N=4 mints comfortably, N=5 tight. For rich weeks
+    // the mint floor in the prompt tells the agent to bias toward
+    // shorter PASS+ARCHIVED rows (no horizon, no triggers, fewer
+    // structural fields to populate) which run faster per call.
+    //
+    // If the Hobby plan stays in force long-term, a future PR should:
+    //   (a) split discovery into multiple Inngest steps (each its
+    //       own 300s budget), OR
+    //   (b) move to a faster model (GPT-5.4 / GPT-5.4-mini cuts
+    //       per-call latency ~40% based on advertised reasoning
+    //       throughput), OR
+    //   (c) upgrade Vercel plan (Pro → 800s ceiling).
+    // For now, 270 unblocks runs from completing at all.
+    maxDuration: 270,
   },
   // ── Tactical (PR 2) ─────────────────────────────────────────────────────
   // Event-driven, single-thesis, single-decision. Spawned by tactical-run
