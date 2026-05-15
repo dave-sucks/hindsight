@@ -177,9 +177,32 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   // record_thesis IS allowed — that's the primary output. place_trade
   // allowed for high-conviction starters.
   "discovery": {
-    model: "gpt-4o",
+    // 2026-05-14 — moved discovery off gpt-4o.
+    //
+    // GPT-4o failed the 2026-05-13 audit head-on: researched 4 of ~60
+    // candidates, invented Cerebras (CRBR) reasoning from limited data,
+    // scored TSEM 10/10 against a clearly broken price ($270 spot with
+    // $232 52w high), and dropped CRBR without a record_thesis call
+    // despite the prompt explicitly demanding one. Classic "happily
+    // fills in the blanks" pattern at the final-decision layer.
+    //
+    // Trying GPT-5.5 as the primary candidate per external advice that
+    // it's the strongest model for complex reasoning / tool-heavy
+    // workflows / final-synthesis steps. If the API rejects this model
+    // ID (string may be wrong — the codebase has never seen a gpt-5
+    // reference), the AI SDK will surface a "model not found" error and
+    // we adjust. Known-good fallbacks if gpt-5.5 doesn't resolve:
+    //   • "claude-sonnet-4-6" + thinkingBudget: 4000 (provider:"anthropic")
+    //     — the model principal-chat already uses successfully
+    //   • "claude-opus-4-6" — heavier reasoning, more expensive
+    //   • back to "gpt-4o" — known baseline, the bug we're trying to leave
+    //
+    // maxSteps raised 25 → 45 to support deeper research per candidate.
+    // Discovery is weekly and unattended; cost difference per run is
+    // small and analyst-quality difference should be meaningful.
+    model: "gpt-5.5",
     provider: "openai",
-    maxSteps: 25,
+    maxSteps: 45,
     toolAllowlist: [
       // Read-only intel — three discovery sources: routed signals,
       // movers (universe-fenced), earnings calendar (universe-fenced).
