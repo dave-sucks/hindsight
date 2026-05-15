@@ -23,9 +23,26 @@ import { housekeepingOverdueTheses } from "@/lib/inngest/functions/housekeeping-
 import { episodeTts } from "@/lib/inngest/functions/episode-tts";
 import { podcastSegmentRun } from "@/lib/inngest/functions/podcast-segment-run";
 
-// morning-research runs a full agent (generateText with 30 tool steps)
-// inside a single step.run — needs extended timeout to avoid Vercel killing it
-export const maxDuration = 300; // 5 min — covers multi-step agent runs
+// All Inngest-backed agent runs (morning-research, discovery, tactical,
+// podcast-segment) execute their generateText calls inside this single
+// route handler. The Vercel function timeout here is the HARD ceiling —
+// no AbortSignal in agent code can extend past it. Per-mode budgets in
+// lib/agent/modes.ts.maxDuration drive the in-code AbortSignal but they
+// cannot override this number.
+//
+// 2026-05-15 — raised 300 → 600.
+//
+// Reason: GPT-5.5 with implicit reasoning takes ~13s per tool call vs
+// GPT-4o's ~3-5s. Tech Momentum discovery (cmp698wva...) made 16 tool
+// calls in 211s before hitting the prior 240s AbortSignal — but ALSO,
+// even with PR #271 raising the AbortSignal budget to 480s, the Vercel
+// 300s ceiling here would have killed the function anyway. Both have
+// to move together. 600s gives the agent comfortable headroom for the
+// largest discovery runs (16-20 mints + summary + complete).
+//
+// Vercel Pro tier supports maxDuration up to 900s. If we ever need
+// more, that's the cap.
+export const maxDuration = 600; // 10 min — covers multi-step agent runs
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
