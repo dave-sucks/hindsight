@@ -299,6 +299,11 @@ The Thesis row has three logical sections: **durable belief**, **operational sta
 
 The **structural-belief gate** (`record_thesis`) and the **structural-unchanged-reason gate** (`update_thesis`) enforce the discipline. Substantive non-belief patches without touching at least one belief field are rejected unless `structural_unchanged_reason` is supplied. PENDING and PASS are exempt from these gates.
 
+Two further `update_thesis` gates were added in PR #269 after the 2026-05-14 run review surfaced soft-fails on both:
+
+- **PENDING-promotion gate** — `update_thesis` on a PENDING thesis rejects unless `direction` is in the args. Error code `pending_update_without_direction`. Stops the "thoughtful review with prose updates but no commitment" pattern that left 13 PENDING theses uncommitted on 2026-05-14.
+- **Zombie-position guard** — `update_thesis({ change_status: 'INVALIDATED' })` on an ACTIVE thesis with a paired OPEN Position rejects unless `close_position` already fired on the same ticker in the same run. Prevents the INVALIDATED-thesis-but-still-open-position state the TSM row reached on 2026-05-14.
+
 ### Operational state — mutated freely
 
 | Field | Notes |
