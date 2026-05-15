@@ -181,6 +181,45 @@ The V2 prompt says *"Theses with `needsAction == null` don't need to be touched.
 
 **Fix path:** branch the discovery prompt into three families — EVENT_DRIVEN (Earnings Drift, Catalyst Event), MOMENTUM (Momentum Breakout, Mean Reversion, Sector Rotation, Unusual Options), FUNDAMENTAL (Deep Value, Thematic Secular, Insider Cluster) — each with a tuned scoring rubric and primary source priority. Requires either an `AgentConfig.archetypeId` column or runtime classification from analystPrompt + holdDurations. Full spec in `DISCOVERY_REVIEW.md` § Proposed redesign. ~1 session of work.
 
+
+### P1-15 — Provenance soft-gate: agents use WEB_SEARCH despite signals existing
+**Source:** Discovery runs cmp4m0q35 (3 mints) + cmp698wva (16 mints) — every mint had `sourceKind: "WEB_SEARCH"` even when `read_signals` returned matching signals for the ticker. `record-thesis.ts` lines 414-444 detect the mismatch and log a console warning, but don't reject the write. Net effect: `sourceSignalIds` is empty, so the trade-evaluator's Monitor ROI tracer (VISION Pillar 5) can't walk `Thesis.sourceSignalIds → Signal.monitorId → Monitor` to credit which monitor produced the win/loss on close. The whole monitor-ROI flywheel is broken.
+
+**Fix path:** promote the nudge to a hard reject when `ctx.signalsByTicker[ticker]` has signals AND the agent passed non-ROUTED_SIGNAL provenance. Forces the agent to cite signal IDs. ~30 minutes in `lib/agent/tools/record-thesis.ts`.
+
+
+### P1-16 — Tactical run silent failures (verify post-PR #261)
+**Source:** Lifecycle audit 2026-05-11. Of 116 tactical runs in 14 days, 21 ended in `status=FAILED` with `parameters.error = null` and zero RunEvent rows — meaning the function died before the error-aggregator from PR #250 could persist. PR #261 added catch-path recovery + an error aggregator that supposedly closed this. **Has not been re-audited post-PR-#261 + post-watchlist-collapse.** Re-run the same query (`mode='INTRADAY_TACTICAL' AND status='FAILED' AND parameters->>'error' IS NULL`) over the last 14 days. If the count is still >0%, the silent-failure path isn't actually closed.
+
+**Fix path:** verify first, fix second. May already be closed.
+
+
+### P1-17 — Possibly polluted historical "discovery" runs (informational, no code fix)
+**Source:** PR #275 surfaced the dueling-agents bug — opening a discovery run page while it was `status=RUNNING` auto-spawned a second agent against `/api/agent/research-run` (daily-run prompt + allowlist) that competed with the real discovery agent. Discovery runs prior to PR #275 where the user opened the page mid-run may have written `RunMessage` from the daily-run agent rather than the discovery agent. The minted `Thesis` rows are real DB writes either way, but the AGENT BEHAVIOR audited in those runs may not have been the discovery agent. Affects audit credibility for runs: cmp4m0q35 (Tech Momentum, 3 mints), cmp698wva (Tech Momentum, 16 mints), cmp6bryy (Secular Theme, 10 mints), cmp6dk0w1 (Secular Theme, 0 mints — confirmed dueling).
+
+**No fix:** historical data is what it is. Post-#275 runs are clean. Listed here so future audits don't over-index on pre-#275 discovery transcripts.
+
+---
+
+## P2 architecture cleanups — surfaced 2026-05-15
+
+### P2-13 — `record_run_summary` `ranked_picks` should be server-derived
+**Source:** `THESIS_ARCHITECTURE.md §11` specifies the 5 run-summary buckets (Added / Researched-passed / Promoted / Removed / Closed) as **server-derived from `ThesisUpdate WHERE runId = X`**. Today the tool requires the agent to pass `ranked_picks` manually, duplicating work and creating drift between the audit log and the displayed summary. Discovery run summaries usually only populate buckets 1+2 — easy candidate to derive.
+
+**Fix path:** change `record_run_summary` to accept only `primary_decision` + `decision_rationale`; derive `ranked_picks` server-side from ThesisUpdate joins. Update the discovery + daily-run prompts to stop telling the agent to enumerate. ~1 hour.
+
+
+### P2-14 — `get_market_movers` + `get_earnings_calendar` don't honor `ctx.feeds`
+**Source:** Architecture review 2026-05-13. If an analyst's `AgentConfig.feeds` includes `MARKET_MOVERS_GAINERS`, the same data already arrives via `read_signals` as a routed aggregate signal. Calling `get_market_movers` directly does a redundant FMP pull. Should detect subscription and either skip the pull or return a "you already have this via read_signals" pointer.
+
+**Fix path:** in each tool, check `ctx.feeds` against the corresponding FEEDS enum value and short-circuit if subscribed. ~20 minutes each.
+
+
+### P2-15 — TSEM-class `get_stock_data` field staleness
+**Source:** Discovery run cmp4m0q35 minted TSEM with `entryPrice: $270.77` and `high52w: $232.67` — current price above 52-week high, which is impossible. Either the price feed returned wrong data, the 52w-high field is stale (cached from before today's high), or the fields come from different endpoints with different freshness. Affects every analyst since the agent uses both to set targets.
+
+**Fix path:** trace the two fields back to their providers (likely Finnhub for quote + Finnhub or FMP for 52w range). Add a same-call freshness guarantee or a sanity-check that rejects price > high52w in the tool layer. ~1 hour to diagnose, ~1 hour to fix.
+
 ---
 
 ## P2 — Paper cuts and FE polish
