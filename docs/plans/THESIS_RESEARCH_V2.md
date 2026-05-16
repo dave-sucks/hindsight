@@ -690,23 +690,17 @@ model Thesis {
 model ResearchRun {
   // ... existing fields
   parentRunId   String?
-  parentRun     ResearchRun?  @relation("RunHierarchy", fields: [parentRunId], references: [id])
+  parentRun     ResearchRun?  @relation("RunHierarchy", fields: [parentRunId], references: [id], onDelete: SetNull)
   childRuns     ResearchRun[] @relation("RunHierarchy")
   @@index([parentRunId])
 }
-
-enum ResearchRunMode {
-  // ... existing
-  THESIS_WRITER
-}
-
-enum ThesisUpdateType {
-  // ... existing
-  RESEARCH_REFRESHED
-}
 ```
 
-Three nullable additions to `Thesis`. One nullable column + one self-relation on `ResearchRun`. One enum value each to `ResearchRunMode` and `ThesisUpdateType`. All additive — no existing rows or queries break.
+Three nullable additions to `Thesis`. One nullable column + one self-relation + one index on `ResearchRun`. All additive — no existing rows or queries break.
+
+**No enum migration needed.** `ResearchRun.mode` and `ThesisUpdate.type` are intentionally `String` columns in this schema, not Prisma enums (see the `// Kept as String (not enum) so types extend without migrations` comment on `ThesisUpdate.type`). Adding the new values `"THESIS_WRITER"` (for child runs spawned by the thesis-writer agent) and `"RESEARCH_REFRESHED"` (for the audit row written when the thesis-writer refreshes an existing thesis) is a code-only change — `runThesisWriterAgent()` writes those strings; nothing migrates.
+
+Shipped 2026-05-15 in PR #277. The `migrate dev` workflow is currently broken in this repo (see `docs/TECH_DEBT.md` TD-3) — that migration was applied via `prisma db execute` + `migrate resolve --applied`. Future schema changes will hit the same wall until TD-3 is cleaned up.
 
 ---
 

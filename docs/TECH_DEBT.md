@@ -56,6 +56,53 @@ not tech debt.
 
 ---
 
+## TD-3 — `prisma migrate dev` is broken; migration history out of sync with prod
+
+Three orthogonal-but-compounding issues mean the standard
+`prisma migrate dev` workflow no longer works against this repo's DB.
+The workaround (used in PR #277) is `prisma migrate diff` →
+hand-written `migration.sql` → `prisma db execute` →
+`prisma migrate resolve --applied`.
+
+1. **Duplicate migration timestamp prefix.** Two migrations share
+   `20260310000000_*` (`_add_run_events_streaming` and
+   `_add_run_events_messages_strategy`). `migrate dev` rebuilds the
+   shadow DB by replaying migrations from scratch and dies on the
+   second one with "relation already exists." Fix shape: rename one
+   directory to a distinct timestamp + run `prisma migrate resolve`
+   on prod's `_prisma_migrations` table to match.
+
+2. **`_prisma_migrations` out of sync with prod.** `migrate status`
+   reports 8 local migrations as "have not yet been applied"
+   (including ones whose columns clearly ARE on prod, e.g.
+   `20260512000000_trading_environment`) and 1 prod migration
+   (`20260317100000_drop_old_trade_tables`) missing locally. Fix
+   shape: for each name, decide truth (apply locally / mark applied
+   / mark rolled-back) and reconcile.
+
+3. **Schema-vs-prod drift.** `prisma migrate diff --from-config-
+   datasource --to-schema` reports unrelated cleanup the schema
+   "wants" against prod: drop `Artifact.sourceId`, drop
+   `Monitor.legacyQueryId`/`legacySourceId`, alter
+   `Monitor.updatedAt` default, and ~10 renamed FK/index names on
+   `PodcastSegment*` tables. Either prod has columns no model
+   references (safe to drop) or someone applied SQL without checking
+   it in (need to backfill a migration). Fix shape: audit each
+   delta, write one reconciliation migration, then `migrate resolve
+   --applied`.
+
+**Why not urgent:** the workaround works, every new migration just
+needs ~3 extra commands. But it's a sharp edge anyone new to this
+repo will cut themselves on, and every additional `migrate dev`
+attempt by an unsuspecting session burns time before falling back to
+the workaround.
+
+**Fix shape:** half-day session focused on (1) → (2) → (3) in order.
+(1) is mechanical; (2) needs careful per-row reasoning; (3) needs
+spot-checks against code references for each dropped column.
+
+---
+
 ## How to use this file
 
 - Spotted a code smell that's not tied to the thesis architecture
