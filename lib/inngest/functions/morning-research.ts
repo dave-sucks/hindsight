@@ -3,10 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
-import {
-  buildV2SystemPrompt,
-  buildDailyRunSystemPromptV2,
-} from "@/lib/agent/system-prompt";
+import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { MODES } from "@/lib/agent/modes";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -119,14 +116,13 @@ export const morningResearch = inngest.createFunction(
           undefined;
 
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
-        // V1/V2 dispatch — flagged per-analyst (docs/MORNING_RUN_V2_DESIGN.md
-        // Rollout). Default false; flip one analyst at a time. The V2
-        // builder is ~80 lines (goals + identity + standup), reads the
-        // priority data through tool results (get_theses.needsAction)
-        // rather than rendering 5 cross-referenced priority blocks.
-        const systemPrompt = config.useV2Prompt
-          ? buildDailyRunSystemPromptV2(agentConfig, runInput)
-          : buildV2SystemPrompt(agentConfig, runInput);
+        // V2 is the only path. The legacy ~600-line builder
+        // (buildV2SystemPrompt — confusingly named) is marked @deprecated
+        // in lib/agent/system-prompt.ts and no longer called from any cron
+        // path. All 6 production analysts are on V2 as of 2026-05-16.
+        // useV2Prompt flag stays on AgentConfig until a follow-up schema
+        // migration drops it.
+        const systemPrompt = buildDailyRunSystemPromptV2(agentConfig, runInput);
 
         // 2d. Create tools with run context, then enforce the
         // research-run allowlist (Fix #5). The unified route already
@@ -149,11 +145,11 @@ export const morningResearch = inngest.createFunction(
           minConfidence: config.minConfidence,
           alpacaCreds,
           runEnvironment,
-          // Fix #6 — gated on the V2 flag. The V1 prompt expects all
-          // three buckets; V2 narrows to portfolio + watchlist so the
-          // agent isn't tempted to act on discovery candidates that
-          // belong to the Sunday Discovery cron.
-          dailyRunOnly: config.useV2Prompt,
+          // Fix #6 (V2). Narrows read_signals to portfolio + watchlist
+          // buckets only — Daily Run shouldn't act on discovery candidates
+          // (that's the Sunday Discovery cron's job). V1 had a different
+          // expectation; V1 path is deprecated as of 2026-05-16.
+          dailyRunOnly: true,
         });
         const allowlist = MODES["research-run"].toolAllowlist;
         const tools = allowlist
@@ -180,15 +176,13 @@ export const morningResearch = inngest.createFunction(
         const failedToolCalls: Array<{ toolName: string; error: string; at: string }> = [];
         let lastStepTimeMs = t0;
 
-        // V1/V2 user prompt (Fix #4). The V1 string was the same wording
-        // used in interactive /runs/[id] chats; the model treated cron
-        // runs like assistant-style conversations and ended turns with
-        // "would you like me to proceed?" The V2 string makes the lack
-        // of a human respondent explicit so the loop doesn't terminate
-        // on prose-style questions.
-        const userPrompt = config.useV2Prompt
-          ? "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run."
-          : "Begin your research session. Follow all phases in order.";
+        // V2 user prompt (was Fix #4). The legacy V1 string ("Begin your
+        // research session. Follow all phases in order.") matched the
+        // wording used in interactive /runs/[id] chats and caused the
+        // model to treat cron runs like assistant-style conversations,
+        // terminating on prose-style questions. The V2 string below makes
+        // the lack of a human respondent explicit. V1 path deprecated.
+        const userPrompt = "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run.";
 
         try {
           const { text, steps, response } = await generateText({
