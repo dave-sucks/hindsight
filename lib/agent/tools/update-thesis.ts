@@ -323,18 +323,24 @@ export const updateThesis = defineTool({
     }
 
     // ── Position-thesis pairing guard ─────────────────────────────────────
-    // Invalidating an ACTIVE thesis without closing its position creates a
+    // Terminating an ACTIVE thesis without closing its position creates a
     // zombie position: the position stays OPEN but the live thesis backing
-    // it is terminal. The agent's been doing this — Earnings Drift / TSM
-    // on 2026-05-14, Secular Theme / GOOGL on 2026-05-13. Refuse the
-    // INVALIDATED transition unless a close_position fired on the same
-    // ticker in this run, then surface a clear two-step fix.
+    // it is terminal. Three observed cases:
+    //   - 2026-05-13 Secular Theme / GOOGL → INVALIDATED without close
+    //   - 2026-05-14 Earnings Drift / TSM → INVALIDATED without close
+    //   - 2026-05-14 Catalyst Event Raider / AMZN → ARCHIVED without close (F2 gap)
+    //
+    // Both INVALIDATED and ARCHIVED on an ACTIVE-with-position are the same
+    // zombie pattern. Refuse either unless a close_position fired on the
+    // same ticker in this run.
     //
     // Carve-outs:
-    //   - WATCHING thesis being invalidated (no position by definition) — pass.
+    //   - WATCHING thesis being terminated (no position by definition) — pass.
     //   - The thesis's status is already CLOSED (handled by terminal guard above).
+    //   - CLOSED transitions on ACTIVE are how a held thesis ends; that's the
+    //     correct path and not blocked here.
     if (
-      args.change_status === "INVALIDATED" &&
+      (args.change_status === "INVALIDATED" || args.change_status === "ARCHIVED") &&
       existing.status === "ACTIVE" &&
       ctx.analystId
     ) {
@@ -360,12 +366,14 @@ export const updateThesis = defineTool({
             })
           : null;
         if (!closeInRun) {
+          const action = args.change_status; // "INVALIDATED" or "ARCHIVED"
           return {
-            summary: `Cannot INVALIDATE $${existing.ticker} — open position requires close_position first.`,
+            summary: `Cannot ${action} $${existing.ticker} — open position requires close_position first.`,
             data: {
               ok: false,
-              error: "invalidate_active_without_close",
+              error: "terminate_active_without_close",
               ticker: existing.ticker,
+              attempted_status: action,
               position: {
                 id: openPosition.id,
                 direction: openPosition.direction,
@@ -373,8 +381,8 @@ export const updateThesis = defineTool({
               },
               message:
                 `$${existing.ticker} has an open ${openPosition.direction} position (${openPosition.quantity} sh) backed by this ACTIVE thesis. ` +
-                `Invalidating the thesis without closing the position creates a zombie — open position with no live thesis to manage it. ` +
-                `Correct sequence: call \`close_position\` first to exit Alpaca, then retry \`update_thesis(thesis_id, change_status: "INVALIDATED", rationale: "...")\` to mark the thesis dead. ` +
+                `Terminating the thesis (${action}) without closing the position creates a zombie — open position with no live thesis to manage it. ` +
+                `Correct sequence: call \`close_position\` first to exit Alpaca, then retry \`update_thesis(thesis_id, change_status: "${action}", rationale: "...")\` to mark the thesis dead. ` +
                 `If the position should stay open (just refining the thesis), drop change_status and pass the fields you want to change instead.`,
             },
             sources: [],

@@ -94,28 +94,8 @@ Concrete production state when this was diagnosed: 4 theses (AMD, AVGO, GOOGL, T
 
 **Fix path:** either (a) deprecate `reasoningSummary` as a state-bearing field and require structured fields for any operational status, or (b) add a `record_thesis` / `update_thesis` validator that rejects `reasoningSummary` text containing action verbs ("executed", "opened", "closed", "trimmed") when those actions aren't reflected in structured state. (a) is cleaner but bigger.
 
-### P0-11 — Manual UI runs always get the 600-line V1 prompt
-**Source:** Code audit 2026-05-13. Found in this session.
-
-`lib/inngest/functions/morning-research.ts:126-128` correctly dispatches:
-
-```ts
-const systemPrompt = config.useV2Prompt
-  ? buildDailyRunSystemPromptV2(...)   // 80-line goals-only V2
-  : buildV2SystemPrompt(...);           // 600-line legacy
-```
-
-`app/api/agent/[mode]/route.ts:232-234` does not:
-
-```ts
-systemPrompt = runInput
-  ? buildV2SystemPrompt(agentConfig, runInput)        // <-- always V1 shape
-  : buildV2SystemPrompt(agentConfig, { ... });
-```
-
-Both ternary branches call `buildV2SystemPrompt`. The `useV2Prompt` flag is never checked. Every analyst has `useV2Prompt: true` in the DB, but **clicking "Run" from the UI gets the 600-line legacy prompt**, not the V2 designed in `docs/plans/MORNING_RUN_V2_DESIGN.md`. The 8 AM cron is correct; the user-facing run button is not.
-
-**Fix path:** mirror the morning-research dispatch in route.ts. ~3-line change.
+### ~~P0-11 — Manual UI runs always get the 600-line V1 prompt~~
+**CLOSED 2026-05-16** in PR #270. V1 prompt builder marked `@deprecated`; the only V1 caller (`app/api/agent/[mode]/route.ts:232`) was swapped to call `buildDailyRunSystemPromptV2` unconditionally. The `useV2Prompt` flag is no longer read by any code path. Flag column stays on `AgentConfig` until a follow-up migration drops it.
 
 ---
 
@@ -219,6 +199,31 @@ The V2 prompt says *"Theses with `needsAction == null` don't need to be touched.
 **Source:** Discovery run cmp4m0q35 minted TSEM with `entryPrice: $270.77` and `high52w: $232.67` — current price above 52-week high, which is impossible. Either the price feed returned wrong data, the 52w-high field is stale (cached from before today's high), or the fields come from different endpoints with different freshness. Affects every analyst since the agent uses both to set targets.
 
 **Fix path:** trace the two fields back to their providers (likely Finnhub for quote + Finnhub or FMP for 52w range). Add a same-call freshness guarantee or a sanity-check that rejects price > high52w in the tool layer. ~1 hour to diagnose, ~1 hour to fix.
+
+
+### P2-16 — Consider collapsing INVALIDATED + ARCHIVED into one terminal status
+**Source:** Architecture review 2026-05-16 after F2-extension PR #270. Of the four terminal statuses (CLOSED / INVALIDATED / ARCHIVED / SUPERSEDED), the INVALIDATED vs ARCHIVED distinction is thin:
+
+- INVALIDATED = "evidence broke the view" (uses `invalidReason` field)
+- ARCHIVED = "walked away without evidence-driven view-break" (uses `closeReason` field)
+
+Both mean "terminal without a clean trade outcome." The narrative ("evidence" vs "walk-away") lives in the rationale text either way. The F2 gate (PR #270) had to treat both identically against zombie positions — if they're functionally identical for safety guards, they're a foot-gun for being separate. The AMZN zombie on Catalyst Event Raider (2026-05-14) was created via the ARCHIVED-on-ACTIVE-with-position path that F2 originally didn't cover.
+
+**Fix path:** collapse into a single terminal status (call it `TERMINATED` or keep `INVALIDATED` and migrate ARCHIVED→INVALIDATED + rename `closeReason` field usage). Update every query that filters on `status IN (...)` to know the new shape. Update the five-bucket run summary derivation in `record_run_summary`. ~15-20 files. Not blocking; revisit once we have more data on whether the distinction provides analytics value or keeps biting.
+
+
+### P2-17 — `useV2Prompt` flag is dead code on AgentConfig
+**Source:** PR #270 deprecated the V1 prompt builder and removed the `useV2Prompt` dispatch from both cron + agent route. The flag column on `AgentConfig` is no longer read anywhere. Currently `true` for all 6 production analysts.
+
+**Fix path:** Prisma migration to drop the column + remove the field from the schema. Trivial migration, just needs a follow-up PR. ~10 minutes.
+
+
+### P2-18 — Catalyst Event Raider near-no-op morning runs
+**Source:** 2026-05-15 morning run. Catalyst Event Raider completed in 12s with 5 tool calls — read_signals, get_portfolio_context, get_theses (parallel), then straight to record_run_summary + complete_run. No update_thesis, no get_stock_data. Either it had truly nothing to act on (legitimate) or punted (bug).
+
+The analyst has open positions and active theses. needsAction MAY have been null on all of them (rested + no triggers fired), but the lack of even one `update_thesis(rationale)` REVIEWED row makes the run feel like a no-op. Worth checking what `get_theses` returned for this analyst vs. what the V2 prompt would have prescribed.
+
+**Fix path:** spot-check Catalyst Event Raider runs over the next 5 trading days. If the pattern persists with no observable action across all theses, drill into the needsAction output. May indicate a content-quality issue with the analyst's universe / signal routing rather than a code bug. ~30 minutes investigation per occurrence.
 
 ---
 

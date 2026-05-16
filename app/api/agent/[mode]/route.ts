@@ -17,7 +17,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 import { createResearchTools } from "@/lib/agent/tools";
-import { buildV2SystemPrompt } from "@/lib/agent/system-prompt";
+import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
@@ -229,9 +229,12 @@ export async function POST(
         );
       }
 
+      // V2 is the only path as of 2026-05-16. P0-11 (manual UI runs got
+      // V1) is closed by this swap. The legacy V1 builder is marked
+      // @deprecated in lib/agent/system-prompt.ts; no caller remains.
       systemPrompt = runInput
-        ? buildV2SystemPrompt(agentConfig, runInput)
-        : buildV2SystemPrompt(agentConfig, {
+        ? buildDailyRunSystemPromptV2(agentConfig, runInput)
+        : buildDailyRunSystemPromptV2(agentConfig, {
             analyst: {
               name: (agentConfig.name as string) || "Research Analyst",
               mandate: (agentConfig.analystPrompt as string) || null,

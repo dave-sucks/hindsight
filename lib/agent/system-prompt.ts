@@ -79,6 +79,21 @@ export interface AgentConfigInput {
 
 // ─── Daily run system prompt ─────────────────────────────────────────────────
 
+/**
+ * @deprecated as of 2026-05-16. The "V2" in the name is a historical
+ * mis-naming — this is the LEGACY 600-line procedural prompt with 6 stages
+ * and 5 priority blocks. The current production prompt is
+ * `buildDailyRunSystemPromptV2` (the 80-line goals + needsAction builder
+ * from docs/MORNING_RUN_V2_DESIGN.md).
+ *
+ * Kept in the file for reference + so we can diff against the new prompt
+ * when triaging behavior changes. NO production caller. Will be deleted
+ * in a follow-up PR once we've run on V2-only for ~14 trading days without
+ * needing to consult this for comparison.
+ *
+ * Do NOT add new functionality here. New work goes into
+ * `buildDailyRunSystemPromptV2`.
+ */
 export function buildV2SystemPrompt(
   config: AgentConfigInput,
   runInput: RunInput,
