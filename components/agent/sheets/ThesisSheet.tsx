@@ -427,6 +427,39 @@ function BulletSection({
   );
 }
 
+/**
+ * ScoringRow — one row of the 4-dimension composite breakdown. Shows
+ * dimension label, score / max, and the agent's one-sentence justification
+ * note. Renders nothing if the dimension is missing on the thesis (older
+ * rows minted before the scoring rubric shipped).
+ */
+function ScoringRow({
+  label,
+  dim,
+  max,
+}: {
+  label: string;
+  dim?: { score: number; note?: string };
+  max: number;
+}) {
+  if (!dim) return null;
+  return (
+    <div className="flex items-baseline gap-3">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground w-32 shrink-0">
+        {label}
+      </span>
+      <span className="text-sm font-medium tabular-nums w-12 shrink-0">
+        {dim.score}/{max}
+      </span>
+      {dim.note && (
+        <span className="text-xs text-muted-foreground leading-relaxed flex-1">
+          {dim.note}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function PriceTargetsBlock({
   entry,
   target,
@@ -647,16 +680,37 @@ export function ThesisSheetBody({
     <div className="px-4 pb-6 pt-2 space-y-5">
       {liveStatus ? <StatusPill status={liveStatus} /> : null}
 
-      {/* ── Stock identity ───────────────────────────────────── */}
-      <div className="flex items-center gap-3">
-        <StockLogo ticker={ticker} size="lg" />
-        <div className="flex-1 min-w-0">
-          <p className="text-lg font-semibold truncate">{displayName}</p>
-          <p className="font-mono text-xs text-muted-foreground">
-            {ticker}
-            {exchange ? ` · ${exchange}` : ""}
-          </p>
+      {/* ── Stock identity + live price ──────────────────────── */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <StockLogo ticker={ticker} size="lg" />
+          <div className="flex-1 min-w-0">
+            <p className="text-lg font-semibold truncate">{displayName}</p>
+            <p className="font-mono text-xs text-muted-foreground">
+              {ticker}
+              {exchange ? ` · ${exchange}` : ""}
+            </p>
+          </div>
         </div>
+        {/* Live current price + day's change. Mirrors the stock-detail
+            page's header pattern (one font size smaller). Renders for
+            every status — WATCHING, ACTIVE, terminal — so the user can
+            always see where the stock is right now, separate from the
+            mint-time entry price below. */}
+        {state?.currentPrice != null && (
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-semibold tabular-nums">
+              ${state.currentPrice.toFixed(2)}
+            </span>
+            {state.dayChange != null && (
+              <PriceChange
+                dollarChange={state.dayChange}
+                percentChange={state.dayChangePct}
+                size="base"
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Position row (only when ACTIVE + open Position exists) ── */}
@@ -718,6 +772,63 @@ export function ThesisSheetBody({
           icon={<PnlArrow direction="down" className="size-4" />}
           items={risk_flags}
         />
+      )}
+
+      {/* ── Core Belief ───────────────────────────────────────── */}
+      {/* The ONE-sentence durable claim — distinct from reasoningSummary
+          (current-state framing) which appears above. Surfaced because
+          the trade-evaluator grades exits against this, and the tactical
+          agent uses it to decide whether a trigger fire is thesis-breaking
+          or noise. Previously hidden; now load-bearing in the UI. */}
+      {state?.coreBelief && (
+        <div className="space-y-1.5 rounded-lg border bg-muted/30 p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Core Belief
+          </p>
+          <p className="text-sm leading-relaxed">{state.coreBelief}</p>
+        </div>
+      )}
+
+      {/* ── Key Assumptions ───────────────────────────────────── */}
+      {/* ≥2 falsifiable premises that must remain true for the core belief
+          to hold. The daily-run prompt reads these against fresh signals
+          to decide when an assumption has flipped. */}
+      {state?.keyAssumptions && state.keyAssumptions.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Key Assumptions</p>
+          <ul className="space-y-1.5 text-sm leading-relaxed">
+            {state.keyAssumptions.map((a, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="text-muted-foreground select-none">•</span>
+                <span className="flex-1">{a}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* ── Scoring breakdown (4-dim composite) ───────────────── */}
+      {/* The decision-framework scoring that drove WATCHING vs PASS.
+          Composite ≥4 → mint WATCHING; <4 → mint PASS+ARCHIVED. Notes
+          cite concrete evidence per dimension. Surfaced verbatim so the
+          user can audit the agent's reasoning. */}
+      {state?.scoring && (
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <p className="text-sm font-medium">Composite Score</p>
+            {state.scoringComposite != null && (
+              <p className="text-sm font-semibold tabular-nums">
+                {state.scoringComposite}/10
+              </p>
+            )}
+          </div>
+          <div className="space-y-1.5 rounded-lg border p-3">
+            <ScoringRow label="Trend strength" dim={state.scoring.trendStrength} max={3} />
+            <ScoringRow label="Relative strength" dim={state.scoring.relativeStrength} max={3} />
+            <ScoringRow label="Entry quality" dim={state.scoring.entryQuality} max={2} />
+            <ScoringRow label="Catalyst freshness" dim={state.scoring.catalystFreshness} max={2} />
+          </div>
+        </div>
       )}
 
       {/* ── Price Targets ─────────────────────────────────────── */}

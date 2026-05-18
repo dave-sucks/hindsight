@@ -11,13 +11,18 @@ Built for one user now, marketed later.
 ## Where to put what (doc navigation)
 | You want to... | File |
 |---|---|
-| Add an open item on the thesis architecture rework | `docs/GAPS.md` |
-| Note a code smell / fragility outside the rework | `docs/TECH_DEBT.md` |
-| Reference what shipped in a PR | GitHub PRs (don't duplicate here) |
+| Understand the agent design rules (three-layer principle) | `docs/PRINCIPLES.md` |
 | Read / update the product north star | `docs/VISION.md` |
 | Read the live thesis-system reference | `docs/THESIS_ARCHITECTURE.md` |
-| Spec a big multi-PR plan | `docs/<NAME>_PLAN.md` (e.g. `WATCHLIST_COLLAPSE_PLAN.md`) |
-| Onboard a fresh session to the codebase | this file |
+| Add an open item on the thesis architecture rework | `docs/GAPS.md` |
+| Note a code smell outside the rework | `docs/TECH_DEBT.md` |
+| Spec a big multi-PR plan | `docs/plans/<NAME>.md` |
+| Write a daily run review | `docs/run-reviews/<YYYY-MM-DD>.md` |
+| Write a discovery run review | `docs/discovery-reviews/<YYYY-MM-DD>-<TICKER>.md` |
+| Kick off a code session | `docs/prompts/SESSION_BOOTSTRAP.md` |
+| Kick off a run-review session | `docs/prompts/REVIEW_DAILY_RUN.md` |
+| Reference what shipped in a PR | GitHub PRs |
+| Onboard a fresh session to the codebase | `CLAUDE.md` |
 
 **Rule:** when an item in `GAPS.md` closes, **move it** to a "Done since" section in the same file (not strike-through inline). When the file's open list grows past one screen, move stale items to `TECH_DEBT.md` or close them.
 
@@ -488,6 +493,19 @@ it with a ticker chip as if it were a traded security.
 - The fix for "my narrative paragraph doesn't have a ticker" is never to invent a fake ticker. It is `{ kind: "generic", text }`. The `$MARKET` fake-ticker bug lived for weeks because a prior session did this exact thing.
 - This applies equally to **firehose pull tools** like `get_earnings_calendar` and `get_market_movers` — opening generic row + ticker rows in `data.items[]`, no `EarningsCalendarRenderer` / `MoversRenderer`. The cap-and-truncate "and N more" line is a `{ kind: "generic", text }` row, not a ticker.
 
+**Position-thesis status desync** (`lib/agent/tools/place-trade.ts`, `lib/agent/tools/get-theses.ts`, `lib/agent/tools/get-portfolio-context.ts`)
+- **What it looks like:** `get_portfolio_context` shows a position as OPEN; `get_theses` shows the same ticker as WATCHING. The agent reads both simultaneously and treats an already-held name as a watchlist candidate — narrates "Entry executed within max position size limits" in `reasoningSummary` while `status = WATCHING`.
+- **Why it confuses the agent:** the agent's reasoning anchors on the prose `reasoningSummary` field over the structured `status` enum. It sees "Entry executed" → classifies as portfolio-held → ignores the WATCHING-thesis needsAction work → may re-evaluate an ENTER trigger on a position it already holds.
+- **Root cause:** before PR #265, `place_trade` created the Position row but left the thesis in WATCHING status. Four production theses (AMD, AVGO, GOOGL, TSM) required a manual DB patch on 2026-05-13 (ThesisUpdate IDs prefixed `mfix`).
+- **Fixed by PR #265** — `place_trade` now atomically flips WATCHING → ACTIVE in the same DB transaction as the Alpaca order. No new trade can produce this desync.
+- If you see a production thesis with `status=WATCHING` and a matching OPEN Position, it's a pre-PR-#265 row. Fix: `UPDATE "Thesis" SET status='ACTIVE' WHERE id='...'` + write a manual ThesisUpdate STATUS_CHANGED row.
+
+**V1/V2 prompt dispatch only honored in cron, not in route.ts** (`app/api/agent/[mode]/route.ts`, `lib/inngest/functions/morning-research.ts`)
+- `lib/inngest/functions/morning-research.ts:126` correctly dispatches: `config.useV2Prompt ? buildDailyRunSystemPromptV2 : buildV2SystemPrompt`.
+- `app/api/agent/[mode]/route.ts:232` does NOT — both ternary branches call `buildV2SystemPrompt`. The `useV2Prompt` flag is never read.
+- **Effect:** all 6 analysts have `useV2Prompt: true` in the DB, but clicking "Run" in the UI always serves the 600-line legacy prompt. The 8 AM cron is correct; the user-triggered run button is not. Filed as GAPS.md P0-11.
+- **Fix path:** mirror the morning-research dispatch in route.ts (~3-line change). Don't "fix" this by removing the flag or deleting `buildDailyRunSystemPromptV2` — the cron path is correct and relies on both builders existing.
+
 **Aggregates and the FEEDS dimension** (`lib/universe/feeds.ts`, `lib/inngest/functions/firm-market-sweep.ts`, `lib/inngest/functions/signal-router.ts`)
 - Aggregate signals (`Signal.aggregateType` populated) carry empty `sectors`/`industries` by design — they're firm-wide. Routing them through the news-signal fence (sector/industry match) silently drops everything; that's the bug that #163/#164/#165/#166 chased.
 - Right answer: aggregates match analysts via `feeds` membership (`analyst.feeds.includes(signal.aggregateType)`) — `feeds` is a peer Universe dimension, not a separate routing axis. Composition still applies: an analyst with `feeds:["EARNINGS_CALENDAR"]` + `industries:["Semiconductors"]` ends up with the calendar fenced to semis names by the existing AND-across-dimensions rule.
@@ -508,7 +526,7 @@ it with a ticker chip as if it were a traded security.
 new, file it there — not here.)
 
 ## Active multi-PR plans
-- **`docs/MORNING_RUN_V2_DESIGN.md`** — Daily-run prompt rewrite + `needsAction` tool field + mode allowlist locking. Fix #0 (per-thesis triggers authoritative) shipped unflagged. Fixes #1–#6 ship behind per-analyst `useV2Prompt` flag.
+- **`docs/plans/MORNING_RUN_V2_DESIGN.md`** — Daily-run prompt rewrite + `needsAction` tool field + mode allowlist locking. All 7 fixes shipped as of 2026-05-13. See the status table at the top of that doc.
 - **`docs/THESIS_ARCHITECTURE.md`** — **The live reference for the thesis system.** Read this before touching anything thesis-related. Documents the end-to-end lifecycle (state machine + 9 canonical scenarios), legal `(direction, status)` pairs, producers + gates, consumers, and the 5-bucket run-summary derivation.
 
 ### Recently closed

@@ -79,6 +79,17 @@ export interface ThesisStateRecentFire {
   runId: string | null;
 }
 
+export interface ThesisScoringDim {
+  score: number;
+  note?: string;
+}
+export interface ThesisScoring {
+  trendStrength?: ThesisScoringDim;
+  relativeStrength?: ThesisScoringDim;
+  entryQuality?: ThesisScoringDim;
+  catalystFreshness?: ThesisScoringDim;
+}
+
 export interface TriggersResponse {
   thesisId: string;
   ticker: string;
@@ -98,6 +109,21 @@ export interface TriggersResponse {
   triggers: Trigger[];
   position: ThesisStatePosition | null;
   recentFire: ThesisStateRecentFire | null;
+  // Structural belief — load-bearing fields the trade-evaluator + tactical
+  // agent read. Surfaced to the sheet so the user can see what the agent
+  // actually committed to (vs the prose-layer thesisBullets / riskFlags).
+  coreBelief: string | null;
+  keyAssumptions: string[];
+  invalidationConds: string[];
+  // 4-dim composite scoring + the /10 sum. Present on rows minted with the
+  // post-2026-04-25 scoring rubric; null on older rows.
+  scoring: ThesisScoring | null;
+  scoringComposite: number | null;
+  // Live quote from the API call — drives the price header below the
+  // company name. Null when the quote feed couldn't resolve.
+  currentPrice: number | null;
+  dayChange: number | null;
+  dayChangePct: number | null;
 }
 
 // ── Predicate helpers ──────────────────────────────────────────────────

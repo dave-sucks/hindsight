@@ -1,9 +1,10 @@
 # Hindsight — Thesis Architecture
 
 > **What this is:** the live reference for how the thesis system works.
-> Updated 2026-05-13 to reflect the watchlist collapse. Update this doc
-> whenever a thesis-system component changes. For target state, read
-> [`VISION.md`](./VISION.md). For known gaps, read [`GAPS.md`](./GAPS.md).
+> Updated 2026-05-13 to reflect the watchlist collapse (PR #265) and the
+> complete_run preflight (PR #266). Update this doc whenever a thesis-system
+> component changes. For target state, read [`VISION.md`](./VISION.md). For
+> known gaps, read [`GAPS.md`](./GAPS.md).
 >
 > **Last verified:** 2026-05-13
 
@@ -117,6 +118,112 @@ PASS + ARCHIVED   [terminal at write — no transitions out]
   mints a fresh thesis chained via parentThesisId. The old PASS stays
   ARCHIVED — it's history, not waking up.
 ```
+
+---
+
+## 3a. The user-facing mapping (what each pair means in plain language)
+
+Two axes:
+- **Direction** = the analyst's view — what they think about the stock
+- **Status** = where it is in the lifecycle — watchlist / holding / done
+
+### Full matrix
+
+Each cell is what a `(direction, status)` pair MEANS in plain language. Empty cells are illegal pairs (rejected at write time):
+
+| | WATCHING | ACTIVE | CLOSED | INVALIDATED | ARCHIVED | SUPERSEDED |
+|---|---|---|---|---|---|---|
+| **PENDING** | "Added to watchlist, not yet researched" | — | — | — | — | — |
+| **LONG** | "Bullish, waiting for entry trigger" | "Holding the long position" | "Had a long, exited" | "Was bullish, evidence broke the view" | "Walked away from coverage (no view-break)" | "Replaced by a newer thesis on this ticker" |
+| **SHORT** | "Bearish, waiting for entry trigger" | "Holding the short position" | "Had a short, covered" | "Was bearish, evidence broke the view" | "Walked away" | "Replaced by newer thesis" |
+| **PASS** | — | — | — | — | "Researched, decided no view" | — |
+
+### What appears where in the UI
+
+| User-facing surface | Query |
+|---|---|
+| **Analyst's watchlist sidebar** | `status = 'WATCHING'` (any direction: PENDING, LONG, SHORT) |
+| **Analyst's open positions** | `status = 'ACTIVE'` |
+| **Trade history / closed positions** | `status = 'CLOSED'` |
+| **Stock detail page (every analyst that's ever looked)** | No filter — shows everything including terminal rows |
+| **Institutional memory on a ticker** | `status IN ('CLOSED','INVALIDATED','ARCHIVED','SUPERSEDED')` |
+
+### How transitions happen — who sets what, where
+
+**Entering the system (status starts at WATCHING):**
+
+| Path | Produces | Mechanism |
+|---|---|---|
+| User clicks "Add to Watchlist" | `PENDING + WATCHING` | `addWatchlistItem` server action |
+| Builder seeds analyst with watchlist | `PENDING + WATCHING` | `createAnalystFromConfig` |
+| Editor chat adds a ticker | `PENDING + WATCHING` | analyst-update path |
+| Discovery decides to track | `LONG/SHORT + WATCHING` | agent calls `record_thesis(direction, status='WATCHING', target/stop/triggers/belief)` |
+| Discovery decides NOT to track | `PASS + ARCHIVED` | agent calls `record_thesis(direction='PASS', invalidation_conditions)` — tool auto-flips status to ARCHIVED |
+
+**Moving along the lifecycle:**
+
+| Transition | Trigger | Who fires it |
+|---|---|---|
+| `PENDING + WATCHING` → `LONG/SHORT + WATCHING` | Agent commits direction after first research | `update_thesis(direction: 'LONG', horizon, target/stop/entry, belief, key_assumptions, invalidation_conditions, triggers)` |
+| `PENDING + WATCHING` → `PASS + ARCHIVED` | Agent researches, declines | `update_thesis(direction: 'PASS', invalidation_conditions)` — auto-flips status to ARCHIVED + clears triggers |
+| `LONG/SHORT + WATCHING` → `LONG/SHORT + ACTIVE` | Position opens | `place_trade` (auto-flips status) |
+| `LONG/SHORT + ACTIVE` → `LONG/SHORT + CLOSED` | Position closes | `close_position` (auto-flips status) |
+| `LONG/SHORT + WATCHING/ACTIVE` → `INVALIDATED` | Evidence broke the view | `update_thesis(change_status: 'INVALIDATED', invalidReason)` |
+| `LONG/SHORT + WATCHING` → `ARCHIVED` | User/agent walked away (no view-break) | `update_thesis(change_status: 'ARCHIVED', rationale)` — typically from removeWatchlistItem |
+| `LONG/SHORT + WATCHING/ACTIVE` → `SUPERSEDED` | New thesis on same ticker | `record_thesis(parent_thesis_id, direction)` — old gets auto-superseded |
+
+### Guardrails (where each rule is enforced)
+
+**Hard tool gates** (deterministic, can't be bypassed):
+
+| Gate | Where | What it blocks |
+|---|---|---|
+| **Legal-pair validation** | `record_thesis`, `update_thesis` | Illegal `(direction, status)` writes (e.g. `PASS + WATCHING`) |
+| **Agent can't mint PENDING** | `record_thesis` | Agent calling `record_thesis(direction: 'PENDING')` — reserved for UI/builder/editor |
+| **PASS has no triggers** | `record_thesis` | Passing `triggers[]` on `direction='PASS'` — PASS is terminal, no wake-up |
+| **PASS requires invalidation_conditions** | `record_thesis` | PASS with no flip-criteria — unreadable as institutional memory |
+| **LONG/SHORT requires full structural belief** | `record_thesis` | LONG/SHORT WATCHING without core_belief + ≥2 key_assumptions + ≥2 invalidation_conditions + target/stop/entry + horizon |
+| **ENTER trigger required on LONG/SHORT WATCHING** | `record_thesis` | A bullish/bearish watchlist thesis with no entry trigger (would sit inert forever) |
+| **Direction change only from PENDING** | `update_thesis` | `update_thesis(direction: …)` when current direction is LONG/SHORT/PASS — those flips must chain via `record_thesis(parent_thesis_id)` |
+| **PENDING update requires direction** | `update_thesis` | Any `update_thesis` on a PENDING that doesn't include `direction` — forces commitment |
+| **Terminate ACTIVE-with-position requires close** | `update_thesis` | `change_status: 'INVALIDATED'` OR `'ARCHIVED'` on an ACTIVE thesis with an open Position, unless `close_position` fired in the same run. Prevents zombies (open position with no live thesis). |
+| **place_trade rejects PENDING thesis** | `place_trade` | Trading on an uncommitted thesis (no target/stop/triggers backing it) |
+| **No-PASS-on-held** | `record_thesis` | Minting a PASS thesis on a ticker the analyst already holds |
+| **Cross-analyst overlap (DAY-only)** | `record_thesis` | DAY-trader analyst minting on a ticker already covered by another analyst |
+| **Shape gate** | `record_thesis`, `update_thesis` | LONG: target > entry > stop. SHORT: target < entry < stop |
+| **Goalpost-moving** | `update_thesis` | Raising target on WATCHING when entry condition is currently met |
+| **Confidence ≥ minConfidence** | `place_trade` | Trading a thesis below the analyst's stated minimum confidence |
+| **maxOpenPositions** | `place_trade` | Opening a position beyond the analyst's slot budget |
+
+**Soft prompt guidance** (the agent might violate; tool gates catch it):
+- Daily-run prompt teaches when to commit PENDING via `update_thesis(direction, …)`
+- Discovery prompt teaches PASS is valid output (institutional memory)
+- Both prompts describe when to use INVALIDATED vs ARCHIVED vs close + INVALIDATED
+
+### The mental shortcut
+
+> **`status` answers "where is this thesis in its lifecycle?"** (watchlist / open position / closed position / dead-historical)
+> **`direction` answers "what does the analyst think?"** (no opinion yet / bullish / bearish / researched-and-declined)
+
+The four lifecycle stages:
+
+1. **Awaiting research** (`PENDING + WATCHING`) — seeded, no view yet
+2. **Active tracking** (`LONG/SHORT + WATCHING`) — has a view, waiting for entry signal
+3. **Open position** (`LONG/SHORT + ACTIVE`) — holding the trade
+4. **Terminal / history** (anything CLOSED / INVALIDATED / ARCHIVED / SUPERSEDED) — story over, kept as record
+
+PASS theses skip stages 2–3 entirely and go straight to terminal-as-memory.
+
+### Note on the terminal-status zoo
+
+There are four terminal statuses (CLOSED / INVALIDATED / ARCHIVED / SUPERSEDED). The semantic difference:
+
+- **CLOSED** — tied to position lifecycle (1:1 with `close_position` firing). Distinct from "view broke" because closing happens for many reasons (target, stop, time exit, manual). Useful for analytics.
+- **SUPERSEDED** — structural pointer paired with `parentThesisId`. Means "there's a newer thesis chained from this one — look at the child." Pairs with the cardinality rule (one ACTIVE-or-WATCHING per analyst+ticker+direction).
+- **INVALIDATED** — "evidence broke the view" (uses `invalidReason` field). Specific narrative.
+- **ARCHIVED** — "walked away without evidence-driven view-break" (uses `closeReason` field). Used for PASS at write, manual removes, editor removes, and agent walk-aways.
+
+**The INVALIDATED vs ARCHIVED distinction is the weakest.** Both mean "terminal without a clean trade outcome"; both should be guarded the same way against zombie positions (which is what the F2 extension in PR #270 does). They might warrant collapsing into a single status with the narrative living in the rationale field. Tracked as tech-debt in GAPS; not a blocker.
 
 ---
 
@@ -420,7 +527,19 @@ Gates (in order):
 - No existing OPEN position on (analyst, ticker).
 - Shape, sizing, available buying power.
 
-On success: creates Position, flips paired WATCHING thesis → ACTIVE, writes `ThesisUpdate(type='STATUS_CHANGED')` with tradeId.
+On success: creates Position, **atomically flips paired WATCHING thesis → ACTIVE** (PR #265 — inside the same transaction), sets `thesis.entryPrice / targetPrice / stopLoss` from the trade arguments, writes `ThesisUpdate(type='STATUS_CHANGED', summary='Promoted … WATCHING → ACTIVE on place_trade')` with tradeId.
+
+**Position-thesis desync class (closed by PR #265):** before this auto-promotion was added, `place_trade` created the Position but left the thesis in WATCHING status. This caused the agent to read `get_theses` (WATCHING) and `get_portfolio_context` (position OPEN) simultaneously and treat an already-held name as a watchlist candidate needing entry. Symptoms: agent narrates "Entry executed…" in `reasoningSummary` while `status = WATCHING`, then re-evaluates an ENTER trigger on a position it already holds. Four production theses (AMD, AVGO, GOOGL, TSM) required a manual DB patch on 2026-05-13 (`mfix*` ThesisUpdate IDs). PR #265 makes this impossible for new trades by doing the flip inside the same transaction as the Alpaca order.
+
+### `complete_run` — marks a ResearchRun COMPLETE (PR #266 preflight)
+
+Before flipping `status: RUNNING → COMPLETE`, `complete_run` runs a Layer-1 preflight that refuses if any of the following are true:
+
+- **`record_run_summary` not called** — the run has no summary written yet. Agent must call `record_run_summary` first.
+- **Run already FAILED** — if a prior gate (narration-gate, promotion gate) already marked the run FAILED, `complete_run` is rejected. The run can't be retroactively completed.
+- **Unaddressed `needsAction` theses** — any ACTIVE or WATCHING thesis for this analyst that `computeNeedsAction` marks non-null (TRIGGER_FIRED / TRIGGER_MATCHING_NOW / REVIEW_DUE) AND that has no `update_thesis` call recorded in this run's tool calls is flagged. The agent must address all triggered theses before completing.
+
+The preflight uses the same `computeNeedsAction` logic as `get_theses` (no more Layer-1 / Layer-2 inconsistency on cooldown math or quote sources).
 
 ### Non-agent writers (server actions)
 
@@ -485,7 +604,11 @@ The redesign considered several larger changes that were deliberately NOT pursue
 
 ### Done since (2026-05-13)
 
-- **Collapsed `manage_watchlist` + `AnalystWatchlistItem`.** Thesis is the single store. PENDING direction + ARCHIVED status added. UI, prompts, crons, intelligence routes all flipped to Thesis queries. Tool count drops to 18.
+- **Collapsed `manage_watchlist` + `AnalystWatchlistItem` (PR #265).** Thesis is the single store. PENDING direction + ARCHIVED status added. UI, prompts, crons, intelligence routes all flipped to Thesis queries. Tool count drops to 18.
+  - **`PENDING` direction** — new state for user/builder/editor-added tickers awaiting first research. Agent's first action on a PENDING thesis is `update_thesis(direction: LONG|SHORT|PASS, …)`. PASS auto-flips status to ARCHIVED and clears triggers.
+  - **`ARCHIVED` status** — terminal state for tickers removed from the watchlist without a trade. Covers PASS theses at write, manual UI removes, editor removes, and explicit "walk away" decisions (`change_status: 'ARCHIVED'`). Replaces the deleted `manage_watchlist` for all removal paths.
+- **`place_trade` auto-promotes WATCHING → ACTIVE (PR #265).** Atomic; the thesis flip, entryPrice/targetPrice/stopLoss assignment, and ThesisUpdate audit row all happen in the same DB transaction as the Alpaca order. Closes the position-thesis desync class of bugs.
+- **`complete_run` preflight (PR #266).** Enforces record_run_summary called + run not already FAILED + no unaddressed needsAction theses before the RUNNING→COMPLETE transition. See producers §`complete_run` above for the full gate spec.
 - **Killed "PASS WATCHING" as institutional memory.** PASS is always ARCHIVED at write. Institutional-memory value preserved via stock-page visibility + `get_theses(include_history)` + `parentThesisId` chains on re-encounter.
 
 The principle: **the system was fundamentally sound, not fundamentally broken.** Triggers were the right primitive; horizon was the right discriminator; the lifecycle states worked; the audit log worked. What was missing was structural-belief discipline, the promotion enum, surfacing in the daily-run prompt, the trade evaluator reading the belief, and a single watchlist store. Those have shipped.
@@ -496,6 +619,7 @@ The principle: **the system was fundamentally sound, not fundamentally broken.**
 
 - [`VISION.md`](./VISION.md) Pillar 2 — what "thesis quality" is supposed to look like
 - [`GAPS.md`](./GAPS.md) — the open punch list
-- [`MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — the three-layer principle (tool gates / tool result shape / prompt as judgment only) that drives where each invariant lives
-- [`WATCHLIST_COLLAPSE_PLAN.md`](./WATCHLIST_COLLAPSE_PLAN.md) — the implementation plan for the 2026-05-13 collapse (closed; this doc supersedes it)
+- [`PRINCIPLES.md`](./PRINCIPLES.md) — the three-layer principle (tool gates / tool result shape / prompt as judgment only) that drives where each invariant lives
+- [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/MORNING_RUN_V2_DESIGN.md) — the V2 prompt rewrite that applied the three-layer principle to the daily run
+- [`legacy/WATCHLIST_COLLAPSE_PLAN.md`](./legacy/WATCHLIST_COLLAPSE_PLAN.md) — the implementation plan for the 2026-05-13 collapse (closed; this doc supersedes it)
 - [`/agent-workflow`](../app/(root)/agent-workflow/page.tsx) — the live operational view, driven by [`workflow-registry.ts`](../lib/agent/workflow-registry.ts)

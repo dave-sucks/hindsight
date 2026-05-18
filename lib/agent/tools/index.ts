@@ -19,6 +19,13 @@ import { getEarningsCalendar } from "./get-earnings-calendar";
 import { getMarketMovers } from "./get-market-movers";
 import { getOptionsFlow } from "./get-options-flow";
 import { getSecFilings } from "./get-sec-filings";
+// THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
+// See docs/plans/THESIS_RESEARCH_V2.md §3.
+import { getFinancialsDeep } from "./get-financials-deep";
+import { getAnalystCoverage } from "./get-analyst-coverage";
+import { getInsiderActivity } from "./get-insider-activity";
+import { getEarningsHistory } from "./get-earnings-history";
+import { getPeersWithMetrics } from "./get-peers-with-metrics";
 import { readSignals } from "./read-signals";
 import { readArtifact } from "./read-artifact";
 import { webSearch } from "./web-search";
@@ -116,6 +123,12 @@ export function createResearchTools(ctx: ToolCtx) {
     get_market_movers: getMarketMovers(newCtx),
     get_options_flow: getOptionsFlow(newCtx),
     get_sec_filings: getSecFilings(newCtx),
+    // THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
+    get_financials_deep: getFinancialsDeep(newCtx),
+    get_analyst_coverage: getAnalystCoverage(newCtx),
+    get_insider_activity: getInsiderActivity(newCtx),
+    get_earnings_history: getEarningsHistory(newCtx),
+    get_peers_with_metrics: getPeersWithMetrics(newCtx),
     read_signals: readSignals(newCtx),
     read_artifact: readArtifact(newCtx),
     web_search: webSearch(newCtx),
@@ -168,6 +181,12 @@ export { getEarningsCalendar } from "./get-earnings-calendar";
 export { getMarketMovers } from "./get-market-movers";
 export { getOptionsFlow } from "./get-options-flow";
 export { getSecFilings } from "./get-sec-filings";
+// THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
+export { getFinancialsDeep } from "./get-financials-deep";
+export { getAnalystCoverage } from "./get-analyst-coverage";
+export { getInsiderActivity } from "./get-insider-activity";
+export { getEarningsHistory } from "./get-earnings-history";
+export { getPeersWithMetrics } from "./get-peers-with-metrics";
 export { readSignals } from "./read-signals";
 export { readArtifact } from "./read-artifact";
 export { webSearch } from "./web-search";

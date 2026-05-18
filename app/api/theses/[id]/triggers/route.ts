@@ -53,6 +53,14 @@ export async function GET(
       maxHoldDays: true,
       nextReviewAt: true,
       triggers: true,
+      // Structural belief fields (load-bearing — trade-evaluator reads these
+      // on close; tactical agent reads them on trigger fire). Surfaced to the
+      // sheet so the user can see what the agent actually committed to.
+      coreBelief: true,
+      keyAssumptions: true,
+      invalidationConds: true,
+      // Scoring rubric + composite are stored in fullResearch JSON.
+      fullResearch: true,
       researchRun: { select: { agentConfigId: true } },
     },
   });
@@ -77,6 +85,19 @@ export async function GET(
     unrealizedPnlPct: number | null;
     daysHeld: number;
   };
+  // Live quote — always fetched (was previously gated to status=ACTIVE).
+  // The thesis sheet now shows current price in the header for WATCHING +
+  // ACTIVE + terminal rows, mirroring the stock-page header pattern. One
+  // quote per sheet open; failure is non-fatal — the header just hides
+  // the price block.
+  const liveQuote = await getStockQuote(thesis.ticker).catch(() => null);
+  const currentPrice =
+    liveQuote && Number.isFinite(liveQuote.c) && liveQuote.c > 0 ? liveQuote.c : null;
+  const dayChange =
+    liveQuote && Number.isFinite(liveQuote.d) ? liveQuote.d : null;
+  const dayChangePct =
+    liveQuote && Number.isFinite(liveQuote.dp) ? liveQuote.dp : null;
+
   let position: PositionInfo | null = null;
   if (thesis.status === "ACTIVE" && thesis.researchRun?.agentConfigId) {
     const pos = await prisma.position.findFirst({
@@ -93,9 +114,7 @@ export async function GET(
       },
     });
     if (pos) {
-      const quote = await getStockQuote(thesis.ticker).catch(() => null);
-      const currentPrice =
-        quote && Number.isFinite(quote.c) && quote.c > 0 ? quote.c : null;
+      // Reuse the liveQuote fetched above — same ticker, single call.
       const qty = Number(pos.quantity);
       const avgCost = Number(pos.avgCost);
       const marketValue = currentPrice != null ? currentPrice * qty : null;
@@ -144,6 +163,15 @@ export async function GET(
     },
   });
 
+  // Pull scoring out of fullResearch JSON (record_thesis stores it there).
+  // Surface to UI alongside the durable belief fields so the user can see
+  // the 4-dim breakdown that drove the WATCHING vs PASS decision.
+  const fullResearch = (thesis.fullResearch ?? null) as
+    | { scoring?: unknown; scoringComposite?: number | null }
+    | null;
+  const scoring = fullResearch?.scoring ?? null;
+  const scoringComposite = fullResearch?.scoringComposite ?? null;
+
   return NextResponse.json({
     thesisId: thesis.id,
     ticker: thesis.ticker,
@@ -164,6 +192,19 @@ export async function GET(
     nextReviewAt: thesis.nextReviewAt,
     triggers,
     position,
+    // Structural belief — surfaced so the sheet can render the durable
+    // claim + falsifiable premises + invalidation conditions instead of
+    // just the prose layer (reasoningSummary / thesisBullets / riskFlags).
+    coreBelief: thesis.coreBelief,
+    keyAssumptions: thesis.keyAssumptions ?? [],
+    invalidationConds: thesis.invalidationConds ?? [],
+    // 4-dim composite scoring (record_thesis stores in fullResearch.scoring).
+    scoring,
+    scoringComposite,
+    // Live quote — drives the price header below the company name.
+    currentPrice,
+    dayChange,
+    dayChangePct,
     recentFire: recentFire
       ? {
           id: recentFire.id,

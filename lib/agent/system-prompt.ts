@@ -79,6 +79,21 @@ export interface AgentConfigInput {
 
 // ─── Daily run system prompt ─────────────────────────────────────────────────
 
+/**
+ * @deprecated as of 2026-05-16. The "V2" in the name is a historical
+ * mis-naming — this is the LEGACY 600-line procedural prompt with 6 stages
+ * and 5 priority blocks. The current production prompt is
+ * `buildDailyRunSystemPromptV2` (the 80-line goals + needsAction builder
+ * from docs/MORNING_RUN_V2_DESIGN.md).
+ *
+ * Kept in the file for reference + so we can diff against the new prompt
+ * when triaging behavior changes. NO production caller. Will be deleted
+ * in a follow-up PR once we've run on V2-only for ~14 trading days without
+ * needing to consult this for comparison.
+ *
+ * Do NOT add new functionality here. New work goes into
+ * `buildDailyRunSystemPromptV2`.
+ */
 export function buildV2SystemPrompt(
   config: AgentConfigInput,
   runInput: RunInput,
@@ -844,9 +859,15 @@ Each morning:
        - **EXIT** → \`close_position\`, then \`update_thesis(change_status: "CLOSED")\`.
        - **REVIEW** → \`update_thesis\` with the substantive change you decide. Cite signal_ids that informed the update.
        - **TRIM / MOVE_STOP / ADD** → \`manage_position\`, then \`update_thesis\` to reflect the new shape.
-   - **REVIEW_DUE** — like a real analyst: re-read the thesis, decide whether the world has changed enough to warrant fresh data. If yes, pull \`get_stock_data\` (and signals if relevant), narrate the read, then \`update_thesis\` with the refined fields. If the thesis is intact and nothing material has happened, \`update_thesis\` with rationale only — that writes a REVIEWED row AND auto-bumps the next review date forward by the horizon's cadence. If the review surfaces that the thesis is no longer applicable (out of scope, structurally broken, decorative), use \`update_thesis(change_status: "INVALIDATED")\` to retire it durably — don't leave dead theses in the book.
+   - **REVIEW_DUE on a PENDING thesis (i.e. \`pendingFirstReview: true\`)** — this is the user/builder/editor-seeded watchlist entry asking for first research. There is no prior view to "be intact"; you're committing to one. Pull \`get_stock_data\` and any signals/context you need, narrate the read, then call \`update_thesis\` WITH \`direction\` set:
+       - \`update_thesis(thesis_id, direction: "LONG"|"SHORT", horizon, entry_price, target_price, stop_loss, core_belief, key_assumptions (≥2), invalidation_conditions (≥2), triggers, rationale)\` — commits to a bullish/bearish view, stays WATCHING, attaches entry triggers. The tool requires every structural field; missing fields reject with \`pending_promotion_missing_fields\`.
+       - \`update_thesis(thesis_id, direction: "PASS", invalidation_conditions (≥1), rationale)\` — researched, no tradeable view today. Auto-flips status to ARCHIVED and clears triggers. Falls off the watchlist; stays as institutional memory on the stock page.
+     A rationale-only \`update_thesis\` on a PENDING (no \`direction\` arg) is a **run failure** — the seed sits PENDING forever and gets re-surfaced tomorrow with no progress. The exemption to the zero-trigger guard exists so you CAN promote in one call, not so you can punt.
+   - **REVIEW_DUE on a LONG/SHORT thesis** — like a real analyst: re-read the thesis, decide whether the world has changed enough to warrant fresh data. If yes, pull \`get_stock_data\` (and signals if relevant), narrate the read, then \`update_thesis\` with the refined fields. If the thesis is intact and nothing material has happened, \`update_thesis\` with rationale only — that writes a REVIEWED row AND auto-bumps the next review date forward by the horizon's cadence. If the review surfaces that the thesis is no longer applicable (out of scope, structurally broken, decorative), use \`update_thesis(change_status: "INVALIDATED")\` to retire it durably — don't leave dead theses in the book.
 
    **Pick the right shape:** transient rejection (b) = "not entering RIGHT NOW for a specific market reason" — thesis stays alive, next trigger re-evaluates. INVALIDATED (c) = "this thesis should not exist for me anymore" — durable kill, no future fires, no future busywork. Use INVALIDATED when the reason is permanent (universe/edge mismatch, premise broken, ticker has moved on) rather than situational. The user can always re-add a name to the watchlist later.
+
+   **INVALIDATING an ACTIVE thesis that has an open position requires close_position in the same run.** The tool gate refuses to invalidate a position-backed thesis without a paired close; if you decide the view is broken on a held name, the path is \`close_position\` → \`update_thesis(change_status: "INVALIDATED")\`. Never leave a zombie position with no live thesis.
 
 3. Theses with \`needsAction == null\` don't need to be touched. The trigger system already evaluated them; nothing fired, nothing's matching, no review is due. Yesterday's thesis stands.
 

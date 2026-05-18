@@ -8,7 +8,7 @@
 > - "What shipped in PR #X?" → GitHub PRs (search by label or date).
 > - Product north star → [`VISION.md`](./VISION.md).
 > - Live thesis-system reference → [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
-> - Big multi-PR plans → `docs/<NAME>_PLAN.md` (e.g., [`WATCHLIST_COLLAPSE_PLAN.md`](./WATCHLIST_COLLAPSE_PLAN.md)).
+> - Big multi-PR plans → `docs/plans/<NAME>.md` (e.g., [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/MORNING_RUN_V2_DESIGN.md)).
 >
 > **How to use it:** start at P0. P0s block the rework's correctness. P1s degrade quality. P2s are papercuts but still part of the rework. Don't skip levels. When something closes, **move it** to a "Done since" section below, not strike-through inline.
 >
@@ -83,6 +83,22 @@ The MRVL anti-pattern (raising target on a watching thesis when current price is
 
 These prevent the core loop from working as designed. Fix first.
 
+### P0-10 — Thesis structured status disagrees with `reasoningSummary` text
+**Source:** GOOGL/Secular Theme failure 2026-05-13. Found in this session.
+
+`Thesis.reasoningSummary` is free text the agent writes. `Thesis.status` is a structured enum. Today they can disagree: GOOGL's `reasoningSummary` literally said *"Entry executed within max position size limits"* while `status = WATCHING` and the matching Position row (cmowxdgx8000404jpr2bnzyg0) was OPEN since 2026-05-08. Two truths, both visible to the agent.
+
+Concrete production state when this was diagnosed: 4 theses (AMD, AVGO, GOOGL, TSM) had open positions but `status = WATCHING`. **DB fixed 2026-05-13** (all 4 flipped to ACTIVE with the actual fill prices + 4 `ThesisUpdate` STATUS_CHANGED audit rows, IDs prefixed `mfix`). PR #265's auto-promotion in `place_trade` prevents new occurrences. But there's no guard at the tool layer that catches `reasoningSummary` text claiming actions inconsistent with structured fields.
+
+**Why this is P0:** the agent's read of GOOGL on 2026-05-13 went exactly: see "Entry executed" in reasoningSummary → classify as portfolio-held → ignore the WATCHING-thesis-needs-action work. The free-text field overrode the structured field in the agent's reasoning because the agent reads prose first.
+
+**Fix path:** either (a) deprecate `reasoningSummary` as a state-bearing field and require structured fields for any operational status, or (b) add a `record_thesis` / `update_thesis` validator that rejects `reasoningSummary` text containing action verbs ("executed", "opened", "closed", "trimmed") when those actions aren't reflected in structured state. (a) is cleaner but bigger.
+
+### ~~P0-11 — Manual UI runs always get the 600-line V1 prompt~~
+**CLOSED 2026-05-16** in PR #270. V1 prompt builder marked `@deprecated`; the only V1 caller (`app/api/agent/[mode]/route.ts:232`) was swapped to call `buildDailyRunSystemPromptV2` unconditionally. The `useV2Prompt` flag is no longer read by any code path. Flag column stays on `AgentConfig` until a follow-up migration drops it.
+
+---
+
 ### P0-5 — Horizon awareness: operational layers are still horizon-blind
 **Source:** Hold-style audit 2026-05-07 (original grade D+; substantially upgraded by PR #239 which shipped horizon visibility + per-horizon prompt rules).
 
@@ -108,10 +124,106 @@ These prevent the core loop from working as designed. Fix first.
 
 *(P1-4 was closed via cumulative prompt sharpening across PRs #235 + #239 — see "Done since" below. P0-5e was downgraded here from P0; see P0-5 above for details.)*
 
+### P1-11 — Quote source inconsistency between Layer-2 and Layer-1
+**Source:** Code audit 2026-05-13.
+
+`get_theses.needsAction` (Layer 2) fetches prices via `getLatestPrices` from Alpaca. `complete_run` preflight (Layer 1, PR #266) fetches via `getStockQuote` from Finnhub. For a ticker at the boundary of an ENTER trigger, the two can disagree by tens of cents — enough to flip `TRIGGER_MATCHING_NOW` vs `null`.
+
+Failure scenario: agent reads `get_theses`, sees GOOGL with `needs_action: null`, skips it. Agent calls `complete_run`. Preflight re-checks with Finnhub, gets a different price, computes `TRIGGER_MATCHING_NOW`, refuses. Agent has no path forward — Layer 2 told it nothing was needed, Layer 1 says something is. Cryptic refusal loop.
+
+**Fix path:** single-source the quotes. Either both use Alpaca or both use Finnhub. The trigger-evaluator cron's price source is the canonical one — both `get_theses` and `complete_run` preflight should match it.
+
+### P1-12 — Earnings Drift Trader silent timeout (undiagnosed)
+**Source:** 2026-05-12 morning cron.
+
+Run produced 0 tool calls in 241s, then timed out. No RunMessage rows, no RunEvent rows. Same shape as 2026-05-11 silence. Did not recur 2026-05-13 (20 tool calls, clean). The zero-tool-call recovery in PR #261 fires only on caught exceptions; a silent OpenAI hang that runs out the wall clock doesn't trip it.
+
+**Hypothesis:** this analyst's injected context (sectors, ticker count, position count, latest briefing length) produces an unusually large system prompt. Could be a token-budget edge or an OpenAI-side latency cliff specific to long inputs.
+
+**Fix path:** instrument system-prompt length at run start. Log it. If Earnings Drift is meaningfully larger than the other 5 analysts, that's the smoking gun. If it isn't, file as transient and add a wall-clock-triggered retry separate from the catch-path retry.
+
+### P1-13 — Old promotion-keyword gate in `record_run_summary` is now redundant + actively wrong
+**Source:** Day 1 + Day 2 run reviews.
+
+`record_run_summary` still runs the legacy promotion gate that scans `decision_rationale` text for accepted rejection keywords (volume / regime / news / R/R / liquidity / etc.). The Secular Theme analyst failed both days because its rejection rationale was *"outside our current universe focus on Information Technology"* — semantically valid, lexically not on the list. PR #266's `complete_run` preflight supersedes this with `computeNeedsAction` (which is wording-agnostic — it checks whether `update_thesis` was called for the triggered thesis, not what words appeared in the summary).
+
+**Fix path:** delete the keyword scan from `record_run_summary`. The preflight is the canonical check now. Two gates asking the same question with different rules = run failures the agent can't recover from.
+
+### P1-14 — No Layer-1 closeout enforcement for `needs_action: null` theses
+**Source:** Design follow-up from `docs/plans/MORNING_RUN_V2_DESIGN.md`.
+
+The V2 prompt says *"Theses with `needsAction == null` don't need to be touched."* This is correct as designed. But the legacy V1 prompt's *"every Live Theses row produces one tool call"* contract is still present in code paths that V2 hasn't replaced (the manual run path, per P0-11; the V1 fallback prompt). Decision needed: is the V2 design's "null = skip" the official rule, or is the V1 contract still operational somewhere? Today the two coexist contradictorily.
+
+**Fix path:** make a call. Either explicitly delete the closeout contract from V1 too (commit to "trigger system is the only source of truth"), or implement a Layer-1 check that counts ThesisUpdate rows per live thesis per run for both prompt versions.
+
 ### P1-9 — Discovery prompt is archetype-blind (biggest remaining item)
 **Source:** Discovery review 2026-05-11 (see `DISCOVERY_REVIEW.md`). The 4-dimension scoring rubric (trendStrength / relativeStrength / entryQuality / catalystFreshness) is calibrated for momentum/breakout playbooks and applied universally. A Deep Value Contrarian buys downtrends — `trendStrength: 3` is a SELL signal for them. An Insider Cluster Buying archetype has no slot in the rubric for Form 4 cluster patterns. Catalyst Event Trader / Earnings Drift should weight earnings_calendar heavily; momentum scoring barely.
 
 **Fix path:** branch the discovery prompt into three families — EVENT_DRIVEN (Earnings Drift, Catalyst Event), MOMENTUM (Momentum Breakout, Mean Reversion, Sector Rotation, Unusual Options), FUNDAMENTAL (Deep Value, Thematic Secular, Insider Cluster) — each with a tuned scoring rubric and primary source priority. Requires either an `AgentConfig.archetypeId` column or runtime classification from analystPrompt + holdDurations. Full spec in `DISCOVERY_REVIEW.md` § Proposed redesign. ~1 session of work.
+
+
+### P1-15 — Provenance soft-gate: agents use WEB_SEARCH despite signals existing
+**Source:** Discovery runs cmp4m0q35 (3 mints) + cmp698wva (16 mints) — every mint had `sourceKind: "WEB_SEARCH"` even when `read_signals` returned matching signals for the ticker. `record-thesis.ts` lines 414-444 detect the mismatch and log a console warning, but don't reject the write. Net effect: `sourceSignalIds` is empty, so the trade-evaluator's Monitor ROI tracer (VISION Pillar 5) can't walk `Thesis.sourceSignalIds → Signal.monitorId → Monitor` to credit which monitor produced the win/loss on close. The whole monitor-ROI flywheel is broken.
+
+**Fix path:** promote the nudge to a hard reject when `ctx.signalsByTicker[ticker]` has signals AND the agent passed non-ROUTED_SIGNAL provenance. Forces the agent to cite signal IDs. ~30 minutes in `lib/agent/tools/record-thesis.ts`.
+
+
+### P1-16 — Tactical run silent failures (verify post-PR #261)
+**Source:** Lifecycle audit 2026-05-11. Of 116 tactical runs in 14 days, 21 ended in `status=FAILED` with `parameters.error = null` and zero RunEvent rows — meaning the function died before the error-aggregator from PR #250 could persist. PR #261 added catch-path recovery + an error aggregator that supposedly closed this. **Has not been re-audited post-PR-#261 + post-watchlist-collapse.** Re-run the same query (`mode='INTRADAY_TACTICAL' AND status='FAILED' AND parameters->>'error' IS NULL`) over the last 14 days. If the count is still >0%, the silent-failure path isn't actually closed.
+
+**Fix path:** verify first, fix second. May already be closed.
+
+
+### P1-17 — Possibly polluted historical "discovery" runs (informational, no code fix)
+**Source:** PR #275 surfaced the dueling-agents bug — opening a discovery run page while it was `status=RUNNING` auto-spawned a second agent against `/api/agent/research-run` (daily-run prompt + allowlist) that competed with the real discovery agent. Discovery runs prior to PR #275 where the user opened the page mid-run may have written `RunMessage` from the daily-run agent rather than the discovery agent. The minted `Thesis` rows are real DB writes either way, but the AGENT BEHAVIOR audited in those runs may not have been the discovery agent. Affects audit credibility for runs: cmp4m0q35 (Tech Momentum, 3 mints), cmp698wva (Tech Momentum, 16 mints), cmp6bryy (Secular Theme, 10 mints), cmp6dk0w1 (Secular Theme, 0 mints — confirmed dueling).
+
+**No fix:** historical data is what it is. Post-#275 runs are clean. Listed here so future audits don't over-index on pre-#275 discovery transcripts.
+
+---
+
+## P2 architecture cleanups — surfaced 2026-05-15
+
+### P2-13 — `record_run_summary` `ranked_picks` should be server-derived
+**Source:** `THESIS_ARCHITECTURE.md §11` specifies the 5 run-summary buckets (Added / Researched-passed / Promoted / Removed / Closed) as **server-derived from `ThesisUpdate WHERE runId = X`**. Today the tool requires the agent to pass `ranked_picks` manually, duplicating work and creating drift between the audit log and the displayed summary. Discovery run summaries usually only populate buckets 1+2 — easy candidate to derive.
+
+**Fix path:** change `record_run_summary` to accept only `primary_decision` + `decision_rationale`; derive `ranked_picks` server-side from ThesisUpdate joins. Update the discovery + daily-run prompts to stop telling the agent to enumerate. ~1 hour.
+
+
+### P2-14 — `get_market_movers` + `get_earnings_calendar` don't honor `ctx.feeds`
+**Source:** Architecture review 2026-05-13. If an analyst's `AgentConfig.feeds` includes `MARKET_MOVERS_GAINERS`, the same data already arrives via `read_signals` as a routed aggregate signal. Calling `get_market_movers` directly does a redundant FMP pull. Should detect subscription and either skip the pull or return a "you already have this via read_signals" pointer.
+
+**Fix path:** in each tool, check `ctx.feeds` against the corresponding FEEDS enum value and short-circuit if subscribed. ~20 minutes each.
+
+
+### P2-15 — TSEM-class `get_stock_data` field staleness
+**Source:** Discovery run cmp4m0q35 minted TSEM with `entryPrice: $270.77` and `high52w: $232.67` — current price above 52-week high, which is impossible. Either the price feed returned wrong data, the 52w-high field is stale (cached from before today's high), or the fields come from different endpoints with different freshness. Affects every analyst since the agent uses both to set targets.
+
+**Fix path:** trace the two fields back to their providers (likely Finnhub for quote + Finnhub or FMP for 52w range). Add a same-call freshness guarantee or a sanity-check that rejects price > high52w in the tool layer. ~1 hour to diagnose, ~1 hour to fix.
+
+
+### P2-16 — Consider collapsing INVALIDATED + ARCHIVED into one terminal status
+**Source:** Architecture review 2026-05-16 after F2-extension PR #270. Of the four terminal statuses (CLOSED / INVALIDATED / ARCHIVED / SUPERSEDED), the INVALIDATED vs ARCHIVED distinction is thin:
+
+- INVALIDATED = "evidence broke the view" (uses `invalidReason` field)
+- ARCHIVED = "walked away without evidence-driven view-break" (uses `closeReason` field)
+
+Both mean "terminal without a clean trade outcome." The narrative ("evidence" vs "walk-away") lives in the rationale text either way. The F2 gate (PR #270) had to treat both identically against zombie positions — if they're functionally identical for safety guards, they're a foot-gun for being separate. The AMZN zombie on Catalyst Event Raider (2026-05-14) was created via the ARCHIVED-on-ACTIVE-with-position path that F2 originally didn't cover.
+
+**Fix path:** collapse into a single terminal status (call it `TERMINATED` or keep `INVALIDATED` and migrate ARCHIVED→INVALIDATED + rename `closeReason` field usage). Update every query that filters on `status IN (...)` to know the new shape. Update the five-bucket run summary derivation in `record_run_summary`. ~15-20 files. Not blocking; revisit once we have more data on whether the distinction provides analytics value or keeps biting.
+
+
+### P2-17 — `useV2Prompt` flag is dead code on AgentConfig
+**Source:** PR #270 deprecated the V1 prompt builder and removed the `useV2Prompt` dispatch from both cron + agent route. The flag column on `AgentConfig` is no longer read anywhere. Currently `true` for all 6 production analysts.
+
+**Fix path:** Prisma migration to drop the column + remove the field from the schema. Trivial migration, just needs a follow-up PR. ~10 minutes.
+
+
+### P2-18 — Catalyst Event Raider near-no-op morning runs
+**Source:** 2026-05-15 morning run. Catalyst Event Raider completed in 12s with 5 tool calls — read_signals, get_portfolio_context, get_theses (parallel), then straight to record_run_summary + complete_run. No update_thesis, no get_stock_data. Either it had truly nothing to act on (legitimate) or punted (bug).
+
+The analyst has open positions and active theses. needsAction MAY have been null on all of them (rested + no triggers fired), but the lack of even one `update_thesis(rationale)` REVIEWED row makes the run feel like a no-op. Worth checking what `get_theses` returned for this analyst vs. what the V2 prompt would have prescribed.
+
+**Fix path:** spot-check Catalyst Event Raider runs over the next 5 trading days. If the pattern persists with no observable action across all theses, drill into the needsAction output. May indicate a content-quality issue with the analyst's universe / signal routing rather than a code bug. ~30 minutes investigation per occurrence.
 
 ---
 

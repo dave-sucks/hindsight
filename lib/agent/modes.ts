@@ -177,9 +177,32 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   // record_thesis IS allowed — that's the primary output. place_trade
   // allowed for high-conviction starters.
   "discovery": {
-    model: "gpt-4o",
+    // 2026-05-14 — moved discovery off gpt-4o.
+    //
+    // GPT-4o failed the 2026-05-13 audit head-on: researched 4 of ~60
+    // candidates, invented Cerebras (CRBR) reasoning from limited data,
+    // scored TSEM 10/10 against a clearly broken price ($270 spot with
+    // $232 52w high), and dropped CRBR without a record_thesis call
+    // despite the prompt explicitly demanding one. Classic "happily
+    // fills in the blanks" pattern at the final-decision layer.
+    //
+    // Trying GPT-5.5 as the primary candidate per external advice that
+    // it's the strongest model for complex reasoning / tool-heavy
+    // workflows / final-synthesis steps. If the API rejects this model
+    // ID (string may be wrong — the codebase has never seen a gpt-5
+    // reference), the AI SDK will surface a "model not found" error and
+    // we adjust. Known-good fallbacks if gpt-5.5 doesn't resolve:
+    //   • "claude-sonnet-4-6" + thinkingBudget: 4000 (provider:"anthropic")
+    //     — the model principal-chat already uses successfully
+    //   • "claude-opus-4-6" — heavier reasoning, more expensive
+    //   • back to "gpt-4o" — known baseline, the bug we're trying to leave
+    //
+    // maxSteps raised 25 → 45 to support deeper research per candidate.
+    // Discovery is weekly and unattended; cost difference per run is
+    // small and analyst-quality difference should be meaningful.
+    model: "gpt-5.5",
     provider: "openai",
-    maxSteps: 25,
+    maxSteps: 45,
     toolAllowlist: [
       // Read-only intel — three discovery sources: routed signals,
       // movers (universe-fenced), earnings calendar (universe-fenced).
@@ -202,7 +225,41 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "complete_run",
     ] as const,
     hasSuggestConfig: false,
-    maxDuration: 240,
+    // 2026-05-15 — set to 270 to fit inside the Vercel Hobby plan's
+    // 300s function-timeout ceiling.
+    //
+    // PR #271 mistakenly raised this to 480 thinking that would give
+    // GPT-5.5 more time. It did the opposite: the in-code AbortSignal
+    // formula is `(maxDuration - 30) * 1000`, so 480 means the abort
+    // fires at 450s — but Vercel kills the function ungracefully at
+    // ~300s, well before the abort can hand control to the catch
+    // block to write record_run_summary + complete_run. Net effect:
+    // less graceful failure.
+    //
+    // 270 puts the AbortSignal at 240s — 60s LATER than the 210s wall
+    // that killed both Tech Momentum (cmp698wva) and Secular Theme
+    // (cmp6bryy) under the prior 240 setting, AND 30s before Vercel's
+    // 300s hard kill. The catch block then has 30s of headroom to
+    // persist messages + mark the run COMPLETE/FAILED cleanly.
+    //
+    // GPT-5.5 with implicit reasoning takes ~13s/tool-call (measured
+    // from Tech Momentum's 16 calls in 211s). 240s of actual agent
+    // budget = 240/13 ≈ 18 tool calls. Discovery's shape is 3 parallel
+    // pulls + 2N candidate research + N record_thesis + 2 finishers =
+    // 3N + 5. Fits N=4 mints comfortably, N=5 tight. For rich weeks
+    // the mint floor in the prompt tells the agent to bias toward
+    // shorter PASS+ARCHIVED rows (no horizon, no triggers, fewer
+    // structural fields to populate) which run faster per call.
+    //
+    // If the Hobby plan stays in force long-term, a future PR should:
+    //   (a) split discovery into multiple Inngest steps (each its
+    //       own 300s budget), OR
+    //   (b) move to a faster model (GPT-5.4 / GPT-5.4-mini cuts
+    //       per-call latency ~40% based on advertised reasoning
+    //       throughput), OR
+    //   (c) upgrade Vercel plan (Pro → 800s ceiling).
+    // For now, 270 unblocks runs from completing at all.
+    maxDuration: 270,
   },
   // ── Tactical (PR 2) ─────────────────────────────────────────────────────
   // Event-driven, single-thesis, single-decision. Spawned by tactical-run

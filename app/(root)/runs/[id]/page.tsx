@@ -104,6 +104,17 @@ export default async function RunPage({
   // autostart for those runs; the events written by the Inngest consumer
   // still render via the existing event/replay path.
   const isTacticalMode = run.mode === "INTRADAY_TACTICAL";
+  // Discovery runs (mode=DISCOVERY) execute server-side via Inngest's
+  // discovery-run consumer — same shape as tactical. Opening the run
+  // page while it's RUNNING was previously auto-starting a SECOND agent
+  // through /api/agent/research-run (which uses the morning-plan
+  // prompt + allowlist — get_portfolio_context, update_thesis, etc.),
+  // racing against the real discovery agent and frequently winning the
+  // write to RunMessage. Observed in run cmp6dk0w1000004jhoi32cv63
+  // (2026-05-15): mode=DISCOVERY but the transcript was a daily-run
+  // shape with "Portfolio Overview", update_thesis on existing NVDA.
+  // Same guard as tactical fixes it.
+  const isDiscoveryMode = run.mode === "DISCOVERY";
   // Inngest-backed segment runs (source=AGENT) execute server-side — don't
   // auto-start AgentThread or it would launch a second competing agent.
   const isInngestSegmentRun = isPodcastSegmentRun && run.source === "AGENT";
@@ -148,7 +159,7 @@ export default async function RunPage({
             runId={id}
             analystId={isPodcastSegmentRun ? undefined : run.agentConfig?.id}
             analystName={analystName}
-            autoStart={isLive && !isTacticalMode && !isInngestSegmentRun}
+            autoStart={isLive && !isTacticalMode && !isDiscoveryMode && !isInngestSegmentRun}
             messages={persistedMessages ?? undefined}
             brief={isPodcastSegmentRun ? null : brief}
             sources={isPodcastSegmentRun ? [] : sources}
