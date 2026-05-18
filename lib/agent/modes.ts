@@ -15,6 +15,7 @@ export interface ModelOption {
 }
 
 export const RESEARCH_MODEL_OPTIONS: ModelOption[] = [
+  { label: "GPT-5.5", value: "gpt-5.5", provider: "openai" },
   { label: "GPT-4o", value: "gpt-4o", provider: "openai" },
   { label: "Claude Sonnet 4.6", value: "claude-sonnet-4-6", provider: "anthropic" },
 ];
@@ -75,7 +76,40 @@ export interface ModeConfig {
 
 export const MODES: Record<AgentMode, ModeConfig> = {
   "research-run": {
-    model: "gpt-4o",
+    // 2026-05-15 — swapped gpt-4o → gpt-5.5 after the day's analyst-quality
+    // audit (docs/run-reviews/2026-05-15.md) surfaced the same "happily
+    // fills in the blanks at the final-decision layer" pattern that drove
+    // the discovery swap (PR #271). Concrete instances:
+    //
+    //   • 5 PASS-archive prose↔action contradictions across 3 analysts.
+    //     Agent wrote "I'll maintain a watch status" in the rationale text
+    //     while passing `change_status: ARCHIVED` (KLAC/TXN on Earnings
+    //     Drift; FIVN/MSFT/SNDK on Tech Momentum). Run summaries labeled
+    //     them correctly as REMOVE_WATCH/PASS — the per-thesis prose lied
+    //     about the structured action.
+    //   • 2 goalpost-moves (QCOM target $247.90→$225 + stop down too,
+    //     AMKR ENTER trigger $90→$78). The MRVL anti-pattern called out
+    //     in GAPS.md as "0 occurrences on 5/07" — back today on gpt-4o.
+    //   • Secular Theme's run summary said SMCI was both "weakest holding"
+    //     and "best candidate" in the same sentence; ranked_picks listed 2
+    //     tickers when the analyst touched 5.
+    //
+    // Whether gpt-5.5 actually fixes prose↔action coherence is the test
+    // tomorrow. The tool-side validators discussed in Open Questions 3 + 4
+    // (reject "maintain watch" rationale when change_status=ARCHIVED;
+    // reject WATCHING target/stop moves without a coreBelief change) are
+    // still owed and will catch what the model misses.
+    //
+    // Latency budget: gpt-5.5 measures at ~13s/tool-call from the discovery
+    // swap. Today's biggest morning runs were 21–22 tool calls under gpt-4o
+    // (Earnings Drift, Tech Momentum, Secular Theme). At 13s each that's
+    // 273–286s of agent time. maxDuration raised 300 → 800 to fit inside
+    // Vercel Pro's 800s ceiling (Hobby's 300s cap is why discovery was
+    // throttled to maxDuration:270 — Pro removes that constraint
+    // entirely). The cron's abortSignal in morning-research.ts now reads
+    // (maxDuration - 30) * 1000 = 770s, mirroring the pattern tactical +
+    // discovery already use.
+    model: "gpt-5.5",
     provider: "openai",
     // Bumped 50 → 65 on 2026-04-24. A complete 6-stage run has roughly:
     //   Stage 1: 2–3 steps (brief + signals)
@@ -124,7 +158,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       //   record_thesis — minting new coverage is Discovery's job
     ] as const,
     hasSuggestConfig: false,
-    maxDuration: 300,
+    // 2026-05-15 — raised 300 → 800 with the gpt-5.5 swap and Vercel Pro
+    // upgrade. See model-swap rationale above. The abortSignal in
+    // morning-research.ts derives 770_000ms from this value.
+    maxDuration: 800,
   },
   "builder": {
     model: "gpt-4o",
@@ -225,41 +262,40 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "complete_run",
     ] as const,
     hasSuggestConfig: false,
-    // 2026-05-15 — set to 270 to fit inside the Vercel Hobby plan's
-    // 300s function-timeout ceiling.
+    // 2026-05-15 — raised 270 → 800 after the Vercel Pro upgrade. The
+    // prior 270 was a workaround for Hobby's 300s function timeout
+    // ceiling — option (c) in the deferred-fix list (see history below)
+    // is the path that actually landed.
     //
-    // PR #271 mistakenly raised this to 480 thinking that would give
-    // GPT-5.5 more time. It did the opposite: the in-code AbortSignal
-    // formula is `(maxDuration - 30) * 1000`, so 480 means the abort
-    // fires at 450s — but Vercel kills the function ungracefully at
-    // ~300s, well before the abort can hand control to the catch
-    // block to write record_run_summary + complete_run. Net effect:
-    // less graceful failure.
+    // What this unlocks for discovery specifically:
+    //   • 800 maxDuration → AbortSignal at 770s → ~770/13 ≈ 59 tool
+    //     calls of budget. Today's discovery shape is 3 parallel pulls
+    //     + 2N candidate research + N record_thesis + 2 finishers =
+    //     3N + 5. At 770s of headroom, N=15+ mints fit comfortably vs
+    //     the prior N=4–5 ceiling.
+    //   • Removes the bias toward "shorter PASS+ARCHIVED rows" the
+    //     prompt was leaning on to fit inside the 240s of agent budget.
+    //     Discovery can now populate full structural fields (horizon,
+    //     triggers, coreBelief, keyAssumptions, invalidationConds) on
+    //     every minted thesis without timing out.
     //
-    // 270 puts the AbortSignal at 240s — 60s LATER than the 210s wall
-    // that killed both Tech Momentum (cmp698wva) and Secular Theme
-    // (cmp6bryy) under the prior 240 setting, AND 30s before Vercel's
-    // 300s hard kill. The catch block then has 30s of headroom to
-    // persist messages + mark the run COMPLETE/FAILED cleanly.
+    // History (the workaround that this replaces):
+    //   • 270 was the safe value under Hobby's 300s ceiling. PR #271
+    //     briefly raised to 480 — that was a mistake because the in-code
+    //     AbortSignal formula is `(maxDuration - 30) * 1000`, so 480
+    //     meant abort at 450s but Vercel killed the function ungracefully
+    //     at ~300s, well before the catch block could persist the run.
+    //   • 270 → AbortSignal at 240s → 60s later than the 210s wall that
+    //     had killed Tech Momentum (cmp698wva) and Secular Theme
+    //     (cmp6bryy) under prior tuning, and 30s before Vercel's 300s
+    //     hard kill so the catch block could mark COMPLETE/FAILED
+    //     cleanly.
     //
-    // GPT-5.5 with implicit reasoning takes ~13s/tool-call (measured
-    // from Tech Momentum's 16 calls in 211s). 240s of actual agent
-    // budget = 240/13 ≈ 18 tool calls. Discovery's shape is 3 parallel
-    // pulls + 2N candidate research + N record_thesis + 2 finishers =
-    // 3N + 5. Fits N=4 mints comfortably, N=5 tight. For rich weeks
-    // the mint floor in the prompt tells the agent to bias toward
-    // shorter PASS+ARCHIVED rows (no horizon, no triggers, fewer
-    // structural fields to populate) which run faster per call.
-    //
-    // If the Hobby plan stays in force long-term, a future PR should:
-    //   (a) split discovery into multiple Inngest steps (each its
-    //       own 300s budget), OR
-    //   (b) move to a faster model (GPT-5.4 / GPT-5.4-mini cuts
-    //       per-call latency ~40% based on advertised reasoning
-    //       throughput), OR
-    //   (c) upgrade Vercel plan (Pro → 800s ceiling).
-    // For now, 270 unblocks runs from completing at all.
-    maxDuration: 270,
+    // Tactical-run.ts + discovery-run.ts read this value directly and
+    // compute their AbortSignal from `(maxDuration - 30) * 1000`. The
+    // morning-research.ts cron now does the same (used to be a hardcoded
+    // 240_000ms — fixed in this PR).
+    maxDuration: 800,
   },
   // ── Tactical (PR 2) ─────────────────────────────────────────────────────
   // Event-driven, single-thesis, single-decision. Spawned by tactical-run
@@ -267,7 +303,14 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   // allowlist — tactical never mints new theses; it acts on / updates an
   // existing one. update_thesis IS the close-out call (always written).
   "tactical": {
-    model: "gpt-4o",
+    // 2026-05-15 — same gpt-4o → gpt-5.5 swap as research-run. Tactical is
+    // single-thesis, single-decision (15 maxSteps), so the latency
+    // exposure is small: a typical tactical run today was 20–80s under
+    // gpt-4o; under gpt-5.5 expect roughly 2× that, well inside the new
+    // 800s ceiling. The motivation is consistency — the daily-run agent
+    // is now gpt-5.5, so the tactical follow-up should reason in the
+    // same model.
+    model: "gpt-5.5",
     provider: "openai",
     maxSteps: 15,
     toolAllowlist: [
@@ -290,7 +333,13 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "complete_run",
     ] as const,
     hasSuggestConfig: false,
-    maxDuration: 240,
+    // 2026-05-15 — raised 240 → 800 with the gpt-5.5 swap (Vercel Pro
+    // ceiling). The abortSignal in tactical-run.ts will compute
+    // (800 - 30) * 1000 = 770_000ms. Practical use will rarely approach
+    // this — tactical runs end in 15 maxSteps regardless — but the
+    // headroom prevents abort-clipping if the model thinks for a long
+    // time on a single tool call.
+    maxDuration: 800,
   },
   // ── Principal Chat (operator co-pilot) ─────────────────────────────────
   // The user's right hand. Same operational map as the daily-run agent,

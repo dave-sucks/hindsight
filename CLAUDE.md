@@ -43,7 +43,7 @@ Built for one user now, marketed later.
 - User clicks "Run" → POST /api/research/agent-run creates ResearchRun
 - Redirects to /runs/[id] → renders AgentThread component
 - AgentThread uses AI SDK v6 useChat → POST /api/agent/research-run
-- GPT-4o (maxSteps 65, temperature 0.2) + the full tool catalog
+- GPT-5.5 (maxSteps 65, temperature 0.2) + the full tool catalog
   autonomously researches, updates theses, manages positions, and
   places trades via Alpaca
 - Tools render via ToolCallGroup → ToolCallRow dispatching on result.ui
@@ -180,11 +180,11 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 
 ## API Routes
 - /api/agent/[mode] — unified agent route. Modes:
-  - research-run: GPT-4o, temperature 0.2, maxSteps 65 (the daily-run agent)
+  - research-run: GPT-5.5, temperature 0.2, maxSteps 65 (the daily-run agent)
   - builder: GPT-4o, research tools only + suggest_config
   - editor: GPT-4o, research tools only + suggest_config
-  - tactical: GPT-4o, maxSteps 15 (single-thesis, single-decision)
-  - discovery: GPT-4o, maxSteps 25 (weekly Sunday cron)
+  - tactical: GPT-5.5, maxSteps 15 (single-thesis, single-decision)
+  - discovery: GPT-5.5, maxSteps 45 (weekly Sunday cron)
   - podcast-builder / podcast-segment-run / podcast-editor
 - /api/research/agent-run — creates ResearchRun row, returns runId
 - /api/research/trigger — Inngest manual trigger
@@ -430,11 +430,21 @@ it with a ticker chip as if it were a traded security.
   always cast with type guard
 - async params in Next.js App Router: params: Promise<{ id: string }>
 - FMP /quote/ endpoint DEPRECATED — use Finnhub for all quotes
-- Model strategy: GPT-4o EVERYWHERE (research-run, builder, editor,
-  tactical, discovery). research-run uses temperature 0.2 and maxSteps
-  65 for stage contract adherence. Tactical maxSteps 15, discovery 25.
-  GPT-4o-mini for lightweight summaries. Do NOT swap to Claude —
-  the 30k context limit crashes the run.
+- Model strategy (post-2026-05-15):
+  - **research-run + tactical + discovery**: GPT-5.5 (provider: openai).
+    research-run uses temperature 0.2 + maxSteps 65; tactical maxSteps 15;
+    discovery maxSteps 45. Vercel Pro plan required — the 800s function
+    timeout headroom is needed because gpt-5.5 with implicit reasoning
+    runs ~13s/tool-call vs gpt-4o's faster cadence. modes.ts maxDuration
+    is 800 for all three; the cron/route AbortSignal derives 770s from
+    `(maxDuration - 30) * 1000`.
+  - **builder + editor**: GPT-4o still (user-facing latency matters in
+    the chat panel; gpt-5.5 would feel slow when interactively
+    iterating on a fence).
+  - **principal-chat**: Claude Sonnet 4.6 with thinking budget 4000.
+  - **GPT-4o-mini**: lightweight summaries (trade evaluator etc.).
+  - **Do NOT swap to Claude for research-run** — the 30k context limit
+    crashes the run.
 - Agent thinking config lives in lib/agent/modes.ts (thinkingBudget field)
 - gh auth switch --user dave-sucks before pushing
 
@@ -444,7 +454,7 @@ it with a ticker chip as if it were a traded security.
 3. AgentThread → ChatRuntime → POST /api/agent/research-run
 4. Route loads config + historical context (portfolio, watchlist,
    briefs, trades, accuracy, intelligence policy)
-5. GPT-4o (temperature 0.2) follows the per-thesis review flow with
+5. GPT-5.5 (temperature 0.2) follows the per-thesis review flow with
    Phase-0 check-in:
    Phase 0: Portfolio check-in (injected context, no tools)
    Stage 1 — Orient: read_signals (today buckets: portfolio / watchlist
