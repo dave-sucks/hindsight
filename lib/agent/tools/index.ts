@@ -26,6 +26,9 @@ import { getAnalystCoverage } from "./get-analyst-coverage";
 import { getInsiderActivity } from "./get-insider-activity";
 import { getEarningsHistory } from "./get-earnings-history";
 import { getPeersWithMetrics } from "./get-peers-with-metrics";
+// THESIS_RESEARCH_V2 — Phase 1 meta-tool + orchestrator dispatch.
+import { writeThesisResearch } from "./write-thesis-research";
+import { dispatchThesisResearch } from "./dispatch-thesis-research";
 import { readSignals } from "./read-signals";
 import { readArtifact } from "./read-artifact";
 import { webSearch } from "./web-search";
@@ -129,6 +132,12 @@ export function createResearchTools(ctx: ToolCtx) {
     get_insider_activity: getInsiderActivity(newCtx),
     get_earnings_history: getEarningsHistory(newCtx),
     get_peers_with_metrics: getPeersWithMetrics(newCtx),
+    // THESIS_RESEARCH_V2 — Phase 1.
+    // write_thesis_research is the meta-tool the thesis-writer agent calls.
+    // dispatch_thesis_research is the orchestrator-side spawner used by
+    // Principal Chat (and later Discovery / Daily / Tactical).
+    write_thesis_research: writeThesisResearch(newCtx),
+    dispatch_thesis_research: dispatchThesisResearch(newCtx),
     read_signals: readSignals(newCtx),
     read_artifact: readArtifact(newCtx),
     web_search: webSearch(newCtx),
@@ -187,6 +196,9 @@ export { getAnalystCoverage } from "./get-analyst-coverage";
 export { getInsiderActivity } from "./get-insider-activity";
 export { getEarningsHistory } from "./get-earnings-history";
 export { getPeersWithMetrics } from "./get-peers-with-metrics";
+// THESIS_RESEARCH_V2 — Phase 1.
+export { writeThesisResearch } from "./write-thesis-research";
+export { dispatchThesisResearch } from "./dispatch-thesis-research";
 export { readSignals } from "./read-signals";
 export { readArtifact } from "./read-artifact";
 export { webSearch } from "./web-search";

@@ -22,6 +22,9 @@ import { pipelineCleanup } from "@/lib/inngest/functions/pipeline-cleanup";
 import { housekeepingOverdueTheses } from "@/lib/inngest/functions/housekeeping-overdue-theses";
 import { episodeTts } from "@/lib/inngest/functions/episode-tts";
 import { podcastSegmentRun } from "@/lib/inngest/functions/podcast-segment-run";
+// THESIS_RESEARCH_V2 Phase 1 — sub-agent dispatched by Principal Chat
+// (and later Discovery / Daily / Tactical) to write one deep thesis.
+import { thesisWriter } from "@/lib/inngest/functions/thesis-writer";
 
 // morning-research runs a full agent (generateText with 30 tool steps)
 // inside a single step.run — needs extended timeout to avoid Vercel killing it
@@ -84,5 +87,11 @@ export const { GET, POST, PUT } = serve({
     episodeTts,
     // Podcast — server-side segment run (used by "Run all")
     podcastSegmentRun,
+    // THESIS_RESEARCH_V2 Phase 1 — consumes app/thesis.write.requested
+    // from dispatch_thesis_research, runs the focused sub-agent that
+    // produces one deep-research thesis on one ticker, emits
+    // app/thesis.written on completion. concurrency:5 inside the
+    // function caps parallel fan-out for the Phase-2 Discovery rollout.
+    thesisWriter,
   ],
 });
