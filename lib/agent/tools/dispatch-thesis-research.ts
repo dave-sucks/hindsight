@@ -99,6 +99,23 @@ export const dispatchThesisResearch = defineTool({
       };
     }
 
+    // Resolve parentRunId. ctx.runId might be a real ResearchRun id (the
+    // scoped principal-chat path creates one and threads it through) or a
+    // mode-name sentinel like "principal" (the unscoped path, where the
+    // route falls back to `runId || agentMode`). Inserting a sentinel as
+    // parentRunId would FK-violate `ResearchRun(parentRunId → ResearchRun.id)`,
+    // so verify the row exists and pass `undefined` when it doesn't —
+    // Prisma then omits the field and the child run lands as a top-level
+    // orphan (which is the right behavior for unscoped dispatches anyway).
+    let resolvedParentRunId: string | undefined;
+    if (ctx.runId) {
+      const parentExists = await prisma.researchRun.findUnique({
+        where: { id: ctx.runId },
+        select: { id: true },
+      });
+      if (parentExists) resolvedParentRunId = ctx.runId;
+    }
+
     // mode is intentionally a String column on ResearchRun (not a Prisma
     // enum) so new values like "THESIS_WRITER" don't need a migration. See
     // docs/plans/THESIS_RESEARCH_V2.md §7.
@@ -111,13 +128,13 @@ export const dispatchThesisResearch = defineTool({
         status: "RUNNING",
         mode: "THESIS_WRITER",
         environment: ctx.runEnvironment ?? "PAPER",
-        parentRunId: ctx.runId,
+        ...(resolvedParentRunId ? { parentRunId: resolvedParentRunId } : {}),
         parameters: {
           ticker: T,
           mode: args.mode,
           existingThesisId: args.existing_thesis_id ?? null,
           reason: args.reason,
-          parentRunId: ctx.runId,
+          parentRunId: resolvedParentRunId ?? null,
           dispatchedAt: new Date().toISOString(),
         } as object,
       },
@@ -133,7 +150,7 @@ export const dispatchThesisResearch = defineTool({
         mode: args.mode,
         existingThesisId: args.existing_thesis_id ?? null,
         reason: args.reason,
-        parentRunId: ctx.runId,
+        parentRunId: resolvedParentRunId ?? null,
       },
     });
 
