@@ -47,7 +47,13 @@ export type AgentMode =
   // podcast-editor: refine an existing Podcast + Segments via chat.
   | "podcast-builder"
   | "podcast-segment-run"
-  | "podcast-editor";
+  | "podcast-editor"
+  // THESIS_RESEARCH_V2 Phase 1 — sub-agent that produces one multi-section
+  // deep-research thesis on one ticker. Spawned by dispatch_thesis_research
+  // from Discovery / Daily / Tactical / Principal Chat via Inngest. Reads
+  // mostly through the write_thesis_research meta-tool; writes via
+  // record_thesis or update_thesis. See docs/plans/THESIS_RESEARCH_V2.md.
+  | "thesis-writer";
 
 // ── Mode config ──────────────────────────────────────────────────────────────
 
@@ -393,6 +399,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "place_trade",
       "manage_position",
       "close_position",
+      // ── Sub-agent dispatch (THESIS_RESEARCH_V2 Phase 1) ────────────
+      // Spawns a thesis-writer child run for one ticker. Returns a
+      // childRunId immediately; the deep research happens async.
+      "dispatch_thesis_research",
     ] as const,
     // suggest_config wires the side-panel diff for analyst edits — works
     // with or without analyst scope.
@@ -457,6 +467,62 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     ] as const,
     hasSuggestConfig: false,
     maxDuration: 180,
+  },
+  // ── Thesis Writer (THESIS_RESEARCH_V2 Phase 1) ───────────────────────────
+  // Sub-agent that produces one deep-research thesis on one ticker. Spawned
+  // by dispatch_thesis_research (orchestrator-side) via Inngest. The
+  // write_thesis_research meta-tool does ~95% of the work — parallel data
+  // pulls + deep-research-model synthesis — so this agent only needs to
+  // layer direction / horizon / target / stop / belief / confidence on top
+  // via record_thesis or update_thesis.
+  //
+  // Model choice (2026-05-16 bake-off, docs/plans/THESIS_RESEARCH_V2.md):
+  //   • PICKED: claude-sonnet-4-6 + Anthropic native web_search tool.
+  //     Wins on grounded synthesis depth, citation density, fiscal-year
+  //     accuracy. Native web_search is plumbed into both the agent loop
+  //     here AND the synthesis call inside write_thesis_research — that's
+  //     where the bake-off's depth advantage actually lands.
+  //   • AVOID: GPT-5 / GPT-5.5 / o3 family. The bake-off found these
+  //     models hallucinate fiscal-year framing — observed citing "Q1
+  //     FY2026" numbers that were actually a year stale. The structured
+  //     data block names dates explicitly, but the synthesis-layer
+  //     reframing introduces the drift. Re-test if a new GPT generation
+  //     ships, but the prior generation's failure mode is reason enough
+  //     to default away from it.
+  //   • FALLBACK: gemini-2.5-pro with Google Search grounding. Close
+  //     second on every dimension. If a future Claude API/provider regression
+  //     breaks this mode, swap to:
+  //         model: "gemini-2.5-pro",
+  //         provider: "google",        (need @ai-sdk/google + GOOGLE_API_KEY)
+  //     and pass googleSearch grounding via providerOptions instead of the
+  //     anthropic webSearch tool. Don't silently fall back to Sonar — the
+  //     bake-off found Sonar deep research alone is the weakest of the
+  //     four candidates for this prompt shape.
+  "thesis-writer": {
+    model: "claude-sonnet-4-6",
+    provider: "anthropic",
+    // Generous budget — synthesis-model call inside write_thesis_research
+    // takes ~60-90s and counts as ONE step in the agent loop.
+    maxSteps: 8,
+    toolAllowlist: [
+      // The meta-tool — handles the entire data-pull + synthesis pipeline.
+      "write_thesis_research",
+      // Persisters — record_thesis for mint, update_thesis for refresh.
+      "record_thesis",
+      "update_thesis",
+      // Edge-case escape hatches: if the meta-tool fails partway through
+      // the agent may want to grab a fresh quote or a niche web search to
+      // validate one number before recording. Kept minimal on purpose.
+      "get_stock_data",
+      "web_search",
+      // Terminal
+      "complete_run",
+    ] as const,
+    hasSuggestConfig: false,
+    // 5 min — the meta-tool can take 60-120s; record_thesis adds a few more
+    // seconds for the durable-state writes. Leaves comfortable headroom
+    // inside Vercel's 300s function timeout.
+    maxDuration: 300,
   },
 };
 
@@ -612,6 +678,8 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
   • \`suggest_config\` — analyst-config edit. Emits a side-panel diff the user accepts. Works in any scope.
 
 To add a ticker to an analyst's watchlist, call \`record_thesis\` with direction='PENDING', status='WATCHING', sourceKind='USER_ADDED', and a one-line reason. To remove, call \`update_thesis(change_status: 'ARCHIVED')\`.
+
+**Deep-research thesis dispatch.** When the user asks for a *fresh, deep, source-cited thesis* on a ticker (the bar is "comparable to a Goldman initiation note or Google AI's stock page" — not a one-paragraph rationale), call \`dispatch_thesis_research(ticker, analyst_id, mode, reason)\`. It spawns a thesis-writer sub-agent that pulls 7 structured data sources in parallel and synthesizes a multi-section note via a deep-research model. The call returns a childRunId immediately; the work takes ~60-120s and lands as a Thesis with \`researchData\` + \`researchSections\` populated. Use \`mode:"mint"\` for new coverage, \`mode:"refresh"\` (with \`existing_thesis_id\`) to update an existing thesis. For quick "what do we think about $X" answers, prefer \`get_theses\` + \`get_stock_data\` — dispatch only when the depth bar requires it.
 
 ══════════════════════════════════════════════════════════════════════
 ## HOW TO OPERATE — the depth bar

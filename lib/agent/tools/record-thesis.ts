@@ -269,6 +269,27 @@ const thesisFields = z.object({
     .describe(
       "DAY-only override. When another analyst already covers this ticker + direction, pass a one-line rationale explaining the day-trade-specific setup (e.g. 'opening-range breakout setup distinct from Tech Momentum's multi-week thesis'). Required to proceed in DAY-only configs; ignored otherwise.",
     ),
+
+  // ── Deep-research artifacts (THESIS_RESEARCH_V2 Phase 1) ───────────────
+  // Populated by the thesis-writer agent after calling write_thesis_research.
+  // Persisted on Thesis.researchData (markdown data block, ~3-5KB) and
+  // Thesis.researchSections (parsed multi-section synthesis with citations).
+  // Optional and ignored when not provided — only the thesis-writer mode
+  // includes them.
+  research_data: z
+    .string()
+    .optional()
+    .describe(
+      "Raw structured-data markdown block from write_thesis_research(...).data.rawDataBlock. " +
+        "Pass through verbatim. Lands on Thesis.researchData for the card's data tab.",
+    ),
+  research_sections: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "Parsed multi-section synthesis from write_thesis_research(...).data.sections. " +
+        "Pass through verbatim. Lands on Thesis.researchSections.",
+    ),
 });
 
 const thesisSchema = thesisFields.superRefine((val, ctx) => {
@@ -868,6 +889,23 @@ export const recordThesis = defineTool({
         maxHoldDays:
           args.max_hold_days ?? (args.horizon === "TRADE" ? 14 : null),
         nextReviewAt,
+        // ── Deep-research artifacts (THESIS_RESEARCH_V2 Phase 1) ───────────
+        // Stamped only when the thesis-writer agent passed them through.
+        // Sets researchUpdatedAt so the daily-run staleness gate (Phase 3)
+        // can refuse promote-to-active on stale research. Use `undefined`
+        // when absent (Prisma omits the field) — Json? doesn't accept raw
+        // `null` without Prisma.JsonNull and we don't need explicit nulls
+        // here; the column defaults to NULL on insert.
+        researchData:
+          typeof args.research_data === "string" && args.research_data.length > 0
+            ? args.research_data
+            : undefined,
+        researchSections:
+          args.research_sections && typeof args.research_sections === "object"
+            ? (args.research_sections as object)
+            : undefined,
+        researchUpdatedAt:
+          args.research_data || args.research_sections ? new Date() : undefined,
       };
 
       // ── Same-direction guard ────────────────────────────────────────
@@ -1066,7 +1104,10 @@ export const recordThesis = defineTool({
           (errMsg.includes("parentThesisId") && errMsg.includes("does not exist")) ||
           (errMsg.includes("sourceSignalIds") && errMsg.includes("does not exist")) ||
           (errMsg.includes("sourceKind") && errMsg.includes("does not exist")) ||
-          (errMsg.includes("sourceRationale") && errMsg.includes("does not exist"));
+          (errMsg.includes("sourceRationale") && errMsg.includes("does not exist")) ||
+          (errMsg.includes("researchData") && errMsg.includes("does not exist")) ||
+          (errMsg.includes("researchSections") && errMsg.includes("does not exist")) ||
+          (errMsg.includes("researchUpdatedAt") && errMsg.includes("does not exist"));
 
         if (isUnknownArgError) {
           // LOUD log — we want to see this in Vercel if it ever happens.
@@ -1091,6 +1132,11 @@ export const recordThesis = defineTool({
             catalystDate: _cdate,
             maxHoldDays: _maxhold,
             nextReviewAt: _review,
+            // THESIS_RESEARCH_V2 Phase 1 — strip if Prisma client predates
+            // the researchData/researchSections/researchUpdatedAt columns.
+            researchData: _rdata,
+            researchSections: _rsections,
+            researchUpdatedAt: _rupdated,
             ...fallbackData
           } = coreData;
           void _ids;
@@ -1106,6 +1152,9 @@ export const recordThesis = defineTool({
           void _cdate;
           void _maxhold;
           void _review;
+          void _rdata;
+          void _rsections;
+          void _rupdated;
           thesis = await prisma.thesis.create({
             data: { ...fallbackData, status: effectiveStatus },
           });
