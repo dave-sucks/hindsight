@@ -48,6 +48,8 @@
 | **B3** | One-shot repair script `fix-watching-next-review.ts` for the 56 existing WATCHING theses with too-short `nextReviewAt` (pre-A4 production state) | **PR open #294** ✓ (bundled) |
 | **B4** | `reconcile-orders.ts` Position-close fill silently null-ed `closeReason` + `closeSource`. 4 mystery 5/18 closes (AMZN, TSM, NVDA, AMD) traced to this path | **PR open #295** ✓ |
 | **B5** | Anti-regression tests for `WATCHING_FIRST_REVIEW_DAYS` ≥ `HORIZON_REVIEW_DAYS` + per-horizon REVIEW_DATE_HIT cooldown coverage | **PR open #295** ✓ (bundled with B4) |
+| **B6** | Zombie-position guard in `update_thesis` extended to `change_status='CLOSED'` (was only INVALIDATED + ARCHIVED before — CLOSED was a third polarity of the same bug) | **PR open #295** ✓ (bundled) |
+| **B7** | Removed legacy keyword-scan promotion gate from `record_run_summary` (~220 lines). `complete_run`'s preflight (PR #266) is the structural superset; the keyword regex was false-failing legitimate rejections. Closes [GAPS P1-13](../GAPS.md#p1-13--old-promotion-keyword-gate-in-record_run_summary-is-now-redundant--actively-wrong) | **PR open #296** ✓ |
 
 ---
 
