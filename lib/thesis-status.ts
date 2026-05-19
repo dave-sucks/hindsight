@@ -12,6 +12,7 @@ export type ThesisStatus =
   | "WATCHING"
   | "CLOSED"
   | "INVALIDATED"
+  | "ARCHIVED"
   | "SUPERSEDED";
 
 export interface ThesisStatusDisplay {
@@ -79,6 +80,16 @@ export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = 
     label: "Invalidated",
     dotClass: "bg-negative",
     tooltip: "Thesis broken — exited or never entered",
+  },
+  ARCHIVED: {
+    label: "Archived",
+    // Walked away from the watchlist without an evidence-driven view-break
+    // (manual remove, editor remove, PASS-at-write). Visually distinct from
+    // INVALIDATED (which carries narrative weight) and CLOSED (which
+    // implies a position lifecycle).
+    dotClass: "bg-muted-foreground/40",
+    tooltip:
+      "Walked away from coverage — no trade outcome, no evidence-driven invalidation",
   },
   SUPERSEDED: {
     label: "Superseded",

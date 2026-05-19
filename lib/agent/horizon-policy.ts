@@ -82,3 +82,26 @@ export function horizonHint(horizon: Horizon | null | undefined): string {
   const policy = HORIZON_EXIT_POLICY[horizon];
   return `${cadence}. ${policy}`;
 }
+
+/**
+ * Derive the legacy hold-duration label from a horizon. Used by UI surfaces
+ * that still render "Hold duration: SWING" while the `holdDuration` column
+ * is being deprecated (THESIS_CLEANUP PR-2). Mapping matches the existing
+ * `record_thesis` writer fallback exactly:
+ *   COMPOUNDER → POSITION  (months-to-years)
+ *   TARGET / TRADE / CATALYST → SWING  (everything bounded under ~quarters)
+ *
+ * DAY is intentionally never auto-picked — the no-overnight pattern is
+ * driven by `AgentConfig.holdDurations` + the EOD-flatten cron, not by
+ * the thesis row.
+ *
+ * Falls back to "SWING" when horizon is null so the UI never renders a
+ * blank cell. The column itself goes away in PR-4.
+ */
+export type HoldDurationLabel = "DAY" | "SWING" | "POSITION";
+
+export function holdDurationFromHorizon(
+  horizon: Horizon | string | null | undefined,
+): HoldDurationLabel {
+  return horizon === "COMPOUNDER" ? "POSITION" : "SWING";
+}
