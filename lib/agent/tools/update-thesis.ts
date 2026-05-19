@@ -36,7 +36,11 @@ import {
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
-import { HORIZON_REVIEW_DAYS, type Horizon } from "@/lib/agent/horizon-policy";
+import {
+  HORIZON_REVIEW_DAYS,
+  holdDurationFromHorizon,
+  type Horizon,
+} from "@/lib/agent/horizon-policy";
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -1090,7 +1094,13 @@ function thesisToCardData(t: Record<string, unknown>): {
       typeof t.targetPrice === "number" ? (t.targetPrice as number) : null,
     stop_loss:
       typeof t.stopLoss === "number" ? (t.stopLoss as number) : null,
-    hold_duration: (t.holdDuration as string) ?? undefined,
+    // Hold duration is now derived from `horizon` at card-data assembly
+    // time (PR-4 — the legacy column drops in PR-5). Falls back to the
+    // legacy column for rows that don't yet have horizon set.
+    hold_duration:
+      typeof t.horizon === "string" && t.horizon.length > 0
+        ? holdDurationFromHorizon(t.horizon)
+        : ((t.holdDuration as string) ?? undefined),
     signal_types: (t.signalTypes as string[]) ?? [],
     status: (t.status as
       | "ACTIVE"

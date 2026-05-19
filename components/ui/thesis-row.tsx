@@ -11,6 +11,7 @@ import { Favicon } from "@/components/intelligence/signal-feed";
 import { getTradeStatusDisplay } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
+import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 
 // 2026-04-29: removed inline expand-on-click and analyst-link button.
 // The Details button opens the full ThesisSheet which has more
@@ -31,6 +32,17 @@ export interface ThesisRowData {
   entryPrice: number | null;
   targetPrice: number | null;
   stopLoss: number | null;
+  /**
+   * Trade horizon (CATALYST / TRADE / TARGET / COMPOUNDER). Drives the
+   * derived hold-duration label rendered on the card. Optional only because
+   * legacy rows from before the Durable State migration may not have it.
+   */
+  horizon?: string | null;
+  /**
+   * Legacy hold-duration column. Deprecated in favor of `horizon` →
+   * `holdDurationFromHorizon()`. Kept on the type only to support rows
+   * pulled before PR-4. Drops with the column in PR-5.
+   */
   holdDuration?: string;
   createdAt?: string | null;
   analystName?: string | null;
@@ -265,7 +277,9 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         entry_price={t.entryPrice}
         target_price={t.targetPrice}
         stop_loss={t.stopLoss}
-        hold_duration={t.holdDuration}
+        hold_duration={
+          t.horizon ? holdDurationFromHorizon(t.horizon) : t.holdDuration
+        }
         company_name={t.companyName}
       />
     </div>
