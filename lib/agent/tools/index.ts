@@ -65,6 +65,8 @@ interface ToolCtx {
   analystId?: string;
   /** Podcast feature — FK to PodcastSegment for segment runs. */
   podcastSegmentId?: string;
+  /** ResearchRun.mode — needed for mode-specific tool gates. See ToolContext.runMode. */
+  runMode?: string;
   watchlist?: string[];
   /** Open-position tickers (status=OPEN) for the analyst — fence bypass. */
   positionTickers?: string[];

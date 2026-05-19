@@ -588,12 +588,26 @@ export async function POST(
         ).map((p) => p.symbol)
       : [];
 
+    // Map the HTTP agentMode to the ResearchRun.mode string the tool layer
+    // expects. Used by the complete_run preflight to short-circuit
+    // tactical-specific gates. Tactical is event-driven and doesn't enter
+    // via this route, so no INTRADAY_TACTICAL branch here.
+    const runMode: string | undefined =
+      agentMode === "research-run"
+        ? "MORNING_PLAN"
+        : agentMode === "principal"
+          ? "PRINCIPAL_CHAT"
+          : agentMode === "podcast-segment-run"
+            ? "PODCAST_SEGMENT_RUN"
+            : undefined;
+
     const allTools = createResearchTools({
       runId: runId || agentMode,
       userId: user.id,
       accountId,
       analystId: resolvedAnalystId,
       podcastSegmentId: resolvedPodcastSegmentId,
+      runMode,
       watchlist: (agentConfig.watchlist as string[]) ?? [],
       positionTickers,
       exclusionList: (agentConfig.exclusionList as string[]) ?? [],

@@ -165,6 +165,7 @@ export const discoveryRun = inngest.createFunction(
           userId: config.userId,
           accountId: config.accountId,
           analystId: config.id,
+          runMode: "DISCOVERY",
           watchlist: watchlistSymbols,
           positionTickers: openPositionTickers,
           exclusionList: config.exclusionList ?? [],

@@ -32,7 +32,7 @@ export const completeRun = defineTool({
       // rejections in-conversation and can recover without the run going
       // terminal. Skip for podcast segments and unscoped runs.
       if (ctx.runId && ctx.analystId && !ctx.podcastSegmentId) {
-        const preflightFailure = await runCompleteRunPreflight(ctx.runId, ctx.analystId);
+        const preflightFailure = await runCompleteRunPreflight(ctx.runId, ctx.analystId, ctx.runMode);
         if (preflightFailure) {
           return {
             summary: `complete_run refused: ${preflightFailure.shortReason}`,
@@ -282,21 +282,38 @@ type PreflightFailure = {
 async function runCompleteRunPreflight(
   runId: string,
   analystId: string,
+  runMode?: string,
 ): Promise<PreflightFailure | null> {
   // 1) Did the agent call record_run_summary?
-  const summaryEvent = await prisma.runEvent.findFirst({
-    where: { runId, type: "run_summary" },
-    select: { id: true },
-  });
-  if (!summaryEvent) {
-    return {
-      kind: "no_run_summary",
-      shortReason: "record_run_summary not called",
-      message:
-        "complete_run refused: you must call record_run_summary BEFORE complete_run. " +
-        "Summarize this run's decisions (primary_decision, decision_rationale, ranked_picks) " +
-        "and call complete_run again.",
-    };
+  //
+  // Tactical runs are exempt: they're single-thesis, single-decision, and
+  // record_run_summary is not in the INTRADAY_TACTICAL tool allowlist
+  // (lib/agent/modes.ts). Before this exemption, every tactical run hit
+  // the gate, retried complete_run (which the agent literally couldn't
+  // satisfy), and only completed because tactical-run.ts's closeOut path
+  // set status=COMPLETE based on update_thesis having fired. Net effect
+  // was 2 wasted retries per tactical run (35 runs × 2 = 70 wasted steps
+  // on 2026-05-18 alone) plus training the model to ignore gate refusals
+  // — which then leaked into daily-run where the gates DO matter. The
+  // unaddressed_theses gate below still applies to tactical.
+  //
+  // A6 from docs/plans/SYSTEM_AUDIT_2026_05_19.md.
+  const skipSummaryGate = runMode === "INTRADAY_TACTICAL";
+  if (!skipSummaryGate) {
+    const summaryEvent = await prisma.runEvent.findFirst({
+      where: { runId, type: "run_summary" },
+      select: { id: true },
+    });
+    if (!summaryEvent) {
+      return {
+        kind: "no_run_summary",
+        shortReason: "record_run_summary not called",
+        message:
+          "complete_run refused: you must call record_run_summary BEFORE complete_run. " +
+          "Summarize this run's decisions (primary_decision, decision_rationale, ranked_picks) " +
+          "and call complete_run again.",
+      };
+    }
   }
 
   // 2) Did an upstream gate (narration gate) already mark this run FAILED?
