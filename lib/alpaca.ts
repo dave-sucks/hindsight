@@ -532,11 +532,22 @@ export async function getPortfolioHistory(
 
 /**
  * Returns daily bars for a symbol using Alpaca Data API v2.
- * Useful as a fallback when Finnhub/FMP lack candle data (micro-caps, ADRs).
+ *
+ * Promoted from "fallback for Finnhub/FMP" to "primary candle source"
+ * 2026-05-19: Finnhub `/stock/candle` returns 403 on the basic plan
+ * (paid tier only) and FMP `/historical-price-full` is fully deprecated
+ * since 2025-08-31 ("Legacy endpoint, no longer supported"). Without
+ * `feed: "iex"`, Alpaca defaults to the SIP feed which requires a paid
+ * market-data subscription — silently returning zero bars on the free
+ * plan. The whole `get_stock_data.technicals` block was null on 128/128
+ * tactical runs and 10/10 morning runs in the 14d window ending
+ * 2026-05-19 because of this default. IEX is the right feed for free-plan
+ * paper accounts and is consistent with how Alpaca's own tutorials
+ * recommend defaulting for non-paid users.
  */
 export async function getBars(
   symbol: string,
-  options: { start: string; end: string; timeframe?: string; limit?: number },
+  options: { start: string; end: string; timeframe?: string; limit?: number; feed?: string },
   creds?: AlpacaCredentials,
 ): Promise<{ close: number; volume: number }[]> {
   const bars: { close: number; volume: number }[] = [];
@@ -548,6 +559,7 @@ export async function getBars(
       end: options.end,
       timeframe: options.timeframe || "1Day",
       limit: options.limit || 90,
+      feed: options.feed ?? "iex",
     });
 
     for await (const bar of barIterator) {
