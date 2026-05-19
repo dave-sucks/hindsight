@@ -30,14 +30,24 @@
 
 | # | Item | Severity | Status |
 |---|---|---|---|
-| **A1** | `get_stock_data.technicals` returns `null` on 100% of runs — blocks every entry | **P0 — blocker** | Open |
-| **A2** | `place_trade` doesn't drop ENTER triggers on WATCHING → ACTIVE promotion (AVGO fires 8×) | **P0 — wild-west symptom** | Open |
-| **A3** | Discovery cap is supposed to be 5 / run, ran at 7-8 / run on 2026-05-17 → 38 new WATCHING in one day | **P0 — book flood** | Open |
-| **A4** | Newly-minted WATCHING theses get `nextReviewAt = createdAt + ~4-7d` regardless of horizon — COMPOUNDER should be 30-90d | **P0 — review storm** | Open |
-| **A5** | `REVIEW_DATE_HIT` trigger uses a flat 7d cooldown, ignoring horizon. Should track horizon hygiene cadence (14/30/90d) | **P0 — review storm** | Open |
-| **A6** | `complete_run` preflight refuses every tactical run for missing `record_run_summary` but tactical can't call it | **P1 — cosmetic but training agent to ignore gates** | Open |
-| **A7** | `update_thesis` classifies narrative-only patches as UPDATED instead of REVIEWED — audit log collapsed since gpt-5.5 swap | **P1 — audit-log hygiene** | Open |
-| **A8** | Cross-analyst discovery duplication: 4 analysts added AMBA on the same Sunday | **P2 — book quality** | Open |
+| **A1** | `get_stock_data.technicals` returns `null` on 100% of runs — blocks every entry | **P0 — blocker** | **PR open #289** ✓ |
+| **A2** | `place_trade` doesn't drop ENTER triggers on WATCHING → ACTIVE promotion (AVGO fires 8×) | **P0 — wild-west symptom** | **PR open #292** ✓ |
+| **A3** | Discovery cap is supposed to be 8 / run; ran at 7-8 / run on 2026-05-17 → 38 new WATCHING in one day | **P0 — book flood** | **PR open #293** ✓ (Layer-1 enforcement) |
+| **A4** | Newly-minted WATCHING theses get `nextReviewAt = createdAt + ~4-7d` regardless of horizon — COMPOUNDER should be 30-90d | **P0 — review storm** | **PR open #291** ✓ |
+| **A5** | `REVIEW_DATE_HIT` trigger uses a flat 7d cooldown, ignoring horizon. Should track horizon hygiene cadence (14/30/90d) | **P0 — review storm** | **PR open #291** ✓ (bundled with A4) |
+| **A6** | `complete_run` preflight refuses every tactical run for missing `record_run_summary` but tactical can't call it | **P1 — cosmetic but training agent to ignore gates** | **PR open #290** ✓ |
+| **A7** | `update_thesis` classifies narrative-only patches as UPDATED instead of REVIEWED — audit log collapsed since gpt-5.5 swap | **P1 — audit-log hygiene** | **PR open #290** ✓ (bundled with A6) |
+| **A8** | Cross-analyst discovery duplication: 4 analysts added AMBA on the same Sunday | **P2 — book quality** | Open (defer — revisit after A3 ships) |
+
+### Follow-on findings (post-A1 / A2 / A4 re-audit)
+
+| # | Item | Status |
+|---|---|---|
+| **B1** | `get_stock_data` made Alpaca primary, dropped dead Finnhub `/stock/candle` + FMP `/historical-price-full` fallbacks (~500ms latency cleanup) | **PR open #294** ✓ |
+| **B2** | FMP `/api/v3` + `/v4` deprecated 2025-08-31 — migrated every tool to `/stable/*` paths. Affects get_stock_data, get_options_flow, get_market_context, get_financials_deep, get_earnings_history, get_analyst_coverage, get_peers_with_metrics | **PR open #294** ✓ (bundled with B1) |
+| **B3** | One-shot repair script `fix-watching-next-review.ts` for the 56 existing WATCHING theses with too-short `nextReviewAt` (pre-A4 production state) | **PR open #294** ✓ (bundled) |
+| **B4** | `reconcile-orders.ts` Position-close fill silently null-ed `closeReason` + `closeSource`. 4 mystery 5/18 closes (AMZN, TSM, NVDA, AMD) traced to this path | **PR open #295** ✓ |
+| **B5** | Anti-regression tests for `WATCHING_FIRST_REVIEW_DAYS` ≥ `HORIZON_REVIEW_DAYS` + per-horizon REVIEW_DATE_HIT cooldown coverage | **PR open #295** ✓ (bundled with B4) |
 
 ---
 
