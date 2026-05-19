@@ -12,8 +12,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { PriceChange } from "@/components/ui/price-change";
 import { InfoRow } from "@/components/ui/info-row";
@@ -31,11 +37,17 @@ import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineS
 import {
   ThesisTriggersSection,
   type TriggersResponse,
+  type ThesisResearchSections,
+  type ResearchTextSection,
+  type ResearchBulletSection,
+  type ResearchCitation,
+  type ThesisSourcesUsedItem,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import {
   getThesisStatusDisplay,
   type ThesisStatus,
 } from "@/lib/thesis-status";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
@@ -200,32 +212,25 @@ function PositionRow({
 
 // ── WatchingRow ──
 // The non-held analogue of PositionRow. Renders when status === 'WATCHING'.
-// Two stacked lines:
+// One actionable headline:
 //   "Watching for entry above ${target}"     (or "below" for SHORT)
-//   "{LONG|SHORT|PASS} · target ${T} / stop ${S} · {HORIZON} horizon"
+//   "Watching — previously rejected"         (PASS)
 //
-// Direction shapes the headline:
-//   LONG  → "Watching for entry above $X"
-//   SHORT → "Watching for entry below $X"
-//   PASS  → "Watching · rejected previously"
-//
-// We don't show proximity-to-trigger here (e.g. "1.9% below current")
-// because the triggers API doesn't return a current quote for non-held
-// theses today — adding that requires a quote fetch the API doesn't do.
-// The TARGET is the entry-trigger threshold; that's the actionable info.
+// The dot-separated IntentSuffix (direction · target/stop · horizon) was
+// removed on 2026-05-18 (THESIS_CLEANUP PR-2) because every piece of it
+// renders elsewhere on the sheet:
+//   • target → already in the headline + PriceTargetsBlock slider
+//   • stop   → PriceTargetsBlock slider
+//   • horizon → Schedule section below
+//   • direction → StatusPill + headline framing ("entry above" = LONG)
+// Keeping it produced three target/stop renders stacked vertically.
 
 function WatchingRow({
   direction,
-  horizon,
-  entryPrice,
   targetPrice,
-  stopLoss,
 }: {
   direction: "LONG" | "SHORT" | "PASS";
-  horizon?: string | null;
-  entryPrice?: number | null;
   targetPrice?: number | null;
-  stopLoss?: number | null;
 }) {
   const headline = (() => {
     if (direction === "PASS") return "Watching — previously rejected";
@@ -252,19 +257,7 @@ function WatchingRow({
     return "Watching";
   })();
 
-  return (
-    <div className="space-y-1">
-      <p className="text-sm leading-relaxed">{headline}</p>
-      <IntentSuffix
-        direction={direction}
-        horizon={horizon}
-        entryPrice={entryPrice}
-        targetPrice={targetPrice}
-        stopLoss={stopLoss}
-        forWatching
-      />
-    </div>
-  );
+  return <p className="text-sm leading-relaxed">{headline}</p>;
 }
 
 // ── IntentSuffix ──
@@ -457,6 +450,286 @@ function ScoringRow({
         </span>
       )}
     </div>
+  );
+}
+
+// ── ParentThesisChip ───────────────────────────────────────────────────
+// When the current thesis chains from a prior one (direction flip — e.g.
+// the prior LONG got INVALIDATED and a fresh SHORT replaced it), surface
+// a short chip pointing at the parent. Added 2026-05-18 (THESIS_CLEANUP
+// PR-6) — `parentThesisId` was previously fetched and ignored.
+function ParentThesisChip({ parentId }: { parentId: string }) {
+  // The chain pointer doesn't have a per-thesis route today — the
+  // /stocks/[symbol] page shows the full ticker history. Link there.
+  // The short id suffix (last 8 chars) matches how thesis ids surface
+  // elsewhere in the UI.
+  const shortId = parentId.slice(-8);
+  return (
+    <Badge variant="outline" className="font-mono text-[10px]">
+      Replaces #{shortId}
+    </Badge>
+  );
+}
+
+// ── ProvenanceRow ──────────────────────────────────────────────────────
+// One-line provenance summary surfaced just above the reasoning summary.
+// Format: "Sourced via ROUTED_SIGNAL · 3 signals" — the source kind is a
+// chip, signal count shows when there were any. The `sourceRationale`
+// one-liner sits next to the chip. Added 2026-05-18 (THESIS_CLEANUP PR-6).
+function ProvenanceRow({
+  sourceKind,
+  rationale,
+  signalCount,
+}: {
+  sourceKind: string;
+  rationale: string | null;
+  signalCount: number;
+}) {
+  // Human-readable label for each source kind. The raw enum values are
+  // shouty (ROUTED_SIGNAL) — soften for display while keeping them
+  // recognizable for hit-rate audit views.
+  const labelByKind: Record<string, string> = {
+    ROUTED_SIGNAL: "Routed signal",
+    WEB_SEARCH: "Web search",
+    WATCHLIST_REVIEW: "Watchlist review",
+    POSITION_REVIEW: "Position review",
+    USER_ADDED: "Manual add",
+    BUILDER_SEED: "Analyst create",
+    EDITOR_SEED: "Editor chat",
+  };
+  const label = labelByKind[sourceKind] ?? sourceKind;
+  return (
+    <div className="flex flex-wrap items-baseline gap-2 text-xs text-muted-foreground">
+      <span>Sourced via</span>
+      <Badge variant="secondary" className="font-normal">
+        {label}
+      </Badge>
+      {signalCount > 0 ? (
+        <span>
+          · {signalCount} signal{signalCount === 1 ? "" : "s"}
+        </span>
+      ) : null}
+      {rationale ? (
+        <span className="opacity-80">· {rationale}</span>
+      ) : null}
+    </div>
+  );
+}
+
+// ── SourcesStrip ───────────────────────────────────────────────────────
+// Favicon row for the analyst-cited `sourcesUsed` array — mirrors the
+// strip on `/stocks/[symbol]` thesis rows. Hidden when the column is
+// empty or shaped unexpectedly. Added 2026-05-18 (THESIS_CLEANUP PR-6).
+//
+// The column is permissive (JSON, written by both agent + manual paths
+// with varied shapes), so we validate defensively and skip items that
+// don't have at least a url to render.
+function SourcesStrip({ sourcesUsed }: { sourcesUsed: unknown }) {
+  if (!Array.isArray(sourcesUsed) || sourcesUsed.length === 0) return null;
+  const items = (sourcesUsed as ThesisSourcesUsedItem[]).filter(
+    (s): s is ThesisSourcesUsedItem & { url: string } =>
+      typeof s?.url === "string" && s.url.length > 0,
+  );
+  if (items.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">Sources</p>
+      <div className="flex flex-wrap gap-2">
+        {items.map((s, i) => {
+          let domain = "";
+          try {
+            domain = new URL(s.url).hostname.replace(/^www\./, "");
+          } catch {
+            domain = s.url;
+          }
+          return (
+            <a
+              key={i}
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="no-underline"
+            >
+              <Badge variant="outline" className="font-mono text-[10px]">
+                {s.provider ?? domain}
+              </Badge>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── TerminalStatusAlert ─────────────────────────────────────────────────
+// Renders a single Alert when the thesis is in a terminal state. Tells
+// the user *why* the thesis ended + when, so the rest of the sheet
+// (entry levels, triggers, etc.) reads as history rather than as live
+// state. Added 2026-05-18 (THESIS_CLEANUP PR-2) — both reasons were
+// fetched but never rendered.
+function TerminalStatusAlert({
+  status,
+  closedAt,
+  closeReason,
+  invalidatedAt,
+  invalidReason,
+}: {
+  status: ThesisStatus | undefined;
+  closedAt: string | null;
+  closeReason: string | null;
+  invalidatedAt: string | null;
+  invalidReason: string | null;
+}) {
+  if (status !== "CLOSED" && status !== "INVALIDATED" && status !== "ARCHIVED") {
+    return null;
+  }
+  // INVALIDATED tracks its own date/reason fields; CLOSED + ARCHIVED both
+  // reuse closedAt/closeReason (ARCHIVED is "walked away" without a trade
+  // outcome — semantically a close of the watching cycle).
+  const isInvalid = status === "INVALIDATED";
+  const date = isInvalid ? invalidatedAt : closedAt;
+  const reason = isInvalid ? invalidReason : closeReason;
+  if (!date && !reason) return null;
+  const title =
+    status === "CLOSED"
+      ? "Position closed"
+      : status === "INVALIDATED"
+        ? "Thesis invalidated"
+        : "Thesis archived";
+  const formattedDate = date
+    ? new Date(date).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+  return (
+    <Alert>
+      <AlertTitle>{title}{formattedDate ? ` · ${formattedDate}` : ""}</AlertTitle>
+      {reason ? <AlertDescription>{reason}</AlertDescription> : null}
+    </Alert>
+  );
+}
+
+// ── ResearchSectionsAccordion ───────────────────────────────────────────
+// Renders the deep-research synthesis (THESIS_RESEARCH_V2 Phase 1) as a
+// list of independently-collapsible sections. The thesis-writer agent
+// produces a known set of section keys; this renderer maps each to a
+// human-readable label and walks `text + citations` OR `bullets[]` content
+// shapes. Unknown extra keys are skipped — the synthesis model can add
+// sections without a UI deploy.
+function ResearchSectionsAccordion({
+  sections,
+  updatedAt,
+}: {
+  sections: ThesisResearchSections;
+  updatedAt: string | null;
+}) {
+  // Display order + labels. Matches docs/plans/THESIS_RESEARCH_V2.md §4.4.
+  const RENDER_ORDER: Array<{ key: keyof ThesisResearchSections; label: string }> = [
+    { key: "snapshot", label: "Snapshot" },
+    { key: "recentCatalysts", label: "Recent Catalysts" },
+    { key: "fundamentals", label: "Fundamentals" },
+    { key: "latestEarnings", label: "Latest Earnings" },
+    { key: "catalystsAndEvents", label: "Catalysts & Events" },
+    { key: "bullCase", label: "Bull Case" },
+    { key: "bearCase", label: "Bear Case" },
+    { key: "analystConsensusSynthesis", label: "Analyst Consensus" },
+    { key: "insiderTechnicalSetup", label: "Insider & Technical" },
+  ];
+
+  // Filter to only sections that are actually populated; if none, hide the
+  // whole block. Synthesis output is variable — don't render empty shells.
+  const populated = RENDER_ORDER.filter(({ key }) => {
+    const section = sections[key];
+    if (!section) return false;
+    if ("text" in section && section.text) return true;
+    if ("bullets" in section && section.bullets && section.bullets.length > 0) return true;
+    return false;
+  });
+  if (populated.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between">
+        <p className="text-sm font-medium">Research Synthesis</p>
+        {updatedAt ? (
+          <p className="text-xs text-muted-foreground">
+            Updated {relativeTime(updatedAt)}
+          </p>
+        ) : null}
+      </div>
+      <div className="rounded-lg border divide-y">
+        {populated.map(({ key, label }) => {
+          const section = sections[key]!;
+          return (
+            <Collapsible key={key}>
+              <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 p-3 text-left text-sm font-medium hover:bg-muted/30 transition-colors data-[panel-open]:bg-muted/20">
+                <span>{label}</span>
+                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform data-[panel-open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="px-3 pb-3 text-sm leading-relaxed">
+                <ResearchSectionContent section={section} />
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ResearchSectionContent({
+  section,
+}: {
+  section: ResearchTextSection | ResearchBulletSection;
+}) {
+  if ("bullets" in section) {
+    return (
+      <ul className="space-y-1.5">
+        {section.bullets.map((b, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="text-muted-foreground select-none">•</span>
+            <span className="flex-1">
+              {b.text}
+              {b.citation ? <ResearchCitationChip citation={b.citation} /> : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <p>
+      {section.text}
+      {section.citations && section.citations.length > 0 ? (
+        <span className="ml-1 inline-flex flex-wrap gap-1">
+          {section.citations.map((c, i) => (
+            <ResearchCitationChip key={i} citation={c} />
+          ))}
+        </span>
+      ) : null}
+    </p>
+  );
+}
+
+function ResearchCitationChip({ citation }: { citation: ResearchCitation }) {
+  const label = citation.domain ?? citation.title ?? "source";
+  const inner = (
+    <Badge variant="secondary" className="ml-1 align-baseline font-mono text-[10px]">
+      {label}
+    </Badge>
+  );
+  if (!citation.url) return inner;
+  return (
+    <a
+      href={citation.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="no-underline"
+    >
+      {inner}
+    </a>
   );
 }
 
@@ -680,6 +953,27 @@ export function ThesisSheetBody({
     <div className="px-4 pb-6 pt-2 space-y-5">
       {liveStatus ? <StatusPill status={liveStatus} /> : null}
 
+      {/* ── Terminal-status reason ──────────────────────────── */}
+      {/* When the thesis ended (CLOSED / INVALIDATED / ARCHIVED), surface
+          the reason + date right at the top so the user doesn't have to
+          dig through the activity timeline to find out what happened.
+          Previously these fields were fetched but never rendered. */}
+      <TerminalStatusAlert
+        status={liveStatus}
+        closedAt={state?.closedAt ?? null}
+        closeReason={state?.closeReason ?? null}
+        invalidatedAt={state?.invalidatedAt ?? null}
+        invalidReason={state?.invalidReason ?? null}
+      />
+
+      {/* ── Parent thesis chain pointer ────────────────────── */}
+      {/* When this thesis supersedes an earlier one on the same ticker
+          (direction flip — e.g. LONG INVALIDATED → fresh SHORT), surface
+          a chip linking to the parent. Critical for audit + history. */}
+      {state?.parentThesisId ? (
+        <ParentThesisChip parentId={state.parentThesisId} />
+      ) : null}
+
       {/* ── Stock identity + live price ──────────────────────── */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
@@ -736,10 +1030,7 @@ export function ThesisSheetBody({
       {liveStatus === "WATCHING" && !position ? (
         <WatchingRow
           direction={direction}
-          horizon={state?.horizon ?? null}
-          entryPrice={state?.entryPrice ?? entry_price ?? null}
           targetPrice={state?.targetPrice ?? target_price ?? null}
-          stopLoss={state?.stopLoss ?? stop_loss ?? null}
         />
       ) : null}
 
@@ -749,6 +1040,21 @@ export function ThesisSheetBody({
           run the agent took action in. */}
       {recentFire ? (
         <TriggerFiredBanner fire={recentFire} triggers={state?.triggers ?? []} />
+      ) : null}
+
+      {/* ── Provenance row ─────────────────────────────────── */}
+      {/* Where this thesis came from + the analyst's one-line rationale
+          + the count of cited Signal rows. Lets the user audit "is this
+          from the intelligence pipeline (signal-driven) or did the agent
+          reach for it on a web search?" — useful for hit-rate analysis
+          by source kind. Hidden when sourceKind is missing (legacy rows
+          predating the V3 Fix 5 provenance column). */}
+      {state?.sourceKind ? (
+        <ProvenanceRow
+          sourceKind={state.sourceKind}
+          rationale={state.sourceRationale}
+          signalCount={state.sourceSignalIds.length}
+        />
       ) : null}
 
       {/* ── Summary ───────────────────────────────────────────── */}
@@ -773,6 +1079,14 @@ export function ThesisSheetBody({
           items={risk_flags}
         />
       )}
+
+      {/* ── Sources ──────────────────────────────────────────── */}
+      {/* Analyst-cited web sources (`sourcesUsed`) — mirrors the favicon
+          strip on `/stocks/[symbol]` thesis rows. Distinct from per-section
+          inline citations in researchSections (those come from the V2
+          deep-research synthesis model). Hidden when sourcesUsed is empty
+          or shaped unexpectedly. */}
+      <SourcesStrip sourcesUsed={state?.sourcesUsed ?? null} />
 
       {/* ── Core Belief ───────────────────────────────────────── */}
       {/* The ONE-sentence durable claim — distinct from reasoningSummary
@@ -807,6 +1121,32 @@ export function ThesisSheetBody({
         </div>
       )}
 
+      {/* ── Invalidation Conditions ───────────────────────────── */}
+      {/* ≥2 concrete trip-wires that would prove the thesis wrong. Distinct
+          from Bearish View / riskFlags — these are the specific rules the
+          trade evaluator grades against on close and the daily-run prompt
+          uses to decide when a signal counts as thesis-breaking. Surfaced
+          on 2026-05-18 (THESIS_CLEANUP PR-2) — previously fetched and
+          dropped on the floor. */}
+      {state?.invalidationConds && state.invalidationConds.length > 0 && (
+        <div className="space-y-2">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Invalidation Conditions</p>
+            <p className="text-xs text-muted-foreground">
+              What would prove this thesis wrong
+            </p>
+          </div>
+          <ul className="space-y-1.5 text-sm leading-relaxed">
+            {state.invalidationConds.map((c, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="text-muted-foreground select-none">•</span>
+                <span className="flex-1">{c}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* ── Scoring breakdown (4-dim composite) ───────────────── */}
       {/* The decision-framework scoring that drove WATCHING vs PASS.
           Composite ≥4 → mint WATCHING; <4 → mint PASS+ARCHIVED. Notes
@@ -816,11 +1156,25 @@ export function ThesisSheetBody({
         <div className="space-y-2">
           <div className="flex items-baseline justify-between">
             <p className="text-sm font-medium">Composite Score</p>
-            {state.scoringComposite != null && (
-              <p className="text-sm font-semibold tabular-nums">
-                {state.scoringComposite}/10
-              </p>
-            )}
+            <div className="flex items-baseline gap-3">
+              {/* Confidence chip — agent's overall 0-100 trade conviction.
+                  Both confidence ≥ minConfidence AND composite ≥ 7 gate
+                  place_trade, so they belong side-by-side. Phase 2 collapses
+                  these onto one number; until then both are visible. */}
+              {typeof state?.confidenceScore === "number" ? (
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  Confidence{" "}
+                  <span className="font-semibold text-foreground">
+                    {state.confidenceScore}%
+                  </span>
+                </p>
+              ) : null}
+              {state.scoringComposite != null && (
+                <p className="text-sm font-semibold tabular-nums">
+                  {state.scoringComposite}/10
+                </p>
+              )}
+            </div>
           </div>
           <div className="space-y-1.5 rounded-lg border p-3">
             <ScoringRow label="Trend strength" dim={state.scoring.trendStrength} max={3} />
@@ -829,6 +1183,20 @@ export function ThesisSheetBody({
             <ScoringRow label="Catalyst freshness" dim={state.scoring.catalystFreshness} max={2} />
           </div>
         </div>
+      )}
+
+      {/* ── Research Synthesis (deep research) ───────────────── */}
+      {/* Multi-section synthesis produced by the thesis-writer agent
+          (THESIS_RESEARCH_V2 Phase 1). Null on every legacy row and on
+          rows minted before Phase 1 ships, so this whole block hides
+          itself for now and lights up once the agent starts writing.
+          Each section is a Collapsible — opens individually so the user
+          can dive into one section without scrolling past the others. */}
+      {state?.researchSections && (
+        <ResearchSectionsAccordion
+          sections={state.researchSections}
+          updatedAt={state.researchUpdatedAt}
+        />
       )}
 
       {/* ── Price Targets ─────────────────────────────────────── */}
