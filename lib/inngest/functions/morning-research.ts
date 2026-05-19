@@ -136,6 +136,7 @@ export const morningResearch = inngest.createFunction(
           userId: config.userId,
           accountId: config.accountId,
           analystId: config.id,
+          runMode: "MORNING_PLAN",
           watchlist: watchlistSymbols,
           exclusionList: config.exclusionList ?? [],
           sectors: config.sectors ?? [],

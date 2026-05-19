@@ -811,6 +811,42 @@ export const updateThesis = defineTool({
       updateType = "STATUS_CHANGED";
     }
 
+    // ── Narrative-only patches collapse to REVIEWED ──────────────────────
+    // A "narrative-only" patch touches only fields the agent can fill on
+    // every housekeeping pass without anything structural having changed:
+    // a rewritten reasoningSummary, a re-keyed riskFlags list, refreshed
+    // thesisBullets, a bumped nextReviewAt. Under gpt-4o the agent would
+    // call update_thesis(rationale) with no other fields and the
+    // empty-patch path below classified the row as REVIEWED. Under gpt-5.5
+    // (swap day 2026-05-12) the agent is verbosely chattier and fills
+    // narrative fields on every closeout, so the audit log collapsed: 0
+    // REVIEWED rows from morning-runs since the swap, all 18-37 daily
+    // UPDATED. That destroys the audit-log signal — run-reviews can no
+    // longer separate "agent reviewed it" from "agent actually changed
+    // something."
+    //
+    // Solution: classify a non-empty patch that touches only narrative
+    // keys as REVIEWED, same as the empty-patch path below. Status
+    // transitions (already set above as INVALIDATED/CLOSED/STATUS_CHANGED)
+    // stay as-is — narrative reclassification only applies to the default
+    // UPDATED bucket.
+    //
+    // A7 from docs/plans/SYSTEM_AUDIT_2026_05_19.md.
+    const NARRATIVE_KEYS = new Set([
+      "reasoningSummary",
+      "thesisBullets",
+      "riskFlags",
+      "nextReviewAt",
+    ]);
+    const patchKeysList = Object.keys(patch);
+    const isNarrativeOnly =
+      patchKeysList.length > 0 &&
+      updateType === "UPDATED" &&
+      patchKeysList.every((k) => NARRATIVE_KEYS.has(k));
+    if (isNarrativeOnly) {
+      updateType = "REVIEWED";
+    }
+
     // Empty patch (only rationale supplied)? That's a REVIEWED row, not
     // an UPDATED row. Useful when housekeeping looks at a thesis and
     // decides it's still right — we want a paper trail of "agent looked
@@ -1010,10 +1046,11 @@ export const updateThesis = defineTool({
     ) {
       summaryParts.push("rationale updated");
     }
+    const verb = updateType === "REVIEWED" ? "Reviewed" : "Updated";
     const summary =
       summaryParts.length > 0
-        ? `Updated ${existing.ticker}: ${summaryParts.join(", ")}`
-        : `Updated ${existing.ticker} thesis`;
+        ? `${verb} ${existing.ticker}: ${summaryParts.join(", ")}`
+        : `${verb} ${existing.ticker} thesis`;
 
     // Awaited (was void). The tactical-run close-out gate and the
     // morning-research coverage gate both query ThesisUpdate the moment
