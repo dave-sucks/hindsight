@@ -142,12 +142,14 @@ Run produced 0 tool calls in 241s, then timed out. No RunMessage rows, no RunEve
 
 **Fix path:** instrument system-prompt length at run start. Log it. If Earnings Drift is meaningfully larger than the other 5 analysts, that's the smoking gun. If it isn't, file as transient and add a wall-clock-triggered retry separate from the catch-path retry.
 
-### P1-13 — Old promotion-keyword gate in `record_run_summary` is now redundant + actively wrong
-**Source:** Day 1 + Day 2 run reviews.
-
-`record_run_summary` still runs the legacy promotion gate that scans `decision_rationale` text for accepted rejection keywords (volume / regime / news / R/R / liquidity / etc.). The Secular Theme analyst failed both days because its rejection rationale was *"outside our current universe focus on Information Technology"* — semantically valid, lexically not on the list. PR #266's `complete_run` preflight supersedes this with `computeNeedsAction` (which is wording-agnostic — it checks whether `update_thesis` was called for the triggered thesis, not what words appeared in the summary).
-
-**Fix path:** delete the keyword scan from `record_run_summary`. The preflight is the canonical check now. Two gates asking the same question with different rules = run failures the agent can't recover from.
+### ~~P1-13 — Old promotion-keyword gate in `record_run_summary` is now redundant + actively wrong~~
+**CLOSED 2026-05-19** in `lib/agent/tools/record-run-summary.ts`. The
+~220-line REJECTION_KEYWORDS_RE keyword scan was deleted along with
+its tickerMentionRegex helper. `complete_run`'s preflight (PR #266,
+`computeNeedsAction`) is the structural superset; `update_thesis`'s
+goalpost-moving guard catches the MRVL anti-pattern on the write side.
+The Secular Theme failure pattern (`"outside our universe focus"`
+not matching the keyword regex) cannot recur.
 
 ### P1-14 — No Layer-1 closeout enforcement for `needs_action: null` theses
 **Source:** Design follow-up from `docs/plans/MORNING_RUN_V2_DESIGN.md`.
