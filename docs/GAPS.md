@@ -168,10 +168,13 @@ The V2 prompt says *"Theses with `needsAction == null` don't need to be touched.
 **Fix path:** promote the nudge to a hard reject when `ctx.signalsByTicker[ticker]` has signals AND the agent passed non-ROUTED_SIGNAL provenance. Forces the agent to cite signal IDs. ~30 minutes in `lib/agent/tools/record-thesis.ts`.
 
 
-### P1-16 — Tactical run silent failures (verify post-PR #261)
-**Source:** Lifecycle audit 2026-05-11. Of 116 tactical runs in 14 days, 21 ended in `status=FAILED` with `parameters.error = null` and zero RunEvent rows — meaning the function died before the error-aggregator from PR #250 could persist. PR #261 added catch-path recovery + an error aggregator that supposedly closed this. **Has not been re-audited post-PR-#261 + post-watchlist-collapse.** Re-run the same query (`mode='INTRADAY_TACTICAL' AND status='FAILED' AND parameters->>'error' IS NULL`) over the last 14 days. If the count is still >0%, the silent-failure path isn't actually closed.
-
-**Fix path:** verify first, fix second. May already be closed.
+### ~~P1-16 — Tactical run silent failures (verify post-PR #261)~~
+**CLOSED 2026-05-19** via the tactical run review at
+[`docs/tactical-reviews/2026-05-18.md`](./tactical-reviews/2026-05-18.md).
+Re-audit confirms: silent failures clustered on 2026-05-11 (13 of 16
+total in 14d, all the same day). Nothing since. PR #261's catch-path
+recovery + error aggregator is effectively closed. Last silent-fail
+was 2026-05-11; 4 clean weekday-crons since.
 
 
 ### P1-17 — Possibly polluted historical "discovery" runs (informational, no code fix)
