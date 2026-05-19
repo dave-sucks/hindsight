@@ -339,8 +339,21 @@ export const updateThesis = defineTool({
     //   - The thesis's status is already CLOSED (handled by terminal guard above).
     //   - CLOSED transitions on ACTIVE are how a held thesis ends; that's the
     //     correct path and not blocked here.
+    // 2026-05-19 extension: `change_status='CLOSED'` on an ACTIVE-with-
+    // position is also a zombie risk — the thesis goes to CLOSED but the
+    // Alpaca position stays OPEN. Pre-this-PR the comment claimed CLOSED
+    // was "the correct path and not blocked here" because close_position
+    // is supposed to flip the Thesis itself (it does, at
+    // close-position.ts:155). But if the agent calls update_thesis(CLOSED)
+    // directly (skipping close_position), the same zombie pattern emerges
+    // with no audit trail. Same guard as INVALIDATED/ARCHIVED: refuse
+    // unless close_position fired on this ticker in this run (in which
+    // case the thesis is already CLOSED via that path and this update
+    // would hit the terminal-status guard anyway).
     if (
-      (args.change_status === "INVALIDATED" || args.change_status === "ARCHIVED") &&
+      (args.change_status === "INVALIDATED" ||
+        args.change_status === "ARCHIVED" ||
+        args.change_status === "CLOSED") &&
       existing.status === "ACTIVE" &&
       ctx.analystId
     ) {
@@ -354,7 +367,7 @@ export const updateThesis = defineTool({
       });
       if (openPosition) {
         // Did close_position fire on this ticker in THIS run? If so, the
-        // pair is intact — let the INVALIDATED through. Otherwise refuse.
+        // pair is intact — let the terminal transition through. Otherwise refuse.
         const closeInRun = ctx.runId
           ? await prisma.thesisUpdate.findFirst({
               where: {
@@ -366,7 +379,7 @@ export const updateThesis = defineTool({
             })
           : null;
         if (!closeInRun) {
-          const action = args.change_status; // "INVALIDATED" or "ARCHIVED"
+          const action = args.change_status; // "INVALIDATED" | "ARCHIVED" | "CLOSED"
           return {
             summary: `Cannot ${action} $${existing.ticker} — open position requires close_position first.`,
             data: {
@@ -382,7 +395,7 @@ export const updateThesis = defineTool({
               message:
                 `$${existing.ticker} has an open ${openPosition.direction} position (${openPosition.quantity} sh) backed by this ACTIVE thesis. ` +
                 `Terminating the thesis (${action}) without closing the position creates a zombie — open position with no live thesis to manage it. ` +
-                `Correct sequence: call \`close_position\` first to exit Alpaca, then retry \`update_thesis(thesis_id, change_status: "${action}", rationale: "...")\` to mark the thesis dead. ` +
+                `Correct sequence: call \`close_position\` first to exit Alpaca (which also flips the thesis status), then retry \`update_thesis(thesis_id, change_status: "${action}", rationale: "...")\` if you want a separate audit row. ` +
                 `If the position should stay open (just refining the thesis), drop change_status and pass the fields you want to change instead.`,
             },
             sources: [],
