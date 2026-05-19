@@ -166,6 +166,18 @@ export async function runThesisWriterAgent(
   const t0 = Date.now();
   const T = args.ticker.toUpperCase();
 
+  // Entry-point breadcrumb — added 2026-05-19 after a production
+  // incident (LSCC dispatches sitting RUNNING for 3+ hours with
+  // ZERO logs from this function). The function returned cleanly
+  // from Inngest's POV in ~30s but never marked the ResearchRun
+  // terminal. Without this log we couldn't tell whether the function
+  // ever entered at all. If you see this line in Vercel logs but
+  // not the subsequent "[thesis-writer] context loaded" line, the
+  // analyst.findUnique throws or hangs.
+  console.log(
+    `[thesis-writer] START childRun=${args.childRunId} ticker=${T} analyst=${args.analystId} mode=${args.mode}`,
+  );
+
   // ── 1. Load context ─────────────────────────────────────────────────
   const analyst = await prisma.agentConfig.findUnique({
     where: { id: args.analystId },
@@ -188,6 +200,9 @@ export async function runThesisWriterAgent(
   });
 
   if (!analyst) {
+    console.error(
+      `[thesis-writer] EARLY-EXIT childRun=${args.childRunId} analyst=${args.analystId} not found`,
+    );
     await prisma.researchRun.updateMany({
       where: { id: args.childRunId, status: "RUNNING" },
       data: { status: "FAILED", completedAt: new Date() },
@@ -202,6 +217,9 @@ export async function runThesisWriterAgent(
       error: `Analyst ${args.analystId} not found`,
     };
   }
+  console.log(
+    `[thesis-writer] context loaded childRun=${args.childRunId} analyst=${analyst.name} env=${analyst.tradingEnvironment ?? "PAPER"}`,
+  );
 
   // ── Outer try/catch — DEFENSE IN DEPTH ──────────────────────────────
   // Wraps the entire setup + agent loop so ANY throw (Prisma read, alpaca
@@ -304,6 +322,10 @@ export async function runThesisWriterAgent(
     `Follow the 5-step workflow above. TOOL CALLS only — no narration. ` +
     `Begin with write_thesis_research now.`;
 
+  console.log(
+    `[thesis-writer] tools+prompt ready childRun=${args.childRunId} toolCount=${Object.keys(tools).length}`,
+  );
+
   // ── 4. Run the agent ───────────────────────────────────────────────
   // Provider chosen by mode config; anthropic is the bake-off winner
   // (2026-05-16, see MODES["thesis-writer"] comment). openai branch kept
@@ -349,6 +371,10 @@ export async function runThesisWriterAgent(
     { count: number; totalLatencyMs: number; errors: number }
   > = {};
   let lastStepTimeMs = t0;
+
+  console.log(
+    `[thesis-writer] entering generateText childRun=${args.childRunId} model=${modeConfig.model} provider=${modeConfig.provider} maxSteps=${modeConfig.maxSteps} abortAfterMs=${(modeConfig.maxDuration - 30) * 1000}`,
+  );
 
   try {
     const { steps, response } = await generateText({

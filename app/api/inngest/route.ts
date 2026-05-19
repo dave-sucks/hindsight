@@ -25,6 +25,10 @@ import { podcastSegmentRun } from "@/lib/inngest/functions/podcast-segment-run";
 // THESIS_RESEARCH_V2 Phase 1 — sub-agent dispatched by Principal Chat
 // (and later Discovery / Daily / Tactical) to write one deep thesis.
 import { thesisWriter } from "@/lib/inngest/functions/thesis-writer";
+// Safety net — every 5 minutes, FAIL-mark any ResearchRun stuck in
+// RUNNING longer than its mode's expected ceiling. Catches the silent
+// function-kill cases where the in-function catch blocks never run.
+import { sweepStuckRuns } from "@/lib/inngest/functions/sweep-stuck-runs";
 
 // morning-research runs a full agent (generateText with 30 tool steps)
 // inside a single step.run — needs extended timeout to avoid Vercel killing it
@@ -93,5 +97,11 @@ export const { GET, POST, PUT } = serve({
     // app/thesis.written on completion. concurrency:5 inside the
     // function caps parallel fan-out for the Phase-2 Discovery rollout.
     thesisWriter,
+    // Safety net — every 5 minutes, mark any ResearchRun stuck in
+    // RUNNING beyond its mode's expected duration as FAILED. Catches
+    // the silent function-kill cases where in-function catch blocks
+    // never run (Vercel timeout, cold-start failure, Inngest step
+    // memoization quirks). See lib/inngest/functions/sweep-stuck-runs.ts.
+    sweepStuckRuns,
   ],
 });
