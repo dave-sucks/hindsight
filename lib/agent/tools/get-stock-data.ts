@@ -17,10 +17,18 @@ import type { UniverseCheck } from "@/lib/agent/universe";
 
 const FMP_KEY = process.env.FMP_API_KEY!;
 
+// 2026-05-19 — FMP migrated all v3/v4 endpoints to /stable/. The
+// pre-migration paths return `{"Error Message": "Legacy Endpoint..."}`
+// on every call. This helper now routes /stable/ paths directly and
+// keeps the legacy /api/v3 + /v4 paths as a fallback for any caller
+// that hasn't been migrated yet (so the failure mode is "graceful
+// empty data" rather than "broken until migrated").
 async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
-  const base = path.startsWith("/v4/")
-    ? `https://financialmodelingprep.com/api${path}`
-    : `https://financialmodelingprep.com/api/v3${path}`;
+  const base = path.startsWith("/stable/")
+    ? `https://financialmodelingprep.com${path}`
+    : path.startsWith("/v4/")
+      ? `https://financialmodelingprep.com/api${path}`
+      : `https://financialmodelingprep.com/api/v3${path}`;
   const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
   try {
     const res = await fetch(url, {
@@ -85,7 +93,7 @@ export const getStockData = defineTool({
           2,
         ),
         finnhub(`/stock/recommendation?symbol=${ticker}`, 2),
-        fmp(`/v4/price-target-consensus?symbol=${ticker}`),
+        fmp(`/stable/price-target-consensus?symbol=${ticker}`),
       ]);
 
     const quote = quoteResult.data as Record<string, number> | null;
