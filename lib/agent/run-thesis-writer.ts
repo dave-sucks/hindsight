@@ -203,6 +203,21 @@ export async function runThesisWriterAgent(
     };
   }
 
+  // ── Outer try/catch — DEFENSE IN DEPTH ──────────────────────────────
+  // Wraps the entire setup + agent loop so ANY throw (Prisma read, alpaca
+  // creds resolve, watchlist fetch, tool factory, prompt build, model
+  // call, message persistence) lands in the catch and marks the run
+  // FAILED. Without this, the pre-2026-05-19 narrow try around
+  // generateText left a hole: anything that threw before the agent loop
+  // (e.g. Anthropic returning a structured rate-limit ERROR on the first
+  // attempt — which bubbled through resolveAlpacaCredentials retries?
+  // No, more commonly the Inngest step retry semantics + the narrow try
+  // combination) left the ResearchRun stuck in RUNNING forever. The
+  // /runs page's 10-minute stale-detect only fires when someone opens
+  // the detail page, so stuck rows piled up on the index. See PR (this
+  // one) — observed 2 RUNNING-forever LSCC runs (rate-limit casualties)
+  // on 2026-05-19.
+  try {
   let existingThesis: NonNullable<
     Parameters<typeof buildThesisWriterSystemPrompt>[0]["existingThesis"]
   > | null = null;
@@ -540,6 +555,49 @@ export async function runThesisWriterAgent(
             ...((fresh?.parameters as object) ?? {}),
             error: msg,
             failedAt: new Date().toISOString(),
+          } as object,
+        },
+      });
+    } catch {
+      /* best-effort */
+    }
+    return {
+      childRunId: args.childRunId,
+      status: "FAILED",
+      thesisId: null,
+      steps: 0,
+      toolCalls: 0,
+      elapsedMs: Date.now() - t0,
+      error: msg,
+    };
+  }
+  } catch (outerErr) {
+    // Outer catch — anything that threw during setup before the inner
+    // try (Prisma reads, alpaca creds, watchlist fetch, tool factory,
+    // prompt build) lands here. Mark the run FAILED so the row never
+    // stays in RUNNING.
+    const msg =
+      outerErr instanceof Error ? outerErr.message : String(outerErr);
+    console.error(
+      `[thesis-writer] OUTER CATCH ticker=${T} child=${args.childRunId}: ${msg}`,
+    );
+    try {
+      const fresh = await prisma.researchRun.findUnique({
+        where: { id: args.childRunId },
+        select: { parameters: true },
+      });
+      await prisma.researchRun.updateMany({
+        where: { id: args.childRunId, status: "RUNNING" },
+        data: { status: "FAILED", completedAt: new Date() },
+      });
+      await prisma.researchRun.update({
+        where: { id: args.childRunId },
+        data: {
+          parameters: {
+            ...((fresh?.parameters as object) ?? {}),
+            error: `Setup error before agent loop: ${msg}`,
+            failedAt: new Date().toISOString(),
+            outerCatch: true,
           } as object,
         },
       });
