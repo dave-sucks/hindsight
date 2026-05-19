@@ -15,6 +15,12 @@ import { sendEmail, getUserEmail } from "@/lib/email";
 import { getOwnerUserId } from "@/lib/auth/account";
 import { tradeOpenedHtml } from "@/lib/emails/trade-opened";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
+import {
+  defaultTriggersForHorizon,
+  applyTriggerCooldownDefaults,
+  type Horizon,
+} from "@/lib/agent/triggers/defaults";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
@@ -683,6 +689,17 @@ export const placeTrade = defineTool({
       // (which is just `Thesis WHERE status='WATCHING'`). Write a PROMOTED
       // audit row so the run summary's "Promoted (now active)" bucket can
       // derive from ThesisUpdate.
+      //
+      // Also regenerate triggers for the HELD-side template. Pre-A2 the
+      // WATCHING-side triggers (which include an ENTER predicate on the
+      // breakout level) stayed in place after promotion — so every day
+      // price ticked above the (now-stale) ENTER level the trigger
+      // evaluator fired another ENTER tactical run on a position the
+      // analyst already held. 2026-05-19 audit: 35 of 36 ENTER tactical
+      // runs over 14 days fired on already-held tickers (AVGO 8×, GOOGL
+      // 7×, etc.). HELD templates have stops, target-hit REVIEW, and
+      // per-horizon hygiene — no ENTER, because you can't enter what
+      // you already hold.
       try {
         const watchingThesis = await prisma.thesis.findFirst({
           where: {
@@ -691,20 +708,67 @@ export const placeTrade = defineTool({
             researchRun: { agentConfigId: analystId },
           },
           orderBy: { createdAt: "desc" },
-          select: { id: true, direction: true },
+          select: {
+            id: true,
+            direction: true,
+            horizon: true,
+            entryPrice: true,
+            targetPrice: true,
+            stopLoss: true,
+            maxHoldDays: true,
+            catalystDate: true,
+            triggers: true,
+          },
         });
         if (watchingThesis) {
+          // Compute the new HELD trigger set. Only when horizon is known
+          // can we pick a template; otherwise we leave the existing
+          // trigger array alone (drop only ENTER triggers manually to
+          // avoid the recurring-fire bug at minimum).
+          const horizon = watchingThesis.horizon as Horizon | null;
+          let nextTriggers: Trigger[] | undefined;
+          if (horizon) {
+            // Use the trade arguments as ground truth — entry/target/stop
+            // from `args` reflect what was actually executed, not the
+            // (now-behind-us) WATCHING levels.
+            const heldDefaults = defaultTriggersForHorizon(
+              horizon,
+              {
+                entryPrice: args.entry_price,
+                targetPrice: args.target_price,
+                stopLoss: args.stop_loss,
+                maxHoldDays: watchingThesis.maxHoldDays ?? null,
+                catalystDate: watchingThesis.catalystDate ?? null,
+                direction: watchingThesis.direction as "LONG" | "SHORT",
+              },
+              "HELD",
+            );
+            nextTriggers = applyTriggerCooldownDefaults(heldDefaults);
+          } else {
+            // No horizon → drop ENTER-action triggers from the existing
+            // array so the WATCHING-side ENTER doesn't keep firing on
+            // the held position. Conservative fallback.
+            const existing = (watchingThesis.triggers as unknown as Trigger[] | null) ?? [];
+            nextTriggers = existing.filter((t) => t.action !== "ENTER");
+          }
+
           await prisma.thesis.update({
             where: { id: watchingThesis.id },
-            data: { status: "ACTIVE" },
+            data: {
+              status: "ACTIVE",
+              triggers: (nextTriggers ?? []) as unknown as object,
+            },
           });
           await prisma.thesisUpdate.create({
             data: {
               thesisId: watchingThesis.id,
               type: "STATUS_CHANGED",
               summary: `Promoted ${ticker} ${watchingThesis.direction} WATCHING → ACTIVE on place_trade`,
-              rationale: `Position opened (id ${position.id}). Watchlist row archived; live position now active.`,
-              fieldChanges: { status: { from: "WATCHING", to: "ACTIVE" } },
+              rationale: `Position opened (id ${position.id}). Watchlist row archived; live position now active. Triggers regenerated for HELD-side ${horizon ?? "(no-horizon)"} template.`,
+              fieldChanges: {
+                status: { from: "WATCHING", to: "ACTIVE" },
+                triggers: { from: "WATCHING-set", to: "HELD-set" },
+              },
               runId: ctx.runId,
               tradeId: position.id,
             },
