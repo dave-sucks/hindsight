@@ -27,18 +27,55 @@ export const HORIZONS: readonly Horizon[] = [
 ] as const;
 
 /**
- * Default days-until-next-review when the agent doesn't supply
- * `next_review_at`. Used by record_thesis to compute the housekeeping
- * cadence and by the overdue-review cron to decide when a thesis is stale.
+ * Default days-until-next-review for **held** theses (status=ACTIVE) when
+ * the agent doesn't supply `next_review_at`. Used by record_thesis +
+ * update_thesis to compute the housekeeping cadence and by the overdue-
+ * review cron to decide when an active position needs another look.
  *
  * Rule of thumb: you need to look at this thesis at least this often to
  * keep the trade plan sane. Higher cadence = more attention required.
+ * Held positions get reviewed more often than watchlist candidates —
+ * different jobs (see WATCHING_FIRST_REVIEW_DAYS below).
  */
 export const HORIZON_REVIEW_DAYS: Record<Horizon, number> = {
   CATALYST: 1,
   TRADE: 1,
   TARGET: 7,
   COMPOUNDER: 30,
+};
+
+/**
+ * Default days-until-first-review for **WATCHING** theses (newly minted,
+ * no position yet). Tracks the per-horizon hygiene-trigger cadence from
+ * lib/agent/triggers/defaults.ts — not the held-side operational cadence.
+ *
+ * Why distinct: a WATCHING thesis has no position to manage; review
+ * effort is just hygiene ("is the setup still valid?"). A held position
+ * needs much more frequent attention because a stop fires or a target
+ * gets hit. Pre-2026-05-19 record_thesis used HORIZON_REVIEW_DAYS for
+ * both, which scheduled brand-new COMPOUNDER WATCHING theses for first
+ * review 30 days out — too aggressive for a multi-year hold candidate.
+ * Production data on 2026-05-19 showed avg-days-to-first-review:
+ *
+ *   COMPOUNDER  30  → should be 90
+ *   TRADE        4  → roughly right (14d hygiene window)
+ *   CATALYST   4.5  → should be 14
+ *   TARGET       7  → roughly right
+ *
+ * Net effect was Monday after each Sunday discovery cron flooded the
+ * tactical surface with REVIEW_DATE_HIT triggers. 2026-05-18: 28
+ * REVIEW_DATE_HIT fires, most from theses minted the prior day.
+ *
+ * Values mirror each horizon's WATCHING template's TIME_ELAPSED hygiene
+ * trigger in lib/agent/triggers/defaults.ts (14 / 14 / 30 / 90 days).
+ *
+ * A4 from docs/plans/SYSTEM_AUDIT_2026_05_19.md.
+ */
+export const WATCHING_FIRST_REVIEW_DAYS: Record<Horizon, number> = {
+  CATALYST: 14,
+  TRADE: 14,
+  TARGET: 30,
+  COMPOUNDER: 90,
 };
 
 /**
