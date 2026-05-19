@@ -316,11 +316,16 @@ export async function runThesisWriterAgent(
   const toolsWithSearch: Record<string, unknown> = { ...(tools as any) };
   if (modeConfig.provider === "anthropic") {
     toolsWithSearch.web_search = anthropic.tools.webSearch_20260209({
-      // Cap server-side searches per run — synthesis usually needs 2-4
-      // queries (recent analyst note, transcript color, sentiment check).
-      // 6 leaves headroom without letting the model burn budget on
-      // exhaustive crawling.
-      maxUses: 6,
+      // Agent-loop escape hatch — the meta-tool's synthesis call has its
+      // own dedicated web_search budget. This one is rarely used because
+      // the prompt tells the agent to call write_thesis_research ONCE
+      // and decide on top of the result. 2 is plenty for the edge case
+      // where the meta-tool returned a thin synthesis and the agent
+      // wants to verify one specific data point before recording the
+      // thesis. Dropped from 6 → 2 on 2026-05-18 to keep input-token
+      // pressure off the Anthropic Tier-1 30k/min bucket — see the
+      // matching comment in lib/agent/tools/write-thesis-research.ts.
+      maxUses: 2,
     });
   }
 
