@@ -210,7 +210,9 @@ export default async function RunsPage() {
                   ? "Morning review by"
                   : run.mode === "DISCOVERY"
                     ? "Discovery run by"
-                    : "Run by";
+                    : run.mode === "THESIS_WRITER"
+                      ? "Thesis research by"
+                      : "Run by";
 
           // For tactical runs the action line IS the trigger that fired —
           // pulled directly from the TRIGGER_FIRED audit row's summary.
