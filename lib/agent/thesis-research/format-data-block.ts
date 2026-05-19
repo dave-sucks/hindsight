@@ -355,14 +355,18 @@ function buildFinancials(f: FinancialsInput | null): string {
   }
   lines.push("");
   if (f.ratios) {
+    // ROA / ROE / ROIC dropped from the inline ratios line on 2026-05-18
+    // to trim ~60 tokens per data block. The three returns-on-X metrics
+    // are highly correlated and rarely cited individually in the synthesis
+    // output; P/E + PEG + D/E + Current give the same first-look read of
+    // valuation + leverage + liquidity without the redundancy. The
+    // underlying `f.ratios` object still carries them; only the rendered
+    // line is trimmed.
     const parts: string[] = [];
     if (f.ratios.pe != null) parts.push(`P/E ${f.ratios.pe.toFixed(1)}`);
     if (f.ratios.pegRatio != null) parts.push(`PEG ${f.ratios.pegRatio.toFixed(2)}`);
     if (f.ratios.debtToEquity != null) parts.push(`D/E ${f.ratios.debtToEquity.toFixed(2)}`);
     if (f.ratios.currentRatio != null) parts.push(`Current ${f.ratios.currentRatio.toFixed(2)}`);
-    if (f.ratios.roa != null) parts.push(`ROA ${(f.ratios.roa * 100).toFixed(1)}%`);
-    if (f.ratios.roe != null) parts.push(`ROE ${(f.ratios.roe * 100).toFixed(1)}%`);
-    if (f.ratios.roic != null) parts.push(`ROIC ${(f.ratios.roic * 100).toFixed(1)}%`);
     if (parts.length > 0) lines.push(`Latest ratios — ${parts.join(" · ")}`);
   }
   if (f.errors && f.errors.length > 0) {
@@ -532,8 +536,12 @@ function buildAnalystTargets(s: StockDataInput): string {
 function buildNews(s: StockDataInput): string {
   const news = s.recentNews ?? [];
   if (news.length === 0) return "(no recent news)";
+  // Capped at 5 (was 10) on 2026-05-18 — every news line is ~30-50 tokens
+  // and 10 headlines wasn't pulling its weight in the synthesis output
+  // (Bull/Bear sections cited the top 3-4 max). Synthesis still has its
+  // own web_search budget for follow-up on anything in the snapshot.
   return news
-    .slice(0, 10)
+    .slice(0, 5)
     .map((n) => `${n.date} — ${n.source}: ${n.headline}`)
     .join("\n");
 }

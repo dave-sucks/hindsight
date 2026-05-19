@@ -237,7 +237,11 @@ export const writeThesisResearch = defineTool({
       analystCovTool.execute({ ticker: T, window_days: 90 }, SUB_TOOL_OPTS),
       insiderTool.execute({ ticker: T, window_days: 90 }, SUB_TOOL_OPTS),
       earningsHistTool.execute({ ticker: T, quarters: 8 }, SUB_TOOL_OPTS),
-      peersTool.execute({ ticker: T, peer_count: 5 }, SUB_TOOL_OPTS),
+      // peer_count dropped 5 → 3 on 2026-05-18 to trim the data block.
+      // 3 peers is still enough for a "ranks X of N" comparison in the
+      // Insider & Technical Setup section without bloating the synthesis
+      // prompt by ~600 tokens for two extra peer rows.
+      peersTool.execute({ ticker: T, peer_count: 3 }, SUB_TOOL_OPTS),
       filingsTool.execute({ symbol: T }, SUB_TOOL_OPTS),
     ]);
 
@@ -400,9 +404,22 @@ export const writeThesisResearch = defineTool({
         // tool factory output without a cast. Same friction as the agent
         // loop in run-thesis-writer.ts. Runtime is fine — the provider
         // wires its server-side tool execution end-to-end.
+        //
+        // maxUses dropped 6 → 3 on 2026-05-18 after live test surfaced
+        // Anthropic Tier-1 rate-limit pressure (30k input tokens/min).
+        // Each web_search result is fed back as input on the NEXT step
+        // (~2k tokens per result), so 6 searches stack to ~12k of input
+        // before the model writes the final note. Combined with the
+        // 5KB data block and the parent agent's tokens against the same
+        // org bucket, runs were hitting 30k/min in a 60-90s window. The
+        // bake-off measured 2-4 searches per synthesis as typical; 3
+        // covers the common case and the worker can still produce a
+        // multi-section note from the structured data alone if the cap
+        // hits early. If we move to Anthropic Tier 2 (80k/min) the cap
+        // can move back up.
         tools: {
           web_search: anthropic.tools.webSearch_20260209({
-            maxUses: 6,
+            maxUses: 3,
           }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any,
