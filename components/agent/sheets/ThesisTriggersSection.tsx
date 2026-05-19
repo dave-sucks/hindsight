@@ -119,11 +119,83 @@ export interface TriggersResponse {
   // post-2026-04-25 scoring rubric; null on older rows.
   scoring: ThesisScoring | null;
   scoringComposite: number | null;
+  // Deep-research synthesis (THESIS_RESEARCH_V2 Phase 1). Null on legacy
+  // rows + on every row minted before the thesis-writer agent ships. Shape
+  // is intentionally loose — sections keyed by name with `text + citations`
+  // OR `bullets[]` content. The accordion renderer walks whatever keys it
+  // finds and skips any it doesn't recognize.
+  researchSections: ThesisResearchSections | null;
+  researchUpdatedAt: string | null;
+  // Phase 1.5 (PR-6) — surfaced so the sheet can render them.
+  // confidenceScore is the analyst's overall 0-100 trade conviction;
+  // distinct from scoring.composite (which is the 4-dim setup grade).
+  // Both gate `place_trade`. Phase 2 collapses these onto one number.
+  confidenceScore: number;
+  // Provenance: where the thesis came from + the analyst's one-line
+  // rationale + the Signal rows that informed it.
+  sourceKind: string | null;
+  sourceRationale: string | null;
+  sourceSignalIds: string[];
+  // Analyst-cited sources (web URLs / reports) — mirrors the favicon
+  // strip on `/stocks/[symbol]`. Distinct from researchSections.citations
+  // which are per-section inline citations from the V2 deep-research
+  // synthesis model.
+  sourcesUsed: ThesisSourcesUsed;
+  // Direction-flip chain pointer. When non-null, this thesis supersedes
+  // an earlier thesis on the same ticker; renders as a "Replaces #abc"
+  // chip near the StatusPill.
+  parentThesisId: string | null;
   // Live quote from the API call — drives the price header below the
   // company name. Null when the quote feed couldn't resolve.
   currentPrice: number | null;
   dayChange: number | null;
   dayChangePct: number | null;
+}
+
+// `sourcesUsed` column is Json — agents write `[{provider, title, url}]`
+// at mint, but the column is permissive (some old rows have other shapes
+// or null entries). Type loosely + render defensively.
+export type ThesisSourcesUsedItem = {
+  provider?: string;
+  title?: string;
+  url?: string;
+  publishedAt?: string;
+};
+export type ThesisSourcesUsed = ThesisSourcesUsedItem[] | unknown;
+
+// Deep-research section payload — see docs/plans/THESIS_RESEARCH_V2.md §4.4.
+// Two content shapes coexist (text-with-citations OR bullet list). Keys are
+// optional because the synthesis model may omit sections that don't apply.
+export interface ResearchCitation {
+  url?: string;
+  title?: string;
+  domain?: string;
+  kind?: "STRUCTURED" | "WEB" | string;
+}
+export interface ResearchTextSection {
+  text: string;
+  citations?: ResearchCitation[];
+}
+export interface ResearchBullet {
+  text: string;
+  citation?: ResearchCitation;
+}
+export interface ResearchBulletSection {
+  bullets: ResearchBullet[];
+}
+export interface ThesisResearchSections {
+  snapshot?: ResearchTextSection;
+  recentCatalysts?: ResearchTextSection;
+  fundamentals?: ResearchTextSection;
+  latestEarnings?: ResearchBulletSection;
+  catalystsAndEvents?: ResearchBulletSection;
+  bullCase?: ResearchBulletSection;
+  bearCase?: ResearchBulletSection;
+  analystConsensusSynthesis?: ResearchTextSection;
+  insiderTechnicalSetup?: ResearchTextSection;
+  // Allow unknown extra keys; the renderer ignores them. Lets the synthesis
+  // model add new sections without a UI deploy.
+  [extra: string]: ResearchTextSection | ResearchBulletSection | undefined;
 }
 
 // ── Predicate helpers ──────────────────────────────────────────────────

@@ -59,8 +59,24 @@ export async function GET(
       coreBelief: true,
       keyAssumptions: true,
       invalidationConds: true,
-      // Scoring rubric + composite are stored in fullResearch JSON.
+      // Scoring rubric + composite — promoted to top-level on 2026-05-18
+      // (THESIS_CLEANUP PR-1). `fullResearch` is still selected for the
+      // transitional fallback path below; both are dropped together in PR-4.
+      scoring: true,
       fullResearch: true,
+      // Deep-research synthesis (THESIS_RESEARCH_V2 Phase 1). Null on every
+      // legacy row; populated by the thesis-writer agent. The ThesisSheet
+      // renders this as a collapsible accordion under the composite score.
+      researchSections: true,
+      researchUpdatedAt: true,
+      // Phase 1.5 (PR-6) — fields surfaced on the sheet so the user can
+      // audit them. None of these existed in the response before.
+      confidenceScore: true,
+      sourceKind: true,
+      sourceRationale: true,
+      sourceSignalIds: true,
+      sourcesUsed: true,
+      parentThesisId: true,
       researchRun: { select: { agentConfigId: true } },
     },
   });
@@ -163,14 +179,35 @@ export async function GET(
     },
   });
 
-  // Pull scoring out of fullResearch JSON (record_thesis stores it there).
-  // Surface to UI alongside the durable belief fields so the user can see
-  // the 4-dim breakdown that drove the WATCHING vs PASS decision.
-  const fullResearch = (thesis.fullResearch ?? null) as
-    | { scoring?: unknown; scoringComposite?: number | null }
+  // Pull scoring from the top-level column (PR-1 canonical), falling back
+  // to the legacy `fullResearch.scoring` / `fullResearch.scoringComposite`
+  // nesting for rows minted before the 2026-05-18 backfill. The fallback
+  // path goes away in PR-4 when `fullResearch` is dropped.
+  //
+  // The new shape folds composite into the scoring object as a peer key
+  // alongside the 4 dimensions, so the UI receives `scoring.composite`
+  // directly. The legacy path materializes the same shape for parity.
+  type Scoring4Dim = {
+    trendStrength?: unknown;
+    relativeStrength?: unknown;
+    entryQuality?: unknown;
+    catalystFreshness?: unknown;
+    composite?: number | null;
+  };
+  const topLevelScoring = (thesis.scoring ?? null) as Scoring4Dim | null;
+  const legacyFullResearch = (thesis.fullResearch ?? null) as
+    | { scoring?: Scoring4Dim; scoringComposite?: number | null }
     | null;
-  const scoring = fullResearch?.scoring ?? null;
-  const scoringComposite = fullResearch?.scoringComposite ?? null;
+  const scoring: Scoring4Dim | null =
+    topLevelScoring ??
+    (legacyFullResearch?.scoring
+      ? {
+          ...legacyFullResearch.scoring,
+          composite: legacyFullResearch.scoringComposite ?? null,
+        }
+      : null);
+  const scoringComposite =
+    topLevelScoring?.composite ?? legacyFullResearch?.scoringComposite ?? null;
 
   return NextResponse.json({
     thesisId: thesis.id,
@@ -198,9 +235,28 @@ export async function GET(
     coreBelief: thesis.coreBelief,
     keyAssumptions: thesis.keyAssumptions ?? [],
     invalidationConds: thesis.invalidationConds ?? [],
-    // 4-dim composite scoring (record_thesis stores in fullResearch.scoring).
+    // 4-dim composite scoring (top-level since 2026-05-18; legacy nesting
+    // in fullResearch is dropped in PR-4).
     scoring,
     scoringComposite,
+    // Deep-research synthesis — null on legacy rows, populated by the
+    // thesis-writer agent. Shape is intentionally loose (the synthesis
+    // model can emit varied per-section content); the UI renderer is
+    // forgiving and walks whatever it finds.
+    researchSections: thesis.researchSections,
+    researchUpdatedAt: thesis.researchUpdatedAt
+      ? thesis.researchUpdatedAt.toISOString()
+      : null,
+    // Phase 1.5 (PR-6) — fields surfaced on the sheet so the user can
+    // audit them. Both gates (confidence ≥ minConfidence AND
+    // composite ≥ 7) deserve top billing; provenance + sources + parent
+    // chain were previously dark.
+    confidenceScore: thesis.confidenceScore,
+    sourceKind: thesis.sourceKind,
+    sourceRationale: thesis.sourceRationale,
+    sourceSignalIds: thesis.sourceSignalIds,
+    sourcesUsed: thesis.sourcesUsed,
+    parentThesisId: thesis.parentThesisId,
     // Live quote — drives the price header below the company name.
     currentPrice,
     dayChange,
