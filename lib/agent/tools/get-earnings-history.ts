@@ -23,9 +23,12 @@ interface FmpResult<T> {
 }
 
 async function fmp<T>(path: string): Promise<FmpResult<T>> {
-  const base = path.startsWith("/v4/")
-    ? `https://financialmodelingprep.com/api${path}`
-    : `https://financialmodelingprep.com/api/v3${path}`;
+  // 2026-05-19 — /api/v3 + /v4 deprecated; route /stable/ paths directly.
+  const base = path.startsWith("/stable/")
+    ? `https://financialmodelingprep.com${path}`
+    : path.startsWith("/v4/")
+      ? `https://financialmodelingprep.com/api${path}`
+      : `https://financialmodelingprep.com/api/v3${path}`;
   const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
   try {
     const res = await fetch(url, {
@@ -34,6 +37,9 @@ async function fmp<T>(path: string): Promise<FmpResult<T>> {
     });
     if (!res.ok) return { data: null, error: `FMP ${res.status} on ${path.split("?")[0]}` };
     const data = (await res.json()) as T;
+    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in (data as object)) {
+      return { data: null, error: `FMP: ${(data as Record<string, string>)["Error Message"]}` };
+    }
     return { data };
   } catch (err) {
     return { data: null, error: err instanceof Error ? err.message : "fmp error" };
@@ -51,11 +57,15 @@ interface FinnhubEarningsRow {
 interface FmpEarningsCalendarRow {
   date: string;
   symbol: string;
+  // Legacy /api/v3 shape — kept for backward compat if FMP ever flips back.
   eps?: number | null;
-  epsEstimated?: number | null;
   revenue?: number | null;
-  revenueEstimated?: number | null;
   fiscalDateEnding?: string;
+  // /stable/ shape (current — 2026-05-19+).
+  epsActual?: number | null;
+  epsEstimated?: number | null;
+  revenueActual?: number | null;
+  revenueEstimated?: number | null;
 }
 
 function outcomeFor(actual: number | null | undefined, estimate: number | null | undefined): "BEAT" | "MISS" | "INLINE" | "UNK" {
@@ -93,8 +103,12 @@ export const getEarningsHistory = defineTool({
 
     const [epsRes, calRes] = await Promise.all([
       finnhub(`/stock/earnings?symbol=${T}&limit=${n}`, 2),
+      // /stable/earnings replaces /historical/earning_calendar; free
+      // tier caps `limit` at 5, so clamp downward when the agent asks
+      // for more. The Finnhub /stock/earnings call below is the
+      // canonical n-quarter source — FMP is just enrichment.
       fmp<FmpEarningsCalendarRow[]>(
-        `/historical/earning_calendar/${T}?limit=${n + 2}`,
+        `/stable/earnings?symbol=${T}&limit=${Math.min(n + 2, 5)}`,
       ),
     ]);
 
@@ -130,7 +144,9 @@ export const getEarningsHistory = defineTool({
       // Accept the match only if within ~120 days (matches the same fiscal quarter).
       const matched = bestDiff < 120 * 86400_000 ? best : null;
 
-      const revActual = matched?.revenue ?? null;
+      // /stable/ returns `revenueActual`; legacy /api/v3 returned `revenue`.
+      // Read either shape — they're populated by the FMP response.
+      const revActual = matched?.revenueActual ?? matched?.revenue ?? null;
       const revEst = matched?.revenueEstimated ?? null;
       const revSurprisePct =
         revActual != null && revEst != null && revEst !== 0

@@ -22,9 +22,12 @@ interface FmpResult<T> {
 }
 
 async function fmp<T>(path: string): Promise<FmpResult<T>> {
-  const base = path.startsWith("/v4/")
-    ? `https://financialmodelingprep.com/api${path}`
-    : `https://financialmodelingprep.com/api/v3${path}`;
+  // 2026-05-19 — /api/v3 + /v4 deprecated; route /stable/ paths directly.
+  const base = path.startsWith("/stable/")
+    ? `https://financialmodelingprep.com${path}`
+    : path.startsWith("/v4/")
+      ? `https://financialmodelingprep.com/api${path}`
+      : `https://financialmodelingprep.com/api/v3${path}`;
   const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
   try {
     const res = await fetch(url, {
@@ -33,6 +36,9 @@ async function fmp<T>(path: string): Promise<FmpResult<T>> {
     });
     if (!res.ok) return { data: null, error: `FMP ${res.status} on ${path.split("?")[0]}` };
     const data = (await res.json()) as T;
+    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in (data as object)) {
+      return { data: null, error: `FMP: ${(data as Record<string, string>)["Error Message"]}` };
+    }
     return { data };
   } catch (err) {
     return { data: null, error: err instanceof Error ? err.message : "fmp error" };
@@ -92,10 +98,10 @@ export const getFinancialsDeep = defineTool({
   execute: async ({ ticker }) => {
     const T = ticker.toUpperCase();
     const [incomeRes, cashRes, metricsRes, estimatesRes] = await Promise.all([
-      fmp<IncomeStatementRow[]>(`/income-statement/${T}?limit=5&period=annual`),
-      fmp<CashFlowRow[]>(`/cash-flow-statement/${T}?limit=5&period=annual`),
-      fmp<KeyMetricsRow[]>(`/key-metrics/${T}?limit=5&period=annual`),
-      fmp<AnalystEstimateRow[]>(`/analyst-estimates/${T}?period=annual&limit=2`),
+      fmp<IncomeStatementRow[]>(`/stable/income-statement?symbol=${T}&limit=5&period=annual`),
+      fmp<CashFlowRow[]>(`/stable/cash-flow-statement?symbol=${T}&limit=5&period=annual`),
+      fmp<KeyMetricsRow[]>(`/stable/key-metrics?symbol=${T}&limit=5&period=annual`),
+      fmp<AnalystEstimateRow[]>(`/stable/analyst-estimates?symbol=${T}&period=annual&limit=2`),
     ]);
 
     const errors: string[] = [];
