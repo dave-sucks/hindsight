@@ -719,6 +719,47 @@ export const recordThesis = defineTool({
           `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in discovery mode; forced WATCHING. Promotion is the daily-run's job.`,
         );
       }
+
+      // ── Discovery LONG/SHORT WATCHING cap (Layer-1, A3) ──────────────
+      // The discovery prompt sets an 8-thesis cap on LONG/SHORT mints per
+      // run (lib/agent/system-prompts/discovery.ts:360). The cap is
+      // currently advisory — gpt-5.5 mostly respects it but 5/17's
+      // production run minted 7-8 per analyst across 5 analysts, dumping
+      // ~38 new WATCHING theses on Monday morning's tactical surface in
+      // one go. Layer-1 enforcement makes the cap unbypassable so prompt
+      // drift can't quietly raise it.
+      //
+      // PASS theses don't count — they're terminal-at-write institutional
+      // memory, not new active coverage. They're allowed unbounded so
+      // the agent can document every researched-but-declined candidate.
+      //
+      // A3 from docs/plans/SYSTEM_AUDIT_2026_05_19.md.
+      const DISCOVERY_WATCHING_CAP = 8;
+      if (isDiscoveryDirectional && ctx.runId) {
+        const existingWatchingFromThisRun = await prisma.thesis.count({
+          where: {
+            researchRunId: ctx.runId,
+            status: "WATCHING",
+            direction: { in: ["LONG", "SHORT"] },
+          },
+        });
+        if (existingWatchingFromThisRun >= DISCOVERY_WATCHING_CAP) {
+          return {
+            summary: `Discovery cap reached for $${args.ticker}: already minted ${existingWatchingFromThisRun} LONG/SHORT WATCHING theses this run.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note:
+                `This discovery run has already minted ${existingWatchingFromThisRun} LONG/SHORT WATCHING theses, ` +
+                `which is at or above the ${DISCOVERY_WATCHING_CAP}-thesis cap. ` +
+                `Pass on $${args.ticker} (write \`record_thesis(direction: 'PASS', reasoning_summary, invalidation_conditions)\` ` +
+                `to preserve institutional memory of having researched it) or end the run with the existing batch. ` +
+                `PASS theses don't count toward this cap.`,
+            },
+            sources: [],
+          };
+        }
+      }
       const effectiveStatusForTriggers: "ACTIVE" | "WATCHING" | "ARCHIVED" =
         args.direction === "PASS"
           ? "ARCHIVED"
