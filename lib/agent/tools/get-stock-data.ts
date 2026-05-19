@@ -68,10 +68,14 @@ export const getStockData = defineTool({
     }
 
     const doTechnicals = include_technicals !== false;
-    const now = Math.floor(Date.now() / 1000);
-    const ninetyDaysAgo = now - 90 * 86400;
 
-    const [quoteResult, profileResult, financialsResult, newsResult, recsResult, candleResult, priceTargetResult] =
+    // Candle data comes from Alpaca only (with `feed: "iex"`). Finnhub
+    // `/stock/candle` requires the paid plan (403 on basic) and FMP
+    // `/historical-price-full` is deprecated since 2025-08-31. The dead
+    // primary calls used to live in this Promise.all and add ~500ms of
+    // wasted latency to every get_stock_data call. 2026-05-19 cleanup
+    // after the A1 alpaca feed=iex fix verified Alpaca-only candles work.
+    const [quoteResult, profileResult, financialsResult, newsResult, recsResult, priceTargetResult] =
       await Promise.all([
         finnhub(`/quote?symbol=${ticker}`, 2),
         finnhub(`/stock/profile2?symbol=${ticker}`, 2),
@@ -81,9 +85,6 @@ export const getStockData = defineTool({
           2,
         ),
         finnhub(`/stock/recommendation?symbol=${ticker}`, 2),
-        doTechnicals
-          ? finnhub(`/stock/candle?symbol=${ticker}&resolution=D&from=${ninetyDaysAgo}&to=${now}`, 2)
-          : Promise.resolve({ data: null } as { data: unknown; error?: string }),
         fmp(`/v4/price-target-consensus?symbol=${ticker}`),
       ]);
 
@@ -124,33 +125,22 @@ export const getStockData = defineTool({
       volumeRatio: string | null;
       trend: string;
     } | null = null;
-    let techProvider = "Finnhub";
+    const techProvider = "Alpaca";
 
     if (doTechnicals) {
-      let candles = candleResult.data as { s?: string; c?: number[]; v?: number[] } | null;
+      let candles: { s?: string; c?: number[]; v?: number[] } | null = null;
 
-      if (!candles || candles.s !== "ok" || !candles.c?.length) {
-        techProvider = "FMP";
-        const fmpResult = await fmp(`/historical-price-full/${ticker}?timeseries=90`);
-        const fmpHistory = fmpResult.data as { historical?: { close: number; volume: number }[] } | null;
-        if (fmpHistory?.historical?.length) {
-          const sorted = fmpHistory.historical.slice().reverse();
-          candles = { s: "ok", c: sorted.map((d) => d.close), v: sorted.map((d) => d.volume) };
+      try {
+        const threeMonthsAgo = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
+        const today = new Date().toISOString().slice(0, 10);
+        const alpacaBars = await getBars(ticker, { start: threeMonthsAgo, end: today }, ctx.alpacaCreds);
+        if (alpacaBars.length >= 14) {
+          candles = { s: "ok", c: alpacaBars.map((b) => b.close), v: alpacaBars.map((b) => b.volume) };
+        } else if (alpacaBars.length > 0) {
+          console.warn(`[tool] get_stock_data: Alpaca returned ${alpacaBars.length} bars for ${ticker} — under the 14-bar minimum, technicals skipped.`);
         }
-      }
-
-      if (!candles || candles.s !== "ok" || !candles.c?.length) {
-        try {
-          techProvider = "Alpaca";
-          const threeMonthsAgo = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
-          const today = new Date().toISOString().slice(0, 10);
-          const alpacaBars = await getBars(ticker, { start: threeMonthsAgo, end: today }, ctx.alpacaCreds);
-          if (alpacaBars.length >= 14) {
-            candles = { s: "ok", c: alpacaBars.map((b) => b.close), v: alpacaBars.map((b) => b.volume) };
-          }
-        } catch (err) {
-          console.warn(`[tool] get_stock_data: Alpaca bars fallback failed for ${ticker}:`, err instanceof Error ? err.message : err);
-        }
+      } catch (err) {
+        console.warn(`[tool] get_stock_data: Alpaca bars failed for ${ticker}:`, err instanceof Error ? err.message : err);
       }
 
       if (candles && candles.s === "ok" && candles.c?.length) {
@@ -306,7 +296,7 @@ export const getStockData = defineTool({
         { provider: "Finnhub", title: `${ticker} Company Profile`, url: "https://finnhub.io/docs/api/company-profile2" },
         { provider: "Finnhub", title: `${ticker} Key Financials`, url: "https://finnhub.io/docs/api/stock-basic-financials" },
         ...(consensusData ? [{ provider: "Finnhub", title: `${ticker} Analyst Consensus`, url: "https://finnhub.io/docs/api/recommendation-trends" }] : []),
-        ...(techData ? [{ provider: techProvider, title: `${ticker} 90-Day Price History`, url: techProvider === "Finnhub" ? "https://finnhub.io/docs/api/stock-candles" : `https://financialmodelingprep.com/financial-statements/${ticker}` }] : []),
+        ...(techData ? [{ provider: techProvider, title: `${ticker} 90-Day Price History`, url: "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/" }] : []),
         ...(targetsData ? [{ provider: "FMP", title: `${ticker} Analyst Price Targets`, url: `https://financialmodelingprep.com/api/v4/price-target-consensus?symbol=${ticker}` }] : []),
       ],
     };
