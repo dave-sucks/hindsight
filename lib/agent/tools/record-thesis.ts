@@ -20,7 +20,7 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
-import { HORIZON_REVIEW_DAYS, type Horizon as HorizonPolicy } from "@/lib/agent/horizon-policy";
+import { HORIZON_REVIEW_DAYS, WATCHING_FIRST_REVIEW_DAYS, type Horizon as HorizonPolicy } from "@/lib/agent/horizon-policy";
 
 const thesisFields = z.object({
   ticker: z.string(),
@@ -676,21 +676,6 @@ export const recordThesis = defineTool({
           : {}),
       };
 
-      // Default nextReviewAt by horizon. Cheap, transparent, lets the
-      // housekeeping run pick up theses without the agent having to do
-      // the date math. Constants live in lib/agent/horizon-policy.ts so
-      // the daily-run prompt's per-horizon hint and the writer's review
-      // cadence stay in lockstep. Falls through to null when horizon is
-      // omitted — legacy theses don't get an auto-review date.
-      let nextReviewAt: Date | null = null;
-      if (args.next_review_at) {
-        nextReviewAt = new Date(args.next_review_at);
-      } else if (args.horizon) {
-        const dayMs = 24 * 60 * 60 * 1000;
-        const days = HORIZON_REVIEW_DAYS[args.horizon as HorizonPolicy];
-        nextReviewAt = new Date(Date.now() + days * dayMs);
-      }
-
       // ── Effective status — derived from (direction, status) pair ──
       // Watchlist-collapse legal pairs:
       //   PENDING → WATCHING (only)
@@ -726,6 +711,32 @@ export const recordThesis = defineTool({
             ? "WATCHING"
             : args.status ??
               (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
+
+      // Default nextReviewAt by horizon. WATCHING + ACTIVE pick different
+      // cadence tables because they're different jobs:
+      //   • ACTIVE  — held position, needs frequent attention (stops fire,
+      //               targets get hit). Uses HORIZON_REVIEW_DAYS (1/1/7/30).
+      //   • WATCHING — no position; just hygiene. Tracks the per-horizon
+      //               TIME_ELAPSED hygiene trigger from triggers/defaults.ts.
+      //               Uses WATCHING_FIRST_REVIEW_DAYS (14/14/30/90).
+      //
+      // Pre-2026-05-19 both used HORIZON_REVIEW_DAYS, which scheduled
+      // brand-new COMPOUNDER WATCHING theses for review in 30 days when
+      // a quarterly hygiene cycle is more appropriate. Net effect was
+      // Sunday discovery floods → Monday REVIEW_DATE_HIT storms. See
+      // docs/plans/SYSTEM_AUDIT_2026_05_19.md A4. ARCHIVED (PASS) gets
+      // null — terminal-at-write, never reviewed.
+      let nextReviewAt: Date | null = null;
+      if (args.next_review_at) {
+        nextReviewAt = new Date(args.next_review_at);
+      } else if (args.horizon && effectiveStatusForTriggers !== "ARCHIVED") {
+        const dayMs = 24 * 60 * 60 * 1000;
+        const days =
+          effectiveStatusForTriggers === "WATCHING"
+            ? WATCHING_FIRST_REVIEW_DAYS[args.horizon as HorizonPolicy]
+            : HORIZON_REVIEW_DAYS[args.horizon as HorizonPolicy];
+        nextReviewAt = new Date(Date.now() + days * dayMs);
+      }
 
       // Reject illegal (direction, status) pairs explicitly when the agent
       // passes an `status` arg that conflicts with direction.

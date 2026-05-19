@@ -36,7 +36,7 @@ import {
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
-import { HORIZON_REVIEW_DAYS, type Horizon } from "@/lib/agent/horizon-policy";
+import { HORIZON_REVIEW_DAYS, WATCHING_FIRST_REVIEW_DAYS, type Horizon } from "@/lib/agent/horizon-policy";
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -699,6 +699,23 @@ export const updateThesis = defineTool({
       patch.nextReviewAt = args.next_review_at
         ? new Date(args.next_review_at)
         : null;
+    // PENDING → LONG/SHORT promotion: when the agent doesn't supply
+    // next_review_at, auto-set from the WATCHING first-review cadence so
+    // newly-committed COMPOUNDER watches don't fire REVIEW_DATE_HIT in 1
+    // day (which is what HORIZON_REVIEW_DAYS would give them on the held
+    // side). Mirror of the record_thesis fix. A4 from
+    // docs/plans/SYSTEM_AUDIT_2026_05_19.md.
+    if (
+      args.direction !== undefined &&
+      (args.direction === "LONG" || args.direction === "SHORT") &&
+      existing.direction === "PENDING" &&
+      args.next_review_at === undefined &&
+      args.horizon
+    ) {
+      const dayMs = 24 * 60 * 60 * 1000;
+      const days = WATCHING_FIRST_REVIEW_DAYS[args.horizon as Horizon];
+      patch.nextReviewAt = new Date(Date.now() + days * dayMs);
+    }
     if (args.triggers !== undefined) {
       // Triggers are wholesale-replaced (intentional — agent passes the FULL
       // array, see file header). But two server-managed fields must survive

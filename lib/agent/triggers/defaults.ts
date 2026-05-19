@@ -310,14 +310,41 @@ function watchingEntryTrigger(
   };
 }
 
+/**
+ * Per-horizon cooldown for REVIEW_DATE_HIT. The predicate fires when
+ * `nextReviewAt < now`, and the `update_thesis` auto-bump pushes
+ * nextReviewAt forward by horizon cadence after each review — so in
+ * normal operation the cooldown rarely binds. But when nextReviewAt is
+ * set very short (e.g. PENDING seeds, or stale theses imported from
+ * pre-A4 data) the cooldown becomes the rate limiter.
+ *
+ * Values track each horizon's hygiene cadence:
+ *   CATALYST    7d  (catalyst windows move fast)
+ *   TRADE       7d  (short windows)
+ *   TARGET     14d  (monthly cadence with halfway re-fire)
+ *   COMPOUNDER 60d  (quarterly cadence with monthly re-fire)
+ *
+ * Lazy default: previously a flat 1-day cooldown that made
+ * REVIEW_DATE_HIT re-fire every market day until update_thesis bumped
+ * nextReviewAt. A COMPOUNDER WATCHING with a stale nextReviewAt would
+ * fire 90 tactical runs over the hygiene window. A5 from
+ * docs/plans/SYSTEM_AUDIT_2026_05_19.md.
+ */
+const REVIEW_DATE_HIT_COOLDOWN_BY_HORIZON: Record<Horizon, number> = {
+  CATALYST: 7,
+  TRADE: 7,
+  TARGET: 14,
+  COMPOUNDER: 60,
+};
+
 /** Standard nextReviewAt fire — hooked off `Thesis.nextReviewAt`. */
-function reviewDateHitTrigger(): Trigger {
+function reviewDateHitTrigger(horizon: Horizon): Trigger {
   return {
     id: createId(),
     predicate: { kind: "REVIEW_DATE_HIT" },
     action: "REVIEW",
     rationale: `Scheduled review date reached. Walk the thesis against today's tape.`,
-    cooldownDays: 1,
+    cooldownDays: REVIEW_DATE_HIT_COOLDOWN_BY_HORIZON[horizon],
   };
 }
 
@@ -327,7 +354,7 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
 
   const entry = watchingEntryTrigger(thesis, direction, 1);
   if (entry) out.push(entry);
-  out.push(reviewDateHitTrigger());
+  out.push(reviewDateHitTrigger("CATALYST"));
 
   // Catalyst windows live and die on filings + earnings — those are
   // typically how the catalyst lands. No support-REVIEW: a binary
@@ -392,7 +419,7 @@ function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
   // intraday cross fires once and tactical-run takes it from there.
   const entry = watchingEntryTrigger(thesis, direction, 1);
   if (entry) out.push(entry);
-  out.push(reviewDateHitTrigger());
+  out.push(reviewDateHitTrigger("TRADE"));
 
   // No support-REVIEW for TRADE: the setup IS the entry plan; if price
   // drops to "support" the setup is gone, the thesis should age out via
@@ -430,7 +457,7 @@ function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
 
   const entry = watchingEntryTrigger(thesis, direction, 1);
   if (entry) out.push(entry);
-  out.push(reviewDateHitTrigger());
+  out.push(reviewDateHitTrigger("TARGET"));
 
   // Support-REVIEW for LONG: a pullback to the stop level is either
   // a better entry or evidence the thesis is breaking. Worth a look.
@@ -488,7 +515,7 @@ function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
   // above the level over a week the cron will re-fire.
   const entry = watchingEntryTrigger(thesis, direction, 7);
   if (entry) out.push(entry);
-  out.push(reviewDateHitTrigger());
+  out.push(reviewDateHitTrigger("COMPOUNDER"));
 
   // No support-REVIEW. Compounder watches don't react to intra-month
   // price moves — only to fundamental events (earnings/guidance) or
