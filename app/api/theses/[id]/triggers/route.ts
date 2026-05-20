@@ -13,7 +13,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { getAccountId } from "@/lib/auth/account";
 
 export async function GET(
@@ -90,29 +89,16 @@ export async function GET(
 
   // Position lookup — only relevant when status='ACTIVE' and there's an
   // open Position scoped to this analyst on this ticker. Powers the
-  // sheet header's holding row.
+  // sheet header's holding row. Live-quote-derived fields (currentPrice,
+  // marketValue, unrealizedPnl) are null here; the sheet refines them
+  // client-side once /api/theses/[id]/quote returns (PR for split routes,
+  // 2026-05-19 — the Finnhub call was blocking the entire sheet for ~1-2s).
   type PositionInfo = {
     quantity: number;
     avgCost: number;
     openedAt: string;
-    currentPrice: number | null;
-    marketValue: number | null;
-    unrealizedPnl: number | null;
-    unrealizedPnlPct: number | null;
     daysHeld: number;
   };
-  // Live quote — always fetched (was previously gated to status=ACTIVE).
-  // The thesis sheet now shows current price in the header for WATCHING +
-  // ACTIVE + terminal rows, mirroring the stock-page header pattern. One
-  // quote per sheet open; failure is non-fatal — the header just hides
-  // the price block.
-  const liveQuote = await getStockQuote(thesis.ticker).catch(() => null);
-  const currentPrice =
-    liveQuote && Number.isFinite(liveQuote.c) && liveQuote.c > 0 ? liveQuote.c : null;
-  const dayChange =
-    liveQuote && Number.isFinite(liveQuote.d) ? liveQuote.d : null;
-  const dayChangePct =
-    liveQuote && Number.isFinite(liveQuote.dp) ? liveQuote.dp : null;
 
   let position: PositionInfo | null = null;
   if (thesis.status === "ACTIVE" && thesis.researchRun?.agentConfigId) {
@@ -130,54 +116,24 @@ export async function GET(
       },
     });
     if (pos) {
-      // Reuse the liveQuote fetched above — same ticker, single call.
-      const qty = Number(pos.quantity);
-      const avgCost = Number(pos.avgCost);
-      const marketValue = currentPrice != null ? currentPrice * qty : null;
-      const unrealizedPnl =
-        currentPrice != null ? (currentPrice - avgCost) * qty : null;
-      const unrealizedPnlPct =
-        currentPrice != null && avgCost > 0
-          ? ((currentPrice - avgCost) / avgCost) * 100
-          : null;
       const daysHeld = Math.max(
         0,
         Math.floor((Date.now() - pos.openedAt.getTime()) / 86_400_000),
       );
       position = {
-        quantity: qty,
-        avgCost,
+        quantity: Number(pos.quantity),
+        avgCost: Number(pos.avgCost),
         openedAt: pos.openedAt.toISOString(),
-        currentPrice,
-        marketValue,
-        unrealizedPnl,
-        unrealizedPnlPct,
         daysHeld,
       };
     }
   }
 
-  // Most-recent TRIGGER_FIRED row (≤7d) — drives the sheet header banner.
-  // We surface the predicate that fired plus the agent's response row
-  // (UPDATED / CLOSED / INVALIDATED with the same triggerId) so the user
-  // sees both the fire and the action in one banner.
-  const since = new Date(Date.now() - 7 * 86_400_000);
-  const recentFire = await prisma.thesisUpdate.findFirst({
-    where: {
-      thesisId: thesis.id,
-      type: "TRIGGER_FIRED",
-      timestamp: { gte: since },
-    },
-    orderBy: { timestamp: "desc" },
-    select: {
-      id: true,
-      timestamp: true,
-      summary: true,
-      rationale: true,
-      triggerId: true,
-      runId: true,
-    },
-  });
+  // The most-recent-TRIGGER_FIRED lookup that previously lived here was
+  // removed 2026-05-19. The TriggerFiredBanner it drove was deleted from
+  // the sheet header on 2026-05-18 — the same data is still visible inside
+  // the Activity timeline at the bottom, which has its own query. Cuts
+  // ~100-200ms off every sheet open.
 
   // Pull scoring from the top-level column (PR-1 canonical), falling back
   // to the legacy `fullResearch.scoring` / `fullResearch.scoringComposite`
@@ -257,19 +213,5 @@ export async function GET(
     sourceSignalIds: thesis.sourceSignalIds,
     sourcesUsed: thesis.sourcesUsed,
     parentThesisId: thesis.parentThesisId,
-    // Live quote — drives the price header below the company name.
-    currentPrice,
-    dayChange,
-    dayChangePct,
-    recentFire: recentFire
-      ? {
-          id: recentFire.id,
-          timestamp: recentFire.timestamp.toISOString(),
-          summary: recentFire.summary,
-          rationale: recentFire.rationale,
-          triggerId: recentFire.triggerId,
-          runId: recentFire.runId,
-        }
-      : null,
   });
 }

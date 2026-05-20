@@ -11,19 +11,27 @@ import {
  * InfoRow — the ONE component for label-left / value-right rows.
  * Matches the Trade Details Card reference design exactly.
  *
- * Usage (display):   <InfoRow label="Direction" value="LONG" />
- * Usage (edit):      <InfoRow label="Direction"><Select ... /></InfoRow>
- * Usage (no border): <InfoRow label="P&L" value="+$12" border={false} />
- * Usage (tooltip):   <InfoRow label="Min Confidence" value="70%"
- *                              tooltip="Lowest thesis confidence that can place a trade." />
+ * Usage (display):     <InfoRow label="Direction" value="LONG" />
+ * Usage (edit):        <InfoRow label="Direction"><Select ... /></InfoRow>
+ * Usage (no border):   <InfoRow label="P&L" value="+$12" border={false} />
+ * Usage (tooltip):     <InfoRow label="Min Confidence" value="70%"
+ *                                tooltip="Lowest thesis confidence that can place a trade." />
+ * Usage (description): <InfoRow label="Horizon" value="TRADE"
+ *                                description="Bounded short-term trade. Exit on stop, target, or maxHoldDays." />
  *
- * When `tooltip` is supplied we render a small info (i) icon next to the
- * label that, on hover, opens a TooltipContent with the explanation.
- * Keep tooltip copy short — one or two sentences max.
+ * Label: `font-light text-foreground` (lighter weight, same color as value).
+ * Value: `font-medium text-foreground` — slightly heavier so the value
+ * reads as the primary content.
+ * Description (when supplied): renders on its own line BELOW the label/value
+ * pair but INSIDE the bordered row — so the bottom border sits under the
+ * description, not between the row and the description. Unified with the
+ * ScoringRow pattern on the ThesisSheet (2026-05-19) so Composite Score +
+ * Schedule look identical.
  */
 export function InfoRow({
   label,
   value,
+  description,
   children,
   mono = false,
   border = true,
@@ -33,6 +41,7 @@ export function InfoRow({
 }: {
   label: string;
   value?: React.ReactNode;
+  description?: React.ReactNode;
   children?: React.ReactNode;
   mono?: boolean;
   border?: boolean;
@@ -40,15 +49,9 @@ export function InfoRow({
   valueClassName?: string;
   tooltip?: React.ReactNode;
 }) {
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-between text-sm min-h-8",
-        border && "border-b border-border pb-1",
-        className,
-      )}
-    >
-      <span className="text-muted-foreground shrink-0 flex items-center gap-1">
+  const rowContent = (
+    <div className="flex items-center justify-between text-sm min-h-8">
+      <span className="font-light text-foreground shrink-0 flex items-center gap-1">
         {label}
         {tooltip && (
           <TooltipProvider>
@@ -64,7 +67,7 @@ export function InfoRow({
       {children ?? (
         <span
           className={cn(
-            "font-medium text-right truncate",
+            "font-medium text-foreground text-right truncate",
             mono && "tabular-nums",
             valueClassName,
           )}
@@ -72,6 +75,22 @@ export function InfoRow({
           {value}
         </span>
       )}
+    </div>
+  );
+
+  return (
+    <div
+      className={cn(
+        border && "border-b border-border pb-1",
+        className,
+      )}
+    >
+      {rowContent}
+      {description ? (
+        <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+          {description}
+        </p>
+      ) : null}
     </div>
   );
 }
