@@ -42,6 +42,40 @@ export const HORIZON_REVIEW_DAYS: Record<Horizon, number> = {
 };
 
 /**
+ * Default days-until-first-review for **WATCHING** theses (newly minted,
+ * no position yet). Tracks the per-horizon hygiene-trigger cadence — not
+ * the held-side operational cadence above.
+ *
+ * Why distinct: WATCHING theses have no position to manage; review effort
+ * is hygiene ("is the setup still valid?"). Held positions need much more
+ * frequent attention. Pre-2026-05-19 record_thesis used HORIZON_REVIEW_DAYS
+ * for both, which scheduled brand-new COMPOUNDER WATCHING theses for first
+ * review 30 days out — too aggressive for a multi-year hold candidate.
+ *
+ * Values mirror each horizon's WATCHING-side hygiene cadence:
+ *   CATALYST   14d  (catalyst window)
+ *   TRADE      14d  (trade window)
+ *   TARGET     30d  (monthly)
+ *   COMPOUNDER 90d  (quarterly)
+ *
+ * Consumed today by:
+ *   • scripts/fix-watching-next-review.ts — one-shot repair
+ *   • lib/agent/horizon-policy.test.ts — anti-regression
+ *
+ * record_thesis / update_thesis do NOT yet read this — the WATCHING-cadence
+ * change in #291 was closed pending the C-series architectural rewrite.
+ * Once C1/C2 ship, the field's consumers change again (REVIEW_DATE_HIT
+ * trigger goes away; nextReviewAt is read only by daily-run's needsAction).
+ * Keep the constant in place so the test + script don't fail typecheck.
+ */
+export const WATCHING_FIRST_REVIEW_DAYS: Record<Horizon, number> = {
+  CATALYST: 14,
+  TRADE: 14,
+  TARGET: 30,
+  COMPOUNDER: 90,
+};
+
+/**
  * Human-readable review cadence labels surfaced in the daily-run prompt's
  * Live Theses table. Tells the agent how often a thesis of this kind is
  * normally walked — so a COMPOUNDER getting hammered today doesn't get

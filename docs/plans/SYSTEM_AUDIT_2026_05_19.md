@@ -690,6 +690,227 @@ the audit then. Targets for the next snapshot:
 
 ---
 
+## 5a. Architectural rethink — the bigger picture (added post-2026-05-19 re-audit)
+
+After reviewing today's (2026-05-19) data and reading the prompts + tools + docs
+end-to-end, the **per-item patchwork above (A1–A7, B1–B7) fixes real bugs but
+doesn't address the deeper shape problem.** Tactical isn't doing what it's
+supposed to do, and the trigger system spawns runs that don't need to exist.
+
+This section captures the architectural take so the next session has it.
+
+### 5a.1. The three modes — clean separation
+
+| Mode | When | Job | Trigger surface |
+|---|---|---|---|
+| **Discovery** | Sunday cron | Find new candidates to track | None — produces WATCHING theses |
+| **Daily** | Weekday 8am cron | Walk the whole book, decide what's actionable today | Reads `needsAction` per thesis (REVIEW_DUE, TRIGGER_FIRED, TRIGGER_MATCHING_NOW) |
+| **Tactical** | Event-driven (5-min cron + signal.routed) | React to one specific event mid-session | Spawned by `app/thesis.trigger.fired` |
+
+That separation is clean in theory. In practice, **tactical fires on triggers
+that aren't really "events"** — REVIEW_DATE_HIT, PRICE_BELOW/REVIEW,
+TIME_ELAPSED — which produces busywork.
+
+### 5a.2. Today (2026-05-19) reality check
+
+16 tactical runs today produced 0 trades. Breakdown:
+
+| Predicate × Action | Count | Outcome |
+|---|---|---|
+| PRICE_ABOVE / ENTER | 6 | 1 correctly passed (already-held AVGO); 5 passed (3 for null technicals, 2 legitimately faded back below trigger) |
+| PRICE_BELOW / REVIEW | 4 | All wrote "REVIEW, no action, nextReviewAt bumped" |
+| REVIEW_DATE_HIT / REVIEW | 5 | 2 INVALIDATED, 3 wrote "no change" |
+| **Real-event tactical work** | 7 | The 6 ENTERs + 2 invalidations (5 of those productive) |
+| **Busywork** | 9 | The 4 PRICE_BELOW/REVIEW + 5 REVIEW_DATE_HIT minus 2 invalidations |
+
+**Meanwhile daily-run did real work today** (without any of the audit PRs landed):
+- Placed an F SHORT at $13.03 (news-confirmed setup, then cancelled — needs follow-up)
+- Closed TSLA LONG at $409.99 (stop hit, was held since 5/12)
+- INVALIDATED 6 watch theses with concrete data-driven rationales
+- STATUS_CHANGED 1
+
+**Conclusion:** daily-run's prompt + structural-belief reading is healthy.
+Tactical is mostly noise.
+
+### 5a.3. The trigger problem — three categories, not eight
+
+The trigger predicate types in `lib/agent/triggers/types.ts` are mostly fine
+as a kit. The problem is **how they're wired and what action they fire**:
+
+**Real event triggers (need tactical, mid-session decision):**
+- PRICE_ABOVE / ENTER — watching thesis breaks entry level → maybe buy
+- PRICE_BELOW / EXIT — held position hits stop → maybe sell
+- PRICE_ABOVE / EXIT (TRADE horizon) — held trade hits target → maybe close
+- EARNINGS_BEAT / EARNINGS_MISS — earnings landed → re-score quickly
+- GUIDANCE_CHANGE — guidance cut → re-score
+- FILING (8-K material event) — read filing, possibly act
+- SIGNAL_TYPE — urgent routed signal (recall, regulatory, etc.)
+
+**Hygiene triggers that don't need tactical (daily-run handles tomorrow):**
+- ❌ REVIEW_DATE_HIT — daily-run's `get_theses.needsAction.REVIEW_DUE` already
+  reads `nextReviewAt < now` for every thesis. Spawning a tactical run for
+  this is fully redundant.
+- ❌ TIME_ELAPSED (90d hygiene) — same. Daily-run sees the same overdue
+  state via `nextReviewAt`.
+- ❌ PRICE_BELOW / REVIEW (support level "re-evaluate") — not urgent. If
+  price hit support today, daily-run sees it tomorrow morning.
+- ❌ PRICE_ABOVE / REVIEW (target hit, TARGET horizon, hold-or-trail
+  decision) — arguable; usually not urgent, daily-run can decide.
+
+**The user's intuition was right:** REVIEW_DATE_HIT is the weird one because
+it's a predicate that just wraps `Thesis.nextReviewAt`. There's no market
+data involved — it's a clock check that happens to be implemented as a
+trigger. Daily-run's `needsAction.REVIEW_DUE` does the exact same clock check
+on read. **The trigger version exists as a no-op duplicate.**
+
+### 5a.4. nextReviewAt + needsAction = daily-run's existing scheduled-review path
+
+The mechanism the user described — *"can daily runs already get all theses,
+see which ones have review date, and know to review them and skip others?"*
+— is already implemented:
+
+1. `lib/agent/needs-action.ts` `computeNeedsAction()` returns
+   `{ kind: "REVIEW_DUE", daysOverdue: N }` when `nextReviewAt < now`.
+2. `get_theses(needsAction: true)` surfaces this per-thesis to the daily-run
+   agent. The agent reads the list, decides which to walk first.
+3. `complete_run` preflight refuses if any `needsAction != null` thesis
+   wasn't addressed via `update_thesis` in this run.
+
+So `nextReviewAt` IS the field daily-run uses for the review-overdue check.
+The REVIEW_DATE_HIT trigger is a parallel-but-equivalent path that spawns
+tactical runs for the same condition. **Remove the trigger; keep the field.**
+
+### 5a.5. PRICE_BELOW — answering the user's question directly
+
+> *"Are you saying we don't need triggers → tactical runs for price below,
+> because price below won't cause a trigger to buy usually? But hitting a
+> price on the way up would trigger a buy?"*
+
+The distinction isn't really direction (PRICE_ABOVE vs PRICE_BELOW). It's
+**action**:
+
+| Predicate | Action | Use case | Should fire tactical? |
+|---|---|---|---|
+| PRICE_ABOVE | ENTER | Watching → "price broke entry, validate" | **Yes — urgent** |
+| PRICE_ABOVE | EXIT | TRADE/CATALYST held → "target hit, close" | **Yes — urgent** |
+| PRICE_ABOVE | REVIEW | TARGET held → "target hit, hold or trail?" | Marginal — daily can handle |
+| PRICE_BELOW | EXIT | Held position → "stop hit, sell" | **Yes — urgent** |
+| PRICE_BELOW | REVIEW | Watching → "fell to support, better entry or thesis broken?" | **No — daily handles** |
+
+So both PRICE_ABOVE and PRICE_BELOW *can* warrant tactical, but only when
+the action is ENTER (for ABOVE) or EXIT (for BELOW on held). The REVIEW
+variants are essentially "interesting price level reached, take another
+look" — which is exactly what daily-run already does for every thesis
+daily.
+
+### 5a.6. THESIS_RESEARCH_V2 implications — should the deep-research agent set ALL triggers?
+
+> *"In my whole thesis v2 where it's set by individual Agents on deep
+> research mode... is the plan that those deep research, extra thorough
+> agents should be setting all triggers? no hardcoded logic by type?"*
+
+**Yes — this is the right direction.** Here's the layered argument:
+
+The current `defaultTriggersForHorizon` system was designed for the
+shallow-research world: discovery agent makes a quick judgment, mints a
+WATCHING thesis, and the system attaches a horizon-keyed safety net of
+~5 default triggers. That's appropriate when the agent doesn't have time
+to think about THIS thesis's specific risks.
+
+In the THESIS_RESEARCH_V2 world, the thesis-writer agent spends 60–120
+seconds on per-ticker deep research. It produces structured beliefs
+(`coreBelief`, `keyAssumptions`, `invalidationConds`). Those assumptions
+ARE the triggers — *"AI capex stays >$200B/quarter through 2026"* maps
+directly to `GUIDANCE_CHANGE direction=DOWN → REVIEW`, *"gross margin
+remains >70%"* maps to a custom EARNINGS-tied review when the next print
+lands. The thesis-writer has the context to pick triggers thoughtfully
+per-ticker.
+
+**The right end-state:**
+
+1. **Minimum mechanical defaults** — the system still attaches the
+   non-judgment-required safety net:
+   - `PRICE_BELOW(stop) → EXIT cd=0` (the hard stop — never let the
+     agent forget to set this)
+   - `PRICE_ABOVE(target) → EXIT` for TRADE horizon (mechanical exit)
+   - Nothing else.
+2. **Agent-declared triggers** — the thesis-writer reads its own
+   assumptions and adds the specific events that would invalidate or
+   confirm them. Typically 2–4 triggers, tightly scoped.
+3. **No REVIEW_DATE_HIT** — the field stays, the trigger goes. Daily-run
+   reads `needsAction.REVIEW_DUE`.
+4. **No TIME_ELAPSED hygiene** — also redundant with daily-run.
+5. **No PRICE_BELOW / REVIEW** — not urgent enough.
+
+The end-state trigger count drops dramatically:
+
+| Horizon | Old default count | New default count |
+|---|---|---|
+| WATCHING CATALYST | 5 | 1 (entry) |
+| WATCHING TRADE | 4 | 1 (entry) |
+| WATCHING TARGET | 5 | 1 (entry) |
+| WATCHING COMPOUNDER | 5 | 1 (entry, 7d cd) |
+| HELD CATALYST | 5 | 1 (stop) |
+| HELD TRADE | 3 | 2 (stop + target) |
+| HELD TARGET | 5 | 1 (stop) |
+| HELD COMPOUNDER | 6 | 1 (stop) |
+
+Plus 2–4 agent-declared per thesis. Total triggers monitored drops from
+~358 to ~150 across the same book.
+
+### 5a.7. What this means for the open PRs
+
+Re-evaluating the 9 open PRs in light of the architectural take:
+
+| PR | What it does | Survives architectural rewrite? |
+|---|---|---|
+| **#288** (docs) | Tactical review + audit doc | **Keep** — durable record |
+| **#289** (Alpaca feed=iex) | Unblocks `technicals` for ALL data consumers | **Keep** — data-layer fix |
+| **#290** (preflight skip tactical + narrative REVIEWED) | Tactical/audit hygiene | **Keep** — survives |
+| **#291** (WATCHING first-review + cooldown) | Tunes auto-default cadences | **Close** — defaults mostly going away |
+| **#292** (drop ENTER on promotion) | Stops AVGO/GOOGL re-firing on held | **Keep** — survives any rewrite |
+| **#293** (discovery 8-cap) | Caps Sunday flood at Layer-1 | **Could close** — could also keep as bandaid while V2 deep-research lands |
+| **#294** (FMP migration + Alpaca primary + repair script) | Data-layer cleanup | **Keep** — foundational |
+| **#295** (reconcile null fix + zombie CLOSED + tests) | Three real bug fixes | **Keep** — survives |
+| **#296** (remove keyword gate) | Removes false-fail regex | **Keep** — survives |
+
+**Recommended action:** close #291 (and possibly #293), merge the other 7.
+The closed PR's findings (A4 + A5) are preserved in this doc and become
+part of the architectural rewrite.
+
+### 5a.8. The new direction — what to actually build
+
+Calling this **C-series** (architectural rewrite, separate from A/B audit
+patches):
+
+| # | Item | Effort | Layer |
+|---|---|---|---|
+| **C1** | Strip `defaultTriggersForHorizon` down to mechanical safety net (stop EXIT + TRADE target EXIT). Remove REVIEW_DATE_HIT, TIME_ELAPSED hygiene, PRICE_BELOW/REVIEW, OR(filings) REVIEW. | ~3h | Layer 1 (defaults.ts) |
+| **C2** | Remove REVIEW_DATE_HIT from the predicate evaluator + trigger schema. `nextReviewAt` field stays — daily-run reads via `needsAction.REVIEW_DUE` as today. | ~2h | Layer 1 (triggers/) |
+| **C3** | Tactical-prompt rewrite — agent reads `coreBelief + keyAssumptions + invalidationConds` first, scores the trigger event against them, then validates execution conditions. New decision tree: invalidate / act / pass. | ~2h | Layer 3 (system-prompts/intraday-tactical.ts) |
+| **C4** | THESIS_RESEARCH_V2 thesis-writer prompt adds explicit "what triggers should wake me?" section, derives 2–4 triggers from the keyAssumptions. | ~2h | Layer 3 (system-prompts) + plans/THESIS_RESEARCH_V2.md |
+| **C5** | Discovery cap of 3 LONG/SHORT WATCHING per run (was 8). Combined with V2 deep-research depth per candidate. | ~1h | Layer 1 (record-thesis.ts) |
+
+**Total:** ~10h. Same order of magnitude as the A-series, but the surface
+is structurally cleaner afterwards.
+
+**Expected effect after C-series:**
+
+| Metric | Today | After C-series |
+|---|---|---|
+| Tactical runs / day | 16 | 3–6 |
+| Wasted (no-action) tactical runs | ~9 of 16 | 0 |
+| Triggers monitored per analyst | 48–125 | 15–30 |
+| Discovery output / Sunday | 38 | 12–18 |
+| Tactical decisions grounded in thesis belief | rare | every run |
+| `nextReviewAt` source-of-truth | both trigger + field | field only |
+
+The bigger goal: the system the user described — *"manage my portfolio
+when important triggers come in"* — is **events the agent's own belief
+flagged as decision-points, not auto-attached calendar reminders.**
+
+---
+
 ## 6. Out of scope (referenced for navigation)
 
 - **Deep-research thesis rewrite.** [`THESIS_RESEARCH_V2.md`](./THESIS_RESEARCH_V2.md)
