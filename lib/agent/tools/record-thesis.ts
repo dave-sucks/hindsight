@@ -719,6 +719,55 @@ export const recordThesis = defineTool({
           `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in discovery mode; forced WATCHING. Promotion is the daily-run's job.`,
         );
       }
+
+      // ── Discovery cap (C5) ───────────────────────────────────────────
+      // Layer-1 enforcement: at most 3 LONG/SHORT WATCHING mints per
+      // discovery run. PASS rows don't count toward the cap (they're
+      // institutional memory, no further system load).
+      //
+      // The previous prompt-only cap was 8 per run and was respected by
+      // agents on 5/17 (per-analyst mint counts: 7–8) — that's the right
+      // bar for shallow-research discovery but it shoveled 38 new
+      // WATCHING theses into the book in one Sunday. Combined with
+      // THESIS_RESEARCH_V2 (where the thesis-writer spends 60-120s per
+      // ticker producing structured belief), per-cron throughput is
+      // physically lower anyway, and 3 high-conviction picks beat 8
+      // shallow ones. Layer-1 turns the soft prompt cap into a hard
+      // guarantee: the 4th LONG/SHORT WATCHING mint per discovery run
+      // gets rejected with a "PASS the rest" instruction.
+      //
+      // C5 from docs/plans/SYSTEM_AUDIT_2026_05_19.md §5a.
+      if (isDiscoveryDirectional && ctx.runId) {
+        const DISCOVERY_WATCHING_CAP = 3;
+        const existingDirectional = await prisma.thesis.count({
+          where: {
+            researchRunId: ctx.runId,
+            direction: { in: ["LONG", "SHORT"] },
+            status: "WATCHING",
+          },
+        });
+        if (existingDirectional >= DISCOVERY_WATCHING_CAP) {
+          return {
+            summary: `Thesis rejected for ${args.ticker}: discovery cap of ${DISCOVERY_WATCHING_CAP} LONG/SHORT WATCHING per run reached.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note:
+                `This discovery run has already minted ${existingDirectional} LONG/SHORT WATCHING ` +
+                `${existingDirectional === 1 ? "thesis" : "theses"}. The Layer-1 cap is ${DISCOVERY_WATCHING_CAP} ` +
+                `per run — combined with the deep-research thesis-writer this gives the daily-run agent ` +
+                `a manageable book to walk on Monday.\n\n` +
+                `For the remaining candidates you've researched, you have two paths:\n` +
+                `  • record_thesis(direction: "PASS") — institutional memory, terminal-at-write. ` +
+                `Documents that you looked and declined; preserves the rationale for next encounter.\n` +
+                `  • Skip the mint entirely if the candidate truly doesn't warrant any tracking.\n\n` +
+                `Rank your conviction first; pick the top ${DISCOVERY_WATCHING_CAP}. Discovery is supposed ` +
+                `to be picky, not exhaustive.`,
+            },
+            sources: [],
+          };
+        }
+      }
       const effectiveStatusForTriggers: "ACTIVE" | "WATCHING" | "ARCHIVED" =
         args.direction === "PASS"
           ? "ARCHIVED"
