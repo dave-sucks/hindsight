@@ -519,10 +519,30 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "complete_run",
     ] as const,
     hasSuggestConfig: false,
-    // 5 min — the meta-tool can take 60-120s; record_thesis adds a few more
-    // seconds for the durable-state writes. Leaves comfortable headroom
-    // inside Vercel's 300s function timeout.
-    maxDuration: 300,
+    // 2026-05-20: bumped 300 → 800. A real $MDB refresh test on 2026-05-20
+    // hit the 270s abort signal with `Thesis-writer timed out after 271s`.
+    // Worker budget breakdown:
+    //   parallel data pulls (7 sources)         ~10s
+    //   synthesis call w/ Anthropic web_search  ~150-180s (3 search rounds)
+    //   outer agent decision turn               ~30-60s (read meta-tool
+    //                                            result, pick direction /
+    //                                            target / stop, web_search
+    //                                            escape hatch if needed)
+    //   update_thesis (refresh path)            ~5s
+    //   complete_run                            ~2s
+    //   total                                   ~200-260s — right at the
+    //                                            300s wall on first try.
+    //
+    // Vercel Pro's 800s ceiling gives the agent (800 - 30) * 1000 = 770s
+    // of actual budget via the AbortSignal in run-thesis-writer.ts. The
+    // inner synthesis call's own 180s abort still bounds the meta-tool's
+    // longest leg; this just stops Vercel from killing the outer agent
+    // before it can record_thesis + complete_run.
+    //
+    // Also bumped /api/inngest/route.ts maxDuration 300 → 800 in the
+    // same change — the route's ceiling was silently capping every
+    // Inngest function to 5 min regardless of per-mode setting.
+    maxDuration: 800,
   },
 };
 
