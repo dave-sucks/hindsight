@@ -26,9 +26,23 @@ import { podcastSegmentRun } from "@/lib/inngest/functions/podcast-segment-run";
 // (and later Discovery / Daily / Tactical) to write one deep thesis.
 import { thesisWriter } from "@/lib/inngest/functions/thesis-writer";
 
-// morning-research runs a full agent (generateText with 30 tool steps)
-// inside a single step.run — needs extended timeout to avoid Vercel killing it
-export const maxDuration = 300; // 5 min — covers multi-step agent runs
+// Vercel function timeout for ALL Inngest functions served from this route.
+// Set to the Vercel Pro plan's 800s ceiling because the heaviest paths
+// (research-run at maxDuration:800, thesis-writer at maxDuration:800 post
+// 2026-05-20) need every second of it. The shorter-mode functions (tactical
+// 240s, discovery 270s, sync-heartbeat ~10s, etc.) don't pay anything for
+// the higher ceiling — they return early.
+//
+// History:
+//   • 2026-05-13: was 300 (Vercel Hobby ceiling). Discovery had to throttle
+//     to maxDuration:270 to fit.
+//   • 2026-05-15: research-run swap to gpt-5.5 + Vercel Pro upgrade →
+//     modes.ts bumped research-run to 800 but THIS file was left at 300,
+//     silently capping every Inngest path to 5 min.
+//   • 2026-05-20: thesis-writer hit the 270s abort on a real refresh test
+//     (synthesis + outer agent + record_thesis didn't fit). Bumped the
+//     mode to 800 + this file to 800 in the same change.
+export const maxDuration = 800;
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
