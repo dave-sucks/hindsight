@@ -885,9 +885,9 @@ patches):
 
 | # | Item | Effort | Layer |
 |---|---|---|---|
-| **C1** | Strip `defaultTriggersForHorizon` down to mechanical safety net (stop EXIT + TRADE target EXIT). Remove REVIEW_DATE_HIT, TIME_ELAPSED hygiene, PRICE_BELOW/REVIEW, OR(filings) REVIEW. | ~3h | Layer 1 (defaults.ts) |
-| **C2** | Remove REVIEW_DATE_HIT from the predicate evaluator + trigger schema. `nextReviewAt` field stays — daily-run reads via `needsAction.REVIEW_DUE` as today. | ~2h | Layer 1 (triggers/) |
-| **C3** | Tactical-prompt rewrite — agent reads `coreBelief + keyAssumptions + invalidationConds` first, scores the trigger event against them, then validates execution conditions. New decision tree: invalidate / act / pass. | ~2h | Layer 3 (system-prompts/intraday-tactical.ts) |
+| **C1** | Strip `defaultTriggersForHorizon` down to mechanical safety net (stop EXIT + TRADE target EXIT). Remove REVIEW_DATE_HIT, TIME_ELAPSED hygiene, PRICE_BELOW/REVIEW, OR(filings) REVIEW. ✅ **shipped** | ~3h | Layer 1 (defaults.ts) |
+| **C2** | Remove REVIEW_DATE_HIT from default attachment + cleanup script `scripts/dedupe-review-date-hit-triggers.ts` for the 43 existing theses. ✅ **shipped (bundled with C1)** | ~2h | Layer 1 (triggers/) |
+| **C3** | Tactical-prompt rewrite — agent reads `coreBelief + keyAssumptions + invalidationConds` first, scores event against them (broken / confirmed / silent), then validates execution conditions. New decision tree: invalidate / act / pass. Volume gate is now horizon-conditional (TRADE keeps 1.5×, TARGET/COMPOUNDER treat as helpful context). ✅ **shipped** | ~2h | Layer 3 (system-prompts/intraday-tactical.ts) |
 | **C4** | THESIS_RESEARCH_V2 thesis-writer prompt adds explicit "what triggers should wake me?" section, derives 2–4 triggers from the keyAssumptions. | ~2h | Layer 3 (system-prompts) + plans/THESIS_RESEARCH_V2.md |
 | **C5** | Discovery cap of 3 LONG/SHORT WATCHING per run (was 8). Combined with V2 deep-research depth per candidate. | ~1h | Layer 1 (record-thesis.ts) |
 
