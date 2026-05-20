@@ -230,6 +230,26 @@ The analyst has open positions and active theses. needsAction MAY have been null
 
 **Fix path:** spot-check Catalyst Event Raider runs over the next 5 trading days. If the pattern persists with no observable action across all theses, drill into the needsAction output. May indicate a content-quality issue with the analyst's universe / signal routing rather than a code bug. ~30 minutes investigation per occurrence.
 
+
+### P2-19 — ThesisSheet skeletons because parent doesn't forward data it already has
+**Source:** 2026-05-19 sheet-redesign session. When a user opens `<ThesisSheet>` from `thesis-row.tsx` (watchlist sidebar, stock-page row, trade-row), the parent passes only ~10 props: `ticker, direction, confidenceScore, reasoningSummary, entryPrice, targetPrice, stopLoss, horizon, holdDuration, companyName`. The sheet then fires `/api/theses/[id]/triggers` to fetch the remaining fields (`status, coreBelief, keyAssumptions, invalidationConds, scoring, scoringComposite, sourceKind, sourceRationale, sourceSignalIds, parentThesisId, researchSections, …`) — even though **the parent already has every one of those fields in memory** from the same Prisma query that drew the row.
+
+Net effect: ~300-500ms of skeleton time on every sheet open for data that could have rendered synchronously. The status pill, Core Belief headline, Key Assumptions, Cause for Concern, and Composite Score all sit blank until the round-trip completes.
+
+**Where it bites:**
+- `components/ui/thesis-row.tsx:269` — sheet opens from watchlist + stock page + trade row.
+- `ThesisRowData` type at `thesis-row.tsx:26` lists only the forwarded fields; the rest aren't even on the type. So upstream queries (e.g. `app/(root)/stocks/[symbol]/page.tsx:286`, `app/(root)/trades/[id]/page.tsx:406`) don't bother selecting them.
+- The `/runs/[id]` path (via `components/agent/renderers/ThesisCardRenderer.tsx:92`) DOES spread the full thesis data — that callsite is fine. This gap is specific to the watchlist/stock/trade paths.
+
+**Fix path:**
+1. Expand `ThesisRowData` (`components/ui/thesis-row.tsx:26-62`) to include the missing fields.
+2. Update the Prisma `select` blocks in `app/(root)/stocks/[symbol]/page.tsx:~270` and `app/(root)/trades/[id]/page.tsx:~390` to include them.
+3. In `thesis-row.tsx`, spread the full row into `<ThesisSheet>` instead of cherry-picking 10 props.
+4. The `/triggers` fetch in `ThesisSheet` becomes a background refresh (optional — could keep for live updates, or drop entirely if the parent's data is always fresh enough).
+5. With this, the skeletons added in the 2026-05-19 split-routes work disappear on every callsite that already has the data. /triggers latency stops mattering for the watchlist/stock paths.
+
+~1-2 hours. Should fire before PR-9 (V2 schema cutover) ships so the new researchSections-flattened columns get forwarded too.
+
 ---
 
 ## P2 — Paper cuts and FE polish

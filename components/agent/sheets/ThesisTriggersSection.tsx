@@ -22,15 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { InboxUnreadIcon } from "@hugeicons/core-free-icons";
-import {
-  DoorOpen,
-  Eye,
-  LogIn,
-  Minus,
-  Plus,
-  Shield,
-  Zap,
-} from "lucide-react";
+import { Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface TriggerPredicate {
@@ -59,24 +51,15 @@ interface Trigger {
   lastFiredAt?: string;
 }
 
+// Position info from /triggers — quantity + cost basis + days held only.
+// Live-quote-derived fields (currentPrice / marketValue / unrealizedPnl)
+// come from the separate /quote response (`QuoteResponse.positionPnl`)
+// and are merged into the rendered PositionRow client-side.
 export interface ThesisStatePosition {
   quantity: number;
   avgCost: number;
   openedAt: string;
-  currentPrice: number | null;
-  marketValue: number | null;
-  unrealizedPnl: number | null;
-  unrealizedPnlPct: number | null;
   daysHeld: number;
-}
-
-export interface ThesisStateRecentFire {
-  id: string;
-  timestamp: string;
-  summary: string;
-  rationale: string | null;
-  triggerId: string | null;
-  runId: string | null;
 }
 
 export interface ThesisScoringDim {
@@ -108,7 +91,6 @@ export interface TriggersResponse {
   nextReviewAt: string | null;
   triggers: Trigger[];
   position: ThesisStatePosition | null;
-  recentFire: ThesisStateRecentFire | null;
   // Structural belief — load-bearing fields the trade-evaluator + tactical
   // agent read. Surfaced to the sheet so the user can see what the agent
   // actually committed to (vs the prose-layer thesisBullets / riskFlags).
@@ -145,11 +127,23 @@ export interface TriggersResponse {
   // an earlier thesis on the same ticker; renders as a "Replaces #abc"
   // chip near the StatusPill.
   parentThesisId: string | null;
-  // Live quote from the API call — drives the price header below the
-  // company name. Null when the quote feed couldn't resolve.
+}
+
+// Response shape from /api/theses/:id/quote — split from /triggers on
+// 2026-05-19 because the inline Finnhub call was blocking everything
+// else on the sheet for ~1-2s. The sheet now fires both endpoints in
+// parallel; this one trickles in whenever Finnhub does and refines only
+// the price header + position PnL fields.
+export interface QuoteResponse {
   currentPrice: number | null;
   dayChange: number | null;
   dayChangePct: number | null;
+  positionPnl: {
+    currentPrice: number;
+    marketValue: number;
+    unrealizedPnl: number;
+    unrealizedPnlPct: number | null;
+  } | null;
 }
 
 // `sourcesUsed` column is Json — agents write `[{provider, title, url}]`
@@ -213,6 +207,90 @@ function predicateSentence(p: TriggerPredicate): string {
   return sharedPredicateSentence(p as SharedTriggerPredicate);
 }
 
+/**
+ * Split a predicate into a left-side "kind" label and a right-side value
+ * for the two-cell trigger pill (2026-05-20 redesign):
+ *   [ price above ][ $149 ]
+ *   [ time elapsed ][ 14 days ]
+ *   [ earnings beat ][ ≥3% ]
+ *
+ * Returns `value: null` when there's no value half (e.g. REVIEW_DATE_HIT,
+ * EARNINGS_BEAT with no minimum surprise pct); the pill collapses to a
+ * single cell in that case.
+ */
+function predicateKindValue(p: TriggerPredicate): {
+  kind: string;
+  value: string | null;
+} {
+  const plural = (n: number, word: string) =>
+    `${n} ${word}${n === 1 ? "" : "s"}`;
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+      return { kind: "price above", value: `$${p.level ?? "?"}` };
+    case "PRICE_BELOW":
+      return { kind: "price below", value: `$${p.level ?? "?"}` };
+    case "PRICE_MOVE_PCT":
+      return {
+        kind: `price ${p.direction === "UP" ? "up" : "down"} ${p.window ?? ""}`.trim(),
+        value: `${p.pct ?? "?"}%`,
+      };
+    case "VS_SMA":
+      return {
+        kind: `${p.period ?? "?"}-day SMA`,
+        value: p.direction ? p.direction.toLowerCase() : null,
+      };
+    case "RSI":
+      return {
+        kind: `RSI ${p.direction ? p.direction.toLowerCase() : ""}`.trim(),
+        value: p.threshold != null ? String(p.threshold) : null,
+      };
+    case "SIGNAL_TYPE": {
+      const valueParts = [
+        p.signalType ? p.signalType.toLowerCase().replace(/_/g, " ") : null,
+        p.sentiment ? p.sentiment.toLowerCase() : null,
+        p.minUrgency ? `≥${p.minUrgency.toLowerCase()}` : null,
+      ].filter((v): v is string => Boolean(v));
+      return { kind: "signal", value: valueParts.join(" · ") || null };
+    }
+    case "EARNINGS_BEAT":
+      return {
+        kind: "earnings beat",
+        value: p.minSurprisePct ? `≥${p.minSurprisePct}%` : null,
+      };
+    case "EARNINGS_MISS":
+      return {
+        kind: "earnings miss",
+        value: p.minSurprisePct ? `≥${p.minSurprisePct}%` : null,
+      };
+    case "GUIDANCE_CHANGE":
+      return {
+        kind: "guidance",
+        value: p.direction ? p.direction.toLowerCase() : null,
+      };
+    case "FILING":
+      return { kind: "filing", value: p.formType ?? null };
+    case "TIME_ELAPSED":
+      return {
+        kind: "time elapsed",
+        value: p.days != null ? plural(p.days, "day") : null,
+      };
+    case "REVIEW_DATE_HIT":
+      return { kind: "review date hit", value: null };
+    case "AND":
+      return {
+        kind: "all of",
+        value: `${p.predicates?.length ?? 0} predicates`,
+      };
+    case "OR":
+      return {
+        kind: "any of",
+        value: `${p.predicates?.length ?? 0} predicates`,
+      };
+    default:
+      return { kind: predicateSentence(p), value: null };
+  }
+}
+
 /** Long-form description for the hover popover. */
 function predicateDescription(p: TriggerPredicate): string {
   switch (p.kind) {
@@ -253,54 +331,11 @@ function predicateDescription(p: TriggerPredicate): string {
   }
 }
 
-// ── Action helpers ──────────────────────────────────────────────────────
-// Action is what the trigger DOES when it fires — EXIT, REVIEW, ADD,
-// TRIM, MOVE_STOP. It does NOT belong on the pill (pill describes the
-// WHEN, not the WHAT). Action surfaces in the popover only. The dot
-// color in the popover header carries the visual signal.
-
-function ActionIcon({
-  action,
-  className,
-}: {
-  action: string;
-  className?: string;
-}) {
-  const cls = className ?? "size-3.5";
-  switch (action) {
-    case "EXIT":
-      return <DoorOpen className={cls} />;
-    case "ENTER":
-      return <LogIn className={cls} />;
-    case "ADD":
-      return <Plus className={cls} />;
-    case "TRIM":
-      return <Minus className={cls} />;
-    case "MOVE_STOP":
-      return <Shield className={cls} />;
-    case "REVIEW":
-    default:
-      return <Eye className={cls} />;
-  }
-}
-
-function actionTintClass(action: string): string {
-  switch (action) {
-    case "EXIT":
-      return "bg-red-500/10 text-red-500";
-    case "ENTER":
-      return "bg-emerald-500/10 text-emerald-500";
-    case "ADD":
-      return "bg-emerald-500/10 text-emerald-500";
-    case "TRIM":
-      return "bg-amber-500/10 text-amber-500";
-    case "MOVE_STOP":
-      return "bg-blue-500/10 text-blue-500";
-    case "REVIEW":
-    default:
-      return "bg-muted text-muted-foreground";
-  }
-}
+// ── Action label helper ────────────────────────────────────────────────
+// Action (EXIT / ENTER / ADD / TRIM / MOVE_STOP / REVIEW) is surfaced via
+// the section grouping (ENTER IF / EXIT IF / REVIEW IF) above each pill
+// group + as the label inside the popover. Used to live as an inline
+// icon on every pill; removed in the 2026-05-20 pill redesign.
 
 function actionLabel(action: string): string {
   // Shared module returns lowercase verb phrases; capitalize for pill display.
@@ -354,12 +389,15 @@ function fmtFiredAt(iso?: string): string {
 }
 
 // ── Trigger pill — 2 cells separated by a real border ─────────────────
-// Structure:  [ action icon ] │ [ predicate sentence ]
-//
-// One outer rounded outline. The divider is `border-r` on cell 1 — real
-// border, no floating separator. Cell 2 is plain foreground text reading
-// like a sentence ("Price below $88"). Action color comes from the
-// tinted background on cell 1.
+// Restyled 2026-05-20:  [ kind ][ value ]
+//   - Cell 1 (kind): faint muted bg, muted-foreground text
+//     ("price above" / "time elapsed" / "earnings beat" / etc.)
+//   - Cell 2 (value): no bg, plain foreground text ("$149" / "14 days")
+//   - Smaller font (text-xs), shorter row (h-7)
+//   - No action icon — action info is communicated via the section
+//     grouping (ENTER IF / EXIT IF / REVIEW IF) above
+//   - Value-less predicates (REVIEW_DATE_HIT, EARNINGS_BEAT without min%)
+//     render the kind cell only.
 
 function TriggerPill({
   trigger,
@@ -370,6 +408,7 @@ function TriggerPill({
   firing: boolean;
   onTestFire: () => void;
 }) {
+  const { kind, value } = predicateKindValue(trigger.predicate);
   return (
     <Popover>
       <PopoverTrigger
@@ -377,24 +416,24 @@ function TriggerPill({
           <div
             role="button"
             tabIndex={0}
-            className="inline-flex h-8 cursor-pointer items-stretch overflow-hidden rounded-md border border-border bg-background text-sm transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex h-7 cursor-pointer items-stretch overflow-hidden rounded-md border border-border text-xs transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         }
       >
-        {/* Cell 1 — action icon, tinted bg, real right border as divider */}
+        {/* Cell 1 — kind label, faint muted background */}
         <div
           className={cn(
-            "flex items-center justify-center border-r border-border px-2",
-            actionTintClass(trigger.action),
+            "flex items-center px-2 bg-muted/30 text-muted-foreground",
+            value ? "border-r border-border" : "",
           )}
         >
-          <ActionIcon action={trigger.action} className="size-4" />
+          {kind}
         </div>
 
-        {/* Cell 2 — readable sentence in foreground */}
-        <div className="flex items-center px-3 text-foreground">
-          {predicateSentence(trigger.predicate)}
-        </div>
+        {/* Cell 2 — value, no background, foreground text */}
+        {value ? (
+          <div className="flex items-center px-2 text-foreground">{value}</div>
+        ) : null}
       </PopoverTrigger>
 
       <TriggerPopoverContent
@@ -417,19 +456,14 @@ function TriggerPopoverContent({
 }) {
   return (
     <PopoverContent side="left" align="start" className="w-72 p-0">
-      {/* Header — same shape as the pill, scaled up */}
-      <div className="flex items-stretch border-b border-border">
-        <div
-          className={cn(
-            "flex items-center justify-center border-r border-border px-3",
-            actionTintClass(trigger.action),
-          )}
-        >
-          <ActionIcon action={trigger.action} className="size-4" />
-        </div>
-        <div className="flex flex-1 items-center px-3 py-2 text-sm font-medium">
+      {/* Plain title — kind + value as a single sentence, lives at the
+          same indent as the body text. Replaces the 2-cell grid header
+          that mirrored the pill (2026-05-20) — too much visual weight
+          for what's really just a heading. */}
+      <div className="px-3 pt-3 pb-2 border-b border-border">
+        <p className="text-sm font-medium text-foreground">
           {predicateSentence(trigger.predicate)}
-        </div>
+        </p>
       </div>
 
       <div className="space-y-3 p-3 text-xs">
@@ -554,9 +588,7 @@ function TriggerGroups({
         if (items.length === 0) return null;
         return (
           <div key={key} className="space-y-1.5">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {label}
-            </p>
+            <p className="text-sm text-muted-foreground">{label}</p>
             <div className="flex flex-wrap gap-1.5">
               {items.map((t) => (
                 <TriggerPill
@@ -715,17 +747,16 @@ export function ThesisTriggersSection({ thesisId, data: dataProp }: Props) {
 
       {hasSchedule ? (
         <div className="space-y-2">
-          <SectionHeader>Schedule</SectionHeader>
+          {/* "Schedule" SectionHeader removed 2026-05-19 — the InfoRows
+              are self-evident (Horizon, Next review, Target size, etc.)
+              and the explicit section label was visual noise. */}
           <div className="flex flex-col gap-1">
             {data.horizon ? (
-              <>
-                <InfoRow label="Horizon" value={data.horizon} />
-                {HORIZON_DESCRIPTIONS[data.horizon] ? (
-                  <p className="text-xs text-muted-foreground leading-relaxed -mt-1 pb-1">
-                    {HORIZON_DESCRIPTIONS[data.horizon]}
-                  </p>
-                ) : null}
-              </>
+              <InfoRow
+                label="Horizon"
+                value={data.horizon}
+                description={HORIZON_DESCRIPTIONS[data.horizon] ?? undefined}
+              />
             ) : null}
             {data.nextReviewAt ? (
               <InfoRow
@@ -774,14 +805,14 @@ function SectionHeader({
   count?: number;
   children: React.ReactNode;
 }) {
+  // Unified with the ThesisSheet's other section headers (2026-05-19) —
+  // xs-uppercase-tracking eyebrow pattern shared across the app.
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 text-muted-foreground">
       {icon}
-      <p className="text-sm font-medium">{children}</p>
+      <p className="text-xs font-mono uppercase tracking-wide">{children}</p>
       {count != null ? (
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {count}
-        </span>
+        <span className="text-xs tabular-nums">{count}</span>
       ) : null}
     </div>
   );
