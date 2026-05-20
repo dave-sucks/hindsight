@@ -12,7 +12,10 @@ import { finnhub } from "@/lib/agent/research-helpers";
 const FMP_KEY = process.env.FMP_API_KEY!;
 
 async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
-  const base = `https://financialmodelingprep.com/api/v3${path}`;
+  // 2026-05-19 — /api/v3 deprecated; route /stable/ paths directly.
+  const base = path.startsWith("/stable/")
+    ? `https://financialmodelingprep.com${path}`
+    : `https://financialmodelingprep.com/api/v3${path}`;
   const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
   try {
     const res = await fetch(url, {
@@ -20,7 +23,11 @@ async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return { data: null, error: `FMP ${res.status}` };
-    return { data: await res.json() };
+    const data = await res.json();
+    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in data) {
+      return { data: null, error: `FMP: ${(data as Record<string, string>)["Error Message"]}` };
+    }
+    return { data };
   } catch (err) {
     return { data: null, error: err instanceof Error ? err.message : "FMP error" };
   }
@@ -38,8 +45,10 @@ export const getOptionsFlow = defineTool({
   progressLabel: (args) => `Pulling $${args.ticker.toUpperCase()} options flow`,
 
   execute: async ({ ticker }) => {
-    // Primary: FMP options chain
-    const fmpResult = await fmp(`/options/chain/${ticker.toUpperCase()}`);
+    // Primary: FMP options chain (migrated from /api/v3/options/chain
+    // to /stable/options-chain 2026-05-19 — v3 was returning the legacy-
+    // endpoint error string for every call)
+    const fmpResult = await fmp(`/stable/options-chain?symbol=${ticker.toUpperCase()}`);
     const fmpData = fmpResult.data;
 
     if (Array.isArray(fmpData) && fmpData.length > 0) {
