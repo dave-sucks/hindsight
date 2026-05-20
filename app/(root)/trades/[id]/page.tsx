@@ -18,6 +18,7 @@ import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { PriceGauge } from '@/components/ui/gauge';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase/server';
+import { holdDurationFromHorizon } from '@/lib/agent/horizon-policy';
 import {
   getStockProfile,
   getStockQuote,
@@ -144,6 +145,9 @@ export default async function TradeDetailPage({
               entryPrice: true,
               targetPrice: true,
               stopLoss: true,
+              // `horizon` drives the derived hold-duration label (PR-4);
+              // the legacy `holdDuration` column drops in PR-5.
+              horizon: true,
               holdDuration: true,
               createdAt: true,
               researchRunId: true,
@@ -774,12 +778,21 @@ export default async function TradeDetailPage({
               </div>
 
               {/* Direction + Hold Duration — bottom of card */}
-              {([
-                { label: 'Direction', value: position.direction },
-                ...(trade.thesis?.holdDuration
-                  ? [{ label: 'Hold Duration', value: trade.thesis.holdDuration }]
-                  : []),
-              ] as Array<{ label: string; value: string }>).map(({ label, value }) => (
+              {/* Hold-duration label is now derived from horizon at render
+                  time (PR-4) so the legacy `holdDuration` column can drop
+                  in PR-5. Falls back to the legacy value for rows without
+                  horizon (pre-V2). */}
+              {(() => {
+                const holdLabel = trade.thesis?.horizon
+                  ? holdDurationFromHorizon(trade.thesis.horizon)
+                  : trade.thesis?.holdDuration ?? null;
+                return [
+                  { label: 'Direction', value: position.direction },
+                  ...(holdLabel
+                    ? [{ label: 'Hold Duration', value: holdLabel }]
+                    : []),
+                ] as Array<{ label: string; value: string }>;
+              })().map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">
                   <span className="text-muted-foreground">{label}</span>
                   <span className="font-medium tabular-nums">{value}</span>

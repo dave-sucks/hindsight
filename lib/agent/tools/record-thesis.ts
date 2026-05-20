@@ -20,7 +20,11 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
-import { HORIZON_REVIEW_DAYS, type Horizon as HorizonPolicy } from "@/lib/agent/horizon-policy";
+import {
+  HORIZON_REVIEW_DAYS,
+  holdDurationFromHorizon,
+  type Horizon as HorizonPolicy,
+} from "@/lib/agent/horizon-policy";
 
 const thesisFields = z.object({
   ticker: z.string(),
@@ -38,12 +42,11 @@ const thesisFields = z.object({
   entry_price: z.number().optional().describe("Current price for entry. REQUIRED for LONG/SHORT — use the price from get_stock_data. Also include for PASS to enable shadow tracking."),
   target_price: z.number().optional().describe("Price target. REQUIRED for LONG/SHORT."),
   stop_loss: z.number().optional().describe("Stop-loss price. REQUIRED for LONG/SHORT."),
-  hold_duration: z
-    .enum(["DAY", "SWING", "POSITION"])
-    .optional()
-    .describe(
-      "Optional. If omitted, derived from horizon (TRADE→SWING, TARGET→SWING, CATALYST→SWING, COMPOUNDER→POSITION). Pick from DAY / SWING / POSITION only — do NOT pass horizon values like 'TRADE' here, that field is `horizon`.",
-    ),
+  // `hold_duration` arg removed 2026-05-18 (THESIS_CLEANUP PR-4). The
+  // value is derived from horizon at render time via
+  // holdDurationFromHorizon() — agents shouldn't have to think about it,
+  // and historically half of failed record_thesis calls were agents
+  // passing a horizon value ("TRADE") to this field by mistake.
   signal_types: z.array(z.string()).describe("Signal types: MOMENTUM, EARNINGS_BEAT, BREAKOUT, etc."),
   sources_used: z
     .array(z.object({ provider: z.string(), title: z.string(), url: z.string().optional() }))
@@ -669,12 +672,17 @@ export const recordThesis = defineTool({
           args.scoring.catalystFreshness.score
         : null;
 
-      const fullResearch = {
-        ...(args.fundamentals ? { fundamentals: args.fundamentals } : {}),
-        ...(args.scoring
-          ? { scoring: args.scoring, scoringComposite }
-          : {}),
-      };
+      // Top-level scoring column (promoted from fullResearch.scoring on
+      // 2026-05-18 — THESIS_CLEANUP PR-1). Composite folds in as a peer
+      // key alongside the four dimensions.
+      const scoring = args.scoring
+        ? { ...args.scoring, composite: scoringComposite }
+        : null;
+
+      // PR-4 (2026-05-18): we no longer write `fullResearch` — the
+      // `scoring` block is now top-level (PR-1), and the legacy
+      // `fundamentals` sub-key had zero readers. The column itself drops
+      // in PR-5 after the soak.
 
       // Default nextReviewAt by horizon. Cheap, transparent, lets the
       // housekeeping run pick up theses without the agent having to do
@@ -854,21 +862,21 @@ export const recordThesis = defineTool({
         entryPrice: args.entry_price ?? null,
         targetPrice: args.target_price ?? null,
         stopLoss: args.stop_loss ?? null,
-        // Derive hold_duration from horizon when the agent didn't provide
-        // one (or passed a horizon value like "TRADE" by mistake — schema
-        // already rejects those, but the fallback runs anyway).
-        // Mapping: COMPOUNDER → POSITION, everything else → SWING.
-        // DAY is intentionally never auto-picked; agents that want DAY
-        // must pass it explicitly.
-        holdDuration:
-          args.hold_duration ??
-          (args.horizon === "COMPOUNDER" ? "POSITION" : "SWING"),
+        // Legacy holdDuration column — derived from horizon. The arg was
+        // dropped from the zod schema in PR-4 (was a token waste, agents
+        // routinely confused it with `horizon`). Column drops in PR-5.
+        holdDuration: holdDurationFromHorizon(args.horizon),
         signalTypes: args.signal_types,
         sourcesUsed: args.sources_used ?? [],
         sourceSignalIds,
         sourceKind: inferredSourceKind,
         sourceRationale: sourceRationale.length > 0 ? sourceRationale : null,
-        fullResearch: Object.keys(fullResearch).length > 0 ? fullResearch : undefined,
+        scoring: scoring ?? undefined,
+        // 2026-05-18 (THESIS_CLEANUP PR-4): `fullResearch` write was
+        // dropped (scoring moved to top-level in PR-1; fundamentals
+        // sub-key had zero readers). `source` + `modelUsed` are kept
+        // here only because the columns are NOT NULL in the legacy
+        // schema; both have zero readers and drop together in PR-5.
         source: "AGENT",
         modelUsed: "gpt-4o",
         // ── Durable-state fields (PR 1) ─────────────────────────────────
@@ -1278,7 +1286,9 @@ export const recordThesis = defineTool({
                 entry_price: args.entry_price,
                 target_price: args.target_price,
                 stop_loss: args.stop_loss,
-                hold_duration: args.hold_duration,
+                // PR-4: hold_duration arg was dropped from the schema —
+                // derive from horizon for the event payload.
+                hold_duration: holdDurationFromHorizon(args.horizon),
                 signal_types: args.signal_types,
               },
               ...(evType === "skip" ? { reason: args.reasoning_summary, confidence: args.confidence_score } : {}),

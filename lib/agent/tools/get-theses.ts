@@ -74,6 +74,12 @@ const schema = z.object({
     .describe(
       "Include recent ThesisUpdate rows per thesis. Default false. Set true for tactical mode and per-thesis review.",
     ),
+  include_research: z
+    .boolean()
+    .optional()
+    .describe(
+      "Include the deep-research artifact (researchData + researchSections + researchUpdatedAt) per thesis. Default false. Each researchData blob is ~3-5KB — leaving this off keeps daily-run and tactical reads lightweight. Set true only when refreshing a thesis (thesis-writer mode) or when the agent specifically needs the multi-section synthesis to grade against.",
+    ),
   history_limit: z
     .number()
     .int()
@@ -151,6 +157,12 @@ export const getTheses = defineTool({
         : {}),
     };
 
+    // Default select skips the heavy deep-research blobs (`researchData`
+    // ~3-5KB + `researchSections`). The agent opts in with
+    // `include_research: true` when refreshing a thesis via the
+    // thesis-writer agent, or when the synthesis is needed for grading.
+    // Daily-run and tactical reads stay light by default.
+    const includeResearch = args.include_research === true;
     const theses = await prisma.thesis.findMany({
       where,
       orderBy: { updatedAt: "desc" },
@@ -179,6 +191,9 @@ export const getTheses = defineTool({
         nextReviewAt: true,
         sourceSignalIds: true,
         sourceKind: true,
+        // 4-dim composite scoring + composite total. Small (~500 bytes),
+        // useful for the LLM when grading a thesis. Always included.
+        scoring: true,
         createdAt: true,
         updatedAt: true,
         invalidatedAt: true,
@@ -186,6 +201,14 @@ export const getTheses = defineTool({
         closedAt: true,
         closeReason: true,
         parentThesisId: true,
+        // Heavy deep-research artifact — opt in via include_research.
+        ...(includeResearch
+          ? {
+              researchData: true,
+              researchSections: true,
+              researchUpdatedAt: true,
+            }
+          : {}),
       },
     });
 

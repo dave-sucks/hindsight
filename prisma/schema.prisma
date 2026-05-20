@@ -266,6 +266,18 @@ model Thesis {
   researchSections  Json?
   researchUpdatedAt DateTime?
 
+  // 4-dim composite scoring (the analyst's setup grade). Shape:
+  //   { trendStrength, relativeStrength, entryQuality, catalystFreshness, composite }
+  // where each dim is `{ score, note }` and composite is the SUM of the four
+  // dim scores on a /10 scale (caps 3+3+2+2). Composite ≥ 7 = ADD/ROTATE
+  // eligible; < 7 must be PASS or WATCH. R/R + portfolio fit are separate
+  // quality-bar gates, not scoring components.
+  //
+  // Promoted from the legacy `fullResearch.scoring` + `fullResearch.scoringComposite`
+  // nesting on 2026-05-18 (THESIS_CLEANUP PR-1). Read by /api/theses/[id]/triggers
+  // for the ThesisSheet "Composite Score" section.
+  scoring Json?
+
   // Relations
   researchRun  ResearchRun     @relation(fields: [researchRunId], references: [id])
   decisions    TradeDecision[]
