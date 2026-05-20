@@ -26,6 +26,18 @@ export interface ToolContext {
    * read this. See docs/PODCAST_PLAN.md.
    */
   podcastSegmentId?: string;
+  /**
+   * ResearchRun.mode for this execution — needed for mode-specific gates
+   * that can't reasonably do their own DB lookup. The complete_run
+   * preflight (lib/agent/tools/complete-run.ts) uses it to skip the
+   * `no_run_summary` check for INTRADAY_TACTICAL runs, which don't have
+   * record_run_summary in their tool allowlist.
+   *
+   * Optional for backward compat — callers without it just get the
+   * full default behavior. New call sites should pass it through from
+   * ResearchRun.mode.
+   */
+  runMode?: string;
   alpacaCreds?: AlpacaCredentials;
   /**
    * Snapshot of the run's environment (ResearchRun.environment). Pinned

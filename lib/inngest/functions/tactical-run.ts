@@ -275,6 +275,7 @@ export const tacticalRun = inngest.createFunction(
         userId: agentConfig.userId,
         accountId: agentConfig.accountId,
         analystId: agentConfig.id,
+        runMode: "INTRADAY_TACTICAL",
         watchlist: watchlistSymbols,
         exclusionList: agentConfig.exclusionList ?? [],
         sectors: agentConfig.sectors ?? [],
