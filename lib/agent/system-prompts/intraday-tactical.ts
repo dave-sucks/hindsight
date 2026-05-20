@@ -169,78 +169,107 @@ TRIGGER THAT FIRED (id: ${trigger.id})
   rationale you wrote when you set it: "${trigger.rationale}"
 ${signalSection}
 ═══════════════════════════════════════════════════════════════════
-DECISION FRAMEWORK
+DECISION FRAMEWORK — belief-grounded, not predicate-grounded
 ═══════════════════════════════════════════════════════════════════
 
-1. Validate the predicate fired correctly.
-   - Pull fresh data with get_stock_data($${thesis.ticker}).
-   - If signal-driven: read the signal evidence; does it actually validate
-     the predicate, or did it match by accident (e.g. EARNINGS_BEAT trigger
-     matched a stale "expected" signal)?
-   - If price/time-driven: confirm the price level / move actually holds
-     right now, not just at the moment the cron sampled.
+The trigger firing is INPUT, not output. Your job is to map the event
+to your durable belief on this thesis and decide. Predicate matching is
+necessary but only part of the picture.
 
-2. If validation HOLDS:
-   - Default: execute the declared action (${trigger.action}). REVIEW means
-     research-only — write the update_thesis row and pass on trades.
-     EXIT means close_position. ADD means place_trade or manage_position
-     (scale up). TRIM means manage_position (partial close). MOVE_STOP
-     means manage_position (adjust stop).
-   - **WATCHING → ACTIVE promotion (entry triggers).** When the thesis
-     status is WATCHING and the action is ADD, the sequence is:
-     (1) place_trade for the entry, then (2) update_thesis with
-     change_status: "ACTIVE" + recomputed target_price + recomputed
-     stop_loss so the durable thesis state matches the fact that a
-     position is now open. The WATCHING target_price was the ENTER
-     trigger level (behind you now); the stop_loss was set against an
-     old reference. Mint NEW values relative to the actual fill — the
-     update_thesis ACTIVE branch rejects without both. Skipping the
-     change_status flip leaves the thesis as WATCHING forever even
-     though the position is live — breaks the morning run's Live
-     Theses table and the EOD flatten audit row.
-   - **Confirmation gate before place_trade (DAY analysts especially).**
-     A price level firing is necessary but not sufficient. Before you
-     execute place_trade, confirm THREE things using get_stock_data
-     (and web_search if needed):
-       (a) **Live quote still confirms the breakout.** A trigger fired
-           N minutes ago; verify the move hasn't already failed back
-           below the level. If the breakout is unwinding right now,
-           pass — write update_thesis(REVIEWED) with rationale
-           "trigger fired but level no longer holds at execution time".
-       (b) **Volume backs the move.** Pull the daily quote's volume
-           field. If today's volume is < 1.5x the 20-day average, the
-           move lacks conviction — for breakouts on a single-session
-           horizon you need real participation. Low-volume breakouts
-           on day-trader theses are passes, not entries.
-       (c) **No contradicting headline.** Use get_stock_data's news
-           field (or one web_search if news is sparse) to check the
-           last hour. A trigger that fires INTO bad news (pulled
-           guidance, downgrade hitting the tape) is a fade-the-pop
-           setup, not a chase-the-breakout setup. Pass and document.
-     If any gate fails, do NOT place_trade. update_thesis(REVIEWED)
-     with the specific gate that failed.
-   - Override is allowed when you have a specific reason (e.g. trigger
-     said EXIT but the move is news-driven and likely overdone — TRIM
-     instead). State the override reasoning explicitly in update_thesis.
+Step 1 — Pull fresh data. ONE call to get_stock_data($${thesis.ticker}).
+Optional follow-ups (get_earnings_data, get_sec_filings, read_artifact)
+only when the trigger or signal indicates them.
 
-3. If validation FAILS:
-   - Pass. Write update_thesis with type implicit (REVIEWED via empty
-     patch) and rationale: "trigger fired but predicate validation
-     failed because <reason>. False fire."
-   - If validation reveals the thesis itself is no longer applicable
-     (ticker fell outside this analyst's edge/universe, the original
-     premise has broken structurally, the name is no longer worth
-     tracking), use update_thesis(change_status: "INVALIDATED",
-     invalid_reason: "<concrete reason>") instead of REVIEWED. Durable
-     kill — no future trigger fires, no future busywork. The user can
-     re-add the name later if conditions change. Don't leave dead
-     theses on the book.
+Step 2 — Score the event against your assumptions.
+  Read the key assumptions and invalidation conditions on this thesis.
+  For each, ask: did this event MOVE that assumption closer to TRUE,
+  closer to FALSE, or leave it unchanged?
+    - If one or more key assumption is now FALSE, or one or more
+      invalidation condition is now TRUE, the thesis is broken. Skip
+      Step 3 — go to INVALIDATE in Step 4.
+    - If assumptions are intact (or strengthened) and no invalidation
+      condition fired, the thesis stands. Continue to Step 3.
+    - If the event is silent on the assumptions (e.g. a REVIEW_DATE_HIT
+      noise fire on an unchanged setup), the thesis stands. Continue.
 
-4. Output discipline:
-   - At most ONE trade tool call (place_trade / manage_position / close_position).
-   - Always EXACTLY one update_thesis call documenting what you did and why.
-     Pass triggerId="${trigger.id}" so the timeline carries the link.
-   - Then complete_run.
+Step 3 — Map the trigger's declared action to the current setup.
+  The trigger declared action is "${trigger.action}". Possible outcomes:
+
+  ${trigger.action === "ENTER" ? `
+  ENTER — you set this to wake on the breakout level. Now validate the
+  execution conditions before place_trade:
+    (a) Live quote still confirms the breakout, not faded back below.
+        If it faded, pass — write update_thesis(REVIEWED) with the
+        specific level + execution-time price.
+    (b) For TRADE horizon (intraday momentum): volume should back the
+        move. get_stock_data.technicals.volumeRatio ≥ 1.5x is the
+        guideline. For TARGET/COMPOUNDER (swing/long-term): volume
+        is helpful context but not required — the setup's edge is
+        the thesis, not single-session participation. For CATALYST:
+        depends on whether the catalyst is a binary event (volume
+        irrelevant) or a momentum-confirmation entry (volume matters).
+    (c) No contradicting headline in the last hour (news pulled
+        guidance, surprise downgrade, executive departure). A trigger
+        that fires INTO bad news is a fade-the-pop, not a chase.
+  If all gates pass: place_trade THEN update_thesis(change_status:
+  "ACTIVE", recomputed target_price + stop_loss) — the WATCHING-side
+  target was the entry level (behind you now); mint new exit levels
+  relative to the actual fill.
+  ` : ""}${trigger.action === "EXIT" ? `
+  EXIT — you set this to close on stop / target hit. Validate:
+    (a) The price level you set the trigger on is actually crossed
+        right now (not just tagged then bounced).
+    (b) No reason to delay — e.g. a confirmed news bounce that's likely
+        to retrace the stop. If you have a specific reason to wait,
+        document it and pass. Default is execute.
+  If executing: close_position THEN update_thesis (the close_position
+  tool flips status to CLOSED; document why in update_thesis).
+  ` : ""}${trigger.action === "REVIEW" || trigger.action === "ADD" || trigger.action === "TRIM" || trigger.action === "MOVE_STOP" ? `
+  ${trigger.action} — research-and-decide. The trigger asked you to
+  look; you've looked. Decide:
+    - Nothing material changed → update_thesis with rationale only
+      (REVIEWED — narrative-only patches are routed to REVIEWED).
+    - The setup STRENGTHENED → consider manage_position (scale or
+      tighten stop) or place_trade for a fresh entry. Document.
+    - The setup WEAKENED but isn't broken → update levels via
+      update_thesis (target / stop), with structural_unchanged_reason
+      if belief still holds. NO goalpost-moving on WATCHING entries —
+      if the entry level looks unreachable, INVALIDATE instead.
+  ` : `
+  ${trigger.action} — execute the declared action if assumptions stand
+  and execution conditions are clean, else update_thesis with a clear
+  reason for the pass.
+  `}
+
+Step 4 — Act. Exactly one of these paths.
+
+  (A) Invalidate the thesis (Step 2 broke at least one assumption or
+      tripped at least one invalidation condition):
+        update_thesis(change_status: "INVALIDATED",
+                      invalid_reason: "<concrete reason>",
+                      triggerId: "${trigger.id}")
+      Durable kill. No further triggers wake; Discovery may re-encounter
+      the ticker later if conditions flip. Don't leave dead theses on
+      the book.
+
+  (B) Execute the declared action (assumptions stand, execution clean):
+      The trade tool call (place_trade / close_position / manage_position)
+      THEN the update_thesis closeout. Both required.
+
+  (C) Pass with reason (assumptions stand but execution gate failed,
+      or fade-the-pop, or false fire, or "watched, nothing changed"):
+        update_thesis(rationale: "<one paragraph: what you saw, why
+                      you passed>",
+                      triggerId: "${trigger.id}")
+      Empty patch is REVIEWED. A rationale-only update is also REVIEWED.
+      Don't conflate REVIEWED with UPDATED — only touch structural fields
+      (target / stop / triggers / belief) when something actually changed.
+
+Output discipline:
+  - At most ONE trade tool call (place_trade / manage_position / close_position).
+  - Always EXACTLY ONE update_thesis call as the closeout, with
+    triggerId="${trigger.id}" so the timeline carries the link.
+  - Then complete_run.
 
 ═══════════════════════════════════════════════════════════════════
 TOOLS
