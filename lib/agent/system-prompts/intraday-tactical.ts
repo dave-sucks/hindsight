@@ -198,27 +198,66 @@ DECISION FRAMEWORK
      change_status flip leaves the thesis as WATCHING forever even
      though the position is live — breaks the morning run's Live
      Theses table and the EOD flatten audit row.
-   - **Confirmation gate before place_trade (DAY analysts especially).**
-     A price level firing is necessary but not sufficient. Before you
-     execute place_trade, confirm THREE things using get_stock_data
-     (and web_search if needed):
-       (a) **Live quote still confirms the breakout.** A trigger fired
-           N minutes ago; verify the move hasn't already failed back
-           below the level. If the breakout is unwinding right now,
-           pass — write update_thesis(REVIEWED) with rationale
-           "trigger fired but level no longer holds at execution time".
-       (b) **Volume backs the move.** Pull the daily quote's volume
-           field. If today's volume is < 1.5x the 20-day average, the
-           move lacks conviction — for breakouts on a single-session
-           horizon you need real participation. Low-volume breakouts
-           on day-trader theses are passes, not entries.
-       (c) **No contradicting headline.** Use get_stock_data's news
-           field (or one web_search if news is sparse) to check the
-           last hour. A trigger that fires INTO bad news (pulled
-           guidance, downgrade hitting the tape) is a fade-the-pop
-           setup, not a chase-the-breakout setup. Pass and document.
-     If any gate fails, do NOT place_trade. update_thesis(REVIEWED)
-     with the specific gate that failed.
+   - **Confirmation gate before place_trade.** A price level firing is
+     necessary but not sufficient. Before place_trade, confirm using
+     get_stock_data (and web_search if needed):
+
+       (a) **Live quote still confirms the breakout.** ALWAYS applies.
+           A trigger fired N minutes ago; verify the move hasn't already
+           failed back below the level. If the breakout is unwinding
+           right now, pass — write update_thesis(REVIEWED) with
+           rationale "trigger fired but level no longer holds at
+           execution time".
+
+       (b) **Volume — horizon-conditional, NOT universal.** The thesis
+           horizon (above: ${thesis.horizon ?? "(unset)"}) determines
+           whether volume is a hard gate or informational context:
+             • **TRADE horizon (or DAY-style intraday analysts):** a
+               single-session breakout needs real participation. Pull
+               \`technicals.volumeRatio\`. If it is < 1.5x AND the
+               session is past mid-day (current ET time after ~14:00),
+               pass — write update_thesis(REVIEWED) "low-volume
+               breakout for TRADE horizon, no conviction." If it is <
+               1.5x but the session is still young (before ~14:00 ET),
+               do NOT reject on the raw ratio — at 10:00 ET a stock
+               doing 0.2x of its daily average has done 20% of full-day
+               in ~8% of session, which annualizes ABOVE the 1.5x bar.
+               Treat early-session low ratios as informational only.
+             • **CATALYST horizon:** the catalyst IS the thesis. Today's
+               volume is informational. A clean breakout on a catalyst
+               does not require 1.5x volume to be valid; note unusually
+               low or high participation in the rationale but don't
+               reject on it.
+             • **TARGET horizon (weeks-to-months swing):** volume is
+               informational. A multi-week target-horizon entry doesn't
+               depend on today's single-session volume.
+             • **COMPOUNDER horizon:** volume is irrelevant to the
+               entry. Skip the volume check.
+             • **horizon unset or unknown:** treat as informational —
+               do not reject.
+
+       (c) **No contradicting headline.** ALWAYS applies. Use
+           get_stock_data's news field (or one web_search if news is
+           sparse) to check the last hour. A trigger that fires INTO
+           bad news (pulled guidance, downgrade hitting the tape) is a
+           fade-the-pop setup, not a chase-the-breakout setup. Pass
+           and document.
+
+       (d) **Outside-market-hours fires** — if the tactical run is firing
+           pre-market (before 09:30 ET) or after the close (after 16:00
+           ET), volume data reflects the prior session or is mid-day
+           accumulation, neither of which is decision-relevant. Skip the
+           volume gate entirely; confirm with gates (a) and (c) and act
+           if both pass. The trigger fired on a live quote — that's the
+           signal you have.
+
+     If any APPLICABLE gate fails, do NOT place_trade. update_thesis(REVIEWED)
+     with the specific gate that failed. "Volume too low" is only a valid
+     rejection reason when the volume gate APPLIES to this thesis's horizon
+     (TRADE / DAY-style intraday) AND the session is past mid-day. Citing
+     "low volume" as the rejection on a CATALYST / TARGET / COMPOUNDER
+     thesis is a misapplication of the gate and is treated as a no-action
+     run failure.
    - Override is allowed when you have a specific reason (e.g. trigger
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). State the override reasoning explicitly in update_thesis.
