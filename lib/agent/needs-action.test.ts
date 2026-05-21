@@ -166,7 +166,8 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
     expect(result).toEqual({ kind: "REVIEW_DUE", daysOverdue: 4 });
   });
 
-  it("returns null when nextReviewAt is in the future", () => {
+  it("returns null when nextReviewAt is beyond the 24h look-ahead", () => {
+    // now = 2026-05-10T12:00Z; nextReviewAt = 2026-05-20T00:00 (10d future)
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
@@ -183,6 +184,56 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   it("returns null when nextReviewAt is null and no triggers fire", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [] },
+      latestUpdate: null,
+      latestQuote: null,
+      now,
+    });
+    expect(result).toBeNull();
+  });
+
+  // Anti-regression for the 2026-05-20 NVDA case: morning daily-run at
+  // 08:00 ET (12:00 UTC) needs to catch a thesis whose nextReviewAt is
+  // later TODAY (e.g. 09:30 ET = 13:30 UTC). Before the look-ahead
+  // window was added, this returned null and the trigger evaluator's
+  // REVIEW_DATE_HIT cron picked it up 90 min later in a redundant
+  // tactical run.
+  it("returns REVIEW_DUE when nextReviewAt is later TODAY (within 24h look-ahead)", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        triggers: [],
+        // now = 12:00 UTC; this is 13:30 UTC same day (90 min ahead)
+        nextReviewAt: new Date("2026-05-10T13:30:00Z"),
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now,
+    });
+    expect(result).toEqual({ kind: "REVIEW_DUE", daysOverdue: 0 });
+  });
+
+  it("returns REVIEW_DUE with daysOverdue: 0 when nextReviewAt is within 24h ahead", () => {
+    // now = 12:00 UTC; nextReviewAt = +23h
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        triggers: [],
+        nextReviewAt: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now,
+    });
+    expect(result).toEqual({ kind: "REVIEW_DUE", daysOverdue: 0 });
+  });
+
+  it("returns null when nextReviewAt is just past the 24h look-ahead (+25h)", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        triggers: [],
+        nextReviewAt: new Date(now.getTime() + 25 * 60 * 60 * 1000),
+      },
       latestUpdate: null,
       latestQuote: null,
       now,
