@@ -42,6 +42,24 @@ export const HORIZON_REVIEW_DAYS: Record<Horizon, number> = {
 };
 
 /**
+ * Default days-until-first-review for **WATCHING** theses. Tracks the
+ * per-horizon WATCHING-side hygiene cadence — not the held-side
+ * operational cadence above.
+ *
+ * Consumed today by `scripts/fix-watching-next-review.ts` and pinned by
+ * `lib/agent/horizon-policy.test.ts`. The constant exists so those
+ * consumers typecheck on main; the broader cadence change in #291 was
+ * closed pending the C-series rewrite. Keeping this export is a no-op
+ * for runtime behavior — no code path reads it during a run.
+ */
+export const WATCHING_FIRST_REVIEW_DAYS: Record<Horizon, number> = {
+  CATALYST: 14,
+  TRADE: 14,
+  TARGET: 30,
+  COMPOUNDER: 90,
+};
+
+/**
  * Human-readable review cadence labels surfaced in the daily-run prompt's
  * Live Theses table. Tells the agent how often a thesis of this kind is
  * normally walked — so a COMPOUNDER getting hammered today doesn't get

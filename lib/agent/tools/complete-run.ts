@@ -343,6 +343,15 @@ async function runCompleteRunPreflight(
   //    needs-action.ts uses for get_theses, so Layer 2 and Layer 1 ask the
   //    SAME question. Bug 1 fix: no more "needsAction said null but the
   //    gate says you missed it" inconsistency (GAPS P0-7).
+  //
+  // SCOPE BY MODE: daily-run is portfolio-walking, so all ACTIVE/WATCHING
+  // theses on the analyst are in scope. Tactical is single-thesis,
+  // single-decision — only the triggered thesis is in scope. Without this
+  // scoping, PR #290's `no_run_summary` skip exposed the gate to tactical
+  // runs for the first time and the agent started addressing every overdue
+  // thesis on the book to get past the gate. Observed 2026-05-20: WDAY
+  // (and other stale-review theses) updated as a side effect of every
+  // Tech Momentum tactical run, regardless of the actual trigger ticker.
   type ThesisRow = {
     id: string;
     ticker: string;
@@ -352,12 +361,38 @@ async function runCompleteRunPreflight(
     nextReviewAt: Date | null;
     updates: Array<{ type: string; triggerId: string | null; timestamp: Date }>;
   };
-  const theses = (await prisma.thesis.findMany({
-    where: {
+  // Determine the in-scope thesis set based on mode.
+  let thesisWhereScope: object;
+  if (runMode === "INTRADAY_TACTICAL") {
+    // Tactical: only the triggered thesis. Pull from ResearchRun.parameters.
+    const run = await prisma.researchRun.findUnique({
+      where: { id: runId },
+      select: { parameters: true },
+    });
+    const triggeredThesisId =
+      (run?.parameters as { thesisId?: string } | null)?.thesisId ?? null;
+    if (!triggeredThesisId) {
+      // Defensive: a tactical run without parameters.thesisId is malformed
+      // (tactical-run.ts always sets it). Fall through to "no theses to
+      // check" rather than gate the whole book.
+      return null;
+    }
+    thesisWhereScope = {
+      id: triggeredThesisId,
       researchRun: { agentConfigId: analystId },
       status: { in: ["ACTIVE", "WATCHING"] },
       closedAt: null,
-    },
+    };
+  } else {
+    // Daily-run, principal-chat, etc.: full analyst book.
+    thesisWhereScope = {
+      researchRun: { agentConfigId: analystId },
+      status: { in: ["ACTIVE", "WATCHING"] },
+      closedAt: null,
+    };
+  }
+  const theses = (await prisma.thesis.findMany({
+    where: thesisWhereScope,
     select: {
       id: true,
       ticker: true,
