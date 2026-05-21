@@ -735,6 +735,49 @@ export const recordThesis = defineTool({
             : args.status ??
               (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
 
+      // ── Discovery LONG/SHORT WATCHING cap (Layer-1 enforcement) ────────
+      // The discovery prompt has a soft cap ("mint up to 8 new WATCHING
+      // theses per run") that GPT-4o doesn't honor — 2026-05-17's run
+      // produced 7-8 mints per analyst across 5 analysts (38 new WATCHING
+      // theses in one Sunday, against a documented 8/run target). Given
+      // each thesis gets ~60-120s of deep research in V2, 5 is closer to
+      // a quality bar than 8. Enforce as a Layer-1 reject so the prompt
+      // can't override it.
+      //
+      // Counts existing LONG/SHORT WATCHING theses minted in THIS run
+      // (researchRunId === ctx.runId). PASS theses don't count (those are
+      // institutional memory, not coverage). Doesn't apply outside
+      // discovery — daily-run still mints freely.
+      const DISCOVERY_WATCHING_CAP = 5;
+      if (
+        isDiscoveryDirectional &&
+        effectiveStatusForTriggers === "WATCHING" &&
+        ctx.runId
+      ) {
+        const existingMints = await prisma.thesis.count({
+          where: {
+            researchRunId: ctx.runId,
+            status: "WATCHING",
+            direction: { in: ["LONG", "SHORT"] },
+          },
+        });
+        if (existingMints >= DISCOVERY_WATCHING_CAP) {
+          return {
+            summary: `Thesis rejected for ${args.ticker}: discovery cap reached (${existingMints}/${DISCOVERY_WATCHING_CAP} LONG/SHORT WATCHING mints in this run).`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note:
+                `Discovery cap: ${DISCOVERY_WATCHING_CAP} new LONG/SHORT WATCHING theses per discovery run. ` +
+                `You've minted ${existingMints} already. Tighten the watchlist — ` +
+                `the agent's next run can re-evaluate. ` +
+                `PASS theses are not capped (those are institutional memory).`,
+            },
+            sources: [],
+          };
+        }
+      }
+
       // Reject illegal (direction, status) pairs explicitly when the agent
       // passes an `status` arg that conflicts with direction.
       if (
