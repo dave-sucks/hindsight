@@ -188,6 +188,35 @@ const updateSchema = z.object({
         "CLOSED = we exited the position based on this thesis (target hit, stop, manual close). " +
         "For direction flips or completely new beliefs, use record_thesis with parent_thesis_id instead.",
     ),
+
+  // ── Deep-research artifacts (THESIS_RESEARCH_V2 Phase 1) ───────────────
+  // Mirror of the same fields on record_thesis. Populated by the
+  // thesis-writer agent's refresh path after calling write_thesis_research.
+  // Persisted onto Thesis.researchData (markdown data block, ~3-5KB) and
+  // Thesis.researchSections (parsed multi-section synthesis with citations).
+  // Optional and ignored when not provided — only the thesis-writer mode
+  // (refresh path) passes them through.
+  //
+  // Why this is on update_thesis: a thesis-writer dispatched in refresh
+  // mode lands on update_thesis (the existing row gets refreshed, not
+  // replaced). Without these fields here, the multi-section research the
+  // agent produced inside write_thesis_research never lands on the row —
+  // observed 2026-05-20 on the $MDB refresh test (cmpean45q...) where
+  // every other field updated correctly but researchData stayed null.
+  research_data: z
+    .string()
+    .optional()
+    .describe(
+      "Raw structured-data markdown block from write_thesis_research(...).data.rawDataBlock. " +
+        "Pass through verbatim. Lands on Thesis.researchData for the card's data tab.",
+    ),
+  research_sections: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "Parsed multi-section synthesis from write_thesis_research(...).data.sections. " +
+        "Pass through verbatim. Lands on Thesis.researchSections.",
+    ),
 });
 
 type UpdatePatch = Partial<{
@@ -215,6 +244,10 @@ type UpdatePatch = Partial<{
   invalidReason: string;
   closedAt: Date;
   closeReason: string;
+  // THESIS_RESEARCH_V2 Phase 1 — refresh path persistence.
+  researchData: string;
+  researchSections: object;
+  researchUpdatedAt: Date;
 }>;
 
 export const updateThesis = defineTool({
@@ -716,6 +749,25 @@ export const updateThesis = defineTool({
       patch.nextReviewAt = args.next_review_at
         ? new Date(args.next_review_at)
         : null;
+    // THESIS_RESEARCH_V2 Phase 1 — refresh-path research persistence.
+    // Only stamped when the thesis-writer agent passed these through.
+    // researchUpdatedAt is set whenever either field is supplied so the
+    // Phase 3 staleness gate can refuse promote-to-active on stale research.
+    if (
+      typeof args.research_data === "string" &&
+      args.research_data.length > 0
+    ) {
+      patch.researchData = args.research_data;
+    }
+    if (
+      args.research_sections &&
+      typeof args.research_sections === "object"
+    ) {
+      patch.researchSections = args.research_sections as object;
+    }
+    if (args.research_data !== undefined || args.research_sections !== undefined) {
+      patch.researchUpdatedAt = new Date();
+    }
     if (args.triggers !== undefined) {
       // Triggers are wholesale-replaced (intentional — agent passes the FULL
       // array, see file header). But two server-managed fields must survive
@@ -1019,10 +1071,53 @@ export const updateThesis = defineTool({
     }
 
     // Apply.
-    await prisma.thesis.update({
-      where: { id: existing.id },
-      data: patch as object,
-    });
+    try {
+      await prisma.thesis.update({
+        where: { id: existing.id },
+        data: patch as object,
+      });
+    } catch (updErr: unknown) {
+      // THESIS_RESEARCH_V2 Phase 1 fallback — mirrors record_thesis.ts.
+      // If the Prisma client is out of sync with the schema (e.g. the
+      // researchData/researchSections/researchUpdatedAt columns haven't
+      // been regenerated locally), retry the update without those fields
+      // so the rest of the patch lands. Loud log so we notice if this
+      // fires in production — the schema migration shipped in PR #278
+      // so it should never trigger, but the strip mirrors record_thesis's
+      // defense-in-depth.
+      const errMsg = updErr instanceof Error ? updErr.message : String(updErr);
+      const isUnknownArgError =
+        errMsg.includes("Unknown arg") ||
+        errMsg.includes("Unknown argument") ||
+        (errMsg.includes("researchData") && errMsg.includes("does not exist")) ||
+        (errMsg.includes("researchSections") && errMsg.includes("does not exist")) ||
+        (errMsg.includes("researchUpdatedAt") && errMsg.includes("does not exist"));
+      if (
+        isUnknownArgError &&
+        ("researchData" in patch ||
+          "researchSections" in patch ||
+          "researchUpdatedAt" in patch)
+      ) {
+        console.error(
+          `[tool] update_thesis V2 FALLBACK for ${existing.ticker}: stripping research_data/research_sections/researchUpdatedAt. Prisma client appears out of sync. Full error: ${errMsg}`,
+        );
+        const {
+          researchData: _rdata,
+          researchSections: _rsections,
+          researchUpdatedAt: _rupdated,
+          ...fallbackPatch
+        } = patch;
+        void _rdata;
+        void _rsections;
+        void _rupdated;
+        await prisma.thesis.update({
+          where: { id: existing.id },
+          data: fallbackPatch as object,
+        });
+      } else {
+        throw updErr;
+      }
+    }
 
     // Watchlist-collapse: Thesis is now the single store. WATCHING →
     // terminal transitions automatically remove the thesis from the
