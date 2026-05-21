@@ -11,6 +11,7 @@ import { Favicon } from "@/components/intelligence/signal-feed";
 import { getTradeStatusDisplay } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
+import type { TriggersResponse } from "@/components/agent/sheets/ThesisTriggersSection";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 
 // 2026-04-29: removed inline expand-on-click and analyst-link button.
@@ -53,6 +54,23 @@ export interface ThesisRowData {
   companyName?: string | null;
   decision?: string | null;
   sourcesUsed?: unknown;
+  /**
+   * Legacy bullet/risk strings rendered as Bullish/Bearish View in the
+   * sheet. Renamed + retyped to bullCase/bearCase in PR-9; passed through
+   * here so the sheet can render them on open without a /triggers fetch.
+   */
+  thesisBullets?: string[];
+  riskFlags?: string[];
+  /**
+   * Pre-fetched durable-state snapshot to seed ThesisSheet on open (P2-19).
+   * Shape matches the `/api/theses/[id]/triggers` response so the sheet
+   * can render status / belief / scoring / sources / research synthesis
+   * synchronously instead of skeletons-then-fetch. The sheet still fires
+   * /triggers in the background to pick up live trigger fires + position
+   * changes. Omit on rows that don't have the data forwarded yet — the
+   * sheet falls back to its async fetch path.
+   */
+  sheetState?: TriggersResponse;
   position?: {
     id: string;
     status: string;
@@ -274,6 +292,8 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         direction={(t.direction === "LONG" || t.direction === "SHORT" || t.direction === "PASS") ? t.direction : "PASS"}
         confidence_score={t.confidenceScore}
         reasoning_summary={t.reasoningSummary}
+        thesis_bullets={t.thesisBullets}
+        risk_flags={t.riskFlags}
         entry_price={t.entryPrice}
         target_price={t.targetPrice}
         stop_loss={t.stopLoss}
@@ -281,6 +301,16 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
           t.horizon ? holdDurationFromHorizon(t.horizon) : t.holdDuration
         }
         company_name={t.companyName}
+        status={
+          t.sheetState?.status === "ACTIVE" ||
+          t.sheetState?.status === "WATCHING" ||
+          t.sheetState?.status === "CLOSED" ||
+          t.sheetState?.status === "INVALIDATED" ||
+          t.sheetState?.status === "SUPERSEDED"
+            ? t.sheetState.status
+            : undefined
+        }
+        initialState={t.sheetState}
       />
     </div>
   );
