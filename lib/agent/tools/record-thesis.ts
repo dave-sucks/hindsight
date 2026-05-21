@@ -22,6 +22,7 @@ import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 import {
   HORIZON_REVIEW_DAYS,
+  WATCHING_FIRST_REVIEW_DAYS,
   holdDurationFromHorizon,
   type Horizon as HorizonPolicy,
 } from "@/lib/agent/horizon-policy";
@@ -684,18 +685,40 @@ export const recordThesis = defineTool({
       // `fundamentals` sub-key had zero readers. The column itself drops
       // in PR-5 after the soak.
 
-      // Default nextReviewAt by horizon. Cheap, transparent, lets the
-      // housekeeping run pick up theses without the agent having to do
-      // the date math. Constants live in lib/agent/horizon-policy.ts so
-      // the daily-run prompt's per-horizon hint and the writer's review
-      // cadence stay in lockstep. Falls through to null when horizon is
-      // omitted — legacy theses don't get an auto-review date.
+      // Default nextReviewAt by horizon AND by resulting status. WATCHING
+      // theses use the longer WATCHING_FIRST_REVIEW_DAYS cadence (e.g.
+      // COMPOUNDER WATCHING = 90d, vs. COMPOUNDER ACTIVE = 30d). A
+      // watchlist entry doesn't need walking at the same intensity as a
+      // live position. Pre-fix, every newly-minted WATCHING got the
+      // held-side cadence and fired REVIEW_DUE ~3-12x more often than
+      // intended, producing tactical busywork on stale watchlist names.
+      //
+      // Mirror of the effective-status logic below (line ~745) — kept
+      // local instead of hoisting the whole block because the canonical
+      // computation also needs args.status for downstream legal-pair
+      // guards. Both derivations branch on the same inputs so they
+      // can't disagree.
+      const isDiscoveryDirectionalEarly =
+        ctx.discoveryOnly === true &&
+        (args.direction === "LONG" || args.direction === "SHORT");
+      const willBeWatching: boolean =
+        args.direction !== "PASS" &&
+        (isDiscoveryDirectionalEarly ||
+          args.status === "WATCHING" ||
+          (args.status == null && inferredSourceKind === "WATCHLIST_REVIEW"));
+
       let nextReviewAt: Date | null = null;
-      if (args.next_review_at) {
+      if (args.direction === "PASS") {
+        // PASS = ARCHIVED at write. No review cadence, no wake-up.
+        nextReviewAt = null;
+      } else if (args.next_review_at) {
         nextReviewAt = new Date(args.next_review_at);
       } else if (args.horizon) {
         const dayMs = 24 * 60 * 60 * 1000;
-        const days = HORIZON_REVIEW_DAYS[args.horizon as HorizonPolicy];
+        const horizonKey = args.horizon as HorizonPolicy;
+        const days = willBeWatching
+          ? WATCHING_FIRST_REVIEW_DAYS[horizonKey]
+          : HORIZON_REVIEW_DAYS[horizonKey];
         nextReviewAt = new Date(Date.now() + days * dayMs);
       }
 
