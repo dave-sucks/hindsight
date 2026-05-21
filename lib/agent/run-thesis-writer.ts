@@ -314,35 +314,34 @@ export async function runThesisWriterAgent(
       ? anthropic(modeConfig.model as Parameters<typeof anthropic>[0])
       : openai(modeConfig.model);
 
-  // Anthropic native web_search tool — server-side tool that Claude calls
-  // directly. Plumbed into the agent loop so the model can fill narrative
-  // gaps the structured-data block doesn't cover (analyst commentary,
-  // transcript quotes, dated catalysts). The bake-off found this is the
-  // load-bearing piece — synthesis without web_search lands closer to a
-  // Reddit summary than a Goldman initiation note.
+  // ── Outer-agent web_search: use the Perplexity Sonar user-tool ──────────
+  // The synthesis call INSIDE write_thesis_research uses Anthropic's native
+  // webSearch_20260209 — that's where the bake-off's depth advantage lives.
+  // The OUTER agent's web_search is just an escape hatch ("if the meta-tool
+  // returned a thin synthesis, verify one number"); the depth doesn't matter
+  // here, only availability.
   //
-  // The mode allowlist also has the Perplexity Sonar `web_search` tool
-  // wired in (escape hatch from the daily-run inventory). When both are
-  // present in the same `tools` map, Claude routes to whichever name it
-  // calls — we override the `web_search` key with the native tool so the
-  // model uses Anthropic's path by default. The Sonar implementation stays
-  // available under its registered name if a future mode needs it.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const toolsWithSearch: Record<string, unknown> = { ...(tools as any) };
-  if (modeConfig.provider === "anthropic") {
-    toolsWithSearch.web_search = anthropic.tools.webSearch_20260209({
-      // Agent-loop escape hatch — the meta-tool's synthesis call has its
-      // own dedicated web_search budget. This one is rarely used because
-      // the prompt tells the agent to call write_thesis_research ONCE
-      // and decide on top of the result. 2 is plenty for the edge case
-      // where the meta-tool returned a thin synthesis and the agent
-      // wants to verify one specific data point before recording the
-      // thesis. Dropped from 6 → 2 on 2026-05-18 to keep input-token
-      // pressure off the Anthropic Tier-1 30k/min bucket — see the
-      // matching comment in lib/agent/tools/write-thesis-research.ts.
-      maxUses: 2,
-    });
-  }
+  // Pre-2026-05-20 we overrode the `web_search` key with the native
+  // Anthropic tool at this level too. That caused two real problems on
+  // the $MDB refresh test (cmpean45q...):
+  //
+  //   1. Anthropic's webSearch invokes server-side companion tools
+  //      (`code_execution_20250825` etc.) under the hood. The AI SDK
+  //      surface didn't know about those companions, so Claude's tool
+  //      calls came back referencing IDs the SDK couldn't resolve:
+  //      "Tool call srvtoolu_01STVZ5cWyYF7o6HDhSd9Zsx not found." The
+  //      thesis had already been persisted; the run got marked FAILED
+  //      anyway on that uncaught error.
+  //   2. Time. The 2 outer web_search calls + 3 companion code_execution
+  //      calls ate 700+ seconds of the agent's budget (write_thesis_research
+  //      itself only took 186s). Cutting the override moves that budget
+  //      back to the rest of the workflow.
+  //
+  // Keep the Perplexity Sonar tool (the user-tool already in the
+  // toolAllowlist) as the outer-agent's web_search. The native tool stays
+  // inside write_thesis_research's synthesis call — same place it always
+  // earned its keep.
+  const toolsWithSearch = tools;
 
   const toolStats: Record<
     string,
