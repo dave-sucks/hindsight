@@ -21,10 +21,19 @@
  *                         price/time-side predicates is currently true.
  *                         Catches matches the cron may not have
  *                         delivered yet.
- *   REVIEW_DUE          — thesis.nextReviewAt < now. The agent SET this
- *                         cadence on the thesis (record_thesis uses
- *                         horizon-policy.ts defaults if the agent didn't
- *                         supply one explicitly).
+ *   REVIEW_DUE          — thesis.nextReviewAt falls within the next 24h
+ *                         (i.e. due today or already overdue). Look-ahead
+ *                         window covers reviews scheduled for later in
+ *                         the same trading day — without it, a thesis
+ *                         with nextReviewAt = today 09:30 ET would be
+ *                         skipped by the 08:00 ET morning daily-run
+ *                         ("not yet due"), then fire the REVIEW_DATE_HIT
+ *                         trigger 90 min later, spawning a tactical run
+ *                         that did the same work. 24h is wide enough to
+ *                         catch same-day reviews regardless of when the
+ *                         agent scheduled them; weekend gaps get caught
+ *                         as overdue on the following Monday's daily
+ *                         run.
  *
  * Precedence when multiple match: TRIGGER_FIRED > TRIGGER_MATCHING_NOW >
  * REVIEW_DUE. A thesis with no fires, no matches, and a future
@@ -209,15 +218,32 @@ export function computeNeedsAction(
     }
   }
 
-  // 3) REVIEW_DUE — agent-set cadence (nextReviewAt) elapsed. The agent
-  //    chose this clock when minting the thesis; surfacing it is showing
-  //    the agent its own schedule, not imposing a generic rule.
+  // 3) REVIEW_DUE — agent-set cadence (nextReviewAt) elapsed OR coming
+  //    due within the next 24h. The 24h look-ahead is load-bearing: the
+  //    morning daily-run fires once at 08:00 ET, but the agent often
+  //    sets nextReviewAt to 09:30 ET (market open) on a future calendar
+  //    day. Without look-ahead the morning agent skips today's-09:30
+  //    review as "future," then the trigger evaluator's REVIEW_DATE_HIT
+  //    cron fires 90 min later and spawns a redundant tactical run to
+  //    do the same work. With look-ahead, the morning agent catches it
+  //    upfront. See lib/agent/triggers/defaults.ts header comment for
+  //    the matching half (REVIEW_DATE_HIT removed from watching defaults).
+  //
   //    Special case: PENDING theses (user/builder/editor seeds) carry
   //    nextReviewAt = createdAt so they surface as REVIEW_DUE on the
   //    next daily run with the pendingFirstReview discriminator.
-  if (thesis.nextReviewAt && thesis.nextReviewAt.getTime() <= now.getTime()) {
-    const daysOverdue = Math.floor(
-      (now.getTime() - thesis.nextReviewAt.getTime()) / 86_400_000,
+  const REVIEW_DUE_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
+  if (
+    thesis.nextReviewAt &&
+    thesis.nextReviewAt.getTime() <= now.getTime() + REVIEW_DUE_LOOKAHEAD_MS
+  ) {
+    // Clamp negative (i.e. "due later today, not yet overdue") to 0 so
+    // the UI / prompt renders "due today" rather than "-1 days overdue".
+    const daysOverdue = Math.max(
+      0,
+      Math.floor(
+        (now.getTime() - thesis.nextReviewAt.getTime()) / 86_400_000,
+      ),
     );
     const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue };
     if (thesis.direction === "PENDING") {
