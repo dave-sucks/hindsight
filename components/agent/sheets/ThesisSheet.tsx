@@ -686,18 +686,107 @@ function TerminalStatusAlert({
 
 // ── ResearchSectionsAccordion ───────────────────────────────────────────
 // Renders the deep-research synthesis (THESIS_RESEARCH_V2 Phase 1) as a
-// list of independently-collapsible sections. The thesis-writer agent
-// produces a known set of section keys; this renderer maps each to a
-// human-readable label and walks `text + citations` OR `bullets[]` content
-// shapes. Unknown extra keys are skipped — the synthesis model can add
-// sections without a UI deploy.
+// list of independently-collapsible sections.
+//
+// Defensive against the two shape-drift modes observed in production:
+//   1. Key naming. write_thesis_research's parser emits camelCase keys
+//      (bullCase, bearCase, latestEarnings, ...). But the thesis-writer
+//      AGENT often reconstructs sections itself with snake_case keys
+//      (bull_case, bear_case, latest_earnings, analyst_consensus,
+//      insider_and_technical, catalysts_and_events) — the same names that
+//      appear as ## headers in the synthesis prompt. Observed on the
+//      2026-05-20 $MU thesis (cmpetjrw5...). We accept BOTH conventions
+//      and map them to one canonical key.
+//   2. Value shape. The canonical shape is { text, citations } or
+//      { bullets[] }. But the agent often passes section values as raw
+//      strings (just the section's prose). When the renderer did
+//      `"text" in section` on a string value, JS throws "Cannot use 'in'
+//      operator to search for 'text' in <string>" and the WHOLE thesis
+//      sheet crashes. We normalize string values into { text: <string> }
+//      so the rest of the renderer keeps working.
+//
+// The agent-side fix (have the worker pass write_thesis_research's parsed
+// output verbatim) is a separate change. This renderer needs to be
+// robust regardless, because every existing thesis with a string value
+// is permanently broken until normalized at read time.
 function ResearchSectionsAccordion({
   sections,
   updatedAt,
 }: {
-  sections: ThesisResearchSections;
+  // Accept `unknown` at the input boundary — the DB column is Json? and
+  // the agent may have stored any shape. We normalize defensively inside.
+  sections: ThesisResearchSections | Record<string, unknown> | null | undefined;
   updatedAt: string | null;
 }) {
+  // ── Section key aliases ────────────────────────────────────────────
+  // Map every variant the agent has been observed to produce → canonical
+  // camelCase key. Add new aliases here when a new variant appears in
+  // production; existing theses don't need to be backfilled.
+  const KEY_ALIASES: Record<string, keyof ThesisResearchSections> = {
+    snapshot: "snapshot",
+    recent_catalysts: "recentCatalysts",
+    recentCatalysts: "recentCatalysts",
+    fundamentals: "fundamentals",
+    latest_earnings: "latestEarnings",
+    latestEarnings: "latestEarnings",
+    catalysts_and_events: "catalystsAndEvents",
+    catalystsAndEvents: "catalystsAndEvents",
+    bull_case: "bullCase",
+    bullCase: "bullCase",
+    bear_case: "bearCase",
+    bearCase: "bearCase",
+    analyst_consensus: "analystConsensusSynthesis",
+    analyst_consensus_synthesis: "analystConsensusSynthesis",
+    analystConsensus: "analystConsensusSynthesis",
+    analystConsensusSynthesis: "analystConsensusSynthesis",
+    insider_and_technical: "insiderTechnicalSetup",
+    insider_technical_setup: "insiderTechnicalSetup",
+    insiderTechnical: "insiderTechnicalSetup",
+    insiderTechnicalSetup: "insiderTechnicalSetup",
+  };
+
+  // ── Normalize a single section value ───────────────────────────────
+  const normalizeSection = (
+    value: unknown,
+  ): ResearchTextSection | ResearchBulletSection | null => {
+    if (value == null) return null;
+    // String-shaped section (most common drift) → wrap as { text }.
+    if (typeof value === "string") {
+      return value.trim().length > 0 ? { text: value } : null;
+    }
+    if (typeof value !== "object") return null;
+    const obj = value as Record<string, unknown>;
+    // Bullet shape: { bullets: ResearchBullet[] }.
+    if (Array.isArray(obj.bullets)) {
+      const bullets = obj.bullets.filter(
+        (b): b is { text: string; citation?: unknown } =>
+          typeof b === "object" && b !== null && typeof (b as { text?: unknown }).text === "string",
+      );
+      return bullets.length > 0
+        ? ({ bullets } as ResearchBulletSection)
+        : null;
+    }
+    // Text shape: { text, citations? }.
+    if (typeof obj.text === "string" && obj.text.length > 0) {
+      const citations = Array.isArray(obj.citations) ? obj.citations : undefined;
+      return { text: obj.text, ...(citations ? { citations } : {}) } as ResearchTextSection;
+    }
+    return null;
+  };
+
+  // ── Normalize the whole sections object ────────────────────────────
+  const normalized: Partial<ThesisResearchSections> = {};
+  if (sections && typeof sections === "object") {
+    for (const [rawKey, rawValue] of Object.entries(sections)) {
+      const canonical = KEY_ALIASES[rawKey];
+      if (!canonical) continue;
+      // Last-write wins on key collision (e.g. both `bull_case` and
+      // `bullCase` present — vanishingly unlikely but defined here).
+      const sec = normalizeSection(rawValue);
+      if (sec) normalized[canonical] = sec as never;
+    }
+  }
+
   // Display order + labels. Matches docs/plans/THESIS_RESEARCH_V2.md §4.4.
   const RENDER_ORDER: Array<{ key: keyof ThesisResearchSections; label: string }> = [
     { key: "snapshot", label: "Snapshot" },
@@ -713,13 +802,7 @@ function ResearchSectionsAccordion({
 
   // Filter to only sections that are actually populated; if none, hide the
   // whole block. Synthesis output is variable — don't render empty shells.
-  const populated = RENDER_ORDER.filter(({ key }) => {
-    const section = sections[key];
-    if (!section) return false;
-    if ("text" in section && section.text) return true;
-    if ("bullets" in section && section.bullets && section.bullets.length > 0) return true;
-    return false;
-  });
+  const populated = RENDER_ORDER.filter(({ key }) => normalized[key] != null);
   if (populated.length === 0) return null;
 
   return (
@@ -736,7 +819,7 @@ function ResearchSectionsAccordion({
       </div>
       <div className="rounded-lg border divide-y">
         {populated.map(({ key, label }) => {
-          const section = sections[key]!;
+          const section = normalized[key]!;
           return (
             <Collapsible key={key}>
               <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 p-3 text-left text-sm font-medium hover:bg-muted/30 transition-colors data-[panel-open]:bg-muted/20">
@@ -759,23 +842,38 @@ function ResearchSectionContent({
 }: {
   section: ResearchTextSection | ResearchBulletSection;
 }) {
+  // Bullets shape. Guard inside the map for bullet-text drift too —
+  // some bullets may be raw strings in older theses.
   if ("bullets" in section) {
     return (
       <ul className="space-y-1.5">
-        {section.bullets.map((b, i) => (
-          <li key={i} className="flex gap-2">
-            <span className="text-muted-foreground select-none">•</span>
-            <span className="flex-1">
-              {b.text}
-              {b.citation ? <ResearchCitationChip citation={b.citation} /> : null}
-            </span>
-          </li>
-        ))}
+        {section.bullets.map((b, i) => {
+          const bulletText =
+            typeof b === "string"
+              ? (b as string)
+              : typeof b?.text === "string"
+                ? b.text
+                : "";
+          const citation =
+            typeof b === "object" && b !== null && "citation" in b
+              ? b.citation
+              : undefined;
+          if (!bulletText) return null;
+          return (
+            <li key={i} className="flex gap-2">
+              <span className="text-muted-foreground select-none">•</span>
+              <span className="flex-1 whitespace-pre-wrap">
+                {bulletText}
+                {citation ? <ResearchCitationChip citation={citation} /> : null}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     );
   }
   return (
-    <p>
+    <p className="whitespace-pre-wrap">
       {section.text}
       {section.citations && section.citations.length > 0 ? (
         <span className="ml-1 inline-flex flex-wrap gap-1">
