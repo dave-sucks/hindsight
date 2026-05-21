@@ -21,6 +21,10 @@ import {
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import {
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
@@ -167,16 +171,25 @@ export const placeTrade = defineTool({
         }
       }
 
-      // ── Guardrail 1: thesis confidence ≥ minConfidence ─────────────
+      // ── Guardrail 1: thesis composite score ≥ minConfidence ────────
+      // PR-9 dropped the legacy `confidenceScore` int — `scoring.composite`
+      // (a /10 setup grade with 4-dim breakdown) is the single conviction
+      // number. Analyst configs still store `minConfidence` on the legacy
+      // 0-100 scale; we convert composite ×10 for comparison so existing
+      // configs (e.g. `minConfidence: 70`) keep their semantics.
       if (ctx.minConfidence != null) {
         const thesis = await prisma.thesis.findUnique({
           where: { id: args.thesis_id },
-          select: { confidenceScore: true, direction: true },
+          select: { scoring: true, direction: true },
         });
-        if (thesis && thesis.confidenceScore < ctx.minConfidence) {
-          const blockedMsg = `Trade blocked: thesis confidence ${thesis.confidenceScore}% is below this analyst's minimum (${ctx.minConfidence}%). Raise confidence or skip the trade.`;
+        const composite = getThesisComposite(thesis ?? { scoring: null });
+        const compositeOn100Scale = composite != null ? composite * 10 : null;
+        if (thesis && (compositeOn100Scale == null || compositeOn100Scale < ctx.minConfidence)) {
+          const compositeLabel =
+            composite != null ? `${composite}/10 (=${compositeOn100Scale}%)` : "unscored";
+          const blockedMsg = `Trade blocked: thesis composite ${compositeLabel} is below this analyst's minimum (${ctx.minConfidence}%). Raise the composite via update_thesis with a fresh 4-dim scoring, or skip the trade.`;
           return {
-            summary: `Trade blocked: $${ticker} — below min confidence`,
+            summary: `Trade blocked: $${ticker} — below min composite`,
             data: {
               success: false,
               ticker,
@@ -829,7 +842,7 @@ export const placeTrade = defineTool({
             if (!toEmail) return;
             const thesis = await prisma.thesis.findUnique({
               where: { id: args.thesis_id },
-              select: { reasoningSummary: true },
+              select: { snapshot: true },
             });
             const verb = args.direction === "LONG" ? "📈 Bought" : "📉 Shorted";
             const livePrefix = positionEnvironment === "LIVE" ? "[LIVE] " : "";
@@ -844,7 +857,7 @@ export const placeTrade = defineTool({
                 stopLoss: args.stop_loss,
                 targetPrice: args.target_price,
                 analystName: config.name,
-                thesisSummary: thesis?.reasoningSummary ?? null,
+                thesisSummary: thesis ? (getThesisSnapshotText(thesis) || null) : null,
               }),
             });
           } catch (err) {

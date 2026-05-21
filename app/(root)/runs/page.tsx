@@ -97,7 +97,7 @@ export default async function RunsPage() {
         select: {
           ticker: true,
           direction: true,
-          confidenceScore: true,
+          scoring: true,
         },
         orderBy: { createdAt: "asc" },
       },

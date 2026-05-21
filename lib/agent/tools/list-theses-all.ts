@@ -10,6 +10,10 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import type { ToolUIItem } from "@/lib/agent/tool-result";
+import {
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 export const listThesesAll = defineTool({
   description:
@@ -67,7 +71,10 @@ export const listThesesAll = defineTool({
 
     const items: ToolUIItem[] = theses.map((t) => {
       const analyst = t.researchRun?.agentConfig?.name ?? "—";
-      const conf = `${t.confidenceScore}%`;
+      const composite = getThesisComposite(t);
+      // PR-9: replaced 0-100 confidence with /10 composite (single
+      // conviction number). Unscored theses get "—".
+      const conf = composite != null ? `${composite}/10` : "—";
       const target = t.targetPrice ? `target $${t.targetPrice.toFixed(2)}` : "no target";
       return {
         kind: "ticker" as const,
@@ -89,22 +96,27 @@ export const listThesesAll = defineTool({
       summary: `${theses.length} thes${theses.length === 1 ? "is" : "es"}`,
       data: {
         items,
-        theses: theses.map((t) => ({
-          id: t.id,
-          ticker: t.ticker,
-          analystId: t.researchRun?.agentConfigId ?? null,
-          analystName: t.researchRun?.agentConfig?.name ?? null,
-          direction: t.direction,
-          status: t.status,
-          confidenceScore: t.confidenceScore,
-          entryPrice: t.entryPrice,
-          targetPrice: t.targetPrice,
-          stopLoss: t.stopLoss,
-          holdDuration: t.holdDuration,
-          reasoningSummary: t.reasoningSummary,
-          sourceKind: t.sourceKind,
-          createdAt: t.createdAt,
-        })),
+        theses: theses.map((t) => {
+          const composite = getThesisComposite(t);
+          return {
+            id: t.id,
+            ticker: t.ticker,
+            analystId: t.researchRun?.agentConfigId ?? null,
+            analystName: t.researchRun?.agentConfig?.name ?? null,
+            direction: t.direction,
+            status: t.status,
+            // PR-9: agent-facing shape uses composite (0-10) — distinct
+            // from the UI side that multiplies × 10 for legacy renderers.
+            composite,
+            entryPrice: t.entryPrice,
+            targetPrice: t.targetPrice,
+            stopLoss: t.stopLoss,
+            holdDuration: t.holdDuration,
+            snapshot: getThesisSnapshotText(t),
+            sourceKind: t.sourceKind,
+            createdAt: t.createdAt,
+          };
+        }),
       },
       sources: [],
     };

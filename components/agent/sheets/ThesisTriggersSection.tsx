@@ -93,36 +93,38 @@ export interface TriggersResponse {
   position: ThesisStatePosition | null;
   // Structural belief — load-bearing fields the trade-evaluator + tactical
   // agent read. Surfaced to the sheet so the user can see what the agent
-  // actually committed to (vs the prose-layer thesisBullets / riskFlags).
+  // actually committed to.
   coreBelief: string | null;
   keyAssumptions: string[];
   invalidationConds: string[];
-  // 4-dim composite scoring + the /10 sum. Present on rows minted with the
-  // post-2026-04-25 scoring rubric; null on older rows.
+  // 4-dim composite scoring + the /10 sum. Composite is the SINGLE
+  // conviction number (PR-9 collapsed the legacy `confidenceScore` int
+  // onto this). Both place_trade gates read from here.
   scoring: ThesisScoring | null;
   scoringComposite: number | null;
-  // Deep-research synthesis (THESIS_RESEARCH_V2 Phase 1). Null on legacy
-  // rows + on every row minted before the thesis-writer agent ships. Shape
-  // is intentionally loose — sections keyed by name with `text + citations`
-  // OR `bullets[]` content. The accordion renderer walks whatever keys it
-  // finds and skips any it doesn't recognize.
-  researchSections: ThesisResearchSections | null;
+  // ── V2 9-section narrative dossier (PR-9 flat schema) ────────────────
+  // The 9 first-class JSONB columns that replaced the `researchSections`
+  // blob. Three retypes of legacy fields (snapshot ↔ reasoningSummary,
+  // bullCase ↔ thesisBullets, bearCase ↔ riskFlags) + 6 new sections.
+  // Each section is either text-with-citations or bullets-with-citations
+  // (see ResearchTextSection / ResearchBulletSection). All nullable —
+  // legacy rows have the 3 retyped sections populated with empty
+  // citations; the 6 new sections are null until V2 refresh.
+  snapshot: ResearchTextSection | null;
+  recentCatalysts: ResearchTextSection | null;
+  fundamentals: ResearchTextSection | null;
+  latestEarnings: ResearchBulletSection | null;
+  catalystsAndEvents: ResearchBulletSection | null;
+  bullCase: ResearchBulletSection | null;
+  bearCase: ResearchBulletSection | null;
+  analystConsensus: ResearchTextSection | null;
+  insiderTechnical: ResearchTextSection | null;
   researchUpdatedAt: string | null;
-  // Phase 1.5 (PR-6) — surfaced so the sheet can render them.
-  // confidenceScore is the analyst's overall 0-100 trade conviction;
-  // distinct from scoring.composite (which is the 4-dim setup grade).
-  // Both gate `place_trade`. Phase 2 collapses these onto one number.
-  confidenceScore: number;
   // Provenance: where the thesis came from + the analyst's one-line
   // rationale + the Signal rows that informed it.
   sourceKind: string | null;
   sourceRationale: string | null;
   sourceSignalIds: string[];
-  // Analyst-cited sources (web URLs / reports) — mirrors the favicon
-  // strip on `/stocks/[symbol]`. Distinct from researchSections.citations
-  // which are per-section inline citations from the V2 deep-research
-  // synthesis model.
-  sourcesUsed: ThesisSourcesUsed;
   // Direction-flip chain pointer. When non-null, this thesis supersedes
   // an earlier thesis on the same ticker; renders as a "Replaces #abc"
   // chip near the StatusPill.

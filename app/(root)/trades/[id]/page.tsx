@@ -24,6 +24,12 @@ import {
   thesisSheetStateSelect,
 } from '@/lib/agent/thesis-sheet-state';
 import {
+  getThesisBearCaseBullets,
+  getThesisBullCaseBullets,
+  getThesisComposite,
+  getThesisSnapshotText,
+} from '@/lib/agent/thesis-narrative';
+import {
   getStockProfile,
   getStockQuote,
   getStockCandles,
@@ -136,17 +142,10 @@ export default async function TradeDetailPage({
         include: {
           thesis: {
             select: {
-              // P2-19: select every field the sheet renders so it can paint
-              // synchronously on open. `thesisSheetStateSelect` includes
-              // fullResearch (the legacy scoring fallback), all narrative +
-              // belief + provenance + research fields, and the lifecycle
-              // fields the sheet's status pill / terminal-status Alert needs.
+              // P2-19: forward full state to the sheet — thesisSheetStateSelect
+              // includes the V2 flat-schema narrative columns (snapshot /
+              // bullCase / bearCase + 6 new sections).
               ...thesisSheetStateSelect,
-              // Page-specific fields not covered by thesisSheetStateSelect.
-              reasoningSummary: true,
-              thesisBullets: true,
-              riskFlags: true,
-              signalTypes: true,
               holdDuration: true,
               createdAt: true,
               researchRunId: true,
@@ -182,10 +181,6 @@ export default async function TradeDetailPage({
         // P2-19: forward full state so the Theses-tab rows can render
         // sheets synchronously on open.
         ...thesisSheetStateSelect,
-        reasoningSummary: true,
-        thesisBullets: true,
-        riskFlags: true,
-        signalTypes: true,
         createdAt: true,
         researchRunId: true,
       },
@@ -399,23 +394,24 @@ export default async function TradeDetailPage({
 
               {/* Trade Thesis */}
               {trade.thesis && (() => {
+                const t = trade.thesis;
+                const composite = getThesisComposite(t);
                 const rowData: ThesisRowData = {
-                  id: trade.thesis.id,
+                  id: t.id,
                   ticker: trade.symbol,
-                  direction: trade.thesis.direction as string,
-                  confidenceScore: trade.thesis.confidenceScore,
-                  reasoningSummary: trade.thesis.reasoningSummary,
-                  thesisBullets: trade.thesis.thesisBullets,
-                  riskFlags: trade.thesis.riskFlags,
+                  direction: t.direction as string,
+                  confidenceScore: composite != null ? composite * 10 : 0,
+                  reasoningSummary: getThesisSnapshotText(t),
+                  thesisBullets: getThesisBullCaseBullets(t),
+                  riskFlags: getThesisBearCaseBullets(t),
                   entryPrice: trade.entryPrice,
                   targetPrice: targetPrice,
                   stopLoss: stopPrice,
-                  horizon: trade.thesis.horizon,
-                  createdAt: trade.thesis.createdAt?.toISOString?.() ?? null,
+                  horizon: t.horizon,
+                  createdAt: t.createdAt?.toISOString?.() ?? null,
                   analystName: null,
-                  runId: trade.thesis.researchRunId ?? null,
-                  sourcesUsed: trade.thesis.sourcesUsed,
-                  sheetState: buildThesisSheetState(trade.thesis),
+                  runId: t.researchRunId ?? null,
+                  sheetState: buildThesisSheetState(t),
                   position: {
                     id: trade.id,
                     status: trade.status,
@@ -433,23 +429,25 @@ export default async function TradeDetailPage({
                 type TT = typeof thesisChain[number];
                 const active = thesisChain.filter((t: TT) => t.status === "ACTIVE");
                 const prior = thesisChain.filter((t: TT) => t.status !== "ACTIVE");
-                const toRow = (t: TT): ThesisRowData => ({
-                  id: t.id,
-                  ticker: trade.symbol,
-                  direction: t.direction,
-                  confidenceScore: t.confidenceScore,
-                  reasoningSummary: t.reasoningSummary,
-                  thesisBullets: t.thesisBullets,
-                  riskFlags: t.riskFlags,
-                  entryPrice: Number(t.entryPrice) || null,
-                  targetPrice: Number(t.targetPrice) || null,
-                  stopLoss: Number(t.stopLoss) || null,
-                  horizon: t.horizon,
-                  createdAt: t.createdAt.toISOString(),
-                  runId: t.researchRunId ?? null,
-                  sourcesUsed: t.sourcesUsed,
-                  sheetState: buildThesisSheetState(t),
-                });
+                const toRow = (t: TT): ThesisRowData => {
+                  const composite = getThesisComposite(t);
+                  return {
+                    id: t.id,
+                    ticker: trade.symbol,
+                    direction: t.direction,
+                    confidenceScore: composite != null ? composite * 10 : 0,
+                    reasoningSummary: getThesisSnapshotText(t),
+                    thesisBullets: getThesisBullCaseBullets(t),
+                    riskFlags: getThesisBearCaseBullets(t),
+                    entryPrice: Number(t.entryPrice) || null,
+                    targetPrice: Number(t.targetPrice) || null,
+                    stopLoss: Number(t.stopLoss) || null,
+                    horizon: t.horizon,
+                    createdAt: t.createdAt.toISOString(),
+                    runId: t.researchRunId ?? null,
+                    sheetState: buildThesisSheetState(t),
+                  };
+                };
                 const statusBadge = (s: string) => {
                   if (s === "SUPERSEDED") return <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Superseded</Badge>;
                   if (s === "INVALIDATED") return <Badge variant="destructive" className="text-[10px] h-4 px-1.5">Invalidated</Badge>;
@@ -702,9 +700,12 @@ export default async function TradeDetailPage({
                 { label: 'Shares', value: String(trade.shares) },
                 { label: 'Avg Entry', value: fmtCur(trade.entryPrice) },
                 { label: 'Cost Basis', value: fmtCur(positionCost) },
-                ...(trade.thesis?.confidenceScore != null
-                  ? [{ label: 'Confidence', value: `${trade.thesis.confidenceScore}%` }]
-                  : []),
+                ...(() => {
+                  const composite = trade.thesis ? getThesisComposite(trade.thesis) : null;
+                  return composite != null
+                    ? [{ label: 'Composite', value: `${composite}/10` }]
+                    : [];
+                })(),
                 { label: 'R:R Ratio', value: `${riskReward.toFixed(2)}:1` },
               ] as Array<{ label: string; value: string }>).map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">

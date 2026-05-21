@@ -23,6 +23,10 @@
 import { prisma } from "@/lib/prisma";
 import type { MorningBrief as IntelMorningBrief } from "@/components/intelligence/types";
 import type { ThesisRowData } from "@/components/ui/thesis-row";
+import {
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -178,18 +182,22 @@ export async function getRunSourcesData(args: {
       },
       researchRun: { include: { agentConfig: { select: { id: true, name: true } } } },
     },
-    orderBy: { confidenceScore: "desc" },
+    // PR-9: was orderBy confidenceScore desc — scoring.composite is Json
+    // and not server-sortable; order createdAt-desc and let UI rank if needed.
+    orderBy: { createdAt: "desc" },
   });
 
   const theses: ThesisRowData[] = dbTheses.map((t) => {
     const dec = t.decisions[0];
     const position = dec?.position;
+    const composite = getThesisComposite(t);
     return {
       id: t.id,
       ticker: t.ticker,
       direction: t.direction,
-      confidenceScore: t.confidenceScore,
-      reasoningSummary: t.reasoningSummary,
+      // PR-9: legacy 0-100 confidence → composite × 10 for row renderer.
+      confidenceScore: composite != null ? composite * 10 : 0,
+      reasoningSummary: getThesisSnapshotText(t),
       entryPrice: t.entryPrice,
       targetPrice: t.targetPrice,
       stopLoss: t.stopLoss,
@@ -209,7 +217,6 @@ export async function getRunSourcesData(args: {
       analystName: t.researchRun?.agentConfig?.name ?? null,
       analystId: t.researchRun?.agentConfig?.id ?? null,
       runId: t.researchRunId,
-      sourcesUsed: t.sourcesUsed,
     };
   });
 

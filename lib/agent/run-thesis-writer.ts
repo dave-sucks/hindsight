@@ -30,6 +30,10 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { MODES } from "@/lib/agent/modes";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
+import {
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 export interface RunThesisWriterArgs {
   childRunId: string;
@@ -81,13 +85,13 @@ Existing thesis on $${T}:
   • core_belief: ${opts.existingThesis.coreBelief ?? "—"}
   • target_price: ${opts.existingThesis.targetPrice ?? "—"}
   • stop_loss: ${opts.existingThesis.stopLoss ?? "—"}
-  • confidence: ${opts.existingThesis.confidenceScore}
-  • reasoning_summary: ${opts.existingThesis.reasoningSummary}
+  • composite (legacy 0-100): ${opts.existingThesis.confidenceScore}
+  • snapshot: ${opts.existingThesis.reasoningSummary}
 
-Close out via update_thesis(thesis_id="${opts.existingThesis.id}", ..., research_data=<rawDataBlock>, research_sections=<sections>, rationale="<one line on what changed>").`
+Close out via update_thesis(thesis_id="${opts.existingThesis.id}", ..., research_data=<rawDataBlock>, snapshot=<sections.snapshot>, bull_case=<sections.bullCase>, bear_case=<sections.bearCase>, ...other section args, rationale="<one line on what changed>").`
       : `MODE: MINT — net-new coverage on $${T}.
 
-Close out via record_thesis(ticker="${T}", direction=..., research_data=<rawDataBlock>, research_sections=<sections>, ...full structural fields).`;
+Close out via record_thesis(ticker="${T}", direction=..., research_data=<rawDataBlock>, snapshot=<sections.snapshot>, bull_case=<sections.bullCase>, bear_case=<sections.bearCase>, ...other section args, ...full structural fields).`;
 
   return `You are ${opts.analystName}, writing one deep-research thesis on $${T}.
 
@@ -140,12 +144,25 @@ YOUR JOB (4 tool calls, ~3-5 minutes wall time)
      - invalidation_conditions: ≥2 specific things that would prove it
        wrong (numbers, events, dates — NOT "market volatility")
 
-4. Persist the thesis:
-     ${opts.mode === "refresh" && opts.existingThesis ? `- update_thesis(thesis_id="${opts.existingThesis.id}", <all decision fields>, research_data=<rawDataBlock>, research_sections=<sections>, rationale="<one line>")` : `- record_thesis(ticker="${T}", <all decision fields>, research_data=<rawDataBlock>, research_sections=<sections>, source_kind=..., source_rationale=...)`}
+4. Persist the thesis. PR-9 flat schema: pass the 9 individual section
+   args (NOT a single research_sections blob — that arg was dropped).
+   Map write_thesis_research's data.sections keys to the tool args:
 
-   The research_data and research_sections fields MUST be passed exactly as
-   write_thesis_research returned them — that's how the deep research lands
-   on the Thesis row for the card.
+     sections.snapshot           → snapshot
+     sections.recentCatalysts    → recent_catalysts
+     sections.fundamentals       → fundamentals_section
+     sections.latestEarnings     → latest_earnings
+     sections.catalystsAndEvents → catalysts_and_events
+     sections.bullCase           → bull_case
+     sections.bearCase           → bear_case
+     sections.analystConsensus   → analyst_consensus
+     sections.insiderTechnical   → insider_technical
+
+     ${opts.mode === "refresh" && opts.existingThesis ? `- update_thesis(thesis_id="${opts.existingThesis.id}", <all decision fields>, research_data=<rawDataBlock>, snapshot=<sections.snapshot>, ...other section args, rationale="<one line>")` : `- record_thesis(ticker="${T}", <all decision fields>, research_data=<rawDataBlock>, snapshot=<sections.snapshot>, ...other section args, source_kind=..., source_rationale=...)`}
+
+   The research_data + the 9 section args MUST be passed verbatim from
+   write_thesis_research's return value — that's how the deep research
+   lands on the Thesis row for the card.
 
 5. Call complete_run.
 
@@ -231,11 +248,14 @@ export async function runThesisWriterAgent(
         coreBelief: true,
         targetPrice: true,
         stopLoss: true,
-        confidenceScore: true,
-        reasoningSummary: true,
+        scoring: true,
+        snapshot: true,
       },
     });
     if (row) {
+      // PR-9: legacy 0-100 confidence → composite × 10 for prompt context
+      // (the agent's existing thesis preview still talks about 0-100).
+      const composite = getThesisComposite(row);
       existingThesis = {
         id: row.id,
         direction: row.direction,
@@ -243,8 +263,8 @@ export async function runThesisWriterAgent(
         coreBelief: row.coreBelief,
         targetPrice: row.targetPrice != null ? Number(row.targetPrice) : null,
         stopLoss: row.stopLoss != null ? Number(row.stopLoss) : null,
-        confidenceScore: row.confidenceScore,
-        reasoningSummary: row.reasoningSummary,
+        confidenceScore: composite != null ? composite * 10 : 0,
+        reasoningSummary: getThesisSnapshotText(row),
       };
     }
   }

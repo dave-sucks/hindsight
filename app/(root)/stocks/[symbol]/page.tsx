@@ -16,6 +16,12 @@ import {
   thesisSheetStateSelect,
 } from "@/lib/agent/thesis-sheet-state";
 import {
+  getThesisBearCaseBullets,
+  getThesisBullCaseBullets,
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
+import {
   getNews,
   getStockProfile,
   getStockQuote,
@@ -149,12 +155,9 @@ export default async function StockDetailPage({ params }: Props) {
           select: {
             // P2-19: select every field the sheet renders so it can paint
             // synchronously on open instead of skeletons-then-fetch.
+            // thesisSheetStateSelect includes the new flat-schema narrative
+            // sections (snapshot / bullCase / bearCase / etc).
             ...thesisSheetStateSelect,
-            // Page-specific fields not covered by thesisSheetStateSelect.
-            reasoningSummary: true,
-            thesisBullets: true,
-            riskFlags: true,
-            signalTypes: true,
             createdAt: true,
             researchRunId: true,
             researchRun: { select: { source: true, agentConfigId: true, agentConfig: { select: { name: true } } } },
@@ -283,14 +286,19 @@ export default async function StockDetailPage({ params }: Props) {
               {(() => {
                 const latest = tickerTheses.find((t: { status: string; direction: string }) => t.status === "ACTIVE" && t.direction !== "PASS") ?? tickerTheses[0];
                 if (!latest) return null;
+                const composite = getThesisComposite(latest);
                 const rowData: ThesisRowData = {
                   id: latest.id,
                   ticker: upperSymbol,
                   direction: latest.direction,
-                  confidenceScore: latest.confidenceScore,
-                  reasoningSummary: latest.reasoningSummary,
-                  thesisBullets: latest.thesisBullets,
-                  riskFlags: latest.riskFlags,
+                  // PR-9: legacy 0-100 confidenceScore is gone. The row
+                  // renders Lean/Buy/Strong-Buy off this number — convert
+                  // /10 composite to /100 (×10) so the same thresholds
+                  // (≥80=Strong, ≥60=Buy) keep working.
+                  confidenceScore: composite != null ? composite * 10 : 0,
+                  reasoningSummary: getThesisSnapshotText(latest),
+                  thesisBullets: getThesisBullCaseBullets(latest),
+                  riskFlags: getThesisBearCaseBullets(latest),
                   entryPrice: latest.entryPrice,
                   targetPrice: latest.targetPrice,
                   stopLoss: latest.stopLoss,
@@ -298,7 +306,6 @@ export default async function StockDetailPage({ params }: Props) {
                   createdAt: latest.createdAt.toISOString(),
                   analystName: latest.researchRun?.agentConfig?.name ?? null,
                   runId: latest.researchRunId,
-                  sourcesUsed: latest.sourcesUsed,
                   sheetState: buildThesisSheetState(latest),
                 };
                 return <StockThesesList theses={[rowData]} />;
@@ -369,24 +376,26 @@ export default async function StockDetailPage({ params }: Props) {
 
             {/* ── THESES — Perplexity "Notable Price Movement" style ── */}
             <TabsContent value="theses" className="mt-4 max-w-3xl">
-              <StockThesesList theses={tickerTheses.map((t: typeof tickerTheses[number]) => ({
-                id: t.id,
-                ticker: upperSymbol,
-                direction: t.direction,
-                confidenceScore: t.confidenceScore,
-                reasoningSummary: t.reasoningSummary,
-                thesisBullets: t.thesisBullets,
-                riskFlags: t.riskFlags,
-                entryPrice: t.entryPrice,
-                targetPrice: t.targetPrice,
-                stopLoss: t.stopLoss,
-                horizon: t.horizon,
-                createdAt: t.createdAt.toISOString(),
-                analystName: t.researchRun?.agentConfig?.name ?? null,
-                runId: t.researchRunId,
-                sourcesUsed: t.sourcesUsed,
-                sheetState: buildThesisSheetState(t),
-              }))} />
+              <StockThesesList theses={tickerTheses.map((t: typeof tickerTheses[number]) => {
+                const composite = getThesisComposite(t);
+                return {
+                  id: t.id,
+                  ticker: upperSymbol,
+                  direction: t.direction,
+                  confidenceScore: composite != null ? composite * 10 : 0,
+                  reasoningSummary: getThesisSnapshotText(t),
+                  thesisBullets: getThesisBullCaseBullets(t),
+                  riskFlags: getThesisBearCaseBullets(t),
+                  entryPrice: t.entryPrice,
+                  targetPrice: t.targetPrice,
+                  stopLoss: t.stopLoss,
+                  horizon: t.horizon,
+                  createdAt: t.createdAt.toISOString(),
+                  analystName: t.researchRun?.agentConfig?.name ?? null,
+                  runId: t.researchRunId,
+                  sheetState: buildThesisSheetState(t),
+                };
+              })} />
             </TabsContent>
 
           </Tabs>
@@ -473,11 +482,12 @@ export default async function StockDetailPage({ params }: Props) {
                 {(() => {
                   const activeThesis = tickerTheses.find((t) => t.status === "ACTIVE" && t.direction !== "PASS");
                   if (!activeThesis) return null;
+                  const activeComposite = getThesisComposite(activeThesis);
                   return (
                     <div className="flex items-center justify-between text-sm border-b border-border pb-1">
                       <span className="text-muted-foreground">Current View</span>
                       <span className={cn("font-medium", activeThesis.direction === "LONG" ? "text-positive" : "text-negative")}>
-                        {activeThesis.direction} {activeThesis.confidenceScore}%
+                        {activeThesis.direction}{activeComposite != null ? ` · ${activeComposite}/10` : ""}
                       </span>
                     </div>
                   );

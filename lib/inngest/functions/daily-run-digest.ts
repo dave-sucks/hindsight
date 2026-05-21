@@ -29,6 +29,7 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { sendEmail, getUserEmail } from "@/lib/email";
 import { getOwnerUserId } from "@/lib/auth/account";
+import { getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
 import {
   dailyRunDigestHtml,
   type DigestAnalyst,
@@ -172,7 +173,8 @@ export const dailyRunDigest = inngest.createFunction(
           select: {
             ticker: true,
             targetPrice: true,
-            reasoningSummary: true,
+            // PR-9: reasoningSummary (String) replaced by snapshot (JSONB).
+            snapshot: true,
             researchRun: { select: { agentConfigId: true } },
           },
         });
@@ -181,7 +183,7 @@ export const dailyRunDigest = inngest.createFunction(
           .map((t) => ({
             analystId: t.researchRun.agentConfigId as string,
             symbol: t.ticker,
-            reason: t.reasoningSummary,
+            reason: getThesisSnapshotText(t),
             targetPrice: t.targetPrice,
           }));
 

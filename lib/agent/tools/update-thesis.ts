@@ -41,6 +41,39 @@ import {
   holdDurationFromHorizon,
   type Horizon,
 } from "@/lib/agent/horizon-policy";
+import {
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
+
+// ── V2 deep-research section shapes (PR-9 flat schema cutover) ───────────
+// Same shape as record_thesis. See lib/agent/tools/record-thesis.ts.
+const sectionCitationSchema = z
+  .object({
+    url: z.string().optional(),
+    title: z.string().optional(),
+    domain: z.string().optional(),
+    kind: z.enum(["STRUCTURED", "WEB"]).optional(),
+  })
+  .describe("Citation chip (one URL or [STRUCTURED:...] reference).");
+
+const sectionTextSchema = z
+  .object({
+    text: z.string(),
+    citations: z.array(sectionCitationSchema).optional(),
+  })
+  .describe("Prose paragraph with optional citations.");
+
+const sectionBulletSchema = z
+  .object({
+    bullets: z.array(
+      z.object({
+        text: z.string(),
+        citation: sectionCitationSchema.optional(),
+      }),
+    ),
+  })
+  .describe("Bulleted list, one citation per bullet.");
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -85,14 +118,30 @@ const updateSchema = z.object({
   // ── Patchable fields ──────────────────────────────────────────────────
   // Every field is optional. Whatever's passed gets written; whatever's
   // omitted is left unchanged.
+  //
+  // PR-9 flat schema: the legacy plain-string args
+  // (reasoning_summary / thesis_bullets / risk_flags) accept the legacy
+  // shape AND get wrapped into the new JSONB section shape on persist.
+  // V2 callers pass the new section args directly (snapshot / bull_case /
+  // bear_case + 6 new sections) for richer citations.
   reasoning_summary: z
     .string()
     .optional()
     .describe(
-      "Updated 2-3 sentence trade rationale. Often diverges from core_belief over time as the rationale shifts even if the underlying belief holds.",
+      "Legacy plain-string update for the snapshot section. V2 callers prefer `snapshot: { text, citations }`.",
     ),
-  thesis_bullets: z.array(z.string()).optional(),
-  risk_flags: z.array(z.string()).optional(),
+  thesis_bullets: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Legacy plain-string-array update for the bull case. V2 callers prefer `bull_case: { bullets: [{ text, citation }] }`.",
+    ),
+  risk_flags: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Legacy plain-string-array update for the bear case. V2 callers prefer `bear_case: { bullets: [{ text, citation }] }`.",
+    ),
   // The three "structural belief" fields. Substantive non-belief patches
   // (target/stop/confidence) without touching at least one of these are
   // rejected at the discipline gate below — the agent must either update
@@ -116,9 +165,20 @@ const updateSchema = z.object({
     .describe(
       "What would prove this thesis wrong. Concrete: 'guidance cut next quarter', 'CFO departure', 'gross margin below 35% on next print'. Generic 'market downturn' is insufficient. Used by the trade evaluator to grade exits and by the daily run to decide when a signal counts as thesis-breaking. On PASS theses, these double as re-entry criteria — if any flips the other way the PASS becomes a candidate to flip to LONG/SHORT.",
     ),
-  signal_types: z.array(z.string()).optional(),
-
-  confidence_score: z.number().int().min(0).max(100).optional(),
+  // PR-9: signal_types / confidence_score columns dropped. Conviction
+  // moves through `scoring` (the 4-dim setup grade, single conviction
+  // number). signalTypes is derivable from sourceSignalIds.
+  scoring: z
+    .object({
+      trendStrength: z.object({ score: z.number().min(0).max(3), note: z.string() }).optional(),
+      relativeStrength: z.object({ score: z.number().min(0).max(3), note: z.string() }).optional(),
+      entryQuality: z.object({ score: z.number().min(0).max(2), note: z.string() }).optional(),
+      catalystFreshness: z.object({ score: z.number().min(0).max(2), note: z.string() }).optional(),
+    })
+    .optional()
+    .describe(
+      "Update the 4-dim composite scoring. Pass all four dims (with `composite` computed by the tool) to fully replace; pass a subset to merge with the existing scoring. composite ≥ 7 = ADD/ROTATE eligible; < 7 = WATCH or PASS.",
+    ),
   target_price: z.number().nullable().optional(),
   stop_loss: z.number().nullable().optional(),
   entry_price: z.number().nullable().optional()
@@ -176,6 +236,40 @@ const updateSchema = z.object({
     .nullable()
     .optional(),
 
+  // ── V2 narrative sections (PR-9 flat schema) ──────────────────────────
+  // Same 9 sections record_thesis accepts. Patching one section leaves the
+  // others untouched (the rename + retype migration backfilled legacy rows
+  // with empty-citation shapes, so partial updates are safe).
+  snapshot: sectionTextSchema
+    .optional()
+    .describe(
+      "Patch the Snapshot section (1 paragraph current-state framing). Supersedes `reasoning_summary` when both are passed.",
+    ),
+  recent_catalysts: sectionTextSchema
+    .optional()
+    .describe("Patch the Recent Catalysts section (1-2 week catalyst window narrative)."),
+  fundamentals_section: sectionTextSchema
+    .optional()
+    .describe("Patch the Fundamentals section (narrative paragraph; persists to Thesis.fundamentals column)."),
+  latest_earnings: sectionBulletSchema
+    .optional()
+    .describe("Patch the Latest Earnings section (5 specific bullets)."),
+  catalysts_and_events: sectionBulletSchema
+    .optional()
+    .describe("Patch the Catalysts & Events section (3-5 dated bullets)."),
+  bull_case: sectionBulletSchema
+    .optional()
+    .describe("Patch the Bull Case section (3-5 cited bullets). Supersedes `thesis_bullets` when both are passed."),
+  bear_case: sectionBulletSchema
+    .optional()
+    .describe("Patch the Bear Case section (3-5 cited bullets, mandatory even on LONG). Supersedes `risk_flags` when both are passed."),
+  analyst_consensus: sectionTextSchema
+    .optional()
+    .describe("Patch the Analyst Consensus section (firm-by-firm narrative)."),
+  insider_technical: sectionTextSchema
+    .optional()
+    .describe("Patch the Insider & Technical section (insider activity + technical setup)."),
+
   // ── Status transitions (deliberate) ───────────────────────────────────
   change_status: z
     .enum(["ACTIVE", "INVALIDATED", "CLOSED", "ARCHIVED"])
@@ -189,20 +283,15 @@ const updateSchema = z.object({
         "For direction flips or completely new beliefs, use record_thesis with parent_thesis_id instead.",
     ),
 
-  // ── Deep-research artifacts (THESIS_RESEARCH_V2 Phase 1) ───────────────
-  // Mirror of the same fields on record_thesis. Populated by the
+  // ── Deep-research artifact passthrough (THESIS_RESEARCH_V2 refresh) ───
+  // Mirror of record_thesis's research_data arg. Populated by the
   // thesis-writer agent's refresh path after calling write_thesis_research.
-  // Persisted onto Thesis.researchData (markdown data block, ~3-5KB) and
-  // Thesis.researchSections (parsed multi-section synthesis with citations).
-  // Optional and ignored when not provided — only the thesis-writer mode
-  // (refresh path) passes them through.
+  // Persisted on Thesis.researchData (markdown data block, ~3-5KB) for the
+  // card's data tab + audit.
   //
-  // Why this is on update_thesis: a thesis-writer dispatched in refresh
-  // mode lands on update_thesis (the existing row gets refreshed, not
-  // replaced). Without these fields here, the multi-section research the
-  // agent produced inside write_thesis_research never lands on the row —
-  // observed 2026-05-20 on the $MDB refresh test (cmpean45q...) where
-  // every other field updated correctly but researchData stayed null.
+  // PR-9: `research_sections` blob arg removed. The 9 parsed sections are
+  // now individual flat args (snapshot / bull_case / bear_case + 6 new
+  // sections defined above) — they land on first-class JSONB columns.
   research_data: z
     .string()
     .optional()
@@ -210,26 +299,30 @@ const updateSchema = z.object({
       "Raw structured-data markdown block from write_thesis_research(...).data.rawDataBlock. " +
         "Pass through verbatim. Lands on Thesis.researchData for the card's data tab.",
     ),
-  research_sections: z
-    .record(z.string(), z.unknown())
-    .optional()
-    .describe(
-      "Parsed multi-section synthesis from write_thesis_research(...).data.sections. " +
-        "Pass through verbatim. Lands on Thesis.researchSections.",
-    ),
 });
 
 type UpdatePatch = Partial<{
   direction: string;
   entryPrice: number | null;
-  reasoningSummary: string;
-  thesisBullets: string[];
-  riskFlags: string[];
-  signalTypes: string[];
+  // PR-9 flat schema: legacy plain-string columns (reasoningSummary,
+  // thesisBullets, riskFlags) replaced by JSONB section columns. Per the
+  // single-shot cutover, the writer no longer surfaces the old fields.
+  snapshot: object;
+  bullCase: object;
+  bearCase: object;
+  recentCatalysts: object;
+  fundamentals: object;
+  latestEarnings: object;
+  catalystsAndEvents: object;
+  analystConsensus: object;
+  insiderTechnical: object;
+  researchUpdatedAt: Date;
   coreBelief: string | null;
   keyAssumptions: string[];
   invalidationConds: string[];
-  confidenceScore: number;
+  // PR-9 dropped confidenceScore / signalTypes columns. Conviction lives
+  // in scoring.composite (set via the scoring arg, not patched directly).
+  scoring: object;
   targetPrice: number | null;
   stopLoss: number | null;
   targetSizePct: number | null;
@@ -245,9 +338,9 @@ type UpdatePatch = Partial<{
   closedAt: Date;
   closeReason: string;
   // THESIS_RESEARCH_V2 Phase 1 — refresh path persistence.
+  // PR-9: researchSections blob dropped; researchUpdatedAt is declared
+  // higher up in this same type (stamped when any V2 section lands).
   researchData: string;
-  researchSections: object;
-  researchUpdatedAt: Date;
 }>;
 
 export const updateThesis = defineTool({
@@ -291,15 +384,20 @@ export const updateThesis = defineTool({
         direction: true,
         entryPrice: true,
         researchRun: { select: { agentConfigId: true } },
-        // Snapshot every field we might diff:
-        reasoningSummary: true,
-        thesisBullets: true,
-        riskFlags: true,
-        signalTypes: true,
+        // PR-9 flat schema: select the V2 narrative columns + scoring.
+        snapshot: true,
+        bullCase: true,
+        bearCase: true,
+        recentCatalysts: true,
+        fundamentals: true,
+        latestEarnings: true,
+        catalystsAndEvents: true,
+        analystConsensus: true,
+        insiderTechnical: true,
         coreBelief: true,
         keyAssumptions: true,
         invalidationConds: true,
-        confidenceScore: true,
+        scoring: true,
         targetPrice: true,
         stopLoss: true,
         targetSizePct: true,
@@ -710,19 +808,70 @@ export const updateThesis = defineTool({
 
     // Build the patch. Only set keys the agent supplied — undefined ≠ null.
     const patch: UpdatePatch = {};
-    if (args.reasoning_summary !== undefined)
-      patch.reasoningSummary = args.reasoning_summary;
-    if (args.thesis_bullets !== undefined)
-      patch.thesisBullets = args.thesis_bullets;
-    if (args.risk_flags !== undefined) patch.riskFlags = args.risk_flags;
-    if (args.signal_types !== undefined) patch.signalTypes = args.signal_types;
+
+    // ── Narrative section reconciliation (PR-9 flat schema) ──────────────
+    // V2 section args (snapshot / bull_case / bear_case) take precedence
+    // over the legacy plain-string args (reasoning_summary / thesis_bullets
+    // / risk_flags). Legacy values are wrapped in the new JSONB shape.
+    if (args.snapshot !== undefined) {
+      patch.snapshot = args.snapshot;
+    } else if (args.reasoning_summary !== undefined) {
+      patch.snapshot = { text: args.reasoning_summary, citations: [] };
+    }
+    if (args.bull_case !== undefined) {
+      patch.bullCase = args.bull_case;
+    } else if (args.thesis_bullets !== undefined) {
+      patch.bullCase = { bullets: args.thesis_bullets.map((t) => ({ text: t })) };
+    }
+    if (args.bear_case !== undefined) {
+      patch.bearCase = args.bear_case;
+    } else if (args.risk_flags !== undefined) {
+      patch.bearCase = { bullets: args.risk_flags.map((t) => ({ text: t })) };
+    }
+    // 6 new V2 sections — no legacy fallback.
+    if (args.recent_catalysts !== undefined) patch.recentCatalysts = args.recent_catalysts;
+    if (args.fundamentals_section !== undefined) patch.fundamentals = args.fundamentals_section;
+    if (args.latest_earnings !== undefined) patch.latestEarnings = args.latest_earnings;
+    if (args.catalysts_and_events !== undefined) patch.catalystsAndEvents = args.catalysts_and_events;
+    if (args.analyst_consensus !== undefined) patch.analystConsensus = args.analyst_consensus;
+    if (args.insider_technical !== undefined) patch.insiderTechnical = args.insider_technical;
+    // Stamp researchUpdatedAt if any V2 section was touched (drives the
+    // daily-run staleness gate).
+    if (
+      args.snapshot !== undefined ||
+      args.bull_case !== undefined ||
+      args.bear_case !== undefined ||
+      args.recent_catalysts !== undefined ||
+      args.fundamentals_section !== undefined ||
+      args.latest_earnings !== undefined ||
+      args.catalysts_and_events !== undefined ||
+      args.analyst_consensus !== undefined ||
+      args.insider_technical !== undefined
+    ) {
+      patch.researchUpdatedAt = new Date();
+    }
+
     if (args.core_belief !== undefined) patch.coreBelief = args.core_belief;
     if (args.key_assumptions !== undefined)
       patch.keyAssumptions = args.key_assumptions;
     if (args.invalidation_conditions !== undefined)
       patch.invalidationConds = args.invalidation_conditions;
-    if (args.confidence_score !== undefined)
-      patch.confidenceScore = args.confidence_score;
+    // PR-9: confidence_score arg dropped — composite (in scoring) is the
+    // single conviction number. Scoring is merged with existing (partial
+    // updates supported); composite is computed from the 4 dims.
+    if (args.scoring !== undefined) {
+      // Read current scoring + merge with patch.
+      const currentScoring =
+        existing.scoring && typeof existing.scoring === "object"
+          ? (existing.scoring as Record<string, unknown>)
+          : {};
+      const merged = { ...currentScoring, ...args.scoring };
+      const t = (merged.trendStrength as { score?: number } | undefined)?.score ?? 0;
+      const r = (merged.relativeStrength as { score?: number } | undefined)?.score ?? 0;
+      const e = (merged.entryQuality as { score?: number } | undefined)?.score ?? 0;
+      const c = (merged.catalystFreshness as { score?: number } | undefined)?.score ?? 0;
+      patch.scoring = { ...merged, composite: t + r + e + c };
+    }
     if (args.target_price !== undefined) patch.targetPrice = args.target_price;
     if (args.stop_loss !== undefined) patch.stopLoss = args.stop_loss;
     if (args.entry_price !== undefined) patch.entryPrice = args.entry_price;
@@ -749,24 +898,23 @@ export const updateThesis = defineTool({
       patch.nextReviewAt = args.next_review_at
         ? new Date(args.next_review_at)
         : null;
-    // THESIS_RESEARCH_V2 Phase 1 — refresh-path research persistence.
-    // Only stamped when the thesis-writer agent passed these through.
-    // researchUpdatedAt is set whenever either field is supplied so the
-    // Phase 3 staleness gate can refuse promote-to-active on stale research.
+    // THESIS_RESEARCH_V2 refresh-path research persistence. PR-9: the
+    // `research_sections` blob is gone — parsed sections land on the 9
+    // first-class JSONB columns above (which also stamp researchUpdatedAt
+    // via the V2-section-supplied check). `research_data` (the raw markdown
+    // structured-data block) is still passthrough-persisted here for the
+    // card's data tab + audit.
     if (
       typeof args.research_data === "string" &&
       args.research_data.length > 0
     ) {
       patch.researchData = args.research_data;
-    }
-    if (
-      args.research_sections &&
-      typeof args.research_sections === "object"
-    ) {
-      patch.researchSections = args.research_sections as object;
-    }
-    if (args.research_data !== undefined || args.research_sections !== undefined) {
-      patch.researchUpdatedAt = new Date();
+      // researchUpdatedAt was already stamped above when any V2 section
+      // arrived; stamp here too as a fallback when only research_data lands
+      // without sections (degraded synthesis path).
+      if (patch.researchUpdatedAt === undefined) {
+        patch.researchUpdatedAt = new Date();
+      }
     }
     if (args.triggers !== undefined) {
       // Triggers are wholesale-replaced (intentional — agent passes the FULL
@@ -1077,39 +1225,63 @@ export const updateThesis = defineTool({
         data: patch as object,
       });
     } catch (updErr: unknown) {
-      // THESIS_RESEARCH_V2 Phase 1 fallback — mirrors record_thesis.ts.
-      // If the Prisma client is out of sync with the schema (e.g. the
-      // researchData/researchSections/researchUpdatedAt columns haven't
-      // been regenerated locally), retry the update without those fields
-      // so the rest of the patch lands. Loud log so we notice if this
-      // fires in production — the schema migration shipped in PR #278
-      // so it should never trigger, but the strip mirrors record_thesis's
-      // defense-in-depth.
+      // THESIS_RESEARCH_V2 fallback — mirrors record_thesis.ts. If the
+      // Prisma client is out of sync with the schema (e.g. the V2 columns
+      // haven't been regenerated locally), retry the update without those
+      // fields so the rest of the patch lands. Loud log so we notice if
+      // this fires in production — the schema migration shipped in
+      // PR #278 + PR-9 so it should never trigger, but the strip mirrors
+      // record_thesis's defense-in-depth.
       const errMsg = updErr instanceof Error ? updErr.message : String(updErr);
       const isUnknownArgError =
         errMsg.includes("Unknown arg") ||
         errMsg.includes("Unknown argument") ||
         (errMsg.includes("researchData") && errMsg.includes("does not exist")) ||
-        (errMsg.includes("researchSections") && errMsg.includes("does not exist")) ||
-        (errMsg.includes("researchUpdatedAt") && errMsg.includes("does not exist"));
-      if (
-        isUnknownArgError &&
-        ("researchData" in patch ||
-          "researchSections" in patch ||
-          "researchUpdatedAt" in patch)
-      ) {
+        (errMsg.includes("researchUpdatedAt") && errMsg.includes("does not exist")) ||
+        (errMsg.includes("snapshot") && errMsg.includes("does not exist")) ||
+        (errMsg.includes("bullCase") && errMsg.includes("does not exist")) ||
+        (errMsg.includes("bearCase") && errMsg.includes("does not exist"));
+      const hasV2Field =
+        "researchData" in patch ||
+        "researchUpdatedAt" in patch ||
+        "snapshot" in patch ||
+        "bullCase" in patch ||
+        "bearCase" in patch ||
+        "recentCatalysts" in patch ||
+        "fundamentals" in patch ||
+        "latestEarnings" in patch ||
+        "catalystsAndEvents" in patch ||
+        "analystConsensus" in patch ||
+        "insiderTechnical" in patch;
+      if (isUnknownArgError && hasV2Field) {
         console.error(
-          `[tool] update_thesis V2 FALLBACK for ${existing.ticker}: stripping research_data/research_sections/researchUpdatedAt. Prisma client appears out of sync. Full error: ${errMsg}`,
+          `[tool] update_thesis V2 FALLBACK for ${existing.ticker}: stripping V2 research columns. Prisma client appears out of sync. Full error: ${errMsg}`,
         );
         const {
           researchData: _rdata,
-          researchSections: _rsections,
           researchUpdatedAt: _rupdated,
+          snapshot: _snap,
+          bullCase: _bcase,
+          bearCase: _xcase,
+          recentCatalysts: _rcat,
+          fundamentals: _fund,
+          latestEarnings: _learn,
+          catalystsAndEvents: _cae,
+          analystConsensus: _acons,
+          insiderTechnical: _itech,
           ...fallbackPatch
         } = patch;
         void _rdata;
-        void _rsections;
         void _rupdated;
+        void _snap;
+        void _bcase;
+        void _xcase;
+        void _rcat;
+        void _fund;
+        void _learn;
+        void _cae;
+        void _acons;
+        void _itech;
         await prisma.thesis.update({
           where: { id: existing.id },
           data: fallbackPatch as object,

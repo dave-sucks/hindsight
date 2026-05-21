@@ -16,6 +16,10 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices, getAccount } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import {
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 interface PositionDetail {
   positionId: string;
@@ -137,18 +141,22 @@ export const getPortfolioContext = defineTool({
             orderBy: { createdAt: "desc" },
             select: {
               id: true,
-              reasoningSummary: true,
-              confidenceScore: true,
-              signalTypes: true,
+              snapshot: true,
+              scoring: true,
               status: true,
             },
           });
+          // PR-9: legacy 0-100 confidence + signalTypes column dropped.
+          // Conviction lives in scoring.composite (/10) — multiply by 10
+          // for the agent-facing shape which still expects 0-100.
+          // signalTypes is derivable from sourceSignalIds → drop for now.
+          const composite = thesis ? getThesisComposite(thesis) : null;
           thesisMap.set(pos.id, thesis
             ? {
                 id: thesis.id,
-                reasoning: thesis.reasoningSummary,
-                confidence: thesis.confidenceScore,
-                signalTypes: thesis.signalTypes,
+                reasoning: getThesisSnapshotText(thesis),
+                confidence: composite != null ? composite * 10 : 0,
+                signalTypes: [],
                 status: thesis.status,
               }
             : null);

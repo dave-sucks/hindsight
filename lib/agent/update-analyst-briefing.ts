@@ -16,6 +16,12 @@ import { generateObject, generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import {
+  getThesisBearCaseBullets,
+  getThesisBullCaseBullets,
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 // ── Schema for the briefing agent's output ──────────────────────────────────
 // IMPORTANT: All fields are REQUIRED (no .optional() or .catch()) because
@@ -135,10 +141,12 @@ export async function updateAnalystBriefing({
             include: {
               thesis: {
                 select: {
-                  confidenceScore: true,
-                  reasoningSummary: true,
+                  // PR-9: confidenceScore (Int) replaced by scoring.composite;
+                  // reasoningSummary (String) by snapshot JSONB; signalTypes
+                  // dropped (derivable from sourceSignalIds).
+                  scoring: true,
+                  snapshot: true,
                   direction: true,
-                  signalTypes: true,
                 },
               },
             },
@@ -161,10 +169,10 @@ export async function updateAnalystBriefing({
       prisma.thesis.findMany({
         where: { researchRunId: runId, userId },
         select: {
-          ticker: true, direction: true, confidenceScore: true,
-          reasoningSummary: true, thesisBullets: true, riskFlags: true,
+          ticker: true, direction: true, scoring: true,
+          snapshot: true, bullCase: true, bearCase: true,
           entryPrice: true, targetPrice: true, stopLoss: true,
-          holdDuration: true, signalTypes: true, sector: true,
+          holdDuration: true, sector: true,
         },
       }),
       // 5: positions from this run
@@ -204,7 +212,9 @@ export async function updateAnalystBriefing({
         select: {
           symbol: true, reasoning: true, createdAt: true,
           thesis: {
-            select: { entryPrice: true, confidenceScore: true },
+            // PR-9: confidenceScore → scoring (composite is the conviction
+            // signal; downstream usage in briefing prompt can extract via helper).
+            select: { entryPrice: true, scoring: true },
           },
         },
       }),
@@ -308,23 +318,29 @@ export async function updateAnalystBriefing({
       : null;
 
     const thesesData = runTheses.map((t: {
-      ticker: string; direction: string; confidenceScore: number;
-      reasoningSummary: string; thesisBullets: string[]; riskFlags: string[];
+      ticker: string; direction: string; scoring: unknown;
+      snapshot: unknown; bullCase: unknown; bearCase: unknown;
       entryPrice: number | null; targetPrice: number | null; stopLoss: number | null;
-      holdDuration: string; signalTypes: string[];
-    }) => ({
-      ticker: t.ticker,
-      direction: t.direction,
-      confidence_score: t.confidenceScore,
-      reasoning_summary: t.reasoningSummary,
-      thesis_bullets: t.thesisBullets,
-      risk_flags: t.riskFlags,
-      entry_price: t.entryPrice,
-      target_price: t.targetPrice,
-      stop_loss: t.stopLoss,
-      hold_duration: t.holdDuration,
-      signal_types: t.signalTypes,
-    }));
+      holdDuration: string;
+    }) => {
+      // PR-9: briefing payload still exposes legacy field names; populate
+      // them from the new flat columns so the briefing-agent prompt keeps
+      // working without a prompt-template rewrite.
+      const composite = getThesisComposite(t);
+      return {
+        ticker: t.ticker,
+        direction: t.direction,
+        confidence_score: composite != null ? composite * 10 : 0,
+        reasoning_summary: getThesisSnapshotText(t),
+        thesis_bullets: getThesisBullCaseBullets(t),
+        risk_flags: getThesisBearCaseBullets(t),
+        entry_price: t.entryPrice,
+        target_price: t.targetPrice,
+        stop_loss: t.stopLoss,
+        hold_duration: t.holdDuration,
+        signal_types: [],
+      };
+    });
 
     const tradesData = runTrades.map((t: {
       symbol: string; direction: string; avgCost: number;
@@ -353,9 +369,12 @@ export async function updateAnalystBriefing({
     // ── Build briefing agent prompt ──────────────────────────────────────────
 
     const openPositionsText = openTrades.length > 0
-      ? openTrades.map((t: { symbol: string; direction: string; quantity: number; avgCost: number; decisions: Array<{ thesis: { confidenceScore: number; reasoningSummary: string } | null }> }) => {
+      ? openTrades.map((t: { symbol: string; direction: string; quantity: number; avgCost: number; decisions: Array<{ thesis: { scoring: unknown; snapshot: unknown } | null }> }) => {
           const thesis = t.decisions[0]?.thesis;
-          return `- $${t.symbol}: ${t.direction} ${t.quantity} shares @ $${t.avgCost.toFixed(2)} (confidence: ${thesis?.confidenceScore ?? "?"}%, thesis: "${thesis?.reasoningSummary?.slice(0, 100) ?? "—"}")`;
+          // PR-9: legacy 0-100 confidence display → composite × 10.
+          const composite = thesis ? getThesisComposite(thesis) : null;
+          const reasoning = thesis ? getThesisSnapshotText(thesis) : "";
+          return `- $${t.symbol}: ${t.direction} ${t.quantity} shares @ $${t.avgCost.toFixed(2)} (confidence: ${composite != null ? Math.round(composite * 10) : "?"}%, thesis: "${reasoning.slice(0, 100) || "—"}")`;
         }).join("\n")
       : "No open positions.";
 
@@ -386,10 +405,12 @@ ${previousBriefing.selfCorrections ? `Self-Corrections: ${JSON.stringify(previou
     const passDecisionsText = recentPassDecisions.length > 0
       ? recentPassDecisions.map((d: {
           symbol: string; createdAt: Date; reasoning: string | null;
-          thesis: { entryPrice: number | null; confidenceScore: number | null } | null;
+          thesis: { entryPrice: number | null; scoring: unknown } | null;
         }) => {
           const dateStr = d.createdAt.toISOString().slice(0, 10);
-          return `- PASS: $${d.symbol} on ${dateStr} (confidence: ${d.thesis?.confidenceScore ?? "?"}%) — ${d.reasoning?.slice(0, 100) ?? "no reason"}`;
+          // PR-9: legacy 0-100 confidence → composite × 10.
+          const composite = d.thesis ? getThesisComposite(d.thesis) : null;
+          return `- PASS: $${d.symbol} on ${dateStr} (confidence: ${composite != null ? Math.round(composite * 10) : "?"}%) — ${d.reasoning?.slice(0, 100) ?? "no reason"}`;
         }).join("\n")
       : "No pass decisions recorded yet.";
 

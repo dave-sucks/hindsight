@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 
 const STARTING_CAPITAL = 100_000;
 
@@ -178,7 +179,7 @@ export async function getAnalyticsData(
               include: {
                 thesis: {
                   select: {
-                    confidenceScore: true,
+                    scoring: true,
                     sector: true,
                     holdDuration: true,
                     ticker: true,
@@ -317,14 +318,17 @@ export async function getAnalyticsData(
   // ── Confidence scatter ────────────────────────────────────────────────────
 
   const confidenceScatter: ConfidencePoint[] = closedPositions
-    .filter((p) => getThesis(p)?.confidenceScore != null)
+    .filter((p) => getThesisComposite(getThesis(p) ?? { scoring: null }) != null)
     .map((p) => {
       const thesis = getThesis(p)!;
+      const composite = getThesisComposite(thesis);
       const cost = p.avgCost * p.quantity;
       const ret = cost > 0 ? ((p.realizedPnl ?? 0) / cost) * 100 : 0;
+      // PR-9: legacy 0-100 confidence → composite × 10 so the scatter's
+      // existing X-axis bucketing keeps working.
       return {
         ticker: thesis.ticker,
-        confidence: thesis.confidenceScore,
+        confidence: composite != null ? composite * 10 : 0,
         return: ret,
       };
     });

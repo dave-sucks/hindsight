@@ -6,6 +6,10 @@ import { revalidatePath } from "next/cache";
 import { getAccountId } from "@/lib/auth/account";
 import { getOrCreateManualRun } from "@/lib/agent/manual-run-anchor";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import {
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 // Watchlist collapse — Thesis is the single store. AnalystWatchlistItem is
 // gone. The "watchlist" is now the query:
@@ -150,8 +154,8 @@ export async function getWatchlistItems(
       direction: true,
       targetPrice: true,
       stopLoss: true,
-      confidenceScore: true,
-      reasoningSummary: true,
+      scoring: true,
+      snapshot: true,
       sourceKind: true,
       sourceRationale: true,
       catalystDate: true,
@@ -173,7 +177,7 @@ export async function getWatchlistItems(
       ticker: { in: tickers },
       researchRun: { agentConfigId: analystId },
     },
-    select: { ticker: true, direction: true, confidenceScore: true, createdAt: true },
+    select: { ticker: true, direction: true, scoring: true, createdAt: true },
     orderBy: { createdAt: "desc" },
   });
 
@@ -198,10 +202,13 @@ export async function getWatchlistItems(
           : t.sourceKind === "EDITOR_SEED"
             ? "BUILDER"
             : "AGENT";
+    // PR-9: legacy 0-100 conviction → composite × 10.
+    const composite = getThesisComposite(t);
+    const histComposite = hist?.latest ? getThesisComposite(hist.latest) : null;
     return {
       id: t.id,
       symbol: t.ticker,
-      reason: t.reasoningSummary,
+      reason: getThesisSnapshotText(t),
       notes: null,
       addedBy,
       priority: "NORMAL",
@@ -209,7 +216,7 @@ export async function getWatchlistItems(
       thesisDirection: t.direction === "PENDING" ? null : t.direction,
       targetPrice: t.targetPrice,
       stopPrice: t.stopLoss,
-      conviction: t.confidenceScore,
+      conviction: composite != null ? composite * 10 : 0,
       catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
       lastReviewedAt: t.nextReviewAt,
       createdAt: t.createdAt,
@@ -217,7 +224,7 @@ export async function getWatchlistItems(
       latestThesis: hist?.latest
         ? {
             direction: hist.latest.direction,
-            confidenceScore: hist.latest.confidenceScore,
+            confidenceScore: histComposite != null ? histComposite * 10 : 0,
             createdAt: hist.latest.createdAt,
           }
         : null,
@@ -270,8 +277,8 @@ export async function addWatchlistItem(
       direction: true,
       targetPrice: true,
       stopLoss: true,
-      confidenceScore: true,
-      reasoningSummary: true,
+      scoring: true,
+      snapshot: true,
       sourceKind: true,
       createdAt: true,
       nextReviewAt: true,
@@ -284,10 +291,11 @@ export async function addWatchlistItem(
         : existing.sourceKind === "USER_ADDED"
           ? "USER"
           : "AGENT";
+    const existingComposite = getThesisComposite(existing);
     return {
       id: existing.id,
       symbol: existing.ticker,
-      reason: existing.reasoningSummary,
+      reason: getThesisSnapshotText(existing),
       notes: null,
       addedBy: addedByDisplay,
       priority: "NORMAL",
@@ -295,7 +303,7 @@ export async function addWatchlistItem(
       thesisDirection: existing.direction === "PENDING" ? null : existing.direction,
       targetPrice: existing.targetPrice,
       stopPrice: existing.stopLoss,
-      conviction: existing.confidenceScore,
+      conviction: existingComposite != null ? existingComposite * 10 : 0,
       catalyst: null,
       lastReviewedAt: existing.nextReviewAt,
       createdAt: existing.createdAt,
@@ -324,12 +332,14 @@ export async function addWatchlistItem(
       direction: "PENDING",
       status: "WATCHING",
       holdDuration: "SWING",
-      confidenceScore: 50,
-      reasoningSummary: reason || "Added manually — awaiting first research",
-      thesisBullets: [],
-      riskFlags: [],
-      signalTypes: [],
-      sourcesUsed: [],
+      // PR-9 flat schema: legacy plain-string narrative columns replaced
+      // by JSONB snapshot/bullCase/bearCase. confidenceScore / signalTypes
+      // / sourcesUsed dropped — composite lives in scoring (null until
+      // first research).
+      snapshot: {
+        text: reason || "Added manually — awaiting first research",
+        citations: [],
+      },
       modelUsed: "manual",
       sourceKind,
       sourceRationale: reason || "Manual watchlist add",
@@ -348,10 +358,13 @@ export async function addWatchlistItem(
   });
 
   revalidatePath(`/analysts/${analystId}`);
+  // PR-9: legacy 0-100 conviction → composite × 10; we just minted the
+  // thesis with no scoring yet, so conviction is null/0.
+  const mintedComposite = getThesisComposite(thesis);
   return {
     id: thesis.id,
     symbol: thesis.ticker,
-    reason: thesis.reasoningSummary,
+    reason: getThesisSnapshotText(thesis),
     notes: null,
     addedBy,
     priority: "NORMAL",
@@ -359,7 +372,7 @@ export async function addWatchlistItem(
     thesisDirection: null,
     targetPrice: null,
     stopPrice: null,
-    conviction: thesis.confidenceScore,
+    conviction: mintedComposite != null ? mintedComposite * 10 : 0,
     catalyst: null,
     lastReviewedAt: thesis.nextReviewAt,
     createdAt: thesis.createdAt,
@@ -441,9 +454,11 @@ export async function updateWatchlistItem(
   if (!owned) throw new Error("Watchlist item not found");
 
   if (data.reason !== undefined) {
+    // PR-9: legacy reasoningSummary (String) replaced by snapshot
+    // (JSONB { text, citations }). Wrap the user's note in the new shape.
     await prisma.thesis.update({
       where: { id: itemId },
-      data: { reasoningSummary: data.reason },
+      data: { snapshot: { text: data.reason, citations: [] } },
     });
   }
   // priority + notes are no-ops under the unified model.
