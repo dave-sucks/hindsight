@@ -12,7 +12,7 @@
 >
 > **How to use it:** start at P0. P0s block the rework's correctness. P1s degrade quality. P2s are papercuts but still part of the rework. Don't skip levels. When something closes, **move it** to a "Done since" section below, not strike-through inline.
 >
-> **Most recent major movement:** Post-2026-05-20 wave — the keystone "no trades in 12 days" fixes shipped together with the supporting hygiene work. PRs #307 (tactical volume gate horizon-conditional), #308 (husky Prisma regen), #309 (WATCHING cadence), #310 (REVIEW_DUE 24h look-ahead + REVIEW_DATE_HIT strip), #311 (discovery Layer-1 cap of 5). Repair scripts run 2026-05-23 (33 cadences + 27 REVIEW_DATE_HIT triggers stripped). Resolved P2-18 in flight. See "Done since 2026-05-20" in `GAPS_HISTORY.md` for the full block. Surfaced and filed: P0-12, P1-18, P1-19, P2-20, P2-21, P2-22.
+> **Most recent major movement:** Post-2026-05-20 wave — the keystone "no trades in 12 days" fixes shipped together with the supporting hygiene work. PRs #307 (tactical volume gate horizon-conditional), #308 (husky Prisma regen), #309 (WATCHING cadence), #310 (REVIEW_DUE 24h look-ahead + REVIEW_DATE_HIT strip), #311 (discovery Layer-1 cap of 5). Repair scripts run 2026-05-23 (33 cadences + 27 REVIEW_DATE_HIT triggers stripped). Resolved P2-18 in flight. See "Done since 2026-05-20" in `GAPS_HISTORY.md` for the full block. Surfaced and filed: P0-12, P1-18, P1-19, P2-20, P2-21, P2-22, **P1-20**.
 
 ---
 
@@ -134,7 +134,11 @@ Concrete production state when this was diagnosed: 4 theses (AMD, AVGO, GOOGL, T
 
 **Fix path:** mirror the discovery clamp. Treat any USER_ADDED / WEB_SEARCH / WATCHLIST_REVIEW thesis-writer mint as forced WATCHING. The user can promote to ACTIVE later via the standard place_trade path (which is what the architecture wants — a research thesis is a candidate, not a commitment). ~20 minutes.
 
-**Existing zombie:** MU thesis row `cmpetjrw5000304jv9ybkn0c0` needs manual repair (flip to WATCHING + write a STATUS_CHANGED audit row).
+**Existing zombie:** MU thesis row `cmpetjrw5000304jv9ybkn0c0` needs manual repair (flip to WATCHING + write a STATUS_CHANGED audit row). **Fixed via SQL on 2026-05-23** during PR #316 — status flipped to WATCHING, 10 HELD-template triggers stripped, STATUS_CHANGED ThesisUpdate audit row written.
+
+**Shipping in PR #316 (Phase 1 stabilization):** chat-dispatch clamp via `forceWatchingMint` flag in `dispatch_thesis_research` → Inngest event payload → `runThesisWriterAgent` ctx → `record_thesis` `isChatDispatchDirectional` gate (mirrors the existing `isDiscoveryDirectional` shape).
+
+**Followup:** see P1-20 for the architectural refactor that removes the need for clamps entirely. P1-18 closes the immediate zombie risk; P1-20 closes the structural cause.
 
 ### P1-19 — PRINCIPAL_CHAT hangs when child THESIS_WRITER fails
 **Source:** Handoff item #7 from 2026-05-20 tactical session. Observed 2026-05-19: Tech Momentum's PRINCIPAL_CHAT was stuck `status=RUNNING` for 44+ minutes because its child THESIS_WRITER failed at 10s on an Anthropic rate-limit error and the parent was never notified.
@@ -186,6 +190,45 @@ The V2 prompt says *"Theses with `needsAction == null` don't need to be touched.
 **Source:** PR #275 surfaced the dueling-agents bug — opening a discovery run page while it was `status=RUNNING` auto-spawned a second agent against `/api/agent/research-run` (daily-run prompt + allowlist) that competed with the real discovery agent. Discovery runs prior to PR #275 where the user opened the page mid-run may have written `RunMessage` from the daily-run agent rather than the discovery agent. The minted `Thesis` rows are real DB writes either way, but the AGENT BEHAVIOR audited in those runs may not have been the discovery agent. Affects audit credibility for runs: cmp4m0q35 (Tech Momentum, 3 mints), cmp698wva (Tech Momentum, 16 mints), cmp6bryy (Secular Theme, 10 mints), cmp6dk0w1 (Secular Theme, 0 mints — confirmed dueling).
 
 **No fix:** historical data is what it is. Post-#275 runs are clean. Listed here so future audits don't over-index on pre-#275 discovery transcripts.
+
+
+### P1-20 — Thesis status should be derived from actions, not a manual arg with clamps
+**Source:** Surfaced 2026-05-23 during PR #316 (Phase 1 stabilization). Cross-ref: **P1-18 (the immediate clamp fix shipping in #316) and this entry (the architectural followup)** are two passes at the same underlying issue — P1-18 patches the chat-dispatch surface with a third clamp, P1-20 proposes removing the surface that needs clamping.
+
+The $MU zombie thesis (cmpetjrw5...) — minted ACTIVE with 10 HELD-template triggers but no Alpaca position — was the trigger for this insight. PR #316 patches the immediate failure with a third clamp (`forceWatchingMint` for chat dispatches, mirroring the existing `discoveryOnly` clamp). The clamps work but they're treating the symptom. The structural issue is that `record_thesis` exposes `status` as a settable arg with `ACTIVE` as the default fallback, so every new dispatch surface (Phase 3 daily promote-to-active, Phase 4 tactical inline calls) will need its own clamp or it'll mint zombies the same way.
+
+**The right invariant:** status is a function of ACTIONS, not a manual field. Only three legal write paths:
+
+| State | Set by | When |
+|---|---|---|
+| WATCHING | `record_thesis` | Always, for LONG/SHORT mints. No exceptions, no arg. |
+| ARCHIVED | `record_thesis` | Always, for PASS mints. Terminal-at-write institutional memory. |
+| ACTIVE | `place_trade` | Atomically in the same tx as the Alpaca position open. Already wired this way per PR #265 — just need to remove the other paths. |
+| CLOSED | `close_position` | Atomically with the Alpaca position close. |
+| INVALIDATED | `update_thesis(change_status='INVALIDATED')` | The thesis is now disproven. Allowed from WATCHING freely; allowed from ACTIVE only if `close_position` fired in the same run (existing zombie-position guard). |
+| ARCHIVED (post-mint) | `update_thesis(change_status='ARCHIVED')` | "Stop watching this name." Allowed from WATCHING freely; allowed from ACTIVE only if `close_position` fired in the same run. |
+
+`update_thesis` is CONTENT-only: numbers, belief, assumptions, target, stop, scoring, rationale. The only legal direction edit is `PENDING → LONG/SHORT/PASS` (commit a user-seeded watchlist add to a real thesis). Status is never set by update_thesis except for the two narrow terminal transitions above.
+
+**Why this is better than clamps:**
+1. **Zombie minting becomes structurally impossible.** Agent literally cannot pass `status='ACTIVE'` to record_thesis because the arg doesn't exist.
+2. **No clamp creep.** Phase 3 daily and Phase 4 tactical don't need their own clamps. The path doesn't exist to need clamping.
+3. **The agent prompt simplifies.** All the "DEFAULT TO WATCHING…", "discovery mints WATCHING…", "the clamp will downgrade…" instructions in `record-thesis.ts`, `system-prompts/discovery.ts`, `run-thesis-writer.ts` collapse into one sentence: "record_thesis writes WATCHING. To trade, call place_trade."
+4. **HELD-template triggers are guaranteed paired with positions** because both attach inside `place_trade.ts`'s atomic block (already true per PR #265).
+
+**Fix path (estimated 1 focused day):**
+1. **`record_thesis` schema** — drop the `status` arg entirely. Hard-code: LONG/SHORT → WATCHING, PASS → ARCHIVED. Delete the `discoveryOnly` clamp and the `forceWatchingMint` clamp (PR #316) — both become unreachable.
+2. **`update_thesis` schema** — narrow `change_status` to `INVALIDATED | ARCHIVED | CLOSED` only (no `ACTIVE`). Keep the existing zombie-position guard.
+3. **`place_trade`** — verify it's the sole WATCHING → ACTIVE path. Per PR #265 it should be; check for any other code path that flips status without place_trade pairing.
+4. **`close_position`** — verify it's the sole ACTIVE → CLOSED path. Per the existing schema, looks fine.
+5. **`tactical-run.ts`** — find any `update_thesis(change_status='ACTIVE')` calls and replace with direct `place_trade` calls (the atomic flip happens inside place_trade per #265). Delete the manual fallback.
+6. **Migration / cleanup query** — audit DB for any other ACTIVE-without-position rows (the generalized $MU fix). Run same SQL pattern: flip to WATCHING, strip HELD triggers, write ThesisUpdate audit row.
+7. **Prompt cleanup** — delete the "default to WATCHING / forceWatchingMint will clamp / discovery clamps to WATCHING" instructions from `record-thesis.ts` schema doc, `system-prompts/discovery.ts`, `lib/agent/run-thesis-writer.ts`'s `buildThesisWriterSystemPrompt`. Replace with one line: "Thesis creation = WATCHING. Use place_trade to enter a position (it flips status atomically)."
+8. **Test coverage** — add tests that record_thesis cannot produce ACTIVE; that update_thesis cannot transition to ACTIVE; that place_trade is the only path; that ACTIVE rows always have a paired open Position.
+
+**When to fire:** AFTER PR #316 lands and Phase 1 is confirmed stable in production for ~3-5 trading days. The clamps in #316 close the immediate zombie risk; this refactor closes the structural risk before Phase 2 Discovery fan-out adds a third dispatcher (Discovery already has its own clamp via `discoveryOnly`; the refactor still simplifies it).
+
+**Cross-references:** PR #316 (clamp landing), PR #265 (atomic place_trade WATCHING → ACTIVE), PR #270 (F2 zombie-position guard on update_thesis ARCHIVED — model for the narrowed INVALIDATED + ARCHIVED transitions on this refactor).
 
 ---
 
