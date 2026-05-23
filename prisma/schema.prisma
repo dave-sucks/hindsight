@@ -190,13 +190,7 @@ model Thesis {
   targetPrice      Float?
   stopLoss         Float?
   holdDuration     String // "DAY" | "SWING" | "POSITION"
-  confidenceScore  Int // 0-100
-  reasoningSummary String
-  thesisBullets    String[]
-  riskFlags        String[]
-  signalTypes      String[] // ["EARNINGS_BEAT", "SECTOR_ROTATION", etc.]
   sector           String?
-  sourcesUsed      Json // [{type, provider, title, url, publishedAt}]
   modelUsed        String
   fullResearch     Json?
   thoughtTrace     Json? // [{type, data, timestamp_ms}] — per-ticker event log for replay
@@ -259,12 +253,38 @@ model Thesis {
   closeReason String?
 
   // Thesis Research V2 — deep-research artifact written by the thesis-writer
-  // agent. researchData is the raw structured-data block (~3-5KB);
-  // researchSections is the parsed multi-section synthesis. Both null on
-  // legacy rows. See docs/plans/THESIS_RESEARCH_V2.md.
+  // agent. `researchData` is the raw structured-data block (~3-5KB) the
+  // synthesis consumed; kept for audit/debug. `researchUpdatedAt` is the
+  // staleness gate. The per-section narrative content is stored in the 9
+  // flat columns below — PR-9 flattened the `researchSections` blob into
+  // first-class columns. See docs/plans/THESIS_CLEANUP.md §1.3.
   researchData      Json?
-  researchSections  Json?
   researchUpdatedAt DateTime?
+
+  // ── 9-section narrative dossier (PR-9 — flat schema) ────────────────
+  // Three sections are rename+retypes of legacy String/String[] fields:
+  //   snapshot  was reasoningSummary (String → { text, citations[] })
+  //   bullCase  was thesisBullets    (String[] → { bullets: [{ text, citation }] })
+  //   bearCase  was riskFlags        (String[] → { bullets: [{ text, citation }] })
+  // The other six are new — they have no pre-V2 counterpart.
+  //
+  // Content shapes:
+  //   text section:   { text: string, citations?: Citation[] }
+  //   bullet section: { bullets: Array<{ text: string, citation?: Citation }> }
+  //   Citation:       { url?, title?, domain?, kind?: "STRUCTURED" | "WEB" }
+  //
+  // All nullable — legacy rows have the 3 retyped sections populated (empty
+  // citations) and the 6 new sections null until V2 refresh. PASS theses
+  // typically only populate snapshot + bearCase.
+  snapshot           Json?
+  recentCatalysts    Json?
+  fundamentals       Json?
+  latestEarnings     Json?
+  catalystsAndEvents Json?
+  bullCase           Json?
+  bearCase           Json?
+  analystConsensus   Json?
+  insiderTechnical   Json?
 
   // 4-dim composite scoring (the analyst's setup grade). Shape:
   //   { trendStrength, relativeStrength, entryQuality, catalystFreshness, composite }

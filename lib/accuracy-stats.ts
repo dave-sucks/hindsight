@@ -5,6 +5,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,7 +106,12 @@ export async function getAccuracyStats(
         take: 1,
         include: {
           thesis: {
-            select: { confidenceScore: true, signalTypes: true },
+            // PR-9: confidenceScore (Int) dropped, replaced by
+            // scoring.composite. signalTypes (String[]) dropped — was used
+            // for the "signal-type accuracy" rollup below; the rollup is
+            // now stubbed out (TODO: rebuild on sourceSignalIds →
+            // Signal.aggregateType joins once we wire that path).
+            select: { scoring: true },
           },
         },
       },
@@ -142,9 +148,13 @@ export async function getAccuracyStats(
   const overallWinRate = winRateFrom(wins, n);
 
   // ── Calibration buckets ───────────────────────────────────────────────────
+  // PR-9: legacy Thesis.confidenceScore (0-100 Int) was dropped. The
+  // replacement is scoring.composite (0-10), so we multiply by 10 to keep
+  // the bucket thresholds (e.g. 70-79%) working unchanged.
   const calibration: CalibrationBucket[] = CONFIDENCE_BUCKETS.map((b) => {
     const inBucket = positions.filter((p) => {
-      const conf = getThesis(p)?.confidenceScore ?? 0;
+      const composite = getThesisComposite(getThesis(p) ?? { scoring: null });
+      const conf = composite != null ? composite * 10 : 0;
       return conf >= b.min && conf <= b.max;
     });
     const bucketWins = inBucket.filter((p) => p.outcome === "WIN").length;
@@ -159,23 +169,10 @@ export async function getAccuracyStats(
   });
 
   // ── Signal-type accuracy ──────────────────────────────────────────────────
-  const signalMap = new Map<string, { wins: number; total: number }>();
-  for (const pos of positions) {
-    const signals: string[] = getThesis(pos)?.signalTypes ?? [];
-    for (const sig of signals) {
-      const entry = signalMap.get(sig) ?? { wins: 0, total: 0 };
-      entry.total++;
-      if (pos.outcome === "WIN") entry.wins++;
-      signalMap.set(sig, entry);
-    }
-  }
-  const signalAccuracy: SignalAccuracy[] = Array.from(signalMap.entries())
-    .map(([signal, { wins: w, total }]) => ({
-      signal,
-      count: total,
-      winRate: winRateFrom(w, total),
-    }))
-    .sort((a, b) => b.count - a.count);
+  // TODO(PR-9 follow-up): rebuild this rollup on
+  // `sourceSignalIds → Signal.aggregateType` joins now that `signalTypes`
+  // (String[]) is dropped. Empty for now — better than stale numbers.
+  const signalAccuracy: SignalAccuracy[] = [];
 
   // ── Direction stats ───────────────────────────────────────────────────────
   const directionStats: DirectionStats[] = (["LONG", "SHORT"] as const).map((dir) => {

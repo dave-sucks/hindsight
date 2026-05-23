@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
+import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 
 export async function GET(request: NextRequest) {
   // Auth check
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
           id: true,
           ticker: true,
           direction: true,
-          confidenceScore: true,
+          scoring: true,
           createdAt: true,
         },
       }),
@@ -63,14 +64,22 @@ export async function GET(request: NextRequest) {
         pnlPct: e.pnlAt ?? undefined,
         direction: e.position?.direction,
       })),
-      ...theses.map((t) => ({
-        id: `thesis-${t.id}`,
-        type: "THESIS_GENERATED",
-        ticker: t.ticker,
-        detail: `${t.direction} thesis generated — ${t.confidenceScore}% confidence`,
-        timestamp: t.createdAt.toISOString(),
-        direction: t.direction,
-      })),
+      ...theses.map((t) => {
+        const composite = getThesisComposite(t);
+        // Composite is a 0-10 score; multiply by 10 to display as a /100 pct.
+        const pct = composite != null ? Math.round(composite * 10) : null;
+        return {
+          id: `thesis-${t.id}`,
+          type: "THESIS_GENERATED",
+          ticker: t.ticker,
+          detail:
+            pct != null
+              ? `${t.direction} thesis generated — ${pct}% confidence`
+              : `${t.direction} thesis generated`,
+          timestamp: t.createdAt.toISOString(),
+          direction: t.direction,
+        };
+      }),
       ...runs.map((r) => ({
         id: `run-${r.id}`,
         type: "RESEARCH_START",

@@ -15,6 +15,10 @@ import {
 } from "@/lib/universe/canonical";
 import { normalizeFeeds } from "@/lib/universe/feeds";
 import { getAccountId } from "@/lib/auth/account";
+import {
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -389,11 +393,9 @@ export async function getAnalystDetail(
             id: true,
             ticker: true,
             direction: true,
-            confidenceScore: true,
-            reasoningSummary: true,
+            scoring: true,
+            snapshot: true,
             holdDuration: true,
-            signalTypes: true,
-            sourcesUsed: true,
             decisions: {
               take: 1,
               where: { decision: "BUY" },
@@ -409,7 +411,9 @@ export async function getAnalystDetail(
               },
             },
           },
-          orderBy: { confidenceScore: "desc" },
+          // PR-9: was orderBy confidenceScore desc — sort client-side
+          // off scoring.composite below.
+          orderBy: { createdAt: "desc" },
         },
       },
     }),
@@ -436,8 +440,8 @@ export async function getAnalystDetail(
             thesis: {
               select: {
                 id: true,
-                confidenceScore: true,
-                reasoningSummary: true,
+                scoring: true,
+                snapshot: true,
               },
             },
           },
@@ -512,15 +516,19 @@ export async function getAnalystDetail(
     }),
   ]);
 
-  // Compute stats from all positions for this analyst
-  const [allPositions, avgConfAgg] = await Promise.all([
+  // Compute stats from all positions for this analyst.
+  // PR-9 dropped the legacy `confidenceScore` Int — the conviction signal
+  // moved into `scoring.composite` (Json `{ ... composite: number }`).
+  // Prisma aggregate can't average a Json field; fetch the scoring blobs
+  // and average composites client-side. Cheap on a per-analyst scope.
+  const [allPositions, scoringRows] = await Promise.all([
     prisma.position.findMany({
       where: { accountId, analystId },
       select: { outcome: true, realizedPnl: true },
     }),
-    prisma.thesis.aggregate({
+    prisma.thesis.findMany({
       where: { researchRun: { agentConfigId: analystId }, accountId },
-      _avg: { confidenceScore: true },
+      select: { scoring: true },
     }),
   ]);
 
@@ -546,7 +554,15 @@ export async function getAnalystDetail(
     lossPositions.length > 0
       ? Math.min(...lossPositions.map((p) => p.realizedPnl!))
       : null;
-  const avgConfidence = avgConfAgg._avg.confidenceScore ?? null;
+  // Average composite, on the legacy 0-100 scale (composite × 10) so the
+  // analyst card's existing renderer keeps working.
+  const composites: number[] = scoringRows
+    .map((r) => getThesisComposite(r))
+    .filter((c): c is number => c != null);
+  const avgConfidence =
+    composites.length > 0
+      ? (composites.reduce((s, c) => s + c, 0) / composites.length) * 10
+      : null;
 
   // Map monitors into typed arrays for UI display
   const domainMonitors = monitors
@@ -621,15 +637,18 @@ export async function getAnalystDetail(
     completedAt: r.completedAt,
     theses: r.theses.map((th) => {
       const pos = th.decisions[0]?.position;
+      const composite = getThesisComposite(th);
       return {
         id: th.id,
         ticker: th.ticker,
         direction: th.direction,
-        confidenceScore: th.confidenceScore,
-        reasoningSummary: th.reasoningSummary,
+        // PR-9: legacy 0-100 confidence → composite × 10 for renderers.
+        confidenceScore: composite != null ? composite * 10 : 0,
+        reasoningSummary: getThesisSnapshotText(th),
         holdDuration: th.holdDuration,
-        signalTypes: th.signalTypes,
-        sourcesUsed: th.sourcesUsed,
+        // PR-9: signalTypes / sourcesUsed columns dropped.
+        signalTypes: [],
+        sourcesUsed: [],
         trade: pos
           ? { id: pos.id, status: pos.status, realizedPnl: pos.realizedPnl, outcome: pos.outcome }
           : null,
@@ -637,20 +656,33 @@ export async function getAnalystDetail(
     }),
   }));
 
-  const mappedTrades: PositionWithThesis[] = recentPositions.map((p) => ({
-    id: p.id,
-    symbol: p.symbol,
-    direction: p.direction,
-    status: p.status,
-    avgCost: p.avgCost,
-    quantity: p.quantity,
-    closePrice: p.closePrice,
-    realizedPnl: p.realizedPnl,
-    outcome: p.outcome,
-    openedAt: p.openedAt,
-    closedAt: p.closedAt,
-    thesis: p.decisions[0]?.thesis ?? { id: "", confidenceScore: 0, reasoningSummary: "" },
-  }));
+  const mappedTrades: PositionWithThesis[] = recentPositions.map((p) => {
+    const th = p.decisions[0]?.thesis;
+    const composite = th ? getThesisComposite(th) : null;
+    return {
+      id: p.id,
+      symbol: p.symbol,
+      direction: p.direction,
+      status: p.status,
+      avgCost: p.avgCost,
+      quantity: p.quantity,
+      closePrice: p.closePrice,
+      realizedPnl: p.realizedPnl,
+      outcome: p.outcome,
+      openedAt: p.openedAt,
+      closedAt: p.closedAt,
+      // PR-9: API contract still exposes `confidenceScore` (0-100) and
+      // `reasoningSummary` (string) — populate from the new flat columns
+      // via the helpers so downstream UI keeps working.
+      thesis: th
+        ? {
+            id: th.id,
+            confidenceScore: composite != null ? composite * 10 : 0,
+            reasoningSummary: getThesisSnapshotText(th),
+          }
+        : { id: "", confidenceScore: 0, reasoningSummary: "" },
+    };
+  });
 
   return {
     config: mappedConfig,
@@ -696,7 +728,7 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
         select: {
           ticker: true,
           direction: true,
-          confidenceScore: true,
+          scoring: true,
           decisions: {
             take: 1,
             where: { decision: "BUY" },
@@ -707,7 +739,10 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
             },
           },
         },
-        orderBy: { confidenceScore: "desc" },
+        // PR-9: was orderBy confidenceScore desc — server-side sort on
+        // Json composite isn't supported; results land createdAt-desc and
+        // downstream renderers sort if needed.
+        orderBy: { createdAt: "desc" },
         take: 8,
       },
     },
@@ -722,10 +757,13 @@ export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
     completedAt: r.completedAt,
     theses: r.theses.map((th) => {
       const pos = th.decisions[0]?.position;
+      const composite = getThesisComposite(th);
       return {
         ticker: th.ticker,
         direction: th.direction,
-        confidenceScore: th.confidenceScore,
+        // PR-9: legacy 0-100 confidence → composite × 10 for renderers
+        // still consuming the 0-100 shape.
+        confidenceScore: composite != null ? composite * 10 : 0,
         trade: pos ? { id: pos.id, status: pos.status, realizedPnl: pos.realizedPnl } : null,
       };
     }),
@@ -1073,12 +1111,15 @@ export async function createAnalystFromBuilder(
               direction: "PENDING",
               status: "WATCHING",
               holdDuration: "SWING",
-              confidenceScore: 50,
-              reasoningSummary: w.reason || "Builder-seeded — awaiting first research",
-              thesisBullets: [],
-              riskFlags: [],
-              signalTypes: [],
-              sourcesUsed: [],
+              // PR-9 flat schema: legacy plain-string narrative columns
+              // (reasoningSummary, thesisBullets, riskFlags) replaced by
+              // JSONB snapshot/bullCase/bearCase. confidenceScore /
+              // signalTypes / sourcesUsed dropped — composite lives in
+              // scoring (null until first research).
+              snapshot: {
+                text: w.reason || "Builder-seeded — awaiting first research",
+                citations: [],
+              },
               modelUsed: "builder",
               sourceKind: "BUILDER_SEED",
               sourceRationale: w.reason || "Builder-seeded during analyst creation",
@@ -1629,12 +1670,11 @@ export async function updateAnalystFromBuilder(
                 direction: "PENDING",
                 status: "WATCHING",
                 holdDuration: "SWING",
-                confidenceScore: 50,
-                reasoningSummary: w.reason || "Editor-seeded — awaiting first research",
-                thesisBullets: [],
-                riskFlags: [],
-                signalTypes: [],
-                sourcesUsed: [],
+                // PR-9 flat schema seed (see builder-seed block above).
+                snapshot: {
+                  text: w.reason || "Editor-seeded — awaiting first research",
+                  citations: [],
+                },
                 modelUsed: "editor",
                 sourceKind: "EDITOR_SEED",
                 sourceRationale: w.reason || "Editor-seeded via analyst-edit chat",

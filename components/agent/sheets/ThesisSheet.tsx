@@ -40,7 +40,6 @@ import {
   type ResearchTextSection,
   type ResearchBulletSection,
   type ResearchCitation,
-  type ThesisSourcesUsedItem,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -582,53 +581,6 @@ function ProvenanceFooter({
             {subline}
           </p>
         ) : null}
-      </div>
-    </div>
-  );
-}
-
-// ── SourcesStrip ───────────────────────────────────────────────────────
-// Favicon row for the analyst-cited `sourcesUsed` array — mirrors the
-// strip on `/stocks/[symbol]` thesis rows. Hidden when the column is
-// empty or shaped unexpectedly. Added 2026-05-18 (THESIS_CLEANUP PR-6).
-//
-// The column is permissive (JSON, written by both agent + manual paths
-// with varied shapes), so we validate defensively and skip items that
-// don't have at least a url to render.
-function SourcesStrip({ sourcesUsed }: { sourcesUsed: unknown }) {
-  if (!Array.isArray(sourcesUsed) || sourcesUsed.length === 0) return null;
-  const items = (sourcesUsed as ThesisSourcesUsedItem[]).filter(
-    (s): s is ThesisSourcesUsedItem & { url: string } =>
-      typeof s?.url === "string" && s.url.length > 0,
-  );
-  if (items.length === 0) return null;
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-        Sources
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {items.map((s, i) => {
-          let domain = "";
-          try {
-            domain = new URL(s.url).hostname.replace(/^www\./, "");
-          } catch {
-            domain = s.url;
-          }
-          return (
-            <a
-              key={i}
-              href={s.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="no-underline"
-            >
-              <Badge variant="outline" className="font-mono text-[10px]">
-                {s.provider ?? domain}
-              </Badge>
-            </a>
-          );
-        })}
       </div>
     </div>
   );
@@ -1298,12 +1250,11 @@ export function ThesisSheetBody({
       )}
 
       {/* ── Sources ──────────────────────────────────────────── */}
-      {/* Analyst-cited web sources (`sourcesUsed`) — mirrors the favicon
-          strip on `/stocks/[symbol]` thesis rows. Distinct from per-section
-          inline citations in researchSections (those come from the V2
-          deep-research synthesis model). Hidden when sourcesUsed is empty
-          or shaped unexpectedly. */}
-      <SourcesStrip sourcesUsed={state?.sourcesUsed ?? null} />
+      {/* `sourcesUsed` was dropped in PR-9 (flat-schema cutover) —
+          per-section citations inside the 9 narrative columns
+          (snapshot/bullCase/bearCase/etc.) supersede it. The favicon
+          strip will return once a section-citation aggregator helper
+          lands; for now this region intentionally renders nothing. */}
 
       {/* The mid-sheet "Core Belief" card was removed 2026-05-18 — the
           one-sentence durable claim is now rendered as a bigger-font
@@ -1367,8 +1318,8 @@ export function ThesisSheetBody({
           InfoRow pattern: per-dim label on the left, score on the right,
           bottom border + the agent's one-sentence justification note on
           its own full-width line beneath. No uppercase, no rounded card
-          container. Composite + (transitional) confidence sit in the
-          section header. */}
+          container. Composite is the single conviction number after PR-9
+          (legacy `confidenceScore` int dropped). */}
       {state?.scoring ? (
         <div className="space-y-2">
           <div className="flex items-baseline justify-between">
@@ -1376,14 +1327,6 @@ export function ThesisSheetBody({
               Composite Score
             </p>
             <div className="flex items-baseline gap-3">
-              {typeof state?.confidenceScore === "number" ? (
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  Confidence{" "}
-                  <span className="font-semibold text-foreground">
-                    {state.confidenceScore}%
-                  </span>
-                </p>
-              ) : null}
               {state.scoringComposite != null && (
                 <p className="text-sm font-semibold tabular-nums">
                   {state.scoringComposite}/10
@@ -1404,14 +1347,24 @@ export function ThesisSheetBody({
 
       {/* ── Research Synthesis (deep research) ───────────────── */}
       {/* Multi-section synthesis produced by the thesis-writer agent
-          (THESIS_RESEARCH_V2 Phase 1). Null on every legacy row and on
-          rows minted before Phase 1 ships, so this whole block hides
-          itself for now and lights up once the agent starts writing.
-          Each section is a Collapsible — opens individually so the user
-          can dive into one section without scrolling past the others. */}
-      {state?.researchSections && (
+          (THESIS_RESEARCH_V2 Phase 1). PR-9 flattened the legacy
+          `researchSections` blob into 9 first-class columns on the
+          TriggersResponse. Build a `sections` object from the populated
+          flat columns; the accordion still hides itself when nothing
+          is populated. */}
+      {state && (
         <ResearchSectionsAccordion
-          sections={state.researchSections}
+          sections={{
+            snapshot: state.snapshot ?? undefined,
+            recentCatalysts: state.recentCatalysts ?? undefined,
+            fundamentals: state.fundamentals ?? undefined,
+            latestEarnings: state.latestEarnings ?? undefined,
+            catalystsAndEvents: state.catalystsAndEvents ?? undefined,
+            bullCase: state.bullCase ?? undefined,
+            bearCase: state.bearCase ?? undefined,
+            analystConsensusSynthesis: state.analystConsensus ?? undefined,
+            insiderTechnicalSetup: state.insiderTechnical ?? undefined,
+          }}
           updatedAt={state.researchUpdatedAt}
         />
       )}

@@ -14,7 +14,8 @@
  */
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import type {
-  ThesisResearchSections,
+  ResearchBulletSection,
+  ResearchTextSection,
   ThesisScoring,
   TriggersResponse,
 } from "@/components/agent/sheets/ThesisTriggersSection";
@@ -41,13 +42,20 @@ export type ThesisSheetStateInput = {
   invalidationConds: string[];
   scoring: unknown;
   fullResearch: unknown;
-  researchSections: unknown;
+  // V2 flat-schema narrative columns (PR-9). All Json? on the row.
+  snapshot: unknown;
+  recentCatalysts: unknown;
+  fundamentals: unknown;
+  latestEarnings: unknown;
+  catalystsAndEvents: unknown;
+  bullCase: unknown;
+  bearCase: unknown;
+  analystConsensus: unknown;
+  insiderTechnical: unknown;
   researchUpdatedAt: Date | null;
-  confidenceScore: number;
   sourceKind: string | null;
   sourceRationale: string | null;
   sourceSignalIds: string[];
-  sourcesUsed: unknown;
   parentThesisId: string | null;
 };
 
@@ -104,13 +112,19 @@ export function buildThesisSheetState(t: ThesisSheetStateInput): TriggersRespons
     invalidationConds: t.invalidationConds ?? [],
     scoring: scoring as ThesisScoring | null,
     scoringComposite,
-    researchSections: (t.researchSections ?? null) as ThesisResearchSections | null,
+    snapshot: (t.snapshot ?? null) as ResearchTextSection | null,
+    recentCatalysts: (t.recentCatalysts ?? null) as ResearchTextSection | null,
+    fundamentals: (t.fundamentals ?? null) as ResearchTextSection | null,
+    latestEarnings: (t.latestEarnings ?? null) as ResearchBulletSection | null,
+    catalystsAndEvents: (t.catalystsAndEvents ?? null) as ResearchBulletSection | null,
+    bullCase: (t.bullCase ?? null) as ResearchBulletSection | null,
+    bearCase: (t.bearCase ?? null) as ResearchBulletSection | null,
+    analystConsensus: (t.analystConsensus ?? null) as ResearchTextSection | null,
+    insiderTechnical: (t.insiderTechnical ?? null) as ResearchTextSection | null,
     researchUpdatedAt: t.researchUpdatedAt ? t.researchUpdatedAt.toISOString() : null,
-    confidenceScore: t.confidenceScore,
     sourceKind: t.sourceKind,
     sourceRationale: t.sourceRationale,
     sourceSignalIds: t.sourceSignalIds ?? [],
-    sourcesUsed: t.sourcesUsed,
     parentThesisId: t.parentThesisId,
   };
 }
@@ -143,12 +157,19 @@ export const thesisSheetStateSelect = {
   invalidationConds: true,
   scoring: true,
   fullResearch: true,
-  researchSections: true,
+  // V2 flat-schema narrative columns (PR-9)
+  snapshot: true,
+  recentCatalysts: true,
+  fundamentals: true,
+  latestEarnings: true,
+  catalystsAndEvents: true,
+  bullCase: true,
+  bearCase: true,
+  analystConsensus: true,
+  insiderTechnical: true,
   researchUpdatedAt: true,
-  confidenceScore: true,
   sourceKind: true,
   sourceRationale: true,
   sourceSignalIds: true,
-  sourcesUsed: true,
   parentThesisId: true,
 } as const;

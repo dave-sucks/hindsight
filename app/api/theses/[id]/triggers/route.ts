@@ -58,23 +58,29 @@ export async function GET(
       coreBelief: true,
       keyAssumptions: true,
       invalidationConds: true,
-      // Scoring rubric + composite — promoted to top-level on 2026-05-18
-      // (THESIS_CLEANUP PR-1). `fullResearch` is still selected for the
-      // transitional fallback path below; both are dropped together in PR-4.
+      // Scoring rubric + composite. `composite` is the single conviction
+      // number after PR-9 (the legacy `confidenceScore` int was dropped).
+      // `fullResearch` is still selected for the transitional fallback path
+      // below; both drop together in PR-5.
       scoring: true,
       fullResearch: true,
-      // Deep-research synthesis (THESIS_RESEARCH_V2 Phase 1). Null on every
-      // legacy row; populated by the thesis-writer agent. The ThesisSheet
-      // renders this as a collapsible accordion under the composite score.
-      researchSections: true,
+      // 9 narrative sections (PR-9 flat schema). Three retypes of legacy
+      // fields (snapshot ↔ reasoningSummary, bullCase ↔ thesisBullets,
+      // bearCase ↔ riskFlags) + 6 new sections. Each is JSONB with a
+      // text-and-citations or bullets-with-citations shape.
+      snapshot: true,
+      recentCatalysts: true,
+      fundamentals: true,
+      latestEarnings: true,
+      catalystsAndEvents: true,
+      bullCase: true,
+      bearCase: true,
+      analystConsensus: true,
+      insiderTechnical: true,
       researchUpdatedAt: true,
-      // Phase 1.5 (PR-6) — fields surfaced on the sheet so the user can
-      // audit them. None of these existed in the response before.
-      confidenceScore: true,
       sourceKind: true,
       sourceRationale: true,
       sourceSignalIds: true,
-      sourcesUsed: true,
       parentThesisId: true,
       researchRun: { select: { agentConfigId: true } },
     },
@@ -168,7 +174,6 @@ export async function GET(
   return NextResponse.json({
     thesisId: thesis.id,
     ticker: thesis.ticker,
-    direction: thesis.direction,
     status: thesis.status,
     closedAt: thesis.closedAt,
     closeReason: thesis.closeReason,
@@ -185,33 +190,33 @@ export async function GET(
     nextReviewAt: thesis.nextReviewAt,
     triggers,
     position,
-    // Structural belief — surfaced so the sheet can render the durable
-    // claim + falsifiable premises + invalidation conditions instead of
-    // just the prose layer (reasoningSummary / thesisBullets / riskFlags).
+    // Structural belief — durable claim + falsifiable premises + things
+    // that would prove it wrong.
     coreBelief: thesis.coreBelief,
     keyAssumptions: thesis.keyAssumptions ?? [],
     invalidationConds: thesis.invalidationConds ?? [],
-    // 4-dim composite scoring (top-level since 2026-05-18; legacy nesting
-    // in fullResearch is dropped in PR-4).
+    // 4-dim composite scoring. `composite` is the SINGLE conviction
+    // number after PR-9 (legacy `confidenceScore` int dropped). Both
+    // place_trade gates read it.
     scoring,
     scoringComposite,
-    // Deep-research synthesis — null on legacy rows, populated by the
-    // thesis-writer agent. Shape is intentionally loose (the synthesis
-    // model can emit varied per-section content); the UI renderer is
-    // forgiving and walks whatever it finds.
-    researchSections: thesis.researchSections,
+    // 9 narrative sections (PR-9 flat schema). null when the section
+    // hasn't been populated — UI renderer skips null sections.
+    snapshot: thesis.snapshot,
+    recentCatalysts: thesis.recentCatalysts,
+    fundamentals: thesis.fundamentals,
+    latestEarnings: thesis.latestEarnings,
+    catalystsAndEvents: thesis.catalystsAndEvents,
+    bullCase: thesis.bullCase,
+    bearCase: thesis.bearCase,
+    analystConsensus: thesis.analystConsensus,
+    insiderTechnical: thesis.insiderTechnical,
     researchUpdatedAt: thesis.researchUpdatedAt
       ? thesis.researchUpdatedAt.toISOString()
       : null,
-    // Phase 1.5 (PR-6) — fields surfaced on the sheet so the user can
-    // audit them. Both gates (confidence ≥ minConfidence AND
-    // composite ≥ 7) deserve top billing; provenance + sources + parent
-    // chain were previously dark.
-    confidenceScore: thesis.confidenceScore,
     sourceKind: thesis.sourceKind,
     sourceRationale: thesis.sourceRationale,
     sourceSignalIds: thesis.sourceSignalIds,
-    sourcesUsed: thesis.sourcesUsed,
     parentThesisId: thesis.parentThesisId,
   });
 }

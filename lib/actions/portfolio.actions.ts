@@ -7,6 +7,10 @@ import { resolveAlpacaCredentials, type AlpacaEnvironment } from "@/lib/actions/
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { deriveTradeStatus } from "@/lib/trade-status";
+import {
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -333,14 +337,15 @@ export async function getDashboardData(
         ticker: true,
         researchRunId: true,
         direction: true,
-        confidenceScore: true,
-        signalTypes: true,
-        reasoningSummary: true,
+        // PR-9: dropped confidenceScore (Int) + signalTypes / sourcesUsed
+        // (String[] / Json). Conviction lives in scoring.composite;
+        // narrative lives in snapshot.
+        scoring: true,
+        snapshot: true,
         entryPrice: true,
         targetPrice: true,
         stopLoss: true,
         createdAt: true,
-        sourcesUsed: true,
         researchRun: {
           select: { agentConfig: { select: { id: true, name: true } } },
         },
@@ -419,14 +424,16 @@ export async function getDashboardData(
         direction: { in: ["LONG", "SHORT"] },
         researchRun: { environment },
       },
-      orderBy: { confidenceScore: "desc" },
+      // PR-9: was orderBy confidenceScore desc — scoring.composite is
+      // Json and not server-sortable. Order createdAt-desc and downstream
+      // ranks by composite client-side.
+      orderBy: { createdAt: "desc" },
       take: 5,
       select: {
         id: true,
         ticker: true,
         direction: true,
-        confidenceScore: true,
-        signalTypes: true,
+        scoring: true,
       },
     }),
     // Activity feed: recent management actions with position context
@@ -744,13 +751,18 @@ export async function getDashboardData(
   }));
 
   // ── 10. Today's picks (fetched in phase A) ───────────────────────────
-  const todaysPicks: TodaysPick[] = dbTodaysPicks.map((t) => ({
-    id: t.id,
-    ticker: t.ticker,
-    direction: t.direction,
-    confidenceScore: t.confidenceScore,
-    signalTypes: t.signalTypes,
-  }));
+  // PR-9: legacy 0-100 confidence → composite × 10; signalTypes dropped
+  // (derivable from sourceSignalIds if needed).
+  const todaysPicks: TodaysPick[] = dbTodaysPicks.map((t) => {
+    const composite = getThesisComposite(t);
+    return {
+      id: t.id,
+      ticker: t.ticker,
+      direction: t.direction,
+      confidenceScore: composite != null ? composite * 10 : 0,
+      signalTypes: [],
+    };
+  });
 
   // ── 11. Map recentPicks ────────────────────────────────────────────────────
   const recentPicks: RecentPick[] = dbRecentPicks.map((p) => {
@@ -779,13 +791,16 @@ export async function getDashboardData(
       };
     }
 
+    // PR-9: legacy 0-100 confidence → composite × 10; signalTypes /
+    // sourcesUsed dropped; reasoningSummary sourced from snapshot.
+    const composite = getThesisComposite(p);
     return {
       id: p.id,
       ticker: p.ticker,
       direction: p.direction,
-      confidenceScore: p.confidenceScore,
-      signalTypes: p.signalTypes,
-      reasoningSummary: p.reasoningSummary,
+      confidenceScore: composite != null ? composite * 10 : 0,
+      signalTypes: [],
+      reasoningSummary: getThesisSnapshotText(p),
       entryPrice: p.entryPrice,
       targetPrice: p.targetPrice,
       stopLoss: p.stopLoss,
@@ -797,7 +812,7 @@ export async function getDashboardData(
       analystName: p.researchRun?.agentConfig?.name ?? null,
       analystId: p.researchRun?.agentConfig?.id ?? null,
       runId: p.researchRunId,
-      sourcesUsed: p.sourcesUsed,
+      sourcesUsed: [],
     };
   });
 
