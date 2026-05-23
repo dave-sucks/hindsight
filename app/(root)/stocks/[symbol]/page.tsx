@@ -12,6 +12,10 @@ import type { ThesisRowData } from "@/components/ui/thesis-row";
 import { ViewAllThesesLink } from "@/components/stocks/ViewAllThesesLink";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import {
+  buildThesisSheetState,
+  thesisSheetStateSelect,
+} from "@/lib/agent/thesis-sheet-state";
+import {
   getNews,
   getStockProfile,
   getStockQuote,
@@ -143,21 +147,17 @@ export default async function StockDetailPage({ params }: Props) {
           orderBy: { createdAt: "desc" },
           take: 50,
           select: {
-            id: true,
-            direction: true,
-            confidenceScore: true,
+            // P2-19: select every field the sheet renders so it can paint
+            // synchronously on open instead of skeletons-then-fetch.
+            ...thesisSheetStateSelect,
+            // Page-specific fields not covered by thesisSheetStateSelect.
             reasoningSummary: true,
+            thesisBullets: true,
+            riskFlags: true,
+            signalTypes: true,
             createdAt: true,
             researchRunId: true,
             researchRun: { select: { source: true, agentConfigId: true, agentConfig: { select: { name: true } } } },
-            status: true,
-            parentThesisId: true,
-            invalidatedAt: true,
-            invalidReason: true,
-            entryPrice: true,
-            targetPrice: true,
-            stopLoss: true,
-            signalTypes: true,
           },
         })
       : Promise.resolve([]),
@@ -289,12 +289,17 @@ export default async function StockDetailPage({ params }: Props) {
                   direction: latest.direction,
                   confidenceScore: latest.confidenceScore,
                   reasoningSummary: latest.reasoningSummary,
+                  thesisBullets: latest.thesisBullets,
+                  riskFlags: latest.riskFlags,
                   entryPrice: latest.entryPrice,
                   targetPrice: latest.targetPrice,
                   stopLoss: latest.stopLoss,
+                  horizon: latest.horizon,
                   createdAt: latest.createdAt.toISOString(),
                   analystName: latest.researchRun?.agentConfig?.name ?? null,
                   runId: latest.researchRunId,
+                  sourcesUsed: latest.sourcesUsed,
+                  sheetState: buildThesisSheetState(latest),
                 };
                 return <StockThesesList theses={[rowData]} />;
               })()}
@@ -370,12 +375,17 @@ export default async function StockDetailPage({ params }: Props) {
                 direction: t.direction,
                 confidenceScore: t.confidenceScore,
                 reasoningSummary: t.reasoningSummary,
+                thesisBullets: t.thesisBullets,
+                riskFlags: t.riskFlags,
                 entryPrice: t.entryPrice,
                 targetPrice: t.targetPrice,
                 stopLoss: t.stopLoss,
+                horizon: t.horizon,
                 createdAt: t.createdAt.toISOString(),
                 analystName: t.researchRun?.agentConfig?.name ?? null,
                 runId: t.researchRunId,
+                sourcesUsed: t.sourcesUsed,
+                sheetState: buildThesisSheetState(t),
               }))} />
             </TabsContent>
 

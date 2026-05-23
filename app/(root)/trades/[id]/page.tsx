@@ -20,6 +20,10 @@ import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase/server';
 import { holdDurationFromHorizon } from '@/lib/agent/horizon-policy';
 import {
+  buildThesisSheetState,
+  thesisSheetStateSelect,
+} from '@/lib/agent/thesis-sheet-state';
+import {
   getStockProfile,
   getStockQuote,
   getStockCandles,
@@ -131,23 +135,18 @@ export default async function TradeDetailPage({
         take: 1,
         include: {
           thesis: {
-            // select only the thesis fields the trade detail page actually
-            // uses — skips the giant JSON columns (fullResearch, thoughtTrace,
-            // sourcesUsed).
             select: {
-              id: true,
-              direction: true,
-              confidenceScore: true,
+              // P2-19: select every field the sheet renders so it can paint
+              // synchronously on open. `thesisSheetStateSelect` includes
+              // fullResearch (the legacy scoring fallback), all narrative +
+              // belief + provenance + research fields, and the lifecycle
+              // fields the sheet's status pill / terminal-status Alert needs.
+              ...thesisSheetStateSelect,
+              // Page-specific fields not covered by thesisSheetStateSelect.
               reasoningSummary: true,
               thesisBullets: true,
               riskFlags: true,
               signalTypes: true,
-              entryPrice: true,
-              targetPrice: true,
-              stopLoss: true,
-              // `horizon` drives the derived hold-duration label (PR-4);
-              // the legacy `holdDuration` column drops in PR-5.
-              horizon: true,
               holdDuration: true,
               createdAt: true,
               researchRunId: true,
@@ -180,16 +179,13 @@ export default async function TradeDetailPage({
       orderBy: { createdAt: 'desc' },
       take: 20,
       select: {
-        id: true,
-        direction: true,
-        confidenceScore: true,
+        // P2-19: forward full state so the Theses-tab rows can render
+        // sheets synchronously on open.
+        ...thesisSheetStateSelect,
         reasoningSummary: true,
+        thesisBullets: true,
+        riskFlags: true,
         signalTypes: true,
-        status: true,
-        parentThesisId: true,
-        entryPrice: true,
-        targetPrice: true,
-        stopLoss: true,
         createdAt: true,
         researchRunId: true,
       },
@@ -409,12 +405,17 @@ export default async function TradeDetailPage({
                   direction: trade.thesis.direction as string,
                   confidenceScore: trade.thesis.confidenceScore,
                   reasoningSummary: trade.thesis.reasoningSummary,
+                  thesisBullets: trade.thesis.thesisBullets,
+                  riskFlags: trade.thesis.riskFlags,
                   entryPrice: trade.entryPrice,
                   targetPrice: targetPrice,
                   stopLoss: stopPrice,
+                  horizon: trade.thesis.horizon,
                   createdAt: trade.thesis.createdAt?.toISOString?.() ?? null,
                   analystName: null,
                   runId: trade.thesis.researchRunId ?? null,
+                  sourcesUsed: trade.thesis.sourcesUsed,
+                  sheetState: buildThesisSheetState(trade.thesis),
                   position: {
                     id: trade.id,
                     status: trade.status,
@@ -432,17 +433,22 @@ export default async function TradeDetailPage({
                 type TT = typeof thesisChain[number];
                 const active = thesisChain.filter((t: TT) => t.status === "ACTIVE");
                 const prior = thesisChain.filter((t: TT) => t.status !== "ACTIVE");
-                const toRow = (t: TT) => ({
+                const toRow = (t: TT): ThesisRowData => ({
                   id: t.id,
                   ticker: trade.symbol,
                   direction: t.direction,
                   confidenceScore: t.confidenceScore,
                   reasoningSummary: t.reasoningSummary,
+                  thesisBullets: t.thesisBullets,
+                  riskFlags: t.riskFlags,
                   entryPrice: Number(t.entryPrice) || null,
                   targetPrice: Number(t.targetPrice) || null,
                   stopLoss: Number(t.stopLoss) || null,
+                  horizon: t.horizon,
                   createdAt: t.createdAt.toISOString(),
                   runId: t.researchRunId ?? null,
+                  sourcesUsed: t.sourcesUsed,
+                  sheetState: buildThesisSheetState(t),
                 });
                 const statusBadge = (s: string) => {
                   if (s === "SUPERSEDED") return <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Superseded</Badge>;

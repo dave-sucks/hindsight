@@ -1068,6 +1068,14 @@ export interface ThesisSheetBodyProps {
    *  initial StatusPill value so first paint matches the durable state
    *  with no flicker. The triggers API fetch refines position/PnL data. */
   status?: "ACTIVE" | "WATCHING" | "CLOSED" | "INVALIDATED" | "SUPERSEDED";
+  /**
+   * Pre-fetched /triggers payload from the parent (P2-19). When supplied,
+   * the sheet renders status / belief / scoring / sources / research
+   * synthesis synchronously instead of skeletons-then-fetch. The /triggers
+   * background fetch still fires to pick up live trigger updates +
+   * position changes, but every state-dependent block paints on open.
+   */
+  initialState?: TriggersResponse;
 }
 
 export function ThesisSheetBody({
@@ -1087,6 +1095,7 @@ export function ThesisSheetBody({
   exchange,
   fundamentals,
   status,
+  initialState,
 }: ThesisSheetBodyProps) {
   const isPass = direction === "PASS";
   const displayName = company_name ?? ticker;
@@ -1104,7 +1113,13 @@ export function ThesisSheetBody({
   // `quote` (the live Finnhub call) lands whenever Finnhub does and
   // refines only the price block + position PnL. Skeleton placeholders
   // below cover the gap so the layout doesn't jump.
-  const [state, setState] = useState<TriggersResponse | null>(null);
+  //
+  // When `initialState` is forwarded by the parent (P2-19), seed `state`
+  // with it so every state-dependent block paints on open. The fetch
+  // below still runs to refresh — the row's data may be a few seconds
+  // stale on triggers / position. `quote` always has to round-trip
+  // (Finnhub) so the price block keeps its skeleton until that lands.
+  const [state, setState] = useState<TriggersResponse | null>(initialState ?? null);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   useEffect(() => {
     if (!thesis_id) return;
@@ -1471,9 +1486,15 @@ export function ThesisSheetBody({
 interface ThesisSheetProps extends ThesisCardData {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Pre-fetched /triggers payload forwarded from a parent that already
+   * has the data (watchlist row, stock page row, trade detail row). See
+   * P2-19 — eliminates skeletons-then-fetch on sheet open.
+   */
+  initialState?: TriggersResponse;
 }
 
-export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
+export function ThesisSheet({ open, onOpenChange, initialState, ...data }: ThesisSheetProps) {
   const displayName = data.company_name ?? data.ticker;
 
   return (
@@ -1500,6 +1521,7 @@ export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
           exchange={data.exchange}
           fundamentals={data.fundamentals}
           status={data.status}
+          initialState={initialState}
         />
       </SheetContent>
     </Sheet>
