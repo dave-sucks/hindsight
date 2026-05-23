@@ -285,7 +285,12 @@ function collectWriteTheses(
       signal_types: (display.signal_types as string[]) ?? [],
       company_name: display.company_name as string | null | undefined,
       exchange: display.exchange as string | null | undefined,
-      fundamentals: display.fundamentals as ThesisCardData["fundamentals"],
+      // 2026-05-23: record_thesis arg renamed `fundamentals` →
+      // `stock_fundamentals` (the V2 narrative section claimed the
+      // `fundamentals` name). Fall back to the old key for historical
+      // RunMessages that pre-date the rename.
+      fundamentals: (display.stock_fundamentals ??
+        display.fundamentals) as ThesisCardData["fundamentals"],
       status: (data.status as ThesisCardData["status"]) ?? "ACTIVE",
     });
   }

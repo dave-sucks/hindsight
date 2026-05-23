@@ -150,13 +150,18 @@ YOUR JOB (4 tool calls, ~3-5 minutes wall time)
 
      sections.snapshot           → snapshot
      sections.recentCatalysts    → recent_catalysts
-     sections.fundamentals       → fundamentals_section
+     sections.fundamentals       → fundamentals
      sections.latestEarnings     → latest_earnings
      sections.catalystsAndEvents → catalysts_and_events
      sections.bullCase           → bull_case
      sections.bearCase           → bear_case
      sections.analystConsensus   → analyst_consensus
      sections.insiderTechnical   → insider_technical
+
+   (Note: there's also a stock_fundamentals arg — that's the legacy
+   structured-data object {market_cap, pe_ratio, ...} for the inline
+   tool-card render only. Do NOT confuse it with the V2 fundamentals
+   narrative section above.)
 
      ${opts.mode === "refresh" && opts.existingThesis ? `- update_thesis(thesis_id="${opts.existingThesis.id}", <all decision fields>, research_data=<rawDataBlock>, snapshot=<sections.snapshot>, ...other section args, rationale="<one line>")` : `- record_thesis(ticker="${T}", <all decision fields>, research_data=<rawDataBlock>, snapshot=<sections.snapshot>, ...other section args, source_kind=..., source_rationale=...)`}
 

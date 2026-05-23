@@ -248,7 +248,7 @@ const updateSchema = z.object({
   recent_catalysts: sectionTextSchema
     .optional()
     .describe("Patch the Recent Catalysts section (1-2 week catalyst window narrative)."),
-  fundamentals_section: sectionTextSchema
+  fundamentals: sectionTextSchema
     .optional()
     .describe("Patch the Fundamentals section (narrative paragraph; persists to Thesis.fundamentals column)."),
   latest_earnings: sectionBulletSchema
@@ -830,7 +830,7 @@ export const updateThesis = defineTool({
     }
     // 6 new V2 sections — no legacy fallback.
     if (args.recent_catalysts !== undefined) patch.recentCatalysts = args.recent_catalysts;
-    if (args.fundamentals_section !== undefined) patch.fundamentals = args.fundamentals_section;
+    if (args.fundamentals !== undefined) patch.fundamentals = args.fundamentals;
     if (args.latest_earnings !== undefined) patch.latestEarnings = args.latest_earnings;
     if (args.catalysts_and_events !== undefined) patch.catalystsAndEvents = args.catalysts_and_events;
     if (args.analyst_consensus !== undefined) patch.analystConsensus = args.analyst_consensus;
@@ -842,7 +842,7 @@ export const updateThesis = defineTool({
       args.bull_case !== undefined ||
       args.bear_case !== undefined ||
       args.recent_catalysts !== undefined ||
-      args.fundamentals_section !== undefined ||
+      args.fundamentals !== undefined ||
       args.latest_earnings !== undefined ||
       args.catalysts_and_events !== undefined ||
       args.analyst_consensus !== undefined ||

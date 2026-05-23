@@ -106,12 +106,10 @@ export async function getAccuracyStats(
         take: 1,
         include: {
           thesis: {
-            // PR-9: confidenceScore (Int) dropped, replaced by
-            // scoring.composite. signalTypes (String[]) dropped — was used
-            // for the "signal-type accuracy" rollup below; the rollup is
-            // now stubbed out (TODO: rebuild on sourceSignalIds →
-            // Signal.aggregateType joins once we wire that path).
-            select: { scoring: true },
+            // PR-9: confidenceScore (Int) → scoring.composite (/10).
+            // signalTypes (String[]) dropped — signal-type rollup below
+            // now joins through sourceSignalIds → Signal.aggregateType.
+            select: { scoring: true, sourceSignalIds: true },
           },
         },
       },
@@ -169,10 +167,52 @@ export async function getAccuracyStats(
   });
 
   // ── Signal-type accuracy ──────────────────────────────────────────────────
-  // TODO(PR-9 follow-up): rebuild this rollup on
-  // `sourceSignalIds → Signal.aggregateType` joins now that `signalTypes`
-  // (String[]) is dropped. Empty for now — better than stale numbers.
-  const signalAccuracy: SignalAccuracy[] = [];
+  // PR-9 rebuild: the legacy `Thesis.signalTypes` String[] column is gone.
+  // The same rollup now joins through `Thesis.sourceSignalIds[]` →
+  // `Signal[].aggregateType`. Each closed Position whose thesis cited a
+  // routed signal contributes the signal's aggregateType into the bucket.
+  // Theses without source signals (WEB_SEARCH / WATCHLIST_REVIEW provenance)
+  // don't contribute — same behavior as the old code path when the agent
+  // omitted signalTypes.
+  const allSignalIds = new Set<string>();
+  for (const p of positions) {
+    const ids = getThesis(p)?.sourceSignalIds ?? [];
+    for (const id of ids) allSignalIds.add(id);
+  }
+  const signalAggMap = new Map<string, string>(); // signalId → aggregateType
+  if (allSignalIds.size > 0) {
+    const signalRows = await prisma.signal.findMany({
+      where: { id: { in: Array.from(allSignalIds) } },
+      select: { id: true, aggregateType: true },
+    });
+    for (const s of signalRows) {
+      if (s.aggregateType) signalAggMap.set(s.id, s.aggregateType);
+    }
+  }
+  const signalMap = new Map<string, { wins: number; total: number }>();
+  for (const pos of positions) {
+    const ids = getThesis(pos)?.sourceSignalIds ?? [];
+    // De-dup aggregateTypes per thesis — a thesis citing 3 EARNINGS_BEAT
+    // signals should only contribute once to that bucket.
+    const aggTypes = new Set<string>();
+    for (const id of ids) {
+      const agg = signalAggMap.get(id);
+      if (agg) aggTypes.add(agg);
+    }
+    for (const agg of aggTypes) {
+      const entry = signalMap.get(agg) ?? { wins: 0, total: 0 };
+      entry.total++;
+      if (pos.outcome === "WIN") entry.wins++;
+      signalMap.set(agg, entry);
+    }
+  }
+  const signalAccuracy: SignalAccuracy[] = Array.from(signalMap.entries())
+    .map(([signal, { wins: w, total }]) => ({
+      signal,
+      count: total,
+      winRate: winRateFrom(w, total),
+    }))
+    .sort((a, b) => b.count - a.count);
 
   // ── Direction stats ───────────────────────────────────────────────────────
   const directionStats: DirectionStats[] = (["LONG", "SHORT"] as const).map((dir) => {
