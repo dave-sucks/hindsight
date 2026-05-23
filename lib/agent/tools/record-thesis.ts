@@ -101,7 +101,13 @@ const thesisFields = z.object({
   // Confidence ⇒ `scoring.composite` (the /10 setup grade is the single
   // conviction number). Signal types ⇒ derivable from `source_signal_ids`.
   // Sources ⇒ per-section citations inside the 9 narrative columns.
-  fundamentals: z
+  // Renamed from `fundamentals` (2026-05-23) to free that name for the V2
+  // narrative section below — the two were unrelated things with the same
+  // name (structured numbers vs prose paragraph) which made the
+  // thesis-writer prompt's section→arg mapping awkward. UI-only — never
+  // written to the DB. Agent passes from get_stock_data; renders in the
+  // inline tool-call card during a live run.
+  stock_fundamentals: z
     .object({
       // All numeric fundamentals accept null — get_stock_data legitimately
       // returns null for unstable PE (negative earnings), 52w highs that
@@ -120,7 +126,7 @@ const thesisFields = z.object({
       analyst_consensus: z.object({ buy: z.number(), hold: z.number(), sell: z.number() }).nullable().optional(),
     })
     .optional()
-    .describe("Key fundamentals from get_stock_data — populates the Data tab in the thesis card."),
+    .describe("Structured stock metrics from get_stock_data — populates the Data tab in the inline thesis card. Distinct from the V2 `fundamentals` narrative section below."),
   parent_thesis_id: z.string().optional()
     .describe("ID of the prior thesis being updated or invalidated. Links thesis chain."),
   // V3 Session 3 — forcing-function trio.
@@ -350,10 +356,10 @@ const thesisFields = z.object({
     .describe(
       "Recent Catalysts section (V2): 1 paragraph covering the 1-2 week catalyst window for this ticker.",
     ),
-  fundamentals_section: sectionTextSchema
+  fundamentals: sectionTextSchema
     .optional()
     .describe(
-      "Fundamentals section (V2): 1 paragraph + optional segment-breakdown narrative. Lands on Thesis.fundamentals (the narrative column). Distinct from the legacy structured `fundamentals` arg (market_cap / pe_ratio / etc.) which is UI-only.",
+      "Fundamentals section (V2): 1 paragraph + optional segment-breakdown narrative. Lands on Thesis.fundamentals (JSONB column). Distinct from `stock_fundamentals` (the structured market_cap / pe_ratio / etc. arg) — that's UI-only inline-card data.",
     ),
   latest_earnings: sectionBulletSchema
     .optional()
@@ -1040,7 +1046,7 @@ export const recordThesis = defineTool({
       const v2SectionSupplied =
         args.snapshot ||
         args.recent_catalysts ||
-        args.fundamentals_section ||
+        args.fundamentals ||
         args.latest_earnings ||
         args.catalysts_and_events ||
         args.bull_case ||
@@ -1100,7 +1106,7 @@ export const recordThesis = defineTool({
             : undefined,
         snapshot: snapshotPayload,
         recentCatalysts: args.recent_catalysts ?? undefined,
-        fundamentals: args.fundamentals_section ?? undefined,
+        fundamentals: args.fundamentals ?? undefined,
         latestEarnings: args.latest_earnings ?? undefined,
         catalystsAndEvents: args.catalysts_and_events ?? undefined,
         bullCase: bullCasePayload,
