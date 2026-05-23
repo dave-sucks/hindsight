@@ -1,9 +1,21 @@
 # Hindsight — System Audit 2026-05-19 (priority queue)
 
-> **What this is:** the live priority queue for the post-tactical-review system
-> audit. Lives outside [`GAPS.md`](../GAPS.md) because every item here is a P0
+> **⚠️ STATUS: CLOSED OUT 2026-05-23.** This doc was a one-shot snapshot of the
+> 2026-05-19 audit findings. All A1-A7 and B1-B7 items have shipped (see status
+> table below for actual merged PR numbers). A8 (cross-analyst discovery
+> duplication) re-filed as `GAPS.md` P2-22 and deferred. The "Done since
+> 2026-05-20" block in [`GAPS_HISTORY.md`](../GAPS_HISTORY.md) is the canonical
+> record of what shipped. **Live tracking for ongoing items is in `GAPS.md`**;
+> don't update this doc further.
+>
+> Kept for archeology: the production data snapshots and analysis paragraphs
+> below explain WHY each fix was needed. Useful when triaging a regression that
+> looks like a re-emergence of one of the original audit symptoms.
+
+> **What this WAS:** the live priority queue for the post-tactical-review system
+> audit. Lived outside [`GAPS.md`](../GAPS.md) because every item was a P0
 > blocker; the GAPS doc is the rolling thesis-architecture rework punch list,
-> this doc is the "stop everything and fix these" list. Companion to
+> this doc was the "stop everything and fix these" list. Companion to
 > [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) (the live reference)
 > and to the daily / discovery / tactical run reviews in `docs/run-reviews/`,
 > `docs/discovery-reviews/`, `docs/tactical-reviews/`.
@@ -28,28 +40,37 @@
 
 ## 0. Status table
 
-| # | Item | Severity | Status |
+| # | Item | Severity | Final status |
 |---|---|---|---|
-| **A1** | `get_stock_data.technicals` returns `null` on 100% of runs — blocks every entry | **P0 — blocker** | **PR open #289** ✓ |
-| **A2** | `place_trade` doesn't drop ENTER triggers on WATCHING → ACTIVE promotion (AVGO fires 8×) | **P0 — wild-west symptom** | **PR open #292** ✓ |
-| **A3** | Discovery cap is supposed to be 8 / run; ran at 7-8 / run on 2026-05-17 → 38 new WATCHING in one day | **P0 — book flood** | **PR open #293** ✓ (Layer-1 enforcement) |
-| **A4** | Newly-minted WATCHING theses get `nextReviewAt = createdAt + ~4-7d` regardless of horizon — COMPOUNDER should be 30-90d | **P0 — review storm** | **PR open #291** ✓ |
-| **A5** | `REVIEW_DATE_HIT` trigger uses a flat 7d cooldown, ignoring horizon. Should track horizon hygiene cadence (14/30/90d) | **P0 — review storm** | **PR open #291** ✓ (bundled with A4) |
-| **A6** | `complete_run` preflight refuses every tactical run for missing `record_run_summary` but tactical can't call it | **P1 — cosmetic but training agent to ignore gates** | **PR open #290** ✓ |
-| **A7** | `update_thesis` classifies narrative-only patches as UPDATED instead of REVIEWED — audit log collapsed since gpt-5.5 swap | **P1 — audit-log hygiene** | **PR open #290** ✓ (bundled with A6) |
-| **A8** | Cross-analyst discovery duplication: 4 analysts added AMBA on the same Sunday | **P2 — book quality** | Open (defer — revisit after A3 ships) |
+| **A1** | `get_stock_data.technicals` returns `null` on 100% of runs — blocks every entry | **P0 — blocker** | **MERGED — PR #289** (2026-05-20). Alpaca feed=iex fix. |
+| **A2** | `place_trade` doesn't drop ENTER triggers on WATCHING → ACTIVE promotion (AVGO fires 8×) | **P0 — wild-west symptom** | **MERGED — PR #292** (2026-05-20). HELD-side trigger regeneration. |
+| **A3** | Discovery cap is supposed to be 8 / run; ran at 7-8 / run on 2026-05-17 → 38 new WATCHING in one day | **P0 — book flood** | **MERGED — PR #311** (2026-05-21). Layer-1 cap of 5. |
+| **A4** | Newly-minted WATCHING theses get `nextReviewAt = createdAt + ~4-7d` regardless of horizon — COMPOUNDER should be 30-90d | **P0 — review storm** | **MERGED — PR #309** (2026-05-21). `WATCHING_FIRST_REVIEW_DAYS` cadence. |
+| **A5** | `REVIEW_DATE_HIT` trigger uses a flat 7d cooldown, ignoring horizon. Should track horizon hygiene cadence (14/30/90d) | **P0 — review storm** | **MERGED — PR #310** (2026-05-21). REVIEW_DATE_HIT stripped from defaults + 24h look-ahead added to needsAction (the cooldown bug became moot once the trigger was removed). |
+| **A6** | `complete_run` preflight refuses every tactical run for missing `record_run_summary` but tactical can't call it | **P1 — cosmetic but training agent to ignore gates** | **MERGED — PR #290** (2026-05-20). Scoped to triggered thesis in tactical mode. |
+| **A7** | `update_thesis` classifies narrative-only patches as UPDATED instead of REVIEWED — audit log collapsed since gpt-5.5 swap | **P1 — audit-log hygiene** | **MERGED — PR #290** (bundled with A6). |
+| **A8** | Cross-analyst discovery duplication: 4 analysts added AMBA on the same Sunday | **P2 — book quality** | **Re-filed as `GAPS.md` P2-22**; deferred. |
 
 ### Follow-on findings (post-A1 / A2 / A4 re-audit)
 
-| # | Item | Status |
+| # | Item | Final status |
 |---|---|---|
-| **B1** | `get_stock_data` made Alpaca primary, dropped dead Finnhub `/stock/candle` + FMP `/historical-price-full` fallbacks (~500ms latency cleanup) | **PR open #294** ✓ |
-| **B2** | FMP `/api/v3` + `/v4` deprecated 2025-08-31 — migrated every tool to `/stable/*` paths. Affects get_stock_data, get_options_flow, get_market_context, get_financials_deep, get_earnings_history, get_analyst_coverage, get_peers_with_metrics | **PR open #294** ✓ (bundled with B1) |
-| **B3** | One-shot repair script `fix-watching-next-review.ts` for the 56 existing WATCHING theses with too-short `nextReviewAt` (pre-A4 production state) | **PR open #294** ✓ (bundled) |
-| **B4** | `reconcile-orders.ts` Position-close fill silently null-ed `closeReason` + `closeSource`. 4 mystery 5/18 closes (AMZN, TSM, NVDA, AMD) traced to this path | **PR open #295** ✓ |
-| **B5** | Anti-regression tests for `WATCHING_FIRST_REVIEW_DAYS` ≥ `HORIZON_REVIEW_DAYS` + per-horizon REVIEW_DATE_HIT cooldown coverage | **PR open #295** ✓ (bundled with B4) |
-| **B6** | Zombie-position guard in `update_thesis` extended to `change_status='CLOSED'` (was only INVALIDATED + ARCHIVED before — CLOSED was a third polarity of the same bug) | **PR open #295** ✓ (bundled) |
-| **B7** | Removed legacy keyword-scan promotion gate from `record_run_summary` (~220 lines). `complete_run`'s preflight (PR #266) is the structural superset; the keyword regex was false-failing legitimate rejections. Closes [GAPS P1-13](../GAPS.md#p1-13--old-promotion-keyword-gate-in-record_run_summary-is-now-redundant--actively-wrong) | **PR open #296** ✓ |
+| **B1** | `get_stock_data` made Alpaca primary, dropped dead Finnhub `/stock/candle` + FMP `/historical-price-full` fallbacks (~500ms latency cleanup) | **MERGED — PR #294** (2026-05-20) |
+| **B2** | FMP `/api/v3` + `/v4` deprecated 2025-08-31 — migrated every tool to `/stable/*` paths. Affects get_stock_data, get_options_flow, get_market_context, get_financials_deep, get_earnings_history, get_analyst_coverage, get_peers_with_metrics | **MERGED — PR #294** (bundled with B1) |
+| **B3** | One-shot repair script `fix-watching-next-review.ts` for the 56 existing WATCHING theses with too-short `nextReviewAt` (pre-A4 production state) | **MERGED — PR #294** (script). **APPLIED 2026-05-23** — 33 theses touched, 4 already-in-range, 0 errors. |
+| **B4** | `reconcile-orders.ts` Position-close fill silently null-ed `closeReason` + `closeSource`. 4 mystery 5/18 closes (AMZN, TSM, NVDA, AMD) traced to this path | **MERGED — PR #295** (2026-05-20) |
+| **B5** | Anti-regression tests for `WATCHING_FIRST_REVIEW_DAYS` ≥ `HORIZON_REVIEW_DAYS` + per-horizon REVIEW_DATE_HIT cooldown coverage | **MERGED — PR #295** (bundled with B4) |
+| **B6** | Zombie-position guard in `update_thesis` extended to `change_status='CLOSED'` (was only INVALIDATED + ARCHIVED before — CLOSED was a third polarity of the same bug) | **MERGED — PR #295** (bundled) |
+| **B7** | Removed legacy keyword-scan promotion gate from `record_run_summary` (~220 lines). `complete_run`'s preflight (PR #266) is the structural superset; the keyword regex was false-failing legitimate rejections. Closes GAPS P1-13. | **MERGED — PR #296** (2026-05-20) |
+
+### Additional companion PRs (not in original audit, surfaced during the fix work)
+
+| # | Item | Final status |
+|---|---|---|
+| **C-add1** | Tactical 1.5x volume gate applied universally across all 6 analysts despite being a DAY-trader-only rule (PR #231 origin) — kept rejecting CATALYST + TARGET ENTERs even after A1's data fix made volumeRatio non-null | **MERGED — PR #307** (2026-05-21). Horizon-conditional gate + market-hours-aware. **The keystone fix that ended the "no trades" incident.** |
+| **C-add2** | Husky pre-commit hook auto-regenerates Prisma client when schema is newer than generated (eliminates phantom TS errors) | **MERGED — PR #308** (2026-05-21). Caveat → GAPS P2-21 (hook is git-only). |
+| **C-add3** | `dedupe-review-date-hit-triggers.ts` companion to A5/PR #310 — strips trigger from existing rows | **MERGED — PR #310**. **APPLIED 2026-05-23** — 27 triggers stripped across 27 theses, 0 errors. |
+| **C-add4** | `needs-action.ts` 24h REVIEW_DUE look-ahead (bundled with A5 in PR #310). Closes the timing gap that caused REVIEW_DATE_HIT triggers to fire redundantly at 09:31 ET on theses with `nextReviewAt` set for today's 09:30 ET — morning agent at 08:00 ET now catches them upfront. | **MERGED — PR #310**. Production proof: Catalyst Event Raider 0% → 42.9% focus on 2026-05-21; closes GAPS P2-18. |
 
 ---
 

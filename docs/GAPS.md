@@ -12,7 +12,7 @@
 >
 > **How to use it:** start at P0. P0s block the rework's correctness. P1s degrade quality. P2s are papercuts but still part of the rework. Don't skip levels. When something closes, **move it** to a "Done since" section below, not strike-through inline.
 >
-> **Most recent major movement:** Discovery Run full rework (PR #253, 2026-05-11) — see "Done since 2026-05-11" below. Surfaced and filed: P1-9, P1-10, P2-10, P2-11, P2-12.
+> **Most recent major movement:** Post-2026-05-20 wave — the keystone "no trades in 12 days" fixes shipped together with the supporting hygiene work. PRs #307 (tactical volume gate horizon-conditional), #308 (husky Prisma regen), #309 (WATCHING cadence), #310 (REVIEW_DUE 24h look-ahead + REVIEW_DATE_HIT strip), #311 (discovery Layer-1 cap of 5). Repair scripts run 2026-05-23 (33 cadences + 27 REVIEW_DATE_HIT triggers stripped). Resolved P2-18 in flight. See "Done since 2026-05-20" in `GAPS_HISTORY.md` for the full block. Surfaced and filed: P0-12, P1-18, P1-19, P2-20, P2-21, P2-22.
 
 ---
 
@@ -83,6 +83,29 @@ The MRVL anti-pattern (raising target on a watching thesis when current price is
 
 These prevent the core loop from working as designed. Fix first.
 
+### P0-12 — Narration→execution gap on `close_position` (escalating frequency)
+**Source:** 2026-05-20 EV Catalyst (ON), 2026-05-22 Catalyst Event Raider (MRVL twice, OKTA), 2026-05-22 Secular Theme Architect (SMTC + TRIM). Hit 1 of 7 runs on Wed; **3 of 7 runs on Fri**.
+
+The agent narrates "I'll close $X" in prose, then proceeds to write `update_thesis` or `record_run_summary` without ever calling `close_position`. The narration→execution gate at `lib/agent/tools/record-run-summary.ts` catches the mismatch and marks the run FAILED. Same root failure shape as the daily-run prose-termination bug from 2026-05-07 (see CLAUDE.md "Prose-termination") but localized to the close-out tool calls, not the data-fetching ones.
+
+**What it looks like in production (Catalyst 2026-05-22, retry):**
+- Run starts COMPLETE, walks 5 tickers, narrates MRVL exit + OKTA exit
+- Run summary's `decision_rationale` mentions "closed MRVL" + "closed OKTA"
+- No `close_position` tool calls in the message stream
+- Narration gate fires → run FAILED
+- Positions remain OPEN. Trying again the next day reproduces the gap.
+
+**Why this is P0:** the agents are now actually trading (post-#307 / #310 / #311) which means they're now trying to actually CLOSE positions. The narration gap blocks the close lifecycle. Position-state-vs-thesis-state desync widens every time a run fails this way — same family as P0-10, just with the polarity flipped (P0-10 was status saying WATCHING while position said OPEN; P0-12 leaves status ACTIVE while the agent meant to close).
+
+**Hypothesis:** GPT-5.5 (the research-run model) is more verbose than GPT-4o was — narration mentions of "close" / "exit" / "sell" land in the rationale text but the model isn't following through with the tool call. Could also be a prompt-structure issue: when the V2 prompt asks for "step through every needsAction thesis," the agent may treat the per-thesis prose as the action and skip the tool call.
+
+**Fix path options:**
+- (Layer 2, prompt): tighten the V2 daily-run prompt's close-out language. Add explicit "narrating 'I'll close X' without a close_position tool call is a run failure" to the same Tool-call discipline block that already covers data tools.
+- (Layer 1, gate): the current narration→execution gate flags this but the run still fails — fix is for tactical/morning agent to attempt a recovery before complete_run, not just fail the run.
+- (Layer 1, retry): morning-research.ts's coverage retry could fire on this specific shape ("narrated close, no close call") and re-issue the tool call from the rationale text.
+
+Reference: CLAUDE.md "Prose-termination after Step 1's parallel data tools" — same bug class, different trigger surface. The discipline block in `system-prompt.ts` was designed to prevent the data-tool variant; the close-out variant needs its own.
+
 ### P0-10 — Thesis structured status disagrees with `reasoningSummary` text
 **Source:** GOOGL/Secular Theme failure 2026-05-13. Found in this session.
 
@@ -94,35 +117,33 @@ Concrete production state when this was diagnosed: 4 theses (AMD, AVGO, GOOGL, T
 
 **Fix path:** either (a) deprecate `reasoningSummary` as a state-bearing field and require structured fields for any operational status, or (b) add a `record_thesis` / `update_thesis` validator that rejects `reasoningSummary` text containing action verbs ("executed", "opened", "closed", "trimmed") when those actions aren't reflected in structured state. (a) is cleaner but bigger.
 
-### ~~P0-11 — Manual UI runs always get the 600-line V1 prompt~~
-**CLOSED 2026-05-16** in PR #270. V1 prompt builder marked `@deprecated`; the only V1 caller (`app/api/agent/[mode]/route.ts:232`) was swapped to call `buildDailyRunSystemPromptV2` unconditionally. The `useV2Prompt` flag is no longer read by any code path. Flag column stays on `AgentConfig` until a follow-up migration drops it.
-
----
-
-### P0-5 — Horizon awareness: operational layers are still horizon-blind
-**Source:** Hold-style audit 2026-05-07 (original grade D+; substantially upgraded by PR #239 which shipped horizon visibility + per-horizon prompt rules).
-
-**The umbrella problem (in plain English):** the system has horizon as a label and shows it in the daily prompt, but the **operational layers that run between morning runs** — the hourly price-monitor cron, the specific numeric thresholds in the prompt, the data the agent fetches — still treat every position identically. Three sub-items below; they're three layers of the same gap.
-
-**Fix path (sub-items, in order):**
-
-1. ~~**P0-5a** — Make horizon visible in the daily-run prompt.~~ ✅ Closed 2026-05-08 (Thesis Architecture, PR #239) — Live Theses table renders horizon, schedule, and per-thesis exit-policy hint sourced from `lib/agent/horizon-policy.ts`.
-
-2. ~~**P0-5b** — Wire `horizon-policy.ts` constants into the hourly watchdog.~~ ✅ Closed 2026-05-10 (Morning Run V2 PR — Fix #0). Resolved by deletion, not by horizon-aware branching: per-thesis triggers in `lib/agent/triggers/*` are now authoritative. `price-monitor.ts` no longer auto-closes (the unconditional `checkExitConditions` call is now TRAILING-only); `trade-exit.ts` was gutted to TRAILING + MANUAL only; the NEAR_TARGET / NEAR_STOP `PositionManagementAction` writes are gone. The 6-month-TARGET-tanks-on-noise scenario is now controlled by the agent's own `PRICE_BELOW level: stop` EXIT trigger, evaluated by the trigger evaluator's 5-min cron. The TRADE-hits-maxHoldDays scenario fires the per-thesis `TIME_ELAPSED days: maxHoldDays` REVIEW trigger from `lib/agent/triggers/defaults.ts`, which spawns a tactical run mid-session. Horizon awareness lives where it belongs (per-thesis triggers the agent set), not in a generic cron threshold layer.
-
-3. ~~**P0-5c** — Per-horizon proximity thresholds in Step 2.B of the daily-run prompt.~~ ✅ Closed 2026-05-10 (Morning Run V2 PR — Fix #1 + Fix #2). The V1 prompt's Step 2.B "Within 5% of stopLoss → MUST call manage_position" rule is gone in V2 — replaced by `get_theses.needsAction` which is purely trigger-driven (no hardcoded proximity). If the agent wants warning at 5% from stop, it should add a `PRICE_BELOW level: stop * 1.05, action: REVIEW` trigger when minting the thesis. The `computeNeedsAction` kinds are TRIGGER_FIRED / TRIGGER_MATCHING_NOW / REVIEW_DUE only; NEAR_TARGET / NEAR_STOP / ENTRY_MET were considered and explicitly rejected (see `lib/agent/needs-action.test.ts` anti-regression assertions).
-
-4. ~~**P0-5d** — Add horizon promotion path.~~ ✅ Closed 2026-05-08 (admin sweep PR).
-
-5. ~~**P0-5e** — Per-horizon data-fetching guidance in the prompt.~~ ✅ Closed 2026-05-13 — V2 daily-run prompt now has a "Per-horizon data discipline" section: TRADE pulls options flow + technicals, CATALYST pulls earnings/filings keyed to the event, TARGET is balanced, COMPOUNDER pulls filings + earnings + market context and explicitly does NOT pull options flow. See `lib/agent/system-prompt.ts` § Per-horizon data discipline.
-
-**Total remaining:** P0-5 is fully closed. P0-5a/d (admin sweep + PR #239), P0-5b/c (Morning Run V2), P0-5e (this PR). Horizon awareness now lives in three places — the daily prompt (visibility + per-horizon review cadence + per-horizon data discipline), per-thesis triggers (authoritative for exits), and the trigger evaluator (5-min cron evaluating those triggers).
+*(P0-11 closed 2026-05-16 via PR #270 — moved to `GAPS_HISTORY.md`. P0-5 closed across PRs #239 + Morning-Run-V2 + 2026-05-13 — moved to `GAPS_HISTORY.md`.)*
 
 ---
 
 ## P1 — Quality is degraded but system functions
 
-*(P1-4 was closed via cumulative prompt sharpening across PRs #235 + #239 — see "Done since" below. P0-5e was downgraded here from P0; see P0-5 above for details.)*
+*(P1-4 closed via PRs #235 + #239. P1-13 closed 2026-05-19. P1-16 closed 2026-05-19. All moved to `GAPS_HISTORY.md`.)*
+
+### P1-18 — New thesis-writer agent mints status=ACTIVE instead of WATCHING
+**Source:** 2026-05-21 user-triggered MU thesis via the new deep-research builder (THESIS_RESEARCH_V2 Phase 1, PR #282). DB state after the build: `Thesis { ticker: "MU", status: ACTIVE, direction: LONG, horizon: TARGET, source: AGENT, sourceKind: USER_ADDED, coreBelief: <populated> }`. No matching Position row — classic zombie shape.
+
+**Why this is a bug:** the rest of the system follows the rule "net-new coverage = WATCHING; ACTIVE only via place_trade promotion." Discovery mints WATCHING (PR #311 enforces a Layer-1 cap). Daily-run promotes WATCHING → ACTIVE atomically inside `place_trade` (PR #265). The user-builder pathway short-circuits both: it lets the agent set `status: ACTIVE` directly without a paired Alpaca order. Result: the same desync pattern P0-10 documented.
+
+**Code path:** `lib/agent/run-thesis-writer.ts`. The thesis-writer agent has its own status-setting logic; it doesn't run through `record_thesis`'s discovery-direct clamp (line 722-727 in record-thesis.ts which forces WATCHING in discoveryOnly mode).
+
+**Fix path:** mirror the discovery clamp. Treat any USER_ADDED / WEB_SEARCH / WATCHLIST_REVIEW thesis-writer mint as forced WATCHING. The user can promote to ACTIVE later via the standard place_trade path (which is what the architecture wants — a research thesis is a candidate, not a commitment). ~20 minutes.
+
+**Existing zombie:** MU thesis row `cmpetjrw5000304jv9ybkn0c0` needs manual repair (flip to WATCHING + write a STATUS_CHANGED audit row).
+
+### P1-19 — PRINCIPAL_CHAT hangs when child THESIS_WRITER fails
+**Source:** Handoff item #7 from 2026-05-20 tactical session. Observed 2026-05-19: Tech Momentum's PRINCIPAL_CHAT was stuck `status=RUNNING` for 44+ minutes because its child THESIS_WRITER failed at 10s on an Anthropic rate-limit error and the parent was never notified.
+
+The PRINCIPAL_CHAT path uses Inngest's `step.invoke()` to spawn THESIS_WRITER. When the child errors at the API boundary (rate-limit, timeout, etc.), the invoke promise doesn't reject in the parent's step — it sits open. Parent eventually hits wall-clock timeout, leaves a zombie RUNNING row.
+
+**Same observability shape as P1-12** (Earnings Drift silent timeout) but in a different code path (parent/child agent invocation rather than top-level model call).
+
+**Fix path:** instrument `step.invoke()` call site in PRINCIPAL_CHAT — wrap in try/catch with explicit timeout. If the child fails, write a synthetic error event to the parent's RunEvent stream and mark parent FAILED with a clear error message. Mirror the same finalizer wall-clock pattern as #287 (THESIS_WRITER's own try/catch wrap). ~1-2 hours.
 
 ### P1-11 — Quote source inconsistency between Layer-2 and Layer-1
 **Source:** Code audit 2026-05-13.
@@ -142,15 +163,6 @@ Run produced 0 tool calls in 241s, then timed out. No RunMessage rows, no RunEve
 
 **Fix path:** instrument system-prompt length at run start. Log it. If Earnings Drift is meaningfully larger than the other 5 analysts, that's the smoking gun. If it isn't, file as transient and add a wall-clock-triggered retry separate from the catch-path retry.
 
-### ~~P1-13 — Old promotion-keyword gate in `record_run_summary` is now redundant + actively wrong~~
-**CLOSED 2026-05-19** in `lib/agent/tools/record-run-summary.ts`. The
-~220-line REJECTION_KEYWORDS_RE keyword scan was deleted along with
-its tickerMentionRegex helper. `complete_run`'s preflight (PR #266,
-`computeNeedsAction`) is the structural superset; `update_thesis`'s
-goalpost-moving guard catches the MRVL anti-pattern on the write side.
-The Secular Theme failure pattern (`"outside our universe focus"`
-not matching the keyword regex) cannot recur.
-
 ### P1-14 — No Layer-1 closeout enforcement for `needs_action: null` theses
 **Source:** Design follow-up from `docs/plans/MORNING_RUN_V2_DESIGN.md`.
 
@@ -168,15 +180,6 @@ The V2 prompt says *"Theses with `needsAction == null` don't need to be touched.
 **Source:** Discovery runs cmp4m0q35 (3 mints) + cmp698wva (16 mints) — every mint had `sourceKind: "WEB_SEARCH"` even when `read_signals` returned matching signals for the ticker. `record-thesis.ts` lines 414-444 detect the mismatch and log a console warning, but don't reject the write. Net effect: `sourceSignalIds` is empty, so the trade-evaluator's Monitor ROI tracer (VISION Pillar 5) can't walk `Thesis.sourceSignalIds → Signal.monitorId → Monitor` to credit which monitor produced the win/loss on close. The whole monitor-ROI flywheel is broken.
 
 **Fix path:** promote the nudge to a hard reject when `ctx.signalsByTicker[ticker]` has signals AND the agent passed non-ROUTED_SIGNAL provenance. Forces the agent to cite signal IDs. ~30 minutes in `lib/agent/tools/record-thesis.ts`.
-
-
-### ~~P1-16 — Tactical run silent failures (verify post-PR #261)~~
-**CLOSED 2026-05-19** via the tactical run review at
-[`docs/tactical-reviews/2026-05-18.md`](./tactical-reviews/2026-05-18.md).
-Re-audit confirms: silent failures clustered on 2026-05-11 (13 of 16
-total in 14d, all the same day). Nothing since. PR #261's catch-path
-recovery + error aggregator is effectively closed. Last silent-fail
-was 2026-05-11; 4 clean weekday-crons since.
 
 
 ### P1-17 — Possibly polluted historical "discovery" runs (informational, no code fix)
@@ -223,12 +226,12 @@ Both mean "terminal without a clean trade outcome." The narrative ("evidence" vs
 **Fix path:** Prisma migration to drop the column + remove the field from the schema. Trivial migration, just needs a follow-up PR. ~10 minutes.
 
 
-### P2-18 — Catalyst Event Raider near-no-op morning runs
-**Source:** 2026-05-15 morning run. Catalyst Event Raider completed in 12s with 5 tool calls — read_signals, get_portfolio_context, get_theses (parallel), then straight to record_run_summary + complete_run. No update_thesis, no get_stock_data. Either it had truly nothing to act on (legitimate) or punted (bug).
+### ~~P2-18 — Catalyst Event Raider near-no-op morning runs~~
+**CLOSED 2026-05-21** by PR #310's `needs-action` 24h look-ahead. Root cause traced to a timing gap: Catalyst's WATCHING theses had `nextReviewAt` set for ~09:30 ET (set by discovery cron on Sundays at 09:00 ET); the daily morning run at 08:00 ET saw them as "not yet due" (strict `< now` check) and skipped. The trigger evaluator's REVIEW_DATE_HIT cron at 09:31 ET then fired a tactical run for each, producing redundant work the morning agent could have done.
 
-The analyst has open positions and active theses. needsAction MAY have been null on all of them (rested + no triggers fired), but the lack of even one `update_thesis(rationale)` REVIEWED row makes the run feel like a no-op. Worth checking what `get_theses` returned for this analyst vs. what the V2 prompt would have prescribed.
+**Production proof, 2026-05-21:** Catalyst 0% focus → 42.9% focus, 5 tool calls → 16, 2 trades placed (MRVL + OKTA — first ACTIVE positions ever for this analyst). The 24h look-ahead in `needs-action.ts:218-242` was the single change.
 
-**Fix path:** spot-check Catalyst Event Raider runs over the next 5 trading days. If the pattern persists with no observable action across all theses, drill into the needsAction output. May indicate a content-quality issue with the analyst's universe / signal routing rather than a code bug. ~30 minutes investigation per occurrence.
+See `GAPS_HISTORY.md` "Done since 2026-05-20" for the full block.
 
 
 ### P2-19 — ThesisSheet skeletons because parent doesn't forward data it already has
@@ -250,6 +253,40 @@ Net effect: ~300-500ms of skeleton time on every sheet open for data that could 
 
 ~1-2 hours. Should fire before PR-9 (V2 schema cutover) ships so the new researchSections-flattened columns get forwarded too.
 
+**Update 2026-05-23:** addressed by [PR #313](https://github.com/dave-sucks/hindsight/pull/313) (`fix/p2-19-parent-data-forwarding`) — open, not yet merged. Mark as closed when #313 merges.
+
+### P2-20 — Volume ratio math broken for intraday timestamps (durable fix for the #307 workaround)
+**Source:** Follow-up from 2026-05-20 tactical volume gate work (PR #307).
+
+`lib/agent/tools/get-stock-data.ts:166` computes `volumeRatio = today's_accumulated_volume / 20-day_avg_daily_volume`. At 09:45 ET (15 min after open), the accumulated number is mechanically small even when intraday-volume-pace would annualize to >1.5x daily. PR #307 sidestepped this at the prompt layer by gating the volume check on horizon + time-of-day (only TRADE horizon faces the gate, and only after 14:00 ET).
+
+The durable fix is tool-layer: expose a `volumeRatioTimeOfDayAdjusted` field that does `accumulated_volume / expected_at_this_hour_of_20d_avg`. Then the agent can read a number that means "is volume on pace to be exceptional" instead of doing broken raw-ratio math.
+
+**Why P2:** #307's workaround handles the high-impact cases. The math fix matters most for TRADE-horizon tactical fires between 14:00-16:00 ET on modestly-elevated days (the only remaining window where the raw ratio is used). Low frequency, manageable.
+
+**Fix path:** add the field in `get-stock-data.ts:138-179` candle/technicals block. Update intraday-tactical.ts:210 to read the new field instead of the raw one. Remove the time-of-day clause from the prompt once the tool returns a self-correcting number. ~1-2 hours.
+
+### P2-21 — Prisma client stale on `npx tsx` script runs
+**Source:** 2026-05-23 repair-script run. PR #308's husky pre-commit hook auto-regenerates the Prisma client when `prisma/schema.prisma` is newer than `lib/generated/prisma/index.d.ts` — but only on `git commit`. Running `npx tsx scripts/foo.ts` against a stale generated client errors with "The column `(not available)` does not exist in the current database" on every prisma write.
+
+Hit twice today: first attempt at the cadence repair script errored on all 33 rows; `npx prisma generate` then retry worked clean.
+
+**Fix path:**
+- (Layer 1, hook): add a `prebuild` or `predev` npm script that runs `prisma generate`, OR
+- (Layer 1, package.json): add a `pretsx` shim that runs `prisma generate` before any `npx tsx` invocation, OR
+- (Layer 2, convention): document at the top of each repair script "run `npx prisma generate` first." Cheapest but the trap repeats.
+
+The first option is cleanest — `npm run dev` already runs migrations check; adding generate would be a one-line addition.
+
+### P2-22 — Cross-analyst discovery duplication
+**Source:** 2026-05-17 discovery cron. **Four** analysts independently added AMBA on the same Sunday; same for POET, MDB, ZS, SNOW, OKTA. Audit doc A8; handoff item #6.
+
+The Universe fences don't differentiate analyst strategies enough — multiple analysts whose configs allow Semiconductor-cap-mid-AI-Infrastructure (i.e. most of them) end up picking the same names from the same routed signals. Each analyst minted its own WATCHING thesis for AMBA, with similar entry triggers around $145-$148. Net result: 4 thesis rows for the same name with nearly-identical setups, 4x the trigger evaluator work, 4x the tactical-run noise when AMBA moves.
+
+**Why P2:** affects book quality + tactical noise more than trading correctness. Once #311's discovery cap of 5 is in place (it is), the symptom is bounded — but it's still wasteful. Lower-priority than the action-layer fixes that just shipped.
+
+**Fix path:** add a router-side "already-covered-by-peer-analyst-this-session" check during discovery cron. If analyst-A already minted AMBA today, analyst-B's prompt sees a hint "AMBA already in another analyst's discovery this week — skip unless your edge is meaningfully different." Could also enforce at the record_thesis layer (refuse the Nth mint of the same ticker across all analysts in the same Sunday session). ~1-2 hours.
+
 ---
 
 ## P2 — Paper cuts and FE polish
@@ -262,8 +299,7 @@ SESSION_AUDIT items 33-35. Intraday Momentum Scalper analyst exists but mints th
 Crons run on independent schedules — no Inngest `.after()` or `.waitFor()` between firm-market-sweep → portfolio-watchlist-monitor → domain-monitor → signal-router. If one lags, downstream still fires on schedule with stale data. Today this is theoretical; flag it as a known fragility. ~2 hours to add chaining. Largely mitigated by P1-10's event-emission (signals get routed immediately when each producer finishes), but the cron-schedule ordering isn't itself enforced.
 
 
-~~### P2-12 — Discovery prompt doesn't mention `manage_watchlist` (blocked)~~
-**CLOSED 2026-05-13** by the watchlist collapse. `manage_watchlist` was deleted; Discovery's prompt now uses `record_thesis(status: WATCHING)` for adds. See [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
+*(P2-12 closed 2026-05-13 by the watchlist collapse — moved to `GAPS_HISTORY.md`.)*
 
 ---
 ---
