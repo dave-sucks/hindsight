@@ -847,10 +847,35 @@ export const recordThesis = defineTool({
           `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in discovery mode; forced WATCHING. Promotion is the daily-run's job.`,
         );
       }
+      // ── Chat-dispatch hard-clamp for LONG/SHORT (Phase 1 mint flow) ───
+      // Same shape as the discovery clamp above, different trigger source:
+      // dispatch_thesis_research sets ctx.forceWatchingMint = true on
+      // chat-dispatched mint events. Chat exploration is EXPLORATORY by
+      // design; auto-ACTIVE coverage from a "write me a thesis on $X"
+      // turn would silently attach HELD-template triggers (EXIT on
+      // stop_loss, REVIEW on target_hit) without a paired place_trade,
+      // and the trigger evaluator would later fire orphan tactical EXIT
+      // runs that fail silently — exact failure mode the discovery clamp
+      // was added to prevent in 2026-05-13. To trade after a chat-
+      // dispatched thesis, the user sends a follow-up "buy this" message
+      // which routes through place_trade and flips status separately.
+      //
+      // Future Phase-3 daily-run refresh dispatches (forceWatchingMint=false,
+      // mode=refresh — refreshes are status-preserving so the clamp
+      // wouldn't apply anyway) and Phase-4 tactical inline calls (bypass
+      // dispatch entirely) are unaffected.
+      const isChatDispatchDirectional =
+        ctx.forceWatchingMint === true &&
+        (args.direction === "LONG" || args.direction === "SHORT");
+      if (isChatDispatchDirectional && args.status === "ACTIVE") {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in chat-dispatch mode; forced WATCHING. User must send a follow-up trade message to promote.`,
+        );
+      }
       const effectiveStatusForTriggers: "ACTIVE" | "WATCHING" | "ARCHIVED" =
         args.direction === "PASS"
           ? "ARCHIVED"
-          : isDiscoveryDirectional
+          : isDiscoveryDirectional || isChatDispatchDirectional
             ? "WATCHING"
             : args.status ??
               (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");

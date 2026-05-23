@@ -43,6 +43,12 @@ export interface RunThesisWriterArgs {
   existingThesisId?: string | null;
   reason: string;
   parentRunId?: string | null;
+  /**
+   * Layer-1 clamp passthrough: forwarded into the agent's tool ctx so
+   * record_thesis downgrades any LONG/SHORT/ACTIVE mint to WATCHING.
+   * Set by chat-dispatched mints; defaults to false otherwise.
+   */
+  forceWatchingMint?: boolean;
 }
 
 export interface RunThesisWriterResult {
@@ -130,6 +136,14 @@ YOUR JOB (4 tool calls, ~3-5 minutes wall time)
 3. Make the decision on top of the research:
      - direction: LONG / SHORT / PASS (PASS is allowed if the research
        does not support a directional view from your strategy's angle)
+     - status: ${opts.mode === "mint" ? `DEFAULT TO **WATCHING** on this dispatch.
+       Chat-dispatched mints are EXPLORATORY — the user wants the thesis to
+       study, not auto-trade. Only request status="ACTIVE" if the dispatch
+       reason explicitly says "trade now" / "buy immediately" / "open a
+       position". record_thesis enforces this as a Layer-1 clamp for chat
+       dispatches (forceWatchingMint), so an accidental ACTIVE will be
+       silently downgraded to WATCHING — but pass WATCHING explicitly so
+       the audit trail reads correctly.` : "(refresh mode — status is whatever the existing thesis has; don't change it unless the user explicitly asked)"}
      - horizon: CATALYST / TARGET / TRADE / COMPOUNDER (pick by reasoning
        shape, not just hold length)
      - entry_price: current quote from the research (use the Snapshot)
@@ -148,22 +162,49 @@ YOUR JOB (4 tool calls, ~3-5 minutes wall time)
    args (NOT a single research_sections blob — that arg was dropped).
    Map write_thesis_research's data.sections keys to the tool args:
 
-     sections.snapshot           → snapshot
-     sections.recentCatalysts    → recent_catalysts
-     sections.fundamentals       → fundamentals
-     sections.latestEarnings     → latest_earnings
-     sections.catalystsAndEvents → catalysts_and_events
-     sections.bullCase           → bull_case
-     sections.bearCase           → bear_case
-     sections.analystConsensus   → analyst_consensus
-     sections.insiderTechnical   → insider_technical
+     sections.snapshot           → snapshot               (text shape)
+     sections.recentCatalysts    → recent_catalysts       (text shape)
+     sections.fundamentals       → fundamentals           (text shape)
+     sections.latestEarnings     → latest_earnings        (bullet shape)
+     sections.catalystsAndEvents → catalysts_and_events   (bullet shape)
+     sections.bullCase           → bull_case              (bullet shape)
+     sections.bearCase           → bear_case              (bullet shape)
+     sections.analystConsensus   → analyst_consensus      (text shape)
+     sections.insiderTechnical   → insider_technical      (text shape)
 
    (Note: there's also a stock_fundamentals arg — that's the legacy
    structured-data object {market_cap, pe_ratio, ...} for the inline
    tool-card render only. Do NOT confuse it with the V2 fundamentals
    narrative section above.)
 
-     ${opts.mode === "refresh" && opts.existingThesis ? `- update_thesis(thesis_id="${opts.existingThesis.id}", <all decision fields>, research_data=<rawDataBlock>, snapshot=<sections.snapshot>, ...other section args, rationale="<one line>")` : `- record_thesis(ticker="${T}", <all decision fields>, research_data=<rawDataBlock>, snapshot=<sections.snapshot>, ...other section args, source_kind=..., source_rationale=...)`}
+   ━━━ FORWARD-VERBATIM RULE — DO NOT RESHAPE ━━━━━━━━━━━━━━━━━━━━━━━━━
+   Pass each section arg EXACTLY as write_thesis_research returned it in
+   its sections object. The tool schemas expect:
+
+     • Text sections    → { text: string, citations?: string[] }
+     • Bullet sections  → { bullets: [{ text: string, citation?: string }] }
+
+   Forbidden:
+     • Do NOT collapse {text, citations} into a raw string — citations get
+       stripped and the renderer falls back to inferior plain-text mode.
+     • Do NOT snake_case the keys inside the object (it's \`text\` and
+       \`citations\`, not \`text_content\` or \`citation_list\`).
+     • Do NOT rebuild bullet shapes from prose — the parser already split
+       them. Pass {bullets: [...]} verbatim.
+     • Do NOT rename the section keys at the destination (the args are
+       snake_case at the tool boundary, but the VALUES are camelCase
+       objects exactly as the meta-tool returned).
+
+   Correct usage:
+     bull_case: sections.bullCase            // ✓ verbatim object
+     snapshot: sections.snapshot             // ✓ verbatim object
+
+   Wrong:
+     bull_case: "**Bull Case** ..."          // ✗ raw string — Zod rejects
+     bull_case: { bullets: [...prose...] }   // ✗ reshaped — citations gone
+     bull_case: { text: "...", citations:[] }// ✗ wrong shape for bullet section
+
+     ${opts.mode === "refresh" && opts.existingThesis ? `- update_thesis(thesis_id="${opts.existingThesis.id}", <all decision fields>, research_data=<rawDataBlock>, snapshot=<sections.snapshot>, bull_case=<sections.bullCase>, ...the other 7 section args, rationale="<one line>")` : `- record_thesis(ticker="${T}", <all decision fields>, research_data=<rawDataBlock>, snapshot=<sections.snapshot>, bull_case=<sections.bullCase>, ...the other 7 section args, source_kind=..., source_rationale=...)`}
 
    The research_data + the 9 section args MUST be passed verbatim from
    write_thesis_research's return value — that's how the deep research
@@ -298,6 +339,10 @@ export async function runThesisWriterAgent(
     minConfidence: analyst.minConfidence,
     alpacaCreds,
     runEnvironment,
+    // Chat-dispatched mints clamp to WATCHING (see dispatch-thesis-research
+    // comment + record_thesis enforcement). Daily-run refresh dispatches
+    // (Phase 3) and tactical inline calls (Phase 4) pass false / unset.
+    forceWatchingMint: args.forceWatchingMint === true,
   });
 
   const modeConfig = MODES["thesis-writer"];

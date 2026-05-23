@@ -141,6 +141,29 @@ export const dispatchThesisResearch = defineTool({
       select: { id: true },
     });
 
+    // forceWatchingMint = true for chat-dispatched mints (Phase 1).
+    //
+    // Rationale: chat-dispatched mints are exploratory — the user typed
+    // "write me a thesis on $X" to STUDY the name, not to auto-trade it.
+    // ACTIVE attaches HELD-template triggers (EXIT on stop_loss, REVIEW on
+    // target_hit) but no place_trade fires, so the trigger evaluator
+    // later fires orphan tactical EXIT runs that fail silently (same
+    // failure mode the discovery cron's hard-clamp was added to fix on
+    // 2026-05-13). Default to WATCHING; user can promote via a follow-up
+    // "buy this" message which triggers a separate place_trade flow.
+    //
+    // Future Phase-3 daily-run dispatches (refresh-then-trade) need
+    // forceWatchingMint=false — that's a refresh flow, not a mint flow,
+    // so the clamp doesn't apply anyway (only LONG/SHORT mints get
+    // clamped; refreshes are status-preserving by design). Future
+    // tactical dispatches (Phase 4) call runThesisWriterAgent inline,
+    // bypassing this dispatch tool entirely.
+    //
+    // Belt-and-suspenders pattern: the system prompt also tells the
+    // agent to default WATCHING (instruction in run-thesis-writer.ts).
+    // The flag here is the Layer-1 enforcement in case the agent ignores
+    // the prompt — mirrors the discoveryOnly + discovery clamp pattern
+    // in record_thesis.ts.
     await inngest.send({
       name: "app/thesis.write.requested",
       data: {
@@ -151,6 +174,7 @@ export const dispatchThesisResearch = defineTool({
         existingThesisId: args.existing_thesis_id ?? null,
         reason: args.reason,
         parentRunId: resolvedParentRunId ?? null,
+        forceWatchingMint: args.mode === "mint",
       },
     });
 

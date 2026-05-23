@@ -22,6 +22,16 @@ interface ThesisWriteRequestedPayload {
   existingThesisId?: string | null;
   reason: string;
   parentRunId?: string | null;
+  /**
+   * Layer-1 clamp: when true, record_thesis downgrades any
+   * LONG/SHORT/ACTIVE mint request to LONG/SHORT/WATCHING. Set by
+   * dispatch_thesis_research for chat-dispatched mints (Phase 1) so
+   * chat exploration doesn't accidentally produce trade-eligible
+   * coverage. Mirrors the discoveryOnly/clamp pattern in record_thesis.
+   * Optional for backwards-compat with pre-2026-05-23 events that
+   * didn't include the flag (treated as false).
+   */
+  forceWatchingMint?: boolean;
 }
 
 export const thesisWriter = inngest.createFunction(
@@ -61,6 +71,7 @@ export const thesisWriter = inngest.createFunction(
         existingThesisId: args.existingThesisId ?? null,
         reason: args.reason,
         parentRunId: args.parentRunId ?? null,
+        forceWatchingMint: args.forceWatchingMint === true,
       }),
     );
 
