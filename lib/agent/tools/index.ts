@@ -92,6 +92,15 @@ interface ToolCtx {
   /** Hide discoverySignals from read_signals (daily-run V2 cron). */
   dailyRunOnly?: boolean;
   /**
+   * Chat-dispatched thesis-writer mints clamp to WATCHING. When true,
+   * record_thesis downgrades LONG/SHORT mints that request status="ACTIVE"
+   * to WATCHING (mirrors the discoveryOnly clamp pattern at line 836+
+   * of record-thesis.ts). Set by dispatch_thesis_research for the
+   * Principal Chat flow; refresh dispatches and tactical inline calls
+   * leave it unset.
+   */
+  forceWatchingMint?: boolean;
+  /**
    * Full set of tickers this analyst already covers (ACTIVE + WATCHING
    * theses + watchlist + open positions). Discovery scope ("universe")
    * excludes this set; "covered" lookups include only this set. Populated

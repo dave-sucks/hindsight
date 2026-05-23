@@ -68,34 +68,85 @@ function unwrap<T>(result: unknown): T | null {
 }
 
 // ── Section parser ─────────────────────────────────────────────────────────
-
-const SECTION_HEADERS: Array<{ key: string; pattern: RegExp }> = [
-  { key: "snapshot", pattern: /^##\s+Snapshot\b/im },
-  { key: "recentCatalysts", pattern: /^##\s+Recent Catalysts\b/im },
-  { key: "fundamentals", pattern: /^##\s+Fundamentals\b/im },
-  { key: "latestEarnings", pattern: /^##\s+Latest Earnings\b/im },
-  { key: "catalystsAndEvents", pattern: /^##\s+Catalysts (?:&|and) Events\b/im },
-  { key: "bullCase", pattern: /^##\s+Bull Case\b/im },
-  { key: "bearCase", pattern: /^##\s+Bear Case\b/im },
-  { key: "analystConsensus", pattern: /^##\s+Analyst Consensus\b/im },
-  { key: "insiderTechnical", pattern: /^##\s+Insider (?:&|and) Technical\b/im },
+//
+// Each section header gets a `kind` so parseIntoSections produces the
+// shape record_thesis / update_thesis actually accept on the flat-schema
+// args (PR-9 / PR #314). Two shapes:
+//
+//   kind: "text"    → { text, citations }       — prose paragraph
+//   kind: "bullets" → { bullets: [{ text, citation? }] }  — bulleted list
+//
+// The four bullet-shaped sections (Latest Earnings, Catalysts & Events,
+// Bull Case, Bear Case) are written by the synthesis prompt as markdown
+// bullet lists; we split them so each bullet becomes its own row with
+// its own citation chip. Pre-2026-05-23 every section came back as
+// `{text, citations}` regardless of kind, which meant the agent
+// COULD NOT forward `sections.bullCase` verbatim to record_thesis's
+// `bull_case` arg without hitting Zod rejection. This makes "forward
+// verbatim" (the prompt instruction in B) actually viable.
+type SectionKind = "text" | "bullets";
+const SECTION_HEADERS: Array<{ key: string; pattern: RegExp; kind: SectionKind }> = [
+  { key: "snapshot", pattern: /^##\s+Snapshot\b/im, kind: "text" },
+  { key: "recentCatalysts", pattern: /^##\s+Recent Catalysts\b/im, kind: "text" },
+  { key: "fundamentals", pattern: /^##\s+Fundamentals\b/im, kind: "text" },
+  { key: "latestEarnings", pattern: /^##\s+Latest Earnings\b/im, kind: "bullets" },
+  { key: "catalystsAndEvents", pattern: /^##\s+Catalysts (?:&|and) Events\b/im, kind: "bullets" },
+  { key: "bullCase", pattern: /^##\s+Bull Case\b/im, kind: "bullets" },
+  { key: "bearCase", pattern: /^##\s+Bear Case\b/im, kind: "bullets" },
+  { key: "analystConsensus", pattern: /^##\s+Analyst Consensus\b/im, kind: "text" },
+  { key: "insiderTechnical", pattern: /^##\s+Insider (?:&|and) Technical\b/im, kind: "text" },
 ];
 
-export interface ParsedSection {
+/**
+ * Prose section — matches record_thesis `sectionTextSchema`.
+ * Forward verbatim to the snake-cased text arg.
+ */
+export interface ParsedTextSection {
   text: string;
   citations: string[];
 }
 
+/**
+ * Single bulleted row with optional inline citation. `citation` is the
+ * FIRST [STRUCTURED:...] or [WEB:...] marker found in the bullet's text
+ * (kept raw — the renderer parses it). Multiple citations per bullet
+ * collapse to the first; if you need all of them, read the section's
+ * raw text in `rawDataBlock`.
+ */
+export interface ParsedBullet {
+  text: string;
+  citation?: string;
+}
+
+/**
+ * Bullet-list section — matches record_thesis `sectionBulletSchema`.
+ * Forward verbatim to the snake-cased bullets arg.
+ */
+export interface ParsedBulletSection {
+  bullets: ParsedBullet[];
+}
+
+export type ParsedSection = ParsedTextSection | ParsedBulletSection;
+
+/**
+ * @deprecated kept as an alias for backwards-compat with code that
+ * referenced the old uniform shape. New code should reference
+ * ParsedTextSection | ParsedBulletSection directly.
+ */
+export type ParsedSectionLegacy = ParsedTextSection;
+
 export interface ParsedSections {
-  snapshot?: ParsedSection;
-  recentCatalysts?: ParsedSection;
-  fundamentals?: ParsedSection;
-  latestEarnings?: ParsedSection;
-  catalystsAndEvents?: ParsedSection;
-  bullCase?: ParsedSection;
-  bearCase?: ParsedSection;
-  analystConsensus?: ParsedSection;
-  insiderTechnical?: ParsedSection;
+  // Text sections.
+  snapshot?: ParsedTextSection;
+  recentCatalysts?: ParsedTextSection;
+  fundamentals?: ParsedTextSection;
+  analystConsensus?: ParsedTextSection;
+  insiderTechnical?: ParsedTextSection;
+  // Bullet sections.
+  latestEarnings?: ParsedBulletSection;
+  catalystsAndEvents?: ParsedBulletSection;
+  bullCase?: ParsedBulletSection;
+  bearCase?: ParsedBulletSection;
 }
 
 export interface ResearchCitation {
@@ -141,29 +192,91 @@ function citationsFromRaw(rawList: string[]): ResearchCitation[] {
   });
 }
 
+/**
+ * Bullet-line matcher. Accepts the most common markdown bullet
+ * conventions the synthesis model might emit:
+ *   - hyphen-bullet      `- foo`
+ *   - asterisk-bullet    `* foo`
+ *   - bullet-glyph       `• foo` / `◦ foo` / `▪ foo`
+ *   - numbered           `1. foo` / `2) foo`
+ *
+ * We split on those line-starts so each bullet's text is the rest of the
+ * line. Multi-line bullets (with wrapped or sub-content) get folded onto
+ * one line — Markdown spec says trailing lines without a leading bullet
+ * are continuations; we keep them as-is via the lookahead.
+ */
+const BULLET_LINE_RE =
+  /(?:^|\n)\s*(?:[-*•◦▪]|\d+[.)])\s+([^\n]+(?:\n(?!\s*(?:[-*•◦▪]|\d+[.)])\s+)[^\n]+)*)/g;
+
+/**
+ * Pull the FIRST [STRUCTURED:...] or [WEB:...] marker out of bullet text,
+ * if present. Returns `undefined` if no marker. The bullet's text is
+ * NOT mutated — the marker stays inline so the renderer can decide how
+ * to display it. Only the first one is exposed as `.citation` for the
+ * bullet-row chip; for multi-citation bullets the rendering layer can
+ * still find all markers in `text` itself.
+ */
+function firstCitationOf(text: string): string | undefined {
+  const re = /\[(STRUCTURED|WEB):([^\]]+)\]/;
+  const match = re.exec(text);
+  if (!match) return undefined;
+  return `${match[1]}:${match[2]}`;
+}
+
+function parseBullets(body: string): ParsedBullet[] {
+  const bullets: ParsedBullet[] = [];
+  let m: RegExpExecArray | null;
+  // Reset lastIndex defensively — global regex state is per-instance.
+  BULLET_LINE_RE.lastIndex = 0;
+  while ((m = BULLET_LINE_RE.exec(body)) !== null) {
+    const text = m[1].trim();
+    if (!text) continue;
+    const citation = firstCitationOf(text);
+    bullets.push(citation !== undefined ? { text, citation } : { text });
+  }
+  return bullets;
+}
+
 function parseIntoSections(text: string): ParsedSections {
   // Find each section header's index, then slice text between consecutive
   // headers. Headers not present in the model output simply stay undefined.
-  const positions: { key: string; start: number }[] = [];
-  for (const { key, pattern } of SECTION_HEADERS) {
+  const positions: { key: string; start: number; kind: SectionKind }[] = [];
+  for (const { key, pattern, kind } of SECTION_HEADERS) {
     const match = pattern.exec(text);
-    if (match) positions.push({ key, start: match.index });
+    if (match) positions.push({ key, start: match.index, kind });
   }
   positions.sort((a, b) => a.start - b.start);
 
   const sections: ParsedSections = {};
   for (let i = 0; i < positions.length; i++) {
-    const { key, start } = positions[i];
+    const { key, start, kind } = positions[i];
     const end = i + 1 < positions.length ? positions[i + 1].start : text.length;
     // Strip the header line itself.
     const block = text.slice(start, end);
     const newline = block.indexOf("\n");
     const body = newline >= 0 ? block.slice(newline + 1).trim() : "";
     if (!body) continue;
-    (sections as Record<string, ParsedSection>)[key] = {
-      text: body,
-      citations: parseCitations(body),
-    };
+
+    if (kind === "bullets") {
+      const bullets = parseBullets(body);
+      if (bullets.length === 0) {
+        // Fallback: model wrote the section as prose despite the prompt
+        // asking for bullets. Wrap the body as a single bullet so the
+        // section isn't silently dropped — better to render one fat
+        // bullet than a missing section. Citation extraction still applies.
+        const citation = firstCitationOf(body);
+        (sections as Record<string, ParsedBulletSection>)[key] = {
+          bullets: [citation !== undefined ? { text: body, citation } : { text: body }],
+        };
+      } else {
+        (sections as Record<string, ParsedBulletSection>)[key] = { bullets };
+      }
+    } else {
+      (sections as Record<string, ParsedTextSection>)[key] = {
+        text: body,
+        citations: parseCitations(body),
+      };
+    }
   }
   return sections;
 }

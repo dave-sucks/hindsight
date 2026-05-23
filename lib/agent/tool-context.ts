@@ -104,6 +104,18 @@ export interface ToolContext {
   dailyRunOnly?: boolean;
 
   /**
+   * Chat-dispatched thesis-writer mints clamp to WATCHING. When true,
+   * record_thesis downgrades LONG/SHORT mints that request status="ACTIVE"
+   * to WATCHING (mirrors the discoveryOnly clamp at record-thesis.ts ~line
+   * 836). Set by dispatch_thesis_research for the Principal Chat flow so
+   * exploratory chat dispatches don't produce trade-eligible coverage that
+   * would later fire orphan tactical EXIT runs (the same failure shape
+   * the discovery clamp was added to prevent). Phase-3 daily-run refresh
+   * dispatches and Phase-4 tactical inline calls leave this unset.
+   */
+  forceWatchingMint?: boolean;
+
+  /**
    * Full set of tickers this analyst already covers — ACTIVE + WATCHING
    * theses, plus watchlist, plus open positions. Used by:
    *   • read_signals discoveryOnly path: "discovery" means signals on
