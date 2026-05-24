@@ -11,6 +11,56 @@
 
 ---
 
+## Done since 2026-05-23 (close-out wave)
+
+Three items, one PR. Headline: P0-12 (the escalating narration→execution gap on `close_position` — hit 1 of 7 runs on Wed 5/20, 3 of 7 on Fri 5/22) is structurally fixed. Bundled P1-18 (which shipped earlier as PR #316) plus two tiny P2 hygiene items.
+
+### ✅ P0-12 — Narration→execution gap on `close_position` — gate moved from mid-run to end-of-run
+
+**Filed:** 2026-05-22. Escalation pattern: 1 of 7 runs Wed 5/20 (EV Catalyst ON), then 3 of 7 runs Fri 5/22 (Catalyst Event Raider MRVL ×2 + OKTA on retry; Secular Theme Architect SMTC + TRIM).
+
+**Symptom:** agent writes "exit X" / "close X" / "trim X" / "EXIT" in `decision_rationale` or `pick.reasoning` text, the narration→execution gate at `record_run_summary` fires inline, marks run FAILED. The agent then keeps running — sometimes calls the real tool after the gate fired — but the run is already FAILED. Production case 2026-05-22 Secular Theme SMTC: gate fired at 08:15:53; agent called `close_position` at 08:17:30; position later reconciled at $153.44 for **+$108.10** (the first realized winning close since the action-layer broke 5/12) — but the run row stayed FAILED. See run-review 2026-05-22 F1 for the event-stream trace.
+
+**Root cause:** the gate fired mid-run on the FIRST `record_run_summary` call, before the agent had a chance to make the (sometimes-pending) tool call. Treated narration→execution **order** mismatch as a permanent narration→execution gap.
+
+**Fix:** moved the gate from `lib/agent/tools/record-run-summary.ts` (inline mid-run) to `lib/agent/tools/complete-run.ts` preflight (end-of-run). Key changes:
+- Removed the entire narration-gate block from `record-run-summary.ts` (~135 lines). The tool no longer reads `RunEvent` rows or writes `run_failed` / status=FAILED.
+- Added `checkNarrationExecutionGap(runId)` to `complete-run.ts`. Reads the MOST RECENT `run_summary` event's payload (decision_rationale + ranked_picks reasoning), detects narration verbs, then reads all `position_closed` + `position_modified` events from the entire run. Self-corrected runs (agent narrated then called the tool, in either order) pass with no gap.
+- New `PreflightFailure` kind: `narration_execution_gap`. Returns a soft refusal the agent can recover from: "call the missing tool, then complete_run again" — same recovery pattern as the existing `no_run_summary` / `unaddressed_theses` refusals. Never sets status=FAILED.
+- Tactical exempt (matches the existing `skipSummaryGate` guard for `runMode === "INTRADAY_TACTICAL"`).
+
+**Three-layer principle (`docs/PRINCIPLES.md`):** kept as a Layer-1 tool gate. The previous instinct ("add prompt text saying 'narrating exit without calling close_position is a failure'") would have been the wrong layer — the agent already understands the rule, the gate just needed to enforce it correctly.
+
+**Tests:** `lib/agent/narration-gate.test.ts` pure-function tests on `detectNarrationHits` + `findGaps` still pass (unchanged module). The end-to-end Prisma read flow is exercised by the moved code in `complete-run.ts` — no separate integration test added, same shape as the existing preflight checks.
+
+**Audit-log cleanup:** the old gate wrote `run_failed` events with `gateSource: "record_run_summary"` payload. New gate writes nothing — refusals come back via the `complete_run` tool result, the run stays RUNNING until the agent successfully completes it.
+
+### ✅ P1-18 — New thesis-writer agent mints status=ACTIVE instead of WATCHING — **shipped via PR #316 (2026-05-23)**
+
+**Filed:** 2026-05-21 after the MU zombie thesis surfaced (user-builder pathway minted `Thesis { ticker: "MU", status: ACTIVE, ... }` with no matching Position).
+
+**Root cause:** the thesis-writer agent (`lib/agent/run-thesis-writer.ts`) didn't run through `record_thesis`'s `discoveryOnly` clamp.
+
+**Fix (PR #316):** added `forceWatchingMint` flag plumbed `dispatch_thesis_research` → Inngest event payload → `runThesisWriterAgent` ctx → `record_thesis` `isChatDispatchDirectional` gate. LONG/SHORT mints from user-builder are now forced to WATCHING.
+
+**Existing zombie cleanup:** MU thesis row `cmpetjrw5000304jv9ybkn0c0` repaired via SQL on 2026-05-23 — flipped to WATCHING, 10 HELD-template triggers stripped, STATUS_CHANGED ThesisUpdate audit row written.
+
+**Cross-reference:** P1-20 (still open) is the architectural followup — removes the need for clamps entirely by deriving status from actions rather than exposing it as a settable arg.
+
+### ✅ P2-17 — `useV2Prompt` column dropped
+
+**Filed:** post-PR #270 deprecation. The flag stayed on `AgentConfig` after PR #270 made `buildDailyRunSystemPromptV2` unconditional; zero code paths read it since 2026-05-16.
+
+**Fix:** removed `useV2Prompt` from `prisma/schema.prisma`. Generated migration `20260524005434_drop_use_v2_prompt` with `ALTER TABLE "AgentConfig" DROP COLUMN "useV2Prompt"`. Cleaned dead comment in `lib/inngest/functions/morning-research.ts`.
+
+### ✅ P2-21 — `predev` Prisma regen hook added
+
+**Filed:** 2026-05-23 after repair-script run errored on stale generated client (33 rows failed before `npx prisma generate` then succeeded clean).
+
+**Fix:** added `"predev": "prisma generate"` to `package.json`. `npm run dev` now regens the client before booting. Note: `npx tsx scripts/foo.ts` still bypasses (npm pre-hooks don't fire on direct tsx invocations); convention for repair scripts is run `npm run dev` once after a schema change, or run `npx prisma generate` first.
+
+---
+
 ## Done since 2026-05-20 (post-no-trade-streak wave — the keystone fixes)
 
 Largest single wave since the V2 rollout. Resolves the "no trades in 12 days" production incident (2026-05-12 → 2026-05-21 was 7 trading days with 0 new positions). Combined effect: tactical ENTER conversion went from 0% (8 days) to 60% (Wed 5/21, 3 of 5 fires) and 40% (Fri 5/22, 4 of 10 fires). First post-incident wins: SMTC closed +$108 on Fri.
