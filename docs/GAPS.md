@@ -12,7 +12,7 @@
 >
 > **How to use it:** start at P0. P0s block the rework's correctness. P1s degrade quality. P2s are papercuts but still part of the rework. Don't skip levels. When something closes, **move it** to a "Done since" section below, not strike-through inline.
 >
-> **Most recent major movement:** Post-2026-05-20 wave — the keystone "no trades in 12 days" fixes shipped together with the supporting hygiene work. PRs #307 (tactical volume gate horizon-conditional), #308 (husky Prisma regen), #309 (WATCHING cadence), #310 (REVIEW_DUE 24h look-ahead + REVIEW_DATE_HIT strip), #311 (discovery Layer-1 cap of 5). Repair scripts run 2026-05-23 (33 cadences + 27 REVIEW_DATE_HIT triggers stripped). Resolved P2-18 in flight. See "Done since 2026-05-20" in `GAPS_HISTORY.md` for the full block. Surfaced and filed: P0-12, P1-18, P1-19, P2-20, P2-21, P2-22, **P1-20**.
+> **Most recent major movement:** 2026-05-23 close-out wave — P0-12 (narration→execution gap on close_position, escalating Wed→Fri) fixed by moving the gate from `record_run_summary` (mid-run, marked FAILED on first detection) to `complete_run` preflight (end-of-run, soft refusal). Production case 2026-05-22 Secular Theme SMTC self-corrected after the gate fired but the run was still FAILED — that pattern is no longer possible. Bundled hygiene: P2-17 (dropped dead `useV2Prompt` column) + P2-21 (added `predev` Prisma regen hook). P1-18 closed via PR #316 (Phase 1 stabilization, shipped 2026-05-23). See "Done since 2026-05-23" in `GAPS_HISTORY.md`. Prior wave still recent (2026-05-20): PRs #307–#311 unblocked the action layer; see that entry for details.
 
 ---
 
@@ -83,28 +83,7 @@ The MRVL anti-pattern (raising target on a watching thesis when current price is
 
 These prevent the core loop from working as designed. Fix first.
 
-### P0-12 — Narration→execution gap on `close_position` (escalating frequency)
-**Source:** 2026-05-20 EV Catalyst (ON), 2026-05-22 Catalyst Event Raider (MRVL twice, OKTA), 2026-05-22 Secular Theme Architect (SMTC + TRIM). Hit 1 of 7 runs on Wed; **3 of 7 runs on Fri**.
-
-The agent narrates "I'll close $X" in prose, then proceeds to write `update_thesis` or `record_run_summary` without ever calling `close_position`. The narration→execution gate at `lib/agent/tools/record-run-summary.ts` catches the mismatch and marks the run FAILED. Same root failure shape as the daily-run prose-termination bug from 2026-05-07 (see CLAUDE.md "Prose-termination") but localized to the close-out tool calls, not the data-fetching ones.
-
-**What it looks like in production (Catalyst 2026-05-22, retry):**
-- Run starts COMPLETE, walks 5 tickers, narrates MRVL exit + OKTA exit
-- Run summary's `decision_rationale` mentions "closed MRVL" + "closed OKTA"
-- No `close_position` tool calls in the message stream
-- Narration gate fires → run FAILED
-- Positions remain OPEN. Trying again the next day reproduces the gap.
-
-**Why this is P0:** the agents are now actually trading (post-#307 / #310 / #311) which means they're now trying to actually CLOSE positions. The narration gap blocks the close lifecycle. Position-state-vs-thesis-state desync widens every time a run fails this way — same family as P0-10, just with the polarity flipped (P0-10 was status saying WATCHING while position said OPEN; P0-12 leaves status ACTIVE while the agent meant to close).
-
-**Hypothesis:** GPT-5.5 (the research-run model) is more verbose than GPT-4o was — narration mentions of "close" / "exit" / "sell" land in the rationale text but the model isn't following through with the tool call. Could also be a prompt-structure issue: when the V2 prompt asks for "step through every needsAction thesis," the agent may treat the per-thesis prose as the action and skip the tool call.
-
-**Fix path options:**
-- (Layer 2, prompt): tighten the V2 daily-run prompt's close-out language. Add explicit "narrating 'I'll close X' without a close_position tool call is a run failure" to the same Tool-call discipline block that already covers data tools.
-- (Layer 1, gate): the current narration→execution gate flags this but the run still fails — fix is for tactical/morning agent to attempt a recovery before complete_run, not just fail the run.
-- (Layer 1, retry): morning-research.ts's coverage retry could fire on this specific shape ("narrated close, no close call") and re-issue the tool call from the rationale text.
-
-Reference: CLAUDE.md "Prose-termination after Step 1's parallel data tools" — same bug class, different trigger surface. The discipline block in `system-prompt.ts` was designed to prevent the data-tool variant; the close-out variant needs its own.
+*(P0-12 closed 2026-05-23 — moved to `GAPS_HISTORY.md`. Fix: narration→execution gate moved from `record_run_summary` (mid-run, marked FAILED) to `complete_run` preflight (end-of-run, soft refusal). Self-corrected runs pass; truly missing tool calls get a recoverable refusal.)*
 
 ### P0-10 — Thesis structured status disagrees with `reasoningSummary` text
 **Source:** GOOGL/Secular Theme failure 2026-05-13. Found in this session.
@@ -123,22 +102,7 @@ Concrete production state when this was diagnosed: 4 theses (AMD, AVGO, GOOGL, T
 
 ## P1 — Quality is degraded but system functions
 
-*(P1-4 closed via PRs #235 + #239. P1-13 closed 2026-05-19. P1-16 closed 2026-05-19. All moved to `GAPS_HISTORY.md`.)*
-
-### P1-18 — New thesis-writer agent mints status=ACTIVE instead of WATCHING
-**Source:** 2026-05-21 user-triggered MU thesis via the new deep-research builder (THESIS_RESEARCH_V2 Phase 1, PR #282). DB state after the build: `Thesis { ticker: "MU", status: ACTIVE, direction: LONG, horizon: TARGET, source: AGENT, sourceKind: USER_ADDED, coreBelief: <populated> }`. No matching Position row — classic zombie shape.
-
-**Why this is a bug:** the rest of the system follows the rule "net-new coverage = WATCHING; ACTIVE only via place_trade promotion." Discovery mints WATCHING (PR #311 enforces a Layer-1 cap). Daily-run promotes WATCHING → ACTIVE atomically inside `place_trade` (PR #265). The user-builder pathway short-circuits both: it lets the agent set `status: ACTIVE` directly without a paired Alpaca order. Result: the same desync pattern P0-10 documented.
-
-**Code path:** `lib/agent/run-thesis-writer.ts`. The thesis-writer agent has its own status-setting logic; it doesn't run through `record_thesis`'s discovery-direct clamp (line 722-727 in record-thesis.ts which forces WATCHING in discoveryOnly mode).
-
-**Fix path:** mirror the discovery clamp. Treat any USER_ADDED / WEB_SEARCH / WATCHLIST_REVIEW thesis-writer mint as forced WATCHING. The user can promote to ACTIVE later via the standard place_trade path (which is what the architecture wants — a research thesis is a candidate, not a commitment). ~20 minutes.
-
-**Existing zombie:** MU thesis row `cmpetjrw5000304jv9ybkn0c0` needs manual repair (flip to WATCHING + write a STATUS_CHANGED audit row). **Fixed via SQL on 2026-05-23** during PR #316 — status flipped to WATCHING, 10 HELD-template triggers stripped, STATUS_CHANGED ThesisUpdate audit row written.
-
-**Shipping in PR #316 (Phase 1 stabilization):** chat-dispatch clamp via `forceWatchingMint` flag in `dispatch_thesis_research` → Inngest event payload → `runThesisWriterAgent` ctx → `record_thesis` `isChatDispatchDirectional` gate (mirrors the existing `isDiscoveryDirectional` shape).
-
-**Followup:** see P1-20 for the architectural refactor that removes the need for clamps entirely. P1-18 closes the immediate zombie risk; P1-20 closes the structural cause.
+*(P1-4 closed via PRs #235 + #239. P1-13 closed 2026-05-19. P1-16 closed 2026-05-19. **P1-18 closed via PR #316 (2026-05-23).** All moved to `GAPS_HISTORY.md`.)*
 
 ### P1-19 — PRINCIPAL_CHAT hangs when child THESIS_WRITER fails
 **Source:** Handoff item #7 from 2026-05-20 tactical session. Observed 2026-05-19: Tech Momentum's PRINCIPAL_CHAT was stuck `status=RUNNING` for 44+ minutes because its child THESIS_WRITER failed at 10s on an Anthropic rate-limit error and the parent was never notified.
@@ -193,7 +157,7 @@ The V2 prompt says *"Theses with `needsAction == null` don't need to be touched.
 
 
 ### P1-20 — Thesis status should be derived from actions, not a manual arg with clamps
-**Source:** Surfaced 2026-05-23 during PR #316 (Phase 1 stabilization). Cross-ref: **P1-18 (the immediate clamp fix shipping in #316) and this entry (the architectural followup)** are two passes at the same underlying issue — P1-18 patches the chat-dispatch surface with a third clamp, P1-20 proposes removing the surface that needs clamping.
+**Source:** Surfaced 2026-05-23 during PR #316 (Phase 1 stabilization). Cross-ref: **P1-18 (closed via PR #316) and this entry (the architectural followup)** were two passes at the same underlying issue — #316 patched the chat-dispatch surface with a third clamp, P1-20 proposes removing the surface that needs clamping.
 
 The $MU zombie thesis (cmpetjrw5...) — minted ACTIVE with 10 HELD-template triggers but no Alpaca position — was the trigger for this insight. PR #316 patches the immediate failure with a third clamp (`forceWatchingMint` for chat dispatches, mirroring the existing `discoveryOnly` clamp). The clamps work but they're treating the symptom. The structural issue is that `record_thesis` exposes `status` as a settable arg with `ACTIVE` as the default fallback, so every new dispatch surface (Phase 3 daily promote-to-active, Phase 4 tactical inline calls) will need its own clamp or it'll mint zombies the same way.
 
@@ -263,10 +227,7 @@ Both mean "terminal without a clean trade outcome." The narrative ("evidence" vs
 **Fix path:** collapse into a single terminal status (call it `TERMINATED` or keep `INVALIDATED` and migrate ARCHIVED→INVALIDATED + rename `closeReason` field usage). Update every query that filters on `status IN (...)` to know the new shape. Update the five-bucket run summary derivation in `record_run_summary`. ~15-20 files. Not blocking; revisit once we have more data on whether the distinction provides analytics value or keeps biting.
 
 
-### P2-17 — `useV2Prompt` flag is dead code on AgentConfig
-**Source:** PR #270 deprecated the V1 prompt builder and removed the `useV2Prompt` dispatch from both cron + agent route. The flag column on `AgentConfig` is no longer read anywhere. Currently `true` for all 6 production analysts.
-
-**Fix path:** Prisma migration to drop the column + remove the field from the schema. Trivial migration, just needs a follow-up PR. ~10 minutes.
+*(P2-17 closed 2026-05-23 — `useV2Prompt` column dropped from AgentConfig + schema, dead comment removed from `morning-research.ts`. Moved to `GAPS_HISTORY.md`.)*
 
 
 ### ~~P2-18 — Catalyst Event Raider near-no-op morning runs~~
@@ -309,17 +270,7 @@ The durable fix is tool-layer: expose a `volumeRatioTimeOfDayAdjusted` field tha
 
 **Fix path:** add the field in `get-stock-data.ts:138-179` candle/technicals block. Update intraday-tactical.ts:210 to read the new field instead of the raw one. Remove the time-of-day clause from the prompt once the tool returns a self-correcting number. ~1-2 hours.
 
-### P2-21 — Prisma client stale on `npx tsx` script runs
-**Source:** 2026-05-23 repair-script run. PR #308's husky pre-commit hook auto-regenerates the Prisma client when `prisma/schema.prisma` is newer than `lib/generated/prisma/index.d.ts` — but only on `git commit`. Running `npx tsx scripts/foo.ts` against a stale generated client errors with "The column `(not available)` does not exist in the current database" on every prisma write.
-
-Hit twice today: first attempt at the cadence repair script errored on all 33 rows; `npx prisma generate` then retry worked clean.
-
-**Fix path:**
-- (Layer 1, hook): add a `prebuild` or `predev` npm script that runs `prisma generate`, OR
-- (Layer 1, package.json): add a `pretsx` shim that runs `prisma generate` before any `npx tsx` invocation, OR
-- (Layer 2, convention): document at the top of each repair script "run `npx prisma generate` first." Cheapest but the trap repeats.
-
-The first option is cleanest — `npm run dev` already runs migrations check; adding generate would be a one-line addition.
+*(P2-21 closed 2026-05-23 — `predev` script added to `package.json`. `npm run dev` now regens the Prisma client before booting. Note: `npx tsx scripts/foo.ts` still bypasses (it doesn't trigger npm pre-hooks); convention for repair scripts is run `npx prisma generate` first or use `npm run dev` once before the script. Moved to `GAPS_HISTORY.md`.)*
 
 ### P2-22 — Cross-analyst discovery duplication
 **Source:** 2026-05-17 discovery cron. **Four** analysts independently added AMBA on the same Sunday; same for POET, MDB, ZS, SNOW, OKTA. Audit doc A8; handoff item #6.

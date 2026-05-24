@@ -119,9 +119,7 @@ export const morningResearch = inngest.createFunction(
         // V2 is the only path. The legacy ~600-line builder
         // (buildV2SystemPrompt — confusingly named) is marked @deprecated
         // in lib/agent/system-prompt.ts and no longer called from any cron
-        // path. All 6 production analysts are on V2 as of 2026-05-16.
-        // useV2Prompt flag stays on AgentConfig until a follow-up schema
-        // migration drops it.
+        // path.
         const systemPrompt = buildDailyRunSystemPromptV2(agentConfig, runInput);
 
         // 2d. Create tools with run context, then enforce the
