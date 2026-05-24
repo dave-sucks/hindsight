@@ -75,6 +75,15 @@ export interface AgentConfigInput {
   maxOpenPositions?: number;
   watchlist?: string[];
   exclusionList?: string[];
+  /**
+   * Firm-aggregate feed subscriptions (canonical values in lib/universe/feeds.ts:
+   * EARNINGS_CALENDAR / MARKET_MOVERS_GAINERS / MARKET_MOVERS_LOSERS / MARKET_MOVERS_ACTIVES).
+   * The signal router uses this as a Universe dimension. Discovery's Step 1 also
+   * uses it to gate which on-demand pull tools (get_earnings_calendar /
+   * get_market_movers) the agent should call — so an analyst with no MARKET_MOVERS_*
+   * subscription doesn't get the movers firehose force-pulled every Sunday.
+   */
+  feeds?: string[];
 }
 
 // ─── Daily run system prompt ─────────────────────────────────────────────────

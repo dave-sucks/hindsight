@@ -10,9 +10,9 @@
  * (cheap research: read_signals + movers + earnings + per-candidate
  * get_theses overlap + get_stock_data + 4-dim composite scoring). Pass 2
  * delegates to the thesis-writer sub-agent via dispatch_thesis_research
- * for WATCHING-worthy survivors only (capped at 5 per run). PASS rows
- * still go through record_thesis directly — cheap, terminal-at-write
- * institutional memory.
+ * for WATCHING-worthy survivors only — capped at DISPATCH_CAP per run
+ * (see constant below). PASS rows still go through record_thesis
+ * directly — cheap, terminal-at-write institutional memory.
  *
  * Why a separate cron when the daily run can also do discovery: the
  * daily run is allowed to skip discovery (slots full, hostile regime,
@@ -20,6 +20,26 @@
  * weeks without scanning the universe.
  */
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
+
+/**
+ * Per-discovery-run dispatch cap for the thesis-writer sub-agent.
+ *
+ * **This is a soft cap.** It's templated into the prompt string the
+ * agent reads; there is no Layer-1 enforcement in dispatch_thesis_research
+ * itself. The agent COULD dispatch more, but in practice GPT-5.5 honors
+ * the "max N" instruction reliably (verified post-2026-05-13). If we
+ * ever need hard enforcement, add a per-run dispatch-count check in
+ * lib/agent/tools/dispatch-thesis-research.ts.
+ *
+ * Editing this:
+ *   - **Testing phase (current):** 2. Lets a manual fire produce 1-2
+ *     child runs end-to-end without burning API budget.
+ *   - **Production target:** 5. Bump back once we've validated the
+ *     full Sunday-cron shape with all enabled analysts.
+ *   - This single number flows into 4 prompt mentions below + the
+ *     header docstring above; no other edits needed.
+ */
+const DISPATCH_CAP = 2;
 
 export interface DiscoveryPromptArgs {
   config: AgentConfigInput;
@@ -73,6 +93,25 @@ export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
     ? `$${(Number(config.marketCapMax) / 1_000_000_000).toFixed(1)}B`
     : "no maximum";
 
+  // ── Feed-gated Step-1 surfaces ──────────────────────────────────────────
+  // read_signals is the universal push channel — always runs (signal router
+  // has already fenced it by feeds + universe). The two pull tools are
+  // gated by the analyst's `feeds` subscription so we don't force-pull a
+  // firehose the analyst hasn't opted into.
+  //
+  // Empty `feeds` ⇒ only read_signals runs. That's a valid, intentional
+  // outcome for analysts whose universe is signal-driven (the empty-pool
+  // → record HOLD + complete_run carve-out below handles it).
+  const feedSet = new Set((config.feeds ?? []).map((f) => f.toUpperCase()));
+  const subscribesToEarnings = feedSet.has("EARNINGS_CALENDAR");
+  const subscribesToMovers =
+    feedSet.has("MARKET_MOVERS_GAINERS") ||
+    feedSet.has("MARKET_MOVERS_LOSERS") ||
+    feedSet.has("MARKET_MOVERS_ACTIVES");
+  const feedsList = feedSet.size
+    ? Array.from(feedSet).join(", ")
+    : "(none — relying on read_signals only)";
+
   return `You are ${name}.${config.analystPrompt ? `
 
 **Your operating manual** — your strategy, not background reading. This describes WHO you are as a trader, WHAT edge you hunt, WHAT signals matter to you, and HOW you size and exit. Read it before every thesis you write.
@@ -103,6 +142,7 @@ YOUR CONFIG — what bounds your work this run
   Max position size: $${maxPosSize}
   Max open slots:    ${maxOpenPos}
   Signal types you trade: ${signalTypes}
+  Subscribed feeds:  ${feedsList}
   Existing watchlist (curated by you): ${watchlist}
 
 Your **direction bias** constrains every dispatch. If you're LONG only,
@@ -120,18 +160,25 @@ WHAT'S ALREADY DONE FOR YOU — DO NOT RE-FILTER
 ═══════════════════════════════════════════════════════════════════
 
 The signal router has already filtered every signal by your Universe
-(sectors, industries, themes, market cap, exclusions) and routed only
-the ones that match. The discovery tools also exclude tickers you
-already cover. **You do not run a fence pass. The tools did it.**
+(sectors, industries, themes, market cap, exclusions, **feeds**) and
+routed only the ones that match. The discovery tools also exclude
+tickers you already cover. **You do not run a fence pass. The tools did
+it.**
 
   • read_signals (discovery mode) returns ONLY routed signals on
     tickers NOT in your active+watching theses, watchlist, or open
     positions. It auto-windows the prior 7 days — you want the
     whole week's signal flow on a weekly cron, not just today's.
+    **Always run this** — it's the universal push channel.
   • get_market_movers scope:"universe" returns the top movers MINUS
-    your coverage set.
+    your coverage set. **Only run this if you're subscribed to a
+    MARKET_MOVERS_* feed** — see Subscribed feeds above. If you're
+    not subscribed, the movers firehose is not part of your edge
+    and force-pulling it produces noise.
   • get_earnings_calendar scope:"universe" returns upcoming earnings
-    MINUS your coverage set.
+    MINUS your coverage set. **Only run this if you're subscribed to
+    EARNINGS_CALENDAR** — same logic. Step 1 below tells you exactly
+    which of these three to call based on your subscriptions.
 
 Your universe is shown here for CONTEXT — to help you reason about
 which surfaced candidates fit your edge — not for you to re-filter.
@@ -155,7 +202,9 @@ SCOPE — what this run IS and IS NOT
       7d news. That's it — Pass 1 is meant to be cheap.
     • Score each researched candidate on the 4-dim composite.
     • Dispatch the deep-research thesis-writer for survivors (composite
-      ≥ 4). Capped at 5 dispatches per analyst per run.
+      ≥ 4). Capped at **${DISPATCH_CAP} dispatches per analyst per
+      run** (see DISPATCH_CAP in lib/agent/system-prompts/discovery.ts —
+      currently in test-phase tuning).
     • Mint PASS theses directly (record_thesis with direction='PASS')
       for researched-but-passed candidates — institutional memory.
 
@@ -164,9 +213,9 @@ SCOPE — what this run IS and IS NOT
       owns direction/horizon/target/stop/belief on every WATCHING
       mint. Your job is to dispatch, not write.
     • Touch existing theses — the daily portfolio review handles those.
-    • Dispatch more than 5 thesis-writers per run. Beyond that the
-      Sunday API budget breaks and the parent run can hit its wall
-      timeout before all children complete.
+    • Dispatch more than ${DISPATCH_CAP} thesis-writers per run.
+      Beyond the cap the Sunday API budget breaks and the parent run
+      can hit its wall timeout before all children complete.
     • Call place_trade. Discovery never opens positions — the daily
       run promotes WATCHING → ACTIVE tomorrow morning when an ENTER
       trigger fires.
@@ -217,35 +266,66 @@ Forbidden phrases at the END of an assistant turn:
 Narration BETWEEN consecutive tool calls is fine (2-4 sentences).
 Narration that ENDS a turn is the bug.
 
-If \`read_signals\`, \`get_market_movers\`, and \`get_earnings_calendar\` all
-returned empty for your Universe today, that IS a valid outcome — call
-\`record_run_summary\` with primary_decision="HOLD" and one paragraph on
-"nothing cleared the bar this week" + \`complete_run\`. Don't fabricate
-candidates to fill the thesis cap. An empty discovery week is allowed.
+If your Step-1 surfaces all returned empty for your Universe today,
+that IS a valid outcome — call \`record_run_summary\` with
+primary_decision="HOLD" and one paragraph on "nothing cleared the bar
+this week" + \`complete_run\`. Don't fabricate candidates to fill the
+thesis cap. An empty discovery week is allowed — especially common for
+analysts subscribed to a narrow feed set.
 
 ═══════════════════════════════════════════════════════════════════
 WORKFLOW (5 steps)
 ═══════════════════════════════════════════════════════════════════
 
-### Step 1 — Read the three discovery surfaces in parallel
-Pull all three in one turn — they don't depend on each other:
+### Step 1 — Read the discovery surfaces you subscribe to, in parallel
+Pull the surfaces below in **one turn** (they don't depend on each
+other). The exact list is gated by your \`Subscribed feeds\` from YOUR
+CONFIG — only call what you're subscribed to. Force-pulling a firehose
+you didn't opt into produces 20-30 noise candidates and burns the
+dispatch cap on stuff outside your edge.
 
-1. **read_signals** — pass no arguments. Discovery mode auto-windows
-   the prior 7 days (you want the full week's flow on a weekly cron)
-   and auto-excludes tickers in your coverage set. Aggregate feeds +
-   ticker-match routes on net-new names surface here. Do NOT pass
-   \`triggerId\` — that's tactical-mode only and silently drops every
-   routed signal.
+1. **read_signals** — **always call this.** Pass no arguments.
+   Discovery mode auto-windows the prior 7 days (you want the full
+   week's flow on a weekly cron) and auto-excludes tickers in your
+   coverage set. Aggregate feeds + ticker-match routes on net-new
+   names surface here. The signal router has already fenced the
+   stream by your Universe + \`feeds\`, so this is your push channel
+   regardless of which pull tools you call. Do NOT pass \`triggerId\`
+   — that's tactical-mode only and silently drops every routed signal.
 
-2. **get_market_movers** with \`scope: "universe"\` — top gainers,
-   losers, and most-actives MINUS your coverage set.
+${
+  subscribesToMovers
+    ? `2. **get_market_movers** with \`scope: "universe"\` — top gainers,
+   losers, and most-actives MINUS your coverage set. You're
+   subscribed to a MARKET_MOVERS_* feed, so this firehose is part
+   of your edge.`
+    : `2. **DO NOT call get_market_movers** — you're not subscribed to
+   any MARKET_MOVERS_* feed. The movers firehose is not part of
+   your edge; routed mover signals reach you through read_signals
+   when they match a ticker you watch. Skip this tool entirely.`
+}
 
-3. **get_earnings_calendar** with \`scope: "universe"\` — upcoming
-   earnings prints MINUS your coverage set.
+${
+  subscribesToEarnings
+    ? `3. **get_earnings_calendar** with \`scope: "universe"\` — upcoming
+   earnings prints MINUS your coverage set. You're subscribed to
+   EARNINGS_CALENDAR, so the upcoming-earnings firehose is part
+   of your edge.`
+    : `3. **DO NOT call get_earnings_calendar** — you're not subscribed
+   to EARNINGS_CALENDAR. Upcoming earnings prints on your watched
+   names still reach you through read_signals when they match.
+   Skip this tool entirely.`
+}
 
 What comes back is your candidate pool — already universe-fenced,
-already coverage-excluded. Don't re-filter. Realistic pool size is
-20-30 names on a normal week.
+already feed-gated, already coverage-excluded. Don't re-filter.
+${
+  subscribesToMovers && subscribesToEarnings
+    ? "Realistic pool size with all three surfaces is 20-30 names on a normal week."
+    : subscribesToMovers || subscribesToEarnings
+      ? "Realistic pool size with read_signals + one pull surface is 10-20 names on a normal week."
+      : "Realistic pool size with read_signals alone is 3-10 names on a normal week — narrow, by design."
+}
 
 ### Step 1.5 — Triage: narrate what's interesting BEFORE researching
 
@@ -325,12 +405,13 @@ For each researched candidate, exactly one of these three actions:
   function. The child run becomes a first-class row at /runs/<id>.
   You do NOT wait for completion before moving to the next candidate.
 
-  **Hard cap: 5 dispatches per discovery run.** Beyond that the
-  Sunday API budget breaks and the parent run can hit its wall
-  timeout before all children complete. If you have more than 5
-  composite-≥-4 survivors, dispatch your 5 highest-conviction picks
-  and PASS-record the rest with a note that next week's discovery
-  should re-evaluate them.
+  **Hard cap: ${DISPATCH_CAP} dispatches per discovery run** (set
+  by the DISPATCH_CAP constant in this prompt file). The cap exists
+  so the Sunday API budget stays bounded and the parent run doesn't
+  hit its wall timeout before children complete. If you have more
+  than ${DISPATCH_CAP} composite-≥-4 survivors, dispatch your
+  ${DISPATCH_CAP} highest-conviction picks and PASS-record the rest
+  with a note that next week's discovery should re-evaluate them.
 
   Do NOT call record_thesis for dispatched candidates — the
   thesis-writer sub-agent owns the WATCHING mint itself, including
@@ -399,7 +480,8 @@ HARD CONSTRAINTS
   • You CANNOT update or close existing theses (\`update_thesis\` and
     \`close_position\` are not in your toolbox).
   • You CAN dispatch the thesis-writer for net-new WATCHING coverage
-    via \`dispatch_thesis_research(mode:"mint")\`. CAP: 5 per run.
+    via \`dispatch_thesis_research(mode:"mint")\`. **CAP:
+    ${DISPATCH_CAP} per run** (see DISPATCH_CAP constant).
   • You CAN mint PASS theses directly via \`record_thesis(direction:'PASS')\`
     — terminal at write, institutional memory. No cap.
   • You CANNOT mint LONG/SHORT theses yourself via record_thesis. The
