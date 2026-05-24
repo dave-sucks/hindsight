@@ -1005,18 +1005,64 @@ function AnalystVerdictBadge({
   );
 }
 
+/**
+ * Largest-remainder (Hamilton) apportionment: distribute exactly `slots`
+ * across the input buckets in proportion to their counts. Every bucket
+ * with a non-zero count gets at least 1 slot (a tiny minority bucket
+ * shouldn't disappear from the bar). Returns a same-length array of
+ * integer slot counts that always sums to exactly `slots`.
+ */
+function allocateSlots(counts: number[], slots: number): number[] {
+  const total = counts.reduce((s, c) => s + c, 0);
+  if (total === 0) return counts.map(() => 0);
+  const exact = counts.map((c) => (c / total) * slots);
+  const out = exact.map(Math.floor);
+  // Hand out remainders to whichever buckets have the largest fractional
+  // shortfall, until the slots add up exactly.
+  let remaining = slots - out.reduce((s, n) => s + n, 0);
+  const byRemainder = exact
+    .map((e, i) => ({ i, r: e - Math.floor(e) }))
+    .sort((a, b) => b.r - a.r);
+  for (const { i } of byRemainder) {
+    if (remaining <= 0) break;
+    out[i]++;
+    remaining--;
+  }
+  // Minimum-1 nudge for non-zero buckets that rounded to 0. Steal from
+  // the largest bucket so the sum stays exactly `slots`.
+  for (let i = 0; i < counts.length; i++) {
+    if (counts[i] > 0 && out[i] === 0) {
+      let maxIdx = 0;
+      for (let j = 1; j < out.length; j++) if (out[j] > out[maxIdx]) maxIdx = j;
+      if (out[maxIdx] > 1) {
+        out[maxIdx]--;
+        out[i]++;
+      }
+    }
+  }
+  return out;
+}
+
 function ConsensusDistributionRow({
   consensus,
 }: {
   consensus: { buy: number; hold: number; sell: number; total: number };
 }) {
   const { buy, hold, sell, total } = consensus;
-  // One tick per analyst, ordered Sell → Hold → Buy across the bar.
-  const ticks: Tick[] = Array.from({ length: total }, (_, i) => ({
+  // Fixed-width 60-tick bar with segments sized by proportion of each
+  // bucket. Same density as the PriceGauge below it so the two visuals
+  // read at the same scale. Prior approach (1 tick per analyst) looked
+  // anemic at 2 analysts and bled together at 50+ — proportional renders
+  // identically at any analyst count.
+  //
+  // Order across the bar: Sell (red) → Hold (grey) → Buy (green), L→R.
+  const [sellSlots, holdSlots] = allocateSlots([sell, hold, buy], 60);
+
+  const ticks: Tick[] = Array.from({ length: 60 }, (_, i) => ({
     color:
-      i < sell
+      i < sellSlots
         ? "bg-negative"
-        : i < sell + hold
+        : i < sellSlots + holdSlots
           ? "bg-muted-foreground/40"
           : "bg-positive",
     tall: true,
