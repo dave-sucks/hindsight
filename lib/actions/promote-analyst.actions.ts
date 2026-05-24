@@ -232,6 +232,11 @@ export async function promoteAnalystToLive(
         promotionRealizedPnl: closeResult.realizedPnl,
         promotionClosePrice: closeResult.closePrice,
         promotionFillStatus: closeResult.fillStatus,
+        // Link the audit row to the position we just closed so the
+        // thesis timeline can render a "View trade" deeplink. Lets the
+        // user click through from the PROMOTED entry to the closed
+        // paper trade with its final P&L.
+        tradeId: pos.id,
       });
       if (promoted) promotedCount++;
     } catch (err) {
@@ -305,6 +310,8 @@ async function transitionThesisToPromoted(input: {
   promotionFillStatus: "FILLED" | "PENDING";
   thesisId?: string;
   isOrphan?: boolean;
+  /** Position id of the paper trade just closed at promotion (null for orphans). */
+  tradeId?: string;
 }): Promise<boolean> {
   const thesis = input.thesisId
     ? await prisma.thesis.findUnique({
@@ -370,9 +377,22 @@ async function transitionThesisToPromoted(input: {
     summary,
     rationale:
       "Administrative transition, not a thesis decision. First live run is expected to call place_trade (re-enter) or update_thesis(WATCHING) (defer). Killing a PROMOTED thesis directly is forbidden by update_thesis.",
-    fieldChanges: { status: { from: "ACTIVE", to: "PROMOTED" } },
+    // Structured diff — the timeline UI reads `status.to === "PROMOTED"`
+    // to identify these rows; the conviction-context numbers give the
+    // user a quick read on what was held without re-deriving from
+    // joined Position rows.
+    fieldChanges: {
+      status: { from: "ACTIVE", to: "PROMOTED" },
+      paperRealizedPnl: { from: null, to: cumulativePaperPnl },
+      paperTenureDays: { from: null, to: paperTenureDays },
+      paperReviewCount: { from: null, to: reviewCount },
+    },
     runId: null,
     priceAtTime: input.promotionClosePrice,
+    // Linked Position id — drives the "View trade" deeplink on the
+    // timeline entry. Null for orphan ACTIVE theses with no position
+    // to close (the writeThesisUpdate helper handles null fine).
+    tradeId: input.tradeId,
   });
 
   return true;

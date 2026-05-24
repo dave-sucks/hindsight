@@ -214,6 +214,17 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                         </Link>
                       </>
                     ) : null}
+                    {u.tradeId ? (
+                      <>
+                        <span className="opacity-40">·</span>
+                        <Link
+                          href={`/trades/${u.tradeId}`}
+                          className="hover:text-foreground underline-offset-4 hover:underline"
+                        >
+                          View trade
+                        </Link>
+                      </>
+                    ) : null}
                     {u.signalIds.length > 0 ? (
                       <>
                         <span className="opacity-40">·</span>
