@@ -42,8 +42,10 @@ import {
 const STATUS_VALUES = [
   "ACTIVE",
   "WATCHING",
+  "PROMOTED",
   "INVALIDATED",
   "CLOSED",
+  "ARCHIVED",
   "SUPERSEDED",
 ] as const;
 
@@ -128,7 +130,12 @@ export const getTheses = defineTool({
       };
     }
 
-    const statuses = (args.status ?? ["ACTIVE", "WATCHING"]).map((s) =>
+    // Default scope is the live coverage book = the rows the closeout
+    // contract expects a tool call on this run: ACTIVE (held) + WATCHING
+    // (waiting for entry trigger) + PROMOTED (waiting for first-live-run
+    // decision). All three need to surface by default; the agent has to
+    // resolve every PROMOTED row this run or fail the closeout gate.
+    const statuses = (args.status ?? ["ACTIVE", "WATCHING", "PROMOTED"]).map((s) =>
       s.toString(),
     );
     const limit = Math.min(args.limit ?? 25, 50);
@@ -211,6 +218,10 @@ export const getTheses = defineTool({
         closedAt: true,
         closeReason: true,
         parentThesisId: true,
+        promotedAt: true,
+        paperTenureDays: true,
+        paperRealizedPnl: true,
+        paperReviewCount: true,
         // Deep-research artifacts — opt in via include_research. PR-9
         // flattened `researchSections` blob into 9 first-class columns;
         // selecting all of them by name.
@@ -385,9 +396,15 @@ export const getTheses = defineTool({
         status: t.status as
           | "ACTIVE"
           | "WATCHING"
+          | "PROMOTED"
           | "INVALIDATED"
           | "CLOSED"
           | "SUPERSEDED",
+        // PROMOTED-only context fields. Null on non-PROMOTED rows.
+        promoted_at: t.promotedAt ? t.promotedAt.toISOString() : null,
+        paper_tenure_days: t.paperTenureDays ?? null,
+        paper_realized_pnl: t.paperRealizedPnl ?? null,
+        paper_review_count: t.paperReviewCount ?? null,
         // Surface the per-thesis needsAction annotation so the
         // ThesisCardRenderer / read-theses-table can show an alert chip
         // on rows that need work today.
@@ -399,10 +416,13 @@ export const getTheses = defineTool({
     const watchingCount = enriched.filter(
       (t) => t.status === "WATCHING",
     ).length;
+    const promotedCount = enriched.filter(
+      (t) => t.status === "PROMOTED",
+    ).length;
     const summary =
       enriched.length === 0
         ? "No theses match those filters."
-        : `${enriched.length} thes${enriched.length === 1 ? "is" : "es"} (${activeCount} active, ${watchingCount} watching).`;
+        : `${enriched.length} thes${enriched.length === 1 ? "is" : "es"} (${activeCount} active, ${watchingCount} watching${promotedCount > 0 ? `, ${promotedCount} promoted awaiting live entry` : ""}).`;
 
     return {
       summary,

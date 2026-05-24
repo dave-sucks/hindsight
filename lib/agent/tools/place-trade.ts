@@ -694,6 +694,36 @@ export const placeTrade = defineTool({
         }
       }
 
+      // ── PROMOTED → ACTIVE auto-transition ──────────────────────────────
+      // If the thesis was PROMOTED (first-live-run re-entry), flip it to
+      // ACTIVE now that we have an open live position. Belt-and-suspenders
+      // — the agent SHOULD have called update_thesis(change_status: ACTIVE)
+      // first, but if it skipped that step the trade itself is the explicit
+      // intent to enter and we shouldn't leave the thesis in PROMOTED with
+      // a live position attached.
+      //
+      // Fires on both FILLED and PENDING paths. On PENDING the close hasn't
+      // landed but the agent committed to the entry; reconcile-orders will
+      // either confirm or cancel the order, and either outcome is consistent
+      // with ACTIVE (a cancellation rolls back via the existing close path).
+      try {
+        const promotedThesis = await prisma.thesis.findUnique({
+          where: { id: args.thesis_id },
+          select: { id: true, status: true },
+        });
+        if (promotedThesis && promotedThesis.status === "PROMOTED") {
+          await prisma.thesis.update({
+            where: { id: promotedThesis.id },
+            data: { status: "ACTIVE", promotedAt: null },
+          });
+        }
+      } catch (err) {
+        console.warn(
+          `[place_trade] PROMOTED → ACTIVE auto-transition failed for thesis ${args.thesis_id}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+
       // suppress unused warning if a path doesn't read submitOutcome
       void submitOutcome;
 

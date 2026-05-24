@@ -56,6 +56,7 @@ In the code, these four parts are encoded across **structured triggers** (the ac
 |----------------|-------------------------------------------------------------------------|---------------|
 | `WATCHING`     | Active tracking; triggers maintained; reviewed on cadence.              | **Yes**       |
 | `ACTIVE`       | Position open via Alpaca.                                               | No — in Positions |
+| `PROMOTED`     | Conviction-pause. ACTIVE+held → user promoted analyst PAPER→LIVE → paper position force-closed → awaiting first-live-run resolution. Set only by the promote-analyst action; rejected by `record_thesis` / `update_thesis` at the Zod layer. | Surfaces as "Awaiting live entry" |
 | `CLOSED`       | Position was opened and closed.                                         | No            |
 | `INVALIDATED`  | Held a view; evidence disproved it.                                     | No            |
 | `ARCHIVED`     | Terminal without trade or view-invalidation. PASS at write, manual remove, editor remove, walk-away. | No |
@@ -63,14 +64,16 @@ In the code, these four parts are encoded across **structured triggers** (the ac
 
 ### Legal `(direction, status)` pairs
 
-Enforced at write in `record_thesis` and `update_thesis`:
+Enforced at write in `record_thesis`, `update_thesis`, and the promote-analyst action:
 
 ```
-(PENDING, WATCHING)                          seed
-(LONG,    WATCHING|ACTIVE|CLOSED|INVALIDATED|ARCHIVED|SUPERSEDED)
-(SHORT,   WATCHING|ACTIVE|CLOSED|INVALIDATED|ARCHIVED|SUPERSEDED)
-(PASS,    ARCHIVED)                          terminal at write
+(PENDING,     WATCHING)                          seed
+(LONG,        WATCHING|ACTIVE|PROMOTED|CLOSED|INVALIDATED|ARCHIVED|SUPERSEDED)
+(SHORT,       WATCHING|ACTIVE|PROMOTED|CLOSED|INVALIDATED|ARCHIVED|SUPERSEDED)
+(PASS,        ARCHIVED)                          terminal at write
 ```
+
+PROMOTED is set only by the promote-analyst action (not by `record_thesis` / `update_thesis`). Its only legal exits are PROMOTED → ACTIVE (re-enter via place_trade) or PROMOTED → WATCHING (defer via update_thesis). INVALIDATED / CLOSED / ARCHIVED transitions from PROMOTED are rejected at the tool layer — the analyst held the name with conviction; the user explicitly chose to graduate the analyst; killing the thesis without revisiting it is the wrong shape.
 
 Anything else is rejected with a structured error.
 
@@ -94,7 +97,19 @@ LONG/SHORT + WATCHING   (on the watchlist; has triggers)
 
 LONG/SHORT + ACTIVE   (position open)
   │
-  └─→ LONG/SHORT + CLOSED        (close_position fires)              [terminal]
+  ├─→ LONG/SHORT + CLOSED        (close_position fires)              [terminal]
+  └─→ LONG/SHORT + PROMOTED      (user promotes analyst PAPER→LIVE; paper
+                                  position force-closed; conviction context
+                                  frozen on the row)
+
+
+LONG/SHORT + PROMOTED   (held in paper, just promoted to live)
+  │
+  ├─→ LONG/SHORT + ACTIVE        (place_trade fires; live entry — default)
+  └─→ LONG/SHORT + WATCHING      (update_thesis change_status: "WATCHING";
+                                  defer re-entry — only legal opt-out)
+
+  ❌ NOT ALLOWED from PROMOTED: INVALIDATED, CLOSED, ARCHIVED. Tool rejects.
 
 
 PASS + ARCHIVED   [terminal at write — no transitions out]
@@ -306,6 +321,31 @@ Two stages, in different runs. Mode allowlists forbid Daily/Tactical from mintin
    - Mints three `Thesis({ direction: 'PENDING', status: 'WATCHING', source_kind: 'BUILDER_SEED' })` rows under that run.
    - Writes one `ThesisUpdate(type='CREATED')` per seed.
 3. First daily run's `get_theses` returns all three PENDINGs with `needsAction = REVIEW_DUE / pendingFirstReview`. Agent researches them on Day 1.
+
+### Scenario J — User promotes an analyst PAPER → LIVE.
+
+Analyst has been running in paper for a while. Two open paper positions: $NVDA LONG, $AMD LONG. Three WATCHING theses. One ARCHIVED PASS (institutional memory).
+
+1. User clicks "Promote to live" on the analyst detail page → confirms in dialog by typing the analyst name.
+2. `promoteAnalystToLive` server action runs:
+   - Resolves live Alpaca creds and verifies via `getAccount`. Refuses if the live key isn't saved or doesn't authenticate.
+   - Refuses if a `ResearchRun(status='RUNNING')` exists for the analyst.
+   - For each open paper position, in order:
+     - `closeOpenPosition(pos.id, "MANUAL", ...)` — closes at market in the **paper** Alpaca account (creds resolved from `Position.environment`).
+     - Marks `Position.closeReason = "PROMOTED"`.
+     - Transitions the linked `ACTIVE` thesis to `PROMOTED`, freezing conviction context: `promotedAt`, `paperTenureDays`, `paperRealizedPnl` (cumulative across all paper closes on this ticker), `paperReviewCount` (count of UPDATED/REVIEWED audit rows on the thesis).
+     - Writes one `ThesisUpdate(type='STATUS_CHANGED', fieldChanges: { status: { from: 'ACTIVE', to: 'PROMOTED' } })`.
+   - Each (close, position update, thesis transition) commits before moving to the next ticker — a mid-flight Alpaca failure leaves a coherent state and the user can retry.
+   - Marks any ACTIVE-orphan theses (LONG/SHORT, no open position) as PROMOTED too — same conviction shape; the close step is a no-op.
+   - Flips `AgentConfig.tradingEnvironment` to `LIVE` (optionally updates `realMaxPosition` from the dialog).
+3. WATCHING theses are untouched. The PASS ARCHIVED stays ARCHIVED. The watchlist seeds (PENDING WATCHING) stay PENDING WATCHING.
+4. Next daily run (now in LIVE mode) sees: 0 ACTIVE theses, 2 PROMOTED theses ($NVDA, $AMD), 3 WATCHING theses, 1 PENDING WATCHING (seed). Structurally different from any prior run — the agent's whole job that morning is graduating PROMOTED + WATCHING to live positions.
+5. Per-thesis review:
+   - PROMOTED $NVDA: `get_stock_data` → recompute target/stop relative to today's price → `update_thesis(change_status: "ACTIVE", target_price: ..., stop_loss: ...)` → `place_trade`. Trade fills live. Thesis is now ACTIVE.
+   - PROMOTED $AMD: $AMD has run +9% past the paper-era target while the user was reviewing the dialog. Agent calls `update_thesis(change_status: "WATCHING", rationale: "Captured the move; let the WATCHING flow re-enter if it pulls back to N")`. Thesis is now WATCHING with old ENTER trigger.
+   - WATCHING theses: walked the normal way; some get promoted, some stay watching.
+   - PENDING WATCHING: gets researched and committed exactly like Scenario A — but the resulting LONG/SHORT lands in the live account on next entry.
+6. If user later demotes LIVE → PAPER (`demoteAnalystToPaper` or `closeAllLivePositionsAndDemote`), any remaining PROMOTED theses revert to WATCHING with a STATUS_CHANGED audit row. Conviction context fields stay on the row for later reference; `promotedAt` clears.
 
 ---
 

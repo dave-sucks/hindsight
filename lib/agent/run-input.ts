@@ -97,6 +97,11 @@ export interface RunInput {
     nextReviewAt: string | null;
     catalystDate: string | null;
     maxHoldDays: number | null;
+    // PROMOTED-only context — null on non-PROMOTED rows.
+    promotedAt: string | null;
+    paperTenureDays: number | null;
+    paperRealizedPnl: number | null;
+    paperReviewCount: number | null;
   }>;
   performance: {
     winRate: number | null;
@@ -337,7 +342,26 @@ export async function buildRunInput(
   // 5. Active theses (depends on positions + watchlist symbols)
   const openSymbols = openPositions.map((p) => p.symbol);
   const watchSymbols = watchlistItems.map((w) => w.symbol);
-  const allRelevantSymbols = [...new Set([...openSymbols, ...watchSymbols])];
+  // PROMOTED theses must show up in the Live Theses table even if their
+  // ticker isn't on the watchlist and has no open position (paper position
+  // was just force-closed). Pull their tickers separately and merge in.
+  // Without this, a PROMOTED thesis whose ticker isn't on the watchlist
+  // would be invisible to Step 2 and the closeout gate, and the agent could
+  // skip it without failing the run.
+  const promotedTickerRows = await prisma.thesis
+    .findMany({
+      where: {
+        status: "PROMOTED",
+        researchRun: { agentConfigId: analystId },
+      },
+      select: { ticker: true },
+      distinct: ["ticker"],
+    })
+    .catch(() => [] as Array<{ ticker: string }>);
+  const promotedSymbols = promotedTickerRows.map((r) => r.ticker);
+  const allRelevantSymbols = [
+    ...new Set([...openSymbols, ...watchSymbols, ...promotedSymbols]),
+  ];
 
   // Coverage scope: every thesis the Step 2 close-out contract expects a
   // ThesisUpdate row for this run. ACTIVE (held) AND WATCHING (entry-gated)
@@ -351,13 +375,19 @@ export async function buildRunInput(
     stopLoss: number | null; createdAt: Date; researchRunId: string; status: string;
     horizon: string | null; coreBelief: string | null; nextReviewAt: Date | null;
     catalystDate: Date | null; maxHoldDays: number | null;
+    promotedAt: Date | null; paperTenureDays: number | null;
+    paperRealizedPnl: number | null; paperReviewCount: number | null;
   }> = [];
 
   if (allRelevantSymbols.length > 0) {
     try {
       activeTheses = await prisma.thesis.findMany({
         where: {
-          status: { in: ["ACTIVE", "WATCHING"] },
+          // PROMOTED theses count as "live theses" for the closeout
+          // contract — they MUST be acted on each run (place_trade or
+          // update_thesis(WATCHING)). Inclusion here drives the expected-
+          // coverage count in morning-research's coverage-violation gate.
+          status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
           ticker: { in: allRelevantSymbols },
           researchRun: { agentConfigId: analystId },
         },
@@ -374,6 +404,10 @@ export async function buildRunInput(
           // without a get_theses round-trip.
           horizon: true, coreBelief: true, nextReviewAt: true,
           catalystDate: true, maxHoldDays: true,
+          // PROMOTED context — used by Stage 2's PROMOTED block to render
+          // the conviction picture (tenure, P&L, review count) inline.
+          promotedAt: true, paperTenureDays: true,
+          paperRealizedPnl: true, paperReviewCount: true,
         },
       });
     } catch (err) {
@@ -775,6 +809,11 @@ export async function buildRunInput(
         nextReviewAt: t.nextReviewAt ? t.nextReviewAt.toISOString() : null,
         catalystDate: t.catalystDate ? t.catalystDate.toISOString() : null,
         maxHoldDays: t.maxHoldDays,
+        // PROMOTED context — null on non-PROMOTED rows.
+        promotedAt: t.promotedAt ? t.promotedAt.toISOString() : null,
+        paperTenureDays: t.paperTenureDays,
+        paperRealizedPnl: t.paperRealizedPnl,
+        paperReviewCount: t.paperReviewCount,
       };
     }),
     performance,

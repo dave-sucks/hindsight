@@ -72,10 +72,14 @@ export const discoveryRun = inngest.createFunction(
 
         // Load the analyst's existing thesis tickers (active + watching)
         // so the discovery prompt knows what NOT to re-cover.
+        // PROMOTED is included — those are tickers the analyst is actively
+        // tracking, just in a transition state (paper closed, waiting on
+        // first live run). Discovery would otherwise mint a fresh
+        // WATCHING thesis on a name we're already covering.
         const existingTheses = await prisma.thesis.findMany({
           where: {
             researchRun: { agentConfigId: config.id },
-            status: { in: ["ACTIVE", "WATCHING"] },
+            status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
           },
           select: { ticker: true },
           distinct: ["ticker"],
