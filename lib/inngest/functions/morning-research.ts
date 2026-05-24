@@ -119,9 +119,7 @@ export const morningResearch = inngest.createFunction(
         // V2 is the only path. The legacy ~600-line builder
         // (buildV2SystemPrompt — confusingly named) is marked @deprecated
         // in lib/agent/system-prompt.ts and no longer called from any cron
-        // path. All 6 production analysts are on V2 as of 2026-05-16.
-        // useV2Prompt flag stays on AgentConfig until a follow-up schema
-        // migration drops it.
+        // path.
         const systemPrompt = buildDailyRunSystemPromptV2(agentConfig, runInput);
 
         // 2d. Create tools with run context, then enforce the
@@ -136,6 +134,7 @@ export const morningResearch = inngest.createFunction(
           userId: config.userId,
           accountId: config.accountId,
           analystId: config.id,
+          runMode: "MORNING_PLAN",
           watchlist: watchlistSymbols,
           exclusionList: config.exclusionList ?? [],
           sectors: config.sectors ?? [],
@@ -186,7 +185,12 @@ export const morningResearch = inngest.createFunction(
 
         try {
           const { text, steps, response } = await generateText({
-            model: openai("gpt-4o"),
+            // 2026-05-15 — model + abortSignal now read from MODES["research-run"]
+            // instead of hardcoded "gpt-4o" + 240_000ms. The cron path was the
+            // last spot still hardcoded; tactical + discovery already used the
+            // pattern below. See lib/agent/modes.ts for the gpt-5.5 swap
+            // rationale and the Vercel Pro maxDuration:800 upgrade.
+            model: openai(MODES["research-run"].model),
             system: systemPrompt,
             prompt: userPrompt,
             tools,
@@ -199,7 +203,13 @@ export const morningResearch = inngest.createFunction(
               openai: { strictJsonSchema: true },
             },
             stopWhen: stepCountIs(30),
-            abortSignal: AbortSignal.timeout(240_000), // 4 min — leaves 1 min for cleanup before Vercel's 5 min limit
+            // (maxDuration - 30) * 1000 leaves 30s of headroom before Vercel's
+            // hard kill so the catch block can persist messages + mark the run
+            // COMPLETE/FAILED cleanly. With maxDuration=800 under Pro, this is
+            // 770_000ms — was 240_000ms hardcoded prior to the gpt-5.5 swap.
+            abortSignal: AbortSignal.timeout(
+              (MODES["research-run"].maxDuration - 30) * 1000,
+            ),
             onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, text: stepText, finishReason, usage }) {
               const now = Date.now();
               const elapsed = now - t0;
@@ -422,7 +432,8 @@ export const morningResearch = inngest.createFunction(
                   "When in doubt, prefer update_thesis with empty patch + a rationale (this writes a REVIEWED entry to the timeline and counts as the required thesis touch). " +
                   "Then call record_run_summary. Then call complete_run. Any text output beyond a short status sentence is a failure.";
               const retry = await generateText({
-                model: openai("gpt-4o"),
+                // Same model as the main run — switches with research-run config.
+                model: openai(MODES["research-run"].model),
                 system: systemPrompt,
                 messages: [
                   ...priorMessages,
@@ -434,6 +445,9 @@ export const morningResearch = inngest.createFunction(
                 tools,
                 providerOptions: { openai: { strictJsonSchema: true } },
                 stopWhen: stepCountIs(15),
+                // Retry is a quick fallback — keep a tight 120s budget regardless
+                // of the main run's maxDuration. gpt-5.5 at ~13s/call still fits
+                // 9 calls in 120s, plenty for a focused finish-the-summary pass.
                 abortSignal: AbortSignal.timeout(120_000),
                 onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, finishReason }) {
                   const now = Date.now();
@@ -722,8 +736,9 @@ export const morningResearch = inngest.createFunction(
           return { tradesPlaced, steps: steps.length, toolCalls, elapsedMs: elapsed };
         } catch (err) {
           const isTimeout = err instanceof Error && (err.name === "AbortError" || err.message.includes("aborted") || err.message.includes("timed out"));
+          const abortBudgetS = MODES["research-run"].maxDuration - 30;
           let message = isTimeout
-            ? `Agent timed out after 4 minutes (${Math.round((Date.now() - t0) / 1000)}s elapsed). Any theses and trades completed before timeout are preserved.`
+            ? `Agent timed out after ${abortBudgetS}s (${Math.round((Date.now() - t0) / 1000)}s elapsed). Any theses and trades completed before timeout are preserved.`
             : err instanceof Error ? err.message : String(err);
           console.error(`[morning-research] Agent ${isTimeout ? "TIMED OUT" : "FAILED"} for ${config.name}: ${message}`);
 
@@ -745,7 +760,8 @@ export const morningResearch = inngest.createFunction(
             );
             try {
               const recoveryResp = await generateText({
-                model: openai("gpt-4o"),
+                // Same model as the main run.
+                model: openai(MODES["research-run"].model),
                 system: systemPrompt,
                 prompt:
                   `The prior attempt at your morning run produced zero tool calls before timing out. Start NOW. ` +
@@ -754,6 +770,9 @@ export const morningResearch = inngest.createFunction(
                 tools,
                 providerOptions: { openai: { strictJsonSchema: true } },
                 stopWhen: stepCountIs(30),
+                // Recovery is a quick fallback after a zero-tool-call timeout —
+                // keep 120s regardless of main maxDuration. If recovery itself
+                // produces no tool calls, FAILED is correct.
                 abortSignal: AbortSignal.timeout(120_000),
               });
               const recoveryToolCalls = recoveryResp.steps.reduce(

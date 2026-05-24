@@ -5,6 +5,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,7 +106,10 @@ export async function getAccuracyStats(
         take: 1,
         include: {
           thesis: {
-            select: { confidenceScore: true, signalTypes: true },
+            // PR-9: confidenceScore (Int) → scoring.composite (/10).
+            // signalTypes (String[]) dropped — signal-type rollup below
+            // now joins through sourceSignalIds → Signal.aggregateType.
+            select: { scoring: true, sourceSignalIds: true },
           },
         },
       },
@@ -142,9 +146,13 @@ export async function getAccuracyStats(
   const overallWinRate = winRateFrom(wins, n);
 
   // ── Calibration buckets ───────────────────────────────────────────────────
+  // PR-9: legacy Thesis.confidenceScore (0-100 Int) was dropped. The
+  // replacement is scoring.composite (0-10), so we multiply by 10 to keep
+  // the bucket thresholds (e.g. 70-79%) working unchanged.
   const calibration: CalibrationBucket[] = CONFIDENCE_BUCKETS.map((b) => {
     const inBucket = positions.filter((p) => {
-      const conf = getThesis(p)?.confidenceScore ?? 0;
+      const composite = getThesisComposite(getThesis(p) ?? { scoring: null });
+      const conf = composite != null ? composite * 10 : 0;
       return conf >= b.min && conf <= b.max;
     });
     const bucketWins = inBucket.filter((p) => p.outcome === "WIN").length;
@@ -159,14 +167,43 @@ export async function getAccuracyStats(
   });
 
   // ── Signal-type accuracy ──────────────────────────────────────────────────
+  // PR-9 rebuild: the legacy `Thesis.signalTypes` String[] column is gone.
+  // The same rollup now joins through `Thesis.sourceSignalIds[]` →
+  // `Signal[].aggregateType`. Each closed Position whose thesis cited a
+  // routed signal contributes the signal's aggregateType into the bucket.
+  // Theses without source signals (WEB_SEARCH / WATCHLIST_REVIEW provenance)
+  // don't contribute — same behavior as the old code path when the agent
+  // omitted signalTypes.
+  const allSignalIds = new Set<string>();
+  for (const p of positions) {
+    const ids = getThesis(p)?.sourceSignalIds ?? [];
+    for (const id of ids) allSignalIds.add(id);
+  }
+  const signalAggMap = new Map<string, string>(); // signalId → aggregateType
+  if (allSignalIds.size > 0) {
+    const signalRows = await prisma.signal.findMany({
+      where: { id: { in: Array.from(allSignalIds) } },
+      select: { id: true, aggregateType: true },
+    });
+    for (const s of signalRows) {
+      if (s.aggregateType) signalAggMap.set(s.id, s.aggregateType);
+    }
+  }
   const signalMap = new Map<string, { wins: number; total: number }>();
   for (const pos of positions) {
-    const signals: string[] = getThesis(pos)?.signalTypes ?? [];
-    for (const sig of signals) {
-      const entry = signalMap.get(sig) ?? { wins: 0, total: 0 };
+    const ids = getThesis(pos)?.sourceSignalIds ?? [];
+    // De-dup aggregateTypes per thesis — a thesis citing 3 EARNINGS_BEAT
+    // signals should only contribute once to that bucket.
+    const aggTypes = new Set<string>();
+    for (const id of ids) {
+      const agg = signalAggMap.get(id);
+      if (agg) aggTypes.add(agg);
+    }
+    for (const agg of aggTypes) {
+      const entry = signalMap.get(agg) ?? { wins: 0, total: 0 };
       entry.total++;
       if (pos.outcome === "WIN") entry.wins++;
-      signalMap.set(sig, entry);
+      signalMap.set(agg, entry);
     }
   }
   const signalAccuracy: SignalAccuracy[] = Array.from(signalMap.entries())

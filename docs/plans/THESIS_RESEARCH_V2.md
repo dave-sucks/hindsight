@@ -1,5 +1,27 @@
 # Hindsight — Thesis Research V2 (RAG architecture)
 
+> ## ⚠ Schema design superseded — read this first
+>
+> **The persistence shape described below (a single `researchSections` JSONB
+> blob with 9 nested sub-keys) is OBSOLETE.** It is replaced by the **9 flat
+> top-level columns** design in
+> [`THESIS_CLEANUP.md` §1.1-1.5](./THESIS_CLEANUP.md#11-what-the-v2-thesis-writer-actually-produces),
+> shipped/pending via PR-9. Three sections (Snapshot, Bull Case, Bear Case)
+> are **rename+retype** of existing `reasoningSummary` / `thesisBullets` /
+> `riskFlags`. Six sections are new columns. The blob is dropped.
+>
+> Everything else in this doc — the data-layer tools, the meta-tool
+> (`write_thesis_research`), the `thesis-writer` agent mode, the
+> `dispatch_thesis_research` orchestration pattern, the per-orchestrator
+> invocation table — is **still canonical**. Only the storage shape changed.
+>
+> When you read §4 (the meta-tool) and §7 (the schema migration), treat the
+> `researchSections Json?` field there as **superseded** by the 9 flat
+> columns. The meta-tool's in-memory return shape (`{ sections, citations,
+> rawDataBlock }`) is unchanged — only how it's persisted differs.
+>
+> ---
+>
 > **Status (as of 2026-05-14):** Proposed. Not yet implemented.
 >
 > **Supersedes:** [`THESIS_RESEARCH_V2_OUTDATED.md`](./THESIS_RESEARCH_V2_OUTDATED.md)
@@ -24,6 +46,7 @@
 > **Owner:** principal. **Audience:** future sessions picking this up cold.
 >
 > **Related docs:**
+> - [`docs/plans/THESIS_CLEANUP.md`](./THESIS_CLEANUP.md) — canonical schema cleanup tracker (the 9-flat-columns design supersedes §7 of this doc)
 > - [`docs/VISION.md`](../VISION.md) — Pillar 2 (Thesis quality) is the success bar
 > - [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — the live thesis system reference; this plan is additive
 > - [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle; every rule maps to its correct layer

@@ -2,6 +2,10 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
+import {
+  getThesisBullCaseBullets,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -38,9 +42,10 @@ export const evaluateTrade = inngest.createFunction(
             include: {
               thesis: {
                 select: {
-                  reasoningSummary: true,
-                  signalTypes: true,
-                  thesisBullets: true,
+                  // PR-9 flat schema: reasoningSummary → snapshot,
+                  // thesisBullets → bullCase, signalTypes dropped.
+                  snapshot: true,
+                  bullCase: true,
                   sourceSignalIds: true,
                   coreBelief: true,
                   keyAssumptions: true,
@@ -106,9 +111,17 @@ P&L: ${pnlPct}%
 Outcome: ${position.outcome}
 Close reason: ${position.closeReason ?? "MANUAL"}
 Hold duration: ${holdDays} days
-${thesis?.reasoningSummary ? `\nOriginal thesis (rationale): ${thesis.reasoningSummary}` : ""}
-${thesis?.signalTypes?.length ? `Signal types: ${thesis.signalTypes.join(", ")}` : ""}
-${thesis?.thesisBullets?.length ? `\nThesis bullets:\n${thesis.thesisBullets.map((b: string) => `- ${b}`).join("\n")}` : ""}${beliefBlock}
+${thesis ? (() => {
+  // PR-9: extract narrative from the new flat columns for the evaluator
+  // prompt. signalTypes was dropped (derivable from sourceSignalIds);
+  // omitted from the prompt entirely.
+  const reasoning = getThesisSnapshotText(thesis);
+  const bullets = getThesisBullCaseBullets(thesis);
+  const parts: string[] = [];
+  if (reasoning) parts.push(`\nOriginal thesis (rationale): ${reasoning}`);
+  if (bullets.length) parts.push(`\nThesis bullets:\n${bullets.map((b) => `- ${b}`).join("\n")}`);
+  return parts.join("");
+})() : ""}${beliefBlock}
 
 Write an honest post-trade evaluation. Was the BELIEF correct (each assumption, each invalidation condition)? Was sizing appropriate? What should the analyst learn from this trade?`,
         maxOutputTokens: 500,

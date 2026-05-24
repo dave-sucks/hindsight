@@ -14,6 +14,10 @@
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
 import { parseIntelligencePolicy, type IntelligencePolicy } from "@/lib/intelligence/types";
+import {
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -239,25 +243,30 @@ export async function buildRunInput(
         direction: true,
         targetPrice: true,
         stopLoss: true,
-        confidenceScore: true,
-        reasoningSummary: true,
+        scoring: true,
+        snapshot: true,
         catalystDate: true,
         createdAt: true,
         nextReviewAt: true,
       },
     });
-    watchlistItems = watchingTheses.map((t) => ({
-      symbol: t.ticker,
-      reason: t.reasoningSummary,
-      priority: "NORMAL",
-      thesisDirection: t.direction === "PENDING" ? null : t.direction,
-      targetPrice: t.targetPrice,
-      stopPrice: t.stopLoss,
-      conviction: t.confidenceScore,
-      catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
-      createdAt: t.createdAt,
-      lastReviewedAt: t.nextReviewAt,
-    }));
+    watchlistItems = watchingTheses.map((t) => {
+      const composite = getThesisComposite(t);
+      return {
+        symbol: t.ticker,
+        reason: getThesisSnapshotText(t),
+        priority: "NORMAL",
+        thesisDirection: t.direction === "PENDING" ? null : t.direction,
+        targetPrice: t.targetPrice,
+        stopPrice: t.stopLoss,
+        // PR-9: legacy `confidenceScore` (0-100) → `scoring.composite × 10`
+        // so the same downstream display thresholds keep working.
+        conviction: composite != null ? composite * 10 : 0,
+        catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
+        createdAt: t.createdAt,
+        lastReviewedAt: t.nextReviewAt,
+      };
+    });
   } catch (err) {
     console.error("[buildRunInput] FAILED watchlist:", err);
   }
@@ -361,8 +370,8 @@ export async function buildRunInput(
   // thesis without the coverage gate firing. Variable name is historical;
   // semantics now include WATCHING.
   let activeTheses: Array<{
-    id: string; ticker: string; direction: string; confidenceScore: number;
-    reasoningSummary: string; entryPrice: number | null; targetPrice: number | null;
+    id: string; ticker: string; direction: string; scoring: unknown;
+    snapshot: unknown; entryPrice: number | null; targetPrice: number | null;
     stopLoss: number | null; createdAt: Date; researchRunId: string; status: string;
     horizon: string | null; coreBelief: string | null; nextReviewAt: Date | null;
     catalystDate: Date | null; maxHoldDays: number | null;
@@ -385,8 +394,8 @@ export async function buildRunInput(
         orderBy: { createdAt: "desc" },
         distinct: ["ticker"],
         select: {
-          id: true, ticker: true, direction: true, confidenceScore: true,
-          reasoningSummary: true, entryPrice: true, targetPrice: true,
+          id: true, ticker: true, direction: true, scoring: true,
+          snapshot: true, entryPrice: true, targetPrice: true,
           stopLoss: true, createdAt: true, researchRunId: true, status: true,
           // Durable-state fields drive the prompt's per-thesis exit-policy
           // hint + structural-belief preview. coreBelief is the durable
@@ -413,7 +422,7 @@ export async function buildRunInput(
     );
     if (thesis) {
       pos.activeThesisId = thesis.id;
-      pos.activeThesisSummary = thesis.reasoningSummary.slice(0, 200);
+      pos.activeThesisSummary = getThesisSnapshotText(thesis).slice(0, 200);
     }
   }
 
@@ -780,28 +789,33 @@ export async function buildRunInput(
       },
     },
     watchlist,
-    activeTheses: activeTheses.map((t) => ({
-      id: t.id,
-      ticker: t.ticker,
-      direction: t.direction,
-      confidence: t.confidenceScore,
-      reasoningSummary: t.reasoningSummary,
-      entryPrice: t.entryPrice,
-      targetPrice: t.targetPrice,
-      stopLoss: t.stopLoss,
-      createdAt: t.createdAt.toISOString(),
-      runId: t.researchRunId,
-      status: t.status,
-      horizon: t.horizon,
-      coreBelief: t.coreBelief,
-      nextReviewAt: t.nextReviewAt ? t.nextReviewAt.toISOString() : null,
-      catalystDate: t.catalystDate ? t.catalystDate.toISOString() : null,
-      maxHoldDays: t.maxHoldDays,
-      promotedAt: t.promotedAt ? t.promotedAt.toISOString() : null,
-      paperTenureDays: t.paperTenureDays,
-      paperRealizedPnl: t.paperRealizedPnl,
-      paperReviewCount: t.paperReviewCount,
-    })),
+    activeTheses: activeTheses.map((t) => {
+      const composite = getThesisComposite(t);
+      return {
+        id: t.id,
+        ticker: t.ticker,
+        direction: t.direction,
+        // PR-9: legacy 0-100 confidence → composite/10 × 10.
+        confidence: composite != null ? composite * 10 : 0,
+        reasoningSummary: getThesisSnapshotText(t),
+        entryPrice: t.entryPrice,
+        targetPrice: t.targetPrice,
+        stopLoss: t.stopLoss,
+        createdAt: t.createdAt.toISOString(),
+        runId: t.researchRunId,
+        status: t.status,
+        horizon: t.horizon,
+        coreBelief: t.coreBelief,
+        nextReviewAt: t.nextReviewAt ? t.nextReviewAt.toISOString() : null,
+        catalystDate: t.catalystDate ? t.catalystDate.toISOString() : null,
+        maxHoldDays: t.maxHoldDays,
+        // PROMOTED context — null on non-PROMOTED rows.
+        promotedAt: t.promotedAt ? t.promotedAt.toISOString() : null,
+        paperTenureDays: t.paperTenureDays,
+        paperRealizedPnl: t.paperRealizedPnl,
+        paperReviewCount: t.paperReviewCount,
+      };
+    }),
     performance,
     recentClosedTrades,
     priorityReviews,

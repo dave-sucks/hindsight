@@ -14,6 +14,12 @@ import { updateSegmentBriefing } from "@/lib/podcast/update-segment-briefing";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import {
+  detectNarrationHits,
+  findGaps,
+  type NarrationHit,
+  type ToolCallEvent,
+} from "@/lib/agent/narration-gate";
 
 export const completeRun = defineTool({
   description:
@@ -32,7 +38,7 @@ export const completeRun = defineTool({
       // rejections in-conversation and can recover without the run going
       // terminal. Skip for podcast segments and unscoped runs.
       if (ctx.runId && ctx.analystId && !ctx.podcastSegmentId) {
-        const preflightFailure = await runCompleteRunPreflight(ctx.runId, ctx.analystId);
+        const preflightFailure = await runCompleteRunPreflight(ctx.runId, ctx.analystId, ctx.runMode);
         if (preflightFailure) {
           return {
             summary: `complete_run refused: ${preflightFailure.shortReason}`,
@@ -274,7 +280,11 @@ export const completeRun = defineTool({
 // address triggered theses BEFORE the run is allowed to complete.
 
 type PreflightFailure = {
-  kind: "no_run_summary" | "run_already_failed" | "unaddressed_theses";
+  kind:
+    | "no_run_summary"
+    | "run_already_failed"
+    | "narration_execution_gap"
+    | "unaddressed_theses";
   shortReason: string;
   message: string;
 };
@@ -282,21 +292,38 @@ type PreflightFailure = {
 async function runCompleteRunPreflight(
   runId: string,
   analystId: string,
+  runMode?: string,
 ): Promise<PreflightFailure | null> {
   // 1) Did the agent call record_run_summary?
-  const summaryEvent = await prisma.runEvent.findFirst({
-    where: { runId, type: "run_summary" },
-    select: { id: true },
-  });
-  if (!summaryEvent) {
-    return {
-      kind: "no_run_summary",
-      shortReason: "record_run_summary not called",
-      message:
-        "complete_run refused: you must call record_run_summary BEFORE complete_run. " +
-        "Summarize this run's decisions (primary_decision, decision_rationale, ranked_picks) " +
-        "and call complete_run again.",
-    };
+  //
+  // Tactical runs are exempt: they're single-thesis, single-decision, and
+  // record_run_summary is not in the INTRADAY_TACTICAL tool allowlist
+  // (lib/agent/modes.ts). Before this exemption, every tactical run hit
+  // the gate, retried complete_run (which the agent literally couldn't
+  // satisfy), and only completed because tactical-run.ts's closeOut path
+  // set status=COMPLETE based on update_thesis having fired. Net effect
+  // was 2 wasted retries per tactical run (35 runs × 2 = 70 wasted steps
+  // on 2026-05-18 alone) plus training the model to ignore gate refusals
+  // — which then leaked into daily-run where the gates DO matter. The
+  // unaddressed_theses gate below still applies to tactical.
+  //
+  // A6 from docs/plans/SYSTEM_AUDIT_2026_05_19.md.
+  const skipSummaryGate = runMode === "INTRADAY_TACTICAL";
+  if (!skipSummaryGate) {
+    const summaryEvent = await prisma.runEvent.findFirst({
+      where: { runId, type: "run_summary" },
+      select: { id: true },
+    });
+    if (!summaryEvent) {
+      return {
+        kind: "no_run_summary",
+        shortReason: "record_run_summary not called",
+        message:
+          "complete_run refused: you must call record_run_summary BEFORE complete_run. " +
+          "Summarize this run's decisions (primary_decision, decision_rationale, ranked_picks) " +
+          "and call complete_run again.",
+      };
+    }
   }
 
   // 2) Did an upstream gate (narration gate) already mark this run FAILED?
@@ -321,11 +348,35 @@ async function runCompleteRunPreflight(
     };
   }
 
-  // 3) Triggered/needsAction theses not addressed via update_thesis this run.
+  // 3) Narration→execution gap (P0-12, moved here from record_run_summary
+  //    on 2026-05-23). Look at the MOST RECENT run_summary event's
+  //    rationale + ranked_picks reasoning. If any narrated close/exit/trim
+  //    verb references a ticker that never got a position_closed or
+  //    position_modified event THIS run, refuse complete_run with a message
+  //    asking the agent to call the missing tool. Self-corrected runs
+  //    (agent narrated then called the tool, in either order) pass.
+  //    Tactical exempt — record_run_summary isn't in its allowlist, so no
+  //    run_summary event exists to scan against; the unaddressed_theses
+  //    check below is the real backstop for tactical.
+  if (!skipSummaryGate) {
+    const narrationFailure = await checkNarrationExecutionGap(runId);
+    if (narrationFailure) return narrationFailure;
+  }
+
+  // 4) Triggered/needsAction theses not addressed via update_thesis this run.
   //    Uses computeNeedsAction (cooldown-aware shouldFire) — same logic
   //    needs-action.ts uses for get_theses, so Layer 2 and Layer 1 ask the
   //    SAME question. Bug 1 fix: no more "needsAction said null but the
   //    gate says you missed it" inconsistency (GAPS P0-7).
+  //
+  // SCOPE BY MODE: daily-run is portfolio-walking, so all ACTIVE/WATCHING
+  // theses on the analyst are in scope. Tactical is single-thesis,
+  // single-decision — only the triggered thesis is in scope. Without this
+  // scoping, PR #290's `no_run_summary` skip exposed the gate to tactical
+  // runs for the first time and the agent started addressing every overdue
+  // thesis on the book to get past the gate. Observed 2026-05-20: WDAY
+  // (and other stale-review theses) updated as a side effect of every
+  // Tech Momentum tactical run, regardless of the actual trigger ticker.
   type ThesisRow = {
     id: string;
     ticker: string;
@@ -335,12 +386,38 @@ async function runCompleteRunPreflight(
     nextReviewAt: Date | null;
     updates: Array<{ type: string; triggerId: string | null; timestamp: Date }>;
   };
-  const theses = (await prisma.thesis.findMany({
-    where: {
+  // Determine the in-scope thesis set based on mode.
+  let thesisWhereScope: object;
+  if (runMode === "INTRADAY_TACTICAL") {
+    // Tactical: only the triggered thesis. Pull from ResearchRun.parameters.
+    const run = await prisma.researchRun.findUnique({
+      where: { id: runId },
+      select: { parameters: true },
+    });
+    const triggeredThesisId =
+      (run?.parameters as { thesisId?: string } | null)?.thesisId ?? null;
+    if (!triggeredThesisId) {
+      // Defensive: a tactical run without parameters.thesisId is malformed
+      // (tactical-run.ts always sets it). Fall through to "no theses to
+      // check" rather than gate the whole book.
+      return null;
+    }
+    thesisWhereScope = {
+      id: triggeredThesisId,
       researchRun: { agentConfigId: analystId },
       status: { in: ["ACTIVE", "WATCHING"] },
       closedAt: null,
-    },
+    };
+  } else {
+    // Daily-run, principal-chat, etc.: full analyst book.
+    thesisWhereScope = {
+      researchRun: { agentConfigId: analystId },
+      status: { in: ["ACTIVE", "WATCHING"] },
+      closedAt: null,
+    };
+  }
+  const theses = (await prisma.thesis.findMany({
+    where: thesisWhereScope,
     select: {
       id: true,
       ticker: true,
@@ -445,4 +522,120 @@ async function runCompleteRunPreflight(
       `Resolve each by calling update_thesis (with action result, change_status="INVALIDATED" if no longer applicable, or rationale-only REVIEW). ` +
       `Then call complete_run again. Unaddressed: ${summary}`,
   };
+}
+
+// ─── Narration → execution gate (P0-12, end-of-run) ─────────────────────────
+// Layer-1 soft refusal. Previously fired inside record_run_summary and marked
+// the run FAILED on the first record_run_summary call. That punished agents
+// that self-corrected — production 2026-05-22 Secular Theme narrated "EXIT
+// SMTC" in the rationale, gate marked the run FAILED, then the agent actually
+// called close_position 90 seconds later and closed SMTC for +$108.10. Run
+// stayed FAILED forever despite a real successful close.
+//
+// Moving the check to complete_run preflight means: agent calls
+// record_run_summary (no gate), gets reminded to call missing tool via
+// complete_run's refusal, calls it, complete_run preflight passes the second
+// attempt because the position_closed event now exists. Self-correction is
+// the default path, not a permanent FAIL.
+
+type RankedPickReasoning = { ticker?: unknown; reasoning?: unknown };
+type RunSummaryPayload = {
+  decision_rationale?: unknown;
+  ranked_picks?: unknown;
+};
+
+async function checkNarrationExecutionGap(
+  runId: string,
+): Promise<PreflightFailure | null> {
+  try {
+    // Use the MOST RECENT run_summary event — the agent may have called
+    // record_run_summary multiple times during the run and only the latest
+    // reflects current intent.
+    const summaryEvent = await prisma.runEvent.findFirst({
+      where: { runId, type: "run_summary" },
+      orderBy: { createdAt: "desc" },
+      select: { payload: true },
+    });
+    if (!summaryEvent?.payload) return null;
+    const payload = summaryEvent.payload as RunSummaryPayload;
+    const decisionRationale =
+      typeof payload.decision_rationale === "string"
+        ? payload.decision_rationale
+        : "";
+    const rankedPicks: RankedPickReasoning[] = Array.isArray(payload.ranked_picks)
+      ? (payload.ranked_picks as RankedPickReasoning[])
+      : [];
+
+    const knownTickers = new Set<string>();
+    for (const p of rankedPicks) {
+      if (typeof p.ticker === "string" && p.ticker.length > 0) {
+        knownTickers.add(p.ticker.toUpperCase());
+      }
+    }
+    if (knownTickers.size === 0 && !decisionRationale) return null;
+
+    const hits: NarrationHit[] = [];
+    if (decisionRationale) {
+      hits.push(
+        ...detectNarrationHits(
+          decisionRationale,
+          "rationale",
+          undefined,
+          knownTickers,
+        ),
+      );
+    }
+    for (const p of rankedPicks) {
+      if (typeof p.reasoning !== "string" || !p.reasoning) continue;
+      const ticker = typeof p.ticker === "string" ? p.ticker : undefined;
+      hits.push(
+        ...detectNarrationHits(p.reasoning, "pick_reasoning", ticker, knownTickers),
+      );
+    }
+    if (hits.length === 0) return null;
+
+    // Tool-call events for the entire run — gives credit for post-narration
+    // close_position / manage_position calls (the production 5/22 case).
+    const events = await prisma.runEvent.findMany({
+      where: {
+        runId,
+        type: { in: ["position_closed", "position_modified"] },
+      },
+      select: { type: true, payload: true },
+    });
+    const toolEvents: ToolCallEvent[] = [];
+    for (const e of events) {
+      const p =
+        e.payload && typeof e.payload === "object"
+          ? (e.payload as Record<string, unknown>)
+          : {};
+      const symbol = String(p.symbol ?? p.ticker ?? "").toUpperCase();
+      if (symbol) toolEvents.push({ type: e.type, symbol });
+    }
+    const gaps = findGaps(hits, toolEvents);
+    if (gaps.length === 0) return null;
+
+    const gapList = gaps
+      .map(
+        (g) =>
+          `${g.ticker} narrated ${g.expectedTool} ("${g.verb}") with no tool call`,
+      )
+      .join("; ");
+    return {
+      kind: "narration_execution_gap",
+      shortReason: `${gaps.length} narrated action${gaps.length > 1 ? "s" : ""} missing tool call`,
+      message:
+        `complete_run refused: ${gaps.length} ticker${gaps.length > 1 ? "s" : ""} narrated an action in record_run_summary without firing the matching tool (${gapList}). ` +
+        `Call the missing tool now (close_position / manage_position), then call complete_run again. ` +
+        `If the prose was wrong (you didn't actually intend to take that action), revise record_run_summary with corrected rationale and reasoning, then complete_run again.`,
+    };
+  } catch (err) {
+    // Gate failure must never break complete_run. Fall through to the next
+    // preflight (or to the happy-path COMPLETE transition).
+    console.warn(
+      `[tool] complete_run narration gap check error (non-fatal):`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
 }

@@ -20,36 +20,94 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
-import { HORIZON_REVIEW_DAYS, type Horizon as HorizonPolicy } from "@/lib/agent/horizon-policy";
+import {
+  HORIZON_REVIEW_DAYS,
+  WATCHING_FIRST_REVIEW_DAYS,
+  holdDurationFromHorizon,
+  type Horizon as HorizonPolicy,
+} from "@/lib/agent/horizon-policy";
+
+// ── V2 deep-research section shapes (PR-9 flat schema cutover) ───────────
+// Two content shapes for the 9 sections, mirroring the parsed output of
+// write_thesis_research. See docs/plans/THESIS_CLEANUP.md §1.2.
+const sectionCitationSchema = z
+  .object({
+    url: z.string().optional(),
+    title: z.string().optional(),
+    domain: z.string().optional(),
+    kind: z.enum(["STRUCTURED", "WEB"]).optional(),
+  })
+  .describe("Citation chip (one URL or [STRUCTURED:...] reference).");
+
+const sectionTextSchema = z
+  .object({
+    text: z.string(),
+    citations: z.array(sectionCitationSchema).optional(),
+  })
+  .describe("Prose paragraph with optional citations.");
+
+const sectionBulletSchema = z
+  .object({
+    bullets: z.array(
+      z.object({
+        text: z.string(),
+        citation: sectionCitationSchema.optional(),
+      }),
+    ),
+  })
+  .describe("Bulleted list, one citation per bullet.");
 
 const thesisFields = z.object({
   ticker: z.string(),
   company_name: z.string().optional().describe("Company name from get_stock_data"),
   exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
   direction: z.enum(["LONG", "SHORT", "PASS", "PENDING"]),
-  confidence_score: z.number().min(0).max(100),
+  // ── Narrative fields ─────────────────────────────────────────────────
+  // Legacy plain-string args. Kept on the Zod schema so the daily-run +
+  // discovery agents that haven't been migrated to the V2 narrative shape
+  // can still write theses. Execute() wraps them in the new flat-column
+  // shape ({text, citations:[]} / {bullets:[{text}]}) before persistence.
+  // V2 thesis-writer agent should pass `snapshot`/`bull_case`/`bear_case`
+  // directly with citations.
   reasoning_summary: z
     .string()
-    .describe("2-3 sentence summary of your thesis. For PASS: explain what you found AND why it doesn't fit your strategy right now."),
+    .optional()
+    .describe(
+      "2-3 sentence summary of your thesis. For PASS: explain what you found AND why it doesn't fit your strategy right now. Legacy plain-string shape — V2 agents prefer `snapshot: { text, citations }`.",
+    ),
   thesis_bullets: z
     .array(z.string())
-    .describe("3-5 key points supporting the thesis. For PASS: include what you learned, why it doesn't fit, and what would change your mind."),
-  risk_flags: z.array(z.string()).describe("2-4 key risks. For PASS: note the risks that made you pass."),
+    .optional()
+    .describe(
+      "3-5 key points supporting the thesis. Legacy shape — V2 agents prefer `bull_case: { bullets: [{ text, citation }] }`.",
+    ),
+  risk_flags: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "2-4 key risks. Legacy shape — V2 agents prefer `bear_case: { bullets: [{ text, citation }] }`.",
+    ),
   entry_price: z.number().optional().describe("Current price for entry. REQUIRED for LONG/SHORT — use the price from get_stock_data. Also include for PASS to enable shadow tracking."),
   target_price: z.number().optional().describe("Price target. REQUIRED for LONG/SHORT."),
   stop_loss: z.number().optional().describe("Stop-loss price. REQUIRED for LONG/SHORT."),
-  hold_duration: z
-    .enum(["DAY", "SWING", "POSITION"])
-    .optional()
-    .describe(
-      "Optional. If omitted, derived from horizon (TRADE→SWING, TARGET→SWING, CATALYST→SWING, COMPOUNDER→POSITION). Pick from DAY / SWING / POSITION only — do NOT pass horizon values like 'TRADE' here, that field is `horizon`.",
-    ),
-  signal_types: z.array(z.string()).describe("Signal types: MOMENTUM, EARNINGS_BEAT, BREAKOUT, etc."),
-  sources_used: z
-    .array(z.object({ provider: z.string(), title: z.string(), url: z.string().optional() }))
-    .optional()
-    .describe("Key sources that informed this thesis (optional, for record-keeping)"),
-  fundamentals: z
+  // `hold_duration` arg removed 2026-05-18 (THESIS_CLEANUP PR-4). The
+  // value is derived from horizon at render time via
+  // holdDurationFromHorizon() — agents shouldn't have to think about it,
+  // and historically half of failed record_thesis calls were agents
+  // passing a horizon value ("TRADE") to this field by mistake.
+  //
+  // `confidence_score`, `signal_types`, `sources_used` args removed in
+  // PR-9 (2026-05-21) — the columns are dropped from the DB.
+  // Confidence ⇒ `scoring.composite` (the /10 setup grade is the single
+  // conviction number). Signal types ⇒ derivable from `source_signal_ids`.
+  // Sources ⇒ per-section citations inside the 9 narrative columns.
+  // Renamed from `fundamentals` (2026-05-23) to free that name for the V2
+  // narrative section below — the two were unrelated things with the same
+  // name (structured numbers vs prose paragraph) which made the
+  // thesis-writer prompt's section→arg mapping awkward. UI-only — never
+  // written to the DB. Agent passes from get_stock_data; renders in the
+  // inline tool-call card during a live run.
+  stock_fundamentals: z
     .object({
       // All numeric fundamentals accept null — get_stock_data legitimately
       // returns null for unstable PE (negative earnings), 52w highs that
@@ -68,7 +126,7 @@ const thesisFields = z.object({
       analyst_consensus: z.object({ buy: z.number(), hold: z.number(), sell: z.number() }).nullable().optional(),
     })
     .optional()
-    .describe("Key fundamentals from get_stock_data — populates the Data tab in the thesis card."),
+    .describe("Structured stock metrics from get_stock_data — populates the Data tab in the inline thesis card. Distinct from the V2 `fundamentals` narrative section below."),
   parent_thesis_id: z.string().optional()
     .describe("ID of the prior thesis being updated or invalidated. Links thesis chain."),
   // V3 Session 3 — forcing-function trio.
@@ -269,6 +327,70 @@ const thesisFields = z.object({
     .describe(
       "DAY-only override. When another analyst already covers this ticker + direction, pass a one-line rationale explaining the day-trade-specific setup (e.g. 'opening-range breakout setup distinct from Tech Momentum's multi-week thesis'). Required to proceed in DAY-only configs; ignored otherwise.",
     ),
+
+  // ── Deep-research artifacts (THESIS_RESEARCH_V2 Phase 1) ───────────────
+  // Populated by the thesis-writer agent after calling write_thesis_research.
+  // researchData is the raw markdown data block (~3-5KB) the synthesis
+  // consumed; lands on Thesis.researchData for audit/debug. The 9 narrative
+  // sections below each persist to their own first-class JSONB column —
+  // PR-9 flattened the researchSections blob (see CLEANUP §1.3).
+  research_data: z
+    .string()
+    .optional()
+    .describe(
+      "Raw structured-data markdown block from write_thesis_research(...).data.rawDataBlock. " +
+        "Pass through verbatim. Lands on Thesis.researchData for the card's data tab.",
+    ),
+
+  // ── 9 narrative sections (PR-9 flat schema) ──────────────────────────
+  // Three of these (snapshot/bull_case/bear_case) take precedence over the
+  // legacy plain-string args (reasoning_summary/thesis_bullets/risk_flags)
+  // when both are supplied. The other six don't have legacy counterparts.
+  snapshot: sectionTextSchema
+    .optional()
+    .describe(
+      "Snapshot section (V2): 1 paragraph current-state framing with citations. Supersedes `reasoning_summary` when present.",
+    ),
+  recent_catalysts: sectionTextSchema
+    .optional()
+    .describe(
+      "Recent Catalysts section (V2): 1 paragraph covering the 1-2 week catalyst window for this ticker.",
+    ),
+  fundamentals: sectionTextSchema
+    .optional()
+    .describe(
+      "Fundamentals section (V2): 1 paragraph + optional segment-breakdown narrative. Lands on Thesis.fundamentals (JSONB column). Distinct from `stock_fundamentals` (the structured market_cap / pe_ratio / etc. arg) — that's UI-only inline-card data.",
+    ),
+  latest_earnings: sectionBulletSchema
+    .optional()
+    .describe(
+      "Latest Earnings section (V2): 5 specific earnings-call-derived bullets.",
+    ),
+  catalysts_and_events: sectionBulletSchema
+    .optional()
+    .describe(
+      "Catalysts & Events section (V2): 3-5 dated upcoming-catalyst bullets.",
+    ),
+  bull_case: sectionBulletSchema
+    .optional()
+    .describe(
+      "Bull Case section (V2): 3-5 cited bull bullets. Supersedes `thesis_bullets` when present.",
+    ),
+  bear_case: sectionBulletSchema
+    .optional()
+    .describe(
+      "Bear Case section (V2): 3-5 cited bear bullets (mandatory even on LONG). Supersedes `risk_flags` when present.",
+    ),
+  analyst_consensus: sectionTextSchema
+    .optional()
+    .describe(
+      "Analyst Consensus section (V2): 1 paragraph firm-by-firm consensus synthesis.",
+    ),
+  insider_technical: sectionTextSchema
+    .optional()
+    .describe(
+      "Insider & Technical section (V2): 1 paragraph insider activity + technical setup.",
+    ),
 });
 
 const thesisSchema = thesisFields.superRefine((val, ctx) => {
@@ -388,7 +510,7 @@ export const recordThesis = defineTool({
                 note:
                   `You currently hold ${heldPosition.direction} ${heldPosition.quantity} shares of ${args.ticker}. PASS is for tickers you researched and decided NOT to trade — it is incompatible with holding the name. ` +
                   `If your conviction on this position has dropped, the correct tools are:\n` +
-                  `  • update_thesis(thesis_id, confidence_score: <lower>, stop_loss: <tighter>, rationale: "<why>") — keep the position but reflect lower conviction, OR\n` +
+                  `  • update_thesis(thesis_id, scoring: { ... lower composite }, stop_loss: <tighter>, rationale: "<why>") — keep the position but reflect lower conviction, OR\n` +
                   `  • close_position(...) followed by update_thesis(thesis_id, change_status: "INVALIDATED", rationale: "<why>") — exit the position and mark the thesis broken.\n` +
                   `Find the active LONG/SHORT thesis_id via get_theses(tickers: ["${args.ticker}"]) and call update_thesis. Do NOT retry record_thesis on ${args.ticker} with direction PASS — it will reject again.`,
               },
@@ -648,25 +770,52 @@ export const recordThesis = defineTool({
           args.scoring.catalystFreshness.score
         : null;
 
-      const fullResearch = {
-        ...(args.fundamentals ? { fundamentals: args.fundamentals } : {}),
-        ...(args.scoring
-          ? { scoring: args.scoring, scoringComposite }
-          : {}),
-      };
+      // Top-level scoring column (promoted from fullResearch.scoring on
+      // 2026-05-18 — THESIS_CLEANUP PR-1). Composite folds in as a peer
+      // key alongside the four dimensions.
+      const scoring = args.scoring
+        ? { ...args.scoring, composite: scoringComposite }
+        : null;
 
-      // Default nextReviewAt by horizon. Cheap, transparent, lets the
-      // housekeeping run pick up theses without the agent having to do
-      // the date math. Constants live in lib/agent/horizon-policy.ts so
-      // the daily-run prompt's per-horizon hint and the writer's review
-      // cadence stay in lockstep. Falls through to null when horizon is
-      // omitted — legacy theses don't get an auto-review date.
+      // PR-4 (2026-05-18): we no longer write `fullResearch` — the
+      // `scoring` block is now top-level (PR-1), and the legacy
+      // `fundamentals` sub-key had zero readers. The column itself drops
+      // in PR-5 after the soak.
+
+      // Default nextReviewAt by horizon AND by resulting status. WATCHING
+      // theses use the longer WATCHING_FIRST_REVIEW_DAYS cadence (e.g.
+      // COMPOUNDER WATCHING = 90d, vs. COMPOUNDER ACTIVE = 30d). A
+      // watchlist entry doesn't need walking at the same intensity as a
+      // live position. Pre-fix, every newly-minted WATCHING got the
+      // held-side cadence and fired REVIEW_DUE ~3-12x more often than
+      // intended, producing tactical busywork on stale watchlist names.
+      //
+      // Mirror of the effective-status logic below (line ~745) — kept
+      // local instead of hoisting the whole block because the canonical
+      // computation also needs args.status for downstream legal-pair
+      // guards. Both derivations branch on the same inputs so they
+      // can't disagree.
+      const isDiscoveryDirectionalEarly =
+        ctx.discoveryOnly === true &&
+        (args.direction === "LONG" || args.direction === "SHORT");
+      const willBeWatching: boolean =
+        args.direction !== "PASS" &&
+        (isDiscoveryDirectionalEarly ||
+          args.status === "WATCHING" ||
+          (args.status == null && inferredSourceKind === "WATCHLIST_REVIEW"));
+
       let nextReviewAt: Date | null = null;
-      if (args.next_review_at) {
+      if (args.direction === "PASS") {
+        // PASS = ARCHIVED at write. No review cadence, no wake-up.
+        nextReviewAt = null;
+      } else if (args.next_review_at) {
         nextReviewAt = new Date(args.next_review_at);
       } else if (args.horizon) {
         const dayMs = 24 * 60 * 60 * 1000;
-        const days = HORIZON_REVIEW_DAYS[args.horizon as HorizonPolicy];
+        const horizonKey = args.horizon as HorizonPolicy;
+        const days = willBeWatching
+          ? WATCHING_FIRST_REVIEW_DAYS[horizonKey]
+          : HORIZON_REVIEW_DAYS[horizonKey];
         nextReviewAt = new Date(Date.now() + days * dayMs);
       }
 
@@ -698,13 +847,81 @@ export const recordThesis = defineTool({
           `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in discovery mode; forced WATCHING. Promotion is the daily-run's job.`,
         );
       }
+      // ── Chat-dispatch hard-clamp for LONG/SHORT (Phase 1 mint flow) ───
+      // Same shape as the discovery clamp above, different trigger source:
+      // dispatch_thesis_research sets ctx.forceWatchingMint = true on
+      // chat-dispatched mint events. Chat exploration is EXPLORATORY by
+      // design; auto-ACTIVE coverage from a "write me a thesis on $X"
+      // turn would silently attach HELD-template triggers (EXIT on
+      // stop_loss, REVIEW on target_hit) without a paired place_trade,
+      // and the trigger evaluator would later fire orphan tactical EXIT
+      // runs that fail silently — exact failure mode the discovery clamp
+      // was added to prevent in 2026-05-13. To trade after a chat-
+      // dispatched thesis, the user sends a follow-up "buy this" message
+      // which routes through place_trade and flips status separately.
+      //
+      // Future Phase-3 daily-run refresh dispatches (forceWatchingMint=false,
+      // mode=refresh — refreshes are status-preserving so the clamp
+      // wouldn't apply anyway) and Phase-4 tactical inline calls (bypass
+      // dispatch entirely) are unaffected.
+      const isChatDispatchDirectional =
+        ctx.forceWatchingMint === true &&
+        (args.direction === "LONG" || args.direction === "SHORT");
+      if (isChatDispatchDirectional && args.status === "ACTIVE") {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in chat-dispatch mode; forced WATCHING. User must send a follow-up trade message to promote.`,
+        );
+      }
       const effectiveStatusForTriggers: "ACTIVE" | "WATCHING" | "ARCHIVED" =
         args.direction === "PASS"
           ? "ARCHIVED"
-          : isDiscoveryDirectional
+          : isDiscoveryDirectional || isChatDispatchDirectional
             ? "WATCHING"
             : args.status ??
               (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
+
+      // ── Discovery LONG/SHORT WATCHING cap (Layer-1 enforcement) ────────
+      // The discovery prompt has a soft cap ("mint up to 8 new WATCHING
+      // theses per run") that GPT-4o doesn't honor — 2026-05-17's run
+      // produced 7-8 mints per analyst across 5 analysts (38 new WATCHING
+      // theses in one Sunday, against a documented 8/run target). Given
+      // each thesis gets ~60-120s of deep research in V2, 5 is closer to
+      // a quality bar than 8. Enforce as a Layer-1 reject so the prompt
+      // can't override it.
+      //
+      // Counts existing LONG/SHORT WATCHING theses minted in THIS run
+      // (researchRunId === ctx.runId). PASS theses don't count (those are
+      // institutional memory, not coverage). Doesn't apply outside
+      // discovery — daily-run still mints freely.
+      const DISCOVERY_WATCHING_CAP = 5;
+      if (
+        isDiscoveryDirectional &&
+        effectiveStatusForTriggers === "WATCHING" &&
+        ctx.runId
+      ) {
+        const existingMints = await prisma.thesis.count({
+          where: {
+            researchRunId: ctx.runId,
+            status: "WATCHING",
+            direction: { in: ["LONG", "SHORT"] },
+          },
+        });
+        if (existingMints >= DISCOVERY_WATCHING_CAP) {
+          return {
+            summary: `Thesis rejected for ${args.ticker}: discovery cap reached (${existingMints}/${DISCOVERY_WATCHING_CAP} LONG/SHORT WATCHING mints in this run).`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note:
+                `Discovery cap: ${DISCOVERY_WATCHING_CAP} new LONG/SHORT WATCHING theses per discovery run. ` +
+                `You've minted ${existingMints} already. Tighten the watchlist — ` +
+                `the agent's next run can re-evaluate. ` +
+                `PASS theses are not capped (those are institutional memory).`,
+            },
+            sources: [],
+          };
+        }
+      }
 
       // Reject illegal (direction, status) pairs explicitly when the agent
       // passes an `status` arg that conflicts with direction.
@@ -820,34 +1037,70 @@ export const recordThesis = defineTool({
         }
       }
 
+      // ── Narrative reconciliation (PR-9 flat schema) ───────────────────
+      // The agent may pass either the legacy plain-string args
+      // (reasoning_summary / thesis_bullets / risk_flags) or the new V2
+      // section args (snapshot / bull_case / bear_case). V2 wins when both
+      // are supplied. Legacy wraps in the new shape with empty citations.
+      const snapshotPayload: object | undefined =
+        args.snapshot ??
+        (typeof args.reasoning_summary === "string" && args.reasoning_summary.length > 0
+          ? { text: args.reasoning_summary, citations: [] }
+          : undefined);
+      const bullCasePayload: object | undefined =
+        args.bull_case ??
+        (args.thesis_bullets && args.thesis_bullets.length > 0
+          ? { bullets: args.thesis_bullets.map((t) => ({ text: t })) }
+          : undefined);
+      const bearCasePayload: object | undefined =
+        args.bear_case ??
+        (args.risk_flags && args.risk_flags.length > 0
+          ? { bullets: args.risk_flags.map((t) => ({ text: t })) }
+          : undefined);
+
+      // Narrative text for downstream consumers (ThesisUpdate.rationale,
+      // RunEvent.message, TradeDecision.reasoning). Prefer the V2 snapshot
+      // section; fall back to legacy reasoning_summary; empty string when
+      // neither is supplied (PASS theses may carry only invalidation_conditions).
+      const narrativeText: string =
+        args.snapshot?.text ?? args.reasoning_summary ?? "";
+
+      // researchUpdatedAt stamps whenever ANY V2 section landed — the daily-
+      // run staleness gate (Phase 3) keys off it. The legacy-wrapped fallback
+      // doesn't stamp it (those theses are pre-V2; no fresh research).
+      const v2SectionSupplied =
+        args.snapshot ||
+        args.recent_catalysts ||
+        args.fundamentals ||
+        args.latest_earnings ||
+        args.catalysts_and_events ||
+        args.bull_case ||
+        args.bear_case ||
+        args.analyst_consensus ||
+        args.insider_technical;
+
       const coreData = {
         researchRunId: ctx.runId,
         userId: ctx.userId,
         accountId: ctx.accountId,
         ticker: args.ticker,
         direction: args.direction,
-        confidenceScore: args.confidence_score,
-        reasoningSummary: args.reasoning_summary,
-        thesisBullets: args.thesis_bullets,
-        riskFlags: args.risk_flags,
         entryPrice: args.entry_price ?? null,
         targetPrice: args.target_price ?? null,
         stopLoss: args.stop_loss ?? null,
-        // Derive hold_duration from horizon when the agent didn't provide
-        // one (or passed a horizon value like "TRADE" by mistake — schema
-        // already rejects those, but the fallback runs anyway).
-        // Mapping: COMPOUNDER → POSITION, everything else → SWING.
-        // DAY is intentionally never auto-picked; agents that want DAY
-        // must pass it explicitly.
-        holdDuration:
-          args.hold_duration ??
-          (args.horizon === "COMPOUNDER" ? "POSITION" : "SWING"),
-        signalTypes: args.signal_types,
-        sourcesUsed: args.sources_used ?? [],
+        // Legacy holdDuration column — derived from horizon. The arg was
+        // dropped from the zod schema in PR-4 (was a token waste, agents
+        // routinely confused it with `horizon`). Column drops in PR-5.
+        holdDuration: holdDurationFromHorizon(args.horizon),
         sourceSignalIds,
         sourceKind: inferredSourceKind,
         sourceRationale: sourceRationale.length > 0 ? sourceRationale : null,
-        fullResearch: Object.keys(fullResearch).length > 0 ? fullResearch : undefined,
+        scoring: scoring ?? undefined,
+        // 2026-05-18 (THESIS_CLEANUP PR-4): `fullResearch` write was
+        // dropped (scoring moved to top-level in PR-1; fundamentals
+        // sub-key had zero readers). `source` + `modelUsed` are kept
+        // here only because the columns are NOT NULL in the legacy
+        // schema; both have zero readers and drop together in PR-5.
         source: "AGENT",
         modelUsed: "gpt-4o",
         // ── Durable-state fields (PR 1) ─────────────────────────────────
@@ -868,6 +1121,24 @@ export const recordThesis = defineTool({
         maxHoldDays:
           args.max_hold_days ?? (args.horizon === "TRADE" ? 14 : null),
         nextReviewAt,
+        // ── Deep-research artifacts (V2 flat schema, PR-9) ────────────────
+        // researchData is the raw markdown data block; the 9 columns below
+        // hold the parsed narrative sections. Use `undefined` for missing
+        // sections (Prisma omits the field; Json? defaults to NULL).
+        researchData:
+          typeof args.research_data === "string" && args.research_data.length > 0
+            ? args.research_data
+            : undefined,
+        snapshot: snapshotPayload,
+        recentCatalysts: args.recent_catalysts ?? undefined,
+        fundamentals: args.fundamentals ?? undefined,
+        latestEarnings: args.latest_earnings ?? undefined,
+        catalystsAndEvents: args.catalysts_and_events ?? undefined,
+        bullCase: bullCasePayload,
+        bearCase: bearCasePayload,
+        analystConsensus: args.analyst_consensus ?? undefined,
+        insiderTechnical: args.insider_technical ?? undefined,
+        researchUpdatedAt: v2SectionSupplied ? new Date() : undefined,
       };
 
       // ── Same-direction guard ────────────────────────────────────────
@@ -946,8 +1217,8 @@ export const recordThesis = defineTool({
                     `    // Plus any of these you actually want to change:\n` +
                     `    target_price: <new>,\n` +
                     `    stop_loss: <new>,\n` +
-                    `    confidence_score: <new>,\n` +
-                    `    reasoning_summary: "<refreshed>",\n` +
+                    `    scoring: { trendStrength: { score, note }, ... },\n` +
+                    `    snapshot: { text: "<refreshed>", citations: [] },\n` +
                     `    signal_ids: [<from today's read_signals>],\n` +
                     `  })\n` +
                     `If you reviewed and nothing actually changed, call update_thesis with ONLY thesis_id + rationale — that writes a REVIEWED entry and counts as the required thesis touch for this run. ` +
@@ -1073,7 +1344,13 @@ export const recordThesis = defineTool({
           (errMsg.includes("parentThesisId") && errMsg.includes("does not exist")) ||
           (errMsg.includes("sourceSignalIds") && errMsg.includes("does not exist")) ||
           (errMsg.includes("sourceKind") && errMsg.includes("does not exist")) ||
-          (errMsg.includes("sourceRationale") && errMsg.includes("does not exist"));
+          (errMsg.includes("sourceRationale") && errMsg.includes("does not exist")) ||
+          (errMsg.includes("researchData") && errMsg.includes("does not exist")) ||
+          (errMsg.includes("researchUpdatedAt") && errMsg.includes("does not exist")) ||
+          // PR-9 flat schema cutover
+          (errMsg.includes("snapshot") && errMsg.includes("does not exist")) ||
+          (errMsg.includes("bullCase") && errMsg.includes("does not exist")) ||
+          (errMsg.includes("bearCase") && errMsg.includes("does not exist"));
 
         if (isUnknownArgError) {
           // LOUD log — we want to see this in Vercel if it ever happens.
@@ -1098,6 +1375,19 @@ export const recordThesis = defineTool({
             catalystDate: _cdate,
             maxHoldDays: _maxhold,
             nextReviewAt: _review,
+            // THESIS_RESEARCH_V2 Phase 1 + PR-9 flat schema — strip every
+            // V2-era research column if Prisma client predates them.
+            researchData: _rdata,
+            researchUpdatedAt: _rupdated,
+            snapshot: _snap,
+            recentCatalysts: _rcat,
+            fundamentals: _fund,
+            latestEarnings: _learn,
+            catalystsAndEvents: _cae,
+            bullCase: _bcase,
+            bearCase: _xcase,
+            analystConsensus: _acons,
+            insiderTechnical: _itech,
             ...fallbackData
           } = coreData;
           void _ids;
@@ -1113,6 +1403,17 @@ export const recordThesis = defineTool({
           void _cdate;
           void _maxhold;
           void _review;
+          void _rdata;
+          void _rupdated;
+          void _snap;
+          void _rcat;
+          void _fund;
+          void _learn;
+          void _cae;
+          void _bcase;
+          void _xcase;
+          void _acons;
+          void _itech;
           thesis = await prisma.thesis.create({
             data: { ...fallbackData, status: effectiveStatus },
           });
@@ -1130,15 +1431,19 @@ export const recordThesis = defineTool({
       // Single source of truth for thesis history. Non-fatal: if this
       // fails the thesis still landed; we just lose the timeline row.
       // Logs LOUD so we notice if writes start dropping.
+      const compositeForMessage =
+        scoringComposite != null ? `composite ${scoringComposite}/10` : null;
       const createdSummary =
         args.direction === "PASS"
           ? `Passed on ${args.ticker}`
-          : `${args.direction} thesis on ${args.ticker} at confidence ${args.confidence_score}`;
+          : compositeForMessage
+            ? `${args.direction} thesis on ${args.ticker} at ${compositeForMessage}`
+            : `${args.direction} thesis on ${args.ticker}`;
       await writeThesisUpdate({
         thesisId: thesis.id,
         type: "CREATED",
         summary: createdSummary,
-        rationale: args.reasoning_summary,
+        rationale: narrativeText,
         signalIds: sourceSignalIds,
         runId: ctx.runId,
         priceAtTime: args.entry_price ?? null,
@@ -1149,7 +1454,7 @@ export const recordThesis = defineTool({
         try {
           if (args.direction === "PASS") {
             const invalidReason =
-              args.reasoning_summary?.slice(0, 500) ||
+              narrativeText.slice(0, 500) ||
               "Thesis invalidated by follow-up research";
             await prisma.thesis.update({
               where: { id: resolvedParentId },
@@ -1181,7 +1486,7 @@ export const recordThesis = defineTool({
               thesisId: resolvedParentId,
               type: "SUPERSEDED",
               summary: `Replaced by newer ${args.direction} thesis on ${args.ticker}`,
-              rationale: args.reasoning_summary,
+              rationale: narrativeText,
               fieldChanges: {
                 status: { from: "ACTIVE", to: "SUPERSEDED" },
               },
@@ -1223,23 +1528,31 @@ export const recordThesis = defineTool({
             runId: ctx.runId,
             type: evType,
             title: evType === "skip" ? `Passing on ${args.ticker}` : `Thesis complete for ${args.ticker}`,
-            message: args.reasoning_summary,
+            message: narrativeText,
             payload: {
               ticker: args.ticker,
               thesis: {
                 ticker: args.ticker,
                 direction: args.direction,
-                confidence_score: args.confidence_score,
-                reasoning_summary: args.reasoning_summary,
-                thesis_bullets: args.thesis_bullets,
-                risk_flags: args.risk_flags,
+                // PR-9: confidence_score / signal_types / sources_used /
+                // reasoning_summary / thesis_bullets / risk_flags fields
+                // removed. The event payload mirrors the new flat schema:
+                // composite (the conviction signal), snapshot (narrative),
+                // and the 9 section blocks.
+                composite: scoringComposite,
+                snapshot: snapshotPayload,
+                bull_case: bullCasePayload,
+                bear_case: bearCasePayload,
                 entry_price: args.entry_price,
                 target_price: args.target_price,
                 stop_loss: args.stop_loss,
-                hold_duration: args.hold_duration,
-                signal_types: args.signal_types,
+                // PR-4: hold_duration arg was dropped from the schema —
+                // derive from horizon for the event payload.
+                hold_duration: holdDurationFromHorizon(args.horizon),
               },
-              ...(evType === "skip" ? { reason: args.reasoning_summary, confidence: args.confidence_score } : {}),
+              ...(evType === "skip"
+                ? { reason: narrativeText, composite: scoringComposite }
+                : {}),
             } as object,
           },
         });
@@ -1257,7 +1570,7 @@ export const recordThesis = defineTool({
               accountId: ctx.accountId,
               symbol: args.ticker,
               decision: "PASS",
-              reasoning: args.reasoning_summary,
+              reasoning: narrativeText,
               thesisId: thesis.id,
             },
           });
@@ -1268,7 +1581,9 @@ export const recordThesis = defineTool({
 
       return {
         summary:
-          `Thesis recorded: ${args.direction} ${args.ticker} (${effectiveStatus.toLowerCase()}, confidence: ${args.confidence_score})` +
+          `Thesis recorded: ${args.direction} ${args.ticker} (${effectiveStatus.toLowerCase()}` +
+          (scoringComposite != null ? `, composite ${scoringComposite}/10` : "") +
+          `)` +
           (provenanceNudge ? ` — ${provenanceNudge}` : ""),
         data: {
           thesis_id: thesis.id,

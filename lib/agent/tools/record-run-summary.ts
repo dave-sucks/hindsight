@@ -8,32 +8,19 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
-import { getLatestPrices } from "@/lib/alpaca";
-import {
-  detectNarrationHits,
-  findGaps,
-  type NarrationHit,
-  type ToolCallEvent,
-} from "@/lib/agent/narration-gate";
 
-/**
- * Words that signal a deliberate, reasoned rejection of a met entry
- * condition. The promotion gate accepts a thesis as "addressed" if its
- * ticker is named in the rationale AND at least one of these terms
- * appears in the surrounding text. Wide net by design — false positives
- * (the gate lets a borderline rejection through) are preferable to
- * false negatives (the gate fails a thoughtful reject because the agent
- * used a slightly different word than expected). The MRVL anti-pattern
- * — raise target, walk away — leaves NONE of these words in the
- * rationale, so the gate catches it.
- */
-const REJECTION_KEYWORDS_RE =
-  /\b(volume|regime|fresh\s+(news|negative)|liquid|illiquid|thin|deteriorat|reject|invalidat|setup\s+(broke|broken|gone|failed|invalidated)|conviction\s+(fell|dropped|lower|weakened)|stop|R\/?R|risk[-/\s]?reward|ratio|news|bearish|short[-\s]?term\s+headwind|gap)\b/i;
-
-function tickerMentionRegex(ticker: string): RegExp {
-  // Match $TICKER, TICKER, or word-bounded ticker. Case-insensitive.
-  return new RegExp(`\\$?\\b${ticker.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\b`, "i");
-}
+// The keyword-rejection scan + tickerMentionRegex helpers that lived
+// here were removed on 2026-05-19 along with the legacy promotion
+// gate (P1-13). complete_run's preflight (using computeNeedsAction)
+// is now the canonical structural check.
+//
+// The narration→execution gate that lived here moved to complete_run
+// preflight on 2026-05-23 (P0-12). Reason: firing mid-run on the
+// first record_run_summary attempt marked the run FAILED even when
+// the agent self-corrected with a real close_position call before
+// complete_run. Production case 2026-05-22 Secular Theme SMTC: gate
+// fired at 08:15:53, agent closed at 08:17:30 for +$108, but run
+// was permanently FAILED. End-of-run check credits post-gate recovery.
 
 export const recordRunSummary = defineTool({
   description:
@@ -272,367 +259,23 @@ export const recordRunSummary = defineTool({
         }
       }
 
-      // ── Promotion gate (audit Root Cause #3 follow-up) ───────────────
-      // For every WATCHING/LONG-or-SHORT thesis owned by this analyst,
-      // check whether the entry condition is currently met against the
-      // latest quote. When it is, the agent must EITHER:
-      //   (a) have placed a trade for that ticker (TradeDecision INITIATE
-      //       row written by place_trade), OR
-      //   (b) have invalidated the thesis (ThesisUpdate type=INVALIDATED
-      //       written by update_thesis with change_status), OR
-      //   (c) have explicitly rejected the entry — ticker named in the
-      //       rationale + at least one rejection keyword nearby.
-      // Otherwise the run is FAILED. Same severity as the narration gate.
+      // The legacy keyword-scan promotion gate that lived here was
+      // removed on 2026-05-19 — superseded by `complete_run`'s preflight
+      // (lib/agent/tools/complete-run.ts:282, PR #266), which uses the
+      // structural `computeNeedsAction` check for "did the agent address
+      // every triggered thesis?" — wording-agnostic, no false fails on
+      // rationales that lacked a specific keyword. The goalpost-moving
+      // check is now enforced structurally in `update_thesis`
+      // (update-thesis.ts:547 — refuses to raise targetPrice on a
+      // WATCHING thesis whose entry condition is currently met).
       //
-      // This is the runtime backstop for the prompt's Step 3 promotion
-      // check. The MRVL goalpost-raise is already gated in update_thesis;
-      // this gate catches the "did absolutely nothing" case the prompt
-      // promised would be enforced but wasn't.
-      //
-      // Quote-fetch failures skip the gate entirely (the cron-path
-      // trigger evaluator will still fire on the next 5-minute tick) —
-      // we don't want a transient Alpaca outage to fail an otherwise
-      // healthy run.
-      if (ctx.runId && ctx.analystId) {
-        try {
-          // Explicit row shapes — the prisma generated types ride through
-          // a few await/try wrappers and the lambda parameters lose
-          // inference under noImplicitAny without these annotations.
-          type WatchingRow = {
-            id: string;
-            ticker: string;
-            direction: string;
-            targetPrice: number | null;
-          };
-          const watching: WatchingRow[] = await prisma.thesis.findMany({
-            where: {
-              researchRun: { agentConfigId: ctx.analystId },
-              status: "WATCHING",
-              direction: { in: ["LONG", "SHORT"] },
-              targetPrice: { not: null },
-              closedAt: null,
-            },
-            select: {
-              id: true,
-              ticker: true,
-              direction: true,
-              targetPrice: true,
-            },
-          }) as WatchingRow[];
+      // Two gates asking the same question with different rules caused
+      // recurring false-fails on otherwise-healthy runs whose rationale
+      // happened to use a non-listed word. P1-13 in GAPS.md tracked this;
+      // closed here.
 
-          if (watching.length > 0) {
-            const tickers: string[] = Array.from(
-              new Set(watching.map((t: WatchingRow) => t.ticker)),
-            );
-            let prices: Record<string, number> = {};
-            try {
-              prices = await getLatestPrices(tickers, ctx.alpacaCreds);
-            } catch (priceErr) {
-              console.warn(
-                `[record_run_summary] promotion gate: price fetch failed (${tickers.length} tickers), skipping gate:`,
-                priceErr instanceof Error ? priceErr.message : priceErr,
-              );
-              prices = {};
-            }
-
-            const conditionsMet = watching.filter((t: WatchingRow) => {
-              const price = prices[t.ticker];
-              if (price == null || t.targetPrice == null) return false;
-              const target = Number(t.targetPrice);
-              if (t.direction === "LONG") return price >= target;
-              if (t.direction === "SHORT") return price <= target;
-              return false;
-            });
-
-            if (conditionsMet.length > 0) {
-              // (a) — INITIATE TradeDecisions this run
-              const initiateRows: Array<{ symbol: string }> =
-                await prisma.tradeDecision.findMany({
-                  where: { runId: ctx.runId, decision: "INITIATE" },
-                  select: { symbol: true },
-                });
-              const initiateTickers = new Set(
-                initiateRows.map((r: { symbol: string }) =>
-                  r.symbol.toUpperCase(),
-                ),
-              );
-
-              // (b) — INVALIDATED ThesisUpdates this run
-              const invalidationRows: Array<{
-                thesis: { ticker: string } | null;
-              }> = await prisma.thesisUpdate.findMany({
-                where: { runId: ctx.runId, type: "INVALIDATED" },
-                select: { thesis: { select: { ticker: true } } },
-              });
-              const invalidatedTickers = new Set(
-                invalidationRows
-                  .map((r: { thesis: { ticker: string } | null }) =>
-                    r.thesis?.ticker?.toUpperCase(),
-                  )
-                  .filter((s: string | undefined): s is string => !!s),
-              );
-
-              const rationale = args.decision_rationale ?? "";
-              const pickByTicker = new Map(
-                args.ranked_picks.map((p) => [
-                  p.ticker.toUpperCase(),
-                  p.reasoning ?? "",
-                ]),
-              );
-
-              const unaddressed: Array<{
-                ticker: string;
-                direction: string;
-                targetPrice: number;
-                currentPrice: number;
-                reason: string;
-              }> = [];
-
-              for (const t of conditionsMet) {
-                const tickerUpper = t.ticker.toUpperCase();
-                const target = Number(t.targetPrice);
-                const price = prices[t.ticker];
-
-                if (initiateTickers.has(tickerUpper)) continue;
-                if (invalidatedTickers.has(tickerUpper)) continue;
-
-                // (c) — explicit rejection. The ticker must be named
-                // somewhere in the rationale corpus AND at least one
-                // rejection keyword must appear in the same corpus.
-                const pickReasoning = pickByTicker.get(tickerUpper) ?? "";
-                const corpus = `${rationale}\n${pickReasoning}`;
-                const tickerMentioned = tickerMentionRegex(tickerUpper).test(
-                  corpus,
-                );
-                const hasRejectionKeyword = REJECTION_KEYWORDS_RE.test(corpus);
-
-                if (tickerMentioned && hasRejectionKeyword) continue;
-
-                let reason: string;
-                if (!tickerMentioned) {
-                  reason = `not named in decision_rationale or its ranked-picks reasoning`;
-                } else {
-                  reason = `named in rationale but no concrete rejection keyword (volume/regime/news/R/R/liquidity/etc.) — looks like goalpost-moving`;
-                }
-
-                unaddressed.push({
-                  ticker: t.ticker,
-                  direction: t.direction,
-                  targetPrice: target,
-                  currentPrice: price,
-                  reason,
-                });
-              }
-
-              if (unaddressed.length > 0) {
-                const summary = unaddressed
-                  .map(
-                    (u) =>
-                      `${u.ticker} ${u.direction} target $${u.targetPrice.toFixed(2)} met @ $${u.currentPrice.toFixed(2)}: ${u.reason}`,
-                  )
-                  .join("; ");
-                const gateMessage = `Promotion gate: ${unaddressed.length} WATCHING thesis${unaddressed.length > 1 ? "es" : ""} had entry conditions met but were not promoted, invalidated, or explicitly rejected. ${summary}. Run marked FAILED.`;
-
-                try {
-                  await prisma.runEvent.create({
-                    data: {
-                      runId: ctx.runId,
-                      type: "run_failed",
-                      title: "Promotion check failed",
-                      message: gateMessage,
-                      payload: {
-                        gateSource: "record_run_summary.promotion",
-                        unaddressed: unaddressed.map((u) => ({
-                          ticker: u.ticker,
-                          direction: u.direction,
-                          targetPrice: u.targetPrice,
-                          currentPrice: u.currentPrice,
-                          reason: u.reason,
-                        })),
-                      } as object,
-                    },
-                  });
-                } catch (evtErr) {
-                  console.warn(
-                    `[tool] record_run_summary promotion run_failed event write failed:`,
-                    evtErr instanceof Error ? evtErr.message : evtErr,
-                  );
-                }
-                try {
-                  await prisma.researchRun.updateMany({
-                    where: { id: ctx.runId, status: "RUNNING" },
-                    data: { status: "FAILED", completedAt: new Date() },
-                  });
-                } catch (updErr) {
-                  console.warn(
-                    `[tool] record_run_summary promotion FAILED transition write failed:`,
-                    updErr instanceof Error ? updErr.message : updErr,
-                  );
-                }
-                console.warn(
-                  `[tool] record_run_summary promotion gate FAILED run=${ctx.runId}: ${gateMessage}`,
-                );
-                return {
-                  summary: `Run marked FAILED — promotion gate (${unaddressed.length} unaddressed): ${unaddressed.map((u) => u.ticker).join(", ")}`,
-                  data: {
-                    success: false,
-                    rankedPicks: args.ranked_picks,
-                    exposureBreakdown: undefined,
-                    traded,
-                    analyzed: args.ranked_picks.length,
-                    error: gateMessage,
-                    promotionUnaddressed: unaddressed,
-                  },
-                  sources: [],
-                };
-              }
-            }
-          }
-        } catch (gateErr) {
-          // Gate failure must never break the tool — fall through to the
-          // narration gate and happy path.
-          console.warn(
-            `[tool] record_run_summary promotion gate error (non-fatal):`,
-            gateErr instanceof Error ? gateErr.message : gateErr,
-          );
-        }
-      }
-
-      // ── Narration → execution gate ─────────────────────────────────
-      // Detect action verbs in decision_rationale + each pick.reasoning
-      // that imply close_position / manage_position / manage_watchlist
-      // calls. If the corresponding tool didn't fire for this run+ticker,
-      // mark the run FAILED. Mirrors the trade-execution gap check in
-      // morning-research.ts (PR #210/#226) but covers the verbs that
-      // gate doesn't — narrated stop-tightenings, trims, exits, and
-      // watchlist edits that the agent writes as prose without ever
-      // calling the tool. Same recurring failure pattern documented in
-      // CLAUDE.md.
-      if (ctx.runId) {
-        try {
-          const knownTickers = new Set(
-            args.ranked_picks.map((p) => p.ticker.toUpperCase()),
-          );
-          const hits: NarrationHit[] = [];
-          hits.push(
-            ...detectNarrationHits(
-              args.decision_rationale ?? "",
-              "rationale",
-              undefined,
-              knownTickers,
-            ),
-          );
-          for (const pick of args.ranked_picks) {
-            hits.push(
-              ...detectNarrationHits(
-                pick.reasoning ?? "",
-                "pick_reasoning",
-                pick.ticker,
-                knownTickers,
-              ),
-            );
-          }
-          if (hits.length > 0) {
-            const events = await prisma.runEvent.findMany({
-              where: {
-                runId: ctx.runId,
-                type: {
-                  in: [
-                    "position_closed",
-                    "position_modified",
-                    "watchlist_add",
-                    "watchlist_remove",
-                  ],
-                },
-              },
-              select: { type: true, payload: true },
-            });
-            const toolEvents: ToolCallEvent[] = [];
-            for (const e of events) {
-              const payload =
-                e.payload && typeof e.payload === "object"
-                  ? (e.payload as Record<string, unknown>)
-                  : {};
-              const symbol = String(
-                payload.symbol ?? payload.ticker ?? "",
-              ).toUpperCase();
-              if (symbol) toolEvents.push({ type: e.type, symbol });
-            }
-            const gaps = findGaps(hits, toolEvents);
-            if (gaps.length > 0) {
-              const gapList = gaps
-                .map(
-                  (g) =>
-                    `${g.ticker} narrated ${g.expectedTool} ("${g.verb}") with no tool call`,
-                )
-                .join("; ");
-              const gateMessage = `Narration→execution gap: ${gaps.length} ticker${gaps.length > 1 ? "s" : ""} narrated an action with no corresponding tool call (${gapList}). Run marked FAILED.`;
-              try {
-                await prisma.runEvent.create({
-                  data: {
-                    runId: ctx.runId,
-                    type: "run_failed",
-                    title: "Narration without tool call",
-                    message: gateMessage,
-                    payload: {
-                      gateSource: "record_run_summary",
-                      gaps: gaps.map((g) => ({
-                        ticker: g.ticker,
-                        expectedTool: g.expectedTool,
-                        verb: g.verb,
-                        context: g.context,
-                        source: g.source,
-                      })),
-                    } as object,
-                  },
-                });
-              } catch (evtErr) {
-                console.warn(
-                  `[tool] record_run_summary run_failed event write failed:`,
-                  evtErr instanceof Error ? evtErr.message : evtErr,
-                );
-              }
-              try {
-                // Atomic transition only from RUNNING — same shape as the
-                // morning-research cron-level gate. complete_run was tightened
-                // to RUNNING-only so this status sticks.
-                await prisma.researchRun.updateMany({
-                  where: { id: ctx.runId, status: "RUNNING" },
-                  data: { status: "FAILED", completedAt: new Date() },
-                });
-              } catch (updErr) {
-                console.warn(
-                  `[tool] record_run_summary FAILED transition write failed:`,
-                  updErr instanceof Error ? updErr.message : updErr,
-                );
-              }
-              console.warn(
-                `[tool] record_run_summary narration gate FAILED run=${ctx.runId}: ${gateMessage}`,
-              );
-              return {
-                summary: `Run marked FAILED — narration→execution gap (${gaps.length} ticker${gaps.length > 1 ? "s" : ""}): ${gaps.map((g) => `${g.ticker} ${g.expectedTool}`).join(", ")}`,
-                data: {
-                  success: false,
-                  rankedPicks: args.ranked_picks,
-                  exposureBreakdown: undefined,
-                  traded,
-                  analyzed: args.ranked_picks.length,
-                  error: gateMessage,
-                  narrationGaps: gaps,
-                },
-                sources: [],
-              };
-            }
-          }
-        } catch (gateErr) {
-          // Gate failure must never break the tool — fall through to the
-          // happy-path return so the run summary still persists.
-          console.warn(
-            `[tool] record_run_summary narration gate error (non-fatal):`,
-            gateErr instanceof Error ? gateErr.message : gateErr,
-          );
-        }
-      }
+      // Narration → execution gate moved to complete_run preflight
+      // on 2026-05-23 (P0-12). See header comment for the rationale.
 
       const deployedThisRun = actualDeployedLong + actualDeployedShort;
       return {

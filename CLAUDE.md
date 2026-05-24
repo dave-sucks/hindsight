@@ -43,7 +43,7 @@ Built for one user now, marketed later.
 - User clicks "Run" → POST /api/research/agent-run creates ResearchRun
 - Redirects to /runs/[id] → renders AgentThread component
 - AgentThread uses AI SDK v6 useChat → POST /api/agent/research-run
-- GPT-4o (maxSteps 65, temperature 0.2) + the full tool catalog
+- GPT-5.5 (maxSteps 65, temperature 0.2) + the full tool catalog
   autonomously researches, updates theses, manages positions, and
   places trades via Alpaca
 - Tools render via ToolCallGroup → ToolCallRow dispatching on result.ui
@@ -180,11 +180,11 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 
 ## API Routes
 - /api/agent/[mode] — unified agent route. Modes:
-  - research-run: GPT-4o, temperature 0.2, maxSteps 65 (the daily-run agent)
+  - research-run: GPT-5.5, temperature 0.2, maxSteps 65 (the daily-run agent)
   - builder: GPT-4o, research tools only + suggest_config
   - editor: GPT-4o, research tools only + suggest_config
-  - tactical: GPT-4o, maxSteps 15 (single-thesis, single-decision)
-  - discovery: GPT-4o, maxSteps 25 (weekly Sunday cron)
+  - tactical: GPT-5.5, maxSteps 15 (single-thesis, single-decision)
+  - discovery: GPT-5.5, maxSteps 45 (weekly Sunday cron)
   - podcast-builder / podcast-segment-run / podcast-editor
 - /api/research/agent-run — creates ResearchRun row, returns runId
 - /api/research/trigger — Inngest manual trigger
@@ -430,11 +430,21 @@ it with a ticker chip as if it were a traded security.
   always cast with type guard
 - async params in Next.js App Router: params: Promise<{ id: string }>
 - FMP /quote/ endpoint DEPRECATED — use Finnhub for all quotes
-- Model strategy: GPT-4o EVERYWHERE (research-run, builder, editor,
-  tactical, discovery). research-run uses temperature 0.2 and maxSteps
-  65 for stage contract adherence. Tactical maxSteps 15, discovery 25.
-  GPT-4o-mini for lightweight summaries. Do NOT swap to Claude —
-  the 30k context limit crashes the run.
+- Model strategy (post-2026-05-15):
+  - **research-run + tactical + discovery**: GPT-5.5 (provider: openai).
+    research-run uses temperature 0.2 + maxSteps 65; tactical maxSteps 15;
+    discovery maxSteps 45. Vercel Pro plan required — the 800s function
+    timeout headroom is needed because gpt-5.5 with implicit reasoning
+    runs ~13s/tool-call vs gpt-4o's faster cadence. modes.ts maxDuration
+    is 800 for all three; the cron/route AbortSignal derives 770s from
+    `(maxDuration - 30) * 1000`.
+  - **builder + editor**: GPT-4o still (user-facing latency matters in
+    the chat panel; gpt-5.5 would feel slow when interactively
+    iterating on a fence).
+  - **principal-chat**: Claude Sonnet 4.6 with thinking budget 4000.
+  - **GPT-4o-mini**: lightweight summaries (trade evaluator etc.).
+  - **Do NOT swap to Claude for research-run** — the 30k context limit
+    crashes the run.
 - Agent thinking config lives in lib/agent/modes.ts (thinkingBudget field)
 - gh auth switch --user dave-sucks before pushing
 
@@ -444,7 +454,7 @@ it with a ticker chip as if it were a traded security.
 3. AgentThread → ChatRuntime → POST /api/agent/research-run
 4. Route loads config + historical context (portfolio, watchlist,
    briefs, trades, accuracy, intelligence policy)
-5. GPT-4o (temperature 0.2) follows the per-thesis review flow with
+5. GPT-5.5 (temperature 0.2) follows the per-thesis review flow with
    Phase-0 check-in:
    Phase 0: Portfolio check-in (injected context, no tools)
    Stage 1 — Orient: read_signals (today buckets: portfolio / watchlist
@@ -481,6 +491,13 @@ it with a ticker chip as if it were a traded security.
 - GPT-4o occasionally leaks `### Stage N — NAME` verbatim into its narration output. That cosmetic issue is handled at the renderer — the h3 filter in `cited-markdown-text.tsx` (around line 342) strips any heading matching `/^(Stage|Phase)\s+\d+\s*[—–\-]/`. That renderer filter is the durable defense; it's safe to keep the headers in the prompt.
 - The `FORBIDDEN OUTPUT PATTERNS` list in Section 8 of the prompt is belt-and-suspenders. Keep it. Do not rely on it alone.
 
+**Narration→execution gap on `close_position` — escalating** (`lib/agent/system-prompts/intraday-tactical.ts`, `lib/agent/system-prompt.ts`, `lib/agent/tools/record-run-summary.ts`)
+- **What it looks like:** the agent narrates "I'll close $X" / "exit $X" / "sell $X" in prose inside its run-summary or update_thesis rationale, then never calls `close_position`. The narration→execution gate at `record-run-summary.ts` catches the prose-vs-tool-call mismatch and marks the run FAILED.
+- **Occurrence pattern:** 1 run failed this way on 2026-05-20 (EV Catalyst, ON), then **3 runs on 2026-05-22** (Catalyst Event Raider on MRVL+OKTA both attempts; Secular Theme on SMTC). Frequency is increasing as the agents actually start trading (post-PR #307); they're hitting the gap on close-out, not on entry.
+- **Same family as the prose-termination bug below** — agent narrates intent, fails to follow through with the tool call. Different surface: that bug terminates the loop after Step-1 data tools; this one fails the close-out preflight.
+- **Filed as `docs/GAPS.md` P0-12.** Has a draft fix path there (prompt-side tighten "narrating 'close X' without a close_position tool call is a run failure" in the V2 daily-run prompt's tool-call discipline block, plus a retry-from-rationale shape in `morning-research.ts`).
+- **If you see a run with `Narration without tool call` in RunEvent.title** and the message mentions "close" / "exit" / "sell" — this is the bug. Don't try to patch the gate to be more lenient; the gate is correct, the agent's tool-call discipline is the problem.
+
 **Prose-termination after Step 1's parallel data tools** (`lib/agent/system-prompt.ts`, `lib/inngest/functions/morning-research.ts`)
 - 2026-05-07: 3 of 7 morning-cron runs (Catalyst Event Raider, Global Event-Driven ETF Strategist, EV Catalyst Event Trader) terminated after one round of tool calls. Toolstats showed exactly 3 calls per run: read_signals + get_portfolio_context + get_theses (all parallel). Then the model emitted a markdown thesis-by-thesis review ending with phrases like "Next, I'll proceed to..." or "Let me now focus on..." — text-only assistant turn, no tool call. AI SDK v6's generateText loop terminates when an assistant turn produces no tool calls, so the run ended at msg=4 (user → asst-with-tools → tool-results → asst-text-only).
 - The existing coverage retry SHOULD have caught it but was gated behind `response?.messages` being truthy; on a text-only tail that field came back empty/undefined and the retry was bypassed. The 3 failed runs all have `count: 1` per data tool with no retry tools accumulated.
@@ -500,11 +517,10 @@ it with a ticker chip as if it were a traded security.
 - **Fixed by PR #265** — `place_trade` now atomically flips WATCHING → ACTIVE in the same DB transaction as the Alpaca order. No new trade can produce this desync.
 - If you see a production thesis with `status=WATCHING` and a matching OPEN Position, it's a pre-PR-#265 row. Fix: `UPDATE "Thesis" SET status='ACTIVE' WHERE id='...'` + write a manual ThesisUpdate STATUS_CHANGED row.
 
-**V1/V2 prompt dispatch only honored in cron, not in route.ts** (`app/api/agent/[mode]/route.ts`, `lib/inngest/functions/morning-research.ts`)
-- `lib/inngest/functions/morning-research.ts:126` correctly dispatches: `config.useV2Prompt ? buildDailyRunSystemPromptV2 : buildV2SystemPrompt`.
-- `app/api/agent/[mode]/route.ts:232` does NOT — both ternary branches call `buildV2SystemPrompt`. The `useV2Prompt` flag is never read.
-- **Effect:** all 6 analysts have `useV2Prompt: true` in the DB, but clicking "Run" in the UI always serves the 600-line legacy prompt. The 8 AM cron is correct; the user-triggered run button is not. Filed as GAPS.md P0-11.
-- **Fix path:** mirror the morning-research dispatch in route.ts (~3-line change). Don't "fix" this by removing the flag or deleting `buildDailyRunSystemPromptV2` — the cron path is correct and relies on both builders existing.
+**V1/V2 prompt dispatch only honored in cron, not in route.ts** — ~~ACTIVE BUG~~ **RESOLVED 2026-05-16 (PR #270)**
+- Historical context: `app/api/agent/[mode]/route.ts:232` always called the V1 prompt builder while `morning-research.ts` correctly read `config.useV2Prompt`. The UI "Run" button served the 600-line legacy prompt while the 8 AM cron used V2 — silent drift between the two surfaces.
+- **Fix:** PR #270 deprecated the V1 builder (`buildV2SystemPrompt` — misnamed) and made route.ts call `buildDailyRunSystemPromptV2` unconditionally. The `useV2Prompt` flag is no longer read; column stays for migration cleanup.
+- See `GAPS_HISTORY.md` → "Migrated from GAPS.md as part of this consolidation" → P0-11.
 
 **Aggregates and the FEEDS dimension** (`lib/universe/feeds.ts`, `lib/inngest/functions/firm-market-sweep.ts`, `lib/inngest/functions/signal-router.ts`)
 - Aggregate signals (`Signal.aggregateType` populated) carry empty `sectors`/`industries` by design — they're firm-wide. Routing them through the news-signal fence (sector/industry match) silently drops everything; that's the bug that #163/#164/#165/#166 chased.

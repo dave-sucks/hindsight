@@ -118,6 +118,24 @@ export default async function RunPage({
   // Inngest-backed segment runs (source=AGENT) execute server-side — don't
   // auto-start AgentThread or it would launch a second competing agent.
   const isInngestSegmentRun = isPodcastSegmentRun && run.source === "AGENT";
+  // Thesis-writer runs (mode=THESIS_WRITER) execute server-side via the
+  // Inngest thesis-writer consumer (see lib/inngest/functions/thesis-writer.ts).
+  // Same guard shape as tactical + discovery — without it, opening the
+  // child-run page during RUNNING would auto-start AgentChat against
+  // /api/agent/research-run, launching a second competing agent on the
+  // same runId. The real worker still writes its thread through the
+  // existing message-persistence path; the page renders the replay once
+  // status flips COMPLETE.
+  const isThesisWriterMode = run.mode === "THESIS_WRITER";
+  // PRINCIPAL_CHAT runs live in /chat (now also visible in the Recent
+  // Chats sidebar there). The /runs index filters them out, but a
+  // direct URL hit (e.g. clicking a child THESIS_WRITER run that
+  // links to its parentRunId, or pasting a link) still lands here.
+  // Without this guard the page would auto-start AgentChat in
+  // research-run mode against /api/agent/research-run, which would
+  // (a) wrong route, (b) spawn a competing agent. Replay still works
+  // through the existing message-persistence path.
+  const isPrincipalChatMode = run.mode === "PRINCIPAL_CHAT";
 
   // Load Sources + Theses tab data from the DB.
   // Wrapped in try/catch so a DB error (e.g. pending migration) never
@@ -159,7 +177,7 @@ export default async function RunPage({
             runId={id}
             analystId={isPodcastSegmentRun ? undefined : run.agentConfig?.id}
             analystName={analystName}
-            autoStart={isLive && !isTacticalMode && !isDiscoveryMode && !isInngestSegmentRun}
+            autoStart={isLive && !isTacticalMode && !isDiscoveryMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode}
             messages={persistedMessages ?? undefined}
             brief={isPodcastSegmentRun ? null : brief}
             sources={isPodcastSegmentRun ? [] : sources}

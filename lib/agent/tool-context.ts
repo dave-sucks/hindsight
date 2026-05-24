@@ -26,6 +26,18 @@ export interface ToolContext {
    * read this. See docs/PODCAST_PLAN.md.
    */
   podcastSegmentId?: string;
+  /**
+   * ResearchRun.mode for this execution — needed for mode-specific gates
+   * that can't reasonably do their own DB lookup. The complete_run
+   * preflight (lib/agent/tools/complete-run.ts) uses it to skip the
+   * `no_run_summary` check for INTRADAY_TACTICAL runs, which don't have
+   * record_run_summary in their tool allowlist.
+   *
+   * Optional for backward compat — callers without it just get the
+   * full default behavior. New call sites should pass it through from
+   * ResearchRun.mode.
+   */
+  runMode?: string;
   alpacaCreds?: AlpacaCredentials;
   /**
    * Snapshot of the run's environment (ResearchRun.environment). Pinned
@@ -90,6 +102,18 @@ export interface ToolContext {
    * when the V2 prompt is enabled.
    */
   dailyRunOnly?: boolean;
+
+  /**
+   * Chat-dispatched thesis-writer mints clamp to WATCHING. When true,
+   * record_thesis downgrades LONG/SHORT mints that request status="ACTIVE"
+   * to WATCHING (mirrors the discoveryOnly clamp at record-thesis.ts ~line
+   * 836). Set by dispatch_thesis_research for the Principal Chat flow so
+   * exploratory chat dispatches don't produce trade-eligible coverage that
+   * would later fire orphan tactical EXIT runs (the same failure shape
+   * the discovery clamp was added to prevent). Phase-3 daily-run refresh
+   * dispatches and Phase-4 tactical inline calls leave this unset.
+   */
+  forceWatchingMint?: boolean;
 
   /**
    * Full set of tickers this analyst already covers — ACTIVE + WATCHING

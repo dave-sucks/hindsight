@@ -38,7 +38,10 @@ import {
 
 // Vercel function timeout is set per-mode via route segment config.
 // For the dynamic catch-all, we use the research-run limit (longest).
-export const maxDuration = 300;
+// 2026-05-15 — raised 300 → 800 with the Pro upgrade. Per-mode maxSteps
+// in modes.ts still keeps each mode bounded; this is just the hard
+// ceiling for the longest one (research-run).
+export const maxDuration = 800;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -585,12 +588,26 @@ export async function POST(
         ).map((p) => p.symbol)
       : [];
 
+    // Map the HTTP agentMode to the ResearchRun.mode string the tool layer
+    // expects. Used by the complete_run preflight to short-circuit
+    // tactical-specific gates. Tactical is event-driven and doesn't enter
+    // via this route, so no INTRADAY_TACTICAL branch here.
+    const runMode: string | undefined =
+      agentMode === "research-run"
+        ? "MORNING_PLAN"
+        : agentMode === "principal"
+          ? "PRINCIPAL_CHAT"
+          : agentMode === "podcast-segment-run"
+            ? "PODCAST_SEGMENT_RUN"
+            : undefined;
+
     const allTools = createResearchTools({
       runId: runId || agentMode,
       userId: user.id,
       accountId,
       analystId: resolvedAnalystId,
       podcastSegmentId: resolvedPodcastSegmentId,
+      runMode,
       watchlist: (agentConfig.watchlist as string[]) ?? [],
       positionTickers,
       exclusionList: (agentConfig.exclusionList as string[]) ?? [],
@@ -655,8 +672,10 @@ export async function POST(
     const trimmedMessages = trimToolResults(messages) as any;
     const modelMessages = await convertToModelMessages(trimmedMessages);
 
-    // Allow client to override model (validated to known model IDs)
-    const ALLOWED_OVERRIDES = ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-6", "claude-opus-4-6"];
+    // Allow client to override model (validated to known model IDs).
+    // gpt-5.5 added 2026-05-15 alongside the research-run / tactical model
+    // swap. The in-chat model switcher uses this list to gate selections.
+    const ALLOWED_OVERRIDES = ["gpt-5.5", "gpt-4o", "gpt-4o-mini", "claude-sonnet-4-6", "claude-opus-4-6"];
     const effectiveModel = (modelOverride && ALLOWED_OVERRIDES.includes(modelOverride))
       ? modelOverride
       : modeConfig.model;

@@ -295,6 +295,16 @@ async function applyFillByIntent(
             realizedPnl,
             outcome,
             closedAt: filledAt,
+            // Audit fields — pre-2026-05-19 this branch left closeReason
+            // and closeSource null, which is what caused the 4 mystery
+            // closes (AMZN/TSM/NVDA/AMD) on 2026-05-18 to have blank
+            // attribution. Reconcile fills always trace back to an
+            // earlier intent="CLOSE" Order submitted by the agent (via
+            // close_position) or the user (via /api/trades/.../close).
+            // We mark this path "reconcile" to distinguish from
+            // first-touch closes that set closeSource themselves.
+            closeReason: position.closeReason ?? `RECONCILED_FILL ($${fillPrice.toFixed(2)})`,
+            closeSource: position.closeSource ?? "reconcile",
           },
         });
         await tx.positionEvent.create({

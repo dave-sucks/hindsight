@@ -374,7 +374,7 @@ Every LONG/SHORT thesis carries `horizon` — the discriminator that gives every
 
 PENDING and PASS theses carry no horizon (`horizon = null`). PENDING gets one when promoted to LONG/SHORT; PASS never needs one.
 
-**Where DAY fits:** there's no `DAY` horizon enum value today. Intraday Momentum Scalper uses `horizon=TRADE` + the EOD-flatten cron for the no-overnight rule. This is intentional.
+**Where DAY fits:** there's no `DAY` horizon enum value today. A day-trader analyst (if reintroduced — none currently active) would use `horizon=TRADE` + the EOD-flatten cron for the no-overnight rule. This is intentional.
 
 The constants live in [`lib/agent/horizon-policy.ts`](../lib/agent/horizon-policy.ts) — `HORIZON_REVIEW_DAYS`, `HORIZON_REVIEW_CADENCE`, `HORIZON_EXIT_POLICY`. `record_thesis` imports the day constants for `nextReviewAt` math; the daily-run prompt imports the cadence + policy strings for per-thesis hint rendering.
 
@@ -599,7 +599,7 @@ The redesign considered several larger changes that were deliberately NOT pursue
 - **Did not rename horizon → style.** Horizon already names the thing; renaming was churn.
 - **Did not split Thesis into watch/enter/hold/exit JSON columns.** Triggers + horizon already encode this. The four-part contract is a conceptual frame, not a schema shape.
 - **Did not add `analystId` FK.** The JOIN-via-ResearchRun pattern is ugly but works. Defer until a query-perf gap actually appears.
-- **Did not add a DAY horizon.** Intraday Momentum works via `horizon=TRADE` + EOD-flatten cron. Adding DAY is real work for marginal clarity.
+- **Did not add a DAY horizon.** A day-trader analyst would work via `horizon=TRADE` + EOD-flatten cron; no day-trader is currently active in the roster. Adding DAY is real work for marginal clarity.
 - **Did not ship horizon-aware price-monitor / trade-exit.** Constants are in `horizon-policy.ts` but the runtime branching in `price-monitor.ts` and `trade-exit.ts` is not yet wired. That's GAPS P0-5b/c.
 
 ### Done since (2026-05-13)

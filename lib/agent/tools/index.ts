@@ -26,6 +26,9 @@ import { getAnalystCoverage } from "./get-analyst-coverage";
 import { getInsiderActivity } from "./get-insider-activity";
 import { getEarningsHistory } from "./get-earnings-history";
 import { getPeersWithMetrics } from "./get-peers-with-metrics";
+// THESIS_RESEARCH_V2 — Phase 1 meta-tool + orchestrator dispatch.
+import { writeThesisResearch } from "./write-thesis-research";
+import { dispatchThesisResearch } from "./dispatch-thesis-research";
 import { readSignals } from "./read-signals";
 import { readArtifact } from "./read-artifact";
 import { webSearch } from "./web-search";
@@ -62,6 +65,8 @@ interface ToolCtx {
   analystId?: string;
   /** Podcast feature — FK to PodcastSegment for segment runs. */
   podcastSegmentId?: string;
+  /** ResearchRun.mode — needed for mode-specific tool gates. See ToolContext.runMode. */
+  runMode?: string;
   watchlist?: string[];
   /** Open-position tickers (status=OPEN) for the analyst — fence bypass. */
   positionTickers?: string[];
@@ -86,6 +91,15 @@ interface ToolCtx {
   discoveryOnly?: boolean;
   /** Hide discoverySignals from read_signals (daily-run V2 cron). */
   dailyRunOnly?: boolean;
+  /**
+   * Chat-dispatched thesis-writer mints clamp to WATCHING. When true,
+   * record_thesis downgrades LONG/SHORT mints that request status="ACTIVE"
+   * to WATCHING (mirrors the discoveryOnly clamp pattern at line 836+
+   * of record-thesis.ts). Set by dispatch_thesis_research for the
+   * Principal Chat flow; refresh dispatches and tactical inline calls
+   * leave it unset.
+   */
+  forceWatchingMint?: boolean;
   /**
    * Full set of tickers this analyst already covers (ACTIVE + WATCHING
    * theses + watchlist + open positions). Discovery scope ("universe")
@@ -129,6 +143,12 @@ export function createResearchTools(ctx: ToolCtx) {
     get_insider_activity: getInsiderActivity(newCtx),
     get_earnings_history: getEarningsHistory(newCtx),
     get_peers_with_metrics: getPeersWithMetrics(newCtx),
+    // THESIS_RESEARCH_V2 — Phase 1.
+    // write_thesis_research is the meta-tool the thesis-writer agent calls.
+    // dispatch_thesis_research is the orchestrator-side spawner used by
+    // Principal Chat (and later Discovery / Daily / Tactical).
+    write_thesis_research: writeThesisResearch(newCtx),
+    dispatch_thesis_research: dispatchThesisResearch(newCtx),
     read_signals: readSignals(newCtx),
     read_artifact: readArtifact(newCtx),
     web_search: webSearch(newCtx),
@@ -187,6 +207,9 @@ export { getAnalystCoverage } from "./get-analyst-coverage";
 export { getInsiderActivity } from "./get-insider-activity";
 export { getEarningsHistory } from "./get-earnings-history";
 export { getPeersWithMetrics } from "./get-peers-with-metrics";
+// THESIS_RESEARCH_V2 — Phase 1.
+export { writeThesisResearch } from "./write-thesis-research";
+export { dispatchThesisResearch } from "./dispatch-thesis-research";
 export { readSignals } from "./read-signals";
 export { readArtifact } from "./read-artifact";
 export { webSearch } from "./web-search";

@@ -55,8 +55,10 @@ interface ThesisUpdate {
   tradeId: string | null;
 }
 
-function fmtUsd(v: number | null | undefined): string {
-  if (v == null) return "—";
+function fmtUsd(v: number | null | undefined): string | null {
+  // Returns null when the price is missing so the caller can hide the
+  // chunk entirely instead of rendering a placeholder dash (2026-05-19).
+  if (v == null) return null;
   return `$${v.toFixed(2)}`;
 }
 
@@ -101,7 +103,9 @@ export function ThesisTimelineSection({ thesisId }: Props) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm font-medium">Activity</p>
+      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+        Activity
+      </p>
 
       {error ? (
         <p className="text-xs text-muted-foreground">
@@ -154,22 +158,34 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                       "rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 -ml-2 mb-1",
                   )}
                 >
-                  {/* Top row: Price (left) · Date (right) */}
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium tabular-nums flex items-center gap-1">
-                      {fmtUsd(u.priceAtTime)}
-                      {delta != null && delta !== 0 ? (
-                        delta > 0 ? (
-                          <ArrowUp className="h-3.5 w-3.5 text-emerald-500" />
-                        ) : (
-                          <ArrowDown className="h-3.5 w-3.5 text-red-500" />
-                        )
-                      ) : null}
-                    </span>
-                    <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-                      {fmtDateTime(u.timestamp)}
-                    </span>
-                  </div>
+                  {/* Top row: Date (left, xs mono) · Price (right).
+                      Swapped 2026-05-19 — the date reads as the primary
+                      anchor ("when") and price is supporting detail. When
+                      priceAtTime is null (most ThesisUpdate types don't
+                      carry a price) the whole price chunk is hidden, no
+                      "—" placeholder. */}
+                  {(() => {
+                    const priceStr = fmtUsd(u.priceAtTime);
+                    return (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
+                          {fmtDateTime(u.timestamp)}
+                        </span>
+                        {priceStr ? (
+                          <span className="text-sm font-medium tabular-nums flex items-center gap-1">
+                            {priceStr}
+                            {delta != null && delta !== 0 ? (
+                              delta > 0 ? (
+                                <ArrowUp className="h-3.5 w-3.5 text-emerald-500" />
+                              ) : (
+                                <ArrowDown className="h-3.5 w-3.5 text-red-500" />
+                              )
+                            ) : null}
+                          </span>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
 
                   {/* Summary (heading) */}
                   <p className="text-sm font-medium leading-snug">

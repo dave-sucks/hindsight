@@ -32,6 +32,12 @@ import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { getLatestPrices } from "@/lib/alpaca";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
+import {
+  getThesisBearCaseBullets,
+  getThesisBullCaseBullets,
+  getThesisComposite,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 const STATUS_VALUES = [
   "ACTIVE",
@@ -75,6 +81,12 @@ const schema = z.object({
     .optional()
     .describe(
       "Include recent ThesisUpdate rows per thesis. Default false. Set true for tactical mode and per-thesis review.",
+    ),
+  include_research: z
+    .boolean()
+    .optional()
+    .describe(
+      "Include the deep-research artifact (researchData + researchSections + researchUpdatedAt) per thesis. Default false. Each researchData blob is ~3-5KB — leaving this off keeps daily-run and tactical reads lightweight. Set true only when refreshing a thesis (thesis-writer mode) or when the agent specifically needs the multi-section synthesis to grade against.",
     ),
   history_limit: z
     .number()
@@ -158,6 +170,12 @@ export const getTheses = defineTool({
         : {}),
     };
 
+    // Default select skips the heavy deep-research blobs (`researchData`
+    // ~3-5KB + `researchSections`). The agent opts in with
+    // `include_research: true` when refreshing a thesis via the
+    // thesis-writer agent, or when the synthesis is needed for grading.
+    // Daily-run and tactical reads stay light by default.
+    const includeResearch = args.include_research === true;
     const theses = await prisma.thesis.findMany({
       where,
       orderBy: { updatedAt: "desc" },
@@ -168,11 +186,14 @@ export const getTheses = defineTool({
         direction: true,
         status: true,
         horizon: true,
-        confidenceScore: true,
         coreBelief: true,
-        reasoningSummary: true,
-        thesisBullets: true,
-        riskFlags: true,
+        // PR-9 flat schema: legacy plain-string narrative columns replaced
+        // by JSONB sections (snapshot / bullCase / bearCase). The agent-
+        // facing shape below extracts plain strings via helpers so prompts
+        // and tactical-agent context keep working.
+        snapshot: true,
+        bullCase: true,
+        bearCase: true,
         keyAssumptions: true,
         invalidationConds: true,
         entryPrice: true,
@@ -186,6 +207,10 @@ export const getTheses = defineTool({
         nextReviewAt: true,
         sourceSignalIds: true,
         sourceKind: true,
+        // 4-dim composite scoring + composite total. `composite` is the
+        // single conviction number (PR-9 dropped the parallel
+        // `confidenceScore` int).
+        scoring: true,
         createdAt: true,
         updatedAt: true,
         invalidatedAt: true,
@@ -197,6 +222,21 @@ export const getTheses = defineTool({
         paperTenureDays: true,
         paperRealizedPnl: true,
         paperReviewCount: true,
+        // Deep-research artifacts — opt in via include_research. PR-9
+        // flattened `researchSections` blob into 9 first-class columns;
+        // selecting all of them by name.
+        ...(includeResearch
+          ? {
+              researchData: true,
+              recentCatalysts: true,
+              fundamentals: true,
+              latestEarnings: true,
+              catalystsAndEvents: true,
+              analystConsensus: true,
+              insiderTechnical: true,
+              researchUpdatedAt: true,
+            }
+          : {}),
       },
     });
 
@@ -332,39 +372,45 @@ export const getTheses = defineTool({
     // Build ThesisCardData[] for the renderer — one card per thesis the
     // agent read. Same shape as record_thesis / update_thesis returns so
     // ThesisCardRenderer can fold them into the "Read theses" carousel.
-    const cards = enriched.map((t) => ({
-      thesis_id: t.id,
-      ticker: t.ticker,
-      direction: t.direction as "LONG" | "SHORT" | "PASS" | "PENDING",
-      confidence_score: t.confidenceScore,
-      reasoning_summary: t.reasoningSummary,
-      thesis_bullets: t.thesisBullets ?? [],
-      risk_flags: t.riskFlags ?? [],
-      entry_price: t.entryPrice ?? null,
-      target_price: t.targetPrice ?? null,
-      stop_loss: t.stopLoss ?? null,
-      hold_duration: undefined,
-      signal_types: [],
-      company_name: null,
-      exchange: null,
-      fundamentals: null,
-      status: t.status as
-        | "ACTIVE"
-        | "WATCHING"
-        | "PROMOTED"
-        | "INVALIDATED"
-        | "CLOSED"
-        | "SUPERSEDED",
-      // PROMOTED-only context fields. Null on non-PROMOTED rows.
-      promoted_at: t.promotedAt ? t.promotedAt.toISOString() : null,
-      paper_tenure_days: t.paperTenureDays ?? null,
-      paper_realized_pnl: t.paperRealizedPnl ?? null,
-      paper_review_count: t.paperReviewCount ?? null,
-      // Surface the per-thesis needsAction annotation so the
-      // ThesisCardRenderer / read-theses-table can show an alert chip
-      // on rows that need work today.
-      needs_action: t.needsAction ?? null,
-    }));
+    const cards = enriched.map((t) => {
+      // PR-9: legacy 0-100 confidence → composite × 10 for the renderer
+      // which still consumes the 0-100 shape. Narrative columns extracted
+      // via helpers; bullCase/bearCase materialized as plain string[].
+      const composite = getThesisComposite(t);
+      return {
+        thesis_id: t.id,
+        ticker: t.ticker,
+        direction: t.direction as "LONG" | "SHORT" | "PASS" | "PENDING",
+        confidence_score: composite != null ? composite * 10 : 0,
+        reasoning_summary: getThesisSnapshotText(t),
+        thesis_bullets: getThesisBullCaseBullets(t),
+        risk_flags: getThesisBearCaseBullets(t),
+        entry_price: t.entryPrice ?? null,
+        target_price: t.targetPrice ?? null,
+        stop_loss: t.stopLoss ?? null,
+        hold_duration: undefined,
+        signal_types: [],
+        company_name: null,
+        exchange: null,
+        fundamentals: null,
+        status: t.status as
+          | "ACTIVE"
+          | "WATCHING"
+          | "PROMOTED"
+          | "INVALIDATED"
+          | "CLOSED"
+          | "SUPERSEDED",
+        // PROMOTED-only context fields. Null on non-PROMOTED rows.
+        promoted_at: t.promotedAt ? t.promotedAt.toISOString() : null,
+        paper_tenure_days: t.paperTenureDays ?? null,
+        paper_realized_pnl: t.paperRealizedPnl ?? null,
+        paper_review_count: t.paperReviewCount ?? null,
+        // Surface the per-thesis needsAction annotation so the
+        // ThesisCardRenderer / read-theses-table can show an alert chip
+        // on rows that need work today.
+        needs_action: t.needsAction ?? null,
+      };
+    });
 
     const activeCount = enriched.filter((t) => t.status === "ACTIVE").length;
     const watchingCount = enriched.filter(

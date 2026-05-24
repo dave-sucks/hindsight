@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
 import { etTradingDayDate } from "@/lib/market-hours"
 import { getAccountId } from "@/lib/auth/account"
+import { getThesisSnapshotText } from "@/lib/agent/thesis-narrative"
 
 // GET /api/intelligence/monitors — list monitors scoped to the current account
 export async function GET(req: NextRequest) {
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
             },
             select: {
               ticker: true,
-              reasoningSummary: true,
+              snapshot: true,
               researchRun: { select: { agentConfigId: true } },
             },
           })
@@ -80,7 +81,7 @@ export async function GET(req: NextRequest) {
               .filter((i) => i.researchRun.agentConfigId !== null)
               .map((i) => ({
                 ticker: i.ticker,
-                reason: i.reasoningSummary,
+                reason: getThesisSnapshotText(i),
                 priority: "NORMAL",
                 analystId: i.researchRun.agentConfigId as string,
               })),

@@ -7,5 +7,19 @@ if [ ! -d node_modules ] || [ ! -d lib/generated/prisma ]; then
   exit 0
 fi
 
+# Auto-regenerate the Prisma client if the schema has been modified more
+# recently than the generated client. Stale generated types are the
+# dominant cause of phantom "field doesn't exist on type" TS errors on
+# this repo — caught the 5/20 review sessions twice before this guard
+# went in.
+SCHEMA="prisma/schema.prisma"
+CLIENT_STAMP="lib/generated/prisma/index.d.ts"
+if [ -f "$SCHEMA" ] && [ -f "$CLIENT_STAMP" ] && [ "$SCHEMA" -nt "$CLIENT_STAMP" ]; then
+  echo "🔄 pre-commit: schema newer than generated client — running prisma generate"
+  npx prisma generate >/dev/null || {
+    echo "⚠️  prisma generate failed — continuing anyway, tsc will surface the real error"
+  }
+fi
+
 echo "🔎 pre-commit: npx tsc --noEmit"
 npx tsc --noEmit

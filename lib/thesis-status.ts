@@ -93,12 +93,13 @@ export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = 
   },
   ARCHIVED: {
     label: "Archived",
-    // Distinct from INVALIDATED (view disproven) and CLOSED (position
-    // exited). ARCHIVED = walked away without an evidence-based reason,
-    // or PASS at write time. Off the watchlist; visible as institutional
-    // memory on the stock detail page.
+    // Walked away from the watchlist without an evidence-driven view-break
+    // (manual remove, editor remove, PASS-at-write). Visually distinct from
+    // INVALIDATED (which carries narrative weight) and CLOSED (which
+    // implies a position lifecycle).
     dotClass: "bg-muted-foreground/40",
-    tooltip: "Walked away — off the watchlist, institutional memory only",
+    tooltip:
+      "Walked away from coverage — no trade outcome, no evidence-driven invalidation",
   },
   SUPERSEDED: {
     label: "Superseded",

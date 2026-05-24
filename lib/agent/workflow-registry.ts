@@ -11,7 +11,7 @@
 // and bump LAST_VERIFIED_AT below.
 
 /** ISO date the registry was last manually verified against the codebase. */
-export const LAST_VERIFIED_AT = "2026-05-13"; // bumped: trading environment (PAPER/LIVE) per analyst + PROMOTED thesis status for first-live-run conviction-pause
+export const LAST_VERIFIED_AT = "2026-05-22"; // bumped: PROMOTED thesis status for first-live-run conviction-pause (alongside trading environment PAPER/LIVE and THESIS_RESEARCH_V2 Phase 1)
 
 /**
  * Live thesis-system reference. Linked from the agent / tactical /
@@ -101,6 +101,7 @@ export type TeamId =
   | "discovery"
   | "agent"
   | "tactical"
+  | "thesis-writer"
   | "briefing"
   | "evaluation";
 
@@ -466,6 +467,43 @@ export const TEAMS: Team[] = [
     promptSource: "lib/agent/system-prompts/intraday-tactical.ts",
   },
 
+  // ─── 3d. Thesis Writer ─────────────────────────────────────────────────
+  {
+    id: "thesis-writer",
+    title: "Thesis Writer",
+    phase: "run",
+    upstream: { teamId: "agent", verb: "Dispatched by" },
+    summary:
+      "Focused sub-agent that produces one deep-research thesis on one ticker. Spawned on-demand via dispatch_thesis_research. Pulls 7 structured-data sources in parallel, then synthesizes a multi-section equity-research note via Claude Sonnet 4.6 + native web search.",
+    description:
+      "The Thesis Writer is the sub-agent that produces a Goldman-depth equity-research note on a single name. It's spawned by dispatch_thesis_research from Principal Chat (Phases 2-4 will add Discovery, the Daily Run promote-to-active path, and Tactical as additional dispatchers). The child run is its own first-class ResearchRun row with mode=THESIS_WRITER and a parentRunId pointing back at whoever asked for it.\n\nThe agent itself is intentionally thin: it calls write_thesis_research once (the meta-tool fans out 7 structured-data pulls — financials, analyst coverage, insider activity, earnings history, peers, SEC filings, quote + technicals + news — and synthesizes a multi-section note via Claude Sonnet 4.6 with native web search), reads what came back, then layers direction / horizon / target / stop / belief on top via record_thesis (mint) or update_thesis (refresh). The synthesized markdown data block and parsed sections persist on Thesis.researchData and Thesis.researchSections, with researchUpdatedAt stamped so the Phase-3 daily-run staleness gate can refuse promote-to-active on stale research.\n\nModel choice (2026-05-16 bake-off): Claude Sonnet 4.6 + Anthropic native web_search. GPT-5/o3 avoided for fiscal-year hallucination; Gemini 2.5 Pro + Google Search grounding documented as fallback.",
+    icon: FileText,
+    model: "Claude Sonnet 4.6",
+    schedule: "Event-driven (app/thesis.write.requested)",
+    substeps: [
+      { title: "Call write_thesis_research", summary: "ONE meta-tool call. Internally: 7 parallel data pulls → markdown data block (~3-5KB ground truth) → Claude Sonnet 4.6 + native web_search synthesis (stepCountIs(6), ~60-120s) → parsed sections + [STRUCTURED:...] / [WEB:...] citations." },
+      { title: "Decide on top of the research", summary: "Direction (LONG/SHORT/PASS), horizon (CATALYST/TARGET/TRADE/COMPOUNDER), entry/target/stop, core_belief, ≥2 key_assumptions, ≥2 invalidation_conditions, confidence ≥ analyst minConfidence." },
+      { title: "Persist the thesis", summary: "record_thesis for mint, update_thesis for refresh. researchData + researchSections threaded through verbatim from write_thesis_research." },
+      { title: "Complete", summary: "complete_run marks the child run COMPLETE. Parent waiter (Phase 3) consumes app/thesis.written and resumes." },
+    ],
+    tools: [
+      { name: "write_thesis_research", provider: "internal", summary: "The meta-tool. Pulls 7 structured-data sources in parallel, formats into a markdown data block, calls Claude Sonnet 4.6 with Anthropic native web_search for synthesis, parses sections + citations. Returns { sections, citations, rawDataBlock }.",
+        resources: [
+          { source: "internal", title: "Parallel data pulls (Promise.allSettled)", description: "get_stock_data + get_financials_deep + get_analyst_coverage + get_insider_activity + get_earnings_history + get_peers_with_metrics + get_sec_filings — all 7 fire in parallel; partial tolerance.", type: "internal", endpointOrPath: "lib/agent/tools/write-thesis-research.ts", exampleOutput: "7 pulls, 1 partial (analyst-estimates 403)" },
+          { source: "internal", title: "Markdown data block", description: "Formats results into a ~3-5KB ground-truth context block the model reads but cannot contradict.", type: "internal", endpointOrPath: "lib/agent/thesis-research/format-data-block.ts" },
+          { source: "anthropic", title: "Claude Sonnet 4.6 + native web_search", description: "Synthesis call. Native web search (webSearch_20260209) fills narrative gaps — recent analyst commentary, transcript quotes, dated catalysts.", type: "api", endpointOrPath: "anthropic.tools.webSearch_20260209({ maxUses: 6 })", exampleOutput: "9 sections written, 14 citations (8 web / 6 structured)" },
+          { source: "internal", title: "Section + citation parser", description: "Extracts ## Snapshot / ## Fundamentals / ## Bull Case / ## Bear Case / etc. and the [STRUCTURED:...] / [WEB:...] citation markers.", type: "internal", endpointOrPath: "lib/agent/tools/write-thesis-research.ts → parseIntoSections" },
+        ],
+      },
+      { name: "record_thesis", provider: "internal", summary: "Mint mode close-out. Persists the synthesized researchData + researchSections + researchUpdatedAt onto the Thesis row alongside the direction / horizon / target / stop / belief / assumption / invalidation fields." },
+      { name: "update_thesis", provider: "internal", summary: "Refresh mode close-out. Writes a RESEARCH_REFRESHED-equivalent audit row + patches the structural fields. THESIS_RESEARCH_V2 audit type lives as a String, no enum migration needed." },
+      TOOL_GET_STOCK_DATA,
+      { name: "web_search", provider: "anthropic", summary: "Anthropic native web_search tool. Available as an escape hatch in the agent loop; the meta-tool's synthesis call has its own dedicated web_search budget. The Sonar 'web_search' tool registered globally is intentionally OVERRIDDEN for this mode." },
+      { name: "complete_run", provider: "internal", summary: "Marks the child run COMPLETE. Emits app/thesis.written downstream for Phase-3 waiters." },
+    ],
+    promptSource: "lib/agent/run-thesis-writer.ts → buildThesisWriterSystemPrompt",
+  },
+
   // ─── 4. Briefing Agent ─────────────────────────────────────────────────
   {
     id: "briefing",
@@ -567,6 +605,8 @@ export function getTeamForRunMode(mode: string | null | undefined): TeamId {
       return "tactical";
     case "DISCOVERY":
       return "discovery";
+    case "THESIS_WRITER":
+      return "thesis-writer";
     case "MORNING_PLAN":
     default:
       return "agent";
@@ -673,9 +713,9 @@ export const TOOL_REGISTRY: RegistryTool[] = [
   {
     name: "web_search",
     category: "intelligence",
-    summary: "Live Perplexity Sonar search for breaking news or niche topics. Agent mode respects intelligencePolicy.liveSearchBudget per run.",
-    providers: ["perplexity"],
-    agents: ["builder", "editor", "agent", "tactical", "discovery"],
+    summary: "Live web search. Most modes use Perplexity Sonar; thesis-writer overrides this slot with Anthropic's native web_search tool (server-side, executed by Claude). Agent mode respects intelligencePolicy.liveSearchBudget per run.",
+    providers: ["perplexity", "anthropic"],
+    agents: ["builder", "editor", "agent", "tactical", "discovery", "thesis-writer"],
     resources: [{ source: "perplexity", title: "Sonar web search", description: "Real-time web search with recency filtering.", type: "api", endpointOrPath: "searchSignals(query, { recency })", exampleOutput: "5 results · sentiment: bullish · urgency: MEDIUM", notes: ["Agent per-run budget from intelligencePolicy"] }],
   },
   // ── Research (Stage 2 — live market data) ────────────────────────────
@@ -699,7 +739,7 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     category: "research",
     summary: "Quote, company profile, financials, technicals, analyst consensus, price targets, and news for one ticker.",
     providers: ["finnhub", "fmp"],
-    agents: ["builder", "editor", "agent", "tactical", "discovery"],
+    agents: ["builder", "editor", "agent", "tactical", "discovery", "thesis-writer"],
     resources: TOOL_GET_STOCK_DATA.resources,
   },
   {
@@ -757,16 +797,16 @@ export const TOOL_REGISTRY: RegistryTool[] = [
   {
     name: "record_thesis",
     category: "action",
-    summary: "Mints a NEW thesis (LONG/SHORT). Use this only for fundamentally new coverage or a direction flip. For refinements to an existing thesis (raise target, tighten stop, mark invalidated) use update_thesis instead. Requires source_kind; ROUTED_SIGNAL requires source_signal_ids validated against today's route pool.",
+    summary: "Mints a NEW thesis (LONG/SHORT). Use this only for fundamentally new coverage or a direction flip. For refinements to an existing thesis (raise target, tighten stop, mark invalidated) use update_thesis instead. Requires source_kind; ROUTED_SIGNAL requires source_signal_ids validated against today's route pool. THESIS_RESEARCH_V2: accepts research_data + research_sections from the thesis-writer agent — they persist on Thesis.researchData / researchSections / researchUpdatedAt.",
     providers: ["internal"],
-    agents: ["agent", "discovery"],
+    agents: ["agent", "discovery", "thesis-writer"],
   },
   {
     name: "update_thesis",
     category: "action",
     summary: "Update an existing thesis durably. Pass thesis_id + the fields changing + a rationale. Every call writes one ThesisUpdate audit row (UPDATED, REVIEWED, INVALIDATED, or CLOSED). The single most-used new tool — every daily-run REVIEWED entry and every tactical close-out is one of these.",
     providers: ["internal"],
-    agents: ["agent", "tactical"],
+    agents: ["agent", "tactical", "thesis-writer"],
   },
   {
     name: "place_trade",
@@ -825,6 +865,32 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     category: "system",
     summary: "No-args. Marks the run COMPLETE in DB and triggers the briefing agent inline. Always the final tool call.",
     providers: ["internal"],
-    agents: ["agent", "tactical", "discovery"],
+    agents: ["agent", "tactical", "discovery", "thesis-writer"],
+  },
+  // ── THESIS_RESEARCH_V2 Phase 1 ──────────────────────────────────────────
+  {
+    name: "write_thesis_research",
+    category: "research",
+    summary: "The thesis-writer meta-tool. ONE call fans out 7 structured-data tools in parallel (financials_deep, analyst_coverage, insider_activity, earnings_history, peers_with_metrics, stock_data, sec_filings), formats into a ~3-5KB markdown ground-truth block, then synthesizes a multi-section equity-research note via Claude Sonnet 4.6 + Anthropic native web_search. Returns { sections, citations, rawDataBlock }.",
+    providers: ["internal", "anthropic", "finnhub", "fmp", "sec"],
+    agents: ["thesis-writer"],
+    resources: [
+      { source: "internal", title: "Parallel data pulls", description: "Promise.allSettled over 7 data-layer tools — partial tolerance, errors[] surfaced.", type: "internal", endpointOrPath: "lib/agent/tools/write-thesis-research.ts" },
+      { source: "anthropic", title: "Claude Sonnet 4.6 + native web_search", description: "Synthesis call with anthropic.tools.webSearch_20260209({ maxUses: 6 }), stepCountIs(6), 180s abort. Bake-off winner over GPT-5 (fiscal-year hallucination) and Gemini 2.5 Pro (close second, kept as fallback).", type: "api", endpointOrPath: "generateText({ model: anthropic('claude-sonnet-4-6'), tools: { web_search } })" },
+      { source: "internal", title: "Section + citation parser", description: "Extracts ## Snapshot / Fundamentals / Latest Earnings / Catalysts / Bull / Bear / Analyst Consensus / Insider+Technical and [STRUCTURED:...] / [WEB:...] markers.", type: "internal", endpointOrPath: "parseIntoSections + parseCitations" },
+    ],
+  },
+  {
+    // dispatch_thesis_research lives on Principal Chat (operator UI) — not
+    // one of the registered TEAMS, so `agents: []`. Phases 2-4 will add it
+    // to "discovery", "agent" (Daily Run), and "tactical" allowlists.
+    name: "dispatch_thesis_research",
+    category: "system",
+    summary: "Orchestrator-side spawner. Creates a child ResearchRun(mode='THESIS_WRITER', parentRunId=<caller>), fires app/thesis.write.requested via Inngest, returns the childRunId immediately. Caller continues; the thesis-writer sub-agent runs asynchronously. Phase 1: only Principal Chat dispatches (operator UI — not a registered TEAMS entry). Phases 2-4 will add Discovery / Daily promote-to-active / Tactical.",
+    providers: ["internal", "inngest"],
+    agents: [],
+    resources: [
+      { source: "inngest", title: "app/thesis.write.requested", description: "Consumed by lib/inngest/functions/thesis-writer.ts. concurrency:5. Emits app/thesis.written on completion for Phase-3 waiters.", type: "internal", endpointOrPath: "inngest.send({ name: 'app/thesis.write.requested', data: {...} })" },
+    ],
   },
 ];

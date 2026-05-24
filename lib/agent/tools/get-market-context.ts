@@ -8,14 +8,18 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { finnhub, calcSMA } from "@/lib/agent/research-helpers";
+import { getBars } from "@/lib/alpaca";
 import type { MacroEvent } from "@/lib/discovery/types";
 
 const FMP_KEY = process.env.FMP_API_KEY!;
 
 async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
-  const base = path.startsWith("/v4/")
-    ? `https://financialmodelingprep.com/api${path}`
-    : `https://financialmodelingprep.com/api/v3${path}`;
+  // 2026-05-19 — /api/v3 deprecated; route /stable/ paths directly.
+  const base = path.startsWith("/stable/")
+    ? `https://financialmodelingprep.com${path}`
+    : path.startsWith("/v4/")
+      ? `https://financialmodelingprep.com/api${path}`
+      : `https://financialmodelingprep.com/api/v3${path}`;
   const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
   try {
     const res = await fetch(url, {
@@ -23,7 +27,11 @@ async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return { data: null, error: `FMP ${res.status} for ${path}` };
-    return { data: await res.json() };
+    const data = await res.json();
+    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in data) {
+      return { data: null, error: `FMP: ${(data as Record<string, string>)["Error Message"]}` };
+    }
+    return { data };
   } catch (err) {
     return { data: null, error: err instanceof Error ? err.message : "FMP error" };
   }
@@ -45,30 +53,55 @@ export const getMarketContext = defineTool({
 
   progressLabel: () => "Checking today's market regime",
 
-  execute: async () => {
+  execute: async (_args, ctx) => {
     const errors: string[] = [];
     const today = new Date().toISOString().slice(0, 10);
-    const now = Math.floor(Date.now() / 1000);
-    const thirtyDaysAgo = now - 30 * 86400;
     const fiveDaysForward = new Date(Date.now() + 5 * 86400_000).toISOString().slice(0, 10);
 
     const allSymbols = ["SPY", ...SECTOR_ETFS];
-    const [quoteResults, spyCandleResult, macroCalResult, earningsDensityResult] = await Promise.all([
-      Promise.all(
-        allSymbols.map(async (sym) => {
-          const res = await finnhub(`/quote?symbol=${sym}`, 2);
-          const d = res.data as Record<string, number> | null;
-          if (d && typeof d.c === "number" && d.c > 0) {
-            return { symbol: sym, price: d.c, changesPercentage: d.dp ?? 0, dayHigh: d.h ?? d.c, dayLow: d.l ?? d.c };
+    // SPY candle via Alpaca (Finnhub /stock/candle is paid-only since
+    // 2024). Same feed=iex story as get-stock-data — see A1 PR.
+    const spyBarsStart = new Date(Date.now() - 30 * 86400_000)
+      .toISOString()
+      .slice(0, 10);
+    const [quoteResults, spyBarsResult, macroCalResult, earningsDensityResult] =
+      await Promise.all([
+        Promise.all(
+          allSymbols.map(async (sym) => {
+            const res = await finnhub(`/quote?symbol=${sym}`, 2);
+            const d = res.data as Record<string, number> | null;
+            if (d && typeof d.c === "number" && d.c > 0) {
+              return { symbol: sym, price: d.c, changesPercentage: d.dp ?? 0, dayHigh: d.h ?? d.c, dayLow: d.l ?? d.c };
+            }
+            if (res.error) errors.push(res.error);
+            return null;
+          })
+        ),
+        // Alpaca returns daily bars; convert to the {c, s} shape the
+        // downstream code expects.
+        (async () => {
+          try {
+            const bars = await getBars(
+              "SPY",
+              { start: spyBarsStart, end: today },
+              ctx.alpacaCreds,
+            );
+            return bars.length > 0
+              ? { data: { s: "ok" as const, c: bars.map((b) => b.close) } }
+              : { data: null as null, error: "Alpaca SPY bars empty" };
+          } catch (err) {
+            return {
+              data: null as null,
+              error: err instanceof Error ? err.message : "Alpaca bars error",
+            };
           }
-          if (res.error) errors.push(res.error);
-          return null;
-        })
-      ),
-      finnhub(`/stock/candle?symbol=SPY&resolution=D&from=${thirtyDaysAgo}&to=${now}`, 2),
-      fmp(`/economic_calendar?from=${today}&to=${today}`),
-      finnhub(`/calendar/earnings?from=${today}&to=${fiveDaysForward}`, 2),
-    ]);
+        })(),
+        // FMP /stable/economic-calendar is restricted on the basic plan;
+        // we attempt the call but expect it to fail gracefully on most
+        // accounts. The downstream code handles `null` → empty macro list.
+        fmp(`/stable/economic-calendar?from=${today}&to=${today}`),
+        finnhub(`/calendar/earnings?from=${today}&to=${fiveDaysForward}`, 2),
+      ]);
 
     const spyData = quoteResults[0];
     const sectorsRaw = quoteResults.slice(1).filter(Boolean);
@@ -95,7 +128,7 @@ export const getMarketContext = defineTool({
     let regime: "RISK_ON" | "RISK_OFF" | "NEUTRAL" = "NEUTRAL";
     let fiveDayReturn = 0;
 
-    const spyCandle = spyCandleResult.data as { c?: number[]; s?: string } | null;
+    const spyCandle = spyBarsResult.data as { c?: number[]; s?: string } | null;
     if (spyCandle && spyCandle.s === "ok" && Array.isArray(spyCandle.c) && spyCandle.c.length >= 5) {
       const closes = spyCandle.c;
       const sma20 = calcSMA(closes, 20);
@@ -108,8 +141,8 @@ export const getMarketContext = defineTool({
         const pctFromSma = Math.round(((currentPrice - sma20) / sma20) * 10000) / 100;
         spyTrend = { sma_20: sma20, position, pct_from_sma: pctFromSma };
       }
-    } else if (spyCandleResult.error) {
-      errors.push(spyCandleResult.error);
+    } else if (spyBarsResult.error) {
+      errors.push(spyBarsResult.error);
     }
 
     const spyAboveSma = spyTrend?.position === "above";
@@ -184,7 +217,7 @@ export const getMarketContext = defineTool({
         { provider: "Finnhub", title: "SPY Real-Time Quote", url: "https://finnhub.io/docs/api/quote" },
         { provider: "Finnhub", title: "CBOE VIX Index", url: "https://finnhub.io/docs/api/quote" },
         { provider: "Finnhub", title: "S&P 500 Sector ETF Performance", url: "https://finnhub.io/docs/api/quote" },
-        { provider: "Finnhub", title: "SPY 30-Day Candles (SMA-20 + Regime)", url: "https://finnhub.io/docs/api/stock-candles" },
+        { provider: "Alpaca", title: "SPY 30-Day Bars (SMA-20 + Regime)", url: "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/" },
         { provider: "FMP", title: "US Economic Calendar", url: "https://site.financialmodelingprep.com/developer/docs#economic-calendar" },
         { provider: "Finnhub", title: "Earnings Calendar (5-Day Density)", url: "https://finnhub.io/docs/api/earnings-calendar" },
       ],

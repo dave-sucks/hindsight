@@ -106,6 +106,86 @@ YOUR JOB
    available) and what the chart looks like (with specific levels, RSI,
    trend).
 
+   ## Decision Fields (Recommended)
+   Schema-shaped recommendations the analyst agent will copy into the
+   record_thesis tool call. Treat as your considered first-pass; the
+   agent reads the structured shape directly. Use these EXACT field
+   labels and shapes. See docs/plans/THESIS_SCHEMA_AUDIT.md for the
+   full rationale on why each field matters.
+
+   **Direction:** LONG | SHORT | PASS — one-line why (which side of the
+   bull-vs-bear weight wins, and why)
+
+   **Horizon:** CATALYST | TARGET | TRADE | COMPOUNDER — one-line why
+   - If CATALYST: catalyst_date = <YYYY-MM-DD> and the specific event name
+   - If TRADE: max_hold_days = <N> and one-line why this window (5-7 for
+     tight breakouts, 10-14 for swing patterns)
+
+   **Entry / Target / Stop:**
+   - Entry: $X (the current price reference from the data block)
+   - Target: $Y (cite the level — breakout / resistance / consensus PT /
+     analyst-aggregate / earnings-pop projection)
+   - Stop: $Z (cite the level — support / -N% / structural break)
+   - R:R: <target-entry>/(entry-stop) for LONG, or
+     <entry-target>/(stop-entry) for SHORT. Must be ≥ 2:1.
+
+   **Confidence: N/100** — one-line justification (cite the strongest
+   data point that drove the score)
+
+   **Core Belief (ONE sentence):**
+   <The single load-bearing claim that, if it stops being true, the
+   thesis is broken. Distinct from "bull case" — this is the one
+   sentence the trade hinges on. Example: "AI-driven datacenter capex
+   sustains $200B/quarter through 2026, driving NVDA gross margins above
+   75%."
+
+   **Key Assumptions (3+ falsifiable premises that must REMAIN TRUE):**
+   Each item is a specific, checkable claim. Generic prose ("strong
+   fundamentals") is insufficient. The tactical agent re-evaluates these
+   against fresh signals to decide whether a trigger fire is
+   thesis-breaking.
+   - <Premise 1 — specific and falsifiable>
+   - <Premise 2 — specific and falsifiable>
+   - <Premise 3 — specific and falsifiable>
+
+   **Invalidation Conditions (3+ specific trip-wires — DISTINCT from
+   Bear Case above):**
+   Specific things that would prove the thesis wrong. Bear Case lists
+   risks (what could go wrong); Invalidation Conditions are the
+   decision-rule trip-wires that end the position. Generic risks like
+   "market volatility" are forbidden.
+   - <Specific trip-wire — e.g. "Q2 EPS miss greater than 5%">
+   - <Specific trip-wire — e.g. "Gross margin drops below 70% on next print">
+   - <Specific trip-wire — e.g. "CFO departure or guidance cut on capex">
+
+   **Composite Score: N/10** (sum of the four dimensions below; cap 10)
+   - Trend Strength (0-3): <score> — <one-line evidence: e.g. "Multi-week
+     uptrend, rising 50d MA, no major distribution candles">
+   - Relative Strength (0-3): <score> — <one-line evidence: e.g. "Leads
+     AI semis: +28% YTD vs AMD +14%, INTC -3%">
+   - Entry Quality (0-2): <score> — <one-line evidence: e.g. "Clean
+     pullback to 20d in trend at $185 entry vs $200 prior high — not a
+     chase">
+   - Catalyst Freshness (0-2): <score> — <one-line evidence: e.g. "Q2
+     earnings 7/29 with beat-and-raise setup; data center revenue
+     trajectory still accelerating">
+
+   **Target Size:** N% of portfolio — one-line why (conviction × R:R ×
+   analyst sizing convention)
+
+   **Suggested Custom Triggers (beyond horizon defaults):**
+   Most theses need no custom triggers — the horizon defaults handle
+   the standard cases (entry/stop/target/earnings/filings). Add custom
+   triggers ONLY when a specific key assumption or invalidation
+   condition warrants a non-default predicate. Use predicate kinds from
+   lib/agent/triggers/types.ts (PRICE_ABOVE, PRICE_BELOW, EARNINGS_BEAT,
+   EARNINGS_MISS, GUIDANCE_CHANGE, FILING, RSI, VS_SMA, PRICE_MOVE_PCT,
+   TIME_ELAPSED, REVIEW_DATE_HIT, SIGNAL_TYPE).
+   - <Optional. Format: [PREDICATE_KIND params] → ACTION — rationale.
+     Example: "EARNINGS_MISS minSurprisePct: 3 → REVIEW — guidance miss
+     on next print kills the AI-acceleration thesis. Cooldown 7d.">
+   - <Skip this section entirely if horizon defaults are sufficient.>
+
 ═══════════════════════════════════════════════════════════════════
 CITATION FORMAT
 ═══════════════════════════════════════════════════════════════════

@@ -13,6 +13,7 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { finnhub, calcRSI } from "@/lib/agent/research-helpers";
+import { getBars } from "@/lib/alpaca";
 
 const FMP_KEY = process.env.FMP_API_KEY!;
 
@@ -50,21 +51,30 @@ interface PeerMetrics {
 }
 
 async function fetchPeerMetrics(ticker: string): Promise<PeerMetrics> {
-  const now = Math.floor(Date.now() / 1000);
-  const ninetyDaysAgo = now - 90 * 86400;
-  const ytdStart = Math.floor(new Date(`${new Date().getUTCFullYear()}-01-01T00:00:00Z`).getTime() / 1000);
+  // Candle data via Alpaca (Finnhub `/stock/candle` is paid-only post-2024).
+  // See lib/alpaca.ts:getBars — defaults to feed=iex for free-plan compat.
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const ninetyDaysAgoISO = new Date(Date.now() - 90 * 86400_000)
+    .toISOString()
+    .slice(0, 10);
+  const ytdStartISO = `${new Date().getUTCFullYear()}-01-01`;
 
-  const [profileRes, metricRes, ytdCandleRes, recent90CandleRes] = await Promise.all([
+  const [profileRes, metricRes, ytdBars, recent90Bars] = await Promise.all([
     finnhub(`/stock/profile2?symbol=${ticker}`, 1),
     finnhub(`/stock/metric?symbol=${ticker}&metric=all`, 1),
-    finnhub(`/stock/candle?symbol=${ticker}&resolution=D&from=${ytdStart}&to=${now}`, 1),
-    finnhub(`/stock/candle?symbol=${ticker}&resolution=D&from=${ninetyDaysAgo}&to=${now}`, 1),
+    getBars(ticker, { start: ytdStartISO, end: todayISO }).catch(() => []),
+    getBars(ticker, { start: ninetyDaysAgoISO, end: todayISO }).catch(() => []),
   ]);
 
   const profile = profileRes.data as { marketCapitalization?: number } | null;
   const metric = metricRes.data as { metric?: Record<string, number> } | null;
-  const ytdCandle = ytdCandleRes.data as { s?: string; c?: number[] } | null;
-  const recentCandle = recent90CandleRes.data as { s?: string; c?: number[] } | null;
+  // Convert Alpaca bar arrays into the {s, c} shape the downstream code uses.
+  const ytdCandle: { s: string; c: number[] } | null =
+    ytdBars.length > 0 ? { s: "ok", c: ytdBars.map((b) => b.close) } : null;
+  const recentCandle: { s: string; c: number[] } | null =
+    recent90Bars.length > 0
+      ? { s: "ok", c: recent90Bars.map((b) => b.close) }
+      : null;
 
   // Finnhub returns market cap in $M units.
   const marketCap =

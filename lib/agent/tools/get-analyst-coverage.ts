@@ -22,9 +22,12 @@ interface FmpResult<T> {
 }
 
 async function fmp<T>(path: string): Promise<FmpResult<T>> {
-  const base = path.startsWith("/v4/")
-    ? `https://financialmodelingprep.com/api${path}`
-    : `https://financialmodelingprep.com/api/v3${path}`;
+  // 2026-05-19 — /api/v3 + /v4 deprecated; route /stable/ paths directly.
+  const base = path.startsWith("/stable/")
+    ? `https://financialmodelingprep.com${path}`
+    : path.startsWith("/v4/")
+      ? `https://financialmodelingprep.com/api${path}`
+      : `https://financialmodelingprep.com/api/v3${path}`;
   const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
   try {
     const res = await fetch(url, {
@@ -33,6 +36,9 @@ async function fmp<T>(path: string): Promise<FmpResult<T>> {
     });
     if (!res.ok) return { data: null, error: `FMP ${res.status} on ${path.split("?")[0]}` };
     const data = (await res.json()) as T;
+    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in (data as object)) {
+      return { data: null, error: `FMP: ${(data as Record<string, string>)["Error Message"]}` };
+    }
     return { data };
   } catch (err) {
     return { data: null, error: err instanceof Error ? err.message : "fmp error" };
@@ -136,12 +142,16 @@ export const getAnalystCoverage = defineTool({
     const T = ticker.toUpperCase();
     const days = window_days ?? 90;
 
+    // /stable/grades-historical is premium-tier-gated; /ratings-grades-historical
+    // is the free replacement (returns the same rating-action shape, just
+    // sparser data on free plans). Tools gracefully degrade when either
+    // returns empty.
     const [consensusRes, summaryRes, gradesRes, updnRes, quoteRes] = await Promise.all([
-      fmp<PriceTargetConsensus[]>(`/v4/price-target-consensus?symbol=${T}`),
-      fmp<PriceTargetSummary[]>(`/v4/price-target-summary?symbol=${T}`),
-      fmp<GradeHistoricalRow[]>(`/grades-historical/${T}?limit=40`),
-      fmp<UpgradeDowngradeRow[]>(`/v4/upgrades-downgrades?symbol=${T}`),
-      fmp<QuoteRow[]>(`/quote/${T}`),
+      fmp<PriceTargetConsensus[]>(`/stable/price-target-consensus?symbol=${T}`),
+      fmp<PriceTargetSummary[]>(`/stable/price-target-summary?symbol=${T}`),
+      fmp<GradeHistoricalRow[]>(`/stable/ratings-grades-historical?symbol=${T}&limit=40`),
+      fmp<UpgradeDowngradeRow[]>(`/stable/upgrades-downgrades?symbol=${T}`),
+      fmp<QuoteRow[]>(`/stable/quote?symbol=${T}`),
     ]);
 
     const errors: string[] = [];

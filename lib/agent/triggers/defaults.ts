@@ -256,10 +256,20 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
 //     fell to support — better entry or thesis weakening?") and an
 //     ENTRY threshold for SHORT (mirror semantics)
 //   - News/event triggers stay as REVIEW
-//   - REVIEW_DATE_HIT on every template — drives the cron's overdue-
-//     review path. Without this, `nextReviewAt` is a soft hint with no
-//     automatic firing; with it, the trigger-evaluator's 5-min cron
-//     spawns a tactical run the moment a watching thesis is overdue.
+//   - REVIEW_DATE_HIT trigger REMOVED from watching templates 2026-05-20.
+//     It was duplicating daily-run's needsAction.REVIEW_DUE check —
+//     daily-run reads Thesis.nextReviewAt directly every morning and
+//     decides REVIEW_DUE without needing a trigger. Auto-attaching the
+//     trigger meant the 5-min cron also spawned a TACTICAL run on every
+//     overdue WATCHING thesis intra-day, which produced almost zero
+//     state changes (28 of 35 tactical runs on 2026-05-18 were
+//     REVIEW_DATE_HIT, 0 produced state changes). The intra-day
+//     "review" was pure busywork — the agent wasn't going to make a
+//     different decision at 11 AM than it would the next morning at
+//     8 AM. The predicate kind stays in the schema + evaluator for
+//     backwards compat with existing rows; cleanup script
+//     scripts/dedupe-review-date-hit-triggers.ts strips it from
+//     existing WATCHING theses.
 //
 // Direction matters here: LONG watches enter on PRICE_ABOVE target,
 // SHORT watches enter on PRICE_BELOW target. PASS watches get only
@@ -310,16 +320,9 @@ function watchingEntryTrigger(
   };
 }
 
-/** Standard nextReviewAt fire — hooked off `Thesis.nextReviewAt`. */
-function reviewDateHitTrigger(): Trigger {
-  return {
-    id: createId(),
-    predicate: { kind: "REVIEW_DATE_HIT" },
-    action: "REVIEW",
-    rationale: `Scheduled review date reached. Walk the thesis against today's tape.`,
-    cooldownDays: 1,
-  };
-}
+// reviewDateHitTrigger() removed 2026-05-20 (see header comment above).
+// REVIEW_DATE_HIT predicate stays in types/evaluator for back-compat with
+// existing rows; new theses no longer get it.
 
 function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
@@ -327,7 +330,6 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
 
   const entry = watchingEntryTrigger(thesis, direction, 1);
   if (entry) out.push(entry);
-  out.push(reviewDateHitTrigger());
 
   // Catalyst windows live and die on filings + earnings — those are
   // typically how the catalyst lands. No support-REVIEW: a binary
@@ -392,7 +394,6 @@ function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
   // intraday cross fires once and tactical-run takes it from there.
   const entry = watchingEntryTrigger(thesis, direction, 1);
   if (entry) out.push(entry);
-  out.push(reviewDateHitTrigger());
 
   // No support-REVIEW for TRADE: the setup IS the entry plan; if price
   // drops to "support" the setup is gone, the thesis should age out via
@@ -430,7 +431,6 @@ function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
 
   const entry = watchingEntryTrigger(thesis, direction, 1);
   if (entry) out.push(entry);
-  out.push(reviewDateHitTrigger());
 
   // Support-REVIEW for LONG: a pullback to the stop level is either
   // a better entry or evidence the thesis is breaking. Worth a look.
@@ -488,7 +488,6 @@ function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
   // above the level over a week the cron will re-fire.
   const entry = watchingEntryTrigger(thesis, direction, 7);
   if (entry) out.push(entry);
-  out.push(reviewDateHitTrigger());
 
   // No support-REVIEW. Compounder watches don't react to intra-month
   // price moves — only to fundamental events (earnings/guidance) or

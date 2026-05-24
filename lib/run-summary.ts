@@ -40,7 +40,15 @@
 export interface RunSummaryInputTheses {
   ticker: string;
   direction: string;
-  confidenceScore: number;
+  /**
+   * Composite score JSONB (`{ trendStrength, relativeStrength, entryQuality,
+   * catalystFreshness, composite }` — see `record_thesis`'s scoring arg).
+   * PR-9 dropped the standalone `confidenceScore` int — `scoring.composite`
+   * (0-10 scale) is the single conviction number. `unknown` since callers
+   * pass Prisma's `JsonValue`; readers crack the shape via
+   * `getThesisComposite()` from `lib/agent/thesis-narrative`.
+   */
+  scoring: unknown;
 }
 
 export interface RunSummaryInputTradeDecision {
@@ -78,6 +86,22 @@ export interface RunSummaryInput {
    *  + the triggered/walked stats. Pass an empty array if not yet wired
    *  on a particular caller — we degrade cleanly. */
   thesisUpdates?: RunSummaryInputThesisUpdate[];
+  /**
+   * ResearchRun.mode — drives mode-specific summary shapes. Specifically
+   * THESIS_WRITER runs are a single-ticker single-decision shape; the
+   * daily-run "walked N theses" headline doesn't apply, and the empty-
+   * state fallback ("No theses to walk") is wrong for them. Optional
+   * for backwards-compat — callers that omit it land in the legacy
+   * daily-run path.
+   */
+  mode?: string | null;
+  /**
+   * ResearchRun.parameters — opaque JSON. Typed as `unknown` because
+   * Prisma's `JsonValue` is wider than `Record<string, unknown>` (it
+   * can be a scalar or array at the top level). THESIS_WRITER reads
+   * `ticker`, `mode`, `error` defensively inside buildActionSegments.
+   */
+  parameters?: unknown;
 }
 
 // ── Output shape ────────────────────────────────────────────────────────────
@@ -106,6 +130,15 @@ export interface TickerResult {
 }
 
 export interface RunSummary {
+  /**
+   * ResearchRun.mode passthrough — drives mode-specific summary shapes
+   * in buildActionSegments. Daily-run shape is the default; THESIS_WRITER
+   * has its own single-ticker line. Null/undefined falls through to
+   * legacy behavior.
+   */
+  mode?: string | null;
+  /** ResearchRun.parameters passthrough — THESIS_WRITER reads ticker/mode/error defensively. */
+  parameters?: unknown;
   /** Per-bucket ticker lists. One ticker appears in at most one bucket. */
   actions: {
     bought: string[];                 // INITIATE
@@ -327,6 +360,8 @@ export function buildRunSummary(run: RunSummaryInput): RunSummary {
     actions.trimmed.length;
 
   return {
+    mode: run.mode ?? null,
+    parameters: run.parameters ?? null,
     actions,
     counts: {
       walked: claimed.size + actions.reviewed.length,
@@ -352,6 +387,86 @@ function dedupe<T>(arr: T[]): T[] {
  * The page renders each as a leading colored dot + text, joined by " · ".
  */
 export function buildActionSegments(summary: RunSummary): ActionSegment[] {
+  // ── THESIS_WRITER mode — single-ticker single-decision shape ──────────
+  // The daily-run "walked N theses / no theses to walk" framing doesn't
+  // apply. Surface ticker + mint/refresh + status. Status check happens
+  // here (before `isFailed`) so failed thesis-writer rows say "Thesis
+  // research failed on $TICKER" instead of the generic "Run failed".
+  if (summary.mode === "THESIS_WRITER") {
+    // Parameters is `unknown` (Prisma JsonValue is wider than a plain
+    // record) — guard before indexing.
+    const params: Record<string, unknown> =
+      typeof summary.parameters === "object" &&
+      summary.parameters !== null &&
+      !Array.isArray(summary.parameters)
+        ? (summary.parameters as Record<string, unknown>)
+        : {};
+    const tickerRaw = params.ticker;
+    const ticker = typeof tickerRaw === "string" ? tickerRaw.toUpperCase() : null;
+    const modeRaw = params.mode;
+    const writerMode =
+      modeRaw === "refresh" ? "refresh" : modeRaw === "mint" ? "mint" : null;
+
+    if (summary.isFailed) {
+      const errorRaw = params.error;
+      const errStr = typeof errorRaw === "string" ? errorRaw : null;
+      const rateLimit = errStr?.includes("rate limit") ?? false;
+      return [
+        {
+          color: "muted",
+          partial: false,
+          text: ticker
+            ? `Thesis research failed on $${ticker}${rateLimit ? " (rate limit)" : ""}`
+            : "Thesis research failed",
+        },
+      ];
+    }
+
+    // RUNNING or COMPLETE — derive from theses-touched in this run.
+    // A successful mint lands one CREATED in run.thesisUpdates; a successful
+    // refresh lands UPDATED or REVIEWED. If we see those, the run completed.
+    if (ticker) {
+      // touched-in-this-run signal — if the writer landed a thesis, the
+      // CREATED row is in actions.watching (for WATCHING status) or
+      // bucketed into updated. Don't over-engineer the detection; the
+      // status field on the run row drives the verb:
+      //   COMPLETE  → "Wrote thesis on $X" / "Refreshed thesis on $X"
+      //   RUNNING   → "Researching $X" (~60-120s)
+      //   anything else → "Thesis research on $X"
+      // status is on the parent caller, not on RunSummary directly —
+      // we infer from the action buckets: any action means COMPLETE,
+      // otherwise RUNNING-ish.
+      const hasAction =
+        summary.actions.bought.length > 0 ||
+        summary.actions.added.length > 0 ||
+        summary.actions.watching.length > 0 ||
+        summary.actions.updated.length > 0 ||
+        summary.actions.invalidated.length > 0 ||
+        summary.actions.reviewed.length > 0;
+      if (hasAction) {
+        return [
+          {
+            color: "blue",
+            partial: false,
+            text:
+              writerMode === "refresh"
+                ? `Refreshed thesis on $${ticker}`
+                : `Wrote thesis on $${ticker}`,
+          },
+        ];
+      }
+      return [
+        {
+          color: "muted",
+          partial: false,
+          text: `Researching $${ticker} (deep research, ~60-120s)`,
+        },
+      ];
+    }
+    // No ticker in parameters — degrade to a generic line.
+    return [{ color: "muted", partial: false, text: "Thesis research" }];
+  }
+
   if (summary.isFailed) {
     return [{ color: "muted", partial: false, text: "Run failed" }];
   }

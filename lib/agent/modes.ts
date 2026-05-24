@@ -15,6 +15,7 @@ export interface ModelOption {
 }
 
 export const RESEARCH_MODEL_OPTIONS: ModelOption[] = [
+  { label: "GPT-5.5", value: "gpt-5.5", provider: "openai" },
   { label: "GPT-4o", value: "gpt-4o", provider: "openai" },
   { label: "Claude Sonnet 4.6", value: "claude-sonnet-4-6", provider: "anthropic" },
 ];
@@ -46,7 +47,13 @@ export type AgentMode =
   // podcast-editor: refine an existing Podcast + Segments via chat.
   | "podcast-builder"
   | "podcast-segment-run"
-  | "podcast-editor";
+  | "podcast-editor"
+  // THESIS_RESEARCH_V2 Phase 1 — sub-agent that produces one multi-section
+  // deep-research thesis on one ticker. Spawned by dispatch_thesis_research
+  // from Discovery / Daily / Tactical / Principal Chat via Inngest. Reads
+  // mostly through the write_thesis_research meta-tool; writes via
+  // record_thesis or update_thesis. See docs/plans/THESIS_RESEARCH_V2.md.
+  | "thesis-writer";
 
 // ── Mode config ──────────────────────────────────────────────────────────────
 
@@ -75,7 +82,40 @@ export interface ModeConfig {
 
 export const MODES: Record<AgentMode, ModeConfig> = {
   "research-run": {
-    model: "gpt-4o",
+    // 2026-05-15 — swapped gpt-4o → gpt-5.5 after the day's analyst-quality
+    // audit (docs/run-reviews/2026-05-15.md) surfaced the same "happily
+    // fills in the blanks at the final-decision layer" pattern that drove
+    // the discovery swap (PR #271). Concrete instances:
+    //
+    //   • 5 PASS-archive prose↔action contradictions across 3 analysts.
+    //     Agent wrote "I'll maintain a watch status" in the rationale text
+    //     while passing `change_status: ARCHIVED` (KLAC/TXN on Earnings
+    //     Drift; FIVN/MSFT/SNDK on Tech Momentum). Run summaries labeled
+    //     them correctly as REMOVE_WATCH/PASS — the per-thesis prose lied
+    //     about the structured action.
+    //   • 2 goalpost-moves (QCOM target $247.90→$225 + stop down too,
+    //     AMKR ENTER trigger $90→$78). The MRVL anti-pattern called out
+    //     in GAPS.md as "0 occurrences on 5/07" — back today on gpt-4o.
+    //   • Secular Theme's run summary said SMCI was both "weakest holding"
+    //     and "best candidate" in the same sentence; ranked_picks listed 2
+    //     tickers when the analyst touched 5.
+    //
+    // Whether gpt-5.5 actually fixes prose↔action coherence is the test
+    // tomorrow. The tool-side validators discussed in Open Questions 3 + 4
+    // (reject "maintain watch" rationale when change_status=ARCHIVED;
+    // reject WATCHING target/stop moves without a coreBelief change) are
+    // still owed and will catch what the model misses.
+    //
+    // Latency budget: gpt-5.5 measures at ~13s/tool-call from the discovery
+    // swap. Today's biggest morning runs were 21–22 tool calls under gpt-4o
+    // (Earnings Drift, Tech Momentum, Secular Theme). At 13s each that's
+    // 273–286s of agent time. maxDuration raised 300 → 800 to fit inside
+    // Vercel Pro's 800s ceiling (Hobby's 300s cap is why discovery was
+    // throttled to maxDuration:270 — Pro removes that constraint
+    // entirely). The cron's abortSignal in morning-research.ts now reads
+    // (maxDuration - 30) * 1000 = 770s, mirroring the pattern tactical +
+    // discovery already use.
+    model: "gpt-5.5",
     provider: "openai",
     // Bumped 50 → 65 on 2026-04-24. A complete 6-stage run has roughly:
     //   Stage 1: 2–3 steps (brief + signals)
@@ -124,7 +164,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       //   record_thesis — minting new coverage is Discovery's job
     ] as const,
     hasSuggestConfig: false,
-    maxDuration: 300,
+    // 2026-05-15 — raised 300 → 800 with the gpt-5.5 swap and Vercel Pro
+    // upgrade. See model-swap rationale above. The abortSignal in
+    // morning-research.ts derives 770_000ms from this value.
+    maxDuration: 800,
   },
   "builder": {
     model: "gpt-4o",
@@ -216,8 +259,11 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_sec_filings",
       "web_search",
       "get_theses",
-      // Mint new coverage (LONG/SHORT WATCHING or PASS ARCHIVED)
+      // Mint new coverage. PASS rows still go through record_thesis
+      // directly (cheap, terminal-at-write institutional memory).
       "record_thesis",
+      // Phase 2 — deep-research dispatch for WATCHING-worthy survivors only.
+      "dispatch_thesis_research",
       // Optional starter trade for high-conviction picks
       "place_trade",
       // Finalize
@@ -225,41 +271,40 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "complete_run",
     ] as const,
     hasSuggestConfig: false,
-    // 2026-05-15 — set to 270 to fit inside the Vercel Hobby plan's
-    // 300s function-timeout ceiling.
+    // 2026-05-15 — raised 270 → 800 after the Vercel Pro upgrade. The
+    // prior 270 was a workaround for Hobby's 300s function timeout
+    // ceiling — option (c) in the deferred-fix list (see history below)
+    // is the path that actually landed.
     //
-    // PR #271 mistakenly raised this to 480 thinking that would give
-    // GPT-5.5 more time. It did the opposite: the in-code AbortSignal
-    // formula is `(maxDuration - 30) * 1000`, so 480 means the abort
-    // fires at 450s — but Vercel kills the function ungracefully at
-    // ~300s, well before the abort can hand control to the catch
-    // block to write record_run_summary + complete_run. Net effect:
-    // less graceful failure.
+    // What this unlocks for discovery specifically:
+    //   • 800 maxDuration → AbortSignal at 770s → ~770/13 ≈ 59 tool
+    //     calls of budget. Today's discovery shape is 3 parallel pulls
+    //     + 2N candidate research + N record_thesis + 2 finishers =
+    //     3N + 5. At 770s of headroom, N=15+ mints fit comfortably vs
+    //     the prior N=4–5 ceiling.
+    //   • Removes the bias toward "shorter PASS+ARCHIVED rows" the
+    //     prompt was leaning on to fit inside the 240s of agent budget.
+    //     Discovery can now populate full structural fields (horizon,
+    //     triggers, coreBelief, keyAssumptions, invalidationConds) on
+    //     every minted thesis without timing out.
     //
-    // 270 puts the AbortSignal at 240s — 60s LATER than the 210s wall
-    // that killed both Tech Momentum (cmp698wva) and Secular Theme
-    // (cmp6bryy) under the prior 240 setting, AND 30s before Vercel's
-    // 300s hard kill. The catch block then has 30s of headroom to
-    // persist messages + mark the run COMPLETE/FAILED cleanly.
+    // History (the workaround that this replaces):
+    //   • 270 was the safe value under Hobby's 300s ceiling. PR #271
+    //     briefly raised to 480 — that was a mistake because the in-code
+    //     AbortSignal formula is `(maxDuration - 30) * 1000`, so 480
+    //     meant abort at 450s but Vercel killed the function ungracefully
+    //     at ~300s, well before the catch block could persist the run.
+    //   • 270 → AbortSignal at 240s → 60s later than the 210s wall that
+    //     had killed Tech Momentum (cmp698wva) and Secular Theme
+    //     (cmp6bryy) under prior tuning, and 30s before Vercel's 300s
+    //     hard kill so the catch block could mark COMPLETE/FAILED
+    //     cleanly.
     //
-    // GPT-5.5 with implicit reasoning takes ~13s/tool-call (measured
-    // from Tech Momentum's 16 calls in 211s). 240s of actual agent
-    // budget = 240/13 ≈ 18 tool calls. Discovery's shape is 3 parallel
-    // pulls + 2N candidate research + N record_thesis + 2 finishers =
-    // 3N + 5. Fits N=4 mints comfortably, N=5 tight. For rich weeks
-    // the mint floor in the prompt tells the agent to bias toward
-    // shorter PASS+ARCHIVED rows (no horizon, no triggers, fewer
-    // structural fields to populate) which run faster per call.
-    //
-    // If the Hobby plan stays in force long-term, a future PR should:
-    //   (a) split discovery into multiple Inngest steps (each its
-    //       own 300s budget), OR
-    //   (b) move to a faster model (GPT-5.4 / GPT-5.4-mini cuts
-    //       per-call latency ~40% based on advertised reasoning
-    //       throughput), OR
-    //   (c) upgrade Vercel plan (Pro → 800s ceiling).
-    // For now, 270 unblocks runs from completing at all.
-    maxDuration: 270,
+    // Tactical-run.ts + discovery-run.ts read this value directly and
+    // compute their AbortSignal from `(maxDuration - 30) * 1000`. The
+    // morning-research.ts cron now does the same (used to be a hardcoded
+    // 240_000ms — fixed in this PR).
+    maxDuration: 800,
   },
   // ── Tactical (PR 2) ─────────────────────────────────────────────────────
   // Event-driven, single-thesis, single-decision. Spawned by tactical-run
@@ -267,7 +312,14 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   // allowlist — tactical never mints new theses; it acts on / updates an
   // existing one. update_thesis IS the close-out call (always written).
   "tactical": {
-    model: "gpt-4o",
+    // 2026-05-15 — same gpt-4o → gpt-5.5 swap as research-run. Tactical is
+    // single-thesis, single-decision (15 maxSteps), so the latency
+    // exposure is small: a typical tactical run today was 20–80s under
+    // gpt-4o; under gpt-5.5 expect roughly 2× that, well inside the new
+    // 800s ceiling. The motivation is consistency — the daily-run agent
+    // is now gpt-5.5, so the tactical follow-up should reason in the
+    // same model.
+    model: "gpt-5.5",
     provider: "openai",
     maxSteps: 15,
     toolAllowlist: [
@@ -290,7 +342,13 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "complete_run",
     ] as const,
     hasSuggestConfig: false,
-    maxDuration: 240,
+    // 2026-05-15 — raised 240 → 800 with the gpt-5.5 swap (Vercel Pro
+    // ceiling). The abortSignal in tactical-run.ts will compute
+    // (800 - 30) * 1000 = 770_000ms. Practical use will rarely approach
+    // this — tactical runs end in 15 maxSteps regardless — but the
+    // headroom prevents abort-clipping if the model thinks for a long
+    // time on a single tool call.
+    maxDuration: 800,
   },
   // ── Principal Chat (operator co-pilot) ─────────────────────────────────
   // The user's right hand. Same operational map as the daily-run agent,
@@ -344,6 +402,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "place_trade",
       "manage_position",
       "close_position",
+      // ── Sub-agent dispatch (THESIS_RESEARCH_V2 Phase 1) ────────────
+      // Spawns a thesis-writer child run for one ticker. Returns a
+      // childRunId immediately; the deep research happens async.
+      "dispatch_thesis_research",
     ] as const,
     // suggest_config wires the side-panel diff for analyst edits — works
     // with or without analyst scope.
@@ -408,6 +470,82 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     ] as const,
     hasSuggestConfig: false,
     maxDuration: 180,
+  },
+  // ── Thesis Writer (THESIS_RESEARCH_V2 Phase 1) ───────────────────────────
+  // Sub-agent that produces one deep-research thesis on one ticker. Spawned
+  // by dispatch_thesis_research (orchestrator-side) via Inngest. The
+  // write_thesis_research meta-tool does ~95% of the work — parallel data
+  // pulls + deep-research-model synthesis — so this agent only needs to
+  // layer direction / horizon / target / stop / belief / confidence on top
+  // via record_thesis or update_thesis.
+  //
+  // Model choice (2026-05-16 bake-off, docs/plans/THESIS_RESEARCH_V2.md):
+  //   • PICKED: claude-sonnet-4-6 + Anthropic native web_search tool.
+  //     Wins on grounded synthesis depth, citation density, fiscal-year
+  //     accuracy. Native web_search is plumbed into both the agent loop
+  //     here AND the synthesis call inside write_thesis_research — that's
+  //     where the bake-off's depth advantage actually lands.
+  //   • AVOID: GPT-5 / GPT-5.5 / o3 family. The bake-off found these
+  //     models hallucinate fiscal-year framing — observed citing "Q1
+  //     FY2026" numbers that were actually a year stale. The structured
+  //     data block names dates explicitly, but the synthesis-layer
+  //     reframing introduces the drift. Re-test if a new GPT generation
+  //     ships, but the prior generation's failure mode is reason enough
+  //     to default away from it.
+  //   • FALLBACK: gemini-2.5-pro with Google Search grounding. Close
+  //     second on every dimension. If a future Claude API/provider regression
+  //     breaks this mode, swap to:
+  //         model: "gemini-2.5-pro",
+  //         provider: "google",        (need @ai-sdk/google + GOOGLE_API_KEY)
+  //     and pass googleSearch grounding via providerOptions instead of the
+  //     anthropic webSearch tool. Don't silently fall back to Sonar — the
+  //     bake-off found Sonar deep research alone is the weakest of the
+  //     four candidates for this prompt shape.
+  "thesis-writer": {
+    model: "claude-sonnet-4-6",
+    provider: "anthropic",
+    // Generous budget — synthesis-model call inside write_thesis_research
+    // takes ~60-90s and counts as ONE step in the agent loop.
+    maxSteps: 8,
+    toolAllowlist: [
+      // The meta-tool — handles the entire data-pull + synthesis pipeline.
+      "write_thesis_research",
+      // Persisters — record_thesis for mint, update_thesis for refresh.
+      "record_thesis",
+      "update_thesis",
+      // Edge-case escape hatches: if the meta-tool fails partway through
+      // the agent may want to grab a fresh quote or a niche web search to
+      // validate one number before recording. Kept minimal on purpose.
+      "get_stock_data",
+      "web_search",
+      // Terminal
+      "complete_run",
+    ] as const,
+    hasSuggestConfig: false,
+    // 2026-05-20: bumped 300 → 800. A real $MDB refresh test on 2026-05-20
+    // hit the 270s abort signal with `Thesis-writer timed out after 271s`.
+    // Worker budget breakdown:
+    //   parallel data pulls (7 sources)         ~10s
+    //   synthesis call w/ Anthropic web_search  ~150-180s (3 search rounds)
+    //   outer agent decision turn               ~30-60s (read meta-tool
+    //                                            result, pick direction /
+    //                                            target / stop, web_search
+    //                                            escape hatch if needed)
+    //   update_thesis (refresh path)            ~5s
+    //   complete_run                            ~2s
+    //   total                                   ~200-260s — right at the
+    //                                            300s wall on first try.
+    //
+    // Vercel Pro's 800s ceiling gives the agent (800 - 30) * 1000 = 770s
+    // of actual budget via the AbortSignal in run-thesis-writer.ts. The
+    // inner synthesis call's own 180s abort still bounds the meta-tool's
+    // longest leg; this just stops Vercel from killing the outer agent
+    // before it can record_thesis + complete_run.
+    //
+    // Also bumped /api/inngest/route.ts maxDuration 300 → 800 in the
+    // same change — the route's ceiling was silently capping every
+    // Inngest function to 5 min regardless of per-mode setting.
+    maxDuration: 800,
   },
 };
 
@@ -563,6 +701,32 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
   • \`suggest_config\` — analyst-config edit. Emits a side-panel diff the user accepts. Works in any scope.
 
 To add a ticker to an analyst's watchlist, call \`record_thesis\` with direction='PENDING', status='WATCHING', sourceKind='USER_ADDED', and a one-line reason. To remove, call \`update_thesis(change_status: 'ARCHIVED')\`.
+
+══════════════════════════════════════════════════════════════════════
+## DEEP-RESEARCH THESIS DISPATCH — \`dispatch_thesis_research\`
+══════════════════════════════════════════════════════════════════════
+
+\`dispatch_thesis_research(ticker, analyst_id, mode, reason)\` spawns a thesis-writer sub-agent that pulls 7 structured-data sources in parallel and synthesizes a multi-section equity-research note via Claude Sonnet 4.6 + native web search. Returns a childRunId immediately; the work runs async (~60-120s) and lands as a Thesis row with \`researchData\` + \`researchSections\` populated.
+
+**\`/research <ticker>\` is a HARD trigger.** When the user message contains \`/research\` (the slash command renders as the literal text \`/research\` in the message), you MUST call \`dispatch_thesis_research\` immediately. No second-guessing, no judgment, no exceptions:
+  • If the ticker is outside the scoped analyst's universe — **dispatch anyway**. The worker still produces a PASS thesis grounded in deep research, which IS valuable as institutional memory. Universe fit is the worker's call, not yours.
+  • If the user message ALSO contains other context ("/research $F, focus on the EV pivot") — dispatch with the full context in \`reason\`. Don't fall back to a prose answer.
+  • Never substitute \`get_stock_data\` + a prose paragraph for \`/research\`. That is the exact failure mode this trigger exists to prevent.
+
+**Natural-language requests default to dispatch.** Phrases like "write me a thesis on $X", "research $X", "deep dive on $X", "give me a full note on $X", "thesis for $X" all default to \`dispatch_thesis_research\`. \`get_theses\` + \`get_stock_data\` is the RIGHT path only for casual reads:
+  • "What do we own?" → \`get_portfolio_context\`
+  • "What's the current $X price?" → \`get_stock_data\`
+  • "What does our existing $X thesis say?" → \`get_theses\`
+  • "Anything new on $X today?" → \`get_stock_data\` + maybe \`web_search\`
+
+When the request is shaped like "thesis / research / deep look / note", dispatch. A deep-research thesis is always more valuable than a one-paragraph prose summary, and the user can always fall back to a quick read if they wanted that instead.
+
+**Mechanics:**
+  • \`analyst_id\` — pull from the SCOPE block above when scoped. If unscoped, ASK the user which analyst to scope to before dispatching (or call \`list_analysts\` if they named one — "for Tech Momentum Trader" → resolve via \`list_analysts\` first). Do NOT skip dispatch on the "unscoped" objection.
+  • \`mode\` — \`"mint"\` for new coverage on a ticker the analyst doesn't already cover. \`"refresh"\` + \`existing_thesis_id\` when the analyst already has a Thesis on this ticker and the user wants it updated.
+  • \`reason\` — one line of context. "User typed /research $F" / "User asked to deep-dive $NVDA after the GTC keynote" / "User wants a refreshed thesis on $AMD". Persisted on the child run for traceability.
+
+After dispatch fires, your job is done in one sentence: "Dispatched — child run [link]. Worker takes ~60-120s; thesis card will appear on the analyst's page when complete." Don't write a prose preview — the worker IS the thesis.
 
 ══════════════════════════════════════════════════════════════════════
 ## HOW TO OPERATE — the depth bar

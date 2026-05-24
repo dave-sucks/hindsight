@@ -11,6 +11,137 @@
 
 ---
 
+## Done since 2026-05-23 (close-out wave)
+
+Three items, one PR. Headline: P0-12 (the escalating narration→execution gap on `close_position` — hit 1 of 7 runs on Wed 5/20, 3 of 7 on Fri 5/22) is structurally fixed. Bundled P1-18 (which shipped earlier as PR #316) plus two tiny P2 hygiene items.
+
+### ✅ P0-12 — Narration→execution gap on `close_position` — gate moved from mid-run to end-of-run
+
+**Filed:** 2026-05-22. Escalation pattern: 1 of 7 runs Wed 5/20 (EV Catalyst ON), then 3 of 7 runs Fri 5/22 (Catalyst Event Raider MRVL ×2 + OKTA on retry; Secular Theme Architect SMTC + TRIM).
+
+**Symptom:** agent writes "exit X" / "close X" / "trim X" / "EXIT" in `decision_rationale` or `pick.reasoning` text, the narration→execution gate at `record_run_summary` fires inline, marks run FAILED. The agent then keeps running — sometimes calls the real tool after the gate fired — but the run is already FAILED. Production case 2026-05-22 Secular Theme SMTC: gate fired at 08:15:53; agent called `close_position` at 08:17:30; position later reconciled at $153.44 for **+$108.10** (the first realized winning close since the action-layer broke 5/12) — but the run row stayed FAILED. See run-review 2026-05-22 F1 for the event-stream trace.
+
+**Root cause:** the gate fired mid-run on the FIRST `record_run_summary` call, before the agent had a chance to make the (sometimes-pending) tool call. Treated narration→execution **order** mismatch as a permanent narration→execution gap.
+
+**Fix:** moved the gate from `lib/agent/tools/record-run-summary.ts` (inline mid-run) to `lib/agent/tools/complete-run.ts` preflight (end-of-run). Key changes:
+- Removed the entire narration-gate block from `record-run-summary.ts` (~135 lines). The tool no longer reads `RunEvent` rows or writes `run_failed` / status=FAILED.
+- Added `checkNarrationExecutionGap(runId)` to `complete-run.ts`. Reads the MOST RECENT `run_summary` event's payload (decision_rationale + ranked_picks reasoning), detects narration verbs, then reads all `position_closed` + `position_modified` events from the entire run. Self-corrected runs (agent narrated then called the tool, in either order) pass with no gap.
+- New `PreflightFailure` kind: `narration_execution_gap`. Returns a soft refusal the agent can recover from: "call the missing tool, then complete_run again" — same recovery pattern as the existing `no_run_summary` / `unaddressed_theses` refusals. Never sets status=FAILED.
+- Tactical exempt (matches the existing `skipSummaryGate` guard for `runMode === "INTRADAY_TACTICAL"`).
+
+**Three-layer principle (`docs/PRINCIPLES.md`):** kept as a Layer-1 tool gate. The previous instinct ("add prompt text saying 'narrating exit without calling close_position is a failure'") would have been the wrong layer — the agent already understands the rule, the gate just needed to enforce it correctly.
+
+**Tests:** `lib/agent/narration-gate.test.ts` pure-function tests on `detectNarrationHits` + `findGaps` still pass (unchanged module). The end-to-end Prisma read flow is exercised by the moved code in `complete-run.ts` — no separate integration test added, same shape as the existing preflight checks.
+
+**Audit-log cleanup:** the old gate wrote `run_failed` events with `gateSource: "record_run_summary"` payload. New gate writes nothing — refusals come back via the `complete_run` tool result, the run stays RUNNING until the agent successfully completes it.
+
+### ✅ P1-18 — New thesis-writer agent mints status=ACTIVE instead of WATCHING — **shipped via PR #316 (2026-05-23)**
+
+**Filed:** 2026-05-21 after the MU zombie thesis surfaced (user-builder pathway minted `Thesis { ticker: "MU", status: ACTIVE, ... }` with no matching Position).
+
+**Root cause:** the thesis-writer agent (`lib/agent/run-thesis-writer.ts`) didn't run through `record_thesis`'s `discoveryOnly` clamp.
+
+**Fix (PR #316):** added `forceWatchingMint` flag plumbed `dispatch_thesis_research` → Inngest event payload → `runThesisWriterAgent` ctx → `record_thesis` `isChatDispatchDirectional` gate. LONG/SHORT mints from user-builder are now forced to WATCHING.
+
+**Existing zombie cleanup:** MU thesis row `cmpetjrw5000304jv9ybkn0c0` repaired via SQL on 2026-05-23 — flipped to WATCHING, 10 HELD-template triggers stripped, STATUS_CHANGED ThesisUpdate audit row written.
+
+**Cross-reference:** P1-20 (still open) is the architectural followup — removes the need for clamps entirely by deriving status from actions rather than exposing it as a settable arg.
+
+### ✅ P2-17 — `useV2Prompt` column dropped
+
+**Filed:** post-PR #270 deprecation. The flag stayed on `AgentConfig` after PR #270 made `buildDailyRunSystemPromptV2` unconditional; zero code paths read it since 2026-05-16.
+
+**Fix:** removed `useV2Prompt` from `prisma/schema.prisma`. Generated migration `20260524005434_drop_use_v2_prompt` with `ALTER TABLE "AgentConfig" DROP COLUMN "useV2Prompt"`. Cleaned dead comment in `lib/inngest/functions/morning-research.ts`.
+
+### ✅ P2-21 — `predev` Prisma regen hook added
+
+**Filed:** 2026-05-23 after repair-script run errored on stale generated client (33 rows failed before `npx prisma generate` then succeeded clean).
+
+**Fix:** added `"predev": "prisma generate"` to `package.json`. `npm run dev` now regens the client before booting. Note: `npx tsx scripts/foo.ts` still bypasses (npm pre-hooks don't fire on direct tsx invocations); convention for repair scripts is run `npm run dev` once after a schema change, or run `npx prisma generate` first.
+
+---
+
+## Done since 2026-05-20 (post-no-trade-streak wave — the keystone fixes)
+
+Largest single wave since the V2 rollout. Resolves the "no trades in 12 days" production incident (2026-05-12 → 2026-05-21 was 7 trading days with 0 new positions). Combined effect: tactical ENTER conversion went from 0% (8 days) to 60% (Wed 5/21, 3 of 5 fires) and 40% (Fri 5/22, 4 of 10 fires). First post-incident wins: SMTC closed +$108 on Fri.
+
+### Code changes (5 PRs, all merged 2026-05-21)
+
+- ✅ **PR #307 — `fix(tactical): make 1.5x volume gate horizon-conditional + market-hours-aware`** (the keystone). `lib/agent/system-prompts/intraday-tactical.ts:201-260`. The 1.5x-volume-vs-20d-avg gate (added 2026-05-07 in PR #231 for the Intraday Momentum Scalper analyst) was being applied universally across all 6 analysts and all 4 horizons. Production effect after PR #289 made volume data actually flow: 30 ENTER tactical fires across 5/13–5/20 produced 0 real positions. New gate branches:
+  - **TRADE** (or DAY-style intraday): 1.5x gate applies, but only after 14:00 ET. Pre-mid-session, the raw ratio is informational only.
+  - **CATALYST / TARGET / COMPOUNDER**: volume is informational, not a gate.
+  - **Outside market hours (before 09:30 ET or after 16:00 ET)**: skip the volume gate entirely.
+  Closes the "no trades" production incident.
+
+- ✅ **PR #308 — `chore(husky): auto-regen Prisma client when schema is newer than generated`**. `.husky/pre-commit`. Pre-commit hook now `stat`-compares schema mtime vs generated client mtime and runs `prisma generate` if the schema is newer. Kills the "phantom TS errors" trap that made two run-review sessions use `--no-verify` to bypass. (Caveat — only fires on `git commit`, not on `npx tsx`. See P2-21.)
+
+- ✅ **PR #309 — `fix(record-thesis): use WATCHING_FIRST_REVIEW_DAYS cadence for new WATCHING theses`**. `lib/agent/tools/record-thesis.ts:687-720`. Before: every newly-minted WATCHING thesis got `nextReviewAt = now + HORIZON_REVIEW_DAYS[horizon]` (the HELD-side cadence: 1d / 1d / 7d / 30d). A brand-new COMPOUNDER WATCHING was scheduled for re-review in 30 days when the right cadence is 90. After: per-status branch. COMPOUNDER WATCHING = 90d, TARGET = 30d, TRADE = 14d, CATALYST = 14d. Held positions keep the original tighter cadence. SYSTEM_AUDIT_2026_05_19 item A4.
+
+- ✅ **PR #310 — `fix(reviews): close the scheduled-review duplication gap (needs-action lookahead + REVIEW_DATE_HIT strip)`**. Two halves of the same bug, bundled.
+  - `lib/agent/needs-action.ts:218-242` — 24h look-ahead on REVIEW_DUE. Morning daily-run now catches reviews scheduled for later TODAY (e.g. 09:30 ET when the run is at 08:00 ET) instead of treating them as "future" and skipping. Without this, the trigger evaluator's REVIEW_DATE_HIT cron fired at 09:31 ET and spawned a redundant tactical run for each.
+  - `lib/agent/triggers/defaults.ts` — REVIEW_DATE_HIT trigger removed from all 4 watching template functions (Catalyst / TRADE / TARGET / COMPOUNDER). The predicate kind stays in types/evaluator for back-compat. New WATCHING theses no longer auto-get this trigger; existing rows are stripped by the cleanup script.
+  - `scripts/dedupe-review-date-hit-triggers.ts` — new one-shot cleanup. Idempotent. DRY_RUN=1 supported.
+  - **Production proof (Catalyst Event Raider, 2026-05-21):** 0% focus → 42.9% focus, 0 ACTIVE positions → 2 (MRVL + OKTA — first trades ever for this analyst). Closes P2-18.
+
+- ✅ **PR #311 — `fix(record-thesis): Layer-1 cap of 5 LONG/SHORT WATCHING mints per discovery run`**. `lib/agent/tools/record-thesis.ts` discovery-clamp block. 2026-05-17 discovery cron minted 38 new WATCHING theses across 5 analysts (7-8 per analyst) against a documented 8/run soft-cap that GPT-4o wasn't honoring. Now enforced at the tool layer. SYSTEM_AUDIT_2026_05_19 item A3.
+
+### Production cleanup (repair scripts run 2026-05-23)
+
+The 5 code PRs above stopped CREATING bad rows; the repair scripts fixed existing bad rows.
+
+- ✅ **`scripts/fix-watching-next-review.ts` applied.** 33 WATCHING theses had their `nextReviewAt` extended from the old held-side cadence to the WATCHING_FIRST_REVIEW_DAYS cadence. 4 already-in-range, 0 errors. Distribution shifted from ~20+ overdue to: 3 in next-7d, 11 in 7-14d, 6 in 14-30d, 17 in 60d+. SYSTEM_AUDIT_2026_05_19 item B3.
+
+- ✅ **`scripts/dedupe-review-date-hit-triggers.ts` applied.** 27 REVIEW_DATE_HIT triggers stripped across 27 WATCHING theses (23 were already trigger-free — newer mints post-#310). Live theses with REVIEW_DATE_HIT triggers remaining: 0.
+
+### Documentation
+
+- ✅ **`docs/run-reviews/2026-05-20.md`** (PR #302) — Multi-day trajectory write-up of the no-trade incident. Trace through Catalyst NVDA's history showed the timing gap; led directly to PR #310.
+
+### Resolved by this wave but tracked separately
+
+- **P2-18 (Catalyst near-no-op morning runs)** — closed by PR #310's look-ahead. See P2-18 inline-CLOSED block in GAPS.md (will migrate here next round).
+
+### Surfaced + filed this wave
+
+New gaps discovered during the work, filed in GAPS.md:
+- **P0-12** — Narration→execution gap on `close_position` (1 run Wed 5/20, 3 runs Fri 5/22 — escalating)
+- **P1-18** — New thesis-writer agent mints status=ACTIVE instead of WATCHING (MU zombie 5/21)
+- **P1-19** — PRINCIPAL_CHAT hangs when child THESIS_WRITER fails (Inngest event-wiring)
+- **P2-20** — Volume ratio math broken for intraday timestamps (durable fix for #307's workaround)
+- **P2-21** — Prisma client stale on `npx tsx` (#308 hook is git-only)
+- **P2-22** — Cross-analyst discovery duplication (audit doc A8; deferred)
+
+### SYSTEM_AUDIT_2026_05_19.md correlation
+
+The audit doc was a one-shot snapshot from 2026-05-19. Items A1-A8 and B1-B7 were "PR open" at the time; tracking what actually shipped:
+- A1 (technicals null) → PR #289 (merged 2026-05-20)
+- A2 (stale ENTER triggers post-promotion) → PR #292 (merged 2026-05-20)
+- A3 (discovery cap) → PR #311 (merged 2026-05-21)
+- A4 + A5 (WATCHING cadence + REVIEW_DATE_HIT cooldown) → PRs #309 + #310 (merged 2026-05-21)
+- A6 + A7 (complete_run preflight scope + REVIEWED classification) → PR #290 (merged 2026-05-20)
+- A8 (cross-analyst dup) → re-filed as GAPS P2-22; deferred.
+- B1-B3 (data-layer cleanup + repair script) → PR #294 (merged 2026-05-20) + scripts run 2026-05-23
+- B4-B6 (reconcile-orders + tests + zombie guard) → PR #295 (merged 2026-05-20)
+- B7 (legacy keyword scan removed) → PR #296 (merged 2026-05-20)
+
+Audit doc closed-out 2026-05-23 (see header note).
+
+### Migrated from GAPS.md as part of this consolidation
+
+Old closure entries that were sitting inline-CLOSED in GAPS.md for >7 days, now moved here per the doc's "Don't keep dual copies" rule:
+
+- **P0-11 — Manual UI runs always get the 600-line V1 prompt.** CLOSED 2026-05-16 in PR #270. V1 prompt builder marked `@deprecated`; the only V1 caller (`app/api/agent/[mode]/route.ts:232`) was swapped to call `buildDailyRunSystemPromptV2` unconditionally. The `useV2Prompt` flag is no longer read by any code path. Flag column stays on `AgentConfig` until a follow-up migration drops it.
+
+- **P0-5 — Horizon awareness: operational layers are still horizon-blind.** All 5 sub-items (P0-5a/b/c/d/e) closed across the Thesis Architecture work + Morning Run V2 + admin sweep PRs. Horizon awareness now lives in three places — the daily prompt (visibility + per-horizon review cadence + per-horizon data discipline), per-thesis triggers (authoritative for exits), and the trigger evaluator (5-min cron evaluating those triggers).
+
+- **P1-13 — Old promotion-keyword gate in `record_run_summary` is now redundant + actively wrong.** CLOSED 2026-05-19 in `lib/agent/tools/record-run-summary.ts`. The ~220-line REJECTION_KEYWORDS_RE keyword scan was deleted along with its tickerMentionRegex helper. `complete_run`'s preflight (PR #266, `computeNeedsAction`) is the structural superset; `update_thesis`'s goalpost-moving guard catches the MRVL anti-pattern on the write side. The Secular Theme failure pattern (`"outside our universe focus"` not matching the keyword regex) cannot recur.
+
+- **P1-16 — Tactical run silent failures (verify post-PR #261).** CLOSED 2026-05-19 via the tactical run review at `docs/tactical-reviews/2026-05-18.md`. Re-audit confirms: silent failures clustered on 2026-05-11 (13 of 16 total in 14d, all the same day). Nothing since. PR #261's catch-path recovery + error aggregator is effectively closed.
+
+- **P2-12 — Discovery prompt doesn't mention `manage_watchlist` (blocked).** CLOSED 2026-05-13 by the watchlist collapse. `manage_watchlist` was deleted; Discovery's prompt now uses `record_thesis(status: WATCHING)` for adds. See `THESIS_ARCHITECTURE.md`.
+
+---
+
 ## Done since 2026-05-13 (easy-wins batch — P0-5e + P1-10 + P2-10 + P2-11)
 
 Four small-but-real closures on the thesis architecture rework. Single PR.
