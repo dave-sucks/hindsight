@@ -1127,21 +1127,22 @@ function ConsensusDistributionRow({
 
   return (
     <div className="space-y-1.5">
-      <p className="text-xs text-muted-foreground">
-        Based on {total} {total === 1 ? "analyst" : "analysts"}
-      </p>
-
       {/* Low/high price-target labels above the bar's endpoints. Red on the
           left = most bearish firm's 12-mo. target; green on the right =
-          most bullish firm's target. Same color language as the ticks
-          they sit above. */}
+          most bullish firm's target. The "Bear Target / Bull Target" prefix
+          spells out what the $ value represents — without it the numbers
+          looked like statistical aggregates of nothing in particular. */}
       {priceTargets && (priceTargets.low != null || priceTargets.high != null) ? (
         <div className="flex items-end justify-between text-xs tabular-nums">
           <span className="text-negative">
-            {priceTargets.low != null ? `$${priceTargets.low.toFixed(2)}` : ""}
+            {priceTargets.low != null
+              ? `Bear Target $${priceTargets.low.toFixed(2)}`
+              : ""}
           </span>
           <span className="text-positive">
-            {priceTargets.high != null ? `$${priceTargets.high.toFixed(2)}` : ""}
+            {priceTargets.high != null
+              ? `Bull Target $${priceTargets.high.toFixed(2)}`
+              : ""}
           </span>
         </div>
       ) : null}
@@ -1149,30 +1150,28 @@ function ConsensusDistributionRow({
       <TickBar ticks={ticks} />
 
       {/* Bottom row: distribution key on the left, average target on the
-          right. Avg is the single "consensus number" — sits next to the
-          key so the bar reads as one unified visual: bears at left, bulls
-          at right, with the Street's average target labeled below. */}
+          right. Key order matches the bar L→R: Bearish (red) → Neutral
+          (grey) → Bullish (green). Avg is the single "consensus number"
+          — kept in muted text so it reads as label-weight, not a
+          competing headline. */}
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-positive" />
-            {buy} Bullish
+            <span className="size-1.5 rounded-full bg-negative" />
+            {sell} Bearish
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-muted-foreground/40" />
             {hold} Neutral
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-negative" />
-            {sell} Bearish
+            <span className="size-1.5 rounded-full bg-positive" />
+            {buy} Bullish
           </span>
         </div>
         {priceTargets ? (
           <span className="tabular-nums">
-            Avg{" "}
-            <span className="text-foreground font-medium">
-              ${priceTargets.average.toFixed(2)}
-            </span>
+            Avg ${priceTargets.average.toFixed(2)}
           </span>
         ) : null}
       </div>
