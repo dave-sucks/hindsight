@@ -29,6 +29,11 @@ import {
 } from "@/components/ui/sheet";
 import { StockLogo } from "@/components/StockLogo";
 import { TickBar, PriceGauge, type Tick } from "@/components/ui/gauge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
 import {
@@ -886,22 +891,28 @@ interface AnalystCoverageData {
 }
 
 /**
- * AnalystConsensusWidget — restored visual widget for the analyst
- * consensus section. Two stacked visuals + an expandable narrative:
+ * AnalystConsensusWidget — single consolidated visual for the Street's
+ * view on the stock. One bar, one badge, one collapsible:
  *
- *   1. Distribution bar — Bullish / Neutral / Bearish counts as a TickBar
- *      (one tick per analyst, colored by rating). Falls back to the stored
- *      fundamentals.analyst_consensus shape when fresh FMP data isn't
- *      available (legacy theses or FMP 403).
+ *   • Header badge: consensus rating (Buy / Hold / Sell) with the implied
+ *     upside % to the consensus average target appended ("Buy +37.1%").
+ *     Tooltip explains the math.
  *
- *   2. Price target range — Low / Avg / Median / High vs current price.
- *      Built on the PriceGauge primitive (same one used for the Price
- *      Targets card above). The agent's entry/target/stop is a SEPARATE
- *      visual — this one shows the Street's view, not the analyst's.
+ *   • Distribution bar: 60-tick proportional bar showing how the covering
+ *     firms split across Bearish / Neutral / Bullish (red / grey / green).
+ *     The lowest bear target ($ value, red text) sits above the leftmost
+ *     red tick; the highest bull target ($, green text) above the
+ *     rightmost green tick — so the bar reads as both "rating distribution"
+ *     and "price target range" in a single visual. The average target
+ *     anchors the bottom-right corner of the key row.
  *
- *   3. Expanded narrative — the prose synthesis from the analystConsensus
- *      JSONB column lives behind a "Show more" collapsible so the widget
- *      stays compact by default. Citations render as chips.
+ *   • Collapsible synthesis narrative — the prose summary from the
+ *     `analystConsensus` JSONB column, behind a "Show more" toggle so the
+ *     widget stays compact by default.
+ *
+ * Fresh FMP/Finnhub fetch on sheet open via /api/theses/:id/analyst-coverage.
+ * The stored `fundamentals.analyst_consensus` shape is the legacy mint-time
+ * fallback for when the live fetch fails.
  */
 function AnalystConsensusWidget({
   thesisId,
@@ -957,6 +968,10 @@ function AnalystConsensusWidget({
       : null;
 
   const priceTargets = coverage?.priceTargets ?? null;
+  const impliedUpsidePct =
+    priceTargets && currentPrice != null && currentPrice > 0
+      ? ((priceTargets.average - currentPrice) / currentPrice) * 100
+      : null;
   const hasAnyData =
     (consensus && consensus.total > 0) || priceTargets != null || narrative != null;
   if (!hasAnyData) return null;
@@ -967,15 +982,21 @@ function AnalystConsensusWidget({
         <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
           Analyst Consensus
         </p>
-        {consensus ? <AnalystVerdictBadge consensus={consensus} /> : null}
+        {consensus ? (
+          <AnalystVerdictBadge
+            consensus={consensus}
+            impliedUpsidePct={impliedUpsidePct}
+            avgTarget={priceTargets?.average ?? null}
+            currentPrice={currentPrice}
+          />
+        ) : null}
       </div>
 
       {consensus && consensus.total > 0 ? (
-        <ConsensusDistributionRow consensus={consensus} />
-      ) : null}
-
-      {priceTargets ? (
-        <PriceTargetRangeRow targets={priceTargets} currentPrice={currentPrice} />
+        <ConsensusDistributionRow
+          consensus={consensus}
+          priceTargets={priceTargets}
+        />
       ) : null}
 
       {narrative ? <ConsensusNarrative narrative={narrative} /> : null}
@@ -985,8 +1006,14 @@ function AnalystConsensusWidget({
 
 function AnalystVerdictBadge({
   consensus,
+  impliedUpsidePct,
+  avgTarget,
+  currentPrice,
 }: {
   consensus: { buy: number; hold: number; sell: number; total: number };
+  impliedUpsidePct: number | null;
+  avgTarget: number | null;
+  currentPrice: number | null;
 }) {
   const { buy, total } = consensus;
   const buyPct = total > 0 ? buy / total : 0;
@@ -998,10 +1025,26 @@ function AnalystVerdictBadge({
         : buyPct >= 0.3
           ? { label: "Hold", variant: "secondary" as const }
           : { label: "Sell", variant: "negative" as const };
+  const upsideSuffix =
+    impliedUpsidePct != null
+      ? ` ${impliedUpsidePct >= 0 ? "+" : ""}${impliedUpsidePct.toFixed(1)}%`
+      : "";
+  const tooltipBody =
+    avgTarget != null && currentPrice != null
+      ? `Consensus rating across ${total} covering firms. ${impliedUpsidePct != null ? `${impliedUpsidePct >= 0 ? "+" : ""}${impliedUpsidePct.toFixed(1)}%` : "—"} is the implied move from the current price ($${currentPrice.toFixed(2)}) to the average 12-month price target ($${avgTarget.toFixed(2)}).`
+      : `Consensus rating across ${total} covering firms.`;
   return (
-    <Badge variant={verdict.variant} className="font-normal">
-      {verdict.label}
-    </Badge>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge variant={verdict.variant} className="font-normal cursor-help">
+            {verdict.label}
+            {upsideSuffix}
+          </Badge>
+        }
+      />
+      <TooltipContent>{tooltipBody}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -1045,136 +1088,93 @@ function allocateSlots(counts: number[], slots: number): number[] {
 
 function ConsensusDistributionRow({
   consensus,
+  priceTargets,
 }: {
   consensus: { buy: number; hold: number; sell: number; total: number };
-}) {
-  const { buy, hold, sell, total } = consensus;
-  // Fixed-width 60-tick bar with segments sized by proportion of each
-  // bucket. Same density as the PriceGauge below it so the two visuals
-  // read at the same scale. Prior approach (1 tick per analyst) looked
-  // anemic at 2 analysts and bled together at 50+ — proportional renders
-  // identically at any analyst count.
-  //
-  // Order across the bar: Sell (red) → Hold (grey) → Buy (green), L→R.
-  const [sellSlots, holdSlots] = allocateSlots([sell, hold, buy], 60);
-
-  const ticks: Tick[] = Array.from({ length: 60 }, (_, i) => ({
-    color:
-      i < sellSlots
-        ? "bg-negative"
-        : i < sellSlots + holdSlots
-          ? "bg-muted-foreground/40"
-          : "bg-positive",
-    tall: true,
-  }));
-  return (
-    <div className="space-y-1.5">
-      <p className="text-xs text-muted-foreground">
-        Based on {total} {total === 1 ? "analyst" : "analysts"}
-      </p>
-      <TickBar ticks={ticks} />
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-positive" />
-          {buy} Bullish
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-muted-foreground/40" />
-          {hold} Neutral
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-negative" />
-          {sell} Bearish
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function PriceTargetRangeRow({
-  targets,
-  currentPrice,
-}: {
-  targets: {
+  priceTargets: {
     low: number | null;
     average: number;
     median: number | null;
     high: number | null;
     numAnalysts: number | null;
-  };
-  currentPrice: number | null;
+  } | null;
 }) {
-  // The gauge needs a single "entry" reference + optional target/stop to
-  // mark; reuse the PriceGauge primitive by mapping Avg → entry, High →
-  // target, Low → stop. Median renders as a faint inline label since the
-  // primitive only highlights 3 marker indexes. `currentPrice` is the
-  // foreground tick (when known) — same affordance the agent's price
-  // targets card uses for "where the stock is now".
-  const { low, average, median, high } = targets;
-  const lo = Math.min(
-    low ?? Number.POSITIVE_INFINITY,
-    average,
-    high ?? Number.NEGATIVE_INFINITY,
-    currentPrice ?? Number.POSITIVE_INFINITY,
-  );
-  const hi = Math.max(
-    low ?? Number.NEGATIVE_INFINITY,
-    average,
-    high ?? Number.NEGATIVE_INFINITY,
-    currentPrice ?? Number.NEGATIVE_INFINITY,
-  );
-  const safeLo = Number.isFinite(lo) ? lo : average * 0.85;
-  const safeHi = Number.isFinite(hi) ? hi : average * 1.15;
-  const span = safeHi - safeLo || average * 0.1;
-  const COUNT = 60;
-  const EDGE_PAD = 3;
-  const usable = COUNT - EDGE_PAD * 2 - 1;
-  const avgIdx = Math.round(EDGE_PAD + ((average - safeLo) / span) * usable);
-  const avgPct = avgIdx / (COUNT - 1);
-  const impliedUpsidePct =
-    currentPrice != null && currentPrice > 0
-      ? ((average - currentPrice) / currentPrice) * 100
-      : null;
+  const { buy, hold, sell, total } = consensus;
+  // Fixed-width 60-tick bar with segments sized by proportion of each
+  // bucket. Prior approach (1 tick per analyst) looked anemic at 2 analysts
+  // and bled together at 50+ — proportional renders identically at any
+  // analyst count. Order across the bar: Sell (red) → Hold (grey) → Buy
+  // (green), L→R.
+  const [sellSlots, holdSlots, buySlots] = allocateSlots([sell, hold, buy], 60);
+
+  // The leftmost-bear and rightmost-bull ticks get an extra-tall treatment
+  // so they read as the range endpoints when paired with the low/high
+  // price-target labels above the bar.
+  const lastBullIdx = sellSlots + holdSlots + buySlots - 1;
+  const ticks: Tick[] = Array.from({ length: 60 }, (_, i) => {
+    const isLeftmostBear = sell > 0 && i === 0;
+    const isRightmostBull = buy > 0 && i === lastBullIdx;
+    const color =
+      i < sellSlots
+        ? "bg-negative"
+        : i < sellSlots + holdSlots
+          ? "bg-muted-foreground/40"
+          : "bg-positive";
+    return isLeftmostBear || isRightmostBull
+      ? { color, heightPx: 22 }
+      : { color, tall: true };
+  });
+
   return (
-    <div className="space-y-2 pt-1 border-t border-border/60">
-      <div className="flex items-baseline justify-between text-xs">
-        <span className="text-muted-foreground">Price Targets</span>
-        {impliedUpsidePct != null ? (
-          <span
-            className={cn(
-              "tabular-nums",
-              impliedUpsidePct >= 0 ? "text-emerald-500" : "text-red-500",
-            )}
-          >
-            {impliedUpsidePct >= 0 ? "+" : ""}
-            {impliedUpsidePct.toFixed(1)}% vs ${currentPrice?.toFixed(2)}
+    <div className="space-y-1.5">
+      <p className="text-xs text-muted-foreground">
+        Based on {total} {total === 1 ? "analyst" : "analysts"}
+      </p>
+
+      {/* Low/high price-target labels above the bar's endpoints. Red on the
+          left = most bearish firm's 12-mo. target; green on the right =
+          most bullish firm's target. Same color language as the ticks
+          they sit above. */}
+      {priceTargets && (priceTargets.low != null || priceTargets.high != null) ? (
+        <div className="flex items-end justify-between text-xs tabular-nums">
+          <span className="text-negative">
+            {priceTargets.low != null ? `$${priceTargets.low.toFixed(2)}` : ""}
+          </span>
+          <span className="text-positive">
+            {priceTargets.high != null ? `$${priceTargets.high.toFixed(2)}` : ""}
+          </span>
+        </div>
+      ) : null}
+
+      <TickBar ticks={ticks} />
+
+      {/* Bottom row: distribution key on the left, average target on the
+          right. Avg is the single "consensus number" — sits next to the
+          key so the bar reads as one unified visual: bears at left, bulls
+          at right, with the Street's average target labeled below. */}
+      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-positive" />
+            {buy} Bullish
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-muted-foreground/40" />
+            {hold} Neutral
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-negative" />
+            {sell} Bearish
+          </span>
+        </div>
+        {priceTargets ? (
+          <span className="tabular-nums">
+            Avg{" "}
+            <span className="text-foreground font-medium">
+              ${priceTargets.average.toFixed(2)}
+            </span>
           </span>
         ) : null}
-      </div>
-      <div className="space-y-2">
-        <div className="relative h-4">
-          <span
-            className="absolute -translate-x-1/2 text-xs font-medium tabular-nums whitespace-nowrap"
-            style={{ left: `${avgPct * 100}%` }}
-          >
-            ${average.toFixed(2)}
-          </span>
-        </div>
-        <PriceGauge
-          entry={average}
-          target={high}
-          stop={low}
-          current={currentPrice}
-        />
-        <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
-          <span>{low != null ? `Low $${low.toFixed(2)}` : "Low —"}</span>
-          {median != null ? (
-            <span className="text-muted-foreground/70">
-              Median ${median.toFixed(2)}
-            </span>
-          ) : null}
-          <span>{high != null ? `High $${high.toFixed(2)}` : "High —"}</span>
-        </div>
       </div>
     </div>
   );

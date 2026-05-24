@@ -23,6 +23,14 @@ export type Tick = {
   color: string;
   /** Render this stroke at full bar height instead of the shorter base height */
   tall?: boolean;
+  /**
+   * Per-tick height override in px. When set, takes precedence over `tall`.
+   * Use to emphasize boundary markers (e.g. the leftmost-bear / rightmost-bull
+   * ticks on the consensus distribution bar). Slightly taller than the bar
+   * itself is fine — the container uses items-center so overflow renders
+   * symmetrically above + below.
+   */
+  heightPx?: number;
 };
 
 export function TickBar({
@@ -36,16 +44,23 @@ export function TickBar({
   className?: string;
 }) {
   const baseHeight = Math.round(height * 0.7);
+  // Bump the container's reserved vertical space to fit the tallest tick.
+  // Without this, a 22px boundary tick inside a 16px container visibly
+  // overflows the surrounding row's line-box and pushes adjacent labels.
+  const maxTickHeight = ticks.reduce(
+    (m, t) => Math.max(m, t.heightPx ?? (t.tall ? height : baseHeight)),
+    height,
+  );
   return (
     <div
       className={cn("relative w-full flex items-center justify-between", className)}
-      style={{ height }}
+      style={{ height: maxTickHeight }}
     >
       {ticks.map((t, i) => (
         <span
           key={i}
           className={cn("w-0.5 rounded-full", t.color)}
-          style={{ height: t.tall ? height : baseHeight }}
+          style={{ height: t.heightPx ?? (t.tall ? height : baseHeight) }}
         />
       ))}
     </div>
