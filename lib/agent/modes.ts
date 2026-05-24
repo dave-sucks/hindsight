@@ -259,8 +259,11 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_sec_filings",
       "web_search",
       "get_theses",
-      // Mint new coverage (LONG/SHORT WATCHING or PASS ARCHIVED)
+      // Mint new coverage. PASS rows still go through record_thesis
+      // directly (cheap, terminal-at-write institutional memory).
       "record_thesis",
+      // Phase 2 — deep-research dispatch for WATCHING-worthy survivors only.
+      "dispatch_thesis_research",
       // Optional starter trade for high-conviction picks
       "place_trade",
       // Finalize
