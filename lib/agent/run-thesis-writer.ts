@@ -152,8 +152,30 @@ YOUR JOB (4 tool calls, ~3-5 minutes wall time)
      - stop_loss: real chart level (support / R:R ≥ 2:1) — REQUIRED for
        LONG/SHORT
      - confidence_score: 0-100; ≥ ${opts.minConfidence} for ACTIVE coverage
-     - core_belief: ONE sentence — the durable claim that, if it stops
-       being true, breaks the thesis. NOT the trade summary.
+     - core_belief: ONE short sentence (≤30 words) — a FALSIFIABLE
+       PREDICTION the trade evaluator can grade on close. Must include:
+         (1) Expected outcome — specific (price target, growth rate,
+             margin level, multiple expansion, etc.). NOT "best-in-class"
+             or "durable advantage" — those are observations, not claims.
+         (2) Timeframe — bounded (within 6 months / by next earnings /
+             over 12 months / by FY26).
+         (3) Mechanism — the "because" clause (because X catalyst will
+             fire / because Y growth rate will sustain / because Z
+             multiple will rerate).
+       Do NOT describe the current state — that's the Snapshot's job.
+       Do NOT write a verbose observational paragraph. ONE sentence.
+       Good: "PLTR reaches $190+ within 6 months on sustained 40%+
+              commercial revenue growth and Rule-of-40 score above 80."
+       Good: "NVDA prints ≥$50B data-center revenue by Q4 FY26 as Blackwell
+              ramps and replaces Hopper at hyperscaler customers."
+       Bad:  "PLTR is the best-in-class AI infrastructure operator with
+              a durable flywheel advantage capable of compounding sustained
+              premium returns." (observation, not a falsifiable claim —
+              evaluator can't grade this on close)
+       Bad:  "Palantir's AIP-driven AI Platform has crossed the
+              commercial inflection point — US commercial revenue is
+              growing >50% YoY..." (describes current state, no
+              prediction, no timeframe — duplicates Snapshot)
      - key_assumptions: ≥2 specific premises that must hold for the belief
      - invalidation_conditions: ≥2 specific things that would prove it
        wrong (numbers, events, dates — NOT "market volatility")

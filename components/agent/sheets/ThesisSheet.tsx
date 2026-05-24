@@ -19,7 +19,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { PriceChange } from "@/components/ui/price-change";
 import { InfoRow } from "@/components/ui/info-row";
 import {
@@ -111,20 +110,6 @@ export type ThesisCardData = {
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function fmtCompact(n: number): string {
-  if (n >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
-}
-
-function fmtVol(n: number): string {
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-  return n.toFixed(0);
-}
 
 export function hasFundamentalDetails(f: FundamentalsData): boolean {
   return (
@@ -346,36 +331,6 @@ function relativeTime(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.round(hrs / 24);
   return `${days}d ago`;
-}
-
-function BulletSection({
-  title,
-  icon,
-  items,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  items: string[];
-}) {
-  // Section header uses the xs-uppercase-tracking pattern shared with
-  // the rest of the app (coverage-tab, sync-health-panel, etc). Bullets
-  // are plain foreground (no opacity) — the visual weight comes from
-  // the eyebrow header above, not from dimming the body.
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-        {icon}
-        {title}
-      </p>
-      <ul className="list-disc pl-4 marker:text-muted-foreground/50 space-y-1">
-        {items.map((b, i) => (
-          <li key={i} className="text-sm text-foreground leading-relaxed">
-            {b}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
 }
 
 /**
@@ -739,16 +694,18 @@ function ResearchSectionsAccordion({
     }
   }
 
-  // Display order + labels. Matches docs/plans/THESIS_RESEARCH_V2.md §4.4.
+  // Display order + labels. Snapshot + Analyst Consensus are promoted out
+  // of the accordion to tier-1 always-visible blocks (Snapshot as prose
+  // under Core Belief; Analyst Consensus as a structured widget). Order
+  // here matches the user-facing accordion grouping spec — Bull/Bear come
+  // first since they're the most opened sections.
   const RENDER_ORDER: Array<{ key: keyof ThesisResearchSections; label: string }> = [
-    { key: "snapshot", label: "Snapshot" },
-    { key: "recentCatalysts", label: "Recent Catalysts" },
-    { key: "fundamentals", label: "Fundamentals" },
-    { key: "latestEarnings", label: "Latest Earnings" },
-    { key: "catalystsAndEvents", label: "Catalysts & Events" },
     { key: "bullCase", label: "Bull Case" },
     { key: "bearCase", label: "Bear Case" },
-    { key: "analystConsensusSynthesis", label: "Analyst Consensus" },
+    { key: "recentCatalysts", label: "Recent Catalysts" },
+    { key: "catalystsAndEvents", label: "Catalysts & Events" },
+    { key: "fundamentals", label: "Fundamentals" },
+    { key: "latestEarnings", label: "Latest Earnings" },
     { key: "insiderTechnicalSetup", label: "Insider & Technical" },
   ];
 
@@ -905,13 +862,133 @@ function PriceTargetsBlock({
   );
 }
 
-function AnalystConsensusBlock({
+// ── AnalystCoverageData ────────────────────────────────────────────────
+// Response shape from /api/theses/:id/analyst-coverage. Returns null when
+// the fetch fails or FMP returns nothing — the widget then falls back to
+// the stored fundamentals.analyst_consensus shape (from thesis mint time).
+interface AnalystCoverageData {
+  ticker: string;
+  consensus: {
+    buy: number;
+    hold: number;
+    sell: number;
+    unknown: number;
+    total: number;
+  } | null;
+  priceTargets: {
+    low: number | null;
+    average: number;
+    median: number | null;
+    high: number | null;
+    numAnalysts: number | null;
+  } | null;
+  errors?: string[];
+}
+
+/**
+ * AnalystConsensusWidget — restored visual widget for the analyst
+ * consensus section. Two stacked visuals + an expandable narrative:
+ *
+ *   1. Distribution bar — Bullish / Neutral / Bearish counts as a TickBar
+ *      (one tick per analyst, colored by rating). Falls back to the stored
+ *      fundamentals.analyst_consensus shape when fresh FMP data isn't
+ *      available (legacy theses or FMP 403).
+ *
+ *   2. Price target range — Low / Avg / Median / High vs current price.
+ *      Built on the PriceGauge primitive (same one used for the Price
+ *      Targets card above). The agent's entry/target/stop is a SEPARATE
+ *      visual — this one shows the Street's view, not the analyst's.
+ *
+ *   3. Expanded narrative — the prose synthesis from the analystConsensus
+ *      JSONB column lives behind a "Show more" collapsible so the widget
+ *      stays compact by default. Citations render as chips.
+ */
+function AnalystConsensusWidget({
+  thesisId,
+  fallbackConsensus,
+  narrative,
+  currentPrice,
+}: {
+  thesisId: string | undefined;
+  fallbackConsensus: { buy: number; hold: number; sell: number } | null;
+  narrative: ResearchTextSection | null | undefined;
+  currentPrice: number | null;
+}) {
+  const [coverage, setCoverage] = useState<AnalystCoverageData | null>(null);
+  useEffect(() => {
+    if (!thesisId) return;
+    let cancelled = false;
+    fetch(`/api/theses/${thesisId}/analyst-coverage`)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const json = (await r.json()) as AnalystCoverageData;
+        if (!cancelled) setCoverage(json);
+      })
+      .catch(() => {
+        /* non-fatal — widget falls back to stored consensus */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [thesisId]);
+
+  // Source consensus: prefer fresh fetch; fall back to stored values from
+  // mint time. Either may be null — render an empty state in that case.
+  const consensus = coverage?.consensus
+    ? {
+        buy: coverage.consensus.buy,
+        hold: coverage.consensus.hold,
+        sell: coverage.consensus.sell,
+        total:
+          coverage.consensus.buy +
+          coverage.consensus.hold +
+          coverage.consensus.sell,
+      }
+    : fallbackConsensus
+      ? {
+          buy: fallbackConsensus.buy,
+          hold: fallbackConsensus.hold,
+          sell: fallbackConsensus.sell,
+          total:
+            fallbackConsensus.buy +
+            fallbackConsensus.hold +
+            fallbackConsensus.sell,
+        }
+      : null;
+
+  const priceTargets = coverage?.priceTargets ?? null;
+  const hasAnyData =
+    (consensus && consensus.total > 0) || priceTargets != null || narrative != null;
+  if (!hasAnyData) return null;
+
+  return (
+    <Card className="bg-muted/40 p-2 gap-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+          Analyst Consensus
+        </p>
+        {consensus ? <AnalystVerdictBadge consensus={consensus} /> : null}
+      </div>
+
+      {consensus && consensus.total > 0 ? (
+        <ConsensusDistributionRow consensus={consensus} />
+      ) : null}
+
+      {priceTargets ? (
+        <PriceTargetRangeRow targets={priceTargets} currentPrice={currentPrice} />
+      ) : null}
+
+      {narrative ? <ConsensusNarrative narrative={narrative} /> : null}
+    </Card>
+  );
+}
+
+function AnalystVerdictBadge({
   consensus,
 }: {
-  consensus: { buy: number; hold: number; sell: number };
+  consensus: { buy: number; hold: number; sell: number; total: number };
 }) {
-  const { buy, hold, sell } = consensus;
-  const total = buy + hold + sell;
+  const { buy, total } = consensus;
   const buyPct = total > 0 ? buy / total : 0;
   const verdict =
     buyPct >= 0.7
@@ -921,7 +998,20 @@ function AnalystConsensusBlock({
         : buyPct >= 0.3
           ? { label: "Hold", variant: "secondary" as const }
           : { label: "Sell", variant: "negative" as const };
+  return (
+    <Badge variant={verdict.variant} className="font-normal">
+      {verdict.label}
+    </Badge>
+  );
+}
 
+function ConsensusDistributionRow({
+  consensus,
+}: {
+  consensus: { buy: number; hold: number; sell: number; total: number };
+}) {
+  const { buy, hold, sell, total } = consensus;
+  // One tick per analyst, ordered Sell → Hold → Buy across the bar.
   const ticks: Tick[] = Array.from({ length: total }, (_, i) => ({
     color:
       i < sell
@@ -931,68 +1021,143 @@ function AnalystConsensusBlock({
           : "bg-positive",
     tall: true,
   }));
-
   return (
-    <Card className="bg-muted/40 p-2 gap-6">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-          Analyst Consensus
-        </p>
-        <Badge variant={verdict.variant} className="font-normal">
-          {verdict.label}
-        </Badge>
+    <div className="space-y-1.5">
+      <p className="text-xs text-muted-foreground">
+        Based on {total} {total === 1 ? "analyst" : "analysts"}
+      </p>
+      <TickBar ticks={ticks} />
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-positive" />
+          {buy} Bullish
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-muted-foreground/40" />
+          {hold} Neutral
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-negative" />
+          {sell} Bearish
+        </span>
       </div>
-
-      <div className="space-y-1.5">
-        <p className="text-xs text-muted-foreground">
-          Based on {total} {total === 1 ? "analyst" : "analysts"}
-        </p>
-
-        <TickBar ticks={ticks} />
-
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-positive" />
-            {buy} Bullish
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-muted-foreground/40" />
-            {hold} Neutral
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-negative" />
-            {sell} Bearish
-          </span>
-        </div>
-      </div>
-    </Card>
+    </div>
   );
 }
 
-function FundamentalsContent({ fundamentals }: { fundamentals: FundamentalsData }) {
-  const { market_cap, pe_ratio, beta, avg_volume, high_52w, low_52w, sector } = fundamentals;
+function PriceTargetRangeRow({
+  targets,
+  currentPrice,
+}: {
+  targets: {
+    low: number | null;
+    average: number;
+    median: number | null;
+    high: number | null;
+    numAnalysts: number | null;
+  };
+  currentPrice: number | null;
+}) {
+  // The gauge needs a single "entry" reference + optional target/stop to
+  // mark; reuse the PriceGauge primitive by mapping Avg → entry, High →
+  // target, Low → stop. Median renders as a faint inline label since the
+  // primitive only highlights 3 marker indexes. `currentPrice` is the
+  // foreground tick (when known) — same affordance the agent's price
+  // targets card uses for "where the stock is now".
+  const { low, average, median, high } = targets;
+  const lo = Math.min(
+    low ?? Number.POSITIVE_INFINITY,
+    average,
+    high ?? Number.NEGATIVE_INFINITY,
+    currentPrice ?? Number.POSITIVE_INFINITY,
+  );
+  const hi = Math.max(
+    low ?? Number.NEGATIVE_INFINITY,
+    average,
+    high ?? Number.NEGATIVE_INFINITY,
+    currentPrice ?? Number.NEGATIVE_INFINITY,
+  );
+  const safeLo = Number.isFinite(lo) ? lo : average * 0.85;
+  const safeHi = Number.isFinite(hi) ? hi : average * 1.15;
+  const span = safeHi - safeLo || average * 0.1;
+  const COUNT = 60;
+  const EDGE_PAD = 3;
+  const usable = COUNT - EDGE_PAD * 2 - 1;
+  const avgIdx = Math.round(EDGE_PAD + ((average - safeLo) / span) * usable);
+  const avgPct = avgIdx / (COUNT - 1);
+  const impliedUpsidePct =
+    currentPrice != null && currentPrice > 0
+      ? ((average - currentPrice) / currentPrice) * 100
+      : null;
   return (
-    <div className="flex flex-col gap-1">
-      {sector && <InfoRow label="Sector" value={sector} />}
-      {market_cap != null && (
-        <InfoRow label="Market Cap" value={fmtCompact(market_cap)} mono />
-      )}
-      {pe_ratio != null && (
-        <InfoRow label="P/E Ratio" value={`${pe_ratio.toFixed(1)}x`} mono />
-      )}
-      {beta != null && <InfoRow label="Beta" value={beta.toFixed(2)} mono />}
-      {avg_volume != null && (
-        <InfoRow label="Avg Volume (10d)" value={fmtVol(avg_volume)} mono />
-      )}
-      {high_52w != null && low_52w != null && (
-        <InfoRow
-          label="52W Range"
-          mono
-          value={`$${low_52w.toFixed(2)} – $${high_52w.toFixed(2)}`}
-          border={false}
+    <div className="space-y-2 pt-1 border-t border-border/60">
+      <div className="flex items-baseline justify-between text-xs">
+        <span className="text-muted-foreground">Price Targets</span>
+        {impliedUpsidePct != null ? (
+          <span
+            className={cn(
+              "tabular-nums",
+              impliedUpsidePct >= 0 ? "text-emerald-500" : "text-red-500",
+            )}
+          >
+            {impliedUpsidePct >= 0 ? "+" : ""}
+            {impliedUpsidePct.toFixed(1)}% vs ${currentPrice?.toFixed(2)}
+          </span>
+        ) : null}
+      </div>
+      <div className="space-y-2">
+        <div className="relative h-4">
+          <span
+            className="absolute -translate-x-1/2 text-xs font-medium tabular-nums whitespace-nowrap"
+            style={{ left: `${avgPct * 100}%` }}
+          >
+            ${average.toFixed(2)}
+          </span>
+        </div>
+        <PriceGauge
+          entry={average}
+          target={high}
+          stop={low}
+          current={currentPrice}
         />
-      )}
+        <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
+          <span>{low != null ? `Low $${low.toFixed(2)}` : "Low —"}</span>
+          {median != null ? (
+            <span className="text-muted-foreground/70">
+              Median ${median.toFixed(2)}
+            </span>
+          ) : null}
+          <span>{high != null ? `High $${high.toFixed(2)}` : "High —"}</span>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function ConsensusNarrative({
+  narrative,
+}: {
+  narrative: ResearchTextSection;
+}) {
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+        <span>Synthesis</span>
+        <ChevronDown className="size-3.5 transition-transform data-[panel-open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-2 text-sm leading-relaxed">
+        <p className="whitespace-pre-wrap">
+          {narrative.text}
+          {narrative.citations && narrative.citations.length > 0 ? (
+            <span className="ml-1 inline-flex flex-wrap gap-1">
+              {narrative.citations.map((c, i) => (
+                <ResearchCitationChip key={i} citation={c} />
+              ))}
+            </span>
+          ) : null}
+        </p>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -1034,15 +1199,11 @@ export function ThesisSheetBody({
   thesis_id,
   ticker,
   direction,
-  confidence_score,
   reasoning_summary,
   pass_reason,
-  thesis_bullets,
-  risk_flags,
   entry_price,
   target_price,
   stop_loss,
-  signal_types,
   company_name,
   exchange,
   fundamentals,
@@ -1210,13 +1371,13 @@ export function ThesisSheetBody({
           at the top made the header heavier than it needed to be. */}
 
       {/* ── Core Belief headline ─────────────────────────────── */}
-      {/* The ONE durable claim — promoted to the top as a font-bigger
-          headline above the reasoning summary + bull/bear bullets. NOT
-          a card wrapper; just typography. Skeleton holds two muted lines
-          while /triggers is still in flight so the layout doesn't jump
-          when the belief lands. */}
+      {/* The ONE durable claim — a falsifiable prediction (≤30 words) the
+          trade evaluator grades on close. Italic + slightly larger so it
+          reads as the load-bearing claim, not just another paragraph.
+          Skeleton holds two muted lines while /triggers is still in
+          flight so the layout doesn't jump when the belief lands. */}
       {state?.coreBelief ? (
-        <p className="text-base font-medium leading-relaxed">
+        <p className="text-base font-medium italic leading-relaxed">
           {state.coreBelief}
         </p>
       ) : stateLoading ? (
@@ -1226,40 +1387,92 @@ export function ThesisSheetBody({
         </div>
       ) : null}
 
-      {/* ── Summary ───────────────────────────────────────────── */}
-      {summaryText && (
+      {/* ── Snapshot ──────────────────────────────────────────── */}
+      {/* Descriptive summary paragraph (the analyst's "where this name
+          is right now" prose). Lives at tier-1 so it surfaces alongside
+          Core Belief — Belief says what WILL happen, Snapshot says what
+          IS happening. Citations render as inline chips. Skeleton while
+          /triggers is in flight. */}
+      {state?.snapshot ? (
+        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+          {state.snapshot.text}
+          {state.snapshot.citations && state.snapshot.citations.length > 0 ? (
+            <span className="ml-1 inline-flex flex-wrap gap-1">
+              {state.snapshot.citations.map((c, i) => (
+                <ResearchCitationChip key={i} citation={c} />
+              ))}
+            </span>
+          ) : null}
+        </p>
+      ) : stateLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      ) : null}
+
+      {/* ── Pass reason ───────────────────────────────────────── */}
+      {/* Only renders for PASS direction — explains why the thesis was
+          rejected. LONG/SHORT theses rely on Snapshot above for the
+          equivalent descriptive context. */}
+      {isPass && summaryText && (
         <p className="text-sm leading-relaxed">{summaryText}</p>
       )}
 
-      {/* ── Bullish View ──────────────────────────────────────── */}
-      {thesis_bullets.length > 0 && (
-        <BulletSection
-          title="Bullish View"
-          icon={<PnlArrow direction="up" className="size-4" />}
-          items={thesis_bullets}
+      {/* ── Scoring breakdown (4-dim composite) ───────────────── */}
+      {/* Restyled 2026-05-18 to match the Schedule section's left/right
+          InfoRow pattern: per-dim label on the left, score on the right,
+          bottom border + the agent's one-sentence justification note on
+          its own full-width line beneath. Composite is the single
+          conviction number after PR-9 (legacy `confidenceScore` int
+          dropped). */}
+      {state?.scoring ? (
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+              Composite Score
+            </p>
+            <div className="flex items-baseline gap-3">
+              {state.scoringComposite != null && (
+                <p className="text-sm font-semibold tabular-nums">
+                  {state.scoringComposite}/10
+                </p>
+              )}
+            </div>
+          </div>
+          <div>
+            <ScoringRow label="Trend strength" dim={state.scoring.trendStrength} max={3} />
+            <ScoringRow label="Relative strength" dim={state.scoring.relativeStrength} max={3} />
+            <ScoringRow label="Entry quality" dim={state.scoring.entryQuality} max={2} />
+            <ScoringRow label="Catalyst freshness" dim={state.scoring.catalystFreshness} max={2} />
+          </div>
+        </div>
+      ) : stateLoading ? (
+        <CompositeScoreSkeleton />
+      ) : null}
+
+      {/* ── Price Targets (the agent's entry/target/stop) ─────── */}
+      {showLevels && (
+        <PriceTargetsBlock
+          entry={entry_price!}
+          target={target_price ?? null}
+          stop={stop_loss ?? null}
         />
       )}
 
-      {/* ── Bearish View ──────────────────────────────────────── */}
-      {risk_flags.length > 0 && (
-        <BulletSection
-          title="Bearish View"
-          icon={<PnlArrow direction="down" className="size-4" />}
-          items={risk_flags}
-        />
-      )}
-
-      {/* ── Sources ──────────────────────────────────────────── */}
-      {/* `sourcesUsed` was dropped in PR-9 (flat-schema cutover) —
-          per-section citations inside the 9 narrative columns
-          (snapshot/bullCase/bearCase/etc.) supersede it. The favicon
-          strip will return once a section-citation aggregator helper
-          lands; for now this region intentionally renders nothing. */}
-
-      {/* The mid-sheet "Core Belief" card was removed 2026-05-18 — the
-          one-sentence durable claim is now rendered as a bigger-font
-          headline at the top of the sheet, above the reasoning summary.
-          Keeping a second copy here was pure duplication. */}
+      {/* ── Analyst Consensus widget ──────────────────────────── */}
+      {/* Buy/Hold/Sell distribution + Low/Avg/Median/High price target
+          range vs current. Fresh FMP fetch on open; falls back to the
+          stored fundamentals.analyst_consensus shape (mint-time) when
+          the fetch fails or returns empty. Narrative behind a
+          collapsible. */}
+      <AnalystConsensusWidget
+        thesisId={thesis_id}
+        fallbackConsensus={fundamentals?.analyst_consensus ?? null}
+        narrative={state?.analystConsensus ?? null}
+        currentPrice={quote?.currentPrice ?? null}
+      />
 
       {/* ── Key Assumptions ───────────────────────────────────── */}
       {/* ≥2 falsifiable premises that must remain true for the core belief
@@ -1286,16 +1499,15 @@ export function ThesisSheetBody({
         <BulletListSkeleton title="Key Assumptions" rows={2} />
       ) : null}
 
-      {/* ── Cause for Concern (invalidationConds) ──────────────── */}
+      {/* ── Invalidation Conditions (invalidationConds) ──────── */}
       {/* ≥2 concrete trip-wires that would END the trade if they happen.
-          The DB column is still `invalidationConds` — only the user-facing
-          label changed (2026-05-19). The trade evaluator grades exits
-          against these on close; the daily-run prompt uses them to decide
-          when a signal counts as thesis-breaking. */}
+          The trade evaluator grades exits against these on close; the
+          daily-run prompt uses them to decide when a signal counts as
+          thesis-breaking. */}
       {state?.invalidationConds && state.invalidationConds.length > 0 ? (
         <div className="space-y-2">
           <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-            Cause for Concern
+            Invalidation Conditions
           </p>
           <ul className="space-y-1.5">
             {state.invalidationConds.map((c, i) => (
@@ -1310,97 +1522,37 @@ export function ThesisSheetBody({
           </ul>
         </div>
       ) : stateLoading ? (
-        <BulletListSkeleton title="Cause for Concern" rows={2} />
+        <BulletListSkeleton title="Invalidation Conditions" rows={2} />
       ) : null}
 
-      {/* ── Scoring breakdown (4-dim composite) ───────────────── */}
-      {/* Restyled 2026-05-18 to match the Schedule section's left/right
-          InfoRow pattern: per-dim label on the left, score on the right,
-          bottom border + the agent's one-sentence justification note on
-          its own full-width line beneath. No uppercase, no rounded card
-          container. Composite is the single conviction number after PR-9
-          (legacy `confidenceScore` int dropped). */}
-      {state?.scoring ? (
-        <div className="space-y-2">
-          <div className="flex items-baseline justify-between">
-            <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-              Composite Score
-            </p>
-            <div className="flex items-baseline gap-3">
-              {state.scoringComposite != null && (
-                <p className="text-sm font-semibold tabular-nums">
-                  {state.scoringComposite}/10
-                </p>
-              )}
-            </div>
-          </div>
-          <div>
-            <ScoringRow label="Trend strength" dim={state.scoring.trendStrength} max={3} />
-            <ScoringRow label="Relative strength" dim={state.scoring.relativeStrength} max={3} />
-            <ScoringRow label="Entry quality" dim={state.scoring.entryQuality} max={2} />
-            <ScoringRow label="Catalyst freshness" dim={state.scoring.catalystFreshness} max={2} />
-          </div>
-        </div>
-      ) : stateLoading ? (
-        <CompositeScoreSkeleton />
-      ) : null}
-
-      {/* ── Research Synthesis (deep research) ───────────────── */}
+      {/* ── Research Synthesis accordions ───────────────────── */}
       {/* Multi-section synthesis produced by the thesis-writer agent
-          (THESIS_RESEARCH_V2 Phase 1). PR-9 flattened the legacy
-          `researchSections` blob into 9 first-class columns on the
-          TriggersResponse. Build a `sections` object from the populated
-          flat columns; the accordion still hides itself when nothing
-          is populated. */}
+          (THESIS_RESEARCH_V2 Phase 1). Snapshot and Analyst Consensus
+          are promoted out of the accordion to tier-1 always-visible
+          blocks above; this collapsible holds the deep-research sections
+          (Bull/Bear Case, Recent Catalysts, Catalysts & Events,
+          Fundamentals, Latest Earnings, Insider & Technical) — all
+          collapsed by default. */}
       {state && (
         <ResearchSectionsAccordion
           sections={{
-            snapshot: state.snapshot ?? undefined,
             recentCatalysts: state.recentCatalysts ?? undefined,
             fundamentals: state.fundamentals ?? undefined,
             latestEarnings: state.latestEarnings ?? undefined,
             catalystsAndEvents: state.catalystsAndEvents ?? undefined,
             bullCase: state.bullCase ?? undefined,
             bearCase: state.bearCase ?? undefined,
-            analystConsensusSynthesis: state.analystConsensus ?? undefined,
             insiderTechnicalSetup: state.insiderTechnical ?? undefined,
           }}
           updatedAt={state.researchUpdatedAt}
         />
       )}
 
-      {/* ── Price Targets ─────────────────────────────────────── */}
-      {showLevels && (
-        <PriceTargetsBlock
-          entry={entry_price!}
-          target={target_price ?? null}
-          stop={stop_loss ?? null}
-        />
-      )}
-
-      {/* ── Analyst Consensus ─────────────────────────────────── */}
-      {fundamentals?.analyst_consensus &&
-        (fundamentals.analyst_consensus.buy +
-          fundamentals.analyst_consensus.hold +
-          fundamentals.analyst_consensus.sell >
-          0) && (
-          <AnalystConsensusBlock consensus={fundamentals.analyst_consensus} />
-        )}
-
-      {/* ── Fundamentals ──────────────────────────────────────── */}
-      {fundamentals && hasFundamentalDetails(fundamentals) && (
-        <div className="space-y-2">
-          <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-            Fundamentals
-          </p>
-          <FundamentalsContent fundamentals={fundamentals} />
-        </div>
-      )}
-
-      {/* The Signal Types badge row (e.g. the small "momentum" chip) was
-          removed 2026-05-18. The taxonomy is derivable from sourceSignalIds
-          when needed and isn't load-bearing for any agent decision. The
-          column itself drops in PR-9 alongside the V2 schema cutover. */}
+      {/* The header-level fundamentals chip block (Sector / Market Cap /
+          Beta / Volume / 52W Range / signal-type chips) was removed —
+          that data now lives inside the Fundamentals accordion above.
+          The at-a-glance need is covered by the Snapshot prose + Analyst
+          Consensus widget. */}
 
       {/* ── Triggers + Schedule ───────────────────────────────── */}
       {/* Same gating as the timeline below — only shows once the row
@@ -1452,7 +1604,7 @@ export function ThesisSheet({ open, onOpenChange, initialState, ...data }: Thesi
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
+      <SheetContent side="right" size="xl" floating>
         <SheetHeader className="pb-0">
           <SheetTitle className="sr-only">{displayName} Thesis</SheetTitle>
         </SheetHeader>

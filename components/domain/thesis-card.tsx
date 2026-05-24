@@ -144,10 +144,7 @@ export function ThesisCard({
     return (
       <Sheet>
         <SheetTrigger render={customTrigger ?? passCardContent} />
-        <SheetContent
-          side="right"
-          className="w-full sm:max-w-xl overflow-y-auto"
-        >
+        <SheetContent side="right" size="xl" floating>
           <SheetHeader className="pb-0">
             <SheetTitle className="sr-only">{displayName} Thesis</SheetTitle>
           </SheetHeader>
