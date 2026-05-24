@@ -10,10 +10,9 @@
  * (cheap research: read_signals + movers + earnings + per-candidate
  * get_theses overlap + get_stock_data + 4-dim composite scoring). Pass 2
  * delegates to the thesis-writer sub-agent via dispatch_thesis_research
- * for WATCHING-worthy survivors only (capped at 2 per run during the
- * test phase; bump back to 5 once we've validated end-to-end). PASS rows
- * still go through record_thesis directly — cheap, terminal-at-write
- * institutional memory.
+ * for WATCHING-worthy survivors only — capped at DISPATCH_CAP per run
+ * (see constant below). PASS rows still go through record_thesis
+ * directly — cheap, terminal-at-write institutional memory.
  *
  * Why a separate cron when the daily run can also do discovery: the
  * daily run is allowed to skip discovery (slots full, hostile regime,
@@ -21,6 +20,26 @@
  * weeks without scanning the universe.
  */
 import type { AgentConfigInput } from "@/lib/agent/system-prompt";
+
+/**
+ * Per-discovery-run dispatch cap for the thesis-writer sub-agent.
+ *
+ * **This is a soft cap.** It's templated into the prompt string the
+ * agent reads; there is no Layer-1 enforcement in dispatch_thesis_research
+ * itself. The agent COULD dispatch more, but in practice GPT-5.5 honors
+ * the "max N" instruction reliably (verified post-2026-05-13). If we
+ * ever need hard enforcement, add a per-run dispatch-count check in
+ * lib/agent/tools/dispatch-thesis-research.ts.
+ *
+ * Editing this:
+ *   - **Testing phase (current):** 2. Lets a manual fire produce 1-2
+ *     child runs end-to-end without burning API budget.
+ *   - **Production target:** 5. Bump back once we've validated the
+ *     full Sunday-cron shape with all enabled analysts.
+ *   - This single number flows into 4 prompt mentions below + the
+ *     header docstring above; no other edits needed.
+ */
+const DISPATCH_CAP = 2;
 
 export interface DiscoveryPromptArgs {
   config: AgentConfigInput;
@@ -183,8 +202,9 @@ SCOPE — what this run IS and IS NOT
       7d news. That's it — Pass 1 is meant to be cheap.
     • Score each researched candidate on the 4-dim composite.
     • Dispatch the deep-research thesis-writer for survivors (composite
-      ≥ 4). Capped at **2 dispatches per analyst per run** during the
-      current test phase (bumps back to 5 after validation).
+      ≥ 4). Capped at **${DISPATCH_CAP} dispatches per analyst per
+      run** (see DISPATCH_CAP in lib/agent/system-prompts/discovery.ts —
+      currently in test-phase tuning).
     • Mint PASS theses directly (record_thesis with direction='PASS')
       for researched-but-passed candidates — institutional memory.
 
@@ -193,9 +213,9 @@ SCOPE — what this run IS and IS NOT
       owns direction/horizon/target/stop/belief on every WATCHING
       mint. Your job is to dispatch, not write.
     • Touch existing theses — the daily portfolio review handles those.
-    • Dispatch more than 5 thesis-writers per run. Beyond that the
-      Sunday API budget breaks and the parent run can hit its wall
-      timeout before all children complete.
+    • Dispatch more than ${DISPATCH_CAP} thesis-writers per run.
+      Beyond the cap the Sunday API budget breaks and the parent run
+      can hit its wall timeout before all children complete.
     • Call place_trade. Discovery never opens positions — the daily
       run promotes WATCHING → ACTIVE tomorrow morning when an ENTER
       trigger fires.
@@ -385,14 +405,13 @@ For each researched candidate, exactly one of these three actions:
   function. The child run becomes a first-class row at /runs/<id>.
   You do NOT wait for completion before moving to the next candidate.
 
-  **Hard cap: 2 dispatches per discovery run** during the current
-  test phase. This is a deliberate test-mode tightening — production
-  cap is 5 and gets restored after end-to-end validation. The cap
-  exists so the Sunday API budget stays bounded and the parent run
-  doesn't hit its wall timeout before children complete. If you have
-  more than 2 composite-≥-4 survivors, dispatch your 2 highest-
-  conviction picks and PASS-record the rest with a note that next
-  week's discovery should re-evaluate them.
+  **Hard cap: ${DISPATCH_CAP} dispatches per discovery run** (set
+  by the DISPATCH_CAP constant in this prompt file). The cap exists
+  so the Sunday API budget stays bounded and the parent run doesn't
+  hit its wall timeout before children complete. If you have more
+  than ${DISPATCH_CAP} composite-≥-4 survivors, dispatch your
+  ${DISPATCH_CAP} highest-conviction picks and PASS-record the rest
+  with a note that next week's discovery should re-evaluate them.
 
   Do NOT call record_thesis for dispatched candidates — the
   thesis-writer sub-agent owns the WATCHING mint itself, including
@@ -461,8 +480,8 @@ HARD CONSTRAINTS
   • You CANNOT update or close existing theses (\`update_thesis\` and
     \`close_position\` are not in your toolbox).
   • You CAN dispatch the thesis-writer for net-new WATCHING coverage
-    via \`dispatch_thesis_research(mode:"mint")\`. **TEST-PHASE CAP: 2
-    per run** (restores to 5 after validation).
+    via \`dispatch_thesis_research(mode:"mint")\`. **CAP:
+    ${DISPATCH_CAP} per run** (see DISPATCH_CAP constant).
   • You CAN mint PASS theses directly via \`record_thesis(direction:'PASS')\`
     — terminal at write, institutional memory. No cap.
   • You CANNOT mint LONG/SHORT theses yourself via record_thesis. The

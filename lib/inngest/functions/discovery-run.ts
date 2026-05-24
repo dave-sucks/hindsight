@@ -237,7 +237,7 @@ export const discoveryRun = inngest.createFunction(
         });
 
         const userPrompt =
-          "Begin your weekly discovery scan (Phase 2 — two-pass funnel). Pass 1: ALWAYS call read_signals; only call get_market_movers(scope:\"universe\") if your Subscribed feeds include a MARKET_MOVERS_* feed; only call get_earnings_calendar(scope:\"universe\") if you're subscribed to EARNINGS_CALENDAR. Triage the resulting pool with 1-2 sentence gut-takes, then run cheap research (get_theses + get_stock_data) on the survivors and score them on the 4-dim composite. Pass 2: for composite ≥ 4, call dispatch_thesis_research(mode:\"mint\") — fire-and-forget, **TEST-PHASE CAP: 2 per run**. For composite < 4 but researched, record_thesis(direction:'PASS'). For triage-dismissed candidates, no thesis row. Don't re-filter by universe — the tools did it.";
+          "Begin your weekly discovery scan (Phase 2 — two-pass funnel). Pass 1: ALWAYS call read_signals; only call get_market_movers(scope:\"universe\") if your Subscribed feeds include a MARKET_MOVERS_* feed; only call get_earnings_calendar(scope:\"universe\") if you're subscribed to EARNINGS_CALENDAR. Triage the resulting pool with 1-2 sentence gut-takes, then run cheap research (get_theses + get_stock_data) on the survivors and score them on the 4-dim composite. Pass 2: for composite ≥ 4, call dispatch_thesis_research(mode:\"mint\") — fire-and-forget, honoring the dispatch cap stated in your system prompt. For composite < 4 but researched, record_thesis(direction:'PASS'). For triage-dismissed candidates, no thesis row. Don't re-filter by universe — the tools did it.";
 
         try {
           const { steps, response } = await generateText({
