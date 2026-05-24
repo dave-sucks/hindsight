@@ -221,11 +221,14 @@ export const discoveryRun = inngest.createFunction(
             signalTypes: config.signalTypes,
             watchlist: watchlistSymbols,
           },
+          // Phase 2 — exposed verbatim in the prompt body so the agent has
+          // a value to plug into dispatch_thesis_research(analyst_id).
+          analystId: config.id,
           existingTickers,
         });
 
         const userPrompt =
-          "Begin your weekly discovery scan. Pull read_signals + get_market_movers(scope:\"universe\") + get_earnings_calendar(scope:\"universe\") in parallel — they're all pre-filtered to your universe and exclude tickers you already cover. Then research every interesting candidate with get_stock_data (and any other tools you need), score on the 4-dim composite, and mint WATCHING theses for everything ≥ 5. Up to 8 theses. Don't re-filter by universe — the tools did it.";
+          "Begin your weekly discovery scan (Phase 2 — two-pass funnel). Pass 1: pull read_signals + get_market_movers(scope:\"universe\") + get_earnings_calendar(scope:\"universe\") in parallel, triage the pool with 1-2 sentence gut-takes, then run cheap research (get_theses + get_stock_data) on the survivors and score them on the 4-dim composite. Pass 2: for composite ≥ 4, call dispatch_thesis_research(mode:\"mint\") — fire-and-forget, max 5 per run. For composite < 4 but researched, record_thesis(direction:'PASS'). For triage-dismissed candidates, no thesis row. Don't re-filter by universe — the tools did it.";
 
         try {
           const { steps, response } = await generateText({
