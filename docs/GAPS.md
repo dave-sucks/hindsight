@@ -20,6 +20,8 @@
 
 These numbers are the empirical baseline for the gaps below. Re-run the queries in `ARCHITECTURE_DEEP_AUDIT.md` (legacy) to refresh.
 
+> **Note (2026-05-23):** the tables below reflect a 7-analyst roster; Intraday Momentum Scalper has since been deleted (current roster: 5 analysts — Catalyst Event Raider, Earnings Drift Trader, EV Catalyst Event Trader, Secular Theme Architect, Tech Momentum Trader). Dated rows are kept as historical evidence; re-running the queries today will return a different shape.
+
 ### Action layer (TradeDecision counts since 2026-05-01)
 
 | Day | INITIATE | EXIT | WATCH | HOLD |
@@ -334,8 +336,8 @@ The Universe fences don't differentiate analyst strategies enough — multiple a
 
 ## P2 — Paper cuts and FE polish
 
-### P2-4 — No DAY horizon (decision needed)
-SESSION_AUDIT items 33-35. Intraday Momentum Scalper analyst exists but mints theses with `horizon: "TRADE"` (14d max). DAY enforcement happens via EOD-flatten cron, not horizon logic. Decision needed: add a DAY horizon, or document that DAY-style runs use TRADE + EOD-flatten composition. ~1 day if adding the horizon.
+### P2-4 — No DAY horizon (decision deferred — no day-trader in current roster)
+SESSION_AUDIT items 33-35. Intraday Momentum Scalper was the original use-case but the analyst was deleted 2026-05-23, leaving no day-trader in the roster. The intended pattern if one is reintroduced: `horizon: "TRADE"` (14d max) + EOD-flatten cron for no-overnight enforcement. Revisit whether DAY needs to be a first-class horizon when/if a day-trader analyst is added back. ~1 day if adding the horizon.
 
 
 ### P2-7 — Intelligence pipeline crons are independent
