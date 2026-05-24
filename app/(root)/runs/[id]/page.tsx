@@ -127,6 +127,15 @@ export default async function RunPage({
   // existing message-persistence path; the page renders the replay once
   // status flips COMPLETE.
   const isThesisWriterMode = run.mode === "THESIS_WRITER";
+  // PRINCIPAL_CHAT runs live in /chat (now also visible in the Recent
+  // Chats sidebar there). The /runs index filters them out, but a
+  // direct URL hit (e.g. clicking a child THESIS_WRITER run that
+  // links to its parentRunId, or pasting a link) still lands here.
+  // Without this guard the page would auto-start AgentChat in
+  // research-run mode against /api/agent/research-run, which would
+  // (a) wrong route, (b) spawn a competing agent. Replay still works
+  // through the existing message-persistence path.
+  const isPrincipalChatMode = run.mode === "PRINCIPAL_CHAT";
 
   // Load Sources + Theses tab data from the DB.
   // Wrapped in try/catch so a DB error (e.g. pending migration) never
@@ -168,7 +177,7 @@ export default async function RunPage({
             runId={id}
             analystId={isPodcastSegmentRun ? undefined : run.agentConfig?.id}
             analystName={analystName}
-            autoStart={isLive && !isTacticalMode && !isDiscoveryMode && !isInngestSegmentRun && !isThesisWriterMode}
+            autoStart={isLive && !isTacticalMode && !isDiscoveryMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode}
             messages={persistedMessages ?? undefined}
             brief={isPodcastSegmentRun ? null : brief}
             sources={isPodcastSegmentRun ? [] : sources}

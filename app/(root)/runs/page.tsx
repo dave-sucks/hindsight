@@ -75,7 +75,17 @@ export default async function RunsPage() {
   const environment = await getCurrentEnvironment();
 
   const runs = await prisma.researchRun.findMany({
-    where: { userId, environment },
+    where: {
+      userId,
+      environment,
+      // PRINCIPAL_CHAT rows are chat-session containers, not analytical
+      // runs — they're created automatically when /chat is scoped to an
+      // analyst and stay RUNNING for the chat's lifetime. Showing them
+      // on /runs cluttered the feed with "Run by [analyst]" rows that
+      // would never reach a terminal state. Past chat sessions live in
+      // the Recent Chats sidebar on /chat (see RecentChatsSidebar).
+      mode: { not: "PRINCIPAL_CHAT" },
+    },
     include: {
       // mode + parameters drive the run-card title and tactical context.
       // mode is on the schema (MORNING_PLAN / INTRADAY_TACTICAL / EOD_REFLECTIVE);
