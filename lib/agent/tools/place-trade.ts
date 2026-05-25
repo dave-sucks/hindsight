@@ -25,6 +25,7 @@ import {
   getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
+import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
@@ -149,8 +150,98 @@ export const placeTrade = defineTool({
       {
         const directionCheck = await prisma.thesis.findUnique({
           where: { id: args.thesis_id },
-          select: { direction: true },
+          select: {
+            direction: true,
+            status: true,
+            researchUpdatedAt: true,
+          },
         });
+
+        // ── Guardrail 0.5: research-staleness gate (Phase 2 of
+        // THESIS_LIFECYCLE_FIX) ─────────────────────────────────────────
+        // Fires only on WATCHING / PROMOTED — the lifecycle slices where
+        // an entry is happening from a thesis the analyst hasn't traded
+        // yet. ACTIVE is exempt (already-held position; the analyst is
+        // managing not entering). Terminal statuses fail at upstream
+        // gates.
+        //
+        // If research is missing or older than STALE_DAYS AND no
+        // dispatch_thesis_research(refresh) for this thesis fired earlier
+        // in this run, refuse with concrete recovery instructions. The
+        // recovery path was unreachable in the half-shipped version of
+        // this gate (Phase 0 attempt) because daily/tactical didn't have
+        // dispatch_thesis_research in their allowlists. Phase 2 added
+        // both dispatch and wait_for_thesis_refresh to those allowlists
+        // so the instruction is now actionable.
+        //
+        // Promotion's fan-out path (lib/actions/promote-analyst.actions.ts)
+        // pre-refreshes every PROMOTED thesis at promotion time, so a
+        // fresh PROMOTED row clears the gate before the first live run.
+        // PROMOTED theses that sat without action long enough to go stale
+        // (e.g. 2 weeks of repeated WATCHING-downgrades) WILL fire the
+        // gate — that's correct behavior. See classifyResearchAge in
+        // lib/agent/thesis-research/staleness.ts for STALE_DAYS.
+        if (
+          directionCheck &&
+          (directionCheck.status === "WATCHING" ||
+            directionCheck.status === "PROMOTED")
+        ) {
+          const age = classifyResearchAge(directionCheck.researchUpdatedAt);
+          if (age.freshness !== "fresh") {
+            let refreshDispatchedThisRun = false;
+            if (ctx.runId) {
+              const refreshChild = await prisma.researchRun.findFirst({
+                where: {
+                  parentRunId: ctx.runId,
+                  mode: "THESIS_WRITER",
+                },
+                select: { parameters: true },
+              });
+              if (refreshChild) {
+                const params = (refreshChild.parameters ?? {}) as {
+                  mode?: string;
+                  existingThesisId?: string;
+                };
+                refreshDispatchedThisRun =
+                  params.mode === "refresh" &&
+                  params.existingThesisId === args.thesis_id;
+              }
+            }
+
+            if (!refreshDispatchedThisRun) {
+              const ageLabel =
+                age.freshness === "missing"
+                  ? "missing (never written)"
+                  : `${age.daysOld} days stale`;
+              const note =
+                `Research is ${ageLabel}. Refresh first: call ` +
+                `dispatch_thesis_research(ticker: "${ticker}", analyst_id: "${effectiveAnalystId ?? "<this analyst>"}", existing_thesis_id: "${args.thesis_id}", mode: "refresh", reason: "Stale research blocks trade entry"). ` +
+                `Then wait_for_thesis_refresh(child_run_id: <returned childRunId>). ` +
+                `Then retry place_trade on the same thesis_id once the refresh lands.`;
+              return {
+                summary: `Trade blocked: $${ticker} — research is ${age.freshness}`,
+                data: {
+                  success: false,
+                  ticker,
+                  status: "FAILED" as const,
+                  direction: args.direction,
+                  note,
+                  message: note,
+                  tickers: [
+                    {
+                      ticker,
+                      tag: "Stale",
+                      summary: note,
+                      actionIcon: "failed",
+                    },
+                  ],
+                },
+                sources: [],
+              };
+            }
+          }
+        }
+
         if (directionCheck && directionCheck.direction === "PENDING") {
           const msg =
             `$${ticker}: cannot place_trade on a PENDING thesis. PENDING is a user/builder/editor seed awaiting first research — no target, no stop, no committed view. ` +

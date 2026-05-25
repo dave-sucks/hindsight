@@ -184,11 +184,14 @@ ${
     : "  bear case: (none recorded)"
 }
 ${
-  thesis.researchAge.freshness === "missing"
-    ? "  ⚠ This thesis has never been through the deep-research pipeline. You're working off coreBelief + chart only — call this out in your update_thesis rationale."
-    : thesis.researchAge.freshness === "stale"
-      ? `  ⚠ Research is ${thesis.researchAge.daysOld} days old. If you trade off it, your update_thesis rationale MUST explicitly acknowledge what could have changed since then.`
-      : ""
+  thesis.researchAge.freshness === "missing" ||
+  thesis.researchAge.freshness === "stale"
+    ? `  ⚠ Research is ${thesis.researchAge.freshness === "missing" ? "MISSING (never written)" : `${thesis.researchAge.daysOld} days STALE`}. If your trigger action is anything other than REVIEW (i.e. you're about to trade, close, or scale), refresh first:
+       dispatch_thesis_research(ticker: "${thesis.ticker}", analyst_id: "<this analyst's id>", existing_thesis_id: "${thesis.id}", mode: "refresh", reason: "Tactical trigger fired on ${thesis.researchAge.freshness} research")
+       → wait_for_thesis_refresh(child_run_id: <returned>, timeout_seconds: 150)
+       → then execute the action.
+     The place_trade staleness gate enforces this — trading off ${thesis.researchAge.freshness} research without an in-run refresh is rejected. If the wait FAILS or TIMES OUT, your options are (a) defer with update_thesis(REVIEWED-only) and document the failure, or (b) proceed with an EXPLICIT "trading off ${thesis.researchAge.freshness} research" line in your rationale.`
+    : ""
 }
 
 **Anchor your decision to the bull/bear case above, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The bear-case bullets are what would invalidate the trade; check whether any of them have come true since the research was written.

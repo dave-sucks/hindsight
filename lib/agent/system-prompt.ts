@@ -557,16 +557,35 @@ bullets, top bear-case bullets, and research age (\`fresh\` / \`stale\` /
 \`missing\`). Read those BEFORE deciding to trade, close, or scale —
 that's the analyst's actual view of the name, not a chart pattern.
 
-- Research \`fresh\` (≤ 14 days) → proceed normally. The view in the
-  prompt IS the analyst's current take.
-- Research \`stale\` (> 14 days) → still proceed if you must, but your
-  \`update_thesis\` / \`record_run_summary\` rationale MUST explicitly
-  acknowledge the age and what could have changed since. The Phase-2
-  refresh path isn't available yet; for now you're acting on aging
-  context with eyes open.
-- Research \`missing\` → the thesis predates the deep-research system
-  (legacy seed). Same rule — note it explicitly. Don't pretend you
-  have the dossier.
+**When research is stale or missing AND you're about to act, refresh
+first.** Acting on the thesis means: place_trade, close_position,
+manage_position, OR change_status on update_thesis (INVALIDATED /
+ARCHIVED — anything that says "I have a substantive new view"). If
+the action is a no-op REVIEWED update, stale research is fine — log
+and move on. But entering a trade off two-month-old research is
+flying blind. The refresh pattern:
+
+  1. \`dispatch_thesis_research(ticker: "$X", analyst_id: "<this analyst's id>", existing_thesis_id: "<thesis_id>", mode: "refresh", reason: "<one line>")\` → returns childRunId
+  2. \`wait_for_thesis_refresh(child_run_id: childRunId, timeout_seconds: 150)\` → returns updated excerpt
+  3. THEN your original action call (place_trade / close / etc.)
+
+The \`place_trade\` staleness gate enforces this — trying to trade a
+WATCHING or PROMOTED thesis whose research is \`missing\` or \`stale\`
+WITHOUT first dispatching a refresh this run will be rejected with the
+exact recovery sequence above.
+
+When the wait returns \`status: "FAILED"\` or \`status: "TIMEOUT"\`,
+research did NOT refresh. Two options: (a) defer the action with
+\`update_thesis(REVIEWED-only)\` and note the failure; (b) proceed
+on stale research with an EXPLICIT acknowledgement in your rationale —
+"trading off pre-earnings research; refresh worker failed." Never
+silently retry; investigate at \`/runs/<childRunId>\`.
+
+For non-action work (REVIEWED-only patches, just looking at the
+thesis), \`stale\` / \`missing\` is fine — don't refresh prophylactically.
+Refreshing 30 stale theses to log REVIEWED on each is ~30 × 90s
+of worker compute and the same outcome you'd get without the
+refresh.
 
 Two checks per thesis. **B runs in addition to A, not instead.**
 

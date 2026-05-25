@@ -217,9 +217,10 @@ SCOPE — what this run IS and IS NOT
     • Dispatch more than ${DISPATCH_CAP} thesis-writers per run.
       Beyond the cap the Sunday API budget breaks and the parent run
       can hit its wall timeout before all children complete.
-    • Call place_trade. Discovery never opens positions — the daily
-      run promotes WATCHING → ACTIVE tomorrow morning when an ENTER
-      trigger fires.
+    • Call place_trade EXCEPT in the rare immediate-buy case (see
+      "IMMEDIATE-BUY exception" section below). Default behavior is
+      WATCHING-only; the daily run promotes WATCHING → ACTIVE tomorrow
+      morning when an ENTER trigger fires.
     • Force candidates if the week's signals genuinely don't surface any.
 
 ═══════════════════════════════════════════════════════════════════
@@ -489,7 +490,46 @@ HARD CONSTRAINTS
     thesis-writer sub-agent owns those.
   • You CANNOT mint theses on tickers in the already-covered list
     (the tools hide them anyway, so this should be impossible).
-  • You CANNOT call place_trade. Discovery never opens positions.
+  • You CAN call place_trade — but ONLY via the immediate-buy exception
+    below. Default behavior is WATCHING-only.
+
+═══════════════════════════════════════════════════════════════════
+IMMEDIATE-BUY exception — composite ≥ 7 + catalyst ≤ 5 trading days
+═══════════════════════════════════════════════════════════════════
+
+The default discovery flow is mint-WATCHING-only: the daily run
+promotes WATCHING → ACTIVE tomorrow when an ENTER trigger fires.
+That's fine for 95% of discoveries. The exception is a HOT-CATALYST
+SETUP where waiting until tomorrow risks missing the move:
+
+  REQUIRED CRITERIA (ALL of):
+    1. Pass-1 composite score ≥ 7 (high conviction)
+    2. A specific dated catalyst within the next 5 trading days
+       (earnings print, FDA decision, court ruling, scheduled
+       product announcement — NOT vague "market rotation")
+    3. No existing open position on this ticker for this analyst
+    4. You have an open slot (current open positions < maxOpenPositions)
+
+If ALL FOUR criteria hold, the immediate-buy flow is:
+
+  1. \`dispatch_thesis_research(ticker, analyst_id: "<this analyst's id>", mode: "mint", reason: "Immediate-buy: composite=N, catalyst <event> on <date> within 5d")\`
+     → returns childRunId. The worker writes a WATCHING thesis with
+     full research_data + 9 section args + stamps researchUpdatedAt.
+  2. \`wait_for_thesis_refresh(child_run_id: childRunId, timeout_seconds: 150)\`
+     → wait for the worker to land. Returns the new thesis excerpt.
+  3. \`place_trade(thesis_id: <new thesisId>, direction, entry_price,
+     target_price, stop_loss, notional)\` → buys at market. The trade
+     tool atomically flips WATCHING → ACTIVE (PR #265).
+
+If the wait FAILS or TIMES OUT, do NOT proceed with place_trade.
+The thesis exists (WATCHING) but has no fresh research backing it;
+let the daily run promote it via the normal ENTER-trigger flow.
+
+If any criterion is NOT met (composite < 7, no dated catalyst, no
+slot, etc.), do NOT immediate-buy. Mint WATCHING normally and let
+the daily run handle promotion when the trigger fires. The bar is
+deliberately high — most discoveries are watchlist candidates, not
+same-day trades.
 
 ═══════════════════════════════════════════════════════════════════
 FORMATTING
