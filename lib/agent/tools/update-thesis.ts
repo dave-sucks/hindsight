@@ -27,6 +27,7 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { applyTriggerCooldownDefaults } from "@/lib/agent/triggers/defaults";
+import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import {
   writeThesisUpdate,
@@ -1138,6 +1139,64 @@ export const updateThesis = defineTool({
         patch.promotedAt = null;
       }
       updateType = "STATUS_CHANGED";
+    }
+
+    // ── ENTER-trigger guard (parity with record_thesis) ──────────────────
+    // A WATCHING LONG/SHORT thesis must have at least one ENTER trigger,
+    // otherwise the trigger evaluator has no entry-promotion path and the
+    // thesis sits inert forever. record_thesis enforced this at mint time;
+    // this guard plugs the second write surface so the thesis-writer's
+    // refresh path can't strip the ENTER trigger by passing a HELD-style
+    // triggers[] array (XPEV 2026-05-25 production evidence).
+    //
+    // Runs LATE so patch.status / patch.direction / patch.triggers reflect
+    // every transition processed above (change_status, PENDING-promotion,
+    // PASS auto-archive, wholesale-trigger-replace). Pure helper lives in
+    // lib/agent/triggers/enter-guard.ts and is shared with record_thesis.
+    const effectiveEnterDirection = (patch.direction ?? existing.direction) as
+      | "LONG"
+      | "SHORT"
+      | "PASS"
+      | "PENDING";
+    const effectiveEnterStatus = (patch.status ?? existing.status) as
+      | "WATCHING"
+      | "ACTIVE"
+      | "PROMOTED"
+      | "CLOSED"
+      | "INVALIDATED"
+      | "ARCHIVED"
+      | "SUPERSEDED";
+    const effectiveEnterTriggers: Trigger[] =
+      patch.triggers !== undefined
+        ? ((patch.triggers as unknown as Trigger[]) ?? [])
+        : Array.isArray(existing.triggers)
+          ? (existing.triggers as unknown as Trigger[])
+          : [];
+    const effectiveEnterTarget =
+      patch.targetPrice !== undefined
+        ? patch.targetPrice
+        : existing.targetPrice != null
+          ? Number(existing.targetPrice)
+          : null;
+    const enterGuard = validateEnterTriggerRequired({
+      direction: effectiveEnterDirection,
+      status: effectiveEnterStatus,
+      triggers: effectiveEnterTriggers,
+      targetPrice: effectiveEnterTarget,
+    });
+    if (!enterGuard.ok) {
+      console.warn(
+        `[update-thesis] thesis=${args.thesis_id} ticker=${existing.ticker} REJECTED — WATCHING ${effectiveEnterDirection} with no ENTER trigger.`,
+      );
+      return {
+        summary: `Refused update on $${existing.ticker} — WATCHING ${effectiveEnterDirection} requires an ENTER trigger.`,
+        data: {
+          ok: false,
+          error: "missing_enter_trigger",
+          message: enterGuard.note,
+        },
+        sources: [],
+      };
     }
 
     // ── Narrative-only patches collapse to REVIEWED ──────────────────────

@@ -240,6 +240,15 @@ around RE-ENTER / DOWNGRADE / INVALIDATE.
      - key_assumptions: ≥2 specific premises that must hold for the belief
      - invalidation_conditions: ≥2 specific things that would prove it
        wrong (numbers, events, dates — NOT "market volatility")
+     - triggers: WATCHING theses MUST carry at least one ENTER trigger
+       (action: "ENTER"). LONG → PRICE_ABOVE(target_price); SHORT →
+       PRICE_BELOW(target_price). CATALYST plays may add an event-based
+       ENTER (EARNINGS_BEAT, FILING) when entry hinges on the event
+       firing. Do NOT write EXIT triggers on WATCHING — there's no position
+       to exit and the tool rejects (HELD-template EXIT belongs only on
+       theses with an open trade). REVIEW triggers are for "warrants a
+       fresh look at the entry decision" (filings, earnings, time-based
+       hygiene) — never for "close the position."
 
 4. Persist the thesis. PR-9 flat schema: pass the 9 individual section
    args (NOT a single research_sections blob — that arg was dropped).
