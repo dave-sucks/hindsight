@@ -208,10 +208,10 @@ export function DataFlowLine({
   );
 }
 
-// Internal inline tool reference — just the provider logo + the tool
-// name in regular body text. No mono, no pill background; the goal is
-// to read as prose, not as a code chip. Click target is the name itself
-// (subtle underline on hover when a click target exists).
+// Internal inline tool reference — provider logo + tool name inside a
+// subtle muted-bg badge. Regular sans-serif font (NOT mono) so it reads
+// as a labeled badge, not as a code identifier. Click target is the
+// whole badge.
 
 function ToolPillInline({
   toolName,
@@ -223,13 +223,13 @@ function ToolPillInline({
   onClick?: () => void;
 }) {
   const cls = cn(
-    "inline-flex items-center gap-1 align-baseline text-foreground",
-    onClick && "cursor-pointer hover:underline underline-offset-2 decoration-muted-foreground/60",
+    "inline-flex items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5 align-baseline text-foreground text-sm",
+    onClick && "cursor-pointer hover:bg-muted",
   );
   const content = (
     <>
       <ProviderIcon provider={provider} size={12} />
-      <span className="text-sm">{toolName}</span>
+      <span>{toolName}</span>
     </>
   );
   if (onClick) {
