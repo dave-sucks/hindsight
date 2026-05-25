@@ -32,6 +32,44 @@ export const closePosition = defineTool({
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
     try {
+      // ── PROMOTED guard (P1-21) ─────────────────────────────────────────
+      // A PROMOTED thesis was an ACTIVE paper position that the user just
+      // graduated PAPER→LIVE. The paper position got force-closed at
+      // promotion; the thesis itself sits awaiting first-live-run re-entry.
+      // close_position on a PROMOTED row is always wrong: there's no
+      // position to close. Without this guard, an orphan HELD-template
+      // EXIT trigger from before P1-21's template regen could spawn a
+      // tactical EXIT run that falls through to the "no position found"
+      // branch — recoverable but noisy. Refuse with a clear instruction
+      // pointing the agent at the legal next moves.
+      if (ctx.analystId) {
+        const promotedThesis = await prisma.thesis.findFirst({
+          where: {
+            ticker,
+            status: "PROMOTED",
+            researchRun: { agentConfigId: ctx.analystId },
+          },
+          select: { id: true },
+        });
+        if (promotedThesis) {
+          const msg =
+            `Cannot close ${ticker}: this thesis is PROMOTED (no open position to close — the paper position was force-closed when the analyst was promoted PAPER→LIVE). ` +
+            `Either call place_trade to re-enter live (place_trade auto-flips PROMOTED→ACTIVE), or call update_thesis(change_status="WATCHING", rationale=...) to defer re-entry until the next ENTER trigger fires.`;
+          return {
+            summary: `Cannot close $${ticker} — thesis is PROMOTED`,
+            data: {
+              success: false,
+              ticker,
+              reason: args.reason,
+              status: "FAILED" as const,
+              message: msg,
+              tickers: [{ ticker, tag: "Promoted", summary: msg, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+      }
+
       // Scope strictly by analystId when available. Without this filter,
       // a single user with multiple analysts holding the same ticker would
       // return whichever Position prisma picks first — i.e., one analyst

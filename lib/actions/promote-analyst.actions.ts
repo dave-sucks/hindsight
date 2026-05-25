@@ -8,6 +8,12 @@ import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { closeOpenPosition } from "@/lib/actions/closeTrade.actions";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { inngest } from "@/lib/inngest/client";
+import {
+  defaultTriggersForHorizon,
+  applyTriggerCooldownDefaults,
+  type Horizon,
+} from "@/lib/agent/triggers/defaults";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import { revalidatePath } from "next/cache";
 
 async function getServerUserId(): Promise<string> {
@@ -361,10 +367,28 @@ async function transitionThesisToPromoted(input: {
   /** Position id of the paper trade just closed at promotion (null for orphans). */
   tradeId?: string;
 }): Promise<PromotedThesisRecord | null> {
+  // Pull the structural fields we need both for conviction context
+  // and for regenerating the trigger array against the PROMOTED template
+  // (P1-21). Without the regen, PROMOTED inherits the predecessor
+  // ACTIVE row's HELD-template EXIT triggers — orphan tactical EXIT
+  // runs the moment price crosses the old stop on a thesis that has no
+  // open position to close.
+  const thesisSelect = {
+    id: true,
+    createdAt: true,
+    ticker: true,
+    direction: true,
+    horizon: true,
+    entryPrice: true,
+    targetPrice: true,
+    stopLoss: true,
+    maxHoldDays: true,
+    catalystDate: true,
+  };
   const thesis = input.thesisId
     ? await prisma.thesis.findUnique({
         where: { id: input.thesisId },
-        select: { id: true, createdAt: true, ticker: true },
+        select: thesisSelect,
       })
     : await prisma.thesis.findFirst({
         where: {
@@ -374,7 +398,7 @@ async function transitionThesisToPromoted(input: {
           researchRun: { agentConfigId: input.analystId },
         },
         orderBy: { createdAt: "desc" },
-        select: { id: true, createdAt: true, ticker: true },
+        select: thesisSelect,
       });
   if (!thesis) return null;
 
@@ -404,6 +428,32 @@ async function transitionThesisToPromoted(input: {
     : `Thesis ACTIVE→PROMOTED during analyst promotion to LIVE. Paper position closed at $${(input.promotionClosePrice ?? 0).toFixed(2)} (final P&L ${input.promotionRealizedPnl >= 0 ? "+" : ""}$${input.promotionRealizedPnl.toFixed(2)}). Cumulative paper P&L on this name: ${cumulativePaperPnl >= 0 ? "+" : ""}$${cumulativePaperPnl.toFixed(2)} over ${paperTenureDays}d; reaffirmed ${reviewCount}× by the analyst.`;
 
   const promotedAt = new Date();
+
+  // Regenerate triggers against the PROMOTED template (P1-21). HELD-side
+  // EXIT/TRIM/ADD/MOVE_STOP triggers carried over from the predecessor
+  // ACTIVE row would otherwise spawn orphan tactical EXIT runs on a
+  // thesis with no open position. The PROMOTED template emits ENTER
+  // (the re-entry path — place_trade auto-flips PROMOTED→ACTIVE per
+  // PR #324) + REVIEW only; no EXIT. Falls back to a conservative
+  // strip of EXIT/TRIM/ADD/MOVE_STOP if horizon is missing (rare).
+  const horizon = thesis.horizon as Horizon | null;
+  let promotedTriggers: Trigger[] | undefined;
+  if (horizon) {
+    const defaults = defaultTriggersForHorizon(
+      horizon,
+      {
+        entryPrice: thesis.entryPrice != null ? Number(thesis.entryPrice) : null,
+        targetPrice: thesis.targetPrice != null ? Number(thesis.targetPrice) : null,
+        stopLoss: thesis.stopLoss != null ? Number(thesis.stopLoss) : null,
+        maxHoldDays: thesis.maxHoldDays ?? null,
+        catalystDate: thesis.catalystDate ?? null,
+        direction: thesis.direction as "LONG" | "SHORT",
+      },
+      "PROMOTED",
+    );
+    promotedTriggers = applyTriggerCooldownDefaults(defaults);
+  }
+
   await prisma.$transaction([
     prisma.thesis.update({
       where: { id: thesis.id },
@@ -413,6 +463,9 @@ async function transitionThesisToPromoted(input: {
         paperTenureDays,
         paperRealizedPnl: cumulativePaperPnl,
         paperReviewCount: reviewCount,
+        ...(promotedTriggers !== undefined
+          ? { triggers: promotedTriggers as unknown as object }
+          : {}),
       },
     }),
   ]);
