@@ -12,7 +12,7 @@
 >
 > **How to use it:** start at P0. P0s block the rework's correctness. P1s degrade quality. P2s are papercuts but still part of the rework. Don't skip levels. When something closes, **move it** to a "Done since" section below, not strike-through inline.
 >
-> **Most recent major movement:** 2026-05-23 close-out wave — P0-12 (narration→execution gap on close_position, escalating Wed→Fri) fixed by moving the gate from `record_run_summary` (mid-run, marked FAILED on first detection) to `complete_run` preflight (end-of-run, soft refusal). Production case 2026-05-22 Secular Theme SMTC self-corrected after the gate fired but the run was still FAILED — that pattern is no longer possible. Bundled hygiene: P2-17 (dropped dead `useV2Prompt` column) + P2-21 (added `predev` Prisma regen hook). P1-18 closed via PR #316 (Phase 1 stabilization, shipped 2026-05-23). See "Done since 2026-05-23" in `GAPS_HISTORY.md`. Prior wave still recent (2026-05-20): PRs #307–#311 unblocked the action layer; see that entry for details.
+> **Most recent major movement:** 2026-05-25 PROMOTED-integration wave + doc cleanup. The PROMOTED-status work shipped end-to-end across three PRs: PR #330 (promotion fan-out + synthesis-prompt PROMOTED context — closes P0-13 Holes #1, #2), PR #331 (read-side: deep-research excerpt + `researchAge` surfaced to decision agents), PR #333 (PROMOTED-aware trigger templates — closes P1-21 / P0-13 Hole #4). P0-13's last open piece — Hole #3, the `place_trade` staleness gate — is re-filed as P1-22 below and deferred to Phase 2 of `THESIS_LIFECYCLE_FIX.md`. Same-day cleanup audit retired four stale entries: P0-10 (immediate failure mode structurally impossible post-PR #265; deeper concern rolls into P1-20), P1-14 (V1 prompt path is dead — `buildV2SystemPrompt` deprecated with zero callers; PR #317 dropped the `useV2Prompt` column), P2-19 (PR #313 merged 2026-05-23). New P2-23 filed for `parentThesisId` deprecation (one writer, four readers, no chain walking — redundant with `ThesisUpdate`). Prior wave (2026-05-23): P0-12 narration→execution gate moved to end-of-run — see "Done since 2026-05-23" in `GAPS_HISTORY.md`.
 
 ---
 
@@ -87,37 +87,11 @@ These prevent the core loop from working as designed. Fix first.
 
 *(P0-12 closed 2026-05-23 — moved to `GAPS_HISTORY.md`. Fix: narration→execution gate moved from `record_run_summary` (mid-run, marked FAILED) to `complete_run` preflight (end-of-run, soft refusal). Self-corrected runs pass; truly missing tool calls get a recoverable refusal.)*
 
-### P0-10 — Thesis structured status disagrees with `reasoningSummary` text
-**Source:** GOOGL/Secular Theme failure 2026-05-13. Found in this session.
-
-`Thesis.reasoningSummary` is free text the agent writes. `Thesis.status` is a structured enum. Today they can disagree: GOOGL's `reasoningSummary` literally said *"Entry executed within max position size limits"* while `status = WATCHING` and the matching Position row (cmowxdgx8000404jpr2bnzyg0) was OPEN since 2026-05-08. Two truths, both visible to the agent.
-
-Concrete production state when this was diagnosed: 4 theses (AMD, AVGO, GOOGL, TSM) had open positions but `status = WATCHING`. **DB fixed 2026-05-13** (all 4 flipped to ACTIVE with the actual fill prices + 4 `ThesisUpdate` STATUS_CHANGED audit rows, IDs prefixed `mfix`). PR #265's auto-promotion in `place_trade` prevents new occurrences. But there's no guard at the tool layer that catches `reasoningSummary` text claiming actions inconsistent with structured fields.
-
-**Why this is P0:** the agent's read of GOOGL on 2026-05-13 went exactly: see "Entry executed" in reasoningSummary → classify as portfolio-held → ignore the WATCHING-thesis-needs-action work. The free-text field overrode the structured field in the agent's reasoning because the agent reads prose first.
-
-**Fix path:** either (a) deprecate `reasoningSummary` as a state-bearing field and require structured fields for any operational status, or (b) add a `record_thesis` / `update_thesis` validator that rejects `reasoningSummary` text containing action verbs ("executed", "opened", "closed", "trimmed") when those actions aren't reflected in structured state. (a) is cleaner but bigger.
+*(P0-10 closed 2026-05-25 — moved to `GAPS_HISTORY.md`. Immediate failure mode (4 zombie theses on AMD/AVGO/GOOGL/TSM) is structurally impossible post-PR #265's atomic WATCHING→ACTIVE flip in `place_trade`. The deeper architectural concern — `reasoningSummary` free text overriding structured `status` in the agent's reasoning — is now captured by **P1-20** below, which proposes removing `status` as a settable arg entirely. P0-10 rolls into that refactor.)*
 
 *(P0-11 closed 2026-05-16 via PR #270 — moved to `GAPS_HISTORY.md`. P0-5 closed across PRs #239 + Morning-Run-V2 + 2026-05-13 — moved to `GAPS_HISTORY.md`.)*
 
-### P0-13 — PROMOTED status integration gaps (post-PR #324 architecture review)
-**Source:** 2026-05-24 architecture review after PR #324 (PROMOTED status). Four real holes between "PROMOTED is well-integrated end-to-end" and "first prod launch reads fresh research and trades decisively."
-
-| # | Hole | Impact |
-|---|---|---|
-| 1 | `write_thesis_research` doesn't know about PROMOTED conviction context | When a rewrite is dispatched on a PROMOTED thesis, the synthesis prompt has no idea this is a "post-promotion, decide-if-still-conviction-worthy" rewrite. Output doesn't frame against paperTenureDays / paperRealizedPnl / paperReviewCount. |
-| 2 | `promote-analyst.actions.ts` doesn't auto-dispatch thesis-writer rewrites | The "rewrite at promotion → daily run reads fresh" workflow isn't built. Daily run inherits stale paper-era research on PROMOTED theses. |
-| 3 | NO staleness gate on `place_trade` | If a PROMOTED thesis has 60-day-old research, the agent can still `place_trade` off it without refresh. (This is also the original Phase 3 work from `THESIS_RESEARCH_V2.md`.) |
-| 4 | Trigger templates only know `HELD` vs `WATCHING`, not `PROMOTED` | PROMOTED theses inherit HELD-state EXIT triggers. If price crosses stop on a PROMOTED thesis with no position, tactical run gets called to "close" a position that doesn't exist → orphan tactical EXIT run. Filed separately as P1-21. |
-
-**Holes 1+2+3 are the immediate blocker for first prod launch.** A single PR (~half day) closes them — synthesis prompt gains optional `promotionContext`, promote action fans out parallel refresh dispatches, place_trade Layer-1 refuses on `researchUpdatedAt > 7d` without an in-run refresh dispatch. Session in flight 2026-05-24.
-
-**E2E test for the bundled PR:** promote one analyst with 2-3 ACTIVE theses → verify thesis-writer dispatches fire → child runs complete → theses come back PROMOTED with fresh research → trigger first daily run → confirm agent reads fresh research and acts decisively.
-
-**Cross-refs:**
-- `docs/plans/THESIS_RESEARCH_V2.md` §8 Phase 3 — absorbed by this PR
-- PR #324 — the PROMOTED-status PR this is closing the loop on
-- PR #316 — the `forceWatchingMint` clamp pattern that informs the synthesis-prompt plumbing
+*(P0-13 closed 2026-05-25 — moved to `GAPS_HISTORY.md`. Hole #1 (PROMOTED context in synthesis prompt) + Hole #2 (promotion fan-out) shipped via PR #330; Hole #4 (PROMOTED triggers) shipped via PR #333. Hole #3 (place_trade staleness gate) deferred to Phase 2 of `docs/plans/THESIS_LIFECYCLE_FIX.md` and re-filed as **P1-22** below.)*
 
 ---
 
@@ -152,12 +126,7 @@ Run produced 0 tool calls in 241s, then timed out. No RunMessage rows, no RunEve
 
 **Fix path:** instrument system-prompt length at run start. Log it. If Earnings Drift is meaningfully larger than the other 5 analysts, that's the smoking gun. If it isn't, file as transient and add a wall-clock-triggered retry separate from the catch-path retry.
 
-### P1-14 — No Layer-1 closeout enforcement for `needs_action: null` theses
-**Source:** Design follow-up from `docs/plans/MORNING_RUN_V2_DESIGN.md`.
-
-The V2 prompt says *"Theses with `needsAction == null` don't need to be touched."* This is correct as designed. But the legacy V1 prompt's *"every Live Theses row produces one tool call"* contract is still present in code paths that V2 hasn't replaced (the manual run path, per P0-11; the V1 fallback prompt). Decision needed: is the V2 design's "null = skip" the official rule, or is the V1 contract still operational somewhere? Today the two coexist contradictorily.
-
-**Fix path:** make a call. Either explicitly delete the closeout contract from V1 too (commit to "trigger system is the only source of truth"), or implement a Layer-1 check that counts ThesisUpdate rows per live thesis per run for both prompt versions.
+*(P1-14 closed 2026-05-25 — moved to `GAPS_HISTORY.md`. The V1 prompt path is dead: `buildV2SystemPrompt` (the legacy/misnamed V1 builder in `lib/agent/system-prompt.ts`) is marked `@deprecated` with zero callers; both `app/api/agent/[mode]/route.ts` (manual UI runs) and `lib/inngest/functions/morning-research.ts` (cron) unconditionally call `buildDailyRunSystemPromptV2`; the `useV2Prompt` column was dropped from `AgentConfig` (P2-17, PR #317). V2's "needsAction == null → skip" is the official and only rule, enforced at the tool layer by `complete_run`'s preflight (PR #266 / PR #320).)*
 
 ### P1-9 — Discovery prompt is archetype-blind (biggest remaining item)
 **Source:** Discovery review 2026-05-11 (see `DISCOVERY_REVIEW.md`). The 4-dimension scoring rubric (trendStrength / relativeStrength / entryQuality / catalystFreshness) is calibrated for momentum/breakout playbooks and applied universally. A Deep Value Contrarian buys downtrends — `trendStrength: 3` is a SELL signal for them. An Insider Cluster Buying archetype has no slot in the rubric for Form 4 cluster patterns. Catalyst Event Trader / Earnings Drift should weight earnings_calendar heavily; momentum scoring barely.
@@ -226,6 +195,21 @@ The $MU zombie thesis (cmpetjrw5...) — minted ACTIVE with 10 HELD-template tri
 
 **When to fire:** after P0-13's bundled PR ships and one prod launch lands cleanly. The orphan EXIT runs need real production data to validate the fix against.
 
+**Update 2026-05-25:** addressed by [PR #333](https://github.com/dave-sucks/hindsight/pull/333) — open, not yet merged. Mark as closed when #333 merges.
+
+### P1-22 — `place_trade` Layer-1 staleness gate on research age (Hole #3 from P0-13)
+**Source:** Re-filed 2026-05-25 from P0-13 close-out. PR #330 explicitly pulled this hole out of scope ("I prototyped it in this session and pulled it back out — the gate's recovery instruction `call dispatch_thesis_research(mode:'refresh')` requires that tool to be in the daily/tactical allowlists, which it isn't today").
+
+A PROMOTED thesis (or any thesis with stale research) can still be traded via `place_trade` without a refresh. Today's daily-run agent reads `researchAge` (surfaced by PR #331) but the read is advisory — no Layer-1 gate refuses a trade on `researchUpdatedAt > 7d`. So an agent that ignores the freshness signal can still put real live money on stale research.
+
+**Fix path:** ship as part of Phase 2 of `docs/plans/THESIS_LIFECYCLE_FIX.md`. Two coupled changes:
+1. Add `dispatch_thesis_research` to the daily-run + tactical mode allowlists so the recovery instruction is real.
+2. Add a Layer-1 refusal in `place_trade` when `researchUpdatedAt` is older than a configurable threshold (7d for tactical, 14d for daily) AND no in-run `dispatch_thesis_research(refresh)` call landed. Refusal message names the recovery tool by name.
+
+**When to fire:** after first analyst promotion lands cleanly and we have at least one production data point on how often PROMOTED theses are traded with stale research. The recovery loop ("agent reads age → calls refresh → waits → trades") needs the allowlist changes to even be possible, so this is gated on Phase 2 starting.
+
+**Cross-references:** `docs/plans/THESIS_LIFECYCLE_FIX.md` Phase 2, PR #330 (the producer-side fan-out this depends on), PR #331 (the read-side surfacing this validates against), `docs/plans/THESIS_RESEARCH_V2.md` §8 Phase 3 (the original spec).
+
 ---
 
 ## P2 architecture cleanups — surfaced 2026-05-15
@@ -270,26 +254,7 @@ Both mean "terminal without a clean trade outcome." The narrative ("evidence" vs
 See `GAPS_HISTORY.md` "Done since 2026-05-20" for the full block.
 
 
-### P2-19 — ThesisSheet skeletons because parent doesn't forward data it already has
-**Source:** 2026-05-19 sheet-redesign session. When a user opens `<ThesisSheet>` from `thesis-row.tsx` (watchlist sidebar, stock-page row, trade-row), the parent passes only ~10 props: `ticker, direction, confidenceScore, reasoningSummary, entryPrice, targetPrice, stopLoss, horizon, holdDuration, companyName`. The sheet then fires `/api/theses/[id]/triggers` to fetch the remaining fields (`status, coreBelief, keyAssumptions, invalidationConds, scoring, scoringComposite, sourceKind, sourceRationale, sourceSignalIds, parentThesisId, researchSections, …`) — even though **the parent already has every one of those fields in memory** from the same Prisma query that drew the row.
-
-Net effect: ~300-500ms of skeleton time on every sheet open for data that could have rendered synchronously. The status pill, Core Belief headline, Key Assumptions, Cause for Concern, and Composite Score all sit blank until the round-trip completes.
-
-**Where it bites:**
-- `components/ui/thesis-row.tsx:269` — sheet opens from watchlist + stock page + trade row.
-- `ThesisRowData` type at `thesis-row.tsx:26` lists only the forwarded fields; the rest aren't even on the type. So upstream queries (e.g. `app/(root)/stocks/[symbol]/page.tsx:286`, `app/(root)/trades/[id]/page.tsx:406`) don't bother selecting them.
-- The `/runs/[id]` path (via `components/agent/renderers/ThesisCardRenderer.tsx:92`) DOES spread the full thesis data — that callsite is fine. This gap is specific to the watchlist/stock/trade paths.
-
-**Fix path:**
-1. Expand `ThesisRowData` (`components/ui/thesis-row.tsx:26-62`) to include the missing fields.
-2. Update the Prisma `select` blocks in `app/(root)/stocks/[symbol]/page.tsx:~270` and `app/(root)/trades/[id]/page.tsx:~390` to include them.
-3. In `thesis-row.tsx`, spread the full row into `<ThesisSheet>` instead of cherry-picking 10 props.
-4. The `/triggers` fetch in `ThesisSheet` becomes a background refresh (optional — could keep for live updates, or drop entirely if the parent's data is always fresh enough).
-5. With this, the skeletons added in the 2026-05-19 split-routes work disappear on every callsite that already has the data. /triggers latency stops mattering for the watchlist/stock paths.
-
-~1-2 hours. Should fire before PR-9 (V2 schema cutover) ships so the new researchSections-flattened columns get forwarded too.
-
-**Update 2026-05-23:** addressed by [PR #313](https://github.com/dave-sucks/hindsight/pull/313) (`fix/p2-19-parent-data-forwarding`) — open, not yet merged. Mark as closed when #313 merges.
+*(P2-19 closed 2026-05-23 via PR #313 — moved to `GAPS_HISTORY.md`. Parent rows now forward the full thesis data into `<ThesisSheet>` instead of cherry-picking 10 props; the skeleton-then-fetch UX gap on watchlist/stock/trade sheet opens is gone.)*
 
 ### P2-20 — Volume ratio math broken for intraday timestamps (durable fix for the #307 workaround)
 **Source:** Follow-up from 2026-05-20 tactical volume gate work (PR #307).
@@ -312,6 +277,28 @@ The Universe fences don't differentiate analyst strategies enough — multiple a
 **Why P2:** affects book quality + tactical noise more than trading correctness. Once #311's discovery cap of 5 is in place (it is), the symptom is bounded — but it's still wasteful. Lower-priority than the action-layer fixes that just shipped.
 
 **Fix path:** add a router-side "already-covered-by-peer-analyst-this-session" check during discovery cron. If analyst-A already minted AMBA today, analyst-B's prompt sees a hint "AMBA already in another analyst's discovery this week — skip unless your edge is meaningfully different." Could also enforce at the record_thesis layer (refuse the Nth mint of the same ticker across all analysts in the same Sunday session). ~1-2 hours.
+
+
+### P2-23 — Deprecate `parentThesisId` (the direction-flip pointer is now redundant with ThesisUpdate)
+**Source:** Audit 2026-05-25. The user noticed the "thesis parent" concept feels stale now that theses are mutable across their lifetime instead of immutable per-run records.
+
+`Thesis.parentThesisId` was designed as the audit-chain pointer for direction flips: when `record_thesis(parent_thesis_id, direction='SHORT')` mints a new SHORT thesis on a ticker the analyst was previously LONG on, the new row points at the old row and the old row is marked SUPERSEDED. The chain is the audit trail across direction flips.
+
+That role is now **fully redundant** with `ThesisUpdate`. The 2026-04-26 thesis-lifecycle migration made thesis rows mutable; every state change writes a `ThesisUpdate` row capturing `priceAtTime / summary / rationale / type='SUPERSEDED'`. The direction-flip narrative lives in the audit log; the parent pointer is duplicative.
+
+Current production footprint (verified by code audit, not DB query):
+- **One writer:** `lib/agent/tools/record-thesis.ts:1368` (only fires on direction flips, which are rare in practice).
+- **Four readers:** `lib/agent/tools/get-theses.ts:220`, `lib/agent/thesis-sheet-state.ts:174`, `app/api/theses/[id]/triggers/route.ts:84`, `components/agent/sheets/ThesisSheet.tsx:1343` (renders a single "Replaces #..." chip — that's the entire UI surface).
+- **No chain walking anywhere.** Nothing iterates `parent → parent.parent → ...`. The pointer is a one-hop badge.
+
+**Fix path (recommended phased, low-risk):**
+1. **Phase A — stop writing.** Update `record_thesis` to no longer populate `parentThesisId` on direction flips (still write the SUPERSEDED `ThesisUpdate` audit row + the optional `parent_thesis_id` arg becomes a no-op, log + warn). UI badge becomes empty on new flips. ~30min.
+2. **Phase B — drop the UI badge** (`ThesisSheet.tsx:475-492`) once Phase A has run for ~30 days with no user-reported regressions. Production direction flips are rare; the badge's loss is minor.
+3. **Phase C — schema drop.** `ALTER TABLE "Thesis" DROP COLUMN "parentThesisId"` + remove the four select sites + drop the Prisma field. Defer until Q4 2026 — outside the rework's active window.
+
+**Why P2:** zero correctness impact; pure schema/concept hygiene. The field is dormant in spirit and the chain semantic confuses new readers of the architecture doc. Worth closing for clarity, not urgency.
+
+**Cross-references:** `docs/THESIS_ARCHITECTURE.md §3` (the canonical description of the chain — will need a §12 "Done since" note when this lands), Scenario H + Scenario B (the two scenarios that describe parent-pointer use today).
 
 ---
 
