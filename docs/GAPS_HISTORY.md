@@ -71,6 +71,33 @@ Net effect: status pill, Core Belief headline, Key Assumptions, Cause for Concer
 
 ---
 
+## Done since 2026-05-24 (PROMOTED trigger hardening — the P1-21 deep dive)
+
+P1-21 closed — the last of the four post-PR-#324 PROMOTED integration holes (P0-13 covered #1–#3; this is #4). Filed 2026-05-24, fixed same day before first promotion. Summarized in the wave block above; full implementation detail below.
+
+### ✅ P1-21 — Trigger templates don't know PROMOTED (Hole #4 from P0-13)
+
+**Filed:** 2026-05-24 architecture review on PR #324. Deferred follow-up — filed as P1 because orphan EXIT runs don't lose money, but they spawn scary "no position found" logs during the first day of live trading (the worst possible observability window).
+
+**Symptom (pre-fix):** PROMOTED theses carried the SAME triggers their predecessor-ACTIVE row carried, including HELD-state EXIT predicates like `PRICE_BELOW(stop) → EXIT`. But a PROMOTED thesis has no open position — the paper position was force-closed at promotion. If price crossed the stop on a PROMOTED-no-position thesis, the trigger evaluator fired `app/thesis.trigger.fired`, tactical-run consumed the event, then fell through to the "no position found" path on close_position (or skipped at load-context per the current ACTIVE+WATCHING status filter). No money lost, but orphan tactical compute + log noise.
+
+**Why this would have escalated:** at filing time (2026-05-24) there were zero PROMOTED rows in DB. After the first analyst gets promoted (PR #330 — promotion fan-out — landed 2026-05-25), every paper-era ACTIVE thesis becomes PROMOTED and inherits its HELD-side triggers. This bug becomes immediate the moment first-promotion lands.
+
+**Fix:** five-part:
+1. **`lib/agent/triggers/defaults.ts`** — extended `ThesisState` enum to `"HELD" | "WATCHING" | "PROMOTED"`. The dispatcher in `defaultTriggersForHorizon` delegates PROMOTED to the WATCHING template family (`watchingCatalystDefaults` / `watchingTradeDefaults` / `watchingTargetDefaults` / `watchingCompounderDefaults`) — same shape: no EXIT, ENTER off the target level (the re-entry path), plus the news/earnings/hygiene REVIEW set.
+2. **`lib/actions/promote-analyst.actions.ts`** — `transitionThesisToPromoted` now regenerates the trigger array against the PROMOTED template in the same `$transaction` as the status flip. Falls back to keeping existing triggers if horizon is missing (rare). Cooldown defaults backfilled via `applyTriggerCooldownDefaults`.
+3. **`lib/agent/tools/close-position.ts`** — explicit refuse-with-clean-error guard if the thesis row has `status='PROMOTED'`. Returns a clear instruction pointing the agent at `place_trade` (re-enter) or `update_thesis(WATCHING)` (defer). Belt-and-suspenders for any orphan EXIT trigger that slipped through the template regen.
+4. **`scripts/strip-promoted-orphan-exit-triggers.ts`** — one-shot retro-script. Finds `Thesis WHERE status='PROMOTED' AND triggers contains any (EXIT | TRIM | ADD | MOVE_STOP)`, strips them, regenerates correct PROMOTED-template triggers, writes a `ThesisUpdate(type='UPDATED')` audit row. At ship time touches 0 rows; defensive after first promotion. DRY_RUN gated.
+5. **Cross-file: trigger evaluator is state-blind** (`lib/agent/triggers/evaluate.ts`) — just matches predicates. So stripping EXIT triggers from PROMOTED rows is sufficient; no evaluator changes needed.
+
+**Three-layer principle (`docs/PRINCIPLES.md`):** Layer-1 tool gate (close_position refuses) + Layer-1 invariant at write (promote-analyst regenerates triggers). The prompt layer is untouched — the agent never needs to know PROMOTED has different triggers than ACTIVE, because the template generation guarantees the right shape.
+
+**Tests:** TypeScript clean, lint clean. The DRY-RUN of the retro-script on the production DB reported 0 rows (no PROMOTED rows existed yet — verifies the no-op path is correct).
+
+**Cross-reference:** PR #324 (PROMOTED status added — the row this builds on), PR #330 (promotion fan-out — landed 2026-05-25, the trigger that exposes this bug in production), PR #333 (this fix), P0-13 Hole #4 (the architecture-review entry that filed this gap).
+
+---
+
 ## Done since 2026-05-23 (close-out wave)
 
 Three items, one PR. Headline: P0-12 (the escalating narration→execution gap on `close_position` — hit 1 of 7 runs on Wed 5/20, 3 of 7 on Fri 5/22) is structurally fixed. Bundled P1-18 (which shipped earlier as PR #316) plus two tiny P2 hygiene items.

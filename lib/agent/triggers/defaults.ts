@@ -33,14 +33,18 @@ export type Horizon = "CATALYST" | "TARGET" | "TRADE" | "COMPOUNDER";
  * Thesis state at the time defaults are derived. Drives the template
  * selection — held positions get EXIT/REVIEW templates around the open
  * position; watching theses get ENTER/REVIEW templates around the
- * watchlist entry condition.
+ * watchlist entry condition; PROMOTED theses get the WATCHING-style
+ * ENTER + REVIEW set (no EXIT — there's no live position to exit since
+ * the paper position was force-closed at promotion).
  *
  * Without this distinction, watchlist theses end up with EXIT triggers
  * on stop-loss that can never fire usefully — there's no position to
  * exit. The agent then has no entry trigger to push it from WATCHING
- * → INITIATE, and the watchlist becomes inert.
+ * → INITIATE, and the watchlist becomes inert. PROMOTED has the
+ * symmetric trap: inheriting HELD-template EXIT triggers spawns an
+ * orphan tactical EXIT run whenever price crosses the old stop.
  */
-export type ThesisState = "HELD" | "WATCHING";
+export type ThesisState = "HELD" | "WATCHING" | "PROMOTED";
 
 export type ThesisDirection = "LONG" | "SHORT" | "PASS";
 
@@ -248,7 +252,10 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
 }
 
 // ── Watching templates ─────────────────────────────────────────────────
-// For NON-HELD theses on the watchlist. Semantic shift vs HELD:
+// For NON-HELD theses on the watchlist. Also reused for PROMOTED theses
+// (post-paper-graduation, awaiting first-live re-entry) — same semantic:
+// no open position, so no EXIT; ENTER on the target level is the way
+// price-crossings re-engage tactical. Semantic shift vs HELD:
 //   - No EXIT triggers (nothing to exit)
 //   - The TARGET price is the ENTRY-trigger threshold ("waiting for
 //     price to break above X to consider INITIATE")
@@ -539,18 +546,36 @@ function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
  * Pure function — no DB, no clock; delegates ID generation to cuid.
  *
  * @param horizon  Trade structure (CATALYST/TARGET/TRADE/COMPOUNDER)
- * @param state    HELD vs WATCHING — determines whether to emit EXIT
- *                 triggers (held) or ENTER triggers (watching). Defaults
- *                 to HELD for backward compatibility with callers minted
- *                 before the split. New callers should pass explicitly.
+ * @param state    HELD vs WATCHING vs PROMOTED — determines whether to
+ *                 emit EXIT triggers (held), ENTER triggers (watching),
+ *                 or the no-EXIT/ENTER-as-re-entry shape (promoted).
+ *                 Defaults to HELD for backward compatibility with callers
+ *                 minted before the split. New callers should pass
+ *                 explicitly.
  * @param thesis   Thesis fields used to parameterize the templates
+ *
+ * PROMOTED note: a PROMOTED thesis was an ACTIVE paper position that
+ * the user just graduated PAPER→LIVE. The paper position was
+ * force-closed; the thesis itself still carries full conviction (entry,
+ * target, stop, belief) and is awaiting first-live-run re-entry.
+ * Trigger shape mirrors WATCHING — ENTER on the target level so a
+ * matching price crossing wakes tactical-run which calls place_trade
+ * (place_trade auto-flips PROMOTED → ACTIVE in the same tx per PR #324).
+ * Critically, NO EXIT/TRIM/ADD/MOVE_STOP — those operate on positions
+ * and a PROMOTED thesis has none.
  */
 export function defaultTriggersForHorizon(
   horizon: Horizon,
   thesis: ThesisShape,
   state: ThesisState = "HELD",
 ): Trigger[] {
-  if (state === "WATCHING") {
+  if (state === "WATCHING" || state === "PROMOTED") {
+    // PROMOTED reuses the WATCHING template family: no EXIT (there's no
+    // open position), an ENTER trigger off the target level (the re-entry
+    // path that wakes tactical → place_trade → atomic PROMOTED→ACTIVE
+    // flip), plus the same news/earnings/hygiene REVIEW set. The
+    // WATCHING templates already produce exactly this shape so the
+    // PROMOTED branch is a straight delegation.
     switch (horizon) {
       case "CATALYST":
         return watchingCatalystDefaults(thesis);

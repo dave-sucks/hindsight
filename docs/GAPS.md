@@ -184,16 +184,7 @@ The $MU zombie thesis (cmpetjrw5...) — minted ACTIVE with 10 HELD-template tri
 
 **Cross-references:** PR #316 (clamp landing), PR #265 (atomic place_trade WATCHING → ACTIVE), PR #270 (F2 zombie-position guard on update_thesis ARCHIVED — model for the narrowed INVALIDATED + ARCHIVED transitions on this refactor).
 
-### P1-21 — Trigger templates don't know PROMOTED (Hole #4 from P0-13)
-**Source:** 2026-05-24 architecture review on PR #324. Deferred follow-up to P0-13 — filed here because it's a real silent-failure mode but not a correctness blocker for first prod launch.
-
-`ThesisState` is `"HELD" | "WATCHING"`. PROMOTED theses inherit HELD-state triggers from their old ACTIVE state, including EXIT triggers (`PRICE_BELOW(stop) → EXIT`). If price crosses stop on a PROMOTED thesis with no position, the tactical run gets spawned to "close" a position that doesn't exist — orphan tactical EXIT run.
-
-**Why P1 not P0:** orphan EXIT runs cost compute and log scary "no position found" errors, but they don't lose money — `close_position` refuses cleanly when there's nothing to close. Affects observability + tactical-run noise more than trading correctness.
-
-**Fix path:** extend `ThesisState` enum to include `"PROMOTED"`. The trigger template builder needs to know PROMOTED is "actionable on price but no position to close" — treat it like WATCHING for EXIT-template purposes (no EXIT triggers attached), like HELD for review/cadence purposes. Re-run the template generation against existing PROMOTED rows to strip orphan EXIT triggers. ~half day.
-
-**When to fire:** after P0-13's bundled PR ships and one prod launch lands cleanly. The orphan EXIT runs need real production data to validate the fix against.
+*(P1-21 closed 2026-05-24 — moved to `GAPS_HISTORY.md`. Fix: `ThesisState` enum extended to include `PROMOTED`; template builder delegates PROMOTED to the WATCHING template family (no EXIT, ENTER + REVIEW only); `transitionThesisToPromoted` regenerates triggers against the PROMOTED template in the same tx as the status flip; `close_position` refuses cleanly on PROMOTED status; retro-script `scripts/strip-promoted-orphan-exit-triggers.ts` for any pre-fix PROMOTED rows.)*
 
 **Update 2026-05-25:** addressed by [PR #333](https://github.com/dave-sucks/hindsight/pull/333) — open, not yet merged. Mark as closed when #333 merges.
 
