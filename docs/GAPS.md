@@ -100,6 +100,25 @@ Concrete production state when this was diagnosed: 4 theses (AMD, AVGO, GOOGL, T
 
 *(P0-11 closed 2026-05-16 via PR #270 — moved to `GAPS_HISTORY.md`. P0-5 closed across PRs #239 + Morning-Run-V2 + 2026-05-13 — moved to `GAPS_HISTORY.md`.)*
 
+### P0-13 — PROMOTED status integration gaps (post-PR #324 architecture review)
+**Source:** 2026-05-24 architecture review after PR #324 (PROMOTED status). Four real holes between "PROMOTED is well-integrated end-to-end" and "first prod launch reads fresh research and trades decisively."
+
+| # | Hole | Impact |
+|---|---|---|
+| 1 | `write_thesis_research` doesn't know about PROMOTED conviction context | When a rewrite is dispatched on a PROMOTED thesis, the synthesis prompt has no idea this is a "post-promotion, decide-if-still-conviction-worthy" rewrite. Output doesn't frame against paperTenureDays / paperRealizedPnl / paperReviewCount. |
+| 2 | `promote-analyst.actions.ts` doesn't auto-dispatch thesis-writer rewrites | The "rewrite at promotion → daily run reads fresh" workflow isn't built. Daily run inherits stale paper-era research on PROMOTED theses. |
+| 3 | NO staleness gate on `place_trade` | If a PROMOTED thesis has 60-day-old research, the agent can still `place_trade` off it without refresh. (This is also the original Phase 3 work from `THESIS_RESEARCH_V2.md`.) |
+| 4 | Trigger templates only know `HELD` vs `WATCHING`, not `PROMOTED` | PROMOTED theses inherit HELD-state EXIT triggers. If price crosses stop on a PROMOTED thesis with no position, tactical run gets called to "close" a position that doesn't exist → orphan tactical EXIT run. Filed separately as P1-21. |
+
+**Holes 1+2+3 are the immediate blocker for first prod launch.** A single PR (~half day) closes them — synthesis prompt gains optional `promotionContext`, promote action fans out parallel refresh dispatches, place_trade Layer-1 refuses on `researchUpdatedAt > 7d` without an in-run refresh dispatch. Session in flight 2026-05-24.
+
+**E2E test for the bundled PR:** promote one analyst with 2-3 ACTIVE theses → verify thesis-writer dispatches fire → child runs complete → theses come back PROMOTED with fresh research → trigger first daily run → confirm agent reads fresh research and acts decisively.
+
+**Cross-refs:**
+- `docs/plans/THESIS_RESEARCH_V2.md` §8 Phase 3 — absorbed by this PR
+- PR #324 — the PROMOTED-status PR this is closing the loop on
+- PR #316 — the `forceWatchingMint` clamp pattern that informs the synthesis-prompt plumbing
+
 ---
 
 ## P1 — Quality is degraded but system functions
@@ -195,6 +214,17 @@ The $MU zombie thesis (cmpetjrw5...) — minted ACTIVE with 10 HELD-template tri
 **When to fire:** AFTER PR #316 lands and Phase 1 is confirmed stable in production for ~3-5 trading days. The clamps in #316 close the immediate zombie risk; this refactor closes the structural risk before Phase 2 Discovery fan-out adds a third dispatcher (Discovery already has its own clamp via `discoveryOnly`; the refactor still simplifies it).
 
 **Cross-references:** PR #316 (clamp landing), PR #265 (atomic place_trade WATCHING → ACTIVE), PR #270 (F2 zombie-position guard on update_thesis ARCHIVED — model for the narrowed INVALIDATED + ARCHIVED transitions on this refactor).
+
+### P1-21 — Trigger templates don't know PROMOTED (Hole #4 from P0-13)
+**Source:** 2026-05-24 architecture review on PR #324. Deferred follow-up to P0-13 — filed here because it's a real silent-failure mode but not a correctness blocker for first prod launch.
+
+`ThesisState` is `"HELD" | "WATCHING"`. PROMOTED theses inherit HELD-state triggers from their old ACTIVE state, including EXIT triggers (`PRICE_BELOW(stop) → EXIT`). If price crosses stop on a PROMOTED thesis with no position, the tactical run gets spawned to "close" a position that doesn't exist — orphan tactical EXIT run.
+
+**Why P1 not P0:** orphan EXIT runs cost compute and log scary "no position found" errors, but they don't lose money — `close_position` refuses cleanly when there's nothing to close. Affects observability + tactical-run noise more than trading correctness.
+
+**Fix path:** extend `ThesisState` enum to include `"PROMOTED"`. The trigger template builder needs to know PROMOTED is "actionable on price but no position to close" — treat it like WATCHING for EXIT-template purposes (no EXIT triggers attached), like HELD for review/cadence purposes. Re-run the template generation against existing PROMOTED rows to strip orphan EXIT triggers. ~half day.
+
+**When to fire:** after P0-13's bundled PR ships and one prod launch lands cleanly. The orphan EXIT runs need real production data to validate the fix against.
 
 ---
 
