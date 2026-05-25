@@ -15,9 +15,15 @@ import { prisma } from "@/lib/prisma";
 import { getLatestPrices, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
 import { parseIntelligencePolicy, type IntelligencePolicy } from "@/lib/intelligence/types";
 import {
+  getThesisBearCaseBullets,
+  getThesisBullCaseBullets,
   getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
+import {
+  classifyResearchAge,
+  type ResearchAge,
+} from "@/lib/agent/thesis-research/staleness";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -102,6 +108,16 @@ export interface RunInput {
     paperTenureDays: number | null;
     paperRealizedPnl: number | null;
     paperReviewCount: number | null;
+    // Phase 1 read-side fix: deep-research excerpt surfaced into the
+    // prompt's per-thesis block so the agent reads it on the first
+    // turn without a get_theses round-trip. snapshotText is the
+    // narrative paragraph; bullCase/bearCase are the top bullets
+    // (capped per render to keep the prompt tight); researchAge is
+    // the freshness annotation that Phase 2's staleness gate keys off.
+    snapshotText: string | null;
+    bullCaseBullets: string[];
+    bearCaseBullets: string[];
+    researchAge: ResearchAge;
   }>;
   performance: {
     winRate: number | null;
@@ -371,12 +387,14 @@ export async function buildRunInput(
   // semantics now include WATCHING.
   let activeTheses: Array<{
     id: string; ticker: string; direction: string; scoring: unknown;
-    snapshot: unknown; entryPrice: number | null; targetPrice: number | null;
+    snapshot: unknown; bullCase: unknown; bearCase: unknown;
+    entryPrice: number | null; targetPrice: number | null;
     stopLoss: number | null; createdAt: Date; researchRunId: string; status: string;
     horizon: string | null; coreBelief: string | null; nextReviewAt: Date | null;
     catalystDate: Date | null; maxHoldDays: number | null;
     promotedAt: Date | null; paperTenureDays: number | null;
     paperRealizedPnl: number | null; paperReviewCount: number | null;
+    researchUpdatedAt: Date | null;
   }> = [];
 
   if (allRelevantSymbols.length > 0) {
@@ -395,7 +413,8 @@ export async function buildRunInput(
         distinct: ["ticker"],
         select: {
           id: true, ticker: true, direction: true, scoring: true,
-          snapshot: true, entryPrice: true, targetPrice: true,
+          snapshot: true, bullCase: true, bearCase: true,
+          entryPrice: true, targetPrice: true,
           stopLoss: true, createdAt: true, researchRunId: true, status: true,
           // Durable-state fields drive the prompt's per-thesis exit-policy
           // hint + structural-belief preview. coreBelief is the durable
@@ -408,6 +427,11 @@ export async function buildRunInput(
           // the conviction picture (tenure, P&L, review count) inline.
           promotedAt: true, paperTenureDays: true,
           paperRealizedPnl: true, paperReviewCount: true,
+          // Phase 1 read-side fix: timestamp drives the per-thesis
+          // `researchAge` annotation rendered in the prompt's Live
+          // Theses block. bullCase/bearCase loaded above feed the
+          // top-bullet preview lines.
+          researchUpdatedAt: true,
         },
       });
     } catch (err) {
@@ -791,13 +815,14 @@ export async function buildRunInput(
     watchlist,
     activeTheses: activeTheses.map((t) => {
       const composite = getThesisComposite(t);
+      const snapshotText = getThesisSnapshotText(t);
       return {
         id: t.id,
         ticker: t.ticker,
         direction: t.direction,
         // PR-9: legacy 0-100 confidence → composite/10 × 10.
         confidence: composite != null ? composite * 10 : 0,
-        reasoningSummary: getThesisSnapshotText(t),
+        reasoningSummary: snapshotText,
         entryPrice: t.entryPrice,
         targetPrice: t.targetPrice,
         stopLoss: t.stopLoss,
@@ -814,6 +839,17 @@ export async function buildRunInput(
         paperTenureDays: t.paperTenureDays,
         paperRealizedPnl: t.paperRealizedPnl,
         paperReviewCount: t.paperReviewCount,
+        // Phase 1: deep-research excerpt pre-loaded into per-thesis
+        // context. snapshotText duplicates reasoningSummary (same
+        // helper) so prompt renderers reading either field show the
+        // narrative; bullCase/bearCase bullet arrays let the prompt
+        // print the top 2-3 cited claims per thesis without a
+        // get_theses round-trip. researchAge is the freshness
+        // annotation the Phase-2 staleness gate keys off.
+        snapshotText: snapshotText || null,
+        bullCaseBullets: getThesisBullCaseBullets(t),
+        bearCaseBullets: getThesisBearCaseBullets(t),
+        researchAge: classifyResearchAge(t.researchUpdatedAt),
       };
     }),
     performance,

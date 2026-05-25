@@ -26,6 +26,12 @@ import { describeTriggerFire } from "@/lib/agent/triggers/format";
 import { MODES } from "@/lib/agent/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
+import {
+  getThesisBearCaseBullets,
+  getThesisBullCaseBullets,
+  getThesisSnapshotText,
+} from "@/lib/agent/thesis-narrative";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -162,6 +168,14 @@ export const tacticalRun = inngest.createFunction(
           )
         : null;
 
+      // Phase 1: precompute deep-research excerpt + age annotation here
+      // so the step.run JSON boundary doesn't strip the Date. Helpers
+      // imported below extract bullet arrays + snapshot text from the
+      // JSONB section columns (the same columns get_theses reads).
+      const thesisResearchAge = classifyResearchAge(thesis.researchUpdatedAt);
+      const thesisSnapshotText = getThesisSnapshotText(thesis);
+      const thesisBullBullets = getThesisBullCaseBullets(thesis);
+      const thesisBearBullets = getThesisBearCaseBullets(thesis);
       return {
         thesis: {
           id: thesis.id,
@@ -178,6 +192,10 @@ export const tacticalRun = inngest.createFunction(
           targetSizePct:
             thesis.targetSizePct != null ? Number(thesis.targetSizePct) : null,
           scalingPlan: thesis.scalingPlan,
+          snapshotText: thesisSnapshotText || null,
+          bullCaseBullets: thesisBullBullets,
+          bearCaseBullets: thesisBearBullets,
+          researchAge: thesisResearchAge,
           updates: thesis.updates.map((u) => ({
             type: u.type,
             summary: u.summary,
@@ -313,6 +331,11 @@ export const tacticalRun = inngest.createFunction(
           stopLoss: thesis.stopLoss,
           targetSizePct: thesis.targetSizePct,
           scalingPlan: thesis.scalingPlan,
+          // Phase 1: pre-computed in load-context step.run; passed verbatim.
+          snapshotText: thesis.snapshotText,
+          bullCaseBullets: thesis.bullCaseBullets,
+          bearCaseBullets: thesis.bearCaseBullets,
+          researchAge: thesis.researchAge,
         },
         trigger,
         signal,
