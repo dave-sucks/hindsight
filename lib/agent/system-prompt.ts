@@ -308,6 +308,56 @@ Composite = sum, max 10. **Threshold to trade: composite ≥ 7 AND R/R ≥ 2:1 A
       const policyLine = t.horizon ? horizonPolicyLine(t.horizon) : "no horizon set";
       thesesSection += `- $${t.ticker} [${t.status}/${t.horizon ?? "?"}] ${beliefPreview} — ${policyLine}\n`;
     }
+
+    // Phase 1 — Deep-research excerpt per thesis. Until this lands the
+    // agent was making trade decisions off coreBelief + structural
+    // fields only; the snapshot/bull/bear sections (written by the
+    // thesis-writer sub-agent) sat invisible on the Thesis row. Now
+    // they're surfaced inline so the agent sees:
+    //   - the analyst's narrative framing of the name
+    //   - the top 2 bull-case bullets (cited reasons to be long/short)
+    //   - the top 2 bear-case bullets (cited risks)
+    //   - the research age — "fresh (3d)", "stale (20d)", or "missing"
+    // Capped at 2 bullets per side to keep ~30-thesis prompts under
+    // budget; the full nine sections live on the Thesis row and can
+    // be pulled via get_theses(include_research: true) when needed.
+    // Per CLAUDE.md "the research is the asset" — every trade decision
+    // should be anchored to what the analyst wrote, not flying blind
+    // on the structural fields.
+    thesesSection += `\nDeep-research excerpts (per thesis — use these when deciding to trade / close / scale):\n`;
+    for (const t of runInput.activeTheses) {
+      const ageLabel =
+        t.researchAge.freshness === "missing"
+          ? "research MISSING"
+          : `research ${t.researchAge.freshness} (${t.researchAge.daysOld}d)`;
+      thesesSection += `\n**$${t.ticker}** [${ageLabel}]`;
+      if (t.snapshotText) {
+        const snap = t.snapshotText.length > 240
+          ? `${t.snapshotText.slice(0, 240)}…`
+          : t.snapshotText;
+        thesesSection += `\n  snapshot: ${snap}`;
+      }
+      if (t.bullCaseBullets.length > 0) {
+        const top = t.bullCaseBullets
+          .slice(0, 2)
+          .map((b) => `\n    + ${b.length > 180 ? `${b.slice(0, 180)}…` : b}`)
+          .join("");
+        thesesSection += `\n  bull case:${top}`;
+      }
+      if (t.bearCaseBullets.length > 0) {
+        const top = t.bearCaseBullets
+          .slice(0, 2)
+          .map((b) => `\n    − ${b.length > 180 ? `${b.slice(0, 180)}…` : b}`)
+          .join("");
+        thesesSection += `\n  bear case:${top}`;
+      }
+      if (t.researchAge.freshness === "missing") {
+        thesesSection += `\n  ⚠ This thesis has never been through the deep-research pipeline. Decisions made off coreBelief + chart only.`;
+      } else if (t.researchAge.freshness === "stale") {
+        thesesSection += `\n  ⚠ Research is ${t.researchAge.daysOld} days old — note in your rationale if you trade off it.`;
+      }
+      thesesSection += `\n`;
+    }
     sections.push(thesesSection);
   }
 
@@ -500,6 +550,24 @@ If you find yourself writing one, you've already drifted. Stop, delete, emit the
 \`read_signals\` → \`get_portfolio_context\` → \`get_theses(include_history: true)\`. The Priority Reviews / Fired Triggers / Matching Triggers / Live Theses blocks above are already server-pre-computed — read them, don't reconstruct them. Use \`read_artifact\` for any signal worth a deep read. \`web_search\` is targeted enrichment only.
 
 ### Step 2 — Walk every thesis on the Live Theses table
+
+**Anchor every trade decision to the deep research.** The Live Theses
+section above already shows you each thesis's snapshot, top bull-case
+bullets, top bear-case bullets, and research age (\`fresh\` / \`stale\` /
+\`missing\`). Read those BEFORE deciding to trade, close, or scale —
+that's the analyst's actual view of the name, not a chart pattern.
+
+- Research \`fresh\` (≤ 14 days) → proceed normally. The view in the
+  prompt IS the analyst's current take.
+- Research \`stale\` (> 14 days) → still proceed if you must, but your
+  \`update_thesis\` / \`record_run_summary\` rationale MUST explicitly
+  acknowledge the age and what could have changed since. The Phase-2
+  refresh path isn't available yet; for now you're acting on aging
+  context with eyes open.
+- Research \`missing\` → the thesis predates the deep-research system
+  (legacy seed). Same rule — note it explicitly. Don't pretend you
+  have the dossier.
+
 Two checks per thesis. **B runs in addition to A, not instead.**
 
 **A. Trigger / review check (every thesis, ACTIVE and WATCHING)**

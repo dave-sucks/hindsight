@@ -14,6 +14,7 @@
  */
 
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+import type { ResearchAge } from "@/lib/agent/thesis-research/staleness";
 
 interface TacticalPromptArgs {
   analyst: { name: string; mandate: string | null };
@@ -30,6 +31,15 @@ interface TacticalPromptArgs {
     stopLoss: number | null;
     targetSizePct: number | null;
     scalingPlan: unknown;
+    // Phase 1 read-side fix: deep-research excerpt rendered inline so
+    // the tactical agent reads the analyst's narrative + top bull/bear
+    // bullets + research freshness before executing the trigger's
+    // declared action. snapshotText is the prose paragraph; bullCase /
+    // bearCase are top bullets; researchAge is the freshness annotation.
+    snapshotText: string | null;
+    bullCaseBullets: string[];
+    bearCaseBullets: string[];
+    researchAge: ResearchAge;
   };
   trigger: Trigger;
   signal: {
@@ -154,6 +164,34 @@ THESIS (id: ${thesis.id})
   invalidation conditions: ${thesis.invalidationConds.length ? thesis.invalidationConds.join("; ") : "(none recorded)"}
   entry: ${thesis.entryPrice != null ? `$${thesis.entryPrice}` : "(unset)"}, target: ${thesis.targetPrice != null ? `$${thesis.targetPrice}` : "(unset)"}, stop: ${thesis.stopLoss != null ? `$${thesis.stopLoss}` : "(unset)"}
   target size: ${thesis.targetSizePct != null ? `${thesis.targetSizePct}% of portfolio` : "(unset)"}
+
+DEEP-RESEARCH EXCERPT [${thesis.researchAge.freshness === "missing" ? "research MISSING" : `research ${thesis.researchAge.freshness} (${thesis.researchAge.daysOld}d)`}]:
+${thesis.snapshotText ? `  snapshot: ${thesis.snapshotText.length > 360 ? `${thesis.snapshotText.slice(0, 360)}…` : thesis.snapshotText}` : "  snapshot: (none)"}
+${
+  thesis.bullCaseBullets.length > 0
+    ? `  bull case (top ${Math.min(3, thesis.bullCaseBullets.length)}):\n${thesis.bullCaseBullets
+        .slice(0, 3)
+        .map((b) => `    + ${b.length > 200 ? `${b.slice(0, 200)}…` : b}`)
+        .join("\n")}`
+    : "  bull case: (none recorded)"
+}
+${
+  thesis.bearCaseBullets.length > 0
+    ? `  bear case (top ${Math.min(3, thesis.bearCaseBullets.length)}):\n${thesis.bearCaseBullets
+        .slice(0, 3)
+        .map((b) => `    − ${b.length > 200 ? `${b.slice(0, 200)}…` : b}`)
+        .join("\n")}`
+    : "  bear case: (none recorded)"
+}
+${
+  thesis.researchAge.freshness === "missing"
+    ? "  ⚠ This thesis has never been through the deep-research pipeline. You're working off coreBelief + chart only — call this out in your update_thesis rationale."
+    : thesis.researchAge.freshness === "stale"
+      ? `  ⚠ Research is ${thesis.researchAge.daysOld} days old. If you trade off it, your update_thesis rationale MUST explicitly acknowledge what could have changed since then.`
+      : ""
+}
+
+**Anchor your decision to the bull/bear case above, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The bear-case bullets are what would invalidate the trade; check whether any of them have come true since the research was written.
 
 POSITION:
   ${positionLine}

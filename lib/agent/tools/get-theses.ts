@@ -38,6 +38,7 @@ import {
   getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
+import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 
 const STATUS_VALUES = [
   "ACTIVE",
@@ -86,7 +87,7 @@ const schema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Include the deep-research artifact (researchData + researchSections + researchUpdatedAt) per thesis. Default false. Each researchData blob is ~3-5KB — leaving this off keeps daily-run and tactical reads lightweight. Set true only when refreshing a thesis (thesis-writer mode) or when the agent specifically needs the multi-section synthesis to grade against.",
+      "Include the LOWER-PRIORITY deep-research sections (researchData + recentCatalysts + fundamentals + latestEarnings + catalystsAndEvents + analystConsensus + insiderTechnical) per thesis. Default false. Note that snapshot + bullCase + bearCase are ALREADY in the default response (they're the three sections agents need most), as is `researchAge` (the freshness annotation). Set this true only when refreshing a thesis (thesis-writer mode) or when the agent specifically needs the full multi-section synthesis to grade against.",
     ),
   history_limit: z
     .number()
@@ -106,7 +107,7 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's durable thesis library. Default returns ACTIVE + WATCHING theses (the live coverage book). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis).",
+    "Read this analyst's durable thesis library. Default returns ACTIVE + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
   schema,
   ui: "thesis-card" as const,
 
@@ -222,9 +223,18 @@ export const getTheses = defineTool({
         paperTenureDays: true,
         paperRealizedPnl: true,
         paperReviewCount: true,
+        // `researchUpdatedAt` is ALWAYS selected (cheap timestamp column)
+        // so every response can carry the computed `researchAge` field
+        // for the agent. Daily-run and tactical prompts read it to decide
+        // whether to dispatch a refresh before trading (Phase 2). The
+        // heavy section blobs below stay gated.
+        researchUpdatedAt: true,
         // Deep-research artifacts — opt in via include_research. PR-9
         // flattened `researchSections` blob into 9 first-class columns;
-        // selecting all of them by name.
+        // selecting all of them by name. snapshot/bullCase/bearCase are
+        // already in the default select above (used by the helpers for
+        // narrative extraction); the six below are the lower-priority
+        // sections that only thesis-writer and the thesis sheet need.
         ...(includeResearch
           ? {
               researchData: true,
@@ -234,7 +244,6 @@ export const getTheses = defineTool({
               catalystsAndEvents: true,
               analystConsensus: true,
               insiderTechnical: true,
-              researchUpdatedAt: true,
             }
           : {}),
       },
@@ -366,6 +375,11 @@ export const getTheses = defineTool({
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
         needsAction: needsActionByThesisId.get(t.id) ?? null,
+        // Phase 1 read-side fix: agent must see freshness of the deep
+        // research without doing date math. Phase 2's place_trade
+        // staleness gate keys off `freshness !== "fresh"` plus an
+        // in-run refresh dispatch check.
+        researchAge: classifyResearchAge(t.researchUpdatedAt),
       };
     });
 
@@ -409,6 +423,10 @@ export const getTheses = defineTool({
         // ThesisCardRenderer / read-theses-table can show an alert chip
         // on rows that need work today.
         needs_action: t.needsAction ?? null,
+        // Phase 1 read-side fix: research-age annotation for prompt
+        // rendering + future Phase-2 staleness gate. Snake-case on the
+        // card surface to match other agent-facing fields.
+        research_age: t.researchAge,
       };
     });
 
