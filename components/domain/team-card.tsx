@@ -24,6 +24,7 @@ import { ArrowTurnForwardIcon } from "@hugeicons/core-free-icons";
 import { Markdown } from "@/components/ui/markdown";
 import { ProviderIcon } from "@/components/chat/SourceChip";
 import { WorkflowMarkdown } from "@/components/domain/workflow-markdown";
+import { WorkflowSheetProvider } from "@/components/domain/workflow-sheet-context";
 import { loadWorkflowDoc } from "@/lib/actions/workflow-doc.actions";
 import type { Team, ToolEntry, SubStep, Resource, ResourceType, RegistryTool, ToolCategory, TeamId } from "@/lib/agent/workflow-registry";
 import { TOOL_REGISTRY, getTeam } from "@/lib/agent/workflow-registry";
@@ -527,10 +528,19 @@ export function TeamSheetContent({ team }: { team: Team }) {
         // ── Markdown doc body ─────────────────────────────────────────────
         // Replaces the legacy description + substeps blocks. Inline pill
         // references (agent / tool / entity) are rendered by the custom
-        // link-handler inside <WorkflowMarkdown>.
-        <div>
+        // link-handler inside <WorkflowMarkdown>. The provider lets
+        // reads/writes data-flow rows open the same tool-detail dialog
+        // used by the Tools section at the bottom of the sheet.
+        <WorkflowSheetProvider
+          value={{
+            openToolByName: (toolName) => {
+              const tool = team.tools.find((t) => t.name === toolName);
+              if (tool) handleToolClick(tool);
+            },
+          }}
+        >
           <WorkflowMarkdown>{doc!.body}</WorkflowMarkdown>
-        </div>
+        </WorkflowSheetProvider>
       ) : (
         // ── Legacy substeps ───────────────────────────────────────────────
         // Used for any team that hasn't been migrated to the markdown

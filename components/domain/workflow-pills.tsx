@@ -16,9 +16,12 @@
  */
 
 import { Database, FileText, Layers, Wrench } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowTurnForwardIcon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { ProviderIcon } from "@/components/chat/SourceChip";
 import { getTeam, type TeamId } from "@/lib/agent/workflow-registry";
+import { useWorkflowSheet } from "@/components/domain/workflow-sheet-context";
 
 // ── Pill primitive ──────────────────────────────────────────────────────────
 // Shared shell so all three pills share spacing + hover behavior. Inline-block
@@ -153,4 +156,116 @@ export function EntityPill({
       <span className="font-medium">{displayLabel}</span>
     </PillShell>
   );
+}
+
+// ── DataFlowRow ─────────────────────────────────────────────────────────────
+// Visual indicator that a step reads from (or writes to) a specific tool.
+// Mirrors the "Using signals from Intelligence Pipeline" chip at the top of
+// the sheet — same `ArrowTurnForwardIcon`, same minimal treatment — but
+// inline inside step content. Clicking the row opens the tool's detail
+// dialog (the one already used by the Tools section at the bottom of the
+// sheet) via the WorkflowSheetContext.
+//
+// Authored in markdown as a fenced code block with language "reads" or
+// "writes". The WorkflowMarkdown renderer parses each line of the fence
+// as `<tool_name> — <condition>` and emits one DataFlowRow per line.
+
+export function DataFlowRow({
+  direction,
+  toolName,
+  provider = "internal",
+  condition,
+}: {
+  direction: "read" | "write";
+  toolName: string;
+  provider?: string;
+  condition?: string;
+}) {
+  const sheet = useWorkflowSheet();
+  const clickable = !!sheet;
+
+  function handleClick() {
+    sheet?.openToolByName(toolName);
+  }
+
+  const verb = direction === "read" ? "Reads" : "Writes";
+
+  const body = (
+    <span className="inline-flex items-center gap-2 align-baseline">
+      <HugeiconsIcon
+        icon={ArrowTurnForwardIcon}
+        className={cn(
+          "size-3.5 shrink-0",
+          direction === "read" ? "text-muted-foreground" : "text-foreground",
+        )}
+      />
+      <span className="text-xs text-muted-foreground">{verb}</span>
+      <span className="inline-flex items-center gap-1">
+        <ProviderIcon provider={provider} size={12} />
+        {/* eslint-disable-next-line no-restricted-syntax -- monospace is the correct affordance for a tool's machine name */}
+        <code className="text-xs font-mono text-foreground">{toolName}</code>
+      </span>
+      {condition && (
+        <span className="text-xs text-muted-foreground">— {condition}</span>
+      )}
+    </span>
+  );
+
+  return (
+    <div className="my-1.5 leading-relaxed">
+      {clickable ? (
+        <button
+          type="button"
+          onClick={handleClick}
+          className="block w-full rounded-md px-2 py-1.5 -mx-2 text-left transition-colors hover:bg-muted/40"
+          title={`Open ${toolName} details`}
+        >
+          {body}
+        </button>
+      ) : (
+        <div className="px-2 py-1.5 -mx-2">{body}</div>
+      )}
+    </div>
+  );
+}
+
+// ── Parse a single fence line ───────────────────────────────────────────────
+// Format: `<tool_name>[?provider=<key>] — <condition>`
+//   tool_name : required, snake_case
+//   provider  : optional, key recognised by ProviderIcon (finnhub, fmp, alpaca,
+//               sec, perplexity, internal, …). Defaults to "internal".
+//   condition : optional free text after an em-dash or hyphen.
+//
+// Examples (all valid):
+//   read_signals
+//   get_earnings_calendar?provider=finnhub — gated by EARNINGS_CALENDAR feed
+//   get_market_movers?provider=fmp — gated by MARKET_MOVERS_* feeds
+//   place_trade?provider=alpaca — only on immediate-buy path
+
+export interface ParsedFlowLine {
+  toolName: string;
+  provider?: string;
+  condition?: string;
+}
+
+export function parseFlowLine(line: string): ParsedFlowLine | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+
+  // Split on em-dash or `--` first so we don't mangle hyphens in tool names.
+  const dashMatch = trimmed.match(/^(.*?)\s+(?:—|--|–)\s+(.+)$/);
+  const headRaw = dashMatch ? dashMatch[1].trim() : trimmed;
+  const condition = dashMatch ? dashMatch[2].trim() : undefined;
+
+  // headRaw is `tool_name` or `tool_name?provider=foo`.
+  const [toolName, query] = headRaw.split("?");
+  if (!toolName) return null;
+  let provider: string | undefined;
+  if (query) {
+    const params = new URLSearchParams(query);
+    const p = params.get("provider");
+    if (p) provider = p;
+  }
+
+  return { toolName: toolName.trim(), provider, condition };
 }

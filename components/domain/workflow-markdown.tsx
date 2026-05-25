@@ -24,6 +24,8 @@ import {
   AgentPill,
   ToolPill,
   EntityPill,
+  DataFlowRow,
+  parseFlowLine,
 } from "@/components/domain/workflow-pills";
 
 // Parse `tool:name?provider=finnhub` into { name, provider }.
@@ -109,12 +111,68 @@ const components: Components = {
     <strong className="font-semibold text-foreground">{children}</strong>
   ),
   em: ({ children }) => <em className="italic">{children}</em>,
-  code: ({ children }) => (
-    // eslint-disable-next-line no-restricted-syntax -- code blocks are exactly the case the design rule's "dedicated component" carve-out is for
-    <code className="rounded bg-muted/60 px-1 py-0.5 text-xs font-mono text-foreground">
-      {children}
-    </code>
-  ),
+  // Inline code (`text`) — small pill style.
+  code: ({ children, className }) => {
+    // Fenced code blocks pass a `language-xxx` className; we let the
+    // `pre` override below own those (including the reads/writes
+    // data-flow fences). This branch is just inline code.
+    if (className?.startsWith("language-")) {
+      // Pass through unchanged so <pre> can read className/children.
+      return <code className={className}>{children}</code>;
+    }
+    return (
+      // eslint-disable-next-line no-restricted-syntax -- inline code pill — the design rule's "dedicated component" carve-out covers this
+      <code className="rounded bg-muted/60 px-1 py-0.5 text-xs font-mono text-foreground">
+        {children}
+      </code>
+    );
+  },
+  // Fenced code blocks. We intercept the `reads` / `writes` languages to
+  // render data-flow rows (visual indicators of which tools a step uses
+  // and the conditions under which it uses them). Other languages fall
+  // through to a plain monospace block.
+  pre: ({ children }) => {
+    // The single child is a <code> element with className="language-xxx"
+    // (or no className for an indented code block, which we don't use).
+    // Peek at it to decide whether to specialize.
+    const child = Array.isArray(children) ? children[0] : children;
+    const codeProps =
+      child &&
+      typeof child === "object" &&
+      "props" in child &&
+      (child.props as { className?: string; children?: React.ReactNode });
+    const className = codeProps && codeProps.className;
+    const match = /language-(\w+)/.exec(className ?? "");
+    const lang = match?.[1];
+
+    if (lang === "reads" || lang === "writes") {
+      const direction: "read" | "write" = lang === "reads" ? "read" : "write";
+      const body = String(codeProps?.children ?? "").replace(/\n$/, "");
+      const lines = body.split("\n").map(parseFlowLine).filter(Boolean);
+      return (
+        <div className="my-3">
+          {lines.map((parsed, i) =>
+            parsed ? (
+              <DataFlowRow
+                key={i}
+                direction={direction}
+                toolName={parsed.toolName}
+                provider={parsed.provider}
+                condition={parsed.condition}
+              />
+            ) : null,
+          )}
+        </div>
+      );
+    }
+
+    return (
+      // eslint-disable-next-line no-restricted-syntax -- code blocks are exactly the case the design rule's "dedicated component" carve-out is for
+      <pre className="my-3 overflow-x-auto rounded-md bg-muted/40 p-3 text-xs font-mono leading-relaxed">
+        {children}
+      </pre>
+    );
+  },
   hr: () => <hr className="my-4 border-border/50" />,
   blockquote: ({ children }) => (
     <blockquote className="my-3 border-l-2 border-muted-foreground/30 pl-3 text-sm italic text-muted-foreground">
