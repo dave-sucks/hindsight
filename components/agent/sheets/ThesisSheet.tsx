@@ -384,19 +384,17 @@ function ScoringRow({
  */
 function ScoringGauge({ score, max }: { score: number; max: number }) {
   // 10 ticks rendered through the shared TickBar primitive — same w-0.5
-  // strokes, same `tall` height (16px) and same gray-empty / foreground-
-  // filled palette as PriceGauge and the consensus distribution bar.
-  // Width auto-fits to its grid slot (~140px) and stretches via justify-
-  // between so the ticks span the available space at the same density as
-  // the bars elsewhere on the sheet.
+  // strokes + gray-empty / foreground-filled palette as PriceGauge. Uses
+  // the base (shorter) tick height — full `tall` height made the gauge
+  // overpower the row label. Width tightened to w-20 so the ticks sit
+  // dense enough to read as a single gauge instead of an inflated grid.
   const COUNT = 10;
   const fillRatio = max > 0 ? Math.max(0, Math.min(1, score / max)) : 0;
   const filledTicks = Math.round(fillRatio * COUNT);
   const ticks: Tick[] = Array.from({ length: COUNT }, (_, i) => ({
     color: i < filledTicks ? "bg-foreground" : "bg-muted-foreground/40",
-    tall: true,
   }));
-  return <TickBar ticks={ticks} className="w-36 shrink-0" />;
+  return <TickBar ticks={ticks} className="w-20 shrink-0" />;
 }
 
 // ── Skeleton placeholders for /triggers-dependent blocks ──────────────
