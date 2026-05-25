@@ -7,18 +7,17 @@
  * border, p-3) and uses Polymarket-style price rows for Entry / Target /
  * Stop with a percentage delta badge to the right.
  *
- * Click → opens the SAME sheet that the full <ThesisCard /> opens. We do
- * this by passing the mini-card JSX to <ThesisCard customTrigger={...} />.
- * The original sheet content (ButtonGroup verdict, stock identity row,
- * Bull Case / Risks / Fundamentals etc.) is preserved untouched — we only
- * swap the trigger surface.
+ * Click → opens the single shared <ThesisSheet> (floating xl variant) —
+ * the same sheet ThesisRow opens on Trades / Stocks / Watchlist. One
+ * sheet design, one entry point.
  */
 
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
-import { ThesisCard, type ThesisCardData } from "@/components/domain/thesis-card";
+import { ThesisSheet, type ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -77,13 +76,17 @@ function PriceRow({
 // ── Card ────────────────────────────────────────────────────────────────────
 
 export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
+  const [sheetOpen, setSheetOpen] = useState(false);
   const statusDisplay = getThesisStatusDisplay(thesis.status);
   const targetDelta = pctDelta(thesis.entry_price, thesis.target_price);
   const stopDelta = pctDelta(thesis.entry_price, thesis.stop_loss);
 
-  const miniCard = (
-    <Card className="p-3 gap-2 cursor-pointer hover:bg-accent/40 transition-colors h-full text-left">
-      <>
+  return (
+    <>
+      <Card
+        onClick={() => setSheetOpen(true)}
+        className="p-3 gap-2 cursor-pointer hover:bg-accent/40 transition-colors h-full text-left"
+      >
         {/* ── Header: logo + name + status pill ───────────────────── */}
         <div className="flex items-center gap-2">
           <StockLogo ticker={thesis.ticker} size="sm" />
@@ -112,9 +115,13 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
             {thesis.reasoning_summary}
           </p>
         )}
-      </>
-    </Card>
-  );
+      </Card>
 
-  return <ThesisCard {...thesis} customTrigger={miniCard} />;
+      <ThesisSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        {...thesis}
+      />
+    </>
+  );
 }

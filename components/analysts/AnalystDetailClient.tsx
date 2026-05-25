@@ -75,7 +75,10 @@ import type {
 import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
+import { ThesisMiniCard } from "@/components/domain/thesis-mini-card";
+import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -170,6 +173,88 @@ function FloatingEditorComposer({ analystId }: { analystId: string }) {
   );
 }
 
+// ── Runs tab ─────────────────────────────────────────────────────────────────
+
+const MODE_LABEL: Record<string, string> = {
+  MORNING_PLAN: "Morning",
+  INTRADAY_TACTICAL: "Tactical",
+  DISCOVERY: "Discovery",
+  THESIS_WRITER: "Thesis Research",
+  EOD_REFLECTIVE: "EOD Recap",
+};
+
+function AnalystRunsTab({ runs }: { runs: AnalystDetail["recentRuns"] }) {
+  if (runs.length === 0) {
+    return (
+      <div className="w-full mx-auto px-4 py-6">
+        <div className="rounded-xl border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">No runs yet for this analyst.</p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="w-full mx-auto px-4 py-6 space-y-3">
+      {runs.map((r) => {
+        const mode = (r as { mode?: string }).mode;
+        const modeLabel = mode ? MODE_LABEL[mode] ?? mode : null;
+        const thesisCount = r.theses.length;
+        const tradeCount = r.theses.filter((t) => t.trade != null).length;
+        const dotClass =
+          r.status === "RUNNING"
+            ? "bg-amber-500 animate-pulse"
+            : r.status === "FAILED"
+              ? "bg-red-500"
+              : null;
+        return (
+          <Link key={r.id} href={`/runs/${r.id}`} className="block">
+            <div className="rounded-xl border bg-background p-3 hover:bg-accent/40 transition-colors">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  {dotClass && <span className={cn("h-2 w-2 rounded-full shrink-0", dotClass)} />}
+                  <span className="text-sm font-medium truncate">
+                    {modeLabel ?? "Run"}
+                  </span>
+                  <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                    {formatDateLabel(new Date(r.startedAt).toISOString())}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums shrink-0">
+                  <span>{thesisCount} {thesisCount === 1 ? "thesis" : "theses"}</span>
+                  {tradeCount > 0 && <span>{tradeCount} {tradeCount === 1 ? "trade" : "trades"}</span>}
+                </div>
+              </div>
+            </div>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Theses tab ───────────────────────────────────────────────────────────────
+
+function AnalystThesesTab({ theses }: { theses: ThesisCardData[] }) {
+  if (theses.length === 0) {
+    return (
+      <div className="w-full mx-auto px-4 py-6">
+        <div className="rounded-xl border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">No theses yet for this analyst.</p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="w-full mx-auto px-4 py-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {theses.map((t) => (
+          <ThesisMiniCard key={t.thesis_id ?? `${t.ticker}-${t.direction}`} thesis={t} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AnalystDetailClient({
@@ -177,13 +262,15 @@ export default function AnalystDetailClient({
   hasRunning,
   initialWatchlist = [],
   livePrices = {},
+  theses = [],
 }: {
   detail: AnalystDetail;
   hasRunning: boolean;
   initialWatchlist?: WatchlistItemView[];
   livePrices?: Record<string, number>;
+  theses?: ThesisCardData[];
 }) {
-  const { config: rawConfig, stats, recentTrades } = detail;
+  const { config: rawConfig, stats, recentTrades, recentRuns } = detail;
 
   // Defensive defaults for array fields that may be missing from older data
   const config = useMemo(() => ({
@@ -488,8 +575,10 @@ export default function AnalystDetailClient({
             <div className="px-4">
               <TabsList>
                 <TabsTrigger value={0}>Snapshot</TabsTrigger>
-                <TabsTrigger value={1}>Briefs</TabsTrigger>
-                <TabsTrigger value={2}>Findings</TabsTrigger>
+                <TabsTrigger value={1}>Runs</TabsTrigger>
+                <TabsTrigger value={2}>Theses</TabsTrigger>
+                <TabsTrigger value={3}>Briefs</TabsTrigger>
+                <TabsTrigger value={4}>Findings</TabsTrigger>
               </TabsList>
             </div>
             <TabsContent value={0}>
@@ -500,13 +589,19 @@ export default function AnalystDetailClient({
               />
             </TabsContent>
             <TabsContent value={1}>
+              <AnalystRunsTab runs={recentRuns} />
+            </TabsContent>
+            <TabsContent value={2}>
+              <AnalystThesesTab theses={theses} />
+            </TabsContent>
+            <TabsContent value={3}>
               <AnalystAllBriefsSection
                 analystName={config.name}
                 morningBriefs={detail.morningBriefs}
                 runBriefs={detail.briefings}
               />
             </TabsContent>
-            <TabsContent value={2}>
+            <TabsContent value={4}>
               <div className="w-full mx-auto px-4 py-6">
                 <AnalystFindingsTab
                   analystId={config.id}

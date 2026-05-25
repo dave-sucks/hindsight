@@ -93,6 +93,8 @@ export interface RecentPick {
   id: string;
   ticker: string;
   direction: string;
+  /** Lifecycle status — drives the row's leading badge (Watching / Active / etc.). */
+  status: string;
   confidenceScore: number;
   signalTypes: string[];
   reasoningSummary: string;
@@ -327,16 +329,17 @@ export async function getDashboardData(
     prisma.thesis.findMany({
       where: {
         userId,
-        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        updatedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
         researchRun: { environment },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { updatedAt: "desc" },
       take: 20,
       select: {
         id: true,
         ticker: true,
         researchRunId: true,
         direction: true,
+        status: true,
         // PR-9: dropped confidenceScore (Int) + signalTypes / sourcesUsed
         // (String[] / Json). Conviction lives in scoring.composite;
         // narrative lives in snapshot.
@@ -798,6 +801,7 @@ export async function getDashboardData(
       id: p.id,
       ticker: p.ticker,
       direction: p.direction,
+      status: p.status,
       confidenceScore: composite != null ? composite * 10 : 0,
       signalTypes: [],
       reasoningSummary: getThesisSnapshotText(p),

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { StockLogo } from "@/components/StockLogo";
 import { PnlBadge } from "@/components/ui/pnl-badge";
-import { PnlArrow } from "@/components/ui/pnl-arrow";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,6 +12,7 @@ import type { TradeStatus } from "@/lib/mock-data/trades";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { TriggersResponse } from "@/components/agent/sheets/ThesisTriggersSection";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
+import { getThesisStatusDisplay } from "@/lib/thesis-status";
 
 // 2026-04-29: removed inline expand-on-click and analyst-link button.
 // The Details button opens the full ThesisSheet which has more
@@ -61,6 +61,15 @@ export interface ThesisRowData {
    */
   thesisBullets?: string[];
   riskFlags?: string[];
+  /**
+   * Lifecycle status — drives the row's leading badge (Watching / Active /
+   * Closed / Invalidated / Archived / Superseded / Promoted). When the
+   * direction is PASS we render "Pass" instead regardless of status; PASS
+   * is terminal-at-write and ARCHIVED is just the storage shape. Typed as
+   * `string` so callers can pass DB-raw values without narrowing —
+   * `getThesisStatusDisplay` falls back gracefully on unknown values.
+   */
+  status?: string;
   /**
    * Pre-fetched durable-state snapshot to seed ThesisSheet on open (P2-19).
    * Shape matches the `/api/theses/[id]/triggers` response so the sheet
@@ -117,16 +126,31 @@ function domain(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
 }
 
-// ── Consensus / Position helpers ────────────────────────────────────────────
+// ── Status badge / Position helpers ─────────────────────────────────────────
 
-function consensus(dir: string, conf: number): { label: string; isStrong: boolean } {
-  if (dir === "PASS") return { label: "Pass", isStrong: false };
-  const isBuy = dir === "LONG";
-  if (conf >= 80) return { label: isBuy ? "Strong Buy" : "Strong Sell", isStrong: true };
-  if (conf >= 60) return { label: isBuy ? "Buy" : "Sell", isStrong: false };
-  return { label: isBuy ? "Lean Buy" : "Lean Sell", isStrong: false };
+/**
+ * Row-leading badge — renders the lifecycle STATUS (Watching, Active, …)
+ * for LONG/SHORT theses and "Pass" for PASS theses regardless of the
+ * underlying ARCHIVED status. Replaces the prior confidence-derived
+ * Strong Buy / Buy / Lean Buy label (which was misleading: a "Strong Buy"
+ * row was being rendered for theses we never traded). The label that
+ * helper computed still lives in run-summary-card.tsx for the run-summary
+ * surface — only the row consumes the status badge now.
+ */
+function rowStatusBadge(
+  direction: string,
+  status?: string,
+): { label: string; dotClass: string; tooltip: string } {
+  if (direction === "PASS") {
+    return {
+      label: "Pass",
+      dotClass: "bg-muted-foreground/40",
+      tooltip: "Researched, decided no view",
+    };
+  }
+  const d = getThesisStatusDisplay(status);
+  return { label: d.label, dotClass: d.dotClass, tooltip: d.tooltip };
 }
-
 
 function posBg(ts: TradeStatus): string {
   if (ts === "OPEN" || ts === "CLOSED_WIN") return "bg-positive/10";
@@ -140,8 +164,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const pos = t.position;
   const isPass = t.direction === "PASS";
-  const isBull = t.direction === "LONG";
-  const con = consensus(t.direction, t.confidenceScore);
+  const statusBadge = rowStatusBadge(t.direction, t.status);
   const sources = parseSources(t.sourcesUsed);
 
   const deltaPct = t.priceChange?.percent
@@ -221,16 +244,17 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
       <div className="px-4 py-3">
         {/* Analysis line */}
         <div className="flex items-center gap-1.5 mb-1.5 flex-wrap text-sm">
-          {isPass
-            ? <span className="size-2 rounded-full bg-muted-foreground/40 shrink-0" />
-            : con.isStrong
-              ? <PnlArrow direction={isBull ? "up" : "down"} className="h-4 w-4 shrink-0" />
-              : <span className={cn("size-2 rounded-full shrink-0", isBull ? "bg-positive" : "bg-negative")} />
-          }
           <Tooltip>
-            <TooltipTrigger render={<span className="font-medium cursor-default">{con.label}</span>} />
+            <TooltipTrigger
+              render={
+                <span className="inline-flex items-center gap-1.5 cursor-default shrink-0" />
+              }
+            >
+              <span className={cn("size-2 rounded-full shrink-0", statusBadge.dotClass)} />
+              <span className="font-medium">{statusBadge.label}</span>
+            </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-xs text-xs">
-              {con.label} — {t.confidenceScore}% confidence based on signal quality, data consistency, and directional conviction.
+              {statusBadge.tooltip}
             </TooltipContent>
           </Tooltip>
           {!isPass && t.targetPrice && t.targetPrice > 0 && (
