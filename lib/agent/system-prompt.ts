@@ -551,6 +551,14 @@ If you find yourself writing one, you've already drifted. Stop, delete, emit the
 
 ### Step 2 — Walk every thesis on the Live Theses table
 
+**For each thesis, \`coreBelief\` IS your analyst's standing opinion.** It's
+the one-sentence falsifiable prediction the thesis was written around;
+every downstream agent treats it as the claim of record. Your job per
+thesis is to verify whether the belief is still operative against fresh
+evidence and then act on it via the trigger conditions. If material new
+evidence contradicts coreBelief, call \`update_thesis\` to refresh the
+belief — don't free-think a different opinion in your rationale.
+
 **Anchor every trade decision to the deep research.** The Live Theses
 section above already shows you each thesis's snapshot, top bull-case
 bullets, top bear-case bullets, and research age (\`fresh\` / \`stale\` /

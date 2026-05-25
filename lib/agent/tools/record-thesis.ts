@@ -16,6 +16,7 @@ import {
   applyTriggerCooldownDefaults,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
+import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
@@ -1043,7 +1044,7 @@ export const recordThesis = defineTool({
         return applyTriggerCooldownDefaults(merged);
       })();
 
-      // ── ENTER-trigger guard (parity with manage_watchlist) ───────────
+      // ── ENTER-trigger guard (shared with update_thesis) ─────────────
       // A WATCHING/LONG or WATCHING/SHORT thesis without an ENTER trigger
       // sits inert — the trigger evaluator has no entry-promotion path,
       // and the daily-run promotion check has no level to compare price
@@ -1051,31 +1052,26 @@ export const recordThesis = defineTool({
       // guard catches the cases where (a) targetPrice is missing or (b)
       // the agent passed an explicit triggers[] array that crowded out
       // the default ENTER via the (predicate.kind, action) merge bucket.
-      // PASS theses are exempt — they're institutional memory, not
-      // entry-gated.
-      if (
-        effectiveStatusForTriggers === "WATCHING" &&
-        (args.direction === "LONG" || args.direction === "SHORT")
-      ) {
-        const hasEnter = mergedTriggers.some((t) => t.action === "ENTER");
-        if (!hasEnter) {
-          const reason =
-            args.target_price == null
-              ? `target_price is required on a directional WATCHING thesis — that's the level the ENTER trigger fires on. Either supply target_price (the breakout level for LONG, the breakdown level for SHORT) or set direction to PASS for institutional-memory-only entries.`
-              : `Your supplied triggers[] array displaced the default ENTER trigger via the (predicate, action) merge bucket. Add a trigger with action: "ENTER" and a price predicate (PRICE_ABOVE for LONG, PRICE_BELOW for SHORT) at the entry level — without it the watchlist trigger pipeline can't promote this thesis.`;
-          console.warn(
-            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — WATCHING ${args.direction} with no ENTER trigger.`,
-          );
-          return {
-            summary: `Thesis rejected for ${args.ticker}: WATCHING ${args.direction} requires an ENTER trigger.`,
-            data: {
-              thesis_id: null,
-              status: "FAILED" as const,
-              note: reason,
-            },
-            sources: [],
-          };
-        }
+      // Shared with update_thesis — see lib/agent/triggers/enter-guard.ts.
+      const enterGuard = validateEnterTriggerRequired({
+        direction: args.direction,
+        status: effectiveStatusForTriggers,
+        triggers: mergedTriggers,
+        targetPrice: args.target_price ?? null,
+      });
+      if (!enterGuard.ok) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — WATCHING ${args.direction} with no ENTER trigger.`,
+        );
+        return {
+          summary: `Thesis rejected for ${args.ticker}: WATCHING ${args.direction} requires an ENTER trigger.`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note: enterGuard.note,
+          },
+          sources: [],
+        };
       }
 
       // ── Narrative reconciliation (PR-9 flat schema) ───────────────────
