@@ -103,6 +103,36 @@ spot-checks against code references for each dropped column.
 
 ---
 
+## TD-4 — `tsc --noEmit` fails cold on origin/main with ~31 PROMOTED-enum errors
+
+**Source:** 2026-05-24 — every fresh `git checkout` or `git clone` of
+origin/main shows ~31 TypeScript errors on the `PROMOTED` enum added in
+PR #324. All resolve with `npx prisma generate`.
+
+**Why:** the generated Prisma client (in `lib/generated/prisma/`) isn't
+checked in (correct), but the husky post-checkout hook from PR #308
+only regenerates when `prisma/schema.prisma` is newer than the
+generated client — and on a fresh clone there's no generated client to
+compare against. So tsc reads the schema's `PROMOTED` status as known
+but the generated client lacks the matching union arm.
+
+**Symptoms:** the next session that runs `tsc --noEmit` cold without
+first running `prisma generate` will see ~31 spurious errors and may
+chase them as a regression. P2-21's predev hook helps on `npm run dev`
+but doesn't fire for raw `tsc`.
+
+**Why not urgent:** every existing session already has a generated
+client; the trap only catches fresh clones / new contributor setups /
+worktree-create flows. But it WILL bite — the discovery review session
+already lost time to it once.
+
+**Fix shape:** add `prisma generate` as a `postinstall` script in
+`package.json` — fires automatically on `npm install` / `npm ci`.
+Cleanest path; ~5 min. Alternative is a `pretsc` hook, but `postinstall`
+covers more entry points (CI, new clones, worktree creation).
+
+---
+
 ## How to use this file
 
 - Spotted a code smell that's not tied to the thesis architecture
