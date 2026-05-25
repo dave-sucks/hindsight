@@ -208,10 +208,10 @@ export function DataFlowLine({
   );
 }
 
-// Internal inline pill — same visual weight as inline code (mono name,
-// muted background, tight padding) but with a tiny provider logo
-// squeezed in to the left of the name. Stays a normal inline element so
-// the surrounding text wraps around it naturally.
+// Internal inline tool reference — just the provider logo + the tool
+// name in regular body text. No mono, no pill background; the goal is
+// to read as prose, not as a code chip. Click target is the name itself
+// (subtle underline on hover when a click target exists).
 
 function ToolPillInline({
   toolName,
@@ -223,14 +223,13 @@ function ToolPillInline({
   onClick?: () => void;
 }) {
   const cls = cn(
-    "inline-flex items-center gap-1 rounded bg-muted/60 px-1 py-0.5 align-baseline text-foreground",
-    onClick && "cursor-pointer hover:bg-muted",
+    "inline-flex items-center gap-1 align-baseline text-foreground",
+    onClick && "cursor-pointer hover:underline underline-offset-2 decoration-muted-foreground/60",
   );
   const content = (
     <>
       <ProviderIcon provider={provider} size={12} />
-      {/* eslint-disable-next-line no-restricted-syntax -- monospace is the correct affordance for a tool's machine name */}
-      <code className="text-xs font-mono">{toolName}</code>
+      <span className="text-sm">{toolName}</span>
     </>
   );
   if (onClick) {

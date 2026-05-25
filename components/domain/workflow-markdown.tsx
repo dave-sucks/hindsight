@@ -121,8 +121,8 @@ const components: Components = {
       return <code className={className}>{children}</code>;
     }
     return (
-      // eslint-disable-next-line no-restricted-syntax -- inline code pill — the design rule's "dedicated component" carve-out covers this
-      <code className="rounded bg-muted/60 px-1 py-0.5 text-xs font-mono text-foreground">
+      // eslint-disable-next-line no-restricted-syntax -- subtle inline-code treatment — the design rule's "dedicated component" carve-out covers this
+      <code className="rounded bg-muted/40 px-1 py-0.5 text-xs font-mono text-foreground/90">
         {children}
       </code>
     );
