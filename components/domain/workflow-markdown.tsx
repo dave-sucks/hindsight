@@ -24,7 +24,7 @@ import {
   AgentPill,
   ToolPill,
   EntityPill,
-  DataFlowRow,
+  DataFlowLine,
   parseFlowLine,
 } from "@/components/domain/workflow-pills";
 
@@ -153,7 +153,7 @@ const components: Components = {
         <div className="my-3">
           {lines.map((parsed, i) =>
             parsed ? (
-              <DataFlowRow
+              <DataFlowLine
                 key={i}
                 direction={direction}
                 toolName={parsed.toolName}

@@ -158,19 +158,20 @@ export function EntityPill({
   );
 }
 
-// ── DataFlowRow ─────────────────────────────────────────────────────────────
-// Visual indicator that a step reads from (or writes to) a specific tool.
-// Mirrors the "Using signals from Intelligence Pipeline" chip at the top of
-// the sheet — same `ArrowTurnForwardIcon`, same minimal treatment — but
-// inline inside step content. Clicking the row opens the tool's detail
-// dialog (the one already used by the Tools section at the bottom of the
-// sheet) via the WorkflowSheetContext.
+// ── DataFlowLine ─────────────────────────────────────────────────────────────
+// One inline line indicating a step reads from (or writes to) a tool.
+// Renders as plain prose: a small leading arrow icon (decoration) + a
+// tool pill (provider logo + mono name with muted background, the same
+// visual weight as inline code) + the condition text flowing inline
+// after an em-dash. The whole line wraps naturally like any paragraph;
+// only the tool pill itself is a click target for the tool dialog.
 //
 // Authored in markdown as a fenced code block with language "reads" or
 // "writes". The WorkflowMarkdown renderer parses each line of the fence
-// as `<tool_name> — <condition>` and emits one DataFlowRow per line.
+// as `<tool_name>[?provider=foo] — <condition>` and emits one of these
+// per line.
 
-export function DataFlowRow({
+export function DataFlowLine({
   direction,
   toolName,
   provider = "internal",
@@ -182,51 +183,69 @@ export function DataFlowRow({
   condition?: string;
 }) {
   const sheet = useWorkflowSheet();
-  const clickable = !!sheet;
 
-  function handleClick() {
-    sheet?.openToolByName(toolName);
-  }
-
-  const verb = direction === "read" ? "Reads" : "Writes";
-
-  const body = (
-    <span className="inline-flex items-center gap-2 align-baseline">
+  return (
+    <p className="my-2 text-sm leading-relaxed text-muted-foreground">
       <HugeiconsIcon
         icon={ArrowTurnForwardIcon}
         className={cn(
-          "size-3.5 shrink-0",
+          "inline-block size-3.5 -translate-y-px mr-1.5 align-middle",
           direction === "read" ? "text-muted-foreground" : "text-foreground",
         )}
       />
-      <span className="text-xs text-muted-foreground">{verb}</span>
-      <span className="inline-flex items-center gap-1">
-        <ProviderIcon provider={provider} size={12} />
-        {/* eslint-disable-next-line no-restricted-syntax -- monospace is the correct affordance for a tool's machine name */}
-        <code className="text-xs font-mono text-foreground">{toolName}</code>
-      </span>
+      <ToolPillInline
+        toolName={toolName}
+        provider={provider}
+        onClick={sheet ? () => sheet.openToolByName(toolName) : undefined}
+      />
       {condition && (
-        <span className="text-xs text-muted-foreground">— {condition}</span>
+        <>
+          {" — "}
+          {condition}
+        </>
       )}
-    </span>
+    </p>
   );
+}
 
-  return (
-    <div className="my-1.5 leading-relaxed">
-      {clickable ? (
-        <button
-          type="button"
-          onClick={handleClick}
-          className="block w-full rounded-md px-2 py-1.5 -mx-2 text-left transition-colors hover:bg-muted/40"
-          title={`Open ${toolName} details`}
-        >
-          {body}
-        </button>
-      ) : (
-        <div className="px-2 py-1.5 -mx-2">{body}</div>
-      )}
-    </div>
+// Internal inline pill — same visual weight as inline code (mono name,
+// muted background, tight padding) but with a tiny provider logo
+// squeezed in to the left of the name. Stays a normal inline element so
+// the surrounding text wraps around it naturally.
+
+function ToolPillInline({
+  toolName,
+  provider,
+  onClick,
+}: {
+  toolName: string;
+  provider: string;
+  onClick?: () => void;
+}) {
+  const cls = cn(
+    "inline-flex items-center gap-1 rounded bg-muted/60 px-1 py-0.5 align-baseline text-foreground",
+    onClick && "cursor-pointer hover:bg-muted",
   );
+  const content = (
+    <>
+      <ProviderIcon provider={provider} size={12} />
+      {/* eslint-disable-next-line no-restricted-syntax -- monospace is the correct affordance for a tool's machine name */}
+      <code className="text-xs font-mono">{toolName}</code>
+    </>
+  );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cls}
+        title={`Open ${toolName} details`}
+      >
+        {content}
+      </button>
+    );
+  }
+  return <span className={cls}>{content}</span>;
 }
 
 // ── Parse a single fence line ───────────────────────────────────────────────
