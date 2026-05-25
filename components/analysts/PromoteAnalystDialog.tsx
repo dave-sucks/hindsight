@@ -22,7 +22,9 @@ import {
   demoteAnalystToPaper,
   closeAllLivePositionsAndDemote,
   type PromotionPreview,
+  type DispatchedRewrite,
 } from "@/lib/actions/promote-analyst.actions";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 export function PromoteAnalystDialog({
@@ -40,12 +42,18 @@ export function PromoteAnalystDialog({
   const [confirmName, setConfirmName] = useState("");
   const [maxPosition, setMaxPosition] = useState<string>("");
   const [submitting, startTransition] = useTransition();
+  const [postPromote, setPostPromote] = useState<{
+    closed: number;
+    promoted: number;
+    dispatchedRewrites: DispatchedRewrite[];
+  } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setConfirmName("");
     setLoadError(null);
     setPreview(null);
+    setPostPromote(null);
     getPromotionPreview(analystId).then((result) => {
       if ("error" in result) {
         setLoadError(result.error);
@@ -120,12 +128,80 @@ export function PromoteAnalystDialog({
             ? `Promoted to live. Closed ${result.closed} paper position${result.closed === 1 ? "" : "s"}.`
             : "Promoted to live.",
         );
-        onOpenChange(false);
         router.refresh();
+        // Keep the dialog open so the user can watch the rewrite runs
+        // stream. They close it manually once they've clicked through
+        // the ones they care about.
+        setPostPromote({
+          closed: result.closed,
+          promoted: result.promoted,
+          dispatchedRewrites: result.dispatchedRewrites,
+        });
       } else {
         toast.error(result.error);
       }
     });
+  }
+
+  if (postPromote) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {preview!.analystName} is Live
+              <Badge variant="destructive">LIVE</Badge>
+            </DialogTitle>
+            <DialogDescription>
+              Closed {postPromote.closed} paper position
+              {postPromote.closed === 1 ? "" : "s"} and promoted{" "}
+              {postPromote.promoted} thes{postPromote.promoted === 1 ? "is" : "es"}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {postPromote.dispatchedRewrites.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No theses to refresh — the first live run will research from
+                scratch.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Promotion rewrites in progress</Label>
+                <p className="text-xs text-muted-foreground">
+                  A thesis-writer sub-agent is rewriting each thesis with the
+                  promotion framing (re-enter / downgrade / invalidate). Each
+                  takes ~60–120s. Click to watch the stream.
+                </p>
+                <div className="rounded-md border divide-y text-xs">
+                  {postPromote.dispatchedRewrites.map((d) => (
+                    <Link
+                      key={d.childRunId}
+                      href={`/runs/${d.childRunId}`}
+                      className="flex justify-between px-3 py-1.5 hover:bg-accent"
+                    >
+                      <span className="tabular-nums">{d.ticker}</span>
+                      <span className="text-muted-foreground tabular-nums">
+                        run {d.childRunId.slice(0, 8)}… →
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              size="sm"
+              onClick={() => onOpenChange(false)}
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
   }
 
   return (

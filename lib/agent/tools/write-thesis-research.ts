@@ -29,7 +29,10 @@ import {
   formatDataBlock,
   type DataBlockInputs,
 } from "@/lib/agent/thesis-research/format-data-block";
-import { buildSynthesisPrompt } from "@/lib/agent/thesis-research/build-synthesis-prompt";
+import {
+  buildSynthesisPrompt,
+  type SynthesisPromotionContext,
+} from "@/lib/agent/thesis-research/build-synthesis-prompt";
 // Import each data tool's factory directly so we don't pull
 // createResearchTools (which would create a circular import via the
 // barrel). At call time we instantiate each with the meta-tool's ctx.
@@ -314,6 +317,21 @@ export const writeThesisResearch = defineTool({
         "Required when mode='refresh' — short summary of what the current thesis says so " +
           "the model can flag changes vs supersede the prior view.",
       ),
+    promotion_context: z
+      .object({
+        paperTenureDays: z.number().nullable(),
+        paperRealizedPnl: z.number().nullable(),
+        paperReviewCount: z.number().nullable(),
+        promotedAt: z.string().nullable(),
+      })
+      .optional()
+      .describe(
+        "PAPER→LIVE promotion framing. When present, the synthesis prompt prepends a " +
+          "PROMOTION CONTEXT block that frames the Decision Fields around the three legal " +
+          "first-live-run outcomes (RE-ENTER / DOWNGRADE / INVALIDATE) instead of a generic " +
+          "LONG / SHORT / PASS decision. Auto-populated by dispatch_thesis_research for " +
+          "refresh-mode dispatches on PROMOTED theses; do not pass manually.",
+      ),
   }),
   ui: "tool-ui" as const,
   groupId: "thesis-research",
@@ -493,6 +511,9 @@ export const writeThesisResearch = defineTool({
       mode: args.mode,
       existingThesisSummary: args.existing_thesis_summary,
       dataBlock: rawDataBlock,
+      promotionContext: args.promotion_context as
+        | SynthesisPromotionContext
+        | undefined,
     });
 
     // Synthesis call — Claude Sonnet 4.6 + Anthropic native web_search.

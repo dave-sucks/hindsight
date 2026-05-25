@@ -7,6 +7,7 @@ import { getAccountId } from "@/lib/auth/account";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { closeOpenPosition } from "@/lib/actions/closeTrade.actions";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { inngest } from "@/lib/inngest/client";
 import { revalidatePath } from "next/cache";
 
 async function getServerUserId(): Promise<string> {
@@ -124,8 +125,19 @@ export async function getPromotionPreview(
   };
 }
 
+export type DispatchedRewrite = {
+  thesisId: string;
+  ticker: string;
+  childRunId: string;
+};
+
 export type PromotionResult =
-  | { ok: true; closed: number; promoted: number }
+  | {
+      ok: true;
+      closed: number;
+      promoted: number;
+      dispatchedRewrites: DispatchedRewrite[];
+    }
   | { ok: false; error: string; failedSymbol?: string; closedBeforeFailure: number };
 
 /**
@@ -206,7 +218,7 @@ export async function promoteAnalystToLive(
   });
 
   let closed = 0;
-  let promotedCount = 0;
+  const promotedTheses: PromotedThesisRecord[] = [];
   for (const pos of openPaper) {
     try {
       const closeResult = await closeOpenPosition(
@@ -238,7 +250,7 @@ export async function promoteAnalystToLive(
         // paper trade with its final P&L.
         tradeId: pos.id,
       });
-      if (promoted) promotedCount++;
+      if (promoted) promotedTheses.push(promoted);
     } catch (err) {
       return {
         ok: false,
@@ -269,7 +281,7 @@ export async function promoteAnalystToLive(
       promotionFillStatus: "FILLED",
       isOrphan: true,
     });
-    if (promoted) promotedCount++;
+    if (promoted) promotedTheses.push(promoted);
   }
 
   // 4. Flip the env flag. Optionally update the live cap in the same write.
@@ -283,12 +295,44 @@ export async function promoteAnalystToLive(
     },
   });
 
+  // 5. Fan out thesis-writer rewrites for every PROMOTED thesis. Fire-and-
+  // forget — the worker runs async (~60-120s each). Promotion is already
+  // complete at this point; missing a rewrite means the first live daily
+  // run will read the pre-promotion research. The Phase-2 staleness gate
+  // (see docs/plans/THESIS_LIFECYCLE_FIX.md) will let the daily agent
+  // self-heal by dispatching a refresh in-band; until Phase 2 ships, the
+  // user should watch the rewrite deep-links in the promotion dialog and
+  // confirm they all land before triggering the first live run. Parallel
+  // via Promise.all.
+  const dispatchedRewrites = await fanOutPromotionRewrites({
+    userId,
+    accountId,
+    analystId,
+    analystName: analyst.name,
+    promoted: promotedTheses,
+    runEnvironment: "LIVE",
+  });
+
   revalidatePath(`/analysts/${analystId}`);
   revalidatePath("/analysts");
   revalidatePath("/");
   revalidatePath("/trades");
-  return { ok: true, closed, promoted: promotedCount };
+  return {
+    ok: true,
+    closed,
+    promoted: promotedTheses.length,
+    dispatchedRewrites,
+  };
 }
+
+type PromotedThesisRecord = {
+  thesisId: string;
+  ticker: string;
+  paperTenureDays: number;
+  paperRealizedPnl: number;
+  paperReviewCount: number;
+  promotedAt: Date;
+};
 
 /**
  * Move a thesis ACTIVE → PROMOTED with conviction context frozen in.
@@ -301,6 +345,10 @@ export async function promoteAnalystToLive(
  *
  * Writes a single ThesisUpdate audit row of type STATUS_CHANGED for the
  * timeline. The status flip + context fields + audit row land in one tx.
+ *
+ * Returns the promoted thesis record (id + ticker + conviction context) so
+ * the caller can fan out a thesis-writer refresh; null if no matching
+ * thesis was found (idempotency / pre-condition mismatch).
  */
 async function transitionThesisToPromoted(input: {
   ticker: string;
@@ -312,7 +360,7 @@ async function transitionThesisToPromoted(input: {
   isOrphan?: boolean;
   /** Position id of the paper trade just closed at promotion (null for orphans). */
   tradeId?: string;
-}): Promise<boolean> {
+}): Promise<PromotedThesisRecord | null> {
   const thesis = input.thesisId
     ? await prisma.thesis.findUnique({
         where: { id: input.thesisId },
@@ -328,7 +376,7 @@ async function transitionThesisToPromoted(input: {
         orderBy: { createdAt: "desc" },
         select: { id: true, createdAt: true, ticker: true },
       });
-  if (!thesis) return false;
+  if (!thesis) return null;
 
   // Conviction context — frozen at promotion time so it never goes stale.
   const [allClosedPositions, reviewCount] = await Promise.all([
@@ -355,12 +403,13 @@ async function transitionThesisToPromoted(input: {
     ? `Thesis ACTIVE→PROMOTED during analyst promotion to LIVE. No open paper position to close; conviction preserved for first-live-run review.`
     : `Thesis ACTIVE→PROMOTED during analyst promotion to LIVE. Paper position closed at $${(input.promotionClosePrice ?? 0).toFixed(2)} (final P&L ${input.promotionRealizedPnl >= 0 ? "+" : ""}$${input.promotionRealizedPnl.toFixed(2)}). Cumulative paper P&L on this name: ${cumulativePaperPnl >= 0 ? "+" : ""}$${cumulativePaperPnl.toFixed(2)} over ${paperTenureDays}d; reaffirmed ${reviewCount}× by the analyst.`;
 
+  const promotedAt = new Date();
   await prisma.$transaction([
     prisma.thesis.update({
       where: { id: thesis.id },
       data: {
         status: "PROMOTED",
-        promotedAt: new Date(),
+        promotedAt,
         paperTenureDays,
         paperRealizedPnl: cumulativePaperPnl,
         paperReviewCount: reviewCount,
@@ -395,7 +444,113 @@ async function transitionThesisToPromoted(input: {
     tradeId: input.tradeId,
   });
 
-  return true;
+  return {
+    thesisId: thesis.id,
+    ticker: thesis.ticker,
+    paperTenureDays,
+    paperRealizedPnl: cumulativePaperPnl,
+    paperReviewCount: reviewCount,
+    promotedAt,
+  };
+}
+
+/**
+ * Spawn a thesis-writer "refresh" sub-agent for each promoted thesis. Mirrors
+ * dispatch_thesis_research's logic — create the child ResearchRun row, fire
+ * `app/thesis.write.requested` carrying the promotion context. The worker
+ * runs ~60-120s per thesis; we return the child run IDs immediately so the
+ * promote dialog can surface deep-links. Promise.all runs them in parallel.
+ *
+ * Failures here are non-fatal to the promotion itself — the analyst is
+ * already PROMOTED on the row; missing the rewrite means the first live
+ * daily run will read the pre-promotion research. Phase 2 of the lifecycle
+ * fix (docs/plans/THESIS_LIFECYCLE_FIX.md) adds the in-band refresh path
+ * so the daily agent can self-heal; until then, the user should confirm
+ * all dispatched rewrites land via the promotion-dialog deep-links before
+ * triggering the first live run.
+ */
+async function fanOutPromotionRewrites(input: {
+  userId: string;
+  accountId: string;
+  analystId: string;
+  analystName: string;
+  promoted: PromotedThesisRecord[];
+  runEnvironment: "PAPER" | "LIVE";
+}): Promise<DispatchedRewrite[]> {
+  if (input.promoted.length === 0) return [];
+
+  const dispatches = await Promise.all(
+    input.promoted.map(async (t): Promise<DispatchedRewrite | null> => {
+      try {
+        const reason =
+          `PAPER→LIVE promotion. Paper context: held ${t.paperTenureDays}d, ` +
+          `$${t.paperRealizedPnl.toFixed(2)} realized, ${t.paperReviewCount} reviews. ` +
+          `Rewrite with promotion framing: re-enter / downgrade / invalidate.`;
+
+        // Mode column is a String (not enum) — matches dispatch_thesis_research.
+        const childRun = await prisma.researchRun.create({
+          data: {
+            userId: input.userId,
+            accountId: input.accountId,
+            agentConfigId: input.analystId,
+            source: "AGENT",
+            status: "RUNNING",
+            mode: "THESIS_WRITER",
+            environment: input.runEnvironment,
+            parameters: {
+              ticker: t.ticker,
+              mode: "refresh",
+              existingThesisId: t.thesisId,
+              reason,
+              dispatchedAt: new Date().toISOString(),
+              promotionContext: {
+                paperTenureDays: t.paperTenureDays,
+                paperRealizedPnl: t.paperRealizedPnl,
+                paperReviewCount: t.paperReviewCount,
+                promotedAt: t.promotedAt.toISOString(),
+              },
+              dispatchedBy: "promote-analyst-action",
+            } as object,
+          },
+          select: { id: true },
+        });
+
+        await inngest.send({
+          name: "app/thesis.write.requested",
+          data: {
+            childRunId: childRun.id,
+            ticker: t.ticker,
+            analystId: input.analystId,
+            mode: "refresh",
+            existingThesisId: t.thesisId,
+            reason,
+            parentRunId: null,
+            forceWatchingMint: false,
+            promotionContext: {
+              paperTenureDays: t.paperTenureDays,
+              paperRealizedPnl: t.paperRealizedPnl,
+              paperReviewCount: t.paperReviewCount,
+              promotedAt: t.promotedAt.toISOString(),
+            },
+          },
+        });
+
+        return {
+          thesisId: t.thesisId,
+          ticker: t.ticker,
+          childRunId: childRun.id,
+        };
+      } catch (err) {
+        console.error(
+          `[promote-analyst] dispatch_thesis_research failed for ${t.ticker} (thesis=${t.thesisId}):`,
+          err instanceof Error ? err.message : err,
+        );
+        return null;
+      }
+    }),
+  );
+
+  return dispatches.filter((d): d is DispatchedRewrite => d !== null);
 }
 
 export type DemotionResult =
@@ -501,7 +656,7 @@ export async function closeAllLivePositionsAndDemote(
   revalidatePath(`/analysts/${analystId}`);
   revalidatePath("/analysts");
   revalidatePath("/");
-  return { ok: true, closed, promoted: reverted };
+  return { ok: true, closed, promoted: reverted, dispatchedRewrites: [] };
 }
 
 async function revertPromotedThesesToWatching(analystId: string): Promise<number> {
