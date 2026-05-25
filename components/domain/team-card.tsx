@@ -468,13 +468,6 @@ export function TeamSheetContent({ team }: { team: Team }) {
     };
   }, [team.id]);
 
-  const handleToolClick = useCallback((tool: ToolEntry) => {
-    setSelectedTool(tool);
-    // Look up agents from registry for the dialog — don't show on the card (implied by team context)
-    setSelectedToolAgents(TOOL_REGISTRY.find((rt) => rt.name === tool.name)?.agents);
-    setDialogOpen(true);
-  }, []);
-
   const upstreamSource = team.upstream ? getTeam(team.upstream.teamId) : null;
   const showSchedule = isMeaningfulSchedule(team.schedule);
   const hasMetadata = showSchedule || upstreamSource !== null;
@@ -534,8 +527,12 @@ export function TeamSheetContent({ team }: { team: Team }) {
         <WorkflowSheetProvider
           value={{
             openToolByName: (toolName) => {
-              const tool = team.tools.find((t) => t.name === toolName);
-              if (tool) handleToolClick(tool);
+              const rt = TOOL_REGISTRY.find((rt) => rt.name === toolName);
+              if (rt) {
+                setSelectedTool(toToolEntry(rt));
+                setSelectedToolAgents(rt.agents);
+                setDialogOpen(true);
+              }
             },
           }}
         >
@@ -550,7 +547,7 @@ export function TeamSheetContent({ team }: { team: Team }) {
             Steps
           </p>
           <div className="space-y-2">
-            {team.substeps.map((step, i) => (
+            {(team.substeps ?? []).map((step, i) => (
               <SubStepRow key={i} step={step} index={i} />
             ))}
           </div>
@@ -560,21 +557,31 @@ export function TeamSheetContent({ team }: { team: Team }) {
       <Separator />
 
       {/* Tools */}
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-          Tools
-          <span className="ml-1.5 text-muted-foreground/60">{team.tools.length}</span>
-        </p>
-        <div className="space-y-1.5">
-          {team.tools.map((tool, i) => (
-            <ToolCard
-              key={i}
-              tool={tool}
-              onClick={tool.resources?.length ? () => handleToolClick(tool) : undefined}
-            />
-          ))}
-        </div>
-      </div>
+      {(() => {
+        const teamTools = TOOL_REGISTRY.filter((rt) => rt.agents.includes(team.id as TeamId));
+        if (teamTools.length === 0) return null;
+        return (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+              Tools
+              <span className="ml-1.5 text-muted-foreground/60">{teamTools.length}</span>
+            </p>
+            <div className="space-y-1.5">
+              {teamTools.map((rt) => (
+                <ToolCard
+                  key={rt.name}
+                  tool={toToolEntry(rt)}
+                  onClick={rt.resources?.length ? () => {
+                    setSelectedTool(toToolEntry(rt));
+                    setSelectedToolAgents(rt.agents);
+                    setDialogOpen(true);
+                  } : undefined}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <ToolDetailDialog
         tool={selectedTool}
