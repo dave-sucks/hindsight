@@ -7,16 +7,81 @@
  * write_thesis_research meta-tool (Phase 1).
  */
 
+/**
+ * Promotion context — set only when the synthesis is being run as part of
+ * a PAPER→LIVE promotion refresh. Frames the Decision Fields block around
+ * the three legal first-live-run outcomes (re-enter / downgrade / invalidate)
+ * instead of a generic LONG / SHORT / PASS decision. See
+ * `docs/PROD_DEPLOYMENT_PLAN.md` Scenario J.
+ */
+export interface SynthesisPromotionContext {
+  /** Days the position was held in paper before promotion. 0 if never opened. */
+  paperTenureDays: number | null;
+  /** Cumulative realized P&L across all paper closes on this ticker (USD). */
+  paperRealizedPnl: number | null;
+  /** Number of UPDATED/REVIEWED audit rows on the thesis pre-promotion. */
+  paperReviewCount: number | null;
+  /** ISO timestamp of the promotion event. */
+  promotedAt: string | null;
+}
+
 export interface SynthesisPromptArgs {
   ticker: string;
   analystContext: string;
   mode: "mint" | "refresh";
   existingThesisSummary?: string;
   dataBlock: string;
+  promotionContext?: SynthesisPromotionContext;
+}
+
+function formatPnl(pnl: number | null): string {
+  if (pnl == null) return "unknown";
+  const sign = pnl >= 0 ? "+" : "";
+  return `${sign}$${pnl.toFixed(2)}`;
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "today";
+  try {
+    return new Date(iso).toISOString().slice(0, 10);
+  } catch {
+    return iso;
+  }
+}
+
+function buildPromotionBlock(ctx: SynthesisPromotionContext): string {
+  const tenure = ctx.paperTenureDays ?? 0;
+  const reviews = ctx.paperReviewCount ?? 0;
+  const pnl = formatPnl(ctx.paperRealizedPnl);
+  const when = formatDate(ctx.promotedAt);
+  return `═══════════════════════════════════════════════════════════════════
+PROMOTION CONTEXT — this thesis was just promoted from paper to live
+═══════════════════════════════════════════════════════════════════
+The analyst was promoted PAPER→LIVE on ${when}. This thesis was held in
+paper for ${tenure} days, generated ${pnl} realized P&L, and was reviewed
+${reviews} times before the user promoted the analyst to real money. The
+paper position was force-closed at promotion.
+
+Your rewrite must frame the Decision Fields block to explicitly answer:
+given the conviction history above + current data + current price, which
+of these three is the right call for the first live run?
+
+  1. RE-ENTER LIVE — keep direction LONG/SHORT, current target/stop, status
+     PROMOTED → ACTIVE on first live trade
+  2. DOWNGRADE — change status to WATCHING (conviction softened, wait for
+     cleaner entry)
+  3. INVALIDATE — change direction to PASS, the paper outcome + current
+     data say this thesis is dead
+
+If paper P&L is strongly positive AND fundamentals still hold → bias
+toward RE-ENTER. If paper P&L is negative AND no thesis-breaking catalyst
+→ bias toward DOWNGRADE. If paper P&L is negative AND a key assumption
+broke → bias toward INVALIDATE.
+`;
 }
 
 export function buildSynthesisPrompt(args: SynthesisPromptArgs): string {
-  const { ticker, analystContext, mode, existingThesisSummary, dataBlock } = args;
+  const { ticker, analystContext, mode, existingThesisSummary, dataBlock, promotionContext } = args;
   const T = ticker.toUpperCase();
 
   const modeNote =
@@ -30,6 +95,8 @@ data above contradicts or supersedes the existing thesis, flag the change
 explicitly.`
       : `MODE: MINT (net-new coverage).`;
 
+  const promotionBlock = promotionContext ? `\n${buildPromotionBlock(promotionContext)}\n` : "";
+
   return `You are writing a deep-research equity thesis on $${T}.
 
 ═══════════════════════════════════════════════════════════════════
@@ -38,7 +105,7 @@ ANALYST CONTEXT — whose voice you're writing in
 ${analystContext}
 
 ${modeNote}
-
+${promotionBlock}
 ═══════════════════════════════════════════════════════════════════
 GROUND-TRUTH DATA — use these numbers; do not invent or contradict
 ═══════════════════════════════════════════════════════════════════

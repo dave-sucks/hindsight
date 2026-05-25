@@ -53,6 +53,21 @@ export const dispatchThesisResearch = defineTool({
         "Why this dispatch is happening (e.g. 'User asked for a fresh thesis on $F via " +
           "Principal Chat'). Persisted on the child run's parameters for traceability.",
       ),
+    promotion_context: z
+      .object({
+        paperTenureDays: z.number().nullable(),
+        paperRealizedPnl: z.number().nullable(),
+        paperReviewCount: z.number().nullable(),
+        promotedAt: z.string().nullable(),
+      })
+      .optional()
+      .describe(
+        "PAPER→LIVE promotion framing. Usually you don't pass this — when mode='refresh' " +
+          "and the existing thesis is in PROMOTED status, this tool auto-populates from the " +
+          "Thesis row (paperTenureDays / paperRealizedPnl / paperReviewCount / promotedAt). " +
+          "Forwarded to the thesis-writer worker so write_thesis_research can frame the " +
+          "Decision Fields block around RE-ENTER / DOWNGRADE / INVALIDATE.",
+      ),
   }),
   ui: "tool-ui" as const,
   groupId: "thesis-dispatch",
@@ -98,6 +113,40 @@ export const dispatchThesisResearch = defineTool({
         },
         sources: [],
       };
+    }
+
+    // Auto-populate promotion_context for refreshes on PROMOTED theses. This
+    // is the path the promote-analyst action takes when fanning out rewrites
+    // for the first live run. The caller doesn't need to know whether the
+    // thesis is PROMOTED — we read the four context fields off the row and
+    // thread them into the worker so write_thesis_research's synthesis prompt
+    // gets the RE-ENTER / DOWNGRADE / INVALIDATE framing.
+    let effectivePromotionContext = args.promotion_context;
+    if (
+      args.mode === "refresh" &&
+      args.existing_thesis_id &&
+      !effectivePromotionContext
+    ) {
+      const existing = await prisma.thesis.findUnique({
+        where: { id: args.existing_thesis_id },
+        select: {
+          status: true,
+          paperTenureDays: true,
+          paperRealizedPnl: true,
+          paperReviewCount: true,
+          promotedAt: true,
+        },
+      });
+      if (existing && existing.status === "PROMOTED") {
+        effectivePromotionContext = {
+          paperTenureDays: existing.paperTenureDays,
+          paperRealizedPnl: existing.paperRealizedPnl,
+          paperReviewCount: existing.paperReviewCount,
+          promotedAt: existing.promotedAt
+            ? existing.promotedAt.toISOString()
+            : null,
+        };
+      }
     }
 
     // Resolve parentRunId. ctx.runId might be a real ResearchRun id (the
@@ -185,6 +234,7 @@ export const dispatchThesisResearch = defineTool({
           reason: args.reason,
           parentRunId: resolvedParentRunId ?? null,
           dispatchedAt: new Date().toISOString(),
+          promotionContext: effectivePromotionContext ?? null,
         } as object,
       },
       select: { id: true },
@@ -224,8 +274,15 @@ export const dispatchThesisResearch = defineTool({
         reason: args.reason,
         parentRunId: resolvedParentRunId ?? null,
         forceWatchingMint: args.mode === "mint",
+        promotionContext: effectivePromotionContext ?? null,
       },
     });
+
+    const tag = effectivePromotionContext
+      ? "promotion refresh dispatched"
+      : args.mode === "refresh"
+        ? "refresh dispatched"
+        : "mint dispatched";
 
     return {
       summary: `Dispatched thesis-writer for $${T} (${args.mode}) — child run ${childRun.id}`,
@@ -239,7 +296,7 @@ export const dispatchThesisResearch = defineTool({
           {
             kind: "ticker" as const,
             ticker: T,
-            tag: args.mode === "refresh" ? "refresh dispatched" : "mint dispatched",
+            tag,
             text: `Worker spawned for ${analyst.name} · child run ${childRun.id.slice(0, 8)}…`,
           },
           {

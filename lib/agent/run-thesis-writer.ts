@@ -49,6 +49,19 @@ export interface RunThesisWriterArgs {
    * Set by chat-dispatched mints; defaults to false otherwise.
    */
   forceWatchingMint?: boolean;
+  /**
+   * PAPER→LIVE promotion context. Pre-populated by dispatch_thesis_research
+   * for refreshes on PROMOTED theses. When set, the system prompt instructs
+   * the agent to forward it verbatim into write_thesis_research's
+   * promotion_context arg so the synthesis prompt frames Decision Fields
+   * around RE-ENTER / DOWNGRADE / INVALIDATE.
+   */
+  promotionContext?: {
+    paperTenureDays: number | null;
+    paperRealizedPnl: number | null;
+    paperReviewCount: number | null;
+    promotedAt: string | null;
+  } | null;
 }
 
 export interface RunThesisWriterResult {
@@ -78,6 +91,12 @@ function buildThesisWriterSystemPrompt(opts: {
   } | null;
   reason: string;
   minConfidence: number;
+  promotionContext?: {
+    paperTenureDays: number | null;
+    paperRealizedPnl: number | null;
+    paperReviewCount: number | null;
+    promotedAt: string | null;
+  } | null;
 }): string {
   const T = opts.ticker.toUpperCase();
   const existingBlock =
@@ -108,7 +127,23 @@ ${opts.reason}
 
 ${existingBlock}
 
-YOUR JOB (4 tool calls, ~3-5 minutes wall time)
+${
+  opts.promotionContext
+    ? `PROMOTION CONTEXT — THIS REFRESH IS PART OF A PAPER→LIVE PROMOTION
+The analyst was just promoted. The paper position on $${T} was force-closed
+and the thesis sits in PROMOTED state with this conviction history:
+  • paperTenureDays:   ${opts.promotionContext.paperTenureDays ?? "unknown"}
+  • paperRealizedPnl:  ${opts.promotionContext.paperRealizedPnl != null ? `$${opts.promotionContext.paperRealizedPnl.toFixed(2)}` : "unknown"}
+  • paperReviewCount:  ${opts.promotionContext.paperReviewCount ?? "unknown"}
+  • promotedAt:        ${opts.promotionContext.promotedAt ?? "today"}
+
+You MUST forward this verbatim into write_thesis_research's
+\`promotion_context\` arg so the synthesis prompt frames Decision Fields
+around RE-ENTER / DOWNGRADE / INVALIDATE.
+
+`
+    : ""
+}YOUR JOB (4 tool calls, ~3-5 minutes wall time)
 
 1. Call write_thesis_research ONCE. Pass:
      - ticker: "${T}"
@@ -116,6 +151,11 @@ YOUR JOB (4 tool calls, ~3-5 minutes wall time)
        (this frames the synthesis — what kind of thesis the model should write)
      - mode: "${opts.mode}"
      ${opts.mode === "refresh" && opts.existingThesis ? `- existing_thesis_summary: "${opts.existingThesis.reasoningSummary.slice(0, 200)}"` : ""}
+     ${
+       opts.promotionContext
+         ? `- promotion_context: ${JSON.stringify(opts.promotionContext)} (forward verbatim)`
+         : ""
+     }
 
    This is the meta-tool. It pulls 7 structured-data sources in parallel
    and synthesizes a multi-section thesis via a deep-research model.
@@ -410,6 +450,7 @@ export async function runThesisWriterAgent(
     existingThesis,
     reason: args.reason,
     minConfidence: analyst.minConfidence,
+    promotionContext: args.promotionContext ?? null,
   });
 
   const userPrompt =

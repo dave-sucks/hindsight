@@ -32,6 +32,19 @@ interface ThesisWriteRequestedPayload {
    * didn't include the flag (treated as false).
    */
   forceWatchingMint?: boolean;
+  /**
+   * PAPER→LIVE promotion framing. Auto-populated by dispatch_thesis_research
+   * when refreshing a PROMOTED thesis (or threaded through verbatim from a
+   * caller). Forwarded into write_thesis_research so the synthesis prompt
+   * frames the Decision Fields block around RE-ENTER / DOWNGRADE /
+   * INVALIDATE. Null/undefined on every non-promotion dispatch.
+   */
+  promotionContext?: {
+    paperTenureDays: number | null;
+    paperRealizedPnl: number | null;
+    paperReviewCount: number | null;
+    promotedAt: string | null;
+  } | null;
 }
 
 export const thesisWriter = inngest.createFunction(
@@ -72,6 +85,7 @@ export const thesisWriter = inngest.createFunction(
         reason: args.reason,
         parentRunId: args.parentRunId ?? null,
         forceWatchingMint: args.forceWatchingMint === true,
+        promotionContext: args.promotionContext ?? null,
       }),
     );
 
