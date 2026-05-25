@@ -157,6 +157,13 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "place_trade",
       "manage_position",
       "close_position",
+      // Refresh stale research before acting. Phase 2 of THESIS_LIFECYCLE_FIX:
+      // when the daily agent is about to trade a thesis whose research is
+      // missing or > STALE_DAYS, it dispatches a refresh, waits for the
+      // worker, then proceeds. Without this, the place_trade staleness
+      // gate refuses and the agent has no recovery path.
+      "dispatch_thesis_research",
+      "wait_for_thesis_refresh",
       // Terminal
       "record_run_summary",
       "complete_run",
@@ -264,6 +271,12 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "record_thesis",
       // Phase 2 — deep-research dispatch for WATCHING-worthy survivors only.
       "dispatch_thesis_research",
+      // Phase 2 (LIFECYCLE_FIX) — wait for a dispatched refresh to land
+      // before the immediate-buy flow proceeds to place_trade. Discovery's
+      // hot-catalyst path: dispatch_thesis_research(mint) → wait_for_thesis_refresh
+      // → place_trade in the same run (the worker stamps researchUpdatedAt
+      // so the place_trade staleness gate clears).
+      "wait_for_thesis_refresh",
       // Optional starter trade for high-conviction picks
       "place_trade",
       // Finalize
@@ -336,6 +349,13 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "place_trade",
       "close_position",
       "manage_position",
+      // Refresh stale research before acting. Phase 2 of
+      // THESIS_LIFECYCLE_FIX: a tactical run firing on a thesis with
+      // research > STALE_DAYS old can dispatch + wait for a refresh
+      // before executing the declared action. Without this, the
+      // place_trade staleness gate refuses and the agent is stuck.
+      "dispatch_thesis_research",
+      "wait_for_thesis_refresh",
       // Thesis (REQUIRED close-out)
       "update_thesis",
       // Finalize
@@ -406,6 +426,9 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // Spawns a thesis-writer child run for one ticker. Returns a
       // childRunId immediately; the deep research happens async.
       "dispatch_thesis_research",
+      // Phase 2 (LIFECYCLE_FIX) — block on a dispatched refresh before
+      // proceeding to act on the thesis.
+      "wait_for_thesis_refresh",
     ] as const,
     // suggest_config wires the side-panel diff for analyst edits — works
     // with or without analyst scope.
