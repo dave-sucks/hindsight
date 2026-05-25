@@ -214,7 +214,16 @@ around RE-ENTER / DOWNGRADE / INVALIDATE.
 
      - confidence_score: 0-100; ≥ ${opts.minConfidence} for ACTIVE coverage
      - core_belief: ONE short sentence (≤30 words) — a FALSIFIABLE
-       PREDICTION the trade evaluator can grade on close. Must include:
+       PREDICTION the trade evaluator can grade on close. THIS SENTENCE
+       IS THE THESIS'S STANDING OPINION. Every other agent in the
+       system (daily-run, tactical-run, briefing) reads this one line
+       when deciding what to do with the thesis. Write it like the
+       headline of a sell-side initiation note: a falsifiable,
+       time-bounded prediction with a stated mechanism. The bull case,
+       bear case, fundamentals, etc. are SUPPORTING DETAIL — coreBelief
+       is THE claim of record.
+
+       Must include:
          (1) Expected outcome — specific (price target, growth rate,
              margin level, multiple expansion, etc.). NOT "best-in-class"
              or "durable advantage" — those are observations, not claims.
@@ -240,15 +249,43 @@ around RE-ENTER / DOWNGRADE / INVALIDATE.
      - key_assumptions: ≥2 specific premises that must hold for the belief
      - invalidation_conditions: ≥2 specific things that would prove it
        wrong (numbers, events, dates — NOT "market volatility")
-     - triggers: WATCHING theses MUST carry at least one ENTER trigger
-       (action: "ENTER"). LONG → PRICE_ABOVE(target_price); SHORT →
-       PRICE_BELOW(target_price). CATALYST plays may add an event-based
-       ENTER (EARNINGS_BEAT, FILING) when entry hinges on the event
-       firing. Do NOT write EXIT triggers on WATCHING — there's no position
-       to exit and the tool rejects (HELD-template EXIT belongs only on
-       theses with an open trade). REVIEW triggers are for "warrants a
-       fresh look at the entry decision" (filings, earnings, time-based
-       hygiene) — never for "close the position."
+     - triggers: WATCHING theses MUST carry at least one trigger with
+       action: "ENTER". update_thesis's Layer-1 guard rejects WATCHING
+       LONG/SHORT writes without one — the trigger evaluator has no
+       entry-promotion path otherwise. NEVER write EXIT triggers on
+       WATCHING: there's no position to exit; EXIT only applies
+       post-entry (HELD state). For "interesting evidence, re-evaluate
+       entry" use REVIEW, not EXIT.
+
+       Pick the ENTER trigger to match the SETUP INTENT, not the default
+       target-price level:
+
+         • Pre-catalyst accumulation (entering NOW ahead of a dated
+           event like 3-day-out earnings, FDA decision, M&A close): use
+           an event-based ENTER (EARNINGS_BEAT / EARNINGS_MISS /
+           FILING), a TIME_ELAPSED-based ENTER, OR a PRICE_BELOW of a
+           support-bounce level. DO NOT default to
+           PRICE_ABOVE(target_price) — that gates entry at the
+           take-profit level, contradicting the play (you'd be entering
+           at the top, after the move you wanted is already done).
+
+         • Post-event confirmation (waiting for the catalyst to print
+           before entering): use an EARNINGS_BEAT (or matching event)
+           ENTER trigger. Entry is conditional on the print.
+
+         • Breakout pattern (waiting for resistance break, then ride the
+           continuation): use PRICE_ABOVE(breakout_level), where
+           breakout_level is BELOW target_price. The target is the
+           take-profit; the breakout is the entry.
+
+         • Pullback pattern (waiting for retrace to support before
+           entry): use PRICE_BELOW(pullback_level) as a REVIEW trigger
+           and let the next daily-run decide at that level — pullback
+           entries need fresh judgment, not an auto-fire.
+
+       REVIEW triggers stay as today: earnings outcomes (REVIEW), filings
+       (REVIEW), time-based hygiene (REVIEW), "this would warrant a
+       fresh look" predicates.
 
 4. Persist the thesis. PR-9 flat schema: pass the 9 individual section
    args (NOT a single research_sections blob — that arg was dropped).

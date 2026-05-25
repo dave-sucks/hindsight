@@ -194,6 +194,8 @@ ${
     : ""
 }
 
+**\`coreBelief\` IS your analyst's standing opinion on this name.** It's the one-sentence falsifiable claim the thesis was written around; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — and act through the trigger's declared action. If material new evidence contradicts coreBelief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
+
 **Anchor your decision to the bull/bear case above, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The bear-case bullets are what would invalidate the trade; check whether any of them have come true since the research was written.
 
 POSITION:
