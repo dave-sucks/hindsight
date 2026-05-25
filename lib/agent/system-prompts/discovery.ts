@@ -24,12 +24,12 @@ import type { AgentConfigInput } from "@/lib/agent/system-prompt";
 /**
  * Per-discovery-run dispatch cap for the thesis-writer sub-agent.
  *
- * **This is a soft cap.** It's templated into the prompt string the
- * agent reads; there is no Layer-1 enforcement in dispatch_thesis_research
- * itself. The agent COULD dispatch more, but in practice GPT-5.5 honors
- * the "max N" instruction reliably (verified post-2026-05-13). If we
- * ever need hard enforcement, add a per-run dispatch-count check in
- * lib/agent/tools/dispatch-thesis-research.ts.
+ * **Layer-1 enforced** (2026-05-24, HPQ E2E follow-up #5). The constant
+ * is exported so `lib/agent/tools/dispatch-thesis-research.ts` can read
+ * it and reject calls past the cap. The prompt also templates it in so
+ * the agent's narration matches the rejection it'd receive. Belt and
+ * suspenders — the prompt does most of the work; the gate catches the
+ * rare model violation.
  *
  * Editing this:
  *   - **Testing phase (current):** 2. Lets a manual fire produce 1-2
@@ -37,9 +37,10 @@ import type { AgentConfigInput } from "@/lib/agent/system-prompt";
  *   - **Production target:** 5. Bump back once we've validated the
  *     full Sunday-cron shape with all enabled analysts.
  *   - This single number flows into 4 prompt mentions below + the
- *     header docstring above; no other edits needed.
+ *     header docstring above + the Layer-1 enforcement in
+ *     dispatch-thesis-research.ts; no other edits needed.
  */
-const DISPATCH_CAP = 2;
+export const DISPATCH_CAP = 2;
 
 export interface DiscoveryPromptArgs {
   config: AgentConfigInput;

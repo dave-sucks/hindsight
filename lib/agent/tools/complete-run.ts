@@ -308,7 +308,18 @@ async function runCompleteRunPreflight(
   // unaddressed_theses gate below still applies to tactical.
   //
   // A6 from docs/plans/SYSTEM_AUDIT_2026_05_19.md.
-  const skipSummaryGate = runMode === "INTRADAY_TACTICAL";
+  //
+  // THESIS_WRITER added 2026-05-24 — same shape as INTRADAY_TACTICAL.
+  // Thesis-writer child runs dispatched by Discovery are single-thesis,
+  // single-decision; record_run_summary is NOT in the thesis-writer
+  // allowlist (lib/agent/modes.ts); run-thesis-writer.ts manually marks
+  // status=COMPLETE in its fallback based on whether a thesis was
+  // recorded. Before this exemption the HPQ E2E run (2026-05-24) burned
+  // 2 of its 8-step budget on failed complete_run retries — same
+  // wasteful pattern A6 documented for tactical. See
+  // docs/discovery-reviews/2026-05-24-HPQ.md follow-up #4.
+  const skipSummaryGate =
+    runMode === "INTRADAY_TACTICAL" || runMode === "THESIS_WRITER";
   if (!skipSummaryGate) {
     const summaryEvent = await prisma.runEvent.findFirst({
       where: { runId, type: "run_summary" },
@@ -388,8 +399,17 @@ async function runCompleteRunPreflight(
   };
   // Determine the in-scope thesis set based on mode.
   let thesisWhereScope: object;
-  if (runMode === "INTRADAY_TACTICAL") {
-    // Tactical: only the triggered thesis. Pull from ResearchRun.parameters.
+  if (runMode === "INTRADAY_TACTICAL" || runMode === "THESIS_WRITER") {
+    // Single-thesis sub-agents: only the in-scope thesis.
+    //   • INTRADAY_TACTICAL — the triggered thesis (parameters.thesisId)
+    //   • THESIS_WRITER     — the thesis just minted/refreshed (also
+    //                         persisted as parameters.thesisId by
+    //                         run-thesis-writer.ts on success)
+    // Scoping to the analyst's whole book would gate the sub-agent on
+    // unrelated needsAction work that's the daily-run's responsibility,
+    // not this sub-agent's. THESIS_WRITER added 2026-05-24 alongside the
+    // record_run_summary carve-out above. See docs/discovery-reviews/
+    // 2026-05-24-HPQ.md follow-up #4.
     const run = await prisma.researchRun.findUnique({
       where: { id: runId },
       select: { parameters: true },
@@ -397,9 +417,11 @@ async function runCompleteRunPreflight(
     const triggeredThesisId =
       (run?.parameters as { thesisId?: string } | null)?.thesisId ?? null;
     if (!triggeredThesisId) {
-      // Defensive: a tactical run without parameters.thesisId is malformed
-      // (tactical-run.ts always sets it). Fall through to "no theses to
-      // check" rather than gate the whole book.
+      // Defensive: a sub-agent run without parameters.thesisId is either
+      // malformed (tactical) or a thesis-writer mint that hasn't recorded
+      // its thesis yet (separate FAILED-no-output path catches that).
+      // Fall through to "no theses to check" rather than gate the whole
+      // book.
       return null;
     }
     thesisWhereScope = {

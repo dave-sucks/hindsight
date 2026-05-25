@@ -950,10 +950,35 @@ export const updateThesis = defineTool({
     if (args.catalyst_date !== undefined)
       patch.catalystDate = args.catalyst_date ? new Date(args.catalyst_date) : null;
     if (args.max_hold_days !== undefined) patch.maxHoldDays = args.max_hold_days;
-    if (args.next_review_at !== undefined)
-      patch.nextReviewAt = args.next_review_at
-        ? new Date(args.next_review_at)
-        : null;
+    if (args.next_review_at !== undefined) {
+      // Same year-confusion guard as record_thesis (see HPQ E2E
+      // 2026-05-24 follow-up #1). Reject a non-null past/near-future
+      // date and leave nextReviewAt unchanged in that case so the
+      // existing cadence survives. Null (explicit "no review") still
+      // passes through — that's a legitimate terminal-status path.
+      if (args.next_review_at === null) {
+        patch.nextReviewAt = null;
+      } else {
+        const MIN_FUTURE_HOURS = 6;
+        const parsed = new Date(args.next_review_at);
+        const minAcceptableMs = Date.now() + MIN_FUTURE_HOURS * 60 * 60 * 1000;
+        if (
+          Number.isFinite(parsed.getTime()) &&
+          parsed.getTime() >= minAcceptableMs
+        ) {
+          patch.nextReviewAt = parsed;
+        } else {
+          console.warn(
+            `[update-thesis] thesis=${args.thesis_id} — rejecting agent-provided ` +
+              `next_review_at="${args.next_review_at}" (resolves to ${parsed.toISOString()}, ` +
+              `in the past or < ${MIN_FUTURE_HOURS}h from now). Leaving existing nextReviewAt unchanged. ` +
+              `Likely a model year-confusion bug.`,
+          );
+          // Intentionally do NOT add to patch — existing nextReviewAt
+          // survives the update.
+        }
+      }
+    }
     // THESIS_RESEARCH_V2 refresh-path research persistence. PR-9: the
     // `research_sections` blob is gone — parsed sections land on the 9
     // first-class JSONB columns above (which also stamp researchUpdatedAt

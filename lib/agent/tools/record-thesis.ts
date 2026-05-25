@@ -804,19 +804,60 @@ export const recordThesis = defineTool({
           args.status === "WATCHING" ||
           (args.status == null && inferredSourceKind === "WATCHLIST_REVIEW"));
 
+      // ── nextReviewAt derivation ─────────────────────────────────────
+      // PASS rows get null (terminal at write). Everything else uses one
+      // of two paths:
+      //   1. Agent-provided `next_review_at` — validated for sanity below.
+      //   2. Horizon-default — Date.now() + WATCHING/HELD cadence days.
+      //
+      // Sanity-check the agent-provided value because the model can
+      // year-confuse (e.g. emit "2025-05-31" when today is 2026-05-31 —
+      // the HPQ E2E run on 2026-05-24 hit this, see
+      // docs/discovery-reviews/2026-05-24-HPQ.md follow-up #1). A
+      // past-dated nextReviewAt causes the trigger-evaluator cron to
+      // fire REVIEW_DATE_HIT on the very next hourly tick, creating
+      // cascading false-positive reviews. Reject the bad date silently
+      // and fall through to the horizon default + log a warning so we
+      // can spot the pattern.
+      const MIN_FUTURE_HOURS = 6;
+      const nowMs = Date.now();
+      const minAcceptableMs = nowMs + MIN_FUTURE_HOURS * 60 * 60 * 1000;
+
       let nextReviewAt: Date | null = null;
       if (args.direction === "PASS") {
         // PASS = ARCHIVED at write. No review cadence, no wake-up.
         nextReviewAt = null;
       } else if (args.next_review_at) {
-        nextReviewAt = new Date(args.next_review_at);
+        const parsed = new Date(args.next_review_at);
+        if (
+          Number.isFinite(parsed.getTime()) &&
+          parsed.getTime() >= minAcceptableMs
+        ) {
+          nextReviewAt = parsed;
+        } else {
+          console.warn(
+            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} ` +
+              `— rejecting agent-provided next_review_at="${args.next_review_at}" ` +
+              `(resolves to ${parsed.toISOString()}, which is in the past or < ${MIN_FUTURE_HOURS}h ` +
+              `from now). Falling back to horizon default. Likely a model year-confusion bug.`,
+          );
+          // Fall through to horizon default below.
+          if (args.horizon) {
+            const dayMs = 24 * 60 * 60 * 1000;
+            const horizonKey = args.horizon as HorizonPolicy;
+            const days = willBeWatching
+              ? WATCHING_FIRST_REVIEW_DAYS[horizonKey]
+              : HORIZON_REVIEW_DAYS[horizonKey];
+            nextReviewAt = new Date(nowMs + days * dayMs);
+          }
+        }
       } else if (args.horizon) {
         const dayMs = 24 * 60 * 60 * 1000;
         const horizonKey = args.horizon as HorizonPolicy;
         const days = willBeWatching
           ? WATCHING_FIRST_REVIEW_DAYS[horizonKey]
           : HORIZON_REVIEW_DAYS[horizonKey];
-        nextReviewAt = new Date(Date.now() + days * dayMs);
+        nextReviewAt = new Date(nowMs + days * dayMs);
       }
 
       // ── Effective status — derived from (direction, status) pair ──
