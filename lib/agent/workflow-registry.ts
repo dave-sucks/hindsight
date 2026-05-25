@@ -329,7 +329,6 @@ export const TEAMS: Team[] = [
     id: "discovery",
     title: "Discovery Run",
     phase: "run",
-    upstream: { teamId: "intelligence", verb: "Using signals from" },
     summary:
       "Per analyst: scans the past week's discovery signals, scores the top 2-3 candidates, mints up to 5 new WATCHING theses. The cadence safety net for new coverage.",
     description:
@@ -472,7 +471,6 @@ export const TEAMS: Team[] = [
     id: "thesis-writer",
     title: "Thesis Writer",
     phase: "run",
-    upstream: { teamId: "agent", verb: "Dispatched by" },
     summary:
       "Focused sub-agent that produces one deep-research thesis on one ticker. Spawned on-demand via dispatch_thesis_research. Pulls 7 structured-data sources in parallel, then synthesizes a multi-section equity-research note via Claude Sonnet 4.6 + native web search.",
     description:
