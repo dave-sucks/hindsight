@@ -149,8 +149,29 @@ YOUR JOB (4 tool calls, ~3-5 minutes wall time)
      - entry_price: current quote from the research (use the Snapshot)
      - target_price: real chart level (breakout / consolidation high /
        analyst-target convergence) — REQUIRED for LONG/SHORT
-     - stop_loss: real chart level (support / R:R ≥ 2:1) — REQUIRED for
-       LONG/SHORT
+     - stop_loss: real chart level (support / nearest swing low / SMA) —
+       REQUIRED for LONG/SHORT
+
+     **R/R FLOOR — MANDATORY 2:1 MINIMUM.** Before persisting, compute:
+       • LONG:  R/R = (target_price - entry_price) / (entry_price - stop_loss)
+       • SHORT: R/R = (entry_price - target_price) / (stop_loss - entry_price)
+     If R/R < 2.0, REJECT YOUR OWN DRAFT and re-size before calling
+     record_thesis. Three escape paths:
+       (a) Tighten the stop closer to entry (only if there's a valid technical
+           level — don't fabricate a tighter stop just to clear the gate).
+       (b) Raise the target (only if there's a higher cited resistance /
+           breakout / analyst PT to anchor it — don't pick a random number).
+       (c) Drop to direction='PASS' if no R/R ≥ 2:1 setup exists at current
+           prices. A 1.5:1 setup is a coin-flip — pass with reasoning_summary
+           "current entry doesn't yield 2:1 R/R; revisit at <better level>"
+           + invalidation_condition naming what would change the math.
+
+     This floor is intentionally enforced in the prompt (not the tool) so
+     you can see the rejection inside your own loop and fix it. Discovery's
+     2026-05-24 HPQ E2E landed an R/R of 1.56 — that's the failure mode
+     this block prevents. See docs/discovery-reviews/2026-05-24-HPQ.md
+     follow-up #2.
+
      - confidence_score: 0-100; ≥ ${opts.minConfidence} for ACTIVE coverage
      - core_belief: ONE short sentence (≤30 words) — a FALSIFIABLE
        PREDICTION the trade evaluator can grade on close. Must include:

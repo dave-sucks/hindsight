@@ -17,6 +17,7 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { inngest } from "@/lib/inngest/client";
+import { DISPATCH_CAP } from "@/lib/agent/system-prompts/discovery";
 
 export const dispatchThesisResearch = defineTool({
   description:
@@ -108,12 +109,60 @@ export const dispatchThesisResearch = defineTool({
     // Prisma then omits the field and the child run lands as a top-level
     // orphan (which is the right behavior for unscoped dispatches anyway).
     let resolvedParentRunId: string | undefined;
+    let parentRunMode: string | null = null;
     if (ctx.runId) {
-      const parentExists = await prisma.researchRun.findUnique({
+      const parentRow = await prisma.researchRun.findUnique({
         where: { id: ctx.runId },
-        select: { id: true },
+        select: { id: true, mode: true },
       });
-      if (parentExists) resolvedParentRunId = ctx.runId;
+      if (parentRow) {
+        resolvedParentRunId = parentRow.id;
+        parentRunMode = parentRow.mode;
+      }
+    }
+
+    // Layer-1 DISPATCH_CAP enforcement for Discovery (HPQ E2E follow-up
+    // #5 — 2026-05-24). The discovery prompt soft-caps dispatches via the
+    // DISPATCH_CAP constant; this gate makes it hard so a future model
+    // can't quietly burn the API budget by ignoring the prompt. Chat /
+    // tactical / one-off dispatches are NOT capped — only Discovery
+    // (where the cap is the whole point of the funnel).
+    //
+    // Counts the number of THESIS_WRITER children already spawned under
+    // this same Discovery parent (any status — including FAILED, since a
+    // failed dispatch still hit the API budget). At cap → reject with an
+    // actionable message that tells the agent to PASS-record instead.
+    if (parentRunMode === "DISCOVERY" && resolvedParentRunId) {
+      const existingDispatches = await prisma.researchRun.count({
+        where: {
+          parentRunId: resolvedParentRunId,
+          mode: "THESIS_WRITER",
+        },
+      });
+      if (existingDispatches >= DISPATCH_CAP) {
+        console.warn(
+          `[dispatch-thesis-research] Discovery parent=${resolvedParentRunId} ` +
+            `at DISPATCH_CAP (${existingDispatches}/${DISPATCH_CAP}) — rejecting ` +
+            `dispatch for $${T}.`,
+        );
+        return {
+          summary:
+            `Dispatch refused for $${T}: Discovery cap of ${DISPATCH_CAP} ` +
+            `thesis-writer runs already reached this run.`,
+          data: {
+            childRunId: null,
+            status: "FAILED" as const,
+            note:
+              `Discovery's per-run dispatch cap (${DISPATCH_CAP}) is enforced ` +
+              `at the tool layer. You've already dispatched ${existingDispatches} thesis-writer ` +
+              `run(s) under this parent. Mint a PASS thesis for $${T} instead ` +
+              `via record_thesis(direction:'PASS', ...) with a reasoning_summary explaining ` +
+              `why this name was below the cap line + an invalidation_condition naming ` +
+              `what would make next week's discovery promote it.`,
+          },
+          sources: [],
+        };
+      }
     }
 
     // mode is intentionally a String column on ResearchRun (not a Prisma
