@@ -18,8 +18,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { InboxUnreadIcon } from "@hugeicons/core-free-icons";
 
 interface TriggerPredicate {
   kind: string;
@@ -465,20 +463,21 @@ function TriggerGroups({ triggers }: { triggers: Trigger[] }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-1.5">
       {TRIGGER_ACTION_ORDER.map((action) => {
         const items = grouped.get(action) ?? [];
         if (items.length === 0) return null;
         return (
-          <div key={action} className="space-y-1.5">
-            <p className="text-sm text-muted-foreground">
+          <div
+            key={action}
+            className="flex flex-wrap items-center gap-x-2 gap-y-1.5"
+          >
+            <span className="text-sm text-muted-foreground shrink-0">
               {actionGroupLabel(action)}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {items.map((t) => (
-                <TriggerPill key={t.id} trigger={t} />
-              ))}
-            </div>
+            </span>
+            {items.map((t) => (
+              <TriggerPill key={t.id} trigger={t} />
+            ))}
           </div>
         );
       })}
@@ -520,68 +519,24 @@ export function ThesisTriggersSection({ thesisId, data: dataProp }: Props) {
 
   if (error) {
     return (
-      <div className="space-y-2">
-        <SectionHeader icon={<HugeiconsIcon icon={InboxUnreadIcon} className="size-4 text-foreground" />}>
-          Triggers
-        </SectionHeader>
-        <p className="text-xs text-muted-foreground">
-          Couldn&apos;t load triggers: {error}
-        </p>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Couldn&apos;t load triggers: {error}
+      </p>
     );
   }
 
   if (data == null) {
+    return <p className="text-xs text-muted-foreground">Loading triggers…</p>;
+  }
+
+  if (data.triggers.length === 0) {
     return (
-      <div className="space-y-2">
-        <SectionHeader icon={<HugeiconsIcon icon={InboxUnreadIcon} className="size-4 text-foreground" />}>
-          Triggers
-        </SectionHeader>
-        <p className="text-xs text-muted-foreground">Loading…</p>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        No triggers attached. Set a horizon when minting this thesis to
+        auto-attach the baseline.
+      </p>
     );
   }
 
-  return (
-    <div className="space-y-2.5">
-      <SectionHeader
-        icon={<HugeiconsIcon icon={InboxUnreadIcon} className="size-4 text-foreground" />}
-        count={data.triggers.length}
-      >
-        Triggers
-      </SectionHeader>
-      {data.triggers.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          No triggers attached. Set a horizon when minting this thesis to
-          auto-attach the baseline.
-        </p>
-      ) : (
-        <TriggerGroups triggers={data.triggers} />
-      )}
-    </div>
-  );
-}
-
-// ── Section header ─────────────────────────────────────────────────────
-
-function SectionHeader({
-  icon,
-  count,
-  children,
-}: {
-  icon?: React.ReactNode;
-  count?: number;
-  children: React.ReactNode;
-}) {
-  // Unified with the ThesisSheet's other section headers (2026-05-19) —
-  // xs-uppercase-tracking eyebrow pattern shared across the app.
-  return (
-    <div className="flex items-center gap-2 text-muted-foreground">
-      {icon}
-      <p className="text-xs font-mono uppercase tracking-wide">{children}</p>
-      {count != null ? (
-        <span className="text-xs tabular-nums">{count}</span>
-      ) : null}
-    </div>
-  );
+  return <TriggerGroups triggers={data.triggers} />;
 }

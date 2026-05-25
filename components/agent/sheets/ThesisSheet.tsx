@@ -50,7 +50,7 @@ import {
   getThesisStatusDisplay,
   type ThesisStatus,
 } from "@/lib/thesis-status";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
@@ -209,14 +209,19 @@ function PositionRow({
 // headline duplicated trigger data, often got stale, and pre-empted the
 // belief text from being the visual anchor.
 
-// ── Composite tier color ──
-// Green for ≥8 (strong), amber for 5-7 (decent), red for ≤4 (weak).
-// Pure text color on the score number; the gray box stays the same.
+// ── Composite tier badge variant ──
+// Same Badge palette as AnalystVerdictBadge so the header right-side reads
+// the same across the price/consensus/composite trio:
+//   ≥7   → positive (green, like "Strong Buy")
+//   4-7  → secondary (neutral gray)
+//   <4   → negative (red)
 
-function compositeTierClass(score: number): string {
-  if (score >= 8) return "text-emerald-500";
-  if (score >= 5) return "text-amber-500";
-  return "text-red-500";
+function compositeTierVariant(
+  score: number,
+): "positive" | "secondary" | "negative" {
+  if (score >= 7) return "positive";
+  if (score >= 4) return "secondary";
+  return "negative";
 }
 
 // ── IntentSuffix ──
@@ -340,13 +345,24 @@ function ScoringRow({
   max: number;
 }) {
   if (!dim) return null;
-  // Per-dim explanation surfaces as a tooltip on the label (Info icon)
-  // rather than an inline paragraph — keeps the composite-score box
-  // dense and lets the gauge be the visual anchor.
+  // Plain row — label + Info-icon tooltip on the left, gauge on the right.
+  // No InfoRow wrapper because the per-row border-b doesn't belong inside
+  // the gray Composite Score card (it visually competed with the bar).
   return (
-    <InfoRow label={label} tooltip={dim.note ?? undefined}>
+    <div className="flex items-center justify-between gap-3 min-h-7 text-sm">
+      <span className="font-light text-foreground inline-flex items-center gap-1">
+        {label}
+        {dim.note ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="cursor-help inline-flex items-center" />}>
+              <Info className="h-3 w-3 text-muted-foreground/70" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs">{dim.note}</TooltipContent>
+          </Tooltip>
+        ) : null}
+      </span>
       <ScoringGauge score={dim.score} max={max} />
-    </InfoRow>
+    </div>
   );
 }
 
@@ -367,26 +383,20 @@ function ScoringRow({
  * the section header.
  */
 function ScoringGauge({ score, max }: { score: number; max: number }) {
-  // 10 thin vertical strokes with a fixed 2px gap between them. Width
-  // auto-fits to the contents (~38px) instead of being stretched by
-  // justify-between, so the gap math is deterministic and won't smear
-  // when the container is narrow.
+  // 10 ticks rendered through the shared TickBar primitive — same w-0.5
+  // strokes, same `tall` height (16px) and same gray-empty / foreground-
+  // filled palette as PriceGauge and the consensus distribution bar.
+  // Width auto-fits to its grid slot (~140px) and stretches via justify-
+  // between so the ticks span the available space at the same density as
+  // the bars elsewhere on the sheet.
   const COUNT = 10;
   const fillRatio = max > 0 ? Math.max(0, Math.min(1, score / max)) : 0;
   const filledTicks = Math.round(fillRatio * COUNT);
-  return (
-    <div className="flex items-center gap-0.5">
-      {Array.from({ length: COUNT }, (_, i) => (
-        <span
-          key={i}
-          className={cn(
-            "w-0.5 h-3 rounded-full",
-            i < filledTicks ? "bg-foreground/75" : "bg-muted-foreground/25",
-          )}
-        />
-      ))}
-    </div>
-  );
+  const ticks: Tick[] = Array.from({ length: COUNT }, (_, i) => ({
+    color: i < filledTicks ? "bg-foreground" : "bg-muted-foreground/40",
+    tall: true,
+  }));
+  return <TickBar ticks={ticks} className="w-36 shrink-0" />;
 }
 
 // ── Skeleton placeholders for /triggers-dependent blocks ──────────────
@@ -457,6 +467,13 @@ function fmtRelativeDate(iso: string): string {
   return `${dateLabel} · ${Math.abs(diffDays)}d ago`;
 }
 
+const HORIZON_TOOLTIP: Record<string, string> = {
+  CATALYST: "Exit on the catalyst event (good or bad), or 30 days past the catalyst date.",
+  TARGET: "Open-ended hold. Exit only at target, stop, or thesis invalidation.",
+  TRADE: "Bounded short-term trade. Exit on stop, target, or maxHoldDays reached.",
+  COMPOUNDER: "Multi-year hold. Exits only when invalidation triggers fire — never auto-exits on time.",
+};
+
 function TradeStructureBlock({
   state,
 }: {
@@ -467,13 +484,21 @@ function TradeStructureBlock({
     targetSizePct: number | null;
   };
 }) {
+  const hasHorizon = state.horizon != null;
   const hasNextReview = state.nextReviewAt != null;
   const showMaxHold = state.horizon === "TRADE" && state.maxHoldDays != null;
   const hasSize = state.targetSizePct != null;
 
-  if (!hasNextReview && !showMaxHold && !hasSize) return null;
+  if (!hasHorizon && !hasNextReview && !showMaxHold && !hasSize) return null;
 
   const cells: { label: string; value: React.ReactNode; tooltip?: string }[] = [];
+  if (hasHorizon) {
+    cells.push({
+      label: "Horizon",
+      value: state.horizon,
+      tooltip: HORIZON_TOOLTIP[state.horizon!] ?? undefined,
+    });
+  }
   if (hasNextReview) {
     cells.push({
       label: "Next review",
@@ -1514,29 +1539,27 @@ export function ThesisSheetBody({
           conviction number after PR-9 (legacy `confidenceScore` int
           dropped). */}
       {state?.scoring ? (
-        <div className="rounded-xl border bg-muted/30 p-4 space-y-3">
-          <div className="flex items-baseline justify-between">
+        <Card className="bg-muted/40 p-2 gap-4">
+          <div className="flex items-baseline justify-between gap-2">
             <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
               Composite Score
             </p>
             {state.scoringComposite != null && (
-              <p
-                className={cn(
-                  "text-sm font-semibold tabular-nums",
-                  compositeTierClass(state.scoringComposite),
-                )}
+              <Badge
+                variant={compositeTierVariant(state.scoringComposite)}
+                className="font-normal tabular-nums"
               >
                 {state.scoringComposite}/10
-              </p>
+              </Badge>
             )}
           </div>
-          <div>
+          <div className="space-y-0.5">
             <ScoringRow label="Trend strength" dim={state.scoring.trendStrength} max={3} />
             <ScoringRow label="Relative strength" dim={state.scoring.relativeStrength} max={3} />
             <ScoringRow label="Entry quality" dim={state.scoring.entryQuality} max={2} />
             <ScoringRow label="Catalyst freshness" dim={state.scoring.catalystFreshness} max={2} />
           </div>
-        </div>
+        </Card>
       ) : stateLoading ? (
         <CompositeScoreSkeleton />
       ) : null}
