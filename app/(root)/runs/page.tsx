@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { getAccountId } from "@/lib/auth/account";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { Card } from "@/components/ui/card";
 import { StockLogo } from "@/components/StockLogo";
@@ -79,7 +81,9 @@ export default async function RunsPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const userId = user?.id ?? "";
+  if (!user) redirect("/sign-in");
+  const accountId = await getAccountId(user.id);
+  if (!accountId) redirect("/sign-in");
   const environment = await getCurrentEnvironment();
 
   const sp = await searchParams;
@@ -89,7 +93,7 @@ export default async function RunsPage({
   const [runs, analysts] = await Promise.all([
     prisma.researchRun.findMany({
       where: {
-        userId,
+        accountId,
         environment,
         // PRINCIPAL_CHAT rows are chat-session containers, not analytical
         // runs — they're created automatically when /chat is scoped to an
@@ -168,7 +172,7 @@ export default async function RunsPage({
     take: 100,
   }),
     prisma.agentConfig.findMany({
-      where: { userId },
+      where: { accountId },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),

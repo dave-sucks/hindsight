@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { AnalystEditClient } from "@/components/analysts/AnalystEditClient";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
+import { getAccountId } from "@/lib/auth/account";
 
 type Params = { id: string };
 
@@ -22,9 +23,11 @@ export default async function AnalystEditPage({
   } = await supabase.auth.getUser();
 
   if (!user) return notFound();
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return notFound();
 
   const config = await prisma.agentConfig.findFirst({
-    where: { id, userId: user.id },
+    where: { id, accountId },
   });
 
   if (!config) return notFound();

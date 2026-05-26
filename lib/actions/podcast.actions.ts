@@ -128,9 +128,9 @@ async function requireAccount(): Promise<{ userId: string; accountId: string }> 
 // ── Read ────────────────────────────────────────────────────────────────────
 
 export async function getPodcastList(): Promise<PodcastListItem[]> {
-  const user = await requireUser();
+  const { accountId } = await requireAccount();
   const podcasts = await prisma.podcast.findMany({
-    where: { userId: user.id },
+    where: { accountId },
     orderBy: { createdAt: "desc" },
     include: {
       segments: { select: { id: true } },
@@ -174,9 +174,9 @@ export async function getPodcastList(): Promise<PodcastListItem[]> {
 }
 
 export async function getPodcastDetail(id: string): Promise<PodcastDetail | null> {
-  const user = await requireUser();
+  const { accountId } = await requireAccount();
   const podcast = await prisma.podcast.findFirst({
-    where: { id, userId: user.id },
+    where: { id, accountId },
     include: {
       segments: {
         orderBy: { orderIndex: "asc" },
@@ -286,9 +286,9 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
 }
 
 export async function getSegmentTranscript(transcriptId: string) {
-  const user = await requireUser();
+  const { accountId } = await requireAccount();
   return prisma.segmentTranscript.findFirst({
-    where: { id: transcriptId, userId: user.id },
+    where: { id: transcriptId, accountId },
   });
 }
 
@@ -408,9 +408,9 @@ export interface SegmentPatch {
 }
 
 export async function updateSegment(segmentId: string, patch: SegmentPatch) {
-  const user = await requireUser();
+  const { accountId } = await requireAccount();
   const seg = await prisma.podcastSegment.findFirst({
-    where: { id: segmentId, userId: user.id },
+    where: { id: segmentId, accountId },
     select: { id: true, podcastId: true },
   });
   if (!seg) throw new Error("Segment not found");
@@ -433,9 +433,9 @@ export async function updatePodcastBasics(
     voiceId?: string | null;
   },
 ) {
-  const user = await requireUser();
+  const { accountId } = await requireAccount();
   const p = await prisma.podcast.findFirst({
-    where: { id: podcastId, userId: user.id },
+    where: { id: podcastId, accountId },
     select: { id: true },
   });
   if (!p) throw new Error("Podcast not found");
@@ -532,9 +532,9 @@ export async function removeSegmentMonitor(monitorId: string) {
 // ── Delete ──────────────────────────────────────────────────────────────────
 
 export async function deletePodcast(podcastId: string) {
-  const user = await requireUser();
+  const { accountId } = await requireAccount();
   const p = await prisma.podcast.findFirst({
-    where: { id: podcastId, userId: user.id },
+    where: { id: podcastId, accountId },
     select: { id: true },
   });
   if (!p) throw new Error("Podcast not found");
@@ -588,15 +588,15 @@ export interface EpisodeDetail {
 export async function listEpisodesForPodcast(
   podcastId: string,
 ): Promise<EpisodeListItem[]> {
-  const user = await requireUser();
+  const { accountId } = await requireAccount();
   const podcast = await prisma.podcast.findFirst({
-    where: { id: podcastId, userId: user.id },
+    where: { id: podcastId, accountId },
     select: { id: true },
   });
   if (!podcast) return [];
 
   const episodes = await prisma.episode.findMany({
-    where: { podcastId, userId: user.id },
+    where: { podcastId, accountId },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -622,9 +622,9 @@ export async function listEpisodesForPodcast(
 }
 
 export async function getEpisode(episodeId: string): Promise<EpisodeDetail | null> {
-  const user = await requireUser();
+  const { accountId } = await requireAccount();
   const episode = await prisma.episode.findFirst({
-    where: { id: episodeId, userId: user.id },
+    where: { id: episodeId, accountId },
     include: { podcast: { select: { name: true, voiceId: true } } },
   });
   if (!episode) return null;
@@ -636,7 +636,7 @@ export async function getEpisode(episodeId: string): Promise<EpisodeDetail | nul
     ids.length === 0
       ? []
       : await prisma.segmentTranscript.findMany({
-          where: { id: { in: ids }, userId: user.id },
+          where: { id: { in: ids }, accountId },
           select: {
             id: true,
             title: true,
@@ -1004,10 +1004,10 @@ export interface TriggerAudioResult {
 export async function triggerEpisodeAudio(
   episodeId: string,
 ): Promise<TriggerAudioResult | { ok: false; error: string }> {
-  const user = await requireUser();
+  const { userId, accountId } = await requireAccount();
 
   const episode = await prisma.episode.findFirst({
-    where: { id: episodeId, userId: user.id },
+    where: { id: episodeId, accountId },
     include: {
       podcast: { select: { voiceId: true } },
     },
@@ -1029,7 +1029,7 @@ export async function triggerEpisodeAudio(
     ids.length === 0
       ? []
       : await prisma.segmentTranscript.findMany({
-          where: { id: { in: ids }, userId: user.id },
+          where: { id: { in: ids }, accountId },
           select: { id: true, plainText: true },
         });
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -1053,7 +1053,7 @@ export async function triggerEpisodeAudio(
     name: "podcast/episode.tts.requested",
     data: {
       episodeId,
-      userId: user.id,
+      userId,
       podcastId: episode.podcastId,
       voiceId: episode.podcast.voiceId,
     },

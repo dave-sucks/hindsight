@@ -32,6 +32,7 @@ import {
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { getAccountId } from "@/lib/auth/account";
 import { cn } from "@/lib/utils";
 import { BarGauge } from "@/components/ui/bar-gauge";
 import {
@@ -120,7 +121,7 @@ export default async function StockDetailPage({ params }: Props) {
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id ?? "";
+  const accountId = user ? await getAccountId(user.id) : null;
 
   // Fetch everything in parallel
   const [profile, quote, metrics, candles, recommendations, tickerTrades, tickerTheses, watchlistStatus] = await Promise.all([
@@ -129,9 +130,9 @@ export default async function StockDetailPage({ params }: Props) {
     getStockMetrics(upperSymbol),
     getStockCandles(upperSymbol, 365),
     getRecommendationTrends(upperSymbol),
-    userId
+    accountId
       ? prisma.position.findMany({
-          where: { userId, symbol: upperSymbol },
+          where: { accountId, symbol: upperSymbol },
           orderBy: { openedAt: "desc" },
           take: 20,
           select: {
@@ -147,9 +148,9 @@ export default async function StockDetailPage({ params }: Props) {
           },
         })
       : Promise.resolve([]),
-    userId
+    accountId
       ? prisma.thesis.findMany({
-          where: { userId, ticker: upperSymbol },
+          where: { accountId, ticker: upperSymbol },
           orderBy: { createdAt: "desc" },
           take: 50,
           select: {
@@ -164,7 +165,7 @@ export default async function StockDetailPage({ params }: Props) {
           },
         })
       : Promise.resolve([]),
-    userId ? getWatchlistStatusForSymbol(upperSymbol) : Promise.resolve([]),
+    accountId ? getWatchlistStatusForSymbol(upperSymbol) : Promise.resolve([]),
   ]);
 
   // Format helpers

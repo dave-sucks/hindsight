@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccount, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
 import { resolveAlpacaCredentials, type AlpacaEnvironment } from "@/lib/actions/api-keys.actions";
+import { getAccountId } from "@/lib/auth/account";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { deriveTradeStatus } from "@/lib/trade-status";
@@ -277,7 +278,33 @@ export async function getDashboardData(
   }
 
   const userId = user.id;
+  const accountId = await getAccountId(userId);
   const todayMidnight = etTradingDayDate();
+
+  if (!accountId) {
+    // No membership — broken signup state. Return empty rather than
+    // leaking another account's data via a defaulted scope.
+    return {
+      openTrades: [],
+      closedTrades: [],
+      activityFeed: [],
+      portfolio: emptyPortfolio,
+      equityCurve: [],
+      realizedCurve: [],
+      agentConfigs: [],
+      recentRuns: [],
+      todaysPicks: [],
+      recentPicks: [],
+      hasAlpacaKey: false,
+      analystCount: 0,
+      hasCompletedRun: false,
+      hasBrief: false,
+      analysts: [],
+      analystEquityCurves: {},
+      spyBenchmark: { '1W': null, '1M': null, '1Y': null },
+      spyCandles: [],
+    };
+  }
 
   // ── Phase A: every DB read that doesn't depend on another result ─────────
   // Previously these were 7 sequential awaits stretched across the function;
@@ -296,7 +323,7 @@ export async function getDashboardData(
   ] = await Promise.all([
     resolveAlpacaCredentials(userId, environment).then((c) => c ?? undefined),
     prisma.position.findMany({
-      where: { userId, status: "OPEN", environment },
+      where: { accountId, status: "OPEN", environment },
       include: {
         analyst: { select: { name: true } },
         // Most recent BUY/SELL order — used to surface fill state in UI
@@ -319,7 +346,7 @@ export async function getDashboardData(
       orderBy: { openedAt: "desc" },
     }).catch(() => [] as never[]),
     prisma.position.findMany({
-      where: { userId, status: { in: ["CLOSED", "CANCELLED"] }, environment },
+      where: { accountId, status: { in: ["CLOSED", "CANCELLED"] }, environment },
       include: {
         analyst: { select: { name: true } },
       },
@@ -328,7 +355,7 @@ export async function getDashboardData(
     }).catch(() => [] as never[]),
     prisma.thesis.findMany({
       where: {
-        userId,
+        accountId,
         updatedAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
         researchRun: { environment },
       },
@@ -381,7 +408,7 @@ export async function getDashboardData(
       },
     }),
     prisma.agentConfig.findMany({
-      where: { userId },
+      where: { accountId },
       orderBy: { createdAt: "asc" },
       // select only what AgentConfigSummary needs — skip the big JSON/string
       // columns (analystPrompt, strategyInstructions, tickerUniverse, etc).
@@ -398,11 +425,11 @@ export async function getDashboardData(
       },
     }),
     prisma.position.findMany({
-      where: { userId, environment },
+      where: { accountId, environment },
       select: { id: true, analystId: true },
     }),
     prisma.researchRun.findMany({
-      where: { userId, environment },
+      where: { accountId, environment },
       orderBy: { startedAt: "desc" },
       take: 10,
       // select only what RecentRunSummary needs — skip the `parameters`
@@ -422,7 +449,7 @@ export async function getDashboardData(
     }),
     prisma.thesis.findMany({
       where: {
-        userId,
+        accountId,
         createdAt: { gte: todayMidnight },
         direction: { in: ["LONG", "SHORT"] },
         researchRun: { environment },
@@ -442,7 +469,7 @@ export async function getDashboardData(
     // Activity feed: recent management actions with position context
     // .catch(() => []) — silently degrades if table hasn't been migrated yet
     prisma.positionManagementAction.findMany({
-      where: { position: { userId, environment } },
+      where: { position: { accountId, environment } },
       orderBy: { createdAt: "desc" },
       take: 40,
       select: {

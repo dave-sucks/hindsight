@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import type { AlpacaEnvironment } from "@/lib/actions/api-keys.actions";
+import { getAccountId, getOwnerUserId } from "@/lib/auth/account";
 
 const COOKIE_NAME = "hindsight.environment";
 
@@ -32,23 +33,29 @@ export async function shouldExposeLiveEnv(): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
+  const accountId = await getAccountId(user.id);
+  if (!accountId) return false;
+  const ownerUserId = await getOwnerUserId(accountId);
+
   const [liveKey, livePosition, liveAnalyst] = await Promise.all([
-    prisma.userApiKey.findUnique({
-      where: {
-        userId_provider_environment: {
-          userId: user.id,
-          provider: "ALPACA",
-          environment: "LIVE",
-        },
-      },
-      select: { id: true },
-    }),
+    ownerUserId
+      ? prisma.userApiKey.findUnique({
+          where: {
+            userId_provider_environment: {
+              userId: ownerUserId,
+              provider: "ALPACA",
+              environment: "LIVE",
+            },
+          },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
     prisma.position.findFirst({
-      where: { userId: user.id, environment: "LIVE" },
+      where: { accountId, environment: "LIVE" },
       select: { id: true },
     }),
     prisma.agentConfig.findFirst({
-      where: { userId: user.id, tradingEnvironment: "LIVE" },
+      where: { accountId, tradingEnvironment: "LIVE" },
       select: { id: true },
     }),
   ]);

@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { isMarketOpen } from "@/lib/market-hours";
 import { prisma } from "@/lib/prisma";
 import { getApiKeyStatus } from "@/lib/actions/api-keys.actions";
+import { getAccountId } from "@/lib/auth/account";
 import { OnboardingShell } from "@/components/domain/onboarding-shell";
 import { getCurrentEnvironment, shouldExposeLiveEnv } from "@/lib/actions/environment.actions";
 import { EnvironmentSwitcher } from "@/components/settings/EnvironmentSwitcher";
@@ -17,6 +18,8 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) redirect('/sign-in');
+    const accountId = await getAccountId(user.id);
+    if (!accountId) redirect('/sign-in');
 
     const userObj = {
         id: user.id,
@@ -28,12 +31,12 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
     const [initialStocks, openTrades, pnlAggregate, alpacaStatus, currentEnv, exposeLive] = await Promise.all([
         searchStocks(),
         prisma.position.findMany({
-            where: { userId: user.id, status: "OPEN" },
+            where: { accountId, status: "OPEN" },
             select: { symbol: true },
             take: 10,
         }),
         prisma.position.aggregate({
-            where: { userId: user.id, status: "CLOSED" },
+            where: { accountId, status: "CLOSED" },
             _sum: { realizedPnl: true },
         }),
         getApiKeyStatus("ALPACA"),

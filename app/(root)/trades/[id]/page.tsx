@@ -18,6 +18,7 @@ import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { PriceGauge } from '@/components/ui/gauge';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase/server';
+import { getAccountId } from '@/lib/auth/account';
 import { holdDurationFromHorizon } from '@/lib/agent/horizon-policy';
 import {
   buildThesisSheetState,
@@ -129,6 +130,7 @@ export default async function TradeDetailPage({
   const { id } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  const accountId = user ? await getAccountId(user.id) : null;
 
   const position = await prisma.position.findUnique({
     where: { id },
@@ -157,7 +159,7 @@ export default async function TradeDetailPage({
     },
   });
 
-  if (!position || position.userId !== user?.id) notFound();
+  if (!position || !accountId || position.accountId !== accountId) notFound();
 
   const orders = position.orders;
   const hasPendingOrder = orders.some((o) => o.status === 'PENDING');
@@ -171,7 +173,7 @@ export default async function TradeDetailPage({
   const [thesisChain, stockProfile, stockQuote, candles] = await Promise.all([
     prisma.thesis.findMany({
       where: {
-        userId: user.id,
+        accountId,
         ticker: position.symbol,
         researchRun: { agentConfigId: position.analystId },
       },
