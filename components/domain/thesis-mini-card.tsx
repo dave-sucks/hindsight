@@ -3,26 +3,32 @@
 /**
  * ThesisMiniCard — compact thesis card for the agent chat carousel.
  *
- * Mirrors the data hierarchy of the open ThesisSheet so the carousel and
- * the sheet read as one design system:
+ * Layout (top to bottom, fits a ~320px carousel slot):
  *
- *   • header  — logo + name + ticker + status pill
- *   • prices  — Entry · Target · Stop on one compact line (just the
- *               values; no derived %-from-entry deltas — the sheet's
- *               Price Targets gauge owns the visual that already)
- *   • body    — core_belief (the standing claim). Falls back to
- *               reasoning_summary on legacy theses without coreBelief.
- *   • badge   — composite score with the same tier palette as the
- *               sheet (green ≥7, gray 4-7, red <4)
+ *   [logo] Name                       [status pill]
+ *   $157.47  +$3.91  ↗ 4.67%               [8/10]
  *
- * Click opens the same <ThesisSheet> as every other entry point.
+ *   (core belief — 2-3 lines, the durable claim)
+ *
+ *   Entry   $157.47
+ *   Target  $175.00      (positive color)
+ *   Stop    $149.00      (negative color)
+ *
+ * Live current price + day change come from /api/quotes (same endpoint
+ * the ticker chip uses). One fetch per card on mount — at 5-7 cards in
+ * a typical carousel this is fine, and Next caches at the route layer
+ * with revalidate: 30 so repeated mounts hit the cache.
+ *
+ * Click opens the same shared <ThesisSheet> as every other entry point.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { ThesisSheet, type ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
 
@@ -36,11 +42,23 @@ function fmtPrice(n: number | null | undefined): string {
   })}`;
 }
 
+function fmtSignedDollar(n: number): string {
+  const abs = Math.abs(n).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${n >= 0 ? "+" : "-"}$${abs}`;
+}
+
+function fmtSignedPct(n: number): string {
+  return `${Math.abs(n).toFixed(2)}%`;
+}
+
 /**
- * Composite badge variant — matches the Composite Score header on the
- * sheet (Strong Buy / Hold / Sell palette) so the conviction read is
- * identical across surfaces. confidence_score on ThesisCardData is the
- * 0-100 legacy scale = composite × 10, so we divide back out for display.
+ * Composite badge variant — matches AnalystVerdictBadge on the sheet so
+ * conviction reads identically across surfaces. confidence_score on
+ * ThesisCardData is the 0-100 legacy scale (composite × 10), so we
+ * divide back out.
  */
 function compositeVariant(
   scoreOutOf10: number,
@@ -50,38 +68,97 @@ function compositeVariant(
   return "negative";
 }
 
+// ── Quote fetch ─────────────────────────────────────────────────────────────
+
+type QuoteState = {
+  price: number;
+  change: number;
+  changePct: number;
+} | null;
+
+function useTickerQuote(ticker: string): { quote: QuoteState; loading: boolean } {
+  const [quote, setQuote] = useState<QuoteState>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/quotes?symbols=${encodeURIComponent(ticker)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled) return;
+        const q = json?.quotes?.[0];
+        if (q && typeof q.price === "number" && q.price > 0) {
+          setQuote({ price: q.price, change: q.change ?? 0, changePct: q.changePct ?? 0 });
+        }
+      })
+      .catch(() => {
+        /* non-fatal — card hides the price row */
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker]);
+
+  return { quote, loading };
+}
+
+// ── Row primitive ───────────────────────────────────────────────────────────
+
+function LevelRow({
+  label,
+  price,
+  priceClass,
+}: {
+  label: string;
+  price: number | null | undefined;
+  priceClass?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("tabular-nums font-medium", priceClass)}>
+        {fmtPrice(price)}
+      </span>
+    </div>
+  );
+}
+
 // ── Card ────────────────────────────────────────────────────────────────────
 
 export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const { quote, loading: quoteLoading } = useTickerQuote(thesis.ticker);
   const statusDisplay = getThesisStatusDisplay(thesis.status);
 
   const isPass = thesis.direction === "PASS";
   const hasEntry = thesis.entry_price != null;
   const hasTarget = thesis.target_price != null;
   const hasStop = thesis.stop_loss != null;
-  const hasAnyPrice = hasEntry || hasTarget || hasStop;
 
   const compositeOutOf10 =
     thesis.confidence_score > 0
       ? Math.round((thesis.confidence_score / 10) * 10) / 10
       : null;
 
-  // Body text — prefer the durable core_belief over the current-state
-  // reasoning_summary. PASS theses use pass_reason as a fallback because
-  // they don't carry a coreBelief.
+  // Prefer the durable coreBelief over current-state reasoning_summary.
+  // PASS theses fall back to pass_reason (they don't carry a coreBelief).
   const body =
-    thesis.core_belief?.trim()
-      ? thesis.core_belief
-      : isPass && thesis.pass_reason
-        ? thesis.pass_reason
-        : thesis.reasoning_summary;
+    thesis.core_belief?.trim() ||
+    (isPass ? thesis.pass_reason : null) ||
+    thesis.reasoning_summary ||
+    null;
+
+  const changePositive = quote != null && quote.change >= 0;
 
   return (
     <>
       <Card
         onClick={() => setSheetOpen(true)}
-        className="p-3 gap-2.5 cursor-pointer hover:bg-accent/40 transition-colors h-full text-left"
+        className="p-3 gap-3 cursor-pointer hover:bg-accent/40 transition-colors h-full text-left"
       >
         {/* ── Header: logo + name + status pill ───────────────────── */}
         <div className="flex items-center gap-2">
@@ -98,56 +175,72 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
           </Badge>
         </div>
 
-        {/* ── Prices row ──────────────────────────────────────────── */}
-        {/* One compact line with just the levels — no %-from-entry
-            deltas (the sheet's Price Targets gauge owns that). PASS
-            theses typically only have entry_price set; that's fine, the
-            row collapses to the cells that have values. */}
-        {hasAnyPrice && (
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
-            {hasEntry && (
-              <span className="inline-flex items-baseline gap-1">
-                <span className="text-muted-foreground">Entry</span>
-                <span className="font-medium tabular-nums">
-                  {fmtPrice(thesis.entry_price)}
-                </span>
+        {/* ── Live price + day change + composite badge ───────────── */}
+        <div className="flex items-baseline justify-between gap-2">
+          {quote ? (
+            <div className="flex items-baseline gap-2 min-w-0">
+              <span className="text-lg font-semibold tabular-nums shrink-0">
+                {fmtPrice(quote.price)}
               </span>
-            )}
-            {hasTarget && (
-              <span className="inline-flex items-baseline gap-1">
-                <span className="text-muted-foreground">Target</span>
-                <span className="font-medium tabular-nums text-positive">
-                  {fmtPrice(thesis.target_price)}
+              {quote.change !== 0 || quote.changePct !== 0 ? (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 text-xs tabular-nums shrink-0",
+                    changePositive ? "text-positive" : "text-negative",
+                  )}
+                >
+                  <span>{fmtSignedDollar(quote.change)}</span>
+                  {changePositive ? (
+                    <ArrowUpRight className="h-3 w-3 shrink-0" />
+                  ) : (
+                    <ArrowDownRight className="h-3 w-3 shrink-0" />
+                  )}
+                  <span>{fmtSignedPct(quote.changePct)}</span>
                 </span>
-              </span>
-            )}
-            {hasStop && (
-              <span className="inline-flex items-baseline gap-1">
-                <span className="text-muted-foreground">Stop</span>
-                <span className="font-medium tabular-nums text-negative">
-                  {fmtPrice(thesis.stop_loss)}
-                </span>
-              </span>
-            )}
-          </div>
-        )}
+              ) : null}
+            </div>
+          ) : quoteLoading ? (
+            <Skeleton className="h-6 w-32" />
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          )}
+          {compositeOutOf10 != null && (
+            <Badge
+              variant={compositeVariant(compositeOutOf10)}
+              className="font-normal tabular-nums shrink-0"
+            >
+              {compositeOutOf10}/10
+            </Badge>
+          )}
+        </div>
 
-        {/* ── Body: core belief (or fallback) ─────────────────────── */}
+        {/* ── Body: coreBelief (or fallback) ─────────────────────── */}
         {body && (
           <p className="text-sm text-foreground line-clamp-3 leading-snug">
             {body}
           </p>
         )}
 
-        {/* ── Footer: composite badge ─────────────────────────────── */}
-        {compositeOutOf10 != null && (
-          <div className="flex items-center justify-end pt-0.5">
-            <Badge
-              variant={compositeVariant(compositeOutOf10)}
-              className="font-normal tabular-nums"
-            >
-              {compositeOutOf10}/10
-            </Badge>
+        {/* ── Levels: Entry / Target / Stop stacked ──────────────── */}
+        {(hasEntry || hasTarget || hasStop) && (
+          <div className="flex flex-col gap-1 pt-0.5">
+            {hasEntry && (
+              <LevelRow label="Entry" price={thesis.entry_price} />
+            )}
+            {hasTarget && (
+              <LevelRow
+                label="Target"
+                price={thesis.target_price}
+                priceClass="text-positive"
+              />
+            )}
+            {hasStop && (
+              <LevelRow
+                label="Stop"
+                price={thesis.stop_loss}
+                priceClass="text-negative"
+              />
+            )}
           </div>
         )}
       </Card>

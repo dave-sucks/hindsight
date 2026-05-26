@@ -45,6 +45,8 @@ import {
 import {
   getThesisComposite,
   getThesisSnapshotText,
+  getThesisBullCaseBullets,
+  getThesisBearCaseBullets,
 } from "@/lib/agent/thesis-narrative";
 
 // ── V2 deep-research section shapes (PR-9 flat schema cutover) ───────────
@@ -1569,15 +1571,30 @@ function thesisToCardData(t: Record<string, unknown>): {
   signal_types: string[];
   status: "ACTIVE" | "WATCHING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED";
 } {
+  // PR-9 cutover: the legacy flat fields (confidenceScore, reasoningSummary,
+  // thesisBullets, riskFlags) were dropped in favor of `scoring.composite`
+  // + `snapshot.text` + `bullCase.bullets[]` + `bearCase.bullets[]`. Read
+  // through the V2 helpers so cards rendered after an update_thesis call
+  // get the populated body instead of an empty string. Falling back to the
+  // legacy field where applicable keeps pre-V2 rows working too.
+  const composite = getThesisComposite(t);
   return {
     thesis_id: t.id as string,
     ticker: t.ticker as string,
     direction: t.direction as "LONG" | "SHORT" | "PASS",
-    confidence_score: (t.confidenceScore as number) ?? 0,
+    confidence_score:
+      composite != null ? composite * 10 : ((t.confidenceScore as number) ?? 0),
     core_belief: (t.coreBelief as string | null) ?? null,
-    reasoning_summary: (t.reasoningSummary as string) ?? "",
-    thesis_bullets: (t.thesisBullets as string[]) ?? [],
-    risk_flags: (t.riskFlags as string[]) ?? [],
+    reasoning_summary:
+      getThesisSnapshotText(t) || ((t.reasoningSummary as string) ?? ""),
+    thesis_bullets:
+      getThesisBullCaseBullets(t).length > 0
+        ? getThesisBullCaseBullets(t)
+        : ((t.thesisBullets as string[]) ?? []),
+    risk_flags:
+      getThesisBearCaseBullets(t).length > 0
+        ? getThesisBearCaseBullets(t)
+        : ((t.riskFlags as string[]) ?? []),
     entry_price:
       typeof t.entryPrice === "number" ? (t.entryPrice as number) : null,
     target_price:
