@@ -47,6 +47,72 @@ const baseThesis = {
 
 const now = new Date("2026-05-10T12:00:00Z");
 
+describe("computeNeedsAction — PROMOTED_AWAITING_RESOLUTION (top precedence)", () => {
+  it("returns PROMOTED_AWAITING_RESOLUTION when status is PROMOTED, regardless of trigger state", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        status: "PROMOTED",
+        triggers: [EXIT_LONG],
+        paperTenureDays: 50,
+        paperRealizedPnl: 183.7,
+        paperReviewCount: 17,
+        promotedAt: new Date("2026-05-26T04:42:31Z"),
+      },
+      // Even with a TRIGGER_FIRED on top of the stack, PROMOTED status
+      // takes precedence — the run must address the promotion decision.
+      latestUpdate: {
+        type: "TRIGGER_FIRED",
+        triggerId: "trig-exit",
+        timestamp: new Date("2026-05-10T09:00:00Z"),
+      },
+      latestQuote: { price: 80, changePct: 0 },
+      now,
+    });
+    expect(result).toEqual({
+      kind: "PROMOTED_AWAITING_RESOLUTION",
+      paperTenureDays: 50,
+      paperRealizedPnl: 183.7,
+      paperReviewCount: 17,
+      promotedAt: "2026-05-26T04:42:31.000Z",
+    });
+  });
+
+  it("returns PROMOTED_AWAITING_RESOLUTION even when conviction context fields are missing (pre-PR-#330 rows)", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        status: "PROMOTED",
+        triggers: [],
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now,
+    });
+    expect(result).toEqual({
+      kind: "PROMOTED_AWAITING_RESOLUTION",
+      paperTenureDays: null,
+      paperRealizedPnl: null,
+      paperReviewCount: null,
+      promotedAt: null,
+    });
+  });
+
+  it("does NOT return PROMOTED_AWAITING_RESOLUTION when status is WATCHING (falls through normally)", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        status: "WATCHING",
+        triggers: [],
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now,
+    });
+    expect(result).toBeNull();
+  });
+});
+
 describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
   it("returns TRIGGER_FIRED when latest ThesisUpdate is an unanswered fire", () => {
     const result = computeNeedsAction({

@@ -301,8 +301,13 @@ export const getTheses = defineTool({
     //
     // Terminal-status theses (INVALIDATED/CLOSED/SUPERSEDED) skip the
     // computation — needsAction stays null there.
+    // PROMOTED is included so it gets the PROMOTED_AWAITING_RESOLUTION
+    // signal that tells the daily-run agent to resolve it this run.
     const liveTheses = theses.filter(
-      (t) => t.status === "ACTIVE" || t.status === "WATCHING",
+      (t) =>
+        t.status === "ACTIVE" ||
+        t.status === "WATCHING" ||
+        t.status === "PROMOTED",
     );
     const needsActionByThesisId = new Map<string, NeedsAction | null>();
 
@@ -354,9 +359,17 @@ export const getTheses = defineTool({
             thesis: {
               id: t.id,
               direction: t.direction,
+              status: t.status,
               triggers,
               createdAt: t.createdAt,
               nextReviewAt: t.nextReviewAt,
+              paperTenureDays: t.paperTenureDays ?? null,
+              paperRealizedPnl:
+                t.paperRealizedPnl != null
+                  ? Number(t.paperRealizedPnl)
+                  : null,
+              paperReviewCount: t.paperReviewCount ?? null,
+              promotedAt: t.promotedAt ?? null,
             },
             latestUpdate: latestByThesisId.get(t.id) ?? null,
             latestQuote,

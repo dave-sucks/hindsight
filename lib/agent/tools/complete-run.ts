@@ -392,12 +392,26 @@ async function runCompleteRunPreflight(
     id: string;
     ticker: string;
     direction: string;
+    status: string;
     triggers: unknown;
     createdAt: Date;
     nextReviewAt: Date | null;
+    paperTenureDays: number | null;
+    // Prisma Decimal — typed as unknown to avoid the runtime-library import;
+    // coerced via Number() at the computeNeedsAction call site below.
+    paperRealizedPnl: unknown;
+    paperReviewCount: number | null;
+    promotedAt: Date | null;
     updates: Array<{ type: string; triggerId: string | null; timestamp: Date }>;
   };
-  // Determine the in-scope thesis set based on mode.
+  // Determine the in-scope thesis set based on mode. PROMOTED is included
+  // alongside ACTIVE+WATCHING because PROMOTED rows ALWAYS need resolution
+  // this run — the user explicitly graduated the analyst to live money and
+  // the paper position was force-closed; the agent must either re-enter
+  // (place_trade) or defer (update_thesis change_status: WATCHING).
+  // Without PROMOTED in scope, the first live morning run can complete
+  // without acting on any promoted rows (production-confirmed failure
+  // mode on 2026-05-26 — see GAPS.md P0-1).
   let thesisWhereScope: object;
   if (runMode === "INTRADAY_TACTICAL" || runMode === "THESIS_WRITER") {
     // Single-thesis sub-agents: only the in-scope thesis.
@@ -427,14 +441,14 @@ async function runCompleteRunPreflight(
     thesisWhereScope = {
       id: triggeredThesisId,
       researchRun: { agentConfigId: analystId },
-      status: { in: ["ACTIVE", "WATCHING"] },
+      status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
       closedAt: null,
     };
   } else {
     // Daily-run, principal-chat, etc.: full analyst book.
     thesisWhereScope = {
       researchRun: { agentConfigId: analystId },
-      status: { in: ["ACTIVE", "WATCHING"] },
+      status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
       closedAt: null,
     };
   }
@@ -444,9 +458,14 @@ async function runCompleteRunPreflight(
       id: true,
       ticker: true,
       direction: true,
+      status: true,
       triggers: true,
       createdAt: true,
       nextReviewAt: true,
+      paperTenureDays: true,
+      paperRealizedPnl: true,
+      paperReviewCount: true,
+      promotedAt: true,
       updates: {
         orderBy: { timestamp: "desc" },
         take: 1,
@@ -497,9 +516,16 @@ async function runCompleteRunPreflight(
     const needsAction = computeNeedsAction({
       thesis: {
         id: t.id,
+        direction: t.direction,
+        status: t.status,
         triggers: (t.triggers as unknown as Trigger[]) ?? [],
         createdAt: t.createdAt,
         nextReviewAt: t.nextReviewAt,
+        paperTenureDays: t.paperTenureDays ?? null,
+        paperRealizedPnl:
+          t.paperRealizedPnl != null ? Number(t.paperRealizedPnl) : null,
+        paperReviewCount: t.paperReviewCount ?? null,
+        promotedAt: t.promotedAt ?? null,
       },
       latestUpdate: t.updates[0]
         ? {
@@ -513,7 +539,22 @@ async function runCompleteRunPreflight(
     });
     if (needsAction == null) continue;
     let detail: string;
-    if (needsAction.kind === "TRIGGER_FIRED") {
+    if (needsAction.kind === "PROMOTED_AWAITING_RESOLUTION") {
+      const ctxBits: string[] = [];
+      if (needsAction.paperTenureDays != null) {
+        ctxBits.push(`held ${needsAction.paperTenureDays}d in paper`);
+      }
+      if (needsAction.paperRealizedPnl != null) {
+        ctxBits.push(
+          `${needsAction.paperRealizedPnl >= 0 ? "+" : ""}$${needsAction.paperRealizedPnl.toFixed(2)} paper P&L`,
+        );
+      }
+      if (needsAction.paperReviewCount != null) {
+        ctxBits.push(`${needsAction.paperReviewCount} reviews`);
+      }
+      const ctx = ctxBits.length > 0 ? ` (${ctxBits.join(", ")})` : "";
+      detail = `PROMOTED — must resolve today${ctx}: call place_trade to re-enter live OR update_thesis(change_status: "WATCHING") to defer`;
+    } else if (needsAction.kind === "TRIGGER_FIRED") {
       detail = `trigger fired: ${needsAction.action} (${needsAction.summary})`;
     } else if (needsAction.kind === "TRIGGER_MATCHING_NOW") {
       detail = `predicate matching now: ${needsAction.action} (${needsAction.predicateSummary}${needsAction.livePrice != null ? ` @ $${needsAction.livePrice.toFixed(2)}` : ""})`;
@@ -534,14 +575,25 @@ async function runCompleteRunPreflight(
   const summary = unaddressed
     .map((u) => `${u.ticker} (${u.thesisId}): ${u.detail}`)
     .join("; ");
+  // Distinguish PROMOTED-only refusals — they're the most common
+  // first-live-day case and the agent benefits from a clearer hint.
+  const promotedCount = unaddressed.filter(
+    (u) => u.kind === "PROMOTED_AWAITING_RESOLUTION",
+  ).length;
+  const totalCount = unaddressed.length;
+  const headline =
+    promotedCount === totalCount
+      ? `${totalCount} PROMOTED thesis${totalCount > 1 ? "es" : ""} need a status-changing decision`
+      : `${totalCount} thesis${totalCount > 1 ? "es" : ""} need action`;
   return {
     kind: "unaddressed_theses",
-    shortReason: `${unaddressed.length} thesis${unaddressed.length > 1 ? "es" : ""} need action`,
+    shortReason: headline,
     message:
-      `complete_run refused: ${unaddressed.length} active/watching thesis${unaddressed.length > 1 ? "es" : ""} ` +
-      `${unaddressed.length > 1 ? "are" : "is"} flagged needsAction but no update_thesis was called for ` +
-      `${unaddressed.length > 1 ? "them" : "it"} in this run. ` +
-      `Resolve each by calling update_thesis (with action result, change_status="INVALIDATED" if no longer applicable, or rationale-only REVIEW). ` +
+      `complete_run refused: ${totalCount} live thesis${totalCount > 1 ? "es" : ""} ` +
+      `${totalCount > 1 ? "are" : "is"} flagged needsAction but no status-changing tool call was made for ` +
+      `${totalCount > 1 ? "them" : "it"} in this run. ` +
+      `For PROMOTED rows: call place_trade to re-enter live, or update_thesis(change_status: "WATCHING") to defer. ` +
+      `For ACTIVE/WATCHING rows: call update_thesis with the action result (or change_status="INVALIDATED" if no longer applicable, or rationale-only REVIEW). ` +
       `Then call complete_run again. Unaddressed: ${summary}`,
   };
 }
