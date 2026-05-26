@@ -73,10 +73,13 @@ export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = 
     tooltip: "On the watchlist — promotion triggers govern entry",
   },
   PROMOTED: {
-    label: "Awaiting live entry",
+    label: "Promoted",
     // Amber pulse = action required this run. The conviction-pause state
     // after PAPER→LIVE promotion: thesis was held, position force-closed,
     // next live run must place_trade (re-enter) or downgrade to WATCHING.
+    // Label is the literal enum name; the prior "Awaiting live entry" read
+    // as passive informational copy and the daily-run agent skipped these
+    // rows on the 2026-05-26 first-live morning run.
     dotClass: "bg-amber-500 animate-pulse",
     tooltip:
       "Held in paper, just promoted to live — next run must re-enter or downgrade to watching",

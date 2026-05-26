@@ -136,6 +136,24 @@ Add a `recommendedAction: "BUY_LIVE" | "DEFER_TO_WATCHING" | "INVALIDATE"` field
 
 Current label reads passive — agent treated it that way too. Rename to "Decide today (re-enter / wait / kill)" or similar. Tiny UX fix that makes the PROMOTED state legible at a glance.
 
+### P1-8 — V2 daily-run prompt has no DAY-trader workflow
+**Status:** surfaced during V1-deletion (GAPS P0-2) audit, 2026-05-26.
+
+`buildV2SystemPrompt` (V1, now deleted) carried a separate `if (dayOnly)` branch (~80 lines) with a DAY-trader-specific 5-phase playbook: pre-market check → movers-first screen → candidate list (5–8 names) → mint WATCHING theses with intraday ABS-price triggers → record. Critical pieces: forbidden carryover (positions over from yesterday are EOD-flatten misses to clean up first), absolute PRICE_ABOVE/PRICE_BELOW triggers only (PRICE_MOVE_PCT / VS_SMA / RSI silent-fail on the intraday cron), reject-extended-chase rule (>8% premarket), no-overnight rule with `intraday-eod-flatten.ts` at 15:45 ET enforcing.
+
+`buildDailyRunSystemPromptV2` has no DAY branch — a DAY-only analyst (`holdDurations === ["DAY"]`) running through it gets the SWING walk-the-book workflow, which assumes durable theses and per-thesis review cadences that don't apply to a single-session strategy.
+
+**Fix:** add a DAY-flavored fork to V2 mirroring the V1 structure. The historical V1 DAY block lives at the deletion commit's parent (`git show <parent>:lib/agent/system-prompt.ts` lines 446-526) — port the workflow body, drop the priority-blocks pre-rendering (V2 uses get_theses + needsAction instead), keep the intraday-only trigger discipline and the EOD-flatten reminder.
+
+Verify against `intraday-eod-flatten.ts` and `discovery-run.ts:59` (which skips Discovery for DAY-only analysts) — both confirm DAY is a real production lifecycle, not legacy.
+
+### P1-9 — `lib/agent/system-prompt-template.ts` mirrors the deleted V1 prompt
+**Status:** UX-only. Surfaced 2026-05-26 during V1 deletion.
+
+`SYSTEM_PROMPT_TEMPLATE` in `lib/agent/system-prompt-template.ts` is a static markdown mirror of the V1 prompt body, consumed by `workflow-registry.ts:255` for the "How It Works" sheet's Daily Run prompt-preview tab. After V1 deletion the runtime no longer renders content shaped like the template — users reading the sheet see legacy V1 sections (6 stages, scoring rubric, intelligence policy summary) that the agent never actually receives.
+
+**Fix:** regenerate the template to mirror `buildDailyRunSystemPromptV2`'s structure (Identity → Edge → Universe & rules → Horizon glossary → Per-horizon data discipline → How you work → Your job → How tools work). Keep the `{placeholder}` substitution shape; static text only.
+
 ---
 
 ## P2 — Backlog (defer until P0+P1 clean)

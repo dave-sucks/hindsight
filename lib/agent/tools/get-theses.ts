@@ -453,7 +453,7 @@ export const getTheses = defineTool({
     const summary =
       enriched.length === 0
         ? "No theses match those filters."
-        : `${enriched.length} thes${enriched.length === 1 ? "is" : "es"} (${activeCount} active, ${watchingCount} watching${promotedCount > 0 ? `, ${promotedCount} promoted awaiting live entry` : ""}).`;
+        : `${enriched.length} thes${enriched.length === 1 ? "is" : "es"} (${activeCount} active, ${watchingCount} watching${promotedCount > 0 ? `, ${promotedCount} promoted` : ""}).`;
 
     return {
       summary,

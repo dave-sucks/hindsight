@@ -116,10 +116,6 @@ export const morningResearch = inngest.createFunction(
           undefined;
 
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
-        // V2 is the only path. The legacy ~600-line builder
-        // (buildV2SystemPrompt — confusingly named) is marked @deprecated
-        // in lib/agent/system-prompt.ts and no longer called from any cron
-        // path.
         const systemPrompt = buildDailyRunSystemPromptV2(agentConfig, runInput);
 
         // 2d. Create tools with run context, then enforce the

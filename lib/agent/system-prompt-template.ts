@@ -1,7 +1,11 @@
 // ── System Prompt Template ─────────────────────────────────────────────────
-// Static markdown mirror of buildV2SystemPrompt() in lib/agent/system-prompt.ts.
-// If you change the real prompt, update this file — drift here is doc-only
-// but causes confusion. Runtime always uses the real function, never this.
+// Static markdown mirror of the OLD V1 daily-run prompt — which was deleted
+// from lib/agent/system-prompt.ts in this PR. This template now drifts from
+// the production prompt (`buildDailyRunSystemPromptV2`). Tracked as GAPS
+// P1-9; until that lands the HowItWorksSheet's Daily Run prompt preview
+// shows legacy V1 sections (6 stages, scoring rubric, intelligence policy
+// summary) that the agent never actually receives. Runtime always uses
+// `buildDailyRunSystemPromptV2`, never this string.
 //
 // Dynamic sections (portfolio, watchlist, theses, prior brief, performance,
 // closed trades, intelligence policy) shown with placeholder values.
