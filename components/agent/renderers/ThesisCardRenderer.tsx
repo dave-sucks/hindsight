@@ -28,7 +28,7 @@ import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { MessageSearch01Icon, QuillWrite01Icon } from "@hugeicons/core-free-icons";
-import type { ThesisCardData } from "@/components/domain/thesis-card";
+import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 
 interface Props {
   toolName: string;

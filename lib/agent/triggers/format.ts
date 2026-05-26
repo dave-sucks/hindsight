@@ -105,3 +105,35 @@ export function actionLabel(action: string): string {
 export function describeTriggerFire(trigger: Trigger): string {
   return `${predicateSentence(trigger.predicate)} — ${actionLabel(trigger.action)}`;
 }
+
+/**
+ * Group-header label for the sheet's Triggers section. One label per
+ * TriggerAction — each action gets its own group instead of the previous
+ * 3-bucket collapse (which conflated ADD with ENTER and TRIM with EXIT
+ * and dropped MOVE_STOP into REVIEW). Pairs with the new popover title
+ * "{ActionVerb} if {predicate}".
+ *
+ *   ENTER     → "Buy if"
+ *   ADD       → "Add if"
+ *   TRIM      → "Trim if"
+ *   MOVE_STOP → "Move stop if"
+ *   EXIT      → "Exit if"
+ *   REVIEW    → "Review if"
+ */
+export function actionGroupLabel(action: string): string {
+  switch (action) {
+    case "ENTER":
+      return "Buy if";
+    case "ADD":
+      return "Add if";
+    case "TRIM":
+      return "Trim if";
+    case "MOVE_STOP":
+      return "Move stop if";
+    case "EXIT":
+      return "Exit if";
+    case "REVIEW":
+    default:
+      return "Review if";
+  }
+}

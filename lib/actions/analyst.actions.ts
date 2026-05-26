@@ -1813,3 +1813,67 @@ export async function updateAnalystFromBuilder(
   revalidatePath(`/analysts/${id}`);
   revalidatePath("/analysts");
 }
+
+/**
+ * getAnalystTheses — returns ThesisCardData[] shaped for ThesisMiniCard.
+ *
+ * Used by the analyst detail page's Theses tab. Pulls the analyst's recent
+ * theses (any status, any direction) ordered by updatedAt-desc so the most
+ * recently touched bubble to the top — matches the dashboard sort post the
+ * createdAt → updatedAt switch.
+ */
+export async function getAnalystTheses(analystId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const userId = user?.id;
+  if (!userId) return [];
+  const accountId = await getAccountId(userId);
+  if (!accountId) return [];
+
+  const rows = await prisma.thesis.findMany({
+    where: {
+      accountId,
+      researchRun: { agentConfigId: analystId },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      ticker: true,
+      direction: true,
+      status: true,
+      scoring: true,
+      snapshot: true,
+      entryPrice: true,
+      targetPrice: true,
+      stopLoss: true,
+      holdDuration: true,
+    },
+  });
+
+  return rows.map((t) => {
+    const composite = getThesisComposite(t);
+    const dir = (t.direction === "LONG" || t.direction === "SHORT" || t.direction === "PASS")
+      ? t.direction
+      : "PASS";
+    const status =
+      t.status === "ACTIVE" || t.status === "WATCHING" || t.status === "CLOSED" ||
+      t.status === "INVALIDATED" || t.status === "SUPERSEDED" || t.status === "PROMOTED"
+        ? t.status
+        : undefined;
+    return {
+      thesis_id: t.id,
+      ticker: t.ticker,
+      direction: dir as "LONG" | "SHORT" | "PASS",
+      confidence_score: composite != null ? Math.round(composite * 10) : 0,
+      reasoning_summary: getThesisSnapshotText(t),
+      entry_price: t.entryPrice,
+      target_price: t.targetPrice,
+      stop_loss: t.stopLoss,
+      hold_duration: t.holdDuration ?? undefined,
+      status,
+    };
+  });
+}

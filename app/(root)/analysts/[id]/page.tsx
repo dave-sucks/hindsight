@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { getAnalystDetail } from "@/lib/actions/analyst.actions";
+import { getAnalystDetail, getAnalystTheses } from "@/lib/actions/analyst.actions";
 import { getWatchlistItems } from "@/lib/actions/watchlist.actions";
 import { getLatestPrices } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -39,7 +39,7 @@ export default async function AnalystDetailPage({
     });
   }
 
-  const [detail, runningCount, watchlistItems, alpacaCreds] = await Promise.all([
+  const [detail, runningCount, watchlistItems, alpacaCreds, theses] = await Promise.all([
     getAnalystDetail(id).catch((err) => {
       console.error("[analyst-page] getAnalystDetail failed:", err);
       return null;
@@ -51,6 +51,7 @@ export default async function AnalystDetailPage({
       : Promise.resolve(0),
     getWatchlistItems(id).catch(() => []),
     userId ? resolveAlpacaCredentials(userId).catch(() => null) : Promise.resolve(null),
+    getAnalystTheses(id).catch(() => []),
   ]);
 
   if (!detail) notFound();
@@ -73,6 +74,7 @@ export default async function AnalystDetailPage({
       hasRunning={runningCount > 0}
       initialWatchlist={watchlistItems}
       livePrices={livePrices}
+      theses={theses}
     />
   );
 }

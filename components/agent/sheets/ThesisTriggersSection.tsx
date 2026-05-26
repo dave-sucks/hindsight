@@ -12,18 +12,12 @@
  * info popovers on /intelligence.
  */
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { InfoRow } from "@/components/ui/info-row";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { InboxUnreadIcon } from "@hugeicons/core-free-icons";
-import { Zap } from "lucide-react";
-import { useRouter } from "next/navigation";
 
 interface TriggerPredicate {
   kind: string;
@@ -201,7 +195,7 @@ export interface ThesisResearchSections {
 
 import {
   predicateSentence as sharedPredicateSentence,
-  actionLabel as sharedActionLabel,
+  actionGroupLabel,
 } from "@/lib/agent/triggers/format";
 import type { TriggerPredicate as SharedTriggerPredicate } from "@/lib/agent/triggers/types";
 
@@ -339,45 +333,7 @@ function predicateDescription(p: TriggerPredicate): string {
 // group + as the label inside the popover. Used to live as an inline
 // icon on every pill; removed in the 2026-05-20 pill redesign.
 
-function actionLabel(action: string): string {
-  // Shared module returns lowercase verb phrases; capitalize for pill display.
-  const phrase = sharedActionLabel(action);
-  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
-}
-
-// ── Horizon descriptions ────────────────────────────────────────────────
-// One-liner exit policy per horizon. Sourced from the schema comment in
-// prisma/schema.prisma:159-164 — keep in sync if the comments change.
-// Surfaces below the Horizon row in the Schedule section so the reader
-// doesn't need to know the enum semantics.
-
-const HORIZON_DESCRIPTIONS: Record<string, string> = {
-  CATALYST:
-    "Exit on the catalyst event (good or bad), or 30 days past the catalyst date.",
-  TARGET:
-    "Open-ended hold. Exit only at target, stop, or thesis invalidation.",
-  TRADE:
-    "Bounded short-term trade. Exit on stop, target, or maxHoldDays reached.",
-  COMPOUNDER:
-    "Multi-year hold. Exits only when invalidation triggers fire — never auto-exits on time.",
-};
-
 // ── Date formatters ─────────────────────────────────────────────────────
-
-function fmtRelativeOrDate(iso: string | null): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  const now = Date.now();
-  const diffDays = Math.round((date.getTime() - now) / 86_400_000);
-  const dateStr = date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-  if (diffDays === 0) return `${dateStr} (today)`;
-  if (diffDays > 0) return `${dateStr} (in ${diffDays}d)`;
-  return `${dateStr} (${Math.abs(diffDays)}d ago)`;
-}
 
 function fmtFiredAt(iso?: string): string {
   if (!iso) return "Never";
@@ -401,15 +357,7 @@ function fmtFiredAt(iso?: string): string {
 //   - Value-less predicates (REVIEW_DATE_HIT, EARNINGS_BEAT without min%)
 //     render the kind cell only.
 
-function TriggerPill({
-  trigger,
-  firing,
-  onTestFire,
-}: {
-  trigger: Trigger;
-  firing: boolean;
-  onTestFire: () => void;
-}) {
+function TriggerPill({ trigger }: { trigger: Trigger }) {
   const { kind, value } = predicateKindValue(trigger.predicate);
   return (
     <Popover>
@@ -438,34 +386,26 @@ function TriggerPill({
         ) : null}
       </PopoverTrigger>
 
-      <TriggerPopoverContent
-        trigger={trigger}
-        firing={firing}
-        onTestFire={onTestFire}
-      />
+      <TriggerPopoverContent trigger={trigger} />
     </Popover>
   );
 }
 
 function TriggerPopoverContent({
   trigger,
-  firing,
-  onTestFire,
 }: {
   trigger: Trigger;
-  firing: boolean;
-  onTestFire: () => void;
 }) {
+  // Title now includes the action verb so the reader gets the full
+  // "what fires + what we do" in one line: "Buy if price above $178",
+  // "Exit if price below $14.50", "Review if 7 days elapsed".
+  const titleSentence = `${actionGroupLabel(trigger.action)} ${predicateSentence(
+    trigger.predicate,
+  ).toLowerCase()}`;
   return (
     <PopoverContent side="left" align="start" className="w-72 p-0">
-      {/* Plain title — kind + value as a single sentence, lives at the
-          same indent as the body text. Replaces the 2-cell grid header
-          that mirrored the pill (2026-05-20) — too much visual weight
-          for what's really just a heading. */}
       <div className="px-3 pt-3 pb-2 border-b border-border">
-        <p className="text-sm font-medium text-foreground">
-          {predicateSentence(trigger.predicate)}
-        </p>
+        <p className="text-sm font-medium text-foreground">{titleSentence}</p>
       </div>
 
       <div className="space-y-3 p-3 text-xs">
@@ -481,12 +421,6 @@ function TriggerPopoverContent({
         </div>
 
         <div className="flex items-center justify-between text-muted-foreground border-t border-border pt-3">
-          <span>Action</span>
-          <span className="text-foreground">
-            {actionLabel(trigger.action)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-muted-foreground">
           <span>Last fired</span>
           <span className="text-foreground tabular-nums">
             {fmtFiredAt(trigger.lastFiredAt)}
@@ -500,107 +434,50 @@ function TriggerPopoverContent({
             </span>
           </div>
         ) : null}
-
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onTestFire}
-          disabled={firing}
-          className="w-full"
-        >
-          <Zap className="size-3" />
-          {firing ? "Firing…" : "Test fire"}
-        </Button>
       </div>
     </PopoverContent>
   );
 }
 
 // ── Trigger grouping ────────────────────────────────────────────────────
-// Triggers are grouped by intent so the eye reads the trigger pile as a
-// status board, not a flat chip cloud:
-//   EXIT IF    — terminal actions that close the position
-//   ENTER IF   — actions that open or scale into a position
-//   REVIEW IF  — re-evaluate triggers (the agent looks again, decides)
-//
-// Action → group mapping:
-//   EXIT, TRIM       → EXIT IF
-//   ADD              → ENTER IF
-//   MOVE_STOP, REVIEW (default) → REVIEW IF
-//
-// NOTE on watching-vs-held trigger semantics: the current
-// `triggers/defaults.ts` templates assume a held position and emit
-// EXIT triggers for stop-loss. For a WATCHING (non-held) thesis,
-// EXIT triggers don't make sense — there's nothing to exit. The right
-// shape for a watching/LONG thesis is ENTER triggers (PRICE_ABOVE
-// breakout level → review for INITIATE). Until that backend fix lands,
-// the grouping below shows the templates as written, including any
-// EXIT triggers on watching theses. See docs/SESSION_AUDIT_2026_05_06.md.
+// Each TriggerAction gets its own group — Buy if / Add if / Trim if /
+// Move stop if / Exit if / Review if. Action verbs come from the shared
+// actionGroupLabel helper so the popover title and the section header
+// stay in sync. Groups with zero triggers don't render.
 
-const TRIGGER_GROUPS: ReadonlyArray<{
-  key: "EXIT" | "ENTER" | "REVIEW";
-  label: string;
-  actions: ReadonlySet<string>;
-}> = [
-  {
-    key: "ENTER",
-    label: "Enter if",
-    actions: new Set(["ENTER", "ADD"]),
-  },
-  {
-    key: "EXIT",
-    label: "Exit if",
-    actions: new Set(["EXIT", "TRIM"]),
-  },
-  {
-    key: "REVIEW",
-    label: "Review if",
-    actions: new Set(["REVIEW", "MOVE_STOP"]),
-  },
+const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = [
+  "ENTER",
+  "ADD",
+  "REVIEW",
+  "MOVE_STOP",
+  "TRIM",
+  "EXIT",
 ];
 
-function groupOf(action: string): "EXIT" | "ENTER" | "REVIEW" {
-  for (const g of TRIGGER_GROUPS) {
-    if (g.actions.has(action)) return g.key;
-  }
-  return "REVIEW";
-}
-
-function TriggerGroups({
-  triggers,
-  firing,
-  onTestFire,
-}: {
-  triggers: Trigger[];
-  firing: string | null;
-  onTestFire: (id: string) => void;
-}) {
-  const grouped = new Map<"EXIT" | "ENTER" | "REVIEW", Trigger[]>();
+function TriggerGroups({ triggers }: { triggers: Trigger[] }) {
+  const grouped = new Map<string, Trigger[]>();
   for (const t of triggers) {
-    const k = groupOf(t.action);
-    const arr = grouped.get(k) ?? [];
+    const arr = grouped.get(t.action) ?? [];
     arr.push(t);
-    grouped.set(k, arr);
+    grouped.set(t.action, arr);
   }
 
   return (
-    <div className="space-y-3">
-      {TRIGGER_GROUPS.map(({ key, label }) => {
-        const items = grouped.get(key) ?? [];
+    <div className="space-y-1.5">
+      {TRIGGER_ACTION_ORDER.map((action) => {
+        const items = grouped.get(action) ?? [];
         if (items.length === 0) return null;
         return (
-          <div key={key} className="space-y-1.5">
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {items.map((t) => (
-                <TriggerPill
-                  key={t.id}
-                  trigger={t}
-                  firing={firing === t.id}
-                  onTestFire={() => onTestFire(t.id)}
-                />
-              ))}
-            </div>
+          <div
+            key={action}
+            className="flex flex-wrap items-center gap-x-2 gap-y-1.5"
+          >
+            <span className="text-sm text-muted-foreground shrink-0">
+              {actionGroupLabel(action)}
+            </span>
+            {items.map((t) => (
+              <TriggerPill key={t.id} trigger={t} />
+            ))}
           </div>
         );
       })}
@@ -617,15 +494,11 @@ interface Props {
 }
 
 export function ThesisTriggersSection({ thesisId, data: dataProp }: Props) {
-  const router = useRouter();
   const [internalData, setInternalData] = useState<TriggersResponse | null>(
     null,
   );
   const data = dataProp !== undefined ? dataProp : internalData;
   const [error, setError] = useState<string | null>(null);
-  const [firing, setFiring] = useState<string | null>(null);
-  const [fireError, setFireError] = useState<string | null>(null);
-  const [fireQueued, setFireQueued] = useState<string | null>(null);
 
   useEffect(() => {
     if (dataProp !== undefined) return;
@@ -644,178 +517,26 @@ export function ThesisTriggersSection({ thesisId, data: dataProp }: Props) {
     };
   }, [thesisId, dataProp]);
 
-  async function testFire(triggerId: string) {
-    setFireError(null);
-    setFireQueued(null);
-    setFiring(triggerId);
-    try {
-      const r = await fetch(`/api/admin/triggers/fire`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ thesisId, triggerId }),
-      });
-      // 202 = event dispatched but tactical-run hasn't landed in time.
-      // Treat as success — the run will appear in /runs shortly.
-      if (!r.ok && r.status !== 202) {
-        const body = await r.text();
-        throw new Error(`HTTP ${r.status}: ${body.slice(0, 200)}`);
-      }
-      const out = (await r.json()) as {
-        runId?: string | null;
-        queued?: boolean;
-      };
-      if (out.runId) {
-        router.push(`/runs/${out.runId}`);
-      } else if (out.queued) {
-        setFireQueued(
-          "Trigger fired. The tactical run is queued — it will appear in your runs list in a few seconds.",
-        );
-      }
-    } catch (e) {
-      setFireError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setFiring(null);
-    }
-  }
-
   if (error) {
     return (
-      <div className="space-y-2">
-        <SectionHeader icon={<HugeiconsIcon icon={InboxUnreadIcon} className="size-4 text-foreground" />}>
-          Triggers
-        </SectionHeader>
-        <p className="text-xs text-muted-foreground">
-          Couldn&apos;t load triggers: {error}
-        </p>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Couldn&apos;t load triggers: {error}
+      </p>
     );
   }
 
   if (data == null) {
+    return <p className="text-xs text-muted-foreground">Loading triggers…</p>;
+  }
+
+  if (data.triggers.length === 0) {
     return (
-      <div className="space-y-2">
-        <SectionHeader icon={<HugeiconsIcon icon={InboxUnreadIcon} className="size-4 text-foreground" />}>
-          Triggers
-        </SectionHeader>
-        <p className="text-xs text-muted-foreground">Loading…</p>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        No triggers attached. Set a horizon when minting this thesis to
+        auto-attach the baseline.
+      </p>
     );
   }
 
-  const hasSchedule =
-    data.horizon != null ||
-    data.nextReviewAt != null ||
-    data.targetSizePct != null ||
-    data.catalystDate != null ||
-    data.maxHoldDays != null;
-
-  return (
-    <div className="space-y-5">
-      <div className="space-y-2.5">
-        <SectionHeader
-          icon={<HugeiconsIcon icon={InboxUnreadIcon} className="size-4 text-foreground" />}
-          count={data.triggers.length}
-        >
-          Triggers
-        </SectionHeader>
-        {data.triggers.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            No triggers attached. Set a horizon when minting this thesis to
-            auto-attach the baseline.
-          </p>
-        ) : (
-          <TriggerGroups
-            triggers={data.triggers}
-            firing={firing}
-            onTestFire={testFire}
-          />
-        )}
-        {fireError ? (
-          <p className="text-xs text-red-500">Test fire failed: {fireError}</p>
-        ) : null}
-        {fireQueued ? (
-          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>{fireQueued}</span>
-            <button
-              type="button"
-              onClick={() => router.push("/runs")}
-              className="shrink-0 text-foreground underline-offset-2 hover:underline"
-            >
-              Open runs →
-            </button>
-          </div>
-        ) : null}
-      </div>
-
-      {hasSchedule ? (
-        <div className="space-y-2">
-          {/* "Schedule" SectionHeader removed 2026-05-19 — the InfoRows
-              are self-evident (Horizon, Next review, Target size, etc.)
-              and the explicit section label was visual noise. */}
-          <div className="flex flex-col gap-1">
-            {data.horizon ? (
-              <InfoRow
-                label="Horizon"
-                value={data.horizon}
-                description={HORIZON_DESCRIPTIONS[data.horizon] ?? undefined}
-              />
-            ) : null}
-            {data.nextReviewAt ? (
-              <InfoRow
-                label="Next review"
-                value={fmtRelativeOrDate(data.nextReviewAt)}
-                mono
-              />
-            ) : null}
-            {data.targetSizePct != null ? (
-              <InfoRow
-                label="Target size"
-                value={`${data.targetSizePct}% of portfolio`}
-                mono
-              />
-            ) : null}
-            {data.catalystDate ? (
-              <InfoRow
-                label="Catalyst date"
-                value={fmtRelativeOrDate(data.catalystDate)}
-                mono
-              />
-            ) : null}
-            {data.maxHoldDays != null ? (
-              <InfoRow
-                label="Max hold"
-                value={`${data.maxHoldDays} days`}
-                mono
-                border={false}
-              />
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-// ── Section header ─────────────────────────────────────────────────────
-
-function SectionHeader({
-  icon,
-  count,
-  children,
-}: {
-  icon?: React.ReactNode;
-  count?: number;
-  children: React.ReactNode;
-}) {
-  // Unified with the ThesisSheet's other section headers (2026-05-19) —
-  // xs-uppercase-tracking eyebrow pattern shared across the app.
-  return (
-    <div className="flex items-center gap-2 text-muted-foreground">
-      {icon}
-      <p className="text-xs font-mono uppercase tracking-wide">{children}</p>
-      {count != null ? (
-        <span className="text-xs tabular-nums">{count}</span>
-      ) : null}
-    </div>
-  );
+  return <TriggerGroups triggers={data.triggers} />;
 }

@@ -50,7 +50,7 @@ import {
   getThesisStatusDisplay,
   type ThesisStatus,
 } from "@/lib/thesis-status";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Types (canonical definitions — re-exported from thesis-card.tsx) ─────────
@@ -203,54 +203,25 @@ function PositionRow({
   );
 }
 
-// ── WatchingRow ──
-// The non-held analogue of PositionRow. Renders when status === 'WATCHING'.
-// One actionable headline:
-//   "Watching for entry above ${target}"     (or "below" for SHORT)
-//   "Watching — previously rejected"         (PASS)
-//
-// The dot-separated IntentSuffix (direction · target/stop · horizon) was
-// removed on 2026-05-18 (THESIS_CLEANUP PR-2) because every piece of it
-// renders elsewhere on the sheet:
-//   • target → already in the headline + PriceTargetsBlock slider
-//   • stop   → PriceTargetsBlock slider
-//   • horizon → Schedule section below
-//   • direction → StatusPill + headline framing ("entry above" = LONG)
-// Keeping it produced three target/stop renders stacked vertically.
+// WatchingRow ("Watching for entry above $X") was deleted in this redesign.
+// The headline is now coreBelief — the standing opinion — and the actual
+// entry condition is read from the ENTER trigger below it. The derived
+// headline duplicated trigger data, often got stale, and pre-empted the
+// belief text from being the visual anchor.
 
-function WatchingRow({
-  direction,
-  targetPrice,
-}: {
-  direction: "LONG" | "SHORT" | "PASS";
-  targetPrice?: number | null;
-}) {
-  const headline = (() => {
-    if (direction === "PASS") return "Watching — previously rejected";
-    if (direction === "SHORT" && targetPrice != null) {
-      return (
-        <>
-          Watching for entry below{" "}
-          <span className="font-medium tabular-nums">
-            ${targetPrice.toFixed(2)}
-          </span>
-        </>
-      );
-    }
-    if (direction === "LONG" && targetPrice != null) {
-      return (
-        <>
-          Watching for entry above{" "}
-          <span className="font-medium tabular-nums">
-            ${targetPrice.toFixed(2)}
-          </span>
-        </>
-      );
-    }
-    return "Watching";
-  })();
+// ── Composite tier badge variant ──
+// Same Badge palette as AnalystVerdictBadge so the header right-side reads
+// the same across the price/consensus/composite trio:
+//   ≥7   → positive (green, like "Strong Buy")
+//   4-7  → secondary (neutral gray)
+//   <4   → negative (red)
 
-  return <p className="text-sm leading-relaxed">{headline}</p>;
+function compositeTierVariant(
+  score: number,
+): "positive" | "secondary" | "negative" {
+  if (score >= 7) return "positive";
+  if (score >= 4) return "secondary";
+  return "negative";
 }
 
 // ── IntentSuffix ──
@@ -374,14 +345,24 @@ function ScoringRow({
   max: number;
 }) {
   if (!dim) return null;
-  // Wraps the shared InfoRow primitive (same one used by the Schedule
-  // section) so per-dim padding + label weight + description placement
-  // match the Horizon row exactly. The gauge replaces InfoRow's text
-  // value slot via `children`.
+  // Plain row — label + Info-icon tooltip on the left, gauge on the right.
+  // No InfoRow wrapper because the per-row border-b doesn't belong inside
+  // the gray Composite Score card (it visually competed with the bar).
   return (
-    <InfoRow label={label} description={dim.note ?? undefined}>
+    <div className="flex items-center justify-between gap-3 min-h-7 text-sm">
+      <span className="font-light text-foreground inline-flex items-center gap-1">
+        {label}
+        {dim.note ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="cursor-help inline-flex items-center" />}>
+              <Info className="h-3 w-3 text-muted-foreground/70" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs">{dim.note}</TooltipContent>
+          </Tooltip>
+        ) : null}
+      </span>
       <ScoringGauge score={dim.score} max={max} />
-    </InfoRow>
+    </div>
   );
 }
 
@@ -402,26 +383,18 @@ function ScoringRow({
  * the section header.
  */
 function ScoringGauge({ score, max }: { score: number; max: number }) {
-  // 10 thin vertical strokes with a fixed 2px gap between them. Width
-  // auto-fits to the contents (~38px) instead of being stretched by
-  // justify-between, so the gap math is deterministic and won't smear
-  // when the container is narrow.
+  // 10 ticks rendered through the shared TickBar primitive — same w-0.5
+  // strokes + gray-empty / foreground-filled palette as PriceGauge. Uses
+  // the base (shorter) tick height — full `tall` height made the gauge
+  // overpower the row label. Width tightened to w-20 so the ticks sit
+  // dense enough to read as a single gauge instead of an inflated grid.
   const COUNT = 10;
   const fillRatio = max > 0 ? Math.max(0, Math.min(1, score / max)) : 0;
   const filledTicks = Math.round(fillRatio * COUNT);
-  return (
-    <div className="flex items-center gap-0.5">
-      {Array.from({ length: COUNT }, (_, i) => (
-        <span
-          key={i}
-          className={cn(
-            "w-0.5 h-3 rounded-full",
-            i < filledTicks ? "bg-foreground/75" : "bg-muted-foreground/25",
-          )}
-        />
-      ))}
-    </div>
-  );
+  const ticks: Tick[] = Array.from({ length: COUNT }, (_, i) => ({
+    color: i < filledTicks ? "bg-foreground" : "bg-muted-foreground/40",
+  }));
+  return <TickBar ticks={ticks} className="w-16 shrink-0" />;
 }
 
 // ── Skeleton placeholders for /triggers-dependent blocks ──────────────
@@ -467,6 +440,104 @@ function CompositeScoreSkeleton() {
             </div>
             <Skeleton className="h-3 w-3/4" />
           </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── TradeStructureBlock ───────────────────────────────────────────────
+// Compact single-row block of trade-shape mechanics: next review (with
+// the absolute date in tooltip), max hold (TRADE horizon only — see
+// THESIS_ARCHITECTURE §7), target size as % of portfolio. Renders nothing
+// when there's no data — and renders ONLY the cells that have values, so
+// COMPOUNDER theses (no max hold) and theses without a target size don't
+// produce empty slots. Lives in this file so it can be reordered next to
+// price-targets without touching ThesisTriggersSection.
+
+function fmtRelativeDate(iso: string): string {
+  const d = new Date(iso);
+  const diffMs = d.getTime() - Date.now();
+  const diffDays = Math.round(diffMs / 86_400_000);
+  const dateLabel = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (diffDays === 0) return `${dateLabel} · today`;
+  if (diffDays > 0) return `${dateLabel} · ${diffDays}d`;
+  return `${dateLabel} · ${Math.abs(diffDays)}d ago`;
+}
+
+const HORIZON_TOOLTIP: Record<string, string> = {
+  CATALYST: "Exit on the catalyst event (good or bad), or 30 days past the catalyst date.",
+  TARGET: "Open-ended hold. Exit only at target, stop, or thesis invalidation.",
+  TRADE: "Bounded short-term trade. Exit on stop, target, or maxHoldDays reached.",
+  COMPOUNDER: "Multi-year hold. Exits only when invalidation triggers fire — never auto-exits on time.",
+};
+
+function TradeStructureBlock({
+  state,
+}: {
+  state: {
+    horizon: string | null;
+    nextReviewAt: string | null;
+    maxHoldDays: number | null;
+    targetSizePct: number | null;
+  };
+}) {
+  const hasHorizon = state.horizon != null;
+  const hasNextReview = state.nextReviewAt != null;
+  const showMaxHold = state.horizon === "TRADE" && state.maxHoldDays != null;
+  const hasSize = state.targetSizePct != null;
+
+  if (!hasHorizon && !hasNextReview && !showMaxHold && !hasSize) return null;
+
+  const cells: { label: string; value: React.ReactNode; tooltip?: string }[] = [];
+  if (hasHorizon) {
+    cells.push({
+      label: "Horizon",
+      value: state.horizon,
+      tooltip: HORIZON_TOOLTIP[state.horizon!] ?? undefined,
+    });
+  }
+  if (hasNextReview) {
+    cells.push({
+      label: "Next review",
+      value: fmtRelativeDate(state.nextReviewAt!),
+      tooltip: new Date(state.nextReviewAt!).toLocaleString(),
+    });
+  }
+  if (showMaxHold) {
+    cells.push({
+      label: "Max hold",
+      value: `${state.maxHoldDays} days`,
+    });
+  }
+  if (hasSize) {
+    cells.push({
+      label: "Target size",
+      value: `${state.targetSizePct}% of portfolio`,
+    });
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+        Trade Structure
+      </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+        {cells.map((c, i) => (
+          <span key={c.label} className="inline-flex items-center gap-1.5">
+            {i > 0 && <span className="text-muted-foreground/40">·</span>}
+            <span className="text-muted-foreground">{c.label}</span>
+            {c.tooltip ? (
+              <Tooltip>
+                <TooltipTrigger render={<span className="font-medium tabular-nums cursor-default" />}>
+                  {c.value}
+                </TooltipTrigger>
+                <TooltipContent className="text-xs">{c.tooltip}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="font-medium tabular-nums">{c.value}</span>
+            )}
+          </span>
         ))}
       </div>
     </div>
@@ -1398,18 +1469,6 @@ export function ThesisSheetBody({
         />
       ) : null}
 
-      {/* ── Watching row (status WATCHING, no open position) ── */}
-      {/* The non-held analogue of PositionRow. Communicates the same
-          shape: state, direction, levels, horizon. For LONG watching,
-          the headline frames the target price as the entry trigger
-          ("Watching for entry above $X"). */}
-      {liveStatus === "WATCHING" && !position ? (
-        <WatchingRow
-          direction={direction}
-          targetPrice={state?.targetPrice ?? target_price ?? null}
-        />
-      ) : null}
-
       {/* The Most-Recent-Trigger banner that previously lived here was
           removed 2026-05-18. The same data still surfaces inside the
           Activity timeline at the bottom of the sheet — duplicating it
@@ -1417,19 +1476,24 @@ export function ThesisSheetBody({
 
       {/* ── Core Belief headline ─────────────────────────────── */}
       {/* The ONE durable claim — a falsifiable prediction (≤30 words) the
-          trade evaluator grades on close. Italic + slightly larger so it
-          reads as the load-bearing claim, not just another paragraph.
-          Skeleton holds two muted lines while /triggers is still in
-          flight so the layout doesn't jump when the belief lands. */}
+          trade evaluator grades on close. Large + normal weight so it
+          reads as the load-bearing claim. The buggy "Watching for entry
+          above $X" header it replaced was a stale derivation that
+          duplicated what the ENTER trigger already says correctly below. */}
       {state?.coreBelief ? (
-        <p className="text-base font-medium italic leading-relaxed">
+        <p className="text-xl font-normal leading-relaxed">
           {state.coreBelief}
         </p>
       ) : stateLoading ? (
         <div className="space-y-2">
-          <Skeleton className="h-5 w-full" />
-          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-6 w-full" />
+          <Skeleton className="h-6 w-3/4" />
         </div>
+      ) : null}
+
+      {/* ── Triggers (moved up — they're the standing opinion in action) ── */}
+      {thesis_id ? (
+        <ThesisTriggersSection thesisId={thesis_id} data={state} />
       ) : null}
 
       {/* ── Snapshot ──────────────────────────────────────────── */}
@@ -1473,26 +1537,27 @@ export function ThesisSheetBody({
           conviction number after PR-9 (legacy `confidenceScore` int
           dropped). */}
       {state?.scoring ? (
-        <div className="space-y-2">
-          <div className="flex items-baseline justify-between">
+        <Card className="bg-muted/40 p-2 gap-4">
+          <div className="flex items-baseline justify-between gap-2">
             <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
               Composite Score
             </p>
-            <div className="flex items-baseline gap-3">
-              {state.scoringComposite != null && (
-                <p className="text-sm font-semibold tabular-nums">
-                  {state.scoringComposite}/10
-                </p>
-              )}
-            </div>
+            {state.scoringComposite != null && (
+              <Badge
+                variant={compositeTierVariant(state.scoringComposite)}
+                className="font-normal tabular-nums"
+              >
+                {state.scoringComposite}/10
+              </Badge>
+            )}
           </div>
-          <div>
+          <div className="space-y-0.5">
             <ScoringRow label="Trend strength" dim={state.scoring.trendStrength} max={3} />
             <ScoringRow label="Relative strength" dim={state.scoring.relativeStrength} max={3} />
             <ScoringRow label="Entry quality" dim={state.scoring.entryQuality} max={2} />
             <ScoringRow label="Catalyst freshness" dim={state.scoring.catalystFreshness} max={2} />
           </div>
-        </div>
+        </Card>
       ) : stateLoading ? (
         <CompositeScoreSkeleton />
       ) : null}
@@ -1518,6 +1583,14 @@ export function ThesisSheetBody({
         narrative={state?.analystConsensus ?? null}
         currentPrice={quote?.currentPrice ?? null}
       />
+
+      {/* ── Trade Structure ───────────────────────────────────── */}
+      {/* Next review · Max hold (TRADE-horizon only per architecture) ·
+          Target size. Extracted from the prior "Schedule" block in
+          ThesisTriggersSection so it can sit next to price targets where
+          it belongs — these are the trade-shape mechanics that pair with
+          entry/target/stop, not metadata about the trigger pile. */}
+      {state ? <TradeStructureBlock state={state} /> : null}
 
       {/* ── Key Assumptions ───────────────────────────────────── */}
       {/* ≥2 falsifiable premises that must remain true for the core belief
@@ -1598,16 +1671,6 @@ export function ThesisSheetBody({
           that data now lives inside the Fundamentals accordion above.
           The at-a-glance need is covered by the Snapshot prose + Analyst
           Consensus widget. */}
-
-      {/* ── Triggers + Schedule ───────────────────────────────── */}
-      {/* Same gating as the timeline below — only shows once the row
-          is persisted. Renders the structured trigger predicates, the
-          horizon, nextReviewAt, scaling plan, etc. so you can see at
-          a glance what events would warrant a re-evaluation. Reuses
-          the same data we fetched above for the status header. */}
-      {thesis_id ? (
-        <ThesisTriggersSection thesisId={thesis_id} data={state} />
-      ) : null}
 
       {/* ── Activity timeline + provenance footer ────────────── */}
       {/* Renders only when we have a persisted thesis id. Provenance is

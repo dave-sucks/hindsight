@@ -291,6 +291,7 @@ export default async function StockDetailPage({ params }: Props) {
                   id: latest.id,
                   ticker: upperSymbol,
                   direction: latest.direction,
+                  status: latest.status,
                   // PR-9: legacy 0-100 confidenceScore is gone. The row
                   // renders Lean/Buy/Strong-Buy off this number — convert
                   // /10 composite to /100 (×10) so the same thresholds
@@ -382,6 +383,7 @@ export default async function StockDetailPage({ params }: Props) {
                   id: t.id,
                   ticker: upperSymbol,
                   direction: t.direction,
+                  status: t.status,
                   confidenceScore: composite != null ? composite * 10 : 0,
                   reasoningSummary: getThesisSnapshotText(t),
                   thesisBullets: getThesisBullCaseBullets(t),

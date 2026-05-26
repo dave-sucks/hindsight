@@ -195,6 +195,7 @@ export async function getRunSourcesData(args: {
       id: t.id,
       ticker: t.ticker,
       direction: t.direction,
+      status: t.status,
       // PR-9: legacy 0-100 confidence → composite × 10 for row renderer.
       confidenceScore: composite != null ? composite * 10 : 0,
       reasoningSummary: getThesisSnapshotText(t),

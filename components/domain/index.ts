@@ -1,4 +1,4 @@
-export { ThesisCard, type ThesisCardData, type ThesisCardProps } from "./thesis-card";
+export type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 export { TradeCard, type TradeCardData, type TradeCardProps } from "./trade-card";
 export {
   RunSummaryCard,

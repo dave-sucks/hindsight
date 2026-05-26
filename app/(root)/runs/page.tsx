@@ -8,12 +8,16 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ConceptTooltip } from "@/components/domain/education-card";
 import { RunShowcaseTrigger, RunShowcaseButton } from "@/components/domain/run-showcase-trigger";
 import { SkeletonCardStack } from "@/components/domain/skeleton-card";
+import { RunsFilterBar } from "@/components/runs/RunsFilterBar";
+import { RUNS_MODE_OPTIONS } from "@/lib/runs/modes";
 import {
   buildRunSummary,
   buildActionSegments,
   type ActionColor,
 } from "@/lib/run-summary";
 import { cn } from "@/lib/utils";
+
+const VALID_MODES = new Set(RUNS_MODE_OPTIONS.map((o) => o.value));
 
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - new Date(date).getTime();
@@ -66,7 +70,11 @@ function LogoWithDot({
   );
 }
 
-export default async function RunsPage() {
+export default async function RunsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ analyst?: string; mode?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -74,18 +82,24 @@ export default async function RunsPage() {
   const userId = user?.id ?? "";
   const environment = await getCurrentEnvironment();
 
-  const runs = await prisma.researchRun.findMany({
-    where: {
-      userId,
-      environment,
-      // PRINCIPAL_CHAT rows are chat-session containers, not analytical
-      // runs — they're created automatically when /chat is scoped to an
-      // analyst and stay RUNNING for the chat's lifetime. Showing them
-      // on /runs cluttered the feed with "Run by [analyst]" rows that
-      // would never reach a terminal state. Past chat sessions live in
-      // the Recent Chats sidebar on /chat (see RecentChatsSidebar).
-      mode: { not: "PRINCIPAL_CHAT" },
-    },
+  const sp = await searchParams;
+  const analystFilter = sp.analyst && sp.analyst !== "all" ? sp.analyst : null;
+  const modeFilter = sp.mode && VALID_MODES.has(sp.mode) ? sp.mode : null;
+
+  const [runs, analysts] = await Promise.all([
+    prisma.researchRun.findMany({
+      where: {
+        userId,
+        environment,
+        // PRINCIPAL_CHAT rows are chat-session containers, not analytical
+        // runs — they're created automatically when /chat is scoped to an
+        // analyst and stay RUNNING for the chat's lifetime. Showing them
+        // on /runs cluttered the feed with "Run by [analyst]" rows that
+        // would never reach a terminal state. Past chat sessions live in
+        // the Recent Chats sidebar on /chat (see RecentChatsSidebar).
+        mode: modeFilter ?? { not: "PRINCIPAL_CHAT" },
+        ...(analystFilter ? { agentConfigId: analystFilter } : {}),
+      },
     include: {
       // mode + parameters drive the run-card title and tactical context.
       // mode is on the schema (MORNING_PLAN / INTRADAY_TACTICAL / EOD_REFLECTIVE);
@@ -152,7 +166,15 @@ export default async function RunsPage() {
     },
     orderBy: { startedAt: "desc" },
     take: 100,
-  });
+  }),
+    prisma.agentConfig.findMany({
+      where: { userId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
+
+  const hasActiveFilter = analystFilter != null || modeFilter != null;
 
   return (
     <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto space-y-3">
@@ -162,7 +184,12 @@ export default async function RunsPage() {
             <h1 className="text-2xl font-semibold">Runs</h1>
             <RunShowcaseButton />
           </div>
-          {runs.length === 0 && (
+          <RunsFilterBar
+            analysts={analysts}
+            selectedAnalystId={analystFilter}
+            selectedMode={modeFilter}
+          />
+          {runs.length === 0 && !hasActiveFilter && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger
@@ -188,14 +215,20 @@ export default async function RunsPage() {
       </div>
 
       {runs.length === 0 ? (
-        <div className="pt-8">
-          <RunShowcaseTrigger />
-          <SkeletonCardStack
-            count={3}
-            title="No runs yet"
-            subtitle="You'll see runs from your analysts here once they run."
-          />
-        </div>
+        hasActiveFilter ? (
+          <div className="rounded-xl border bg-card p-8 text-center">
+            <p className="text-sm text-muted-foreground">No runs match the current filters.</p>
+          </div>
+        ) : (
+          <div className="pt-8">
+            <RunShowcaseTrigger />
+            <SkeletonCardStack
+              count={3}
+              title="No runs yet"
+              subtitle="You'll see runs from your analysts here once they run."
+            />
+          </div>
+        )
       ) : (
         runs.map((run) => {
           const isPodcastSegmentRun = run.podcastSegmentId != null;

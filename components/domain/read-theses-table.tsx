@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
-import type { ThesisCardData } from "@/components/domain/thesis-card";
+import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
 
 // ─── Row ─────────────────────────────────────────────────────────────────────
