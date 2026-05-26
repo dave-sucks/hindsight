@@ -81,6 +81,7 @@ function buildThesisWriterSystemPrompt(opts: {
   mode: "mint" | "refresh";
   existingThesis: {
     id: string;
+    status: string;
     direction: string;
     horizon: string | null;
     coreBelief: string | null;
@@ -250,18 +251,64 @@ around RE-ENTER / DOWNGRADE / INVALIDATE.
      - invalidation_conditions: ≥2 specific things that would prove it
        wrong (numbers, events, dates — NOT "market volatility")
      - triggers: READ THIS WHOLE SECTION CAREFULLY. The mental model
-       below is load-bearing. Past failures (XPEV 2026-05-25, MDB
-       2026-05-25) had the agent producing structurally-wrong trigger
-       sets that the Layer-1 guards now REJECT.
+       below is load-bearing. Past failures (XPEV / MDB 2026-05-25 →
+       backfill 2026-05-26) had the agent producing structurally-wrong
+       trigger sets that the Layer-1 guards now REJECT on BOTH sides.
 
-       MENTAL MODEL — what state are we in?
+       MENTAL MODEL — what state are we writing for?
 
          WATCHING = we do NOT own this stock. We are waiting for a
                     reason to buy it. There is no Alpaca position.
+                    Trigger array shape: ENTER + REVIEW only.
          ACTIVE   = we DO own this stock. We have an open Alpaca
-                    position. EXIT triggers protect that position.
-         (You are writing a WATCHING thesis. Re-read the previous
-         sentence.)
+                    position. Trigger array shape: EXIT + REVIEW
+                    (+ optionally TRIM/ADD/MOVE_STOP).
+
+${
+  opts.mode === "refresh" && opts.existingThesis?.status === "ACTIVE"
+    ? `       *** YOU ARE REFRESHING AN ACTIVE THESIS ***
+       The existing thesis row is status="ACTIVE" — we ALREADY OWN
+       this stock and have an open Alpaca position. Apply the HELD
+       template (EXIT + REVIEW). Do NOT apply the WATCHING template.
+
+       FORBIDDEN on ACTIVE (Layer-1 guard rejects, run will fail and
+       retry until you comply):
+
+         ❌ ENTER       — we're already in; nothing to enter
+
+         If you find yourself wanting an ENTER trigger on this
+         refresh, the existing position must first be exited
+         (close_position) and the thesis downgraded
+         (update_thesis(change_status: "WATCHING")) before re-entry
+         conditions apply.
+
+       REQUIRED on ACTIVE (Layer-1 guard rejects without ≥1 EXIT):
+
+         ✓ At least one EXIT — the automated stop-loss path. Without
+           it the trigger evaluator has no way to fire a tactical
+           EXIT when price hits the stop. Use PRICE_BELOW(stop_loss)
+           for LONG positions, PRICE_ABOVE(stop_loss) for SHORT.
+
+       CANONICAL SHAPE — use defaultTriggersForHorizon(horizon, prices,
+       "HELD") as your reference. It emits:
+         • EXIT on stop_loss (LONG: PRICE_BELOW; SHORT: PRICE_ABOVE)
+         • For TRADE horizon: EXIT on target_price (auto-take-profit)
+         • For TARGET horizon: REVIEW on target_price (re-evaluate
+           at target, don't auto-exit)
+         • REVIEW on earnings (BEAT and MISS), filings, time-elapsed
+           hygiene per horizon
+         • Optional TRIM/ADD/MOVE_STOP when the thesis explicitly
+           plans scaling or trailing stops
+
+       BEFORE YOU PERSIST — sanity check your triggers array:
+         1. ZERO triggers with action ENTER. If any, remove them.
+         2. At least one trigger has action EXIT? If not, add one
+            (PRICE_BELOW stop for LONG, PRICE_ABOVE stop for SHORT).
+         3. The simplest safe path is to pass the verbatim output of
+            defaultTriggersForHorizon(horizon, prices, "HELD") — that
+            satisfies both guards and matches the canonical shape.`
+    : `       *** YOU ARE WRITING A WATCHING THESIS ***
+       ${opts.mode === "mint" ? `This is a MINT — net-new coverage on $${T}, will be persisted as WATCHING.` : `The existing thesis row is status="${opts.existingThesis?.status ?? "WATCHING"}" — apply the WATCHING template.`}
 
        FORBIDDEN on WATCHING (Layer-1 guard rejects, run will fail and
        retry until you comply):
@@ -317,14 +364,15 @@ around RE-ENTER / DOWNGRADE / INVALIDATE.
        warrant a fresh look" predicates.
 
        BEFORE YOU PERSIST — sanity check your triggers array:
-         1. Status is WATCHING? Verify ZERO triggers with action
-            EXIT, TRIM, ADD, or MOVE_STOP. If any, remove them now.
+         1. ZERO triggers with action EXIT, TRIM, ADD, or MOVE_STOP.
+            If any, remove them now.
          2. At least one trigger has action ENTER? If not, add one.
          3. Re-read the predicate of your ENTER trigger — does it
             match the SETUP INTENT (event-based for near-term
             catalyst, breakout-level-below-target for breakout, etc.)?
             If you defaulted to PRICE_ABOVE(target_price) on a
-            near-term catalyst play, fix it before persisting.
+            near-term catalyst play, fix it before persisting.`
+}
 
 4. Persist the thesis. PR-9 flat schema: pass the 9 individual section
    args (NOT a single research_sections blob — that arg was dropped).
@@ -457,6 +505,7 @@ export async function runThesisWriterAgent(
       where: { id: args.existingThesisId },
       select: {
         id: true,
+        status: true,
         direction: true,
         horizon: true,
         coreBelief: true,
@@ -472,6 +521,7 @@ export async function runThesisWriterAgent(
       const composite = getThesisComposite(row);
       existingThesis = {
         id: row.id,
+        status: row.status,
         direction: row.direction,
         horizon: row.horizon,
         coreBelief: row.coreBelief,

@@ -299,9 +299,12 @@ describe("validateEnterTriggerRequired", () => {
     expect(result.note).not.toMatch(/target_price is required/);
   });
 
-  // ── Non-WATCHING statuses bypass (no ENTER trigger needed) ──────────────
+  // ── ACTIVE-side symmetric checks ────────────────────────────────────────
+  // Added 2026-05-26 after the backfill exposed the symmetric bug — the
+  // thesis-writer's WATCHING-only prompt wrote WATCHING-shape triggers
+  // (ENTER + REVIEW, no EXIT) onto 9 of 10 ACTIVE held paper positions.
 
-  it("ACTIVE LONG with HELD-template triggers (no ENTER): ok", () => {
+  it("ACTIVE LONG with HELD-template triggers (EXIT + REVIEW, no ENTER): ok", () => {
     expect(
       validateEnterTriggerRequired({
         direction: "LONG",
@@ -311,6 +314,135 @@ describe("validateEnterTriggerRequired", () => {
       }),
     ).toEqual({ ok: true });
   });
+
+  it("ACTIVE SHORT with HELD-template triggers (EXIT + REVIEW, no ENTER): ok", () => {
+    const exitShort: Trigger = {
+      id: "trig-exit-short",
+      predicate: { kind: "PRICE_ABOVE", level: 60 },
+      action: "EXIT",
+      rationale: "Stop at $60 for SHORT",
+      cooldownDays: 0,
+    };
+    expect(
+      validateEnterTriggerRequired({
+        direction: "SHORT",
+        status: "ACTIVE",
+        triggers: [exitShort, REVIEW_EARNINGS],
+        targetPrice: 50,
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("ACTIVE LONG with ENTER trigger (no EXIT): rejects with enter-actions-on-active", () => {
+    // The backfill 2026-05-26 production shape on Catalyst MRVL / DELL /
+    // OKTA / TSM / etc. — thesis-writer applied WATCHING template to the
+    // ACTIVE refresh. ENTER check fires first because that's the bigger
+    // structural problem (you can't ENTER what you already hold).
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "ACTIVE",
+      triggers: [ENTER_LONG, REVIEW_EARNINGS],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("enter-actions-on-active");
+    expect(result.note).toMatch(/already own/);
+  });
+
+  it("ACTIVE LONG with ENTER + EXIT (has both): rejects with enter-actions-on-active", () => {
+    // The ENTER check runs first and rejects even with an EXIT present —
+    // the agent must remove the ENTER triggers to clear the gate.
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "ACTIVE",
+      triggers: [ENTER_LONG, EXIT_STOP, REVIEW_EARNINGS],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("enter-actions-on-active");
+    expect(result.note).toMatch(/ENTER/);
+  });
+
+  it("ACTIVE LONG with REVIEW only (no ENTER, no EXIT): rejects with missing-exit-trigger-on-active", () => {
+    // The Catalyst SNOW 2026-05-26 production shape — zero actionable
+    // triggers at all. ENTER guard passes (no ENTER), EXIT guard catches
+    // the missing stop-loss.
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "ACTIVE",
+      triggers: [REVIEW_EARNINGS, REVIEW_HYGIENE],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("missing-exit-trigger-on-active");
+    expect(result.note).toMatch(/automated stop-loss/);
+  });
+
+  it("ACTIVE LONG with empty triggers: rejects with missing-exit-trigger-on-active", () => {
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "ACTIVE",
+      triggers: [],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("missing-exit-trigger-on-active");
+  });
+
+  it("ACTIVE LONG with TRIM + REVIEW (no ENTER, no EXIT): rejects with missing-exit-trigger-on-active", () => {
+    // TRIM is HELD-only but doesn't substitute for EXIT. Position needs
+    // an automated full-exit predicate too.
+    const trim: Trigger = {
+      id: "trig-trim",
+      predicate: { kind: "PRICE_ABOVE", level: 150 },
+      action: "TRIM",
+      rationale: "Trim at +50%",
+    };
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "ACTIVE",
+      triggers: [trim, REVIEW_EARNINGS],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("missing-exit-trigger-on-active");
+  });
+
+  it("ACTIVE LONG with EXIT + TRIM + ADD + MOVE_STOP + REVIEW (full HELD set): ok", () => {
+    const trim: Trigger = {
+      id: "trig-trim",
+      predicate: { kind: "PRICE_ABOVE", level: 150 },
+      action: "TRIM",
+      rationale: "Trim at +50%",
+    };
+    const add: Trigger = {
+      id: "trig-add",
+      predicate: { kind: "EARNINGS_BEAT" },
+      action: "ADD",
+      rationale: "Add on beat",
+    };
+    const moveStop: Trigger = {
+      id: "trig-move-stop",
+      predicate: { kind: "PRICE_ABOVE", level: 120 },
+      action: "MOVE_STOP",
+      rationale: "Trail stop up",
+    };
+    expect(
+      validateEnterTriggerRequired({
+        direction: "LONG",
+        status: "ACTIVE",
+        triggers: [EXIT_STOP, trim, add, moveStop, REVIEW_EARNINGS],
+        targetPrice: 100,
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  // ── Non-WATCHING/ACTIVE statuses bypass (no shape check) ────────────────
 
   it("CLOSED LONG with no triggers: ok (terminal state)", () => {
     expect(
