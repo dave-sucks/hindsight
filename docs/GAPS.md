@@ -85,6 +85,32 @@ The MRVL anti-pattern (raising target on a watching thesis when current price is
 
 These prevent the core loop from working as designed. Fix first.
 
+### P0-14 — `complete_run` preflight scope excludes PROMOTED — first live day no-op
+**Source:** 2026-05-26 first live morning run for Earnings Drift Trader (`cmpml36xb00a204k1k1mletr5`). Run completed cleanly in 74s with 3 PROMOTED rows untouched (MRVL/TSM/AVGO). Agent narrated "the live book is actually empty today despite the prior paper-promotion context" and skipped them. The `complete_run` gate let it pass because its where-clause scope literally excludes PROMOTED.
+
+`lib/agent/tools/complete-run.ts:430` (INTRADAY_TACTICAL / THESIS_WRITER scope) and `:437` (daily-run / principal-chat scope) both read:
+```ts
+status: { in: ["ACTIVE", "WATCHING"] },
+```
+PROMOTED is missing. So when the gate iterates the analyst's book looking for unaddressed work, PROMOTED rows are physically out of scope — even before `computeNeedsAction` is called on them. The gate cannot fire on PROMOTED.
+
+This is the Layer-1 durable defense the system prompt's "every Live Theses row (ACTIVE + WATCHING + PROMOTED) produces exactly one tool call" instruction relies on. Without it, Layer 3 is purely advisory and the first live morning was the most expensive case: agent ghosted real-money obligations.
+
+**Fix path:** add `'PROMOTED'` to both scope arrays at lines 430 and 437. Verify P0-15 lands at the same time, otherwise the in-scope theses will compute `needsAction = null` and the gate will pass anyway. The two are paired: P0-14 widens the gate's universe, P0-15 puts something for it to see. ~10 minutes for P0-14 alone.
+
+**Cross-references:** `docs/run-reviews/2026-05-26.md` (full incident write-up), `lib/agent/system-prompt.ts:645` ("the morning gate counts ThesisUpdate rows; skipping a thesis is a run failure"). The system prompt promises what the gate doesn't deliver.
+
+### P0-15 — `computeNeedsAction` has no PROMOTED case
+**Source:** Same 2026-05-26 incident. Paired with P0-14.
+
+`lib/agent/needs-action.ts` defines three `NeedsAction` kinds: TRIGGER_FIRED, TRIGGER_MATCHING_NOW, REVIEW_DUE. None of them surface "this row is PROMOTED and requires resolution this run." For a PROMOTED thesis with `nextReviewAt` days/weeks out (which is the common shape post-promotion fan-out — the refresh sets a normal cadence) and no fired triggers, `computeNeedsAction` returns `null`. The agent's prompt-internalized rule "`needsAction == null` → skip" then drives a no-op.
+
+All 3 of today's PROMOTED rows had `nextReviewAt` 1-21 days out (MRVL 2026-05-30, TSM 2026-06-16, AVGO 2026-05-27) and `needsAction = null`. Agent saw `get_theses` return "3 promoted awaiting live entry" in the summary line, then dropped them from its working set.
+
+**Fix path:** add a 4th `NeedsAction` kind `PROMOTED_RESOLUTION_REQUIRED` with precedence above REVIEW_DUE (so an overdue review doesn't mask a PROMOTED obligation) but below TRIGGER_FIRED (so a fired trigger still wins the slot). Surface paper-context fields (`paperTenureDays`, `paperRealizedPnl`, `paperReviewCount`, `promotedAt`) in the payload so the agent's per-thesis prompt rendering has the conviction picture inline. Detection: `thesis.status === "PROMOTED"`. ~30 minutes including the test update for the precedence ordering.
+
+**Cross-references:** P0-14 (the Layer-1 counterpart), `lib/agent/system-prompt.ts:627-633` (the system prompt's promised behavior on PROMOTED), `docs/PRINCIPLES.md` (the three-layer principle — Layer 2 is supposed to pre-digest state).
+
 *(P0-12 closed 2026-05-23 — moved to `GAPS_HISTORY.md`. Fix: narration→execution gate moved from `record_run_summary` (mid-run, marked FAILED) to `complete_run` preflight (end-of-run, soft refusal). Self-corrected runs pass; truly missing tool calls get a recoverable refusal.)*
 
 *(P0-10 closed 2026-05-25 — moved to `GAPS_HISTORY.md`. Immediate failure mode (4 zombie theses on AMD/AVGO/GOOGL/TSM) is structurally impossible post-PR #265's atomic WATCHING→ACTIVE flip in `place_trade`. The deeper architectural concern — `reasoningSummary` free text overriding structured `status` in the agent's reasoning — is now captured by **P1-20** below, which proposes removing `status` as a settable arg entirely. P0-10 rolls into that refactor.)*
@@ -98,6 +124,50 @@ These prevent the core loop from working as designed. Fix first.
 ## P1 — Quality is degraded but system functions
 
 *(P1-4 closed via PRs #235 + #239. P1-13 closed 2026-05-19. P1-16 closed 2026-05-19. **P1-18 closed via PR #316 (2026-05-23).** All moved to `GAPS_HISTORY.md`.)*
+
+### P1-23 — Promotion fan-out THESIS_WRITER oversteps PROMOTED → WATCHING (same family as #343)
+**Source:** 2026-05-26 first live morning — overnight promotion fan-out for Earnings Drift Trader. Three LIVE-env THESIS_WRITER refresh runs spawned by `lib/actions/promote-analyst.actions.ts` at 00:42 ET (concurrent with promotion). Each refresh wrote `STATUS_CHANGED PROMOTED → WATCHING` for its ticker. The principal had to manually backfill WATCHING → PROMOTED on all 3 at 01:02 ET.
+
+ThesisUpdate audit chain (per MRVL, identical shape on TSM + AVGO):
+
+```
+00:42:18 ET  STATUS_CHANGED  ACTIVE → PROMOTED   (promotion action, runId: null)
+00:48:46 ET  STATUS_CHANGED  PROMOTED → WATCHING (THESIS_WRITER cmpm5fmgg...)  ← bug
+00:55:10 ET  UPDATED         target/stop refresh (same THESIS_WRITER)
+01:02:20 ET  STATUS_CHANGED  WATCHING → PROMOTED (manual fix, runId: null)
+```
+
+The manual-fix summary line on each row reads:
+> *"Manual fix: WATCHING → PROMOTED. The promotion fan-out thesis-writer overstepped by flipping status to WATCHING during the refresh — that decision belongs to th[e daily-run agent]."*
+
+This is the same bug family as PR #343's "ACTIVE-refresh produces WATCHING template" — the thesis-writer prompt is state-conditional for ACTIVE / WATCHING but has no PROMOTED branch. The Layer-1 guard (`enter-guard.ts` extended by #343) similarly has no PROMOTED rejection.
+
+**Fix path:** mirror #343's pattern for PROMOTED.
+1. **Layer 1 — `enter-guard.ts`:** add a `prohibits-status-change-on-promoted` rejection reason. PROMOTED is status-preserving across refresh; the only legal status transition out is via the daily-run agent's `place_trade` (→ ACTIVE) or `update_thesis(change_status='WATCHING')`.
+2. **Layer 3 — `run-thesis-writer.ts`:** add a third state-conditional prompt branch. Mental-model + FORBIDDEN/REQUIRED block headed "*** YOU ARE REFRESHING A PROMOTED THESIS — DO NOT CHANGE STATUS ***" with the explicit invariant that PROMOTED resolution belongs to the daily-run agent's first live run.
+
+**Why P1 not P0:** the failure mode is recoverable (manual backfill). But it's pernicious — every future promotion event will produce the same overstep without the fix, and the manual fix has to happen before the next morning's daily-run sees the wrong status. ~1-2 hours; pattern-matches against #343.
+
+**Cross-references:** PR #343 (ACTIVE-side symmetric guard — the template), PR #339 (WATCHING-side enter-guard — the original), PR #330 (promotion fan-out — where the dispatch is initiated), `lib/actions/promote-analyst.actions.ts` (caller).
+
+### P1-24 — `Thesis.promotedAt` written with 12-hour timezone offset
+**Source:** 2026-05-26 first live morning. Three PROMOTED rows on Earnings Drift Trader carry `promotedAt = 2026-05-26 16:42:31` (timestamp without time zone) for a promotion event that occurred at `04:42:31.337 UTC` (verified against `AgentConfig.updatedAt` of the same event, which stored correctly as `04:42:31 UTC`).
+
+Same column type on both models (`timestamp(3) without time zone`). The 12-hour offset has to be in the write path of `Thesis.promotedAt` specifically — likely a manual `new Date(...)` construction in `lib/actions/promote-analyst.actions.ts` that does a wall-clock-to-UTC conversion incorrectly (e.g. constructs from a `toLocaleString()` value).
+
+**Impact:**
+- The natural rubric check `researchUpdatedAt >= promotedAt` returns FALSE on every PROMOTED row (a 12-hour gap masks an actual ~12-minute gap). Any code or analytics that does this comparison gets a wrong answer.
+- Time-since-promotion calculations (e.g. "PROMOTED for N hours, why hasn't it been resolved?") underestimate by 12 hours.
+- The rubric's Section B.1 ("did fan-out fire?") check is currently broken — use the ThesisUpdate audit chain (STATUS_CHANGED to PROMOTED + downstream UPDATED rows) as the durable check instead until this is fixed.
+
+**Fix path:**
+1. Trace `promotedAt` writes in `lib/actions/promote-analyst.actions.ts`. Replace any `new Date(stringWithLocaleFormat)` with `new Date()` (UTC by default) or pass through Prisma's normal Date binding.
+2. Code-search for every read of `promotedAt` — particularly PR #331's `researchAge` surfacing logic — and verify no other comparison depends on it. List of readers (per code audit, may be incomplete): `lib/agent/tools/get-theses.ts`, `lib/agent/run-input.ts`, `lib/agent/thesis-research/build-synthesis-prompt.ts`.
+3. Backfill the 3 existing rows with the correct UTC value (subtract 12 hours from current stored value to align with AgentConfig.updatedAt).
+
+**Why P1 not P0:** the agent has visibility into the right info via other fields (paperTenureDays exposes "how long the analyst held" without needing promotedAt math), and the read-side surfacing logic in `build-synthesis-prompt.ts` etc. doesn't appear to do time-arithmetic on promotedAt (it just renders the timestamp). So the user-visible blast radius is small. But it's a data-integrity issue that compounds: every subsequent promotion writes a corrupted row, and migrating later becomes a backfill exercise.
+
+**Cross-references:** `docs/run-reviews/2026-05-26.md` (where the bug surfaced), the schema column is at `prisma/schema.prisma:316`.
 
 ### P1-19 — PRINCIPAL_CHAT hangs when child THESIS_WRITER fails
 **Source:** Handoff item #7 from 2026-05-20 tactical session. Observed 2026-05-19: Tech Momentum's PRINCIPAL_CHAT was stuck `status=RUNNING` for 44+ minutes because its child THESIS_WRITER failed at 10s on an Anthropic rate-limit error and the parent was never notified.
