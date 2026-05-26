@@ -21,67 +21,29 @@
 
 These prevent the live agent from doing its job. Fix first.
 
-### P0-1 — `complete_run` preflight scope excludes PROMOTED
-**Status:** in-progress (this session). **Production-confirmed 2026-05-26 on Earnings Drift Trader.**
-
-`lib/agent/tools/complete-run.ts:437` scopes the unaddressed-needsAction preflight to `["ACTIVE","WATCHING"]`. PROMOTED theses are silently excluded; the agent can complete the run without addressing them. Today's first live morning run hit this: 3 PROMOTED rows (AVGO, MRVL, TSM) sat untouched, primaryDecision: WATCH, tradesPlaced: 0.
-
-**Fix:** add `"PROMOTED"` to the scope filter. Add a `PROMOTED_AWAITING_RESOLUTION` needsAction kind so the refusal message tells the agent what's expected (place_trade / update_thesis change_status: WATCHING / update_thesis change_status: INVALIDATED — though INVALIDATED on PROMOTED is currently rejected by tool gates; revisit per P1-2).
-
-**Verify:** tomorrow morning's run on the live analyst should refuse to complete until each of the 3 PROMOTED rows is addressed.
-
-### P0-2 — DELETE the deprecated V1 daily-run prompt (`buildV2SystemPrompt`)
-**Status:** open. **Root cause of the V1/V2 confusion that buried PROMOTED handling.**
-
-`lib/agent/system-prompt.ts:106` defines `buildV2SystemPrompt` — a misleadingly-named ~600-line legacy daily-run prompt marked `@deprecated` but still in the file. The current production prompt is `buildDailyRunSystemPromptV2` at line 831, ~165 lines. The legacy file still being present is a footgun: sessions porting features (like PROMOTED handling) have been updating the wrong file. Today's failed run is the direct consequence — PROMOTED guidance exists in the V1 prompt (lines 627-645) and is missing from the V2 prompt that actually ships.
-
-**Fix:** before deleting, scan for ANY remaining content in V1 that's missing from V2 — PROMOTED handling is the known one, audit for others. Port whatever's missing into V2 (see P0-3). Then `git rm` the V1 builder + its caller-less helper functions. Update the `// V1 deprecated` comment block at line 95-104 to point to the deletion commit.
-
-**Why it's P0:** as long as V1 lives in the repo, the next session that needs to update the prompt will likely land it in the wrong file. P0-3 (porting PROMOTED back to V2) is half the value; the other half is making it impossible to repeat the mistake.
-
-### P0-3 — Port PROMOTED handling into the V2 daily-run prompt
-**Status:** open. **Half the cause of today's failure (paired with P0-1).**
-
-The V2 daily-run prompt (`buildDailyRunSystemPromptV2`) has zero PROMOTED guidance. Step 2's needsAction values are listed as `TRIGGER_FIRED / TRIGGER_MATCHING_NOW / REVIEW_DUE / null` — no PROMOTED-specific kind. The walk-through has branches for TRIGGER_FIRED and REVIEW_DUE on PENDING / LONG / SHORT, no PROMOTED branch.
-
-**Fix:** port the PROMOTED block from `lib/agent/system-prompt.ts:627-645` (the V1 prompt) into V2's step 2. Concretely add ~25 lines:
-- A new bullet under needsAction values: `PROMOTED_AWAITING_RESOLUTION` (paired with P0-1).
-- A new sub-section under Step 2 named "**PROMOTED — must decide today**" that explains the three legal outcomes (re-enter via place_trade / defer via update_thesis change_status: WATCHING / kill via INVALIDATED) and the conviction-context fields the agent should consider.
-- Mention in the closeout-contract / per-thesis-action paragraph that PROMOTED rows require a status-changing call.
-
-Keep V2's tight 165-line shape — the addition is incremental, not a rewrite.
-
-### P0-4 — Thesis-writer prompt: add PROMOTED branch (don't flip status on refresh)
-**Status:** open. **Caused all 3 promotion-time status flips today.**
-
-`lib/agent/run-thesis-writer.ts:268-310` branches on `existingThesis?.status === "ACTIVE"` (HELD template) vs everything else (WATCHING template). PROMOTED falls into the WATCHING branch — the prompt literally says "YOU ARE WRITING A WATCHING THESIS" when refreshing a PROMOTED row, and the writer obediently calls `update_thesis(change_status: "WATCHING")` to match.
-
-**Fix:** add a third branch for `existingThesis?.status === "PROMOTED"`. Use PR #333's PROMOTED trigger template (already exists in `lib/agent/triggers/defaults.ts`). Explicit FORBIDDEN clause: "Do NOT call `update_thesis` with `change_status`. Refresh research only — status is the daily run's call." Optional Layer-1 backstop: refuse `change_status: WATCHING` from PROMOTED when `runMode === "THESIS_WRITER"`. The principal had to manually revert 3 thesis rows today; this is the durable fix.
+*(All four original P0 items shipped 2026-05-26. See "Done since" below. New P0 items go in this section as they're found.)*
 
 ---
 
 ## P1 — Quality is degraded but live loop functions
 
-### P1-1 — Replace the abandoned place_trade staleness gate (old P1-22) with review-driven judgment
-**Status:** design needed. **Replaces and supersedes the old P1-22.**
+### P1-1 — Remove the hard `place_trade` staleness gate; replace with review-driven judgment
+**Status:** design ready (`docs/plans/REVIEW_REFRESH_CADENCE.md`). Implementation pending.
 
-The original P1-22 plan was a hard `place_trade` gate that would refuse trades on research older than N days. That's the wrong shape — it gates EXECUTION on research age instead of keeping research current.
+**Important clarification:** the original "P1-22" item filed in legacy GAPS said the staleness gate was deferred. **It wasn't.** The gate actually shipped at `lib/agent/tools/place-trade.ts:160-243`. The legacy entry was wrong.
 
-Correct design: theses get reviewed on cadence (`nextReviewAt`) and on triggers (REVIEW). The review's job is for the agent to decide:
-- Thesis intact, no changes → log REVIEWED.
-- Thesis intact, small tweak warranted (e.g., lower the entry price because the agent's more bullish) → `update_thesis` with the patch.
-- Thesis materially stale, needs a full rewrite → `dispatch_thesis_research(refresh)`, wait for the rewrite, act on the refreshed thesis.
+**Today's behavior:** `place_trade` refuses entries on WATCHING/PROMOTED theses when `classifyResearchAge(researchUpdatedAt).freshness !== "fresh"` (where "fresh" means written within the last 14 days), unless `dispatch_thesis_research(refresh)` was called earlier in the same run. The gate has a recovery path (call dispatch → wait → retry) and `dispatch_thesis_research` + `wait_for_thesis_refresh` are in the daily-run + tactical allowlists. So the gate IS reachable and recoverable.
 
-The agent uses judgment. No hard gate on `place_trade`. The system makes refreshes EASY (dispatch_thesis_research in the allowlist, fast turnaround) and the prompt teaches the decision tree.
+**Why we still want to remove it:** the gate enforces a Layer-1 refusal on a JUDGMENT CALL. The agent might have:
+- Fresh `get_stock_data` confirming the setup is still real
+- Fresh signals via `read_signals` confirming the catalyst is still alive
+- Strong reason to enter NOW (catalyst landing today, breakout in progress)
 
-**What needs to happen:**
-1. Add `dispatch_thesis_research` to the daily-run + tactical mode allowlists.
-2. Add `wait_for_thesis_refresh` to the daily-run allowlist so the agent can block on the refresh before acting.
-3. Update V2 prompt step 2 with the decision tree for REVIEW_DUE: "Decide whether to log REVIEWED only, patch via update_thesis, or full-rewrite via dispatch_thesis_research."
-4. Soft signal in `get_theses` output: `researchAge: "fresh" | "stale" | "missing"` + `daysOld` so the agent has the data to decide.
-5. **No** hard gate in `place_trade`. The agent trades on its judgment.
+…and yet `place_trade` will refuse because research is 15 days old. The agent then HAS to spend ~90s on a refresh that adds nothing new before re-trying. The right shape is: the REVIEW flow keeps research current (agent judgment when reviewing); `place_trade` always trades.
 
-**Design doc needed:** `docs/plans/REVIEW_REFRESH_CADENCE.md` — written next session.
+**Architecture:** ship the design in `docs/plans/REVIEW_REFRESH_CADENCE.md` — remove the gate, add the soft staleness signal to the review decision tree, tune horizon-aware staleness thresholds.
+
+**Existing plumbing to keep:** `classifyResearchAge`, `STALE_DAYS`, `researchAge` in get_theses output, `dispatch_thesis_research` + `wait_for_thesis_refresh` in allowlists. All stay — the soft signal infrastructure is right; only the hard refusal moves.
 
 ### P1-2 — Audit and remove unnecessary place_trade / update_thesis gates
 **Status:** open. **Mentioned by principal 2026-05-26.**
@@ -171,7 +133,18 @@ Re-evaluate after the live loop is stable for ~1 week.
 
 ## Done since
 
-(Nothing yet. Items move here with PR # and date when they ship.)
+### 2026-05-26 — first live promotion incident fully closed
+The 2026-05-26 first-live-day failures (Earnings Drift Trader, 3 PROMOTED theses skipped) are structurally fixed.
+
+- **P0-1** — `complete_run` preflight + new `PROMOTED_AWAITING_RESOLUTION` needsAction kind. Gate now refuses run completion when PROMOTED rows are unaddressed; agent reads the kind via `get_theses` and knows it must act. Shipped via [#346](https://github.com/dave-sucks/hindsight/pull/346).
+- **P0-2** — Deleted the deprecated V1 daily-run prompt builder (`buildV2SystemPrompt` — 625 lines, misleadingly named). The next session that updates the prompt physically can't update the wrong file. Shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349).
+- **P0-3** — Ported PROMOTED handling into the V2 daily-run prompt. Step 2 now lists `PROMOTED_AWAITING_RESOLUTION` first; new top-priority sub-section "PROMOTED — must decide today" with the three legal outcomes. Shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349).
+- **P0-4** — Thesis-writer can't flip status on PROMOTED refresh. Added the PROMOTED prompt branch + Layer-1 backstop in `update_thesis` that refuses `change_status` from `runMode: "THESIS_WRITER"` on PROMOTED rows. 10 new tests pin the behavior. Shipped via [#350](https://github.com/dave-sucks/hindsight/pull/350).
+- **P1-7** — UI label renamed from "Awaiting live entry" to "Promoted" (literal enum name; principal choice). The agent reads the structural needsAction kind, not the UI string, so the label is purely for human clarity. Shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349).
+
+**The PROMOTED loop is now end-to-end coherent:** writer keeps status as PROMOTED → gate forces resolution → prompt teaches the three legal outcomes → agent makes the call.
+
+Two new findings surfaced during the V1→V2 audit, filed as P1-8 + P1-9 below.
 
 ---
 
