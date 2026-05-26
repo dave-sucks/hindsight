@@ -3,13 +3,26 @@
 /**
  * ThesisMiniCard — compact thesis card for the agent chat carousel.
  *
- * Visual style mirrors components/intelligence/brief-card.tsx (white card,
- * border, p-3) and uses Polymarket-style price rows for Entry / Target /
- * Stop with a percentage delta badge to the right.
+ * Reads live state via useThesisCardData(thesis_id) — the same two
+ * endpoints (/triggers + /quote) the open ThesisSheet uses. The card
+ * and the sheet now share one source of truth: clicking a card never
+ * shows different data than the card itself was already showing.
  *
- * Click → opens the single shared <ThesisSheet> (floating xl variant) —
- * the same sheet ThesisRow opens on Trades / Stocks / Watchlist. One
- * sheet design, one entry point.
+ * Layout (top to bottom):
+ *   • header   — logo + name + status pill
+ *   • price    — live current price + day change (PriceChange)
+ *   • holding  — "Holding N shares · avg entry $X" + P&L  (ACTIVE only)
+ *   • gauge    — PriceGauge (stop · entry · target), the same one the
+ *                sheet renders in its Price Targets block
+ *   • belief   — coreBelief (3-line clamp). Falls back to snapshot text
+ *                then to the pass_reason / reasoning_summary on prop
+ *                for legacy theses with no V2 fields.
+ *
+ * Falls back gracefully to the prop snapshot when:
+ *   • the thesis isn't persisted yet (agent rendering inline mid-run)
+ *   • the /triggers fetch fails
+ *
+ * Click opens the same shared <ThesisSheet> as every other entry point.
  */
 
 import { useState } from "react";
@@ -17,8 +30,12 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PriceChange } from "@/components/ui/price-change";
+import { PriceGauge } from "@/components/ui/gauge";
 import { ThesisSheet, type ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
+import { useThesisCardData } from "@/lib/hooks/use-thesis-card-data";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -30,56 +47,42 @@ function fmtPrice(n: number | null | undefined): string {
   })}`;
 }
 
-function pctDelta(from: number | null | undefined, to: number | null | undefined): number | null {
-  if (from == null || to == null || from === 0) return null;
-  return ((to - from) / from) * 100;
-}
-
-function fmtPct(n: number): string {
-  const sign = n >= 0 ? "+" : "";
-  return `${sign}${n.toFixed(2)}%`;
-}
-
-// ── Row ─────────────────────────────────────────────────────────────────────
-
-function PriceRow({
-  label,
-  price,
-  delta,
-}: {
-  label: string;
-  price: number | null | undefined;
-  delta: number | null;
-}) {
-  const positive = delta != null && delta >= 0;
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <div className="flex items-center gap-2 tabular-nums">
-        {delta != null && (
-          <Badge
-            variant="secondary"
-            className={cn(
-              "font-normal",
-              positive ? "bg-positive/15 text-positive" : "bg-negative/15 text-negative",
-            )}
-          >
-            {fmtPct(delta)}
-          </Badge>
-        )}
-        <span className="text-foreground">{fmtPrice(price)}</span>
-      </div>
-    </div>
-  );
+/** Trim trailing zeros on share quantity, keep up to 4 decimals. */
+function fmtShares(n: number): string {
+  const fixed = n.toFixed(4);
+  return fixed.replace(/\.?0+$/, "");
 }
 
 // ── Card ────────────────────────────────────────────────────────────────────
 
 export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const statusDisplay = getThesisStatusDisplay(thesis.status);
-  const targetDelta = pctDelta(thesis.entry_price, thesis.target_price);
-  const stopDelta = pctDelta(thesis.entry_price, thesis.stop_loss);
+  const { state, quote } = useThesisCardData(thesis.thesis_id ?? null);
+
+  // Live state takes precedence; prop snapshot is the fallback for the
+  // inline-during-run case and for /triggers errors.
+  const status = state?.status ?? thesis.status;
+  // TriggersResponse doesn't carry direction (it's static-at-write and the
+  // sheet pulls it from the same row's parent props). Fall back to the
+  // prop snapshot for direction-dependent rendering.
+  const direction = thesis.direction;
+  const entryPrice = state?.entryPrice ?? thesis.entry_price ?? null;
+  const targetPrice = state?.targetPrice ?? thesis.target_price ?? null;
+  const stopLoss = state?.stopLoss ?? thesis.stop_loss ?? null;
+  const position = state?.position ?? null;
+  const positionPnl = quote?.positionPnl ?? null;
+
+  const statusDisplay = getThesisStatusDisplay(status);
+  const isPass = direction === "PASS";
+  const hasGauge = entryPrice != null && (targetPrice != null || stopLoss != null);
+  const isHolding = status === "ACTIVE" && position != null;
+
+  const belief =
+    state?.coreBelief?.trim() ||
+    state?.snapshot?.text?.trim() ||
+    (isPass ? thesis.pass_reason : null) ||
+    thesis.reasoning_summary ||
+    null;
 
   return (
     <>
@@ -102,17 +105,74 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
           </Badge>
         </div>
 
-        {/* ── Polymarket-style price rows ──────────────────────────── */}
-        <div className="flex flex-col gap-1 pt-1">
-          <PriceRow label="Entry" price={thesis.entry_price} delta={null} />
-          <PriceRow label="Target" price={thesis.target_price} delta={targetDelta} />
-          <PriceRow label="Stop" price={thesis.stop_loss} delta={stopDelta} />
-        </div>
+        {/* ── Day price + change ──────────────────────────────────── */}
+        {/* Live from /api/theses/:id/quote. Skeleton while loading,
+            silent fail (no row) if Finnhub errors. */}
+        {quote?.currentPrice != null ? (
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="text-lg font-semibold tabular-nums shrink-0">
+              {fmtPrice(quote.currentPrice)}
+            </span>
+            {quote.dayChange != null && (
+              <PriceChange
+                dollarChange={quote.dayChange}
+                percentChange={quote.dayChangePct}
+                size="sm"
+              />
+            )}
+          </div>
+        ) : !state ? (
+          <div className="flex items-baseline gap-2">
+            <Skeleton className="h-6 w-20" />
+            <Skeleton className="h-4 w-16" />
+          </div>
+        ) : null}
 
-        {/* ── Reasoning summary ─────────────────────────────────────── */}
-        {thesis.reasoning_summary && (
+        {/* ── Holding sentence (ACTIVE only) ──────────────────────── */}
+        {/* Matches the format used on the trade detail page header so
+            the holding row reads the same everywhere it appears. */}
+        {isHolding && position && (
+          <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+            <span className="truncate">
+              Holding {fmtShares(position.quantity)} sh · avg entry{" "}
+              <span className="font-medium text-foreground tabular-nums">
+                {fmtPrice(position.avgCost)}
+              </span>
+            </span>
+            {positionPnl?.unrealizedPnl != null && (
+              <PriceChange
+                dollarChange={positionPnl.unrealizedPnl}
+                percentChange={positionPnl.unrealizedPnlPct}
+                size="sm"
+                className="shrink-0"
+              />
+            )}
+          </div>
+        )}
+
+        {/* ── Price gauge (stop · entry · target) ─────────────────── */}
+        {/* Reuses the same PriceGauge primitive the sheet's Price
+            Targets block renders, so the card and the sheet show the
+            same visual for the same data. */}
+        {hasGauge && (
+          <div className="pt-1">
+            <PriceGauge
+              entry={entryPrice!}
+              target={targetPrice}
+              stop={stopLoss}
+              current={quote?.currentPrice ?? null}
+            />
+            <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums mt-1">
+              <span>{stopLoss != null ? `Stop ${fmtPrice(stopLoss)}` : ""}</span>
+              <span>{targetPrice != null ? `Target ${fmtPrice(targetPrice)}` : ""}</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── Core belief body ────────────────────────────────────── */}
+        {belief && (
           <p className="text-sm text-muted-foreground line-clamp-3 leading-snug pt-1">
-            {thesis.reasoning_summary}
+            {belief}
           </p>
         )}
       </Card>
