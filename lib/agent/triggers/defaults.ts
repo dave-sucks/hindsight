@@ -335,32 +335,86 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
   const direction = thesis.direction ?? "LONG";
 
-  const entry = watchingEntryTrigger(thesis, direction, 1);
-  if (entry) out.push(entry);
+  // ── Setup-aware default ENTER trigger for CATALYST ────────────────────
+  // When the catalyst date is within 7 trading days, the typical CATALYST
+  // play is pre-event accumulation (buy now or on the event print), NOT
+  // breakout-above-target. In that window:
+  //   - PRICE_ABOVE(target) as ENTER is structurally wrong — target is
+  //     where you'd take profit AFTER the catalyst plays out, not where
+  //     you'd enter.
+  //   - The right default is event-based: EARNINGS_BEAT for an earnings
+  //     catalyst (the most common case in our roster). This fires on the
+  //     post-print signal and lets tactical decide whether to INITIATE.
+  //
+  // When the catalyst date is further out (>7 days) OR not set, default
+  // back to PRICE_ABOVE(target) — that's the breakout-pattern shape
+  // (rare for CATALYST but possible: "buy on breakout that confirms the
+  // setup, then ride into the catalyst").
+  //
+  // Agent can always override either default via the (predicate, action)
+  // merge bucket. This is just the fallback when the agent doesn't
+  // explicitly choose. Production evidence: MDB 2026-05-25 — agent left
+  // triggers untouched on refresh, default was PRICE_ABOVE($385) ENTER
+  // = literally entering at the take-profit level. Event-based default
+  // catches that case structurally.
+  const catalystSoon =
+    thesis.catalystDate != null &&
+    thesis.catalystDate.getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000;
+
+  if (catalystSoon && (direction === "LONG" || direction === "SHORT")) {
+    // Event-based ENTER — fires on the catalyst event itself.
+    // EARNINGS_BEAT for LONG, EARNINGS_MISS for SHORT (the catalyst
+    // confirming the directional thesis).
+    out.push({
+      id: createId(),
+      predicate:
+        direction === "LONG"
+          ? { kind: "EARNINGS_BEAT" }
+          : { kind: "EARNINGS_MISS" },
+      action: "ENTER",
+      rationale:
+        direction === "LONG"
+          ? `Catalyst within 7d — enter on earnings beat confirmation. Tactical validates the post-print tape before INITIATE.`
+          : `Catalyst within 7d — short-side entry on earnings miss confirmation. Tactical validates the post-print tape before INITIATE short.`,
+      cooldownDays: 7,
+    });
+  } else {
+    const entry = watchingEntryTrigger(thesis, direction, 1);
+    if (entry) out.push(entry);
+  }
 
   // Catalyst windows live and die on filings + earnings — those are
   // typically how the catalyst lands. No support-REVIEW: a binary
   // catalyst is either resolved or not, intermediate price wiggles
   // don't change the entry plan.
-  out.push(
-    {
-      id: createId(),
-      predicate: {
-        kind: "OR",
-        predicates: [
-          { kind: "FILING", formType: "8-K" },
-          { kind: "FILING", formType: "10-Q" },
-          { kind: "FILING", formType: "10-K" },
-        ],
-      },
-      action: "REVIEW",
-      rationale:
-        direction === "PASS"
-          ? `Material filing on a catalyst-PASS — the news may invalidate the rejection.`
-          : `Material filing on a catalyst-watch — the filing may BE the catalyst.`,
-      cooldownDays: 1,
+  //
+  // When the ENTER trigger above is the matching earnings predicate
+  // (LONG → EARNINGS_BEAT, SHORT → EARNINGS_MISS), skip the REVIEW on
+  // the SAME predicate to avoid the trigger evaluator firing both ENTER
+  // and REVIEW on the same earnings signal (redundant tactical-run
+  // spawn — the ENTER already handles the post-print decision).
+  const earningsBeatIsEntry = catalystSoon && direction === "LONG";
+  const earningsMissIsEntry = catalystSoon && direction === "SHORT";
+
+  out.push({
+    id: createId(),
+    predicate: {
+      kind: "OR",
+      predicates: [
+        { kind: "FILING", formType: "8-K" },
+        { kind: "FILING", formType: "10-Q" },
+        { kind: "FILING", formType: "10-K" },
+      ],
     },
-    {
+    action: "REVIEW",
+    rationale:
+      direction === "PASS"
+        ? `Material filing on a catalyst-PASS — the news may invalidate the rejection.`
+        : `Material filing on a catalyst-watch — the filing may BE the catalyst.`,
+    cooldownDays: 1,
+  });
+  if (!earningsBeatIsEntry) {
+    out.push({
       id: createId(),
       predicate: { kind: "EARNINGS_BEAT" },
       action: "REVIEW",
@@ -369,8 +423,10 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
           ? `Beat — possibly a reason to flip the PASS.`
           : `Beat — possibly the catalyst. Validate before INITIATE.`,
       cooldownDays: 7,
-    },
-    {
+    });
+  }
+  if (!earningsMissIsEntry) {
+    out.push({
       id: createId(),
       predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
       action: "REVIEW",
@@ -379,15 +435,15 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
           ? `Miss — confirms the PASS, possibly remove from watch.`
           : `Miss — possibly the inverse catalyst. Consider removing from watch.`,
       cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "TIME_ELAPSED", days: 14 },
-      action: "REVIEW",
-      rationale: `Catalyst-window hygiene — if we're still watching after 14 days, the setup is stale.`,
-      cooldownDays: 12,
-    },
-  );
+    });
+  }
+  out.push({
+    id: createId(),
+    predicate: { kind: "TIME_ELAPSED", days: 14 },
+    action: "REVIEW",
+    rationale: `Catalyst-window hygiene — if we're still watching after 14 days, the setup is stale.`,
+    cooldownDays: 12,
+  });
 
   return out;
 }

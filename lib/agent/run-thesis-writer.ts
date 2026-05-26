@@ -249,43 +249,82 @@ around RE-ENTER / DOWNGRADE / INVALIDATE.
      - key_assumptions: ≥2 specific premises that must hold for the belief
      - invalidation_conditions: ≥2 specific things that would prove it
        wrong (numbers, events, dates — NOT "market volatility")
-     - triggers: WATCHING theses MUST carry at least one trigger with
-       action: "ENTER". update_thesis's Layer-1 guard rejects WATCHING
-       LONG/SHORT writes without one — the trigger evaluator has no
-       entry-promotion path otherwise. NEVER write EXIT triggers on
-       WATCHING: there's no position to exit; EXIT only applies
-       post-entry (HELD state). For "interesting evidence, re-evaluate
-       entry" use REVIEW, not EXIT.
+     - triggers: READ THIS WHOLE SECTION CAREFULLY. The mental model
+       below is load-bearing. Past failures (XPEV 2026-05-25, MDB
+       2026-05-25) had the agent producing structurally-wrong trigger
+       sets that the Layer-1 guards now REJECT.
 
-       Pick the ENTER trigger to match the SETUP INTENT, not the default
-       target-price level:
+       MENTAL MODEL — what state are we in?
 
-         • Pre-catalyst accumulation (entering NOW ahead of a dated
-           event like 3-day-out earnings, FDA decision, M&A close): use
-           an event-based ENTER (EARNINGS_BEAT / EARNINGS_MISS /
-           FILING), a TIME_ELAPSED-based ENTER, OR a PRICE_BELOW of a
-           support-bounce level. DO NOT default to
-           PRICE_ABOVE(target_price) — that gates entry at the
-           take-profit level, contradicting the play (you'd be entering
-           at the top, after the move you wanted is already done).
+         WATCHING = we do NOT own this stock. We are waiting for a
+                    reason to buy it. There is no Alpaca position.
+         ACTIVE   = we DO own this stock. We have an open Alpaca
+                    position. EXIT triggers protect that position.
+         (You are writing a WATCHING thesis. Re-read the previous
+         sentence.)
+
+       FORBIDDEN on WATCHING (Layer-1 guard rejects, run will fail and
+       retry until you comply):
+
+         ❌ EXIT       — nothing to exit; we have no position
+         ❌ TRIM       — nothing to trim
+         ❌ ADD        — nothing to scale into
+         ❌ MOVE_STOP  — no stop on a position that doesn't exist
+
+         If you find yourself wanting to express "exit if X happens"
+         on a WATCHING thesis, you mean ONE of two things:
+           (a) "remove this name from the watchlist if X happens" →
+               that's update_thesis(change_status: ARCHIVED) at the
+               moment X happens, NOT a pre-positioned EXIT trigger.
+           (b) "re-evaluate the entry decision if X happens" →
+               use action: "REVIEW", not EXIT.
+
+       REQUIRED on WATCHING (Layer-1 guard rejects without ≥1 ENTER):
+
+         ✓ At least one ENTER — the specific condition that would
+           cause us to BUY this stock. Tactical wakes on this fire.
+
+       CHOOSING THE ENTER TRIGGER — match the SETUP INTENT, not the
+       default target-price level. Read each pattern and pick:
+
+         • Pre-catalyst accumulation (catalyst is dated within ~7
+           days; play is "buy NOW to ride into the event"): use an
+           event-based ENTER — EARNINGS_BEAT (LONG) or EARNINGS_MISS
+           (SHORT) — that fires on the catalyst confirming. The
+           default catalyst template now picks this automatically
+           when catalystDate is within 7d. DO NOT pass
+           PRICE_ABOVE(target_price) as ENTER on a near-term catalyst
+           play — that would gate entry at the take-profit level, so
+           you'd be entering at the top after the move is done.
 
          • Post-event confirmation (waiting for the catalyst to print
-           before entering): use an EARNINGS_BEAT (or matching event)
-           ENTER trigger. Entry is conditional on the print.
+           before entering, catalyst further out): use EARNINGS_BEAT
+           (or matching event) as ENTER. Entry is conditional on the
+           print confirming direction.
 
-         • Breakout pattern (waiting for resistance break, then ride the
-           continuation): use PRICE_ABOVE(breakout_level), where
+         • Breakout pattern (waiting for resistance break, then ride
+           the continuation): use PRICE_ABOVE(breakout_level), where
            breakout_level is BELOW target_price. The target is the
            take-profit; the breakout is the entry.
 
          • Pullback pattern (waiting for retrace to support before
-           entry): use PRICE_BELOW(pullback_level) as a REVIEW trigger
-           and let the next daily-run decide at that level — pullback
-           entries need fresh judgment, not an auto-fire.
+           entry): use PRICE_BELOW(pullback_level) as a REVIEW
+           trigger and let the next daily-run decide at that level —
+           pullback entries need fresh judgment, not an auto-fire.
 
-       REVIEW triggers stay as today: earnings outcomes (REVIEW), filings
-       (REVIEW), time-based hygiene (REVIEW), "this would warrant a
-       fresh look" predicates.
+       REVIEW triggers stay as today: earnings outcomes (REVIEW),
+       filings (REVIEW), time-based hygiene (REVIEW), "this would
+       warrant a fresh look" predicates.
+
+       BEFORE YOU PERSIST — sanity check your triggers array:
+         1. Status is WATCHING? Verify ZERO triggers with action
+            EXIT, TRIM, ADD, or MOVE_STOP. If any, remove them now.
+         2. At least one trigger has action ENTER? If not, add one.
+         3. Re-read the predicate of your ENTER trigger — does it
+            match the SETUP INTENT (event-based for near-term
+            catalyst, breakout-level-below-target for breakout, etc.)?
+            If you defaulted to PRICE_ABOVE(target_price) on a
+            near-term catalyst play, fix it before persisting.
 
 4. Persist the thesis. PR-9 flat schema: pass the 9 individual section
    args (NOT a single research_sections blob — that arg was dropped).
