@@ -938,11 +938,11 @@ export function PromotionSheetContent() {
           </li>
           <li>
             Analyst header — LIVE badge appears when the analyst is in live mode;
-            an &quot;N awaiting live entry&quot; chip shows the PROMOTED count.
+            an &quot;N promoted&quot; chip shows the PROMOTED count.
           </li>
           <li>
             Thesis cards / table — PROMOTED rows render with an amber pulse
-            and the label <span className="font-medium text-foreground">Awaiting live entry</span>.
+            and the label <span className="font-medium text-foreground">Promoted</span>.
           </li>
         </ul>
       </div>

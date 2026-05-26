@@ -523,7 +523,7 @@ export async function getAnalystDetail(
   // moved into `scoring.composite` (Json `{ ... composite: number }`).
   // Prisma aggregate can't average a Json field; fetch the scoring blobs
   // and average composites client-side. Cheap on a per-analyst scope.
-  // promotedCount feeds the "N awaiting live entry" badge on the analyst
+  // promotedCount feeds the "N promoted" badge on the analyst
   // detail header.
   const [allPositions, scoringRows, promotedCount] = await Promise.all([
     prisma.position.findMany({

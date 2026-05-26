@@ -484,7 +484,7 @@ export default function AnalystDetailClient({
                 )}
                 {stats.promotedCount > 0 && (
                   <Badge variant="secondary">
-                    {stats.promotedCount} awaiting live entry
+                    {stats.promotedCount} promoted
                   </Badge>
                 )}
                 {hasRunning && (
