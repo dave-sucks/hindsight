@@ -74,7 +74,7 @@ export interface RunThesisWriterResult {
   error?: string;
 }
 
-function buildThesisWriterSystemPrompt(opts: {
+export function buildThesisWriterSystemPrompt(opts: {
   analystName: string;
   analystPrompt: string | null;
   ticker: string;
@@ -307,6 +307,46 @@ ${
          3. The simplest safe path is to pass the verbatim output of
             defaultTriggersForHorizon(horizon, prices, "HELD") — that
             satisfies both guards and matches the canonical shape.`
+    : opts.mode === "refresh" && opts.existingThesis?.status === "PROMOTED"
+    ? `       *** YOU ARE REFRESHING A PROMOTED THESIS ***
+       The existing thesis row is status="PROMOTED" — the user just
+       graduated this analyst to live money and the paper position
+       was force-closed at promotion. Your job is RESEARCH REFRESH
+       ONLY. The status decision (re-enter via place_trade / defer
+       to WATCHING / kill) belongs to the next daily run, NOT to you.
+
+       Apply the PROMOTED trigger template via
+       defaultTriggersForHorizon(horizon, prices, "PROMOTED") —
+       already shipped via PR #333. This emits ENTER + REVIEW (no
+       EXIT — no live position to exit).
+
+       FORBIDDEN on PROMOTED refresh (Layer-1 guard rejects when
+       runMode === "THESIS_WRITER"):
+
+         ❌ update_thesis(change_status: ...) — the status decision
+            is the daily run's call. You write research; the
+            orchestrator decides re-enter / defer / kill. Calling
+            update_thesis(change_status: "WATCHING") on a PROMOTED
+            refresh is the failure shape that caused 3 production
+            status flips on 2026-05-26 (AVGO, MRVL, TSM) — don't
+            repeat it.
+
+         ❌ place_trade — not in your allowlist (defensive — the
+            writer never executes trades).
+
+       REQUIRED on PROMOTED refresh:
+
+         ✓ update_thesis with refreshed content (target / stop /
+           triggers / belief / sections). NO change_status arg.
+           Leave status as PROMOTED. The next daily run will read
+           your refreshed research and decide the live entry.
+
+       BEFORE YOU PERSIST — sanity check your update_thesis args:
+         1. NO change_status arg. If present, remove it. The thesis
+            stays PROMOTED until the orchestrator acts.
+         2. Trigger array follows the PROMOTED template (ENTER +
+            REVIEW, no EXIT). Pass the verbatim output of
+            defaultTriggersForHorizon(horizon, prices, "PROMOTED").`
     : `       *** YOU ARE WRITING A WATCHING THESIS ***
        ${opts.mode === "mint" ? `This is a MINT — net-new coverage on $${T}, will be persisted as WATCHING.` : `The existing thesis row is status="${opts.existingThesis?.status ?? "WATCHING"}" — apply the WATCHING template.`}
 
@@ -546,6 +586,9 @@ export async function runThesisWriterAgent(
     userId: analyst.userId,
     accountId: analyst.accountId,
     analystId: analyst.id,
+    // runMode passthrough so update_thesis can refuse status flips on
+    // PROMOTED refreshes from this code path (GAPS P0-4 Layer-1 backstop).
+    runMode: "THESIS_WRITER",
     watchlist: watchlistSymbols,
     exclusionList: analyst.exclusionList ?? [],
     sectors: analyst.sectors ?? [],
