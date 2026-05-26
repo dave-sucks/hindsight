@@ -12,7 +12,7 @@
 >
 > **How to use it:** start at P0. P0s block the rework's correctness. P1s degrade quality. P2s are papercuts but still part of the rework. Don't skip levels. When something closes, **move it** to a "Done since" section below, not strike-through inline.
 >
-> **Most recent major movement:** 2026-05-25 PROMOTED-integration wave + doc cleanup. The PROMOTED-status work shipped end-to-end across three PRs: PR #330 (promotion fan-out + synthesis-prompt PROMOTED context — closes P0-13 Holes #1, #2), PR #331 (read-side: deep-research excerpt + `researchAge` surfaced to decision agents), PR #333 (PROMOTED-aware trigger templates — closes P1-21 / P0-13 Hole #4). P0-13's last open piece — Hole #3, the `place_trade` staleness gate — is re-filed as P1-22 below and deferred to Phase 2 of `THESIS_LIFECYCLE_FIX.md`. Same-day cleanup audit retired four stale entries: P0-10 (immediate failure mode structurally impossible post-PR #265; deeper concern rolls into P1-20), P1-14 (V1 prompt path is dead — `buildV2SystemPrompt` deprecated with zero callers; PR #317 dropped the `useV2Prompt` column), P2-19 (PR #313 merged 2026-05-23). New P2-23 filed for `parentThesisId` deprecation (one writer, four readers, no chain walking — redundant with `ThesisUpdate`). Prior wave (2026-05-23): P0-12 narration→execution gate moved to end-of-run — see "Done since 2026-05-23" in `GAPS_HISTORY.md`.
+> **Most recent major movement:** 2026-05-26 first-live-analyst architecture review. Earnings Drift Trader was promoted PAPER→LIVE at 04:42 UTC with 3 ACTIVE→PROMOTED theses (AVGO, MRVL, TSM). Review found two new P0s: **P0-14** (`complete_run` gate scopes to ACTIVE+WATCHING and silently bypasses PROMOTED — the first live morning run completed without acting on any of the 3 promoted theses) and **P0-15** (thesis-writer prompt has no PROMOTED branch — falls through to WATCHING template and instructs the writer to flip status, which all 3 promotion-fan-out writers did before the principal manually reverted). Also new: **P1-24** (`Thesis.promotedAt` column is exactly 12 hours adrift from the audit row — Prisma `timestamp without time zone` AM/PM-flip smell) and **P1-25** (writer fabricated MRVL post-earnings data 7 minutes before contradicting itself about whether earnings had printed). Concern 1 (P1-23 targetPrice overload) audited live and stays P1 — 0/8 theses on the live analyst have a default `PRICE_ABOVE(targetPrice)` ENTER trigger; the V2 writer overrides them all to EARNINGS_BEAT or sub-target PRICE_ABOVE. See `docs/run-reviews/2026-05-26-live-analyst-architecture-review.md` for the full evidence trail. Prior wave (2026-05-25): PROMOTED-integration shipped end-to-end across PRs #330/#331/#333; P0-13 closed; Hole #3 re-filed as P1-22.
 
 ---
 
@@ -92,6 +92,46 @@ These prevent the core loop from working as designed. Fix first.
 *(P0-11 closed 2026-05-16 via PR #270 — moved to `GAPS_HISTORY.md`. P0-5 closed across PRs #239 + Morning-Run-V2 + 2026-05-13 — moved to `GAPS_HISTORY.md`.)*
 
 *(P0-13 closed 2026-05-25 — moved to `GAPS_HISTORY.md`. Hole #1 (PROMOTED context in synthesis prompt) + Hole #2 (promotion fan-out) shipped via PR #330; Hole #4 (PROMOTED triggers) shipped via PR #333. Hole #3 (place_trade staleness gate) deferred to Phase 2 of `docs/plans/THESIS_LIFECYCLE_FIX.md` and re-filed as **P1-22** below.)*
+
+### P0-14 — `complete_run` preflight scope skips PROMOTED theses (the closeout contract isn't enforced for PROMOTED)
+**Source:** First-live-analyst architecture review 2026-05-26 (`docs/run-reviews/2026-05-26-live-analyst-architecture-review.md`). Production-confirmed today on Earnings Drift Trader, the first live analyst.
+
+`lib/agent/tools/complete-run.ts:437` scopes the unaddressed-needsAction preflight to `status: { in: ["ACTIVE", "WATCHING"] }`. PROMOTED theses are silently excluded from the gate. The V2 daily-run prompt (`lib/agent/system-prompt.ts:645`) explicitly tells the agent "Closeout contract — non-negotiable. Every Live Theses row (ACTIVE + WATCHING + PROMOTED) produces exactly one tool call this run... PROMOTED theses additionally require a status-changing call." Layer-3 promises an invariant that Layer-1 does not enforce — exactly the kind of prompt-vs-gate mismatch the three-layer principle calls out.
+
+**Production evidence (2026-05-26):** Earnings Drift Trader was promoted PAPER→LIVE at 04:42 UTC with 3 PROMOTED theses (AVGO, MRVL, TSM). The 8 AM ET morning run (`cmpml36xb00a204k1k1mletr5`) completed COMPLETE with `primaryDecision: "WATCH"`, `tradesPlaced: 0`. The decisionRationale reads "**No open positions**, so there was no weakest holding to rotate out of and exposure remains zero. Best actionable-reviewed candidate AMBA is 8/10... PLAB is 7/10... SNPS signal was bullish..." — it reviewed the 5 WATCHING theses (AMBA, PLAB, SNPS in the rationale; CVV, DELL implicitly) but never named AVGO, MRVL, or TSM. The 3 PROMOTED theses sat untouched on the first live day. `complete_run` accepted the run because PROMOTED isn't in the gate's scope.
+
+**Fix path (one-line tool change + minor needs-action update):**
+1. `lib/agent/tools/complete-run.ts:430` and `:437` — change `status: { in: ["ACTIVE", "WATCHING"] }` to `status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] }`.
+2. `lib/agent/needs-action.ts` — add a PROMOTED-specific needsAction kind (e.g. `PROMOTED_AWAITING_RESOLUTION`) so the gate refusal message names what the agent must do (place_trade for re-entry / update_thesis change_status:WATCHING for defer). Without a needsAction value the gate has nothing to refuse on.
+3. Add a test that asserts: a daily run with N PROMOTED theses and zero update_thesis/place_trade calls on them gets refused by `complete_run`.
+
+**Why this is P0:** real money is now on the line. The first live promotion produced 3 PROMOTED theses that the daily run silently ignored. If the principal hadn't been watching by hand, the analyst would have spent its first live day doing nothing on its highest-conviction names. Every future promotion hits this until the gate is widened.
+
+**Cross-references:** `lib/agent/system-prompt.ts:645` (the Layer-3 promise), `lib/agent/tools/complete-run.ts:437` (the Layer-1 hole), `docs/THESIS_ARCHITECTURE.md` Scenario J step 5 (the spec for what should happen), `docs/PRINCIPLES.md` (three-layer principle).
+
+### P0-15 — Thesis-writer prompt has no PROMOTED branch; falls through to WATCHING template and encourages status flip
+**Source:** First-live-analyst architecture review 2026-05-26. Production-confirmed today across all 3 promotion-time writer refreshes on Earnings Drift Trader.
+
+`lib/agent/run-thesis-writer.ts:268-310` branches the system prompt on `opts.existingThesis?.status`:
+- `=== "ACTIVE"` → ACTIVE/HELD template ("YOU ARE WRITING A HELD THESIS — EXIT triggers required, ENTER forbidden")
+- everything else → WATCHING template ("YOU ARE WRITING A WATCHING THESIS — ENTER triggers required, EXIT forbidden")
+
+PROMOTED falls into the second branch. The prompt literally tells the writer "YOU ARE WRITING A WATCHING THESIS" when refreshing a PROMOTED row. The writer follows the directive: emits WATCHING-shaped triggers AND calls `update_thesis(change_status: "WATCHING")` to match the framing.
+
+`record_thesis` / `update_thesis`' tool gates do NOT prevent this — `update_thesis` from PROMOTED to WATCHING is the architectural "defer" exit (per `docs/THESIS_ARCHITECTURE.md` §3 state diagram, line 109). So the writer's overreach is structurally legal at the tool layer; only the principal's policy (and the V2 daily-run prompt) says PROMOTED → WATCHING is the orchestrator's call, not the writer's.
+
+**Production evidence (2026-05-26):** All 3 promotion-fan-out THESIS_WRITER runs (AVGO `cmpm5fmgg000b04jxvtgm3s0p`, MRVL `cmpm5fmgg000904jx6puwbp54`, TSM `cmpm5fmgg000a04jxc543iafq`) called `update_thesis(change_status: "WATCHING")` on the freshly-promoted thesis. The principal manually reverted all 3 to PROMOTED at 05:02:20 UTC with an explicit `Manual fix: WATCHING → PROMOTED. The promotion fan-out thesis-writer overstepped by flipping status to WATCHING during the refresh — that decision belongs to the first live daily-r[un].` audit row (visible on all 3 thesisIds).
+
+**Fix path (~1 day):**
+1. Add a third branch in `lib/agent/run-thesis-writer.ts` for `existingThesis?.status === "PROMOTED"`:
+   - Use the PROMOTED-aware trigger template (already shipped via PR #333).
+   - Explicitly forbid `update_thesis(change_status: ...)` in this run — the writer's job is research, the status decision belongs to the daily run.
+   - The promotionContext block (already present at lines 132-145) should call this out: "DO NOT call update_thesis with change_status. Refresh the structural belief + sections only. The daily run reads researchAge and decides RE-ENTER (place_trade) vs DOWNGRADE (change_status: WATCHING)."
+2. Optional Layer-1 backstop in `update_thesis`: refuse `change_status: "WATCHING"` from PROMOTED when called by `runMode === "THESIS_WRITER"`. Surface a clear error pointing at the daily run as the right caller. (Layer-1 backstop is belt-and-suspenders — if the prompt change works, this guard never fires.)
+
+**Why this is P0:** every PAPER→LIVE promotion fans out N thesis-writer refreshes. The current prompt directs the writer to flip status on every one. The principal had to manually patch 3 rows today; the next promotion (likely a similar-shape analyst) repeats the same labor.
+
+**Cross-references:** `lib/agent/run-thesis-writer.ts:268-310`, ThesisUpdate rows at 04:48:46/04:50:34/04:49:02 UTC (the 3 overreaches) + 05:02:20 UTC (the 3 manual reverts), `docs/THESIS_ARCHITECTURE.md` §3 state diagram (the legal PROMOTED exits), `lib/agent/system-prompt.ts:627-643` (the daily-run prompt's PROMOTED guidance that the writer is undercutting).
 
 ---
 
@@ -219,6 +259,46 @@ Same file at `catalystDefaults` line 338-359 contains a code comment that calls 
 **Why not P0:** the existing dual-meaning behavior works correctly when the agent and analyst agree on the convention. The bug is interpretive — bad theses get written when the convention isn't clear, but the trigger engine itself is deterministic. Currently mitigated by the fact that most theses are written by the rich thesis-writer (PR #324), which reasons through chart structure and naturally writes a "buy-in" level for WATCHING. The risk is humans + older theses + the prompt ambiguity.
 
 **Cross-references:** `lib/agent/triggers/defaults.ts:295-310, 338-359` (the producer comment that flags this), MDB 2026-05-25 (production evidence), `docs/THESIS_ARCHITECTURE.md` §8 Fields (where the field's role would be documented per the new split).
+
+**Update 2026-05-26 (first-live-analyst review):** scanned all 8 open theses on the live analyst. **0 of 8 have a default PRICE_ABOVE(targetPrice) ENTER trigger that would buy at the take-profit level** — the V2 thesis-writer is correctly overriding the broken defaults in every case, using either EARNINGS_BEAT predicates (PEAD-correct for this analyst's strategy) or PRICE_ABOVE(breakout_level) with a level chosen well below targetPrice. The writer prompt at `lib/agent/run-thesis-writer.ts:334-374` ("CHOOSING THE ENTER TRIGGER — match the SETUP INTENT, not the default target-price level") is doing the load-bearing work. P1 classification holds — the writer-as-shield is working, but the shield is a prompt-layer mitigation of a tool-layer bug. If a thesis ever lands without writer involvement (legacy rows, future code paths, accidental schema-default fallback), the bug bites. The schema split is still the durable fix.
+
+### P1-24 — `Thesis.promotedAt` column timestamp 12 hours adrift from the audit row
+**Source:** First-live-analyst architecture review 2026-05-26. Surfaced while building the per-thesis timeline.
+
+For all 3 PROMOTED theses on Earnings Drift Trader (AVGO, MRVL, TSM):
+- `ThesisUpdate.timestamp` for the `STATUS_CHANGED { from: "ACTIVE", to: "PROMOTED" }` row: **04:42:18-31 UTC** (matches `promoteAnalystToLive`'s `new Date()` at action-start, also matches `promotionContext.promotedAt` ISO string in the dispatched THESIS_WRITER `parameters` JSON).
+- `Thesis.promotedAt` column: **16:42:18-31 UTC** — exactly 12 hours later, same seconds.
+
+The thesis row's `promotedAt` is currently a `timestamp without time zone` column (verified via `pg_typeof`). The `ThesisUpdate.timestamp` column is `timestamptz`. The `new Date()` value from `transitionThesisToPromoted()` writes to both atomically (or near-atomically), and they disagree by exactly 12h.
+
+Smells like Prisma/`@prisma/adapter-pg` rendering the same JS Date differently between `timestamp` and `timestamptz` columns — possibly an AM/PM flip somewhere in the type conversion layer.
+
+**Why this is P1, not P0:** the trade path doesn't read `Thesis.promotedAt` for any decision; the audit-row timestamp is authoritative for "when was this promoted." Sheet UIs and time-since-promotion math will be wrong, and any future feature that gates on age-since-promotion (e.g., "remind me to look at PROMOTED theses older than N days") will compute on bad data. At the moment the column shows a value that's **in the future** (16:42 UTC when now() is ~16:00 UTC).
+
+**Fix path:** convert `Thesis.promotedAt` to `timestamptz` in a migration. Verify Prisma schema declares `@db.Timestamptz` (or migrate to the standard `DateTime`). Backfill: `UPDATE "Thesis" SET "promotedAt" = "promotedAt" - INTERVAL '12 hours' WHERE "promotedAt" > NOW()` (validate first against `ThesisUpdate` for each row before backfilling). ~1-2 hours.
+
+**Cross-references:** `lib/actions/promote-analyst.actions.ts:430` (the `new Date()` write), `prisma/schema.prisma` (look for `promotedAt` field declaration), `lib/agent/thesis-updates.ts` (the audit row writer that gets the time right).
+
+### P1-25 — Thesis-writer fabricated post-earnings data 7 minutes before contradicting itself
+**Source:** First-live-analyst architecture review 2026-05-26. MRVL promotion-time refresh (`cmpm5fmgg000904jx6puwbp54`).
+
+Within the same THESIS_WRITER run, two consecutive `update_thesis` rationales on MRVL are mutually contradictory:
+
+- **04:48:46 UTC** (STATUS_CHANGED): *"Q1 FY2027 print due tonight (May 27 after close) — PEAD signal NOT yet confirmed. Re-entering as WATCHING with EARNINGS_BEAT trigger; will only activate position 1-3 days post-print if beat-and-raise is verified."*
+- **04:55:10 UTC** (UPDATED, 7 minutes later): *"MRVL printed a clean Q1 FY2027 beat-and-raise (revenue +3.2% vs est, Q2 guide above Street on both revenue and EPS) — PEAD signal confirmed. Re-entering as WATCHING; entry 1-3 days post-gap per PEAD discipline. Core belief updated to 60-day drift target of $270. Stop reset to $195 (pre-earnings support). All sections refreshed with post-earnings data."*
+
+Today is 2026-05-26. Per the first rationale, MRVL's Q1 FY2027 print is 2026-05-27 after close — i.e., it has not happened. The second rationale claims specific numbers (revenue +3.2%, raised Q2 guide) as if it had. Almost certainly the deep-research model (`write_thesis_research` → Sonar / Claude / Gemini, depending on bake-off winner) returned analyst estimates framed as actuals, and the writer agent did not catch the date inconsistency before persisting.
+
+The hallucinated rationale didn't drive a trade today (the principal manually reverted the WATCHING flip, then `complete_run` skipped PROMOTED). But the rationale text is now on the row as the latest UPDATED entry, and the next tactical / daily run reads it. If the May 27 print is in fact a miss, the agent has a falsified "we already saw the beat" framing to argue against. If the print is a beat, the agent never updates the framing because it already "happened."
+
+**Fix path:**
+1. Add a date-awareness check inside `write_thesis_research`'s synthesis prompt: "If a catalyst date in the structured data block is in the future, do NOT describe its outcome as a fact. Describe it as expected/anticipated; cite estimates explicitly."
+2. Surface `Snapshot.asOfDate` and the catalyst dates from the structured data block more prominently in the synthesis prompt so the deep-research model can't confuse "consensus expects EPS X" with "company reported EPS X."
+3. Add a Layer-1 sanity check in `update_thesis` rationale parser: if the rationale claims a beat/miss/print AND the thesis's `catalystDate` is in the future, soft-warn (don't reject) so the writer can self-correct.
+
+**Why this is P1:** one observation on one ticker; the principal caught the broader status-flip issue and reverted, so this hallucination didn't drive a trade. But the writer is the central producer of belief content; a hallucinated "we saw the beat" rationale that leaks into a real run is the kind of thing that nukes the trade evaluator's post-mortem (it grades against `coreBelief` + `keyAssumptions`, both of which are influenced by the rationale framing).
+
+**Cross-references:** `cmpm5fmgg000904jx6puwbp54` (the run), `lib/agent/tools/write-thesis-research.ts` (the meta-tool), `lib/agent/run-thesis-writer.ts:147-176` (the writer's prompt step that calls write_thesis_research).
 
 ---
 
