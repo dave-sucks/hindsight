@@ -1,12 +1,42 @@
 # Hindsight — Thesis Architecture
 
-> **What this is:** the live reference for how the thesis system works.
-> Updated 2026-05-13 to reflect the watchlist collapse (PR #265) and the
-> complete_run preflight (PR #266). Update this doc whenever a thesis-system
-> component changes. For target state, read [`VISION.md`](./VISION.md). For
-> known gaps, read [`GAPS.md`](./GAPS.md).
+> **What this is:** the live reference for how the system works. The 5 roles + the thesis lifecycle + how research stays fresh. **Read this first** before touching anything in the agent or thesis system. For target state, read [`VISION.md`](./VISION.md). For what's broken right now, read [`GAPS.md`](./GAPS.md).
 >
-> **Last verified:** 2026-05-13
+> **Last verified:** 2026-05-26 (first live promotion + role-split rewrite).
+
+---
+
+## 0. The five roles (the mental model)
+
+Everything in this system maps to one of five roles. If a change you're making doesn't fit cleanly into one role, you're probably about to introduce a bug.
+
+| Role | Cadence | Allowed to do | Forbidden from |
+|---|---|---|---|
+| **Daily run** | Every weekday 8 AM ET | Walk the whole book. Trade, exit, trim, add, edit targets. Refresh research via `dispatch_thesis_research` when judgment says it's needed. Decide all PROMOTED rows today. | Mint net-new theses on un-covered tickers. Write deep-research content (only patches via `update_thesis`). |
+| **Tactical run** | On trigger fire | Same as daily but scoped to ONE thesis. Place/exit/trim/add. Refresh research mid-run if stale. | Touch other theses. Mint net-new. |
+| **Discovery run** | Sundays 9 AM ET | Mint net-new WATCHING and PASS-ARCHIVED theses on un-covered tickers. | Trade. Touch existing theses. Update statuses on other rows. |
+| **Thesis-writer** | On promotion fan-out + on daily/tactical's `dispatch_thesis_research` call | Refresh research content (snapshot, bull, bear, fundamentals, etc.) on ONE thesis. Recompute target / stop / triggers from fresh data. | Touch status. Place trades. The status decision belongs to the orchestrator that dispatched the writer. |
+| **Promotion action** | User clicks "Promote to live" | Close paper positions. Flip ACTIVE theses → PROMOTED with conviction context frozen. Fan out thesis-writer refreshes per PROMOTED row. Flip `AgentConfig.tradingEnvironment` to LIVE. | Trade. Touch WATCHING/PENDING/PASS theses. Decide the first-live entry (that's the next daily run's call). |
+
+**The cardinal rule that ties them together:** the writer produces research; the orchestrator (daily/tactical/discovery) acts. Status decisions live exclusively with orchestrators. Research content lives exclusively with the writer. Mixing those two is the source of every PROMOTED-related bug we've seen.
+
+### Why these roles, not fewer
+
+The temptation is to collapse "writer + daily run" into one agent. Don't. The writer is a deep-research sub-agent that gets exhaustive context on ONE ticker; the daily run sees the full portfolio and allocates slots across many tickers. They have fundamentally different inputs and different decision shapes. Forcing them into one agent loses either portfolio awareness or research depth.
+
+### How research stays fresh (the principle)
+
+There's NO hard gate on `place_trade` that refuses based on research age. The agent's review loop handles freshness via judgment:
+
+1. Every thesis has a `nextReviewAt` set by horizon defaults (CATALYST daily, TRADE daily, TARGET weekly, COMPOUNDER quarterly), plus REVIEW triggers (filings, earnings, time-elapsed, etc.).
+2. When a review fires (cadence or trigger), the daily/tactical agent decides:
+   - **Thesis intact, no changes** → log REVIEWED (auto-bumps nextReviewAt forward by horizon cadence).
+   - **Thesis intact, small tweak warranted** (e.g., agent is more bullish, wants a lower entry price) → `update_thesis` with the patch.
+   - **Materially stale, needs full rewrite** → `dispatch_thesis_research(refresh)`, wait for the writer, then act on the refreshed thesis.
+3. The agent has `dispatch_thesis_research` + `wait_for_thesis_refresh` in its allowlist so refresh-mid-run is cheap.
+4. Result: research is current when the agent decides it should be. No hard gates on execution.
+
+The wrong pattern (which we explicitly do NOT do): a `place_trade` Layer-1 refusal if research is older than N days. That gates execution on a number when the right answer is to give the agent judgment + tools.
 
 ---
 
@@ -74,6 +104,8 @@ Enforced at write in `record_thesis`, `update_thesis`, and the promote-analyst a
 ```
 
 PROMOTED is set only by the promote-analyst action (not by `record_thesis` / `update_thesis`). Its only legal exits are PROMOTED → ACTIVE (re-enter via place_trade) or PROMOTED → WATCHING (defer via update_thesis). INVALIDATED / CLOSED / ARCHIVED transitions from PROMOTED are rejected at the tool layer — the analyst held the name with conviction; the user explicitly chose to graduate the analyst; killing the thesis without revisiting it is the wrong shape.
+
+**Who decides PROMOTED's exit:** the daily run (or a tactical run), NOT the writer. The writer that ran during the promotion fan-out refreshes the research only — it does not call `update_thesis(change_status: ...)`. The first daily run after the promotion reads the refreshed research and makes the call (re-enter via `place_trade` / defer via `update_thesis change_status: WATCHING`). This boundary exists because the writer has tunnel vision on one ticker; the daily run has portfolio + slot context. See §0 (the role split) and `GAPS.md` P0-4 for the current bug + fix.
 
 Anything else is rejected with a structured error.
 
@@ -324,6 +356,10 @@ Two stages, in different runs. Mode allowlists forbid Daily/Tactical from mintin
 
 ### Scenario J — User promotes an analyst PAPER → LIVE.
 
+> **Updated 2026-05-26 after the first live promotion.** Reflects the role split: writer refreshes research, daily run decides status. The earlier framing that suggested the writer would call `update_thesis(change_status: ...)` itself was wrong and caused the first-live-day bugs documented in `GAPS.md` P0-1 through P0-4.
+
+
+
 Analyst has been running in paper for a while. Two open paper positions: $NVDA LONG, $AMD LONG. Three WATCHING theses. One ARCHIVED PASS (institutional memory).
 
 1. User clicks "Promote to live" on the analyst detail page → confirms in dialog by typing the analyst name.
@@ -340,11 +376,13 @@ Analyst has been running in paper for a while. Two open paper positions: $NVDA L
    - Flips `AgentConfig.tradingEnvironment` to `LIVE` (optionally updates `realMaxPosition` from the dialog).
 3. WATCHING theses are untouched. The PASS ARCHIVED stays ARCHIVED. The watchlist seeds (PENDING WATCHING) stay PENDING WATCHING.
 4. Next daily run (now in LIVE mode) sees: 0 ACTIVE theses, 2 PROMOTED theses ($NVDA, $AMD), 3 WATCHING theses, 1 PENDING WATCHING (seed). Structurally different from any prior run — the agent's whole job that morning is graduating PROMOTED + WATCHING to live positions.
-5. Per-thesis review:
-   - PROMOTED $NVDA: `get_stock_data` → recompute target/stop relative to today's price → `update_thesis(change_status: "ACTIVE", target_price: ..., stop_loss: ...)` → `place_trade`. Trade fills live. Thesis is now ACTIVE.
-   - PROMOTED $AMD: $AMD has run +9% past the paper-era target while the user was reviewing the dialog. Agent calls `update_thesis(change_status: "WATCHING", rationale: "Captured the move; let the WATCHING flow re-enter if it pulls back to N")`. Thesis is now WATCHING with old ENTER trigger.
-   - WATCHING theses: walked the normal way; some get promoted, some stay watching.
-   - PENDING WATCHING: gets researched and committed exactly like Scenario A — but the resulting LONG/SHORT lands in the live account on next entry.
+5. **The writer fan-out (background, async, completes within a few minutes of the promotion click).** Each PROMOTED thesis gets a `THESIS_WRITER` sub-run that calls `write_thesis_research` for a deep refresh, recomputes target/stop relative to today's price, refreshes belief / triggers / sections, and persists via `update_thesis` WITHOUT touching status. Each writer optionally sets a `recommendedAction` field (BUY_LIVE / DEFER_TO_WATCHING / INVALIDATE) as input data for the next daily run. The writer does NOT call `place_trade` or `update_thesis(change_status: ...)`.
+
+6. **First live daily run (next 8 AM ET) — this is where status decisions happen.** Per-thesis walk:
+   - PROMOTED $NVDA: agent reads the writer's refreshed research + writer's `recommendedAction`, calls `get_stock_data` to confirm live setup, decides re-enter → `place_trade`. `place_trade` atomically flips PROMOTED → ACTIVE on fill.
+   - PROMOTED $AMD: agent reads refreshed research, sees $AMD ran +9% past target during the writer's research window, decides defer → `update_thesis(change_status: "WATCHING", rationale: "Captured the move; let the WATCHING flow re-enter if it pulls back to N")`. Thesis is now WATCHING with refreshed ENTER trigger.
+   - WATCHING theses: walked the normal way; trigger fires evaluated, REVIEW_DUE rows reviewed, etc.
+   - PENDING WATCHING: researched and committed exactly like Scenario A — resulting LONG/SHORT lands in the live account on next entry.
 6. If user later demotes LIVE → PAPER (`demoteAnalystToPaper` or `closeAllLivePositionsAndDemote`), any remaining PROMOTED theses revert to WATCHING with a STATUS_CHANGED audit row. Conviction context fields stay on the row for later reference; `promotedAt` clears.
 
 ---
@@ -562,8 +600,7 @@ All ultimately produce Thesis rows; no parallel table.
 
 | Consumer | Reads | Contract |
 |---|---|---|
-| **Daily-run prompt V1** ([`system-prompt.ts`](../lib/agent/system-prompt.ts) → `buildV2SystemPrompt`) | Live Theses table (ACTIVE + WATCHING, including PENDING). Per-thesis line: belief preview + horizon exit-policy hint. | Agent walks each thesis with all the structured shape visible. |
-| **Daily-run prompt V2** ([`system-prompt.ts`](../lib/agent/system-prompt.ts) → `buildDailyRunSystemPromptV2`) | Identity + edge + universe + yesterday's standup + horizon glossary. ~80 lines total. | Agent reads per-thesis state through `get_theses.needsAction` instead of rendered prompt blocks. Gated on `AgentConfig.useV2Prompt`. |
+| **Daily-run prompt** ([`system-prompt.ts`](../lib/agent/system-prompt.ts) → `buildDailyRunSystemPromptV2`) | Identity + edge + universe + yesterday's standup + horizon glossary + needsAction walk-through. ~165 lines. | Agent reads per-thesis state through `get_theses.needsAction` and walks each row with the appropriate decision shape. **This is the only live prompt.** The legacy `buildV2SystemPrompt` (misleadingly named — it was the V1 600-line builder) is `@deprecated` with zero callers and tracked for deletion in `GAPS.md` P0-2. |
 | **`get_theses.needsAction`** ([`needs-action.ts`](../lib/agent/needs-action.ts)) | Per-thesis: `direction`, `triggers[]`, `nextReviewAt`, latest `ThesisUpdate` row, fresh quote. | Returns `TRIGGER_FIRED` / `TRIGGER_MATCHING_NOW` / `REVIEW_DUE` / null. PENDING theses surface as `REVIEW_DUE` with `pendingFirstReview: true`. Trigger-driven only — no hardcoded proximity. |
 | **Tactical-run prompt** ([`intraday-tactical.ts`](../lib/agent/system-prompts/intraday-tactical.ts)) | Full thesis: id, ticker, direction, horizon, **coreBelief, keyAssumptions, invalidationConds**, entry/target/stop, targetSizePct, scalingPlan, recentUpdates. Plus the firing trigger and signal payload. | Validates trigger → scores against keyAssumptions → executes the action. |
 | **Discovery-run prompt** ([`discovery.ts`](../lib/agent/system-prompts/discovery.ts)) | `existingTickers` (already-covered set) + analyst config. | Mints LONG/SHORT WATCHING or PASS ARCHIVED. Cannot update or close. |

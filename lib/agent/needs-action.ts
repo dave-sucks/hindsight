@@ -3,13 +3,18 @@
  * so the daily-run agent doesn't have to cross-reference five different
  * prompt blocks to figure out what needs attention today.
  *
- * Three kinds, ALL trigger-driven. No hardcoded proximity thresholds, no
- * generic "within X% of level" math. If the agent wants warning at 5%
- * from stop, the agent should add a PRICE_BELOW REVIEW trigger when
- * minting the thesis — that's exactly what the trigger system is for.
- * Recreating proximity heuristics here would just relocate the
- * parallel-logic bug Fix #0 removes from price-monitor.
+ * Four kinds. The first three are trigger-driven. The fourth (PROMOTED)
+ * is status-driven — any PROMOTED thesis ALWAYS requires resolution this
+ * run regardless of trigger state.
  *
+ *   PROMOTED_AWAITING_RESOLUTION — thesis.status === "PROMOTED".
+ *                         The user explicitly graduated this analyst to
+ *                         live money and the paper position was force-
+ *                         closed at promotion. The daily run must decide
+ *                         today: re-enter (place_trade) / defer (update_
+ *                         thesis change_status: WATCHING) / kill (when
+ *                         tool gates allow). Highest precedence — fires
+ *                         regardless of other trigger state.
  *   TRIGGER_FIRED       — there is a TRIGGER_FIRED ThesisUpdate row on
  *                         this thesis with no UPDATED/REVIEWED/CLOSED/
  *                         INVALIDATED follow-up newer than it. The
@@ -35,8 +40,10 @@
  *                         as overdue on the following Monday's daily
  *                         run.
  *
- * Precedence when multiple match: TRIGGER_FIRED > TRIGGER_MATCHING_NOW >
- * REVIEW_DUE. A thesis with no fires, no matches, and a future
+ * Precedence when multiple match:
+ *   PROMOTED_AWAITING_RESOLUTION > TRIGGER_FIRED > TRIGGER_MATCHING_NOW > REVIEW_DUE
+ *
+ * A thesis with no PROMOTED status, no fires, no matches, and a future
  * nextReviewAt returns `null` — yesterday's thesis stands and the agent
  * doesn't need to touch it.
  *
@@ -57,6 +64,21 @@ export type NeedsActionVerb =
   | "MOVE_STOP";
 
 export type NeedsAction =
+  | {
+      kind: "PROMOTED_AWAITING_RESOLUTION";
+      /**
+       * Conviction-context fields frozen on the thesis row at promotion
+       * time, surfaced here so the agent has the doubled-conviction
+       * signal at the same point it decides re-enter vs defer vs kill.
+       * Nullable because pre-PR-#330 PROMOTED rows may lack these
+       * fields; in that case the agent should still resolve the status
+       * but won't have paper-tenure / P&L context.
+       */
+      paperTenureDays?: number | null;
+      paperRealizedPnl?: number | null;
+      paperReviewCount?: number | null;
+      promotedAt?: string | null;
+    }
   | {
       kind: "TRIGGER_FIRED";
       triggerId: string;
@@ -153,9 +175,28 @@ export interface NeedsActionInput {
      * `pendingFirstReview` discriminator.
      */
     direction?: string;
+    /**
+     * Status drives PROMOTED_AWAITING_RESOLUTION at top precedence —
+     * any PROMOTED-status thesis ALWAYS needs resolution this run
+     * regardless of trigger state. The promotion was the explicit
+     * "deploy real money on this name" decision; the next daily run
+     * after promotion has to either execute it (place_trade) or
+     * defer it explicitly (update_thesis change_status: WATCHING).
+     */
+    status?: string;
     triggers: Trigger[];
     createdAt: Date;
     nextReviewAt: Date | null;
+    /**
+     * Conviction context, frozen at promotion time. Surfaced into the
+     * PROMOTED_AWAITING_RESOLUTION needsAction so the agent has the
+     * doubled-conviction signal next to the decision. Null on
+     * non-PROMOTED rows + pre-PR-#330 PROMOTED rows.
+     */
+    paperTenureDays?: number | null;
+    paperRealizedPnl?: number | null;
+    paperReviewCount?: number | null;
+    promotedAt?: Date | null;
   };
   /** Most recent ThesisUpdate row for this thesis, if any. */
   latestUpdate?: {
@@ -175,6 +216,24 @@ export function computeNeedsAction(
   input: NeedsActionInput,
 ): NeedsAction | null {
   const { thesis, latestUpdate, latestQuote, now } = input;
+
+  // 0) PROMOTED_AWAITING_RESOLUTION — highest precedence. Any PROMOTED
+  //    thesis ALWAYS needs resolution this run regardless of trigger
+  //    state. The user explicitly graduated this analyst to live money
+  //    and the paper position was force-closed at promotion; the next
+  //    daily run after promotion has to either re-enter (place_trade),
+  //    defer (update_thesis change_status: WATCHING), or kill (where
+  //    tool gates allow). Surfaces conviction context for the agent to
+  //    weigh in the decision.
+  if (thesis.status === "PROMOTED") {
+    return {
+      kind: "PROMOTED_AWAITING_RESOLUTION",
+      paperTenureDays: thesis.paperTenureDays ?? null,
+      paperRealizedPnl: thesis.paperRealizedPnl ?? null,
+      paperReviewCount: thesis.paperReviewCount ?? null,
+      promotedAt: thesis.promotedAt ? thesis.promotedAt.toISOString() : null,
+    };
+  }
 
   // 1) TRIGGER_FIRED — most recent update is a fire that hasn't been
   //    answered by the agent. Tactical-run writes its UPDATED/REVIEWED/
