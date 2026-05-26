@@ -9,6 +9,7 @@ import {
   listVoices,
   type ElevenLabsVoice,
 } from "@/lib/podcast/elevenlabs";
+import { getAccountId, getOwnerUserId, getUserRole } from "@/lib/auth/account";
 
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 
@@ -20,6 +21,30 @@ async function getServerUserId(): Promise<string> {
   } = await supabase.auth.getUser();
   if (error || !user) throw new Error("Not authenticated");
   return user.id;
+}
+
+// Alpaca keys live on UserApiKey (userId-keyed) but the trading account is
+// owned by the Account. So every key lookup resolves the caller's active
+// account, walks to its OWNER, and reads/writes keys against that user's
+// row. EDITOR/VIEWER teammates inherit OWNER creds; key edits are
+// OWNER-only (enforced in save/delete/reverify below).
+async function resolveKeyOwnerUserId(callerUserId: string): Promise<string | null> {
+  const accountId = await getAccountId(callerUserId);
+  if (!accountId) return null;
+  return getOwnerUserId(accountId);
+}
+
+async function requireOwnerForKeyMutation(): Promise<string> {
+  const callerUserId = await getServerUserId();
+  const accountId = await getAccountId(callerUserId);
+  if (!accountId) throw new Error("No account");
+  const role = await getUserRole(callerUserId, accountId);
+  if (role !== "OWNER") {
+    throw new Error("Only the account owner can manage API keys.");
+  }
+  const ownerUserId = await getOwnerUserId(accountId);
+  if (!ownerUserId) throw new Error("Account has no owner");
+  return ownerUserId;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -58,9 +83,21 @@ export async function getApiKeyStatus(
   provider: string = "ALPACA",
   environment: AlpacaEnvironment = "PAPER",
 ): Promise<ApiKeyStatus> {
-  const userId = await getServerUserId();
+  const callerUserId = await getServerUserId();
+  const ownerUserId = await resolveKeyOwnerUserId(callerUserId);
+  if (!ownerUserId) {
+    return {
+      hasKey: false,
+      provider,
+      environment,
+      keyHint: null,
+      verified: false,
+      verifiedAt: null,
+      label: null,
+    };
+  }
   const row = await prisma.userApiKey.findUnique({
-    where: { userId_provider_environment: { userId, provider, environment } },
+    where: { userId_provider_environment: { userId: ownerUserId, provider, environment } },
     select: {
       provider: true,
       environment: true,
@@ -112,7 +149,7 @@ export async function saveApiKey(
   input: SaveApiKeyInput
 ): Promise<{ success: boolean; verified: boolean; error?: string }> {
   try {
-    const userId = await getServerUserId();
+    const userId = await requireOwnerForKeyMutation();
     const baseUrl = input.baseUrl ?? defaultBaseUrl(input.environment);
 
     // Encrypt the credentials
@@ -184,7 +221,7 @@ export async function deleteApiKey(
   environment: AlpacaEnvironment = "PAPER",
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const userId = await getServerUserId();
+    const userId = await requireOwnerForKeyMutation();
     await prisma.userApiKey.delete({
       where: { userId_provider_environment: { userId, provider, environment } },
     });
@@ -202,7 +239,7 @@ export async function reverifyApiKey(
   environment: AlpacaEnvironment = "PAPER",
 ): Promise<{ success: boolean; verified: boolean; error?: string }> {
   try {
-    const userId = await getServerUserId();
+    const userId = await requireOwnerForKeyMutation();
     const creds = await resolveAlpacaCredentials(userId, environment);
     if (!creds) {
       return { success: false, verified: false, error: "No API key found" };
@@ -266,9 +303,16 @@ export async function resolveAlpacaCredentials(
   userId: string,
   environment: AlpacaEnvironment = "PAPER",
 ): Promise<AlpacaCredentials | null> {
+  // Walk the caller up to the account OWNER. Keys live on the OWNER's
+  // UserApiKey row; EDITOR/VIEWER teammates inherit them so their runs
+  // trade against the owner's broker account. Crons that pass the
+  // analyst's own userId (already the OWNER) are idempotent — they
+  // resolve back to themselves.
+  const ownerUserId = (await resolveKeyOwnerUserId(userId)) ?? userId;
+
   const row = await prisma.userApiKey.findUnique({
     where: {
-      userId_provider_environment: { userId, provider: "ALPACA", environment },
+      userId_provider_environment: { userId: ownerUserId, provider: "ALPACA", environment },
     },
     select: { encryptedKey: true, encryptedSecret: true, baseUrl: true },
   });
@@ -282,7 +326,7 @@ export async function resolveAlpacaCredentials(
       baseUrl: row.baseUrl ?? defaultBaseUrl(environment),
     };
   } catch (err) {
-    console.error("[api-keys] Failed to decrypt credentials for user", userId, err);
+    console.error("[api-keys] Failed to decrypt credentials for user", ownerUserId, err);
     return null;
   }
 }

@@ -44,7 +44,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   // Run these in parallel — they're independent reads.
   const [analysts, recentChats, resumed] = await Promise.all([
     prisma.agentConfig.findMany({
-      where: { userId: user.id },
+      where: { accountId },
       select: { id: true, name: true, enabled: true },
       orderBy: { createdAt: "asc" },
     }),

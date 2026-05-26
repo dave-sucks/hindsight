@@ -5,6 +5,7 @@ import { getAnalystDetail, getAnalystTheses } from "@/lib/actions/analyst.action
 import { getWatchlistItems } from "@/lib/actions/watchlist.actions";
 import { getLatestPrices } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { getAccountId } from "@/lib/auth/account";
 import AnalystDetailClient from "@/components/analysts/AnalystDetailClient";
 
 type Params = { id: string };
@@ -21,13 +22,14 @@ export default async function AnalystDetailPage({
   } = await supabase.auth.getUser();
 
   const userId = user?.id ?? "";
+  const accountId = userId ? await getAccountId(userId) : null;
 
   // Auto-clean zombie RUNNING runs older than 15 minutes
   const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
-  if (userId) {
+  if (accountId) {
     await prisma.researchRun.updateMany({
       where: {
-        userId,
+        accountId,
         agentConfigId: id,
         status: "RUNNING",
         createdAt: { lt: fifteenMinAgo },
@@ -44,9 +46,9 @@ export default async function AnalystDetailPage({
       console.error("[analyst-page] getAnalystDetail failed:", err);
       return null;
     }),
-    userId
+    accountId
       ? prisma.researchRun.count({
-          where: { userId, agentConfigId: id, status: "RUNNING" },
+          where: { accountId, agentConfigId: id, status: "RUNNING" },
         }).catch(() => 0)
       : Promise.resolve(0),
     getWatchlistItems(id).catch(() => []),

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getThesisComposite } from "@/lib/agent/thesis-narrative";
+import { getAccountId } from "@/lib/auth/account";
 
 const STARTING_CAPITAL = 100_000;
 
@@ -158,12 +159,13 @@ export async function getAnalyticsData(
   const { data: { user } } = await supabase.auth.getUser();
 
   const userId = user?.id;
+  const accountId = userId ? await getAccountId(userId) : null;
 
   // ── Fetch positions, open count, agent config, recent runs, accuracy ─────
   const [closedPositions, openCount, agentConfig, completedRuns, latestAccuracy] = await Promise.all([
-    userId
+    accountId
       ? prisma.position.findMany({
-          where: { userId, status: "CLOSED", environment },
+          where: { accountId, status: "CLOSED", environment },
           select: {
             direction: true,
             outcome: true,
@@ -191,15 +193,15 @@ export async function getAnalyticsData(
           orderBy: { closedAt: "asc" },
         })
       : Promise.resolve([]),
-    userId
-      ? prisma.position.count({ where: { userId, status: "OPEN", environment } })
+    accountId
+      ? prisma.position.count({ where: { accountId, status: "OPEN", environment } })
       : Promise.resolve(0),
-    userId
-      ? prisma.agentConfig.findFirst({ where: { userId } })
+    accountId
+      ? prisma.agentConfig.findFirst({ where: { accountId } })
       : Promise.resolve(null),
-    userId
+    accountId
       ? prisma.researchRun.findMany({
-          where: { userId, status: "COMPLETE", environment },
+          where: { accountId, status: "COMPLETE", environment },
           orderBy: { startedAt: "desc" },
           take: 20,
           select: {
@@ -218,9 +220,9 @@ export async function getAnalyticsData(
           },
         })
       : Promise.resolve([]),
-    userId
+    accountId
       ? prisma.accuracyReport.findFirst({
-          where: { userId },
+          where: { accountId },
           orderBy: { createdAt: "desc" },
           select: {
             winRate: true,

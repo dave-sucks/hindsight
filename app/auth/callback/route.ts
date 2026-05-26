@@ -44,11 +44,27 @@ export async function GET(request: Request) {
       // attach to the inviter's account via the invite-accept flow, not
       // here; this guard prevents the OAuth callback from minting a
       // spare OWNER account for them after acceptance).
-      const existingMembership = await prisma.accountMembership.findFirst({
-        where: { userId: data.user.id },
-        select: { id: true },
-      })
-      if (!existingMembership) {
+      // Also skipped when a pending AccountInvite matches the user's email
+      // — otherwise the auto-OWNER membership wins the getAccountId tiebreak
+      // and the invitee never sees the inviter's data.
+      const email = (data.user.email ?? '').toLowerCase()
+      const [existingMembership, pendingInvite] = await Promise.all([
+        prisma.accountMembership.findFirst({
+          where: { userId: data.user.id },
+          select: { id: true },
+        }),
+        email
+          ? prisma.accountInvite.findFirst({
+              where: {
+                email,
+                acceptedAt: null,
+                expiresAt: { gt: new Date() },
+              },
+              select: { id: true },
+            })
+          : Promise.resolve(null),
+      ])
+      if (!existingMembership && !pendingInvite) {
         const account = await prisma.account.create({
           data: { name: data.user.email ?? "My Account" },
         })
