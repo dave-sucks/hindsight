@@ -201,6 +201,25 @@ A PROMOTED thesis (or any thesis with stale research) can still be traded via `p
 
 **Cross-references:** `docs/plans/THESIS_LIFECYCLE_FIX.md` Phase 2, PR #330 (the producer-side fan-out this depends on), PR #331 (the read-side surfacing this validates against), `docs/plans/THESIS_RESEARCH_V2.md` §8 Phase 3 (the original spec).
 
+### P1-23 — `targetPrice` field is overloaded: take-profit on ACTIVE, buy-in trigger on WATCHING
+**Source:** Surfaced 2026-05-25 during first-live-analyst review. A separate session traced the conflict back to `lib/agent/triggers/defaults.ts` and confirmed the codebase's own comment flags it as broken.
+
+`lib/agent/triggers/defaults.ts:295-310` (`watchingEntryTrigger`) defaults the ENTER trigger on a WATCHING + LONG thesis to `predicate: PRICE_ABOVE(thesis.targetPrice) → action: ENTER`. So when an agent writes `target_price: 19.50` on a WATCHING thesis, the trigger engine creates a "buy if price > $19.50" predicate. The same `targetPrice` field, once the thesis flips to ACTIVE via `place_trade`, is read as the take-profit exit level.
+
+Same file at `catalystDefaults` line 338-359 contains a code comment that calls this out explicitly: *"PRICE_ABOVE(target) as ENTER is structurally wrong — target is where you'd take profit AFTER the catalyst plays out, not where you'd enter."* A partial fix in `catalystSoon` swaps to `EARNINGS_BEAT → ENTER` for CATALYST + within-7-days, but every other (horizon, WATCHING) combination still uses the dual-meaning interpretation.
+
+**Why this is P1:** the agent that wrote `target_price` may have meant "the level I'd take profit at" OR "the level I'd enter on a breakout" — the field has two meanings depending on which template fires. Sheet labels, prompt guidance, and run-review interpretation are all wrong half the time. Production evidence: MDB 2026-05-25 — agent left triggers untouched on refresh, default was PRICE_ABOVE($385) ENTER = literally entering at the take-profit level.
+
+**Fix path (schema-level — ~1 day):**
+1. Split `targetPrice` into `entryTriggerPrice` (WATCHING / PROMOTED — the breakout level we buy above) and `takeProfitPrice` (ACTIVE — the level we sell at). Both nullable.
+2. Migration: copy current `targetPrice` to `entryTriggerPrice` for all WATCHING / PROMOTED rows, to `takeProfitPrice` for all ACTIVE / CLOSED rows.
+3. Update `watchingEntryTrigger` default to read `entryTriggerPrice`. Update all sheet renderers + prompts to read the right field per status.
+4. Drop `targetPrice` after a soak period.
+
+**Why not P0:** the existing dual-meaning behavior works correctly when the agent and analyst agree on the convention. The bug is interpretive — bad theses get written when the convention isn't clear, but the trigger engine itself is deterministic. Currently mitigated by the fact that most theses are written by the rich thesis-writer (PR #324), which reasons through chart structure and naturally writes a "buy-in" level for WATCHING. The risk is humans + older theses + the prompt ambiguity.
+
+**Cross-references:** `lib/agent/triggers/defaults.ts:295-310, 338-359` (the producer comment that flags this), MDB 2026-05-25 (production evidence), `docs/THESIS_ARCHITECTURE.md` §8 Fields (where the field's role would be documented per the new split).
+
 ---
 
 ## P2 architecture cleanups — surfaced 2026-05-15
