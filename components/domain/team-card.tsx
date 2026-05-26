@@ -23,6 +23,9 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowTurnForwardIcon } from "@hugeicons/core-free-icons";
 import { Markdown } from "@/components/ui/markdown";
 import { ProviderIcon } from "@/components/chat/SourceChip";
+import { WorkflowMarkdown } from "@/components/domain/workflow-markdown";
+import { WorkflowSheetProvider } from "@/components/domain/workflow-sheet-context";
+import { loadWorkflowDoc } from "@/lib/actions/workflow-doc.actions";
 import type { Team, ToolEntry, SubStep, Resource, ResourceType, RegistryTool, ToolCategory, TeamId } from "@/lib/agent/workflow-registry";
 import { TOOL_REGISTRY, getTeam } from "@/lib/agent/workflow-registry";
 
@@ -447,16 +450,31 @@ export function TeamSheetContent({ team }: { team: Team }) {
   const [selectedToolAgents, setSelectedToolAgents] = useState<TeamId[] | undefined>();
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const handleToolClick = useCallback((tool: ToolEntry) => {
-    setSelectedTool(tool);
-    // Look up agents from registry for the dialog — don't show on the card (implied by team context)
-    setSelectedToolAgents(TOOL_REGISTRY.find((rt) => rt.name === tool.name)?.agents);
-    setDialogOpen(true);
-  }, []);
+  // Markdown doc (Notion-style content per agent). When this returns non-null
+  // for the team's id, the sheet renders the doc body in place of the legacy
+  // description + substeps blocks. Migration is per-agent — the legacy path
+  // still works for any team without a markdown file yet.
+  const [doc, setDoc] = useState<{ body: string; summary: string | null } | null>(null);
+  const [docLoaded, setDocLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    loadWorkflowDoc(team.id).then((result) => {
+      if (cancelled) return;
+      setDoc(result);
+      setDocLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [team.id]);
 
   const upstreamSource = team.upstream ? getTeam(team.upstream.teamId) : null;
   const showSchedule = isMeaningfulSchedule(team.schedule);
   const hasMetadata = showSchedule || upstreamSource !== null;
+
+  // Default to true until the doc fetch lands; once we know whether a doc
+  // exists, swap the legacy blocks for the rendered markdown.
+  const usingMarkdownDoc = docLoaded && doc !== null;
 
   return (
     <div className="space-y-5">
@@ -477,10 +495,19 @@ export function TeamSheetContent({ team }: { team: Team }) {
             )}
           </div>
         )}
-        <p className="text-sm font-medium leading-snug">{team.summary}</p>
-        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-          {team.description}
+        <p className="text-sm font-medium leading-snug">
+          {usingMarkdownDoc && doc?.summary
+            ? doc.summary
+            : team.summary}
         </p>
+        {/* Legacy description — only rendered when no markdown doc is
+            available for this team. The doc body, when present, supplies
+            the equivalent narrative below the prompt banner. */}
+        {!usingMarkdownDoc && (
+          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+            {team.description}
+          </p>
+        )}
       </div>
 
       {/* Prompt banner */}
@@ -490,36 +517,71 @@ export function TeamSheetContent({ team }: { team: Team }) {
 
       <Separator />
 
-      {/* Sub-steps */}
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-          Steps
-        </p>
-        <div className="space-y-2">
-          {team.substeps.map((step, i) => (
-            <SubStepRow key={i} step={step} index={i} />
-          ))}
+      {usingMarkdownDoc ? (
+        // ── Markdown doc body ─────────────────────────────────────────────
+        // Replaces the legacy description + substeps blocks. Inline pill
+        // references (agent / tool / entity) are rendered by the custom
+        // link-handler inside <WorkflowMarkdown>. The provider lets
+        // reads/writes data-flow rows open the same tool-detail dialog
+        // used by the Tools section at the bottom of the sheet.
+        <WorkflowSheetProvider
+          value={{
+            openToolByName: (toolName) => {
+              const rt = TOOL_REGISTRY.find((rt) => rt.name === toolName);
+              if (rt) {
+                setSelectedTool(toToolEntry(rt));
+                setSelectedToolAgents(rt.agents);
+                setDialogOpen(true);
+              }
+            },
+          }}
+        >
+          <WorkflowMarkdown>{doc!.body}</WorkflowMarkdown>
+        </WorkflowSheetProvider>
+      ) : (
+        // ── Legacy substeps ───────────────────────────────────────────────
+        // Used for any team that hasn't been migrated to the markdown
+        // authoring path yet.
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+            Steps
+          </p>
+          <div className="space-y-2">
+            {(team.substeps ?? []).map((step, i) => (
+              <SubStepRow key={i} step={step} index={i} />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <Separator />
 
       {/* Tools */}
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-          Tools
-          <span className="ml-1.5 text-muted-foreground/60">{team.tools.length}</span>
-        </p>
-        <div className="space-y-1.5">
-          {team.tools.map((tool, i) => (
-            <ToolCard
-              key={i}
-              tool={tool}
-              onClick={tool.resources?.length ? () => handleToolClick(tool) : undefined}
-            />
-          ))}
-        </div>
-      </div>
+      {(() => {
+        const teamTools = TOOL_REGISTRY.filter((rt) => rt.agents.includes(team.id as TeamId));
+        if (teamTools.length === 0) return null;
+        return (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+              Tools
+              <span className="ml-1.5 text-muted-foreground/60">{teamTools.length}</span>
+            </p>
+            <div className="space-y-1.5">
+              {teamTools.map((rt) => (
+                <ToolCard
+                  key={rt.name}
+                  tool={toToolEntry(rt)}
+                  onClick={rt.resources?.length ? () => {
+                    setSelectedTool(toToolEntry(rt));
+                    setSelectedToolAgents(rt.agents);
+                    setDialogOpen(true);
+                  } : undefined}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <ToolDetailDialog
         tool={selectedTool}

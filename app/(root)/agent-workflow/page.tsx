@@ -168,8 +168,9 @@ export default function AgentWorkflowPage() {
       >
         <SheetContent
           side="right"
+          size="xl"
+          floating
           showCloseButton={false}
-          className="w-full sm:max-w-md overflow-y-auto"
         >
           {activeSheet && (
             <>
