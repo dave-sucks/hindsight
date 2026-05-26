@@ -94,11 +94,18 @@ describe("validateEnterTriggerRequired", () => {
     ).toEqual({ ok: true });
   });
 
-  // ── The bug: WATCHING LONG/SHORT with HELD-template triggers (no ENTER) ─
+  // ── The bug: WATCHING LONG/SHORT with HELD-template triggers ───────────
+  // After 2026-05-25 (XPEV + MDB production evidence), the guard rejects
+  // HELD-only actions (EXIT/TRIM/ADD/MOVE_STOP) on WATCHING BEFORE checking
+  // for ENTER presence. Both errors block the write; the HELD-action
+  // message names the bigger structural problem and points at the fix.
 
-  it("WATCHING LONG with HELD-template triggers (no ENTER): rejects", () => {
-    // The XPEV 2026-05-25 production shape — REVIEW + EXIT + EXIT + REVIEW
-    // + EXIT, no ENTER. The trigger evaluator can never promote this row.
+  it("WATCHING LONG with HELD-template EXIT + REVIEW (no ENTER): rejects with held-actions-on-watching", () => {
+    // The XPEV 2026-05-25 production shape included EXIT triggers on a
+    // WATCHING row. The HELD-action guard runs first → the error message
+    // names the structural problem clearly (EXIT can't fire without a
+    // position) instead of just "missing ENTER" which would prompt the
+    // agent to add ENTER without removing the wrong EXIT triggers.
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
@@ -107,11 +114,12 @@ describe("validateEnterTriggerRequired", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.reason).toBe("missing-enter-trigger");
-    expect(result.note).toMatch(/Add a trigger with action: "ENTER"/);
+    expect(result.reason).toBe("held-actions-on-watching");
+    expect(result.note).toMatch(/HELD-only action/);
+    expect(result.note).toMatch(/EXIT/);
   });
 
-  it("WATCHING SHORT with HELD-template triggers (no ENTER): rejects", () => {
+  it("WATCHING SHORT with HELD-template EXIT + REVIEW (no ENTER): rejects with held-actions-on-watching", () => {
     const result = validateEnterTriggerRequired({
       direction: "SHORT",
       status: "WATCHING",
@@ -120,14 +128,142 @@ describe("validateEnterTriggerRequired", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.reason).toBe("missing-enter-trigger");
+    expect(result.reason).toBe("held-actions-on-watching");
   });
 
-  it("WATCHING LONG with empty triggers array: rejects", () => {
+  it("WATCHING LONG with ENTER + EXIT (has ENTER but also wrong EXIT): rejects with held-actions-on-watching", () => {
+    // The MDB 2026-05-25 production shape after #337's first attempt:
+    // agent added 1 ENTER (EARNINGS_BEAT) but ALSO kept 3 EXIT triggers.
+    // ENTER-presence guard would pass; this guard catches the EXIT.
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "WATCHING",
+      triggers: [ENTER_LONG, EXIT_STOP, REVIEW_EARNINGS],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("held-actions-on-watching");
+    expect(result.note).toMatch(/EXIT/);
+  });
+
+  it("WATCHING LONG with ENTER + TRIM: rejects with held-actions-on-watching", () => {
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "WATCHING",
+      triggers: [
+        ENTER_LONG,
+        {
+          id: "trig-trim",
+          predicate: { kind: "PRICE_ABOVE", level: 150 },
+          action: "TRIM",
+          rationale: "Trim at +50%",
+        },
+      ],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("held-actions-on-watching");
+    expect(result.note).toMatch(/TRIM/);
+  });
+
+  it("WATCHING LONG with ENTER + ADD: rejects with held-actions-on-watching", () => {
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "WATCHING",
+      triggers: [
+        ENTER_LONG,
+        {
+          id: "trig-add",
+          predicate: { kind: "EARNINGS_BEAT" },
+          action: "ADD",
+          rationale: "Add on beat",
+        },
+      ],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("held-actions-on-watching");
+    expect(result.note).toMatch(/ADD/);
+  });
+
+  it("WATCHING LONG with ENTER + MOVE_STOP: rejects with held-actions-on-watching", () => {
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "WATCHING",
+      triggers: [
+        ENTER_LONG,
+        {
+          id: "trig-stop",
+          predicate: { kind: "PRICE_ABOVE", level: 120 },
+          action: "MOVE_STOP",
+          rationale: "Trail stop up",
+        },
+      ],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("held-actions-on-watching");
+    expect(result.note).toMatch(/MOVE_STOP/);
+  });
+
+  it("WATCHING LONG with multiple HELD actions (EXIT + TRIM + ADD): lists all offender kinds", () => {
+    // The full HELD-template attack — the catalyst-event MDB 2026-05-25
+    // shape was effectively this. Error message should enumerate the
+    // distinct offending action kinds so the agent knows everything to
+    // remove.
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "WATCHING",
+      triggers: [
+        ENTER_LONG,
+        EXIT_STOP,
+        {
+          id: "trig-trim",
+          predicate: { kind: "PRICE_ABOVE", level: 150 },
+          action: "TRIM",
+          rationale: "Trim half at +50%",
+        },
+        {
+          id: "trig-add",
+          predicate: { kind: "EARNINGS_BEAT" },
+          action: "ADD",
+          rationale: "Add on confirmation",
+        },
+      ],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("held-actions-on-watching");
+    expect(result.note).toMatch(/EXIT/);
+    expect(result.note).toMatch(/TRIM/);
+    expect(result.note).toMatch(/ADD/);
+  });
+
+  it("WATCHING LONG with empty triggers array: rejects with missing-enter-trigger", () => {
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
       triggers: [],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("missing-enter-trigger");
+  });
+
+  it("WATCHING LONG with only REVIEW triggers (no HELD, no ENTER): rejects with missing-enter-trigger", () => {
+    // Pure REVIEW set is structurally valid (no HELD actions to reject)
+    // but missing the required ENTER. The HELD guard passes; the
+    // ENTER guard catches it.
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "WATCHING",
+      triggers: [REVIEW_EARNINGS, REVIEW_HYGIENE],
       targetPrice: 100,
     });
     expect(result.ok).toBe(false);
