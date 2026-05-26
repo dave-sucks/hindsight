@@ -394,7 +394,7 @@ function ScoringGauge({ score, max }: { score: number; max: number }) {
   const ticks: Tick[] = Array.from({ length: COUNT }, (_, i) => ({
     color: i < filledTicks ? "bg-foreground" : "bg-muted-foreground/40",
   }));
-  return <TickBar ticks={ticks} className="w-20 shrink-0" />;
+  return <TickBar ticks={ticks} className="w-16 shrink-0" />;
 }
 
 // ── Skeleton placeholders for /triggers-dependent blocks ──────────────
