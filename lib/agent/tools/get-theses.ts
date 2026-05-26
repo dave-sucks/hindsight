@@ -396,6 +396,7 @@ export const getTheses = defineTool({
         ticker: t.ticker,
         direction: t.direction as "LONG" | "SHORT" | "PASS" | "PENDING",
         confidence_score: composite != null ? composite * 10 : 0,
+        core_belief: (t.coreBelief as string | null) ?? null,
         reasoning_summary: getThesisSnapshotText(t),
         thesis_bullets: getThesisBullCaseBullets(t),
         risk_flags: getThesisBearCaseBullets(t),

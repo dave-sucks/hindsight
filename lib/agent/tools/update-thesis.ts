@@ -1558,6 +1558,7 @@ function thesisToCardData(t: Record<string, unknown>): {
   ticker: string;
   direction: "LONG" | "SHORT" | "PASS";
   confidence_score: number;
+  core_belief: string | null;
   reasoning_summary: string;
   thesis_bullets: string[];
   risk_flags: string[];
@@ -1573,6 +1574,7 @@ function thesisToCardData(t: Record<string, unknown>): {
     ticker: t.ticker as string,
     direction: t.direction as "LONG" | "SHORT" | "PASS",
     confidence_score: (t.confidenceScore as number) ?? 0,
+    core_belief: (t.coreBelief as string | null) ?? null,
     reasoning_summary: (t.reasoningSummary as string) ?? "",
     thesis_bullets: (t.thesisBullets as string[]) ?? [],
     risk_flags: (t.riskFlags as string[]) ?? [],

@@ -275,6 +275,10 @@ function collectWriteTheses(
         (display.confidence_score as number) ??
         (display.confidenceScore as number) ??
         0,
+      core_belief:
+        (display.core_belief as string | null | undefined) ??
+        (display.coreBelief as string | null | undefined) ??
+        null,
       reasoning_summary: display.reasoning_summary as string | undefined,
       thesis_bullets: (display.thesis_bullets as string[]) ?? [],
       risk_flags: (display.risk_flags as string[]) ?? [],

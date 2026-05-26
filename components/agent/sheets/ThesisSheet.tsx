@@ -76,6 +76,14 @@ export type ThesisCardData = {
   ticker: string;
   direction: "LONG" | "SHORT" | "PASS";
   confidence_score: number;
+  /**
+   * The ONE durable claim (≤30 words). Used by the mini-card body so the
+   * carousel reads as "the bet" instead of the current-state framing in
+   * `reasoning_summary`. Mirrors the headline in ThesisSheet so the card
+   * and the sheet stay consistent. Optional only because PASS theses and
+   * pre-V2 rows may not have it set.
+   */
+  core_belief?: string | null;
   reasoning_summary?: string;
   thesis_bullets?: string[];
   risk_flags?: string[];
