@@ -478,6 +478,31 @@ export const updateThesis = defineTool({
     // recompute target/stop, then place_trade); place_trade also has its
     // own auto-transition path as belt-and-suspenders.
     if (existing.status === "PROMOTED") {
+      // ── THESIS_WRITER role gate (GAPS P0-4) ──────────────────────────────
+      // The thesis-writer is research-only. Status decisions on PROMOTED
+      // rows belong to the orchestrator (next daily run reads the refreshed
+      // research and chooses re-enter / defer / kill). When a refresh runs
+      // under runMode="THESIS_WRITER", any change_status arg is refused —
+      // belt-and-suspenders backstop on the prompt-side PROMOTED branch in
+      // run-thesis-writer.ts. 2026-05-26: 3 writer refreshes (AVGO, MRVL,
+      // TSM) flipped PROMOTED → WATCHING and required manual revert. See
+      // docs/THESIS_ARCHITECTURE.md §0 (the role split).
+      if (ctx.runMode === "THESIS_WRITER" && args.change_status !== undefined) {
+        return {
+          summary: `Refused status flip on PROMOTED $${existing.ticker} — writer is research-only.`,
+          data: {
+            ok: false,
+            error: "thesis_writer_cannot_change_promoted_status",
+            current_status: existing.status,
+            attempted: args.change_status,
+            message:
+              `update_thesis(change_status: "${args.change_status}") is refused from the thesis-writer on a PROMOTED thesis. ` +
+              `The writer's job is research refresh only — refreshed content (target / stop / triggers / belief / sections) lands on the row; the status decision belongs to the next daily run. ` +
+              `Drop change_status and retry with refreshed content. The PROMOTED state persists until the orchestrator (daily/tactical run) acts on the refreshed research.`,
+          },
+          sources: [],
+        };
+      }
       if (
         args.change_status === "INVALIDATED" ||
         args.change_status === "CLOSED" ||
