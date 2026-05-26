@@ -32,15 +32,18 @@ import type { AgentConfigInput } from "@/lib/agent/system-prompt";
  * rare model violation.
  *
  * Editing this:
- *   - **Testing phase (current):** 2. Lets a manual fire produce 1-2
- *     child runs end-to-end without burning API budget.
- *   - **Production target:** 5. Bump back once we've validated the
- *     full Sunday-cron shape with all enabled analysts.
+ *   - **Production (current):** 5. Set 2026-05-26 after the 2026-05-24
+ *     HPQ E2E run validated Phase 2 mechanics end-to-end (see
+ *     docs/discovery-reviews/2026-05-24-HPQ.md) and PR #329 closed the
+ *     past-dated `nextReviewAt` cascading-review-fire bug that gated
+ *     the bump.
+ *   - **Testing fallback:** 2. Use during prompt/funnel work to keep
+ *     a manual fire to 1-2 child runs without burning API budget.
  *   - This single number flows into 4 prompt mentions below + the
  *     header docstring above + the Layer-1 enforcement in
  *     dispatch-thesis-research.ts; no other edits needed.
  */
-export const DISPATCH_CAP = 2;
+export const DISPATCH_CAP = 5;
 
 export interface DiscoveryPromptArgs {
   config: AgentConfigInput;
