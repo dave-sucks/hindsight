@@ -54,13 +54,6 @@ Same `targetPrice` column is "take-profit" when ACTIVE and "buy-in breakout" whe
 
 ~1 day. Reconsider priority if a non-writer code path becomes a meaningful share of thesis production.
 
-### P1-4 — `Thesis.promotedAt` column timestamp 12h adrift from audit row (was P1-24)
-**Status:** open. Surfaced 2026-05-26.
-
-Column is `timestamp without time zone`; audit-row `ThesisUpdate.timestamp` is `timestamptz`. Same `new Date()` write yields different stored values — exactly 12h apart. Probable Prisma/`@prisma/adapter-pg` AM/PM-flip on the bare-timestamp column type. Doesn't break trading but breaks any time-since-promotion math.
-
-**Fix:** migrate column to `timestamptz`, validate Prisma schema declaration, backfill query: `UPDATE "Thesis" SET "promotedAt" = "promotedAt" - INTERVAL '12 hours' WHERE "promotedAt" > NOW()` (verify against `ThesisUpdate` first per-row).
-
 ### P1-5 — Thesis-writer fabricated MRVL post-earnings data (was P1-25)
 **Status:** investigation needed.
 
@@ -91,13 +84,6 @@ Current label reads passive — agent treated it that way too. Rename to "Decide
 
 Verify against `intraday-eod-flatten.ts` and `discovery-run.ts:59` (which skips Discovery for DAY-only analysts) — both confirm DAY is a real production lifecycle, not legacy.
 
-### P1-9 — `lib/agent/system-prompt-template.ts` mirrors the deleted V1 prompt
-**Status:** UX-only. Surfaced 2026-05-26 during V1 deletion.
-
-`SYSTEM_PROMPT_TEMPLATE` in `lib/agent/system-prompt-template.ts` is a static markdown mirror of the V1 prompt body, consumed by `workflow-registry.ts:255` for the "How It Works" sheet's Daily Run prompt-preview tab. After V1 deletion the runtime no longer renders content shaped like the template — users reading the sheet see legacy V1 sections (6 stages, scoring rubric, intelligence policy summary) that the agent never actually receives.
-
-**Fix:** regenerate the template to mirror `buildDailyRunSystemPromptV2`'s structure (Identity → Edge → Universe & rules → Horizon glossary → Per-horizon data discipline → How you work → Your job → How tools work). Keep the `{placeholder}` substitution shape; static text only.
-
 ---
 
 ## P2 — Backlog (defer until P0+P1 clean)
@@ -114,6 +100,10 @@ Re-evaluate after the live loop is stable for ~1 week.
 ---
 
 ## Done since
+
+### 2026-05-27 — `Thesis.promotedAt` timestamptz migration + V2 prompt-preview template
+- **P1-4** — `Thesis.promotedAt` migrated from bare `timestamp(3)` to `timestamptz(6)`; existing 3 rows (AVGO/TSM/MRVL, all promoted 2026-05-26) backfilled `-12h` to undo the `@prisma/adapter-pg` AM/PM-flip. Post-migration verification confirmed `promotedAt` matches the `STATUS_CHANGED → PROMOTED` audit row to the millisecond. Schema regression test in [prisma/schema.test.ts](prisma/schema.test.ts) pins the `@db.Timestamptz(6)` annotation. Audit-row peer `ThesisUpdate.timestamp` left bare for now — written by Postgres `now()` via `@default(now())`, not affected by the adapter bug.
+- **P1-9** — `SYSTEM_PROMPT_TEMPLATE` regenerated to mirror `buildDailyRunSystemPromptV2`'s 9-section structure (Identity → Edge → Universe & rules → Yesterday's standup → Horizon glossary → Per-horizon data discipline → How you work → Your job → How tools work). The "How It Works" sheet's Daily Run prompt-preview tab now shows what the agent actually receives, not the deleted V1 procedural-stages body. Consumer (`components/domain/team-card.tsx` → `PromptBanner`) renders the markdown as-is; no section-header parsing happens downstream, so no consumer changes were needed.
 
 ### 2026-05-26 — P1-1: review-driven refresh cadence (staleness gate removed)
 - **P1-1** — Deleted the hard `place_trade` staleness gate (formerly `place-trade.ts:160-243`). Research-age decisions are now soft input to the agent's REVIEW flow, not a Layer-1 refusal at trade time. `classifyResearchAge` is horizon-aware (`STALE_DAYS_BY_HORIZON`: CATALYST/TRADE 7d, TARGET 30d, COMPOUNDER 90d), and `researchAge` returns `horizonThreshold` so prompts can render "stale: 32d > 30d threshold." V2 daily-run prompt teaches the REVIEW-time decision tree (dispatch refresh, soft-patch, or proceed) and explicitly notes there is no staleness gate on `place_trade`. Tactical prompt now skips the refresh and acts on the trigger (the daily run is the right place for thorough review). Design doc: [`REVIEW_REFRESH_CADENCE.md`](./plans/REVIEW_REFRESH_CADENCE.md).
