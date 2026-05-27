@@ -24,6 +24,7 @@ import {
   classifyResearchAge,
   type ResearchAge,
 } from "@/lib/agent/thesis-research/staleness";
+import type { Horizon } from "@/lib/agent/horizon-policy";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -844,12 +845,15 @@ export async function buildRunInput(
         // helper) so prompt renderers reading either field show the
         // narrative; bullCase/bearCase bullet arrays let the prompt
         // print the top 2-3 cited claims per thesis without a
-        // get_theses round-trip. researchAge is the freshness
-        // annotation the Phase-2 staleness gate keys off.
+        // get_theses round-trip. researchAge is the horizon-tuned
+        // freshness annotation the REVIEW flow reads.
         snapshotText: snapshotText || null,
         bullCaseBullets: getThesisBullCaseBullets(t),
         bearCaseBullets: getThesisBearCaseBullets(t),
-        researchAge: classifyResearchAge(t.researchUpdatedAt),
+        researchAge: classifyResearchAge(
+          t.researchUpdatedAt,
+          t.horizon as Horizon | null,
+        ),
       };
     }),
     performance,
