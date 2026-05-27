@@ -102,13 +102,6 @@ Current label reads passive — agent treated it that way too. Rename to "Decide
 
 Verify against `intraday-eod-flatten.ts` and `discovery-run.ts:59` (which skips Discovery for DAY-only analysts) — both confirm DAY is a real production lifecycle, not legacy.
 
-### P1-9 — `lib/agent/system-prompt-template.ts` mirrors the deleted V1 prompt
-**Status:** UX-only. Surfaced 2026-05-26 during V1 deletion.
-
-`SYSTEM_PROMPT_TEMPLATE` in `lib/agent/system-prompt-template.ts` is a static markdown mirror of the V1 prompt body, consumed by `workflow-registry.ts:255` for the "How It Works" sheet's Daily Run prompt-preview tab. After V1 deletion the runtime no longer renders content shaped like the template — users reading the sheet see legacy V1 sections (6 stages, scoring rubric, intelligence policy summary) that the agent never actually receives.
-
-**Fix:** regenerate the template to mirror `buildDailyRunSystemPromptV2`'s structure (Identity → Edge → Universe & rules → Horizon glossary → Per-horizon data discipline → How you work → Your job → How tools work). Keep the `{placeholder}` substitution shape; static text only.
-
 ---
 
 ## P2 — Backlog (defer until P0+P1 clean)
@@ -126,8 +119,9 @@ Re-evaluate after the live loop is stable for ~1 week.
 
 ## Done since
 
-### 2026-05-27 — `Thesis.promotedAt` timestamptz migration
+### 2026-05-27 — `Thesis.promotedAt` timestamptz migration + V2 prompt-preview template
 - **P1-4** — `Thesis.promotedAt` migrated from bare `timestamp(3)` to `timestamptz(6)`; existing 3 rows (AVGO/TSM/MRVL, all promoted 2026-05-26) backfilled `-12h` to undo the `@prisma/adapter-pg` AM/PM-flip. Post-migration verification confirmed `promotedAt` matches the `STATUS_CHANGED → PROMOTED` audit row to the millisecond. Schema regression test in [prisma/schema.test.ts](prisma/schema.test.ts) pins the `@db.Timestamptz(6)` annotation. Audit-row peer `ThesisUpdate.timestamp` left bare for now — written by Postgres `now()` via `@default(now())`, not affected by the adapter bug.
+- **P1-9** — `SYSTEM_PROMPT_TEMPLATE` regenerated to mirror `buildDailyRunSystemPromptV2`'s 9-section structure (Identity → Edge → Universe & rules → Yesterday's standup → Horizon glossary → Per-horizon data discipline → How you work → Your job → How tools work). The "How It Works" sheet's Daily Run prompt-preview tab now shows what the agent actually receives, not the deleted V1 procedural-stages body. Consumer (`components/domain/team-card.tsx` → `PromptBanner`) renders the markdown as-is; no section-header parsing happens downstream, so no consumer changes were needed.
 
 ### 2026-05-26 — first live promotion incident fully closed
 The 2026-05-26 first-live-day failures (Earnings Drift Trader, 3 PROMOTED theses skipped) are structurally fixed.
