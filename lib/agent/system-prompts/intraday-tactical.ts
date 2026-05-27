@@ -186,11 +186,14 @@ ${
 ${
   thesis.researchAge.freshness === "missing" ||
   thesis.researchAge.freshness === "stale"
-    ? `  ⚠ Research is ${thesis.researchAge.freshness === "missing" ? "MISSING (never written)" : `${thesis.researchAge.daysOld} days STALE`}. If your trigger action is anything other than REVIEW (i.e. you're about to trade, close, or scale), refresh first:
-       dispatch_thesis_research(ticker: "${thesis.ticker}", analyst_id: "<this analyst's id>", existing_thesis_id: "${thesis.id}", mode: "refresh", reason: "Tactical trigger fired on ${thesis.researchAge.freshness} research")
-       → wait_for_thesis_refresh(child_run_id: <returned>, timeout_seconds: 150)
-       → then execute the action.
-     The place_trade staleness gate enforces this — trading off ${thesis.researchAge.freshness} research without an in-run refresh is rejected. If the wait FAILS or TIMES OUT, your options are (a) defer with update_thesis(REVIEWED-only) and document the failure, or (b) proceed with an EXPLICIT "trading off ${thesis.researchAge.freshness} research" line in your rationale.`
+    ? `  ⚠ Research is ${thesis.researchAge.freshness === "missing" ? "MISSING (never written)" : `${thesis.researchAge.daysOld} days STALE (horizon threshold ${thesis.researchAge.horizonThreshold ?? "n/a"}d)`}.
+
+     Tactical default: **SKIP the refresh and act on the trigger.** Tactical runs have a 15-step budget and are scoped to ONE decision — dispatching a thesis-writer refresh + waiting for it consumes most of that budget on a flow that the next daily run is the right place to do thoroughly. There is no staleness gate on place_trade; you can trade on this thesis.
+
+     Use your judgment on the trigger you're acting on:
+       - The bull/bear case above + the read on the current quote + the trigger's declared action is enough to validate or override.
+       - If the bear-case bullets have come true since the research was written, that's a REVIEW outcome (write update_thesis with the invalidation reason) — not a refresh.
+       - The daily run will pick up the staleness via the REVIEW_DUE flow on its next pass and handle the refresh decision there.`
     : ""
 }
 

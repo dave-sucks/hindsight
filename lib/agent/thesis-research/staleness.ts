@@ -1,6 +1,6 @@
 /**
  * staleness.ts — single source of truth for "is this thesis's deep
- * research old enough to require a refresh before trading?"
+ * research old enough to warrant a refresh before the next decision?"
  *
  * Used by:
  *   - lib/agent/tools/get-theses.ts — annotates every returned thesis
@@ -8,24 +8,57 @@
  *   - lib/agent/run-input.ts — pre-loads `researchAge` into the
  *     per-thesis context block so the daily-run prompt has it without
  *     a get_theses round-trip.
- *   - lib/agent/system-prompts/intraday-tactical.ts — same.
- *   - (Phase 2) lib/agent/tools/place-trade.ts — staleness gate refuses
- *     trades on `missing` or `stale` research unless a refresh dispatch
- *     fired earlier in this run.
+ *   - lib/inngest/functions/tactical-run.ts — same, single-thesis.
+ *   - lib/agent/tools/wait-for-thesis-refresh.ts — annotates the
+ *     refreshed-thesis excerpt the agent reads after a refresh lands.
  *
- * Threshold: STALE_DAYS = 14. Trade-off between false-positive refresh
- * churn (too short → ~90s per refresh × N theses) and stale-research
- * trades (too long → agent acts on pre-earnings context after results
- * have dropped). 14 days covers most catalysts: earnings every ~90
- * days, but the post-earnings 14-day window is the high-volatility
- * one where research matters most. After 14 days the world has
- * usually moved enough to warrant a re-anchor.
+ * Not used by place_trade. The Layer-1 staleness gate that lived at
+ * place_trade was removed per docs/plans/REVIEW_REFRESH_CADENCE.md
+ * (P1-1) — research-age decisions belong to the REVIEW flow, not the
+ * TRADE flow, and the per-horizon REVIEW cadence is the durable
+ * mechanism that keeps research current. Staleness is now advisory
+ * input to the agent's reasoning, not a tool-level veto.
  *
- * Tunable in one place. See docs/plans/THESIS_LIFECYCLE_FIX.md
- * "Cross-cutting design decisions" for the trade-off discussion.
+ * Per-horizon thresholds — each horizon's threshold tracks its review
+ * cadence: CATALYST/TRADE refresh weekly (events move fast), TARGET
+ * monthly (swings have time), COMPOUNDER quarterly (multi-year hold).
+ * See `STALE_DAYS_BY_HORIZON` below for values + rationale.
  */
 
-export const STALE_DAYS = 14;
+import type { Horizon } from "@/lib/agent/horizon-policy";
+
+/**
+ * Per-horizon staleness thresholds. Each value is the day count at or
+ * below which research is "fresh"; strictly above flips to "stale".
+ *
+ *   CATALYST   — 7 days. Event windows are short. After 7d the world
+ *                has moved enough to warrant a re-anchor.
+ *   TRADE      — 7 days. maxHoldDays is typically 14; research can't
+ *                be older than half the hold window.
+ *   TARGET     — 30 days. Open-ended swing. Monthly refresh keeps the
+ *                thesis aligned without daily churn.
+ *   COMPOUNDER — 90 days. Multi-year hold; quarterly is sufficient.
+ */
+export const STALE_DAYS_BY_HORIZON: Record<Horizon, number> = {
+  CATALYST: 7,
+  TRADE: 7,
+  TARGET: 30,
+  COMPOUNDER: 90,
+};
+
+/**
+ * Default threshold when horizon is null (PENDING seeds, edge cases).
+ * Matches the most conservative horizon threshold (7 days) to bias
+ * toward "refresh" rather than "looks fresh."
+ */
+const DEFAULT_STALE_DAYS = 7;
+
+/**
+ * @deprecated Use STALE_DAYS_BY_HORIZON or pass the thesis's horizon
+ * to classifyResearchAge. Kept as an alias for callers outside the
+ * audited surface — equal to the conservative default.
+ */
+export const STALE_DAYS = DEFAULT_STALE_DAYS;
 
 /**
  * Three-bucket freshness classification.
@@ -34,56 +67,83 @@ export const STALE_DAYS = 14;
  *             went through the V2 thesis-writer pipeline. Common on
  *             legacy seeds (user-added watchlist items, pre-V2
  *             discovery mints).
- *   stale   — research exists but is older than STALE_DAYS.
- *   fresh   — research exists and is within STALE_DAYS.
+ *   stale   — research exists but is older than the horizon's threshold.
+ *   fresh   — research exists and is within the horizon's threshold.
  */
 export type Freshness = "missing" | "stale" | "fresh";
 
 export interface ResearchAge {
   /** Whole days since the research was last written. Null when missing. */
   daysOld: number | null;
-  /** Bucket for prompt rendering + Phase-2 gate decisions. */
+  /** Bucket for prompt rendering. */
   freshness: Freshness;
   /** ISO timestamp of the last write. Null when missing. */
   lastWrittenAt: string | null;
+  /**
+   * Threshold (in days) used to bucket this row. Surfaced so prompts
+   * can render "stale: 32d > 30d threshold" without re-deriving it.
+   * Null when missing (no threshold applied — research absent entirely).
+   */
+  horizonThreshold: number | null;
 }
 
 /**
  * Classify the age of a thesis's deep research from its
  * `researchUpdatedAt` column. Pure function; safe to call in any layer.
  *
+ * Pass the thesis's `horizon` for per-horizon-tuned classification.
+ * When horizon is null/undefined (PENDING seeds, edge cases), falls
+ * back to the conservative 7-day default.
+ *
  * Examples:
  *   classifyResearchAge(null)
- *     → { daysOld: null, freshness: "missing", lastWrittenAt: null }
+ *     → { daysOld: null, freshness: "missing", lastWrittenAt: null,
+ *         horizonThreshold: null }
  *
- *   classifyResearchAge(<3 days ago>)
- *     → { daysOld: 3, freshness: "fresh", lastWrittenAt: "2026-05-21..." }
+ *   classifyResearchAge(<3 days ago>, "CATALYST")
+ *     → { daysOld: 3, freshness: "fresh", ..., horizonThreshold: 7 }
  *
- *   classifyResearchAge(<20 days ago>)
- *     → { daysOld: 20, freshness: "stale", lastWrittenAt: "2026-05-04..." }
+ *   classifyResearchAge(<60 days ago>, "COMPOUNDER")
+ *     → { daysOld: 60, freshness: "fresh", ..., horizonThreshold: 90 }
+ *
+ *   classifyResearchAge(<60 days ago>, "TARGET")
+ *     → { daysOld: 60, freshness: "stale", ..., horizonThreshold: 30 }
  */
 export function classifyResearchAge(
   researchUpdatedAt: Date | null | undefined,
+  horizon?: Horizon | null,
 ): ResearchAge {
   if (!researchUpdatedAt) {
-    return { daysOld: null, freshness: "missing", lastWrittenAt: null };
+    return {
+      daysOld: null,
+      freshness: "missing",
+      lastWrittenAt: null,
+      horizonThreshold: null,
+    };
   }
   const daysOld = Math.floor(
     (Date.now() - researchUpdatedAt.getTime()) / 86_400_000,
   );
-  const freshness: Freshness = daysOld > STALE_DAYS ? "stale" : "fresh";
+  const threshold = horizon
+    ? STALE_DAYS_BY_HORIZON[horizon]
+    : DEFAULT_STALE_DAYS;
+  const freshness: Freshness = daysOld > threshold ? "stale" : "fresh";
   return {
     daysOld,
     freshness,
     lastWrittenAt: researchUpdatedAt.toISOString(),
+    horizonThreshold: threshold,
   };
 }
 
 /**
  * Short label for prompt rendering. Compact form the agent can grep on.
- * Examples: "fresh (3d)", "stale (20d)", "missing".
+ * Examples: "fresh (3d / 7d)", "stale (32d / 30d)", "missing".
  */
 export function formatResearchAge(age: ResearchAge): string {
   if (age.freshness === "missing") return "missing";
-  return `${age.freshness} (${age.daysOld}d)`;
+  const threshold = age.horizonThreshold;
+  return threshold != null
+    ? `${age.freshness} (${age.daysOld}d / ${threshold}d)`
+    : `${age.freshness} (${age.daysOld}d)`;
 }

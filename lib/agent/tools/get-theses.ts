@@ -39,6 +39,7 @@ import {
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
+import type { Horizon } from "@/lib/agent/horizon-policy";
 
 const STATUS_VALUES = [
   "ACTIVE",
@@ -388,11 +389,13 @@ export const getTheses = defineTool({
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
         needsAction: needsActionByThesisId.get(t.id) ?? null,
-        // Phase 1 read-side fix: agent must see freshness of the deep
-        // research without doing date math. Phase 2's place_trade
-        // staleness gate keys off `freshness !== "fresh"` plus an
-        // in-run refresh dispatch check.
-        researchAge: classifyResearchAge(t.researchUpdatedAt),
+        // Agent must see freshness of the deep research without doing date
+        // math. Horizon-tuned per STALE_DAYS_BY_HORIZON. Soft input to the
+        // agent's REVIEW decision — no Layer-1 gate keys off it.
+        researchAge: classifyResearchAge(
+          t.researchUpdatedAt,
+          t.horizon as Horizon | null,
+        ),
       };
     });
 
