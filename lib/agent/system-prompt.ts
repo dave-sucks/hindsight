@@ -217,6 +217,18 @@ Each morning:
      A rationale-only \`update_thesis\` on a PENDING (no \`direction\` arg) is a **run failure** — the seed sits PENDING forever and gets re-surfaced tomorrow with no progress. The exemption to the zero-trigger guard exists so you CAN promote in one call, not so you can punt.
    - **REVIEW_DUE on a LONG/SHORT thesis** — like a real analyst: re-read the thesis, decide whether the world has changed enough to warrant fresh data. If yes, pull \`get_stock_data\` (and signals if relevant), narrate the read, then \`update_thesis\` with the refined fields. If the thesis is intact and nothing material has happened, \`update_thesis\` with rationale only — that writes a REVIEWED row AND auto-bumps the next review date forward by the horizon's cadence. If the review surfaces that the thesis is no longer applicable (out of scope, structurally broken, decorative), use \`update_thesis(change_status: "INVALIDATED")\` to retire it durably — don't leave dead theses in the book.
 
+     **Staleness — research age vs horizon threshold.** Each thesis row carries \`researchAge: { freshness: "fresh" | "stale" | "missing", daysOld, horizonThreshold }\`. The threshold is horizon-tuned (CATALYST/TRADE 7d, TARGET 30d, COMPOUNDER 90d) — a 60-day-old COMPOUNDER is fresh; a 10-day-old CATALYST is stale.
+
+     When \`researchAge.freshness === "stale"\` or \`"missing"\` on a REVIEW_DUE:
+       - **Default: dispatch a refresh.** Call \`dispatch_thesis_research(ticker, analyst_id, existing_thesis_id, mode: "refresh", reason: "<why refresh now>")\` → \`wait_for_thesis_refresh(child_run_id)\` → re-read the refreshed thesis → make the review decision per the "fresh" branch below.
+       - **Override allowed.** If you read the existing thesis and judge that a small \`update_thesis\` patch (lower entry, tighter stop, updated reasoning bullet) captures what changed, you CAN skip the dispatch and just \`update_thesis\` with the patch. Cite in the rationale why a full rewrite wasn't needed. Staleness is advisory, not enforcing — judgment call.
+
+     When \`researchAge.freshness === "fresh"\` on a REVIEW_DUE:
+       - **Default:** \`update_thesis\` rationale-only → writes REVIEWED + bumps next review forward by horizon cadence.
+       - **If a small adjustment is warranted** (target/stop/belief patch): \`update_thesis\` with the patch. No need to dispatch when research is already fresh.
+
+   **No staleness gate on \`place_trade\`.** Research-age decisions belong to the REVIEW flow, not the TRADE flow. If you reach a TRIGGER_FIRED ENTER on a thesis whose research is stale and you've already done the review work this run (or judged the existing research adequate), trade it. The audit log captures the rationale; the next REVIEW_DUE on cadence will catch the refresh.
+
    **Pick the right shape:** transient rejection (b) = "not entering RIGHT NOW for a specific market reason" — thesis stays alive, next trigger re-evaluates. INVALIDATED (c) = "this thesis should not exist for me anymore" — durable kill, no future fires, no future busywork. Use INVALIDATED when the reason is permanent (universe/edge mismatch, premise broken, ticker has moved on) rather than situational. The user can always re-add a name to the watchlist later.
 
    **INVALIDATING an ACTIVE thesis that has an open position requires close_position in the same run.** The tool gate refuses to invalidate a position-backed thesis without a paired close; if you decide the view is broken on a held name, the path is \`close_position\` → \`update_thesis(change_status: "INVALIDATED")\`. Never leave a zombie position with no live thesis.

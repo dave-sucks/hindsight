@@ -27,6 +27,7 @@ import { MODES } from "@/lib/agent/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
+import type { Horizon } from "@/lib/agent/horizon-policy";
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
@@ -172,7 +173,10 @@ export const tacticalRun = inngest.createFunction(
       // so the step.run JSON boundary doesn't strip the Date. Helpers
       // imported below extract bullet arrays + snapshot text from the
       // JSONB section columns (the same columns get_theses reads).
-      const thesisResearchAge = classifyResearchAge(thesis.researchUpdatedAt);
+      const thesisResearchAge = classifyResearchAge(
+        thesis.researchUpdatedAt,
+        thesis.horizon as Horizon | null,
+      );
       const thesisSnapshotText = getThesisSnapshotText(thesis);
       const thesisBullBullets = getThesisBullCaseBullets(thesis);
       const thesisBearBullets = getThesisBearCaseBullets(thesis);

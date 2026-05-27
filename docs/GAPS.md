@@ -27,24 +27,6 @@ These prevent the live agent from doing its job. Fix first.
 
 ## P1 — Quality is degraded but live loop functions
 
-### P1-1 — Remove the hard `place_trade` staleness gate; replace with review-driven judgment
-**Status:** design ready (`docs/plans/REVIEW_REFRESH_CADENCE.md`). Implementation pending.
-
-**Important clarification:** the original "P1-22" item filed in legacy GAPS said the staleness gate was deferred. **It wasn't.** The gate actually shipped at `lib/agent/tools/place-trade.ts:160-243`. The legacy entry was wrong.
-
-**Today's behavior:** `place_trade` refuses entries on WATCHING/PROMOTED theses when `classifyResearchAge(researchUpdatedAt).freshness !== "fresh"` (where "fresh" means written within the last 14 days), unless `dispatch_thesis_research(refresh)` was called earlier in the same run. The gate has a recovery path (call dispatch → wait → retry) and `dispatch_thesis_research` + `wait_for_thesis_refresh` are in the daily-run + tactical allowlists. So the gate IS reachable and recoverable.
-
-**Why we still want to remove it:** the gate enforces a Layer-1 refusal on a JUDGMENT CALL. The agent might have:
-- Fresh `get_stock_data` confirming the setup is still real
-- Fresh signals via `read_signals` confirming the catalyst is still alive
-- Strong reason to enter NOW (catalyst landing today, breakout in progress)
-
-…and yet `place_trade` will refuse because research is 15 days old. The agent then HAS to spend ~90s on a refresh that adds nothing new before re-trying. The right shape is: the REVIEW flow keeps research current (agent judgment when reviewing); `place_trade` always trades.
-
-**Architecture:** ship the design in `docs/plans/REVIEW_REFRESH_CADENCE.md` — remove the gate, add the soft staleness signal to the review decision tree, tune horizon-aware staleness thresholds.
-
-**Existing plumbing to keep:** `classifyResearchAge`, `STALE_DAYS`, `researchAge` in get_theses output, `dispatch_thesis_research` + `wait_for_thesis_refresh` in allowlists. All stay — the soft signal infrastructure is right; only the hard refusal moves.
-
 ### P1-2 — Audit and remove unnecessary place_trade / update_thesis gates
 **Status:** open. **Mentioned by principal 2026-05-26.**
 
@@ -133,6 +115,9 @@ Re-evaluate after the live loop is stable for ~1 week.
 
 ## Done since
 
+### 2026-05-26 — P1-1: review-driven refresh cadence (staleness gate removed)
+- **P1-1** — Deleted the hard `place_trade` staleness gate (formerly `place-trade.ts:160-243`). Research-age decisions are now soft input to the agent's REVIEW flow, not a Layer-1 refusal at trade time. `classifyResearchAge` is horizon-aware (`STALE_DAYS_BY_HORIZON`: CATALYST/TRADE 7d, TARGET 30d, COMPOUNDER 90d), and `researchAge` returns `horizonThreshold` so prompts can render "stale: 32d > 30d threshold." V2 daily-run prompt teaches the REVIEW-time decision tree (dispatch refresh, soft-patch, or proceed) and explicitly notes there is no staleness gate on `place_trade`. Tactical prompt now skips the refresh and acts on the trigger (the daily run is the right place for thorough review). Design doc: [`REVIEW_REFRESH_CADENCE.md`](./plans/REVIEW_REFRESH_CADENCE.md).
+
 ### 2026-05-26 — first live promotion incident fully closed
 The 2026-05-26 first-live-day failures (Earnings Drift Trader, 3 PROMOTED theses skipped) are structurally fixed.
 
@@ -154,4 +139,4 @@ Two new findings surfaced during the V1→V2 audit, filed as P1-8 + P1-9 below.
 - [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md) — the live reference for how the system works (the 5 roles + the lifecycle).
 - [`VISION.md`](./VISION.md) — the product north star.
 - [`run-reviews/2026-05-26-live-analyst-architecture-review.md`](./run-reviews/2026-05-26-live-analyst-architecture-review.md) — the evidence trail for P0-1 through P0-4.
-- `docs/plans/REVIEW_REFRESH_CADENCE.md` (TBD) — design doc for P1-1.
+- [`plans/REVIEW_REFRESH_CADENCE.md`](./plans/REVIEW_REFRESH_CADENCE.md) — design doc that drove P1-1 (closed 2026-05-26).

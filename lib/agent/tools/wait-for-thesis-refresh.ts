@@ -33,6 +33,7 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
+import type { Horizon } from "@/lib/agent/horizon-policy";
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
@@ -169,6 +170,7 @@ export const waitForThesisRefresh = defineTool({
           bullCase: true,
           bearCase: true,
           researchUpdatedAt: true,
+          horizon: true,
         },
       });
       if (thesis) {
@@ -178,7 +180,10 @@ export const waitForThesisRefresh = defineTool({
           snapshot: getThesisSnapshotText(thesis) || null,
           bullCase: getThesisBullCaseBullets(thesis),
           bearCase: getThesisBearCaseBullets(thesis),
-          researchAge: classifyResearchAge(thesis.researchUpdatedAt),
+          researchAge: classifyResearchAge(
+            thesis.researchUpdatedAt,
+            thesis.horizon as Horizon | null,
+          ),
         };
       }
     }
