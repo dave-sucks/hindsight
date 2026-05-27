@@ -18,6 +18,8 @@
 
 Effort: **2–3 days** (schema + writer prompt + daily-run prompt + ThesisSheet badge + backfill + tests). No multi-PR workstream.
 
+**Anchored on**: principal-provided fintwit examples (Traderstewie momentum/swing setups, Prof's $RDDT compounder commitment, confluence-is-king explainer) **plus** sell-side rating taxonomies (Goldman Buy/Neutral/Sell + Conviction List, Morgan Stanley OW/EW/UW, JPM OW/N/UW), buy-side pitch frameworks (R/R bands as conviction tiers, "passion + variant view" as HIGH markers), VC IC memo structure (Sequoia/a16z — used as a binary-conviction *counterpoint* to justify why 5-tier wins for Hindsight's many-names coverage), and WSB / retail position-sizing vocabulary (YOLO, Diamond Hands, "back up the truck," starter→scale-in→full size). Full citations in §12.
+
 ---
 
 ## 1. The problem
@@ -66,6 +68,8 @@ Today only #6 has a structural home (`direction=PASS`). The other 5 collapse to 
 
 ### What real-world conviction expression looks like (the anchors)
 
+The brief asked for sell-side initiation notes, fintwit, WSB, VC memos, and Bloomberg analyst-rating taxonomy. Findings below; full vocabulary table in §1a, the five conviction dimensions in §1b.
+
 **Traderstewie ($INTC, $AEHR — momentum/swing trader)**: conviction lives in **a tier verdict wrapped in setup vocabulary + a clean target + an implicit time horizon**:
 - "A gorgeous 'Holy Grail' setup setting up in $INTC here!"
 - "Thinking this one will explode higher in latter part of this week. Targets $130"
@@ -83,6 +87,50 @@ Tier verdict ("sleeping giant"), skin-in-the-game commitment ("I own it"), time 
 **The general pattern (per the principal's confluence explainer)**: conviction is driven by **3+ aligned signals across price action, volume, catalyst, sentiment, supporting indicators**. 1–2 signals = low conviction. 3+ = high conviction sizing.
 
 Hindsight's 4-dim composite already captures the confluence math. What it doesn't do is collapse the composite + the writer's qualitative judgment + the catalyst posture into a single decisional tier the daily-run can act on at-a-glance.
+
+---
+
+## 1a. Conviction vocabulary across sources — the table
+
+Aggregated from sell-side disclosures (Goldman, Morgan Stanley, JPM), buy-side pitch frameworks, VC IC memos (Sequoia, a16z), retail momentum traders (Traderstewie, "Holy Grail"-style setups), and WSB. Mapped onto Hindsight's 5 tiers.
+
+| Source / context | Their vocabulary | Action implication | Hindsight tier |
+|---|---|---|---|
+| **Goldman Sachs** | Buy / Neutral / Sell + separately a curated **Conviction List** (subset of Buy-rated names with "best alpha generation opportunities"). Conviction List membership is NOT a rating change — it's a separate axis on top of the rating. | The Conviction List is the firm's highest-confidence Buys. Membership signals "bigger position, act sooner, narrower exit tolerance." | URGENT_BUY (Conviction List) / HIGH (Buy not on Conviction) / MEDIUM (Neutral) / LOW (Neutral with caveats) / AVOID (Sell). The Goldman pattern validates **tier-as-separate-axis from direction** — exactly the design here. |
+| **Morgan Stanley** | Overweight / Equal-weight / Underweight / Not-Rated. Time horizon 12-18 months. Framing is RELATIVE TO BENCHMARK, not absolute Buy/Hold/Sell. | OW = outperform; EW = market-match; UW = underperform. Recommended portfolio weightings, not buy/sell directives. | OW → HIGH or MEDIUM (depending on conviction); EW → MEDIUM-LOW (track but no aggressive bias); UW → AVOID. |
+| **JPMorgan** | Overweight / Neutral / Underweight, 6-12 month horizon. OW = "outperform sector or broader market." | OW falls into "buy" bucket; N = hold; UW = sell. Time horizon shorter than MS. | Same mapping as MS. |
+| **Buy-side hedge fund pitch** | Recommendation + upside $/% + downside $/% + thesis + what the Street is missing + catalysts + scenarios. Explicit conviction in **R/R bands**: **3:1-5:1 = strongest conviction → largest positions**; 2:1-3:1 = core/moderate; 1:1-2:1 = usually pass. | "Passion, variant view, unit economics" = HIGH markers. "Consensus ideas, low conviction" = "major don'ts" — PMs reject pitches the analyst doesn't believe. | R/R ≥ 3:1 + variant view → URGENT_BUY or HIGH; R/R 2:1-3:1 + standard thesis → MEDIUM; sub-2:1 → LOW or PASS. The R/R bands map cleanly onto Hindsight's existing 2:1 floor. |
+| **Sequoia IC memo (YouTube, 2005)** | Sections: Introduction / Deal / Competition / Hiring plan / Key risks / **Recommendation** (at the END, not the top). Phrasing: "I recommend that we proceed with the financing as proposed." | Conviction is NARRATIVE, not numerical: "clear lead," "pole position," urgency cues ("I'd like to give the company our decision on Monday"). Risks are 5 contextual categories, NO severity ratings. | Sequoia's IC has no tier system — Pat Grady: "Presence of conviction is what matters" (binary). The counterpoint to a 5-tier enum — see §2.5. |
+| **VC IC memo (general)** | Standard sections: Executive Summary (Deal / Thesis / **Recommendation**) → Market → Team → Product → Business model → Risks & Mitigants. "Recommend a tranched $X investment" is the canonical recommendation line. | Sections explicitly warn against "Recommend / Pass / Pass for now" graduated language: *"Outlier returns in VC are built on conviction, not defensive politics."* Risks paired with **concrete mitigants** (expert diligence, customer data, sensitivity scenarios, monitoring). | The binary stance is the VC opposite of sell-side's 5-tier. Hindsight is many-names coverage like sell-side, not few-investments commitment like VC — 5-tier wins for Hindsight. |
+| **Traderstewie (fintwit, momentum/swing)** | "Holy Grail setup," "gorgeous consolidation," "calm before the storm," "explode this week," "as early as tomorrow," "Targets $130," "$INTC starting to move again." Updates live as move unfolds. | Tier verdict in the setup vocabulary + clean target + implicit time horizon ("this week"). Stops implicit at consolidation base. Position sizing implicit. | "Holy Grail" / "explode this week" + clean catalyst firing → URGENT_BUY. "Gorgeous consolidation building, any day now" → HIGH. |
+| **Prof / @TheProfInvestor (long-term holder)** | "$RDDT This is a sleeping giant. I own it. And I will hold it. Make note of this one." | Tier + skin-in-game commitment + implicit COMPOUNDER horizon. No price target, no stop, no setup detail. | "Sleeping giant" + "I own it" + "I will hold" → HIGH on COMPOUNDER. |
+| **WSB / r/wallstreetbets** | YOLO (high-risk concentrated bet), Diamond Hands (hold through volatility, high conviction), Paper Hands (sells too early, low conviction), Tendies (profits), "loading the boat" / "back up the truck" (substantial purchase, extreme bullishness). Language designed to frustrate outsiders. | YOLO / "back up the truck" → URGENT_BUY (concentrated high-conviction). Diamond Hands → wide hold tolerance on ACTIVE positions (= HIGH/URGENT_BUY tier semantics). Paper Hands → MEDIUM/LOW (the agent equivalent). | "Back up the truck" maps to URGENT_BUY. Diamond Hands hold-tolerance maps to HIGH/URGENT_BUY on ACTIVE. The retail vocabulary VALIDATES the tier→hold-tolerance link in the daily-run prompt. |
+| **Position-sizing schools** | "Starter position" (10% initial entry), "Scale in" (20% → 10% → 20% as pivots trigger), "Small Early, Big Late" pyramiding. | Two schools: (a) **size based on conviction** ("scale into high-conviction trades 3-5 times, moving stop each time"); (b) **fixed % per trade regardless of conviction** (the disciplined view — "your 'best' ideas often fail"). | The debate matters — see §2.5. Hindsight resolves it: writer expresses intent via `targetSizePct`, daily-run applies discipline at execution. Both views honored. |
+| **Stock-analysis aggregators (TipRanks, etc.)** | Aggregate analyst ratings into 3-tier consensus (Buy / Hold / Sell) or 5-tier (Strong Buy / Buy / Hold / Sell / Strong Sell). Note: "outperform" at one firm may be "buy" at another — taxonomy is non-uniform across firms. | 3-tier is the consumer-facing simplification; 5-tier is the underlying analyst taxonomy. | 5-tier validates the proposal. The cross-firm inconsistency validates having ONE canonical Hindsight taxonomy instead of N analyst-specific schemes. |
+
+**Cross-source pattern that emerges:** every framework has at minimum a **rating tier** (the verdict). Beyond that, the disciplined ones add a **conviction modifier** (Goldman's Conviction List, the buy-side R/R band, the position-sizing intent). The retail / fintwit voices collapse both into a single colorful phrase ("Holy Grail," "sleeping giant," "back up the truck"). Hindsight's `conviction` field collapses the two into one structured tier — close to the retail / fintwit pattern but with the sell-side discipline of a defined 5-value enum.
+
+---
+
+## 1b. The five conviction dimensions (the Step 3 framework)
+
+Reading across all the sources above, conviction expression in financial-analyst output decomposes into five orthogonal dimensions. Hindsight already covers four; the new `conviction` field covers the fifth.
+
+| # | Dimension | What it answers | Where it lives in Hindsight today | Coverage |
+|---|---|---|---|---|
+| 1 | **Directional view** | Bullish / bearish / no view | `direction` (LONG / SHORT / PASS / PENDING) | ✓ Already structured |
+| 2 | **Setup quality / confluence** | How many signals align? How clean is the technical / fundamental setup? | `scoring` (4-dim composite: trend + RS + entry quality + catalyst freshness, sum /10) | ✓ Already structured |
+| 3 | **Time horizon / urgency** | When will the view play out? Days / weeks / months / years? | `horizon` (CATALYST / TRADE / TARGET / COMPOUNDER) + `catalystDate` + `maxHoldDays` | ✓ Already structured |
+| 4 | **Position sizing intent** | How big a position relative to portfolio? | `targetSizePct` (0-100, % of portfolio at full position) | ⚠ Field exists, **rarely populated** (1 of 5 recent writer theses). Promotion to required closes this gap. |
+| 5 | **Overall conviction strength** (the writer's verdict) | Across all the above, how strongly should the daily-run act on this thesis? Trade aggressively, normally, skeptically, or not at all? | **No structured field today.** Lives in prose `rationale` ("Decision: RE-ENTER," "pre-earnings chase violates breakout-confirmation rules," "Recalibrating entry/target/stop"). | ✗ **Missing.** New `conviction` field fills this. |
+
+Why these five and not more:
+- "Risk-reward" is a derived value from target/entry/stop. Already on every thesis. Not a separate dimension.
+- "Catalyst" is part of dimension 2 (composite's `catalystFreshness`) and dimension 3 (`horizon=CATALYST` + `catalystDate`).
+- "Valuation" is captured in the bull/bear case bullets and the composite's other dimensions. Not a separate top-level field.
+- "Sentiment" is captured in the analyst consensus widget + signal types. Not a separate top-level conviction dimension.
+
+Dimension 5 is the only one missing structurally. Every other dimension has a field. This is what justifies adding `conviction` and stopping there — not adding `urgency`, `confidenceTier`, `priorityScore`, or any of the other near-misses I considered.
 
 ---
 
@@ -309,6 +357,24 @@ The conviction badge is **additive**, not replacement. It's the at-a-glance verd
 | **"Buy at current price without trigger wait"** | NEW value via `conviction=URGENT_BUY` | Today the writer expresses this by setting entry_price = current_price + setting the ENTER trigger to PRICE_ABOVE(target), but the daily-run treats it identically to a "wait for breakout" setup. URGENT_BUY makes the "don't wait" semantic explicit. |
 | **Setup-quality grade** | RE-USE `scoring` (composite + 4 dims) | Composite stays. It IS the analytical defense for the conviction tier — a HIGH conviction with composite 4 is the writer contradicting themselves and the UI should surface that as a warning (or the writer prompt should reject it as inconsistent). |
 | **"Tracking but actively recommending against"** | NEW value via `conviction=AVOID` | Distinct from PASS (which archives off the watchlist). AVOID keeps the thesis on the watchlist with an explicit "do-not-trade" verdict, letting the user override or letting future refreshes upgrade conviction if conditions change. |
+
+### Counterpoints from the research worth addressing
+
+**Counterpoint 1: Sequoia / a16z treat conviction as binary.** Pat Grady (Sequoia): *"Presence of conviction is what matters."* VC IC memo guides explicitly reject graduated `Recommend / Pass / Pass for now` framing as "defensive politics." If the best investors don't use a tiered system, why should Hindsight?
+
+→ **Reply:** VCs commit to 5-10 investments per fund out of thousands of pitches. The decision is *invest or don't* — binary makes sense at that ratio. Hindsight's writer covers 30+ names per analyst per cycle, more like a sell-side analyst initiating coverage across a sector. Sell-side IS graduated (5+ tiers across firms). Hindsight is structurally sell-side, not VC. The 5-tier design follows the structural cousin.
+
+**Counterpoint 2: "Sizing based on conviction" is undisciplined.** Position-sizing schools explicitly warn that "your 'best' ideas often fail" and that fixed % per trade is the disciplined path. If conviction is unreliable as a sizing input, why let the writer encode it via `targetSizePct`?
+
+→ **Reply:** Hindsight ALREADY applies discipline at execution — `maxPositionSize` / `realMaxPosition` / `maxOpenPositions` are account-level caps the daily-run enforces. The writer's `targetSizePct` is INTENT, not authority. Daily-run sees intent + applies cap → actual position size. The intent expression doesn't break discipline; it just gives the daily-run a structured input instead of forcing it to guess. Worst case: writer says HIGH+6%, account cap is 3%, daily-run trades 3%. Best case: writer says LOW+2%, daily-run trades 2% on the few trades that survive the tier semantics.
+
+**Counterpoint 3: Goldman separates "rating" from "Conviction List."** Goldman has Buy/Neutral/Sell ratings AND a separately curated Conviction List. Two axes, not one. The proposed Hindsight design collapses them into one tier — is that the right trade?
+
+→ **Reply:** This is a real consideration. Two fields would be `direction` + `conviction` (already in this design) PLUS a separate `onConvictionList: boolean` modifier. That'd be a 6-tier matrix (3 directions × Buy/Conviction-Buy × N). Strictly more expressive, but adds a field for marginal benefit. The 5-tier `conviction` collapses URGENT_BUY (= Conviction List membership) into the top of the same axis as HIGH (= ordinary Buy). The collapse loses one bit of information (whether a HIGH thesis is "regular high" or "Conviction List high") in exchange for one fewer field. I judged the trade worth it; principal can disagree and we add the second field.
+
+**Counterpoint 4: Cross-firm rating taxonomies are non-uniform.** Same stock can be "Outperform" at one firm, "Buy" at another, "Overweight" at a third — none meaning quite the same thing. Aggregators have to normalize across firms. Does Hindsight risk the same fragmentation across analysts?
+
+→ **Reply:** Hindsight has ONE canonical taxonomy (the 5-value enum) applied across all analysts. The fragmentation problem is cross-firm; we control the writer's taxonomy because we own the writer prompt. Anti-pattern would be letting each analyst define their own conviction scheme — we explicitly aren't doing that.
 
 ### What I considered and rejected
 
@@ -572,14 +638,51 @@ No multi-PR workstream. No new tools. No new triggers. No role-boundary changes.
 
 5. **UI badge color for LOW vs AVOID.** Both are negative-ish but mean different things. Suggested default: LOW = `secondary` (muted), AVOID = `negative` (red). Or pick a different palette pairing — your call on the visual hierarchy.
 
-6. **Tier name for `URGENT_BUY`.** The name is verbose and asymmetric (`URGENT_BUY` vs `HIGH/MEDIUM/LOW/AVOID`). Alternatives: `URGENT`, `STRONG_BUY` (matches Wall Street), `BUY_NOW`. The current name is explicit but the others are tighter.
+6. **Tier name for `URGENT_BUY`.** The name is verbose and asymmetric (`URGENT_BUY` vs `HIGH/MEDIUM/LOW/AVOID`). Sell-side anchors: Goldman uses "Conviction Buy" (separate from rating axis), aggregators standardize on "Strong Buy" as the top tier above "Buy." Retail anchor: "back up the truck" / "loading the boat" / "YOLO" all map to the same semantic. Three alternatives, principal's call:
+   - `URGENT_BUY` (current) — explicit, captures the "act now without trigger" semantic that's the load-bearing differentiator from HIGH
+   - `STRONG_BUY` — matches Wall Street aggregator taxonomy; conventional; loses the "act NOW" specificity
+   - `CONVICTION_BUY` — matches Goldman's separately-curated list; signals "the writer's strongest call"; tighter than URGENT_BUY
+
+   Same question applies to the bottom tier: `AVOID` (current, explicit) vs `STRONG_PASS` (mirrors Wall Street "Strong Sell"). I'd keep `AVOID` because it carries the "actively tracked but recommend against trading" semantic that `STRONG_PASS` doesn't.
+
+7. **Should `direction=PASS` carry a conviction value too?** Today the design says PASS skips conviction (PASS is its own equivalent of AVOID-and-archive). But Sequoia / a16z memo language for declines is "Pass" with a one-line rationale — they don't grade the PASS. Hindsight should follow suit. Suggested default: PASS theses have `conviction=null`, and the UI infers "PASS" as the tier label for display. No change needed; just documenting the inherited behavior.
 
 ---
 
 ## 12. See also
 
+### Hindsight internal
 - [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) §0 (the five roles — this design keeps all boundaries intact) and §8 (Fields — `conviction` joins the operational-state group)
 - [`GAPS.md`](../GAPS.md) **P1-6** (writer urgency signal on promotion refreshes — absorbed into this design)
 - [`GAPS.md`](../GAPS.md) **P1-3** (targetPrice overload — adjacent but not addressed here)
 - [`PRINCIPLES.md`](../PRINCIPLES.md) — the three-layer principle. Conviction lives at Layer-2 (a structured tool-result field that pre-digests state for the agent) + Layer-3 (the daily-run prompt teaches per-tier judgment). The Layer-1 gate just enforces that directional theses HAVE a conviction set — it doesn't second-guess WHICH tier.
 - [`MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — the V2 daily-run prompt design this builds on. The conviction-aware action discipline section is additive to V2's needsAction walk.
+
+### Real-world conviction-vocabulary sources (the Step 3 research)
+
+Sell-side rating taxonomies:
+- [Morgan Stanley General Research Disclosures](https://www.morganstanley.com/eqr/disclosures/webapp/generalresearch) — Overweight / Equal-weight / Underweight definitions
+- Goldman Sachs Conviction List — see [Benzinga: Goldman Sachs Updates Its Conviction List](https://www.benzinga.com/analyst-ratings/analyst-color/17/07/9778951/goldman-sachs-updates-its-conviction-list-what-that-mean) for the framing that Conviction List is a separate axis from Buy/Neutral/Sell ratings
+- [stockanalysis.com — What Do Stock Analyst Ratings Mean?](https://stockanalysis.com/article/analyst-ratings-explained/) — cross-firm rating taxonomy (Strong Buy / Buy / Hold / Sell / Strong Sell) and the cross-firm normalization problem
+- [TipRanks Analyst Consensus glossary](https://www.tipranks.com/glossary/a/analyst-consensus) — 3-tier (Buy / Hold / Sell) aggregator framing
+
+Buy-side / hedge fund pitch frameworks:
+- [Mergers & Inquisitions — Stock Pitch Guide](https://mergersandinquisitions.com/stock-pitch-guide/) — components of a hedge fund pitch sheet (recommendation, upside/downside, thesis, what street is missing, catalysts, scenarios)
+- [Finance Interview Prep — Hedge Fund Stock Pitch Framework](https://financeinterviewprep.com/blog/hedge-fund-stock-pitch-framework) — R/R conviction bands (3:1-5:1 = HIGH, 2:1-3:1 = core/moderate, 1:1-2:1 = usually pass)
+- [Street of Walls — Stock Pitch Do's and Don'ts](https://www.streetofwalls.com/articles/hedge-fund/recruiting-interviewing/stock-pitch-the-dos-and-donts/) — "consensus ideas and low conviction" as major don'ts
+
+VC IC memo structure (for the binary-conviction counterpoint):
+- [Alex Jarvis — The confidential YouTube Investment Memo by Sequoia](https://www.alexanderjarvis.com/the-confidential-youtube-investment-memo-by-sequoia-you-were-never-meant-to-see/) — the actual Sequoia memo, sections + the narrative-not-numerical conviction expression
+- [The VC Factory — IC Memos guide](https://thevcfactory.com/investment-committee-memos/) — Pat Grady's "Presence of conviction is what matters" quote + the rejection of graduated "Recommend / Pass / Pass for now" framing
+
+Retail / fintwit anchors (provided by principal):
+- @Traderstewie ($INTC "Holy Grail setup, explode this week, Targets $130"; $AEHR "Gorgeous consolidation, any day now, Targets $120-$125")
+- @TheProfInvestor ($RDDT "sleeping giant, I own it, I will hold")
+- Principal's confluence explainer (3+ aligned signals = high conviction sizing)
+
+WSB / retail vocabulary:
+- [Infinity Investing — The Ultimate Guide to Reddit's WSB Slang](https://infinityinvesting.com/wallstreetbets-slang-meaning/) — YOLO, Diamond Hands, Paper Hands, Tendies vocabulary
+- [SuperMoney — The Back Up The Truck Strategy](https://www.supermoney.com/encyclopedia/backing-up-the-truck) — "back up the truck" semantic (substantial purchase, extreme bullishness) and origin
+
+Position sizing schools (for the sizing-vs-conviction debate):
+- [TraderLion — Position Sizing Strategies](https://traderlion.com/risk-management/position-sizing-strategies/) — starter position (10%), scale-in (20%/10%/20%), Small-Early-Big-Late pyramiding, and the conviction-vs-fixed-% debate
