@@ -72,13 +72,6 @@ Same `targetPrice` column is "take-profit" when ACTIVE and "buy-in breakout" whe
 
 ~1 day. Reconsider priority if a non-writer code path becomes a meaningful share of thesis production.
 
-### P1-4 — `Thesis.promotedAt` column timestamp 12h adrift from audit row (was P1-24)
-**Status:** open. Surfaced 2026-05-26.
-
-Column is `timestamp without time zone`; audit-row `ThesisUpdate.timestamp` is `timestamptz`. Same `new Date()` write yields different stored values — exactly 12h apart. Probable Prisma/`@prisma/adapter-pg` AM/PM-flip on the bare-timestamp column type. Doesn't break trading but breaks any time-since-promotion math.
-
-**Fix:** migrate column to `timestamptz`, validate Prisma schema declaration, backfill query: `UPDATE "Thesis" SET "promotedAt" = "promotedAt" - INTERVAL '12 hours' WHERE "promotedAt" > NOW()` (verify against `ThesisUpdate` first per-row).
-
 ### P1-5 — Thesis-writer fabricated MRVL post-earnings data (was P1-25)
 **Status:** investigation needed.
 
@@ -132,6 +125,9 @@ Re-evaluate after the live loop is stable for ~1 week.
 ---
 
 ## Done since
+
+### 2026-05-27 — `Thesis.promotedAt` timestamptz migration
+- **P1-4** — `Thesis.promotedAt` migrated from bare `timestamp(3)` to `timestamptz(6)`; existing 3 rows (AVGO/TSM/MRVL, all promoted 2026-05-26) backfilled `-12h` to undo the `@prisma/adapter-pg` AM/PM-flip. Post-migration verification confirmed `promotedAt` matches the `STATUS_CHANGED → PROMOTED` audit row to the millisecond. Schema regression test in [prisma/schema.test.ts](prisma/schema.test.ts) pins the `@db.Timestamptz(6)` annotation. Audit-row peer `ThesisUpdate.timestamp` left bare for now — written by Postgres `now()` via `@default(now())`, not affected by the adapter bug.
 
 ### 2026-05-26 — first live promotion incident fully closed
 The 2026-05-26 first-live-day failures (Earnings Drift Trader, 3 PROMOTED theses skipped) are structurally fixed.

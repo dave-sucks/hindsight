@@ -313,7 +313,12 @@ model Thesis {
   // times by the analyst" and treats re-entry as the default decision,
   // not a fresh entry. See docs/PROD_DEPLOYMENT_PLAN.md.
   // Null on every thesis until its first promotion event.
-  promotedAt           DateTime?
+  // `@db.Timestamptz(6)` is load-bearing: stored as `timestamp without time zone`
+  // the Prisma `@prisma/adapter-pg` write path AM/PM-flips `new Date()` writes
+  // (GAPS P1-4). The audit-row peer in `ThesisUpdate` is written via Postgres
+  // `now()` so it isn't affected by the adapter bug, but `promotedAt` is set
+  // from a JS `Date` in `transitionThesisToPromoted` and must be timestamptz.
+  promotedAt           DateTime?            @db.Timestamptz(6)
   paperTenureDays      Int?
   paperRealizedPnl     Float?
   paperReviewCount     Int?
