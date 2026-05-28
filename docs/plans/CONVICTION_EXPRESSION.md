@@ -1,24 +1,30 @@
 # Conviction Expression — how the writer says "high conviction, urgent buy"
 
-> **What this is:** the design for letting the thesis-writer emit a single decisional **conviction tier** that the daily-run + tactical agents read AS A STRUCTURED INPUT instead of re-deriving it from prose rationale every run.
+> **What this is:** design for letting the thesis-writer emit a structured **conviction tier**, a separate **act-now flag**, and a required **variant view** that the daily-run + tactical agents read as structured input instead of re-deriving from prose rationale every run.
 >
-> **Status:** design, not yet implemented. Generalizes (and absorbs) [`GAPS.md`](../GAPS.md) **P1-6** (writer urgency signal on promotion refreshes). Touches [`GAPS.md`](../GAPS.md) **P1-3** at the edges but does not fix it.
+> **Status:** design, not yet implemented. Generalizes (and absorbs) [`GAPS.md`](../GAPS.md) **P1-6** (writer urgency signal on promotion refreshes). Touches **P1-3** at the edges but does not fix it.
 >
 > **Owner:** principal. **Audience:** future session implementing this.
+>
+> **History:** v1 of this doc (in git history) conflated conviction-strength with time-urgency in an invented `URGENT_BUY` tier, invented an `AVOID` tier the research didn't support, and missed the most important real-world gap — the "variant view" requirement that every buy-side pitch framework treats as table stakes. v2 (this doc) fixes those.
 
 ---
 
 ## TL;DR
 
-1. **Add ONE new field on `Thesis`: `conviction`** — a 5-value enum (`URGENT_BUY` / `HIGH` / `MEDIUM` / `LOW` / `AVOID`) plus a one-sentence `convictionRationale`. The writer sets it on every mint + refresh. PASS theses skip it (PASS is its own tier-equivalent).
-2. **Promote ONE existing field to required: `targetSizePct`** for every directional thesis. Today it's optional and the writer rarely populates it; the daily run can't size a trade without it.
-3. **Teach the daily-run prompt to read conviction first.** Per-tier interpretation: URGENT_BUY = "act on next review even without trigger fire," HIGH = "act on ENTER fast, full size," MEDIUM = "trade on ENTER with normal discipline," LOW = "ENTER fires are skip-by-default; require additional confirm," AVOID = "ENTER fires write REVIEWED-only audit row, no trade."
-4. **Surface conviction as a badge in `ThesisSheet` header and `ThesisCard`**, alongside (not replacing) the existing 4-dim composite gauges. The composite stays as the analytical why; conviction is the verdict.
-5. **No new tools, no new triggers, no compound predicates, no role-boundary changes.** Writer still doesn't trade. Daily run still owns status decisions. Just one structured field that compresses the writer's verdict so the daily run doesn't re-read prose.
+1. **Add 4 new fields on `Thesis`**:
+   - `conviction` — 4-value enum (`STRONG` / `HIGH` / `MEDIUM` / `LOW`). Strength of view only.
+   - `convictionRationale` — one-sentence (≤200 char) explanation of the tier choice. Always required when conviction is set.
+   - `variantView` — one-sentence "consensus thinks X, I think Y, here's why." **Required for `STRONG` and `HIGH` tiers.** This is the gap the v1 design missed. Every buy-side pitch framework treats variant-view as the load-bearing differentiator between a real edge and a consensus rehash.
+   - `actNow` — boolean. Orthogonal to conviction strength. True = "act on next daily-run review without waiting for a trigger fire." Only legal on `STRONG` or `HIGH` tiers. Decouples "how strongly do I believe this" from "should the agent act immediately."
+2. **Promote existing `targetSizePct` to required** for every directional thesis. Today it's optional and the writer rarely populates it.
+3. **Daily-run prompt reads `conviction` first, then `actNow`, then `variantView`** when interpreting `needsAction` triggers.
+4. **Surface in ThesisSheet** as a 2-element badge group (tier + actNow chip when set), with `variantView` rendered as a tier-1 always-visible callout block (it's more important than most of the existing accordion sections).
+5. **No new tools, no new triggers, no compound predicates, no role-boundary changes.** Writer still doesn't trade. Daily run still owns status decisions.
 
-Effort: **2–3 days** (schema + writer prompt + daily-run prompt + ThesisSheet badge + backfill + tests). No multi-PR workstream.
+Effort: **3–4 days** (schema + writer prompt + daily-run prompt + ThesisSheet badge + variantView block + backfill + tests). Single PR shippable end-to-end. Slightly more than v1 because there are 3 more fields with conditional Layer-1 gates instead of 1.
 
-**Anchored on**: principal-provided fintwit examples (Traderstewie momentum/swing setups, Prof's $RDDT compounder commitment, confluence-is-king explainer) **plus** sell-side rating taxonomies (Goldman Buy/Neutral/Sell + Conviction List, Morgan Stanley OW/EW/UW, JPM OW/N/UW), buy-side pitch frameworks (R/R bands as conviction tiers, "passion + variant view" as HIGH markers), VC IC memo structure (Sequoia/a16z — used as a binary-conviction *counterpoint* to justify why 5-tier wins for Hindsight's many-names coverage), and WSB / retail position-sizing vocabulary (YOLO, Diamond Hands, "back up the truck," starter→scale-in→full size). Full citations in §12.
+**Anchored on**: sell-side rating taxonomies (Goldman's two-axis Buy/Neutral/Sell + Conviction List pattern explicitly inspires the conviction-as-separate-axis-from-direction shape), buy-side pitch frameworks (variant view required, R/R bands as tier thresholds, "passion + variant view" as HIGH markers), Sequoia/a16z memo structure (used as binary-conviction counterpoint and addressed in §3.5), retail/fintwit anchors provided by principal (Traderstewie momentum patterns, Prof compounder commitment), WSB position-sizing vocabulary. Full citations in §14.
 
 ---
 
@@ -36,474 +42,593 @@ Look at the 5 most recent THESIS_WRITER runs (all 2026-05-26):
 | ZS   | 7/10 | "pre-earnings chase violates breakout-confirmation rules; enter on confirmed beat" | LONG WATCHING + ENTER on EARNINGS_BEAT + 5 REVIEWs |
 | OKTA | 5/10 | "Recalibrating entry/target/stop around new breakout structure with 2.05:1 R/R" | LONG WATCHING + ENTER on PRICE_ABOVE $92.5 + 5 REVIEWs |
 
-All 5 look structurally identical to the daily-run agent. MRVL (9/10, "textbook PEAD-qualifying") and OKTA (5/10, weak relative strength, late chase) have the **same shape**. The writer's verdict — Traderstewie-style "Holy Grail setup, explode this week" vs Prof-style "sleeping giant, I will hold" vs "eh, recalibrating" — exists only in `rationale` prose. The daily-run agent has to re-read that prose every run to grok how strongly the writer feels.
+All 5 look structurally identical to the daily-run agent. MRVL (9/10, "textbook PEAD-qualifying") and OKTA (5/10, weak relative strength, late chase) have the **same shape**. The writer's verdict — Traderstewie's "Holy Grail, explode this week" vs Prof's "sleeping giant, will hold" vs "eh, recalibrating" — exists only in `rationale` prose. The daily-run agent has to re-read that prose every run to grok how strongly the writer feels.
 
-### What's missing: a tier-level verdict
+There are three separate signals being collapsed into prose today: **strength of conviction**, **whether to act immediately or wait**, and **what consensus has wrong**. None of them have a structured surface.
+
+### What's missing: a tier-level verdict + an act-now flag + a variant view
 
 The principal has been asking for weeks for a working way to say "the agent is HIGH on this stock." Today's structural fields are all near-misses:
 
-- **`scoring.composite` (0–10)** — populated on every recent thesis, but it's a 4-dim setup-quality grade (trend × RS × entry × catalyst). A clean technical breakout on a name with crap fundamentals scores 7+ but isn't necessarily "high conviction." The composite answers "is the setup clean?" — it doesn't answer "what should you DO with this?"
-- **`direction` (LONG/SHORT/PASS)** — covers the bull/bear/no-view trio but doesn't compress strength of view.
-- **`targetSizePct`** — exists as an optional intent field; **populated on 1 of 5 recent writer runs** (ZS=5%; AVGO/TSM/MRVL/OKTA all null). Daily-run prompt doesn't read it.
-- **`triggers`** — express WHEN, not HOW STRONGLY. An ENTER trigger on a HIGH-conviction thesis and an ENTER trigger on a LOW-conviction thesis look identical to the trigger evaluator.
-- **`horizon` + `catalystDate` + `maxHoldDays`** — express time-window, not conviction-strength.
-- **`confidenceScore` (0–100)** — **was dropped in PR-9** (`record-thesis.ts:101`). The renderer still synthesizes `confidence_score: composite * 10` for backward-compat (`get-theses.ts:414`), but it's a derived number, not a writer-emitted verdict.
+- **`scoring.composite` (0–10)** — populated on every recent thesis, but it's a 4-dim setup-quality grade. A clean technical breakout on a name with weak fundamentals scores 7+ but isn't necessarily "high conviction." Answers "is the setup clean?" not "what should you DO with this?"
+- **`direction` (LONG/SHORT/PASS)** — the bull/bear/no-view trio, doesn't compress strength.
+- **`targetSizePct`** — exists as optional intent; populated on 1 of 5 recent writer runs. Daily-run prompt doesn't read it.
+- **`triggers`** — express WHEN, not HOW STRONGLY.
+- **`horizon` + `catalystDate` + `maxHoldDays`** — time-window, not conviction-strength.
+- **`confidenceScore` (0–100)** — dropped in PR-9. The renderer derives `confidence_score: composite * 10` for backward-compat but it's a number, not a writer-emitted verdict.
 
-Net: there is no structured field on the row that says "the writer's overall view on this trade." The writer produces deep research; the daily run has to re-form an opinion from prose every run.
+There's no structured field that captures the writer's overall view, no field for "act now vs wait," and no field for "what's my contrarian take." The writer produces deep research; the daily run has to re-form an opinion from prose every run.
 
 ### What the principal's example utterances demand
 
-The 6 utterances from the brief:
-
 | Utterance | What it expresses |
 |---|---|
-| "We think this can go up 500%. Buy ASAP even at current price." | URGENT, large size, no entry trigger wait |
-| "Watching with high confidence, fire entry when volume reaches X and price up 3%." | HIGH, normal/large size, multi-condition entry |
-| "Maybe buy, definitely sell if it hits $Y." | MEDIUM-LOW, smaller size, tight exit discipline |
-| "Don't sell until it reaches $X." | HIGH (on a held position), exit only on a specific level |
-| "Eh." | LOW — explicit "I'm not enthusiastic, don't act on small noise" |
-| "No way." | AVOID — explicit "do NOT trade this, even if triggers fire" |
+| "We think this can go up 500%. Buy ASAP even at current price." | STRONG conviction + actNow=true + large size |
+| "Watching with high confidence, fire entry when volume reaches X and price up 3%." | HIGH conviction + actNow=false + multi-condition entry |
+| "Maybe buy, definitely sell if it hits $Y." | MEDIUM conviction + smaller size + tight exit at $Y |
+| "Don't sell until it reaches $X." | STRONG/HIGH on an ACTIVE position; exit only at $X |
+| "Eh." | LOW conviction; track but don't act on small signals |
+| "No way." | direction=PASS (already exists) |
 
-Today only #6 has a structural home (`direction=PASS`). The other 5 collapse to indistinguishable LONG WATCHING shapes plus prose rationale.
+Today only the last has a structural home. The other 5 collapse to indistinguishable LONG WATCHING shapes plus prose rationale.
+
+### The bigger gap the research surfaced
+
+Beyond strength + urgency, the research surfaced a gap I missed in v1 of this doc: **no field for the writer's variant view ("what does consensus have wrong")**. Every buy-side hedge fund pitch framework treats this as table stakes. From Street of Walls: *"consensus ideas and low conviction are major don'ts — portfolio managers reject pitches the analyst doesn't truly believe in."* From a16z / Sequoia IC memo guides: *"recommendations should be short and direct... the differentiated view is what justifies the conviction."*
+
+Hindsight has `bull_case` and `bear_case` bullets but no single field that says "here's where I disagree with the market." Without it, the daily-run agent can't tell a consensus play (low edge) from a variant view (high edge) — and the principal's "high conviction" semantic largely depends on whether the writer can articulate a variant view.
 
 ### What real-world conviction expression looks like (the anchors)
 
-The brief asked for sell-side initiation notes, fintwit, WSB, VC memos, and Bloomberg analyst-rating taxonomy. Findings below; full vocabulary table in §1a, the five conviction dimensions in §1b.
+The brief asked for sell-side notes, fintwit, WSB, VC memos, and Bloomberg-style analyst-rating taxonomy. Findings below; full vocabulary table in §1a, the six conviction dimensions in §1b.
 
-**Traderstewie ($INTC, $AEHR — momentum/swing trader)**: conviction lives in **a tier verdict wrapped in setup vocabulary + a clean target + an implicit time horizon**:
-- "A gorgeous 'Holy Grail' setup setting up in $INTC here!"
-- "Thinking this one will explode higher in latter part of this week. Targets $130"
+**Traderstewie ($INTC, $AEHR — momentum/swing trader)**: conviction lives in a tier verdict wrapped in setup vocabulary + a clean target + an implicit time horizon:
+- "A gorgeous 'Holy Grail' setup setting up in $INTC here! ... Thinking this one will explode higher in latter part of this week. Targets $130"
 - "Gorgeous consolidation/digestion pattern building. Look for a breakout out of this coiling range any day now. Over 15% short interest! Targets $120 to $125"
-- "$INTC is showing all the hallmarks of a stock that's quietly setting up for a big explosive move as early as tomorrow! The calm before the storm…"
-- "$INTC starting to move again"
 
-The tier verdict ("Holy Grail," "gorgeous," "calm before the storm," "explode this week") and the target ($130, $120-$125) are the two load-bearing elements. Stops are implicit. Position size is implicit. Time-urgency is in the tier verbiage ("this week," "as early as tomorrow," "any day now").
+Tier verdict ("Holy Grail," "gorgeous," "calm before the storm") + clean target + implicit urgency ("this week," "any day now"). Stops implicit. Sizing implicit.
 
-**Prof / @TheProfInvestor ($RDDT — long-term holder)**: conviction is even more compressed:
+**Prof ($RDDT — long-term holder)**:
 - "$RDDT This is a sleeping giant. I own it. And I will hold it. Make note of this one."
 
-Tier verdict ("sleeping giant"), skin-in-the-game commitment ("I own it"), time horizon ("I will hold" — i.e., COMPOUNDER), and a "remember this" cue. No price target. No setup detail.
+Tier verdict ("sleeping giant") + skin-in-the-game + implicit COMPOUNDER horizon. No target. No stop. No detail.
 
-**The general pattern (per the principal's confluence explainer)**: conviction is driven by **3+ aligned signals across price action, volume, catalyst, sentiment, supporting indicators**. 1–2 signals = low conviction. 3+ = high conviction sizing.
+**Goldman Sachs** explicitly separates direction from conviction-strength: Buy/Neutral/Sell ratings PLUS a separately curated **Conviction List** of "best alpha generation opportunities." Two axes, not one. This directly inspires the conviction-as-separate-axis-from-direction shape here.
 
-Hindsight's 4-dim composite already captures the confluence math. What it doesn't do is collapse the composite + the writer's qualitative judgment + the catalyst posture into a single decisional tier the daily-run can act on at-a-glance.
+**Buy-side pitch frameworks**: explicit R/R bands as conviction tiers — 3:1-5:1 = largest positions, 2:1-3:1 = core, sub-2:1 = pass. Maps cleanly onto Hindsight's existing 2:1 floor.
+
+Hindsight's 4-dim composite already captures the confluence math. What it doesn't do is collapse the composite + the writer's qualitative judgment + the catalyst posture + the variant view into structured fields the daily-run can act on at-a-glance.
 
 ---
 
 ## 1a. Conviction vocabulary across sources — the table
 
-Aggregated from sell-side disclosures (Goldman, Morgan Stanley, JPM), buy-side pitch frameworks, VC IC memos (Sequoia, a16z), retail momentum traders (Traderstewie, "Holy Grail"-style setups), and WSB. Mapped onto Hindsight's 5 tiers.
+Aggregated from sell-side disclosures (Goldman, Morgan Stanley, JPM), buy-side pitch frameworks, VC IC memos (Sequoia, a16z), retail momentum traders, and WSB.
 
-| Source / context | Their vocabulary | Action implication | Hindsight tier |
+| Source / context | Their vocabulary | Action implication | Hindsight mapping |
 |---|---|---|---|
-| **Goldman Sachs** | Buy / Neutral / Sell + separately a curated **Conviction List** (subset of Buy-rated names with "best alpha generation opportunities"). Conviction List membership is NOT a rating change — it's a separate axis on top of the rating. | The Conviction List is the firm's highest-confidence Buys. Membership signals "bigger position, act sooner, narrower exit tolerance." | URGENT_BUY (Conviction List) / HIGH (Buy not on Conviction) / MEDIUM (Neutral) / LOW (Neutral with caveats) / AVOID (Sell). The Goldman pattern validates **tier-as-separate-axis from direction** — exactly the design here. |
-| **Morgan Stanley** | Overweight / Equal-weight / Underweight / Not-Rated. Time horizon 12-18 months. Framing is RELATIVE TO BENCHMARK, not absolute Buy/Hold/Sell. | OW = outperform; EW = market-match; UW = underperform. Recommended portfolio weightings, not buy/sell directives. | OW → HIGH or MEDIUM (depending on conviction); EW → MEDIUM-LOW (track but no aggressive bias); UW → AVOID. |
-| **JPMorgan** | Overweight / Neutral / Underweight, 6-12 month horizon. OW = "outperform sector or broader market." | OW falls into "buy" bucket; N = hold; UW = sell. Time horizon shorter than MS. | Same mapping as MS. |
-| **Buy-side hedge fund pitch** | Recommendation + upside $/% + downside $/% + thesis + what the Street is missing + catalysts + scenarios. Explicit conviction in **R/R bands**: **3:1-5:1 = strongest conviction → largest positions**; 2:1-3:1 = core/moderate; 1:1-2:1 = usually pass. | "Passion, variant view, unit economics" = HIGH markers. "Consensus ideas, low conviction" = "major don'ts" — PMs reject pitches the analyst doesn't believe. | R/R ≥ 3:1 + variant view → URGENT_BUY or HIGH; R/R 2:1-3:1 + standard thesis → MEDIUM; sub-2:1 → LOW or PASS. The R/R bands map cleanly onto Hindsight's existing 2:1 floor. |
-| **Sequoia IC memo (YouTube, 2005)** | Sections: Introduction / Deal / Competition / Hiring plan / Key risks / **Recommendation** (at the END, not the top). Phrasing: "I recommend that we proceed with the financing as proposed." | Conviction is NARRATIVE, not numerical: "clear lead," "pole position," urgency cues ("I'd like to give the company our decision on Monday"). Risks are 5 contextual categories, NO severity ratings. | Sequoia's IC has no tier system — Pat Grady: "Presence of conviction is what matters" (binary). The counterpoint to a 5-tier enum — see §2.5. |
-| **VC IC memo (general)** | Standard sections: Executive Summary (Deal / Thesis / **Recommendation**) → Market → Team → Product → Business model → Risks & Mitigants. "Recommend a tranched $X investment" is the canonical recommendation line. | Sections explicitly warn against "Recommend / Pass / Pass for now" graduated language: *"Outlier returns in VC are built on conviction, not defensive politics."* Risks paired with **concrete mitigants** (expert diligence, customer data, sensitivity scenarios, monitoring). | The binary stance is the VC opposite of sell-side's 5-tier. Hindsight is many-names coverage like sell-side, not few-investments commitment like VC — 5-tier wins for Hindsight. |
-| **Traderstewie (fintwit, momentum/swing)** | "Holy Grail setup," "gorgeous consolidation," "calm before the storm," "explode this week," "as early as tomorrow," "Targets $130," "$INTC starting to move again." Updates live as move unfolds. | Tier verdict in the setup vocabulary + clean target + implicit time horizon ("this week"). Stops implicit at consolidation base. Position sizing implicit. | "Holy Grail" / "explode this week" + clean catalyst firing → URGENT_BUY. "Gorgeous consolidation building, any day now" → HIGH. |
-| **Prof / @TheProfInvestor (long-term holder)** | "$RDDT This is a sleeping giant. I own it. And I will hold it. Make note of this one." | Tier + skin-in-game commitment + implicit COMPOUNDER horizon. No price target, no stop, no setup detail. | "Sleeping giant" + "I own it" + "I will hold" → HIGH on COMPOUNDER. |
-| **WSB / r/wallstreetbets** | YOLO (high-risk concentrated bet), Diamond Hands (hold through volatility, high conviction), Paper Hands (sells too early, low conviction), Tendies (profits), "loading the boat" / "back up the truck" (substantial purchase, extreme bullishness). Language designed to frustrate outsiders. | YOLO / "back up the truck" → URGENT_BUY (concentrated high-conviction). Diamond Hands → wide hold tolerance on ACTIVE positions (= HIGH/URGENT_BUY tier semantics). Paper Hands → MEDIUM/LOW (the agent equivalent). | "Back up the truck" maps to URGENT_BUY. Diamond Hands hold-tolerance maps to HIGH/URGENT_BUY on ACTIVE. The retail vocabulary VALIDATES the tier→hold-tolerance link in the daily-run prompt. |
-| **Position-sizing schools** | "Starter position" (10% initial entry), "Scale in" (20% → 10% → 20% as pivots trigger), "Small Early, Big Late" pyramiding. | Two schools: (a) **size based on conviction** ("scale into high-conviction trades 3-5 times, moving stop each time"); (b) **fixed % per trade regardless of conviction** (the disciplined view — "your 'best' ideas often fail"). | The debate matters — see §2.5. Hindsight resolves it: writer expresses intent via `targetSizePct`, daily-run applies discipline at execution. Both views honored. |
-| **Stock-analysis aggregators (TipRanks, etc.)** | Aggregate analyst ratings into 3-tier consensus (Buy / Hold / Sell) or 5-tier (Strong Buy / Buy / Hold / Sell / Strong Sell). Note: "outperform" at one firm may be "buy" at another — taxonomy is non-uniform across firms. | 3-tier is the consumer-facing simplification; 5-tier is the underlying analyst taxonomy. | 5-tier validates the proposal. The cross-firm inconsistency validates having ONE canonical Hindsight taxonomy instead of N analyst-specific schemes. |
+| **Goldman Sachs** | Buy / Neutral / Sell + separately a curated **Conviction List** (subset of Buy-rated names with "best alpha generation opportunities"). Conviction List membership is NOT a rating change — it's a separate axis. | Conviction List = highest-confidence Buys. "Bigger position, act sooner, narrower exit tolerance." | direction (LONG/SHORT/PASS) maps to Buy/Sell/declined coverage. Conviction List maps to `conviction=STRONG`. The two-axis pattern directly inspires this design. |
+| **Morgan Stanley** | Overweight / Equal-weight / Underweight / Not-Rated. 12-18 month horizon. Framing is RELATIVE TO BENCHMARK. | OW = outperform; EW = market-match; UW = underperform. | OW → HIGH/STRONG; EW → MEDIUM; UW → LOW or direction=PASS. |
+| **JPMorgan** | Overweight / Neutral / Underweight, 6-12 month horizon. | OW = "outperform sector or broader market." | Same as MS. |
+| **Buy-side hedge fund pitch** | Recommendation + upside $/% + downside $/% + thesis + **what the Street is missing (variant view)** + catalysts + scenarios. R/R bands: 3:1-5:1 = strongest conviction; 2:1-3:1 = core; 1:1-2:1 = usually pass. "Passion + variant view + unit economics" = HIGH markers. "Consensus ideas + low conviction" = major don'ts. | PMs reject pitches without a variant view. Variant view IS the conviction differentiator. | R/R ≥ 3:1 + clear variant view → STRONG/HIGH; R/R 2:1-3:1 + standard thesis → MEDIUM; sub-2:1 → LOW or PASS. **`variantView` field directly traces to this requirement.** |
+| **Sequoia IC memo (YouTube, 2005)** | Sections: Intro / Deal / Competition / Hiring plan / Key risks / **Recommendation** (at the END). Conviction is NARRATIVE, no scoring. | "Presence of conviction is what matters" (binary). Risks paired with contextual analysis, no severity ratings. | Counterpoint to graduated tiers — see §3.5. |
+| **VC IC memo (general)** | Sections: Exec Summary (Deal / Thesis / **Recommendation**) → Market → Team → Product → Business model → **Risks & Mitigants**. "Recommend a tranched $X investment." | Explicitly rejects "Recommend / Pass / Pass for now" graduated framing as "defensive politics." | Counterpoint addressed in §3.5. |
+| **Traderstewie (fintwit, momentum/swing)** | "Holy Grail setup," "gorgeous consolidation," "calm before the storm," "explode this week," "Targets $130." | Tier verdict + clean target + implicit time horizon. | "Holy Grail / explode this week / catalyst firing" → STRONG + actNow=true. "Gorgeous consolidation, any day now" → HIGH + actNow=false. |
+| **Prof (long-term holder)** | "$RDDT sleeping giant. I own it. I will hold." | Tier + commitment + implicit COMPOUNDER horizon. | "Sleeping giant + I will hold" → STRONG on COMPOUNDER. |
+| **WSB / r/wallstreetbets** | YOLO, Diamond Hands, Paper Hands, Tendies, "loading the boat," "back up the truck." | "Back up the truck" / YOLO = highest conviction concentrated bet. Diamond Hands = wide hold tolerance (HIGH tier semantic). | "Back up the truck" → STRONG + actNow=true. Diamond Hands on ACTIVE = STRONG/HIGH hold tolerance. |
+| **Position-sizing schools** | Starter (10%) → scale-in (20/10/20) → full size. "Small Early, Big Late" pyramiding. Two schools: (a) size based on conviction; (b) fixed % per trade regardless of conviction. | Active debate. | See §3.5. Hindsight resolves: writer expresses intent via targetSizePct, daily-run applies discipline at execution. Both views honored. |
+| **Stock aggregators (TipRanks, etc.)** | 5-tier (Strong Buy / Buy / Hold / Sell / Strong Sell) or 3-tier (Buy / Hold / Sell). Cross-firm taxonomies non-uniform (Outperform/Buy/Overweight subtly differ). | Consumer-facing simplification. | 4-tier conviction (STRONG/HIGH/MEDIUM/LOW) is a subset of the 5-tier with the negative side compressed into `direction=PASS`. |
 
-**Cross-source pattern that emerges:** every framework has at minimum a **rating tier** (the verdict). Beyond that, the disciplined ones add a **conviction modifier** (Goldman's Conviction List, the buy-side R/R band, the position-sizing intent). The retail / fintwit voices collapse both into a single colorful phrase ("Holy Grail," "sleeping giant," "back up the truck"). Hindsight's `conviction` field collapses the two into one structured tier — close to the retail / fintwit pattern but with the sell-side discipline of a defined 5-value enum.
+**Cross-source pattern**: every framework has minimum a **direction**, plus a **conviction modifier** (Goldman's Conviction List, buy-side R/R band, retail vocabulary intensity), AND for the disciplined ones a **variant view requirement**. v1 of this doc collapsed all three into one tier; v2 separates them into three fields.
 
 ---
 
-## 1b. The five conviction dimensions (the Step 3 framework)
+## 1b. The six dimensions of conviction (the Step 3 framework)
 
-Reading across all the sources above, conviction expression in financial-analyst output decomposes into five orthogonal dimensions. Hindsight already covers four; the new `conviction` field covers the fifth.
+The brief asked for the 5-8 dimensions the research surfaced. Re-reading all sources, six dimensions consistently show up:
 
-| # | Dimension | What it answers | Where it lives in Hindsight today | Coverage |
+| # | Dimension | Question it answers | Hindsight field today | Coverage |
 |---|---|---|---|---|
-| 1 | **Directional view** | Bullish / bearish / no view | `direction` (LONG / SHORT / PASS / PENDING) | ✓ Already structured |
-| 2 | **Setup quality / confluence** | How many signals align? How clean is the technical / fundamental setup? | `scoring` (4-dim composite: trend + RS + entry quality + catalyst freshness, sum /10) | ✓ Already structured |
-| 3 | **Time horizon / urgency** | When will the view play out? Days / weeks / months / years? | `horizon` (CATALYST / TRADE / TARGET / COMPOUNDER) + `catalystDate` + `maxHoldDays` | ✓ Already structured |
-| 4 | **Position sizing intent** | How big a position relative to portfolio? | `targetSizePct` (0-100, % of portfolio at full position) | ⚠ Field exists, **rarely populated** (1 of 5 recent writer theses). Promotion to required closes this gap. |
-| 5 | **Overall conviction strength** (the writer's verdict) | Across all the above, how strongly should the daily-run act on this thesis? Trade aggressively, normally, skeptically, or not at all? | **No structured field today.** Lives in prose `rationale` ("Decision: RE-ENTER," "pre-earnings chase violates breakout-confirmation rules," "Recalibrating entry/target/stop"). | ✗ **Missing.** New `conviction` field fills this. |
+| 1 | **Directional view** | Bullish / bearish / no view | `direction` (LONG/SHORT/PASS/PENDING) | ✓ Already structured |
+| 2 | **Setup quality / confluence** | How many signals align? How clean? | `scoring` (4-dim composite) | ✓ Already structured |
+| 3 | **Time horizon** | Days / weeks / months / years? | `horizon` + `catalystDate` + `maxHoldDays` | ✓ Already structured |
+| 4 | **Position sizing intent** | How big a position? | `targetSizePct` (0-100) | ⚠ Field exists, **rarely populated** (1 of 5 recent runs). Promotion to required closes this gap. |
+| 5 | **Overall conviction strength** | How strongly should the daily-run act? | **No structured field today.** Lives in prose `rationale`. | ✗ Missing → new `conviction` (+ `convictionRationale`) |
+| 6 | **Variant view** | What does consensus have wrong? Where's the edge? | **No structured field today.** Bull/bear bullets capture the case but not the contrarian framing. | ✗ Missing → new `variantView` |
+| (orthogonal) | **Time urgency** | Act NOW or wait for trigger fire? | **No structured field today.** Embedded in horizon and prose. | ✗ Missing → new `actNow` |
 
-Why these five and not more:
-- "Risk-reward" is a derived value from target/entry/stop. Already on every thesis. Not a separate dimension.
-- "Catalyst" is part of dimension 2 (composite's `catalystFreshness`) and dimension 3 (`horizon=CATALYST` + `catalystDate`).
-- "Valuation" is captured in the bull/bear case bullets and the composite's other dimensions. Not a separate top-level field.
-- "Sentiment" is captured in the analyst consensus widget + signal types. Not a separate top-level conviction dimension.
+V1 of this doc collapsed dimension #5 (strength) with the orthogonal time urgency via an invented `URGENT_BUY` tier. v2 separates them: `conviction` is strength only; `actNow` is the urgency flag.
 
-Dimension 5 is the only one missing structurally. Every other dimension has a field. This is what justifies adding `conviction` and stopping there — not adding `urgency`, `confidenceTier`, `priorityScore`, or any of the other near-misses I considered.
+V1 missed dimension #6 (variant view) entirely. The research is unanimous that buy-side pitches require it. v2 fills the gap with a required field on STRONG/HIGH tiers.
+
+Dimensions 1-3 are already structured. Dimension 4 needs a re-purpose (make required). Dimensions 5, 6, and the urgency axis need 4 new fields total (one of them is the rationale paired with conviction). That's the minimum the research justifies.
 
 ---
 
-## 2. The proposal — `conviction` as a tier verdict
+## 2. The proposal — four new fields, one re-purpose
 
-Add ONE new field on `Thesis`:
+### Schema change
 
 ```prisma
 model Thesis {
   // ... existing fields ...
 
-  /// Writer's overall verdict on this thesis as a decisional tier.
-  /// Read by the daily-run + tactical agents to interpret how aggressively
-  /// to act on triggers and how to size on entry. Distinct from
-  /// `scoring.composite` (the 4-dim setup-quality grade) and from
-  /// `direction` (LONG/SHORT/PASS). Null on pre-V2 rows; required on every
-  /// directional thesis the writer mints or refreshes after this ships.
-  /// PASS theses don't carry a conviction value (PASS is its own equivalent
-  /// of AVOID-and-archive).
-  conviction         String? // "URGENT_BUY" | "HIGH" | "MEDIUM" | "LOW" | "AVOID"
-  convictionRationale String? // ≤200 chars; one sentence explaining the tier choice
+  /// Writer's overall view strength on this thesis.
+  /// Separate axis from `direction` (which is bullish/bearish/no-view).
+  /// Required on every directional thesis (LONG/SHORT). Null on PASS,
+  /// PENDING, and pre-V2 legacy rows.
+  ///   STRONG  — top-tier conviction. Goldman Conviction List equivalent.
+  ///             Writer's best calls (~2-3 names per analyst typical).
+  ///   HIGH    — solid conviction. Standard Buy / Overweight.
+  ///   MEDIUM  — normal conviction. The honest middle.
+  ///   LOW     — weak conviction. "Eh." Track but most signals skip.
+  conviction          String? // "STRONG" | "HIGH" | "MEDIUM" | "LOW"
+
+  /// One-sentence justification for the conviction tier. Required
+  /// whenever `conviction` is set. ≤200 chars.
+  convictionRationale String?
+
+  /// The writer's contrarian take. One sentence: "Consensus thinks X,
+  /// I think Y, here's why." REQUIRED when conviction is STRONG or
+  /// HIGH — every buy-side pitch framework requires a variant view
+  /// for top-tier conviction. Optional on MEDIUM and LOW (where
+  /// consensus alignment is acceptable). ≤300 chars.
+  variantView         String?
+
+  /// Time-urgency flag. True = "act on next daily-run review without
+  /// waiting for a trigger fire." False (default) = "respect the
+  /// trigger fence; wait for predicate." Only legal when conviction
+  /// is STRONG or HIGH (Layer-1 gate). Orthogonal to conviction
+  /// strength — decouples "how strongly do I believe" from "act
+  /// immediately vs wait."
+  actNow              Boolean @default(false)
 }
 ```
 
-That is the **entire schema change**. Everything else is prompt + UI + a `targetSizePct`-required gate.
+Four new fields. PASS theses + PENDING seeds + pre-V2 rows leave them null.
 
-### The five tiers
+### Layer-1 gates
+
+Added in `record_thesis` and `update_thesis`:
 
 ```
-URGENT_BUY  "Buy now, even at current price. Don't wait for a trigger."
-            Daily-run reads this on next review; default action is place_trade
-            in this same run regardless of trigger fires. Tier reserved for
-            setups where the writer would buy immediately if it were their
-            own money — clean catalyst with the move starting, fresh confirm,
-            high R/R, deep conviction. Full target_size_pct (typically 5%+).
+For directional writes (LONG/SHORT):
+  REQUIRED:
+    - conviction        (one of STRONG/HIGH/MEDIUM/LOW)
+    - convictionRationale (≤200 char string)
+    - targetSizePct     (promoted to required; was optional)
 
-HIGH        "Strong conviction. When the ENTER trigger fires, act fast,
-            full size. Wide hold-tolerance — don't let small noise trigger
-            exits." Daily-run reads HIGH and acts on ENTER without
-            second-guessing. Default size = full targetSizePct. Mirrors
-            Goldman's "Conviction Buy" or Prof's "sleeping giant."
+  CONDITIONAL:
+    - variantView REQUIRED when conviction ∈ {STRONG, HIGH}
+    - actNow=true ONLY legal when conviction ∈ {STRONG, HIGH}
 
-MEDIUM      "Reasonable setup. Trade on ENTER with normal discipline.
-            Standard size, standard exits." The default for most clean
-            theses. ~MRVL/AVGO/TSM in the recent batch would land here.
+For PASS writes:
+  conviction / variantView / actNow stay null (PASS is its own equivalent)
 
-LOW         "Eh. I'm tracking this but don't expect much. Most ENTER fires
-            here should be skipped — agent should require an additional
-            confirming signal before acting. Half size or smaller if traded
-            at all." OKTA (composite 5/10, weak RS, late chase) would land
-            here today. Today the OKTA thesis looks identical to MRVL's
-            (composite 9/10, textbook PEAD) to the daily-run agent.
-
-AVOID       "No way. Even if triggers fire, do NOT trade. Daily-run writes
-            a REVIEWED audit row citing the AVOID verdict and skips action.
-            Reserved for tickers the user wants tracked (PENDING seed or
-            user-added) where the writer's recommendation is structurally
-            against trading. Distinct from direction=PASS, which archives
-            the thesis off the watchlist entirely. AVOID keeps it visible
-            with an explicit do-not-trade verdict."
+For PENDING writes (UI/builder/editor seeds):
+  All four stay null (no view yet)
 ```
 
-### Mapping the 6 utterances + the anchor styles
+### Why these four fields and not fewer
 
-| Utterance / source | Tier | Structural shape |
-|---|---|---|
-| "Buy ASAP even at current price. Up 500%." | URGENT_BUY | entry=current; target=current×6; targetSizePct large; no ENTER trigger gate |
-| Traderstewie "Holy Grail, explode this week, Targets $130" | URGENT_BUY or HIGH (depending on whether the move's started) | entry=current; target=$130; horizon=TRADE; stop at consolidation base |
-| "Watching with high confidence, fire entry when volume reaches X and price up 3%" | HIGH | LONG WATCHING; ENTER on PRICE_ABOVE; volume confirm in `key_assumptions`; daily-run reads conviction=HIGH and acts on first ENTER without dispatching another refresh |
-| Prof "$RDDT sleeping giant, I own it, I will hold" | HIGH on COMPOUNDER | LONG ACTIVE; no auto-exit on target; INVALIDATED only on broken belief |
-| "Maybe buy, definitely sell if it hits $Y" | MEDIUM-LOW | LONG WATCHING; ENTER with a higher confidence bar; stop tight at $Y; targetSizePct half |
-| "Don't sell until it reaches $X" (on ACTIVE position) | HIGH | ACTIVE; triggers list is ONLY stop + target $X; agent ignores noise per HIGH tier |
-| "Eh." | LOW | LONG WATCHING; ENTER trigger present but daily-run requires confirming signal before acting |
-| "No way." (on a name we're tracking) | AVOID | LONG WATCHING; daily-run treats ENTER fires as skip-by-default |
-| "No way." (researched fresh, never want to trade) | direction=PASS (already exists, status=ARCHIVED) | Off the watchlist; institutional memory only |
+Honest accounting against the principal's "max 4 new, prefer 0" constraint:
 
-This is the full coverage of the principal's brief. Two utterances (PASS vs AVOID) compose:
-- **AVOID** = "I'm telling you not to trade this name we're tracking; keep it on the watchlist so you can re-evaluate if conditions change."
-- **PASS** = "I'm done with this name; archive it."
+- Could conviction + actNow be one field? — No. The research is explicit that strength and urgency are separate axes. Goldman keeps them separate (Conviction List membership ≠ "act today"). v1 conflated them via URGENT_BUY and it muddled the daily-run prompt semantics.
+- Could variantView be folded into convictionRationale? — No. Rationale is "why this tier" (e.g., "composite 8/10 + R/R 3:1 + catalyst 8 days out"). Variant view is "where the analyst disagrees with consensus" (e.g., "Street expects Q2 inline; I expect 5%+ beat on AI segment"). Different shapes, different requirements (variant required only for HIGH/STRONG). Conflating muddies the writer's mental model.
+- Could actNow be derived from horizon + catalystDate? — Partially. CATALYST horizon within 48h ≈ actNow. But COMPOUNDER + actNow ("buy this generational name today even though the move plays out over years") is a real case the principal explicitly called out ("Buy ASAP up 500%") and horizon doesn't capture it.
+- Could variantView be optional everywhere? — Yes, but then the "high conviction requires variant view" buy-side discipline isn't enforced. Making it conditionally required for STRONG/HIGH bakes the discipline into the tool gate instead of the prompt.
 
-Both legal; they answer different questions.
+Net: four fields is the minimum that captures the research-validated dimensions without overlap.
 
 ---
 
-## 3. What the writer must emit
+## 3. Tier semantics
+
+### What each tier means operationally
+
+```
+STRONG  (top-tier conviction; "Conviction List" / "back up the truck" / "Holy Grail")
+  Writer is calling out their best ideas — typically 2-3 names per
+  analyst per cycle. Requires variantView. actNow allowed.
+  Daily-run discipline: act on triggers FAST at full targetSizePct;
+  if actNow=true, place_trade in same run without waiting for trigger;
+  on ACTIVE positions, wider hold tolerance (small noise doesn't exit).
+
+HIGH  (solid conviction; "Buy" / "Overweight")
+  The standard high-conviction buy. Requires variantView. actNow allowed.
+  Daily-run discipline: act on ENTER triggers at full targetSizePct;
+  on ACTIVE, standard discipline plus slightly wider hold tolerance.
+
+MEDIUM  (normal conviction; "Hold" / "Equal-weight" / "Maybe buy")
+  The honest middle. Trade with normal discipline. variantView
+  optional. actNow=true rejected by Layer-1.
+  Daily-run discipline: trade on ENTER with standard checks
+  (R/R, slot budget, live data confirm).
+
+LOW  ("Eh"; weak conviction)
+  Tracking but not enthusiastic. Most ENTER fires should be skipped
+  unless an additional confirming signal appears. variantView
+  optional. actNow=true rejected by Layer-1.
+  Daily-run discipline: ENTER fires are SKIP-BY-DEFAULT; require
+  cite of additional signal to trade. Default position is half
+  targetSizePct if traded. On ACTIVE, tighten stop on next REVIEW
+  and consider preemptive close.
+```
+
+`AVOID` is not a tier in v2. The "no way" case maps to `direction=PASS` (which archives off the watchlist) — the v1 invention of "AVOID-but-still-tracked" doesn't match how real analysts work and the principal can override at the UI level for the rare case where a name should be tracked despite the writer's "no way" call.
+
+### How `actNow` composes with tier
+
+```
+STRONG + actNow=true   → daily-run: trade in THIS run without waiting for ENTER trigger.
+                         Writer is saying "the move is starting; trigger fence is too slow."
+STRONG + actNow=false  → daily-run: act fast when ENTER fires; full size; wide hold tolerance.
+HIGH   + actNow=true   → daily-run: trade in THIS run without trigger. Unusual but legal
+                         (e.g., post-print PEAD entry with the gap already digested).
+HIGH   + actNow=false  → daily-run: act on ENTER fast; full size; standard discipline.
+MEDIUM + actNow=false  → daily-run: trade on ENTER with normal discipline. (actNow=true rejected.)
+LOW    + actNow=false  → daily-run: ENTER fires skip-by-default. (actNow=true rejected.)
+```
+
+`actNow` is the "skip the trigger fence" signal. It's intentionally only available on the top two tiers because skipping the trigger fence is risky — the fence exists to prevent the agent from chasing — and only the writer's strongest convictions should override it.
+
+### How variantView interacts
+
+`variantView` is required when conviction is STRONG or HIGH. The Layer-1 gate enforces it. The writer prompt teaches the shape: "Consensus expects X, I think Y, here's the falsifiable reason." Examples:
+
+- STRONG: "Street consensus PT $478 implies in-line Q2; I expect a guide-raise that forces 30-day estimate revisions to $520+, driven by hyperscaler XPU backlog upside not yet in models."
+- HIGH: "Most analysts treat MRVL as the #3 AI-silicon name; I think the AWS Trainium 3 program is being underweighted by 2 quarters of run-rate, putting Q4 FY2027 revenue 8% ahead of consensus."
+- MEDIUM: (optional — can be empty if the thesis IS the consensus view but the trade-off is reasonable)
+- LOW: (optional)
+
+For MEDIUM and LOW, no variant view is OK — the writer is admitting the call is consensus or thin. That admission itself is informative; the writer isn't pretending to have an edge they don't have.
+
+---
+
+## 3.5. Counterpoints from the research
+
+**Counterpoint 1: Sequoia / a16z treat conviction as binary.** Pat Grady (Sequoia): "Presence of conviction is what matters." VC IC memo guides explicitly reject graduated framing as "defensive politics."
+
+→ **Reply:** VCs commit to 5-10 investments per fund out of thousands of pitches. Binary makes sense at that ratio. Hindsight's writer covers 20-30+ names per analyst per cycle, structurally closer to a sell-side analyst initiating coverage across a sector — and sell-side IS graduated (5-tier across firms). The 4-tier `conviction` (STRONG/HIGH/MEDIUM/LOW) follows the structural cousin. The Sequoia binary view is preserved at a different layer: the `actNow` boolean IS a binary commitment ("trade or wait") on top of the graduated strength tier.
+
+**Counterpoint 2: "Sizing based on conviction" is undisciplined.** Position-sizing schools warn that "your 'best' ideas often fail" and fixed % per trade is the disciplined path.
+
+→ **Reply:** Hindsight already applies discipline at execution — `maxPositionSize`, `realMaxPosition`, `maxOpenPositions` are account-level caps the daily-run enforces. The writer's `targetSizePct` is INTENT, not authority. Worst case: writer says STRONG+6%, account cap is 3%, daily-run trades 3%. Best case: writer says LOW+1%, daily-run trades 1% on the few trades that survive the tier semantics. The intent expression doesn't break discipline; it gives the daily-run a structured input instead of forcing it to guess.
+
+**Counterpoint 3: Goldman has TWO axes (rating + Conviction List) — the v2 design has ONE.** Goldman: Buy/Neutral/Sell plus separately a curated Conviction List. v2 collapses both into the `conviction` field.
+
+→ **Reply:** v2 actually preserves the two-axis pattern. `direction` (LONG/SHORT/PASS) is the rating axis. `conviction` (STRONG/HIGH/MEDIUM/LOW) is the conviction modifier. STRONG = Conviction List equivalent. HIGH = ordinary Buy. The two axes are kept separate; they're just both already-existing structural fields rather than one being introduced new. v1 of this doc collapsed direction and conviction into a single tier (URGENT_BUY); v2 preserves the separation properly.
+
+**Counterpoint 4: Cross-firm rating taxonomies are non-uniform.** Same stock can be "Outperform" at one firm, "Buy" at another, "Overweight" at a third — none meaning quite the same thing.
+
+→ **Reply:** Hindsight has ONE canonical taxonomy (the 4-value enum) applied across all analysts. The fragmentation problem is cross-firm; we control the writer's taxonomy because we own the writer prompt. Anti-pattern would be letting each analyst define their own conviction scheme — explicitly not doing that.
+
+---
+
+## 4. The 6 utterances mapped
+
+| Utterance | direction | conviction | actNow | variantView | targetSizePct | other |
+|---|---|---|---|---|---|---|
+| "Buy ASAP even at current price. Up 500%." | LONG | STRONG | **true** | "Street has multi-year ramp underweighted by ~3 quarters; current entry is well below normalized FCF multiple." (required) | 5-6% | target = current × 6; entry = current |
+| "Watching with high confidence, fire entry when volume reaches X and price up 3%." | LONG | HIGH | false | required (e.g., "Consensus skeptical of post-print follow-through; volume confirm is the leading indicator they're missing.") | 3-4% | ENTER trigger on PRICE_ABOVE; volume condition in `key_assumptions`; daily-run pulls live volume at ENTER fire |
+| "Maybe buy, definitely sell if it hits $Y." | LONG | MEDIUM | false | optional | 2% | tight stop at $Y; standard discipline |
+| "Don't sell until it reaches $X." (on ACTIVE) | LONG (already) | STRONG or HIGH | n/a | required (since STRONG/HIGH) | already sized | triggers list = stop + target $X only; wide hold tolerance per tier |
+| "Eh." | LONG | LOW | false | optional (likely empty) | 1-2% | ENTER fires skip-by-default; half size if traded |
+| "No way." | **PASS** | null | null | null | null | terminal at write (status=ARCHIVED) |
+
+All six covered. The principal's brief is fully expressible without inventing AVOID or URGENT_BUY.
+
+---
+
+## 5. What the writer must emit
 
 After this ships, every `record_thesis` or `update_thesis` call from the thesis-writer agent — on a directional thesis — must include:
 
-```ts
-{
-  conviction: "URGENT_BUY" | "HIGH" | "MEDIUM" | "LOW" | "AVOID",
-  convictionRationale: string,  // ≤200 chars; one sentence; the why
-  targetSizePct: number,        // already exists; now REQUIRED for LONG/SHORT
-  // ... all existing required fields (target_price, stop_loss, etc.)
-}
 ```
-
-**Layer-1 gate**: `record_thesis` + `update_thesis` (in PENDING-promotion paths) reject directional writes without `conviction` set. The error message tells the agent which tier to pick from the rubric below.
+direction         : "LONG" | "SHORT"
+conviction        : "STRONG" | "HIGH" | "MEDIUM" | "LOW"
+convictionRationale : string ≤200 chars (always required when conviction is set)
+variantView       : string ≤300 chars (REQUIRED when conviction ∈ {STRONG, HIGH})
+actNow            : boolean (only legal as true when conviction ∈ {STRONG, HIGH})
+targetSizePct     : number 0-100 (promoted to required)
++ all existing required fields (target / stop / entry / belief / triggers / etc.)
+```
 
 **Rubric the writer applies** (taught in the writer system prompt):
 
-| Tier | When to use it |
-|---|---|
-| URGENT_BUY | Composite ≥ 8, catalyst is firing NOW (within ~24h), R/R ≥ 3:1, no contradicting evidence, you'd buy at market if it were your money. |
-| HIGH | Composite ≥ 7, catalyst window is open, R/R ≥ 2.5:1, strong confluence across at least 3 of the 4 composite dimensions. The default for clean PEAD setups, dated-catalyst trades, breakouts with volume confirm. |
-| MEDIUM | Composite 6–7, OR composite ≥ 7 with one weak dimension (e.g. great setup but weak RS). The honest middle. Most theses should not be HIGH — HIGH is for clear conviction, not "I wrote a thesis so I guess I have to commit." |
-| LOW | Composite 4–6, OR composite ≥ 6 with material reservations (extended chase, weak peer rank, fundamentals problem). The writer is saying "I researched it, I don't love it, I'm not stopping the user from tracking it." |
-| AVOID | The writer believes this name should NOT trade even if triggers fire. Use when the user/builder has added a name to the watchlist that the writer judges structurally unsuitable — broken fundamentals, dead catalyst, opposing tape, structural compression, etc. — but the user explicitly wants it tracked rather than archived. For "researched and walked away," use direction=PASS instead. |
+| Tier | When to use it | actNow guidance | variantView |
+|---|---|---|---|
+| STRONG | Composite ≥ 8 + R/R ≥ 3:1 + strong confluence across ≥3 of 4 composite dims + a real variant view + the writer would buy at market today if it were their money. Reserved for top 2-3 calls per analyst per cycle. | Use actNow=true when the move has started (PEAD post-print drift, breakout confirming on volume) and waiting for a separate ENTER trigger fire would miss the meaningful entry. | REQUIRED. A STRONG call without a clear variant view is contradictory — by definition the edge is what makes it STRONG. |
+| HIGH | Composite ≥ 7 + R/R ≥ 2.5:1 + the writer has a defensible variant view. The default for clean dated-catalyst trades and breakouts with volume confirm. | actNow=false is the default. actNow=true only when there's a specific reason waiting is wrong (e.g., post-earnings gap already digested). | REQUIRED. |
+| MEDIUM | Composite 6–7 OR composite ≥ 7 with one weak dimension. The honest middle. Most theses should be MEDIUM — HIGH is for clear conviction with edge, not "I wrote a thesis so I have to commit." | actNow rejected (Layer-1). | Optional. If you have a variant view, say it; if the trade is consensus-but-reasonable, leave empty. |
+| LOW | Composite 4–6 OR composite ≥ 6 with material reservations. "I researched it, I don't love it, I'm not stopping the user from tracking it." | actNow rejected. | Optional (typically empty — LOW conviction often means no edge). |
 
-`convictionRationale` is one sentence (≤200 chars) explaining the tier choice. Examples:
-
-- URGENT_BUY: "Clean PEAD beat-and-raise printed last night, first day of drift, no analyst PT updates yet, +3:1 R/R."
-- HIGH: "Composite 8/10, June 3 catalyst 8 days out, hyperscaler backlog $73B, conviction confirmed by 93% analyst Buy."
+`convictionRationale` examples:
+- STRONG: "Composite 8/10, R/R 3:1 at current entry, June 3 catalyst 8 days out, hyperscaler backlog signals a clean guide-raise."
+- HIGH: "Composite 7/10, post-print PEAD setup with first day of drift, no analyst PT updates yet — R/R 2.6:1."
 - MEDIUM: "Decent technical breakout but weak peer rank (-33% YTD vs +20% peers); wait for confirmed beat before sizing up."
 - LOW: "Late-stage chase, RSI 73, volume below threshold; thesis works only on perfect Q3 print."
-- AVOID: "User-added name; revenue growth decelerated 4 consecutive quarters and Microsoft Entra is taking share; do not trade."
+
+`variantView` examples (required for STRONG/HIGH):
+- STRONG/AVGO: "Street consensus PT $478 implies in-line Q2; I expect a guide-raise that forces 30-day estimate revisions to $520+, driven by hyperscaler XPU backlog upside not yet in models."
+- HIGH/MRVL: "Most analysts treat MRVL as the #3 AI-silicon name; AWS Trainium 3 is being underweighted by 2 quarters of run-rate, putting Q4 FY2027 revenue 8% ahead of consensus."
+- HIGH (defensive): "Consensus expects a Q3 beat; I disagree only on magnitude — guide-raise is the swing factor not the print itself, and few models account for the seasonality."
 
 ---
 
-## 4. What the daily-run prompt must do with it
+## 6. What the daily-run prompt does with it
 
-Add a per-thesis hint to `buildDailyRunSystemPromptV2` that teaches the agent to read `conviction` first when interpreting `needsAction`:
+Add to `buildDailyRunSystemPromptV2`:
 
 ```
 ## Conviction-aware action discipline
 
-Every thesis carries a `conviction` tier set by the writer. Read it FIRST
-when deciding what to do with a needsAction trigger:
+Every thesis carries a `conviction` tier (STRONG / HIGH / MEDIUM / LOW),
+an `actNow` flag (boolean), and on the top two tiers a `variantView`
+sentence. Read these BEFORE choosing what to do with a needsAction
+trigger. Per-tier semantics:
 
-- conviction=URGENT_BUY on a WATCHING thesis with needsAction != null
-  → default action is place_trade in THIS run, regardless of which trigger
-    fired. The writer is telling you the setup is hot and waiting another
-    24h is too slow. Confirm with get_stock_data, then place_trade at
-    market and update_thesis(change_status:"ACTIVE") in the same run.
-    The only acceptable defer is a fresh red flag in today's data that
-    invalidates the writer's URGENT call.
+- conviction=STRONG with actNow=true on any WATCHING thesis with
+  needsAction != null
+  → default action is place_trade in THIS run, regardless of which
+    trigger fired. The writer is saying the move is starting and the
+    trigger fence is too slow. Confirm with get_stock_data; if live
+    data still supports the variantView, place_trade at market and
+    update_thesis(change_status:"ACTIVE") in the same run.
+    Only defer if today's data invalidates the writer's variantView.
 
-- conviction=HIGH on a WATCHING thesis with TRIGGER_FIRED ENTER
-  → default action is place_trade fast at full targetSizePct. The writer's
-    conviction is strong; don't second-guess the ENTER fire unless live
-    data contradicts the trigger predicate. Standard discipline (R/R
-    check, slot budget) still applies.
+- conviction=STRONG with actNow=false on TRIGGER_FIRED ENTER
+  → default action is place_trade at full targetSizePct, fast.
+    Wide hold tolerance once ACTIVE — small noise doesn't exit.
+
+- conviction=HIGH with actNow=true on needsAction != null
+  → similar to STRONG+actNow but slightly more skepticism. Pull
+    get_stock_data, re-verify the variantView holds, then place_trade.
+
+- conviction=HIGH with actNow=false on TRIGGER_FIRED ENTER
+  → place_trade at full targetSizePct with standard discipline.
+    Don't second-guess the ENTER fire unless live data contradicts
+    the variantView.
 
 - conviction=MEDIUM on TRIGGER_FIRED
-  → trade on ENTER with normal discipline. This is the default flow you
-    already know.
+  → trade with normal discipline (the default flow). Standard size.
 
 - conviction=LOW on TRIGGER_FIRED ENTER
-  → ENTER fires here are SKIP-BY-DEFAULT. To trade, you must cite an
-    additional confirming signal (a fresh routed signal, a volume confirm,
-    a peer leadership shift). Most LOW ENTER fires should resolve as
-    update_thesis() with a rejection rationale; thesis stays WATCHING.
+  → SKIP-BY-DEFAULT. To trade, you must cite an additional confirming
+    signal (fresh routed signal, volume confirm, peer leadership shift).
+    Most LOW ENTER fires resolve as update_thesis() with a rejection
+    rationale; thesis stays WATCHING. If you DO trade, default to half
+    targetSizePct.
 
-- conviction=AVOID on TRIGGER_FIRED
-  → do NOT place_trade. Write update_thesis() with a REVIEWED-only audit
-    row citing the AVOID verdict. The thesis stays WATCHING; the user can
-    override the writer's call by manually trading or by re-prompting the
-    writer with new context.
-
-On a held position (status=ACTIVE):
-- HIGH/URGENT_BUY → wider hold tolerance; only EXIT triggers fire close_position.
+On a held position (ACTIVE):
+- STRONG/HIGH → wider hold tolerance; only EXIT triggers close.
 - MEDIUM → standard discipline.
-- LOW/AVOID → tighten stop on next REVIEW, consider preemptive close if
+- LOW → tighten stop on next REVIEW; consider preemptive close if
   thesis is no longer applicable.
+
+If `conviction` is null on a row, treat it as MEDIUM. Pre-V2 legacy
+rows + the first daily-run after this ships will see this until the
+writer refreshes them.
+
+The `variantView` field, when present, is the writer's specific
+edge — "consensus thinks X, I think Y." When you read a STRONG/HIGH
+thesis, the variantView is the load-bearing claim to verify against
+fresh data. If today's signals say the variantView no longer holds
+(e.g., consensus moved to the writer's position, or the catalyst
+the writer was front-running printed in the opposite direction),
+that's a stronger signal to defer/invalidate than any single trigger
+fire.
 ```
 
-This is the only conceptual addition to the daily-run prompt. The existing trigger-handling logic stays.
-
-The tactical-run prompt gets a parallel hint (shorter — tactical is single-thesis, so it just reads `conviction` and applies the same tier semantics).
+The tactical-run prompt gets a parallel hint — shorter, single-thesis scope.
 
 ---
 
-## 5. UI changes
+## 7. UI changes
 
 ### `ThesisSheet` header
 
-Add a **conviction badge** next to the existing `StatusPill`:
+Two-element badge row next to `StatusPill`:
 
 ```
-[STATUS: WATCHING] [CONVICTION: HIGH]  ←  Two pills, same row.
-                                          Tooltip on conviction shows
-                                          convictionRationale.
+[STATUS: WATCHING]  [CONVICTION: STRONG]  [ACT NOW]
+                                          ^ small chip when actNow=true
 ```
 
 Tier → badge variant:
-- URGENT_BUY → `positive` variant, bold
+- STRONG → `positive` variant, bold
 - HIGH → `positive` variant
 - MEDIUM → `secondary` variant
 - LOW → `secondary` variant, muted
-- AVOID → `negative` variant
 
-No emoji, no icon — just a labeled `Badge` (per CLAUDE.md, ShadCN components as-is).
+actNow chip only renders when `actNow=true`. Same `positive` palette for visual urgency, tooltip explaining "writer recommends acting on next review without waiting for a trigger fire."
 
-Composite score block (the 4 `ScoringRow` gauges + `CompositeScoreSkeleton`) **stays** — it's the analytical "why" supporting the conviction tier. The header badge IS the verdict; the gauges are the defense.
+### `variantView` callout block
 
-### `ThesisCard` (the carousel/list rendering)
+This is the v1 design's biggest missing UI piece. Render as a **tier-1 always-visible block** in the sheet body, ABOVE the bull/bear case accordion sections. Visual treatment: a card with a left border + "Variant View" label + the sentence.
 
-Add a small conviction tier label to each card. Same variant palette as the sheet header.
+Position in the sheet: right after the status pills, before the price targets block. It's that important — it's the writer's stated edge, and it should be the first thing the user reads after seeing the conviction tier.
+
+If `variantView` is null (MEDIUM/LOW theses), the block doesn't render — no empty container.
+
+### `ThesisCard` (carousel/list rendering)
+
+Add a small conviction tier label. Same variant palette as the sheet. actNow indicated by a tiny chip beneath.
 
 ### Read-theses table row
 
-Add a conviction column next to the existing status/direction columns. Sort order: AVOID first (visual warning), then URGENT_BUY (action-required), then HIGH/MEDIUM/LOW in order.
+Add a conviction column. Sort order: STRONG-with-actNow first (the "act today" pile), then STRONG, then HIGH, then MEDIUM, then LOW.
 
 ### What does NOT change in the UI
 
-- `composite` score gauges stay.
-- Activity timeline stays.
-- Price targets block stays.
-- Analyst consensus widget stays.
-- Research synthesis accordion stays.
+- `scoring` composite gauges stay (the analytical "why" behind the conviction tier)
+- Activity timeline stays
+- Price targets block stays
+- Analyst consensus widget stays
+- Research synthesis accordion stays
 
-The conviction badge is **additive**, not replacement. It's the at-a-glance verdict on top of the existing analytical surface.
+The conviction badge + variantView block are **additive**, not replacement. They're the verdict surface on top of the existing analytical surface.
 
 ---
 
-## 6. New field vs re-purpose — explicit decisions
+## 8. Field-by-field decisions (new vs re-purpose)
 
 | Dimension | Decision | Reason |
 |---|---|---|
-| **Overall verdict (tier)** | NEW field `conviction` + `convictionRationale` | No existing field collapses the writer's qualitative verdict into a tier. Composite is setup-quality, not decisional. Direction is bull/bear/skip, not strength. |
-| **Position-sizing intent** | RE-USE `targetSizePct` (make required) | Field already exists, optional, rarely populated. Promotion to required (for directional theses) costs nothing structurally and gives the daily-run a real input for sizing. |
-| **Time-urgency** | RE-USE `horizon` + `catalystDate` + `maxHoldDays` | The existing 4-horizon enum already captures CATALYST (event-bound) / TRADE (days) / TARGET (weeks-months) / COMPOUNDER (years). Conviction composes with horizon; both are needed but they're orthogonal axes. URGENT_BUY can apply to a TRADE or a COMPOUNDER — the conviction tier signals "act now" regardless of horizon. |
-| **Multi-condition entry ("volume AND price")** | RE-USE existing triggers + key_assumptions | The current trigger system is single-predicate per row. A true AND-composition would need a new predicate kind (`COMPOUND_AND` with sub-predicates) which is a refactor. For now: writer expresses the secondary condition (volume) in `key_assumptions` and uses the primary condition (price) as the ENTER predicate. Daily-run reads the assumption when ENTER fires and pulls live volume via `get_stock_data` to confirm before trading. Documented as a known limitation. |
-| **"Buy at current price without trigger wait"** | NEW value via `conviction=URGENT_BUY` | Today the writer expresses this by setting entry_price = current_price + setting the ENTER trigger to PRICE_ABOVE(target), but the daily-run treats it identically to a "wait for breakout" setup. URGENT_BUY makes the "don't wait" semantic explicit. |
-| **Setup-quality grade** | RE-USE `scoring` (composite + 4 dims) | Composite stays. It IS the analytical defense for the conviction tier — a HIGH conviction with composite 4 is the writer contradicting themselves and the UI should surface that as a warning (or the writer prompt should reject it as inconsistent). |
-| **"Tracking but actively recommending against"** | NEW value via `conviction=AVOID` | Distinct from PASS (which archives off the watchlist). AVOID keeps the thesis on the watchlist with an explicit "do-not-trade" verdict, letting the user override or letting future refreshes upgrade conviction if conditions change. |
+| **Overall conviction strength (tier)** | NEW field `conviction` | No existing field collapses the writer's strength judgment into a tier. Composite is setup-quality, not decisional. |
+| **Tier rationale** | NEW field `convictionRationale` | Always-required one-liner pairing with the tier. No existing field plays this role. |
+| **Variant view** | NEW field `variantView` | The research's most-emphasized requirement that Hindsight was missing entirely. Bull/bear bullets don't capture the contrarian framing. |
+| **Time urgency** | NEW field `actNow` boolean | Cleanly separates urgency from strength. Goldman keeps these separate (Conviction List membership ≠ "act today"). |
+| **Position-sizing intent** | RE-USE `targetSizePct` (make required for directional) | Field already exists, optional, rarely populated. Promotion to required costs nothing structurally. |
+| **Direction (bull/bear/no-view)** | RE-USE `direction` | Already exists. PASS handles "no way." |
+| **Setup quality / confluence** | RE-USE `scoring` (composite + 4 dims) | Composite stays as the analytical defense for the conviction tier. STRONG + composite 4 is inconsistent and the writer prompt should reject it. |
+| **Time horizon** | RE-USE `horizon` + `catalystDate` + `maxHoldDays` | Already structured. Composes with conviction (STRONG on COMPOUNDER vs STRONG on TRADE are both legal and meaningful). |
+| **Multi-condition entry** | RE-USE existing triggers + `key_assumptions` | No new compound predicate. Documented as a known limitation; daily-run pulls live data at ENTER fire to confirm secondary conditions. |
+| **"Tracking but recommend against trading"** (AVOID semantic) | NOT a new tier; use direction=PASS | v1 invented AVOID-on-WATCHING. Real analysts don't have this — they Sell/Underweight/drop coverage. If a user explicitly wants to keep tracking despite a "no way" call, that's a UI override of the writer's PASS verdict, not a separate tier. |
 
-### Counterpoints from the research worth addressing
+### What I considered and rejected (v2)
 
-**Counterpoint 1: Sequoia / a16z treat conviction as binary.** Pat Grady (Sequoia): *"Presence of conviction is what matters."* VC IC memo guides explicitly reject graduated `Recommend / Pass / Pass for now` framing as "defensive politics." If the best investors don't use a tiered system, why should Hindsight?
-
-→ **Reply:** VCs commit to 5-10 investments per fund out of thousands of pitches. The decision is *invest or don't* — binary makes sense at that ratio. Hindsight's writer covers 30+ names per analyst per cycle, more like a sell-side analyst initiating coverage across a sector. Sell-side IS graduated (5+ tiers across firms). Hindsight is structurally sell-side, not VC. The 5-tier design follows the structural cousin.
-
-**Counterpoint 2: "Sizing based on conviction" is undisciplined.** Position-sizing schools explicitly warn that "your 'best' ideas often fail" and that fixed % per trade is the disciplined path. If conviction is unreliable as a sizing input, why let the writer encode it via `targetSizePct`?
-
-→ **Reply:** Hindsight ALREADY applies discipline at execution — `maxPositionSize` / `realMaxPosition` / `maxOpenPositions` are account-level caps the daily-run enforces. The writer's `targetSizePct` is INTENT, not authority. Daily-run sees intent + applies cap → actual position size. The intent expression doesn't break discipline; it just gives the daily-run a structured input instead of forcing it to guess. Worst case: writer says HIGH+6%, account cap is 3%, daily-run trades 3%. Best case: writer says LOW+2%, daily-run trades 2% on the few trades that survive the tier semantics.
-
-**Counterpoint 3: Goldman separates "rating" from "Conviction List."** Goldman has Buy/Neutral/Sell ratings AND a separately curated Conviction List. Two axes, not one. The proposed Hindsight design collapses them into one tier — is that the right trade?
-
-→ **Reply:** This is a real consideration. Two fields would be `direction` + `conviction` (already in this design) PLUS a separate `onConvictionList: boolean` modifier. That'd be a 6-tier matrix (3 directions × Buy/Conviction-Buy × N). Strictly more expressive, but adds a field for marginal benefit. The 5-tier `conviction` collapses URGENT_BUY (= Conviction List membership) into the top of the same axis as HIGH (= ordinary Buy). The collapse loses one bit of information (whether a HIGH thesis is "regular high" or "Conviction List high") in exchange for one fewer field. I judged the trade worth it; principal can disagree and we add the second field.
-
-**Counterpoint 4: Cross-firm rating taxonomies are non-uniform.** Same stock can be "Outperform" at one firm, "Buy" at another, "Overweight" at a third — none meaning quite the same thing. Aggregators have to normalize across firms. Does Hindsight risk the same fragmentation across analysts?
-
-→ **Reply:** Hindsight has ONE canonical taxonomy (the 5-value enum) applied across all analysts. The fragmentation problem is cross-firm; we control the writer's taxonomy because we own the writer prompt. Anti-pattern would be letting each analyst define their own conviction scheme — we explicitly aren't doing that.
-
-### What I considered and rejected
-
-- **Deriving conviction from composite via arithmetic** (e.g., composite ≥ 8 = HIGH, 6-7 = MEDIUM, < 5 = LOW). Rejected because (1) the writer's qualitative judgment is the point — a 9/10 composite on a chase-mode breakout is NOT URGENT_BUY in the writer's mind; (2) URGENT_BUY isn't derivable from composite alone — it requires the catalyst-firing-NOW judgment; (3) AVOID isn't derivable from composite — it's a "structurally unsuitable for trading" judgment.
-- **A `recommendedAction` enum** (per `GAPS.md` P1-6 for PROMOTION): rejected as the GENERAL solution because it conflates verdict with action. `BUY_LIVE / DEFER_TO_WATCHING / INVALIDATE` are PROMOTION-specific actions; conviction is a general verdict. This design SUPERSEDES P1-6 — the daily-run reads `conviction` on PROMOTED rows the same way it reads it on WATCHING rows. URGENT_BUY/HIGH on PROMOTED = re-enter; LOW = defer to WATCHING; AVOID = defer to WATCHING with stronger language; PASS-direction = invalidate.
-- **A 3-tier enum (AVOID / NORMAL / HIGH)**: rejected because most theses would collapse to NORMAL and the differentiation the principal wants is lost. The 5-tier matches Wall Street's effective tier count (Sell / Underperform / Hold / Buy / Strong Buy) and maps cleanly to the 6 utterances.
-- **A `urgency` field separate from a `conviction` field**: rejected. The principal's utterances collapse strength + urgency onto one decisional axis ("act now" vs "act on trigger" vs "skip"). Horizon already captures time-window. Separating urgency from conviction would be 2 fields for one decision.
-- **Letting the writer call a new tool** (`emit_verdict()`): rejected. A field on the row is cheaper, simpler, and surfaces in the UI without tool plumbing.
+- **A 5-tier enum (STRONG/HIGH/MEDIUM/LOW + a 5th below LOW)**: rejected. 4 tiers covers the principal's brief and matches sell-side aggregator standard (4-tier non-Sell side: Strong Buy / Buy / Hold / [Sell merged into direction=PASS]). A 5th tier below LOW would just be a fancy PASS.
+- **A 3-tier enum (HIGH/MEDIUM/LOW)**: rejected. Loses the Goldman Conviction List equivalent (STRONG). The principal's "Buy ASAP 500%" requires a tier above ordinary HIGH; without STRONG it gets collapsed.
+- **Separate `urgency` field with values (IMMEDIATE/SOON/PATIENT)**: rejected. A boolean (act or wait) is enough. Time-window granularity is already in horizon. Three values for urgency is over-engineering.
+- **Variant view optional everywhere**: rejected. Buy-side discipline requires it for high-conviction calls. Making it conditionally required for STRONG/HIGH bakes the discipline into Layer-1.
+- **One field combining tier + actNow** (the v1 URGENT_BUY approach): rejected explicitly because v1 made this mistake. The research is unanimous that strength and urgency are separate axes.
+- **One field combining conviction + variantView** (compress to one rationale string): rejected. Different semantics, different requirements, different shapes.
+- **Deriving conviction from composite arithmetic** (composite ≥ 8 = STRONG, etc.): rejected. Composite is setup-quality; conviction is the writer's overall judgment which incorporates setup quality AND variantView AND catalyst posture AND the writer's gut. URGENT_BUY/STRONG isn't derivable from composite alone.
 
 ---
 
-## 7. Migration plan
+## 9. Migration
 
 ### Schema migration
 
 ```sql
 ALTER TABLE "Thesis" ADD COLUMN "conviction" TEXT;
 ALTER TABLE "Thesis" ADD COLUMN "convictionRationale" TEXT;
--- No NOT NULL constraint — legacy rows are null; new directional rows must
--- populate it via the Layer-1 gate in record_thesis / update_thesis.
+ALTER TABLE "Thesis" ADD COLUMN "variantView" TEXT;
+ALTER TABLE "Thesis" ADD COLUMN "actNow" BOOLEAN NOT NULL DEFAULT false;
 ```
 
-No constraint at the DB level — the Layer-1 gate in the tool enforces it for directional writes after this ships. PASS theses + PENDING seeds + pre-V2 rows stay null.
+No NOT NULL constraints on the three string fields at the DB level — the Layer-1 gate in the tool enforces them for directional writes after this ships. PASS theses + PENDING seeds + pre-V2 rows stay null.
 
 ### Backfill for existing rows
 
-**Backfill strategy:** derive a default tier from existing fields for the ~50 rows in production, but mark them as `derived` (in a separate annotation or just by absence of `convictionRationale`) so the UI can show them differently if needed.
+Derive a default `conviction` tier from composite for the ~50 rows in production:
 
-Derivation rule:
-- composite ≥ 8 AND status=ACTIVE → `HIGH`
+- composite ≥ 8 → `HIGH` (not STRONG — STRONG requires explicit writer judgment, can't be auto-derived)
 - composite 6–7 → `MEDIUM`
 - composite < 6 → `LOW`
-- direction=PASS → leave null (PASS is its own equivalent)
-- direction=PENDING → leave null (no view yet)
-- No `scoring.composite` (legacy pre-PR-9) → leave null
+- direction=PASS → leave null
+- direction=PENDING → leave null
+- No composite (legacy pre-PR-9) → leave null
 
-The first refresh after this ships overwrites the derived tier with the writer's actual judgment + a proper `convictionRationale`.
+`actNow` defaults to false for all backfilled rows.
+`variantView` stays null on backfill (no honest way to derive it).
+`convictionRationale` stays null on backfill (or filled with `"backfilled from composite on YYYY-MM-DD"` for transparency).
+
+The first refresh after this ships overwrites with the writer's actual judgment.
 
 ### What stays null
 
-- All PASS theses (PASS is its own tier-equivalent)
+- All PASS theses (PASS is its own equivalent)
 - All PENDING seeds (no view yet)
 - Pre-V2 rows whose composite is also null
 - Manual UI-added watchlist rows that haven't been researched yet
 
-The UI handles null conviction gracefully by hiding the badge (same way it handles missing composite today).
+The UI handles null gracefully — no badge renders, no variantView block.
 
 ---
 
-## 8. Prompt diffs — concrete
+## 10. Prompt diffs — concrete
 
 ### `lib/agent/run-thesis-writer.ts` (`buildThesisWriterSystemPrompt`)
 
-Insert a new step between step 3 (decision) and step 4 (persist):
+Insert a new step 3.5 between step 3 (decision) and step 4 (persist):
 
 ```diff
-   3. Make the decision on top of the research:
-        - direction: LONG / SHORT / PASS
-        - status: WATCHING (...) / ACTIVE (...)
-        - horizon: CATALYST / TARGET / TRADE / COMPOUNDER
-        - entry_price / target_price / stop_loss
-        - R/R FLOOR — MANDATORY 2:1 MINIMUM
-        - confidence_score (...)
-        - core_belief / key_assumptions / invalidation_conditions
-        - triggers (with the WATCHING/ACTIVE/PROMOTED template)
++ 3.5. Set the CONVICTION fields (REQUIRED on every directional thesis).
 +
-+ 3.5. Set the CONVICTION tier (REQUIRED on every directional thesis).
++      Three fields plus a boolean:
 +
-+      Pick ONE of:
-+        URGENT_BUY — composite ≥ 8, catalyst firing NOW, R/R ≥ 3:1, you
-+                     would buy at market immediately if it were your money.
-+                     Reserved for clean PEAD post-print, dated event
-+                     within ~24h, or any setup where waiting for a
-+                     trigger would miss the move.
-+        HIGH       — composite ≥ 7, catalyst window open, R/R ≥ 2.5:1,
-+                     strong confluence across ≥ 3 of the 4 composite dims.
-+                     The default for clean dated-catalyst trades and
-+                     breakouts with volume confirm.
-+        MEDIUM     — composite 6–7 OR composite ≥ 7 with one weak dim.
-+                     The honest middle. Most theses are MEDIUM — HIGH is
-+                     for clear conviction, not "I wrote a thesis so I
-+                     have to commit."
-+        LOW        — composite 4–6 OR composite ≥ 6 with material
-+                     reservations (extended chase, weak peer rank,
-+                     fundamentals problem). "I researched it; I don't
-+                     love it; I'm not stopping you from tracking it."
-+        AVOID      — the writer believes this should NOT trade even if
-+                     triggers fire. Use when a user-added name is
-+                     structurally unsuitable (broken fundamentals, dead
-+                     catalyst) but the user wants it tracked rather than
-+                     archived. For "researched and walked away," use
-+                     direction=PASS instead.
++      `conviction` — pick ONE of:
++        STRONG  — top-tier conviction. Reserved for your best 2-3
++                  calls per cycle. Use when composite ≥ 8, R/R ≥ 3:1,
++                  the variant view is clear, and you would buy at
++                  market today if it were your own money.
++        HIGH    — solid conviction. Use when composite ≥ 7, R/R ≥
++                  2.5:1, and you have a defensible variant view. The
++                  default for clean dated-catalyst trades and
++                  breakouts with volume confirm.
++        MEDIUM  — normal conviction. Composite 6–7 or composite ≥ 7
++                  with one weak dimension. The honest middle. Most
++                  theses are MEDIUM; HIGH is for clear conviction
++                  with edge.
++        LOW     — weak conviction. "Eh." Composite 4–6 or higher with
++                  material reservations. "I researched it, I don't
++                  love it, I'm not stopping the user from tracking
++                  it."
 +
-+      ALSO REQUIRED: convictionRationale, one sentence (≤200 chars)
-+      explaining the tier. Examples:
-+        URGENT_BUY: "Clean PEAD beat-and-raise printed last night, first
-+                     day of drift, no analyst PT updates yet, +3:1 R/R."
-+        HIGH:       "Composite 8/10, June 3 catalyst 8 days out,
-+                     hyperscaler backlog $73B, 93% analyst Buy."
-+        MEDIUM:     "Decent technical breakout but weak peer rank (-33%
-+                     YTD vs +20% peers); wait for confirmed beat."
-+        LOW:        "Late-stage chase, RSI 73, volume below threshold;
-+                     works only on perfect Q3 print."
-+        AVOID:      "Revenue decelerated 4 consecutive quarters; MSFT
-+                     Entra taking share; do not trade."
++      `convictionRationale` — REQUIRED. One sentence (≤200 chars)
++      explaining why this tier. Examples:
++        STRONG: "Composite 8/10, R/R 3:1, June 3 catalyst 8 days out,
++                 hyperscaler backlog signals clean guide-raise."
++        HIGH:   "Composite 7/10, post-print PEAD setup, first day of
++                 drift, no analyst PT updates yet — R/R 2.6:1."
++        MEDIUM: "Decent technical breakout but weak peer rank (-33%
++                 YTD vs +20% peers); wait for confirmed beat."
++        LOW:    "Late-stage chase, RSI 73, volume below threshold;
++                 works only on perfect Q3 print."
 +
-+      ALSO REQUIRED on every directional thesis: target_size_pct (the
-+      % of portfolio you'd commit at full position). Pair this with the
-+      conviction tier — URGENT_BUY/HIGH typically 4-6%; MEDIUM 2-4%;
-+      LOW 1-2%; AVOID = 0 (not applicable, no trade intended).
++      `variantView` — REQUIRED for STRONG and HIGH; OPTIONAL for
++      MEDIUM and LOW. One sentence (≤300 chars) stating "consensus
++      expects X, I think Y, here's the falsifiable reason." Every
++      buy-side pitch framework requires this for high-conviction
++      calls — without it, your STRONG/HIGH call is consensus-rehash
++      with no edge. Examples:
++        "Street PT $478 implies in-line Q2; I expect a guide-raise
++         driving 30-day estimate revisions to $520+ on hyperscaler
++         XPU backlog upside not yet in models."
++        "Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3
++         is being underweighted by 2 quarters of run-rate, putting
++         Q4 FY2027 8% above consensus."
++      If you can't articulate a variant view, your conviction tier
++      is MEDIUM at best — don't claim STRONG/HIGH without one.
++
++      `actNow` — boolean. Default false. Set true ONLY when:
++        (1) conviction is STRONG or HIGH (Layer-1 rejects otherwise), AND
++        (2) the move is starting and the standard trigger fence would
++            make the daily-run miss the meaningful entry. Examples:
++            post-print PEAD first-day drift, breakout already confirming
++            on volume above threshold, dated catalyst within 24h with
++            data already in.
++      actNow=true tells the daily-run to skip the trigger fence and
++      trade at market on next review. Use sparingly — most clean
++      setups should still go through the ENTER trigger.
++
++      `targetSizePct` — REQUIRED on every directional thesis (was
++      optional pre-V2). Express % of portfolio you'd commit at full
++      position. Pair with conviction tier:
++        STRONG → 4-6%
++        HIGH   → 3-5%
++        MEDIUM → 2-3%
++        LOW    → 1-2% (if traded at all)
 ```
 
 ### `lib/agent/tools/record-thesis.ts` (and `update-thesis.ts`)
 
-Add to the Zod schema:
+Add to Zod schema:
 
 ```ts
 conviction: z
-  .enum(["URGENT_BUY", "HIGH", "MEDIUM", "LOW", "AVOID"])
+  .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])
   .optional()
   .describe(
-    "Writer's overall verdict on this thesis as a decisional tier. " +
+    "Writer's view strength on this thesis. " +
     "REQUIRED for directional theses (LONG/SHORT). " +
-    "URGENT_BUY = act on next review without trigger wait; " +
-    "HIGH = strong conviction, act on ENTER fast at full size; " +
-    "MEDIUM = normal discipline, normal size; " +
-    "LOW = ENTER fires are skip-by-default, require additional confirm; " +
-    "AVOID = do not trade even if triggers fire; thesis stays WATCHING. " +
-    "For 'researched and walked away,' use direction=PASS instead."
+    "STRONG = top-tier (your best 2-3 calls per cycle); " +
+    "HIGH = solid conviction with variant view; " +
+    "MEDIUM = normal; LOW = weak. " +
+    "Separate from `direction` (bull/bear/no-view) and `actNow` (urgency)."
   ),
 convictionRationale: z
   .string()
@@ -513,176 +638,165 @@ convictionRationale: z
     "One sentence (≤200 chars) explaining the conviction tier choice. " +
     "REQUIRED whenever conviction is set."
   ),
+variantView: z
+  .string()
+  .max(300)
+  .optional()
+  .describe(
+    "One sentence (≤300 chars) stating the writer's contrarian take: " +
+    "\"consensus expects X, I think Y, here's why.\" " +
+    "REQUIRED when conviction is STRONG or HIGH (Layer-1 enforced). " +
+    "Optional on MEDIUM/LOW where consensus alignment is acceptable."
+  ),
+actNow: z
+  .boolean()
+  .optional()
+  .describe(
+    "Time-urgency flag. true = act on next daily-run review without " +
+    "waiting for a trigger fire. ONLY legal when conviction is STRONG " +
+    "or HIGH (Layer-1 enforced). Use sparingly — most setups should " +
+    "still go through the ENTER trigger fence."
+  ),
 target_size_pct: z
-  .number()
-  .min(0)
-  .max(100)
+  .number().min(0).max(100)
   .optional()  // → REQUIRED in the Layer-1 gate for directional theses
-  .describe(/* existing description */),
+  .describe(/* existing */),
 ```
 
-Add to `execute()` for directional writes:
+Layer-1 execute() additions:
 
 ```ts
-// Conviction gate — required on every directional thesis after this ships.
-if (
-  (args.direction === "LONG" || args.direction === "SHORT") &&
-  !args.conviction
-) {
-  return {
-    summary: `Thesis rejected for ${args.ticker}: conviction tier required.`,
-    data: { thesis_id: null, status: "FAILED", note: /* tier rubric */ },
-    sources: [],
-  };
+const isDirectional = args.direction === "LONG" || args.direction === "SHORT";
+
+if (isDirectional && !args.conviction) {
+  return reject("conviction tier required for directional theses (one of STRONG/HIGH/MEDIUM/LOW)");
 }
-// targetSizePct gate — same.
-if (
-  (args.direction === "LONG" || args.direction === "SHORT") &&
-  args.target_size_pct == null &&
-  args.conviction !== "AVOID"
-) {
-  return { /* reject with "target_size_pct required for tradeable theses" */ };
+
+if (args.conviction && !args.convictionRationale) {
+  return reject("convictionRationale required whenever conviction is set");
+}
+
+if ((args.conviction === "STRONG" || args.conviction === "HIGH") && !args.variantView) {
+  return reject(
+    `${args.conviction} conviction requires variantView — what does consensus have wrong? ` +
+    "If you can't articulate a variant view, downgrade conviction to MEDIUM."
+  );
+}
+
+if (args.actNow === true && args.conviction !== "STRONG" && args.conviction !== "HIGH") {
+  return reject(
+    "actNow=true only legal on STRONG or HIGH conviction. " +
+    "Skipping the trigger fence on lower-conviction theses is too risky."
+  );
+}
+
+if (isDirectional && args.target_size_pct == null) {
+  return reject("target_size_pct required on directional theses (% of portfolio at full position)");
 }
 ```
-
-AVOID bypasses the targetSizePct gate because the writer is explicitly recommending no trade.
 
 ### `lib/agent/system-prompt.ts` (`buildDailyRunSystemPromptV2`)
 
-Add a new section between "How you work" and the per-needsAction walk:
+Add the conviction-aware action discipline block per §6 above.
 
-```diff
-+## Conviction-aware action discipline
-+
-+Every thesis carries a `conviction` tier set by the writer
-+(URGENT_BUY / HIGH / MEDIUM / LOW / AVOID). Read it FIRST when deciding
-+what to do with a needsAction trigger. Per-tier semantics:
-+
-+- conviction=URGENT_BUY on a WATCHING thesis with needsAction != null
-+  → default action is place_trade in THIS run, regardless of which trigger
-+    fired. The writer is telling you the setup is hot and waiting another
-+    24h is too slow. Confirm with get_stock_data, then place_trade at
-+    market and update_thesis(change_status:"ACTIVE") in the same run.
-+    Only defer if today's data invalidates the writer's URGENT call.
-+
-+- conviction=HIGH on TRIGGER_FIRED ENTER
-+  → default action is place_trade fast at full targetSizePct. Don't
-+    second-guess the ENTER fire unless live data contradicts the trigger
-+    predicate.
-+
-+- conviction=MEDIUM on TRIGGER_FIRED
-+  → trade on ENTER with normal discipline (the default flow you know).
-+
-+- conviction=LOW on TRIGGER_FIRED ENTER
-+  → ENTER fires here are SKIP-BY-DEFAULT. To trade, cite an additional
-+    confirming signal (fresh routed signal, volume confirm, peer
-+    leadership shift). Most LOW ENTER fires resolve as update_thesis()
-+    with a rejection rationale; thesis stays WATCHING.
-+
-+- conviction=AVOID on TRIGGER_FIRED
-+  → do NOT place_trade. Write update_thesis() with a REVIEWED-only
-+    audit row citing the AVOID verdict. The thesis stays WATCHING; the
-+    user can override by manually trading.
-+
-+On a held position (ACTIVE):
-+- HIGH/URGENT_BUY → wider hold tolerance; only EXIT triggers close.
-+- MEDIUM → standard discipline.
-+- LOW/AVOID → tighten stop on next REVIEW, consider preemptive close.
-+
-+If `conviction` is null on a row, treat it as MEDIUM. Pre-V2 legacy
-+rows + the first daily-run after this ships will see this until the
-+writer refreshes them.
-```
+### Tactical-run prompt
 
-The tactical-run prompt gets a 1-paragraph version of the same.
+Parallel one-paragraph addition that reads conviction + actNow on the single triggered thesis and applies the same per-tier semantics.
 
 ---
 
-## 9. Effort estimate
+## 11. Effort estimate
 
-Total: **2–3 days** of work, single PR shippable end-to-end.
+Total: **3–4 days**, single PR shippable end-to-end.
 
 | Day | Work |
 |---|---|
-| 1 | Schema migration + record_thesis/update_thesis Zod schema + Layer-1 gates + writer prompt with the conviction rubric + backfill SQL for the ~50 existing rows |
-| 2 | Daily-run prompt update (conviction-aware action discipline section) + tactical-run prompt parallel hint + UI: conviction badge in ThesisSheet header + ThesisCard tier label |
-| 3 | Read-theses table conviction column + tests (Layer-1 gate rejections, daily-run prompt integration tests via a curated thesis fixture, UI snapshot) + soak via a manual writer-dispatch on 3 test tickers |
+| 1 | Schema migration + record_thesis/update_thesis Zod schema (4 new fields) + Layer-1 gates (3 conditional rules: convictionRationale-paired, variantView-required-for-STRONG/HIGH, actNow-only-on-STRONG/HIGH) + writer prompt with the tier rubric + variantView guidance |
+| 2 | Daily-run prompt (conviction-aware action discipline section) + tactical-run prompt parallel hint + backfill SQL for ~50 existing rows |
+| 3 | UI: conviction badge in ThesisSheet header + actNow chip + **variantView callout block** (the new tier-1 block) + ThesisCard tier label + read-theses table conviction column |
+| 4 | Tests (Layer-1 rejection paths, daily-run prompt integration via curated thesis fixtures, UI snapshots for all 4 tier × actNow combinations) + soak via manual writer-dispatch on 3 test tickers |
 
-No multi-PR workstream. No new tools. No new triggers. No role-boundary changes. No mid-run dispatching changes. Pure field + prompt + UI.
+A day longer than v1 (which was 2-3) because there are 4 fields with conditional Layer-1 gates instead of 1 simple field, and the variantView UI callout is a new tier-1 block instead of just a badge.
+
+No multi-PR workstream. No new tools. No new triggers. No compound predicates. No role-boundary changes.
 
 ---
 
-## 10. What's explicitly NOT changing
+## 12. What's explicitly NOT changing
 
 - **Role boundaries** stay. Writer still doesn't trade. Daily run still owns status decisions. Discovery still mints. Promotion-action still flips ACTIVE → PROMOTED.
-- **Trigger primitives** stay. No new predicate kinds. No compound AND. Multi-condition "volume AND price" still expressed via primary-predicate ENTER + secondary-condition in `key_assumptions` + agent confirms with `get_stock_data` at ENTER fire.
-- **The 4-dim `scoring` composite** stays. It's the analytical defense for the conviction tier. Composite ≥ 7 is still the "ADD/ROTATE eligible" threshold today; conviction adds a tier verdict on top of that, it doesn't replace the composite math.
-- **`direction=PASS`** stays. PASS = "researched, walked away, archive." AVOID = "tracking but recommend against trading." Both legal; they answer different questions.
-- **PROMOTION refresh flow** stays — but the writer now emits `conviction` instead of a separate `recommendedAction`. P1-6 is absorbed into this design.
-- **`get_theses` response shape** stays. `conviction` and `convictionRationale` are added to the per-thesis JSON; the existing `cards` array gets two new fields. No structural rewrite.
-- **`needsAction`** logic stays. The 4 kinds (PROMOTED_AWAITING_RESOLUTION, TRIGGER_FIRED, TRIGGER_MATCHING_NOW, REVIEW_DUE) are unchanged. Conviction is read AFTER needsAction tells the agent there's work to do.
-- **`targetPrice` overload** (P1-3) is NOT fixed here. Conviction expression and the target-price split are orthogonal. P1-3 stays open.
-- **Activity log** is unchanged. ThesisUpdate rows still capture status changes, REVIEWED, INVALIDATED, etc. The new conviction field will appear in the `fieldChanges` diff when an update changes it.
+- **Trigger primitives** stay. No new predicate kinds. No compound AND. Multi-condition "volume AND price" still expressed via primary predicate + secondary condition in `key_assumptions` + agent confirms with `get_stock_data` at ENTER fire.
+- **The 4-dim `scoring` composite** stays. It's the analytical defense for the conviction tier.
+- **`direction=PASS`** stays. PASS = "researched, walked away, archive."
+- **PROMOTION refresh flow** stays — the writer now emits `conviction` + `variantView` + `actNow` instead of a separate `recommendedAction`. P1-6 absorbed.
+- **`get_theses` response shape** stays. The four new fields are added to the per-thesis JSON.
+- **`needsAction` logic** stays. The 4 kinds are unchanged. Conviction is read AFTER needsAction tells the agent there's work to do.
+- **`targetPrice` overload** (P1-3) is NOT fixed here. Adjacent but orthogonal — P1-3 stays open. Bull/base/bear scenario price targets are the next thing worth tackling after this design lands.
+- **Activity log** unchanged.
 
 ---
 
-## 11. Open questions for principal
+## 13. Open questions for principal
 
-1. **Conviction-composite consistency check.** Should the writer be REJECTED at Layer-1 for emitting `conviction=HIGH` with `composite=4`? The two should be coherent. Suggested default: reject `URGENT_BUY` or `HIGH` when composite is null OR < 6, with the rejection message asking the writer to either downgrade conviction or re-justify the composite. Strict gate, or soft warning?
+1. **Tier names.** `STRONG / HIGH / MEDIUM / LOW` is the proposed enum. Alternatives:
+   - `CONVICTION / BUY / HOLD / WEAK` — matches Goldman/sell-side vocabulary directly
+   - `TOP_PICK / BUY / NORMAL / WEAK` — action-anchored
+   - `1 / 2 / 3 / 4` — pure numeric, no narrative anchor (rejected as too quant)
+   Current names are explicit and consistent on the same strength axis. Principal's call.
 
-2. **AVOID + WATCHING semantics on the watchlist.** AVOID on a WATCHING thesis keeps it visible but flagged. Should AVOID rows still surface in `needsAction` (so the daily-run sees them as work to walk through)? Or should AVOID-WATCHING be invisible from `needsAction` (the writer's call is "leave this alone")? Suggested default: surface in `needsAction` so the agent reads + acknowledges the AVOID, then writes a REVIEWED row and moves on. The user sees the conviction tier in the UI separately.
+2. **Conviction-composite consistency check.** Should the writer be REJECTED at Layer-1 for emitting `conviction=STRONG` with `composite=4`? Suggested default: reject STRONG when composite is null OR < 7, with the rejection message asking the writer to either downgrade tier or re-justify composite. Strict gate, or soft warning that lands in the rationale field?
 
-3. **URGENT_BUY trade gate.** URGENT_BUY tells the daily-run to act WITHOUT trigger fire. Should this be a hard "place_trade in this run" (potentially aggressive on a stale URGENT_BUY) or a "place_trade only if URGENT_BUY was set within last 24h" (decays over time)? Suggested default: decay after 24h to HIGH. A 3-day-old URGENT_BUY is suspect — either the move already happened or the writer's call has aged out.
+3. **`variantView` length cap.** Proposed 300 chars (twice the convictionRationale cap because variant view often needs more nuance). Too tight? Too loose? Sell-side variant views are typically 2-3 sentences (~300-500 chars) — 300 is a tight discipline forcing function.
 
-4. **Backfill aggressiveness.** Derived backfill from composite gives ~50 rows a default tier. Alternative: leave them all null and let the next refresh populate them organically. Suggested default: derive, mark with `convictionRationale = "backfilled from composite on YYYY-MM-DD"` so the UI can distinguish and the next writer refresh overwrites cleanly.
+4. **`actNow` decay.** A 3-day-old STRONG+actNow=true is suspect — either the move already happened or the writer's call has aged out. Suggested default: daily-run treats `actNow=true` as expired if conviction was set more than 24h ago, and demotes to standard STRONG behavior. Or should it stay live until manually overridden?
 
-5. **UI badge color for LOW vs AVOID.** Both are negative-ish but mean different things. Suggested default: LOW = `secondary` (muted), AVOID = `negative` (red). Or pick a different palette pairing — your call on the visual hierarchy.
+5. **`variantView` rendering on STRONG/HIGH where the writer left it null** (legacy / pre-V2 / backfilled rows). UI options:
+   - Hide the variantView block entirely (current proposal)
+   - Render a "variantView pending — next refresh will populate" placeholder
+   First is cleaner; second flags the gap. Your preference.
 
-6. **Tier name for `URGENT_BUY`.** The name is verbose and asymmetric (`URGENT_BUY` vs `HIGH/MEDIUM/LOW/AVOID`). Sell-side anchors: Goldman uses "Conviction Buy" (separate from rating axis), aggregators standardize on "Strong Buy" as the top tier above "Buy." Retail anchor: "back up the truck" / "loading the boat" / "YOLO" all map to the same semantic. Three alternatives, principal's call:
-   - `URGENT_BUY` (current) — explicit, captures the "act now without trigger" semantic that's the load-bearing differentiator from HIGH
-   - `STRONG_BUY` — matches Wall Street aggregator taxonomy; conventional; loses the "act NOW" specificity
-   - `CONVICTION_BUY` — matches Goldman's separately-curated list; signals "the writer's strongest call"; tighter than URGENT_BUY
+6. **Backfill aggressiveness.** Derived backfill from composite gives ~50 rows a default tier (no STRONG, no variantView, actNow=false). Alternative: leave them all null and let the next refresh populate organically. Suggested: derive tier, flag with `convictionRationale = "backfilled from composite on YYYY-MM-DD"` so the UI can distinguish and the next writer refresh overwrites cleanly.
 
-   Same question applies to the bottom tier: `AVOID` (current, explicit) vs `STRONG_PASS` (mirrors Wall Street "Strong Sell"). I'd keep `AVOID` because it carries the "actively tracked but recommend against trading" semantic that `STRONG_PASS` doesn't.
+7. **Should `direction=PASS` carry a conviction value?** Today the design says PASS skips conviction. Sequoia / a16z memo language for declines is "Pass" with a one-line rationale, no tier. Hindsight follows suit. No change needed; documenting the inherited behavior.
 
-7. **Should `direction=PASS` carry a conviction value too?** Today the design says PASS skips conviction (PASS is its own equivalent of AVOID-and-archive). But Sequoia / a16z memo language for declines is "Pass" with a one-line rationale — they don't grade the PASS. Hindsight should follow suit. Suggested default: PASS theses have `conviction=null`, and the UI infers "PASS" as the tier label for display. No change needed; just documenting the inherited behavior.
+8. **UI placement of `variantView`.** Proposed as a tier-1 always-visible callout block right after the status pills, before the price targets block. Alternative: fold into the bull case section as a labeled subsection. Tier-1 callout makes the variant view the visual headline; folding into bull case keeps the existing layout. Your call.
 
 ---
 
-## 12. See also
+## 14. See also
 
 ### Hindsight internal
-- [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) §0 (the five roles — this design keeps all boundaries intact) and §8 (Fields — `conviction` joins the operational-state group)
-- [`GAPS.md`](../GAPS.md) **P1-6** (writer urgency signal on promotion refreshes — absorbed into this design)
+- [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) §0 (the five roles — this design keeps all boundaries intact) and §8 (Fields — the four new fields join the operational-state group)
+- [`GAPS.md`](../GAPS.md) **P1-6** (writer urgency signal on promotion refreshes — absorbed into this design via `conviction` + `actNow`)
 - [`GAPS.md`](../GAPS.md) **P1-3** (targetPrice overload — adjacent but not addressed here)
-- [`PRINCIPLES.md`](../PRINCIPLES.md) — the three-layer principle. Conviction lives at Layer-2 (a structured tool-result field that pre-digests state for the agent) + Layer-3 (the daily-run prompt teaches per-tier judgment). The Layer-1 gate just enforces that directional theses HAVE a conviction set — it doesn't second-guess WHICH tier.
-- [`MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — the V2 daily-run prompt design this builds on. The conviction-aware action discipline section is additive to V2's needsAction walk.
+- [`PRINCIPLES.md`](../PRINCIPLES.md) — the three-layer principle. Conviction lives at Layer-2 (structured tool-result fields the agent reads) + Layer-3 (the daily-run prompt teaches per-tier judgment). The Layer-1 gate enforces that directional theses HAVE the required fields — it doesn't second-guess WHICH tier the writer picks.
+- [`MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — the V2 daily-run prompt design this builds on.
 
-### Real-world conviction-vocabulary sources (the Step 3 research)
+### Real-world conviction-vocabulary sources
 
 Sell-side rating taxonomies:
 - [Morgan Stanley General Research Disclosures](https://www.morganstanley.com/eqr/disclosures/webapp/generalresearch) — Overweight / Equal-weight / Underweight definitions
-- Goldman Sachs Conviction List — see [Benzinga: Goldman Sachs Updates Its Conviction List](https://www.benzinga.com/analyst-ratings/analyst-color/17/07/9778951/goldman-sachs-updates-its-conviction-list-what-that-mean) for the framing that Conviction List is a separate axis from Buy/Neutral/Sell ratings
-- [stockanalysis.com — What Do Stock Analyst Ratings Mean?](https://stockanalysis.com/article/analyst-ratings-explained/) — cross-firm rating taxonomy (Strong Buy / Buy / Hold / Sell / Strong Sell) and the cross-firm normalization problem
-- [TipRanks Analyst Consensus glossary](https://www.tipranks.com/glossary/a/analyst-consensus) — 3-tier (Buy / Hold / Sell) aggregator framing
+- [Benzinga: Goldman Sachs Updates Its Conviction List](https://www.benzinga.com/analyst-ratings/analyst-color/17/07/9778951/goldman-sachs-updates-its-conviction-list-what-that-mean) — Conviction List as a separate axis from Buy/Neutral/Sell ratings (this is the pattern v2 follows)
+- [stockanalysis.com — What Do Stock Analyst Ratings Mean?](https://stockanalysis.com/article/analyst-ratings-explained/) — cross-firm rating taxonomy and cross-firm normalization problem
+- [TipRanks Analyst Consensus](https://www.tipranks.com/glossary/a/analyst-consensus) — 3-tier aggregator framing
 
 Buy-side / hedge fund pitch frameworks:
-- [Mergers & Inquisitions — Stock Pitch Guide](https://mergersandinquisitions.com/stock-pitch-guide/) — components of a hedge fund pitch sheet (recommendation, upside/downside, thesis, what street is missing, catalysts, scenarios)
-- [Finance Interview Prep — Hedge Fund Stock Pitch Framework](https://financeinterviewprep.com/blog/hedge-fund-stock-pitch-framework) — R/R conviction bands (3:1-5:1 = HIGH, 2:1-3:1 = core/moderate, 1:1-2:1 = usually pass)
+- [Mergers & Inquisitions — Stock Pitch Guide](https://mergersandinquisitions.com/stock-pitch-guide/) — pitch components including variant view
+- [Finance Interview Prep — Hedge Fund Stock Pitch Framework](https://financeinterviewprep.com/blog/hedge-fund-stock-pitch-framework) — R/R conviction bands
 - [Street of Walls — Stock Pitch Do's and Don'ts](https://www.streetofwalls.com/articles/hedge-fund/recruiting-interviewing/stock-pitch-the-dos-and-donts/) — "consensus ideas and low conviction" as major don'ts
 
-VC IC memo structure (for the binary-conviction counterpoint):
-- [Alex Jarvis — The confidential YouTube Investment Memo by Sequoia](https://www.alexanderjarvis.com/the-confidential-youtube-investment-memo-by-sequoia-you-were-never-meant-to-see/) — the actual Sequoia memo, sections + the narrative-not-numerical conviction expression
-- [The VC Factory — IC Memos guide](https://thevcfactory.com/investment-committee-memos/) — Pat Grady's "Presence of conviction is what matters" quote + the rejection of graduated "Recommend / Pass / Pass for now" framing
+VC IC memo structure (binary-conviction counterpoint):
+- [Alex Jarvis — The confidential YouTube Investment Memo by Sequoia](https://www.alexanderjarvis.com/the-confidential-youtube-investment-memo-by-sequoia-you-were-never-meant-to-see/)
+- [The VC Factory — IC Memos guide](https://thevcfactory.com/investment-committee-memos/) — Pat Grady's "Presence of conviction is what matters"
 
 Retail / fintwit anchors (provided by principal):
-- @Traderstewie ($INTC "Holy Grail setup, explode this week, Targets $130"; $AEHR "Gorgeous consolidation, any day now, Targets $120-$125")
-- @TheProfInvestor ($RDDT "sleeping giant, I own it, I will hold")
-- Principal's confluence explainer (3+ aligned signals = high conviction sizing)
+- @Traderstewie ($INTC "Holy Grail setup, explode this week, Targets $130"; $AEHR "Gorgeous consolidation, Targets $120-$125")
+- @TheProfInvestor ($RDDT "sleeping giant, I will hold")
+- Principal's confluence explainer
 
 WSB / retail vocabulary:
-- [Infinity Investing — The Ultimate Guide to Reddit's WSB Slang](https://infinityinvesting.com/wallstreetbets-slang-meaning/) — YOLO, Diamond Hands, Paper Hands, Tendies vocabulary
-- [SuperMoney — The Back Up The Truck Strategy](https://www.supermoney.com/encyclopedia/backing-up-the-truck) — "back up the truck" semantic (substantial purchase, extreme bullishness) and origin
+- [Infinity Investing — WSB Slang guide](https://infinityinvesting.com/wallstreetbets-slang-meaning/) — YOLO, Diamond Hands, Paper Hands, Tendies
+- [SuperMoney — The Back Up The Truck Strategy](https://www.supermoney.com/encyclopedia/backing-up-the-truck) — "back up the truck" semantic and origin
 
-Position sizing schools (for the sizing-vs-conviction debate):
-- [TraderLion — Position Sizing Strategies](https://traderlion.com/risk-management/position-sizing-strategies/) — starter position (10%), scale-in (20%/10%/20%), Small-Early-Big-Late pyramiding, and the conviction-vs-fixed-% debate
+Position sizing schools:
+- [TraderLion — Position Sizing Strategies](https://traderlion.com/risk-management/position-sizing-strategies/) — starter/scale-in/full sizing and conviction-vs-fixed-% debate
