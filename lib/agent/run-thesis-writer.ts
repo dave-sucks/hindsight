@@ -92,6 +92,17 @@ export function buildThesisWriterSystemPrompt(opts: {
   } | null;
   reason: string;
   minConfidence: number;
+  /**
+   * ISO YYYY-MM-DD for today. Injected into the date-awareness block
+   * so the writer can identify future-dated catalysts (P1-5 / PR #354).
+   * Production incident 2026-05-26: Perplexity Sonar (via web_search)
+   * fabricated specific actuals for MRVL's Q1 FY2027 print which had
+   * not yet occurred; the writer laundered the fabricated number into
+   * a plausible one and persisted it as ground truth. The date-awareness
+   * block teaches the writer to distinguish past-tense from future-tense
+   * catalysts and discard hallucinated actuals.
+   */
+  runDate: string;
   promotionContext?: {
     paperTenureDays: number | null;
     paperRealizedPnl: number | null;
@@ -122,6 +133,35 @@ Close out via record_thesis(ticker="${T}", direction=..., research_data=<rawData
   return `You are ${opts.analystName}, writing one deep-research thesis on $${T}.
 
 ${opts.analystPrompt ? `Your strategy:\n${opts.analystPrompt}\n` : ""}
+
+═══════════════════════════════════════════════════════════════════
+DATE-AWARENESS — read this before any earnings or catalyst claim
+═══════════════════════════════════════════════════════════════════
+Today is ${opts.runDate}. Any catalyst whose date is later than today
+(earnings prints, FDA decisions, product launches, regulatory rulings)
+has NOT yet occurred. When the structured data block, existing_thesis_summary,
+or a web_search result references such a catalyst:
+
+  • Frame the outcome as "expected" / "anticipated" / "consensus expects".
+  • NEVER frame it as "reported" / "beat" / "missed" / "actuals printed".
+  • If a web_search summary claims a future-dated catalyst has already
+    printed (past-tense verbs + specific actuals), treat it as a
+    Sonar hallucination and discard it.
+
+Cross-check ANY earnings claim against (a) the Earnings History table
+in the structured data block — if the quarter in question isn't there,
+it hasn't reported, and (b) the existing_thesis_summary's earnings
+calendar context. The structured data block is ground truth; web_search
+is supplemental and CAN hallucinate around future catalysts.
+
+Production incident 2026-05-26 (P1-5 / PR #354): Sonar fabricated
+"Marvell reported Q1 FY2027 revenue of \$81.61 billion" (~30× MRVL's
+real quarterly run-rate) for a future-dated print. A prior writer
+recognized the number was absurd, "fixed" the cosmetic problem by
+backing into a plausible \$2.48B from the consensus estimate, kept
+the "+3.2% beat" framing, and persisted the synthetic actual as ground
+truth. Do not repeat that. If a number from Sonar looks wrong, the
+whole framing is wrong — discard the entire claim, do not rewrite it.
 
 WHY YOU WERE DISPATCHED
 ${opts.reason}
@@ -620,6 +660,14 @@ export async function runThesisWriterAgent(
     : allTools;
 
   // ── 3. System + user prompts ────────────────────────────────────────
+  // ISO YYYY-MM-DD in UTC — passed into the writer prompt's date-awareness
+  // block so the agent can identify future-dated catalysts and discard
+  // hallucinated past-tense actuals from web_search. UTC over local time
+  // because catalysts (earnings, SEC filings) are conventionally indexed
+  // in UTC and the writer needs a stable reference; off-by-a-day at the
+  // tz boundary is harmless because the gate operates on later-than-today
+  // semantics, not exact-match.
+  const runDate = new Date().toISOString().slice(0, 10);
   const systemPrompt = buildThesisWriterSystemPrompt({
     analystName: analyst.name,
     analystPrompt: analyst.analystPrompt,
@@ -628,6 +676,7 @@ export async function runThesisWriterAgent(
     existingThesis,
     reason: args.reason,
     minConfidence: analyst.minConfidence,
+    runDate,
     promotionContext: args.promotionContext ?? null,
   });
 
