@@ -51,7 +51,59 @@ export const morningResearch = inngest.createFunction(
       const result = await step.run(`research-${config.id}`, async () => {
         const t0 = Date.now();
 
-        // 2a. Check open positions for THIS analyst (not all analysts combined)
+        // 2a. Per-analyst per-day idempotency guard.
+        //
+        // Function-level `concurrency: { limit: 1 }` (above) keeps two
+        // morning-cron invocations from running CONCURRENTLY, but doesn't
+        // prevent a second invocation from running SEQUENTIALLY after the
+        // first completes. The function also subscribes to
+        // `app/research.run.manual` events (urgent-trigger on email signals,
+        // manual UI runs via /api/research/trigger), which can fire mid-cron
+        // OR shortly after — producing a second MORNING_PLAN row for the same
+        // analyst the same day.
+        //
+        // Production incident 2026-05-27: the live analyst (Earnings Drift
+        // Trader) got two MORNING_PLAN runs at 12:00:59 + 12:06:58 UTC. Run A
+        // deferred MRVL PROMOTED → WATCHING; Run B re-read WATCHING MRVL and
+        // bought it live via place_trade. Run B overrode Run A's deliberate
+        // defer decision purely because the duplicate fired. Real money on
+        // the line; agent discipline lost to infrastructure.
+        //
+        // The guard: if a MORNING_PLAN run for this analyst started within
+        // the last 12 hours and is RUNNING or COMPLETE, skip with a log.
+        // FAILED runs are not counted — a failure should be retryable within
+        // the same day. 12-hour lookback is timezone-agnostic and covers
+        // both the 8 AM ET cron + any pre-market manual events; the next
+        // legitimate cron fires ~24h later so there's no collision.
+        const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+        const lookbackStart = new Date(Date.now() - TWELVE_HOURS_MS);
+        const existingToday = await prisma.researchRun.findFirst({
+          where: {
+            agentConfigId: config.id,
+            mode: "MORNING_PLAN",
+            startedAt: { gte: lookbackStart },
+            status: { in: ["RUNNING", "COMPLETE"] },
+          },
+          orderBy: { startedAt: "desc" },
+          select: { id: true, status: true, startedAt: true },
+        });
+        if (existingToday) {
+          console.log(
+            `[morning-research] SKIP ${config.name} (${config.id}): ` +
+              `MORNING_PLAN run ${existingToday.id} already ${existingToday.status} ` +
+              `(started ${existingToday.startedAt.toISOString()}). ` +
+              `Per-analyst daily quota exhausted; duplicate trigger suppressed.`,
+          );
+          return {
+            skipped: true,
+            reason: "duplicate_morning_run_suppressed",
+            existingRunId: existingToday.id,
+            existingStatus: existingToday.status,
+            existingStartedAt: existingToday.startedAt.toISOString(),
+          };
+        }
+
+        // 2b. Check open positions for THIS analyst (not all analysts combined)
         const openCount = await prisma.position.count({
           where: {
             analystId: config.id,
@@ -70,7 +122,7 @@ export const morningResearch = inngest.createFunction(
         const runEnvironment =
           (config.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
 
-        // 2b. Create ResearchRun record (status: RUNNING)
+        // 2c. Create ResearchRun record (status: RUNNING)
         const run = await prisma.researchRun.create({
           data: {
             userId: config.userId,
