@@ -34,6 +34,7 @@ const baseOpts = {
   ticker: "NVDA",
   reason: "Promotion refresh — write PR #333 PROMOTED triggers",
   minConfidence: 60,
+  runDate: "2026-05-27",
 };
 
 function existingThesis(status: string) {
@@ -151,5 +152,56 @@ describe("buildThesisWriterSystemPrompt — status branching", () => {
         "*** YOU ARE REFRESHING A PROMOTED THESIS ***",
       );
     });
+  });
+});
+
+describe("buildThesisWriterSystemPrompt — date-awareness gate (P1-5 / PR #354)", () => {
+  it("renders today's date in the date-awareness header", () => {
+    const prompt = buildThesisWriterSystemPrompt({
+      ...baseOpts,
+      runDate: "2026-08-15",
+      mode: "mint",
+      existingThesis: null,
+    });
+    expect(prompt).toContain("DATE-AWARENESS");
+    expect(prompt).toContain("Today is 2026-08-15.");
+  });
+
+  it("instructs the writer to discard past-tense claims on future-dated catalysts", () => {
+    const prompt = buildThesisWriterSystemPrompt({
+      ...baseOpts,
+      mode: "refresh",
+      existingThesis: existingThesis("WATCHING"),
+    });
+    expect(prompt).toContain("has NOT yet occurred");
+    expect(prompt).toContain('"expected" / "anticipated" / "consensus expects"');
+    expect(prompt).toContain('NEVER frame it as "reported" / "beat" / "missed"');
+    expect(prompt).toContain("treat it as a");
+    expect(prompt).toContain("Sonar hallucination and discard it");
+  });
+
+  it("names the 2026-05-26 MRVL Sonar fabrication so future refactors keep the anti-regression", () => {
+    const prompt = buildThesisWriterSystemPrompt({
+      ...baseOpts,
+      mode: "refresh",
+      existingThesis: existingThesis("PROMOTED"),
+    });
+    expect(prompt).toContain("Production incident 2026-05-26");
+    expect(prompt).toContain("$81.61 billion");
+    expect(prompt).toContain("If a number from Sonar looks wrong");
+    expect(prompt).toContain("discard the entire claim, do not rewrite it");
+  });
+
+  it("renders the date-awareness block BEFORE the WHY YOU WERE DISPATCHED block", () => {
+    const prompt = buildThesisWriterSystemPrompt({
+      ...baseOpts,
+      mode: "refresh",
+      existingThesis: existingThesis("ACTIVE"),
+    });
+    const dateIdx = prompt.indexOf("DATE-AWARENESS");
+    const reasonIdx = prompt.indexOf("WHY YOU WERE DISPATCHED");
+    expect(dateIdx).toBeGreaterThan(-1);
+    expect(reasonIdx).toBeGreaterThan(-1);
+    expect(dateIdx).toBeLessThan(reasonIdx);
   });
 });

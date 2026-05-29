@@ -32,6 +32,18 @@ export interface SynthesisPromptArgs {
   existingThesisSummary?: string;
   dataBlock: string;
   promotionContext?: SynthesisPromotionContext;
+  /**
+   * ISO YYYY-MM-DD for today. Threaded through to the date-awareness block
+   * so the synthesis model can distinguish past-tense vs future-tense
+   * earnings claims. Defensive mirror of the writer-prompt fix from
+   * PR #354's MRVL hallucination investigation. The proximate cause was a
+   * Sonar web_search fabrication; the writer agent caught it eventually
+   * but only after laundering the bad number. The synthesis prompt also
+   * uses a web-search-enabled model (Claude Sonnet 4.6 + native search),
+   * so the same class of bug could land here if synthesis ever succeeds
+   * with similar Sonar / Google-grounding bias on future-dated catalysts.
+   */
+  runDate?: string;
 }
 
 function formatPnl(pnl: number | null): string {
@@ -81,7 +93,15 @@ broke → bias toward INVALIDATE.
 }
 
 export function buildSynthesisPrompt(args: SynthesisPromptArgs): string {
-  const { ticker, analystContext, mode, existingThesisSummary, dataBlock, promotionContext } = args;
+  const {
+    ticker,
+    analystContext,
+    mode,
+    existingThesisSummary,
+    dataBlock,
+    promotionContext,
+    runDate,
+  } = args;
   const T = ticker.toUpperCase();
 
   const modeNote =
@@ -111,7 +131,31 @@ GROUND-TRUTH DATA — use these numbers; do not invent or contradict
 ═══════════════════════════════════════════════════════════════════
 ${dataBlock}
 
+${
+  runDate
+    ? `═══════════════════════════════════════════════════════════════════
+DATE-AWARENESS — read before any earnings or catalyst claim
 ═══════════════════════════════════════════════════════════════════
+Today is ${runDate}. Any catalyst date later than today (earnings prints,
+FDA decisions, product launches, regulatory rulings) has NOT yet occurred.
+When the ground-truth data above, the existing thesis, or your own web
+research references such a catalyst:
+
+  • Frame the outcome as "expected" / "anticipated" / "consensus expects".
+  • NEVER frame it as "reported" / "beat" / "missed" / "actuals printed".
+  • If a web search summary claims a future-dated catalyst has already
+    printed (past-tense verbs + specific actuals), treat it as a
+    search-result hallucination and discard it.
+
+Cross-check ANY earnings claim against the Earnings History rows in the
+ground-truth data — if the quarter isn't there, it hasn't reported.
+Ground-truth data IS the source of truth; live web results are
+supplemental and CAN hallucinate around future catalysts (production
+incident 2026-05-26 — see PR #354).
+
+`
+    : ""
+}═══════════════════════════════════════════════════════════════════
 YOUR JOB
 ═══════════════════════════════════════════════════════════════════
 

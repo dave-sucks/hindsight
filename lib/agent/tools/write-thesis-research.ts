@@ -514,6 +514,12 @@ export const writeThesisResearch = defineTool({
       promotionContext: args.promotion_context as
         | SynthesisPromotionContext
         | undefined,
+      // ISO date in UTC for the date-awareness block. Defensive mirror of
+      // the writer-prompt fix from PR #354 (MRVL hallucination). Synthesis
+      // model has native web_search — same Sonar / search-grounding bias
+      // risk on future-dated catalysts if synthesis succeeds where today
+      // it timed out and degraded to writer fallback.
+      runDate: new Date().toISOString().slice(0, 10),
     });
 
     // Synthesis call — Claude Sonnet 4.6 + Anthropic native web_search.
