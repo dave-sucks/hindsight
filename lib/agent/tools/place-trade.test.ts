@@ -26,6 +26,8 @@ const mockTradeDecisionCreate = jest.fn().mockResolvedValue({});
 const mockRunEventCreate = jest.fn().mockResolvedValue({});
 const mockTransaction = jest.fn();
 
+const mockAgentConfigFindUnique = jest.fn();
+
 jest.mock("@/lib/prisma", () => ({
   prisma: {
     thesis: { findUnique: mockThesisFindUnique },
@@ -37,6 +39,7 @@ jest.mock("@/lib/prisma", () => ({
     positionEvent: { create: mockPositionEventCreate },
     tradeDecision: { create: mockTradeDecisionCreate },
     runEvent: { create: mockRunEventCreate },
+    agentConfig: { findUnique: mockAgentConfigFindUnique },
     $transaction: mockTransaction,
   },
 }));
@@ -105,6 +108,12 @@ describe("place_trade — staleness gate removed (P1-1)", () => {
     mockGetOrder.mockReset();
     mockGetLatestPrice.mockReset();
     mockGetAccount.mockReset();
+    mockAgentConfigFindUnique.mockReset();
+    // Default: analyst is enabled. Tests for the disabled-gate override this.
+    mockAgentConfigFindUnique.mockResolvedValue({
+      enabled: true,
+      name: "Test Analyst",
+    });
   });
 
   it("does not refuse with 'research is stale' on a LONG thesis (advances past former gate site)", async () => {
@@ -188,5 +197,102 @@ describe("place_trade — staleness gate removed (P1-1)", () => {
     expect(String(result.summary)).not.toMatch(/research is/i);
     // Confirm we actually reached Alpaca's submission path.
     expect(mockPlaceMarketOrder).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("place_trade — analyst enabled gate (trading-paused)", () => {
+  beforeEach(() => {
+    mockThesisFindUnique.mockReset();
+    mockPositionFindFirst.mockReset();
+    mockPositionCreate.mockReset();
+    mockOrderCreate.mockReset();
+    mockTransaction.mockReset();
+    mockPlaceMarketOrder.mockReset();
+    mockGetOrder.mockReset();
+    mockGetLatestPrice.mockReset();
+    mockGetAccount.mockReset();
+    mockAgentConfigFindUnique.mockReset();
+  });
+
+  it("refuses with a clear 'analyst paused' message when AgentConfig.enabled is false", async () => {
+    mockAgentConfigFindUnique.mockResolvedValueOnce({
+      enabled: false,
+      name: "Earnings Drift Trader",
+    });
+
+    const result = await makeTool(makeCtx()).execute({
+      ticker: "AMBA",
+      direction: "LONG",
+      entry_price: 90,
+      target_price: 115,
+      stop_loss: 80,
+      thesis_id: "thesis_amba_watching",
+      notional: 1000,
+    });
+
+    expect(result.data.success).toBe(false);
+    expect(result.data.status).toBe("FAILED");
+    expect(String(result.data.message)).toMatch(/Earnings Drift Trader/);
+    expect(String(result.data.message)).toMatch(/disabled/);
+    expect(String(result.data.message)).toMatch(/new trades are paused/i);
+    expect(String(result.summary)).toMatch(/analyst paused/i);
+
+    // Critical: gate fired BEFORE Alpaca was touched.
+    expect(mockPlaceMarketOrder).not.toHaveBeenCalled();
+    expect(mockPositionCreate).not.toHaveBeenCalled();
+  });
+
+  it("succeeds normally when analyst is enabled (gate does not false-positive)", async () => {
+    // Default beforeEach mock has enabled: true, but be explicit here for the
+    // intent of this test.
+    mockAgentConfigFindUnique.mockResolvedValueOnce({
+      enabled: true,
+      name: "Earnings Drift Trader",
+    });
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    mockPositionFindFirst.mockResolvedValueOnce(null);
+    mockGetLatestPrice.mockResolvedValueOnce(95);
+    mockGetAccount.mockResolvedValueOnce({
+      cash: "10000",
+      buying_power: "10000",
+    });
+    mockTransaction.mockImplementation(async (arg) => {
+      if (typeof arg === "function") return arg({ position: { create: mockPositionCreate }, order: { create: mockOrderCreate } });
+      return arg;
+    });
+    mockPlaceMarketOrder.mockRejectedValueOnce(new Error("network timeout"));
+
+    const result = await makeTool(makeCtx()).execute({
+      ticker: "AMBA",
+      direction: "LONG",
+      entry_price: 95,
+      target_price: 115,
+      stop_loss: 85,
+      thesis_id: "thesis_amba_watching",
+      notional: 1000,
+    });
+
+    // Should not be the enabled-gate refusal — it should advance past it.
+    expect(String(result.summary)).not.toMatch(/analyst paused/i);
+    expect(String(result.data.message ?? "")).not.toMatch(/new trades are paused/i);
+  });
+
+  it("does NOT call agentConfig lookup when no effectiveAnalystId is in scope (defensive)", async () => {
+    // Principal-chat outside an analyst scope: ctx.analystId = null AND no
+    // args.analyst_id. The gate should silently skip (nothing to look up).
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    mockPositionFindFirst.mockResolvedValueOnce(null);
+
+    await makeTool(makeCtx({ analystId: undefined })).execute({
+      ticker: "NVDA",
+      direction: "LONG",
+      entry_price: 100,
+      target_price: 120,
+      stop_loss: 90,
+      thesis_id: "thesis_unscoped",
+      notional: 5000,
+    });
+
+    expect(mockAgentConfigFindUnique).not.toHaveBeenCalled();
   });
 });

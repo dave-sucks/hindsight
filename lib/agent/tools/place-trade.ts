@@ -111,6 +111,49 @@ export const placeTrade = defineTool({
         };
       }
 
+      // 0a.5. Trading-paused gate — `AgentConfig.enabled === false` means
+      // NO NEW TRADES from any code path. The morning cron already filters on
+      // `enabled: true`, but tactical runs (fired by the trigger evaluator)
+      // and principal-chat sessions don't. Without this gate, disabling an
+      // analyst stops the morning routine but still allows trigger-fired
+      // tactical runs to call place_trade. This guard makes "disabled"
+      // mean what it says.
+      //
+      // Close_position remains UNGATED — existing positions stay manageable
+      // (stops auto-fire, manual exits work, trims/adds via manage_position
+      // ALSO ungated because they assume an existing position). Only NEW
+      // entries via place_trade are blocked.
+      //
+      // Filed under: real-life compliance need 2026-05-28 — a paused analyst
+      // must NOT enter new positions while the user works out disclosure
+      // requirements. See the upcoming "trade-as-proposal" workstream for
+      // the durable answer.
+      if (effectiveAnalystId) {
+        const analystEnabledCheck = await prisma.agentConfig.findUnique({
+          where: { id: effectiveAnalystId },
+          select: { enabled: true, name: true },
+        });
+        if (analystEnabledCheck && !analystEnabledCheck.enabled) {
+          const blockedMsg =
+            `Trade blocked: analyst "${analystEnabledCheck.name}" is disabled — ` +
+            `new trades are paused. Existing positions remain manageable ` +
+            `(stops fire, exits work). Re-enable the analyst in settings to ` +
+            `resume entries.`;
+          return {
+            summary: `Trade blocked: $${ticker} — analyst paused`,
+            data: {
+              success: false,
+              ticker,
+              status: "FAILED" as const,
+              direction: args.direction,
+              message: blockedMsg,
+              tickers: [{ ticker, tag: "Paused", summary: blockedMsg, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+      }
+
       // 0. Check for existing open position (scoped to this analyst only)
       const existingPosition = await prisma.position.findFirst({
         where: { userId: ctx.userId, analystId: effectiveAnalystId ?? undefined, symbol: ticker, status: "OPEN" },
