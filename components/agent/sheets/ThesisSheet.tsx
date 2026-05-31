@@ -185,6 +185,64 @@ function ConvictionBadge({
   );
 }
 
+// ── ActionabilityBadge ──
+// Conviction Expression v4 reader-side — the at-a-glance "can I act on
+// this now or not" rollup. Driven by `resolved.actionability` from the
+// /triggers API. Sits next to StatusPill + ConvictionBadge in the sheet
+// header. See docs/plans/CONVICTION_EXPRESSION.md §8.
+//
+// State → label + variant:
+//   ENTER_NOW            → "READY TO BUY"          positive
+//   WAIT_FOR_TRIGGER     → "WAITING — <detail>"    secondary
+//   PENDING_CATALYST     → "PENDING CATALYST"      secondary
+//   ACTIVE_HOLD          → "HOLDING"               secondary
+//   STALE_PAST_CATALYST  → "STALE"                 outline
+//   SUPERSEDED           → "SUPERSEDED"            outline
+//   DEAD                 → null (status pill already conveys this)
+//
+// triggerDetail is surfaced as the WAITING label suffix when present
+// (e.g. "WAITING — needs $92.50, at $90.30 (-2.4%)").
+function ActionabilityBadge({
+  resolved,
+}: {
+  resolved: NonNullable<TriggersResponse["resolved"]>;
+}) {
+  if (resolved.actionability === "DEAD") return null;
+
+  let label: string;
+  let variant: "positive" | "secondary" | "outline";
+  switch (resolved.actionability) {
+    case "ENTER_NOW":
+      label = "READY TO BUY";
+      variant = "positive";
+      break;
+    case "WAIT_FOR_TRIGGER":
+      label = resolved.triggerDetail
+        ? `WAITING — ${resolved.triggerDetail}`
+        : "WAITING";
+      variant = "secondary";
+      break;
+    case "PENDING_CATALYST":
+      label = "PENDING CATALYST";
+      variant = "secondary";
+      break;
+    case "ACTIVE_HOLD":
+      label = "HOLDING";
+      variant = "secondary";
+      break;
+    case "STALE_PAST_CATALYST":
+      label = "STALE";
+      variant = "outline";
+      break;
+    case "SUPERSEDED":
+      label = "SUPERSEDED";
+      variant = "outline";
+      break;
+  }
+
+  return <Badge variant={variant}>{label}</Badge>;
+}
+
 // ── VariantViewBlock ──
 // Conviction Expression v4 — the writer's contrarian take. Renders as a
 // always-visible callout block in the sheet body, after status pills /
@@ -1476,6 +1534,9 @@ export function ThesisSheetBody({
           conviction={conviction}
           rationale={convictionRationale}
         />
+        {state?.resolved ? (
+          <ActionabilityBadge resolved={state.resolved} />
+        ) : null}
       </div>
 
       {/* ── Terminal-status reason ──────────────────────────── */}

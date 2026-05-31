@@ -33,6 +33,11 @@ import { getLatestPrices } from "@/lib/alpaca";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import {
+  buildResolvedEnvelope,
+  buildSupersessionMap,
+  type ResolvedEnvelope,
+} from "@/lib/agent/resolved-thesis";
+import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
   getThesisComposite,
@@ -213,6 +218,11 @@ export const getTheses = defineTool({
         // single conviction number (PR-9 dropped the parallel
         // `confidenceScore` int).
         scoring: true,
+        // Conviction Expression v4 — writer-side fields (read into the
+        // agent's context + the resolver's actionability decision tree).
+        conviction: true,
+        convictionRationale: true,
+        variantView: true,
         createdAt: true,
         updatedAt: true,
         invalidatedAt: true,
@@ -380,6 +390,80 @@ export const getTheses = defineTool({
       }
     }
 
+    // ── Conviction Expression v4: supersession lookup (§6) ───────────
+    // For each ticker present in the response, find the newest terminal
+    // (INVALIDATED / ARCHIVED / CLOSED) or PASS row on the same analyst.
+    // Used by the resolver to flag older live rows as SUPERSEDED when a
+    // newer sister thesis killed them (tonight's two-ZS case).
+    const uniqueTickersAll = Array.from(new Set(theses.map((t) => t.ticker)));
+    let supersessionByTicker = new Map<
+      string,
+      ReturnType<typeof buildSupersessionMap> extends Map<string, infer V> ? V : never
+    >();
+    if (uniqueTickersAll.length > 0) {
+      const terminalSiblings = await prisma.thesis.findMany({
+        where: {
+          userId: ctx.userId,
+          ticker: { in: uniqueTickersAll },
+          ...(ctx.analystId
+            ? { researchRun: { agentConfigId: ctx.analystId } }
+            : {}),
+          OR: [
+            { status: { in: ["INVALIDATED", "ARCHIVED", "CLOSED"] } },
+            { direction: "PASS" },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, ticker: true, createdAt: true },
+      });
+      supersessionByTicker = buildSupersessionMap(terminalSiblings);
+    }
+
+    // ── Resolver: compute the per-row resolved envelope ──────────────
+    // Reuses the live-price map already fetched for needsAction above.
+    // Synchronous + cheap once the upstream queries are done.
+    const resolverPriceMap: Record<string, number> = {};
+    if (liveTheses.length > 0) {
+      // Reuse the price lookups from the needsAction block. Repeat the
+      // fetch here only if liveTheses was empty (i.e. no needsAction
+      // computation ran) but theses still need resolution.
+      const tickers = Array.from(new Set(liveTheses.map((t) => t.ticker)));
+      try {
+        const prices = await getLatestPrices(tickers, ctx.alpacaCreds);
+        Object.assign(resolverPriceMap, prices);
+      } catch {
+        /* degraded gracefully; envelope renders with currentPrice=null */
+      }
+    }
+    const resolverNow = new Date();
+    const resolvedByThesisId = new Map<string, ResolvedEnvelope>();
+    for (const t of theses) {
+      const parsed = triggersArraySchema.safeParse(t.triggers);
+      const parsedTriggers = (parsed.success ? parsed.data : []) as Trigger[];
+      const cur = resolverPriceMap[t.ticker];
+      resolvedByThesisId.set(
+        t.id,
+        buildResolvedEnvelope({
+          thesis: {
+            id: t.id,
+            ticker: t.ticker,
+            status: t.status,
+            direction: t.direction,
+            entryPrice: t.entryPrice,
+            triggers: t.triggers,
+            catalystDate: t.catalystDate,
+            createdAt: t.createdAt,
+            nextReviewAt: t.nextReviewAt,
+            scoring: t.scoring,
+            parsedTriggers,
+          },
+          currentPrice: typeof cur === "number" && cur > 0 ? cur : null,
+          supersession: supersessionByTicker.get(t.ticker) ?? null,
+          now: resolverNow,
+        }),
+      );
+    }
+
     const enriched = theses.map((t) => {
       const triggerCount = Array.isArray(t.triggers)
         ? (t.triggers as unknown[]).length
@@ -389,6 +473,11 @@ export const getTheses = defineTool({
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
         needsAction: needsActionByThesisId.get(t.id) ?? null,
+        // Conviction Expression v4 — read-time resolved envelope. The
+        // agent reads `resolved.actionability` first to filter actionable
+        // rows; `triggerDetail` shows trigger state vs current price;
+        // `supersededBy` flags rows killed by a newer sister thesis.
+        resolved: resolvedByThesisId.get(t.id) ?? null,
         // Agent must see freshness of the deep research without doing date
         // math. Horizon-tuned per STALE_DAYS_BY_HORIZON. Soft input to the
         // agent's REVIEW decision — no Layer-1 gate keys off it.

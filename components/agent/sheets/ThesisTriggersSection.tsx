@@ -106,6 +106,30 @@ export interface TriggersResponse {
   conviction: "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
   convictionRationale: string | null;
   variantView: string | null;
+  // ── Conviction Expression v4 (reader-side resolver §6) ──────────────
+  // Read-time computed envelope. Live price + trigger evaluation +
+  // supersession + actionability rollup. Drives the actionability
+  // state pill in the sheet header. Optional because the field is
+  // server-computed in /api/theses/:id/triggers only — the pre-fetched
+  // sheetState path (P2-19) doesn't have it.
+  resolved?: {
+    currentPrice: number | null;
+    entryQualityScore: number | null;
+    triggerState: "ENTER_FIRED" | "ENTER_WAITING" | "EXIT_FIRED" | "NONE";
+    triggerDetail: string | null;
+    actionability:
+      | "ENTER_NOW"
+      | "WAIT_FOR_TRIGGER"
+      | "PENDING_CATALYST"
+      | "ACTIVE_HOLD"
+      | "STALE_PAST_CATALYST"
+      | "SUPERSEDED"
+      | "DEAD";
+    supersededBy: string | null;
+    staleness: "FRESH" | "STALE";
+    resolvedAt: string;
+    quoteAgeMs: number | null;
+  } | null;
   // ── V2 9-section narrative dossier (PR-9 flat schema) ────────────────
   // The 9 first-class JSONB columns that replaced the `researchSections`
   // blob. Three retypes of legacy fields (snapshot ↔ reasoningSummary,
