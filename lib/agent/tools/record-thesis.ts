@@ -262,7 +262,53 @@ const thesisFields = z.object({
     .max(100)
     .optional()
     .describe(
-      "% of portfolio at full position. Captures intent — actual position size may be smaller while scaling in or after a partial trim.",
+      "% of portfolio at full position. REQUIRED for LONG/SHORT (Layer-1 gate — Conviction Expression v4). " +
+        "Pair with the conviction tier: STRONG = 4-6%, HIGH = 3-5%, MEDIUM = 2-3%, LOW = 1-2%. " +
+        "Captures intent — account-level caps (maxPositionSize, realMaxPosition) clip at execution. " +
+        "Actual position size may be smaller while scaling in or after a partial trim.",
+    ),
+  // ── Conviction Expression v4 (writer-side) ──────────────────────────
+  // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Three new fields:
+  //   conviction          — STRONG / HIGH / MEDIUM / LOW tier verdict
+  //   conviction_rationale — one-sentence justification (≤200 chars)
+  //   variant_view        — "consensus thinks X, I think Y" (≤300 chars)
+  // All three optional at the Zod layer; Layer-1 gates in execute()
+  // enforce required-when-directional, variantView-on-STRONG/HIGH, and
+  // the two consistency gates (Gate A: STRONG requires composite ≥ 7;
+  // Gate B: STRONG/HIGH require entryQuality ≥ 2).
+  conviction: z
+    .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])
+    .optional()
+    .describe(
+      "Writer's view-strength on this thesis. REQUIRED for LONG/SHORT (Layer-1 gate). " +
+        "Separate axis from `direction` (which is bull/bear/no-view).\n" +
+        "  STRONG — top-tier (your best 2-3 calls per cycle). Composite ≥ 8, R/R ≥ 3:1, clear variant view, would buy at market today if it were your own money.\n" +
+        "  HIGH   — solid conviction. Composite ≥ 7, R/R ≥ 2.5:1, defensible variant view. Default for clean dated-catalyst trades and breakouts with volume confirm.\n" +
+        "  MEDIUM — the honest middle. Composite 6-7 or ≥ 7 with one weak dimension. Most theses should be MEDIUM.\n" +
+        "  LOW    — 'Eh' (weak conviction). Composite 4-6 or ≥ 6 with material reservations.\n" +
+        "Layer-1 gates: STRONG requires composite ≥ 7 (Gate A); STRONG/HIGH require entryQuality ≥ 2 (Gate B). The composite/entryQuality you submit will be checked against the tier you pick.",
+    ),
+  conviction_rationale: z
+    .string()
+    .max(200)
+    .optional()
+    .describe(
+      "One sentence (≤200 chars) explaining the conviction tier. REQUIRED whenever conviction is set (Layer-1). " +
+        "Examples:\n" +
+        "  STRONG: 'Composite 8/10, R/R 3:1, June 3 catalyst 8 days out, hyperscaler backlog signals clean guide-raise.'\n" +
+        "  HIGH: 'Composite 7/10, post-print PEAD setup, first day of drift, no analyst PT updates yet — R/R 2.6:1.'\n" +
+        "  MEDIUM: 'Decent technical breakout but weak peer rank (-33% YTD vs +20% peers); wait for confirmed beat.'\n" +
+        "  LOW: 'Late-stage chase, RSI 73, volume below threshold.'",
+    ),
+  variant_view: z
+    .string()
+    .max(300)
+    .optional()
+    .describe(
+      "One sentence (≤300 chars) stating the writer's contrarian take: 'consensus expects X, I think Y, here's the falsifiable reason.' " +
+        "REQUIRED when conviction is STRONG or HIGH (Layer-1) — every buy-side pitch framework requires a variant view for top-tier conviction. Optional on MEDIUM/LOW where consensus alignment is acceptable. " +
+        "If you can't articulate a variant view for a STRONG/HIGH call, your tier is MEDIUM at best — don't claim STRONG/HIGH without one. " +
+        "Example: 'Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3 program is being underweighted by 2 quarters of run-rate, putting Q4 FY2027 revenue 8% above consensus.'",
     ),
   scaling_plan: z
     .array(
@@ -759,6 +805,86 @@ export const recordThesis = defineTool({
         };
       }
 
+      // ── Conviction Expression v4 — field-presence gates (§3) ──────────
+      // Directional theses (LONG/SHORT) require conviction + rationale +
+      // size. STRONG/HIGH additionally require variantView. PASS/PENDING
+      // bypass. See docs/plans/CONVICTION_EXPRESSION.md §3.
+      if (isDirectional) {
+        if (!args.conviction) {
+          console.warn(
+            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — conviction tier required on directional thesis.`,
+          );
+          return {
+            summary: `Thesis rejected for ${args.ticker}: conviction tier required.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note:
+                `Every directional thesis (LONG/SHORT) requires a conviction tier — STRONG / HIGH / MEDIUM / LOW. ` +
+                `STRONG = top-tier (your best 2-3 calls per cycle); HIGH = solid conviction with variant view; ` +
+                `MEDIUM = normal; LOW = weak. Pair with conviction_rationale (one sentence why this tier). ` +
+                `STRONG and HIGH additionally require variant_view ("consensus thinks X, I think Y").`,
+            },
+            sources: [],
+          };
+        }
+        if (!args.conviction_rationale || args.conviction_rationale.trim().length === 0) {
+          console.warn(
+            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — conviction_rationale required.`,
+          );
+          return {
+            summary: `Thesis rejected for ${args.ticker}: conviction_rationale required.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note:
+                `Whenever you set conviction, you must also pass conviction_rationale — one sentence (≤200 chars) explaining why this tier. ` +
+                `Example HIGH: "Composite 7/10, post-print PEAD setup, first day of drift, no analyst PT updates yet — R/R 2.6:1." ` +
+                `Example LOW: "Late-stage chase, RSI 73, volume below threshold."`,
+            },
+            sources: [],
+          };
+        }
+        if (
+          (args.conviction === "STRONG" || args.conviction === "HIGH") &&
+          (!args.variant_view || args.variant_view.trim().length === 0)
+        ) {
+          console.warn(
+            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — ${args.conviction} requires variant_view.`,
+          );
+          return {
+            summary: `Thesis rejected for ${args.ticker}: ${args.conviction} conviction requires variant_view.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note:
+                `${args.conviction} conviction requires variant_view — what does consensus have wrong? ` +
+                `One sentence (≤300 chars): "consensus expects X, I think Y, here's the falsifiable reason." ` +
+                `Example: "Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3 is being underweighted by 2 quarters of run-rate, putting Q4 FY2027 revenue 8% above consensus." ` +
+                `If you can't articulate a variant view, downgrade to MEDIUM. Every buy-side pitch framework requires this for top-tier conviction.`,
+            },
+            sources: [],
+          };
+        }
+        if (args.target_size_pct == null) {
+          console.warn(
+            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — target_size_pct required on directional thesis.`,
+          );
+          return {
+            summary: `Thesis rejected for ${args.ticker}: target_size_pct required on directional thesis.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note:
+                `Every directional thesis (LONG/SHORT) requires target_size_pct — % of portfolio at full position. ` +
+                `Pair with conviction tier: STRONG = 4-6%, HIGH = 3-5%, MEDIUM = 2-3%, LOW = 1-2%. ` +
+                `Account-level caps (maxPositionSize, realMaxPosition) still clip at execution; this field captures intent.`,
+            },
+            sources: [],
+          };
+        }
+      }
+
       // Compute composite = SUM of the four weighted dimensions (caps:
       // 3+3+2+2 = 10). NOT an average — each dimension's cap is the weight,
       // so summing produces a score on the same /10 scale. ≥ 7 = ADD/ROTATE
@@ -777,6 +903,57 @@ export const recordThesis = defineTool({
       const scoring = args.scoring
         ? { ...args.scoring, composite: scoringComposite }
         : null;
+
+      // ── Conviction Expression v4 — consistency gates (§3.5) ──────────
+      // Gate A: STRONG requires composite ≥ 7.
+      // Gate B: STRONG/HIGH require scoring.entryQuality.score ≥ 2.
+      // Without these, the conviction tier is "another field the writer
+      // can be inconsistent in" — exactly the failure mode v4 fixes.
+      // Both gates only fire when scoring is provided AND directional.
+      if (
+        isDirectional &&
+        args.conviction === "STRONG" &&
+        scoringComposite != null &&
+        scoringComposite < 7
+      ) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — Gate A: STRONG with composite ${scoringComposite}.`,
+        );
+        return {
+          summary: `Thesis rejected for ${args.ticker}: STRONG conviction requires composite ≥ 7 (current: ${scoringComposite}).`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note:
+              `Gate A (Conviction Expression v4 §3.5): STRONG conviction is reserved for top-tier calls and requires composite ≥ 7. ` +
+              `Current composite is ${scoringComposite}/10. ` +
+              `Either downgrade to HIGH/MEDIUM/LOW, or re-score composite with justification for the dimension(s) you would raise (trendStrength 0-3, relativeStrength 0-3, entryQuality 0-2, catalystFreshness 0-2).`,
+          },
+          sources: [],
+        };
+      }
+      if (
+        isDirectional &&
+        (args.conviction === "STRONG" || args.conviction === "HIGH") &&
+        args.scoring?.entryQuality?.score != null &&
+        args.scoring.entryQuality.score < 2
+      ) {
+        console.warn(
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — Gate B: ${args.conviction} with entryQuality ${args.scoring.entryQuality.score}.`,
+        );
+        return {
+          summary: `Thesis rejected for ${args.ticker}: ${args.conviction} conviction requires entryQuality ≥ 2 (current: ${args.scoring.entryQuality.score}).`,
+          data: {
+            thesis_id: null,
+            status: "FAILED" as const,
+            note:
+              `Gate B (Conviction Expression v4 §3.5): ${args.conviction} conviction cannot carry a late-stage / extended entry. ` +
+              `scoring.entryQuality.score is ${args.scoring.entryQuality.score}/2 — that signals a chase or no-setup entry, which is structurally incompatible with top-tier conviction even on a strong composite. ` +
+              `Either downgrade to MEDIUM/LOW (which accept entryQuality < 2), or wait for a better entry and re-score entryQuality with justification.`,
+          },
+          sources: [],
+        };
+      }
 
       // PR-4 (2026-05-18): we no longer write `fullResearch` — the
       // `scoring` block is now top-level (PR-1), and the legacy
@@ -1146,6 +1323,15 @@ export const recordThesis = defineTool({
         keyAssumptions: args.key_assumptions ?? [],
         invalidationConds: args.invalidation_conditions ?? [],
         targetSizePct: args.target_size_pct ?? null,
+        // ── Conviction Expression v4 ─────────────────────────────────
+        // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Layer-1 gates
+        // above enforced required-when-directional + variantView-on-
+        // STRONG/HIGH + the two consistency gates; by the time we reach
+        // persistence the values are either valid for the directional
+        // path or null for PASS/PENDING.
+        conviction: args.conviction ?? null,
+        convictionRationale: args.conviction_rationale ?? null,
+        variantView: args.variant_view ?? null,
         scalingPlan: args.scaling_plan
           ? (args.scaling_plan as object)
           : undefined,

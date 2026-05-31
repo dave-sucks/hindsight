@@ -145,6 +145,72 @@ function StatusPill({ status }: { status: ThesisStatus }) {
   );
 }
 
+// ── ConvictionBadge ──
+// Conviction Expression v4 — writer's view-strength tier. Sits next to
+// StatusPill in the ThesisSheet header. Tooltip surfaces the writer's
+// one-sentence rationale (≤200 chars). See
+// docs/plans/CONVICTION_EXPRESSION.md §8.
+//
+// Tier → ShadCN Badge variant (no className overrides per CLAUDE.md):
+//   STRONG → positive (highest visibility)
+//   HIGH   → positive
+//   MEDIUM → secondary
+//   LOW    → outline (most muted)
+//
+// Renders null on unknown tier or pre-v4 legacy rows (conviction null).
+function ConvictionBadge({
+  conviction,
+  rationale,
+}: {
+  conviction: "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
+  rationale: string | null;
+}) {
+  if (!conviction) return null;
+  const variant: "positive" | "secondary" | "outline" =
+    conviction === "STRONG" || conviction === "HIGH"
+      ? "positive"
+      : conviction === "MEDIUM"
+        ? "secondary"
+        : "outline";
+  const badge = <Badge variant={variant}>{conviction}</Badge>;
+  // Wrap in tooltip when a rationale exists; bare badge otherwise.
+  if (!rationale) return badge;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="cursor-help inline-flex items-center" />}>
+        {badge}
+      </TooltipTrigger>
+      <TooltipContent>{rationale}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ── VariantViewBlock ──
+// Conviction Expression v4 — the writer's contrarian take. Renders as a
+// always-visible callout block in the sheet body, after status pills /
+// chain pointer, before the stock-identity row. Card wrapper with a
+// left border accent + "Variant View" label + the sentence verbatim.
+//
+// Per CLAUDE.md: no className overrides on the ShadCN Card — accent
+// achieved via Tailwind utilities on a wrapping div, not on the Card
+// itself.
+//
+// Renders null when variantView is null (MEDIUM/LOW theses or pre-v4
+// backfill rows). See docs/plans/CONVICTION_EXPRESSION.md §8.
+function VariantViewBlock({ variantView }: { variantView: string | null }) {
+  if (!variantView || variantView.trim().length === 0) return null;
+  return (
+    <Card>
+      <div className="px-4 py-3 space-y-1">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Variant View
+        </p>
+        <p className="text-sm">{variantView}</p>
+      </div>
+    </Card>
+  );
+}
+
 // ── PositionRow ──
 // Plain text, no card wrapper. Three stacked lines:
 //   "Bought {N} shares at ${avg}, now trading at ${current}"
@@ -1386,13 +1452,31 @@ export function ThesisSheetBody({
   // blocks (status pill, core belief, key assumptions, scoring, etc).
   const stateLoading = state == null && thesis_id != null;
 
+  // Conviction Expression v4 — writer's tier verdict + rationale +
+  // variantView. Pulled from /triggers state. Renders null when the
+  // thesis is pre-v4 (legacy) or PASS/PENDING (which skip conviction).
+  const conviction = (state?.conviction ?? null) as
+    | "STRONG"
+    | "HIGH"
+    | "MEDIUM"
+    | "LOW"
+    | null;
+  const convictionRationale = state?.convictionRationale ?? null;
+  const variantView = state?.variantView ?? null;
+
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
-      {liveStatus ? (
-        <StatusPill status={liveStatus} />
-      ) : stateLoading ? (
-        <Skeleton className="h-5 w-20" />
-      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        {liveStatus ? (
+          <StatusPill status={liveStatus} />
+        ) : stateLoading ? (
+          <Skeleton className="h-5 w-20" />
+        ) : null}
+        <ConvictionBadge
+          conviction={conviction}
+          rationale={convictionRationale}
+        />
+      </div>
 
       {/* ── Terminal-status reason ──────────────────────────── */}
       {/* When the thesis ended (CLOSED / INVALIDATED / ARCHIVED), surface
@@ -1414,6 +1498,15 @@ export function ThesisSheetBody({
       {state?.parentThesisId ? (
         <ParentThesisChip parentId={state.parentThesisId} />
       ) : null}
+
+      {/* ── Variant View (Conviction Expression v4) ─────────── */}
+      {/* The writer's contrarian take — "consensus thinks X, I think Y."
+          Required on STRONG/HIGH conviction theses; renders only when
+          populated. This is the first content the user reads after
+          seeing the conviction tier badge above. The daily-run prompt
+          treats this as the falsifiable edge claim to re-check against
+          today's signals. See docs/plans/CONVICTION_EXPRESSION.md §8. */}
+      <VariantViewBlock variantView={variantView} />
 
       {/* ── Stock identity + live price ──────────────────────── */}
       <div className="space-y-2">

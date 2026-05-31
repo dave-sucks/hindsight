@@ -454,6 +454,84 @@ ${
             near-term catalyst play, fix it before persisting.`
 }
 
+3.5. Set the CONVICTION fields. REQUIRED on every directional thesis
+   (LONG/SHORT). The daily-run + tactical agents read these BEFORE the
+   trigger state to decide whether to act, so the tier you pick directly
+   modulates how aggressively the agent trades a fired trigger.
+
+   ── \`conviction\` — pick ONE of: ───────────────────────────────────
+     STRONG  Top-tier conviction. Reserved for your best 2-3 calls per
+             dispatch cycle. Use ONLY when:
+               • composite ≥ 8 (Layer-1 Gate A rejects STRONG with composite < 7)
+               • R/R ≥ 3:1
+               • entryQuality ≥ 2 (Gate B — no late-stage chase even on
+                 strong trend/RS)
+               • clear variantView articulated
+               • would buy at market today if it were your own money
+             Reasoning: the daily-run trades STRONG fast at full size with
+             wider hold tolerance. Misuse damages real money.
+
+     HIGH    Solid conviction. Use when:
+               • composite ≥ 7
+               • R/R ≥ 2.5:1
+               • entryQuality ≥ 2 (Gate B applies to HIGH too)
+               • defensible variantView articulated
+             Default for clean dated-catalyst trades and breakouts with
+             volume confirm.
+
+     MEDIUM  Normal conviction. The honest middle. Use when:
+               • composite 6-7, OR composite ≥ 7 with one weak dimension
+               • variantView optional
+             Most theses should be MEDIUM. HIGH is for clear conviction
+             with edge, not "I wrote a thesis so I have to commit."
+
+     LOW     Weak conviction. "Eh." Use when:
+               • composite 4-6, OR ≥ 6 with material reservations
+               • variantView optional
+             Daily-run treats ENTER fires as skip-by-default on LOW.
+
+   ── \`conviction_rationale\` — REQUIRED whenever conviction is set ──
+   ONE sentence (≤200 chars) explaining why this tier. Examples:
+     STRONG: "Composite 8/10, R/R 3:1, June 3 catalyst 8 days out,
+              hyperscaler backlog signals clean guide-raise."
+     HIGH:   "Composite 7/10, post-print PEAD setup, first day of drift,
+              no analyst PT updates yet — R/R 2.6:1."
+     MEDIUM: "Decent breakout but weak peer rank (-33% YTD vs +20% peers);
+              wait for confirmed beat."
+     LOW:    "Late-stage chase, RSI 73, volume below threshold."
+
+   ── \`variant_view\` — REQUIRED for STRONG and HIGH, OPTIONAL otherwise ──
+   ONE sentence (≤300 chars) stating "consensus expects X, I think Y,
+   here's the falsifiable reason." Every buy-side pitch framework requires
+   a variant view for top-tier conviction — without it, your STRONG/HIGH
+   call is consensus-rehash with no edge, and the Layer-1 gate rejects.
+   If you can't articulate a variant view, your tier is MEDIUM at best —
+   don't claim STRONG/HIGH without one.
+
+   Example: "Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3
+   program is being underweighted by 2 quarters of run-rate, putting
+   Q4 FY2027 revenue 8% above consensus."
+
+   ── \`target_size_pct\` — REQUIRED on every directional thesis ──────
+   % of portfolio at full position. Pair with the conviction tier:
+     STRONG → 4-6%
+     HIGH   → 3-5%
+     MEDIUM → 2-3%
+     LOW    → 1-2% (if traded at all)
+   Account-level caps (maxPositionSize, realMaxPosition) clip at
+   execution; this field captures intent.
+
+   ── EXPRESSING "BUY NOW" (no separate field needed) ─────────────────
+   If you want the daily-run to trade immediately at market without
+   waiting for an entry trigger:
+     1. Set entry_price = current price (from the Snapshot).
+     2. Set NO ENTER trigger (or set ENTER to PRICE_ABOVE(current - 0.01)
+        which fires immediately on next evaluation).
+     3. Set conviction = STRONG (and the variantView that justifies it).
+   The combination IS the "buy now" signal. Do NOT set a waiting trigger
+   and then expect the agent to skip it — triggers express the WHEN,
+   conviction expresses the WITH WHAT INTENSITY. Separate axes.
+
 4. Persist the thesis. PR-9 flat schema: pass the 9 individual section
    args (NOT a single research_sections blob — that arg was dropped).
    Map write_thesis_research's data.sections keys to the tool args:

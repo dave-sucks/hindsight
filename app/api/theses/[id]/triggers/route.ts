@@ -82,6 +82,12 @@ export async function GET(
       sourceRationale: true,
       sourceSignalIds: true,
       parentThesisId: true,
+      // Conviction Expression v4 — surface tier + rationale + variantView
+      // to the sheet so the conviction badge and variantView callout
+      // render. See docs/plans/CONVICTION_EXPRESSION.md §8.
+      conviction: true,
+      convictionRationale: true,
+      variantView: true,
       researchRun: { select: { agentConfigId: true } },
     },
   });
@@ -218,5 +224,9 @@ export async function GET(
     sourceRationale: thesis.sourceRationale,
     sourceSignalIds: thesis.sourceSignalIds,
     parentThesisId: thesis.parentThesisId,
+    // Conviction Expression v4 — writer-side fields.
+    conviction: thesis.conviction,
+    convictionRationale: thesis.convictionRationale,
+    variantView: thesis.variantView,
   });
 }

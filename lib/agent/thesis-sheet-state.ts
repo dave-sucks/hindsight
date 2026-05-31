@@ -57,6 +57,10 @@ export type ThesisSheetStateInput = {
   sourceRationale: string | null;
   sourceSignalIds: string[];
   parentThesisId: string | null;
+  // Conviction Expression v4 — writer-side fields.
+  conviction: string | null;
+  convictionRationale: string | null;
+  variantView: string | null;
 };
 
 type Scoring4Dim = {
@@ -126,6 +130,10 @@ export function buildThesisSheetState(t: ThesisSheetStateInput): TriggersRespons
     sourceRationale: t.sourceRationale,
     sourceSignalIds: t.sourceSignalIds ?? [],
     parentThesisId: t.parentThesisId,
+    // Conviction Expression v4
+    conviction: (t.conviction ?? null) as TriggersResponse["conviction"],
+    convictionRationale: t.convictionRationale,
+    variantView: t.variantView,
   };
 }
 
@@ -172,4 +180,8 @@ export const thesisSheetStateSelect = {
   sourceRationale: true,
   sourceSignalIds: true,
   parentThesisId: true,
+  // Conviction Expression v4
+  conviction: true,
+  convictionRationale: true,
+  variantView: true,
 } as const;

@@ -96,6 +96,16 @@ export interface TriggersResponse {
   // onto this). Both place_trade gates read from here.
   scoring: ThesisScoring | null;
   scoringComposite: number | null;
+  // ── Conviction Expression v4 (writer-side) ──────────────────────────
+  // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Tier verdict +
+  // one-sentence rationale + the writer's contrarian take. Null on
+  // PASS / PENDING / pre-v4 legacy rows. The conviction badge in
+  // ThesisSheet header keys off `conviction`; tooltip shows
+  // `convictionRationale`; the variantView callout block keys off
+  // `variantView` (rendered only when present).
+  conviction: "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
+  convictionRationale: string | null;
+  variantView: string | null;
   // ── V2 9-section narrative dossier (PR-9 flat schema) ────────────────
   // The 9 first-class JSONB columns that replaced the `researchSections`
   // blob. Three retypes of legacy fields (snapshot ↔ reasoningSummary,
