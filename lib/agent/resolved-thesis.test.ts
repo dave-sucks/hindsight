@@ -113,6 +113,7 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
 
   it("ENTER_NOW when ENTER trigger PRICE_ABOVE fires", () => {
     const enterTrigger: Trigger = {
+      id: "trg_test_enter",
       action: "ENTER",
       predicate: { kind: "PRICE_ABOVE", level: 92.5 },
       cooldownDays: 1,
@@ -130,6 +131,7 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
 
   it("WAIT_FOR_TRIGGER when ENTER trigger has not fired (price below threshold)", () => {
     const enterTrigger: Trigger = {
+      id: "trg_test_enter",
       action: "ENTER",
       predicate: { kind: "PRICE_ABOVE", level: 92.5 },
       cooldownDays: 1,
