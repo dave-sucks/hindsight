@@ -304,7 +304,48 @@ model Thesis {
   // Promoted from the legacy `fullResearch.scoring` + `fullResearch.scoringComposite`
   // nesting on 2026-05-18 (THESIS_CLEANUP PR-1). Read by /api/theses/[id]/triggers
   // for the ThesisSheet "Composite Score" section.
+  //
+  // ── Conviction Expression v4 — Layer-1 input ────────────────────────
+  // `scoring.composite` and `scoring.entryQuality.score` feed the two
+  // consistency gates in record_thesis/update_thesis (Gate A: STRONG
+  // requires composite ≥ 7; Gate B: STRONG/HIGH require entryQuality ≥ 2).
+  // See docs/plans/CONVICTION_EXPRESSION.md §3.5.
   scoring Json?
+
+  // ── Conviction Expression v4 ────────────────────────────────────────
+  // Writer's view-strength on this thesis. Separate axis from `direction`
+  // (which is bullish/bearish/no-view). Required on every directional
+  // thesis (LONG/SHORT) via Layer-1 gate. Null on PASS, PENDING, and
+  // pre-v4 legacy rows.
+  //   STRONG  — top-tier conviction. Goldman Conviction List equivalent.
+  //             Writer's best calls (~2-3 names per analyst typical).
+  //             Gate A: requires scoring.composite ≥ 7.
+  //   HIGH    — solid conviction. Standard Buy / Overweight.
+  //   MEDIUM  — normal conviction. The honest middle.
+  //   LOW     — weak conviction. "Eh." Track but most signals skip.
+  // Gate B (record_thesis/update_thesis): STRONG and HIGH require
+  // scoring.entryQuality.score ≥ 2 — late-stage chases can't carry
+  // top-tier conviction even on a strong composite.
+  // See docs/plans/CONVICTION_EXPRESSION.md §3-§4.
+  conviction          String?
+
+  // One-sentence justification for the conviction tier (≤200 chars).
+  // Required whenever `conviction` is set (Layer-1). For backfilled rows,
+  // populated with "backfilled from composite on YYYY-MM-DD" so the UI
+  // can distinguish writer-attested rationales from derived defaults.
+  // See docs/plans/CONVICTION_EXPRESSION.md §3, §9.
+  convictionRationale String?
+
+  // The writer's contrarian take. One sentence (≤300 chars):
+  //   "Consensus thinks X, I think Y, here's why."
+  // REQUIRED via Layer-1 gate when `conviction` is STRONG or HIGH —
+  // every buy-side pitch framework requires a variant view for top-tier
+  // conviction. Optional on MEDIUM/LOW where consensus alignment is
+  // acceptable. Daily-run uses this as the writer's specific edge that
+  // can be re-checked against today's signals (consensus moved to the
+  // writer's view → defer).
+  // See docs/plans/CONVICTION_EXPRESSION.md §3-§4.
+  variantView         String?
 
   // ── PROMOTED state context (set only at PAPER→LIVE promotion) ───────
   // Frozen at the moment the user promotes the analyst. Drives the

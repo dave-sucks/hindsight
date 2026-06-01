@@ -27,6 +27,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import Link from "next/link";
 import { StockLogo } from "@/components/StockLogo";
 import { TickBar, PriceGauge, type Tick } from "@/components/ui/gauge";
 import {
@@ -142,6 +143,130 @@ function StatusPill({ status }: { status: ThesisStatus }) {
       <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
       {display.label}
     </Badge>
+  );
+}
+
+// ── ConvictionBadge ──
+// Conviction Expression v4 — writer's view-strength tier. Sits next to
+// StatusPill in the ThesisSheet header. Tooltip surfaces the writer's
+// one-sentence rationale (≤200 chars). See
+// docs/plans/CONVICTION_EXPRESSION.md §8.
+//
+// Tier → ShadCN Badge variant (no className overrides per CLAUDE.md):
+//   STRONG → positive (highest visibility)
+//   HIGH   → positive
+//   MEDIUM → secondary
+//   LOW    → outline (most muted)
+//
+// Renders null on unknown tier or pre-v4 legacy rows (conviction null).
+function ConvictionBadge({
+  conviction,
+  rationale,
+}: {
+  conviction: "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
+  rationale: string | null;
+}) {
+  if (!conviction) return null;
+  const variant: "positive" | "secondary" | "outline" =
+    conviction === "STRONG" || conviction === "HIGH"
+      ? "positive"
+      : conviction === "MEDIUM"
+        ? "secondary"
+        : "outline";
+  // Sentence-case label: "Strong Conviction" / "High Conviction" /
+  // "Medium Conviction" / "Low Conviction". Per principal feedback —
+  // bare tier ("HIGH") didn't make clear what the badge represented.
+  const label = `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} Conviction`;
+  const badge = <Badge variant={variant}>{label}</Badge>;
+  // Wrap in tooltip when a rationale exists; bare badge otherwise.
+  if (!rationale) return badge;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="cursor-help inline-flex items-center" />}>
+        {badge}
+      </TooltipTrigger>
+      <TooltipContent>{rationale}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ── ActionabilityBadge ──
+// Conviction Expression v4 reader-side — the at-a-glance "can I act on
+// this now or not" rollup. Driven by `resolved.actionability` from the
+// /triggers API. Sits next to StatusPill + ConvictionBadge in the sheet
+// header. See docs/plans/CONVICTION_EXPRESSION.md §8.
+//
+// State → label + variant:
+//   ENTER_NOW            → "READY TO BUY"          positive
+//   WAIT_FOR_TRIGGER     → "WAITING — <detail>"    secondary
+//   PENDING_CATALYST     → "PENDING CATALYST"      secondary
+//   ACTIVE_HOLD          → "HOLDING"               secondary
+//   STALE_PAST_CATALYST  → "STALE"                 outline
+//   SUPERSEDED           → "SUPERSEDED"            outline
+//   DEAD                 → null (status pill already conveys this)
+//
+// triggerDetail is surfaced as the WAITING label suffix when present
+// (e.g. "WAITING — needs $92.50, at $90.30 (-2.4%)").
+function ActionabilityBadge({
+  resolved,
+}: {
+  resolved: NonNullable<TriggersResponse["resolved"]>;
+}) {
+  if (resolved.actionability === "DEAD") return null;
+
+  let label: string;
+  let variant: "positive" | "secondary" | "outline";
+  switch (resolved.actionability) {
+    case "ENTER_NOW":
+      label = "READY TO BUY";
+      variant = "positive";
+      break;
+    case "WAIT_FOR_TRIGGER":
+      label = resolved.triggerDetail
+        ? `WAITING — ${resolved.triggerDetail}`
+        : "WAITING";
+      variant = "secondary";
+      break;
+    case "PENDING_CATALYST":
+      label = "PENDING CATALYST";
+      variant = "secondary";
+      break;
+    case "ACTIVE_HOLD":
+      label = "HOLDING";
+      variant = "secondary";
+      break;
+    case "STALE_PAST_CATALYST":
+      label = "STALE";
+      variant = "outline";
+      break;
+    case "SUPERSEDED":
+      label = "SUPERSEDED";
+      variant = "outline";
+      break;
+  }
+
+  return <Badge variant={variant}>{label}</Badge>;
+}
+
+// ── VariantViewBlock ──
+// Conviction Expression v4 — the writer's contrarian take. Renders as a
+// peer section (same styling as Key Assumptions + Invalidation
+// Conditions), not as a special Card callout. Per principal feedback
+// 2026-05-31: variant view "isn't that much more unique than the
+// others" — should sit alongside the other writer-judgment sections
+// in the natural body flow, not be visually elevated.
+//
+// Renders null when variantView is null (MEDIUM/LOW theses or pre-v4
+// backfill rows). See docs/plans/CONVICTION_EXPRESSION.md §8.
+function VariantViewBlock({ variantView }: { variantView: string | null }) {
+  if (!variantView || variantView.trim().length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+        Variant View
+      </p>
+      <p className="text-sm text-foreground leading-relaxed">{variantView}</p>
+    </div>
   );
 }
 
@@ -480,16 +605,54 @@ function TradeStructureBlock({
     nextReviewAt: string | null;
     maxHoldDays: number | null;
     targetSizePct: number | null;
+    resolved?: TriggersResponse["resolved"];
   };
 }) {
   const hasHorizon = state.horizon != null;
   const hasNextReview = state.nextReviewAt != null;
   const showMaxHold = state.horizon === "TRADE" && state.maxHoldDays != null;
   const hasSize = state.targetSizePct != null;
+  // Conviction Expression v4 — actionability rollup. Lives in Trade
+  // Structure (not as a top-of-sheet badge per principal feedback) —
+  // it's "execution context" alongside Horizon / Next review / Size.
+  const hasStatus =
+    state.resolved != null && state.resolved.actionability !== "DEAD";
 
-  if (!hasHorizon && !hasNextReview && !showMaxHold && !hasSize) return null;
+  if (!hasHorizon && !hasNextReview && !showMaxHold && !hasSize && !hasStatus)
+    return null;
 
   const cells: { label: string; value: React.ReactNode; tooltip?: string }[] = [];
+  // Status first — it's the "should I act on this right now" answer
+  // that should anchor reading the row.
+  if (hasStatus && state.resolved) {
+    const r = state.resolved;
+    let statusValue: string;
+    switch (r.actionability) {
+      case "ENTER_NOW":
+        statusValue = "Ready to buy";
+        break;
+      case "WAIT_FOR_TRIGGER":
+        statusValue = r.triggerDetail
+          ? `Waiting — ${r.triggerDetail}`
+          : "Waiting on trigger";
+        break;
+      case "PENDING_CATALYST":
+        statusValue = "Catalyst pending";
+        break;
+      case "ACTIVE_HOLD":
+        statusValue = "Holding";
+        break;
+      case "STALE_PAST_CATALYST":
+        statusValue = "Past catalyst — review";
+        break;
+      case "SUPERSEDED":
+        statusValue = "Superseded by newer thesis";
+        break;
+      default:
+        statusValue = r.actionability;
+    }
+    cells.push({ label: "Status", value: statusValue });
+  }
   if (hasHorizon) {
     cells.push({
       label: "Horizon",
@@ -1386,13 +1549,41 @@ export function ThesisSheetBody({
   // blocks (status pill, core belief, key assumptions, scoring, etc).
   const stateLoading = state == null && thesis_id != null;
 
+  // Conviction Expression v4 — writer's tier verdict + rationale +
+  // variantView. Pulled from /triggers state. Renders null when the
+  // thesis is pre-v4 (legacy) or PASS/PENDING (which skip conviction).
+  const conviction = (state?.conviction ?? null) as
+    | "STRONG"
+    | "HIGH"
+    | "MEDIUM"
+    | "LOW"
+    | null;
+  const convictionRationale = state?.convictionRationale ?? null;
+  const variantView = state?.variantView ?? null;
+
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
-      {liveStatus ? (
-        <StatusPill status={liveStatus} />
-      ) : stateLoading ? (
-        <Skeleton className="h-5 w-20" />
-      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        {liveStatus ? (
+          <StatusPill status={liveStatus} />
+        ) : stateLoading ? (
+          <Skeleton className="h-5 w-20" />
+        ) : null}
+        <ConvictionBadge
+          conviction={conviction}
+          rationale={convictionRationale}
+        />
+        {/* ActionabilityBadge intentionally NOT rendered on the sheet
+            header. The actionability rollup is most useful in list-scan
+            views (watchlist, read-theses table, runs feed) where you're
+            comparing many rows. In the sheet you're deep-reading one
+            thesis and the same info is already conveyed by status +
+            triggers + live price + position. Adding it here made the
+            header noisy and surfaced misleading SUPERSEDED on rows that
+            had a cross-analyst PASS (now also scope-fixed in the API).
+            See docs/plans/CONVICTION_EXPRESSION.md §8 — kept ONLY for
+            list views per principal feedback 2026-05-31. */}
+      </div>
 
       {/* ── Terminal-status reason ──────────────────────────── */}
       {/* When the thesis ended (CLOSED / INVALIDATED / ARCHIVED), surface
@@ -1416,17 +1607,27 @@ export function ThesisSheetBody({
       ) : null}
 
       {/* ── Stock identity + live price ──────────────────────── */}
+      {/* Company name + ticker are a Link to /stocks/[ticker] — the
+          sheet is a focused view of one thesis; clicking the stock
+          identity takes you to the broader stock page (TradingView
+          chart, all theses on this ticker, etc.). Hover-underline
+          conveys affordance without disrupting the typography. */}
       <div className="space-y-2">
-        <div className="flex items-center gap-3">
+        <Link
+          href={`/stocks/${ticker}`}
+          className="flex items-center gap-3 group/stocklink"
+        >
           <StockLogo ticker={ticker} size="lg" />
           <div className="flex-1 min-w-0">
-            <p className="text-lg font-semibold truncate">{displayName}</p>
+            <p className="text-lg font-semibold truncate group-hover/stocklink:underline underline-offset-4">
+              {displayName}
+            </p>
             <p className="font-mono text-xs text-muted-foreground">
               {ticker}
               {exchange ? ` · ${exchange}` : ""}
             </p>
           </div>
-        </div>
+        </Link>
         {/* Live current price + day's change. Comes from the separate
             /quote endpoint (slow — Finnhub call) so this block usually
             paints after the rest of the sheet body. Skeleton while
@@ -1591,6 +1792,13 @@ export function ThesisSheetBody({
           it belongs — these are the trade-shape mechanics that pair with
           entry/target/stop, not metadata about the trigger pile. */}
       {state ? <TradeStructureBlock state={state} /> : null}
+
+      {/* ── Variant View (Conviction Expression v4) ─────────── */}
+      {/* The writer's contrarian take — "consensus thinks X, I think Y."
+          Required on STRONG/HIGH conviction theses; renders only when
+          populated. Sits alongside Key Assumptions + Invalidation as
+          a peer "writer's judgment" section per principal feedback. */}
+      <VariantViewBlock variantView={variantView} />
 
       {/* ── Key Assumptions ───────────────────────────────────── */}
       {/* ≥2 falsifiable premises that must remain true for the core belief

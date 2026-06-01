@@ -188,6 +188,33 @@ const updateSchema = z.object({
     ),
   target_size_pct: z.number().min(0).max(100).optional(),
 
+  // ── Conviction Expression v4 ─────────────────────────────────────────
+  // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Patch-style here:
+  // a tier set without a rationale is rejected; STRONG/HIGH without
+  // variantView is rejected; STRONG with composite<7 or STRONG/HIGH
+  // with entryQuality<2 is rejected (consistency gates §3.5).
+  conviction: z
+    .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])
+    .optional()
+    .describe(
+      "YOUR REAL VIEW after this review. STRONG = top calls (urgent buy, real money). HIGH = solid conviction, want it in size. MEDIUM = honest middle, probably works. LOW = tracking but not enthusiastic. " +
+        "Independent of composite. Patch when the picture has materially changed (new evidence validated the variantView → upgrade; consensus caught up to your view → downgrade). When you patch this, you MUST also patch conviction_rationale. STRONG/HIGH require variant_view (patched in this call OR already on the row).",
+    ),
+  conviction_rationale: z
+    .string()
+    .max(400)
+    .optional()
+    .describe(
+      "Updated rationale (≤400 chars). WRITE LIKE YOU'RE TALKING TO A PERSON — not 'composite 7/10, R/R 2.5:1'. Express the judgment, not the math. Required whenever you patch conviction.",
+    ),
+  variant_view: z
+    .string()
+    .max(300)
+    .optional()
+    .describe(
+      "Update the writer's contrarian take (≤300 chars): 'consensus expects X, I think Y, here's why.' Required when patching conviction to STRONG/HIGH if existing.variantView is empty. Optional on MEDIUM/LOW.",
+    ),
+
   // ── Direction (PENDING → LONG/SHORT/PASS promotion only) ─────────────
   // The only legal direction change is OUT of PENDING. Direction flips on
   // committed (LONG ↔ SHORT) theses go through record_thesis with
@@ -330,6 +357,10 @@ type UpdatePatch = Partial<{
   targetPrice: number | null;
   stopLoss: number | null;
   targetSizePct: number | null;
+  // ── Conviction Expression v4 (existing-row read) ──────────────────────
+  conviction: string | null;
+  convictionRationale: string | null;
+  variantView: string | null;
   horizon: string | null;
   catalystDate: Date | null;
   maxHoldDays: number | null;
@@ -406,6 +437,12 @@ export const updateThesis = defineTool({
         targetPrice: true,
         stopLoss: true,
         targetSizePct: true,
+        // Conviction Expression v4 — read existing values so gates can
+        // enforce coherence when only a subset of (conviction, rationale,
+        // variantView) is being patched.
+        conviction: true,
+        convictionRationale: true,
+        variantView: true,
         horizon: true,
         catalystDate: true,
         maxHoldDays: true,
@@ -684,6 +721,17 @@ export const updateThesis = defineTool({
         if (!args.core_belief || args.core_belief.trim().length === 0) missing.push("core_belief");
         if (!args.key_assumptions || args.key_assumptions.filter((s) => s.trim().length > 0).length < 2) missing.push("key_assumptions (≥2)");
         if (!args.invalidation_conditions || args.invalidation_conditions.filter((s) => s.trim().length > 0).length < 2) missing.push("invalidation_conditions (≥2)");
+        // Conviction Expression v4 — PENDING promotion requires the
+        // same writer-side fields record_thesis would have required.
+        if (!args.conviction) missing.push("conviction (STRONG/HIGH/MEDIUM/LOW)");
+        if (!args.conviction_rationale || args.conviction_rationale.trim().length === 0) missing.push("conviction_rationale");
+        if (
+          (args.conviction === "STRONG" || args.conviction === "HIGH") &&
+          (!args.variant_view || args.variant_view.trim().length === 0)
+        ) {
+          missing.push("variant_view (required for STRONG/HIGH)");
+        }
+        if (args.target_size_pct == null) missing.push("target_size_pct");
         if (missing.length > 0) {
           return {
             summary: `Refused PENDING→${args.direction} promotion on $${existing.ticker} — missing structural fields.`,
@@ -714,6 +762,73 @@ export const updateThesis = defineTool({
           };
         }
       }
+    }
+
+    // ── Conviction Expression v4 — coherence + consistency gates ────────
+    // See docs/plans/CONVICTION_EXPRESSION.md §3, §3.5. Three checks fire
+    // on non-PENDING-promotion paths:
+    //   1. Coherence: if patching `conviction`, must also patch rationale.
+    //   2. Coherence: if patching to STRONG/HIGH, variantView must exist
+    //      (either patched in this call, or already on the row).
+    //   3. Consistency Gate A: conviction (patched or existing) = STRONG
+    //      requires effective composite ≥ 7.
+    //   4. Consistency Gate B: conviction = STRONG/HIGH requires effective
+    //      entryQuality.score ≥ 2.
+    //
+    // "Effective" = patched value if present in this call, otherwise the
+    // existing-row value. This catches the asymmetric case where a writer
+    // lowers composite via a scoring patch on a thesis that already has
+    // conviction=STRONG (the patch would silently break the invariant).
+    const isPendingPromotionForConvictionGates =
+      existing.direction === "PENDING";
+    if (!isPendingPromotionForConvictionGates) {
+      const effectiveConviction = args.conviction ?? existing.conviction;
+      const effectiveVariantView =
+        args.variant_view !== undefined
+          ? args.variant_view
+          : existing.variantView;
+
+      // Coherence check 1: setting conviction requires rationale in same call.
+      if (args.conviction !== undefined) {
+        if (!args.conviction_rationale || args.conviction_rationale.trim().length === 0) {
+          return {
+            summary: `Refused update on $${existing.ticker} — patching conviction requires conviction_rationale.`,
+            data: {
+              ok: false,
+              error: "conviction_rationale_required",
+              message:
+                `Whenever you patch \`conviction\`, you must also patch \`conviction_rationale\` (one sentence ≤200 chars explaining the new tier). ` +
+                `Carrying over the prior rationale silently when changing the tier means the rationale stops matching the tier. Decide and document.`,
+            },
+            sources: [],
+          };
+        }
+      }
+      // Coherence check 2: STRONG/HIGH needs a variantView, even if just
+      // carried over from the existing row.
+      if (
+        (effectiveConviction === "STRONG" || effectiveConviction === "HIGH") &&
+        (!effectiveVariantView || effectiveVariantView.trim().length === 0)
+      ) {
+        return {
+          summary: `Refused update on $${existing.ticker} — ${effectiveConviction} conviction requires variant_view.`,
+          data: {
+            ok: false,
+            error: "variant_view_required",
+            message:
+              `${effectiveConviction} conviction requires variant_view — "consensus expects X, I think Y, here's why." ` +
+              `Pass variant_view in this call (≤300 chars), or downgrade conviction to MEDIUM. ` +
+              `Every buy-side pitch framework requires a variant view for top-tier conviction.`,
+          },
+          sources: [],
+        };
+      }
+
+      // Consistency gates (Gate A, Gate B) REMOVED 2026-05-31.
+      // See record-thesis.ts for the rationale: conviction is the
+      // writer's view, NOT a derived field from composite. Coupling them
+      // made the tier "just a name on composite," which defeated the
+      // point. Conviction patches now stand on their own.
     }
 
     // ── Zero-trigger guard (audit Step 4) ─────────────────────────────────
@@ -972,6 +1087,16 @@ export const updateThesis = defineTool({
     }
     if (args.target_size_pct !== undefined)
       patch.targetSizePct = args.target_size_pct;
+    // Conviction Expression v4 — persist patched conviction fields.
+    // Coherence + consistency gates above already ran; values here are
+    // safe to write. Empty-string for variantView is normalized to null
+    // (writer way to clear an obsolete edge).
+    if (args.conviction !== undefined) patch.conviction = args.conviction;
+    if (args.conviction_rationale !== undefined)
+      patch.convictionRationale = args.conviction_rationale;
+    if (args.variant_view !== undefined)
+      patch.variantView =
+        args.variant_view.trim().length === 0 ? null : args.variant_view;
     if (args.horizon !== undefined) patch.horizon = args.horizon;
     if (args.catalyst_date !== undefined)
       patch.catalystDate = args.catalyst_date ? new Date(args.catalyst_date) : null;

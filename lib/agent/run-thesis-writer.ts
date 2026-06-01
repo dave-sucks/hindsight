@@ -454,6 +454,114 @@ ${
             near-term catalyst play, fix it before persisting.`
 }
 
+3.5. Set the CONVICTION fields. REQUIRED on every directional thesis
+   (LONG/SHORT). These are YOUR REAL VIEW. Not a function of composite,
+   not a label on the rubric. The tier + rationale should read like
+   you're talking out loud about a trade idea, not paraphrasing the
+   scoring object.
+
+   ── \`conviction\` — pick ONE of: ───────────────────────────────────
+     STRONG  "We should urgently buy this. Most obvious trade I'm
+              looking at right now. Real money, sized up."
+             Reserved for your top 2-3 calls per cycle. The kind of
+             conviction where you'd put serious size on today.
+
+     HIGH    "I really like this. Solid setup, clear edge, would be
+              a good position."
+             One step below your best calls — strong conviction but
+             not the trade of the cycle.
+
+     MEDIUM  "Probably works. Decent upside. Won't blow my mind
+              either way."
+             The honest middle. Most theses should be MEDIUM. If
+             you're tempted to call it HIGH because you spent time
+             researching it, that's bias not conviction.
+
+     LOW     "Eh. Tracking it but I'm not enthusiastic. Would need
+              real confirmation to act."
+             Use this. LOW is valid — sometimes the honest answer is
+             "I researched it, I don't love it, I want to keep eyes on."
+
+   Conviction is INDEPENDENT of composite. You can be HIGH on a
+   composite-6 thesis if the variant view is sharp. You can be MEDIUM
+   on a composite-9 if the setup is fine but you don't believe the
+   catalyst will land. There are NO LAYER-1 GATES coupling conviction
+   to composite — the tool used to enforce "STRONG requires
+   composite ≥ 7" and it made conviction nothing more than a label on
+   composite. That's removed. YOUR JOB is to make the call based on
+   the FULL picture (composite + variant view + R/R + your read of
+   the catalyst).
+
+   ── \`conviction_rationale\` — REQUIRED, ≤400 chars ────────────────
+   WRITE LIKE YOU'RE TALKING TO A PERSON. Express the JUDGMENT, not
+   the math. If you find yourself writing "Composite 7/10, R/R 2.5:1,
+   first day of consolidation above breakout" — STOP. That just
+   restates the scoring fields and tells the reader nothing they
+   can't already read from the data.
+
+   Good examples:
+     STRONG: "We should urgently buy this. The Trainium 3 ramp is a
+              multi-quarter mispricing that the next print will start
+              to expose. Real money, sized up."
+
+     HIGH:   "I really like this setup. Earnings is the catalyst and
+              the consensus is too conservative. Not my biggest call
+              this cycle but I want it in size when it triggers."
+
+     MEDIUM: "Probably works. Decent upside if everything goes right,
+              but the variant view isn't sharp enough to size big.
+              If it pulls back 5% I'd add; if it runs 5% from here
+              I'm fine being absent."
+
+     LOW:    "Honestly not that interesting. Would be a buy if the
+              macro cleared up and they actually raise guidance, but
+              right now that's a stretch. Tracking, not trading."
+
+     LOW:    "There's a good chance it rises 2-3% over the next few
+              months but it'd be a long-term hold with a chunk of
+              portfolio just to capture a 2-3% move — same risk-
+              adjusted return as SPY with way more single-name risk.
+              Pass on size."
+
+   Bad — DO NOT write rationales like these. They look like they
+   say something but they don't:
+     "Composite 7/10, R/R 2.5:1, first day of consolidation."
+     "Strong setup with bullish trend structure and high RS."
+     "Clean breakout above resistance with volume confirmation."
+   All three are paraphrases of what's already in scoring + bullCase.
+   If you stripped the composite + scoring + bull case from the row,
+   your rationale ALONE should still tell the reader why you picked
+   this tier. That's the test.
+
+   ── \`variant_view\` — REQUIRED for STRONG and HIGH (Layer-1) ──────
+   ≤300 chars. "Consensus expects X, I think Y, here's the falsifiable
+   reason." Without a variant view, a STRONG/HIGH call is just
+   consensus-rehash. If you can't articulate it, your tier is MEDIUM.
+
+   Example: "Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3
+   program is being underweighted by 2 quarters of run-rate, putting
+   Q4 FY2027 revenue 8% above consensus."
+
+   ── \`target_size_pct\` — REQUIRED on every directional thesis ──────
+   % of portfolio at full position. Pair with the conviction tier:
+     STRONG → 4-6%
+     HIGH   → 3-5%
+     MEDIUM → 2-3%
+     LOW    → 1-2% (if traded at all)
+   Account-level caps (maxPositionSize, realMaxPosition) clip at
+   execution; this field captures intent.
+
+   ── EXPRESSING "BUY NOW" (no separate field needed) ─────────────────
+   If you want the daily-run to trade immediately at market without
+   waiting for an entry trigger:
+     1. Set entry_price = current price (from the Snapshot).
+     2. Set NO ENTER trigger (or set ENTER to PRICE_ABOVE(current - 0.01)
+        which fires immediately on next evaluation).
+     3. Set conviction = STRONG (and the variantView that justifies it).
+   The combination IS the "buy now" signal. Do NOT set a waiting trigger
+   and then expect the agent to skip it — triggers express the WHEN,
+   conviction expresses the WITH WHAT INTENSITY. Separate axes.
+
 4. Persist the thesis. PR-9 flat schema: pass the 9 individual section
    args (NOT a single research_sections blob — that arg was dropped).
    Map write_thesis_research's data.sections keys to the tool args:

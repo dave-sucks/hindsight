@@ -14,6 +14,12 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { getAccountId } from "@/lib/auth/account";
+import {
+  buildResolvedEnvelope,
+  buildSupersessionMap,
+} from "@/lib/agent/resolved-thesis";
+import type { Trigger } from "@/lib/agent/triggers/types";
+import { getStockQuote } from "@/lib/actions/finnhub.actions";
 
 export async function GET(
   _req: Request,
@@ -82,6 +88,16 @@ export async function GET(
       sourceRationale: true,
       sourceSignalIds: true,
       parentThesisId: true,
+      // Conviction Expression v4 — surface tier + rationale + variantView
+      // to the sheet so the conviction badge and variantView callout
+      // render. See docs/plans/CONVICTION_EXPRESSION.md §8.
+      conviction: true,
+      convictionRationale: true,
+      variantView: true,
+      // createdAt is needed by the resolver's supersession check (older
+      // row is SUPERSEDED iff a newer terminal sister exists). Was not
+      // previously selected here.
+      createdAt: true,
       researchRun: { select: { agentConfigId: true } },
     },
   });
@@ -140,6 +156,61 @@ export async function GET(
   // the sheet header on 2026-05-18 — the same data is still visible inside
   // the Activity timeline at the bottom, which has its own query. Cuts
   // ~100-200ms off every sheet open.
+
+  // ── Conviction Expression v4 — resolved envelope ──────────────────
+  // Server-side computation of the same envelope get_theses returns to
+  // the agent: live price, trigger evaluation, supersession check,
+  // actionability rollup. Powers the actionability badge in the sheet
+  // header. Two parallel queries — supersession SQL + Finnhub quote.
+  //
+  // Supersession is scoped to the SAME ANALYST as this thesis, not the
+  // whole account. Two analysts can hold different views on the same
+  // ticker (one LONG, one PASS) without either superseding the other —
+  // they have independent mandates. Pre-fix, account-level scoping
+  // produced false SUPERSEDED flags on cross-analyst PASS rows.
+  const ownAnalystId = thesis.researchRun?.agentConfigId ?? null;
+  const [terminalSiblings, quote] = await Promise.all([
+    prisma.thesis.findMany({
+      where: {
+        accountId,
+        ticker: thesis.ticker,
+        ...(ownAnalystId
+          ? { researchRun: { agentConfigId: ownAnalystId } }
+          : {}),
+        OR: [
+          { status: { in: ["INVALIDATED", "ARCHIVED", "CLOSED"] } },
+          { direction: "PASS" },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+      select: { id: true, ticker: true, createdAt: true },
+    }),
+    getStockQuote(thesis.ticker).catch(() => null),
+  ]);
+  const supersessionMap = buildSupersessionMap(terminalSiblings);
+  const triggersParsed = triggersArraySchema.safeParse(thesis.triggers);
+  const parsedTriggers = (triggersParsed.success
+    ? triggersParsed.data
+    : []) as Trigger[];
+  const resolved = buildResolvedEnvelope({
+    thesis: {
+      id: thesis.id,
+      ticker: thesis.ticker,
+      status: thesis.status,
+      direction: thesis.direction,
+      entryPrice: thesis.entryPrice,
+      triggers: thesis.triggers,
+      catalystDate: thesis.catalystDate,
+      createdAt: thesis.createdAt,
+      nextReviewAt: thesis.nextReviewAt,
+      scoring: thesis.scoring,
+      parsedTriggers,
+    },
+    currentPrice: quote && typeof quote.c === "number" && quote.c > 0 ? quote.c : null,
+    supersession: supersessionMap.get(thesis.ticker) ?? null,
+    now: new Date(),
+  });
 
   // Pull scoring from the top-level column (PR-1 canonical), falling back
   // to the legacy `fullResearch.scoring` / `fullResearch.scoringComposite`
@@ -218,5 +289,13 @@ export async function GET(
     sourceRationale: thesis.sourceRationale,
     sourceSignalIds: thesis.sourceSignalIds,
     parentThesisId: thesis.parentThesisId,
+    // Conviction Expression v4 — writer-side fields.
+    conviction: thesis.conviction,
+    convictionRationale: thesis.convictionRationale,
+    variantView: thesis.variantView,
+    // Conviction Expression v4 — resolved envelope (live price +
+    // trigger state + actionability + supersession). Computed below in
+    // parallel with the position lookup. See docs/plans/CONVICTION_EXPRESSION.md §6.
+    resolved,
   });
 }
