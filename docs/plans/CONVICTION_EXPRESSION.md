@@ -273,9 +273,19 @@ The clean version: writer expresses entry timing through the trigger structure (
 
 Triggers themselves are a Hindsight workaround for the fact that agents aren't continuously running — in a "agent evaluates every minute" world, you wouldn't even need a separate triggers array; the agent would just check conditions each pass. Given we DO have triggers, they're the right place for "when," and conviction is the right place for "with what intensity." Separate axes. No collapsing.
 
-### 3.5. Layer-1 consistency gates
+### 3.5. Layer-1 consistency gates — REMOVED 2026-05-31
 
-Beyond the field-presence gates in §3 (required-when-directional, variantView-required-for-STRONG/HIGH, targetSizePct-required), two additional Layer-1 gates enforce **tier-composite-entryQuality consistency**. These answer §14 Q2 (which v3 deferred as "strict gate, or soft warning?") with **strict gate**.
+> **What was here:** two consistency gates — Gate A (STRONG requires composite ≥ 7) and Gate B (STRONG/HIGH require entryQuality ≥ 2). They were dropped after the first demo proved they made conviction nothing more than a derived label on composite. Conviction is the writer's INDEPENDENT view; coupling it to composite via gates defeated the whole point.
+>
+> **What stays:** the field-presence gates in §3 (required-when-directional, conviction_rationale required when conviction set, variantView required for STRONG/HIGH, targetSizePct required). Those don't couple conviction to composite — they just require fields to exist.
+>
+> **What the writer prompt now teaches:** conviction is INDEPENDENT of composite. You can be HIGH on a composite-6 thesis if the variant view is sharp; you can be MEDIUM on a composite-9 if the catalyst won't land. Composite is rubric-based; conviction is the writer's call.
+
+The original (removed) text below is kept as historical context for the v4 → v4.1 reversal.
+
+---
+
+**[REMOVED]** Beyond the field-presence gates in §3 (required-when-directional, variantView-required-for-STRONG/HIGH, targetSizePct-required), two additional Layer-1 gates enforce **tier-composite-entryQuality consistency**. These answer §14 Q2 (which v3 deferred as "strict gate, or soft warning?") with **strict gate**.
 
 ```
 Gate A — composite floor for STRONG:

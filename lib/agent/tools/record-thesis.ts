@@ -280,25 +280,25 @@ const thesisFields = z.object({
     .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])
     .optional()
     .describe(
-      "Writer's view-strength on this thesis. REQUIRED for LONG/SHORT (Layer-1 gate). " +
-        "Separate axis from `direction` (which is bull/bear/no-view).\n" +
-        "  STRONG — top-tier (your best 2-3 calls per cycle). Composite ≥ 8, R/R ≥ 3:1, clear variant view, would buy at market today if it were your own money.\n" +
-        "  HIGH   — solid conviction. Composite ≥ 7, R/R ≥ 2.5:1, defensible variant view. Default for clean dated-catalyst trades and breakouts with volume confirm.\n" +
-        "  MEDIUM — the honest middle. Composite 6-7 or ≥ 7 with one weak dimension. Most theses should be MEDIUM.\n" +
-        "  LOW    — 'Eh' (weak conviction). Composite 4-6 or ≥ 6 with material reservations.\n" +
-        "Layer-1 gates: STRONG requires composite ≥ 7 (Gate A); STRONG/HIGH require entryQuality ≥ 2 (Gate B). The composite/entryQuality you submit will be checked against the tier you pick.",
+      "YOUR REAL VIEW on this thesis. Not a function of composite, not a label on the rubric. The tier you'd say out loud if asked 'how do you actually feel about this trade.' REQUIRED for LONG/SHORT (Layer-1).\n" +
+        "  STRONG — 'We should urgently buy this. Most obvious trade I'm looking at.' Reserved for your top 2-3 calls per cycle. The kind of conviction where you'd put real money in size, today.\n" +
+        "  HIGH   — 'I really like this. Solid setup, clear edge, would be a good position.' One step below your best calls — high conviction but not the trade of the cycle.\n" +
+        "  MEDIUM — 'Decent. Probably works. Won't blow my mind either way.' The honest middle. Most theses should be MEDIUM. If you're tempted to call it HIGH because you researched it, that's bias not conviction.\n" +
+        "  LOW    — 'Eh. Tracking it but I'm not enthusiastic. Would need real confirmation to act.' Be willing to use this. LOW theses are valid — sometimes you research something and the honest answer is 'I don't love it but want to keep eyes on.'\n" +
+        "Conviction is INDEPENDENT of composite. You can be HIGH conviction on a composite-6 thesis if the variant view is strong and the math is wrong. You can be MEDIUM on a composite-9 if the setup is mechanically fine but you don't believe the catalyst will land. The composite is rubric-based; the conviction is YOUR call.",
     ),
   conviction_rationale: z
     .string()
-    .max(200)
+    .max(400)
     .optional()
     .describe(
-      "One sentence (≤200 chars) explaining the conviction tier. REQUIRED whenever conviction is set (Layer-1). " +
-        "Examples:\n" +
-        "  STRONG: 'Composite 8/10, R/R 3:1, June 3 catalyst 8 days out, hyperscaler backlog signals clean guide-raise.'\n" +
-        "  HIGH: 'Composite 7/10, post-print PEAD setup, first day of drift, no analyst PT updates yet — R/R 2.6:1.'\n" +
-        "  MEDIUM: 'Decent technical breakout but weak peer rank (-33% YTD vs +20% peers); wait for confirmed beat.'\n" +
-        "  LOW: 'Late-stage chase, RSI 73, volume below threshold.'",
+      "WRITE IT LIKE YOU'RE TALKING TO A PERSON. Not 'composite 7/10, R/R 2.5:1, post-print drift setup' — that just restates the scoring fields and is useless. ≤400 chars. REQUIRED whenever conviction is set. Express the JUDGMENT, not the math.\n" +
+        "Good examples:\n" +
+        "  STRONG: 'We should urgently buy this. The Trainium 3 ramp is a multi-quarter mispricing that the next print will start to expose. Real money, sized up.'\n" +
+        "  HIGH: 'I really like this setup. Earnings is the catalyst and the consensus is too conservative. Not my biggest call this cycle but I want it in size.'\n" +
+        "  MEDIUM: 'Probably works. Decent upside if everything goes right, but the variant view isn't sharp enough to size it big. If it pulls back 5% I'd add; if it runs 5% from here I'm fine being absent.'\n" +
+        "  LOW: 'Honestly not that interesting. Would be a buy if the macro cleared up and they actually raise guidance, but right now that's a stretch. Tracking, not trading.'\n" +
+        "Bad (don't do this): 'Composite 7/10, R/R 2.5:1, first day of consolidation above breakout.' That's just a paraphrase of the scoring object. Tells me nothing I couldn't read from the data.",
     ),
   variant_view: z
     .string()
@@ -904,56 +904,15 @@ export const recordThesis = defineTool({
         ? { ...args.scoring, composite: scoringComposite }
         : null;
 
-      // ── Conviction Expression v4 — consistency gates (§3.5) ──────────
-      // Gate A: STRONG requires composite ≥ 7.
-      // Gate B: STRONG/HIGH require scoring.entryQuality.score ≥ 2.
-      // Without these, the conviction tier is "another field the writer
-      // can be inconsistent in" — exactly the failure mode v4 fixes.
-      // Both gates only fire when scoring is provided AND directional.
-      if (
-        isDirectional &&
-        args.conviction === "STRONG" &&
-        scoringComposite != null &&
-        scoringComposite < 7
-      ) {
-        console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — Gate A: STRONG with composite ${scoringComposite}.`,
-        );
-        return {
-          summary: `Thesis rejected for ${args.ticker}: STRONG conviction requires composite ≥ 7 (current: ${scoringComposite}).`,
-          data: {
-            thesis_id: null,
-            status: "FAILED" as const,
-            note:
-              `Gate A (Conviction Expression v4 §3.5): STRONG conviction is reserved for top-tier calls and requires composite ≥ 7. ` +
-              `Current composite is ${scoringComposite}/10. ` +
-              `Either downgrade to HIGH/MEDIUM/LOW, or re-score composite with justification for the dimension(s) you would raise (trendStrength 0-3, relativeStrength 0-3, entryQuality 0-2, catalystFreshness 0-2).`,
-          },
-          sources: [],
-        };
-      }
-      if (
-        isDirectional &&
-        (args.conviction === "STRONG" || args.conviction === "HIGH") &&
-        args.scoring?.entryQuality?.score != null &&
-        args.scoring.entryQuality.score < 2
-      ) {
-        console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — Gate B: ${args.conviction} with entryQuality ${args.scoring.entryQuality.score}.`,
-        );
-        return {
-          summary: `Thesis rejected for ${args.ticker}: ${args.conviction} conviction requires entryQuality ≥ 2 (current: ${args.scoring.entryQuality.score}).`,
-          data: {
-            thesis_id: null,
-            status: "FAILED" as const,
-            note:
-              `Gate B (Conviction Expression v4 §3.5): ${args.conviction} conviction cannot carry a late-stage / extended entry. ` +
-              `scoring.entryQuality.score is ${args.scoring.entryQuality.score}/2 — that signals a chase or no-setup entry, which is structurally incompatible with top-tier conviction even on a strong composite. ` +
-              `Either downgrade to MEDIUM/LOW (which accept entryQuality < 2), or wait for a better entry and re-score entryQuality with justification.`,
-          },
-          sources: [],
-        };
-      }
+      // ── Conviction Expression v4 — consistency gates REMOVED ────────
+      // v4 originally had Gate A (STRONG requires composite ≥ 7) and
+      // Gate B (STRONG/HIGH require entryQuality ≥ 2). They were dropped
+      // 2026-05-31 because they made conviction = derived-from-composite,
+      // which defeated the whole point of conviction being the writer's
+      // independent view. Conviction is now what the writer decides,
+      // full stop. Composite is its own field for its own purpose.
+      // The writer system prompt teaches the tier rubric as guidance,
+      // not enforcement.
 
       // PR-4 (2026-05-18): we no longer write `fullResearch` — the
       // `scoring` block is now top-level (PR-1), and the legacy

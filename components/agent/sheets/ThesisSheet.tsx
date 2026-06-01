@@ -1534,9 +1534,16 @@ export function ThesisSheetBody({
           conviction={conviction}
           rationale={convictionRationale}
         />
-        {state?.resolved ? (
-          <ActionabilityBadge resolved={state.resolved} />
-        ) : null}
+        {/* ActionabilityBadge intentionally NOT rendered on the sheet
+            header. The actionability rollup is most useful in list-scan
+            views (watchlist, read-theses table, runs feed) where you're
+            comparing many rows. In the sheet you're deep-reading one
+            thesis and the same info is already conveyed by status +
+            triggers + live price + position. Adding it here made the
+            header noisy and surfaced misleading SUPERSEDED on rows that
+            had a cross-analyst PASS (now also scope-fixed in the API).
+            See docs/plans/CONVICTION_EXPRESSION.md §8 — kept ONLY for
+            list views per principal feedback 2026-05-31. */}
       </div>
 
       {/* ── Terminal-status reason ──────────────────────────── */}

@@ -197,17 +197,15 @@ const updateSchema = z.object({
     .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])
     .optional()
     .describe(
-      "Update writer's view-strength tier. STRONG = top-tier (your best 2-3 calls per cycle); HIGH = solid conviction with variant view; MEDIUM = normal; LOW = weak. " +
-        "When you patch this, you MUST also patch conviction_rationale; for STRONG/HIGH you MUST also patch variant_view if existing.variantView is empty. " +
-        "Layer-1 consistency gates: STRONG requires composite ≥ 7 (Gate A); STRONG/HIGH require entryQuality ≥ 2 (Gate B). " +
-        "Tighten or relax conviction when the picture changes: new variant view validated → upgrade; consensus caught up → downgrade.",
+      "YOUR REAL VIEW after this review. STRONG = top calls (urgent buy, real money). HIGH = solid conviction, want it in size. MEDIUM = honest middle, probably works. LOW = tracking but not enthusiastic. " +
+        "Independent of composite. Patch when the picture has materially changed (new evidence validated the variantView → upgrade; consensus caught up to your view → downgrade). When you patch this, you MUST also patch conviction_rationale. STRONG/HIGH require variant_view (patched in this call OR already on the row).",
     ),
   conviction_rationale: z
     .string()
-    .max(200)
+    .max(400)
     .optional()
     .describe(
-      "Update the one-sentence justification for the conviction tier (≤200 chars). Required whenever you patch `conviction`.",
+      "Updated rationale (≤400 chars). WRITE LIKE YOU'RE TALKING TO A PERSON — not 'composite 7/10, R/R 2.5:1'. Express the judgment, not the math. Required whenever you patch conviction.",
     ),
   variant_view: z
     .string()
@@ -826,85 +824,11 @@ export const updateThesis = defineTool({
         };
       }
 
-      // Consistency gates use the effective scoring: if the patch supplies
-      // scoring, use the patched values; otherwise use the existing row.
-      const existingScoring =
-        existing.scoring && typeof existing.scoring === "object"
-          ? (existing.scoring as Record<string, unknown>)
-          : null;
-      const existingComposite =
-        existingScoring && typeof existingScoring.composite === "number"
-          ? (existingScoring.composite as number)
-          : null;
-      const existingEntryQuality =
-        existingScoring &&
-        existingScoring.entryQuality &&
-        typeof (existingScoring.entryQuality as { score?: unknown }).score === "number"
-          ? ((existingScoring.entryQuality as { score: number }).score)
-          : null;
-
-      // Compute the effective composite + entryQuality based on the patch.
-      // Patch merges with existing (record_thesis path computes a fresh
-      // composite; update_thesis merges and re-sums below at the persist
-      // step). For gate purposes, simulate that merge.
-      let effectiveComposite: number | null = existingComposite;
-      let effectiveEntryQuality: number | null = existingEntryQuality;
-      if (args.scoring !== undefined) {
-        const patched = args.scoring as Record<string, unknown>;
-        const dim = (key: string): number | null => {
-          const v = (patched[key] ?? existingScoring?.[key]) as
-            | { score?: unknown }
-            | undefined;
-          return v && typeof v.score === "number" ? (v.score as number) : null;
-        };
-        const t = dim("trendStrength");
-        const r = dim("relativeStrength");
-        const e = dim("entryQuality");
-        const c = dim("catalystFreshness");
-        if (t != null && r != null && e != null && c != null) {
-          effectiveComposite = t + r + e + c;
-        }
-        if (e != null) effectiveEntryQuality = e;
-      }
-
-      // Gate A: STRONG with composite < 7
-      if (
-        effectiveConviction === "STRONG" &&
-        effectiveComposite != null &&
-        effectiveComposite < 7
-      ) {
-        return {
-          summary: `Refused update on $${existing.ticker} — Gate A: STRONG with composite ${effectiveComposite}.`,
-          data: {
-            ok: false,
-            error: "gate_a_strong_requires_composite_7",
-            message:
-              `Gate A (Conviction Expression v4 §3.5): STRONG conviction requires composite ≥ 7. ` +
-              `Effective composite (patched + existing merged) is ${effectiveComposite}/10. ` +
-              `Either downgrade conviction to HIGH/MEDIUM/LOW, or raise the composite via scoring{} with justification for the dimension(s) you would raise.`,
-          },
-          sources: [],
-        };
-      }
-      // Gate B: STRONG/HIGH with entryQuality.score < 2
-      if (
-        (effectiveConviction === "STRONG" || effectiveConviction === "HIGH") &&
-        effectiveEntryQuality != null &&
-        effectiveEntryQuality < 2
-      ) {
-        return {
-          summary: `Refused update on $${existing.ticker} — Gate B: ${effectiveConviction} with entryQuality ${effectiveEntryQuality}.`,
-          data: {
-            ok: false,
-            error: "gate_b_strong_high_requires_entry_quality_2",
-            message:
-              `Gate B (Conviction Expression v4 §3.5): ${effectiveConviction} conviction cannot carry a late-stage / extended entry. ` +
-              `Effective entryQuality.score is ${effectiveEntryQuality}/2 (patched + existing merged). ` +
-              `Either downgrade conviction to MEDIUM/LOW, or raise entryQuality via scoring.entryQuality with justification for a better setup.`,
-          },
-          sources: [],
-        };
-      }
+      // Consistency gates (Gate A, Gate B) REMOVED 2026-05-31.
+      // See record-thesis.ts for the rationale: conviction is the
+      // writer's view, NOT a derived field from composite. Coupling them
+      // made the tier "just a name on composite," which defeated the
+      // point. Conviction patches now stand on their own.
     }
 
     // ── Zero-trigger guard (audit Step 4) ─────────────────────────────────

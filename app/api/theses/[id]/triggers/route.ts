@@ -162,11 +162,21 @@ export async function GET(
   // the agent: live price, trigger evaluation, supersession check,
   // actionability rollup. Powers the actionability badge in the sheet
   // header. Two parallel queries — supersession SQL + Finnhub quote.
+  //
+  // Supersession is scoped to the SAME ANALYST as this thesis, not the
+  // whole account. Two analysts can hold different views on the same
+  // ticker (one LONG, one PASS) without either superseding the other —
+  // they have independent mandates. Pre-fix, account-level scoping
+  // produced false SUPERSEDED flags on cross-analyst PASS rows.
+  const ownAnalystId = thesis.researchRun?.agentConfigId ?? null;
   const [terminalSiblings, quote] = await Promise.all([
     prisma.thesis.findMany({
       where: {
         accountId,
         ticker: thesis.ticker,
+        ...(ownAnalystId
+          ? { researchRun: { agentConfigId: ownAnalystId } }
+          : {}),
         OR: [
           { status: { in: ["INVALIDATED", "ARCHIVED", "CLOSED"] } },
           { direction: "PASS" },

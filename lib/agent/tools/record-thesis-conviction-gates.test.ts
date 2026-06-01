@@ -197,131 +197,57 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
     });
   });
 
-  describe("consistency gates (§3.5)", () => {
-    it("Gate A: rejects STRONG when composite < 7", async () => {
+  describe("conviction-composite independence (gates removed 2026-05-31)", () => {
+    // The composite-coupling gates (Gate A: STRONG requires composite ≥ 7;
+    // Gate B: STRONG/HIGH require entryQuality ≥ 2) were removed because
+    // they made conviction = derived-from-composite. Conviction is now
+    // the writer's independent view. These tests prove the gates are gone.
+
+    it("ALLOWS STRONG with composite < 7 (Gate A is gone — writer's call)", async () => {
       const ctx = makeCtx();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const tool = recordThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
       const result = await tool.execute(
         baseLongArgs({
           conviction: "STRONG",
-          conviction_rationale: "Trying to claim STRONG.",
-          variant_view: "Some edge.",
+          conviction_rationale: "We should urgently buy this. Variant view is sharp; composite undersells what's coming.",
+          variant_view: "Edge: market hasn't priced the secondary catalyst.",
           target_size_pct: 5,
           scoring: {
             trendStrength: { score: 2, note: "ok" },
             relativeStrength: { score: 1, note: "ok" },
             entryQuality: { score: 2, note: "ok" },
             catalystFreshness: { score: 1, note: "ok" },
-            // composite computed = 2+1+2+1 = 6 (below 7)
+            // composite = 6 — pre-fix this would have been Gate A reject
           },
         }),
       );
-
-      expect(result.data.status).toBe("FAILED");
-      expect(result.summary).toMatch(/STRONG conviction requires composite ≥ 7/);
-      expect(result.summary).toMatch(/current: 6/i);
+      // No conviction-gate rejection on the composite axis.
+      expect(result.summary).not.toMatch(/STRONG conviction requires composite/i);
     });
 
-    it("Gate A: ALLOWS STRONG when composite = 7", async () => {
+    it("ALLOWS STRONG with entryQuality < 2 (Gate B is gone — writer's call)", async () => {
       const ctx = makeCtx();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const tool = recordThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
       const result = await tool.execute(
         baseLongArgs({
           conviction: "STRONG",
-          conviction_rationale: "Just at threshold.",
-          variant_view: "Edge.",
-          target_size_pct: 5,
-          scoring: {
-            trendStrength: { score: 3, note: "ok" },
-            relativeStrength: { score: 0, note: "ok" },
-            entryQuality: { score: 2, note: "ok" },
-            catalystFreshness: { score: 2, note: "ok" },
-            // composite = 7 (at threshold — Gate A allows ≥ 7)
-          },
-        }),
-      );
-
-      // Gate A passed (composite = 7 is exactly at the threshold).
-      expect(result.summary).not.toMatch(/STRONG conviction requires composite/);
-      // Gate B also passes (entryQuality = 2).
-      expect(result.summary).not.toMatch(/entryQuality/i);
-    });
-
-    it("Gate B: rejects STRONG when entryQuality.score < 2", async () => {
-      const ctx = makeCtx();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tool = recordThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-      const result = await tool.execute(
-        baseLongArgs({
-          conviction: "STRONG",
-          conviction_rationale: "STRONG on trend + RS but bad entry.",
-          variant_view: "Trainium underweighting.",
+          conviction_rationale: "Late chase on price but the catalyst forces the move. Worth chasing.",
+          variant_view: "Edge: imminent catalyst that overrides entry-timing concerns.",
           target_size_pct: 5,
           scoring: {
             trendStrength: { score: 3, note: "ok" },
             relativeStrength: { score: 3, note: "ok" },
-            entryQuality: { score: 1, note: "extended, RSI 75" },
+            entryQuality: { score: 1, note: "RSI 75 — chasing" },
             catalystFreshness: { score: 1, note: "ok" },
-            // composite = 8 (passes Gate A), but entryQuality = 1 (fails Gate B)
+            // entryQuality = 1 — pre-fix this would have been Gate B reject
           },
         }),
       );
-
-      expect(result.data.status).toBe("FAILED");
-      expect(result.summary).toMatch(/STRONG conviction requires entryQuality ≥ 2/);
-      expect(result.summary).toMatch(/current: 1/i);
-    });
-
-    it("Gate B: rejects HIGH when entryQuality.score < 2", async () => {
-      // This is tonight's OKTA case: composite 7, entryQuality 1.
-      // Under the §4 rubric this would map to MEDIUM, but a writer could
-      // still try to claim HIGH. Gate B prevents that.
-      const ctx = makeCtx();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tool = recordThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-      const result = await tool.execute(
-        baseLongArgs({
-          conviction: "HIGH",
-          conviction_rationale: "HIGH on trend + catalyst even though entry is late.",
-          variant_view: "Consensus underestimates next print.",
-          target_size_pct: 4,
-          scoring: {
-            trendStrength: { score: 2, note: "ok" },
-            relativeStrength: { score: 2, note: "ok" },
-            entryQuality: { score: 1, note: "RSI 70, late chase" },
-            catalystFreshness: { score: 2, note: "ok" },
-            // composite = 7 (passes Gate A — STRONG floor), entryQuality = 1 (Gate B)
-          },
-        }),
-      );
-
-      expect(result.data.status).toBe("FAILED");
-      expect(result.summary).toMatch(/HIGH conviction requires entryQuality ≥ 2/);
-    });
-
-    it("Gate B: ALLOWS MEDIUM with entryQuality < 2 (gate only applies to STRONG/HIGH)", async () => {
-      const ctx = makeCtx();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tool = recordThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-      const result = await tool.execute(
-        baseLongArgs({
-          conviction: "MEDIUM",
-          conviction_rationale: "Honest middle; late entry but tracking.",
-          target_size_pct: 2,
-          scoring: {
-            trendStrength: { score: 2, note: "ok" },
-            relativeStrength: { score: 2, note: "ok" },
-            entryQuality: { score: 1, note: "late chase" },
-            catalystFreshness: { score: 1, note: "ok" },
-          },
-        }),
-      );
-
-      // No conviction-gate rejection.
-      expect(result.summary).not.toMatch(/entryQuality/i);
-      expect(result.summary).not.toMatch(/composite/i);
+      // No conviction-gate rejection on the entryQuality axis.
+      expect(result.summary).not.toMatch(/HIGH conviction requires entryQuality/i);
+      expect(result.summary).not.toMatch(/STRONG conviction requires entryQuality/i);
     });
   });
 
