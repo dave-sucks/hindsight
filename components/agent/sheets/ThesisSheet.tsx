@@ -27,6 +27,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import Link from "next/link";
 import { StockLogo } from "@/components/StockLogo";
 import { TickBar, PriceGauge, type Tick } from "@/components/ui/gauge";
 import {
@@ -1577,17 +1578,27 @@ export function ThesisSheetBody({
       <VariantViewBlock variantView={variantView} />
 
       {/* ── Stock identity + live price ──────────────────────── */}
+      {/* Company name + ticker are a Link to /stocks/[ticker] — the
+          sheet is a focused view of one thesis; clicking the stock
+          identity takes you to the broader stock page (TradingView
+          chart, all theses on this ticker, etc.). Hover-underline
+          conveys affordance without disrupting the typography. */}
       <div className="space-y-2">
-        <div className="flex items-center gap-3">
+        <Link
+          href={`/stocks/${ticker}`}
+          className="flex items-center gap-3 group/stocklink"
+        >
           <StockLogo ticker={ticker} size="lg" />
           <div className="flex-1 min-w-0">
-            <p className="text-lg font-semibold truncate">{displayName}</p>
+            <p className="text-lg font-semibold truncate group-hover/stocklink:underline underline-offset-4">
+              {displayName}
+            </p>
             <p className="font-mono text-xs text-muted-foreground">
               {ticker}
               {exchange ? ` · ${exchange}` : ""}
             </p>
           </div>
-        </div>
+        </Link>
         {/* Live current price + day's change. Comes from the separate
             /quote endpoint (slow — Finnhub call) so this block usually
             paints after the rest of the sheet body. Skeleton while
