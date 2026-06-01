@@ -227,7 +227,7 @@ export async function promoteAnalystToLive(
   const promotedTheses: PromotedThesisRecord[] = [];
   for (const pos of openPaper) {
     try {
-      const closeResult = await closeOpenPosition(
+      const closeOutcome = await closeOpenPosition(
         pos.id,
         "MANUAL",
         undefined,
@@ -235,6 +235,15 @@ export async function promoteAnalystToLive(
         `Closed as part of promoting analyst ${analyst.name} from PAPER to LIVE.`,
         undefined,
       );
+      // promote-analyst always passes source="user" — the Trade-as-Proposal
+      // gate never fires on this path. Narrow the union for downstream
+      // field access. See docs/plans/TRADE_AS_PROPOSAL.md.
+      if (closeOutcome.kind !== "closed") {
+        throw new Error(
+          `promote-analyst: closeOpenPosition returned unexpected proposal outcome for ${pos.symbol}`,
+        );
+      }
+      const closeResult = closeOutcome;
       // Mark position with closeReason=PROMOTED so the trade ledger UI
       // can distinguish promotion-closes from stops/targets/manual.
       await prisma.position.update({

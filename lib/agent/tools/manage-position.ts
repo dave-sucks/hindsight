@@ -20,6 +20,12 @@ import { prisma } from "@/lib/prisma";
 import { getAccount, getOrder, getLatestPrice, closePositionPartial, placeMarketOrder } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { isExcluded } from "@/lib/agent/universe";
+import type { ToolUIItem } from "@/lib/agent/tool-result";
+import {
+  maybeAwaitApproval,
+  awaitingApprovalEnvelope,
+} from "@/lib/proposals/maybe-await-approval";
 
 /**
  * Classify an Alpaca submit error — same shape as place_trade / closeOpenPosition.
@@ -37,7 +43,7 @@ function classifyAlpacaError(err: unknown): "rejected" | "uncertain" {
   return "uncertain";
 }
 
-type ManagePositionStatus = "NO_POSITION" | "CLOSED" | "PARTIAL_CLOSE" | "ADDED" | "UPDATED" | "FAILED";
+type ManagePositionStatus = "NO_POSITION" | "CLOSED" | "PARTIAL_CLOSE" | "ADDED" | "UPDATED" | "FAILED" | "PROPOSED";
 
 interface ManagePositionTicker {
   ticker: string;
@@ -53,6 +59,10 @@ interface ManagePositionData {
   status: ManagePositionStatus;
   message: string;
   tickers: ManagePositionTicker[];
+  // Trade-as-Proposal — populated by proposal branches; ToolUIRenderer
+  // reads this to dispatch the proposal kind to ProposalCard.
+  // See docs/plans/TRADE_AS_PROPOSAL.md §6.1.
+  items?: ToolUIItem[];
   // optional per-action fields
   direction?: string;
   entryPrice?: number;
@@ -208,7 +218,7 @@ export const managePosition = defineTool({
               : "MANUAL";
 
           const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
-          const result = await closeOpenPosition(
+          const outcome = await closeOpenPosition(
             position.id,
             closeReasonCode,
             creds,
@@ -216,6 +226,41 @@ export const managePosition = defineTool({
             args.reason,
             ctx.runId,
           );
+
+          // Trade-as-Proposal — when Account.requireApprovalForSells is on,
+          // the helper stages an Order(AWAITING_APPROVAL) instead of
+          // submitting to Alpaca. Return a proposal envelope; the approve
+          // handler runs the rest of the close flow on user click. See
+          // docs/plans/TRADE_AS_PROPOSAL.md.
+          if (outcome.kind === "proposed") {
+            return {
+              summary: `Close proposed: $${ticker}`,
+              data: {
+                success: true, ticker, action: args.action, status: "PROPOSED" as const,
+                direction: position.direction,
+                entryPrice: position.avgCost,
+                message: `Proposed close of ${position.direction} ${position.quantity} shares of ${ticker} (${args.close_reason ?? "MANUAL"}). Awaiting your approval (expires in 24h).`,
+                tickers: [],
+                items: [
+                  {
+                    kind: "proposal" as const,
+                    orderId: outcome.proposal.orderId,
+                    ticker,
+                    direction: position.direction as "LONG" | "SHORT",
+                    action: "CLOSE" as const,
+                    shares: position.quantity,
+                    estimatedPrice: position.avgCost,
+                    estimatedCost: position.quantity * position.avgCost,
+                    expiresAt: outcome.proposal.expiresAt.toISOString(),
+                    rationale: outcome.proposal.rationale,
+                  },
+                ],
+              },
+              sources: [],
+            };
+          }
+          // outcome.kind === "closed" — finalize the close audit + return.
+          const result = outcome;
 
           const pnlSign = result.realizedPnl >= 0 ? "+" : "";
           const pnlPct = position.avgCost > 0
@@ -328,6 +373,7 @@ export const managePosition = defineTool({
           }
 
           const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
+
           const idempotencyKey = randomUUID();
           const placedAt = new Date();
 
@@ -348,6 +394,43 @@ export const managePosition = defineTool({
               createdAt: placedAt,
             },
           });
+
+          // ── Trade-as-Proposal seam ──
+          // Sells flow through requireApprovalForSells. When on,
+          // maybeAwaitApproval flips Order → AWAITING_APPROVAL + sends
+          // email; we return early before reaching Alpaca. When off,
+          // null is returned and the partial-close submit runs as today.
+          {
+            const awaiting = await maybeAwaitApproval({
+              accountId: ctx.accountId,
+              positionId: position.id,
+              orderId: order.id,
+              intent: "PARTIAL_CLOSE",
+              rationale: args.reason,
+            });
+            if (awaiting) {
+              return {
+                summary: `Partial close proposed: ${ticker} (-${pct}%)`,
+                data: {
+                  success: true, ticker, action: args.action, status: "PROPOSED" as const,
+                  closedQty: closeQty,
+                  remainingQty: position.quantity - closeQty,
+                  fillPrice: position.avgCost,
+                  partialPnl: 0,
+                  tickers: [],
+                  ...awaitingApprovalEnvelope({
+                    awaiting,
+                    ticker,
+                    direction: position.direction as "LONG" | "SHORT",
+                    intent: "PARTIAL_CLOSE",
+                    shares: closeQty,
+                    estimatedPrice: position.avgCost,
+                  }),
+                },
+                sources: [],
+              };
+            }
+          }
 
           // 2. Submit to Alpaca with client_order_id = idempotencyKey.
           let alpacaOrderId: string | null = null;
@@ -552,6 +635,52 @@ export const managePosition = defineTool({
             };
           }
 
+          // ── PR #359 gate parity: exclusion + enabled ────────────────────
+          // add_to_position is a buy that increases dollar exposure — must
+          // honor the same hard gates place_trade enforces for new entries.
+          // Historically this branch bypassed them, so a disabled analyst
+          // could still grow its book via adds. See docs/plans/TRADE_AS_PROPOSAL.md §13.
+
+          // Exclusion list — hard reject for any add on an excluded name.
+          if (isExcluded(ticker, { exclusionList: ctx.exclusionList })) {
+            const blockedMsg = `$${ticker} is on this analyst's exclusion list — cannot add to the position.`;
+            return {
+              summary: `Add blocked: $${ticker} — excluded`,
+              data: {
+                success: false, ticker, action: args.action, status: "FAILED" as const,
+                message: blockedMsg,
+                tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
+
+          // Enabled — a paused analyst cannot grow its exposure. Existing
+          // positions stay manageable via partial_close / full_close / stops;
+          // only NEW dollar exposure is blocked.
+          if (ctx.analystId) {
+            const analystEnabledCheck = await prisma.agentConfig.findUnique({
+              where: { id: ctx.analystId },
+              select: { enabled: true, name: true },
+            });
+            if (analystEnabledCheck && !analystEnabledCheck.enabled) {
+              const blockedMsg =
+                `Add blocked: analyst "${analystEnabledCheck.name}" is disabled — ` +
+                `new dollar exposure is paused. Existing positions remain ` +
+                `manageable (trims, exits, stops fire). Re-enable the analyst ` +
+                `in settings to resume adds and new entries.`;
+              return {
+                summary: `Add blocked: $${ticker} — analyst paused`,
+                data: {
+                  success: false, ticker, action: args.action, status: "FAILED" as const,
+                  message: blockedMsg,
+                  tickers: [{ ticker, tag: "Paused", summary: blockedMsg, actionIcon: "failed" }],
+                },
+                sources: [],
+              };
+            }
+          }
+
           // Size guard: don't exceed 150% of configured max position size
           const maxPosSize = ctx.maxPositionSize ?? 5000;
           const currentValue = position.avgCost * position.quantity;
@@ -590,6 +719,43 @@ export const managePosition = defineTool({
               createdAt: placedAt,
             },
           });
+
+          // ── Trade-as-Proposal seam ──
+          // Adds increase exposure, so requireApprovalForBuys gates them.
+          // When on, the helper flips the just-created Order →
+          // AWAITING_APPROVAL + sends email; we return early before Alpaca.
+          {
+            const awaiting = await maybeAwaitApproval({
+              accountId: ctx.accountId,
+              positionId: position.id,
+              orderId: order.id,
+              intent: "ADD",
+              rationale: args.reason,
+            });
+            if (awaiting) {
+              return {
+                summary: `Add proposed: ${ticker} +$${notional}`,
+                data: {
+                  success: true, ticker, action: args.action, status: "PROPOSED" as const,
+                  addedQty: approxQty,
+                  newTotalQty: position.quantity + approxQty,
+                  fillPrice: position.avgCost,
+                  newAvgCost: position.avgCost,
+                  tickers: [],
+                  ...awaitingApprovalEnvelope({
+                    awaiting,
+                    ticker,
+                    direction: position.direction as "LONG" | "SHORT",
+                    intent: "ADD",
+                    shares: approxQty,
+                    estimatedPrice: position.avgCost,
+                    estimatedCost: notional,
+                  }),
+                },
+                sources: [],
+              };
+            }
+          }
 
           // 2. Submit to Alpaca with client_order_id = idempotencyKey.
           let alpacaOrderId: string | null = null;

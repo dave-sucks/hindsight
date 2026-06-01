@@ -41,10 +41,14 @@ export type ToolUI =
 
 /**
  * A single row inside a ToolProgress content area. Every list-shaped tool
- * returns an array of these on `data.items`. Two kinds, matching the two
- * item components in components/ai-elements/tool-progress.tsx:
- *   - "ticker" → ToolProgressTickerItem (ticker logo + chip + text)
- *   - "generic" → ToolProgressItem (dot + text)
+ * returns an array of these on `data.items`. Three kinds:
+ *   - "ticker"   → ToolProgressTickerItem (ticker logo + chip + text)
+ *   - "generic"  → ToolProgressItem (dot + text)
+ *   - "proposal" → ProposalCard (Trade-as-Proposal approve/reject card,
+ *                  resurrects components/domain/trade-confirmation.tsx;
+ *                  see docs/plans/TRADE_AS_PROPOSAL.md). Forces the
+ *                  ToolProgress wrapper open so the buttons are visible
+ *                  without expanding.
  */
 export type ToolUIItem =
   | {
@@ -62,7 +66,21 @@ export type ToolUIItem =
         | "closed-loss"
         | "failed";
     }
-  | { kind: "generic"; text: string };
+  | { kind: "generic"; text: string }
+  | {
+      kind: "proposal";
+      orderId: string;
+      ticker: string;
+      direction: "LONG" | "SHORT";
+      action: "BUY" | "SELL" | "CLOSE" | "MODIFY";
+      shares?: number;
+      estimatedPrice?: number;
+      estimatedCost?: number;
+      /** ISO 8601 — when the proposal auto-expires if no decision lands */
+      expiresAt: string;
+      /** Agent's reasoning for this specific proposal (often the thesis snapshot) */
+      rationale?: string | null;
+    };
 
 // ── Source attribution ───────────────────────────────────────────────────────
 

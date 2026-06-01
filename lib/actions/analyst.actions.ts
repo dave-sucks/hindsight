@@ -151,6 +151,14 @@ export interface PositionWithThesis {
     confidenceScore: number;
     reasoningSummary: string;
   };
+  // Trade-as-Proposal — populated when an Order(AWAITING_APPROVAL) is
+  // linked to this Position. AnalystTradeRow passes this through to
+  // TradeRow which renders the inline [Approve][Reject] buttons.
+  // See docs/plans/TRADE_AS_PROPOSAL.md §6.
+  pendingProposal?: {
+    orderId: string;
+    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+  };
 }
 
 export interface AnalystStats {
@@ -436,6 +444,14 @@ export async function getAnalystDetail(
         outcome: true,
         openedAt: true,
         closedAt: true,
+        // Trade-as-Proposal — pull AWAITING_APPROVAL orders so the
+        // analyst-page sidebar TradeRow renders inline [Approve][Reject].
+        orders: {
+          where: { status: "AWAITING_APPROVAL" },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { id: true, intent: true, expiresAt: true },
+        },
         decisions: {
           take: 1,
           select: {
@@ -673,6 +689,7 @@ export async function getAnalystDetail(
   const mappedTrades: PositionWithThesis[] = recentPositions.map((p) => {
     const th = p.decisions[0]?.thesis;
     const composite = th ? getThesisComposite(th) : null;
+    const awaiting = p.orders?.[0];
     return {
       id: p.id,
       symbol: p.symbol,
@@ -695,6 +712,16 @@ export async function getAnalystDetail(
             reasoningSummary: getThesisSnapshotText(th),
           }
         : { id: "", confidenceScore: 0, reasoningSummary: "" },
+      pendingProposal: awaiting
+        ? {
+            orderId: awaiting.id,
+            intent: (awaiting.intent ?? "OPEN") as
+              | "OPEN"
+              | "ADD"
+              | "CLOSE"
+              | "PARTIAL_CLOSE",
+          }
+        : undefined,
     };
   });
 

@@ -30,7 +30,15 @@ export type ThesisUpdateType =
   | "INVALIDATED"
   | "CLOSED"
   | "SUPERSEDED"
-  | "STATUS_CHANGED";
+  | "STATUS_CHANGED"
+  // Trade-as-Proposal — durable audit of the human-approval lifecycle
+  // on agent-initiated buys/sells. The agent reads these on its next run
+  // via get_theses(include_history: true) and adapts (does not re-propose
+  // recently-rejected setups unless the stated reason has materially
+  // changed). See docs/plans/TRADE_AS_PROPOSAL.md.
+  | "PROPOSAL_APPROVED"
+  | "PROPOSAL_REJECTED"
+  | "PROPOSAL_EXPIRED";
 
 /**
  * Diff payload shape for `fieldChanges`. Each key is a Thesis column name;

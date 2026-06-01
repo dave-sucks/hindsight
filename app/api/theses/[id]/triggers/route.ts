@@ -109,32 +109,58 @@ export async function GET(
   const parsed = triggersArraySchema.safeParse(thesis.triggers);
   const triggers = parsed.success ? parsed.data : [];
 
-  // Position lookup — only relevant when status='ACTIVE' and there's an
-  // open Position scoped to this analyst on this ticker. Powers the
-  // sheet header's holding row. Live-quote-derived fields (currentPrice,
-  // marketValue, unrealizedPnl) are null here; the sheet refines them
-  // client-side once /api/theses/[id]/quote returns (PR for split routes,
-  // 2026-05-19 — the Finnhub call was blocking the entire sheet for ~1-2s).
+  // Position lookup — relevant when there's an open or pending-approval
+  // Position scoped to this analyst on this ticker. Powers the sheet
+  // header's holding row + the Trade-as-Proposal alert when an
+  // AWAITING_APPROVAL Order is attached. Live-quote-derived fields
+  // (currentPrice, marketValue, unrealizedPnl) are null here; the sheet
+  // refines them client-side once /api/theses/[id]/quote returns.
+  type PendingProposalInfo = {
+    orderId: string;
+    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+    expiresAt: string | null;
+    rationale: string | null;
+  };
   type PositionInfo = {
     quantity: number;
     avgCost: number;
     openedAt: string;
     daysHeld: number;
+    /** Trade-as-Proposal — set when an Order(AWAITING_APPROVAL) is linked
+     *  to this position. Drives the inline [Approve][Reject] alert block
+     *  at the top of the sheet. See docs/plans/TRADE_AS_PROPOSAL.md. */
+    pendingProposal: PendingProposalInfo | null;
   };
 
   let position: PositionInfo | null = null;
-  if (thesis.status === "ACTIVE" && thesis.researchRun?.agentConfigId) {
+  if (
+    (thesis.status === "ACTIVE" || thesis.status === "WATCHING") &&
+    thesis.researchRun?.agentConfigId
+  ) {
     const pos = await prisma.position.findFirst({
       where: {
         accountId,
         analystId: thesis.researchRun.agentConfigId,
         symbol: thesis.ticker,
-        status: "OPEN",
+        // PENDING_APPROVAL = a buy proposal the user hasn't decided yet.
+        // OPEN = a real holding (with or without a pending close/add).
+        status: { in: ["OPEN", "PENDING_APPROVAL"] },
       },
       select: {
         quantity: true,
         avgCost: true,
         openedAt: true,
+        orders: {
+          where: { status: "AWAITING_APPROVAL" },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            intent: true,
+            expiresAt: true,
+            rationale: true,
+          },
+        },
       },
     });
     if (pos) {
@@ -142,11 +168,20 @@ export async function GET(
         0,
         Math.floor((Date.now() - pos.openedAt.getTime()) / 86_400_000),
       );
+      const ap = pos.orders?.[0];
       position = {
         quantity: Number(pos.quantity),
         avgCost: Number(pos.avgCost),
         openedAt: pos.openedAt.toISOString(),
         daysHeld,
+        pendingProposal: ap
+          ? {
+              orderId: ap.id,
+              intent: (ap.intent ?? "OPEN") as PendingProposalInfo["intent"],
+              expiresAt: ap.expiresAt?.toISOString() ?? null,
+              rationale: ap.rationale,
+            }
+          : null,
       };
     }
   }

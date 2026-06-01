@@ -50,6 +50,7 @@ import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
 import { ThesisRow, type ThesisRowData } from '@/components/ui/thesis-row';
+import { ProposalActions } from '@/components/proposals/ProposalActions';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
@@ -320,9 +321,12 @@ const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; 
   STOP:     { label: 'Stop Moved',    dotClass: 'bg-amber-500',               tooltip: 'Stop loss level adjusted' },
   NEAR_TGT: { label: 'Near Target',   dotClass: 'bg-positive',                tooltip: 'Price approaching target' },
   NEAR_STP: { label: 'Near Stop',     dotClass: 'bg-negative',                tooltip: 'Price approaching stop loss' },
+  // Trade-as-Proposal — see docs/plans/TRADE_AS_PROPOSAL.md
+  PROPOSED: { label: 'Pending Review', dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
 };
 
 function getDecisionAction(item: ActivityFeedItem): string {
+  if (item.type === 'PROPOSED') return 'PROPOSED';
   if (item.type === 'OPENED') return item.direction === 'SHORT' ? 'SHORT' : 'INITIATE';
   if (item.type === 'CLOSED') return 'EXIT';
   const lbl = item.label.toLowerCase();
@@ -398,6 +402,11 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   const sentence = getActivitySentence(item);
   const hasPnl = item.type === 'CLOSED' && item.pnl != null;
   const pnlPos = (item.pnl ?? 0) >= 0;
+  // Trade-as-Proposal — render inline [Approve][Reject] in place of P&L /
+  // sentence when this row is awaiting the user's decision. The orderId
+  // is populated by the activity-feed builder when item.type === 'PROPOSED'.
+  // See docs/plans/TRADE_AS_PROPOSAL.md.
+  const isProposed = item.type === 'PROPOSED' && item.orderId != null;
 
   return (
     <HoverCard>
@@ -415,15 +424,22 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
           <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
           {status.label}
         </Badge>
-        {/* Right side: P&L for sells, reasoning text for everything else */}
+        {/* Right side: [Approve][Reject] for proposals, P&L for sells,
+            reasoning text for everything else */}
         <div className="flex-1 min-w-0 flex items-center justify-end gap-2">
-          {hasPnl && (
-            <span className={cn('text-xs tabular-nums font-medium shrink-0', pnlPos ? 'text-positive' : 'text-negative')}>
-              {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
-              {item.pnlPct != null && <span className="opacity-70"> ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</span>}
-            </span>
+          {isProposed ? (
+            <ProposalActions orderId={item.orderId!} size="sm" showLabels />
+          ) : (
+            <>
+              {hasPnl && (
+                <span className={cn('text-xs tabular-nums font-medium shrink-0', pnlPos ? 'text-positive' : 'text-negative')}>
+                  {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
+                  {item.pnlPct != null && <span className="opacity-70"> ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</span>}
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground truncate hidden sm:block">{sentence}</span>
+            </>
           )}
-          <span className="text-xs text-muted-foreground truncate hidden sm:block">{sentence}</span>
         </div>
       </HoverCardTrigger>
       <HoverCardContent side="top" align="start" className="w-72">
@@ -614,6 +630,7 @@ function DashboardTradeRow({ trade, flash }: { trade: MockTrade; flash?: 'win' |
       priceUpdatedAt={trade.priceUpdatedAt}
       alpacaOrderId={trade.alpacaOrderId}
       flash={flash}
+      pendingProposal={trade.pendingProposal}
     />
   );
 }

@@ -14,6 +14,10 @@ import { isExcluded } from "@/lib/agent/universe";
 import { sendEmail, getUserEmail } from "@/lib/email";
 import { getOwnerUserId } from "@/lib/auth/account";
 import { tradeOpenedHtml } from "@/lib/emails/trade-opened";
+import {
+  maybeAwaitApproval,
+  awaitingApprovalEnvelope,
+} from "@/lib/proposals/maybe-await-approval";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 import {
   defaultTriggersForHorizon,
@@ -154,14 +158,25 @@ export const placeTrade = defineTool({
         }
       }
 
-      // 0. Check for existing open position (scoped to this analyst only)
+      // 0. Check for existing open position (scoped to this analyst only).
+      // Trade-as-Proposal: include PENDING_APPROVAL so the agent can't
+      // propose a duplicate while one is awaiting the user's decision. A
+      // pending proposal counts as committed exposure for dedup purposes.
       const existingPosition = await prisma.position.findFirst({
-        where: { userId: ctx.userId, analystId: effectiveAnalystId ?? undefined, symbol: ticker, status: "OPEN" },
-        select: { id: true, symbol: true },
+        where: {
+          userId: ctx.userId,
+          analystId: effectiveAnalystId ?? undefined,
+          symbol: ticker,
+          status: { in: ["OPEN", "PENDING_APPROVAL"] },
+        },
+        select: { id: true, symbol: true, status: true },
       });
 
       if (existingPosition) {
-        const blockedMsg = `Already holding an open position in ${ticker}. Cannot open duplicate positions for this analyst.`;
+        const blockedMsg =
+          existingPosition.status === "PENDING_APPROVAL"
+            ? `A buy proposal on ${ticker} is already awaiting user approval. Cannot propose a duplicate.`
+            : `Already holding an open position in ${ticker}. Cannot open duplicate positions for this analyst.`;
         return {
           summary: `Trade blocked: $${ticker} — duplicate position`,
           data: {
@@ -256,11 +271,14 @@ export const placeTrade = defineTool({
       }
 
       // ── Guardrail 2: open position count < maxOpenPositions ────────
+      // Trade-as-Proposal: count PENDING_APPROVAL too. A pending proposal
+      // commits a slot — the user shouldn't see the agent propose a 6th
+      // trade while 5 unapproved buys are already queued against the cap.
       if (ctx.maxOpenPositions != null && effectiveAnalystId) {
         const openCount = await prisma.position.count({
           where: {
             analystId: effectiveAnalystId,
-            status: "OPEN",
+            status: { in: ["OPEN", "PENDING_APPROVAL"] },
           },
         });
         if (openCount >= ctx.maxOpenPositions) {
@@ -460,6 +478,7 @@ export const placeTrade = defineTool({
       // 2. DB tx: create the row of record. avgCost starts at the entry guess
       // and is corrected to the real fill price in step 4.
       const positionEnvironment = ctx.runEnvironment ?? "PAPER";
+
       const { position, order } = await prisma.$transaction(async (tx: TransactionClient) => {
         const pos = await tx.position.create({
           data: {
@@ -550,6 +569,54 @@ export const placeTrade = defineTool({
 
         return { position: pos, order: ord };
       });
+
+      // ── Trade-as-Proposal seam ────────────────────────────────────────────
+      // The DB rows exist. If the Account requires approval for buys,
+      // maybeAwaitApproval flips Position→PENDING_APPROVAL + Order→
+      // AWAITING_APPROVAL, sends the proposal email, and returns the
+      // awaiting envelope. Tool returns early; nothing below this point
+      // executes (no Alpaca submit, no polling, no thesis flip). When the
+      // user clicks Approve, /api/proposals/[orderId]/approve picks up
+      // from here — calls the same placeMarketOrder, relies on the
+      // reconcile-orders cron for fill. When approval is OFF, this returns
+      // null and the rest of the tool runs exactly as today.
+      // See docs/plans/TRADE_AS_PROPOSAL.md.
+      {
+        const thesisForRationale = await prisma.thesis.findUnique({
+          where: { id: args.thesis_id },
+          select: { snapshot: true },
+        });
+        const proposalRationale = thesisForRationale
+          ? getThesisSnapshotText(thesisForRationale)
+          : null;
+        const awaiting = await maybeAwaitApproval({
+          accountId: ctx.accountId,
+          positionId: position.id,
+          orderId: order.id,
+          intent: "OPEN",
+          rationale: proposalRationale,
+        });
+        if (awaiting) {
+          return {
+            summary: `Proposed: ${args.direction} ${finalShares} $${ticker}`,
+            data: {
+              success: true,
+              ticker,
+              status: "PROPOSED" as const,
+              direction: args.direction,
+              ...awaitingApprovalEnvelope({
+                awaiting,
+                ticker,
+                direction: args.direction,
+                intent: "OPEN",
+                shares: finalShares,
+                estimatedPrice: args.entry_price,
+              }),
+            },
+            sources: [{ provider: "Hindsight", title: `Proposal ${ticker}` }],
+          };
+        }
+      }
 
       // 3. Submit to Alpaca with client_order_id = idempotencyKey.
       let alpacaOrderId: string | null = null;
@@ -876,7 +943,11 @@ export const placeTrade = defineTool({
       // Fetch post-trade portfolio context (non-fatal)
       let portfolioUpdate: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number } | null = null;
       try {
-        const currentOpenCount = await prisma.position.count({ where: { analystId, status: "OPEN" } });
+        // Trade-as-Proposal: count PENDING_APPROVAL positions toward the
+        // slot total so the agent's view of remainingSlots is accurate.
+        const currentOpenCount = await prisma.position.count({
+          where: { analystId, status: { in: ["OPEN", "PENDING_APPROVAL"] } },
+        });
         const postAccount = await getAccount(ctx.alpacaCreds);
         portfolioUpdate = {
           remainingSlots: (ctx.maxOpenPositions ?? 5) - currentOpenCount,

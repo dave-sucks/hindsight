@@ -14,6 +14,7 @@ import { inngest } from "@/lib/inngest/client";
 import { sendEmail, getUserEmail } from "@/lib/email";
 import { getOwnerUserId } from "@/lib/auth/account";
 import { tradeClosedHtml } from "@/lib/emails/trade-closed";
+import { maybeAwaitApproval } from "@/lib/proposals/maybe-await-approval";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
@@ -31,7 +32,40 @@ export interface ClosedPositionResult {
   filledAt: Date | null;
 }
 
-/** Who triggered the close — determines audit trail source label. */
+/**
+ * Trade-as-Proposal — returned when the Account has requireApprovalForSells
+ * on AND the close was agent-initiated. The Position stays OPEN; a pending
+ * Order(AWAITING_APPROVAL) carries the close intent until the user approves
+ * (then the approve handler submits to Alpaca with the same idempotencyKey)
+ * or rejects (then the order goes REJECTED and the position stays OPEN).
+ * See docs/plans/TRADE_AS_PROPOSAL.md.
+ */
+export interface ProposalCreatedSummary {
+  positionId: string;
+  orderId: string;
+  expiresAt: Date;
+  rationale: string | null;
+  idempotencyKey: string;
+}
+
+/**
+ * Discriminated union for closeOpenPosition's two outcomes.
+ *
+ * The closed branch carries all the existing ClosedPositionResult fields
+ * via intersection so post-narrow code keeps using outcome.realizedPnl /
+ * outcome.closePrice / etc. without restructuring.
+ */
+export type CloseOpenPositionOutcome =
+  | (ClosedPositionResult & { kind: "closed" })
+  | { kind: "proposed"; proposal: ProposalCreatedSummary };
+
+/** Who triggered the close — determines audit trail source label.
+ *
+ * The Trade-as-Proposal gate (see closeOpenPosition body) fires ONLY for
+ * source="agent". Manual UI clicks pass source="user"; the price-monitor
+ * trailing-stop cron passes source="price_monitor". Both bypass the gate
+ * — the user already approved the manual click; the user already approved
+ * the stop at trade-entry time. */
 export type CloseSource = "agent" | "price_monitor" | "user";
 
 // ─── Audit helpers ────────────────────────────────────────────────────────────
@@ -109,7 +143,7 @@ export async function closeOpenPosition(
   source: CloseSource = "agent",
   auditReason?: string,
   runId?: string,
-): Promise<ClosedPositionResult> {
+): Promise<CloseOpenPositionOutcome> {
   const position = await prisma.position.findUniqueOrThrow({
     where: { id: positionId },
   });
@@ -119,6 +153,7 @@ export async function closeOpenPosition(
   }
 
   const positionEnvironment = (position.environment as "PAPER" | "LIVE") ?? "PAPER";
+
   const creds =
     alpacaCreds ??
     (await resolveAlpacaCredentials(position.userId, positionEnvironment)) ??
@@ -156,6 +191,35 @@ export async function closeOpenPosition(
 
     return ord;
   });
+
+  // ── Trade-as-Proposal seam ──
+  // Only agent-initiated closes route through human approval. Manual UI
+  // (source="user") and the price-monitor trailing-stop cron
+  // (source="price_monitor") always auto-execute — the user already
+  // approved either by clicking the button or by setting the stop at
+  // entry. When approval IS required, maybeAwaitApproval flips the Order
+  // to AWAITING_APPROVAL + sends email; we return early before Alpaca.
+  if (source === "agent") {
+    const awaiting = await maybeAwaitApproval({
+      accountId: position.accountId,
+      positionId,
+      orderId: order.id,
+      intent: "CLOSE",
+      rationale: auditReason ?? null,
+    });
+    if (awaiting) {
+      return {
+        kind: "proposed" as const,
+        proposal: {
+          positionId,
+          orderId: awaiting.orderId,
+          expiresAt: awaiting.expiresAt,
+          rationale: awaiting.rationale,
+          idempotencyKey,
+        },
+      };
+    }
+  }
 
   // 2. Submit to Alpaca with client_order_id = idempotencyKey.
   let alpacaOrderId: string | null = null;
@@ -233,6 +297,7 @@ export async function closeOpenPosition(
     });
 
     return {
+      kind: "closed" as const,
       positionId,
       orderId: order.id,
       alpacaOrderId: null,
@@ -279,6 +344,7 @@ export async function closeOpenPosition(
       closePrice = position.avgCost;
     }
     return {
+      kind: "closed" as const,
       positionId,
       orderId: order.id,
       alpacaOrderId,
@@ -440,6 +506,7 @@ export async function closeOpenPosition(
   })();
 
   return {
+    kind: "closed" as const,
     positionId,
     orderId: order.id,
     alpacaOrderId,
@@ -623,11 +690,22 @@ export async function cancelPosition(positionId: string): Promise<void> {
 
 export type ClosedTradeResult = ClosedPositionResult;
 
+/**
+ * Legacy alias used by the manual close UI (TradeActions, TradesPage,
+ * AnalystDetailClient). All callers are manual button clicks, so we pass
+ * source="user" — bypasses the Trade-as-Proposal gate by design.
+ *
+ * Note the return type widened to CloseOpenPositionOutcome to match the
+ * underlying helper, but in practice the source="user" path always returns
+ * { kind: "closed", ... }. Callers that need the closed shape can narrow
+ * via `if (outcome.kind !== "closed") throw ...`. All current UI callers
+ * discard the return value so the change is invisible to them.
+ */
 export async function closeTrade(
   tradeId: string,
   reason: "TARGET" | "STOP" | "TIME" | "MANUAL",
-): Promise<ClosedPositionResult> {
-  return closeOpenPosition(tradeId, reason);
+): Promise<CloseOpenPositionOutcome> {
+  return closeOpenPosition(tradeId, reason, undefined, "user");
 }
 
 export async function cancelTrade(tradeId: string): Promise<void> {

@@ -16,7 +16,6 @@ import { signalRouter } from "@/lib/inngest/functions/signal-router";
 import { triggerEvaluator } from "@/lib/inngest/functions/trigger-evaluator";
 import { tacticalRun } from "@/lib/inngest/functions/tactical-run";
 import { discoveryRun } from "@/lib/inngest/functions/discovery-run";
-import { intradayEodFlatten } from "@/lib/inngest/functions/intraday-eod-flatten";
 import { backfillSignalFingerprint } from "@/lib/inngest/functions/backfill-signal-fingerprint";
 import { pipelineCleanup } from "@/lib/inngest/functions/pipeline-cleanup";
 import { housekeepingOverdueTheses } from "@/lib/inngest/functions/housekeeping-overdue-theses";
@@ -25,6 +24,12 @@ import { podcastSegmentRun } from "@/lib/inngest/functions/podcast-segment-run";
 // THESIS_RESEARCH_V2 Phase 1 — sub-agent dispatched by Principal Chat
 // (and later Discovery / Daily / Tactical) to write one deep thesis.
 import { thesisWriter } from "@/lib/inngest/functions/thesis-writer";
+// Trade-as-Proposal — every 30 min during ET market hours, sweep
+// Order(AWAITING_APPROVAL) rows past their expiresAt and flip them to
+// EXPIRED. Cancels the paired PENDING_APPROVAL Position for OPEN intent
+// and writes a PROPOSAL_EXPIRED ThesisUpdate so the agent reads it next
+// run. See docs/plans/TRADE_AS_PROPOSAL.md.
+import { proposalExpiry } from "@/lib/inngest/functions/proposal-expiry";
 
 // Vercel function timeout for ALL Inngest functions served from this route.
 // Set to the Vercel Pro plan's 800s ceiling because the heaviest paths
@@ -81,10 +86,12 @@ export const { GET, POST, PUT } = serve({
     // net-new ticker coverage and mints WATCHING theses. Does NOT
     // touch existing theses (the daily run handles those).
     discoveryRun,
-    // DAY-only analysts: 15:45 ET cron force-closes any open positions
-    // before the 16:00 market close. System rule, not an LLM decision —
-    // a DAY analyst going home with an open position is a config violation.
-    intradayEodFlatten,
+    // 2026-06-01: intradayEodFlatten removed — no DAY-horizon analysts in
+    // production; the auto-flatten cron had no consumers. Deleted as part
+    // of the Trade-as-Proposal rollout (the proposal flow would have made
+    // the cron's "auto-close at 15:45" semantic incompatible with the
+    // approval gate anyway). See docs/plans/TRADE_AS_PROPOSAL.md §10 Step 13.
+
     // 2026-04-30: morningBriefGenerator removed. The agent reads durable
     // state (theses, triggers fired since last run, today's signals)
     // directly via tools — no need for a synthesized AI digest.
@@ -107,5 +114,8 @@ export const { GET, POST, PUT } = serve({
     // app/thesis.written on completion. concurrency:5 inside the
     // function caps parallel fan-out for the Phase-2 Discovery rollout.
     thesisWriter,
+    // Trade-as-Proposal — sweep AWAITING_APPROVAL Orders past their
+    // expiresAt. See lib/inngest/functions/proposal-expiry.ts.
+    proposalExpiry,
   ],
 });
