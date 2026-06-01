@@ -214,6 +214,90 @@ export const dispatchThesisResearch = defineTool({
       }
     }
 
+    // ────────────────────────────────────────────────────────────────────
+    // Cross-analyst in-flight dispatch dedup (DISCOVERY_OVERHAUL SOON-1c,
+    // 2026-05-31). When two analysts in the same account both run discovery
+    // simultaneously and both land on the same ticker, they previously
+    // spawned two parallel thesis-writer runs — each burning ~$1-3 of
+    // Claude tokens on duplicate deep research. Observed today on AVGO
+    // (Catalyst Event PM + Momentum Breakout) and CRDO (Momentum Breakout
+    // + Secular Compounder).
+    //
+    // Cardinality allows different analysts to have their own theses on
+    // the same ticker (THESIS_ARCHITECTURE.md §3 — the rule is one
+    // ACTIVE-or-WATCHING per analyst+ticker+direction, not per account).
+    // What this gate prevents is PARALLEL writers running at the same
+    // time — once the first writer completes, a second dispatch for a
+    // different analyst is fine and will land cleanly.
+    //
+    // Behavior: if a THESIS_WRITER ResearchRun is currently RUNNING in
+    // this account for this ticker, reject with a structured note telling
+    // the agent (a) who owns it, (b) what to do instead (PASS-record for
+    // this analyst). 30-minute age cap so a stuck writer doesn't block
+    // forever; writers normally complete in 3-5 minutes.
+    // ────────────────────────────────────────────────────────────────────
+    const STUCK_WRITER_AGE_MIN = 30;
+    const inFlightWriter = await prisma.researchRun.findFirst({
+      where: {
+        accountId: analyst.accountId,
+        mode: "THESIS_WRITER",
+        status: "RUNNING",
+        parameters: { path: ["ticker"], equals: T },
+        startedAt: {
+          gte: new Date(Date.now() - STUCK_WRITER_AGE_MIN * 60 * 1000),
+        },
+      },
+      select: {
+        id: true,
+        agentConfigId: true,
+        startedAt: true,
+      },
+    });
+    if (inFlightWriter) {
+      const ownerAnalyst = inFlightWriter.agentConfigId
+        ? await prisma.agentConfig.findUnique({
+            where: { id: inFlightWriter.agentConfigId },
+            select: { name: true },
+          })
+        : null;
+      const ownerLabel = ownerAnalyst?.name ?? "another analyst";
+      const sameAnalyst = inFlightWriter.agentConfigId === analyst.id;
+      const ageMin = Math.round(
+        (Date.now() - inFlightWriter.startedAt.getTime()) / 60000,
+      );
+      console.warn(
+        `[dispatch-thesis-research] In-flight writer for $${T} ` +
+          `(run=${inFlightWriter.id}, owner=${ownerLabel}, age=${ageMin}m) — ` +
+          `rejecting parallel dispatch from analyst=${analyst.name}.`,
+      );
+      return {
+        summary:
+          `Dispatch refused for $${T}: a thesis-writer is already in flight ` +
+          `(run ${inFlightWriter.id}, owned by ${ownerLabel}, dispatched ${ageMin}m ago).`,
+        data: {
+          childRunId: null,
+          status: "FAILED" as const,
+          note: sameAnalyst
+            ? `This analyst already has a thesis-writer running on $${T} ` +
+              `(run ${inFlightWriter.id}, dispatched ${ageMin}m ago). Wait ` +
+              `for it to complete — don't fan out a second writer for the ` +
+              `same analyst on the same ticker.`
+            : `Another analyst in this account (${ownerLabel}) is already ` +
+              `running a thesis-writer on $${T} (run ${inFlightWriter.id}, ` +
+              `dispatched ${ageMin}m ago). To avoid burning duplicate Claude ` +
+              `tokens on parallel deep-research, EITHER wait for that writer ` +
+              `to complete and then dispatch a fresh one for this analyst, OR ` +
+              `mint a PASS thesis for $${T} via record_thesis(direction:'PASS', ` +
+              `...) with a note that ${ownerLabel} owns the in-flight research ` +
+              `and this analyst should re-evaluate after that thesis lands. ` +
+              `(Cardinality allows different analysts to own their own theses ` +
+              `on the same ticker — this gate only prevents PARALLEL writers, ` +
+              `not separate theses across analysts.)`,
+        },
+        sources: [],
+      };
+    }
+
     // mode is intentionally a String column on ResearchRun (not a Prisma
     // enum) so new values like "THESIS_WRITER" don't need a migration. See
     // docs/plans/THESIS_RESEARCH_V2.md §7.

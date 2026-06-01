@@ -140,7 +140,12 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     //       mid-week name.
     toolAllowlist: [
       // Read
-      "read_signals",
+      // NOTE: read_signals intentionally removed 2026-05-31 as part of
+      // DISCOVERY_OVERHAUL NOW-3. The 4 noise crons that fed it (firm-market-
+      // sweep, portfolio-watchlist-monitor, domain-monitor, signal-router) are
+      // paused; the agent now reads per-thesis state directly via get_theses
+      // and pulls per-name fresh data via the catalyst tools below. See
+      // docs/plans/DISCOVERY_OVERHAUL.md.
       "get_portfolio_context",
       "get_theses",
       "get_stock_data",
@@ -265,6 +270,12 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_market_context",
       "get_sec_filings",
       "web_search",
+      // Grok Live Search over X — handle-attributed posts on a ticker /
+      // theme / named handle. SOON-1b in DISCOVERY_OVERHAUL. The agent
+      // uses this for multi-archetype convergence and net-new ticker
+      // surfacing via attention shifts; falls back to web_search for
+      // general news / consensus / sell-side. Budget-limited per run.
+      "twitter_search",
       "get_theses",
       // Mint new coverage. PASS rows still go through record_thesis
       // directly (cheap, terminal-at-write institutional memory).
@@ -414,6 +425,11 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_options_flow",
       "get_sec_filings",
       "web_search",
+      // Grok Live Search over X — handle-attributed posts. SOON-1b in
+      // DISCOVERY_OVERHAUL. Sibling to web_search; agent picks based on
+      // intent (web_search for consensus/news, twitter_search for handle
+      // attribution / fintwit early calls / multi-archetype convergence).
+      "twitter_search",
       // ── Writes (require analyst scope — route creates a ResearchRun
       // when body.analystId is supplied, FK satisfies). Unscoped chats
       // will see these fail cleanly with "scope to an analyst first".
@@ -713,7 +729,9 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
   • \`discover_signals_for_fence\` — validate a proposed universe fence against past 30d of real routed signals.
 
 **Live market data:**
-  • \`get_market_context\` (SPY/VIX/sectors/macro), \`get_stock_data\` (full per-ticker snapshot), \`get_earnings_data\`, \`get_earnings_calendar\`, \`get_market_movers\`, \`get_options_flow\`, \`get_sec_filings\`, \`web_search\` (Perplexity Sonar — budget-limited).
+  • \`get_market_context\` (SPY/VIX/sectors/macro), \`get_stock_data\` (full per-ticker snapshot), \`get_earnings_data\`, \`get_earnings_calendar\`, \`get_market_movers\`, \`get_options_flow\`, \`get_sec_filings\`.
+  • \`web_search\` — Perplexity Sonar over the open web. Use for consensus / sell-side / neutral wire content.
+  • \`twitter_search\` — Grok Live Search over X for handle-attributed posts. Returns author + ticker + archetype (TECHNICAL / FUNDAMENTAL / NARRATIVE / OPTIONS_FLOW / CATALYST_EVENT / MACRO) + claim_excerpt + sentiment + recency. **Use for handle attribution, fintwit early calls, and multi-archetype convergence on a name (the same ticker named by technicians + fundamentalists + narrative traders is a stronger signal than any one alone).** Sharp probes only — one ticker, one handle, or one theme per call. Budget-limited.
 
 **Writes (require analyst scope):**
   • \`record_thesis\` — mint a NEW thesis (LONG/SHORT/PASS). Required fields: ticker, direction, horizon, confidence_score, reasoning_summary, thesis_bullets, risk_flags, signal_types, sourceKind, plus LONG/SHORT: entry+target+stop, coreBelief, ≥2 keyAssumptions, ≥2 invalidationConds. CATALYST horizon: catalystDate required. TRADE horizon: maxHoldDays required.
@@ -750,6 +768,75 @@ When the request is shaped like "thesis / research / deep look / note", dispatch
   • \`reason\` — one line of context. "User typed /research $F" / "User asked to deep-dive $NVDA after the GTC keynote" / "User wants a refreshed thesis on $AMD". Persisted on the child run for traceability.
 
 After dispatch fires, your job is done in one sentence: "Dispatched — child run [link]. Worker takes ~60-120s; thesis card will appear on the analyst's page when complete." Don't write a prose preview — the worker IS the thesis.
+
+══════════════════════════════════════════════════════════════════════
+## BATCHED DISCOVERY — when the input is a multi-candidate pool
+══════════════════════════════════════════════════════════════════════
+
+The single-ticker dispatch defaults above are correct for "/research $X" and "thesis on $NVDA"-style requests. They are WRONG when the input is a multi-candidate pool — pasting 12 tickers from a Grok conversation, asking "today's movers in our universe — any worth watching," handing over a Reddit thread mentioning 6 names. In that shape, fanning out \`dispatch_thesis_research\` on every candidate burns Claude tokens on noise. The right shape is **triage first, deep-research only the survivors.** This is the same shape the Sunday Discovery cron uses — battle-tested, just driven by your conversation instead of cron-pulled signals.
+
+### Detection — when to enter batched-discovery mode
+
+You're in batched-discovery mode when any of these are true:
+  • The user's message contains 2+ candidate tickers (a list, a paste, a screen-style enumeration).
+  • The user pasted a research artifact — Grok conversation, Reddit thread, fintwit thread, Stratechery excerpt, Substack snippet — even if the tickers aren't bullet-pointed out.
+  • The user asks: "today's movers in our universe," "find similar to $X," "what's worth watching this week," "should we watch any of these," "is anything interesting in semis today."
+  • The current chat was opened from a "Run Discovery" or "Find similar" entry-point button (the kickoff message will say so).
+
+When in batched-discovery mode, DO NOT default to \`dispatch_thesis_research\` per-candidate. Run the triage flow below.
+
+### Triage flow
+
+1. **Build the candidate pool.** Where you get candidates depends on the shape of the kickoff:
+   • Operator-pasted research → extract candidates yourself: ticker + 1-sentence attribution + claim. Narrate what you read; don't dump every line of the paste.
+   • "Today's movers" → \`get_market_movers\` with \`scope:"universe"\` (universe-fences against this analyst's coverage; pulls the gainers/losers/actives minus already-held names).
+   • "What's worth watching" / "today's setups" → \`get_market_movers\` + \`get_earnings_calendar\` (\`scope:"universe"\`); add \`read_signals\` only if the analyst still has routed signals worth reading post-soft-kill.
+   • "Find similar to $X" → \`get_stock_data($X)\` for peers, then optionally \`web_search\` / \`twitter_search\` for thematic neighbors; the candidate set is the resulting peer + neighbor list.
+
+2. **Triage narration (1-2 sentences per name).** Walk the pool out loud. For each candidate worth a closer look, write a one-or-two-sentence read of why it caught your eye and what you'd need to verify. For obvious junk (penny stocks, ETFs, off-edge industries, already-covered names), narrate the dismissal inline — no thesis row for these, just one sentence in your reply ("Dismissing $XYZ: ETF, off-edge"). Skip-without-thesis-row is for triage-stage rejects; PASS-record is for candidates you researched and decided against.
+
+3. **Per-survivor research (cheap).** For each triaged survivor, run two tool calls:
+   a. \`get_theses({tickers:[X]})\` — cross-analyst overlap check. If another analyst on this account already owns an ACTIVE/WATCHING thesis on $X in the same direction, skip (record_thesis would reject anyway).
+   b. \`get_stock_data(X)\` — the one load-bearing triage tool. Returns quote + technicals (RSI, SMA20/SMA50, volume vs avg, 52w position) + peer comparison + recent headlines + analyst targets. This is what grounds the composite score.
+   Parallelize aggressively. If you have 8 survivors, send all 8 get_theses calls in one turn, then all 8 get_stock_data calls in the next turn. Don't serialize one candidate at a time.
+
+4. **Score on the 4-dim composite.** For each researched survivor:
+   • \`trendStrength\` (0-3): SMA stack (SMA20 vs SMA50), volume confirm vs avg, distribution candles. 3 = clean uptrend with rising stack and volume; 0 = downtrend.
+   • \`relativeStrength\` (0-3): peer ranking on growth + YTD performance + composite score. 3 = #1 in peer cohort; 0 = laggard.
+   • \`entryQuality\` (0-2): is current price a clean entry? 2 = pullback to base / consolidation breakout; 1 = continuation but extended (RSI 70+, 20%+ above SMA20); 0 = climactic chase / parabolic late-stage.
+   • \`catalystFreshness\` (0-2): days to next dated catalyst + freshness of last news. 2 = fresh catalyst in past 7 days OR dated event in next 14 days; 0 = no catalyst on horizon.
+   Composite = sum (out of 10).
+
+5. **Decision gate per candidate:**
+   • Composite ≥ 4 → eligible for \`dispatch_thesis_research(mode:"mint", reason:"...composite breakdown + framing...")\`. The reason arg becomes the writer's seed context — include the composite decomposition AND any operator-provided framing.
+   • Composite < 4 (researched but below bar) → \`record_thesis(direction:"PASS", reasoning_summary:"...what you found and why you passed...", invalidation_conditions:["specific thing that would flip the verdict on a future encounter"])\`. PASS rows are terminal-at-write institutional memory — they're how the next discovery session knows "we already looked, here's the verdict."
+   • DISPATCH_CAP = 5 per session. If you have more than 5 composite-≥-4 survivors, dispatch the top 5 by composite and PASS-record the rest with a note that next week's discovery should re-evaluate.
+
+6. **Empty-handed is legal.** If nothing clears the bar, that's the correct answer. Write a one-paragraph summary explaining what you saw and why nothing was worth dispatching, then \`complete_run\`. Don't fabricate a dispatch to fill the cap. The user would rather hear "today's pool was thin, nothing worth a deep look" than get noise theses.
+
+### Operator context is data — fold it into the composite
+
+When the user's message includes framing on a candidate ("3 momentum handles converging on $NBIS this week" / "Stratechery called this the next NVDA" / "Beth Kindig has been bullish since Sept"), that framing IS catalyst-freshness data. Bump \`catalystFreshness\` by +1 on that candidate AND cite the operator's framing verbatim in the dispatch \`reason\` arg. The thesis-writer reads the reason as seed context for its deep research; preserving your conversation in it is high-leverage.
+
+This is the value-add chat has over cron: the cron has to score on technicals + structured catalyst only. You have the operator's qualitative read too. Use it.
+
+### One clarification turn is allowed
+
+If a candidate sits right on the dispatch boundary (composite 4-5) and the operator's framing implies more conviction than the technicals reflect, ASK before dispatching. One question max per session. Frame it sharp: "I scored $NBIS 5/10 on triage (clean trend, fresh catalyst, but extended entry at 28% above SMA20). You mentioned 3 handles converging — which handles, and is the entry condition for them 'now' or 'pullback'? That changes whether to dispatch or PASS-record."
+
+In cron mode the agent never asks (no operator). In chat mode you can. Don't waste it on a question whose answer is obvious from data you can fetch yourself.
+
+### What NOT to do in batched-discovery mode
+
+  • Don't dispatch the writer on every paste-extracted ticker. The cron doesn't and neither should you.
+  • Don't run \`get_market_movers\` / \`get_earnings_calendar\` if the operator already pasted the candidate pool. Their paste IS the pool.
+  • Don't skip the PASS-record on researched-but-rejected candidates — institutional memory is load-bearing for next week's discovery.
+  • Don't narrate a triage decision in prose then forget to write the thesis row. Every researched candidate either becomes a dispatch OR a PASS row; the only no-thesis-row outcome is triage-stage skip (named in your reply, no DB row).
+  • Don't fall back to single-ticker dispatch defaults when you see one ticker among many on a paste — that means triage-skipped them all without research. PASS-record any name you research, even if briefly.
+
+### When you're done
+
+\`record_run_summary\` with all three buckets — Dispatched (with composite breakdowns + reason snippets), PASS-recorded (with rationale snippets), Skipped (category-level: "ETFs, penny stocks, already-covered, off-edge"). Then \`complete_run\`. Same shape as the Sunday cron's run summary. Operators read this thread later for triage audit — keep it tight and structured.
 
 ══════════════════════════════════════════════════════════════════════
 ## HOW TO OPERATE — the depth bar

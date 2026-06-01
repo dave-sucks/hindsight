@@ -1,14 +1,107 @@
-# Hindsight — Discovery V2 (signal sources reference)
+# Hindsight — Discovery (operating model + signal source catalog)
 
-> **What this is:** a catalog of the signal source archetypes that could feed a stronger discovery pipeline. For each: what the signal looks like in the world, the kind of action it should produce, and the realistic dollar outcome on a representative trade.
+> **What this is.**
+> 1. **The operating model for discovery** (Part 1, §§0-2 below) — added 2026-05-31 after the audit that established the input quality, not the agent shape, was the bottleneck.
+> 2. **A catalog of signal-source archetypes** that could feed it (Part 2, §§3-7 below) — the original content of this doc, merged 2026-05-30.
 >
-> **What this is not:** an implementation plan. The architecture, the agent modes, the cadences, the dispatch logic — all of that belongs in a follow-up plan that respects the platform's agent-driven shape. This doc is just the reference of *what's out there*.
+> **What this is not:** the implementation plan. For the prioritized to-do list, phases, and tasks, see [`DISCOVERY_OVERHAUL.md`](./DISCOVERY_OVERHAUL.md).
 >
-> **Premise.** Today's discovery is anemic: Perplexity Sonar searches + FMP movers + Finnhub earnings calendar, batched weekly. The rest of the platform (signal-router → trigger-evaluator → tactical-run → place_trade) is already capable of acting on signals in seconds. The bottleneck is the inputs, not the machinery downstream. The catalog below is the universe of inputs to pick from.
+> **Core premise.** The right unit of discovery is **a conversation**, not a cron. Hindsight already has the agent infra (Principal Chat: scoping, model selector, full toolbox, `dispatch_thesis_research`). The Sunday discovery cron has been doing a subset of what this chat can already do — batched, automated, one-shot, over a poisoned input pool. The fix is to (a) stop poisoning the input, (b) teach the chat agent the batched-discovery shape, and (c) rebuild the source layer so each source serves discovery AND held-thesis triggers from the same wire.
 
 ---
 
-## 1. The state of discovery today
+## Part 1 — The operating model
+
+### 0. Discovery is a conversation in Principal Chat
+
+Hindsight's Principal Chat agent (`/chat`, mode=`principal`) already has every capability discovery needs:
+
+- **Analyst scoping** — pick from the scope selector; agent gets that analyst's universe / strategy / sizing / watchlist + the correct `analyst_id` for downstream writes.
+- **Model selector** — Claude Sonnet 4.6 default; other providers selectable per chat without code changes downstream.
+- **Full toolbox** — `read_signals`, `get_market_movers`, `get_stock_data`, `get_earnings_calendar`, `get_options_flow`, `get_sec_filings`, `web_search`, `discover_signals_for_fence`, `read_analyst_inbox_stats`, plus the writes: `record_thesis`, `update_thesis`, `place_trade`, and **`dispatch_thesis_research`** (the only surface today that can spawn the deep-research writer).
+- **Multi-turn chat shape** — `RunMessage`-persisted, streamed, tool calls render inline. Same surface the operator already uses to fire `/research $X` on single tickers.
+
+There is no architectural gap. Discovery becomes a conversation in three input modes:
+
+1. **Operator-driven open conversation.** "Today's movers in our universe — anything worth watching?" / "Find names similar to $DELL post-earnings." / "I keep seeing $NBIS on X — should we look at it?" The agent does light research (triage + per-candidate `get_stock_data` + cross-analyst overlap check), scores on the 4-dim composite, and **dispatches the thesis-writer only for the survivors**.
+2. **Operator-pasted research.** The user pastes a research artifact (Grok conversation, Reddit thread, Stratechery excerpt, fintwit thread). The agent extracts (ticker, attribution, claim) and runs the same triage → research → dispatch loop. No separate "Research Inbox" surface — the chat is the inbox.
+3. **Saved-prompt cadenced.** Once the operator finds a kickoff prompt that produces good output ("rare earths convergence excluding our coverage" / "post-earnings drift candidates in semis"), they save it with a cadence. A cron fires the same agent with that prompt as the kickoff message. The operator triages the resulting run thread Monday morning.
+
+These are the **same agent, same prompt, same toolbox**. They differ only in where the kickoff message comes from.
+
+### 1. What the agent must be good at (the prompt gap)
+
+The Principal Chat prompt today is correctly aggressive on the **single-ticker deep-research dispatch** path (`/research $X` and natural-language "write me a thesis on $X" both default to `dispatch_thesis_research`). That's the right default for single-ticker requests and should stay.
+
+What the prompt does NOT yet teach is the **batched-discovery shape** that surfaces when the input is a multi-candidate pool (a paste of 12 tickers, "today's movers in our universe," "find names similar to $X"). For batched inputs, the agent needs:
+
+- **Triage first.** Don't dispatch the writer on every candidate. The whole point of discovery vs. deep-research is light research → judgment → "is this worth a deep look at all?"
+- **The 4-dim composite** (trendStrength + relativeStrength + entryQuality + catalystFreshness) on each researched candidate. Same rubric the Sunday cron uses.
+- **Cross-analyst overlap check** via `get_theses({tickers})` before dispatch — duplicate coverage wastes the writer budget and `record_thesis` will reject it anyway.
+- **DISPATCH_CAP discipline** — even in chat, dispatching 12 deep-research writers in parallel is wrong. Cap at 5 per session by default. Survivors above the cap become PASS rows ("next discovery should re-evaluate").
+- **PASS rows for institutional memory** — researched-but-declined candidates get `record_thesis(direction:'PASS', invalidation_conditions:[…])` so the next encounter has the prior verdict and can chain via `parentThesisId`.
+- **"None of these clear the bar" is the correct answer when it is.** The operator should never feel pressure to come away with a dispatch just because they ran discovery. An empty-handed run with a clear `record_run_summary` paragraph is a successful run.
+
+The fix is a **batched-discovery operating section** appended to the Principal Chat prompt that activates when the input is a multi-candidate pool. Single-ticker dispatch defaults stay; the batched path goes through triage first. This is one prompt diff in `lib/agent/modes.ts → buildPrincipalSystemPrompt`. No new mode, no new tools.
+
+### 2. Entry points + on-cadence
+
+The chat is the destination. Buttons elsewhere compose a kickoff message and route to it:
+
+- `/analysts/[id]` **"Run Discovery"** → opens chat scoped to that analyst with archetype-aware kickoff (e.g., for momentum: "Run a discovery pass. Start with `get_market_movers` scope=universe + `get_earnings_calendar` scope=universe. Triage anything net-new, score on composite, dispatch up to 5 + PASS the rest.").
+- `/stocks/[ticker]` **"Find similar"** → kickoff: "Find names similar to $X by peers / theme / catalyst class. Cross-check against [analyst]'s universe. Triage, dispatch the survivors, PASS the rest."
+- (Later) **research paste box** → kickoff: "I'm pasting research from [source]. Extract candidates, triage, dispatch the survivors."
+
+All of these are **one chat route + one composed kickoff message**. Zero new tables, zero new tools.
+
+**Cadenced discovery** is the same agent fired by cron with a saved kickoff message. Architecturally: a small `SavedDiscoveryPrompt` table — `(analystId, kickoffMessage, cadence, lastRunAt)` — plus a cron that fires the agent with the saved prompt. **Defer until the operator-driven flow has proven that a specific prompt produces good output.** Don't pre-author the saved-prompt library before any prompt has proven itself in chat.
+
+---
+
+## Part 2 — The signal-source catalog (inputs reference)
+
+## 3. The catalyst-as-trigger pattern (the architectural insight)
+
+Every entry in §5's catalog is a **dual-role producer**. The right architectural answer to "I want 8-K filings as a discovery source" is the same wire as "I want existing theses to wake up when an 8-K lands on a held name." Same data, two consumers:
+
+```
+EDGAR atom feed (8-K, Form 4, 13D) → Inngest function: edgar-monitor
+
+  for each filing event:
+    IF ticker ∈ any analyst's coverage (active or watching thesis):
+      → fire the relevant trigger (FILING_8K_ITEM_X / FORM_4_CLUSTER / FILING_13D)
+      → trigger evaluator wakes a tactical run on that thesis
+      → tactical agent reads the filing, decides update / exit / hold
+
+    ELSE IF ticker ∈ any analyst's universe (sector/industry/theme/feeds match):
+      → write Signal row, route to that analyst
+      → surfaces in next Open Discovery session as a candidate
+
+    ELSE:
+      → drop
+```
+
+Don't build two pipelines. Build the producer once, route twice.
+
+#### The trigger gap to close
+
+| Source class | Trigger type needed | Currently? |
+|---|---|---|
+| 8-K Item 2.02 (earnings) | `EARNINGS_REPORTED` REVIEW | partial (earnings calendar fires; not the actual 8-K) |
+| 8-K Item 4.02 (restatement) | `INVALIDATION_RISK` EXIT-eval | missing |
+| 8-K Item 5.02 (officer departure) | `INVALIDATION_RISK` REVIEW | missing |
+| Form 4 cluster insider buys | `INSIDER_BUY_CLUSTER` REVIEW | missing |
+| Schedule 13D (activist) | `ACTIVIST_DISCLOSED` REVIEW | missing |
+| Real-time news wire (Benzinga) | `MATERIAL_NEWS` REVIEW (scored) | missing |
+| Quiver structured congressional | `POLITICAL_DISCLOSURE` REVIEW | missing |
+| Analyst PT change (FMP) | `ANALYST_PT_CHANGE` REVIEW | missing |
+| FDA / clinical readout | `CATALYST_EVENT_FIRED` REVIEW | partial (catalystDate-based) |
+
+Each missing entry is one Inngest producer + one trigger-type registration in the trigger evaluator. Each gives the existing trigger evaluator a new reason to wake up the tactical run on held names AND populates the discovery surface for net-new names.
+
+---
+
+## 4. The state of discovery today
 
 The current Sunday discovery cron is a once-a-week funnel that reads three surfaces (Sonar searches, FMP top movers, Finnhub earnings calendar), scores candidates, dispatches the thesis-writer for the survivors, and writes PASS-archived rows for the rejects. It works. But it produces ~5-10 candidates per analyst per week, mostly already-mainstream names, with no event-driven cadence and no social/regulatory/options-flow visibility at all.
 
@@ -23,7 +116,7 @@ None of this reaches an analyst inbox. That's the gap.
 
 ---
 
-## 2. What "better discovery" means
+## 5. What "better inputs" looks like
 
 Independent of any specific architecture, better discovery means:
 
@@ -37,11 +130,11 @@ That's the conceptual shape. Specific implementation choices are separate.
 
 ---
 
-## 3. Signal source catalog
+## 6. Signal source catalog
 
 Each entry in the same format: what the signal looks like, the kind of action it should produce, the realistic dollar outcome on a representative trade, and the integration cost/latency reality.
 
-### 3.1. SEC 8-K — Item 4.02 (Restatement)
+### 6.1. SEC 8-K — Item 4.02 (Restatement)
 
 **The signal:** Company files an 8-K disclosing Item 4.02 — "Non-Reliance on Previously Issued Financial Statements." Translation: their last earnings report was wrong. Peer-reviewed academic outcome: -8% on day 0, drifting to -15% over 30 days.
 
@@ -51,7 +144,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** EDGAR atom feed `getcurrent?type=8-K&output=atom` is free, ~1-30s latency. sec-api.io WebSocket Stream API ($55/mo) cuts latency to ~300ms — buy it only when atom-feed lag is demonstrably breaking trades.
 
-### 3.2. SEC 8-K — Item 5.02 (Officer Departure)
+### 6.2. SEC 8-K — Item 5.02 (Officer Departure)
 
 **The signal:** CEO/CFO resigns. "Effective immediately" + no named successor is the high-α slice. For high-flying growth names where the CEO is the brand: -10% to -20% gap.
 
@@ -61,7 +154,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** Same EDGAR pipeline as 4.02.
 
-### 3.3. SEC 8-K — Item 2.02 (Earnings + Guide)
+### 6.3. SEC 8-K — Item 2.02 (Earnings + Guide)
 
 **The signal:** Beat-and-raise combo (EPS beat >5% + revenue beat >5% + guidance raised). One of the highest-α event classes documented.
 
@@ -71,7 +164,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** Same EDGAR pipeline.
 
-### 3.4. SEC Form 4 — Cluster Insider Buy
+### 6.4. SEC Form 4 — Cluster Insider Buy
 
 **The signal:** 3+ insiders buy in a 30-day window. CEO/CFO + $500k+ aggregate is the high-α slice. Cohen-Malloy-Pomorski peer-reviewed research: ~7.4% 6-month outperformance in mid-caps.
 
@@ -81,7 +174,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** EDGAR Form 4 atom feed is free. OpenInsider has structured rollups. sec-api.io exposes parsed JSON via stream API. Single-insider purchases are noisy and should NOT auto-dispatch — the pattern is the signal, not the single fill.
 
-### 3.5. SEC Schedule 13D — Activist Filing
+### 6.5. SEC Schedule 13D — Activist Filing
 
 **The signal:** Credible activist files 13D disclosing >5% stake + an open letter calling for changes. The single highest-α single-event class on record. Brav/Klein/Zur peer-reviewed research: ~10% 12-month excess returns following filings from credible filers.
 
@@ -91,7 +184,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** EDGAR atom feed `type=SC 13D` is free. The "credible activist" filter is the value — filings from no-name LLCs are noise.
 
-### 3.6. Congressional Trade — STOCK Act
+### 6.6. Congressional Trade — STOCK Act
 
 **The signal:** Periodic Transaction Report disclosing a member's (or family's) trade. Statutory 45-day disclosure lag. Pelosi family documented 54% in 2024 vs SPX 25% — 29 percentage points of excess return.
 
@@ -101,7 +194,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** Quiver Quantitative Hobbyist tier ($30/mo). Sub-hour polling is theater — the 45-day statutory lag dwarfs any pipeline-latency contribution. 2-hour cadence is fine.
 
-### 3.7. Options Flow — Unusual Activity (UOA)
+### 6.7. Options Flow — Unusual Activity (UOA)
 
 **The signal:** Single block trade with the high-α archetype: **sweep + size + OTM + short-dated**. Example: $2.4M block in $60 calls 25% OTM, 6 weeks to expiry, OI jumps 142 → 4,200. The buyer expects a material move in-window — usually a binary catalyst (FDA decision, M&A close, trial readout).
 
@@ -111,7 +204,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** Unusual Whales API tier is the only retail-priced JSON/WebSocket UOA API. Dashboard-only tools (Cheddar Flow, FlowAlgo, BlackBox) are disqualifying for automation.
 
-### 3.8. Dark Pool — Block Print
+### 6.8. Dark Pool — Block Print
 
 **The signal:** Off-exchange (TRF) print >10% of average daily volume, off-NBBO, size >$5M. Single print = institutional positioning. **Multi-day pattern (5 days, 3+ large prints) = confirmed accumulation.**
 
@@ -121,7 +214,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** Polygon.io Developer ($79/mo) gives raw consolidated tape including TRF prints; the "large block + off-NBBO" heuristic is DIY. Unusual Whales' dark-pool API has a documented 15-minute delay — too slow for tactical use.
 
-### 3.9. News Headline — Real-time Wire
+### 6.9. News Headline — Real-time Wire
 
 **The signal:** Headline pushed within ~200ms of press-release publication, ahead of CNBC chyron / X cycle / retail brokerage app pushes.
 
@@ -131,7 +224,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** Benzinga Basic News API is free with real-time WebSocket + webhook delivery. The biggest "why aren't we doing this yet" item in the entire catalog.
 
-### 3.10. Social — WSB Rank Velocity (ApeWisdom)
+### 6.10. Social — WSB Rank Velocity (ApeWisdom)
 
 **The signal:** Ticker jumps from rank #47 to #4 on r/wallstreetbets in 24h, mention count +1422%. Combined with small float (<50M) + high SI (>15%) + already-moving price = meme-squeeze archetype.
 
@@ -141,7 +234,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** ApeWisdom JSON API is free, no auth. Covers WSB + stocks + investing + pennystocks + 4chan /biz/.
 
-### 3.11. Social — Grok / xAI as a Discovery Source
+### 6.11. Social — Grok / xAI as a Discovery Source
 
 **The signal:** A Grok query returns rich, multi-author, multi-ticker output with native X data access. Example: "who was bullish on $MU in Sept 2024" surfaces specific handles, their setups, their archetypes, and lateral coverage across their other positions. Multi-handle convergence on the same ticker (technical + fundamentals + thematic archetypes all agreeing) is the rarest, highest-value variant.
 
@@ -151,7 +244,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** xAI API exposes Grok with a Live Search parameter that searches across X, Web, and News. Pricing is per-token + per-source-result. The "early-caller" backward-lookup pattern that took custom Twitter scraping infrastructure 24 months ago is now a single prompt.
 
-### 3.12. Screenshot Ingestion (User-initiated)
+### 6.12. Screenshot Ingestion (User-initiated)
 
 **The signal:** User screenshots an X post, Reddit comment, or article snippet they think is interesting. Vision model extracts (source, author handle, ticker, sentiment, claim, urgency).
 
@@ -161,7 +254,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** Claude Opus 4.7 vision handles arbitrary screenshot layouts (X post, Reddit thread, Substack snippet) with strict-JSON output. iOS Shortcut → POST → vision call → existing pipeline. The killer mobile-first surface.
 
-### 3.13. Reflexive Vector Memory (Cross-cutting)
+### 6.13. Reflexive Vector Memory (Cross-cutting)
 
 **The signal:** Every new candidate is embedded and matched against the embedding-space of past closed trades. Top-5 nearest historical setups weighted by sign-of-return tells you "this looks like setups that have worked / failed before."
 
@@ -171,7 +264,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** Supabase pgvector + HNSW index, OpenAI text-embedding-3-large. Storage is free; embedding cost is ~$0.02/thesis. The hard part is the discipline of doing the embedding on every close.
 
-### 3.14. Earnings Vocal-Tone Contradiction
+### 6.14. Earnings Vocal-Tone Contradiction
 
 **The signal:** Earnings beat + raise, stock opens +6%. But vocal-tone analyzer (Deepgram transcript + tone analysis) detected CFO hesitation + hedge phrases + pitch drop on margin questions vs. confidence on pipeline questions. Market narrative ≠ CFO's affect.
 
@@ -181,7 +274,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** Deepgram for transcription + tone metadata, Claude for synthesis. Earnings calls are infrequent (1/quarter per ticker), so this is low-volume but high-uniqueness.
 
-### 3.15. Prediction Market Disconnect
+### 6.15. Prediction Market Disconnect
 
 **The signal:** Polymarket "Will $TICKER announce M&A in 2026?" trading at 67%. Options market IV is normal (not pricing event risk). Disconnect = potential edge.
 
@@ -191,7 +284,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 **Integration reality:** Polymarket + Kalshi public APIs. Low frequency, modest signal.
 
-### 3.16. FDA / Clinical Trial Readouts
+### 6.16. FDA / Clinical Trial Readouts
 
 **The signal:** PDUFA date hit, FDA approval/rejection, Phase 2/3 trial readout. Binary catalysts for biotech names.
 
@@ -203,7 +296,7 @@ Each entry in the same format: what the signal looks like, the kind of action it
 
 ---
 
-## 4. The empirical alpha hierarchy
+## 7. The empirical alpha hierarchy
 
 Not all sources are equal. Rough ranking by documented per-event excess return in the academic literature, highest to lowest:
 
@@ -226,20 +319,21 @@ The pattern: **lower frequency + structured-data sources have stronger per-event
 
 ---
 
-## 5. What this catalog isn't
+## 8. What this catalog isn't
 
-- Not an architecture. How any of this is ingested, what agent invokes it, how decisions are routed, what tables get written — that's a separate problem for a separate doc.
-- Not a build plan. No phasing, no cost summary, no schema, no mode allowlists.
-- Not a vendor evaluation. Vendor names appear only when there's a single obvious choice; otherwise the question "which provider" is its own diligence task.
-- Not a substitute for the existing `docs/INTELLIGENCE.md` (which documents what's built today). This doc is forward-looking source coverage; that one is the live reference.
+- Not the implementation plan. Phases, owners, sequencing, schema, mode allowlists, prompt diffs — all in [`DISCOVERY_OVERHAUL.md`](./DISCOVERY_OVERHAUL.md).
+- Not a vendor evaluation. Vendor names appear only when there's a single obvious choice; otherwise "which provider" is its own diligence task.
+- Not a substitute for [`INTELLIGENCE.md`](../INTELLIGENCE.md) (which documents what's built today). This doc is forward-looking source coverage; that one is the live reference.
 
-When the time comes to design the architecture for ingesting these, this catalog is the input.
+The architecture decision *is* in this doc now (§§0-3 above). What's outside this doc's scope is the rollout — sequencing, deprecation, what ships first. That lives in `DISCOVERY_OVERHAUL.md`.
 
 ---
 
 ## See also
 
-- [`docs/VISION.md`](../VISION.md) — Pillar 1 (Discovery) is the success bar
-- [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — the role split + the dispatchable thesis-writer that downstream tools rely on
-- [`docs/INTELLIGENCE.md`](../INTELLIGENCE.md) — what discovery actually looks like in production today
-- [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle (any future ingestion design has to respect this)
+- [`DISCOVERY_OVERHAUL.md`](./DISCOVERY_OVERHAUL.md) — the prioritized to-do list and phases for executing on this operating model
+- [`VISION.md`](../VISION.md) — Pillar 1 (Discovery) is the success bar
+- [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — the role split + the dispatchable thesis-writer that downstream tools rely on
+- [`INTELLIGENCE.md`](../INTELLIGENCE.md) — what discovery actually looks like in production today
+- [`PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle (any future ingestion design has to respect this)
+- [`CONVICTION_EXPRESSION.md`](./CONVICTION_EXPRESSION.md) — adjacent design (Thesis structure) that improves the conviction signal on every dispatched thesis

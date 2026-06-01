@@ -35,6 +35,7 @@ import { waitForThesisRefresh } from "./wait-for-thesis-refresh";
 import { readSignals } from "./read-signals";
 import { readArtifact } from "./read-artifact";
 import { webSearch } from "./web-search";
+import { twitterSearch } from "./twitter-search";
 import { recordThesis } from "./record-thesis";
 import { updateThesis } from "./update-thesis";
 import { getTheses } from "./get-theses";
@@ -156,6 +157,7 @@ export function createResearchTools(ctx: ToolCtx) {
     read_signals: readSignals(newCtx),
     read_artifact: readArtifact(newCtx),
     web_search: webSearch(newCtx),
+    twitter_search: twitterSearch(newCtx),
     record_thesis: recordThesis(newCtx),
     update_thesis: updateThesis(newCtx),
     get_theses: getTheses(newCtx),
@@ -219,6 +221,7 @@ export { waitForThesisRefresh } from "./wait-for-thesis-refresh";
 export { readSignals } from "./read-signals";
 export { readArtifact } from "./read-artifact";
 export { webSearch } from "./web-search";
+export { twitterSearch } from "./twitter-search";
 export { recordThesis } from "./record-thesis";
 export { updateThesis } from "./update-thesis";
 export { getTheses } from "./get-theses";

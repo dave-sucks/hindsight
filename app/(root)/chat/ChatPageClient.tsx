@@ -36,6 +36,14 @@ interface Props {
   resumedRunId?: string | null;
   /** Analyst the resumed chat was scoped to — sets the initial scope. */
   resumedAnalystId?: string | null;
+  /**
+   * Discovery entry-point kickoff (DISCOVERY_OVERHAUL SOON-2). When both
+   * are set, the chat opens scoped to `kickoffAnalystId` and auto-sends
+   * `kickoffMessage` via AgentChat's `initialPrompt`. Both must be
+   * server-validated before reaching this component.
+   */
+  kickoffAnalystId?: string | null;
+  kickoffMessage?: string | null;
 }
 
 export function ChatPageClient({
@@ -44,11 +52,12 @@ export function ChatPageClient({
   resumedMessages,
   resumedRunId,
   resumedAnalystId,
+  kickoffAnalystId,
+  kickoffMessage,
 }: Props) {
-  // When resuming, the scope is pre-set to the chat's analyst. Otherwise
-  // we default to UNSCOPED every page load — same as before.
+  // Initial scope precedence: resume > kickoff entry-point > unscoped.
   const [scopedAnalystId, setScopedAnalystId] = useState<string | null>(
-    resumedAnalystId ?? null,
+    resumedAnalystId ?? kickoffAnalystId ?? null,
   );
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
@@ -90,6 +99,13 @@ export function ChatPageClient({
         // route continues writing to the same chat.
         messages={resumedMessages}
         runId={resumedRunId ?? undefined}
+        // Discovery entry-point kickoff (DISCOVERY_OVERHAUL SOON-2). When
+        // set on a FRESH chat (no resume), AgentChat's useAutoSend fires
+        // this as the first message. On a resumed chat the kickoff is
+        // ignored — the resumed thread is the user's intent.
+        initialPrompt={
+          !resumedMessages && kickoffMessage ? kickoffMessage : undefined
+        }
       />
 
       <RecentChatsSidebar
