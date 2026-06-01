@@ -278,8 +278,8 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
 //     scripts/dedupe-review-date-hit-triggers.ts strips it from
 //     existing WATCHING theses.
 //
-// Direction matters here: LONG watches enter on PRICE_ABOVE target,
-// SHORT watches enter on PRICE_BELOW target. PASS watches get only
+// Direction matters here: LONG watches enter on PRICE_ABOVE entryPrice,
+// SHORT watches enter on PRICE_BELOW entryPrice. PASS watches get only
 // REVIEW triggers ("the move I dismissed actually happened — re-look").
 //
 // Per-horizon shape (matches the held side's per-horizon split):
@@ -292,37 +292,50 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
 //                 90d hygiene; no support REVIEW (compounders shouldn't
 //                 react to short-term wiggles)
 
-/** Direction-aware ENTER trigger off targetPrice. Shared across horizons. */
+/**
+ * Direction-aware ENTER trigger keyed off `entryPrice`. Shared across
+ * horizons.
+ *
+ * 2026-05-31 (P1-3 fix): this used to read `targetPrice`, which was the
+ * structural bug GAPS P1-3 tracked — targetPrice was the take-profit
+ * level when ACTIVE, so defaulting the ENTER trigger to
+ * PRICE_ABOVE(targetPrice) on WATCHING meant the agent would literally
+ * buy at the take-profit level (production evidence: MDB 2026-05-25).
+ * The fix is one line: read `entryPrice` instead. The schema already had
+ * `entryPrice` as a distinct column meaning "where you'd buy / did buy."
+ * Two separate fields, two separate purposes — the bug was just the
+ * default reading the wrong column. See docs/plans/PRICE_LEVEL_SEMANTICS.md.
+ */
 function watchingEntryTrigger(
   thesis: ThesisShape,
   direction: ThesisDirection,
   cooldownDays: number,
 ): Trigger | null {
-  if (thesis.targetPrice == null) return null;
+  if (thesis.entryPrice == null) return null;
   if (direction === "LONG") {
     return {
       id: createId(),
-      predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
+      predicate: { kind: "PRICE_ABOVE", level: thesis.entryPrice },
       action: "ENTER",
-      rationale: `Entry trigger — price broke above $${thesis.targetPrice}. Validate setup and consider INITIATE.`,
+      rationale: `Entry trigger — price broke above $${thesis.entryPrice}. Validate setup and consider INITIATE.`,
       cooldownDays,
     };
   }
   if (direction === "SHORT") {
     return {
       id: createId(),
-      predicate: { kind: "PRICE_BELOW", level: thesis.targetPrice },
+      predicate: { kind: "PRICE_BELOW", level: thesis.entryPrice },
       action: "ENTER",
-      rationale: `Short entry trigger — price broke below $${thesis.targetPrice}. Validate setup and consider INITIATE short.`,
+      rationale: `Short entry trigger — price broke below $${thesis.entryPrice}. Validate setup and consider INITIATE short.`,
       cooldownDays,
     };
   }
   // PASS: the move we dismissed actually happened. Re-evaluate.
   return {
     id: createId(),
-    predicate: { kind: "PRICE_ABOVE", level: thesis.targetPrice },
+    predicate: { kind: "PRICE_ABOVE", level: thesis.entryPrice },
     action: "REVIEW",
-    rationale: `Price hit the target we dismissed. Re-evaluate the PASS — was the rejection wrong?`,
+    rationale: `Price hit the entry level we dismissed. Re-evaluate the PASS — was the rejection wrong?`,
     cooldownDays: 7,
   };
 }
@@ -338,25 +351,25 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
   // ── Setup-aware default ENTER trigger for CATALYST ────────────────────
   // When the catalyst date is within 7 trading days, the typical CATALYST
   // play is pre-event accumulation (buy now or on the event print), NOT
-  // breakout-above-target. In that window:
-  //   - PRICE_ABOVE(target) as ENTER is structurally wrong — target is
-  //     where you'd take profit AFTER the catalyst plays out, not where
-  //     you'd enter.
-  //   - The right default is event-based: EARNINGS_BEAT for an earnings
-  //     catalyst (the most common case in our roster). This fires on the
-  //     post-print signal and lets tactical decide whether to INITIATE.
+  // breakout-above-entry-level. In that window the right default is
+  // event-based: EARNINGS_BEAT for an earnings catalyst (the most common
+  // case in our roster). This fires on the post-print signal and lets
+  // tactical decide whether to INITIATE.
   //
   // When the catalyst date is further out (>7 days) OR not set, default
-  // back to PRICE_ABOVE(target) — that's the breakout-pattern shape
-  // (rare for CATALYST but possible: "buy on breakout that confirms the
-  // setup, then ride into the catalyst").
+  // back to the breakout-pattern entry (PRICE_ABOVE(entryPrice) for LONG)
+  // — covers the rare CATALYST case where the writer wants "buy on
+  // breakout that confirms the setup, then ride into the catalyst."
+  //
+  // 2026-05-31: the long comment block that used to live here flagged
+  // the now-fixed P1-3 bug ("PRICE_ABOVE(target) as ENTER is structurally
+  // wrong"). watchingEntryTrigger now reads entryPrice, not targetPrice,
+  // so the default is no longer broken — the event-based fallback for
+  // catalystSoon is kept anyway because it's a better setup match for
+  // pre-event accumulation than a breakout entry would be.
   //
   // Agent can always override either default via the (predicate, action)
-  // merge bucket. This is just the fallback when the agent doesn't
-  // explicitly choose. Production evidence: MDB 2026-05-25 — agent left
-  // triggers untouched on refresh, default was PRICE_ABOVE($385) ENTER
-  // = literally entering at the take-profit level. Event-based default
-  // catches that case structurally.
+  // merge bucket.
   const catalystSoon =
     thesis.catalystDate != null &&
     thesis.catalystDate.getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000;

@@ -1058,21 +1058,46 @@ function PriceTargetsBlock({
   entry,
   target,
   stop,
+  current,
+  direction,
 }: {
   entry: number;
   target: number | null;
   stop: number | null;
+  /** Live current price from /quote. Null while in-flight or on failure. */
+  current: number | null;
+  /** Drives P&L tinting on the gauge. */
+  direction: "LONG" | "SHORT";
 }) {
-  const lo = Math.min(stop ?? Number.POSITIVE_INFINITY, entry, target ?? Number.POSITIVE_INFINITY);
-  const hi = Math.max(stop ?? Number.NEGATIVE_INFINITY, entry, target ?? Number.NEGATIVE_INFINITY);
+  // 2026-05-31: Per P1-3 fix (PRICE_LEVEL_SEMANTICS plan), the gauge now
+  // consistently shows 4 markers — Stop / Entry / Current / Target —
+  // regardless of status. Same labels, same field meanings, every state.
+  // Entry = where you'd buy (WATCHING) or where you bought (ACTIVE, set
+  // by place_trade fill). Target = where you'd take profit. Stop = where
+  // the thesis breaks. No status-conditional labeling.
+  const lo = Math.min(
+    stop ?? Number.POSITIVE_INFINITY,
+    entry,
+    current ?? Number.POSITIVE_INFINITY,
+    target ?? Number.POSITIVE_INFINITY,
+  );
+  const hi = Math.max(
+    stop ?? Number.NEGATIVE_INFINITY,
+    entry,
+    current ?? Number.NEGATIVE_INFINITY,
+    target ?? Number.NEGATIVE_INFINITY,
+  );
   const safeLo = Number.isFinite(lo) ? lo : entry * 0.95;
   const safeHi = Number.isFinite(hi) ? hi : entry * 1.05;
   const span = safeHi - safeLo || entry * 0.1;
   const COUNT = 60;
   const EDGE_PAD = 3;
   const usable = COUNT - EDGE_PAD * 2 - 1;
-  const entryIdx = Math.round(EDGE_PAD + ((entry - safeLo) / span) * usable);
-  const entryPct = entryIdx / (COUNT - 1);
+  // Top-label positioning: prefer current price (the live marker) when
+  // we have it, fall back to entry (the writer's anchor).
+  const labelValue = current ?? entry;
+  const labelIdx = Math.round(EDGE_PAD + ((labelValue - safeLo) / span) * usable);
+  const labelPct = labelIdx / (COUNT - 1);
 
   return (
     <Card className="bg-muted/40 p-2 gap-6">
@@ -1084,16 +1109,24 @@ function PriceTargetsBlock({
         <div className="relative h-4">
           <span
             className="absolute -translate-x-1/2 text-xs font-medium tabular-nums whitespace-nowrap"
-            style={{ left: `${entryPct * 100}%` }}
+            style={{ left: `${labelPct * 100}%` }}
           >
-            ${entry.toFixed(2)}
+            ${labelValue.toFixed(2)}
           </span>
         </div>
 
-        <PriceGauge entry={entry} target={target} stop={stop} />
+        <PriceGauge
+          entry={entry}
+          target={target}
+          stop={stop}
+          current={current}
+          direction={direction}
+        />
 
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>{stop != null ? `Stop $${stop.toFixed(2)}` : "Stop —"}</span>
+          <span>Entry ${entry.toFixed(2)}</span>
+          {current != null ? <span>Current ${current.toFixed(2)}</span> : null}
           <span>{target != null ? `Target $${target.toFixed(2)}` : "Target —"}</span>
         </div>
       </div>
@@ -1763,12 +1796,17 @@ export function ThesisSheetBody({
         <CompositeScoreSkeleton />
       ) : null}
 
-      {/* ── Price Targets (the agent's entry/target/stop) ─────── */}
+      {/* ── Price Targets (the agent's entry/target/stop + live current) ─ */}
+      {/* Gauge consistently shows Stop · Entry · Current · Target across
+          every status — no status-conditional labels. Current is live
+          from /quote (null while in-flight). See PRICE_LEVEL_SEMANTICS. */}
       {showLevels && (
         <PriceTargetsBlock
           entry={entry_price!}
           target={target_price ?? null}
           stop={stop_loss ?? null}
+          current={quote?.currentPrice ?? null}
+          direction={direction === "SHORT" ? "SHORT" : "LONG"}
         />
       )}
 
