@@ -19,6 +19,8 @@
 ## Plans (project-scoped, finite lifespan)
 
 - [plans/MORNING_RUN_V2_DESIGN.md](./plans/MORNING_RUN_V2_DESIGN.md) — daily-run prompt rewrite + needsAction field (all 7 fixes shipped 2026-05-13)
+- [plans/DISCOVERY_V2.md](./plans/DISCOVERY_V2.md) — discovery operating model + signal-source catalog
+- [plans/DISCOVERY_OVERHAUL.md](./plans/DISCOVERY_OVERHAUL.md) — discovery overhaul to-do list (NOW / SOON / MEDIUM / LATER)
 - [plans/PROD_DEPLOYMENT_PLAN.md](./plans/PROD_DEPLOYMENT_PLAN.md) — per-analyst paper→live promotion
 - [plans/TEAM_ACCESS_PLAN.md](./plans/TEAM_ACCESS_PLAN.md) — team access rollout
 - [plans/TRADE_ALERTS_PLAN.md](./plans/TRADE_ALERTS_PLAN.md) — trade alert notifications

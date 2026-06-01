@@ -20,6 +20,7 @@ import {
 } from "@/lib/actions/watchlist.actions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
+import { RunDiscoveryButton } from "@/components/RunDiscoveryButton";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { TeamSheetContent } from "@/components/domain/team-card";
 import { getTeam } from "@/lib/agent/workflow-registry";
@@ -558,6 +559,7 @@ export default function AnalystDetailClient({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <RunDiscoveryButton analystId={config.id} />
               <RunResearchButton
                 analystId={config.id}
                 hasRunning={hasRunning}

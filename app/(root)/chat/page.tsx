@@ -25,7 +25,18 @@ import type { UIMessage } from "ai";
  * is active, the page hydrates with the resumed chat's analystId.
  */
 interface ChatPageProps {
-  searchParams: Promise<{ resume?: string }>;
+  searchParams: Promise<{
+    resume?: string;
+    /**
+     * Discovery entry-point param (DISCOVERY_OVERHAUL SOON-2). When set,
+     * the chat opens scoped to this analyst and auto-sends the `kickoff`
+     * message on first render. Both params must be present for the
+     * kickoff to fire. Quietly ignored if the analyst doesn't belong to
+     * the account.
+     */
+    analyst?: string;
+    kickoff?: string;
+  }>;
 }
 
 export default async function ChatPage({ searchParams }: ChatPageProps) {
@@ -40,6 +51,8 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
 
   const params = await searchParams;
   const resumeRunId = params.resume?.trim() || null;
+  const kickoffAnalystId = params.analyst?.trim() || null;
+  const kickoffMessage = params.kickoff?.trim() || null;
 
   // Run these in parallel — they're independent reads.
   const [analysts, recentChats, resumed] = await Promise.all([
@@ -73,6 +86,17 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
     }
   }
 
+  // Validate kickoff analyst belongs to this account before threading it
+  // through — defensive against URL tampering. If the analyst id is bogus,
+  // we silently drop the kickoff and open a regular fresh chat.
+  const kickoffAnalystValid =
+    kickoffAnalystId &&
+      analysts.some((a: { id: string }) => a.id === kickoffAnalystId)
+      ? kickoffAnalystId
+      : null;
+  const initialKickoff =
+    kickoffAnalystValid && kickoffMessage ? kickoffMessage : null;
+
   return (
     <ChatPageClient
       analysts={analysts}
@@ -80,6 +104,8 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       resumedMessages={resumedMessages}
       resumedRunId={resumedRunId}
       resumedAnalystId={resumedAnalystId}
+      kickoffAnalystId={kickoffAnalystValid}
+      kickoffMessage={initialKickoff}
     />
   );
 }
