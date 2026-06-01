@@ -8,6 +8,11 @@
 -- Backfill for ~50 existing rows is shipped as a separate one-shot script
 -- (NOT part of this migration) so the Prisma migration history stays clean.
 
-ALTER TABLE "Thesis" ADD COLUMN "conviction" TEXT;
-ALTER TABLE "Thesis" ADD COLUMN "convictionRationale" TEXT;
-ALTER TABLE "Thesis" ADD COLUMN "variantView" TEXT;
+-- IF NOT EXISTS makes this migration safe to re-apply. The columns were
+-- added manually to production on 2026-05-31 during a UI preview pass
+-- (before the Prisma migration had been deployed). When `prisma migrate
+-- deploy` runs post-merge, this is a no-op on prod and a clean add
+-- elsewhere.
+ALTER TABLE "Thesis" ADD COLUMN IF NOT EXISTS "conviction" TEXT;
+ALTER TABLE "Thesis" ADD COLUMN IF NOT EXISTS "convictionRationale" TEXT;
+ALTER TABLE "Thesis" ADD COLUMN IF NOT EXISTS "variantView" TEXT;
