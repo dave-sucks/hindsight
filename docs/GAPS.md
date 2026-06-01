@@ -44,15 +44,16 @@ Goal: keep gates that prevent STRUCTURALLY IMPOSSIBLE states (e.g., ACTIVE thesi
 **Output:** a list of gates with a verdict (keep / remove / soften) and a follow-up PR per removal.
 
 ### P1-3 — `targetPrice` field is overloaded (was P1-23)
-**Status:** open. Currently mitigated by the V2 thesis-writer overriding all defaults (0/8 theses on the live analyst hit the broken default today).
+**Status:** design ready — see [`docs/plans/PRICE_LEVEL_SEMANTICS.md`](./plans/PRICE_LEVEL_SEMANTICS.md). Ready to ship as a single PR. Re-raised by principal 2026-05-31 immediately after the v4 conviction merge.
 
-Same `targetPrice` column is "take-profit" when ACTIVE and "buy-in breakout" when WATCHING/PROMOTED (per the default ENTER trigger in `lib/agent/triggers/defaults.ts:295-310`). Writer-as-shield works, but the schema split is the durable fix:
-1. Split into `entryTriggerPrice` (WATCHING/PROMOTED breakout) and `takeProfitPrice` (ACTIVE take-profit).
-2. Migrate existing rows.
-3. Update default triggers + sheet renderers + prompts to read the right field per status.
-4. Drop `targetPrice` after a soak period.
+Same `targetPrice` column is "take-profit" when ACTIVE and "buy-in breakout" when WATCHING/PROMOTED (per the default ENTER trigger in `lib/agent/triggers/defaults.ts:295-310`). Writer-as-shield works (0/8 theses on the live analyst hit the broken default today), but the schema split is the durable fix:
+1. Split `targetPrice` → `breakoutPrice` (WATCHING/PROMOTED) + `takeProfitPrice` (ACTIVE).
+2. Backfill from `targetPrice` per row status. Both old + new fields coexist during soak.
+3. Default triggers + place_trade + sheet renderers + writer prompt all read new fields with `targetPrice` fallback.
+4. `stopLoss` stays single-column — status-aware labels in UI + prompts (no schema change).
+5. Drop `targetPrice` in a follow-up after ~2-week soak.
 
-~1 day. Reconsider priority if a non-writer code path becomes a meaningful share of thesis production.
+~1.5 days. See the plan doc for full spec, migration, effort breakdown, and open questions.
 
 ### P1-5 — Thesis-writer fabricated MRVL post-earnings data (was P1-25)
 **Status:** investigation needed.
