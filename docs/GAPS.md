@@ -43,16 +43,17 @@ Goal: keep gates that prevent STRUCTURALLY IMPOSSIBLE states (e.g., ACTIVE thesi
 
 **Output:** a list of gates with a verdict (keep / remove / soften) and a follow-up PR per removal.
 
-### P1-3 — `targetPrice` field is overloaded (was P1-23)
-**Status:** open. Currently mitigated by the V2 thesis-writer overriding all defaults (0/8 theses on the live analyst hit the broken default today).
+### P1-3 — `targetPrice` field is overloaded (was P1-23) — **DONE 2026-05-31**
 
-Same `targetPrice` column is "take-profit" when ACTIVE and "buy-in breakout" when WATCHING/PROMOTED (per the default ENTER trigger in `lib/agent/triggers/defaults.ts:295-310`). Writer-as-shield works, but the schema split is the durable fix:
-1. Split into `entryTriggerPrice` (WATCHING/PROMOTED breakout) and `takeProfitPrice` (ACTIVE take-profit).
-2. Migrate existing rows.
-3. Update default triggers + sheet renderers + prompts to read the right field per status.
-4. Drop `targetPrice` after a soak period.
+The fix turned out to be a one-line trigger bug, not a schema split. `watchingEntryTrigger` was reading `targetPrice` (the take-profit) instead of `entryPrice` (where the writer wanted to buy in). The schema was always correct — both columns existed with separate meanings — the trigger code just wired the wrong column to the ENTER action.
 
-~1 day. Reconsider priority if a non-writer code path becomes a meaningful share of thesis production.
+**Shipped:**
+- `lib/agent/triggers/defaults.ts:watchingEntryTrigger` now reads `entryPrice` instead of `targetPrice`
+- Writer prompt clarifies `entry_price = where you'd buy in` (was ambiguously "current quote from the research")
+- Long "CHOOSING THE ENTER TRIGGER" warning block in `run-thesis-writer.ts` simplified — most of it was workaround for the now-fixed default
+- `PriceTargetsBlock` gauge consistently shows `Stop · Entry · Current · Target` across every status
+
+**No schema changes. No migration.** See [`docs/plans/PRICE_LEVEL_SEMANTICS.md`](./plans/PRICE_LEVEL_SEMANTICS.md) for the postmortem on why the schema-split plan (this doc's earlier proposal) was over-engineering.
 
 ### P1-5 — Thesis-writer fabricated MRVL post-earnings data (was P1-25)
 **Status:** investigation needed.

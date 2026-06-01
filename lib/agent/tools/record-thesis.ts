@@ -88,7 +88,11 @@ const thesisFields = z.object({
     .describe(
       "2-4 key risks. Legacy shape — V2 agents prefer `bear_case: { bullets: [{ text, citation }] }`.",
     ),
-  entry_price: z.number().optional().describe("Current price for entry. REQUIRED for LONG/SHORT — use the price from get_stock_data. Also include for PASS to enable shadow tracking."),
+  entry_price: z.number().optional().describe(
+    "WHERE YOU'D BUY IN. The level above which you'd initiate (LONG) or below which you'd initiate short. For breakout setups: the breakout level. For 'buy now at market' setups: the current quote from get_stock_data. " +
+    "The default ENTER trigger fires when price crosses entry_price (PRICE_ABOVE for LONG, PRICE_BELOW for SHORT), so this drives the actual buy condition — NOT just a current-price snapshot. " +
+    "REQUIRED for LONG/SHORT. Also include for PASS to enable shadow tracking."
+  ),
   target_price: z.number().optional().describe("Price target. REQUIRED for LONG/SHORT."),
   stop_loss: z.number().optional().describe("Stop-loss price. REQUIRED for LONG/SHORT."),
   // `hold_duration` arg removed 2026-05-18 (THESIS_CLEANUP PR-4). The

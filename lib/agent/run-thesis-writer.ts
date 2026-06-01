@@ -227,11 +227,20 @@ around RE-ENTER / DOWNGRADE / INVALIDATE.
        the audit trail reads correctly.` : "(refresh mode — status is whatever the existing thesis has; don't change it unless the user explicitly asked)"}
      - horizon: CATALYST / TARGET / TRADE / COMPOUNDER (pick by reasoning
        shape, not just hold length)
-     - entry_price: current quote from the research (use the Snapshot)
-     - target_price: real chart level (breakout / consolidation high /
-       analyst-target convergence) — REQUIRED for LONG/SHORT
-     - stop_loss: real chart level (support / nearest swing low / SMA) —
-       REQUIRED for LONG/SHORT
+     - entry_price: WHERE YOU'D BUY IN. For breakout setups, the level
+       above which you'd initiate (e.g. above the prior consolidation
+       high). For "buy now at market" setups, the current quote from
+       the Snapshot. The default ENTER trigger fires when price crosses
+       entry_price (PRICE_ABOVE for LONG, PRICE_BELOW for SHORT) — so
+       set this to the actual buy level, NOT just "current price."
+     - target_price: WHERE YOU'D TAKE PROFIT. The upside goal (analyst-
+       target convergence, prior resistance, multi-month measured move).
+       The take-profit level. NOT the entry level — that's entry_price.
+       REQUIRED for LONG/SHORT.
+     - stop_loss: WHERE THE THESIS BREAKS / YOU'D EXIT. Real chart level
+       (support / nearest swing low / SMA). On WATCHING this fires a
+       REVIEW ("setup broken — abandon the watch"); on ACTIVE this
+       fires an EXIT (stop-loss order). REQUIRED for LONG/SHORT.
 
      **R/R FLOOR — MANDATORY 2:1 MINIMUM.** Before persisting, compute:
        • LONG:  R/R = (target_price - entry_price) / (entry_price - stop_loss)
@@ -411,33 +420,37 @@ ${
          ✓ At least one ENTER — the specific condition that would
            cause us to BUY this stock. Tactical wakes on this fire.
 
-       CHOOSING THE ENTER TRIGGER — match the SETUP INTENT, not the
-       default target-price level. Read each pattern and pick:
+       CHOOSING THE ENTER TRIGGER — pick the pattern that matches
+       your setup intent. The default (if you don't pass triggers)
+       is PRICE_ABOVE(entry_price) → ENTER for LONG, mirror for SHORT,
+       which is correct for breakout setups (set entry_price = the
+       breakout level). For other setups, override:
 
          • Pre-catalyst accumulation (catalyst is dated within ~7
            days; play is "buy NOW to ride into the event"): use an
            event-based ENTER — EARNINGS_BEAT (LONG) or EARNINGS_MISS
            (SHORT) — that fires on the catalyst confirming. The
-           default catalyst template now picks this automatically
-           when catalystDate is within 7d. DO NOT pass
-           PRICE_ABOVE(target_price) as ENTER on a near-term catalyst
-           play — that would gate entry at the take-profit level, so
-           you'd be entering at the top after the move is done.
+           default catalyst template picks this automatically when
+           catalystDate is within 7d.
 
          • Post-event confirmation (waiting for the catalyst to print
            before entering, catalyst further out): use EARNINGS_BEAT
            (or matching event) as ENTER. Entry is conditional on the
            print confirming direction.
 
-         • Breakout pattern (waiting for resistance break, then ride
-           the continuation): use PRICE_ABOVE(breakout_level), where
-           breakout_level is BELOW target_price. The target is the
-           take-profit; the breakout is the entry.
+         • Breakout pattern (DEFAULT for non-catalyst LONG/SHORT
+           WATCHING): set entry_price = the breakout level. The
+           default trigger PRICE_ABOVE(entry_price) → ENTER fires
+           when price crosses. No custom trigger needed.
 
          • Pullback pattern (waiting for retrace to support before
            entry): use PRICE_BELOW(pullback_level) as a REVIEW
            trigger and let the next daily-run decide at that level —
            pullback entries need fresh judgment, not an auto-fire.
+
+         • Buy now at market: set entry_price = current price + skip
+           the ENTER trigger entirely (no waiting condition). The
+           daily-run reads entry_price ≈ current as the buy-now signal.
 
        REVIEW triggers stay as today: earnings outcomes (REVIEW),
        filings (REVIEW), time-based hygiene (REVIEW), "this would
@@ -446,12 +459,12 @@ ${
        BEFORE YOU PERSIST — sanity check your triggers array:
          1. ZERO triggers with action EXIT, TRIM, ADD, or MOVE_STOP.
             If any, remove them now.
-         2. At least one trigger has action ENTER? If not, add one.
+         2. At least one trigger has action ENTER (or rely on the
+            default that fires at entry_price)? If not, add one OR
+            confirm entry_price reflects the right level.
          3. Re-read the predicate of your ENTER trigger — does it
-            match the SETUP INTENT (event-based for near-term
-            catalyst, breakout-level-below-target for breakout, etc.)?
-            If you defaulted to PRICE_ABOVE(target_price) on a
-            near-term catalyst play, fix it before persisting.`
+            match the setup intent (event-based for near-term
+            catalyst, PRICE_ABOVE(entry_price) for breakout, etc.)?`
 }
 
 3.5. Set the CONVICTION fields. REQUIRED on every directional thesis

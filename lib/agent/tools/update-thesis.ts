@@ -184,7 +184,9 @@ const updateSchema = z.object({
   stop_loss: z.number().nullable().optional(),
   entry_price: z.number().nullable().optional()
     .describe(
-      "Current price reference for the thesis. Optional for refinement updates; REQUIRED when promoting a PENDING thesis to LONG/SHORT (so target/stop have something to validate against in the shape gate)."
+      "WHERE YOU'D BUY IN (or where you bought, on ACTIVE rows). The default ENTER trigger fires when price crosses entry_price — set it to the actual buy level, not just a current-price snapshot. " +
+      "Optional for refinement updates; REQUIRED when promoting a PENDING thesis to LONG/SHORT (so target/stop have something to validate against in the shape gate). " +
+      "On ACTIVE rows this is the actual fill price (set by place_trade); patching it on an ACTIVE row is rare and should only happen on a partial-fill / cost-basis correction."
     ),
   target_size_pct: z.number().min(0).max(100).optional(),
 
