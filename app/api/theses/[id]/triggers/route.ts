@@ -118,6 +118,7 @@ export async function GET(
   type PendingProposalInfo = {
     orderId: string;
     intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+    quantity: number;
     expiresAt: string | null;
     rationale: string | null;
   };
@@ -157,6 +158,7 @@ export async function GET(
           select: {
             id: true,
             intent: true,
+            quantity: true,
             expiresAt: true,
             rationale: true,
           },
@@ -178,6 +180,7 @@ export async function GET(
           ? {
               orderId: ap.id,
               intent: (ap.intent ?? "OPEN") as PendingProposalInfo["intent"],
+              quantity: Number(ap.quantity),
               expiresAt: ap.expiresAt?.toISOString() ?? null,
               rationale: ap.rationale,
             }

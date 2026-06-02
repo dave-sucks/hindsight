@@ -288,7 +288,6 @@ function PositionRow({
   horizon,
   targetPrice,
   stopLoss,
-  pendingBuy = false,
 }: {
   position: NonNullable<TriggersResponse["position"]>;
   pnl: QuoteResponse["positionPnl"] | null;
@@ -296,39 +295,27 @@ function PositionRow({
   horizon?: string | null;
   targetPrice?: number | null;
   stopLoss?: number | null;
-  /** When true, the trade isn't held yet — it's an OPEN proposal awaiting
-   *  approval. The line reads "Waiting approval to buy N @ $X" and the
-   *  live-P&L line is suppressed (we don't hold it). The Review dropdown
-   *  lives in the sheet header next to the title. */
-  pendingBuy?: boolean;
 }) {
   // `position` (cost basis + qty) comes from /triggers; `pnl` (live price
   // + market value + unrealized PnL) comes from /quote. The two land at
   // different times — the row renders shares+cost immediately and adds
   // the "now trading at $X · +N%" once /quote resolves.
-  const verb = direction === "SHORT" ? "short" : "buy";
+  //
+  // Only rendered for HELD positions — a pending OPEN proposal renders the
+  // ProposalPrompt block instead (there's no holding yet).
   return (
     <div className="space-y-1">
       <p className="text-sm tabular-nums leading-relaxed">
-        {pendingBuy ? (
+        Bought {position.quantity.toFixed(1)} shares at{" "}
+        <span className="font-medium">${position.avgCost.toFixed(2)}</span>
+        {pnl != null ? (
           <>
-            Waiting approval to {verb} {position.quantity.toFixed(1)} shares at{" "}
-            <span className="font-medium">${position.avgCost.toFixed(2)}</span>
+            , now trading at{" "}
+            <span className="font-medium">${pnl.currentPrice.toFixed(2)}</span>
           </>
-        ) : (
-          <>
-            Bought {position.quantity.toFixed(1)} shares at{" "}
-            <span className="font-medium">${position.avgCost.toFixed(2)}</span>
-            {pnl != null ? (
-              <>
-                , now trading at{" "}
-                <span className="font-medium">${pnl.currentPrice.toFixed(2)}</span>
-              </>
-            ) : null}
-          </>
-        )}
+        ) : null}
       </p>
-      {!pendingBuy && pnl != null ? (
+      {pnl != null ? (
         <PriceChange
           dollarChange={pnl.unrealizedPnl}
           percentChange={pnl.unrealizedPnlPct}
@@ -341,6 +328,72 @@ function PositionRow({
         targetPrice={targetPrice}
         stopLoss={stopLoss}
       />
+    </div>
+  );
+}
+
+// ── ProposalPrompt ──
+// The "what is the analyst asking me to approve, and why" block. Renders
+// when the linked position has an Order(AWAITING_APPROVAL). The Review
+// dropdown (Approve / Reject) lives in the sheet header next to the title;
+// this block is the context beneath it — the proposed action + the agent's
+// rationale + the expiry. Plain muted block, not a heavy alert.
+// See docs/plans/TRADE_AS_PROPOSAL.md §6.
+function ProposalPrompt({
+  proposal,
+  direction,
+  avgCost,
+}: {
+  proposal: {
+    orderId: string;
+    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+    quantity: number;
+    expiresAt: string | null;
+    rationale: string | null;
+  };
+  direction: "LONG" | "SHORT";
+  avgCost: number | null;
+}) {
+  const verb =
+    proposal.intent === "OPEN"
+      ? direction === "LONG"
+        ? "buy"
+        : "short"
+      : proposal.intent === "ADD"
+        ? "add"
+        : proposal.intent === "CLOSE"
+          ? "close"
+          : "trim";
+  // Price is meaningful for entries/adds (the level you'd pay); for a
+  // close/trim the cost basis isn't the relevant number, so omit it.
+  const showPrice =
+    (proposal.intent === "OPEN" || proposal.intent === "ADD") && avgCost != null;
+  const qty = Number.isInteger(proposal.quantity)
+    ? String(proposal.quantity)
+    : proposal.quantity.toFixed(2);
+  const expiry = proposal.expiresAt
+    ? new Date(proposal.expiresAt).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
+    : null;
+  return (
+    <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">
+      <p className="text-sm font-medium tabular-nums">
+        Waiting approval to {verb} {qty} share{qty === "1" ? "" : "s"}
+        {showPrice ? ` at $${avgCost!.toFixed(2)}` : ""}
+      </p>
+      {proposal.rationale ? (
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {proposal.rationale}
+        </p>
+      ) : null}
+      {expiry ? (
+        <p className="text-xs text-muted-foreground">Expires {expiry}</p>
+      ) : null}
     </div>
   );
 }
@@ -1688,12 +1741,27 @@ export function ThesisSheetBody({
         ) : null}
       </div>
 
-      {/* ── Position row (only when ACTIVE + open Position exists) ── */}
+      {/* ── Pending proposal prompt ──────────────────────────── */}
+      {/* What the analyst is asking you to approve + why. The Review
+          dropdown lives in the header next to the title; this block is
+          the "text below" — the proposed action + the agent's rationale,
+          so you know what you're approving without leaving the sheet.
+          See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
+      {state?.position?.pendingProposal ? (
+        <ProposalPrompt
+          proposal={state.position.pendingProposal}
+          direction={direction === "PASS" ? "LONG" : direction}
+          avgCost={position?.avgCost ?? null}
+        />
+      ) : null}
+
+      {/* ── Position row (held positions) ── */}
       {/* Mirrors the dashboard ThesisRow position pattern: shares @
           cost, market value, live P&L. Intent suffix (direction · target/
           stop · horizon) appended so a glance tells you the whole trade
-          structure. */}
-      {position ? (
+          structure. Skipped for a pending OPEN proposal — there's no
+          holding yet; the ProposalPrompt above describes it. */}
+      {position && state?.position?.pendingProposal?.intent !== "OPEN" ? (
         <PositionRow
           position={position}
           pnl={quote?.positionPnl ?? null}
@@ -1701,7 +1769,6 @@ export function ThesisSheetBody({
           horizon={state?.horizon ?? null}
           targetPrice={state?.targetPrice ?? target_price ?? null}
           stopLoss={state?.stopLoss ?? stop_loss ?? null}
-          pendingBuy={state?.position?.pendingProposal?.intent === "OPEN"}
         />
       ) : null}
 

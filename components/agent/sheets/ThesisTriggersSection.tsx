@@ -61,6 +61,7 @@ export interface ThesisStatePosition {
   pendingProposal?: {
     orderId: string;
     intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+    quantity: number;
     expiresAt: string | null;
     rationale: string | null;
   } | null;
