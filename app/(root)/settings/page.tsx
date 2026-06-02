@@ -3,8 +3,10 @@ import { Separator } from "@/components/ui/separator";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getAlpacaKeyStatuses } from "@/lib/actions/api-keys.actions";
+import { getAccountApprovalSettings } from "@/lib/actions/account-settings.actions";
 import { AlpacaKeyForm } from "@/components/settings/AlpacaKeyForm";
 import { ModelPreferenceForm } from "@/components/settings/ModelPreferenceForm";
+import { ApprovalTogglesForm } from "@/components/settings/ApprovalTogglesForm";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/prisma";
@@ -20,7 +22,7 @@ export default async function SettingsPage() {
   const role = user && accountId ? await getUserRole(user.id, accountId) : null;
   const isOwner = role === "OWNER";
 
-  const [alpacaStatuses, ownerEmail] = await Promise.all([
+  const [alpacaStatuses, ownerEmail, approvalSettings] = await Promise.all([
     getAlpacaKeyStatuses(),
     !isOwner && accountId
       ? getOwnerUserId(accountId).then((ownerId) =>
@@ -32,6 +34,7 @@ export default async function SettingsPage() {
             : null,
         )
       : Promise.resolve(null),
+    getAccountApprovalSettings(),
   ]);
   const elevenLabsConfigured = !!process.env.ELEVENLABS_API_KEY;
   const displayName = user?.user_metadata?.full_name ?? user?.email ?? "—";
@@ -92,6 +95,14 @@ export default async function SettingsPage() {
           Agent
         </p>
         <ModelPreferenceForm />
+      </div>
+
+      {/* Trade approvals — Trade-as-Proposal. See docs/plans/TRADE_AS_PROPOSAL.md. */}
+      <div className="space-y-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Trade approvals
+        </p>
+        <ApprovalTogglesForm initial={approvalSettings} canEdit={isOwner} />
       </div>
 
       {/* API Keys */}
