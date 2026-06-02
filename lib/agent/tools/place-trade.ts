@@ -594,6 +594,7 @@ export const placeTrade = defineTool({
           positionId: position.id,
           orderId: order.id,
           intent: "OPEN",
+          environment: positionEnvironment,
           rationale: proposalRationale,
         });
         if (awaiting) {

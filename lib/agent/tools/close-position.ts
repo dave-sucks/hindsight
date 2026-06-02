@@ -114,7 +114,7 @@ export const closePosition = defineTool({
         : `${position.direction} position in ${ticker} closed by agent — reason: ${args.reason}.`;
       const outcome = await closeOpenPosition(position.id, args.reason, undefined, "agent", agentAuditReason, ctx.runId);
 
-      // Trade-as-Proposal — when Account.requireApprovalForSells is on,
+      // Trade-as-Proposal — when the Account requires approval for sells in this environment,
       // closeOpenPosition stages the close as Order(AWAITING_APPROVAL) and
       // returns kind:"proposed". Return a proposal-shaped tool envelope so
       // the chat renders "Awaiting your approval." The approve handler at

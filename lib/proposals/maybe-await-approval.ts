@@ -26,6 +26,12 @@ export interface MaybeAwaitApprovalArgs {
   orderId: string;
   intent: ProposalIntent;
   /**
+   * Which Alpaca account this trade lands in. The gate reads the toggle
+   * column matching this environment — PAPER and LIVE are independent so
+   * paper can auto-execute while live requires review.
+   */
+  environment: "PAPER" | "LIVE";
+  /**
    * Agent's reasoning at proposal time — shown in the approval UI + email.
    * For buys this is typically the thesis snapshot; for closes/adds/trims
    * it's the manage_position / close_position `reason` arg.
@@ -44,8 +50,12 @@ export interface AwaitingApprovalResult {
 /**
  * Decides whether the tool should stop here and wait for human approval.
  *
- * - For intent OPEN / ADD: checks Account.requireApprovalForBuys
- * - For intent CLOSE / PARTIAL_CLOSE: checks Account.requireApprovalForSells
+ * Reads the toggle column matching (intent direction × environment):
+ *   OPEN / ADD            → requireApprovalBuys{Live,Paper}
+ *   CLOSE / PARTIAL_CLOSE → requireApprovalSells{Live,Paper}
+ *
+ * So PAPER can auto-execute (toggle off) while LIVE requires review
+ * (toggle on) — the split the disclosure requirement needs.
  *
  * Returns null when no approval is needed → tool continues to Alpaca submit
  * as it always has.
@@ -57,14 +67,24 @@ export async function maybeAwaitApproval(
 ): Promise<AwaitingApprovalResult | null> {
   const account = await prisma.account.findUnique({
     where: { id: args.accountId },
-    select: { requireApprovalForBuys: true, requireApprovalForSells: true },
+    select: {
+      requireApprovalBuysLive: true,
+      requireApprovalSellsLive: true,
+      requireApprovalBuysPaper: true,
+      requireApprovalSellsPaper: true,
+    },
   });
   if (!account) return null;
 
   const isRiskIncreasing = args.intent === "OPEN" || args.intent === "ADD";
+  const isLive = args.environment === "LIVE";
   const need = isRiskIncreasing
-    ? account.requireApprovalForBuys
-    : account.requireApprovalForSells;
+    ? isLive
+      ? account.requireApprovalBuysLive
+      : account.requireApprovalBuysPaper
+    : isLive
+      ? account.requireApprovalSellsLive
+      : account.requireApprovalSellsPaper;
   if (!need) return null;
 
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);

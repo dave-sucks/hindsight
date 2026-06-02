@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * Trade-as-Proposal — Account-level approval toggles.
+ * Trade-as-Proposal — Account-level approval toggles, split per environment.
  *
- * Two switches, OWNER-only. Each switch directly drives Account.require
- * ApprovalFor{Buys,Sells} via a server action. The toggle takes effect on
- * the next agent tool call — see lib/proposals/maybe-await-approval.ts.
+ * Four switches in two groups: LIVE (real money — review required for
+ * disclosure) and PAPER (fake money — auto-executes; flip on only to test
+ * the approval flow). Each group has a buys + sells switch. OWNER-only.
  *
- * Pattern mirrors AlpacaKeyForm / ModelPreferenceForm — single Card with
- * a row per toggle, switch on the right, helper text on the left.
+ * The gate (lib/proposals/maybe-await-approval.ts) reads the column
+ * matching the trade's Position.environment, so PAPER and LIVE behave
+ * independently — exactly "auto-execute paper, review live."
  *
  * See docs/plans/TRADE_AS_PROPOSAL.md.
  */
@@ -18,10 +19,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   setAccountApprovalToggle,
   type AccountApprovalSettings,
+  type ApprovalToggleField,
 } from "@/lib/actions/account-settings.actions";
 
 interface Props {
@@ -30,32 +33,39 @@ interface Props {
   canEdit: boolean;
 }
 
+const HUMAN: Record<ApprovalToggleField, { on: string; off: string }> = {
+  requireApprovalBuysLive: {
+    on: "Live buys now require approval",
+    off: "Live buys will execute automatically",
+  },
+  requireApprovalSellsLive: {
+    on: "Live sells now require approval",
+    off: "Live sells will execute automatically",
+  },
+  requireApprovalBuysPaper: {
+    on: "Paper buys now require approval",
+    off: "Paper buys will execute automatically",
+  },
+  requireApprovalSellsPaper: {
+    on: "Paper sells now require approval",
+    off: "Paper sells will execute automatically",
+  },
+};
+
 export function ApprovalTogglesForm({ initial, canEdit }: Props) {
   const [settings, setSettings] = useState<AccountApprovalSettings>(initial);
   const [pending, startTransition] = useTransition();
 
-  function toggle(
-    field: "requireApprovalForBuys" | "requireApprovalForSells",
-    value: boolean,
-  ) {
-    // Optimistic — flip immediately so the switch responds, revert on error.
+  function toggle(field: ApprovalToggleField, value: boolean) {
     const prev = settings;
+    // Optimistic — flip immediately so the switch responds, revert on error.
     setSettings({ ...settings, [field]: value });
     startTransition(async () => {
       try {
         const next = await setAccountApprovalToggle({ field, value });
         setSettings(next);
-        toast.success(
-          field === "requireApprovalForBuys"
-            ? value
-              ? "Buys now require approval"
-              : "Buys will execute automatically"
-            : value
-              ? "Sells now require approval"
-              : "Sells will execute automatically",
-        );
+        toast.success(value ? HUMAN[field].on : HUMAN[field].off);
       } catch (err) {
-        // Revert optimistic update on failure.
         setSettings(prev);
         toast.error(err instanceof Error ? err.message : "Failed to update setting");
       }
@@ -64,49 +74,100 @@ export function ApprovalTogglesForm({ initial, canEdit }: Props) {
 
   return (
     <Card>
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-center justify-between gap-4 py-2">
-          <div className="space-y-0.5">
-            <Label className="text-sm">Require approval for buys</Label>
+      <CardContent className="p-4 space-y-5">
+        {/* ── Live ── */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary">Live</Badge>
             <p className="text-xs text-muted-foreground">
-              Agent-proposed entries + adds wait for your decision before submitting
-              to Alpaca. Manual buy buttons in the UI are unaffected.
+              Real money. Review required for disclosure.
             </p>
           </div>
-          <Switch
-            checked={settings.requireApprovalForBuys}
+          <ToggleRow
+            label="Require approval for buys"
+            help="Agent-proposed entries + adds wait for your decision."
+            checked={settings.requireApprovalBuysLive}
             disabled={!canEdit || pending}
-            onCheckedChange={(v) => toggle("requireApprovalForBuys", v)}
-            aria-label="Require approval for buys"
+            onChange={(v) => toggle("requireApprovalBuysLive", v)}
+          />
+          <Separator />
+          <ToggleRow
+            label="Require approval for sells"
+            help="Agent-proposed closes + partial closes wait for your decision."
+            checked={settings.requireApprovalSellsLive}
+            disabled={!canEdit || pending}
+            onChange={(v) => toggle("requireApprovalSellsLive", v)}
           />
         </div>
+
         <Separator />
-        <div className="flex items-center justify-between gap-4 py-2">
-          <div className="space-y-0.5">
-            <Label className="text-sm">Require approval for sells</Label>
+
+        {/* ── Paper ── */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">Paper</Badge>
             <p className="text-xs text-muted-foreground">
-              Agent-proposed closes + partial closes wait for your decision.
-              Price-monitor trailing stops + manual close buttons are unaffected
-              (you already approved the stop at trade-entry time).
+              Fake money. Auto-executes; turn on only to test the approval flow.
             </p>
           </div>
-          <Switch
-            checked={settings.requireApprovalForSells}
+          <ToggleRow
+            label="Require approval for buys"
+            help="Agent-proposed entries + adds wait for your decision."
+            checked={settings.requireApprovalBuysPaper}
             disabled={!canEdit || pending}
-            onCheckedChange={(v) => toggle("requireApprovalForSells", v)}
-            aria-label="Require approval for sells"
+            onChange={(v) => toggle("requireApprovalBuysPaper", v)}
+          />
+          <Separator />
+          <ToggleRow
+            label="Require approval for sells"
+            help="Agent-proposed closes + partial closes wait for your decision."
+            checked={settings.requireApprovalSellsPaper}
+            disabled={!canEdit || pending}
+            onChange={(v) => toggle("requireApprovalSellsPaper", v)}
           />
         </div>
+
         {!canEdit && (
           <p className="text-xs text-muted-foreground">
             Only the account owner can change these settings.
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Applies to PAPER and LIVE analysts equally. Approvals show up inline
-          in the chat, homepage, /trades, and the thesis sheet.
+          Manual buy/sell buttons + price-monitor trailing stops always
+          execute — these gates only apply to agent-initiated trades.
+          Approvals show up inline in the chat, homepage, /trades, and the
+          thesis sheet.
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+function ToggleRow({
+  label,
+  help,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  help: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-1">
+      <div className="space-y-0.5">
+        <Label className="text-sm">{label}</Label>
+        <p className="text-xs text-muted-foreground">{help}</p>
+      </div>
+      <Switch
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onChange}
+        aria-label={label}
+      />
+    </div>
   );
 }
