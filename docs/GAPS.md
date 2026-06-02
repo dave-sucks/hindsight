@@ -28,7 +28,7 @@ These prevent the live agent from doing its job. Fix first.
 ## P1 — Quality is degraded but live loop functions
 
 ### P1-2 — Audit and remove unnecessary place_trade / update_thesis gates
-**Status:** open. **Mentioned by principal 2026-05-26.**
+**Status:** open, partial credit from [#360](https://github.com/dave-sucks/hindsight/pull/360). **Mentioned by principal 2026-05-26.**
 
 The system has accumulated gates over time, some of which now refuse legitimate trades or block reasonable updates. Specific suspects to audit:
 
@@ -43,17 +43,7 @@ Goal: keep gates that prevent STRUCTURALLY IMPOSSIBLE states (e.g., ACTIVE thesi
 
 **Output:** a list of gates with a verdict (keep / remove / soften) and a follow-up PR per removal.
 
-### P1-3 — `targetPrice` field is overloaded (was P1-23) — **DONE 2026-05-31**
-
-The fix turned out to be a one-line trigger bug, not a schema split. `watchingEntryTrigger` was reading `targetPrice` (the take-profit) instead of `entryPrice` (where the writer wanted to buy in). The schema was always correct — both columns existed with separate meanings — the trigger code just wired the wrong column to the ENTER action.
-
-**Shipped:**
-- `lib/agent/triggers/defaults.ts:watchingEntryTrigger` now reads `entryPrice` instead of `targetPrice`
-- Writer prompt clarifies `entry_price = where you'd buy in` (was ambiguously "current quote from the research")
-- Long "CHOOSING THE ENTER TRIGGER" warning block in `run-thesis-writer.ts` simplified — most of it was workaround for the now-fixed default
-- `PriceTargetsBlock` gauge consistently shows `Stop · Entry · Current · Target` across every status
-
-**No schema changes. No migration.** See [`docs/plans/PRICE_LEVEL_SEMANTICS.md`](./plans/PRICE_LEVEL_SEMANTICS.md) for the postmortem on why the schema-split plan (this doc's earlier proposal) was over-engineering.
+**Already removed in [#360](https://github.com/dave-sucks/hindsight/pull/360):** Gates A + B (composite-coupling on `record_thesis` + `update_thesis`) — they forced `conviction` to derive from `composite`, defeating the whole point of having a separate writer-judgment field. The remaining suspects above are unchanged. Probably folds into the trade-as-proposal refactor since the proposal layer changes which gates matter.
 
 ### P1-5 — Thesis-writer fabricated MRVL post-earnings data (was P1-25)
 **Status:** investigation needed.
@@ -61,13 +51,6 @@ The fix turned out to be a one-line trigger bug, not a schema split. `watchingEn
 MRVL refresh (`cmpm5fmgg000904jx6puwbp54`) on 2026-05-26 wrote two contradictory rationales 7 minutes apart: first said "Q1 FY2027 print due tonight (May 27)", then said "MRVL printed a clean beat-and-raise (revenue +3.2%, raised Q2 guide)" — earnings hadn't actually printed. Likely the deep-research model inside `write_thesis_research` returned analyst estimates as if they were actuals.
 
 **Fix:** start by inspecting the actual `write_thesis_research` output for the MRVL run to determine if the meta-tool returned bad data or the writer hallucinated on top. If meta-tool: add date-awareness to the synthesis prompt. If writer: add a Layer-1 sanity check warning in `update_thesis` rationale parser when rationale claims a beat/miss but `catalystDate` is in the future.
-
-### P1-6 — Writer "urgency signal" output on promotion refreshes
-**Status:** design + ship. Mentioned by principal 2026-05-26.
-
-When the promotion-action dispatches N writer refreshes in parallel, each refresh comes back with a full thesis. The daily run currently has no clean way to tell "this is a high-conviction urgent buy" vs "this peaked, downgrade to watching" vs "this is broken, kill."
-
-Add a `recommendedAction: "BUY_LIVE" | "DEFER_TO_WATCHING" | "INVALIDATE"` field that the writer sets based on its research. Surface prominently in the UI (chip on the thesis row) and read by the daily-run prompt's PROMOTED branch as the writer's input (the daily run still decides; the writer's recommendation is data, not authority).
 
 ### P1-7 — UI: rename "Awaiting live entry" to action-forcing label
 **Status:** small. Principal-flagged 2026-05-26.
@@ -85,6 +68,53 @@ Current label reads passive — agent treated it that way too. Rename to "Decide
 
 Verify against `intraday-eod-flatten.ts` and `discovery-run.ts:59` (which skips Discovery for DAY-only analysts) — both confirm DAY is a real production lifecycle, not legacy.
 
+### P1-10 — PROMOTED is not a first-class `resolved.actionability` state
+**Status:** open, surfaced by [#360](https://github.com/dave-sucks/hindsight/pull/360). **~30 min fix.**
+
+The new resolver introduced in #360 returns `resolved.actionability` ∈ { `READY_TO_BUY`, `WAITING_FOR_TRIGGER`, `CATALYST_PENDING`, `HOLDING`, `SUPERSEDED`, … }. A PROMOTED row falls through to `READY_TO_BUY` or `WAITING_FOR_TRIGGER` based on price proximity — losing the "this is a post-paper-success that needs the principal's blessing TODAY" signal in the resolved layer.
+
+The structural pieces from P0-1/3/4 + P1-7 still work — agent reads `needsAction = PROMOTED_AWAITING_RESOLUTION` via `get_theses` and acts; prompt teaches the three legal outcomes; writer can't flip status; UI label says "Promoted." The resolver is a NEW layer that needs to learn about PROMOTED.
+
+**Fix:**
+1. Add `PROMOTED_DECIDE_TODAY` (or similar) to the actionability enum in `lib/agent/resolved-thesis.ts`.
+2. Branch in the resolver: if `status === "PROMOTED"`, return the new kind instead of falling through to ENTER/WAIT.
+3. Add a renderer case in the Trade Structure Status cell (`components/agent/sheets/`) so the sheet shows the urgency.
+4. Daily-run prompt: one-line nudge that PROMOTED actionability supersedes price-proximity logic (writer's belief was already the gate at promotion; resolver is just labeling it).
+
+Worth doing before trade-as-proposal lands so proposals don't have to bolt on PROMOTED handling separately.
+
+### P1-11 — Writer rationale-quality enforcement (sniff-driven)
+**Status:** watching. Surfaced by [#360](https://github.com/dave-sucks/hindsight/pull/360).
+
+`convictionRationale` accepts any string ≤ 400 chars. The writer prompt strongly nudges "I really like this setup, June 3 is the catalyst…" judgment-style language with explicit bad-example callouts, but a sloppy or regressing writer can satisfy the field-presence gate by typing "Composite 7/10, R/R 2.5:1, post-print drift looks strong." That's math restatement, not judgment.
+
+**No action yet — verify with data first.** Watch tomorrow's 8 AM cron and next Sunday's discovery run. Spot-check 5–10 fresh `convictionRationale` strings. If >2 read like math restatement, the prompt isn't holding.
+
+**If the prompt is insufficient, durable fix:** add a structured field harder to fake, e.g. `wouldBuyWithOwnMoney: "YES_AT_MARKET" | "WAIT_FOR_BETTER_LEVEL" | "NO"`. Forces a yes/no commitment that can't hide behind rubric vocabulary. Don't ship until data shows the prompt failing.
+
+### P1-12 — Secular Compounder 5/5 writer FAILUREs on 2026-05-31
+**Status:** investigation, ~10 min DB check. Surfaced by [#361](https://github.com/dave-sucks/hindsight/pull/361) audit.
+
+Today's Sunday discovery run for the Secular Compounder archetype produced 5/5 writer dispatches in FAILURE state. Operator hypothesis: Claude tokens running out (provider-side rate limit / context exhaustion). Worth confirming vs a real bug before re-enabling next Sunday's cron.
+
+**Check:**
+1. Query `ThesisWriterRun` (or whichever table holds the dispatch run rows) for `analystId = secular-compounder` + `createdAt = 2026-05-31` and inspect `failureReason` / error payloads.
+2. If all 5 show the same provider error string (rate limit / 429 / context-too-long), it's not a code bug — the dispatch concurrency or context size is the lever.
+3. If failures are heterogeneous, dig into the writer agent code path.
+
+Don't block Sunday-discovery disposition decision (see P2 cleanup) on this — even if the writer was healthy, the operator-driven discovery model means the Sunday cron is optional fallback.
+
+### P1-13 — BATCHED DISCOVERY overlay is archetype-blind
+**Status:** open, promoted from legacy P1-9 by [#361](https://github.com/dave-sucks/hindsight/pull/361).
+
+The new BATCHED DISCOVERY prompt overlay on `buildPrincipalSystemPrompt` teaches a universal 4-dim composite scoring rubric — `trendStrength` / `relativeStrength` / `entryQuality` / `catalystFreshness`. That rubric is momentum-flavored. A Compounder analyst (long-horizon, narrative-driven, willing to buy weakness) triaged through it gets force-fit through a momentum lens — high relative-strength + recent catalyst-freshness will score the wrong names well for that archetype.
+
+Same concern existed in the deleted Sunday discovery prompt — was filed as legacy P1-9 and deferred. The operator-driven model amplifies it because the human is now interactively pasting candidates and watching the agent triage in real time; the bad triage is visible in chat.
+
+**Fix:** branch the prompt overlay on the scoped analyst's archetype. Compounder/value gets a different 4-dim rubric (e.g., reflexivity, narrative durability, valuation cushion, expectations gap). Catalyst/momentum keeps the current one. The strategy archetypes in `lib/agent/knowledge/strategy-archetypes.ts` already encode the per-archetype shape — read it via `read_knowledge_library` in the chat prompt overlay (same plumbing the builder already uses).
+
+Worth doing before more analysts get scoped to chat-driven discovery.
+
 ---
 
 ## P2 — Backlog (defer until P0+P1 clean)
@@ -93,14 +123,82 @@ Old GAPS items that may still matter but aren't blocking. Move out of `GAPS_LEGA
 - Quote source inconsistency between Layer-1 and Layer-2 (legacy P1-11)
 - PRINCIPAL_CHAT hangs when child THESIS_WRITER fails (legacy P1-19)
 - Status-derived-from-actions refactor (legacy P1-20) — clean architecture move, not blocking
-- Discovery archetype-blind prompt (legacy P1-9)
+- ~~Discovery archetype-blind prompt (legacy P1-9)~~ → promoted to active P1-13 by [#361](https://github.com/dave-sucks/hindsight/pull/361).
 - Provenance soft-gate (legacy P1-15)
 
-Re-evaluate after the live loop is stable for ~1 week.
+### New P2 — Disposition of paused intelligence infrastructure
+After [#361](https://github.com/dave-sucks/hindsight/pull/361) the following are paused but still in the codebase / DB:
+- **4 Inngest crons paused:** `firm-market-sweep`, `portfolio-watchlist-monitor`, `domain-monitor`, `signal-router`. Code lives in `lib/inngest/functions/`.
+- **65 monitors disabled** (incl. 11 podcast monitors). Rows still in the `Monitor` table with `isEnabled = false`.
+- **`read_signals` tool** stripped from daily-run allowlist + prompt. File still exists in `lib/agent/tools/`. Builder/editor allowlists may still reference it (verify before delete).
+- **`AgentConfig.feeds`** column still populated but the routing path that consumed it (signal-router) is paused.
+- **`Signal` / `SignalBatch` / `AnalystSignalRoute` tables** still exist but nothing writes to them.
+
+**Decision needed (not urgent):** after ~2 weeks of clean operator-driven discovery, decide per-piece: fully delete (commit to the pivot) vs keep-paused-as-fallback (option to revive without re-implementing). Default to delete if no production need surfaces — paused-but-extant code rots silently and pollutes audits.
+
+### New P2 — Sunday discovery cron disposition
+`discovery-run.ts` (the Sunday 9 AM cron) still runs autonomously per-archetype. Operator-driven discovery via chat is now the primary mode; the cron is unclear value-add.
+
+**Options:**
+1. Kill — commit to operator-driven only.
+2. Keep as fallback — runs when operator skips a week.
+3. Repurpose — same code path, but reads from a saved-prompt source (e.g., a stored "what's worth watching this week" prompt the operator pre-writes).
+
+P1-12 needs to land first (confirm 5/5 FAILUREs were token exhaustion not a bug) before any of these are real options.
+
+Re-evaluate the rest after the live loop is stable for ~1 week.
 
 ---
 
 ## Done since
+
+### 2026-06-01 — P1-3: `targetPrice` overload was a one-line trigger bug, not a schema split
+PR [#362](https://github.com/dave-sucks/hindsight/pull/362). `watchingEntryTrigger` was reading `targetPrice` (the take-profit) instead of `entryPrice` (where the writer wanted to buy in). The schema was always correct — both columns existed with separate meanings — the trigger code just wired the wrong column to the ENTER action.
+
+**Shipped:**
+- `lib/agent/triggers/defaults.ts:watchingEntryTrigger` now reads `entryPrice` instead of `targetPrice`
+- Writer prompt clarifies `entry_price = where you'd buy in` (was ambiguously "current quote from the research")
+- Long "CHOOSING THE ENTER TRIGGER" warning block in `run-thesis-writer.ts` simplified — most of it was workaround for the now-fixed default
+- `PriceTargetsBlock` gauge consistently shows `Stop · Entry · Current · Target` across every status
+
+**No schema changes. No migration.** See [`docs/plans/PRICE_LEVEL_SEMANTICS.md`](./plans/PRICE_LEVEL_SEMANTICS.md) for the postmortem on why the schema-split plan was over-engineering.
+
+### 2026-06-01 — Discovery overhaul: kill noise pipeline, ship operator-driven discovery
+PR [#361](https://github.com/dave-sucks/hindsight/pull/361). Audit of last 40 signal-pool entries showed ~5% signal-to-noise (Sherwood sports headlines, Seeking Alpha aggregator pieces, content-marketing-tier clickbait). The agent's triage was actually solid; the input layer was poisoned. Architectural insight: discovery isn't a separate agent, it's a conversation pattern — Principal Chat already has analyst scoping + the full toolbox; what was missing was a prompt section teaching multi-candidate triage.
+
+**Operational changes (executed in-session):**
+- Paused 4 Inngest crons: `firm-market-sweep`, `portfolio-watchlist-monitor`, `domain-monitor`, `signal-router`.
+- Disabled 65 non-builtIn monitors (incl. 11 podcast monitors).
+- Stripped `read_signals` from daily-run prompt + allowlist. Daily run now starts with `get_theses` + `get_portfolio_context`, walks per-thesis evidence directly.
+
+**Code changes:**
+- **BATCHED DISCOVERY prompt overlay** (~110 lines on `buildPrincipalSystemPrompt`) — activates on multi-candidate input / research pastes / discovery-shaped questions. Teaches Sunday-cron triage shape + paste-extraction + operator-context-as-composite-input + clarification turn.
+- **`twitter_search` tool** — xAI Live Search over X with `sources:["x"]`. Returns handle + ticker + archetype + claim + sentiment + recency. Sibling to `web_search`. Requires `XAI_API_KEY`.
+- **Cross-analyst dispatch dedup** in `dispatch_thesis_research` — closes the AVGO + CRDO double-dispatch waste from the 2026-06-01 cron runs.
+- **`RunDiscoveryButton`** on `/analysts/[id]` → routes to `/chat?analyst=…&kickoff=…` (server-validated). Chat now accepts kickoff URL params, threads to AgentChat's `initialPrompt`.
+
+**Dual-role catalyst-source insight (durable architecture):** one wire feeds both discovery (new names route as signals) and triggers (held names fire REVIEW/EXIT). Don't build two pipelines for 8-K filings — build the producer once, route twice. Documented in `DISCOVERY_V2.md` §3.
+
+**Decisions worth flagging:**
+- Slash command vs mode picker for explicit "discovery mode" trigger — shipped content-detection only; add `/discovery` slash command or mode picker as follow-up if real usage reveals detection failures. Current implementation activates batched-discovery mode automatically from message content; the button is convenience, not gate.
+- Grok-as-orchestrator deferred. Shipped Grok-as-tool (`twitter_search` inside Claude) first. Grok-4 as a selectable orchestrator model is Lane 4 backlog, contingent on the Claude+`twitter_search` baseline shaking out cleanly.
+
+**Three follow-ups surfaced:** P1-12 (Secular Compounder writer FAILUREs investigation), P1-13 (BATCHED DISCOVERY overlay archetype-blind — promoted from legacy P1-9), plus two P2 disposition decisions (paused intelligence infra + Sunday discovery cron).
+
+**Watch tomorrow's 8 AM ET cron** — first daily run without `read_signals`. If the agent loses bearings, it'll surface fast in `/runs/`.
+
+Design docs: [`DISCOVERY_V2.md`](./plans/DISCOVERY_V2.md) (operating model + 16-source catalog), [`DISCOVERY_OVERHAUL.md`](./plans/DISCOVERY_OVERHAUL.md) (phased to-do list with status).
+
+### 2026-05-31 — Conviction Expression (writer judgment + read-time resolver)
+- **P1-6** — Writer "urgency signal" delivered, shape differs from original spec. Instead of a `recommendedAction` enum, the writer now stamps three fields on every thesis: `conviction` (STRONG / HIGH / MEDIUM / LOW — the writer's real view, independent of composite), `convictionRationale` (≤400-char plain-talk judgment), and `variantView` (required for STRONG/HIGH — "consensus thinks X, I think Y"). `targetSizePct` promoted to required for directional theses. The daily-run prompt teaches actionability-first filtering (via the resolver, see below) then conviction-modulated sizing — STRONG → trade fast at full size; LOW → skip-by-default. Conviction is also patchable (upgrade when a catalyst prints clean, downgrade when consensus moves to your view). Shipped via [#360](https://github.com/dave-sucks/hindsight/pull/360).
+- **Read-time resolver** (new primitive, not a previously-tracked GAP). `get_theses` now returns a computed `resolved` envelope per row: live `currentPrice`, evaluated `triggerState`, `actionability` verdict (`READY_TO_BUY` / `WAITING_FOR_TRIGGER` / `CATALYST_PENDING` / `HOLDING` / `SUPERSEDED` / …), and `supersededBy` (newer thesis on the same ticker that killed this one). Computed at read time, never stored. The agent reads a resolved verdict instead of re-deriving live price + trigger state + supersession every cycle. Cross-analyst supersession bug also fixed (Catalyst PM's LONG no longer killed by Compounder's PASS).
+- **Gate-removal partial credit toward P1-2.** Gates A + B (composite-coupling on `record_thesis` + `update_thesis`) deleted — they forced `conviction` to derive from `composite`, defeating the field's purpose. Other suspect gates listed under P1-2 unchanged.
+- **UI:** `ConvictionBadge` on the sheet header next to status; `VARIANT VIEW` as a peer section alongside Key Assumptions and Invalidation Conditions; actionability shown in the Trade Structure row's Status cell (rejected the standalone third-badge approach as noisy); stock identity made clickable to `/stocks/[ticker]`.
+- **Tests:** 16 new (12 record_thesis gates, 8 update_thesis gates, 13 resolver), 303 total passing.
+- **Backfill:** `prisma/migrations/manual/backfill_conviction_v4.sql` derives HIGH/MEDIUM/LOW from composite buckets for ~38 live LONG/SHORT WATCHING+ACTIVE rows missing conviction; stamps `convictionRationale = 'backfilled from composite on 2026-05-31'` so the UI can tell derived from writer-attested.
+- **Two follow-ups surfaced:** P1-10 (PROMOTED not first-class in resolver actionability) and P1-11 (writer rationale-quality enforcement — sniff-watch first).
+
+Design doc: [`CONVICTION_EXPRESSION.md`](./plans/CONVICTION_EXPRESSION.md) (updated to v4).
 
 ### 2026-05-27 — `Thesis.promotedAt` timestamptz migration + V2 prompt-preview template
 - **P1-4** — `Thesis.promotedAt` migrated from bare `timestamp(3)` to `timestamptz(6)`; existing 3 rows (AVGO/TSM/MRVL, all promoted 2026-05-26) backfilled `-12h` to undo the `@prisma/adapter-pg` AM/PM-flip. Post-migration verification confirmed `promotedAt` matches the `STATUS_CHANGED → PROMOTED` audit row to the millisecond. Schema regression test in [prisma/schema.test.ts](prisma/schema.test.ts) pins the `@db.Timestamptz(6)` annotation. Audit-row peer `ThesisUpdate.timestamp` left bare for now — written by Postgres `now()` via `@default(now())`, not affected by the adapter bug.
