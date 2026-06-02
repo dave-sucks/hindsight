@@ -9,6 +9,7 @@
  */
 
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 
 const signalTypeEnum = z.enum([
   "NEWS",
@@ -121,7 +122,19 @@ export const triggerActionSchema = z.enum([
 ]);
 
 export const triggerSchema = z.object({
-  id: z.string().optional().describe("Cuid; auto-generated if omitted."),
+  // Stable id, REQUIRED at evaluation time — the trigger-evaluator drops
+  // any trigger without one (parseTriggers), and lastFiredAt cooldown
+  // stamping keys off it. The LLM never supplies an id (it's an internal
+  // field), so we GENERATE one here via .default() when omitted. Before
+  // 2026-06-02 this was a bare .optional() whose "auto-generated if
+  // omitted" description was never implemented — agent-supplied trigger
+  // arrays persisted id-less, and the evaluator silently skipped them, so
+  // ENTER/EXIT triggers on 25 of 30 theses (incl. live MRVL/TSM stops)
+  // never fired. See docs + the trigger-id backfill.
+  id: z
+    .string()
+    .default(() => randomUUID())
+    .describe("Stable id; auto-generated when the writer omits it."),
   predicate: triggerPredicateSchema,
   action: triggerActionSchema,
   rationale: z

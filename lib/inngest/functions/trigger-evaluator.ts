@@ -24,6 +24,7 @@
 //   No schema change in PR 2. A separate TriggerFiring table is a
 //   follow-up if hot-write contention shows up.
 
+import { randomUUID } from "node:crypto";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { finnhub } from "@/lib/agent/research-helpers";
@@ -48,9 +49,22 @@ function parseTriggers(raw: unknown, thesisId: string): Trigger[] {
     );
     return [];
   }
-  // Stable cuid is required at runtime; thesis tools enforce id presence.
-  // Filter out any rows missing id rather than crashing.
-  return result.data.filter((t): t is Trigger => typeof t.id === "string");
+  // The schema's `id` .default() auto-generates an id for any trigger whose
+  // stored JSON lacked one, so post-parse every trigger should have an id.
+  // This map is a belt-and-suspenders backstop: if one still doesn't, assign
+  // an id and log LOUDLY rather than silently dropping it. The old code
+  // here silently filtered out id-less triggers, which hid the 2026-06-02
+  // bug (agent-supplied trigger arrays persisted id-less because the schema
+  // promised auto-generation it never did) for weeks — 25 of 30 theses,
+  // including live MRVL/TSM stops, never fired. Never fail silent here again.
+  return result.data.map((t): Trigger => {
+    if (typeof t.id === "string" && t.id.length > 0) return t as Trigger;
+    const id = randomUUID();
+    console.error(
+      `[trigger-evaluator] thesis=${thesisId} trigger missing id after schema parse — assigned ${id}. A write path bypassed triggerSchema; investigate.`,
+    );
+    return { ...t, id } as Trigger;
+  });
 }
 
 /** Predicate kinds that can be evaluated without a Signal. */
