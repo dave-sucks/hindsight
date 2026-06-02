@@ -195,6 +195,101 @@ For each thesis the run touched:
    and confirm the superseding thesis shares `agentConfigId` with the
    superseded one. Cross-analyst supersession = bug.
 
+### H. Proposal-flow integrity ([PR #364](https://github.com/dave-sucks/hindsight/pull/364))
+
+Applies whenever any analyst on the day's runs had `Account.requireApprovalForBuys`
+or `Account.requireApprovalForSells = true` at run start. As of 2026-06-02 this is
+expected ON for all paper analysts (shakeout window). Live analyst PEAD Specialist
+remains `enabled = false` so no live data here yet.
+
+If neither toggle was ON for any analyst that ran today, write "N/A — toggles off"
+in this section and move on. If even one analyst ran with the toggle ON, apply
+every item below.
+
+**The default expectation is that every agent-initiated buy / sell becomes an
+`Order(status='AWAITING_APPROVAL')` and the buy-side Position becomes
+`status='PENDING_APPROVAL'` — no Alpaca submit happens until the principal clicks
+Approve. Any deviation is a finding.**
+
+1. **Tool-call → proposal coverage.** For every `place_trade` / `close_position`
+   / `manage_position(action='add_to_position')` / `manage_position(action='full_close')`
+   call today on a toggle-ON analyst: confirm the resulting `Order.status =
+   'AWAITING_APPROVAL'`, `Order.expiresAt` is set ~24h forward, `Order.rationale`
+   is populated. If the Order ended up `PENDING` / `FILLED` without a
+   `PROPOSAL_APPROVED` audit row in between, the gate bypass — flag with run
+   ID + ticker + tool.
+2. **Position state during proposal.** Buy-side proposals create
+   `Position(status='PENDING_APPROVAL')`. Confirm via query. If the position is
+   `OPEN` (i.e., went live without an approval ever happening) or missing
+   entirely, bug.
+3. **Tool envelope ↔ narration alignment.** The tool result should have told
+   the agent "awaiting approval, not filled." Read the agent's narration around
+   the tool call (`RunMessage`). If the agent narrated "I bought X" / "filled
+   the trade" instead of "submitted for approval," that's a narration→reality
+   gap — the tool envelope is wrong, OR the agent ignored it. List ticker +
+   quoted narration.
+4. **Ungated paths still fire ungated.** Triple-check the deliberate bypasses:
+   - **Price-monitor stops** (`source='price_monitor'`): if `price-monitor.ts`
+     fired any stop today, the corresponding close should have gone straight to
+     Alpaca, NOT through proposal. Confirm `Order.status = FILLED` directly,
+     no `AWAITING_APPROVAL` intermediate state, no `PROPOSAL_*` audit row.
+   - **Manual UI closes** (`source='user'`): same — if you clicked Close on
+     the /trades page today, the order should have filled without proposal.
+5. **Audit trail completeness.** For every Order that reached `FILLED` via
+   approval, expect a matching `ThesisUpdate(type='PROPOSAL_APPROVED')` row
+   with `orderId` + `tradeId` populated. Same for `PROPOSAL_REJECTED` (with
+   user's rejection message in the rationale field) and `PROPOSAL_EXPIRED`
+   (cron-generated). Missing audit row on a closed/filled proposal = bug.
+6. **Orphan PENDING orders.** Query Orders created today by toggle-ON analysts
+   with `status='PENDING'` and `alpacaOrderId IS NULL` — should be 0. Any
+   non-zero result = `maybeAwaitApproval` failed mid-flight without rollback
+   (the soft-failure mode the code review flagged at score 50 — recoverable
+   via reconcile-orders cron but worth confirming the cron caught it).
+7. **Duplicate-approval audit rows.** Query
+   `ThesisUpdate WHERE type='PROPOSAL_APPROVED' AND createdAt::date = today
+   GROUP BY orderId HAVING COUNT(*) > 1` — should be 0. Any non-zero result =
+   double-click race fired (the score-75 finding from the PR review). Alpaca
+   would have deduped the fill via idempotency key, but DB state would now
+   carry duplicate audit rows and potentially duplicate `PositionEvent` rows
+   for the same fill.
+8. **`PENDING_APPROVAL` excluded from portfolio + duplicate-position queries.**
+   Verify two specific code paths handled the new status correctly:
+   - `place_trade`'s pre-tx duplicate-position check now includes
+     `PENDING_APPROVAL`. If an analyst tried to propose the same ticker twice
+     in one run (one filled+approved, one proposed), the second call should
+     have been refused at the pre-tx check OR cleanly produced a second
+     proposal. Either is acceptable; both completing without anyone catching
+     the duplicate is a bug.
+   - Portfolio summary / Open tab / exposure calculations should NOT count
+     `PENDING_APPROVAL` positions toward open exposure (the position doesn't
+     exist in Alpaca yet). If today's portfolio context the agent read inflated
+     exposure with pending positions, the daily-run agent will be operating
+     on wrong sizing math. Spot-check the `get_portfolio_context` tool result.
+9. **Proposal-expiry cron.** `lib/inngest/functions/proposal-expiry.ts` runs
+   every 30 min during market hours (4-19 ET on weekdays). Confirm via Inngest
+   event log that it ran ≥1x today. If any proposals from prior days expired
+   today, confirm `ThesisUpdate(type='PROPOSAL_EXPIRED')` rows + Order/Position
+   state transitions are clean.
+10. **Approve / reject UI exercised today?** If the principal actually clicked
+    Approve or Reject on any proposal today: walk the full state transition.
+    Approve → Order=FILLED, Position=OPEN, Thesis flipped (WATCHING→ACTIVE on
+    buy, ACTIVE→CLOSED on full sell), `PROPOSAL_APPROVED` audit row, Alpaca
+    fill via the stored idempotency key. Reject → Order=REJECTED with the
+    user's message, Position=CANCELLED (buys), `PROPOSAL_REJECTED` audit row
+    with the message in rationale. If anything in that chain is missing, flag.
+11. **Agent re-read of rejected proposals on next run.** The Conviction
+    Expression / proposal design says rejection messages flow back to the
+    agent as `ThesisUpdate` rows so it can incorporate the feedback. If the
+    principal rejected a proposal yesterday and the same analyst ran today,
+    confirm the agent's `get_theses(include_history: true)` call would have
+    surfaced the rejection. The agent's narration should reference the
+    rejection if it tries the same trade again.
+
+**First-day shakeout pass / fail:** if items 1–5 (the gate-functions-correctly
+checks) pass, the feature is working. Items 6–11 are deeper checks for the
+follow-up review; first day they're "verify nothing broke," not "verify
+quality."
+
 ## Canonical SQL — top of every review
 
 Substitute today's ET date for `<TODAY>`. Most reviews will copy these into the
@@ -378,6 +473,81 @@ HAVING COUNT(DISTINCT child."agentConfigId") > 1;
 -- Resolver-shadow: actionability the agent SHOULD have seen at run start
 -- (manual: re-run resolver against price snapshot at startedAt; flag where the
 -- agent's action diverged from the actionability verdict — see Section G.)
+
+-- Section H: Proposal-flow integrity (PR #364)
+-- ============================================
+
+-- Which analysts had the toggle ON at run start?
+SELECT ac.id, ac.name, ac."tradingEnvironment",
+       a."requireApprovalForBuys" AS approval_buys,
+       a."requireApprovalForSells" AS approval_sells
+FROM "AgentConfig" ac
+JOIN "Account" a ON a.id = ac."accountId"
+WHERE a."requireApprovalForBuys" = TRUE OR a."requireApprovalForSells" = TRUE
+ORDER BY ac.name;
+
+-- Today's proposals — full state map
+SELECT o.id AS order_id, o."alpacaOrderId", o.status AS order_status, o.side,
+       o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS created_et,
+       o."expiresAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS expires_et,
+       p.id AS position_id, p.symbol, p.status AS position_status, p.quantity,
+       ac.name AS analyst,
+       (SELECT type::text FROM "ThesisUpdate"
+         WHERE "orderId" = o.id AND type::text LIKE 'PROPOSAL_%'
+         ORDER BY "createdAt" DESC LIMIT 1) AS latest_proposal_audit,
+       LEFT(o.rationale, 200) AS rationale_preview
+FROM "Order" o
+LEFT JOIN "Position" p ON p.id = o."positionId"
+LEFT JOIN "AgentConfig" ac ON ac.id = p."analystId"
+WHERE (o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date = DATE '<TODAY>'
+  AND (o.status::text = 'AWAITING_APPROVAL'
+       OR p.status::text = 'PENDING_APPROVAL'
+       OR EXISTS (SELECT 1 FROM "ThesisUpdate" tu
+                  WHERE tu."orderId" = o.id AND tu.type::text LIKE 'PROPOSAL_%'))
+ORDER BY o."createdAt";
+
+-- Orphan PENDING orders (maybeAwaitApproval failed mid-flight)
+SELECT o.id, o.status, o."alpacaOrderId", o."createdAt", ac.name AS analyst
+FROM "Order" o
+LEFT JOIN "Position" p ON p.id = o."positionId"
+LEFT JOIN "AgentConfig" ac ON ac.id = p."analystId"
+WHERE (o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date = DATE '<TODAY>'
+  AND o.status::text = 'PENDING'
+  AND o."alpacaOrderId" IS NULL;
+-- Expected: 0 rows. Any returned = Section H item 6.
+
+-- Duplicate-approval audit rows (double-click race)
+SELECT "orderId", COUNT(*) AS approval_count,
+       array_agg(id) AS update_ids,
+       array_agg("createdAt") AS created_ats
+FROM "ThesisUpdate"
+WHERE type::text = 'PROPOSAL_APPROVED'
+  AND ("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date = DATE '<TODAY>'
+GROUP BY "orderId"
+HAVING COUNT(*) > 1;
+-- Expected: 0 rows. Any returned = Section H item 7 (the score-75 race finding).
+
+-- Bypass-paths-still-fire check: today's price-monitor + user-source closes
+-- (these should go straight to FILLED without any AWAITING_APPROVAL intermediate)
+SELECT o.id, o.status, o.side, o."closeSource",
+       o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS created_et,
+       EXISTS (SELECT 1 FROM "ThesisUpdate" tu
+               WHERE tu."orderId" = o.id AND tu.type::text LIKE 'PROPOSAL_%')
+       AS went_through_proposal
+FROM "Order" o
+WHERE (o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date = DATE '<TODAY>'
+  AND o.side = 'sell'
+  AND (o."closeSource" = 'price_monitor' OR o."closeSource" = 'user');
+-- Expected: went_through_proposal = FALSE on every row. Any TRUE = Section H item 4.
+
+-- Proposal-expiry cron health (did it fire today?)
+SELECT id, "createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS fired_et,
+       status, message
+FROM "InngestEvent"  -- or whichever table tracks job runs in this codebase
+WHERE name = 'proposals/expire-stale'  -- replace with actual cron event name
+  AND ("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date = DATE '<TODAY>'
+ORDER BY "createdAt";
+-- Expected: ≥1 row per ~30min during market hours. Adjust table/event name to your Inngest schema.
 ```
 
 ## What to produce

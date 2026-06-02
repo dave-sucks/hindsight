@@ -54,6 +54,28 @@
 | SUPERSEDED | | | (any cross-analyst SUPERSEDED → bug, see Section G item 7) |
 | PROMOTED_DECIDE_TODAY (once [P1-10](../GAPS.md) ships) | | | |
 
+### Proposal-flow integrity (PR #364 — applies when any analyst had toggle ON)
+
+| Metric | Today | Prior | Delta |
+|--------|-------|-------|-------|
+| Analysts with `requireApprovalForBuys/Sells = true` at run start | | | |
+| `place_trade` calls on toggle-ON analysts | | | |
+| `close_position` calls on toggle-ON analysts | | | |
+| `manage_position(add_to_position)` calls on toggle-ON analysts | | | |
+| `manage_position(full_close)` calls on toggle-ON analysts | | | |
+| New `Order(status='AWAITING_APPROVAL')` rows created today | | | |
+| New `Position(status='PENDING_APPROVAL')` rows created today | | | |
+| `PROPOSAL_APPROVED` audit rows (Approve clicks today) | | | |
+| `PROPOSAL_REJECTED` audit rows (Reject clicks today) | | | |
+| `PROPOSAL_EXPIRED` audit rows (cron-generated) | | | |
+| Orphan `PENDING` Orders (`alpacaOrderId IS NULL`) — Section H item 6 * | | | |
+| Duplicate `PROPOSAL_APPROVED` rows per orderId — Section H item 7 * | | | |
+| Ungated paths that went through proposal (`price_monitor` / `user`) — Section H item 4 * | | | |
+| Tool-envelope vs narration gap (agent narrated fill, actually awaiting) — Section H item 3 * | | | |
+| Proposal-expiry cron firings during market hours (~30 / day expected) | | | |
+
+\* Expected = 0. Any non-zero is a finding.
+
 ## Behavior
 
 Per-analyst walkthrough. For each analyst that ran today:
@@ -67,6 +89,7 @@ Per-analyst walkthrough. For each analyst that ran today:
 - **Section E:** trigger sanity (`nextReviewAt`, ENTER-on-ACTIVE / missing-EXIT, etc.)
 - **Section F:** standard checks (tool counts, duration, complete_run, narration→execution, premature-exit retry, **`read_signals` calls = 0**)
 - **Section G:** resolver actionability adherence — for each touched thesis, what `resolved.actionability` was at run start vs what the agent did
+- **Section H (toggle-ON analysts only):** proposal-flow integrity — gate fired, audit trail, ungated paths still ungated, no orphans / dupes
 
 Flag ✓/✗ for each expected behavior.
 
@@ -76,11 +99,11 @@ Flag ✓/✗ for each expected behavior.
 |-----|------|----------|----------------------------------------------|
 | | | | |
 
-Categories: `Code/runtime — silent timeout`, `Code/runtime — exception`, `Quality gate — narration→execution`, `Quality gate — promotion`, `Quality gate — complete_run preflight`, `Writer — Sonar hallucination (P1-5)`, `Writer — provider error / token exhaustion (P1-12 shape)`, `Writer — math-rationale regression (P1-11)`.
+Categories: `Code/runtime — silent timeout`, `Code/runtime — exception`, `Quality gate — narration→execution`, `Quality gate — promotion`, `Quality gate — complete_run preflight`, `Writer — Sonar hallucination (P1-5)`, `Writer — provider error / token exhaustion (P1-12 shape)`, `Writer — math-rationale regression (P1-11)`, `Proposal — gate bypass`, `Proposal — over-gate (ungated path went through proposal)`, `Proposal — orphan PENDING order`, `Proposal — duplicate approval / race`, `Proposal — tool envelope vs narration gap`.
 
 ## New Findings
 
-Observations not present in prior run reviews. Include: new failure patterns, unexpected tool call sequences, gate behavior worth noting, data anomalies. Label findings by rubric letter (A–G) so they're greppable across reviews.
+Observations not present in prior run reviews. Include: new failure patterns, unexpected tool call sequences, gate behavior worth noting, data anomalies. Label findings by rubric letter (A–H) so they're greppable across reviews.
 
 ## Trends vs Prior Report
 
