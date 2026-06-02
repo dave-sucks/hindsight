@@ -281,9 +281,20 @@ function VariantViewBlock({ variantView }: { variantView: string | null }) {
 // trade this is and where the exits are. Renders only when we have
 // horizon/target/stop info to show.
 
-function PositionRow({
+// ── TradeBlock ──
+// The ONE trade section in the sheet. State-aware headline:
+//   • held, nothing pending → "Bought N @ $X, now $Y" + P&L + intent suffix
+//     (plain — no box)
+//   • pending buy (not held) → "Proposed: buy N @ $X" + rationale + Review
+//   • held + pending sell/add/trim → the holding line + P&L, THEN the
+//     proposed action + rationale + Review, grouped in one muted block
+// `position` (cost basis + qty) comes from /triggers; `pnl` (live price +
+// unrealized P&L) from /quote — the two land at different times, so the
+// P&L line appears once /quote resolves. See docs/plans/TRADE_AS_PROPOSAL.md §6.
+function TradeBlock({
   position,
   pnl,
+  pendingProposal,
   direction,
   horizon,
   targetPrice,
@@ -291,88 +302,34 @@ function PositionRow({
 }: {
   position: NonNullable<TriggersResponse["position"]>;
   pnl: QuoteResponse["positionPnl"] | null;
-  direction: "LONG" | "SHORT" | "PASS";
-  horizon?: string | null;
-  targetPrice?: number | null;
-  stopLoss?: number | null;
-}) {
-  // `position` (cost basis + qty) comes from /triggers; `pnl` (live price
-  // + market value + unrealized PnL) comes from /quote. The two land at
-  // different times — the row renders shares+cost immediately and adds
-  // the "now trading at $X · +N%" once /quote resolves.
-  //
-  // Only rendered for HELD positions — a pending OPEN proposal renders the
-  // ProposalPrompt block instead (there's no holding yet).
-  return (
-    <div className="space-y-1">
-      <p className="text-sm tabular-nums leading-relaxed">
-        Bought {position.quantity.toFixed(1)} shares at{" "}
-        <span className="font-medium">${position.avgCost.toFixed(2)}</span>
-        {pnl != null ? (
-          <>
-            , now trading at{" "}
-            <span className="font-medium">${pnl.currentPrice.toFixed(2)}</span>
-          </>
-        ) : null}
-      </p>
-      {pnl != null ? (
-        <PriceChange
-          dollarChange={pnl.unrealizedPnl}
-          percentChange={pnl.unrealizedPnlPct}
-          size="base"
-        />
-      ) : null}
-      <IntentSuffix
-        direction={direction}
-        horizon={horizon}
-        targetPrice={targetPrice}
-        stopLoss={stopLoss}
-      />
-    </div>
-  );
-}
-
-// ── ProposalPrompt ──
-// The "what is the analyst asking me to approve, and why" block. Renders
-// when the linked position has an Order(AWAITING_APPROVAL). The Review
-// dropdown (Approve / Reject) lives in the sheet header next to the title;
-// this block is the context beneath it — the proposed action + the agent's
-// rationale + the expiry. Plain muted block, not a heavy alert.
-// See docs/plans/TRADE_AS_PROPOSAL.md §6.
-function ProposalPrompt({
-  proposal,
-  direction,
-  avgCost,
-}: {
-  proposal: {
+  pendingProposal: {
     orderId: string;
     intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
     quantity: number;
     expiresAt: string | null;
     rationale: string | null;
-  };
-  direction: "LONG" | "SHORT";
-  avgCost: number | null;
+  } | null;
+  direction: "LONG" | "SHORT" | "PASS";
+  horizon?: string | null;
+  targetPrice?: number | null;
+  stopLoss?: number | null;
 }) {
-  const verb =
-    proposal.intent === "OPEN"
-      ? direction === "LONG"
-        ? "buy"
-        : "short"
-      : proposal.intent === "ADD"
+  const pp = pendingProposal;
+  const isPendingBuy = pp?.intent === "OPEN";
+  const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+  const verb = !pp
+    ? null
+    : pp.intent === "OPEN"
+      ? direction === "SHORT"
+        ? "short"
+        : "buy"
+      : pp.intent === "ADD"
         ? "add"
-        : proposal.intent === "CLOSE"
+        : pp.intent === "CLOSE"
           ? "close"
           : "trim";
-  // Price is meaningful for entries/adds (the level you'd pay); for a
-  // close/trim the cost basis isn't the relevant number, so omit it.
-  const showPrice =
-    (proposal.intent === "OPEN" || proposal.intent === "ADD") && avgCost != null;
-  const qty = Number.isInteger(proposal.quantity)
-    ? String(proposal.quantity)
-    : proposal.quantity.toFixed(2);
-  const expiry = proposal.expiresAt
-    ? new Date(proposal.expiresAt).toLocaleString("en-US", {
+  const expiry = pp?.expiresAt
+    ? new Date(pp.expiresAt).toLocaleString("en-US", {
         month: "short",
         day: "numeric",
         hour: "numeric",
@@ -380,21 +337,71 @@ function ProposalPrompt({
         hour12: true,
       })
     : null;
-  return (
-    <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">
-      <p className="text-sm font-medium tabular-nums">
-        Waiting approval to {verb} {qty} share{qty === "1" ? "" : "s"}
-        {showPrice ? ` at $${avgCost!.toFixed(2)}` : ""}
-      </p>
-      {proposal.rationale ? (
+
+  const headline = isPendingBuy ? (
+    <p className="text-sm tabular-nums leading-relaxed">
+      Proposed: {verb} {fmtQty(pp!.quantity)} shares at{" "}
+      <span className="font-medium">${position.avgCost.toFixed(2)}</span>
+    </p>
+  ) : (
+    <p className="text-sm tabular-nums leading-relaxed">
+      Bought {position.quantity.toFixed(1)} shares at{" "}
+      <span className="font-medium">${position.avgCost.toFixed(2)}</span>
+      {pnl != null ? (
+        <>
+          , now trading at{" "}
+          <span className="font-medium">${pnl.currentPrice.toFixed(2)}</span>
+        </>
+      ) : null}
+    </p>
+  );
+
+  const body = (
+    <>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0 space-y-1">
+          {headline}
+          {!isPendingBuy && pnl != null ? (
+            <PriceChange
+              dollarChange={pnl.unrealizedPnl}
+              percentChange={pnl.unrealizedPnlPct}
+              size="base"
+            />
+          ) : null}
+          <IntentSuffix
+            direction={direction}
+            horizon={horizon}
+            targetPrice={targetPrice}
+            stopLoss={stopLoss}
+          />
+        </div>
+        {pp ? <ProposalActions orderId={pp.orderId} align="end" /> : null}
+      </div>
+      {/* For a pending sell/add/trim on a held position, state the proposed
+          action explicitly (the holding line above says "Bought"). */}
+      {pp && !isPendingBuy ? (
+        <p className="text-sm font-medium tabular-nums">
+          Proposed: {verb} {fmtQty(pp.quantity)} share
+          {fmtQty(pp.quantity) === "1" ? "" : "s"}
+        </p>
+      ) : null}
+      {pp?.rationale ? (
         <p className="text-sm text-muted-foreground leading-relaxed">
-          {proposal.rationale}
+          {pp.rationale}
         </p>
       ) : null}
       {expiry ? (
         <p className="text-xs text-muted-foreground">Expires {expiry}</p>
       ) : null}
-    </div>
+    </>
+  );
+
+  // Grouped muted block when there's something to review; plain when it's
+  // just a held position.
+  return pp ? (
+    <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">{body}</div>
+  ) : (
+    <div className="space-y-1">{body}</div>
   );
 }
 
@@ -1689,32 +1696,24 @@ export function ThesisSheetBody({
           identity takes you to the broader stock page (TradingView
           chart, all theses on this ticker, etc.). Hover-underline
           conveys affordance without disrupting the typography.
-          When a proposal is awaiting approval, the Review dropdown sits
-          inline with the title (see docs/plans/TRADE_AS_PROPOSAL.md §6). */}
+          The Review control for a pending proposal lives inside the trade
+          block below, not here — one unified trade section per state. */}
       <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/stocks/${ticker}`}
-            className="flex items-center gap-3 group/stocklink flex-1 min-w-0"
-          >
-            <StockLogo ticker={ticker} size="lg" />
-            <div className="flex-1 min-w-0">
-              <p className="text-lg font-semibold truncate group-hover/stocklink:underline underline-offset-4">
-                {displayName}
-              </p>
-              <p className="font-mono text-xs text-muted-foreground">
-                {ticker}
-                {exchange ? ` · ${exchange}` : ""}
-              </p>
-            </div>
-          </Link>
-          {state?.position?.pendingProposal ? (
-            <ProposalActions
-              orderId={state.position.pendingProposal.orderId}
-              align="end"
-            />
-          ) : null}
-        </div>
+        <Link
+          href={`/stocks/${ticker}`}
+          className="flex items-center gap-3 group/stocklink"
+        >
+          <StockLogo ticker={ticker} size="lg" />
+          <div className="flex-1 min-w-0">
+            <p className="text-lg font-semibold truncate group-hover/stocklink:underline underline-offset-4">
+              {displayName}
+            </p>
+            <p className="font-mono text-xs text-muted-foreground">
+              {ticker}
+              {exchange ? ` · ${exchange}` : ""}
+            </p>
+          </div>
+        </Link>
         {/* Live current price + day's change. Comes from the separate
             /quote endpoint (slow — Finnhub call) so this block usually
             paints after the rest of the sheet body. Skeleton while
@@ -1741,30 +1740,18 @@ export function ThesisSheetBody({
         ) : null}
       </div>
 
-      {/* ── Pending proposal prompt ──────────────────────────── */}
-      {/* What the analyst is asking you to approve + why. The Review
-          dropdown lives in the header next to the title; this block is
-          the "text below" — the proposed action + the agent's rationale,
-          so you know what you're approving without leaving the sheet.
+      {/* ── Trade block (one unified, state-aware section) ── */}
+      {/* The single place the trade lives. Headline morphs by state:
+          held → "Bought N @ $X, now $Y" + P&L; pending buy → "Proposed:
+          buy N @ $X"; held + pending sell/add/trim → the holding line PLUS
+          the proposed action + rationale + Review dropdown, all in one
+          grouped block. No separate floating sections.
           See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
-      {state?.position?.pendingProposal ? (
-        <ProposalPrompt
-          proposal={state.position.pendingProposal}
-          direction={direction === "PASS" ? "LONG" : direction}
-          avgCost={position?.avgCost ?? null}
-        />
-      ) : null}
-
-      {/* ── Position row (held positions) ── */}
-      {/* Mirrors the dashboard ThesisRow position pattern: shares @
-          cost, market value, live P&L. Intent suffix (direction · target/
-          stop · horizon) appended so a glance tells you the whole trade
-          structure. Skipped for a pending OPEN proposal — there's no
-          holding yet; the ProposalPrompt above describes it. */}
-      {position && state?.position?.pendingProposal?.intent !== "OPEN" ? (
-        <PositionRow
+      {position ? (
+        <TradeBlock
           position={position}
           pnl={quote?.positionPnl ?? null}
+          pendingProposal={state?.position?.pendingProposal ?? null}
           direction={direction}
           horizon={state?.horizon ?? null}
           targetPrice={state?.targetPrice ?? target_price ?? null}
