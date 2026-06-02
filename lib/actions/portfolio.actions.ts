@@ -131,7 +131,7 @@ export interface SpyBenchmark {
 /** A single item in the homepage activity timeline. */
 export interface ActivityFeedItem {
   id: string;
-  type: "OPENED" | "CLOSED" | "MODIFIED";
+  type: "OPENED" | "CLOSED" | "MODIFIED" | "PROPOSED";
   positionId: string;
   symbol: string;
   direction: string;
@@ -143,6 +143,12 @@ export interface ActivityFeedItem {
   pnlPct: number | null;
   outcome: string | null;
   analystName: string | null;
+  // Trade-as-Proposal — populated on PROPOSED entries. orderId drives the
+  // inline [Approve][Reject] in ActivityRow. intent tells the row which
+  // verb to show ("Buy" / "Add" / "Close" / "Trim").
+  orderId?: string;
+  intent?: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+  expiresAt?: string;
 }
 
 export interface DashboardData {
@@ -323,14 +329,29 @@ export async function getDashboardData(
   ] = await Promise.all([
     resolveAlpacaCredentials(userId, environment).then((c) => c ?? undefined),
     prisma.position.findMany({
-      where: { accountId, status: "OPEN", environment },
+      // Trade-as-Proposal — include PENDING_APPROVAL positions so buy
+      // proposals show up in the homepage / analyst sidebar with their
+      // inline [Approve][Reject] buttons. CLOSED positions stay filtered
+      // (they live on the Closed tab); CANCELLED is the terminal state
+      // for rejected/expired proposals and doesn't belong in Open.
+      where: {
+        accountId,
+        status: { in: ["OPEN", "PENDING_APPROVAL"] },
+        environment,
+      },
       include: {
         analyst: { select: { name: true } },
-        // Most recent BUY/SELL order — used to surface fill state in UI
+        // Pull recent orders — first the most-recent NON-awaiting order
+        // (drives existing fill-state UI), then any AWAITING_APPROVAL
+        // (drives the proposal [Approve][Reject] state). Fetching both
+        // in one include via take=5 + status-agnostic ordering, mapped
+        // below. The take is generous because a position can have multiple
+        // historical orders (open + closes + adds); we just need to find
+        // the latest fill state and any pending proposal.
         orders: {
           where: { side: { in: ["BUY", "SELL"] } },
           orderBy: { createdAt: "desc" },
-          take: 1,
+          take: 5,
           select: {
             id: true,
             side: true,
@@ -340,6 +361,8 @@ export async function getDashboardData(
             createdAt: true,
             alpacaOrderId: true,
             quantity: true,
+            intent: true,
+            expiresAt: true,
           },
         },
       },
@@ -591,13 +614,35 @@ export async function getDashboardData(
     const priceSource = priceLookup.sources[p.symbol] ?? "missing";
     const currentPrice = livePrice ?? p.avgCost;
     const { dollars, pct } = calcPnl(p.direction, p.avgCost, currentPrice, p.quantity);
-    const order = p.orders?.[0];
+
+    // Pick the latest non-awaiting order for fill-state UI, and separately
+    // the awaiting-approval order for the proposal state. Each position can
+    // have multiple historical orders so we scan rather than indexing [0].
+    // See docs/plans/TRADE_AS_PROPOSAL.md §6.
+    const orders = p.orders ?? [];
+    const awaitingOrder = orders.find((o) => o.status === "AWAITING_APPROVAL");
+    const fillOrder = orders.find((o) => o.status !== "AWAITING_APPROVAL");
+
     // Derive the display status from Position.status + latest Order.status.
     // Position stays OPEN until its BUY actually fills; the PENDING/REJECTED
     // view-model statuses are UI-only denormalizations.
     let displayStatus: TradeStatus = "OPEN";
-    if (order?.status === "REJECTED") displayStatus = "REJECTED";
-    else if (order?.status === "PENDING" || (order && order.filledAt == null)) displayStatus = "PENDING";
+    if (fillOrder?.status === "REJECTED") displayStatus = "REJECTED";
+    else if (fillOrder?.status === "PENDING" || (fillOrder && fillOrder.filledAt == null)) displayStatus = "PENDING";
+
+    // Trade-as-Proposal — surface the awaiting-approval order so TradeRow
+    // renders the inline [Approve][Reject] in place of the P&L slot.
+    const pendingProposal = awaitingOrder
+      ? {
+          orderId: awaitingOrder.id,
+          intent: (awaitingOrder.intent ?? "OPEN") as
+            | "OPEN"
+            | "ADD"
+            | "CLOSE"
+            | "PARTIAL_CLOSE",
+        }
+      : undefined;
+
     return {
       id: p.id,
       ticker: p.symbol,
@@ -616,12 +661,13 @@ export async function getDashboardData(
       shares: p.quantity,
       analystName: p.analyst?.name ?? undefined,
       analystId: p.analystId ?? undefined,
-      placedAt: order?.createdAt?.toISOString(),
-      filledAt: order?.filledAt?.toISOString(),
-      orderStatus: order?.status,
-      alpacaOrderId: order?.alpacaOrderId ?? undefined,
+      placedAt: fillOrder?.createdAt?.toISOString(),
+      filledAt: fillOrder?.filledAt?.toISOString(),
+      orderStatus: fillOrder?.status,
+      alpacaOrderId: fillOrder?.alpacaOrderId ?? undefined,
       priceSource,
       priceUpdatedAt: livePrice !== undefined ? priceLookup.fetchedAt : undefined,
+      pendingProposal,
     };
   });
 
@@ -850,8 +896,41 @@ export async function getDashboardData(
   // ── 12. Activity feed — merge trade opens/closes + management actions ──────
   const activityFeed: ActivityFeedItem[] = [];
 
-  // Recent opens (last 20)
+  // Recent opens (last 20).
+  // Trade-as-Proposal: positions in PENDING_APPROVAL aren't really opened
+  // yet — emit a PROPOSED entry instead of OPENED so the row renders the
+  // inline [Approve][Reject] action pair. Positions with an
+  // AWAITING_APPROVAL close order are already-open positions and DO get the
+  // regular OPENED entry above + a separate PROPOSED entry for the
+  // pending close (emitted in the loop below).
   for (const p of dbOpenPositions.slice(0, 20)) {
+    const awaitingOrder = p.orders?.find((o) => o.status === "AWAITING_APPROVAL");
+    const isPendingApprovalBuy =
+      p.status === "PENDING_APPROVAL" &&
+      awaitingOrder?.intent === "OPEN";
+
+    if (isPendingApprovalBuy) {
+      activityFeed.push({
+        id: `proposed-${awaitingOrder.id}`,
+        type: "PROPOSED",
+        positionId: p.id,
+        symbol: p.symbol,
+        direction: p.direction,
+        timestamp: awaitingOrder.createdAt.toISOString(),
+        label: `Proposed ${p.direction === "LONG" ? "buy" : "short"}`,
+        source: "agent",
+        reason: null,
+        pnl: null,
+        pnlPct: null,
+        outcome: null,
+        analystName: p.analyst?.name ?? null,
+        orderId: awaitingOrder.id,
+        intent: "OPEN",
+        expiresAt: awaitingOrder.expiresAt?.toISOString(),
+      });
+      continue;
+    }
+
     activityFeed.push({
       id: `open-${p.id}`,
       type: "OPENED",
@@ -867,6 +946,37 @@ export async function getDashboardData(
       outcome: null,
       analystName: p.analyst?.name ?? null,
     });
+
+    // For an OPEN position with a pending close/add/trim proposal, ALSO
+    // emit a separate PROPOSED entry so the row surfaces in the feed.
+    if (awaitingOrder && awaitingOrder.intent !== "OPEN") {
+      const intent = (awaitingOrder.intent ?? "CLOSE") as
+        | "ADD"
+        | "CLOSE"
+        | "PARTIAL_CLOSE";
+      const verb =
+        intent === "ADD" ? "add to" :
+        intent === "CLOSE" ? "close" :
+        "trim";
+      activityFeed.push({
+        id: `proposed-${awaitingOrder.id}`,
+        type: "PROPOSED",
+        positionId: p.id,
+        symbol: p.symbol,
+        direction: p.direction,
+        timestamp: awaitingOrder.createdAt.toISOString(),
+        label: `Proposed ${verb}`,
+        source: "agent",
+        reason: null,
+        pnl: null,
+        pnlPct: null,
+        outcome: null,
+        analystName: p.analyst?.name ?? null,
+        orderId: awaitingOrder.id,
+        intent,
+        expiresAt: awaitingOrder.expiresAt?.toISOString(),
+      });
+    }
   }
 
   // Recent closes (last 20)

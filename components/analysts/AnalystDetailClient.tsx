@@ -154,6 +154,7 @@ function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; live
       closedAt={trade.closedAt?.toISOString()}
       priceSource={isOpen ? (livePrice !== undefined ? "alpaca" : "missing") : undefined}
       onClose={isOpen ? handleClose : undefined}
+      pendingProposal={trade.pendingProposal}
     />
   );
 }

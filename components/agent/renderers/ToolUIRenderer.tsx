@@ -31,6 +31,7 @@ import {
   extractToolSources,
   SourceChips,
 } from "@/components/assistant-ui/tool-uis/tool-ui-shared";
+import { ProposalActions } from "@/components/proposals/ProposalActions";
 
 interface Props {
   toolName: string;
@@ -95,22 +96,58 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
     ? []
     : extractToolSources(rawResult as Record<string, unknown>);
 
+  // Trade-as-Proposal — when a proposal item is present we force the
+  // ToolProgress wrapper open so the approve/reject buttons render without
+  // an extra expand click. See docs/plans/TRADE_AS_PROPOSAL.md §6.1.
+  const hasProposal = items.some((it) => it.kind === "proposal");
+
   const rows =
     items.length > 0
-      ? items.map((it, i) =>
-          it.kind === "ticker" ? (
-            <ToolProgressTickerItem
-              key={i}
-              ticker={it.ticker}
-              tag={it.tag}
-              actionIcon={it.actionIcon}
-            >
-              {it.text}
-            </ToolProgressTickerItem>
-          ) : (
-            <ToolProgressItem key={i}>{it.text}</ToolProgressItem>
-          ),
-        )
+      ? items.map((it, i) => {
+          if (it.kind === "ticker") {
+            return (
+              <ToolProgressTickerItem
+                key={i}
+                ticker={it.ticker}
+                tag={it.tag}
+                actionIcon={it.actionIcon}
+              >
+                {it.text}
+              </ToolProgressTickerItem>
+            );
+          }
+          if (it.kind === "proposal") {
+            // Render as a ticker row with inline [Approve][Reject] — same
+            // visual pattern as the run-summary rows the user already
+            // operates with. No new Card. See docs/plans/TRADE_AS_PROPOSAL.md §6.1.
+            const verb =
+              it.action === "BUY"
+                ? "Buy"
+                : it.action === "SELL"
+                  ? "Sell"
+                  : it.action === "CLOSE"
+                    ? "Close"
+                    : "Trim";
+            const sizeStr =
+              it.shares != null && it.estimatedPrice != null
+                ? `${verb} ${it.shares} @ $${it.estimatedPrice.toFixed(2)}`
+                : it.estimatedCost != null
+                  ? `${verb} $${Math.round(it.estimatedCost).toLocaleString()}`
+                  : verb;
+            return (
+              <ToolProgressTickerItem
+                key={i}
+                ticker={it.ticker}
+                tag="Pending Review"
+                actionIcon={it.action === "BUY" ? "buy" : "sell"}
+                trailing={<ProposalActions orderId={it.orderId} size="sm" />}
+              >
+                {sizeStr}
+              </ToolProgressTickerItem>
+            );
+          }
+          return <ToolProgressItem key={i}>{it.text}</ToolProgressItem>;
+        })
       : [<ToolProgressItem key="fallback">{result.summary}</ToolProgressItem>];
 
   const body = (
@@ -125,7 +162,7 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
   }
 
   return (
-    <ToolProgress defaultOpen={loading}>
+    <ToolProgress defaultOpen={loading || hasProposal}>
       <ToolProgressHeader loading={loading}>{label}</ToolProgressHeader>
       <ToolProgressContent>{body}</ToolProgressContent>
     </ToolProgress>

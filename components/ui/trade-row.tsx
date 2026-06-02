@@ -16,6 +16,7 @@ import { cn, pnlColor } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
 import { getTradeStatusDisplay, shortAlpacaId } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
+import { ProposalActions } from "@/components/proposals/ProposalActions";
 
 // ── Row menu item ────────────────────────────────────────────────────────────
 // Every trade-shaped row gets the same kebab menu on the right edge. Each
@@ -175,6 +176,17 @@ interface TradeRowProps {
   className?: string;
   /** Optional close-trade handler. When provided, kebab menu shows "Close trade". */
   onClose?: () => void;
+  /**
+   * Trade-as-Proposal — when set, the row renders in "Pending review" state:
+   * status dot turns amber, the P&L slot is replaced with inline
+   * [Approve][Reject] buttons calling the existing /api/proposals routes.
+   * orderId is the AWAITING_APPROVAL Order's id. intent tells the row which
+   * verb to surface ("Buy" / "Close" / etc.). See docs/plans/TRADE_AS_PROPOSAL.md.
+   */
+  pendingProposal?: {
+    orderId: string;
+    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+  };
 }
 
 function fmtShort(d: Date | string): string {
@@ -211,20 +223,24 @@ export function TradeRow({
   flash,
   className,
   onClose,
+  pendingProposal,
 }: TradeRowProps) {
   const totalWorth = currentPrice * shares;
   const dateStr = openedAt ? fmtShort(openedAt) : null;
   const isPending = status === "PENDING";
-  const isOpen = status === "OPEN" || isPending;
-  const isStalePrice = isOpen && priceSource === "missing";
+  const isAwaitingApproval = pendingProposal != null;
+  const isOpen = status === "OPEN" || isPending || isAwaitingApproval;
+  const isStalePrice = isOpen && priceSource === "missing" && !isAwaitingApproval;
 
   const cfg = getTradeStatusDisplay(status);
-  const timeLabel = cfg.timeLabel({ placedAt, filledAt, closedAt });
+  const timeLabel = isAwaitingApproval
+    ? `Pending your approval — agent proposed this ${pendingProposal.intent === "OPEN" || pendingProposal.intent === "ADD" ? "buy" : "exit"}`
+    : cfg.timeLabel({ placedAt, filledAt, closedAt });
   const shortId = shortAlpacaId(alpacaOrderId);
   const priceSourceLabel = isOpen ? fmtPriceSource(priceSource, priceUpdatedAt) : null;
 
   const menuItems: RowMenuItem[] | undefined =
-    onClose && isOpen
+    onClose && isOpen && !isAwaitingApproval
       ? [{ label: "Close trade", onSelect: onClose, destructive: true }]
       : undefined;
 
@@ -244,7 +260,9 @@ export function TradeRow({
                 <span
                   className={cn(
                     "h-1.5 w-1.5 rounded-full shrink-0 cursor-default",
-                    cfg.dotClass,
+                    // Pending proposal — amber dot overrides whatever the
+                    // underlying status would normally show.
+                    isAwaitingApproval ? "bg-amber-500" : cfg.dotClass,
                   )}
                 />
               }
@@ -258,6 +276,11 @@ export function TradeRow({
               </div>
             </TooltipContent>
           </Tooltip>
+          {isAwaitingApproval && (
+            <span className="text-[10px] text-amber-500/90 ml-0.5">
+              Pending review
+            </span>
+          )}
         </>
       }
       trailingTop={
@@ -288,7 +311,13 @@ export function TradeRow({
         </>
       }
       trailingBottom={
-        isStalePrice ? (
+        isAwaitingApproval ? (
+          <ProposalActions
+            orderId={pendingProposal.orderId}
+            size="sm"
+            hideReject
+          />
+        ) : isStalePrice ? (
           <span className="text-[10px] text-amber-500/80">no live price</span>
         ) : isPending ? (
           <span className="text-[10px] text-muted-foreground/50">—</span>

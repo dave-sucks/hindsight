@@ -47,6 +47,7 @@ import {
   type ResearchCitation,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ProposalActions } from "@/components/proposals/ProposalActions";
 import {
   getThesisStatusDisplay,
   type ThesisStatus,
@@ -777,6 +778,70 @@ function ProvenanceFooter({
         ) : null}
       </div>
     </div>
+  );
+}
+
+// ── PendingProposalAlert ─────────────────────────────────────────────────
+// Surfaces an actionable alert at the top of the sheet when the linked
+// position has an Order(AWAITING_APPROVAL). [Approve][Reject] are inline
+// — clicking either hits the existing /api/proposals/[orderId]/* routes
+// and the page refreshes to pick up the new state. See docs/plans/TRADE_AS_PROPOSAL.md.
+function PendingProposalAlert({
+  proposal,
+  ticker,
+  direction,
+  shares,
+  avgCost,
+}: {
+  proposal: {
+    orderId: string;
+    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+    expiresAt: string | null;
+    rationale: string | null;
+  };
+  ticker: string;
+  direction: "LONG" | "SHORT";
+  shares: number;
+  avgCost: number;
+}) {
+  const verb =
+    proposal.intent === "OPEN"
+      ? direction === "LONG"
+        ? "buy"
+        : "short"
+      : proposal.intent === "ADD"
+        ? "add to"
+        : proposal.intent === "CLOSE"
+          ? "close"
+          : "trim";
+  const expiry = proposal.expiresAt
+    ? `Expires ${new Date(proposal.expiresAt).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })}`
+    : null;
+  return (
+    <Alert>
+      <AlertTitle>
+        Awaiting your approval — analyst wants to {verb} {shares} {ticker}
+      </AlertTitle>
+      <AlertDescription>
+        <div className="space-y-3">
+          {proposal.rationale ? (
+            <p className="text-sm text-muted-foreground">{proposal.rationale}</p>
+          ) : null}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground tabular-nums">
+              ~${avgCost.toFixed(2)} / share{expiry ? ` · ${expiry}` : ""}
+            </span>
+            <ProposalActions orderId={proposal.orderId} size="md" showLabels />
+          </div>
+        </div>
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -1630,6 +1695,22 @@ export function ThesisSheetBody({
         invalidatedAt={state?.invalidatedAt ?? null}
         invalidReason={state?.invalidReason ?? null}
       />
+
+      {/* ── Trade-as-Proposal alert ──────────────────────────── */}
+      {/* When the analyst proposed a buy/add/close/trim on this thesis and
+          the Account requires approval, surface an actionable alert at the
+          top — the user can decide right here without leaving the sheet.
+          Approve fires /api/proposals/[orderId]/approve and the reconcile
+          cron picks up the fill. See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
+      {state?.position?.pendingProposal ? (
+        <PendingProposalAlert
+          proposal={state.position.pendingProposal}
+          ticker={ticker}
+          direction={direction === "PASS" ? "LONG" : direction}
+          shares={state.position.quantity}
+          avgCost={state.position.avgCost}
+        />
+      ) : null}
 
       {/* ── Parent thesis chain pointer ────────────────────── */}
       {/* When this thesis supersedes an earlier one on the same ticker

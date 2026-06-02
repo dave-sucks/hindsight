@@ -144,10 +144,17 @@ export type ToolProgressTickerItemProps = ComponentProps<"div"> & {
   actionIcon?: TickerActionIcon;
   active?: boolean;
   children: ReactNode;
+  /**
+   * Trailing slot rendered to the right of the description text. Used by
+   * the Trade-as-Proposal flow to drop inline [Approve][Reject] buttons
+   * onto a ticker row without inventing a new component. See
+   * docs/plans/TRADE_AS_PROPOSAL.md §6.1.
+   */
+  trailing?: ReactNode;
 };
 
 export const ToolProgressTickerItem = memo(
-  ({ className, ticker, tag, actionIcon, active, children, ...props }: ToolProgressTickerItemProps) => {
+  ({ className, ticker, tag, actionIcon, active, children, trailing, ...props }: ToolProgressTickerItemProps) => {
     const overlay = actionIcon ? ACTION_ICON_CONFIG[actionIcon] : null;
     return (
       <div
@@ -188,6 +195,7 @@ export const ToolProgressTickerItem = memo(
           <span> — </span>
           {children}
         </span>
+        {trailing && <div className="shrink-0 ml-2">{trailing}</div>}
       </div>
     );
   }

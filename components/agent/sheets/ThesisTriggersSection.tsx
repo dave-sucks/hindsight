@@ -54,6 +54,16 @@ export interface ThesisStatePosition {
   avgCost: number;
   openedAt: string;
   daysHeld: number;
+  // Trade-as-Proposal — populated when this position has an
+  // Order(AWAITING_APPROVAL) attached. Drives the "Awaiting your approval"
+  // alert at the top of the sheet with inline [Approve][Reject] actions.
+  // See docs/plans/TRADE_AS_PROPOSAL.md §6.
+  pendingProposal?: {
+    orderId: string;
+    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+    expiresAt: string | null;
+    rationale: string | null;
+  } | null;
 }
 
 export interface ThesisScoringDim {

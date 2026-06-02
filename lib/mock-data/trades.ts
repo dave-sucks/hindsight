@@ -43,6 +43,14 @@ export interface MockTrade {
   // ── Price freshness metadata ──────────────────────────────────────────────
   priceSource?: PriceSource;
   priceUpdatedAt?: string;
+
+  // ── Trade-as-Proposal — populated when there's an Order(AWAITING_APPROVAL)
+  // ── linked to this position. Drives the inline [Approve][Reject] buttons
+  // ── on TradeRow. See docs/plans/TRADE_AS_PROPOSAL.md.
+  pendingProposal?: {
+    orderId: string;
+    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+  };
 }
 
 export const mockOpenTrades: MockTrade[] = [

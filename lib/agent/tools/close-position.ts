@@ -112,7 +112,52 @@ export const closePosition = defineTool({
       const agentAuditReason = args.notes
         ? args.notes
         : `${position.direction} position in ${ticker} closed by agent — reason: ${args.reason}.`;
-      const result = await closeOpenPosition(position.id, args.reason, undefined, "agent", agentAuditReason, ctx.runId);
+      const outcome = await closeOpenPosition(position.id, args.reason, undefined, "agent", agentAuditReason, ctx.runId);
+
+      // Trade-as-Proposal — when Account.requireApprovalForSells is on,
+      // closeOpenPosition stages the close as Order(AWAITING_APPROVAL) and
+      // returns kind:"proposed". Return a proposal-shaped tool envelope so
+      // the chat renders "Awaiting your approval." The approve handler at
+      // POST /api/proposals/[orderId]/approve runs the rest of the close
+      // flow (Alpaca submit + fill polling + ThesisUpdate CLOSED) when the
+      // user clicks Approve. See docs/plans/TRADE_AS_PROPOSAL.md.
+      if (outcome.kind === "proposed") {
+        return {
+          summary: `Close proposed: $${ticker}`,
+          data: {
+            success: true,
+            ticker,
+            reason: args.reason,
+            shares: position.quantity,
+            status: "PROPOSED" as const,
+            fillStatus: "AWAITING_APPROVAL" as const,
+            direction: position.direction,
+            entryPrice: position.avgCost,
+            orderId: outcome.proposal.orderId,
+            positionId: outcome.proposal.positionId,
+            expiresAt: outcome.proposal.expiresAt.toISOString(),
+            rationale: outcome.proposal.rationale,
+            message: `Proposed close of ${position.direction} ${position.quantity} shares of ${ticker}. Awaiting your approval (expires in 24h).`,
+            items: [
+              {
+                kind: "proposal" as const,
+                orderId: outcome.proposal.orderId,
+                ticker,
+                direction: position.direction as "LONG" | "SHORT",
+                action: "CLOSE" as const,
+                shares: position.quantity,
+                estimatedPrice: position.avgCost,
+                estimatedCost: position.quantity * position.avgCost,
+                expiresAt: outcome.proposal.expiresAt.toISOString(),
+                rationale: outcome.proposal.rationale,
+              },
+            ],
+          },
+          sources: [{ provider: "Hindsight", title: `Proposal close ${ticker}` }],
+        };
+      }
+      // outcome.kind === "closed" — proceed with the existing close-out flow.
+      const result = outcome;
 
       const analystId = ctx.analystId || position.analystId;
       const fillNote = result.fillStatus === "PENDING" ? " (close order pending fill)" : "";
@@ -224,7 +269,11 @@ export const closePosition = defineTool({
 
       let portfolioUpdate: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number } | null = null;
       try {
-        const currentOpenCount = await prisma.position.count({ where: { analystId, status: "OPEN" } });
+        // Trade-as-Proposal: count PENDING_APPROVAL positions toward the
+        // slot total so the agent's view of remainingSlots is accurate.
+        const currentOpenCount = await prisma.position.count({
+          where: { analystId, status: { in: ["OPEN", "PENDING_APPROVAL"] } },
+        });
         const postAccount = await getAccount(ctx.alpacaCreds);
         portfolioUpdate = {
           remainingSlots: (ctx.maxOpenPositions ?? 5) - currentOpenCount,

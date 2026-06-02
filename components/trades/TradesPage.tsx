@@ -40,6 +40,7 @@ import {
   type MockTrade,
 } from '@/lib/mock-data/trades';
 import { Loader2, MoreHorizontal, ExternalLink } from 'lucide-react';
+import { ProposalActions } from '@/components/proposals/ProposalActions';
 import { ConceptTooltip } from '@/components/domain/education-card';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 
@@ -254,9 +255,14 @@ export default function TradesPage({
                 closedAt: trade.closedAt,
               });
               const shortId = shortAlpacaId(trade.alpacaOrderId);
+              // Trade-as-Proposal — when set, this trade is an Order(AWAITING_APPROVAL)
+              // not a real position yet (for buys) or a pending close (for sells).
+              // The P&L slot gets [Approve][Reject] buttons; the status dot turns amber.
+              // See docs/plans/TRADE_AS_PROPOSAL.md.
+              const awaitingApproval = trade.pendingProposal != null;
               const isOpen = trade.status === 'OPEN' || trade.status === 'PENDING';
               const isPending = trade.status === 'PENDING';
-              const isStalePrice = trade.priceSource === 'missing';
+              const isStalePrice = trade.priceSource === 'missing' && !awaitingApproval;
               const shares = trade.shares ?? 1;
               const totalValue = trade.currentPrice * shares;
               const totalGain = trade.pnl;
@@ -281,20 +287,30 @@ export default function TradesPage({
                             <TooltipTrigger
                               render={
                                 <span
-                                  className={cn('h-1.5 w-1.5 rounded-full shrink-0 cursor-default', cfg.dotClass)}
-                                  aria-label={cfg.label}
+                                  className={cn(
+                                    'h-1.5 w-1.5 rounded-full shrink-0 cursor-default',
+                                    awaitingApproval ? 'bg-amber-500' : cfg.dotClass,
+                                  )}
+                                  aria-label={awaitingApproval ? 'Pending review' : cfg.label}
                                 />
                               }
                             />
                             <TooltipContent side="top">
                               <div>
-                                <div>{cfg.label} · {timeLabel}</div>
+                                <div>
+                                  {awaitingApproval ? 'Pending your approval' : `${cfg.label} · ${timeLabel}`}
+                                </div>
                                 {shortId && (
                                   <div className="opacity-60 font-mono text-[10px]">Alpaca {shortId}</div>
                                 )}
                               </div>
                             </TooltipContent>
                           </Tooltip>
+                          {awaitingApproval && (
+                            <span className="text-[10px] text-amber-500/90 ml-0.5">
+                              Pending review
+                            </span>
+                          )}
                         </div>
                         {trade.analystName && (
                           <p className="text-[10px] text-muted-foreground font-mono leading-tight">
@@ -342,9 +358,20 @@ export default function TradesPage({
 
                   {/* P&L — unified PriceChange component (same arrow+color
                       language as the dashboard header). Em-dash when we
-                      don't have a live price to compute against. */}
+                      don't have a live price to compute against.
+                      Trade-as-Proposal: when this row is awaiting approval,
+                      replace P&L with the inline [Approve][Reject] action
+                      pair so the user can decide without leaving the table. */}
                   <TableCell className="text-right">
-                    {isStalePrice && isOpen ? (
+                    {awaitingApproval ? (
+                      <div className="flex justify-end">
+                        <ProposalActions
+                          orderId={trade.pendingProposal!.orderId}
+                          size="sm"
+                          showLabels
+                        />
+                      </div>
+                    ) : isStalePrice && isOpen ? (
                       <span className="text-sm text-muted-foreground/60">—</span>
                     ) : (
                       <PriceChange
@@ -474,7 +501,7 @@ export default function TradesPage({
                               View details
                             </Link>
                           </DropdownMenuItem>
-                          {isOpen && (
+                          {isOpen && !awaitingApproval && (
                             <>
                               <DropdownMenuItem
                                 className="text-amber-500 focus:text-amber-500"

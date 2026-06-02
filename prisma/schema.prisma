@@ -28,10 +28,18 @@ model User {
 // VIEWER). See docs/TEAM_ACCESS_PLAN.md.
 
 model Account {
-  id          String              @id @default(cuid())
-  name        String // display name, e.g. "Dave's Account"
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id        String   @id @default(cuid())
+  name      String // display name, e.g. "Dave's Account"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Trade-as-Proposal — when true, agent-initiated buys/sells require
+  // human approval via /api/proposals/[orderId]/(approve|reject) before
+  // submission to Alpaca. Manual UI actions and system auto-stops (price-
+  // monitor trailing stops) bypass these gates. See docs/plans/TRADE_AS_PROPOSAL.md.
+  requireApprovalForBuys  Boolean @default(false)
+  requireApprovalForSells Boolean @default(false)
+
   memberships AccountMembership[]
   invites     AccountInvite[]
 }
@@ -824,7 +832,13 @@ model Position {
   environment         String                     @default("PAPER") // "PAPER" | "LIVE"
   symbol              String
   direction           String // "LONG" | "SHORT"
-  status              String // "OPEN" | "CLOSED" | "CANCELLED"
+  // Trade-as-Proposal — PENDING_APPROVAL is a transient state for buy
+  // proposals awaiting human approval. On approve → OPEN. On reject /
+  // expire → CANCELLED. Close proposals do NOT touch Position.status
+  // (Position stays OPEN until the close fills). The sync-heartbeat and
+  // get_portfolio_context queries must filter PENDING_APPROVAL out.
+  // See docs/plans/TRADE_AS_PROPOSAL.md.
+  status              String // "PENDING_APPROVAL" | "OPEN" | "CLOSED" | "CANCELLED"
   // Position sizing
   quantity            Float // total shares held
   avgCost             Float // weighted average entry price
@@ -887,7 +901,7 @@ model Order {
   orderType         String         @default("MARKET") // "MARKET" | "LIMIT" | "STOP"
   quantity          Float
   // Order status
-  status            String // "PENDING" | "FILLED" | "CANCELLED" | "REJECTED"
+  status            String // "AWAITING_APPROVAL" | "PENDING" | "FILLED" | "CANCELLED" | "REJECTED" | "EXPIRED"
   // Fill data (populated when filled — for paper trading this is immediate)
   filledPrice       Float?
   filledQty         Float?
@@ -902,6 +916,18 @@ model Order {
   intent            String? // "OPEN" | "CLOSE" | "PARTIAL_CLOSE" | "ADD" | "CANCEL"
   alpacaSubmittedAt DateTime? // when we attempted the Alpaca call
   alpacaConfirmedAt DateTime? // when we got a non-error response back
+  // Trade-as-Proposal — populated when status='AWAITING_APPROVAL'.
+  // expiresAt: now + 24h at proposal time; the proposal-expiry cron flips
+  // status to EXPIRED past expiry. rejectionMessage: optional user message
+  // on reject; also persisted to ThesisUpdate(type='PROPOSAL_REJECTED') so
+  // the agent reads it on its next run. rationale: agent's reasoning at
+  // proposal time; shown in the approval UI. See docs/plans/TRADE_AS_PROPOSAL.md.
+  //
+  // `@db.Timestamptz(6)` on expiresAt is load-bearing (same reason as
+  // Thesis.promotedAt — GAPS P1-4): set from JS `Date` via adapter-pg.
+  expiresAt        DateTime? @db.Timestamptz(6)
+  rejectionMessage String?
+  rationale        String?
   // Relations
   position          Position       @relation(fields: [positionId], references: [id])
   decision          TradeDecision?
