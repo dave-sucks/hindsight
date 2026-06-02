@@ -48,7 +48,41 @@ All of NOW + SOON lanes were executed in one working-tree pass on 2026-05-31. Wo
 4. Re-run discovery on a second analyst with overlapping universe — confirm SOON-1c rejects the duplicate ticker if a writer is still RUNNING on it.
 5. Spot-check `twitter_search` end-to-end with a sharp probe: "What is @traderstewie saying about $NVDA this week?" → expect handle-attributed posts with archetype tags.
 
-**Still pending:** Lane 3 (MEDIUM workstream — EDGAR + Benzinga + Quiver structured) and Lane 4 backlog. SOON-3 (per-thesis evidence diff) remains owned by the parallel daily-run-side session.
+**Still pending:** Lane 3 (MEDIUM workstream — EDGAR + Benzinga + Quiver structured + gap-analysis Stage 0) and Lane 4 backlog. SOON-3 (per-thesis evidence diff) remains owned by the parallel daily-run-side session.
+
+---
+
+## Evaluated and rejected: "Discovery Strategist" as a new agent mode (2026-06-01)
+
+A proposal landed (from a sibling Claude session) for a new `discovery-strategist` agent mode + Sunday cron, with a 5-stage workflow (AUDIT → STRATEGIZE → EXECUTE → TRIAGE → RECAP) and an on-demand "Run Strategist Now" button.
+
+**Verdict: merge-into-existing, do NOT ship as a new mode.** Workflow-validated by three independent evaluators (architecture / redundancy / prompt-quality lenses) — all three converged on this verdict.
+
+**Why rejected:**
+- **90% redundant.** The proposed 5-stage workflow is operationally equivalent to the existing Sunday discovery cron (`lib/agent/system-prompts/discovery.ts`) plus PR #361's BATCHED DISCOVERY overlay on Principal Chat. Same triage, same 4-dim composite, same DISPATCH_CAP=5, same PASS-record, same thesis-writer delegation.
+- **Mode duplication.** A `discovery-strategist` mode entry would sit next to the existing `discovery` mode running the same logic on a different cron — DRY violation + debugging confusion.
+- **Allowlist regression.** Proposal listed 7 tools (omitting `read_signals`, `get_stock_data`, `get_earnings_data`, `get_sec_filings`, `record_thesis`, etc.). The existing discovery mode has 14 — the proposal's lean allowlist could not actually execute its own 5-stage workflow.
+- **Cron timing collision.** Proposal: Sundays 8 AM ET. Existing: Sundays 9 AM ET. Two crons on the same day with the same logic → duplicate work or idempotency guard collisions.
+- **Scoring scheme inconsistency.** Proposal: 1-10 per dimension with composite thresholds 6.0 / 3.0. Existing: 0-3 / 0-3 / 0-2 / 0-2 summing to 10 with threshold ≥4. The proposal's scale is arithmetically ambiguous (1-10 × 4 dims = 1-40, not 1-10) and unmotivated.
+
+**What IS genuinely net-new and worth taking:** the **gap-analysis** idea — read current coverage (`get_theses` + `get_portfolio_context`), identify which universe dimensions (sectors / industries / themes) are underrepresented in the analyst's book, then formulate specific search queries to fill those gaps. Current discovery reads pre-filtered surfaces and triages REACTIVELY; gap-analysis would be PROACTIVE. That's one stage of new prompt logic, not a new mode.
+
+**Captured as MEDIUM-4 below.** See also "Saved-prompt cadence layer" (clarified in Lane 4) for the related-but-distinct idea of firing operator-proven kickoff prompts on cron — also addressed.
+
+---
+
+## MEDIUM-4: Gap-analysis Stage 0 in existing discovery cron
+
+- **Goal:** Extend the existing Sunday discovery prompt (`lib/agent/system-prompts/discovery.ts`) with an optional Stage 0 — audit current coverage against universe dimensions, identify gaps, formulate specific searches to fill them.
+- **Implementation:**
+  - Add `includeGapAnalysis: boolean` to `buildDiscoverySystemPrompt` args
+  - When `true`, prepend a Stage 0 section to the existing Step 1 → Step 1.5 → Step 2 flow:
+    > **Stage 0 — Audit current coverage.** Before Step 1, call `get_theses` + `get_portfolio_context`. For each universe dimension this analyst covers (sectors, industries, themes), evaluate: is it represented in current ACTIVE + WATCHING? If a dimension has zero coverage AND the analyst's mandate calls for it, flag it as a gap. For each gap, formulate ONE specific `web_search` or `twitter_search` query to surface candidates. Use the results as supplemental input to Step 1's candidate pool — they go through the same Step 1.5 triage + Step 2 composite + Step 3 dispatch decision as routed signals and pull-tool surfaces.
+  - **No new mode, no new cron.** Existing Sunday 9 AM ET cron, existing allowlist (already has all 14 tools), existing 4-dim composite (preserve `trendStrength / relativeStrength / entryQuality / catalystFreshness`, not the proposal's fundamentals dims — open question P3 below).
+- **Effort:** ~50-100 lines of prompt diff in `discovery.ts`. No schema changes, no new tools, no new crons.
+- **Test plan:** Run on one momentum analyst over 3-4 Sunday cycles with the flag on. Compare gap-identified candidates vs signal-routed candidates on (a) dispatch rate, (b) PASS rate, (c) downstream thesis success at 30-day mark. If gap-identified candidates outperform → commit Stage 0 into core. If they underperform or duplicate → drop the flag.
+- **Dependencies:** none functional. Could ship before MEDIUM-1 (EDGAR producer) if the principal wants the proactive-discovery capability first; could ship after if structured catalyst sources are higher priority.
+- **Why not on-demand button (yet):** The synthesis recommendation is "validate via Sunday cron baseline first." If Stage 0 produces real wins, then add a `/analysts/[id]` "Run Strategist Now" button that fires the same prompt with the same flag (`mode='discovery'`, `includeGapAnalysis=true`). Deferred until baseline validates.
 
 ---
 
@@ -198,7 +232,8 @@ Today's 2026-05-31 discovery runs spawned 2 writers on AVGO (Catalyst Event PM +
 - **Schedule 13D activist allowlist** — credible-activist filter on EDGAR feed; rare but highest single-event α per the catalog. Same producer as MEDIUM-1 with an activist-allowlist filter.
 - **Unusual options activity** (Unusual Whales API) — gated by paid API; defer until other free sources prove the producer pattern.
 - **Vision-model screenshot ingestion as a tool** — user pastes a Reddit/X/Substack screenshot in chat; a `parse_research_screenshot` tool calls Claude Opus vision to extract `(ticker, claim, attribution)`; output flows into the same batched-discovery triage. The chat UI may need image-paste support first.
-- **Saved-prompt cadence layer** — `SavedDiscoveryPrompt` table + cron firing saved discovery prompts as kickoff messages on the existing Principal Chat agent. **Defer until at least one operator-driven kickoff prompt has proven itself in chat.** Don't pre-author the library.
+- **Saved-prompt cadence layer** — `SavedDiscoveryPrompt` table + cron firing operator-authored kickoff prompts on the existing Principal Chat agent (NOT a new agent mode). Different from MEDIUM-4 gap-analysis: that one's an automated-judgment Stage 0 inside the discovery cron; this one's a registry for operator-proven prompts. **Defer until at least one operator-driven kickoff has proven itself in chat AND we know what prompt is worth saving.** Don't pre-author the library.
+- **Weekday strategist on-demand button** — if MEDIUM-4 gap-analysis Stage 0 proves valuable in the Sunday cron baseline, add an on-demand entry point on `/analysts/[id]` ("Run Strategist Now") that fires the same prompt with the gap-analysis flag on a weekday. Same `mode='discovery'`, same allowlist, just on-demand instead of cron. Deferred until MEDIUM-4 baseline validates.
 - **Grok-4 as a selectable model in the principal-chat model picker** — Grok-as-orchestrator (Option 2 from the SOON-1 decision; v1 ships Claude-with-`twitter_search` instead). Adds `model: "grok-4"` to the principal mode in `modes.ts`. Quality risk: Grok's tool-call discipline against our strict Zod gates on `record_thesis` / `update_thesis` / `dispatch_thesis_research` is unproven; defer until the v1 (Claude + `twitter_search`) baseline is shaking out, then we'll know whether Grok handles the structured dispatch flow well enough to be worth the model swap.
 - **Reflexive vector memory** — embed every closed trade; new candidates matched against historical setup space (catalog §6.13). Cross-cutting; affects sizing + stop-tightness on every new thesis, not discovery routing per se.
 
@@ -239,6 +274,15 @@ This sequence assumes the operator-driven discovery flow proves itself. If after
 ---
 
 ## Open questions
+
+**Carry-over from MEDIUM-4 gap-analysis** (added 2026-06-01 from the strategist evaluation):
+
+7. **Scoring scheme — fundamentals vs technicals.** Existing 4-dim composite is technicals-leaning (trendStrength / relativeStrength / entryQuality / catalystFreshness, 0-3/0-3/0-2/0-2 → max 10 → threshold ≥4). The rejected strategist proposal suggested fundamentals-leaning dims (business quality / setup timing / catalyst proximity / risk-adjusted upside, 1-10 each → ambiguous composite → threshold 6.0). **Question for principal:** is the current technicals-leaning composite the right shape for ALL analyst archetypes (momentum, catalyst, secular compounder), or should fundamentals-archetypes use a different composite? If different per archetype, gap-analysis Stage 0 needs an archetype-aware scoring selector.
+8. **Gap definition — what counts as a "coverage gap"?** Does one thesis per universe-dimension suffice (sector OR industry OR theme), or is there a minimum coverage-depth threshold? Too aggressive → 20+ dispatches per Sunday. Too conservative → audit is toothless. **Decision rule needed before MEDIUM-4 ships.**
+9. **Signal-router soft-kill permanence.** MEDIUM-4 gap-analysis pulls candidates via `web_search` + `twitter_search` directly — bypassing the paused signal-router infrastructure entirely. Is that the new permanent shape, or do we re-enable structured signal sources (MEDIUM-1/2/3 producers — EDGAR / Benzinga / Quiver) before MEDIUM-4 ships? Order matters: if signals come back online first, MEDIUM-4 augments them; if MEDIUM-4 ships first, it's the primary discovery surface and signals are supplemental when they exist.
+10. **On-demand button scope.** Should MEDIUM-4 also ship the weekday "Run Strategist Now" button immediately, or validate via Sunday cron baseline first? Synthesis recommends "validate first" — vote to defer the button until 3-4 Sunday cycles show real wins.
+
+**Original open questions from PR #361:**
 
 1. **Discovery overlay = inline append or fork a new mode?** Today's principal mode is one prompt. Easier to append a "Batched discovery" section to the existing `buildPrincipalSystemPrompt` activated by input shape. Cleaner long-term to fork a dedicated `discovery-chat` mode if the overlay grows past ~200 lines. **Vote:** start inline; refactor if it crosses the threshold.
 

@@ -56,6 +56,8 @@ All of these are **one chat route + one composed kickoff message**. Zero new tab
 
 **Cadenced discovery** is the same agent fired by cron with a saved kickoff message. Architecturally: a small `SavedDiscoveryPrompt` table — `(analystId, kickoffMessage, cadence, lastRunAt)` — plus a cron that fires the agent with the saved prompt. **Defer until the operator-driven flow has proven that a specific prompt produces good output.** Don't pre-author the saved-prompt library before any prompt has proven itself in chat.
 
+**Anti-pattern: mode explosion.** Cadenced discovery is **not** a new agent mode. It's a saved-prompt registry that fires the existing Principal Chat agent (or the existing Sunday Discovery cron) with a pre-authored kickoff. New modes get proposed often — see `DISCOVERY_OVERHAUL.md` → "Evaluated and rejected: Discovery Strategist" (2026-06-01) for one such proposal that was workflow-evaluated and merged into the existing discovery mode as MEDIUM-4 (gap-analysis Stage 0) instead. The failure mode is multiple modes running identical triage / 4-dim composite / dispatch logic on different crons. **Single source of truth for the triage mechanism.** The right way to add automated-judgment to discovery is a prompt extension on the existing mode, not a new mode.
+
 ---
 
 ## Part 2 — The signal-source catalog (inputs reference)
