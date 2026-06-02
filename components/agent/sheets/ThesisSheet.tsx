@@ -10,7 +10,7 @@
  *    programmatically without the card trigger.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -282,12 +282,17 @@ function VariantViewBlock({ variantView }: { variantView: string | null }) {
 // horizon/target/stop info to show.
 
 // ── TradeBlock ──
-// The ONE trade section in the sheet. State-aware headline:
-//   • held, nothing pending → "Bought N @ $X, now $Y" + P&L + intent suffix
-//     (plain — no box)
-//   • pending buy (not held) → "Proposed: buy N @ $X" + rationale + Review
-//   • held + pending sell/add/trim → the holding line + P&L, THEN the
-//     proposed action + rationale + Review, grouped in one muted block
+// The ONE trade section in the sheet. Every state — pending proposal,
+// holding, closed — renders through the SAME container and the SAME slot
+// layout below (heading · optional Review · P&L · note · expiry). Only the
+// four slot values differ per state; the JSX is shared, so the states are
+// guaranteed to be visually identical blocks (no "one's in a box, one isn't").
+//   • holding         → "Bought N shares at $X, now trading at $Y" + P&L
+//   • closed          → "Bought N shares at $X, closed at $Y" + realized P&L
+//                        + close reason
+//   • pending buy     → "Proposed: buy N shares at $X" + reason + Review
+//   • pending sell/add → "Proposed: <verb> N shares at $Y" + P&L + reason
+//                        + Review
 // `position` (cost basis + qty) comes from /triggers; `pnl` (live price +
 // unrealized P&L) from /quote — the two land at different times, so the
 // P&L line appears once /quote resolves. See docs/plans/TRADE_AS_PROPOSAL.md §6.
@@ -312,9 +317,17 @@ function TradeBlock({
   const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
   const entry = position.avgCost.toFixed(2);
   const heldQty = position.quantity.toFixed(1);
+  const current = pnl?.currentPrice;
 
-  // ── Pending proposal → action heading + reason + Review (one heading) ──
+  // Four slots — filled per state, rendered through one shared layout below.
+  let heading: string;
+  let review: ReactNode = null;
+  let pnlNode: ReactNode = null;
+  let note: string | null = null;
+  let expiry: string | null = null;
+
   if (pp) {
+    // ── Pending proposal ──
     const isBuy = pp.intent === "OPEN";
     const verb = isBuy
       ? direction === "SHORT"
@@ -325,11 +338,23 @@ function TradeBlock({
         : pp.intent === "CLOSE"
           ? "close"
           : "trim";
-    const current = pnl?.currentPrice;
-    const heading = isBuy
+    heading = isBuy
       ? `Proposed: ${verb} ${fmtQty(pp.quantity)} shares at $${entry}`
       : `Proposed: ${verb} ${fmtQty(pp.quantity)} shares${current != null ? ` at $${current.toFixed(2)}` : ""}`;
-    const expiry = pp.expiresAt
+    review = <ProposalActions orderId={pp.orderId} align="end" />;
+    // Running P&L for sells / adds / trims (the name is held); a fresh buy
+    // has no position yet, so no P&L line.
+    if (!isBuy && pnl != null) {
+      pnlNode = (
+        <PriceChange
+          dollarChange={pnl.unrealizedPnl}
+          percentChange={pnl.unrealizedPnlPct}
+          size="base"
+        />
+      );
+    }
+    note = pp.rationale;
+    expiry = pp.expiresAt
       ? new Date(pp.expiresAt).toLocaleString("en-US", {
           month: "short",
           day: "numeric",
@@ -338,82 +363,53 @@ function TradeBlock({
           hour12: true,
         })
       : null;
-    return (
-      <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-sm font-medium tabular-nums flex-1 min-w-0">
-            {heading}
-          </p>
-          <ProposalActions orderId={pp.orderId} align="end" />
-        </div>
-        {!isBuy && pnl != null ? (
-          <PriceChange
-            dollarChange={pnl.unrealizedPnl}
-            percentChange={pnl.unrealizedPnlPct}
-            size="base"
-          />
-        ) : null}
-        {pp.rationale ? (
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {pp.rationale}
-          </p>
-        ) : null}
-        {expiry ? (
-          <p className="text-xs text-muted-foreground">Expires {expiry}</p>
-        ) : null}
-      </div>
-    );
-  }
-
-  // ── Closed → "Bought N @ $X, closed at $Y" + realized P&L + reason ──
-  if (position.closed) {
-    return (
-      <div className="space-y-1">
-        <p className="text-sm tabular-nums leading-relaxed">
-          Bought {heldQty} shares at <span className="font-medium">${entry}</span>
-          {position.closePrice != null ? (
-            <>
-              , closed at{" "}
-              <span className="font-medium">
-                ${position.closePrice.toFixed(2)}
-              </span>
-            </>
-          ) : null}
-        </p>
-        {position.realizedPnl != null ? (
-          <PriceChange
-            dollarChange={position.realizedPnl}
-            percentChange={position.realizedPnlPct ?? 0}
-            size="base"
-          />
-        ) : null}
-        {position.closeReason ? (
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {position.closeReason}
-          </p>
-        ) : null}
-      </div>
-    );
-  }
-
-  // ── Holding → "Bought N @ $X, now $Y" + unrealized P&L ──
-  return (
-    <div className="space-y-1">
-      <p className="text-sm tabular-nums leading-relaxed">
-        Bought {heldQty} shares at <span className="font-medium">${entry}</span>
-        {pnl != null ? (
-          <>
-            , now trading at{" "}
-            <span className="font-medium">${pnl.currentPrice.toFixed(2)}</span>
-          </>
-        ) : null}
-      </p>
-      {pnl != null ? (
+  } else if (position.closed) {
+    // ── Closed ──
+    heading =
+      `Bought ${heldQty} shares at $${entry}` +
+      (position.closePrice != null
+        ? `, closed at $${position.closePrice.toFixed(2)}`
+        : "");
+    if (position.realizedPnl != null) {
+      pnlNode = (
+        <PriceChange
+          dollarChange={position.realizedPnl}
+          percentChange={position.realizedPnlPct ?? 0}
+          size="base"
+        />
+      );
+    }
+    note = position.closeReason ?? null;
+  } else {
+    // ── Holding ──
+    heading =
+      `Bought ${heldQty} shares at $${entry}` +
+      (pnl != null ? `, now trading at $${pnl.currentPrice.toFixed(2)}` : "");
+    if (pnl != null) {
+      pnlNode = (
         <PriceChange
           dollarChange={pnl.unrealizedPnl}
           percentChange={pnl.unrealizedPnlPct}
           size="base"
         />
+      );
+    }
+  }
+
+  return (
+    <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium tabular-nums flex-1 min-w-0">
+          {heading}
+        </p>
+        {review}
+      </div>
+      {pnlNode}
+      {note ? (
+        <p className="text-sm text-muted-foreground leading-relaxed">{note}</p>
+      ) : null}
+      {expiry ? (
+        <p className="text-xs text-muted-foreground">Expires {expiry}</p>
       ) : null}
     </div>
   );
