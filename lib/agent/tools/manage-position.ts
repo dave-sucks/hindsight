@@ -227,7 +227,7 @@ export const managePosition = defineTool({
             ctx.runId,
           );
 
-          // Trade-as-Proposal — when Account.requireApprovalForSells is on,
+          // Trade-as-Proposal — when the Account requires approval for sells in this environment,
           // the helper stages an Order(AWAITING_APPROVAL) instead of
           // submitting to Alpaca. Return a proposal envelope; the approve
           // handler runs the rest of the close flow on user click. See
@@ -396,7 +396,7 @@ export const managePosition = defineTool({
           });
 
           // ── Trade-as-Proposal seam ──
-          // Sells flow through requireApprovalForSells. When on,
+          // Sells flow through requireApprovalSells{Live,Paper}. When on,
           // maybeAwaitApproval flips Order → AWAITING_APPROVAL + sends
           // email; we return early before reaching Alpaca. When off,
           // null is returned and the partial-close submit runs as today.
@@ -406,6 +406,7 @@ export const managePosition = defineTool({
               positionId: position.id,
               orderId: order.id,
               intent: "PARTIAL_CLOSE",
+              environment: position.environment as "PAPER" | "LIVE",
               rationale: args.reason,
             });
             if (awaiting) {
@@ -721,7 +722,7 @@ export const managePosition = defineTool({
           });
 
           // ── Trade-as-Proposal seam ──
-          // Adds increase exposure, so requireApprovalForBuys gates them.
+          // Adds increase exposure, so requireApprovalBuys{Live,Paper} gates them.
           // When on, the helper flips the just-created Order →
           // AWAITING_APPROVAL + sends email; we return early before Alpaca.
           {
@@ -730,6 +731,7 @@ export const managePosition = defineTool({
               positionId: position.id,
               orderId: order.id,
               intent: "ADD",
+              environment: position.environment as "PAPER" | "LIVE",
               rationale: args.reason,
             });
             if (awaiting) {

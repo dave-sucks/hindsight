@@ -36,9 +36,18 @@ model Account {
   // Trade-as-Proposal — when true, agent-initiated buys/sells require
   // human approval via /api/proposals/[orderId]/(approve|reject) before
   // submission to Alpaca. Manual UI actions and system auto-stops (price-
-  // monitor trailing stops) bypass these gates. See docs/plans/TRADE_AS_PROPOSAL.md.
-  requireApprovalForBuys  Boolean @default(false)
-  requireApprovalForSells Boolean @default(false)
+  // monitor trailing stops) bypass these gates. Scoped PER ENVIRONMENT so
+  // PAPER can auto-execute (fast iteration / testing) while LIVE requires
+  // review (the disclosure requirement that motivated this feature).
+  // LIVE defaults to TRUE — real money is gated by default; a forgotten
+  // toggle never auto-fires a live trade. PAPER defaults to FALSE — fake
+  // money auto-executes; flip on only to exercise the approval flow.
+  // The gate reads the column matching the trade's Position.environment.
+  // See docs/plans/TRADE_AS_PROPOSAL.md.
+  requireApprovalBuysLive   Boolean @default(true)
+  requireApprovalSellsLive  Boolean @default(true)
+  requireApprovalBuysPaper  Boolean @default(false)
+  requireApprovalSellsPaper Boolean @default(false)
 
   memberships AccountMembership[]
   invites     AccountInvite[]

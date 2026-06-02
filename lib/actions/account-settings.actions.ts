@@ -2,8 +2,9 @@
 
 /**
  * Account-level settings — the OWNER-only switches that govern how the
- * account behaves. Currently just the two Trade-as-Proposal toggles
- * (require approval for agent-initiated buys / sells). Single chokepoint
+ * account behaves. Currently the four Trade-as-Proposal toggles (require
+ * approval for agent-initiated buys / sells, split per environment so
+ * PAPER can auto-execute while LIVE requires review). Single chokepoint
  * so future settings (notification channel, default expiry window, etc.)
  * land in the same place.
  *
@@ -16,37 +17,56 @@ import { prisma } from "@/lib/prisma";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 
 export interface AccountApprovalSettings {
-  requireApprovalForBuys: boolean;
-  requireApprovalForSells: boolean;
+  requireApprovalBuysLive: boolean;
+  requireApprovalSellsLive: boolean;
+  requireApprovalBuysPaper: boolean;
+  requireApprovalSellsPaper: boolean;
 }
+
+export type ApprovalToggleField = keyof AccountApprovalSettings;
+
+const DEFAULTS: AccountApprovalSettings = {
+  // Mirror the schema defaults — LIVE gated, PAPER auto.
+  requireApprovalBuysLive: true,
+  requireApprovalSellsLive: true,
+  requireApprovalBuysPaper: false,
+  requireApprovalSellsPaper: false,
+};
 
 /**
  * Read the current approval toggles for the caller's account. Returns
- * defaults (both false) when no membership exists — never throws, so the
- * settings page can render even on partially-broken state.
+ * defaults when no membership exists — never throws, so the settings page
+ * can render even on partially-broken state.
  */
 export async function getAccountApprovalSettings(): Promise<AccountApprovalSettings> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { requireApprovalForBuys: false, requireApprovalForSells: false };
+  if (!user) return DEFAULTS;
 
   const accountId = await getAccountId(user.id);
-  if (!accountId) return { requireApprovalForBuys: false, requireApprovalForSells: false };
+  if (!accountId) return DEFAULTS;
 
   const account = await prisma.account.findUnique({
     where: { id: accountId },
-    select: { requireApprovalForBuys: true, requireApprovalForSells: true },
+    select: {
+      requireApprovalBuysLive: true,
+      requireApprovalSellsLive: true,
+      requireApprovalBuysPaper: true,
+      requireApprovalSellsPaper: true,
+    },
   });
   return {
-    requireApprovalForBuys: account?.requireApprovalForBuys ?? false,
-    requireApprovalForSells: account?.requireApprovalForSells ?? false,
+    requireApprovalBuysLive: account?.requireApprovalBuysLive ?? DEFAULTS.requireApprovalBuysLive,
+    requireApprovalSellsLive: account?.requireApprovalSellsLive ?? DEFAULTS.requireApprovalSellsLive,
+    requireApprovalBuysPaper: account?.requireApprovalBuysPaper ?? DEFAULTS.requireApprovalBuysPaper,
+    requireApprovalSellsPaper: account?.requireApprovalSellsPaper ?? DEFAULTS.requireApprovalSellsPaper,
   };
 }
 
 /**
- * Server action — update one of the two approval toggles. OWNER-only.
+ * Server action — update one of the four approval toggles. OWNER-only.
  * Returns the new state so the client can confirm + render. Throws on
  * unauthorized callers (no session, no membership, VIEWER/EDITOR role).
  *
@@ -56,7 +76,7 @@ export async function getAccountApprovalSettings(): Promise<AccountApprovalSetti
  * new branch); for paper-testing this is fine since runs are short.
  */
 export async function setAccountApprovalToggle(input: {
-  field: "requireApprovalForBuys" | "requireApprovalForSells";
+  field: ApprovalToggleField;
   value: boolean;
 }): Promise<AccountApprovalSettings> {
   const supabase = await createClient();
@@ -76,7 +96,12 @@ export async function setAccountApprovalToggle(input: {
   const updated = await prisma.account.update({
     where: { id: accountId },
     data: { [input.field]: input.value },
-    select: { requireApprovalForBuys: true, requireApprovalForSells: true },
+    select: {
+      requireApprovalBuysLive: true,
+      requireApprovalSellsLive: true,
+      requireApprovalBuysPaper: true,
+      requireApprovalSellsPaper: true,
+    },
   });
 
   // Server-rendered surfaces that show the toggle state (the settings page
@@ -84,7 +109,9 @@ export async function setAccountApprovalToggle(input: {
   revalidatePath("/settings");
 
   return {
-    requireApprovalForBuys: updated.requireApprovalForBuys,
-    requireApprovalForSells: updated.requireApprovalForSells,
+    requireApprovalBuysLive: updated.requireApprovalBuysLive,
+    requireApprovalSellsLive: updated.requireApprovalSellsLive,
+    requireApprovalBuysPaper: updated.requireApprovalBuysPaper,
+    requireApprovalSellsPaper: updated.requireApprovalSellsPaper,
   };
 }

@@ -33,8 +33,9 @@ export interface ClosedPositionResult {
 }
 
 /**
- * Trade-as-Proposal — returned when the Account has requireApprovalForSells
- * on AND the close was agent-initiated. The Position stays OPEN; a pending
+ * Trade-as-Proposal — returned when the Account requires approval for
+ * sells in this environment AND the close was agent-initiated. The
+ * Position stays OPEN; a pending
  * Order(AWAITING_APPROVAL) carries the close intent until the user approves
  * (then the approve handler submits to Alpaca with the same idempotencyKey)
  * or rejects (then the order goes REJECTED and the position stays OPEN).
@@ -205,6 +206,7 @@ export async function closeOpenPosition(
       positionId,
       orderId: order.id,
       intent: "CLOSE",
+      environment: positionEnvironment,
       rationale: auditReason ?? null,
     });
     if (awaiting) {
