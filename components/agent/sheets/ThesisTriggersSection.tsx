@@ -54,6 +54,11 @@ export interface ThesisStatePosition {
   avgCost: number;
   openedAt: string;
   daysHeld: number;
+  closed?: boolean;
+  closePrice?: number | null;
+  realizedPnl?: number | null;
+  realizedPnlPct?: number | null;
+  closeReason?: string | null;
   // Trade-as-Proposal — populated when this position has an
   // Order(AWAITING_APPROVAL) attached. Drives the "Awaiting your approval"
   // alert at the top of the sheet with inline [Approve][Reject] actions.

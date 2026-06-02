@@ -296,9 +296,6 @@ function TradeBlock({
   pnl,
   pendingProposal,
   direction,
-  horizon,
-  targetPrice,
-  stopLoss,
 }: {
   position: NonNullable<TriggersResponse["position"]>;
   pnl: QuoteResponse["positionPnl"] | null;
@@ -310,16 +307,16 @@ function TradeBlock({
     rationale: string | null;
   } | null;
   direction: "LONG" | "SHORT" | "PASS";
-  horizon?: string | null;
-  targetPrice?: number | null;
-  stopLoss?: number | null;
 }) {
   const pp = pendingProposal;
-  const isPendingBuy = pp?.intent === "OPEN";
   const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-  const verb = !pp
-    ? null
-    : pp.intent === "OPEN"
+  const entry = position.avgCost.toFixed(2);
+  const heldQty = position.quantity.toFixed(1);
+
+  // ── Pending proposal → action heading + reason + Review (one heading) ──
+  if (pp) {
+    const isBuy = pp.intent === "OPEN";
+    const verb = isBuy
       ? direction === "SHORT"
         ? "short"
         : "buy"
@@ -328,80 +325,97 @@ function TradeBlock({
         : pp.intent === "CLOSE"
           ? "close"
           : "trim";
-  const expiry = pp?.expiresAt
-    ? new Date(pp.expiresAt).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      })
-    : null;
-
-  const headline = isPendingBuy ? (
-    <p className="text-sm tabular-nums leading-relaxed">
-      Proposed: {verb} {fmtQty(pp!.quantity)} shares at{" "}
-      <span className="font-medium">${position.avgCost.toFixed(2)}</span>
-    </p>
-  ) : (
-    <p className="text-sm tabular-nums leading-relaxed">
-      Bought {position.quantity.toFixed(1)} shares at{" "}
-      <span className="font-medium">${position.avgCost.toFixed(2)}</span>
-      {pnl != null ? (
-        <>
-          , now trading at{" "}
-          <span className="font-medium">${pnl.currentPrice.toFixed(2)}</span>
-        </>
-      ) : null}
-    </p>
-  );
-
-  const body = (
-    <>
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0 space-y-1">
-          {headline}
-          {!isPendingBuy && pnl != null ? (
-            <PriceChange
-              dollarChange={pnl.unrealizedPnl}
-              percentChange={pnl.unrealizedPnlPct}
-              size="base"
-            />
-          ) : null}
-          <IntentSuffix
-            direction={direction}
-            horizon={horizon}
-            targetPrice={targetPrice}
-            stopLoss={stopLoss}
-          />
+    const current = pnl?.currentPrice;
+    const heading = isBuy
+      ? `Proposed: ${verb} ${fmtQty(pp.quantity)} shares at $${entry}`
+      : `Proposed: ${verb} ${fmtQty(pp.quantity)} shares${current != null ? ` at $${current.toFixed(2)}` : ""}`;
+    const expiry = pp.expiresAt
+      ? new Date(pp.expiresAt).toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        })
+      : null;
+    return (
+      <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-medium tabular-nums flex-1 min-w-0">
+            {heading}
+          </p>
+          <ProposalActions orderId={pp.orderId} align="end" />
         </div>
-        {pp ? <ProposalActions orderId={pp.orderId} align="end" /> : null}
+        {!isBuy && pnl != null ? (
+          <PriceChange
+            dollarChange={pnl.unrealizedPnl}
+            percentChange={pnl.unrealizedPnlPct}
+            size="base"
+          />
+        ) : null}
+        {pp.rationale ? (
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {pp.rationale}
+          </p>
+        ) : null}
+        {expiry ? (
+          <p className="text-xs text-muted-foreground">Expires {expiry}</p>
+        ) : null}
       </div>
-      {/* For a pending sell/add/trim on a held position, state the proposed
-          action explicitly (the holding line above says "Bought"). */}
-      {pp && !isPendingBuy ? (
-        <p className="text-sm font-medium tabular-nums">
-          Proposed: {verb} {fmtQty(pp.quantity)} share
-          {fmtQty(pp.quantity) === "1" ? "" : "s"}
-        </p>
-      ) : null}
-      {pp?.rationale ? (
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {pp.rationale}
-        </p>
-      ) : null}
-      {expiry ? (
-        <p className="text-xs text-muted-foreground">Expires {expiry}</p>
-      ) : null}
-    </>
-  );
+    );
+  }
 
-  // Grouped muted block when there's something to review; plain when it's
-  // just a held position.
-  return pp ? (
-    <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">{body}</div>
-  ) : (
-    <div className="space-y-1">{body}</div>
+  // ── Closed → "Bought N @ $X, closed at $Y" + realized P&L + reason ──
+  if (position.closed) {
+    return (
+      <div className="space-y-1">
+        <p className="text-sm tabular-nums leading-relaxed">
+          Bought {heldQty} shares at <span className="font-medium">${entry}</span>
+          {position.closePrice != null ? (
+            <>
+              , closed at{" "}
+              <span className="font-medium">
+                ${position.closePrice.toFixed(2)}
+              </span>
+            </>
+          ) : null}
+        </p>
+        {position.realizedPnl != null ? (
+          <PriceChange
+            dollarChange={position.realizedPnl}
+            percentChange={position.realizedPnlPct ?? 0}
+            size="base"
+          />
+        ) : null}
+        {position.closeReason ? (
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {position.closeReason}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  // ── Holding → "Bought N @ $X, now $Y" + unrealized P&L ──
+  return (
+    <div className="space-y-1">
+      <p className="text-sm tabular-nums leading-relaxed">
+        Bought {heldQty} shares at <span className="font-medium">${entry}</span>
+        {pnl != null ? (
+          <>
+            , now trading at{" "}
+            <span className="font-medium">${pnl.currentPrice.toFixed(2)}</span>
+          </>
+        ) : null}
+      </p>
+      {pnl != null ? (
+        <PriceChange
+          dollarChange={pnl.unrealizedPnl}
+          percentChange={pnl.unrealizedPnlPct}
+          size="base"
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -1682,13 +1696,19 @@ export function ThesisSheetBody({
           the reason + date right at the top so the user doesn't have to
           dig through the activity timeline to find out what happened.
           Previously these fields were fetched but never rendered. */}
-      <TerminalStatusAlert
-        status={liveStatus}
-        closedAt={state?.closedAt ?? null}
-        closeReason={state?.closeReason ?? null}
-        invalidatedAt={state?.invalidatedAt ?? null}
-        invalidReason={state?.invalidReason ?? null}
-      />
+      {/* CLOSED positions render inside the TradeBlock below ("Bought N @
+          $X, closed at $Y" + reason), so suppress the banner for that case
+          to avoid a duplicate. INVALIDATED / ARCHIVED (no position/trade)
+          still surface here. */}
+      {liveStatus === "CLOSED" && position ? null : (
+        <TerminalStatusAlert
+          status={liveStatus}
+          closedAt={state?.closedAt ?? null}
+          closeReason={state?.closeReason ?? null}
+          invalidatedAt={state?.invalidatedAt ?? null}
+          invalidReason={state?.invalidReason ?? null}
+        />
+      )}
 
       {/* ── Stock identity + live price ──────────────────────── */}
       {/* Company name + ticker are a Link to /stocks/[ticker] — the
@@ -1753,9 +1773,6 @@ export function ThesisSheetBody({
           pnl={quote?.positionPnl ?? null}
           pendingProposal={state?.position?.pendingProposal ?? null}
           direction={direction}
-          horizon={state?.horizon ?? null}
-          targetPrice={state?.targetPrice ?? target_price ?? null}
-          stopLoss={state?.stopLoss ?? stop_loss ?? null}
         />
       ) : null}
 
