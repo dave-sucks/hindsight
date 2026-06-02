@@ -396,6 +396,12 @@ function pickToThesisRow(pick: RecentPick): ThesisRowData {
 }
 
 
+// Compact share-count formatting: whole numbers as-is, fractional to 2dp
+// (Alpaca notional fills produce fractional share counts like 6.3).
+function fmtShares(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
 function ActivityRow({ item }: { item: ActivityFeedItem }) {
   const actionKey = getDecisionAction(item);
   const status = ACTIVITY_ACTION_STATUS[actionKey] ?? ACTIVITY_ACTION_STATUS.HOLD;
@@ -407,6 +413,12 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   // is populated by the activity-feed builder when item.type === 'PROPOSED'.
   // See docs/plans/TRADE_AS_PROPOSAL.md.
   const isProposed = item.type === 'PROPOSED' && item.orderId != null;
+  // "N shares @ $X" — shown on buys + pending buys (sells use P&L instead).
+  const sizeLine =
+    item.shares != null && item.price != null
+      ? `${fmtShares(item.shares)} shares @ $${item.price.toFixed(2)}`
+      : null;
+  const showSize = (item.type === 'OPENED' || isProposed) && sizeLine != null;
 
   return (
     <HoverCard>
@@ -424,22 +436,21 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
           <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
           {status.label}
         </Badge>
-        {/* Right side: [Approve][Reject] for proposals, P&L for sells,
-            reasoning text for everything else */}
+        {/* Right side: shares @ price + Review dropdown for proposals; shares
+            @ price for buys; P&L for sells; reasoning text otherwise. */}
         <div className="flex-1 min-w-0 flex items-center justify-end gap-2">
-          {isProposed ? (
-            <ProposalActions orderId={item.orderId!} size="sm" showLabels />
-          ) : (
-            <>
-              {hasPnl && (
-                <span className={cn('text-xs tabular-nums font-medium shrink-0', pnlPos ? 'text-positive' : 'text-negative')}>
-                  {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
-                  {item.pnlPct != null && <span className="opacity-70"> ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</span>}
-                </span>
-              )}
-              <span className="text-xs text-muted-foreground truncate hidden sm:block">{sentence}</span>
-            </>
+          {hasPnl && (
+            <span className={cn('text-xs tabular-nums font-medium shrink-0', pnlPos ? 'text-positive' : 'text-negative')}>
+              {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
+              {item.pnlPct != null && <span className="opacity-70"> ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</span>}
+            </span>
           )}
+          {showSize ? (
+            <span className="text-xs tabular-nums text-muted-foreground shrink-0">{sizeLine}</span>
+          ) : !hasPnl ? (
+            <span className="text-xs text-muted-foreground truncate hidden sm:block">{sentence}</span>
+          ) : null}
+          {isProposed && <ProposalActions orderId={item.orderId!} />}
         </div>
       </HoverCardTrigger>
       <HoverCardContent side="top" align="start" className="w-72">

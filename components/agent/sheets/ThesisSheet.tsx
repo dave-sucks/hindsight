@@ -288,6 +288,7 @@ function PositionRow({
   horizon,
   targetPrice,
   stopLoss,
+  pendingBuy = false,
 }: {
   position: NonNullable<TriggersResponse["position"]>;
   pnl: QuoteResponse["positionPnl"] | null;
@@ -295,24 +296,39 @@ function PositionRow({
   horizon?: string | null;
   targetPrice?: number | null;
   stopLoss?: number | null;
+  /** When true, the trade isn't held yet — it's an OPEN proposal awaiting
+   *  approval. The line reads "Waiting approval to buy N @ $X" and the
+   *  live-P&L line is suppressed (we don't hold it). The Review dropdown
+   *  lives in the sheet header next to the title. */
+  pendingBuy?: boolean;
 }) {
   // `position` (cost basis + qty) comes from /triggers; `pnl` (live price
   // + market value + unrealized PnL) comes from /quote. The two land at
   // different times — the row renders shares+cost immediately and adds
   // the "now trading at $X · +N%" once /quote resolves.
+  const verb = direction === "SHORT" ? "short" : "buy";
   return (
     <div className="space-y-1">
       <p className="text-sm tabular-nums leading-relaxed">
-        Bought {position.quantity.toFixed(1)} shares at{" "}
-        <span className="font-medium">${position.avgCost.toFixed(2)}</span>
-        {pnl != null ? (
+        {pendingBuy ? (
           <>
-            , now trading at{" "}
-            <span className="font-medium">${pnl.currentPrice.toFixed(2)}</span>
+            Waiting approval to {verb} {position.quantity.toFixed(1)} shares at{" "}
+            <span className="font-medium">${position.avgCost.toFixed(2)}</span>
           </>
-        ) : null}
+        ) : (
+          <>
+            Bought {position.quantity.toFixed(1)} shares at{" "}
+            <span className="font-medium">${position.avgCost.toFixed(2)}</span>
+            {pnl != null ? (
+              <>
+                , now trading at{" "}
+                <span className="font-medium">${pnl.currentPrice.toFixed(2)}</span>
+              </>
+            ) : null}
+          </>
+        )}
       </p>
-      {pnl != null ? (
+      {!pendingBuy && pnl != null ? (
         <PriceChange
           dollarChange={pnl.unrealizedPnl}
           percentChange={pnl.unrealizedPnlPct}
@@ -708,24 +724,6 @@ function TradeStructureBlock({
   );
 }
 
-// ── ParentThesisChip ───────────────────────────────────────────────────
-// When the current thesis chains from a prior one (direction flip — e.g.
-// the prior LONG got INVALIDATED and a fresh SHORT replaced it), surface
-// a short chip pointing at the parent. Added 2026-05-18 (THESIS_CLEANUP
-// PR-6) — `parentThesisId` was previously fetched and ignored.
-function ParentThesisChip({ parentId }: { parentId: string }) {
-  // The chain pointer doesn't have a per-thesis route today — the
-  // /stocks/[symbol] page shows the full ticker history. Link there.
-  // The short id suffix (last 8 chars) matches how thesis ids surface
-  // elsewhere in the UI.
-  const shortId = parentId.slice(-8);
-  return (
-    <Badge variant="outline" className="font-mono text-[10px]">
-      Replaces #{shortId}
-    </Badge>
-  );
-}
-
 // ── ProvenanceFooter ───────────────────────────────────────────────────
 // Where this thesis came from. Rendered as a junior trailing entry that
 // LINES UP WITH the activity timeline above — same `flex gap-3` outer,
@@ -778,70 +776,6 @@ function ProvenanceFooter({
         ) : null}
       </div>
     </div>
-  );
-}
-
-// ── PendingProposalAlert ─────────────────────────────────────────────────
-// Surfaces an actionable alert at the top of the sheet when the linked
-// position has an Order(AWAITING_APPROVAL). [Approve][Reject] are inline
-// — clicking either hits the existing /api/proposals/[orderId]/* routes
-// and the page refreshes to pick up the new state. See docs/plans/TRADE_AS_PROPOSAL.md.
-function PendingProposalAlert({
-  proposal,
-  ticker,
-  direction,
-  shares,
-  avgCost,
-}: {
-  proposal: {
-    orderId: string;
-    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
-    expiresAt: string | null;
-    rationale: string | null;
-  };
-  ticker: string;
-  direction: "LONG" | "SHORT";
-  shares: number;
-  avgCost: number;
-}) {
-  const verb =
-    proposal.intent === "OPEN"
-      ? direction === "LONG"
-        ? "buy"
-        : "short"
-      : proposal.intent === "ADD"
-        ? "add to"
-        : proposal.intent === "CLOSE"
-          ? "close"
-          : "trim";
-  const expiry = proposal.expiresAt
-    ? `Expires ${new Date(proposal.expiresAt).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      })}`
-    : null;
-  return (
-    <Alert>
-      <AlertTitle>
-        Awaiting your approval — analyst wants to {verb} {shares} {ticker}
-      </AlertTitle>
-      <AlertDescription>
-        <div className="space-y-3">
-          {proposal.rationale ? (
-            <p className="text-sm text-muted-foreground">{proposal.rationale}</p>
-          ) : null}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground tabular-nums">
-              ~${avgCost.toFixed(2)} / share{expiry ? ` · ${expiry}` : ""}
-            </span>
-            <ProposalActions orderId={proposal.orderId} size="md" showLabels />
-          </div>
-        </div>
-      </AlertDescription>
-    </Alert>
   );
 }
 
@@ -1696,52 +1630,38 @@ export function ThesisSheetBody({
         invalidReason={state?.invalidReason ?? null}
       />
 
-      {/* ── Trade-as-Proposal alert ──────────────────────────── */}
-      {/* When the analyst proposed a buy/add/close/trim on this thesis and
-          the Account requires approval, surface an actionable alert at the
-          top — the user can decide right here without leaving the sheet.
-          Approve fires /api/proposals/[orderId]/approve and the reconcile
-          cron picks up the fill. See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
-      {state?.position?.pendingProposal ? (
-        <PendingProposalAlert
-          proposal={state.position.pendingProposal}
-          ticker={ticker}
-          direction={direction === "PASS" ? "LONG" : direction}
-          shares={state.position.quantity}
-          avgCost={state.position.avgCost}
-        />
-      ) : null}
-
-      {/* ── Parent thesis chain pointer ────────────────────── */}
-      {/* When this thesis supersedes an earlier one on the same ticker
-          (direction flip — e.g. LONG INVALIDATED → fresh SHORT), surface
-          a chip linking to the parent. Critical for audit + history. */}
-      {state?.parentThesisId ? (
-        <ParentThesisChip parentId={state.parentThesisId} />
-      ) : null}
-
       {/* ── Stock identity + live price ──────────────────────── */}
       {/* Company name + ticker are a Link to /stocks/[ticker] — the
           sheet is a focused view of one thesis; clicking the stock
           identity takes you to the broader stock page (TradingView
           chart, all theses on this ticker, etc.). Hover-underline
-          conveys affordance without disrupting the typography. */}
+          conveys affordance without disrupting the typography.
+          When a proposal is awaiting approval, the Review dropdown sits
+          inline with the title (see docs/plans/TRADE_AS_PROPOSAL.md §6). */}
       <div className="space-y-2">
-        <Link
-          href={`/stocks/${ticker}`}
-          className="flex items-center gap-3 group/stocklink"
-        >
-          <StockLogo ticker={ticker} size="lg" />
-          <div className="flex-1 min-w-0">
-            <p className="text-lg font-semibold truncate group-hover/stocklink:underline underline-offset-4">
-              {displayName}
-            </p>
-            <p className="font-mono text-xs text-muted-foreground">
-              {ticker}
-              {exchange ? ` · ${exchange}` : ""}
-            </p>
-          </div>
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/stocks/${ticker}`}
+            className="flex items-center gap-3 group/stocklink flex-1 min-w-0"
+          >
+            <StockLogo ticker={ticker} size="lg" />
+            <div className="flex-1 min-w-0">
+              <p className="text-lg font-semibold truncate group-hover/stocklink:underline underline-offset-4">
+                {displayName}
+              </p>
+              <p className="font-mono text-xs text-muted-foreground">
+                {ticker}
+                {exchange ? ` · ${exchange}` : ""}
+              </p>
+            </div>
+          </Link>
+          {state?.position?.pendingProposal ? (
+            <ProposalActions
+              orderId={state.position.pendingProposal.orderId}
+              align="end"
+            />
+          ) : null}
+        </div>
         {/* Live current price + day's change. Comes from the separate
             /quote endpoint (slow — Finnhub call) so this block usually
             paints after the rest of the sheet body. Skeleton while
@@ -1773,7 +1693,7 @@ export function ThesisSheetBody({
           cost, market value, live P&L. Intent suffix (direction · target/
           stop · horizon) appended so a glance tells you the whole trade
           structure. */}
-      {position && liveStatus === "ACTIVE" ? (
+      {position ? (
         <PositionRow
           position={position}
           pnl={quote?.positionPnl ?? null}
@@ -1781,6 +1701,7 @@ export function ThesisSheetBody({
           horizon={state?.horizon ?? null}
           targetPrice={state?.targetPrice ?? target_price ?? null}
           stopLoss={state?.stopLoss ?? stop_loss ?? null}
+          pendingBuy={state?.position?.pendingProposal?.intent === "OPEN"}
         />
       ) : null}
 

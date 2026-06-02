@@ -140,7 +140,7 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
                 ticker={it.ticker}
                 tag="Pending Review"
                 actionIcon={it.action === "BUY" ? "buy" : "sell"}
-                trailing={<ProposalActions orderId={it.orderId} size="sm" />}
+                trailing={<ProposalActions orderId={it.orderId} />}
               >
                 {sizeStr}
               </ToolProgressTickerItem>
