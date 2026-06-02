@@ -365,11 +365,7 @@ export default function TradesPage({
                   <TableCell className="text-right">
                     {awaitingApproval ? (
                       <div className="flex justify-end">
-                        <ProposalActions
-                          orderId={trade.pendingProposal!.orderId}
-                          size="sm"
-                          showLabels
-                        />
+                        <ProposalActions orderId={trade.pendingProposal!.orderId} />
                       </div>
                     ) : isStalePrice && isOpen ? (
                       <span className="text-sm text-muted-foreground/60">—</span>

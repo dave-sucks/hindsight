@@ -276,11 +276,6 @@ export function TradeRow({
               </div>
             </TooltipContent>
           </Tooltip>
-          {isAwaitingApproval && (
-            <span className="text-[10px] text-amber-500/90 ml-0.5">
-              Pending review
-            </span>
-          )}
         </>
       }
       trailingTop={
@@ -312,11 +307,7 @@ export function TradeRow({
       }
       trailingBottom={
         isAwaitingApproval ? (
-          <ProposalActions
-            orderId={pendingProposal.orderId}
-            size="sm"
-            hideReject
-          />
+          <ProposalActions orderId={pendingProposal.orderId} />
         ) : isStalePrice ? (
           <span className="text-[10px] text-amber-500/80">no live price</span>
         ) : isPending ? (

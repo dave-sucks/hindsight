@@ -1,124 +1,76 @@
 "use client";
 
 /**
- * ProposalActions — the [Approve][Reject] button pair that drops into any
- * existing row component (TradeRow, ActivityRow, run-summary ticker row,
- * ThesisSheet header). Same callbacks everywhere; the only thing the row
- * component decides is layout + sizing.
+ * ProposalActions — the single "Review" control for a pending trade proposal.
  *
- * Calls the existing API routes built in Step 5:
+ * Renders a badge-sized black button (sized to match PnlBadge) that opens a
+ * dropdown with Approve / Reject. Same control everywhere a proposal shows:
+ * homepage + analyst sidebar trade rows, the homepage activity feed, the
+ * /trades table, the agent chat, and the thesis sheet.
+ *
+ * Both actions hit the existing routes:
  *   POST /api/proposals/[orderId]/approve
  *   POST /api/proposals/[orderId]/reject
  *
- * On success the page server-refreshes (router.refresh()) so every other
- * surface that shows the same Order picks up the new state. The local
- * `resolved` state hides the buttons immediately to prevent double-click.
+ * On success the page server-refreshes so every other surface showing the
+ * same Order picks up the new state; local `resolved` hides the control
+ * immediately to prevent a double-submit.
  *
  * See docs/plans/TRADE_AS_PROPOSAL.md §6.
  */
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Check, X, Loader2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { Check, X, Loader2, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ProposalActionsProps {
   orderId: string;
-  /** Size variant — "sm" fits inside trade rows / activity rows;
-   *  "md" is for the thesis sheet header. Defaults to "sm". */
-  size?: "sm" | "md";
-  /** Render with text labels ("Approve" / "Reject") instead of icon-only.
-   *  Defaults to true for "md", false for "sm" (icon-only on tight rows). */
-  showLabels?: boolean;
-  /** Hide the reject button (used in surfaces where reject lives in a
-   *  separate kebab menu). Defaults to false. */
-  hideReject?: boolean;
-  /** Optional render-prop for the resolved state — if omitted, a tiny
-   *  "Approved" / "Rejected" label renders. */
-  renderResolved?: (state: "approved" | "rejected") => ReactNode;
+  /** Dropdown alignment — "end" (default) for right-aligned rows, "start" for left. */
+  align?: "start" | "end";
+  /** Optional positioning class on the trigger (margins only — not styling). */
   className?: string;
-  /** Optional callback fired on successful approve/reject — lets a parent
-   *  surface (e.g. activity row) clear its local optimistic state. */
-  onResolved?: (state: "approved" | "rejected") => void;
 }
 
-export function ProposalActions({
-  orderId,
-  size = "sm",
-  showLabels,
-  hideReject = false,
-  renderResolved,
-  className,
-  onResolved,
-}: ProposalActionsProps) {
+export function ProposalActions({ orderId, align = "end", className }: ProposalActionsProps) {
   const router = useRouter();
   const [pending, setPending] = useState<"approve" | "reject" | null>(null);
   const [resolved, setResolved] = useState<"approved" | "rejected" | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const effectiveShowLabels = showLabels ?? size === "md";
-  const btnSize = size === "md" ? "default" : "sm";
-
-  const handleApprove = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setPending("approve");
-    setError(null);
+  async function run(kind: "approve" | "reject") {
+    setPending(kind);
     try {
-      const res = await fetch(`/api/proposals/${orderId}/approve`, { method: "POST" });
-      // 202 (uncertain Alpaca) is still a success for UI purposes —
-      // reconcile-orders will resolve the fill.
-      if (!res.ok && res.status !== 202) {
-        const body = await res.text();
-        throw new Error(body || `HTTP ${res.status}`);
-      }
-      setResolved("approved");
-      onResolved?.("approved");
-      router.refresh();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Approval failed";
-      setError(msg);
-      console.error(`[proposal-actions] approve ${orderId} failed:`, msg);
-    } finally {
-      setPending(null);
-    }
-  };
-
-  const handleReject = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setPending("reject");
-    setError(null);
-    try {
-      const res = await fetch(`/api/proposals/${orderId}/reject`, {
+      const res = await fetch(`/api/proposals/${orderId}/${kind}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
+        ...(kind === "reject"
+          ? { headers: { "content-type": "application/json" }, body: JSON.stringify({}) }
+          : {}),
       });
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(body || `HTTP ${res.status}`);
+      // 202 = uncertain Alpaca submit; reconcile resolves it. Still a success for UI.
+      if (!res.ok && res.status !== 202) {
+        throw new Error((await res.text()) || `HTTP ${res.status}`);
       }
-      setResolved("rejected");
-      onResolved?.("rejected");
+      setResolved(kind === "approve" ? "approved" : "rejected");
       router.refresh();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Reject failed";
-      setError(msg);
-      console.error(`[proposal-actions] reject ${orderId} failed:`, msg);
-    } finally {
+      console.error(`[proposal-actions] ${kind} ${orderId} failed:`, err);
       setPending(null);
     }
-  };
+  }
 
   if (resolved) {
-    if (renderResolved) return <>{renderResolved(resolved)}</>;
     return (
       <span
         className={cn(
-          "text-xs",
+          "text-xs tabular-nums",
           resolved === "approved" ? "text-emerald-500" : "text-muted-foreground",
+          className,
         )}
       >
         {resolved === "approved" ? "Approved" : "Rejected"}
@@ -127,45 +79,52 @@ export function ProposalActions({
   }
 
   return (
-    <div className={cn("flex items-center gap-1.5", className)}>
-      <Button
-        variant="default"
-        size={btnSize}
-        disabled={pending !== null}
-        onClick={handleApprove}
-        aria-label="Approve"
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            disabled={pending !== null}
+            aria-label="Review proposal"
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-foreground text-background transition-opacity hover:opacity-90 disabled:opacity-50",
+              className,
+            )}
+            onClick={(e) => {
+              // Trade rows are wrapped in a Link — don't navigate when opening the menu.
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          />
+        }
       >
-        {pending === "approve" ? (
-          <Loader2 className="size-3.5 animate-spin" />
-        ) : (
-          <Check className="size-3.5" />
-        )}
-        {effectiveShowLabels && <span className="ml-1">Approve</span>}
-      </Button>
-      {!hideReject && (
-        <Button
-          variant="outline"
-          size={btnSize}
-          disabled={pending !== null}
-          onClick={handleReject}
-          aria-label="Reject"
+        {pending ? <Loader2 className="size-3 animate-spin" /> : null}
+        Review
+        <ChevronDown className="size-3" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={align} sideOffset={4}>
+        <DropdownMenuItem
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void run("approve");
+          }}
         >
-          {pending === "reject" ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <X className="size-3.5" />
-          )}
-          {effectiveShowLabels && <span className="ml-1">Reject</span>}
-        </Button>
-      )}
-      {error && (
-        <span
-          className="text-[10px] text-red-500 ml-1"
-          title={error}
+          <Check className="size-4" />
+          Approve
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          variant="destructive"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void run("reject");
+          }}
         >
-          Failed
-        </span>
-      )}
-    </div>
+          <X className="size-4" />
+          Reject
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

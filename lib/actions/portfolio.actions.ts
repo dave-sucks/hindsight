@@ -144,11 +144,15 @@ export interface ActivityFeedItem {
   outcome: string | null;
   analystName: string | null;
   // Trade-as-Proposal — populated on PROPOSED entries. orderId drives the
-  // inline [Approve][Reject] in ActivityRow. intent tells the row which
+  // inline Review dropdown in ActivityRow. intent tells the row which
   // verb to show ("Buy" / "Add" / "Close" / "Trim").
   orderId?: string;
   intent?: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
   expiresAt?: string;
+  // Share count + per-share price, shown on OPENED + PROPOSED rows ("N
+  // shares @ $X"). Sells use pnl instead. Null on MODIFIED rows.
+  shares?: number;
+  price?: number;
 }
 
 export interface DashboardData {
@@ -927,6 +931,8 @@ export async function getDashboardData(
         orderId: awaitingOrder.id,
         intent: "OPEN",
         expiresAt: awaitingOrder.expiresAt?.toISOString(),
+        shares: awaitingOrder.quantity ?? p.quantity,
+        price: p.avgCost,
       });
       continue;
     }
@@ -945,6 +951,8 @@ export async function getDashboardData(
       pnlPct: null,
       outcome: null,
       analystName: p.analyst?.name ?? null,
+      shares: p.quantity,
+      price: p.avgCost,
     });
 
     // For an OPEN position with a pending close/add/trim proposal, ALSO
@@ -975,6 +983,8 @@ export async function getDashboardData(
         orderId: awaitingOrder.id,
         intent,
         expiresAt: awaitingOrder.expiresAt?.toISOString(),
+        shares: awaitingOrder.quantity ?? p.quantity,
+        price: p.avgCost,
       });
     }
   }
