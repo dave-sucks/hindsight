@@ -48,6 +48,7 @@ import {
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
+import { buildTradeSentence } from "@/lib/trade-statement";
 import {
   getThesisStatusDisplay,
   type ThesisStatus,
@@ -344,36 +345,40 @@ function TradeBlock({
   direction: "LONG" | "SHORT" | "PASS";
 }) {
   const pp = pendingProposal;
-  const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-  const entry = position.avgCost.toFixed(2);
-  const heldQty = fmtQty(position.quantity);
-  const current = pnl?.currentPrice;
+  const entry = position.avgCost;
+  const current = pnl?.currentPrice ?? null;
 
-  // Five slots — filled per state, rendered through one shared layout below.
-  let heading: string;
+  // The sentence is built by the SHARED buildTradeSentence (one grammar across
+  // sheet / row / trades-page / activity). The sheet keeps its own chrome —
+  // Review top-right, P&L on its own line below, note + meta — which differs
+  // from the compact <TradeStatement> (gain inline-right) used elsewhere.
+  let sentence: string | null;
   let review: ReactNode = null;
   let pnlNode: ReactNode = null;
   let note: string | null = null;
   let meta: string | null = null;
 
-  // "Bought N shares at $X" — the shared stem for every state that has a
-  // real (held or closed) position behind it.
-  const boughtStem = `Bought ${heldQty} shares at $${entry}`;
-
   if (pp && pp.intent === "OPEN") {
     // ── Pending buy (no position held yet) ──
-    const verb = direction === "SHORT" ? "Short" : "Buy";
-    heading = `Proposed: ${verb} ${fmtQty(pp.quantity)} shares at $${entry}`;
+    sentence = buildTradeSentence({
+      kind: "proposed-buy",
+      qty: pp.quantity,
+      entry,
+      buyVerb: direction === "SHORT" ? "Short" : "Buy",
+    });
     review = <ProposalActions orderId={pp.orderId} align="end" />;
     note = pp.rationale;
     meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
   } else if (pp) {
     // ── Held + pending sell / add / trim ──
-    const verb =
-      pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim";
-    heading =
-      boughtStem +
-      (current != null ? `, ${verb} at $${current.toFixed(2)}` : `, ${verb}`);
+    sentence = buildTradeSentence({
+      kind: "proposed-exit",
+      qty: position.quantity,
+      entry,
+      current,
+      exitVerb:
+        pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim",
+    });
     review = <ProposalActions orderId={pp.orderId} align="end" />;
     // Running P&L on the held name.
     if (pnl != null) {
@@ -387,14 +392,14 @@ function TradeBlock({
     }
     note = pp.rationale;
     meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
-    heading = `Proposed: ${heading}`;
   } else if (position.closed) {
     // ── Closed ──
-    heading =
-      boughtStem +
-      (position.closePrice != null
-        ? `, closed at $${position.closePrice.toFixed(2)}`
-        : "");
+    sentence = buildTradeSentence({
+      kind: "closed",
+      qty: position.quantity,
+      entry,
+      closePrice: position.closePrice,
+    });
     if (position.realizedPnl != null) {
       pnlNode = (
         <PriceChange
@@ -408,9 +413,12 @@ function TradeBlock({
     meta = position.closedAt ? `Closed ${fmtTradeDate(position.closedAt)}` : null;
   } else {
     // ── Holding ──
-    heading =
-      boughtStem +
-      (current != null ? `, now trading at $${current.toFixed(2)}` : "");
+    sentence = buildTradeSentence({
+      kind: "holding",
+      qty: position.quantity,
+      entry,
+      current,
+    });
     if (pnl != null) {
       pnlNode = (
         <PriceChange
@@ -429,7 +437,7 @@ function TradeBlock({
     <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium tabular-nums flex-1 min-w-0">
-          {heading}
+          {sentence}
         </p>
         {review}
       </div>

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { ReactNode } from "react";
 import { StockLogo } from "@/components/StockLogo";
-import { PriceChange } from "@/components/ui/price-change";
+import { TradeStatement, type TradeStatementGain } from "@/components/ui/trade-statement";
+import { buildTradeSentence } from "@/lib/trade-statement";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Favicon } from "@/components/intelligence/signal-feed";
@@ -127,13 +127,11 @@ function domain(url: string): string {
 
 // ── Status banner ────────────────────────────────────────────────────────────
 
-const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-
 interface RowBanner {
   label: string;
   dotClass: string;
   sentence: string | null;
-  right: ReactNode;
+  gain: TradeStatementGain | null;
   /**
    * True only for real trades (proposed buy / holding / closed). Drives the
    * render split: trades get the contained rounded muted banner; non-trade
@@ -147,14 +145,14 @@ interface RowBanner {
 /**
  * One status-aware banner replacing the old position-row + analysis-status
  * double (which showed two statuses — trade "Holding" AND thesis "Active" —
- * plus the price target twice). Uses the SAME sentence grammar as the
- * thesis-sheet TradeBlock:
+ * plus the price target twice). Trade rows use the shared buildTradeSentence
+ * (one grammar across sheet / row / trades-page / activity):
  *
  *   Holding  → "Bought N shares at $X, now trading at $Y"   [+$gain ↗ %]
  *   Pending  → "Proposed: Buy N shares at $X"
  *   Won/Loss → "Bought N shares at $X, closed at $Y"        [+$gain ↗ %]
- *   Watching → "buy above $target"
- *   Pass     → "@ $entry"   (reads "Pass @ $40.35")
+ *   Watching → "buy above $target"   (not a trade — light inline line)
+ *   Pass     → "@ $entry"            (reads "Pass @ $40.35")
  *   terminal → "@ $entry"
  *
  * When a position exists the badge is the TRADE status (Holding/Won/Loss) —
@@ -169,18 +167,14 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
     const ts: TradeStatus = pos.tradeStatus ?? (pos.avgCost === 0 ? "PENDING" : "OPEN");
     const cfg = getTradeStatusDisplay(ts);
     const qty = pos.quantity ?? null;
-    const qtyStr = qty != null ? fmtQty(qty) : null;
     const entry = pos.avgCost;
 
     if (ts === "PENDING") {
       return {
         label: cfg.label,
         dotClass: cfg.dotClass,
-        sentence:
-          qtyStr != null
-            ? `Proposed: Buy ${qtyStr} shares${entry > 0 ? ` at ${$(entry)}` : ""}`
-            : null,
-        right: null,
+        sentence: buildTradeSentence({ kind: "proposed-buy", qty, entry }),
+        gain: null,
         isTrade: true,
       };
     }
@@ -192,43 +186,34 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
         label: cfg.label,
         dotClass: cfg.dotClass,
         sentence: null,
-        right: null,
+        gain: null,
         isTrade: false,
       };
     }
 
     const isClosed =
       ts === "CLOSED_WIN" || ts === "CLOSED_LOSS" || ts === "CLOSED_EXPIRED";
-    const gain = isClosed
+    const gainDollar = isClosed
       ? (pos.realizedPnl ?? null)
       : t.currentPrice != null && qty != null
         ? (t.currentPrice - entry) * qty
         : null;
     const gainPct =
-      gain != null && entry > 0 && qty != null && qty !== 0
-        ? (gain / (entry * qty)) * 100
+      gainDollar != null && entry > 0 && qty != null && qty !== 0
+        ? (gainDollar / (entry * qty)) * 100
         : null;
-    const right =
-      gain != null ? (
-        <PriceChange
-          dollarChange={gain}
-          percentChange={gainPct}
-          size="sm"
-          className="shrink-0"
-        />
-      ) : null;
 
-    const stem = qtyStr != null ? `Bought ${qtyStr} shares at ${$(entry)}` : null;
     return {
       label: cfg.label,
       dotClass: cfg.dotClass,
-      sentence:
-        stem == null
-          ? null
-          : isClosed
-            ? stem + (pos.closePrice != null ? `, closed at ${$(pos.closePrice)}` : "")
-            : stem + (t.currentPrice != null ? `, now trading at ${$(t.currentPrice)}` : ""),
-      right,
+      sentence: buildTradeSentence({
+        kind: isClosed ? "closed" : "holding",
+        qty,
+        entry,
+        current: t.currentPrice,
+        closePrice: pos.closePrice,
+      }),
+      gain: gainDollar != null ? { dollar: gainDollar, pct: gainPct } : null,
       isTrade: true,
     };
   }
@@ -239,7 +224,7 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
       label: "Pass",
       dotClass: "bg-muted-foreground/40",
       sentence: t.entryPrice != null ? `@ ${$(t.entryPrice)}` : null,
-      right: null,
+      gain: null,
       isTrade: false,
     };
   }
@@ -255,7 +240,7 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
         t.targetPrice != null && t.targetPrice > 0
           ? `buy above ${$(t.targetPrice)}`
           : null,
-      right: null,
+      gain: null,
       isTrade: false,
     };
   }
@@ -270,7 +255,7 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
         t.targetPrice != null && t.targetPrice > 0
           ? `target ${$(t.targetPrice)}`
           : null,
-      right: null,
+      gain: null,
       isTrade: false,
     };
   }
@@ -280,7 +265,7 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
     label: d.label,
     dotClass: d.dotClass,
     sentence: t.entryPrice != null ? `@ ${$(t.entryPrice)}` : null,
-    right: null,
+    gain: null,
     isTrade: false,
   };
 }
@@ -321,28 +306,20 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
           right keeps its green/red; the container stays muted. */}
       <div className="px-4 py-3 space-y-2">
         {banner?.isTrade ? (
-          <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
-            <div className="flex items-baseline gap-1.5 min-w-0 text-sm">
-              <span className={cn("size-2 rounded-full shrink-0 self-center", banner.dotClass)} />
-              <span className="font-medium shrink-0">{banner.label}</span>
-              {banner.sentence && (
-                <span className="text-muted-foreground tabular-nums truncate">
-                  {banner.sentence}
-                </span>
-              )}
-            </div>
-            {banner.right}
-          </div>
+          <TradeStatement
+            label={banner.label}
+            dotClass={banner.dotClass}
+            sentence={banner.sentence}
+            gain={banner.gain}
+            className="rounded-lg bg-muted/50 px-3 py-2"
+          />
         ) : banner ? (
-          <div className="flex items-baseline gap-1.5 text-sm">
-            <span className={cn("size-2 rounded-full shrink-0 self-center", banner.dotClass)} />
-            <span className="font-medium shrink-0">{banner.label}</span>
-            {banner.sentence && (
-              <span className="text-muted-foreground tabular-nums truncate">
-                {banner.sentence}
-              </span>
-            )}
-          </div>
+          <TradeStatement
+            label={banner.label}
+            dotClass={banner.dotClass}
+            sentence={banner.sentence}
+            gain={banner.gain}
+          />
         ) : null}
         <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
           {t.reasoningSummary}

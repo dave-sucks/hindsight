@@ -56,6 +56,7 @@ import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
 import { Button } from '@/components/ui/button';
 import { PriceChange } from '@/components/ui/price-change';
+import { buildTradeSentence } from '@/lib/trade-statement';
 import {
   Tooltip as UITooltip,
   TooltipContent as UITooltipContent,
@@ -396,29 +397,38 @@ function pickToThesisRow(pick: RecentPick): ThesisRowData {
 }
 
 
-// Compact share-count formatting: whole numbers as-is, fractional to 2dp
-// (Alpaca notional fills produce fractional share counts like 6.3).
-function fmtShares(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
-}
-
 function ActivityRow({ item }: { item: ActivityFeedItem }) {
   const actionKey = getDecisionAction(item);
   const status = ACTIVITY_ACTION_STATUS[actionKey] ?? ACTIVITY_ACTION_STATUS.HOLD;
-  const sentence = getActivitySentence(item);
-  const hasPnl = item.type === 'CLOSED' && item.pnl != null;
-  const pnlPos = (item.pnl ?? 0) >= 0;
-  // Trade-as-Proposal — render inline [Approve][Reject] in place of P&L /
-  // sentence when this row is awaiting the user's decision. The orderId
-  // is populated by the activity-feed builder when item.type === 'PROPOSED'.
-  // See docs/plans/TRADE_AS_PROPOSAL.md.
+  // Trade-as-Proposal — render inline [Approve][Reject] when this row is
+  // awaiting the user's decision. See docs/plans/TRADE_AS_PROPOSAL.md.
   const isProposed = item.type === 'PROPOSED' && item.orderId != null;
-  // "N shares @ $X" — shown on buys + pending buys (sells use P&L instead).
-  const sizeLine =
-    item.shares != null && item.price != null
-      ? `${fmtShares(item.shares)} shares @ $${item.price.toFixed(2)}`
-      : null;
-  const showSize = (item.type === 'OPENED' || isProposed) && sizeLine != null;
+
+  // The middle text + right side, built per event type. Trade events
+  // (Bought / Sold / Proposed buy) use the SHARED buildTradeSentence so the
+  // feed reads identically to the thesis sheet / row / trades-page; the gain
+  // renders via <PriceChange> (same green/red ↗ styling, no opaque parens).
+  // Non-trade events (Hold / Near-Stop / etc) keep their prose reason.
+  let middle: string | null = null;
+  let gain: { dollar: number; pct: number | null } | null = null;
+  const hasSize = item.shares != null && item.price != null;
+
+  if (item.type === 'OPENED' && hasSize) {
+    // Event-log buy — just "Bought N shares at $X" (no "now trading at").
+    middle = buildTradeSentence({ kind: 'holding', qty: item.shares!, entry: item.price! });
+  } else if (isProposed && hasSize) {
+    middle = buildTradeSentence({ kind: 'proposed-buy', qty: item.shares!, entry: item.price! });
+  } else if (item.type === 'CLOSED' && hasSize) {
+    middle = buildTradeSentence({
+      kind: 'closed',
+      qty: item.shares!,
+      entry: item.price!,
+      closePrice: item.closePrice ?? null,
+    });
+    if (item.pnl != null) gain = { dollar: item.pnl, pct: item.pnlPct };
+  } else {
+    middle = getActivitySentence(item);
+  }
 
   return (
     <HoverCard>
@@ -436,20 +446,13 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
           <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
           {status.label}
         </Badge>
-        {/* Right side: shares @ price + Review dropdown for proposals; shares
-            @ price for buys; P&L for sells; reasoning text otherwise. */}
-        <div className="flex-1 min-w-0 flex items-center justify-end gap-2">
-          {hasPnl && (
-            <span className={cn('text-xs tabular-nums font-medium shrink-0', pnlPos ? 'text-positive' : 'text-negative')}>
-              {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
-              {item.pnlPct != null && <span className="opacity-70"> ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</span>}
-            </span>
-          )}
-          {showSize ? (
-            <span className="text-xs tabular-nums text-muted-foreground shrink-0">{sizeLine}</span>
-          ) : !hasPnl ? (
-            <span className="text-xs text-muted-foreground truncate hidden sm:block">{sentence}</span>
-          ) : null}
+        {middle ? (
+          <span className="flex-1 min-w-0 text-xs text-muted-foreground tabular-nums truncate">
+            {middle}
+          </span>
+        ) : null}
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          {gain && <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />}
           {isProposed && <ProposalActions orderId={item.orderId!} />}
         </div>
       </HoverCardTrigger>
@@ -464,14 +467,9 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
               <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', status.dotClass)} />
               {status.label}
             </Badge>
-            {hasPnl && (
-              <span className={cn('text-xs tabular-nums font-medium', pnlPos ? 'text-positive' : 'text-negative')}>
-                {pnlPos ? '+' : ''}${Math.abs(item.pnl!).toFixed(2)}
-                {item.pnlPct != null && <> ({pnlPos ? '+' : ''}{item.pnlPct.toFixed(1)}%)</>}
-              </span>
-            )}
+            {gain && <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />}
           </div>
-          <p className="text-sm text-muted-foreground">{sentence}</p>
+          <p className="text-sm text-muted-foreground">{middle ?? getActivitySentence(item)}</p>
         </div>
       </HoverCardContent>
     </HoverCard>
