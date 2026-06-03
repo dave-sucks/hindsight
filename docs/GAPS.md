@@ -45,18 +45,6 @@ Goal: keep gates that prevent STRUCTURALLY IMPOSSIBLE states (e.g., ACTIVE thesi
 
 **Already removed in [#360](https://github.com/dave-sucks/hindsight/pull/360):** Gates A + B (composite-coupling on `record_thesis` + `update_thesis`) — they forced `conviction` to derive from `composite`, defeating the whole point of having a separate writer-judgment field. The remaining suspects above are unchanged. Probably folds into the trade-as-proposal refactor since the proposal layer changes which gates matter.
 
-### P1-5 — Thesis-writer fabricated MRVL post-earnings data (was P1-25)
-**Status:** investigation needed.
-
-MRVL refresh (`cmpm5fmgg000904jx6puwbp54`) on 2026-05-26 wrote two contradictory rationales 7 minutes apart: first said "Q1 FY2027 print due tonight (May 27)", then said "MRVL printed a clean beat-and-raise (revenue +3.2%, raised Q2 guide)" — earnings hadn't actually printed. Likely the deep-research model inside `write_thesis_research` returned analyst estimates as if they were actuals.
-
-**Fix:** start by inspecting the actual `write_thesis_research` output for the MRVL run to determine if the meta-tool returned bad data or the writer hallucinated on top. If meta-tool: add date-awareness to the synthesis prompt. If writer: add a Layer-1 sanity check warning in `update_thesis` rationale parser when rationale claims a beat/miss but `catalystDate` is in the future.
-
-### P1-7 — UI: rename "Awaiting live entry" to action-forcing label
-**Status:** small. Principal-flagged 2026-05-26.
-
-Current label reads passive — agent treated it that way too. Rename to "Decide today (re-enter / wait / kill)" or similar. Tiny UX fix that makes the PROMOTED state legible at a glance.
-
 ### P1-8 — V2 daily-run prompt has no DAY-trader workflow
 **Status:** surfaced during V1-deletion (GAPS P0-2) audit, 2026-05-26.
 
@@ -91,18 +79,6 @@ Worth doing before trade-as-proposal lands so proposals don't have to bolt on PR
 **No action yet — verify with data first.** Watch tomorrow's 8 AM cron and next Sunday's discovery run. Spot-check 5–10 fresh `convictionRationale` strings. If >2 read like math restatement, the prompt isn't holding.
 
 **If the prompt is insufficient, durable fix:** add a structured field harder to fake, e.g. `wouldBuyWithOwnMoney: "YES_AT_MARKET" | "WAIT_FOR_BETTER_LEVEL" | "NO"`. Forces a yes/no commitment that can't hide behind rubric vocabulary. Don't ship until data shows the prompt failing.
-
-### P1-12 — Secular Compounder 5/5 writer FAILUREs on 2026-05-31
-**Status:** investigation, ~10 min DB check. Surfaced by [#361](https://github.com/dave-sucks/hindsight/pull/361) audit.
-
-Today's Sunday discovery run for the Secular Compounder archetype produced 5/5 writer dispatches in FAILURE state. Operator hypothesis: Claude tokens running out (provider-side rate limit / context exhaustion). Worth confirming vs a real bug before re-enabling next Sunday's cron.
-
-**Check:**
-1. Query `ThesisWriterRun` (or whichever table holds the dispatch run rows) for `analystId = secular-compounder` + `createdAt = 2026-05-31` and inspect `failureReason` / error payloads.
-2. If all 5 show the same provider error string (rate limit / 429 / context-too-long), it's not a code bug — the dispatch concurrency or context size is the lever.
-3. If failures are heterogeneous, dig into the writer agent code path.
-
-Don't block Sunday-discovery disposition decision (see P2 cleanup) on this — even if the writer was healthy, the operator-driven discovery model means the Sunday cron is optional fallback.
 
 ### P1-13 — BATCHED DISCOVERY overlay is archetype-blind
 **Status:** open, promoted from legacy P1-9 by [#361](https://github.com/dave-sucks/hindsight/pull/361).
@@ -151,6 +127,13 @@ Re-evaluate the rest after the live loop is stable for ~1 week.
 ---
 
 ## Done since
+
+### 2026-06-02 — GAPS hygiene + P1-12 investigation
+- **P1-5** — MRVL Sonar earnings hallucination class fixed by [#357](https://github.com/dave-sucks/hindsight/pull/357) (writer date-awareness gate) on 2026-05-28. Was orphaned in the open P1 list — retroactively moved here.
+- **P1-7** — UI label rename ("Awaiting live entry" → "Promoted") was already shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349) on 2026-05-26 (see the "first live promotion incident fully closed" entry below). Duplicate orphan entry removed from the open P1 list.
+- **P1-12** — Secular Compounder 5/5 writer FAILUREs on 2026-05-31 were Anthropic credit-balance-exhaustion errors, NOT a code bug. All 5 dispatches (CRDO, TSM, LRCX, ADBE, MU) started within 36ms of each other from parent run `cmptt39lf008t04l7dv6hibei` (parallel fan-out) and failed with the same provider error: `"Your credit balance is too low to access the Anthropic API."` No other days in the past 14 days had this failure shape. **Sunday-discovery cron disposition decision (P2) is unblocked.**
+
+**Operational follow-up (not filed as a GAPS item — operational, not architectural):** a parallel writer fan-out of N dispatches will all fail simultaneously if Anthropic credit balance is below threshold at fan-out time. Solvable by Anthropic billing alerts + an optional pre-flight balance check before the dispatch fan-out. Worth doing if it bites again; otherwise just monitor billing.
 
 ### 2026-06-01 — P1-3: `targetPrice` overload was a one-line trigger bug, not a schema split
 PR [#362](https://github.com/dave-sucks/hindsight/pull/362). `watchingEntryTrigger` was reading `targetPrice` (the take-profit) instead of `entryPrice` (where the writer wanted to buy in). The schema was always correct — both columns existed with separate meanings — the trigger code just wired the wrong column to the ENTER action.
