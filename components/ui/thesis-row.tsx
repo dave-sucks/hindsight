@@ -135,6 +135,14 @@ interface RowBanner {
   sentence: string | null;
   right: ReactNode;
   tint: string;
+  /**
+   * True only for real trades (proposed buy / holding / closed). Drives the
+   * render split: trades get the prominent tinted banner strip; non-trade
+   * thesis states (watching / pass / invalidated) get a light inline status
+   * line so the eye can tell "this is a position" from "this is just a
+   * thesis" at a glance.
+   */
+  isTrade: boolean;
 }
 
 /**
@@ -175,10 +183,12 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
             : null,
         right: null,
         tint: "bg-muted/30",
+        isTrade: true,
       };
     }
 
-    // The order never filled — nothing was bought, so no trade sentence.
+    // The order never filled — nothing was bought. Not a trade; falls
+    // through to the light status line via isTrade: false.
     if (ts === "CANCELLED" || ts === "REJECTED") {
       return {
         label: cfg.label,
@@ -186,6 +196,7 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
         sentence: null,
         right: null,
         tint: "bg-muted/30",
+        isTrade: false,
       };
     }
 
@@ -224,17 +235,19 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
             : stem + (t.currentPrice != null ? `, now trading at ${$(t.currentPrice)}` : ""),
       right,
       tint,
+      isTrade: true,
     };
   }
 
-  // ── No position — thesis-status states ──
+  // ── No position — thesis-status states (light inline line, not a banner) ──
   if (t.direction === "PASS") {
     return {
       label: "Pass",
       dotClass: "bg-muted-foreground/40",
       sentence: t.entryPrice != null ? `@ ${$(t.entryPrice)}` : null,
       right: null,
-      tint: "bg-muted/30",
+      tint: "",
+      isTrade: false,
     };
   }
 
@@ -250,7 +263,8 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
           ? `buy above ${$(t.targetPrice)}`
           : null,
       right: null,
-      tint: "bg-muted/30",
+      tint: "",
+      isTrade: false,
     };
   }
 
@@ -265,7 +279,8 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
           ? `target ${$(t.targetPrice)}`
           : null,
       right: null,
-      tint: "bg-muted/30",
+      tint: "",
+      isTrade: false,
     };
   }
 
@@ -275,7 +290,8 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
     dotClass: d.dotClass,
     sentence: t.entryPrice != null ? `@ ${$(t.entryPrice)}` : null,
     right: null,
-    tint: "bg-muted/30",
+    tint: "",
+    isTrade: false,
   };
 }
 
@@ -307,9 +323,11 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         </div>
       )}
 
-      {/* ── Status banner — one status-aware line (replaces the old position
-            row + analysis status double) ── */}
-      {banner && (
+      {/* ── Trade banner — ONLY for real positions (proposed buy / holding /
+            closed). A tinted full-width strip so a position reads as
+            distinct from a plain thesis. Uses the sheet's TradeBlock
+            sentence grammar with the gain on the right. ── */}
+      {banner?.isTrade && (
         <div className={cn("flex items-center justify-between gap-3 px-4 py-2.5 border-b", banner.tint)}>
           <div className="flex items-baseline gap-1.5 min-w-0 text-sm">
             <span className={cn("size-2 rounded-full shrink-0 self-center", banner.dotClass)} />
@@ -324,8 +342,19 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         </div>
       )}
 
-      {/* ── Summary ── */}
-      <div className="px-4 py-3">
+      {/* ── Body: light status line (non-trade theses only) + summary ── */}
+      <div className="px-4 py-3 space-y-1.5">
+        {banner && !banner.isTrade && (
+          <div className="flex items-baseline gap-1.5 text-sm">
+            <span className={cn("size-2 rounded-full shrink-0 self-center", banner.dotClass)} />
+            <span className="font-medium shrink-0">{banner.label}</span>
+            {banner.sentence && (
+              <span className="text-muted-foreground tabular-nums truncate">
+                {banner.sentence}
+              </span>
+            )}
+          </div>
+        )}
         <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
           {t.reasoningSummary}
         </p>
