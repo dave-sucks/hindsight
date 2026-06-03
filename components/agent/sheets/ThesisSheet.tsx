@@ -1149,26 +1149,43 @@ function PriceTargetsBlock({
   const COUNT = 60;
   const EDGE_PAD = 3;
   const usable = COUNT - EDGE_PAD * 2 - 1;
-  // Top-label positioning: prefer current price (the live marker) when
-  // we have it, fall back to entry (the writer's anchor).
-  const labelValue = current ?? entry;
-  const labelIdx = Math.round(EDGE_PAD + ((labelValue - safeLo) / span) * usable);
-  const labelPct = labelIdx / (COUNT - 1);
+  // Position a price on the bar as a clamped 0-100% so floating labels
+  // never run off the card edge (matches the gauge's idxFor mapping).
+  const pctFor = (p: number) => {
+    const idx = Math.round(EDGE_PAD + ((p - safeLo) / span) * usable);
+    const raw = (idx / (COUNT - 1)) * 100;
+    return Math.min(94, Math.max(6, raw));
+  };
+  const entryPct = pctFor(entry);
+  const currentPct = current != null ? pctFor(current) : null;
 
   return (
-    <Card className="bg-muted/40 p-2 gap-6">
+    <Card className="bg-muted/40 p-2 gap-3">
       <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
         Price Targets
       </p>
 
       <div className="space-y-2">
-        <div className="relative h-4">
+        {/* Floating labels above their markers. Entry sits on the upper
+            band (muted — the anchor), Current on the lower band right above
+            the bar (foreground — the live price). Two bands so the two
+            labels never collide horizontally when entry ≈ current. Stop and
+            Target are fixed at the ends below. */}
+        <div className="relative h-8 text-xs tabular-nums">
           <span
-            className="absolute -translate-x-1/2 text-xs font-medium tabular-nums whitespace-nowrap"
-            style={{ left: `${labelPct * 100}%` }}
+            className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-muted-foreground"
+            style={{ left: `${entryPct}%` }}
           >
-            ${labelValue.toFixed(2)}
+            Entry ${entry.toFixed(2)}
           </span>
+          {current != null && currentPct != null ? (
+            <span
+              className="absolute bottom-0 -translate-x-1/2 whitespace-nowrap font-medium"
+              style={{ left: `${currentPct}%` }}
+            >
+              ${current.toFixed(2)}
+            </span>
+          ) : null}
         </div>
 
         <PriceGauge
@@ -1179,10 +1196,8 @@ function PriceTargetsBlock({
           direction={direction}
         />
 
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{stop != null ? `Stop $${stop.toFixed(2)}` : "Stop —"}</span>
-          <span>Entry ${entry.toFixed(2)}</span>
-          {current != null ? <span>Current ${current.toFixed(2)}</span> : null}
           <span>{target != null ? `Target $${target.toFixed(2)}` : "Target —"}</span>
         </div>
       </div>

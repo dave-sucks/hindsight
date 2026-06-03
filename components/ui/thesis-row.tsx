@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { StockLogo } from "@/components/StockLogo";
-import { PnlBadge } from "@/components/ui/pnl-badge";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { PriceChange } from "@/components/ui/price-change";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Favicon } from "@/components/intelligence/signal-feed";
@@ -102,7 +102,6 @@ interface ThesisRowProps {
 // ── Formatting helpers ──────────────────────────────────────────────────────
 
 const $ = (n: number) => `$${n.toFixed(2)}`;
-const $k = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (n: number) => `${Math.abs(n).toFixed(n >= 100 ? 0 : n >= 10 ? 1 : 2)}%`;
 const pnlCls = (v: number) => v >= 0 ? "text-positive" : "text-negative";
 const PctArrow = ({ value }: { value: number }) => (
@@ -126,106 +125,174 @@ function domain(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
 }
 
-// ── Status badge / Position helpers ─────────────────────────────────────────
+// ── Status banner ────────────────────────────────────────────────────────────
+
+const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+
+interface RowBanner {
+  label: string;
+  dotClass: string;
+  sentence: string | null;
+  right: ReactNode;
+  tint: string;
+}
 
 /**
- * Row-leading badge — renders the lifecycle STATUS (Watching, Active, …)
- * for LONG/SHORT theses and "Pass" for PASS theses regardless of the
- * underlying ARCHIVED status. Replaces the prior confidence-derived
- * Strong Buy / Buy / Lean Buy label (which was misleading: a "Strong Buy"
- * row was being rendered for theses we never traded). The label that
- * helper computed still lives in run-summary-card.tsx for the run-summary
- * surface — only the row consumes the status badge now.
+ * One status-aware banner replacing the old position-row + analysis-status
+ * double (which showed two statuses — trade "Holding" AND thesis "Active" —
+ * plus the price target twice). Uses the SAME sentence grammar as the
+ * thesis-sheet TradeBlock:
+ *
+ *   Holding  → "Bought N shares at $X, now trading at $Y"   [+$gain ↗ %]
+ *   Pending  → "Proposed: Buy N shares at $X"
+ *   Won/Loss → "Bought N shares at $X, closed at $Y"        [+$gain ↗ %]
+ *   Watching → "buy above $target"
+ *   Pass     → "@ $entry"   (reads "Pass @ $40.35")
+ *   terminal → "@ $entry"
+ *
+ * When a position exists the badge is the TRADE status (Holding/Won/Loss) —
+ * the thesis "Active" status is implied by holding a position, so it's not
+ * shown twice. The $/% gain sits on the RIGHT of the row.
  */
-function rowStatusBadge(
-  direction: string,
-  status?: string,
-): { label: string; dotClass: string; tooltip: string } {
-  if (direction === "PASS") {
+function buildRowBanner(t: ThesisRowData): RowBanner | null {
+  const $ = (n: number) => `$${n.toFixed(2)}`;
+  const pos = t.position;
+
+  if (pos) {
+    const ts: TradeStatus = pos.tradeStatus ?? (pos.avgCost === 0 ? "PENDING" : "OPEN");
+    const cfg = getTradeStatusDisplay(ts);
+    const qty = pos.quantity ?? null;
+    const qtyStr = qty != null ? fmtQty(qty) : null;
+    const entry = pos.avgCost;
+
+    if (ts === "PENDING") {
+      return {
+        label: cfg.label,
+        dotClass: cfg.dotClass,
+        sentence:
+          qtyStr != null
+            ? `Proposed: Buy ${qtyStr} shares${entry > 0 ? ` at ${$(entry)}` : ""}`
+            : null,
+        right: null,
+        tint: "bg-muted/30",
+      };
+    }
+
+    // The order never filled — nothing was bought, so no trade sentence.
+    if (ts === "CANCELLED" || ts === "REJECTED") {
+      return {
+        label: cfg.label,
+        dotClass: cfg.dotClass,
+        sentence: null,
+        right: null,
+        tint: "bg-muted/30",
+      };
+    }
+
+    const isClosed =
+      ts === "CLOSED_WIN" || ts === "CLOSED_LOSS" || ts === "CLOSED_EXPIRED";
+    const gain = isClosed
+      ? (pos.realizedPnl ?? null)
+      : t.currentPrice != null && qty != null
+        ? (t.currentPrice - entry) * qty
+        : null;
+    const gainPct =
+      gain != null && entry > 0 && qty != null && qty !== 0
+        ? (gain / (entry * qty)) * 100
+        : null;
+    const right =
+      gain != null ? (
+        <PriceChange
+          dollarChange={gain}
+          percentChange={gainPct}
+          size="sm"
+          className="shrink-0"
+        />
+      ) : null;
+    const tint =
+      gain == null ? "bg-muted/30" : gain >= 0 ? "bg-positive/10" : "bg-negative/10";
+
+    const stem = qtyStr != null ? `Bought ${qtyStr} shares at ${$(entry)}` : null;
+    return {
+      label: cfg.label,
+      dotClass: cfg.dotClass,
+      sentence:
+        stem == null
+          ? null
+          : isClosed
+            ? stem + (pos.closePrice != null ? `, closed at ${$(pos.closePrice)}` : "")
+            : stem + (t.currentPrice != null ? `, now trading at ${$(t.currentPrice)}` : ""),
+      right,
+      tint,
+    };
+  }
+
+  // ── No position — thesis-status states ──
+  if (t.direction === "PASS") {
     return {
       label: "Pass",
       dotClass: "bg-muted-foreground/40",
-      tooltip: "Researched, decided no view",
+      sentence: t.entryPrice != null ? `@ ${$(t.entryPrice)}` : null,
+      right: null,
+      tint: "bg-muted/30",
     };
   }
-  const d = getThesisStatusDisplay(status);
-  return { label: d.label, dotClass: d.dotClass, tooltip: d.tooltip };
-}
 
-function posBg(ts: TradeStatus): string {
-  if (ts === "OPEN" || ts === "CLOSED_WIN") return "bg-positive/10";
-  if (ts === "CLOSED_LOSS") return "bg-negative/10";
-  return "bg-muted/30";
+  const d = getThesisStatusDisplay(t.status);
+  const status = (t.status ?? "").toUpperCase();
+
+  if (status === "WATCHING") {
+    return {
+      label: d.label,
+      dotClass: d.dotClass,
+      sentence:
+        t.targetPrice != null && t.targetPrice > 0
+          ? `buy above ${$(t.targetPrice)}`
+          : null,
+      right: null,
+      tint: "bg-muted/30",
+    };
+  }
+
+  if (status === "ACTIVE" || status === "PROMOTED") {
+    // Trade-eligible coverage with no position open yet — show the target
+    // as the next step, not a stale "@ entry".
+    return {
+      label: d.label,
+      dotClass: d.dotClass,
+      sentence:
+        t.targetPrice != null && t.targetPrice > 0
+          ? `target ${$(t.targetPrice)}`
+          : null,
+      right: null,
+      tint: "bg-muted/30",
+    };
+  }
+
+  // INVALIDATED / ARCHIVED / SUPERSEDED — the price the thesis referenced.
+  return {
+    label: d.label,
+    dotClass: d.dotClass,
+    sentence: t.entryPrice != null ? `@ ${$(t.entryPrice)}` : null,
+    right: null,
+    tint: "bg-muted/30",
+  };
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const pos = t.position;
-  const isPass = t.direction === "PASS";
-  const statusBadge = rowStatusBadge(t.direction, t.status);
   const sources = parseSources(t.sourcesUsed);
+  const banner = buildRowBanner(t);
 
   const deltaPct = t.priceChange?.percent
     ?? (t.currentPrice && t.entryPrice && t.entryPrice > 0 ? ((t.currentPrice - t.entryPrice) / t.entryPrice) * 100 : null);
 
-  const pnlPct = pos
-    ? pos.realizedPnl != null && pos.avgCost > 0 && pos.quantity
-      ? (pos.realizedPnl / (pos.avgCost * pos.quantity)) * 100
-      : t.currentPrice != null && pos.avgCost > 0
-        ? ((t.currentPrice - pos.avgCost) / pos.avgCost) * 100
-        : null
-    : null;
-
-  const mktVal = pos && t.currentPrice && pos.quantity ? t.currentPrice * pos.quantity : null;
-
-  const upsidePct = !isPass && t.targetPrice && t.targetPrice > 0 && t.entryPrice && t.entryPrice > 0
-    ? ((t.targetPrice - t.entryPrice) / t.entryPrice) * 100
-    : null;
-
   return (
     <div className="rounded-xl border bg-background overflow-hidden">
 
-      {/* ── 1. Position row ── */}
-      {pos && (() => {
-        // Use tradeStatus when available (wired from order fill state).
-        // Fall back to deriving from avgCost for legacy/incomplete data.
-        const ts: TradeStatus = pos.tradeStatus ?? (pos.avgCost === 0 ? "PENDING" : "OPEN");
-        const cfg = getTradeStatusDisplay(ts);
-        const isPending = ts === "PENDING";
-        return (
-          <div className={cn("px-4 py-2.5 border-b", posBg(ts))}>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted-foreground cursor-default shrink-0">
-                <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dotClass)} />
-                {cfg.label}
-              </span>
-              <span className="text-sm">
-                {pos.quantity && <>{pos.quantity} shares{!isPending && <> @ </>}</>}
-                {!isPending && pos.avgCost > 0 && (
-                  <span className="tabular-nums font-medium">{$(pos.avgCost)}</span>
-                )}
-                {t.targetPrice && t.targetPrice > 0 && <>, targeting <span className="tabular-nums font-medium">{$(t.targetPrice)}</span></>}
-              </span>
-              <div className="flex items-center gap-2 ml-auto">
-                {!isPending && mktVal != null && (
-                  <Tooltip>
-                    <TooltipTrigger render={<span className="text-sm tabular-nums font-medium cursor-default">{$k(mktVal)}</span>} />
-                    <TooltipContent side="bottom">Current market value of {pos.quantity ?? 0} shares at {$(t.currentPrice ?? 0)}</TooltipContent>
-                  </Tooltip>
-                )}
-                {!isPending && pnlPct != null && <PnlBadge value={pnlPct} />}
-              </div>
-            </div>
-            {!isPending && t.stopLoss && t.stopLoss > 0 && (
-              <p className="text-xs text-muted-foreground mt-0.5">Stop at <span className="tabular-nums">{$(t.stopLoss)}</span></p>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* ── 2. Stock row ── */}
+      {/* ── Stock row ── */}
       {showTicker && (
         <div className="flex items-center gap-2 px-4 py-2.5 border-b">
           <StockLogo ticker={t.ticker} size="md" />
@@ -240,34 +307,25 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         </div>
       )}
 
-      {/* ── 3. Analysis + Summary ── */}
-      <div className="px-4 py-3">
-        {/* Analysis line */}
-        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap text-sm">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <span className="inline-flex items-center gap-1.5 cursor-default shrink-0" />
-              }
-            >
-              <span className={cn("size-2 rounded-full shrink-0", statusBadge.dotClass)} />
-              <span className="font-medium">{statusBadge.label}</span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="max-w-xs text-xs">
-              {statusBadge.tooltip}
-            </TooltipContent>
-          </Tooltip>
-          {!isPass && t.targetPrice && t.targetPrice > 0 && (
-            <>
-              <span>Price target: <span className="tabular-nums font-medium">{$(t.targetPrice)}</span></span>
-              {upsidePct != null && <PctArrow value={upsidePct} />}
-              {t.entryPrice && t.entryPrice > 0 && <span>from <span className="tabular-nums">{$(t.entryPrice)}</span></span>}
-            </>
-          )}
-          {isPass && t.entryPrice && t.entryPrice > 0 && (
-            <span className="text-muted-foreground tabular-nums">at {$(t.entryPrice)}</span>
-          )}
+      {/* ── Status banner — one status-aware line (replaces the old position
+            row + analysis status double) ── */}
+      {banner && (
+        <div className={cn("flex items-center justify-between gap-3 px-4 py-2.5 border-b", banner.tint)}>
+          <div className="flex items-baseline gap-1.5 min-w-0 text-sm">
+            <span className={cn("size-2 rounded-full shrink-0 self-center", banner.dotClass)} />
+            <span className="font-medium shrink-0">{banner.label}</span>
+            {banner.sentence && (
+              <span className="text-muted-foreground tabular-nums truncate">
+                {banner.sentence}
+              </span>
+            )}
+          </div>
+          {banner.right}
         </div>
+      )}
+
+      {/* ── Summary ── */}
+      <div className="px-4 py-3">
         <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
           {t.reasoningSummary}
         </p>
