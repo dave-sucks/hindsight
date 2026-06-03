@@ -149,10 +149,13 @@ export interface ActivityFeedItem {
   orderId?: string;
   intent?: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
   expiresAt?: string;
-  // Share count + per-share price, shown on OPENED + PROPOSED rows ("N
-  // shares @ $X"). Sells use pnl instead. Null on MODIFIED rows.
+  // Share count + per-share entry price. On OPENED/PROPOSED rows `price` is
+  // the entry; on CLOSED rows it's the avg cost, paired with `closePrice`
+  // (the exit fill) so the feed can render the full shared trade sentence
+  // "Bought N shares at $price, closed at $closePrice". Null on MODIFIED.
   shares?: number;
   price?: number;
+  closePrice?: number;
 }
 
 export interface DashboardData {
@@ -1011,6 +1014,10 @@ export async function getDashboardData(
       pnlPct: Math.round(pnlPct * 10) / 10,
       outcome: p.outcome ?? null,
       analystName: p.analyst?.name ?? null,
+      // Entry/exit so the feed can render "Bought N at $X, closed at $Y".
+      shares: p.quantity,
+      price: p.avgCost,
+      closePrice: p.closePrice ?? undefined,
     });
   }
 

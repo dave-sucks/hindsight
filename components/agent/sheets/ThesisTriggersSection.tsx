@@ -55,6 +55,7 @@ export interface ThesisStatePosition {
   openedAt: string;
   daysHeld: number;
   closed?: boolean;
+  closedAt?: string | null;
   closePrice?: number | null;
   realizedPnl?: number | null;
   realizedPnlPct?: number | null;

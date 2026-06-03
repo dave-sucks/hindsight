@@ -132,6 +132,7 @@ export async function GET(
     // closed at $Y" + realized P&L + close reason instead of a separate
     // terminal banner. See docs/plans/TRADE_AS_PROPOSAL.md.
     closed: boolean;
+    closedAt: string | null;
     closePrice: number | null;
     realizedPnl: number | null;
     realizedPnlPct: number | null;
@@ -160,6 +161,7 @@ export async function GET(
         quantity: true,
         avgCost: true,
         openedAt: true,
+        closedAt: true,
         closePrice: true,
         realizedPnl: true,
         closeReason: true,
@@ -190,6 +192,7 @@ export async function GET(
         openedAt: pos.openedAt.toISOString(),
         daysHeld,
         closed: isClosed,
+        closedAt: pos.closedAt?.toISOString() ?? null,
         closePrice: pos.closePrice != null ? Number(pos.closePrice) : null,
         realizedPnl: pos.realizedPnl != null ? Number(pos.realizedPnl) : null,
         realizedPnlPct:

@@ -148,6 +148,20 @@ export function PriceGauge({
       ? "bg-positive/40"
       : "bg-negative/40";
 
+  // Overshoot — current has pushed PAST the target (LONG: above; SHORT:
+  // below). The stretch between target and current is the "we beat the
+  // target" zone, the whole point of the gauge. Paint it full-strength
+  // green so it reads as a win at a glance, distinct from the muted
+  // entry→current profit tint.
+  const beyondTarget =
+    current != null && target != null
+      ? direction === "LONG"
+        ? current > target
+        : current < target
+      : false;
+  const overshootLo = beyondTarget ? Math.min(targetIdx, currentIdx) : -1;
+  const overshootHi = beyondTarget ? Math.max(targetIdx, currentIdx) : -1;
+
   const ticks: Tick[] = Array.from({ length: count }, (_, i) => {
     // Ordered by visual priority — current > entry > stop > target
     if (i === currentIdx) return { color: "bg-foreground", tall: true };
@@ -159,6 +173,11 @@ export function PriceGauge({
     }
     if (i === stopIdx) return { color: "bg-negative", tall: true };
     if (i === targetIdx) return { color: "bg-positive", tall: true };
+
+    // Above-target overshoot — strong green between target and current.
+    if (overshootLo >= 0 && i > overshootLo && i < overshootHi) {
+      return { color: "bg-positive" };
+    }
 
     // Tinted fill between entry and current when active
     if (fillCls && currentIdx >= 0) {

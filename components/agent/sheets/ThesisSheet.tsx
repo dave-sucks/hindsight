@@ -48,6 +48,7 @@ import {
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
+import { buildTradeSentence } from "@/lib/trade-statement";
 import {
   getThesisStatusDisplay,
   type ThesisStatus,
@@ -286,21 +287,51 @@ function VariantViewBlock({ variantView }: { variantView: string | null }) {
 // trade this is and where the exits are. Renders only when we have
 // horizon/target/stop info to show.
 
+// ── TradeBlock helpers ──
+
+/** Compact "Jun 2" date for the meta line. */
+function fmtTradeDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/**
+ * Close reason from close_position is an enum (TARGET / STOP / MANUAL) or
+ * PROMOTED from the promote action — sometimes with " — {notes}" appended.
+ * Rendering "STOP" raw read as a broken label; humanize the known codes and
+ * pass through anything that's already a sentence.
+ */
+function humanizeCloseReason(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const [head, ...rest] = raw.split(" — ");
+  const map: Record<string, string> = {
+    STOP: "Stopped out",
+    TARGET: "Hit target",
+    MANUAL: "Closed manually",
+    PROMOTED: "Closed on promotion to live",
+  };
+  const mapped = map[head.trim().toUpperCase()];
+  if (mapped) return rest.length ? `${mapped} — ${rest.join(" — ")}` : mapped;
+  return raw;
+}
+
 // ── TradeBlock ──
 // The ONE trade section in the sheet. Every state — pending proposal,
 // holding, closed — renders through the SAME container and the SAME slot
-// layout below (heading · optional Review · P&L · note · expiry). Only the
-// four slot values differ per state; the JSX is shared, so the states are
-// guaranteed to be visually identical blocks (no "one's in a box, one isn't").
-//   • holding         → "Bought N shares at $X, now trading at $Y" + P&L
-//   • closed          → "Bought N shares at $X, closed at $Y" + realized P&L
-//                        + close reason
-//   • pending buy     → "Proposed: buy N shares at $X" + reason + Review
-//   • pending sell/add → "Proposed: <verb> N shares at $Y" + P&L + reason
-//                        + Review
-// `position` (cost basis + qty) comes from /triggers; `pnl` (live price +
-// unrealized P&L) from /quote — the two land at different times, so the
-// P&L line appears once /quote resolves. See docs/plans/TRADE_AS_PROPOSAL.md §6.
+// layout below (heading · optional Review · P&L · note · meta). Only the
+// slot values differ per state; the JSX is shared, so the states are
+// guaranteed to be visually identical blocks. The headings follow one
+// consistent grammar:
+//   • pending buy      → "Proposed: Buy N shares at $entry"
+//   • holding          → "Bought N shares at $entry, now trading at $current"
+//   • closed           → "Bought N shares at $entry, closed at $closePrice"
+//   • held + pending   → "Proposed: Bought N shares at $entry, <verb> at $current"
+// The meta line carries the timestamp per state (Opened / Closed / Expires).
+// `position` (cost basis + qty + dates) comes from /triggers; `pnl` (live
+// price + unrealized P&L) from /quote — the two land at different times, so
+// the P&L line appears once /quote resolves. See TRADE_AS_PROPOSAL.md §6.
 function TradeBlock({
   position,
   pnl,
@@ -319,77 +350,42 @@ function TradeBlock({
   direction: "LONG" | "SHORT" | "PASS";
 }) {
   const pp = pendingProposal;
-  const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-  const entry = position.avgCost.toFixed(2);
-  const heldQty = position.quantity.toFixed(1);
-  const current = pnl?.currentPrice;
+  const entry = position.avgCost;
+  const current = pnl?.currentPrice ?? null;
 
-  // Four slots — filled per state, rendered through one shared layout below.
-  let heading: string;
+  // The sentence is built by the SHARED buildTradeSentence (one grammar across
+  // sheet / row / trades-page / activity). The sheet keeps its own chrome —
+  // Review top-right, P&L on its own line below, note + meta — which differs
+  // from the compact <TradeStatement> (gain inline-right) used elsewhere.
+  let sentence: string | null;
   let review: ReactNode = null;
   let pnlNode: ReactNode = null;
   let note: string | null = null;
-  let expiry: string | null = null;
+  let meta: string | null = null;
 
-  if (pp) {
-    // ── Pending proposal ──
-    const isBuy = pp.intent === "OPEN";
-    const verb = isBuy
-      ? direction === "SHORT"
-        ? "short"
-        : "buy"
-      : pp.intent === "ADD"
-        ? "add"
-        : pp.intent === "CLOSE"
-          ? "close"
-          : "trim";
-    heading = isBuy
-      ? `Proposed: ${verb} ${fmtQty(pp.quantity)} shares at $${entry}`
-      : `Proposed: ${verb} ${fmtQty(pp.quantity)} shares${current != null ? ` at $${current.toFixed(2)}` : ""}`;
+  if (pp && pp.intent === "OPEN") {
+    // ── Pending buy (no position held yet) ──
+    sentence = buildTradeSentence({
+      kind: "proposed-buy",
+      qty: pp.quantity,
+      entry,
+      buyVerb: direction === "SHORT" ? "Short" : "Buy",
+    });
     review = <ProposalActions orderId={pp.orderId} align="end" />;
-    // Running P&L for sells / adds / trims (the name is held); a fresh buy
-    // has no position yet, so no P&L line.
-    if (!isBuy && pnl != null) {
-      pnlNode = (
-        <PriceChange
-          dollarChange={pnl.unrealizedPnl}
-          percentChange={pnl.unrealizedPnlPct}
-          size="base"
-        />
-      );
-    }
     note = pp.rationale;
-    expiry = pp.expiresAt
-      ? new Date(pp.expiresAt).toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        })
-      : null;
-  } else if (position.closed) {
-    // ── Closed ──
-    heading =
-      `Bought ${heldQty} shares at $${entry}` +
-      (position.closePrice != null
-        ? `, closed at $${position.closePrice.toFixed(2)}`
-        : "");
-    if (position.realizedPnl != null) {
-      pnlNode = (
-        <PriceChange
-          dollarChange={position.realizedPnl}
-          percentChange={position.realizedPnlPct ?? 0}
-          size="base"
-        />
-      );
-    }
-    note = position.closeReason ?? null;
-  } else {
-    // ── Holding ──
-    heading =
-      `Bought ${heldQty} shares at $${entry}` +
-      (pnl != null ? `, now trading at $${pnl.currentPrice.toFixed(2)}` : "");
+    meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
+  } else if (pp) {
+    // ── Held + pending sell / add / trim ──
+    sentence = buildTradeSentence({
+      kind: "proposed-exit",
+      qty: position.quantity,
+      entry,
+      current,
+      exitVerb:
+        pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim",
+    });
+    review = <ProposalActions orderId={pp.orderId} align="end" />;
+    // Running P&L on the held name.
     if (pnl != null) {
       pnlNode = (
         <PriceChange
@@ -399,13 +395,54 @@ function TradeBlock({
         />
       );
     }
+    note = pp.rationale;
+    meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
+  } else if (position.closed) {
+    // ── Closed ──
+    sentence = buildTradeSentence({
+      kind: "closed",
+      qty: position.quantity,
+      entry,
+      closePrice: position.closePrice,
+    });
+    if (position.realizedPnl != null) {
+      pnlNode = (
+        <PriceChange
+          dollarChange={position.realizedPnl}
+          percentChange={position.realizedPnlPct ?? 0}
+          size="base"
+        />
+      );
+    }
+    note = humanizeCloseReason(position.closeReason);
+    meta = position.closedAt ? `Closed ${fmtTradeDate(position.closedAt)}` : null;
+  } else {
+    // ── Holding ──
+    sentence = buildTradeSentence({
+      kind: "holding",
+      qty: position.quantity,
+      entry,
+      current,
+    });
+    if (pnl != null) {
+      pnlNode = (
+        <PriceChange
+          dollarChange={pnl.unrealizedPnl}
+          percentChange={pnl.unrealizedPnlPct}
+          size="base"
+        />
+      );
+    }
+    meta =
+      `Opened ${fmtTradeDate(position.openedAt)}` +
+      (position.daysHeld > 0 ? ` · ${position.daysHeld}d held` : "");
   }
 
   return (
     <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium tabular-nums flex-1 min-w-0">
-          {heading}
+          {sentence}
         </p>
         {review}
       </div>
@@ -413,9 +450,7 @@ function TradeBlock({
       {note ? (
         <p className="text-sm text-muted-foreground leading-relaxed">{note}</p>
       ) : null}
-      {expiry ? (
-        <p className="text-xs text-muted-foreground">Expires {expiry}</p>
-      ) : null}
+      {meta ? <p className="text-xs text-muted-foreground">{meta}</p> : null}
     </div>
   );
 }
@@ -614,54 +649,14 @@ function ScoringGauge({ score, max }: { score: number; max: number }) {
   return <TickBar ticks={ticks} className="w-16 shrink-0" />;
 }
 
-// ── Skeleton placeholders for /triggers-dependent blocks ──────────────
-// The sheet fires /triggers + /quote in parallel. While /triggers is in
-// flight, blocks that depend on state (Core Belief, Key Assumptions,
-// Invalidation Conditions, Composite Score) render these placeholders so
-// the layout doesn't reflow when the data lands. Each skeleton holds
-// roughly the same vertical space as the populated block.
-
-function BulletListSkeleton({ title, rows }: { title: string; rows: number }) {
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-        {title}
-      </p>
-      <div className="space-y-1.5">
-        {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="text-muted-foreground/50 select-none">•</span>
-            <Skeleton className="h-4 flex-1" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CompositeScoreSkeleton() {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-baseline justify-between">
-        <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-          Composite Score
-        </p>
-        <Skeleton className="h-4 w-16" />
-      </div>
-      <div>
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="border-b border-border py-2 space-y-1">
-            <div className="flex items-center justify-between gap-3">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-2 w-24 shrink-0" />
-            </div>
-            <Skeleton className="h-3 w-3/4" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+// Skeleton placeholders for state-dependent blocks were deleted 2026-06-02.
+// They existed to hold space while /triggers was in flight — but that made
+// every block a tri-state (`state?.X ? real : loading ? skeleton : null`)
+// when the data is just a DB field that either exists or doesn't. The
+// blocks now render iff the value is present; on a row-click open the
+// parent forwards `initialState` so they paint immediately, and on an
+// unseeded open they appear after the ~50ms DB round-trip. The live price
+// (the one genuinely-slow value) keeps its skeleton — see the price block.
 
 // ── TradeStructureBlock ───────────────────────────────────────────────
 // Compact single-row block of trade-shape mechanics: next review (with
@@ -1177,26 +1172,43 @@ function PriceTargetsBlock({
   const COUNT = 60;
   const EDGE_PAD = 3;
   const usable = COUNT - EDGE_PAD * 2 - 1;
-  // Top-label positioning: prefer current price (the live marker) when
-  // we have it, fall back to entry (the writer's anchor).
-  const labelValue = current ?? entry;
-  const labelIdx = Math.round(EDGE_PAD + ((labelValue - safeLo) / span) * usable);
-  const labelPct = labelIdx / (COUNT - 1);
+  // Position a price on the bar as a clamped 0-100% so floating labels
+  // never run off the card edge (matches the gauge's idxFor mapping).
+  const pctFor = (p: number) => {
+    const idx = Math.round(EDGE_PAD + ((p - safeLo) / span) * usable);
+    const raw = (idx / (COUNT - 1)) * 100;
+    return Math.min(94, Math.max(6, raw));
+  };
+  const entryPct = pctFor(entry);
+  const currentPct = current != null ? pctFor(current) : null;
 
   return (
-    <Card className="bg-muted/40 p-2 gap-6">
+    <Card className="bg-muted/40 p-2 gap-3">
       <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
         Price Targets
       </p>
 
       <div className="space-y-2">
-        <div className="relative h-4">
+        {/* Floating labels above their markers. Entry sits on the upper
+            band (muted — the anchor), Current on the lower band right above
+            the bar (foreground — the live price). Two bands so the two
+            labels never collide horizontally when entry ≈ current. Stop and
+            Target are fixed at the ends below. */}
+        <div className="relative h-8 text-xs tabular-nums">
           <span
-            className="absolute -translate-x-1/2 text-xs font-medium tabular-nums whitespace-nowrap"
-            style={{ left: `${labelPct * 100}%` }}
+            className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-muted-foreground"
+            style={{ left: `${entryPct}%` }}
           >
-            ${labelValue.toFixed(2)}
+            Entry ${entry.toFixed(2)}
           </span>
+          {current != null && currentPct != null ? (
+            <span
+              className="absolute bottom-0 -translate-x-1/2 whitespace-nowrap font-medium"
+              style={{ left: `${currentPct}%` }}
+            >
+              ${current.toFixed(2)}
+            </span>
+          ) : null}
         </div>
 
         <PriceGauge
@@ -1207,10 +1219,8 @@ function PriceTargetsBlock({
           direction={direction}
         />
 
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{stop != null ? `Stop $${stop.toFixed(2)}` : "Stop —"}</span>
-          <span>Entry ${entry.toFixed(2)}</span>
-          {current != null ? <span>Current ${current.toFixed(2)}</span> : null}
           <span>{target != null ? `Target $${target.toFixed(2)}` : "Target —"}</span>
         </div>
       </div>
@@ -1603,7 +1613,9 @@ export function ThesisSheetBody({
   company_name,
   exchange,
   fundamentals,
-  status,
+  // `status` prop intentionally NOT destructured for rendering — status
+  // is sourced solely from the resolved `state` (see liveStatus below).
+  // Reading the prop was the cause of the pill flash.
   initialState,
 }: ThesisSheetBodyProps) {
   const isPass = direction === "PASS";
@@ -1656,15 +1668,14 @@ export function ThesisSheetBody({
     };
   }, [thesis_id]);
 
-  // Status comes from the row that opened the sheet; the API fetch
-  // refines it (live PnL, terminal reasons). If neither has a value the
-  // pill simply doesn't render — no defensive default.
-  const liveStatus = (state?.status ?? status) as ThesisStatus | undefined;
+  // Status has ONE source: the resolved /triggers state. We do NOT fall
+  // back to the `status` prop for rendering — that dual source was the
+  // cause of the status-pill flash (prop paints, fetch swaps it ~50ms
+  // later). The pill renders once `state` lands; for the ~50ms DB round
+  // trip on an unseeded open it's simply absent (a pill appearing is
+  // invisible; a pill *swapping* was the bug).
+  const liveStatus = state?.status as ThesisStatus | undefined;
   const position = state?.position ?? null;
-  // `state` is non-null after /triggers resolves (loading is true while it's
-  // still in flight). Drives the skeleton placeholders for state-dependent
-  // blocks (status pill, core belief, key assumptions, scoring, etc).
-  const stateLoading = state == null && thesis_id != null;
 
   // Conviction Expression v4 — writer's tier verdict + rationale +
   // variantView. Pulled from /triggers state. Renders null when the
@@ -1681,11 +1692,7 @@ export function ThesisSheetBody({
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        {liveStatus ? (
-          <StatusPill status={liveStatus} />
-        ) : stateLoading ? (
-          <Skeleton className="h-5 w-20" />
-        ) : null}
+        {liveStatus ? <StatusPill status={liveStatus} /> : null}
         <ConvictionBadge
           conviction={conviction}
           rationale={convictionRationale}
@@ -1802,11 +1809,6 @@ export function ThesisSheetBody({
         <p className="text-xl font-normal leading-relaxed">
           {state.coreBelief}
         </p>
-      ) : stateLoading ? (
-        <div className="space-y-2">
-          <Skeleton className="h-6 w-full" />
-          <Skeleton className="h-6 w-3/4" />
-        </div>
       ) : null}
 
       {/* ── Triggers (moved up — they're the standing opinion in action) ── */}
@@ -1831,12 +1833,6 @@ export function ThesisSheetBody({
             </span>
           ) : null}
         </p>
-      ) : stateLoading ? (
-        <div className="space-y-2">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-2/3" />
-        </div>
       ) : null}
 
       {/* ── Pass reason ───────────────────────────────────────── */}
@@ -1876,8 +1872,6 @@ export function ThesisSheetBody({
             <ScoringRow label="Catalyst freshness" dim={state.scoring.catalystFreshness} max={2} />
           </div>
         </Card>
-      ) : stateLoading ? (
-        <CompositeScoreSkeleton />
       ) : null}
 
       {/* ── Price Targets (the agent's entry/target/stop + live current) ─ */}
@@ -1943,8 +1937,6 @@ export function ThesisSheetBody({
             ))}
           </ul>
         </div>
-      ) : stateLoading ? (
-        <BulletListSkeleton title="Key Assumptions" rows={2} />
       ) : null}
 
       {/* ── Invalidation Conditions (invalidationConds) ──────── */}
@@ -1969,8 +1961,6 @@ export function ThesisSheetBody({
             ))}
           </ul>
         </div>
-      ) : stateLoading ? (
-        <BulletListSkeleton title="Invalidation Conditions" rows={2} />
       ) : null}
 
       {/* ── Research Synthesis accordions ───────────────────── */}

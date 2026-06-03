@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { StockLogo } from '@/components/StockLogo';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PriceChange } from '@/components/ui/price-change';
+import { buildTradeSentence } from '@/lib/trade-statement';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -378,10 +379,31 @@ export default async function TradeDetailPage({
                           {hasPendingOrder && <div className="text-amber-500">Has pending order</div>}
                         </TooltipContent>
                       </Tooltip>
+                      {/* Shared trade-sentence grammar (same as the thesis
+                          sheet / row / activity feed). fmtQty inside the
+                          builder fixes the raw 5.953027164-shares decimals. */}
                       <span className="tabular-nums">
-                        {isOpen ? (hasFilledBuy ? 'Holding' : 'Pending') : 'Sold'}{' '}
-                        {trade.shares} shares · avg entry{' '}
-                        <span className="font-medium">{fmtCur(trade.entryPrice)}</span>
+                        {buildTradeSentence(
+                          isOpen
+                            ? hasFilledBuy
+                              ? {
+                                  kind: 'holding',
+                                  qty: trade.shares,
+                                  entry: trade.entryPrice,
+                                  current: livePrice ?? currentPrice,
+                                }
+                              : {
+                                  kind: 'proposed-buy',
+                                  qty: trade.shares,
+                                  entry: trade.entryPrice,
+                                }
+                            : {
+                                kind: 'closed',
+                                qty: trade.shares,
+                                entry: trade.entryPrice,
+                                closePrice,
+                              },
+                        )}
                       </span>
                     </div>
                     <PriceChange
