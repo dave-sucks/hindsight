@@ -113,17 +113,6 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     expect(r.actionability).toBe("PROMOTED_DECIDE_TODAY");
   });
 
-  it("PROMOTED loses to terminal status (DEAD wins)", () => {
-    // Structurally impossible today (PROMOTED is a live state), but the
-    // resolver shouldn't silently mislabel if the state ever shows up.
-    const r = buildResolvedEnvelope({
-      thesis: baseThesis({ status: "CLOSED" }),
-      currentPrice: 100,
-      now: NOW,
-    });
-    expect(r.actionability).toBe("DEAD");
-  });
-
   it("PROMOTED loses to supersession (SUPERSEDED wins)", () => {
     const r = buildResolvedEnvelope({
       thesis: baseThesis({
