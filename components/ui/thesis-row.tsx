@@ -134,10 +134,9 @@ interface RowBanner {
   dotClass: string;
   sentence: string | null;
   right: ReactNode;
-  tint: string;
   /**
    * True only for real trades (proposed buy / holding / closed). Drives the
-   * render split: trades get the prominent tinted banner strip; non-trade
+   * render split: trades get the contained rounded muted banner; non-trade
    * thesis states (watching / pass / invalidated) get a light inline status
    * line so the eye can tell "this is a position" from "this is just a
    * thesis" at a glance.
@@ -182,7 +181,6 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
             ? `Proposed: Buy ${qtyStr} shares${entry > 0 ? ` at ${$(entry)}` : ""}`
             : null,
         right: null,
-        tint: "bg-muted/30",
         isTrade: true,
       };
     }
@@ -195,7 +193,6 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
         dotClass: cfg.dotClass,
         sentence: null,
         right: null,
-        tint: "bg-muted/30",
         isTrade: false,
       };
     }
@@ -220,8 +217,6 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
           className="shrink-0"
         />
       ) : null;
-    const tint =
-      gain == null ? "bg-muted/30" : gain >= 0 ? "bg-positive/10" : "bg-negative/10";
 
     const stem = qtyStr != null ? `Bought ${qtyStr} shares at ${$(entry)}` : null;
     return {
@@ -234,7 +229,6 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
             ? stem + (pos.closePrice != null ? `, closed at ${$(pos.closePrice)}` : "")
             : stem + (t.currentPrice != null ? `, now trading at ${$(t.currentPrice)}` : ""),
       right,
-      tint,
       isTrade: true,
     };
   }
@@ -246,7 +240,6 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
       dotClass: "bg-muted-foreground/40",
       sentence: t.entryPrice != null ? `@ ${$(t.entryPrice)}` : null,
       right: null,
-      tint: "",
       isTrade: false,
     };
   }
@@ -263,7 +256,6 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
           ? `buy above ${$(t.targetPrice)}`
           : null,
       right: null,
-      tint: "",
       isTrade: false,
     };
   }
@@ -279,7 +271,6 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
           ? `target ${$(t.targetPrice)}`
           : null,
       right: null,
-      tint: "",
       isTrade: false,
     };
   }
@@ -290,7 +281,6 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
     dotClass: d.dotClass,
     sentence: t.entryPrice != null ? `@ ${$(t.entryPrice)}` : null,
     right: null,
-    tint: "",
     isTrade: false,
   };
 }
@@ -323,28 +313,27 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         </div>
       )}
 
-      {/* ── Trade banner — ONLY for real positions (proposed buy / holding /
-            closed). A tinted full-width strip so a position reads as
-            distinct from a plain thesis. Uses the sheet's TradeBlock
-            sentence grammar with the gain on the right. ── */}
-      {banner?.isTrade && (
-        <div className={cn("flex items-center justify-between gap-3 px-4 py-2.5 border-b", banner.tint)}>
-          <div className="flex items-baseline gap-1.5 min-w-0 text-sm">
-            <span className={cn("size-2 rounded-full shrink-0 self-center", banner.dotClass)} />
-            <span className="font-medium shrink-0">{banner.label}</span>
-            {banner.sentence && (
-              <span className="text-muted-foreground tabular-nums truncate">
-                {banner.sentence}
-              </span>
-            )}
+      {/* ── Body: status line + summary ── */}
+      {/* A real trade renders as a contained rounded muted banner (the
+          sheet's TradeBlock shape) so a position reads as distinct from a
+          plain thesis — without being a full-width colored strip. A plain
+          thesis renders as a light inline status line. The gain on the
+          right keeps its green/red; the container stays muted. */}
+      <div className="px-4 py-3 space-y-2">
+        {banner?.isTrade ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
+            <div className="flex items-baseline gap-1.5 min-w-0 text-sm">
+              <span className={cn("size-2 rounded-full shrink-0 self-center", banner.dotClass)} />
+              <span className="font-medium shrink-0">{banner.label}</span>
+              {banner.sentence && (
+                <span className="text-muted-foreground tabular-nums truncate">
+                  {banner.sentence}
+                </span>
+              )}
+            </div>
+            {banner.right}
           </div>
-          {banner.right}
-        </div>
-      )}
-
-      {/* ── Body: light status line (non-trade theses only) + summary ── */}
-      <div className="px-4 py-3 space-y-1.5">
-        {banner && !banner.isTrade && (
+        ) : banner ? (
           <div className="flex items-baseline gap-1.5 text-sm">
             <span className={cn("size-2 rounded-full shrink-0 self-center", banner.dotClass)} />
             <span className="font-medium shrink-0">{banner.label}</span>
@@ -354,7 +343,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
               </span>
             )}
           </div>
-        )}
+        ) : null}
         <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
           {t.reasoningSummary}
         </p>
