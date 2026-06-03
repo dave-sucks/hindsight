@@ -1693,10 +1693,18 @@ export function ThesisSheetBody({
           dig through the activity timeline to find out what happened.
           Previously these fields were fetched but never rendered. */}
       {/* CLOSED positions render inside the TradeBlock below ("Bought N @
-          $X, closed at $Y" + reason), so suppress the banner for that case
-          to avoid a duplicate. INVALIDATED / ARCHIVED (no position/trade)
-          still surface here. */}
-      {liveStatus === "CLOSED" && position ? null : (
+          $X, closed at $Y" + reason), so the gray banner is redundant for
+          them — suppress it. Crucially we ALSO suppress it while /triggers
+          is still loading (`stateLoading`): `liveStatus` is "CLOSED" from
+          the prop on first paint, but `position` only lands after the fetch
+          resolves. Gating on `position` alone made the banner flash for ~1s
+          before TradeBlock replaced it. Gating on `position || stateLoading`
+          keeps it hidden the whole time. INVALIDATED / ARCHIVED (no
+          position, liveStatus !== "CLOSED") still surface here. The only
+          CLOSED case that still shows the banner is a closed thesis with no
+          position row at all (no agent/position link) — the banner is the
+          fallback so the close reason isn't lost. */}
+      {liveStatus === "CLOSED" && (position || stateLoading) ? null : (
         <TerminalStatusAlert
           status={liveStatus}
           closedAt={state?.closedAt ?? null}
