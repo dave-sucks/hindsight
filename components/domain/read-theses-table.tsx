@@ -93,13 +93,20 @@ function ThesisReadRow({
             <TooltipContent>{status.tooltip}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        {needsActionLabel ? (
-          <Badge variant="outline" className="gap-1.5 font-normal">
-            <span className="h-1.5 w-1.5 rounded-full shrink-0 bg-amber-500" />
-            {needsActionLabel}
-          </Badge>
-        ) : null}
-        <span className="flex-1 min-w-0 text-right text-xs text-muted-foreground truncate">
+        {/* Needs-action prefix sits INLINE with the summary instead of as a
+            separate outline-badge box. The amber pulsing dot + medium-weight
+            trigger sentence read as the lead of one continuous line that
+            ends in the muted summary, so the eye reads "this is the why,
+            this is the what" instead of treating them as detached chips. */}
+        <span className="flex-1 min-w-0 text-xs text-muted-foreground truncate">
+          {needsActionLabel ? (
+            <>
+              <span className="inline-block size-1.5 rounded-full bg-amber-500 animate-pulse mr-1.5 align-middle" />
+              <span className="font-medium text-foreground">
+                {needsActionLabel}.
+              </span>{" "}
+            </>
+          ) : null}
           {summary}
         </span>
       </HoverCardTrigger>
