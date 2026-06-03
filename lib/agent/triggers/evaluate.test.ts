@@ -527,12 +527,104 @@ describe("shouldFire", () => {
     });
   });
 
-  it("treats explicit cooldownDays=0 as no rate limit", () => {
-    // Escape hatch: an explicit zero opts out of the default-cooldown
-    // fallback. Useful for terminal EXIT triggers where the trigger
-    // fires once and the position closes anyway.
+  it("treats explicit cooldownDays=0 on EXIT as no rate limit (legitimate escape hatch)", () => {
+    // EXIT is terminal — the position closes and the cron's
+    // `status:ACTIVE` filter removes the row from future evaluation.
+    // No runaway risk; the 0 escape hatch is valid here.
     const trigger: Trigger = {
       ...baseTrigger,
+      action: "EXIT",
+      cooldownDays: 0,
+      lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
+    };
+    const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
+    expect(shouldFire(trigger, ctx)).toEqual({
+      fires: true,
+      reason: "match",
+    });
+  });
+
+  // ── Defense-in-depth — non-EXIT cooldownDays=0 (NVDA runaway shape) ───
+  //
+  // The write-path fix (applyTriggerCooldownDefaults) stops new bad
+  // values from landing on disk. The evaluator-layer defense below
+  // catches existing on-disk bad rows: a non-EXIT action with explicit
+  // cooldownDays=0 is treated as "needs default" and falls back to the
+  // per-predicate-kind cooldown instead of bypassing the rate limit.
+  // See lib/agent/triggers/evaluate.ts shouldFire docstring (2).
+
+  it("REVIEW + cooldownDays=0 + recent lastFiredAt → COOLDOWN, not match (NVDA runaway shape)", () => {
+    // This is the exact shape that caused the 2026-06-02 NVDA loop:
+    // REVIEW action with cooldownDays=0, fired seconds ago. Pre-fix this
+    // returned 'match' (no rate limit). Post-fix the evaluator falls back
+    // to the PRICE_ABOVE per-kind default (1d) and blocks the re-fire.
+    const trigger: Trigger = {
+      ...baseTrigger,
+      action: "REVIEW",
+      cooldownDays: 0,
+      lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
+    };
+    const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
+    expect(shouldFire(trigger, ctx)).toEqual({
+      fires: false,
+      reason: "cooldown",
+    });
+  });
+
+  it("ENTER + cooldownDays=0 + recent lastFiredAt → COOLDOWN", () => {
+    const trigger: Trigger = {
+      ...baseTrigger,
+      action: "ENTER",
+      cooldownDays: 0,
+      lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
+    };
+    const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
+    expect(shouldFire(trigger, ctx)).toEqual({
+      fires: false,
+      reason: "cooldown",
+    });
+  });
+
+  it("TRIM + cooldownDays=0 + recent lastFiredAt → COOLDOWN (IREN $76.87 shape)", () => {
+    // IREN had TRIM PRICE_ABOVE $76.87 with cooldownDays:0 — would have
+    // partial-closed every 5 minutes if price held above target.
+    const trigger: Trigger = {
+      ...baseTrigger,
+      action: "TRIM",
+      cooldownDays: 0,
+      lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
+    };
+    const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
+    expect(shouldFire(trigger, ctx)).toEqual({
+      fires: false,
+      reason: "cooldown",
+    });
+  });
+
+  it("REVIEW + cooldownDays=0 + lastFiredAt past default → MATCH (default cooldown expired)", () => {
+    // PRICE_ABOVE default cooldown is 1 day. Fired 2 days ago → expired
+    // → fires. Confirms we're falling back to the default, not blocking
+    // forever.
+    const trigger: Trigger = {
+      ...baseTrigger,
+      action: "REVIEW",
+      cooldownDays: 0,
+      lastFiredAt: new Date(NOW.getTime() - 2 * 86_400_000).toISOString(),
+    };
+    const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
+    expect(shouldFire(trigger, ctx)).toEqual({
+      fires: true,
+      reason: "match",
+    });
+  });
+
+  it("EXIT + cooldownDays=0 + recent lastFiredAt → MATCH (escape hatch preserved)", () => {
+    // Re-stating the EXIT carve-out alongside the non-EXIT block so the
+    // distinction is unmissable in the test file. EXIT 0 must keep
+    // working — that's how the stop fires every tick until position closes.
+    const trigger: Trigger = {
+      ...baseTrigger,
+      action: "EXIT",
       cooldownDays: 0,
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
