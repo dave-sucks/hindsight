@@ -868,22 +868,22 @@ function TerminalStatusAlert({
   invalidatedAt: string | null;
   invalidReason: string | null;
 }) {
-  if (status !== "CLOSED" && status !== "INVALIDATED" && status !== "ARCHIVED") {
+  // CLOSED is deliberately NOT handled here. A closed position renders
+  // inside TradeBlock ("Bought N @ $X, closed at $Y" + realized P&L + close
+  // reason) — the single source of truth for the closed trade state. This
+  // banner exists only for terminal states with NO trade to show:
+  // INVALIDATED (thesis disproven) and ARCHIVED (walked away from the
+  // watchlist without ever trading).
+  if (status !== "INVALIDATED" && status !== "ARCHIVED") {
     return null;
   }
-  // INVALIDATED tracks its own date/reason fields; CLOSED + ARCHIVED both
-  // reuse closedAt/closeReason (ARCHIVED is "walked away" without a trade
-  // outcome — semantically a close of the watching cycle).
+  // INVALIDATED tracks its own date/reason fields; ARCHIVED ("walked away"
+  // without a trade outcome) reuses closedAt/closeReason.
   const isInvalid = status === "INVALIDATED";
   const date = isInvalid ? invalidatedAt : closedAt;
   const reason = isInvalid ? invalidReason : closeReason;
   if (!date && !reason) return null;
-  const title =
-    status === "CLOSED"
-      ? "Position closed"
-      : status === "INVALIDATED"
-        ? "Thesis invalidated"
-        : "Thesis archived";
+  const title = isInvalid ? "Thesis invalidated" : "Thesis archived";
   const formattedDate = date
     ? new Date(date).toLocaleDateString("en-US", {
         year: "numeric",
@@ -1692,27 +1692,19 @@ export function ThesisSheetBody({
           the reason + date right at the top so the user doesn't have to
           dig through the activity timeline to find out what happened.
           Previously these fields were fetched but never rendered. */}
-      {/* CLOSED positions render inside the TradeBlock below ("Bought N @
-          $X, closed at $Y" + reason), so the gray banner is redundant for
-          them — suppress it. Crucially we ALSO suppress it while /triggers
-          is still loading (`stateLoading`): `liveStatus` is "CLOSED" from
-          the prop on first paint, but `position` only lands after the fetch
-          resolves. Gating on `position` alone made the banner flash for ~1s
-          before TradeBlock replaced it. Gating on `position || stateLoading`
-          keeps it hidden the whole time. INVALIDATED / ARCHIVED (no
-          position, liveStatus !== "CLOSED") still surface here. The only
-          CLOSED case that still shows the banner is a closed thesis with no
-          position row at all (no agent/position link) — the banner is the
-          fallback so the close reason isn't lost. */}
-      {liveStatus === "CLOSED" && (position || stateLoading) ? null : (
-        <TerminalStatusAlert
-          status={liveStatus}
-          closedAt={state?.closedAt ?? null}
-          closeReason={state?.closeReason ?? null}
-          invalidatedAt={state?.invalidatedAt ?? null}
-          invalidReason={state?.invalidReason ?? null}
-        />
-      )}
+      {/* Terminal non-trade states only (INVALIDATED / ARCHIVED). CLOSED is
+          NOT shown here — it renders inside TradeBlock below as the single
+          closed-trade state. TerminalStatusAlert returns null for CLOSED /
+          ACTIVE / WATCHING, so rendering it unconditionally is safe: no
+          loading-window race, and structurally impossible to double up with
+          the closed trade block. */}
+      <TerminalStatusAlert
+        status={liveStatus}
+        closedAt={state?.closedAt ?? null}
+        closeReason={state?.closeReason ?? null}
+        invalidatedAt={state?.invalidatedAt ?? null}
+        invalidReason={state?.invalidReason ?? null}
+      />
 
       {/* ── Stock identity + live price ──────────────────────── */}
       {/* Company name + ticker are a Link to /stocks/[ticker] — the
