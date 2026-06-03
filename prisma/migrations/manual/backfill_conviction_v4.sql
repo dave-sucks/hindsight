@@ -1,3 +1,23 @@
+-- =============================================================
+-- DO NOT RUN. Kept for historical reference only.
+--
+-- Decision 2026-06-02 (see docs/GAPS.md → 2026-06-02 entry):
+-- conviction is the writer's qualitative judgment, independent of
+-- composite (that decoupling was the whole point of Gates A+B being
+-- killed in PR #360). Deriving conviction from composite buckets
+-- reintroduces the coupling the design specifically removed.
+--
+-- The right behavior: let conviction populate organically as the
+-- thesis-writer touches each thesis on refresh / re-mint. The daily
+-- run treats NULL conviction as "no signal" and falls back to
+-- R/R math, which is the intended graceful degradation.
+--
+-- This script was applied once on 2026-06-02 and immediately
+-- reverted (25 rows). The marker rationale
+-- ("backfilled from composite on 2026-05-31") was wiped during
+-- the revert; if you see it anywhere, that's a re-application.
+-- =============================================================
+
 -- Conviction Expression v4 — backfill for existing live rows.
 -- See docs/plans/CONVICTION_EXPRESSION.md §3, §9.
 --
