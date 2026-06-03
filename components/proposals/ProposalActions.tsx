@@ -176,47 +176,61 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={rejectOpen} onOpenChange={closeRejectDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reject proposal</DialogTitle>
-            <DialogDescription>
-              Optional: tell the agent why. Your message is stored as a ThesisUpdate audit row so the agent reads it on the next run and adapts.
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            value={rejectMessage}
-            onChange={(e) => setRejectMessage(e.target.value)}
-            placeholder="e.g. just broke out — reconsider adding instead of selling"
-            rows={4}
-            maxLength={2000}
-            disabled={pending === "reject"}
-            autoFocus
-          />
-          {rejectError ? (
-            <p className="text-xs text-destructive">{rejectError}</p>
-          ) : null}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => closeRejectDialog(false)}
+      {/*
+        The Dialog renders into a portal at document.body, but React events
+        from inside it still bubble through the React parent chain — which
+        includes the trade-row's wrapping <Link>. Without this stop, clicking
+        the textarea fires Next.js Link's onClick and navigates the page.
+        stopPropagation on every event type Link could be listening to.
+      */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <Dialog open={rejectOpen} onOpenChange={closeRejectDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reject proposal</DialogTitle>
+              <DialogDescription>
+                Optional: tell the agent why. Your message is stored as a ThesisUpdate audit row so the agent reads it on the next run and adapts.
+              </DialogDescription>
+            </DialogHeader>
+            <Textarea
+              value={rejectMessage}
+              onChange={(e) => setRejectMessage(e.target.value)}
+              placeholder="e.g. just broke out — reconsider adding instead of selling"
+              rows={4}
+              maxLength={2000}
               disabled={pending === "reject"}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void submitReject()}
-              disabled={pending === "reject"}
-            >
-              {pending === "reject" ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : null}
-              Reject
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              autoFocus
+            />
+            {rejectError ? (
+              <p className="text-xs text-destructive">{rejectError}</p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => closeRejectDialog(false)}
+                disabled={pending === "reject"}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => void submitReject()}
+                disabled={pending === "reject"}
+              >
+                {pending === "reject" ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : null}
+                Reject
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </>
   );
 }
