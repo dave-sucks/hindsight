@@ -118,6 +118,7 @@ export async function GET(
   type PendingProposalInfo = {
     orderId: string;
     intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+    quantity: number;
     expiresAt: string | null;
     rationale: string | null;
   };
@@ -126,30 +127,42 @@ export async function GET(
     avgCost: number;
     openedAt: string;
     daysHeld: number;
+    // Closed-position data — populated when the thesis (and its position)
+    // is CLOSED, so the sheet's one trade block can render "Bought N @ $X,
+    // closed at $Y" + realized P&L + close reason instead of a separate
+    // terminal banner. See docs/plans/TRADE_AS_PROPOSAL.md.
+    closed: boolean;
+    closePrice: number | null;
+    realizedPnl: number | null;
+    realizedPnlPct: number | null;
+    closeReason: string | null;
     /** Trade-as-Proposal — set when an Order(AWAITING_APPROVAL) is linked
-     *  to this position. Drives the inline [Approve][Reject] alert block
-     *  at the top of the sheet. See docs/plans/TRADE_AS_PROPOSAL.md. */
+     *  to this position. Drives the inline Review dropdown + prompt. */
     pendingProposal: PendingProposalInfo | null;
   };
 
   let position: PositionInfo | null = null;
-  if (
-    (thesis.status === "ACTIVE" || thesis.status === "WATCHING") &&
-    thesis.researchRun?.agentConfigId
-  ) {
+  const isActiveish =
+    thesis.status === "ACTIVE" || thesis.status === "WATCHING";
+  const isClosed = thesis.status === "CLOSED";
+  if ((isActiveish || isClosed) && thesis.researchRun?.agentConfigId) {
     const pos = await prisma.position.findFirst({
       where: {
         accountId,
         analystId: thesis.researchRun.agentConfigId,
         symbol: thesis.ticker,
-        // PENDING_APPROVAL = a buy proposal the user hasn't decided yet.
-        // OPEN = a real holding (with or without a pending close/add).
-        status: { in: ["OPEN", "PENDING_APPROVAL"] },
+        // ACTIVE/WATCHING → the live holding (OPEN) or a pending buy
+        // (PENDING_APPROVAL). CLOSED thesis → the closed position.
+        status: isClosed ? "CLOSED" : { in: ["OPEN", "PENDING_APPROVAL"] },
       },
+      orderBy: { openedAt: "desc" },
       select: {
         quantity: true,
         avgCost: true,
         openedAt: true,
+        closePrice: true,
+        realizedPnl: true,
+        closeReason: true,
         orders: {
           where: { status: "AWAITING_APPROVAL" },
           orderBy: { createdAt: "desc" },
@@ -157,6 +170,7 @@ export async function GET(
           select: {
             id: true,
             intent: true,
+            quantity: true,
             expiresAt: true,
             rationale: true,
           },
@@ -169,15 +183,25 @@ export async function GET(
         Math.floor((Date.now() - pos.openedAt.getTime()) / 86_400_000),
       );
       const ap = pos.orders?.[0];
+      const cost = Number(pos.avgCost) * Number(pos.quantity);
       position = {
         quantity: Number(pos.quantity),
         avgCost: Number(pos.avgCost),
         openedAt: pos.openedAt.toISOString(),
         daysHeld,
+        closed: isClosed,
+        closePrice: pos.closePrice != null ? Number(pos.closePrice) : null,
+        realizedPnl: pos.realizedPnl != null ? Number(pos.realizedPnl) : null,
+        realizedPnlPct:
+          pos.realizedPnl != null && cost > 0
+            ? (Number(pos.realizedPnl) / cost) * 100
+            : null,
+        closeReason: pos.closeReason,
         pendingProposal: ap
           ? {
               orderId: ap.id,
               intent: (ap.intent ?? "OPEN") as PendingProposalInfo["intent"],
+              quantity: Number(ap.quantity),
               expiresAt: ap.expiresAt?.toISOString() ?? null,
               rationale: ap.rationale,
             }

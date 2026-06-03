@@ -10,7 +10,7 @@
  *    programmatically without the card trigger.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -281,66 +281,136 @@ function VariantViewBlock({ variantView }: { variantView: string | null }) {
 // trade this is and where the exits are. Renders only when we have
 // horizon/target/stop info to show.
 
-function PositionRow({
+// ── TradeBlock ──
+// The ONE trade section in the sheet. Every state — pending proposal,
+// holding, closed — renders through the SAME container and the SAME slot
+// layout below (heading · optional Review · P&L · note · expiry). Only the
+// four slot values differ per state; the JSX is shared, so the states are
+// guaranteed to be visually identical blocks (no "one's in a box, one isn't").
+//   • holding         → "Bought N shares at $X, now trading at $Y" + P&L
+//   • closed          → "Bought N shares at $X, closed at $Y" + realized P&L
+//                        + close reason
+//   • pending buy     → "Proposed: buy N shares at $X" + reason + Review
+//   • pending sell/add → "Proposed: <verb> N shares at $Y" + P&L + reason
+//                        + Review
+// `position` (cost basis + qty) comes from /triggers; `pnl` (live price +
+// unrealized P&L) from /quote — the two land at different times, so the
+// P&L line appears once /quote resolves. See docs/plans/TRADE_AS_PROPOSAL.md §6.
+function TradeBlock({
   position,
   pnl,
+  pendingProposal,
   direction,
-  horizon,
-  targetPrice,
-  stopLoss,
-  pendingBuy = false,
 }: {
   position: NonNullable<TriggersResponse["position"]>;
   pnl: QuoteResponse["positionPnl"] | null;
+  pendingProposal: {
+    orderId: string;
+    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+    quantity: number;
+    expiresAt: string | null;
+    rationale: string | null;
+  } | null;
   direction: "LONG" | "SHORT" | "PASS";
-  horizon?: string | null;
-  targetPrice?: number | null;
-  stopLoss?: number | null;
-  /** When true, the trade isn't held yet — it's an OPEN proposal awaiting
-   *  approval. The line reads "Waiting approval to buy N @ $X" and the
-   *  live-P&L line is suppressed (we don't hold it). The Review dropdown
-   *  lives in the sheet header next to the title. */
-  pendingBuy?: boolean;
 }) {
-  // `position` (cost basis + qty) comes from /triggers; `pnl` (live price
-  // + market value + unrealized PnL) comes from /quote. The two land at
-  // different times — the row renders shares+cost immediately and adds
-  // the "now trading at $X · +N%" once /quote resolves.
-  const verb = direction === "SHORT" ? "short" : "buy";
-  return (
-    <div className="space-y-1">
-      <p className="text-sm tabular-nums leading-relaxed">
-        {pendingBuy ? (
-          <>
-            Waiting approval to {verb} {position.quantity.toFixed(1)} shares at{" "}
-            <span className="font-medium">${position.avgCost.toFixed(2)}</span>
-          </>
-        ) : (
-          <>
-            Bought {position.quantity.toFixed(1)} shares at{" "}
-            <span className="font-medium">${position.avgCost.toFixed(2)}</span>
-            {pnl != null ? (
-              <>
-                , now trading at{" "}
-                <span className="font-medium">${pnl.currentPrice.toFixed(2)}</span>
-              </>
-            ) : null}
-          </>
-        )}
-      </p>
-      {!pendingBuy && pnl != null ? (
+  const pp = pendingProposal;
+  const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+  const entry = position.avgCost.toFixed(2);
+  const heldQty = position.quantity.toFixed(1);
+  const current = pnl?.currentPrice;
+
+  // Four slots — filled per state, rendered through one shared layout below.
+  let heading: string;
+  let review: ReactNode = null;
+  let pnlNode: ReactNode = null;
+  let note: string | null = null;
+  let expiry: string | null = null;
+
+  if (pp) {
+    // ── Pending proposal ──
+    const isBuy = pp.intent === "OPEN";
+    const verb = isBuy
+      ? direction === "SHORT"
+        ? "short"
+        : "buy"
+      : pp.intent === "ADD"
+        ? "add"
+        : pp.intent === "CLOSE"
+          ? "close"
+          : "trim";
+    heading = isBuy
+      ? `Proposed: ${verb} ${fmtQty(pp.quantity)} shares at $${entry}`
+      : `Proposed: ${verb} ${fmtQty(pp.quantity)} shares${current != null ? ` at $${current.toFixed(2)}` : ""}`;
+    review = <ProposalActions orderId={pp.orderId} align="end" />;
+    // Running P&L for sells / adds / trims (the name is held); a fresh buy
+    // has no position yet, so no P&L line.
+    if (!isBuy && pnl != null) {
+      pnlNode = (
         <PriceChange
           dollarChange={pnl.unrealizedPnl}
           percentChange={pnl.unrealizedPnlPct}
           size="base"
         />
+      );
+    }
+    note = pp.rationale;
+    expiry = pp.expiresAt
+      ? new Date(pp.expiresAt).toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        })
+      : null;
+  } else if (position.closed) {
+    // ── Closed ──
+    heading =
+      `Bought ${heldQty} shares at $${entry}` +
+      (position.closePrice != null
+        ? `, closed at $${position.closePrice.toFixed(2)}`
+        : "");
+    if (position.realizedPnl != null) {
+      pnlNode = (
+        <PriceChange
+          dollarChange={position.realizedPnl}
+          percentChange={position.realizedPnlPct ?? 0}
+          size="base"
+        />
+      );
+    }
+    note = position.closeReason ?? null;
+  } else {
+    // ── Holding ──
+    heading =
+      `Bought ${heldQty} shares at $${entry}` +
+      (pnl != null ? `, now trading at $${pnl.currentPrice.toFixed(2)}` : "");
+    if (pnl != null) {
+      pnlNode = (
+        <PriceChange
+          dollarChange={pnl.unrealizedPnl}
+          percentChange={pnl.unrealizedPnlPct}
+          size="base"
+        />
+      );
+    }
+  }
+
+  return (
+    <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium tabular-nums flex-1 min-w-0">
+          {heading}
+        </p>
+        {review}
+      </div>
+      {pnlNode}
+      {note ? (
+        <p className="text-sm text-muted-foreground leading-relaxed">{note}</p>
       ) : null}
-      <IntentSuffix
-        direction={direction}
-        horizon={horizon}
-        targetPrice={targetPrice}
-        stopLoss={stopLoss}
-      />
+      {expiry ? (
+        <p className="text-xs text-muted-foreground">Expires {expiry}</p>
+      ) : null}
     </div>
   );
 }
@@ -798,22 +868,22 @@ function TerminalStatusAlert({
   invalidatedAt: string | null;
   invalidReason: string | null;
 }) {
-  if (status !== "CLOSED" && status !== "INVALIDATED" && status !== "ARCHIVED") {
+  // CLOSED is deliberately NOT handled here. A closed position renders
+  // inside TradeBlock ("Bought N @ $X, closed at $Y" + realized P&L + close
+  // reason) — the single source of truth for the closed trade state. This
+  // banner exists only for terminal states with NO trade to show:
+  // INVALIDATED (thesis disproven) and ARCHIVED (walked away from the
+  // watchlist without ever trading).
+  if (status !== "INVALIDATED" && status !== "ARCHIVED") {
     return null;
   }
-  // INVALIDATED tracks its own date/reason fields; CLOSED + ARCHIVED both
-  // reuse closedAt/closeReason (ARCHIVED is "walked away" without a trade
-  // outcome — semantically a close of the watching cycle).
+  // INVALIDATED tracks its own date/reason fields; ARCHIVED ("walked away"
+  // without a trade outcome) reuses closedAt/closeReason.
   const isInvalid = status === "INVALIDATED";
   const date = isInvalid ? invalidatedAt : closedAt;
   const reason = isInvalid ? invalidReason : closeReason;
   if (!date && !reason) return null;
-  const title =
-    status === "CLOSED"
-      ? "Position closed"
-      : status === "INVALIDATED"
-        ? "Thesis invalidated"
-        : "Thesis archived";
+  const title = isInvalid ? "Thesis invalidated" : "Thesis archived";
   const formattedDate = date
     ? new Date(date).toLocaleDateString("en-US", {
         year: "numeric",
@@ -1622,6 +1692,12 @@ export function ThesisSheetBody({
           the reason + date right at the top so the user doesn't have to
           dig through the activity timeline to find out what happened.
           Previously these fields were fetched but never rendered. */}
+      {/* Terminal non-trade states only (INVALIDATED / ARCHIVED). CLOSED is
+          NOT shown here — it renders inside TradeBlock below as the single
+          closed-trade state. TerminalStatusAlert returns null for CLOSED /
+          ACTIVE / WATCHING, so rendering it unconditionally is safe: no
+          loading-window race, and structurally impossible to double up with
+          the closed trade block. */}
       <TerminalStatusAlert
         status={liveStatus}
         closedAt={state?.closedAt ?? null}
@@ -1636,32 +1712,24 @@ export function ThesisSheetBody({
           identity takes you to the broader stock page (TradingView
           chart, all theses on this ticker, etc.). Hover-underline
           conveys affordance without disrupting the typography.
-          When a proposal is awaiting approval, the Review dropdown sits
-          inline with the title (see docs/plans/TRADE_AS_PROPOSAL.md §6). */}
+          The Review control for a pending proposal lives inside the trade
+          block below, not here — one unified trade section per state. */}
       <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/stocks/${ticker}`}
-            className="flex items-center gap-3 group/stocklink flex-1 min-w-0"
-          >
-            <StockLogo ticker={ticker} size="lg" />
-            <div className="flex-1 min-w-0">
-              <p className="text-lg font-semibold truncate group-hover/stocklink:underline underline-offset-4">
-                {displayName}
-              </p>
-              <p className="font-mono text-xs text-muted-foreground">
-                {ticker}
-                {exchange ? ` · ${exchange}` : ""}
-              </p>
-            </div>
-          </Link>
-          {state?.position?.pendingProposal ? (
-            <ProposalActions
-              orderId={state.position.pendingProposal.orderId}
-              align="end"
-            />
-          ) : null}
-        </div>
+        <Link
+          href={`/stocks/${ticker}`}
+          className="flex items-center gap-3 group/stocklink"
+        >
+          <StockLogo ticker={ticker} size="lg" />
+          <div className="flex-1 min-w-0">
+            <p className="text-lg font-semibold truncate group-hover/stocklink:underline underline-offset-4">
+              {displayName}
+            </p>
+            <p className="font-mono text-xs text-muted-foreground">
+              {ticker}
+              {exchange ? ` · ${exchange}` : ""}
+            </p>
+          </div>
+        </Link>
         {/* Live current price + day's change. Comes from the separate
             /quote endpoint (slow — Finnhub call) so this block usually
             paints after the rest of the sheet body. Skeleton while
@@ -1688,20 +1756,19 @@ export function ThesisSheetBody({
         ) : null}
       </div>
 
-      {/* ── Position row (only when ACTIVE + open Position exists) ── */}
-      {/* Mirrors the dashboard ThesisRow position pattern: shares @
-          cost, market value, live P&L. Intent suffix (direction · target/
-          stop · horizon) appended so a glance tells you the whole trade
-          structure. */}
+      {/* ── Trade block (one unified, state-aware section) ── */}
+      {/* The single place the trade lives. Headline morphs by state:
+          held → "Bought N @ $X, now $Y" + P&L; pending buy → "Proposed:
+          buy N @ $X"; held + pending sell/add/trim → the holding line PLUS
+          the proposed action + rationale + Review dropdown, all in one
+          grouped block. No separate floating sections.
+          See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
       {position ? (
-        <PositionRow
+        <TradeBlock
           position={position}
           pnl={quote?.positionPnl ?? null}
+          pendingProposal={state?.position?.pendingProposal ?? null}
           direction={direction}
-          horizon={state?.horizon ?? null}
-          targetPrice={state?.targetPrice ?? target_price ?? null}
-          stopLoss={state?.stopLoss ?? stop_loss ?? null}
-          pendingBuy={state?.position?.pendingProposal?.intent === "OPEN"}
         />
       ) : null}
 
