@@ -81,11 +81,13 @@ Worth doing before trade-as-proposal lands so proposals don't have to bolt on PR
 **If the prompt is insufficient, durable fix:** add a structured field harder to fake, e.g. `wouldBuyWithOwnMoney: "YES_AT_MARKET" | "WAIT_FOR_BETTER_LEVEL" | "NO"`. Forces a yes/no commitment that can't hide behind rubric vocabulary. Don't ship until data shows the prompt failing.
 
 ### P1-13 — BATCHED DISCOVERY overlay is archetype-blind
-**Status:** open, promoted from legacy P1-9 by [#361](https://github.com/dave-sucks/hindsight/pull/361).
+**Status:** open, promoted from legacy P1-9 by [#361](https://github.com/dave-sucks/hindsight/pull/361). **First production evidence: 2026-06-02 Compounder chat session.**
 
 The new BATCHED DISCOVERY prompt overlay on `buildPrincipalSystemPrompt` teaches a universal 4-dim composite scoring rubric — `trendStrength` / `relativeStrength` / `entryQuality` / `catalystFreshness`. That rubric is momentum-flavored. A Compounder analyst (long-horizon, narrative-driven, willing to buy weakness) triaged through it gets force-fit through a momentum lens — high relative-strength + recent catalyst-freshness will score the wrong names well for that archetype.
 
 Same concern existed in the deleted Sunday discovery prompt — was filed as legacy P1-9 and deferred. The operator-driven model amplifies it because the human is now interactively pasting candidates and watching the agent triage in real time; the bad triage is visible in chat.
+
+**2026-06-02 evidence (from the daily-run review):** A Compounder chat session ran the 4-dim rubric on CIEN, COHR, and LITE. CIEN and COHR were rejected on qualitative "operator-quality" grounds (the agent's narrative judgment overrode the rubric). LITE was accepted on bottleneck-position grounds — but it also happened to score 2/2/2/2 on the momentum dimensions, so the rubric *did* converge on the right name, by accident. **The latent bias hasn't biased the outcome yet because the Compounder's qualitative overlay is strong. Re-evaluate after 3–5 chat sessions if a wrong-archetype name slips through the rubric.**
 
 **Fix:** branch the prompt overlay on the scoped analyst's archetype. Compounder/value gets a different 4-dim rubric (e.g., reflexivity, narrative durability, valuation cushion, expectations gap). Catalyst/momentum keeps the current one. The strategy archetypes in `lib/agent/knowledge/strategy-archetypes.ts` already encode the per-archetype shape — read it via `read_knowledge_library` in the chat prompt overlay (same plumbing the builder already uses).
 
@@ -128,12 +130,15 @@ Re-evaluate the rest after the live loop is stable for ~1 week.
 
 ## Done since
 
-### 2026-06-02 — GAPS hygiene + P1-12 investigation
-- **P1-5** — MRVL Sonar earnings hallucination class fixed by [#357](https://github.com/dave-sucks/hindsight/pull/357) (writer date-awareness gate) on 2026-05-28. Was orphaned in the open P1 list — retroactively moved here.
+### 2026-06-02 — GAPS hygiene + P1-12 investigation + P1-14 conviction backfill applied
+- **P1-5** — MRVL Sonar earnings hallucination class fixed by [#357](https://github.com/dave-sucks/hindsight/pull/357) (writer date-awareness gate) on 2026-05-28. Was orphaned in the open P1 list — retroactively moved here. **2026-06-02 review evidence:** Sonar date-sanity sniff returned 0 rows. Gate is working in production.
 - **P1-7** — UI label rename ("Awaiting live entry" → "Promoted") was already shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349) on 2026-05-26 (see the "first live promotion incident fully closed" entry below). Duplicate orphan entry removed from the open P1 list.
 - **P1-12** — Secular Compounder 5/5 writer FAILUREs on 2026-05-31 were Anthropic credit-balance-exhaustion errors, NOT a code bug. All 5 dispatches (CRDO, TSM, LRCX, ADBE, MU) started within 36ms of each other from parent run `cmptt39lf008t04l7dv6hibei` (parallel fan-out) and failed with the same provider error: `"Your credit balance is too low to access the Anthropic API."` No other days in the past 14 days had this failure shape. **Sunday-discovery cron disposition decision (P2) is unblocked.**
+- **P1-14** — Conviction backfill never ran on production. Surfaced by the 2026-06-02 daily-run review (reviewer flagged "A7" — 25 of 28 directional ACTIVE+WATCHING theses had `conviction = NULL`, zero rows carried the `'backfilled from composite on 2026-05-31'` marker). Root cause: the schema migration `20260531000000_thesis_conviction_v4` DID run (created the columns on 2026-06-02 04:09 UTC) but the data backfill at `prisma/migrations/manual/backfill_conviction_v4.sql` is in the non-Prisma-tracked `migrations/manual/` folder — `prisma migrate deploy` doesn't pick it up. **Backfill applied 2026-06-02:** 25 rows updated (6 LONG ACTIVE + 18 LONG WATCHING + 1 SHORT WATCHING). Post-backfill distribution across directional open theses: 19 HIGH / 7 MEDIUM / 2 LOW / 0 NULL. The conviction-modulated sizing logic in the daily-run prompt now has real data to bite on. **Important:** this is "before flipping live toggles" hygiene, not "before exercising paper proposals" hygiene — paper proposal flow doesn't read conviction differently than current paper trading does, so PR #364 testing isn't gated on this.
 
 **Operational follow-up (not filed as a GAPS item — operational, not architectural):** a parallel writer fan-out of N dispatches will all fail simultaneously if Anthropic credit balance is below threshold at fan-out time. Solvable by Anthropic billing alerts + an optional pre-flight balance check before the dispatch fan-out. Worth doing if it bites again; otherwise just monitor billing.
+
+**Process gap to remember:** the `migrations/manual/` folder is silent — `prisma migrate deploy` doesn't run it, and there's no automated reminder. When a PR ships with a file there, someone has to apply it manually. Future PRs that add to that folder should call out the apply step in the PR body explicitly. Worth a checklist item in `docs/prompts/SESSION_BOOTSTRAP.md` if it bites again.
 
 ### 2026-06-01 — P1-3: `targetPrice` overload was a one-line trigger bug, not a schema split
 PR [#362](https://github.com/dave-sucks/hindsight/pull/362). `watchingEntryTrigger` was reading `targetPrice` (the take-profit) instead of `entryPrice` (where the writer wanted to buy in). The schema was always correct — both columns existed with separate meanings — the trigger code just wired the wrong column to the ENTER action.
