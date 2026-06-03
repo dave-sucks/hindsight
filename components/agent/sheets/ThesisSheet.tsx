@@ -281,21 +281,51 @@ function VariantViewBlock({ variantView }: { variantView: string | null }) {
 // trade this is and where the exits are. Renders only when we have
 // horizon/target/stop info to show.
 
+// ── TradeBlock helpers ──
+
+/** Compact "Jun 2" date for the meta line. */
+function fmtTradeDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/**
+ * Close reason from close_position is an enum (TARGET / STOP / MANUAL) or
+ * PROMOTED from the promote action — sometimes with " — {notes}" appended.
+ * Rendering "STOP" raw read as a broken label; humanize the known codes and
+ * pass through anything that's already a sentence.
+ */
+function humanizeCloseReason(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const [head, ...rest] = raw.split(" — ");
+  const map: Record<string, string> = {
+    STOP: "Stopped out",
+    TARGET: "Hit target",
+    MANUAL: "Closed manually",
+    PROMOTED: "Closed on promotion to live",
+  };
+  const mapped = map[head.trim().toUpperCase()];
+  if (mapped) return rest.length ? `${mapped} — ${rest.join(" — ")}` : mapped;
+  return raw;
+}
+
 // ── TradeBlock ──
 // The ONE trade section in the sheet. Every state — pending proposal,
 // holding, closed — renders through the SAME container and the SAME slot
-// layout below (heading · optional Review · P&L · note · expiry). Only the
-// four slot values differ per state; the JSX is shared, so the states are
-// guaranteed to be visually identical blocks (no "one's in a box, one isn't").
-//   • holding         → "Bought N shares at $X, now trading at $Y" + P&L
-//   • closed          → "Bought N shares at $X, closed at $Y" + realized P&L
-//                        + close reason
-//   • pending buy     → "Proposed: buy N shares at $X" + reason + Review
-//   • pending sell/add → "Proposed: <verb> N shares at $Y" + P&L + reason
-//                        + Review
-// `position` (cost basis + qty) comes from /triggers; `pnl` (live price +
-// unrealized P&L) from /quote — the two land at different times, so the
-// P&L line appears once /quote resolves. See docs/plans/TRADE_AS_PROPOSAL.md §6.
+// layout below (heading · optional Review · P&L · note · meta). Only the
+// slot values differ per state; the JSX is shared, so the states are
+// guaranteed to be visually identical blocks. The headings follow one
+// consistent grammar:
+//   • pending buy      → "Proposed: Buy N shares at $entry"
+//   • holding          → "Bought N shares at $entry, now trading at $current"
+//   • closed           → "Bought N shares at $entry, closed at $closePrice"
+//   • held + pending   → "Proposed: Bought N shares at $entry, <verb> at $current"
+// The meta line carries the timestamp per state (Opened / Closed / Expires).
+// `position` (cost basis + qty + dates) comes from /triggers; `pnl` (live
+// price + unrealized P&L) from /quote — the two land at different times, so
+// the P&L line appears once /quote resolves. See TRADE_AS_PROPOSAL.md §6.
 function TradeBlock({
   position,
   pnl,
@@ -316,35 +346,37 @@ function TradeBlock({
   const pp = pendingProposal;
   const fmtQty = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
   const entry = position.avgCost.toFixed(2);
-  const heldQty = position.quantity.toFixed(1);
+  const heldQty = fmtQty(position.quantity);
   const current = pnl?.currentPrice;
 
-  // Four slots — filled per state, rendered through one shared layout below.
+  // Five slots — filled per state, rendered through one shared layout below.
   let heading: string;
   let review: ReactNode = null;
   let pnlNode: ReactNode = null;
   let note: string | null = null;
-  let expiry: string | null = null;
+  let meta: string | null = null;
 
-  if (pp) {
-    // ── Pending proposal ──
-    const isBuy = pp.intent === "OPEN";
-    const verb = isBuy
-      ? direction === "SHORT"
-        ? "short"
-        : "buy"
-      : pp.intent === "ADD"
-        ? "add"
-        : pp.intent === "CLOSE"
-          ? "close"
-          : "trim";
-    heading = isBuy
-      ? `Proposed: ${verb} ${fmtQty(pp.quantity)} shares at $${entry}`
-      : `Proposed: ${verb} ${fmtQty(pp.quantity)} shares${current != null ? ` at $${current.toFixed(2)}` : ""}`;
+  // "Bought N shares at $X" — the shared stem for every state that has a
+  // real (held or closed) position behind it.
+  const boughtStem = `Bought ${heldQty} shares at $${entry}`;
+
+  if (pp && pp.intent === "OPEN") {
+    // ── Pending buy (no position held yet) ──
+    const verb = direction === "SHORT" ? "Short" : "Buy";
+    heading = `Proposed: ${verb} ${fmtQty(pp.quantity)} shares at $${entry}`;
     review = <ProposalActions orderId={pp.orderId} align="end" />;
-    // Running P&L for sells / adds / trims (the name is held); a fresh buy
-    // has no position yet, so no P&L line.
-    if (!isBuy && pnl != null) {
+    note = pp.rationale;
+    meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
+  } else if (pp) {
+    // ── Held + pending sell / add / trim ──
+    const verb =
+      pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim";
+    heading =
+      boughtStem +
+      (current != null ? `, ${verb} at $${current.toFixed(2)}` : `, ${verb}`);
+    review = <ProposalActions orderId={pp.orderId} align="end" />;
+    // Running P&L on the held name.
+    if (pnl != null) {
       pnlNode = (
         <PriceChange
           dollarChange={pnl.unrealizedPnl}
@@ -354,19 +386,12 @@ function TradeBlock({
       );
     }
     note = pp.rationale;
-    expiry = pp.expiresAt
-      ? new Date(pp.expiresAt).toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        })
-      : null;
+    meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
+    heading = `Proposed: ${heading}`;
   } else if (position.closed) {
     // ── Closed ──
     heading =
-      `Bought ${heldQty} shares at $${entry}` +
+      boughtStem +
       (position.closePrice != null
         ? `, closed at $${position.closePrice.toFixed(2)}`
         : "");
@@ -379,12 +404,13 @@ function TradeBlock({
         />
       );
     }
-    note = position.closeReason ?? null;
+    note = humanizeCloseReason(position.closeReason);
+    meta = position.closedAt ? `Closed ${fmtTradeDate(position.closedAt)}` : null;
   } else {
     // ── Holding ──
     heading =
-      `Bought ${heldQty} shares at $${entry}` +
-      (pnl != null ? `, now trading at $${pnl.currentPrice.toFixed(2)}` : "");
+      boughtStem +
+      (current != null ? `, now trading at $${current.toFixed(2)}` : "");
     if (pnl != null) {
       pnlNode = (
         <PriceChange
@@ -394,6 +420,9 @@ function TradeBlock({
         />
       );
     }
+    meta =
+      `Opened ${fmtTradeDate(position.openedAt)}` +
+      (position.daysHeld > 0 ? ` · ${position.daysHeld}d held` : "");
   }
 
   return (
@@ -408,9 +437,7 @@ function TradeBlock({
       {note ? (
         <p className="text-sm text-muted-foreground leading-relaxed">{note}</p>
       ) : null}
-      {expiry ? (
-        <p className="text-xs text-muted-foreground">Expires {expiry}</p>
-      ) : null}
+      {meta ? <p className="text-xs text-muted-foreground">{meta}</p> : null}
     </div>
   );
 }
