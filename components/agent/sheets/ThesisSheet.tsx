@@ -609,54 +609,14 @@ function ScoringGauge({ score, max }: { score: number; max: number }) {
   return <TickBar ticks={ticks} className="w-16 shrink-0" />;
 }
 
-// ── Skeleton placeholders for /triggers-dependent blocks ──────────────
-// The sheet fires /triggers + /quote in parallel. While /triggers is in
-// flight, blocks that depend on state (Core Belief, Key Assumptions,
-// Invalidation Conditions, Composite Score) render these placeholders so
-// the layout doesn't reflow when the data lands. Each skeleton holds
-// roughly the same vertical space as the populated block.
-
-function BulletListSkeleton({ title, rows }: { title: string; rows: number }) {
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-        {title}
-      </p>
-      <div className="space-y-1.5">
-        {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="text-muted-foreground/50 select-none">•</span>
-            <Skeleton className="h-4 flex-1" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CompositeScoreSkeleton() {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-baseline justify-between">
-        <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-          Composite Score
-        </p>
-        <Skeleton className="h-4 w-16" />
-      </div>
-      <div>
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="border-b border-border py-2 space-y-1">
-            <div className="flex items-center justify-between gap-3">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-2 w-24 shrink-0" />
-            </div>
-            <Skeleton className="h-3 w-3/4" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+// Skeleton placeholders for state-dependent blocks were deleted 2026-06-02.
+// They existed to hold space while /triggers was in flight — but that made
+// every block a tri-state (`state?.X ? real : loading ? skeleton : null`)
+// when the data is just a DB field that either exists or doesn't. The
+// blocks now render iff the value is present; on a row-click open the
+// parent forwards `initialState` so they paint immediately, and on an
+// unseeded open they appear after the ~50ms DB round-trip. The live price
+// (the one genuinely-slow value) keeps its skeleton — see the price block.
 
 // ── TradeStructureBlock ───────────────────────────────────────────────
 // Compact single-row block of trade-shape mechanics: next review (with
@@ -1588,7 +1548,9 @@ export function ThesisSheetBody({
   company_name,
   exchange,
   fundamentals,
-  status,
+  // `status` prop intentionally NOT destructured for rendering — status
+  // is sourced solely from the resolved `state` (see liveStatus below).
+  // Reading the prop was the cause of the pill flash.
   initialState,
 }: ThesisSheetBodyProps) {
   const isPass = direction === "PASS";
@@ -1641,15 +1603,14 @@ export function ThesisSheetBody({
     };
   }, [thesis_id]);
 
-  // Status comes from the row that opened the sheet; the API fetch
-  // refines it (live PnL, terminal reasons). If neither has a value the
-  // pill simply doesn't render — no defensive default.
-  const liveStatus = (state?.status ?? status) as ThesisStatus | undefined;
+  // Status has ONE source: the resolved /triggers state. We do NOT fall
+  // back to the `status` prop for rendering — that dual source was the
+  // cause of the status-pill flash (prop paints, fetch swaps it ~50ms
+  // later). The pill renders once `state` lands; for the ~50ms DB round
+  // trip on an unseeded open it's simply absent (a pill appearing is
+  // invisible; a pill *swapping* was the bug).
+  const liveStatus = state?.status as ThesisStatus | undefined;
   const position = state?.position ?? null;
-  // `state` is non-null after /triggers resolves (loading is true while it's
-  // still in flight). Drives the skeleton placeholders for state-dependent
-  // blocks (status pill, core belief, key assumptions, scoring, etc).
-  const stateLoading = state == null && thesis_id != null;
 
   // Conviction Expression v4 — writer's tier verdict + rationale +
   // variantView. Pulled from /triggers state. Renders null when the
@@ -1666,11 +1627,7 @@ export function ThesisSheetBody({
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        {liveStatus ? (
-          <StatusPill status={liveStatus} />
-        ) : stateLoading ? (
-          <Skeleton className="h-5 w-20" />
-        ) : null}
+        {liveStatus ? <StatusPill status={liveStatus} /> : null}
         <ConvictionBadge
           conviction={conviction}
           rationale={convictionRationale}
@@ -1787,11 +1744,6 @@ export function ThesisSheetBody({
         <p className="text-xl font-normal leading-relaxed">
           {state.coreBelief}
         </p>
-      ) : stateLoading ? (
-        <div className="space-y-2">
-          <Skeleton className="h-6 w-full" />
-          <Skeleton className="h-6 w-3/4" />
-        </div>
       ) : null}
 
       {/* ── Triggers (moved up — they're the standing opinion in action) ── */}
@@ -1816,12 +1768,6 @@ export function ThesisSheetBody({
             </span>
           ) : null}
         </p>
-      ) : stateLoading ? (
-        <div className="space-y-2">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-2/3" />
-        </div>
       ) : null}
 
       {/* ── Pass reason ───────────────────────────────────────── */}
@@ -1861,8 +1807,6 @@ export function ThesisSheetBody({
             <ScoringRow label="Catalyst freshness" dim={state.scoring.catalystFreshness} max={2} />
           </div>
         </Card>
-      ) : stateLoading ? (
-        <CompositeScoreSkeleton />
       ) : null}
 
       {/* ── Price Targets (the agent's entry/target/stop + live current) ─ */}
@@ -1928,8 +1872,6 @@ export function ThesisSheetBody({
             ))}
           </ul>
         </div>
-      ) : stateLoading ? (
-        <BulletListSkeleton title="Key Assumptions" rows={2} />
       ) : null}
 
       {/* ── Invalidation Conditions (invalidationConds) ──────── */}
@@ -1954,8 +1896,6 @@ export function ThesisSheetBody({
             ))}
           </ul>
         </div>
-      ) : stateLoading ? (
-        <BulletListSkeleton title="Invalidation Conditions" rows={2} />
       ) : null}
 
       {/* ── Research Synthesis accordions ───────────────────── */}
