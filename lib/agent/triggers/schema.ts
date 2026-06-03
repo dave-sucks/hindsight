@@ -150,7 +150,19 @@ export const triggerSchema = z.object({
     .max(90)
     .optional()
     .describe(
-      "Don't re-fire this trigger more than once per N days. If omitted, the evaluator applies a per-predicate-kind default (EARNINGS_*: 7, FILING/SIGNAL_TYPE/PRICE_*: 1, TIME_ELAPSED: ~80% of window, REVIEW_DATE_HIT: 7). Pass 0 to opt out — useful only for terminal EXIT triggers.",
+      // Description-level discipline — the agent reads this when picking
+      // a value. Runtime enforcement lives in the read/write paths
+      // (applyTriggerCooldownDefaults overwrites bad 0s at write time,
+      // shouldFire falls back to the per-kind default at evaluation time).
+      // Not enforced by Zod .refine() here because triggersArraySchema is
+      // ALSO used at disk-read time (trigger-evaluator parseTriggers,
+      // get-theses, thesis-sheet-state, tactical-run, live-evaluate). A
+      // refine() that rejects legacy bad-shape rows would fail the whole
+      // array parse and silently drop ALL triggers on that thesis —
+      // including the legitimate EXIT stops sitting next to the bad
+      // REVIEW. That's the same silent-failure shape PR #371 just fixed
+      // for the id-less bug; don't re-introduce it.
+      "Don't re-fire this trigger more than once per N days. OMIT to use the per-predicate-kind default (EARNINGS_*: 7, FILING/SIGNAL_TYPE/PRICE_*: 1, TIME_ELAPSED: ~80% of window, REVIEW_DATE_HIT: 7) — that's the right answer in almost every case. The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT.",
     ),
   lastFiredAt: z.string().datetime().optional(),
 });

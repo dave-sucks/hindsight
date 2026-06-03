@@ -21,7 +21,61 @@
 
 These prevent the live agent from doing its job. Fix first.
 
-*(All four original P0 items shipped 2026-05-26. See "Done since" below. New P0 items go in this section as they're found.)*
+### P0-13 — Trigger evaluator runaway: agent-supplied `cooldownDays: 0` on non-EXIT trigger
+**Status:** closed in PR #377. Three-layer code defense + comprehensive data cleanup all shipped together.
+
+NVDA tactical loop on 2026-06-02 fired the same `TIME_ELAPSED 14d REVIEW` trigger every 5 minutes for ~70 minutes (15 runs, 11 COMPLETE + 4 OpenAI-flake FAILED) before manual intervention. Each run is a full GPT-5.5 tactical-mode invocation — significant unintended spend.
+
+**Root cause chain:**
+1. NVDA flipped WATCHING → ACTIVE at 12:47 ET via the PRICE_ABOVE $225 ENTER trigger.
+2. The agent then called `update_thesis` with a hand-crafted set of HELD-side triggers (custom rationale "Momentum Breakout trades are days-to-weeks holds…", NOT the template boilerplate). The agent stamped `cooldownDays: 0` on the TIME_ELAPSED REVIEW because the schema description told it "Pass 0 to opt out — useful only for terminal EXIT triggers" without enforcing the EXIT-only carve-out.
+3. `applyTriggerCooldownDefaults` in `lib/agent/triggers/defaults.ts` used `t.cooldownDays != null` to detect "user supplied a value." Since `0 != null` is true, the default-filler walked past the 0 instead of overwriting it.
+4. `shouldFire` in `lib/agent/triggers/evaluate.ts` documents `cooldownDays === 0` as "no rate limit, fire every evaluation" — explicitly intended for terminal EXIT triggers but not enforced.
+5. The Thesis row's `createdAt` is 2026-04-27 (when NVDA first hit the watchlist), so `TIME_ELAPSED(14d)` from `createdAt` evaluated true the instant the trigger landed — there's nothing in the predicate measuring against `position.openedAt`.
+6. 5-min trigger-evaluator cron + sticky-true predicate + cooldown=0 + no defense = infinite loop. The agent dutifully responded "position is 0 days old, holding" on every iteration but the trigger kept firing.
+
+**Why three layers needed:** the schema description told the agent 0 was the "opt-out" idiom. The write path missed the 0 because the existence check was `!= null`. The read path documented 0 as the escape hatch and didn't enforce EXIT-only. **Every layer was permissive.** Pressure-testing the initial 1-layer fix revealed ~28 theses on the open book already carried the bad shape from prior writer dispatches — far more than the 4 I initially patched. Write-path defense alone wouldn't have touched the existing rows.
+
+**Code fixes in PR #377 (three-layer defense):**
+
+1. **Schema (`lib/agent/triggers/schema.ts`)** — `cooldownDays` description rewritten to make EXIT-only unmissable: "The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT." No Zod `.refine()` — `triggersArraySchema` is used at disk-read time too (trigger-evaluator, get-theses, thesis-sheet-state, tactical-run, live-evaluate) and a refine() that rejected legacy bad-shape rows would fail the whole array parse and silently drop ALL triggers on that thesis including legitimate EXIT stops. That's the same silent-failure shape PR #371 just fixed for id-less triggers — don't re-introduce it.
+
+2. **Write path (`lib/agent/triggers/defaults.ts`)** — `applyTriggerCooldownDefaults` now treats `cooldownDays: 0` on any non-EXIT action as structurally invalid and overwrites with the per-predicate default. EXIT preserved (terminal opt-out is legitimate — position closes, cron's `status:ACTIVE` filter removes it from evaluation).
+
+3. **Read path (`lib/agent/triggers/evaluate.ts`)** — `shouldFire` mirrors the rule: non-EXIT `cooldownDays === 0` falls back to the per-predicate default at evaluation time instead of bypassing the rate limit. Defense in depth for any bad rows that slip through future write paths.
+
+13 new unit tests across `defaults.test.ts` and `evaluate.test.ts` pin all three behaviors, including the verbatim NVDA shape and the IREN TRIM PRICE_ABOVE $76.87 shape.
+
+**Data cleanup applied via one SQL UPDATE — 28 theses patched, not the 4 I initially caught:**
+
+The initial sweep filtered too narrowly (REVIEW + sticky predicates only). Broader audit showed nearly every open thesis carried at least one bad cooldownDays=0 on a non-EXIT trigger because the writer (Claude) has been systematically applying the schema's "Pass 0 to opt out" idiom to non-EXIT actions for some time. Cleanup applied per-predicate defaults matching the code path:
+
+- TIME_ELAPSED → max(1, round(days × 0.8))
+- EARNINGS_*, GUIDANCE_CHANGE, REVIEW_DATE_HIT → 7
+- FILING, SIGNAL_TYPE, PRICE_*, VS_SMA, RSI → 1
+
+Notable patched rows:
+
+| Thesis | Trigger | Was | Set to | Risk if left |
+|---|---|---|---|---|
+| NVDA (ACTIVE, Momentum Breakout) | TIME_ELAPSED 14d REVIEW | 0 | 14 | Active runaway — manual hotfix earlier |
+| IREN (ACTIVE, Momentum Breakout) | TRIM PRICE_ABOVE $76.87 | 0 | 1 | Would have partial-closed every 5 min if price hit target |
+| AVGO ×4 rows (incl. WATCHING ENTER + REVIEW) | various | 0 | per-kind | Earnings 6/03 would have re-fired ENTER multiple times |
+| ADBE (WATCHING) | TIME_ELAPSED 30d REVIEW | 0 | 30 | Would have blown 6/30 |
+| ON, MRVL, TSM, PANW, GOOGL, MSFT, NVTS, RBRK, VEEV, ADI, CRDO, CVV, HOOD, LITE, NTNX, POET, SNPS, TXN | various | 0 | per-kind | Latent landmines |
+
+Post-cleanup verification query (`SELECT … WHERE cooldownDays=0 AND action != 'EXIT' AND status IN open-states`) returns 0 rows. EXIT stops on all ACTIVE positions verified preserved at `cooldownDays: 0` (legitimate — sanity-spot-checked NVDA/IREN/MRVL/TSM).
+
+**Related but separate (not fixed here):** the TIME_ELAPSED predicate measures from `thesis.createdAt`, which is the wrong clock for a HELD-side "max hold" check. The trigger evaluator should measure from `position.openedAt` on ACTIVE rows. Filing as follow-up P1-14 (below).
+
+### P1-14 — TIME_ELAPSED predicate uses `thesis.createdAt`, not `position.openedAt`, on HELD-side triggers
+**Status:** filed via P0-13 postmortem 2026-06-02. **Not blocking now that cooldown defaults are correct, but the semantic is wrong.**
+
+A "max hold 14 days" REVIEW trigger on an ACTIVE position should measure 14 days from when the position opened, not 14 days from when the thesis row was created. Today the NVDA position is 0 days old but the predicate fires because the *thesis* is 36 days old. The agent self-correctly recognized the mismatch ("the live $NVDA position is only 0 days old, but the trigger is checking 14 days elapsed since thesis-row creation") and refused to exit on every iteration, but it shouldn't have had to fight an incorrect signal in the first place.
+
+**Fix:** `lib/agent/triggers/evaluate.ts` — for triggers on a Thesis with `status='ACTIVE'` and `predicate.kind='TIME_ELAPSED'`, measure elapsed from `position.openedAt` instead of `thesis.createdAt`. WATCHING-side stays on `createdAt` (the right clock for "is this watch row stale").
+
+---
 
 ---
 

@@ -167,17 +167,24 @@ export function evaluateTrigger(
  * code so callers (and tests) can distinguish "predicate matched but
  * cooldown blocks fire" from "predicate didn't match."
  *
- * Cooldown semantics: if `cooldownDays` is absent on the trigger, fall
- * back to the predicate-kind default from `defaultCooldownDaysForPredicate`.
- * Defense in depth — record_thesis / update_thesis backfill the field at
- * write time, but legacy rows from before that fix may still have an
- * unset cooldown. Without this fallback, those rows fire on every
- * `app/signal.routed` event forever.
+ * Cooldown semantics:
  *
- * If `cooldownDays === 0` (explicitly), no rate limit is applied — that's
- * the escape hatch for triggers that genuinely should fire on every
- * matching evaluation (rare; mostly EXIT triggers that close the position
- * and self-terminate via the ACTIVE-status filter in the cron).
+ *   1. `cooldownDays` absent — fall back to the predicate-kind default
+ *      from `defaultCooldownDaysForPredicate`. Defense in depth for legacy
+ *      rows from before the write-path default-filler shipped, plus
+ *      anything that slips through.
+ *
+ *   2. `cooldownDays === 0` on a non-EXIT action — STRUCTURALLY INVALID,
+ *      treat as "absent" and fall back to the per-kind default. This is
+ *      the read-path mirror of the write-path fix in
+ *      `applyTriggerCooldownDefaults`. Required because the write-path
+ *      fix only stops *future* bad values from landing — existing on-disk
+ *      rows with the bad shape would otherwise keep tick-firing until
+ *      something rewrites them. Background: 2026-06-02 NVDA runaway.
+ *
+ *   3. `cooldownDays === 0` on an EXIT action — legitimate escape hatch.
+ *      EXIT is terminal; the position closes and the cron's `status:ACTIVE`
+ *      filter removes the row from evaluation. No runaway risk.
  */
 export function shouldFire(
   trigger: Trigger,
@@ -186,8 +193,13 @@ export function shouldFire(
   const matched = evaluateTrigger(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };
 
+  // Read-path defense — see (2) in the docstring above.
+  const isInvalidZero =
+    trigger.cooldownDays === 0 && trigger.action !== "EXIT";
   const effectiveCooldown =
-    trigger.cooldownDays ?? defaultCooldownDaysForPredicate(trigger.predicate);
+    trigger.cooldownDays != null && !isInvalidZero
+      ? trigger.cooldownDays
+      : defaultCooldownDaysForPredicate(trigger.predicate);
 
   if (effectiveCooldown > 0 && trigger.lastFiredAt != null) {
     const lastFired = new Date(trigger.lastFiredAt).getTime();
