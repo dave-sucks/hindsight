@@ -88,6 +88,48 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     expect(r.actionability).toBe("ACTIVE_HOLD");
   });
 
+  it("PROMOTED_DECIDE_TODAY when status is PROMOTED, regardless of price or catalyst", () => {
+    // Mirror of the needs-action.ts PROMOTED_AWAITING_RESOLUTION
+    // precedence rule (lib/agent/needs-action.test.ts:51) at the
+    // resolver layer. The writer's belief was the gate at promotion;
+    // the resolver is just labeling it. See GAPS P1-10.
+    const enterTrigger: Trigger = {
+      id: "trg_promoted_enter",
+      action: "ENTER",
+      predicate: { kind: "PRICE_ABOVE", level: 92.5 },
+      cooldownDays: 1,
+      rationale: "Breakout confirm.",
+    };
+    const r = buildResolvedEnvelope({
+      thesis: baseThesis({
+        status: "PROMOTED",
+        parsedTriggers: [enterTrigger],
+        catalystDate: new Date("2026-06-15T20:30:00Z"), // future
+        entryPrice: 100,
+      }),
+      currentPrice: 94, // ENTER trigger fires; would otherwise be ENTER_NOW
+      now: NOW,
+    });
+    expect(r.actionability).toBe("PROMOTED_DECIDE_TODAY");
+  });
+
+  it("PROMOTED loses to supersession (SUPERSEDED wins)", () => {
+    const r = buildResolvedEnvelope({
+      thesis: baseThesis({
+        status: "PROMOTED",
+        createdAt: new Date("2026-05-25T00:00:00Z"),
+      }),
+      currentPrice: 100,
+      supersession: {
+        ticker: "TEST",
+        terminalId: "thesis_newer_invalidated",
+        terminalCreatedAt: new Date("2026-05-30T00:00:00Z"),
+      },
+      now: NOW,
+    });
+    expect(r.actionability).toBe("SUPERSEDED");
+  });
+
   it("PENDING_CATALYST when catalystDate is in the future", () => {
     const r = buildResolvedEnvelope({
       thesis: baseThesis({

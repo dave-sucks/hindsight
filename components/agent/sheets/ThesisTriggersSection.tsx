@@ -140,6 +140,7 @@ export interface TriggersResponse {
       | "ACTIVE_HOLD"
       | "STALE_PAST_CATALYST"
       | "SUPERSEDED"
+      | "PROMOTED_DECIDE_TODAY"
       | "DEAD";
     supersededBy: string | null;
     staleness: "FRESH" | "STALE";

@@ -45,21 +45,6 @@ Goal: keep gates that prevent STRUCTURALLY IMPOSSIBLE states (e.g., ACTIVE thesi
 
 **Already removed in [#360](https://github.com/dave-sucks/hindsight/pull/360):** Gates A + B (composite-coupling on `record_thesis` + `update_thesis`) — they forced `conviction` to derive from `composite`, defeating the whole point of having a separate writer-judgment field. The remaining suspects above are unchanged. Probably folds into the trade-as-proposal refactor since the proposal layer changes which gates matter.
 
-### P1-10 — PROMOTED is not a first-class `resolved.actionability` state
-**Status:** open, surfaced by [#360](https://github.com/dave-sucks/hindsight/pull/360). **~30 min fix.**
-
-The new resolver introduced in #360 returns `resolved.actionability` ∈ { `READY_TO_BUY`, `WAITING_FOR_TRIGGER`, `CATALYST_PENDING`, `HOLDING`, `SUPERSEDED`, … }. A PROMOTED row falls through to `READY_TO_BUY` or `WAITING_FOR_TRIGGER` based on price proximity — losing the "this is a post-paper-success that needs the principal's blessing TODAY" signal in the resolved layer.
-
-The structural pieces from P0-1/3/4 + P1-7 still work — agent reads `needsAction = PROMOTED_AWAITING_RESOLUTION` via `get_theses` and acts; prompt teaches the three legal outcomes; writer can't flip status; UI label says "Promoted." The resolver is a NEW layer that needs to learn about PROMOTED.
-
-**Fix:**
-1. Add `PROMOTED_DECIDE_TODAY` (or similar) to the actionability enum in `lib/agent/resolved-thesis.ts`.
-2. Branch in the resolver: if `status === "PROMOTED"`, return the new kind instead of falling through to ENTER/WAIT.
-3. Add a renderer case in the Trade Structure Status cell (`components/agent/sheets/`) so the sheet shows the urgency.
-4. Daily-run prompt: one-line nudge that PROMOTED actionability supersedes price-proximity logic (writer's belief was already the gate at promotion; resolver is just labeling it).
-
-Worth doing before trade-as-proposal lands so proposals don't have to bolt on PROMOTED handling separately.
-
 ---
 
 ## P2 — Backlog (defer until P0+P1 clean)
@@ -97,7 +82,11 @@ Re-evaluate the rest after the live loop is stable for ~1 week.
 
 ## Done since
 
+### 2026-06-02 — P1-10: PROMOTED is a first-class `resolved.actionability` state
+PR [#375](https://github.com/dave-sucks/hindsight/pull/375). Added `PROMOTED_DECIDE_TODAY` to the actionability enum in [`lib/agent/resolved-thesis.ts`](lib/agent/resolved-thesis.ts) and branched the decision tree so a `status === "PROMOTED"` row returns the new kind regardless of price proximity, catalyst date, or trigger state (terminal status + supersession still win first). The Trade Structure Status cell in [`ThesisSheet`](components/agent/sheets/ThesisSheet.tsx) now renders "Decide today — re-enter / wait / kill" in the affirmative emerald tone — same urgency cue ProposalActions uses — instead of falling through to "Ready to buy" or "Waiting on trigger." Daily-run prompt's Step 2 PROMOTED section notes that the resolver labels these `PROMOTED_DECIDE_TODAY` independent of price/catalyst — the conviction gate was cleared at promotion. Resolver is now consistent with [`needs-action.ts`](lib/agent/needs-action.ts), which already gave PROMOTED top precedence as `PROMOTED_AWAITING_RESOLUTION` (the agent-action label; resolver is the at-a-glance label of the same state). **Open P1 list after this entry: P1-2 only.**
+
 ### 2026-06-02 — GAPS hygiene + P1-12 / P1-8 / P1-11 / P1-13 closed + conviction-backfill decision
+PR [#374](https://github.com/dave-sucks/hindsight/pull/374).
 - **P1-5** — MRVL Sonar earnings hallucination class fixed by [#357](https://github.com/dave-sucks/hindsight/pull/357) (writer date-awareness gate) on 2026-05-28. Was orphaned in the open P1 list — retroactively moved here. **2026-06-02 review evidence:** Sonar date-sanity sniff returned 0 rows. Gate is working in production.
 - **P1-7** — UI label rename ("Awaiting live entry" → "Promoted") was already shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349) on 2026-05-26 (see the "first live promotion incident fully closed" entry below). Duplicate orphan entry removed from the open P1 list.
 - **P1-8** — V2 prompt has no DAY-trader workflow. **Closed: no DAY-horizon analyst exists in the current lineup and none is planned.** If a DAY analyst is ever reintroduced, refile.
@@ -107,8 +96,6 @@ Re-evaluate the rest after the live loop is stable for ~1 week.
 - **Conviction backfill — decision NOT to backfill** (replaces what was tentatively filed as P1-14). Reviewer surfaced that 25 of 28 directional open theses had `conviction = NULL`. A backfill was applied via the historical `prisma/migrations/manual/backfill_conviction_v4.sql` script (which derives HIGH/MEDIUM/LOW from `composite` buckets) and immediately **reverted on principal pushback.** The principal call is correct: conviction is the writer's qualitative judgment, independent of composite — that decoupling is exactly what Gates A+B were killed for in PR #360. Deriving conviction from composite (even with a marker rationale) reintroduces the coupling. The right behavior: let conviction populate organically as the thesis-writer touches each thesis on refresh / re-mint. The daily-run treats NULL conviction as "no signal" and falls back to R/R math, which is intended graceful degradation. **The backfill SQL file has been marked DO NOT RUN at the top** with the decision rationale.
 
 **Operational follow-up (not filed as a GAPS item — operational, not architectural):** a parallel writer fan-out of N dispatches will all fail simultaneously if Anthropic credit balance is below threshold at fan-out time. Solvable by Anthropic billing alerts + an optional pre-flight balance check before the dispatch fan-out. Worth doing if it bites again; otherwise just monitor billing.
-
-**Open P1 list after this entry:** P1-2 (gate audit, partial credit from #360, not biting), P1-10 (PROMOTED first-class in resolver, ~30 min, before flipping live toggles). That's it.
 
 ### 2026-06-01 — P1-3: `targetPrice` overload was a one-line trigger bug, not a schema split
 PR [#362](https://github.com/dave-sucks/hindsight/pull/362). `watchingEntryTrigger` was reading `targetPrice` (the take-profit) instead of `entryPrice` (where the writer wanted to buy in). The schema was always correct — both columns existed with separate meanings — the trigger code just wired the wrong column to the ENTER action.

@@ -32,6 +32,7 @@ export type Actionability =
   | "ACTIVE_HOLD"
   | "STALE_PAST_CATALYST"
   | "SUPERSEDED"
+  | "PROMOTED_DECIDE_TODAY"
   | "DEAD";
 
 export type TriggerState =
@@ -168,6 +169,15 @@ export function buildResolvedEnvelope(args: {
     actionability = "DEAD";
   } else if (isSuperseded) {
     actionability = "SUPERSEDED";
+  } else if (thesis.status === "PROMOTED") {
+    // PROMOTED demands resolution today regardless of price proximity or
+    // catalyst date — the user already affirmed conviction at promotion,
+    // the paper position was force-closed, and the daily run must
+    // re-enter / defer / kill in this session. See GAPS P1-10 + the
+    // needsAction = PROMOTED_AWAITING_RESOLUTION peer in
+    // lib/agent/needs-action.ts (this is the resolver-layer label of
+    // the same state).
+    actionability = "PROMOTED_DECIDE_TODAY";
   } else if (thesis.status === "ACTIVE") {
     actionability = "ACTIVE_HOLD";
   } else if (thesis.catalystDate != null && thesis.catalystDate.getTime() > now.getTime()) {

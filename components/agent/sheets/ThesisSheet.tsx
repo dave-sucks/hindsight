@@ -198,13 +198,14 @@ function ConvictionBadge({
 // header. See docs/plans/CONVICTION_EXPRESSION.md §8.
 //
 // State → label + variant:
-//   ENTER_NOW            → "READY TO BUY"          positive
-//   WAIT_FOR_TRIGGER     → "WAITING — <detail>"    secondary
-//   PENDING_CATALYST     → "PENDING CATALYST"      secondary
-//   ACTIVE_HOLD          → "HOLDING"               secondary
-//   STALE_PAST_CATALYST  → "STALE"                 outline
-//   SUPERSEDED           → "SUPERSEDED"            outline
-//   DEAD                 → null (status pill already conveys this)
+//   ENTER_NOW              → "READY TO BUY"          positive
+//   WAIT_FOR_TRIGGER       → "WAITING — <detail>"    secondary
+//   PENDING_CATALYST       → "PENDING CATALYST"      secondary
+//   ACTIVE_HOLD            → "HOLDING"               secondary
+//   STALE_PAST_CATALYST    → "STALE"                 outline
+//   SUPERSEDED             → "SUPERSEDED"            outline
+//   PROMOTED_DECIDE_TODAY  → "DECIDE TODAY"          positive
+//   DEAD                   → null (status pill already conveys this)
 //
 // triggerDetail is surfaced as the WAITING label suffix when present
 // (e.g. "WAITING — needs $92.50, at $90.30 (-2.4%)").
@@ -243,6 +244,10 @@ function ActionabilityBadge({
     case "SUPERSEDED":
       label = "SUPERSEDED";
       variant = "outline";
+      break;
+    case "PROMOTED_DECIDE_TODAY":
+      label = "DECIDE TODAY";
+      variant = "positive";
       break;
   }
 
@@ -713,7 +718,7 @@ function TradeStructureBlock({
   // that should anchor reading the row.
   if (hasStatus && state.resolved) {
     const r = state.resolved;
-    let statusValue: string;
+    let statusValue: React.ReactNode;
     switch (r.actionability) {
       case "ENTER_NOW":
         statusValue = "Ready to buy";
@@ -734,6 +739,16 @@ function TradeStructureBlock({
         break;
       case "SUPERSEDED":
         statusValue = "Superseded by newer thesis";
+        break;
+      case "PROMOTED_DECIDE_TODAY":
+        // Promoted is a daily-run forcing function (paper position was
+        // force-closed at promotion; user said yes to live money). Use
+        // the affirmative tone — same `text-emerald-500` ProposalActions
+        // uses for approved actions — to carry urgency through the
+        // status cell instead of inventing a third header badge.
+        statusValue = (
+          <span className="text-emerald-500">Decide today — re-enter / wait / kill</span>
+        );
         break;
       default:
         statusValue = r.actionability;
