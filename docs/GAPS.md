@@ -21,7 +21,39 @@
 
 These prevent the live agent from doing its job. Fix first.
 
-*(All four original P0 items shipped 2026-05-26. See "Done since" below. New P0 items go in this section as they're found.)*
+### P0-13 — Trigger evaluator runaway: agent-supplied `cooldownDays: 0` on non-EXIT trigger
+**Status:** code fix shipping in this PR. Data hotfix already applied (4 theses patched in-DB on 2026-06-02).
+
+NVDA tactical loop on 2026-06-02 fired the same `TIME_ELAPSED 14d REVIEW` trigger every 5 minutes for ~70 minutes (15 runs, 11 COMPLETE + 4 OpenAI-flake FAILED) before manual intervention. Each run is a full GPT-5.5 tactical-mode invocation — significant unintended spend.
+
+**Root cause chain:**
+1. NVDA flipped WATCHING → ACTIVE at 12:47 ET via the PRICE_ABOVE $225 ENTER trigger.
+2. The agent then called `update_thesis` with a hand-crafted set of HELD-side triggers (custom rationale "Momentum Breakout trades are days-to-weeks holds…", NOT the template boilerplate). The agent stamped `cooldownDays: 0` on the TIME_ELAPSED REVIEW.
+3. `applyTriggerCooldownDefaults` in `lib/agent/triggers/defaults.ts` used `t.cooldownDays != null` to detect "user supplied a value." Since `0 != null` is true, the default-filler walked past the 0 instead of overwriting it.
+4. The Thesis row's `createdAt` is 2026-04-27 (when NVDA first hit the watchlist), so `TIME_ELAPSED(14d)` from `createdAt` evaluated true the instant the trigger landed — there's nothing in the predicate measuring against `position.openedAt`.
+5. 5-min trigger-evaluator cron + sticky-true predicate + cooldown=0 = infinite loop, agent dutifully responded "position is 0 days old, holding" on every iteration but the trigger kept firing.
+
+**Code fix in this PR:** `applyTriggerCooldownDefaults` now treats `cooldownDays: 0` on any non-EXIT action as structurally invalid and overwrites with the per-predicate default. EXIT preserved (terminal opt-out is legitimate — the position closes and the cron's `status:ACTIVE` filter takes over). 8 new unit tests pin the behavior including the verbatim NVDA shape. Same defense covers ENTER/TRIM on the same sticky predicates.
+
+**Data hotfix already applied (4 SQL UPDATEs on 2026-06-02 ~17:00 ET):**
+
+| Thesis | Trigger | Was | Set to |
+|---|---|---|---|
+| NVDA (ACTIVE, Momentum Breakout) | TIME_ELAPSED 14d REVIEW | 0 | 14 |
+| AVGO (WATCHING, would have blown 6/07) | TIME_ELAPSED 7d REVIEW | 0 | 7 |
+| ADBE (WATCHING, would have blown 6/30) | TIME_ELAPSED 30d REVIEW | 0 | 30 |
+| ON (WATCHING on disabled PEAD, latent landmine) | PRICE_BELOW REVIEW | 0 | 7 |
+
+**Related but separate (not fixed here):** the TIME_ELAPSED predicate measures from `thesis.createdAt`, which is the wrong clock for a HELD-side "max hold" check. The trigger evaluator should measure from `position.openedAt` on ACTIVE rows. Filing as follow-up P1-14 (below).
+
+### P1-14 — TIME_ELAPSED predicate uses `thesis.createdAt`, not `position.openedAt`, on HELD-side triggers
+**Status:** filed via P0-13 postmortem 2026-06-02. **Not blocking now that cooldown defaults are correct, but the semantic is wrong.**
+
+A "max hold 14 days" REVIEW trigger on an ACTIVE position should measure 14 days from when the position opened, not 14 days from when the thesis row was created. Today the NVDA position is 0 days old but the predicate fires because the *thesis* is 36 days old. The agent self-correctly recognized the mismatch ("the live $NVDA position is only 0 days old, but the trigger is checking 14 days elapsed since thesis-row creation") and refused to exit on every iteration, but it shouldn't have had to fight an incorrect signal in the first place.
+
+**Fix:** `lib/agent/triggers/evaluate.ts` — for triggers on a Thesis with `status='ACTIVE'` and `predicate.kind='TIME_ELAPSED'`, measure elapsed from `position.openedAt` instead of `thesis.createdAt`. WATCHING-side stays on `createdAt` (the right clock for "is this watch row stale").
+
+---
 
 ---
 

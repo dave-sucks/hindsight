@@ -733,13 +733,30 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
  * already have one. Pure; returns a fresh array. Call this in the write
  * path (record_thesis / update_thesis) before persistence so disk state
  * always has cooldown bookkeeping.
+ *
+ * `cooldownDays: 0` is legitimate ONLY on EXIT triggers — those are
+ * terminal (the position closes and the cron's `status:ACTIVE` filter
+ * takes over), so re-firing isn't a runaway risk. On any other action
+ * (REVIEW, ENTER, TRIM) `0` is structurally invalid against a sticky
+ * predicate (TIME_ELAPSED, PRICE_ABOVE/BELOW, VS_SMA, RSI, AND/OR
+ * composites of the same) — once the condition is true it stays true,
+ * and a 5-min trigger-evaluator tick re-fires every cycle until
+ * intervention. Treat `0` on non-EXIT as "needs default" and overwrite
+ * with the per-predicate cooldown.
+ *
+ * Background: 2026-06-02 NVDA tactical runaway — agent-supplied
+ * `update_thesis` triggers stamped `cooldownDays: 0` on a TIME_ELAPSED
+ * 14d REVIEW, the old `!= null` check walked past it, and the loop
+ * fired 15 times in 70 min before manual hotfix. See `docs/GAPS.md`.
  */
 export function applyTriggerCooldownDefaults(triggers: Trigger[]): Trigger[] {
-  return triggers.map((t) =>
-    t.cooldownDays != null
-      ? t
-      : { ...t, cooldownDays: defaultCooldownDaysForPredicate(t.predicate) },
-  );
+  return triggers.map((t) => {
+    const needsDefault =
+      t.cooldownDays == null || (t.cooldownDays === 0 && t.action !== "EXIT");
+    return needsDefault
+      ? { ...t, cooldownDays: defaultCooldownDaysForPredicate(t.predicate) }
+      : t;
+  });
 }
 
 /**
