@@ -173,7 +173,11 @@ export async function POST(
       }
     }
 
-    const alpacaCreds =
+    // `let`, not `const`: the principal-chat branch re-seeds runEnvironment
+    // from the scoped analyst's book and re-resolves these creds. A fresh
+    // scoped chat sends no runId, so the resolution above defaulted to
+    // PAPER before the LIVE run is minted (see the principal branch below).
+    let alpacaCreds =
       (await resolveAlpacaCredentials(user.id, runEnvironment)) ?? undefined;
 
     // ── System prompt + tools ──────────────────────────────────────────────
@@ -295,6 +299,25 @@ export async function POST(
             { status: 404 },
           );
         }
+        // ── Principal-chat env authority (P1-16) ──────────────────────────
+        // The scoped analyst's CURRENT tradingEnvironment is the book this
+        // chat trades in. The env block at the top of POST defaulted
+        // runEnvironment to PAPER because a fresh scoped chat sends no runId
+        // (AgentChat only puts runId on the body when resuming), and the
+        // PRINCIPAL_CHAT run row isn't minted until a few lines below. Left
+        // unset, ctx.runEnvironment threads through as the *string* "PAPER"
+        // (never undefined) — so a LIVE analyst's chat-initiated
+        // close_position / manage_position silently no-op against the empty
+        // paper book, place_trade executes in paper, get_portfolio_context
+        // shows an empty book, and dispatch_thesis_research stamps children
+        // PAPER (the #380 symptom). Because the value is "PAPER" and not
+        // nullish, a tool-level `ctx.runEnvironment ?? analyst.tradingEnvironment`
+        // fallback (e.g. #380's) can't fire — the only correct place to fix
+        // this is here, where the scoped analyst is known. Seed from the
+        // analyst and re-resolve creds before the tools are built.
+        runEnvironment = (ac.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
+        alpacaCreds =
+          (await resolveAlpacaCredentials(user.id, runEnvironment)) ?? undefined;
         const principalWatchlistSymbols = await getWatchlistSymbols(ac.id);
         // Hydrate agentConfig for tool guardrails (place_trade etc.).
         agentConfig = {
