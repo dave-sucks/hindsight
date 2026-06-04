@@ -56,6 +56,13 @@ function findTriggerById(triggersJson: unknown, id: string): Trigger | null {
   return found as Trigger;
 }
 
+// How long after a REJECTED close proposal to keep suppressing re-fires of
+// the same EXIT/TRIM trigger. A reject means "I've seen the stop, I'm
+// holding" — re-proposing on the next 5-min tick would just spawn a
+// reject-loop. After this window the trigger can re-surface if the position
+// is still in breach. Tunable.
+const EXIT_RECHECK_SNOOZE_MS = 4 * 60 * 60 * 1000; // 4 hours
+
 // ── Inngest function ───────────────────────────────────────────────────
 
 export const tacticalRun = inngest.createFunction(
@@ -150,6 +157,7 @@ export const tacticalRun = inngest.createFunction(
             status: "OPEN",
           },
           select: {
+            id: true,
             quantity: true,
             avgCost: true,
             openedAt: true,
@@ -212,6 +220,7 @@ export const tacticalRun = inngest.createFunction(
         signal,
         position: position
           ? {
+              id: position.id,
               quantity: Number(position.quantity),
               avgCost: Number(position.avgCost),
               daysHeld: daysHeld ?? 0,
@@ -224,6 +233,51 @@ export const tacticalRun = inngest.createFunction(
       return { skipped: "context-not-loadable", thesisId: fired.thesisId };
     }
     const { thesis, trigger, agentConfig, signal, position } = ctx;
+
+    // ── Suppress redundant close runs while an exit is already queued ────────
+    // EXIT/TRIM triggers carry cooldownDays:0 ("fire every tick") because the
+    // original design closed the position immediately, dropping it from the
+    // evaluator's ACTIVE-only scan before the next 5-min tick ever arrived.
+    // Trade-as-proposal broke that assumption: the close now sits in
+    // AWAITING_APPROVAL while the human decides, so the position stays OPEN and
+    // the stop re-fires every tick — each fire a full GPT-5.5 tactical run
+    // (NVDA 12x / IREN 8x / NVTS 5x on 2026-06-04, ~25 runs / ~$25 in an hour).
+    //
+    // If a close for this position is already awaiting approval — or was
+    // rejected within the snooze window (the human explicitly chose to hold) —
+    // a fresh tactical run has nothing to do. Bail BEFORE create-run and the
+    // agent call so zero GPT-5.5 cost is incurred. Only matters when approval
+    // toggles are ON; with auto-execute the position closes on the first fire
+    // and never reaches a second tick, so this is a no-op there.
+    if ((trigger.action === "EXIT" || trigger.action === "TRIM") && position) {
+      const queuedClose = await step.run("check-queued-close", async () =>
+        prisma.order.findFirst({
+          where: {
+            positionId: position.id,
+            intent: { in: ["CLOSE", "PARTIAL_CLOSE"] },
+            OR: [
+              { status: "AWAITING_APPROVAL" },
+              {
+                status: "REJECTED",
+                updatedAt: {
+                  gte: new Date(Date.now() - EXIT_RECHECK_SNOOZE_MS),
+                },
+              },
+            ],
+          },
+          select: { id: true, status: true },
+        }),
+      );
+      if (queuedClose) {
+        return {
+          skipped: "close-already-queued",
+          reason: queuedClose.status,
+          thesisId: fired.thesisId,
+          positionId: position.id,
+          orderId: queuedClose.id,
+        };
+      }
+    }
 
     // Snapshot the analyst's env onto the run.
     const runEnvironment =
