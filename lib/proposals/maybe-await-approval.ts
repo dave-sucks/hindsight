@@ -87,6 +87,59 @@ export async function maybeAwaitApproval(
       : account.requireApprovalSellsPaper;
   if (!need) return null;
 
+  // ── Dedup: at most one pending full-CLOSE proposal per position ──────────
+  // Two triggers firing on the same thesis in one evaluator tick spawn two
+  // tactical runs that each independently decide to close, each creating an
+  // AWAITING_APPROVAL order on the same position (MRVL 2026-06-02 — the user
+  // had to reject the same close twice, 1.3s apart). A full close is terminal
+  // and idempotent: a second pending close is ALWAYS redundant, so fold this
+  // call into the existing proposal instead of staging a twin.
+  //
+  // Scope is deliberately CLOSE-only. PARTIAL_CLOSE (scale-out) and ADD/OPEN
+  // have legitimate stacking cases — gating them here would be the kind of
+  // over-aggressive refusal GAPS P1-2 is trying to remove.
+  //
+  // Returns the EXISTING proposal's envelope (success-shaped, NOT an error)
+  // so the second tactical run renders the same card and completes its
+  // close-out contract cleanly — a thrown error would fail the run's
+  // narration gate and mark it FAILED.
+  //
+  // Race note: the realistic tactical-run spawn gap is ~1s, so a findFirst
+  // before the flip is adequate. A partial unique index on (positionId)
+  // WHERE intent='CLOSE' AND status='AWAITING_APPROVAL' would make it airtight
+  // against truly-simultaneous fires — tracked as a follow-up.
+  if (args.intent === "CLOSE") {
+    const existingClose = await prisma.order.findFirst({
+      where: {
+        positionId: args.positionId,
+        intent: "CLOSE",
+        status: "AWAITING_APPROVAL",
+        id: { not: args.orderId },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, expiresAt: true, rationale: true },
+    });
+    if (existingClose?.expiresAt) {
+      // Tombstone this call's just-created order so it doesn't linger as a
+      // second PENDING/AWAITING row. Reuse REJECTED (a known status) with a
+      // systemic message that distinguishes it from a user rejection.
+      await prisma.order.update({
+        where: { id: args.orderId },
+        data: {
+          status: "REJECTED",
+          rejectionMessage: `Duplicate close — folded into pending proposal ${existingClose.id}`,
+        },
+      });
+      return {
+        state: "awaiting_approval" as const,
+        orderId: existingClose.id,
+        positionId: args.positionId,
+        expiresAt: existingClose.expiresAt,
+        rationale: existingClose.rationale,
+      };
+    }
+  }
+
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   // Flip the just-created rows to the awaiting-approval state. For ADDs /
