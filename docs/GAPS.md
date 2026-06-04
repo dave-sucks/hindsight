@@ -156,6 +156,49 @@ After [#361](https://github.com/dave-sucks/hindsight/pull/361) the following are
 
 P1-12 needs to land first (confirm 5/5 FAILUREs were token exhaustion not a bug) before any of these are real options.
 
+### New P2 — Stale `Order.rationale` on OPEN proposals only
+**Status:** open, surfaced 2026-06-04 by the 6/03 NVTS review session. Confirmed real but **OPEN-proposal-only** — CLOSE proposals carry the correct text.
+
+When `place_trade` creates an `Order` row for an **OPEN proposal**, `Order.rationale` is populated from the **thesis row's current rationale snapshot at proposal-creation time**. For a tactical-triggered entry, that snapshot is usually the prior morning's WATCHING-side "not actionable yet" text — NOT the tactical agent's actual entry-decision rationale.
+
+**Concrete OPEN-side example (NVTS 2026-06-03):**
+- 08:11 ET — morning run on Momentum Breakout. NVTS at $25.86, below the $29.50 breakout trigger. `update_thesis` rationale written: *"Keeping WATCHING and requiring a clean reclaim above $29.50 with volume before any entry."*
+- 09:31 ET — NVTS breaks $29.50, tactical fires.
+- 09:32 ET — tactical's `update_thesis` rationale (the correct entry reasoning): *"Trigger validated: $NVTS was trading ~$30.59, above the $29.50 continuation level, with the bullish SMA structure intact and no contradicting headline. I submitted a $4,000 long entry proposal at ~$30.59 with a tight momentum stop at $29.06 and $40 target..."*
+- The stored `Order.rationale` carries a paraphrase of the 08:11 text: *"NVTS remains a watch-only momentum candidate after the GaN/licensing breakout, but the current setup is not actionable. The stock is below the $29.50 continuation trigger, volume is light..."* — i.e., the stale "don't trade" rationale.
+
+**CLOSE proposals are not affected.** The close-side rationale matches the tactical's actual exit-decision reasoning. So the bug is scoped to `place_trade`'s OPEN path only.
+
+**Why P2 not P1:** the proposal-card UI today shows the tactical's live reasoning from the chat surface, not the stored `Order.rationale` field — so the principal is approving against the correct text. The stored field is just stale archival data. It still matters because (a) future surfaces that read `Order.rationale` (audit views, analytics, exports) would surface the wrong text, and (b) one wrong field encourages other consumers to invent workarounds.
+
+**Fix path (scoped to `place_trade` OPEN-only):** in `lib/agent/tools/place-trade.ts`'s OPEN-side proposal-creation, populate `Order.rationale` from the tactical agent's entry reason (either by accepting it as a dedicated argument or by refreshing the thesis-rationale snapshot to read the in-run `update_thesis` text written seconds before). CLOSE path is unchanged.
+
+### New P2 — Rejected-proposal indicator never auto-clears
+**Status:** open, surfaced 2026-06-04 by the MRVL post-rejection review.
+
+The position-list UI surfaces a "Rejected Jun 2, 12:47 PM" badge on a position whenever any historical `Order` row on that position has `status='REJECTED'`. The badge persists forever — even after the agent's next morning run has explicitly acknowledged the rejection in its narration and acted on it.
+
+**Concrete example:** MRVL's `Order(status='REJECTED')` rows from 2026-06-02 (target hit, principal rejected with "raise stop, let it run"). The 6/03 morning PEAD run wrote a `ThesisUpdate(type='UPDATED')` rationale literally beginning with *"User rejected selling into the breakout and asked for the stop to be increased..."* — explicit acknowledgment in writing — and raised the target $270 → $330 + applied the trailing stop. The badge still showed on 6/04.
+
+The audit row itself is correct as historical fact and must stay forever (you need it for "why didn't we sell at $281?" forensics). The UI's filter logic is what's wrong — it treats "any rejection ever" as a standing alert instead of "any rejection not yet acknowledged."
+
+**Fix path (UI-side):** the indicator should query "is there a `ThesisUpdate` row written by an agent (`runId IS NOT NULL`, `type IN ('UPDATED','REVIEWED','STATUS_CHANGED','INVALIDATED')`) on the same thesis with `timestamp > MAX(PROPOSAL_REJECTED.timestamp)`?" If yes → resolved, hide. If no → still pending acknowledgment, show. For the MRVL case the badge would have cleared at 08:02 ET on 6/03.
+
+Severity P2 cosmetic — doesn't affect agent behavior or correctness, but creates standing UI noise that erodes the badge's signal value.
+
+### New P2 — Silent preflight-refusal events on `complete_run`
+**Status:** open, observability gap. Surfaced in the 6/01 morning review.
+
+Some morning runs end up writing `record_run_summary.count = 2` and `complete_run.count = 2` in `parameters.toolStats`, with **two `RunEvent(type='run_summary')` rows seconds apart that carry the same body**. Run ends `COMPLETE`, no `RunEvent(type='run_failed')` written between the two summaries.
+
+**Concrete example:** Secular Compounder's 6/01 morning run (`cmpv5wwxw001104l7vtg9i95x`) wrote two run_summary events 20s apart, both reading "3 tickers analyzed, 0 traded" with identical body. Final run state was COMPLETE. The shape suggests the `complete_run` preflight refused once (probably the narration-execution gate), the agent re-issued `record_run_summary` + `complete_run`, and the second attempt succeeded — but the rejection was never persisted as a `RunEvent`.
+
+**Why it matters:** if a real P0-12-shape narration-execution gap regression slips into a run and is silently retried-into-success, the rejection won't surface in future reviews — meaning the gate's job (catching prose-vs-tool-call drift before it lands a bad close) becomes invisible to the audit lane. The reviewer who relies on `RunEvent(type='run_failed')` queries to count gate fires will under-count.
+
+**Fix path:** in `lib/agent/tools/complete-run.ts`'s preflight (around `checkNarrationExecutionGap`), write a `RunEvent(type='preflight_warn' or type='run_failed_internal')` row on every refusal regardless of whether the agent's next attempt succeeds. The audit row is for the reviewer; the retry path stays as-is.
+
+Severity P2 — observability, not correctness. No production failure is being missed today; the concern is forward-looking — once a regression slips, it'd be invisible without this.
+
 Re-evaluate the rest after the live loop is stable for ~1 week.
 
 ---
