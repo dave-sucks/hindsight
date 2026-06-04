@@ -85,7 +85,13 @@ export const dispatchThesisResearch = defineTool({
     // a bogus id wouldn't fail at insert — it'd just orphan the run.
     const analyst = await prisma.agentConfig.findFirst({
       where: { id: args.analyst_id, accountId: ctx.accountId },
-      select: { id: true, name: true, userId: true, accountId: true },
+      select: {
+        id: true,
+        name: true,
+        userId: true,
+        accountId: true,
+        tradingEnvironment: true,
+      },
     });
     if (!analyst) {
       return {
@@ -309,7 +315,18 @@ export const dispatchThesisResearch = defineTool({
         source: "AGENT",
         status: "RUNNING",
         mode: "THESIS_WRITER",
-        environment: ctx.runEnvironment ?? "PAPER",
+        // Environment authority order: the orchestrator run's env (when
+        // threaded) → the ANALYST's tradingEnvironment → PAPER. The blind
+        // `?? "PAPER"` default was wrong: principal-chat dispatches come
+        // through with ctx.runEnvironment unset, so a LIVE analyst's
+        // thesis-writer children were stamped PAPER and vanished from the
+        // Runs page in Live mode (2026-06-03 PEAD SNOW/PACS/CRDO). The
+        // analyst's tradingEnvironment is the authoritative book for any
+        // work FK'd to that analyst — a LIVE analyst's dispatch is never
+        // legitimately PAPER.
+        environment:
+          ctx.runEnvironment ??
+          (analyst.tradingEnvironment as "PAPER" | "LIVE"),
         ...(resolvedParentRunId ? { parentRunId: resolvedParentRunId } : {}),
         parameters: {
           ticker: T,
