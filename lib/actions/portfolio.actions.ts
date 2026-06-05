@@ -633,13 +633,13 @@ export async function getDashboardData(
     // Derive the display status from Position.status + latest Order.status.
     // Position stays OPEN until its BUY actually fills; the PENDING/REJECTED
     // view-model statuses are UI-only denormalizations.
-    // A holding is a holding — the row reflects the POSITION, not a historical
-    // order. A rejected close leaves you holding (OPEN); a rejected buy already
-    // CANCELLED its position elsewhere (so it isn't in this OPEN list). Only a
-    // genuinely in-flight buy (Order status PENDING, submitted-awaiting-fill)
-    // shows PENDING. REJECTED / other terminal orders are audit history, never a
-    // standing status — that's the "Rejected" badge that used to stick forever.
-    let displayStatus: TradeStatus = "OPEN";
+    // Just the position's own status, with one overlay: a genuinely in-flight
+    // buy shows PENDING. A holding (OPEN) stays OPEN even if its last order was
+    // a rejected close — reject means you kept the position. A not-yet-filled
+    // buy proposal (PENDING_APPROVAL) reads PENDING, not blue. REJECTED / other
+    // terminal orders are audit history, never a standing status (that was the
+    // "Rejected" badge that used to stick to live holdings forever).
+    let displayStatus: TradeStatus = p.status === "OPEN" ? "OPEN" : "PENDING";
     if (fillOrder?.status === "PENDING") displayStatus = "PENDING";
 
     // Trade-as-Proposal — surface the awaiting-approval order so TradeRow
