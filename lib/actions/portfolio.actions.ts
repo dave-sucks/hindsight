@@ -203,6 +203,140 @@ function calcPnl(
   return { dollars, pct };
 }
 
+// An open position whose most-recent order is REJECTED. Carries the
+// rejection timestamp so `resolveAcknowledgedRejections` can decide whether a
+// later agent acknowledgment has cleared the standing "Rejected …" badge.
+interface RejectedPositionRef {
+  positionId: string;
+  ticker: string;
+  analystId: string;
+  rejectedAt: Date;
+}
+
+// ThesisUpdate types that count as the agent acknowledging a prior rejection
+// and acting on the thesis. PROPOSAL_* and pure CREATED/ACTED rows are
+// intentionally excluded — only a substantive revisit clears the badge.
+const REJECTION_ACK_TYPES = [
+  "UPDATED",
+  "REVIEWED",
+  "STATUS_CHANGED",
+  "INVALIDATED",
+] as const;
+
+// A row flagged REJECTED whose badge should clear once the rejection is
+// acknowledged. `key` is whatever the caller wants back (a position id or a
+// thesis id); `thesisId` is the live thesis to inspect; `rejectedAt` is the
+// threshold the acknowledging ThesisUpdate must beat.
+interface RejectionAckEntry {
+  key: string;
+  thesisId: string;
+  rejectedAt: Date;
+}
+
+/**
+ * Core acknowledgment check, keyed by an already-resolved thesis id. Returns
+ * the set of `key`s whose rejection has since been acknowledged by an agent
+ * run: a ThesisUpdate on that thesis with `runId IS NOT NULL`,
+ * `type ∈ REJECTION_ACK_TYPES`, and `timestamp > rejectedAt`. One query over
+ * all theses regardless of input size. The historical Order(status='REJECTED')
+ * row is never touched — this is a display filter only.
+ * See docs/GAPS.md → "Rejected-proposal indicator never auto-clears".
+ */
+async function resolveAckByThesis(
+  entries: RejectionAckEntry[],
+): Promise<Set<string>> {
+  const resolved = new Set<string>();
+  if (entries.length === 0) return resolved;
+
+  const acks = await prisma.thesisUpdate
+    .findMany({
+      where: {
+        thesisId: { in: [...new Set(entries.map((e) => e.thesisId))] },
+        runId: { not: null },
+        type: { in: [...REJECTION_ACK_TYPES] },
+      },
+      select: { thesisId: true, timestamp: true },
+    })
+    .catch(() => [] as { thesisId: string; timestamp: Date }[]);
+
+  const latestAckByThesis = new Map<string, Date>();
+  for (const a of acks) {
+    const prev = latestAckByThesis.get(a.thesisId);
+    if (!prev || a.timestamp > prev) latestAckByThesis.set(a.thesisId, a.timestamp);
+  }
+
+  for (const e of entries) {
+    const latestAck = latestAckByThesis.get(e.thesisId);
+    if (latestAck && latestAck > e.rejectedAt) resolved.add(e.key);
+  }
+
+  return resolved;
+}
+
+/**
+ * Open-position variant: resolves each (ticker, analyst) pair to its live
+ * thesis first (matching findRelatedThesisId in lib/proposals/execute.ts),
+ * then defers to resolveAckByThesis. Returns the set of position ids whose
+ * "Rejected …" badge should clear.
+ */
+async function resolveAcknowledgedRejections(
+  accountId: string,
+  rejected: RejectedPositionRef[],
+): Promise<Set<string>> {
+  if (rejected.length === 0) return new Set<string>();
+
+  // Resolve the live thesis for each (ticker, analyst) pair. One query over
+  // the OR of the distinct pairs; map back to positions afterward.
+  const pairKey = (ticker: string, analystId: string) => `${analystId}::${ticker}`;
+  const distinctPairs = new Map<string, { ticker: string; analystId: string }>();
+  for (const r of rejected) {
+    distinctPairs.set(pairKey(r.ticker, r.analystId), {
+      ticker: r.ticker,
+      analystId: r.analystId,
+    });
+  }
+
+  const theses = await prisma.thesis
+    .findMany({
+      where: {
+        accountId,
+        status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
+        OR: [...distinctPairs.values()].map(({ ticker, analystId }) => ({
+          ticker,
+          researchRun: { agentConfigId: analystId },
+        })),
+      },
+      // Newest first so the first hit per pair is the live coverage thesis,
+      // matching findRelatedThesisId in lib/proposals/execute.ts.
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        ticker: true,
+        researchRun: { select: { agentConfigId: true } },
+      },
+    })
+    .catch(() => [] as { id: string; ticker: string; researchRun: { agentConfigId: string } | null }[]);
+
+  const thesisIdByPair = new Map<string, string>();
+  for (const t of theses) {
+    const analystId = t.researchRun?.agentConfigId;
+    if (!analystId) continue;
+    const key = pairKey(t.ticker, analystId);
+    if (!thesisIdByPair.has(key)) thesisIdByPair.set(key, t.id);
+  }
+  if (thesisIdByPair.size === 0) return new Set<string>();
+
+  const entries: RejectionAckEntry[] = [];
+  for (const r of rejected) {
+    const thesisId = thesisIdByPair.get(pairKey(r.ticker, r.analystId));
+    if (thesisId) {
+      entries.push({ key: r.positionId, thesisId, rejectedAt: r.rejectedAt });
+    }
+  }
+
+  return resolveAckByThesis(entries);
+}
+
 function buildEquityCurve(
   closedPositions: Array<{ closedAt: Date | null; realizedPnl: number | null }>,
   startCapital: number,
@@ -616,6 +750,10 @@ export async function getDashboardData(
   };
 
   // ── 4. Map open positions → MockTrade shape ────────────────────────────────
+  // Positions whose latest order is REJECTED are collected here so we can,
+  // after the map (§4b below), suppress the "Rejected …" badge once the agent
+  // has acknowledged the rejection on a later run. Standing alert until then.
+  const rejectedPositions: RejectedPositionRef[] = [];
   const openTrades: MockTrade[] = effectiveOpenPositions.map((p) => {
     const livePrice = priceMap[p.symbol];
     const priceSource = priceLookup.sources[p.symbol] ?? "missing";
@@ -634,8 +772,19 @@ export async function getDashboardData(
     // Position stays OPEN until its BUY actually fills; the PENDING/REJECTED
     // view-model statuses are UI-only denormalizations.
     let displayStatus: TradeStatus = "OPEN";
-    if (fillOrder?.status === "REJECTED") displayStatus = "REJECTED";
-    else if (fillOrder?.status === "PENDING" || (fillOrder && fillOrder.filledAt == null)) displayStatus = "PENDING";
+    if (fillOrder?.status === "REJECTED") {
+      displayStatus = "REJECTED";
+      // Anchor the acknowledgment window on the most-recent REJECTED order's
+      // timestamp. orders are createdAt-desc, so `fillOrder` is already the
+      // latest rejection. The historical Order(REJECTED) row stays untouched
+      // — this only governs whether the badge still renders.
+      rejectedPositions.push({
+        positionId: p.id,
+        ticker: p.symbol,
+        analystId: p.analystId,
+        rejectedAt: fillOrder.createdAt,
+      });
+    } else if (fillOrder?.status === "PENDING" || (fillOrder && fillOrder.filledAt == null)) displayStatus = "PENDING";
 
     // Trade-as-Proposal — surface the awaiting-approval order so TradeRow
     // renders the inline [Approve][Reject] in place of the P&L slot.
@@ -677,6 +826,26 @@ export async function getDashboardData(
       pendingProposal,
     };
   });
+
+  // ── 4b. Auto-clear acknowledged "Rejected" badges ──────────────────────────
+  // A historical Order(status='REJECTED') flips the row to the "Rejected …"
+  // display state above. That row is correct audit history and stays forever,
+  // but the badge should read as a standing alert ONLY while the rejection is
+  // unacknowledged. Once the agent revisits the thesis on a later run and acts
+  // (UPDATED / REVIEWED / STATUS_CHANGED / INVALIDATED with a runId, after the
+  // rejection), the badge has served its purpose — fall the row back to OPEN.
+  // See docs/GAPS.md → "Rejected-proposal indicator never auto-clears".
+  const resolvedRejections = await resolveAcknowledgedRejections(
+    accountId,
+    rejectedPositions,
+  );
+  if (resolvedRejections.size > 0) {
+    for (const trade of openTrades) {
+      if (trade.status === "REJECTED" && resolvedRejections.has(trade.id)) {
+        trade.status = "OPEN";
+      }
+    }
+  }
 
   // ── 5. Map closed positions → MockTrade shape ──────────────────────────────
   const closedTrades: MockTrade[] = dbClosedPositions.map((p) => {
@@ -848,6 +1017,11 @@ export async function getDashboardData(
   });
 
   // ── 11. Map recentPicks ────────────────────────────────────────────────────
+  // Same "Rejected" auto-clear as the open-trades list (§4b): a REJECTED
+  // latest order flips the row's tradeStatus, but the badge clears once the
+  // agent acknowledges the rejection on a later run. recentPicks rows ARE
+  // theses, so the thesis id is in hand — keyed directly, no resolution.
+  const recentPickRejections: RejectionAckEntry[] = [];
   const recentPicks: RecentPick[] = dbRecentPicks.map((p) => {
     const dec = p.decisions[0]; // INITIATE decision only (filtered in query)
     const rawPos = dec?.position ?? null;
@@ -858,8 +1032,16 @@ export async function getDashboardData(
       // Derive tradeStatus from order fill state — same logic as trade sidebar.
       // Position.status is always "OPEN" until closed; "PENDING" is UI-only.
       let tradeStatus: TradeStatus = "OPEN";
-      if (order?.status === "REJECTED") tradeStatus = "REJECTED";
-      else if (order?.status === "CANCELLED") tradeStatus = "CANCELLED";
+      if (order?.status === "REJECTED") {
+        tradeStatus = "REJECTED";
+        if (order.createdAt) {
+          recentPickRejections.push({
+            key: p.id,
+            thesisId: p.id,
+            rejectedAt: new Date(order.createdAt),
+          });
+        }
+      } else if (order?.status === "CANCELLED") tradeStatus = "CANCELLED";
       else if (order && order.filledAt == null) tradeStatus = "PENDING";
 
       positionData = {
@@ -899,6 +1081,19 @@ export async function getDashboardData(
       sourcesUsed: [],
     };
   });
+
+  // Auto-clear acknowledged "Rejected" badges on recent-pick rows (see §4b).
+  const resolvedPickRejections = await resolveAckByThesis(recentPickRejections);
+  if (resolvedPickRejections.size > 0) {
+    for (const pick of recentPicks) {
+      if (
+        pick.position?.tradeStatus === "REJECTED" &&
+        resolvedPickRejections.has(pick.id)
+      ) {
+        pick.position.tradeStatus = "OPEN";
+      }
+    }
+  }
 
   // ── 12. Activity feed — merge trade opens/closes + management actions ──────
   const activityFeed: ActivityFeedItem[] = [];
