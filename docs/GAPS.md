@@ -99,6 +99,32 @@ Goal: keep gates that prevent STRUCTURALLY IMPOSSIBLE states (e.g., ACTIVE thesi
 
 **Already removed in [#360](https://github.com/dave-sucks/hindsight/pull/360):** Gates A + B (composite-coupling on `record_thesis` + `update_thesis`) — they forced `conviction` to derive from `composite`, defeating the whole point of having a separate writer-judgment field. The remaining suspects above are unchanged. Probably folds into the trade-as-proposal refactor since the proposal layer changes which gates matter.
 
+### P1-17 — Thesis Writer reports 100% Inngest failure while the work succeeds
+**Status:** root-caused + fix in flight 2026-06-04. **NOT a duplicate of the P1-12 credit-exhaustion failures** — different error, different mechanism (see below).
+
+**Symptom:** the Inngest dashboard shows "Thesis Writer (sub-agent)" (`app/thesis.write.requested`) at ~100% failure over 24h, yet the work succeeds — the runs (SNOW/PACS/CRDO on PEAD Specialist, 2026-06-03) all marked `ResearchRun.status=COMPLETE` and wrote their theses. One (CRDO) also logged `parameters.error = "Thesis-writer timed out after 770s."`
+
+**Root cause (two coupled layers):**
+
+1. **One long `step.run` outlives Inngest's request tolerance.** `thesis-writer.ts` runs the entire agent inside a single `step.run("run-thesis-writer", …)`. That step takes **333–760s (avg 425s, p90 541s, max 760s; 37% hit `maxSteps=8`)**. `runThesisWriterAgent` **never throws** (both try/catch blocks return a result), so the only thing Inngest can register is the long HTTP request being abandoned → with `retries:1` it re-invokes, re-executing the whole agent from scratch (the step was never checkpointed).
+
+2. **No retry-idempotency guard.** The child `ResearchRun` is pre-created `RUNNING` by `dispatch_thesis_research`; the DB side-effects (`record_thesis`/`update_thesis` + `complete_run`) commit **mid-step**, independent of the HTTP response. So one attempt lands the thesis + marks COMPLETE; the other re-runs, usually hits the 770s `AbortSignal`, and its catch stamps `parameters.error` — but `updateMany(WHERE status='RUNNING')` matches 0 rows (already COMPLETE), so status stays COMPLETE while the error is written anyway.
+
+**Proof of double-execution:** CRDO's one `ResearchRun` row carries **both** `parameters.elapsedMs=429447` (written only by the success path) **and** `error="timed out after 770s"` (written only by the catch) — impossible in a single call. SNOW shows the pure form: COMPLETE, thesis written, *no* error, `elapsedMs=760426`, `steps=8`. (Retries do **not** duplicate Thesis rows — the cardinality gate absorbs the second mint; the cost is a wasted second full Claude agent run + the false failures.)
+
+**Frequency — don't overstate it.** 8 COMPLETE runs in 30d carry both fields, but **only 1 (CRDO, 6/03) is the *timeout* variant; the other 7 are the 2026-05-31 P1-12 credit-balance retries.** So the double-execution *mechanism* is systemic — the guard no-ops a retry-after-completion regardless of cause (timeout, credit, transient), which is a real plus — but the timeout-specific failure is **~once/30d**: a rare doubled run + a misleading 100%-failure dashboard badge, **not** a frequent spend drain. Merge it for the correct dashboard signal + the occasional saved double-run, not as an urgent fire.
+
+**Why writer-only:** morning-research (12h guard) and discovery-run (the explicit "P2-10 — idempotency on Inngest step retries" 1h-RUNNING-reuse guard) short-circuit on retry; tactical's step is short (~40–160s). 30d: THESIS_WRITER 8 COMPLETE-with-error / avg 425s vs MORNING_PLAN 0 / avg 113s, DISCOVERY 0, INTRADAY_TACTICAL 0. The writer is the one long-running agent that never got the guard.
+
+**Where the time goes (the long-step driver):** not data-gathering — it's the model *generating the persistence payload*. `write_thesis_research` ~190s, then **`record_thesis`/`update_thesis` 150–190s each** (Claude emitting the verbatim 9-section + decision/trigger/conviction blob). A Layer-1 trigger-gate rejection forces full-payload regeneration (SNOW: `update_thesis` ×2 = 337s → maxSteps=8 → 760s).
+
+**Fix:**
+- **(shipping) Retry-idempotency guard** in `run-thesis-writer.ts` — if a prior attempt already drove the child run to COMPLETE, no-op the retry and report success (mirrors discovery P2-10). Makes the Inngest retry succeed → dashboard shows success; kills the doubled Anthropic spend + the spurious error stamp. Only COMPLETE short-circuits (genuine FAILED still retries); fail-open. Residual gap: a true concurrent attempt-overlap isn't caught — same gap morning/discovery accept.
+- **(fast-follow)** Stop a trigger-gate rejection from regenerating all 9 sections (patch only the offending field); investigate the 2/30d runs that burned ~473s in `code_execution` (the native-web-search companion leak the run-thesis-writer.ts:819–845 comment claims was fixed).
+- **(optional infra)** `serve({ streaming: "force" })` in `app/api/inngest/route.ts` to hold long connections route-wide.
+
+**NOT P1-12 (but they overlap in the evidence set):** P1-12 was `"Your credit balance is too low to access the Anthropic API"` on 2026-05-31 (Anthropic billing, parallel fan-out). The CRDO timeout is `"timed out after 770s"` on 2026-06-03 — a duration/abort + un-guarded-retry bug, a different root cause. The 7 P1-12 rows show the *same double-execution mechanism* this guard fixes (a retry re-ran after the first attempt had already completed), but their cause was billing and is closed. **Cost bucket:** the writer runs **Claude Sonnet 4.6** (Anthropic), so this trims occasional Anthropic spend — it is **unrelated** to the OpenAI/gpt-5.5 tactical-run spend addressed by [#381].
+
 ---
 
 ## P2 — Backlog (defer until P0+P1 clean)

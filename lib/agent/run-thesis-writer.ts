@@ -646,6 +646,77 @@ export async function runThesisWriterAgent(
   const t0 = Date.now();
   const T = args.ticker.toUpperCase();
 
+  // ── 0. Idempotency on Inngest step retries (GAPS P1-17) ─────────────
+  // dispatch_thesis_research pre-creates the child ResearchRun in RUNNING
+  // state, then thesis-writer.ts runs this WHOLE agent inside a single
+  // step.run("run-thesis-writer"). That step takes 333–760s (avg 425s) —
+  // long enough that Inngest abandons the HTTP request and, with retries:1,
+  // re-invokes the function. The step never reported success, so the retry
+  // re-executes the entire agent from scratch: a second ~190s
+  // write_thesis_research synthesis + a second ~190s record/update_thesis
+  // payload generation, frequently running into the 770s AbortSignal whose
+  // catch stamps parameters.error onto a run the FIRST attempt already drove
+  // to COMPLETE. Net: COMPLETE + thesis written + a spurious
+  // "timed out after 770s" error, while the Inngest dashboard shows 100%
+  // failure even though the work succeeded. (Proof: CRDO 2026-06-03 carried
+  // BOTH elapsedMs (success path) AND the timeout error (catch) on one row —
+  // mutually exclusive within a single call, so the function ran twice.)
+  //
+  // runThesisWriterAgent itself NEVER throws — both try/catch blocks return
+  // a result — so the Inngest failure is purely the long request being
+  // abandoned, not an application error. This guard makes the retry a fast
+  // no-op: if a prior attempt already drove the child run to COMPLETE,
+  // report success without re-running. Inngest then sees the function
+  // succeed; the doubled Anthropic spend and the spurious error both vanish.
+  // Mirrors discovery-run's "P2-10" guard + morning-research's 12h guard —
+  // the writer was the one long-running agent never given one.
+  //
+  // ONLY COMPLETE short-circuits — a genuinely FAILED first attempt must
+  // still be retried (that's what retries:1 is for). Fail-open: any error
+  // reading prior state falls through to a normal run (never worse than
+  // today). Residual gap: a true concurrent overlap (attempt 1 still RUNNING
+  // when attempt 2 starts) isn't caught — the same gap morning/discovery
+  // accept, and far rarer than the sequential retry this closes.
+  try {
+    const prior = await prisma.researchRun.findUnique({
+      where: { id: args.childRunId },
+      select: { status: true },
+    });
+    if (prior?.status === "COMPLETE") {
+      let thesisId: string | null = null;
+      if (args.mode === "mint") {
+        const minted = await prisma.thesis.findFirst({
+          where: { researchRunId: args.childRunId, ticker: T },
+          select: { id: true },
+          orderBy: { createdAt: "desc" },
+        });
+        thesisId = minted?.id ?? null;
+      } else if (args.existingThesisId) {
+        const touch = await prisma.thesisUpdate.findFirst({
+          where: { runId: args.childRunId, thesisId: args.existingThesisId },
+          select: { thesisId: true },
+        });
+        thesisId = touch?.thesisId ?? null;
+      }
+      console.log(
+        `[thesis-writer] IDEMPOTENT no-op ticker=${T} child=${args.childRunId}: prior attempt already COMPLETE (thesisId=${thesisId}); skipping re-run (Inngest retry).`,
+      );
+      return {
+        childRunId: args.childRunId,
+        status: "COMPLETE",
+        thesisId,
+        steps: 0,
+        toolCalls: 0,
+        elapsedMs: Date.now() - t0,
+      };
+    }
+  } catch (guardErr) {
+    console.warn(
+      `[thesis-writer] idempotency guard read failed for child=${args.childRunId}; proceeding with normal run:`,
+      guardErr instanceof Error ? guardErr.message : guardErr,
+    );
+  }
+
   // ── 1. Load context ─────────────────────────────────────────────────
   const analyst = await prisma.agentConfig.findUnique({
     where: { id: args.analystId },

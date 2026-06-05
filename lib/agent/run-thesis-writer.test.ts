@@ -13,9 +13,26 @@
  * "simplify the ternary" refactor can't silently regress.
  */
 
-// Stub out modules that the source file imports at load time but the
-// pure prompt builder doesn't actually exercise.
-jest.mock("@/lib/prisma", () => ({ prisma: {} }));
+// Stub out modules that the source file imports at load time. The pure
+// prompt-builder tests below don't touch any of these; the idempotency-guard
+// tests configure prisma's reads per-case (the guard short-circuits before
+// the analyst load / tool factory / model call, so only prisma is exercised).
+jest.mock("@/lib/prisma", () => ({
+  prisma: {
+    researchRun: {
+      findUnique: jest.fn(),
+      updateMany: jest.fn(),
+      update: jest.fn(),
+      findFirst: jest.fn(),
+    },
+    thesis: { findFirst: jest.fn(), findUnique: jest.fn() },
+    thesisUpdate: { findFirst: jest.fn() },
+    agentConfig: { findUnique: jest.fn() },
+    runMessage: { deleteMany: jest.fn(), create: jest.fn() },
+    runEvent: { create: jest.fn() },
+    $transaction: jest.fn(),
+  },
+}));
 jest.mock("@/lib/actions/api-keys.actions", () => ({
   resolveAlpacaCredentials: jest.fn(),
 }));
@@ -26,7 +43,12 @@ jest.mock("@/lib/agent/tools", () => ({
   createResearchTools: jest.fn(),
 }));
 
-import { buildThesisWriterSystemPrompt } from "./run-thesis-writer";
+import {
+  buildThesisWriterSystemPrompt,
+  runThesisWriterAgent,
+} from "./run-thesis-writer";
+import { prisma } from "@/lib/prisma";
+import { createResearchTools } from "@/lib/agent/tools";
 
 const baseOpts = {
   analystName: "Test Analyst",
@@ -203,5 +225,111 @@ describe("buildThesisWriterSystemPrompt — date-awareness gate (P1-5 / PR #354)
     expect(dateIdx).toBeGreaterThan(-1);
     expect(reasonIdx).toBeGreaterThan(-1);
     expect(dateIdx).toBeLessThan(reasonIdx);
+  });
+});
+
+describe("runThesisWriterAgent — idempotency guard on Inngest retries (P1-17)", () => {
+  const researchRunFindUnique = prisma.researchRun.findUnique as jest.Mock;
+  const thesisFindFirst = prisma.thesis.findFirst as jest.Mock;
+  const thesisUpdateFindFirst = prisma.thesisUpdate.findFirst as jest.Mock;
+  const agentConfigFindUnique = prisma.agentConfig.findUnique as jest.Mock;
+  const researchRunUpdateMany = prisma.researchRun.updateMany as jest.Mock;
+  const createTools = createResearchTools as jest.Mock;
+
+  // `agentConfig.findUnique` is the first DB read AFTER the guard. If the
+  // guard short-circuits it's never reached; if the guard falls through the
+  // analyst load runs. So it's the clean "did the guard fire?" probe — and
+  // returning null sends the fall-through straight to the cheap
+  // "Analyst not found" FAILED exit, no model call needed.
+  beforeEach(() => {
+    jest.resetAllMocks();
+    researchRunUpdateMany.mockResolvedValue({ count: 1 });
+  });
+
+  const mintArgs = {
+    childRunId: "run_child_1",
+    analystId: "analyst_1",
+    ticker: "nvda",
+    mode: "mint" as const,
+    reason: "test dispatch",
+  };
+
+  it("no-ops a retry when the child run is already COMPLETE (mint) and returns the existing thesisId", async () => {
+    researchRunFindUnique.mockResolvedValue({ status: "COMPLETE" });
+    thesisFindFirst.mockResolvedValue({ id: "thesis_minted_1" });
+
+    const result = await runThesisWriterAgent(mintArgs);
+
+    expect(result.status).toBe("COMPLETE");
+    expect(result.thesisId).toBe("thesis_minted_1");
+    expect(result.steps).toBe(0);
+    expect(result.toolCalls).toBe(0);
+    // Short-circuited BEFORE the analyst load + tool factory + model call.
+    expect(agentConfigFindUnique).not.toHaveBeenCalled();
+    expect(createTools).not.toHaveBeenCalled();
+    // Looked the minted thesis up by the child run id (uppercased ticker).
+    expect(thesisFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { researchRunId: "run_child_1", ticker: "NVDA" },
+      }),
+    );
+  });
+
+  it("no-ops a COMPLETE refresh via the ThesisUpdate audit row", async () => {
+    researchRunFindUnique.mockResolvedValue({ status: "COMPLETE" });
+    thesisUpdateFindFirst.mockResolvedValue({ thesisId: "thesis_existing_9" });
+
+    const result = await runThesisWriterAgent({
+      childRunId: "run_child_2",
+      analystId: "analyst_1",
+      ticker: "AMD",
+      mode: "refresh",
+      existingThesisId: "thesis_existing_9",
+      reason: "refresh dispatch",
+    });
+
+    expect(result.status).toBe("COMPLETE");
+    expect(result.thesisId).toBe("thesis_existing_9");
+    expect(thesisUpdateFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { runId: "run_child_2", thesisId: "thesis_existing_9" },
+      }),
+    );
+    expect(agentConfigFindUnique).not.toHaveBeenCalled();
+    expect(createTools).not.toHaveBeenCalled();
+  });
+
+  it("does NOT short-circuit a genuinely FAILED first attempt — the retry re-runs", async () => {
+    researchRunFindUnique.mockResolvedValue({ status: "FAILED" });
+    // Fall-through reaches the analyst load; null sends it to the cheap
+    // "Analyst not found" FAILED exit instead of a real model run.
+    agentConfigFindUnique.mockResolvedValue(null);
+
+    const result = await runThesisWriterAgent(mintArgs);
+
+    expect(agentConfigFindUnique).toHaveBeenCalled();
+    expect(thesisFindFirst).not.toHaveBeenCalled();
+    expect(result.status).toBe("FAILED");
+  });
+
+  it("does NOT short-circuit while the run is still RUNNING (pre-created initial state)", async () => {
+    researchRunFindUnique.mockResolvedValue({ status: "RUNNING" });
+    agentConfigFindUnique.mockResolvedValue(null);
+
+    const result = await runThesisWriterAgent(mintArgs);
+
+    expect(agentConfigFindUnique).toHaveBeenCalled();
+    expect(result.status).toBe("FAILED");
+  });
+
+  it("fails open — a guard read error falls through to a normal run instead of blocking", async () => {
+    researchRunFindUnique.mockRejectedValue(new Error("db blip"));
+    agentConfigFindUnique.mockResolvedValue(null);
+
+    const result = await runThesisWriterAgent(mintArgs);
+
+    // The thrown guard read did not abort the function; it proceeded.
+    expect(agentConfigFindUnique).toHaveBeenCalled();
+    expect(result.status).toBe("FAILED");
   });
 });
