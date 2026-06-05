@@ -36,7 +36,10 @@ jest.mock("@/lib/emails/proposal-pending", () => ({
   sendProposalPendingEmail: mockSendProposalPendingEmail,
 }));
 
-import { maybeAwaitApproval } from "./maybe-await-approval";
+import {
+  maybeAwaitApproval,
+  ApprovalGateAccountUnresolvedError,
+} from "./maybe-await-approval";
 
 const ALL_TOGGLES_ON = {
   requireApprovalBuysLive: true,
@@ -134,5 +137,63 @@ describe("maybeAwaitApproval — duplicate CLOSE dedup", () => {
     // Never reaches the dedup query or the stage transaction.
     expect(mockOrderFindFirst).not.toHaveBeenCalled();
     expect(mockTransaction).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAPS P1-19 / compliance incident #390 (2026-06-05).
+//
+// A syntactically-valid accountId that fails to resolve to an Account row
+// (deleted account, cross-env mismatch, race) used to return null from the
+// gate. A null return means "no approval required → submit the order to
+// Alpaca." For LIVE that auto-executed a real trade with NO approval. The gate
+// must fail CLOSED for LIVE: refuse the trade before Alpaca. PAPER is not
+// compliance-bound and keeps the legacy fail-open (returns null).
+// ─────────────────────────────────────────────────────────────────────────────
+describe("maybeAwaitApproval — unresolved account fails CLOSED on LIVE", () => {
+  it("does NOT return null when LIVE + account unresolved — it throws (fail closed)", async () => {
+    // Account row can't be resolved (deleted / cross-env / race).
+    mockAccountFindUnique.mockResolvedValue(null);
+
+    // A throw is the safe outcome: the just-created order never reaches the
+    // Alpaca submit below the seam. Critically, it must NOT resolve to null —
+    // null would tell the calling tool "no approval needed, submit it."
+    await expect(
+      maybeAwaitApproval({ ...baseArgs(), environment: "LIVE" }),
+    ).rejects.toBeInstanceOf(ApprovalGateAccountUnresolvedError);
+
+    // Provably unreachable-to-Alpaca: no proposal staged, no order mutated,
+    // no email — the gate bailed before any of that.
+    expect(mockOrderFindFirst).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on a LIVE OPEN (buy) too, not just closes", async () => {
+    mockAccountFindUnique.mockResolvedValue(null);
+
+    await expect(
+      maybeAwaitApproval({
+        ...baseArgs(),
+        intent: "OPEN",
+        environment: "LIVE",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalGateAccountUnresolvedError);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it("PAPER + account unresolved still returns null (paper is not compliance-bound)", async () => {
+    mockAccountFindUnique.mockResolvedValue(null);
+
+    const result = await maybeAwaitApproval({
+      ...baseArgs(),
+      environment: "PAPER",
+    });
+
+    // Legacy fail-open is preserved for paper: null → tool auto-executes.
+    expect(result).toBeNull();
+    expect(mockOrderFindFirst).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
   });
 });
