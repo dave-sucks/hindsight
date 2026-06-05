@@ -66,7 +66,16 @@ Notable patched rows:
 
 Post-cleanup verification query (`SELECT … WHERE cooldownDays=0 AND action != 'EXIT' AND status IN open-states`) returns 0 rows. EXIT stops on all ACTIVE positions verified preserved at `cooldownDays: 0` (legitimate — sanity-spot-checked NVDA/IREN/MRVL/TSM).
 
-**Related but separate (closed alongside):** the TIME_ELAPSED predicate measured from `thesis.createdAt`, the wrong clock for a HELD-side "max hold" check — fixed as **P1-14** (see "Done since").
+**Related but separate (not fixed here):** the TIME_ELAPSED predicate measures from `thesis.createdAt`, which is the wrong clock for a HELD-side "max hold" check. The trigger evaluator should measure from `position.openedAt` on ACTIVE rows. Filing as follow-up P1-14 (below).
+
+### P1-14 — TIME_ELAPSED predicate uses `thesis.createdAt`, not `position.openedAt`, on HELD-side triggers
+**Status:** filed via P0-13 postmortem 2026-06-02. **Not blocking now that cooldown defaults are correct, but the semantic is wrong.**
+
+A "max hold 14 days" REVIEW trigger on an ACTIVE position should measure 14 days from when the position opened, not 14 days from when the thesis row was created. Today the NVDA position is 0 days old but the predicate fires because the *thesis* is 36 days old. The agent self-correctly recognized the mismatch ("the live $NVDA position is only 0 days old, but the trigger is checking 14 days elapsed since thesis-row creation") and refused to exit on every iteration, but it shouldn't have had to fight an incorrect signal in the first place.
+
+**Fix:** `lib/agent/triggers/evaluate.ts` — for triggers on a Thesis with `status='ACTIVE'` and `predicate.kind='TIME_ELAPSED'`, measure elapsed from `position.openedAt` instead of `thesis.createdAt`. WATCHING-side stays on `createdAt` (the right clock for "is this watch row stale").
+
+---
 
 ---
 
@@ -195,16 +204,6 @@ Re-evaluate the rest after the live loop is stable for ~1 week.
 ---
 
 ## Done since
-
-### 2026-06-05 — P1-14 + P1-18: position-lifecycle correctness (two fixes, one PR)
-
-Two related desyncs between a Position and its paired Thesis, shipped together.
-
-- **P1-14 — TIME_ELAPSED measured from `thesis.createdAt`, not `position.openedAt`, on HELD triggers.** A "max hold N days" REVIEW on an ACTIVE position now measures from when the *position* opened, not when the (often much older) thesis row was created — the NVDA incident where a 0-day-old position fired a 14d trigger because the thesis was 36 days old. `EvaluationContext.thesis` gained `status` + `positionOpenedAt`; the `TIME_ELAPSED` case in [`lib/agent/triggers/evaluate.ts`](../lib/agent/triggers/evaluate.ts) anchors to `positionOpenedAt` when `status==='ACTIVE'` and it's present, else falls back to `createdAt` (WATCHING stays on `createdAt` — the right clock for "is this watch row stale"). Every call site that builds an `EvaluationContext` now resolves the open position's `openedAt` for ACTIVE rows: the trigger-evaluator cron + signal paths, `get_theses` (→ `computeNeedsAction` + `buildResolvedEnvelope`), `live-evaluate`, the `complete_run` unaddressed-work gate, and the thesis-sheet triggers API. Both clocks pinned in `evaluate.test.ts`.
-
-- **P1-18 — cron close left the paired thesis ACTIVE.** `closeOpenPosition` (the shared close path) closed the Position but never flipped the Thesis, so a price-monitor trailing-stop close (`source="price_monitor"`) on an approval-OFF book left an ACTIVE thesis with no position. Factored the agent close path's flip + audit-row write into a shared `closeThesisForPosition` helper in [`lib/proposals/thesis-flips.ts`](../lib/proposals/thesis-flips.ts) and called it from `closeOpenPosition`'s **FILLED-close branch only**. `closeThesisOnApproval` now delegates to the same helper; the redundant inline flips in `close-position.ts` + `manage-position.ts` were removed so every direct-fill close (agent, cron, manual UI) flips identically. Audit row stays `type: "CLOSED"` (the dashboard activity feed + run-summary bucket on it) carrying the `ACTIVE→CLOSED` status delta.
-
-**#390 interaction (critical):** post-#390, approval-ON closes do NOT execute in `closeOpenPosition` — they stage an `AWAITING_APPROVAL` proposal and return early *before* the FILLED branch; the flip happens later via `closeThesisOnApproval` on approval. The new flip lives only in the path that truly closes the position now (`fillStatus FILLED`), so there is no double-flip and the proposed/awaiting path is untouched. Pinned in `lib/actions/closeTrade.thesis-flip.test.ts`.
 
 ### 2026-06-04 — P1-16: chat→trade-tool env threading (a LIVE chat scoped to the paper book)
 
