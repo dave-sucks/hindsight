@@ -465,9 +465,19 @@ export const placeTrade = defineTool({
       if (!analystId) {
         throw new Error("Cannot place trade without an analyst ID. Pass analyst_id (principal chat) or ensure the run is linked to an analyst.");
       }
-      // Belt-and-suspenders: if the agent overrides via args.analyst_id,
-      // confirm the analyst belongs to the user.
-      if (args.analyst_id && args.analyst_id !== ctx.analystId) {
+      // args.analyst_id is consulted ONLY when the run isn't scoped to an
+      // analyst (principal chat). When ctx.analystId is set (daily / tactical /
+      // morning runs) effectiveAnalystId already ignores args.analyst_id (see
+      // line ~102), so a stray or slug-shaped value the model passes despite the
+      // schema instruction must NOT block the trade — validate ownership only
+      // when we actually fall back to args.analyst_id.
+      //
+      // P1-18 (2026-06-05): GPT-5.5 passed analyst_id="catalyst-event-pm" (the
+      // slug, not the cuid) on a ctx-bound Catalyst tactical run. The old
+      // unconditional check (`args.analyst_id !== ctx.analystId`) threw
+      // "Analyst catalyst-event-pm not found or not yours" and silently dropped
+      // a validated live ARQT entry.
+      if (!ctx.analystId && args.analyst_id) {
         const owner = await prisma.agentConfig.findFirst({
           where: { id: args.analyst_id, userId: ctx.userId },
           select: { id: true },
