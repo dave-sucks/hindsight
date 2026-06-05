@@ -100,7 +100,7 @@ Goal: keep gates that prevent STRUCTURALLY IMPOSSIBLE states (e.g., ACTIVE thesi
 **Already removed in [#360](https://github.com/dave-sucks/hindsight/pull/360):** Gates A + B (composite-coupling on `record_thesis` + `update_thesis`) — they forced `conviction` to derive from `composite`, defeating the whole point of having a separate writer-judgment field. The remaining suspects above are unchanged. Probably folds into the trade-as-proposal refactor since the proposal layer changes which gates matter.
 
 ### P1-17 — Thesis Writer reports 100% Inngest failure while the work succeeds
-**Status:** root-caused + fix in flight 2026-06-04. **NOT a duplicate of the P1-12 credit-exhaustion failures** — different error, different mechanism (see below).
+**Status:** **Closed by [#383](https://github.com/dave-sucks/hindsight/pull/383) (merged 2026-06-05)** — retry-idempotency guard shipped; Inngest retries now no-op instead of re-running. **NOT a duplicate of the P1-12 credit-exhaustion failures** — different error, different mechanism (see below).
 
 **Symptom:** the Inngest dashboard shows "Thesis Writer (sub-agent)" (`app/thesis.write.requested`) at ~100% failure over 24h, yet the work succeeds — the runs (SNOW/PACS/CRDO on PEAD Specialist, 2026-06-03) all marked `ResearchRun.status=COMPLETE` and wrote their theses. One (CRDO) also logged `parameters.error = "Thesis-writer timed out after 770s."`
 
@@ -124,6 +124,30 @@ Goal: keep gates that prevent STRUCTURALLY IMPOSSIBLE states (e.g., ACTIVE thesi
 - **(optional infra)** `serve({ streaming: "force" })` in `app/api/inngest/route.ts` to hold long connections route-wide.
 
 **NOT P1-12 (but they overlap in the evidence set):** P1-12 was `"Your credit balance is too low to access the Anthropic API"` on 2026-05-31 (Anthropic billing, parallel fan-out). The CRDO timeout is `"timed out after 770s"` on 2026-06-03 — a duration/abort + un-guarded-retry bug, a different root cause. The 7 P1-12 rows show the *same double-execution mechanism* this guard fixes (a retry re-ran after the first attempt had already completed), but their cause was billing and is closed. **Cost bucket:** the writer runs **Claude Sonnet 4.6** (Anthropic), so this trims occasional Anthropic spend — it is **unrelated** to the OpenAI/gpt-5.5 tactical-run spend addressed by [#381].
+
+### P1-18 — Cron stop-out closes the Position but leaves the paired Thesis ACTIVE (close-side desync)
+**Status:** open, found 2026-06-05. First live instance: MRVL on PEAD Specialist (LIVE).
+
+The agent's `close_position` tool flips the paired Thesis ACTIVE→CLOSED in the same transaction (PR #265 fixed the open-side mirror — `place_trade` leaving the thesis WATCHING). The **cron** stop-out path does **not**: `closeOpenPosition` ([lib/actions/closeTrade.actions.ts:392](../lib/actions/closeTrade.actions.ts)) sets `Position.status='CLOSED'` + writes a `PositionEvent('CLOSED')`, but never touches `Thesis.status` and never writes a `ThesisUpdate(STATUS_CHANGED)` audit row. So any position closed via `closeSource='price_monitor'` (the trailing-stop / exit cron, `lib/trade-exit.ts:130`) leaves a phantom ACTIVE thesis.
+
+**Concrete (MRVL, 2026-06-05):** position stopped out 14:01 ET (`closeReason='STOP'`, `closeSource='price_monitor'`, +$314.67 realized). Thesis `cmp9senxq000904ii9pgtmr95` stayed ACTIVE. It still carries a `cooldownDays:0` EXIT `PRICE_BELOW $267.53` trigger — now latched true (price sits below the stop). Because the thesis is still in the evaluator's `status:ACTIVE` scan, the hourly trigger-evaluator will keep matching it and firing GPT-5.5 tactical runs against a position that no longer exists — the same cost-bleed class as #377/#381, arriving through the close-desync door rather than a pending proposal (#381's bail is OPEN-position-only, so it doesn't catch this).
+
+**Immediate-risk calibration (don't overstate):** market closed Fri→Mon and signal-router is paused → no evaluator fire until Monday market hours, which is *after* the 8 AM PEAD daily run. Realistic weekend bleed ≈ 0, and Monday's run *may* self-heal it (ACTIVE thesis + no position → agent closes/archives) — but self-heal isn't guaranteed (the documented desync anchors the agent on the stale ACTIVE status), so a one-row pre-Monday cleanup is cheap insurance.
+
+**Two fixes:**
+- **Data (needs principal go — LIVE write):** flip thesis `cmp9senxq000904ii9pgtmr95` ACTIVE→CLOSED + write a `ThesisUpdate(STATUS_CHANGED, reason='position stopped out 2026-06-05; cron close-side desync')`. Re-run the scan after; expect 0 rows.
+- **Code (durable):** make `closeOpenPosition` flip the paired Thesis ACTIVE→CLOSED + write the STATUS_CHANGED audit row, same as the agent's `close_position` — factor the tool's thesis-flip into a shared helper both paths call. Closes the recurrence for every future cron stop-out.
+
+Scan `SELECT … WHERE t.status='ACTIVE' AND NOT EXISTS(open position)` returns exactly 1 row today (the MRVL one) — not yet systemic, but recurs on the next live stop-out.
+
+**Post-#390 scope reduction:** on approval-ON books the cron now *proposes* the close instead of auto-executing, so it no longer auto-closes a position out from under its thesis; the approve path's `closeThesisOnApproval` flips the thesis. Remaining bite: approval-OFF auto-executes (e.g. paper) + the pre-#390 MRVL row. The durable fix (factor the thesis-flip into the shared close path) still stands as defense-in-depth.
+
+### P1-19 — The approval gate (`maybeAwaitApproval`) fails OPEN
+**Status:** open, found 2026-06-05 during the post-#390 Alpaca-submit audit. **Latent — not firing today**, but it's the wrong failure mode for a compliance gate. Recommended in the audit; **pending principal go.**
+
+[`maybeAwaitApproval`](../lib/proposals/maybe-await-approval.ts) does `if (!account) return null`, and a `null` return means "no approval required → submit to Alpaca." So if a syntactically-valid `accountId` ever fails to resolve to an `Account` row (deleted account, cross-env mismatch, race), the gate is silently skipped and the trade **auto-executes**. Every live path resolves `accountId` correctly today, so it isn't biting — but a money/compliance gate should fail **closed** (refuse / stage a proposal when it can't confirm the toggle), not open.
+
+**Fix:** when the `account` lookup returns null, fail closed for LIVE (treat as approval-required) instead of returning null. Requires first tracing that no legitimate autonomous path ever passes a null/stale `accountId`, or it would start staging spurious proposals. Its own PR, not bolted onto #390.
 
 ---
 
@@ -157,7 +181,7 @@ After [#361](https://github.com/dave-sucks/hindsight/pull/361) the following are
 P1-12 needs to land first (confirm 5/5 FAILUREs were token exhaustion not a bug) before any of these are real options.
 
 ### New P2 — Stale `Order.rationale` on OPEN proposals only
-**Status:** open, surfaced 2026-06-04 by the 6/03 NVTS review session. Confirmed real but **OPEN-proposal-only** — CLOSE proposals carry the correct text.
+**Status:** **Closed by [#386](https://github.com/dave-sucks/hindsight/pull/386) (merged 2026-06-05)** — `place_trade`'s OPEN path now stamps `Order.rationale` from the tactical entry rationale instead of the stale thesis snapshot. Was: surfaced 2026-06-04 by the 6/03 NVTS review, OPEN-proposal-only (CLOSE proposals already carried correct text).
 
 When `place_trade` creates an `Order` row for an **OPEN proposal**, `Order.rationale` is populated from the **thesis row's current rationale snapshot at proposal-creation time**. For a tactical-triggered entry, that snapshot is usually the prior morning's WATCHING-side "not actionable yet" text — NOT the tactical agent's actual entry-decision rationale.
 
@@ -204,6 +228,22 @@ Re-evaluate the rest after the live loop is stable for ~1 week.
 ---
 
 ## Done since
+
+### 2026-06-05 — P0: unauthorized LIVE auto-sell — price-monitor bypassed the approval gate
+PR [#390](https://github.com/dave-sucks/hindsight/pull/390). **A live position (MRVL) was sold in production with no approval step despite `requireApprovalSellsLive=true` — a pre-clearance/disclosure violation, not just a code bug.**
+
+**Root cause:** `closeOpenPosition`'s Trade-as-Proposal gate was `if (source === "agent")`. The price-monitor trailing-stop cron calls in as `source="price_monitor"`, so it skipped `maybeAwaitApproval` and submitted straight to Alpaca. The gate encoded the pre-clearance-era assumption "a stop is pre-approved at entry," which the every-sell-needs-clearance requirement invalidates.
+
+**Fix:** gate on `source !== "user"` — every autonomous close (agent + cron) now routes through the same approval proposal; only a manual UI click bypasses (self-approved). Approval-off behavior unchanged (auto-execute).
+
+**Scope:** only `exitStrategy="TRAILING"` positions reach this path (hard stops/targets already proposed via the agent path); MRVL was the only trailing-stop position and the only live position ever auto-closed → **blast radius = 1 trade** (filled +$314.67, not reversible — flagged to principal for disclosure).
+
+**Full Alpaca-submit audit (same day; all four order primitives + every caller read):** after #390 no autonomous path places/sells at Alpaca without `maybeAwaitApproval` or an authenticated human action. `placeLimitOrder` is dead code; `approveProposal` hard-requires `AWAITING_APPROVAL` + an authed non-VIEWER same-account caller (no cron calls it); `liquidateOrphan` (Health-panel) and the ops scripts are human-only. Two follow-ups surfaced → P1-19 (fail-open gate) + a `liquidateOrphan` no-proposal-record note (manual sell that leaves no approval paper trail; human-gated so not autonomous).
+
+### 2026-06-05 — GAPS hygiene: P1-17 + Order.rationale closed
+- **P1-17** (thesis-writer Inngest false-failure) — closed by [#383](https://github.com/dave-sucks/hindsight/pull/383). Retry-idempotency guard shipped; retries no-op instead of re-running.
+- **Stale `Order.rationale` on OPEN proposals** (P2) — closed by [#386](https://github.com/dave-sucks/hindsight/pull/386). OPEN path now stamps the tactical entry rationale, not the stale thesis snapshot.
+- Both verified merged 2026-06-05; docs PRs [#382](https://github.com/dave-sucks/hindsight/pull/382) + [#385](https://github.com/dave-sucks/hindsight/pull/385) confirmed merged the same window.
 
 ### 2026-06-04 — P1-16: chat→trade-tool env threading (a LIVE chat scoped to the paper book)
 
