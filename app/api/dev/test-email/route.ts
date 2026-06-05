@@ -17,6 +17,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sendEmail, getUserEmail } from "@/lib/email";
 import { tradeOpenedHtml } from "@/lib/emails/trade-opened";
 import { tradeClosedHtml } from "@/lib/emails/trade-closed";
+import { proposalPendingHtml } from "@/lib/emails/proposal-pending";
 import { dailyRunDigestHtml } from "@/lib/emails/daily-run-digest";
 
 // Accept GET so you can fire the test by just visiting the URL in a logged-in
@@ -49,38 +50,100 @@ async function handler() {
 
   const results: Record<string, boolean> = {};
 
-  // Sample 1: trade-opened
+  const now = new Date();
+  const twelveDaysAgo = new Date(now.getTime() - 12 * 86_400_000);
+
+  // Sample 1: trade-opened (post-fill, executed)
   results.tradeOpened = await sendEmail({
     to: toEmail,
-    subject: "[TEST] 📈 Bought NVDA — Test Analyst",
+    subject: "[TEST] AI Infrastructure Analyst bought 10 NVDA",
     html: tradeOpenedHtml({
       ticker: "NVDA",
+      tickerName: "NVIDIA Corp.",
       direction: "LONG",
       qty: 10,
       avgCost: 875.4,
+      currentPrice: 881.12,
       stopLoss: 840,
       targetPrice: 950,
-      analystName: "Test Analyst",
+      analystName: "AI Infrastructure Analyst",
       thesisSummary:
-        "Sample trade-opened email. AI compute demand remains structural; recent guide raised reaffirms our long bias through the next earnings cycle.",
+        "AI compute demand remains structural — recent guide-raise reaffirms our long bias through the next earnings cycle.",
+      environment: "PAPER",
+      positionId: "test-position-id",
+      openedAt: now,
     }),
   });
 
-  // Sample 2: trade-closed
+  // Sample 2: trade-closed (post-exit, with realized gain)
   results.tradeClosed = await sendEmail({
     to: toEmail,
-    subject: "[TEST] ✅ AAPL closed +8.4% — WIN",
+    subject: "[TEST] Catalyst Event PM sold 25 AAPL for +8.4%",
     html: tradeClosedHtml({
       ticker: "AAPL",
+      tickerName: "Apple Inc.",
       direction: "LONG",
+      qty: 25,
       entryPrice: 178.2,
       closePrice: 193.21,
-      realizedPnl: 150.1,
+      currentPrice: 193.21,
+      realizedPnl: 375.25,
       realizedPnlPct: 8.4,
       outcome: "WIN",
       closeReason: "TARGET",
       daysHeld: 12,
       tradeId: "test-position-id",
+      analystName: "Catalyst Event PM",
+      environment: "PAPER",
+      openedAt: twelveDaysAgo,
+      closedAt: now,
+    }),
+  });
+
+  // Sample 3: proposal-pending (LIVE buy awaiting approval)
+  results.proposalBuy = await sendEmail({
+    to: toEmail,
+    subject: "[TEST] [LIVE] Catalyst Event PM wants to buy 38 LNTH",
+    html: proposalPendingHtml({
+      analystName: "Catalyst Event PM",
+      ticker: "LNTH",
+      tickerName: "Lantheus Holdings",
+      direction: "LONG",
+      intent: "OPEN",
+      qty: 38,
+      estimatedPrice: 102.84,
+      estimatedCost: 38 * 102.84,
+      currentPrice: 102.84,
+      targetPrice: 118,
+      stopLoss: 95.5,
+      expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+      rationale:
+        "ENTER trigger validated: live $LNTH quote still holds above the $102.82 breakout level at ~$102.84, trend remains bullish above the 20/50-day SMAs, and there are no contradictory recent headlines in the feed. June 29 FDA PDUFA setup remains intact.",
+      environment: "LIVE",
+      positionId: "test-proposal-id",
+    }),
+  });
+
+  // Sample 4: proposal-pending (paper close, projected gain)
+  results.proposalSell = await sendEmail({
+    to: toEmail,
+    subject: "[TEST] Momentum Breakout wants to sell 53 MRVL",
+    html: proposalPendingHtml({
+      analystName: "Momentum Breakout",
+      ticker: "MRVL",
+      tickerName: "Marvell Technology",
+      direction: "LONG",
+      intent: "CLOSE",
+      qty: 53,
+      estimatedPrice: 286.07,
+      estimatedCost: 53 * 286.07,
+      entryPrice: 217.6,
+      currentPrice: 286.07,
+      expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+      rationale:
+        "TARGET trigger fired: $MRVL is +31.5% from entry and breached the $285 level on heavy volume. Recommending exit before the upcoming earnings print to lock in the move.",
+      environment: "PAPER",
+      positionId: "test-proposal-id",
     }),
   });
 
