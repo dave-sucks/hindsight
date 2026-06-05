@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 import { getUserEmail } from "@/lib/email";
-import { Separator } from "@/components/ui/separator";
+import { SettingsPageHeader } from "@/components/settings/SettingsSection";
 import { TeamSettingsClient } from "@/components/settings/TeamSettingsClient";
 import type {
   TeamMemberDTO,
@@ -18,10 +18,10 @@ export default async function TeamSettingsPage() {
   if (!user) redirect("/sign-in");
 
   const accountId = await getAccountId(user.id);
-  if (!accountId) redirect("/settings");
+  if (!accountId) redirect("/settings/profile");
 
   const role = await getUserRole(user.id, accountId);
-  if (!role) redirect("/settings");
+  if (!role) redirect("/settings/profile");
 
   const [account, memberships, invites] = await Promise.all([
     prisma.account.findUnique({
@@ -58,14 +58,11 @@ export default async function TeamSettingsPage() {
   }));
 
   return (
-    <div className="px-4 sm:px-6 py-6 max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Team</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          People with access to {account?.name ?? "this account"}.
-        </p>
-      </div>
-      <Separator />
+    <div className="px-4 sm:px-6 py-6 max-w-3xl mx-auto space-y-8">
+      <SettingsPageHeader
+        title="Team"
+        description={`People with access to ${account?.name ?? "this account"}.`}
+      />
       <TeamSettingsClient
         accountId={accountId}
         accountName={account?.name ?? "My Account"}
