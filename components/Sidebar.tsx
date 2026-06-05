@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import HindsightLogo from '@/components/HindsightLogo';
 import { SidebarMarquee } from '@/components/MarketPulseStrip';
+import { EnvironmentSwitcher } from '@/components/settings/EnvironmentSwitcher';
+import type { AlpacaEnvironment } from '@/lib/actions/api-keys.actions';
 import {
   Sidebar,
   SidebarContent,
@@ -83,12 +85,16 @@ export default function AppSidebar({
   portfolioValue,
   openTradeTickers = [],
   onProductTour,
+  currentEnv,
+  exposeLive,
 }: {
   user: User;
   initialStocks: StockWithWatchlistStatus[];
   portfolioValue: number;
   openTradeTickers?: string[];
   onProductTour?: () => void;
+  currentEnv: AlpacaEnvironment;
+  exposeLive: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -121,7 +127,9 @@ export default function AppSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/" />}>
               <HindsightLogo className="size-5 shrink-0 text-brand" />
-              <span className="font-semibold tracking-tight">Hindsight</span>
+              <span className="font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+                Hindsight
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -193,8 +201,9 @@ export default function AppSidebar({
       {/* Ticker marquee — above user footer */}
       <SidebarMarquee openTradeTickers={openTradeTickers} />
 
-      {/* User footer — clickable dropdown */}
+      {/* User footer — env switcher + clickable user dropdown */}
       <SidebarFooter>
+        {exposeLive && <EnvironmentSwitcher current={currentEnv} />}
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>

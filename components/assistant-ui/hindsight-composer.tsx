@@ -60,8 +60,6 @@ import {
   BarChart3,
   TrendingUp,
   BanknoteArrowUp,
-  HatGlasses,
-  NotebookTabs,
   Settings2,
   DollarSign,
   Briefcase,
@@ -160,29 +158,9 @@ const SOURCES = [
   },
 ];
 
-// All individual connectors shown in the "All connectors" submenu
-const ALL_CONNECTORS = [
-  { domain: "perplexity.ai",             name: "Perplexity Sonar" },
-  { domain: "firecrawl.dev",             name: "Firecrawl" },
-  { domain: "finnhub.io",               name: "Finnhub" },
-  { domain: "sec.gov",                  name: "SEC EDGAR" },
-  { domain: "financialmodelingprep.com", name: "Financial Modeling Prep" },
-  { domain: "alpaca.markets",           name: "Alpaca" },
-];
-
-// Capabilities: agent intelligence (no external APIs, no logos)
-const CAPABILITIES = [
-  {
-    label: "Research & Monitors",
-    description: "Pre-market intelligence from nightly pipeline runs — firm-wide news sweeps, watchlist alerts, signal routing, and analyst-specific morning briefs ready before each run.",
-    icon: HatGlasses,
-  },
-  {
-    label: "Portfolio Knowledge",
-    description: "Past trade outcomes, win rates, weekly calibration reports, and live portfolio context — used to tune the agent's confidence thresholds and position sizing decisions.",
-    icon: NotebookTabs,
-  },
-];
+// Note: "All connectors" submenu, "Research & Monitors", and "Portfolio
+// Knowledge" entries were removed 2026-06-05 — they exposed plumbing the
+// operator doesn't action against from this menu.
 
 // ── MentionChip — inline NodeView rendered inside the editor ───────────────
 
@@ -691,61 +669,12 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                           </Tooltip>
                         ))}
 
-                        {/* All connectors submenu */}
-                        <DropdownMenuSub>
-                          <DropdownMenuSubTrigger className="text-muted-foreground">
-                            <div className="flex -space-x-1 mr-1">
-                              {ALL_CONNECTORS.slice(0, 4).map((c) => (
-                                <img
-                                  key={c.domain}
-                                  src={`https://www.google.com/s2/favicons?domain=${c.domain}&sz=32`}
-                                  alt={c.name}
-                                  width={14}
-                                  height={14}
-                                  className="size-3.5 rounded-full ring-1 ring-popover object-contain bg-white"
-                                />
-                              ))}
-                            </div>
-                            All connectors
-                          </DropdownMenuSubTrigger>
-                          <DropdownMenuSubContent className="w-52">
-                            <DropdownMenuGroup>
-                              {ALL_CONNECTORS.map((connector) => (
-                                <DropdownMenuItem key={connector.domain}>
-                                  <img
-                                    src={`https://www.google.com/s2/favicons?domain=${connector.domain}&sz=32`}
-                                    alt={connector.name}
-                                    width={16}
-                                    height={16}
-                                    className="size-4 rounded-sm object-contain bg-white"
-                                  />
-                                  {connector.name}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuGroup>
-                          </DropdownMenuSubContent>
-                        </DropdownMenuSub>
                       </DropdownMenuGroup>
 
-                      <DropdownMenuSeparator />
+                      {slashCommands && <DropdownMenuSeparator />}
 
-                      {/* ── Capabilities ── */}
+                      {/* ── Commands ── */}
                       <DropdownMenuGroup>
-                        <DropdownMenuLabel>Capabilities</DropdownMenuLabel>
-
-                        {CAPABILITIES.map((cap) => (
-                          <Tooltip key={cap.label}>
-                            <TooltipTrigger render={<DropdownMenuItem />}>
-                              <cap.icon className="size-4 shrink-0 text-muted-foreground" />
-                              <span className="flex-1">{cap.label}</span>
-                            </TooltipTrigger>
-                            <TooltipContent side="right" className="max-w-56">
-                              {cap.description}
-                            </TooltipContent>
-                          </Tooltip>
-                        ))}
-
-                        {/* Commands submenu — last item in Capabilities */}
                         {slashCommands && (
                           <DropdownMenuSub>
                             <DropdownMenuSubTrigger>

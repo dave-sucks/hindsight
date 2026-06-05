@@ -20,7 +20,7 @@
  */
 
 import { useRouter } from "next/navigation";
-import { MessageSquare } from "lucide-react";
+import { History, MessageSquare } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -35,28 +35,26 @@ import { cn } from "@/lib/utils";
 import type { ChatHistoryGroup, ChatHistoryItem } from "@/lib/actions/chat.actions";
 
 // ── Trigger button (rendered in ChatPageClient header area) ──────────────
+//
+// Ghost icon-with-text button. Same top-left spot as before; the count
+// pill was dropped — the open Sheet shows the same number more legibly.
 
 export function RecentChatsTrigger({
   onClick,
-  count,
 }: {
   onClick: () => void;
-  count: number;
+  /** Deprecated — accepted for callsite compatibility; ignored. */
+  count?: number;
 }) {
   return (
     <Button
-      variant="outline"
+      variant="ghost"
       size="sm"
       onClick={onClick}
       aria-label="Open recent chats"
     >
-      <MessageSquare className="h-4 w-4" />
-      <span>Recent chats</span>
-      {count > 0 ? (
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {count}
-        </span>
-      ) : null}
+      <History />
+      Recent
     </Button>
   );
 }
