@@ -21,6 +21,8 @@ Built for one user now, marketed later.
 | Write a discovery run review | `docs/discovery-reviews/<YYYY-MM-DD>-<TICKER>.md` |
 | Kick off a code session | `docs/prompts/SESSION_BOOTSTRAP.md` |
 | Kick off a run-review session | `docs/prompts/REVIEW_DAILY_RUN.md` |
+| **Find discovery query templates per analyst (Grok / Perplexity / Reddit)** | **`docs/DISCOVERY_PLAYBOOK.md`** |
+| **Reference why the analyst lineup looks like it does** | **`docs/plans/ANALYST_LINEUP.md`** |
 | Reference what shipped in a PR | GitHub PRs |
 | Onboard a fresh session to the codebase | `CLAUDE.md` |
 
