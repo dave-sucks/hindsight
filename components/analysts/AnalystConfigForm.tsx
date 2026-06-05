@@ -236,6 +236,9 @@ function BriefTab({
             if (next !== (values.description ?? "")) onChange("description", next || null);
           }}
         />
+        <p className="text-xs text-muted-foreground/60">
+          Recommended: 150–200 characters — shown on the analyst card.
+        </p>
       </FieldGroup>
 
       <StrategyField
