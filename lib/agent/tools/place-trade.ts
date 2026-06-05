@@ -64,6 +64,12 @@ export const placeTrade = defineTool({
     notional: z.number().optional().describe("Dollar amount to invest (e.g. 5000 for $5,000). Preferred over shares — just pass your position size budget directly."),
     shares: z.number().optional().describe("Number of shares. Only use if you need a specific share count; prefer notional instead."),
     thesis_id: z.string().describe("REQUIRED — the thesis_id returned by record_thesis. Every trade must link to a thesis."),
+    entry_rationale: z
+      .string()
+      .optional()
+      .describe(
+        "REQUIRED on trigger-fired tactical entries. Your live entry-decision reasoning at proposal time — the validation you ran (price level, structure, volume, contradicting headlines), why this is the trade NOW. Surfaced as Order.rationale on the proposal so the principal reads the entry decision, not the prior WATCHING-side 'not actionable yet' snapshot text. Skip only when this place_trade is invoked from a non-tactical context (e.g. principal-chat one-shot entries) where the thesis snapshot IS the entry rationale.",
+      ),
     analyst_id: z
       .string()
       .optional()
@@ -582,13 +588,28 @@ export const placeTrade = defineTool({
       // null and the rest of the tool runs exactly as today.
       // See docs/plans/TRADE_AS_PROPOSAL.md.
       {
-        const thesisForRationale = await prisma.thesis.findUnique({
-          where: { id: args.thesis_id },
-          select: { snapshot: true },
-        });
-        const proposalRationale = thesisForRationale
-          ? getThesisSnapshotText(thesisForRationale)
-          : null;
+        // Order.rationale source — see GAPS "Stale Order.rationale on OPEN
+        // proposals only" (2026-06-04 NVTS surfacing). The thesis.snapshot
+        // text is the writer's WATCHING-side overview ("X is a watch-only
+        // candidate, the current setup is not actionable, wait for $N
+        // reclaim") — exactly the wrong thing to surface as "why are we
+        // buying NOW" on the proposal. Prefer the tactical agent's
+        // live entry-decision rationale supplied via args.entry_rationale.
+        // Fall back to the snapshot text only when the agent didn't pass
+        // one (principal-chat one-shot entries, where the thesis snapshot
+        // IS the entry rationale).
+        let proposalRationale: string | null = null;
+        if (args.entry_rationale && args.entry_rationale.trim().length > 0) {
+          proposalRationale = args.entry_rationale.trim();
+        } else {
+          const thesisForRationale = await prisma.thesis.findUnique({
+            where: { id: args.thesis_id },
+            select: { snapshot: true },
+          });
+          proposalRationale = thesisForRationale
+            ? getThesisSnapshotText(thesisForRationale)
+            : null;
+        }
         const awaiting = await maybeAwaitApproval({
           accountId: ctx.accountId,
           positionId: position.id,
