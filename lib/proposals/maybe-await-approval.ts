@@ -48,6 +48,40 @@ export interface AwaitingApprovalResult {
 }
 
 /**
+ * Thrown when the approval gate cannot resolve the Account row for a LIVE
+ * trade. A money/compliance gate MUST fail CLOSED: an unresolved account
+ * means we cannot read the require-approval toggles, so we cannot prove the
+ * trade is pre-cleared — the only safe outcome is to refuse the trade before
+ * it reaches Alpaca.
+ *
+ * Every caller `await`s maybeAwaitApproval strictly BEFORE its Alpaca submit,
+ * so an unhandled throw here is provably unreachable-to-Alpaca:
+ *   - agent tools (place_trade, manage_position, close_position) run inside
+ *     defineTool's try/catch → surfaces as a refused `{ ok: false }` trade.
+ *   - the price-monitor trailing-stop cron (`trade-exit.ts` → closeOpenPosition)
+ *     lets it bubble to the Inngest step → the position simply isn't closed.
+ *
+ * PAPER is not compliance-bound, so an unresolved PAPER account keeps the
+ * legacy fail-open (returns null → auto-execute). See the split at the
+ * `if (!account)` branch below.
+ */
+export class ApprovalGateAccountUnresolvedError extends Error {
+  readonly accountId: string;
+  readonly intent: ProposalIntent;
+  constructor(accountId: string, intent: ProposalIntent) {
+    super(
+      `Approval gate failed CLOSED: could not resolve Account ${accountId} ` +
+        `for a LIVE ${intent} trade. Refusing the trade — a LIVE order can ` +
+        `never auto-execute on an unresolved account (GAPS P1-19, compliance ` +
+        `incident #390 2026-06-05).`,
+    );
+    this.name = "ApprovalGateAccountUnresolvedError";
+    this.accountId = accountId;
+    this.intent = intent;
+  }
+}
+
+/**
  * Decides whether the tool should stop here and wait for human approval.
  *
  * Reads the toggle column matching (intent direction × environment):
@@ -61,6 +95,9 @@ export interface AwaitingApprovalResult {
  * as it always has.
  * Returns an AwaitingApprovalResult when approval is needed → tool returns
  * the envelope verbatim and never reaches the Alpaca call.
+ * THROWS ApprovalGateAccountUnresolvedError when the Account row can't be
+ * resolved AND environment==='LIVE' → fail CLOSED, the trade is refused
+ * before Alpaca (GAPS P1-19). PAPER keeps the legacy fail-open (returns null).
  */
 export async function maybeAwaitApproval(
   args: MaybeAwaitApprovalArgs,
@@ -74,7 +111,28 @@ export async function maybeAwaitApproval(
       requireApprovalSellsPaper: true,
     },
   });
-  if (!account) return null;
+
+  // ── Unresolved-account fork: fail CLOSED on LIVE, fail open on PAPER ──────
+  // A syntactically-valid accountId can still fail to resolve to a row:
+  // deleted account (cascade race), cross-env mismatch, or a stale ctx value.
+  // When that happens we CANNOT read the require-approval toggles, so we
+  // cannot prove the trade is pre-cleared.
+  //
+  // LIVE is money/compliance-bound: the only safe outcome is to refuse the
+  // trade BEFORE it reaches Alpaca. Returning null here (the old behavior)
+  // meant "no approval required → submit the order" — i.e. a LIVE trade would
+  // auto-execute with NO approval on a phantom account. That is the
+  // fail-OPEN bug GAPS P1-19 / incident #390 (2026-06-05) closes. We throw a
+  // typed error every caller surfaces as a refused trade.
+  //
+  // PAPER is not compliance-bound, so we keep the legacy fail-open (return
+  // null → the tool auto-executes the paper order as it always has).
+  if (!account) {
+    if (args.environment === "LIVE") {
+      throw new ApprovalGateAccountUnresolvedError(args.accountId, args.intent);
+    }
+    return null;
+  }
 
   const isRiskIncreasing = args.intent === "OPEN" || args.intent === "ADD";
   const isLive = args.environment === "LIVE";
