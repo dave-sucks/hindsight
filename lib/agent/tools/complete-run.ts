@@ -503,6 +503,39 @@ async function runCompleteRunPreflight(
     }),
   );
 
+  // P1-14: anchor TIME_ELAPSED to the paired open position's openedAt for
+  // ACTIVE rows, so the gate doesn't flag a 0-day-old position's "max hold"
+  // trigger as unaddressed work just because the thesis row is old.
+  const activeOpenedAtTickers = Array.from(
+    new Set(
+      theses.filter((t) => t.status === "ACTIVE").map((t) => t.ticker),
+    ),
+  );
+  const positionOpenedAtByTicker = new Map<string, Date>();
+  if (activeOpenedAtTickers.length > 0) {
+    try {
+      const openPositions = await prisma.position.findMany({
+        where: {
+          analystId,
+          symbol: { in: activeOpenedAtTickers },
+          status: "OPEN",
+        },
+        select: { symbol: true, openedAt: true },
+        orderBy: { openedAt: "desc" },
+      });
+      for (const p of openPositions) {
+        if (!positionOpenedAtByTicker.has(p.symbol)) {
+          positionOpenedAtByTicker.set(p.symbol, p.openedAt);
+        }
+      }
+    } catch (err) {
+      console.warn(
+        "[complete_run] open-position openedAt lookup failed; TIME_ELAPSED falls back to createdAt:",
+        err,
+      );
+    }
+  }
+
   const now = new Date();
   const unaddressed: Array<{
     thesisId: string;
@@ -521,6 +554,10 @@ async function runCompleteRunPreflight(
         triggers: (t.triggers as unknown as Trigger[]) ?? [],
         createdAt: t.createdAt,
         nextReviewAt: t.nextReviewAt,
+        positionOpenedAt:
+          t.status === "ACTIVE"
+            ? positionOpenedAtByTicker.get(t.ticker) ?? null
+            : null,
         paperTenureDays: t.paperTenureDays ?? null,
         paperRealizedPnl:
           t.paperRealizedPnl != null ? Number(t.paperRealizedPnl) : null,

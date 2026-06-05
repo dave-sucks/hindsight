@@ -103,6 +103,65 @@ function isSignalSidePredicate(p: TriggerPredicate): boolean {
   }
 }
 
+/**
+ * P1-14 — resolve the paired open Position's `openedAt` per ACTIVE thesis.
+ *
+ * TIME_ELAPSED on a HELD thesis must measure from when the position opened,
+ * not when the (possibly much older) thesis row was created. We key the
+ * position by (analystId, symbol, status=OPEN) — the same linkage every
+ * close path uses, since there's no direct Thesis↔Position FK.
+ *
+ * Only ACTIVE theses are looked up; WATCHING rows keep their createdAt
+ * clock and aren't queried. Returns a Map from thesisId → openedAt. A miss
+ * (no open position found) simply leaves the thesis off the map, and the
+ * evaluator falls back to createdAt — fail-soft, never throws.
+ */
+async function buildPositionOpenedAtMap(
+  theses: Array<{
+    id: string;
+    ticker: string;
+    status: string;
+    researchRun: { agentConfigId: string | null };
+  }>,
+): Promise<Map<string, Date>> {
+  const out = new Map<string, Date>();
+  const active = theses.filter(
+    (t) => t.status === "ACTIVE" && t.researchRun.agentConfigId != null,
+  );
+  if (active.length === 0) return out;
+
+  // One findMany over the union of (analystId, symbol) pairs, then match
+  // back per thesis. Over-fetches slightly (any OPEN position for these
+  // analysts on these tickers) but keeps it to a single round-trip.
+  const analystIds = Array.from(
+    new Set(active.map((t) => t.researchRun.agentConfigId as string)),
+  );
+  const tickers = Array.from(new Set(active.map((t) => t.ticker)));
+  const positions = await prisma.position.findMany({
+    where: {
+      analystId: { in: analystIds },
+      symbol: { in: tickers },
+      status: "OPEN",
+    },
+    select: { analystId: true, symbol: true, openedAt: true },
+    orderBy: { openedAt: "desc" },
+  });
+
+  // Newest OPEN position per (analystId, symbol) wins — orderBy desc + first
+  // write into the map.
+  const byKey = new Map<string, Date>();
+  for (const p of positions) {
+    const key = `${p.analystId}::${p.symbol}`;
+    if (!byKey.has(key)) byKey.set(key, p.openedAt);
+  }
+  for (const t of active) {
+    const key = `${t.researchRun.agentConfigId}::${t.ticker}`;
+    const openedAt = byKey.get(key);
+    if (openedAt) out.set(t.id, openedAt);
+  }
+  return out;
+}
+
 interface FiringEvent {
   thesisId: string;
   triggerId: string;
@@ -228,12 +287,19 @@ export const triggerEvaluator = inngest.createFunction(
           select: {
             id: true,
             ticker: true,
+            status: true,
             triggers: true,
             createdAt: true,
             nextReviewAt: true,
             researchRun: { select: { agentConfigId: true } },
           },
         });
+
+        // P1-14: for ACTIVE (held) theses, TIME_ELAPSED measures from the
+        // paired position's openedAt, not the thesis row's createdAt. Look
+        // up the open Position per (analyst, ticker) once for the ACTIVE
+        // theses in this batch.
+        const openedAtByThesisId = await buildPositionOpenedAtMap(theses);
 
         // Pull earnings / filing detail off Signal.dataPayload if the
         // producer stamped it. Producers may keep these in a {beat,
@@ -271,6 +337,8 @@ export const triggerEvaluator = inngest.createFunction(
             thesis: {
               createdAt: thesis.createdAt,
               nextReviewAt: thesis.nextReviewAt,
+              status: thesis.status,
+              positionOpenedAt: openedAtByThesisId.get(thesis.id) ?? null,
             },
             now,
           };
@@ -335,6 +403,7 @@ export const triggerEvaluator = inngest.createFunction(
         select: {
           id: true,
           ticker: true,
+          status: true,
           triggers: true,
           createdAt: true,
           nextReviewAt: true,
@@ -342,6 +411,10 @@ export const triggerEvaluator = inngest.createFunction(
         },
       });
       if (theses.length === 0) return [] as FiringEvent[];
+
+      // P1-14: anchor TIME_ELAPSED to the paired position's openedAt for
+      // ACTIVE (held) theses. WATCHING rows stay on createdAt.
+      const openedAtByThesisId = await buildPositionOpenedAtMap(theses);
 
       // Cap unique tickers per tick to bound Finnhub calls. 200 mirrors
       // the signal-router cap. Theses past the cap defer to the next tick.
@@ -377,6 +450,8 @@ export const triggerEvaluator = inngest.createFunction(
           thesis: {
             createdAt: thesis.createdAt,
             nextReviewAt: thesis.nextReviewAt,
+            status: thesis.status,
+            positionOpenedAt: openedAtByThesisId.get(thesis.id) ?? null,
           },
           now,
         };

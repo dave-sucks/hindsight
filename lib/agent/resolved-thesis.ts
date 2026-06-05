@@ -76,6 +76,13 @@ export interface ResolverThesisInput {
   scoring: unknown; // for entryQualityScore surfacing
   /** Pre-parsed trigger array — caller invokes triggersArraySchema.safeParse. */
   parsedTriggers: Trigger[];
+  /**
+   * P1-14 — paired open Position's openedAt, for ACTIVE rows only. Lets
+   * TIME_ELAPSED measure "max hold" from when the position opened rather
+   * than from the (possibly older) thesis row. Null when not held or the
+   * caller didn't resolve a position.
+   */
+  positionOpenedAt?: Date | null;
 }
 
 /**
@@ -125,6 +132,9 @@ export function buildResolvedEnvelope(args: {
     thesis: {
       createdAt: thesis.createdAt,
       nextReviewAt: thesis.nextReviewAt,
+      // P1-14: ACTIVE rows anchor TIME_ELAPSED to the position open time.
+      status: thesis.status,
+      positionOpenedAt: thesis.positionOpenedAt ?? null,
     },
     now,
   };

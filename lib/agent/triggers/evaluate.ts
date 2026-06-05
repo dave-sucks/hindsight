@@ -63,6 +63,23 @@ export interface EvaluationContext {
   thesis: {
     createdAt: Date;
     nextReviewAt?: Date | null;
+    /**
+     * Thesis lifecycle status. Drives the TIME_ELAPSED clock selection:
+     * on an ACTIVE (held) thesis, a "max hold N days" review measures from
+     * when the POSITION opened, not when the thesis row was created. Absent
+     * on legacy callers → treated as not-ACTIVE, so the clock falls back to
+     * createdAt (the pre-fix behavior). See P1-14.
+     */
+    status?: string | null;
+    /**
+     * When the paired open Position opened. Only meaningful for ACTIVE
+     * theses; null/absent when the thesis isn't held or the caller didn't
+     * look up the position. Used by TIME_ELAPSED on ACTIVE rows so a
+     * 0-day-old position doesn't fire a 14d "max hold" trigger just because
+     * the thesis row is 36 days old. WATCHING rows ignore this and stay on
+     * createdAt (the correct clock for "is this watch row stale").
+     */
+    positionOpenedAt?: Date | null;
   };
 
   /** Caller-supplied "now" — keeps the function pure and testable. */
@@ -142,7 +159,18 @@ export function evaluateTrigger(
 
     // ── Time-based ────────────────────────────────────────────────────
     case "TIME_ELAPSED": {
-      const elapsedMs = ctx.now.getTime() - ctx.thesis.createdAt.getTime();
+      // Clock selection (P1-14): for a HELD (ACTIVE) thesis with a known
+      // position open time, a "max hold N days" review measures from when
+      // the POSITION opened. The thesis row may be far older (re-minted,
+      // long-watched) than the live position; measuring from createdAt
+      // fires the trigger on a 0-day-old position. WATCHING-side (and any
+      // ACTIVE row missing positionOpenedAt) keeps measuring from createdAt
+      // — the correct clock for "is this watch row stale."
+      const anchor =
+        ctx.thesis.status === "ACTIVE" && ctx.thesis.positionOpenedAt != null
+          ? ctx.thesis.positionOpenedAt
+          : ctx.thesis.createdAt;
+      const elapsedMs = ctx.now.getTime() - anchor.getTime();
       const elapsedDays = elapsedMs / 86_400_000;
       return elapsedDays >= predicate.days;
     }

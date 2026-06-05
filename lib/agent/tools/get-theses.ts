@@ -322,6 +322,53 @@ export const getTheses = defineTool({
     );
     const needsActionByThesisId = new Map<string, NeedsAction | null>();
 
+    // ── Position openedAt per ACTIVE thesis (P1-14) ─────────────────────
+    // TIME_ELAPSED on a HELD thesis measures "max hold N days" from when the
+    // position opened, not the (possibly older) thesis row. Resolve the open
+    // Position per ACTIVE (ticker) once; shared by both the needsAction and
+    // resolver loops below. WATCHING/PROMOTED rows keep their createdAt clock
+    // and aren't looked up. Scoped by analyst (+ environment when known) so a
+    // LIVE run never reads a PAPER position's open time and vice versa.
+    const positionOpenedAtByThesisId = new Map<string, Date>();
+    const activeTickersForOpenedAt = Array.from(
+      new Set(
+        theses
+          .filter((t: { status: string }) => t.status === "ACTIVE")
+          .map((t: { ticker: string }) => t.ticker),
+      ),
+    );
+    if (activeTickersForOpenedAt.length > 0) {
+      try {
+        const openPositions = await prisma.position.findMany({
+          where: {
+            userId: ctx.userId,
+            symbol: { in: activeTickersForOpenedAt },
+            status: "OPEN",
+            ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
+            ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
+          },
+          select: { symbol: true, openedAt: true },
+          orderBy: { openedAt: "desc" },
+        });
+        const openedAtByTicker = new Map<string, Date>();
+        for (const p of openPositions) {
+          if (!openedAtByTicker.has(p.symbol)) {
+            openedAtByTicker.set(p.symbol, p.openedAt);
+          }
+        }
+        for (const t of theses) {
+          if (t.status !== "ACTIVE") continue;
+          const openedAt = openedAtByTicker.get(t.ticker);
+          if (openedAt) positionOpenedAtByThesisId.set(t.id, openedAt);
+        }
+      } catch (err) {
+        console.warn(
+          "[get_theses] open-position openedAt lookup failed; TIME_ELAPSED falls back to createdAt:",
+          err,
+        );
+      }
+    }
+
     if (liveTheses.length > 0) {
       // Latest ThesisUpdate per thesis — one batched query.
       const latestUpdates = await prisma.thesisUpdate.findMany({
@@ -374,6 +421,7 @@ export const getTheses = defineTool({
               triggers,
               createdAt: t.createdAt,
               nextReviewAt: t.nextReviewAt,
+              positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
               paperTenureDays: t.paperTenureDays ?? null,
               paperRealizedPnl:
                 t.paperRealizedPnl != null
@@ -456,6 +504,7 @@ export const getTheses = defineTool({
             nextReviewAt: t.nextReviewAt,
             scoring: t.scoring,
             parsedTriggers,
+            positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
           },
           currentPrice: typeof cur === "number" && cur > 0 ? cur : null,
           supersession: supersessionByTicker.get(t.ticker) ?? null,

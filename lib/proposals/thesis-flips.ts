@@ -139,22 +139,43 @@ export async function promoteThesisOnApproval(opts: {
 }
 
 /**
- * Flip the ACTIVE thesis on (analystId, ticker) to CLOSED on a successful
- * close proposal. Mirrors close-position.ts and manage-position.ts
- * full_close — writes the same Thesis update + ThesisUpdate(CLOSED) audit
- * row so the timeline + tactical-run close-out gate see the same shape
- * regardless of whether the close ran through approval or fired direct.
+ * Flip the ACTIVE thesis on (analystId, ticker) to CLOSED and write the
+ * status-change audit row. The single shared chokepoint for "a position
+ * truly closed → reflect it on the paired thesis," used by:
  *
- * Failures are logged but not re-thrown — the close itself was approved
- * and submitted; a thesis-flip miss is recoverable on the next agent run.
+ *   • closeOpenPosition's FILLED-close branch (lib/actions/closeTrade.actions.ts)
+ *     — every direct close that actually fills now (agent close_position,
+ *     manage_position full_close, the price-monitor trailing-stop cron, and
+ *     manual UI closes) routes through there, so they all flip identically.
+ *   • closeThesisOnApproval (below) — the approval path, when an
+ *     AWAITING_APPROVAL close proposal is later approved.
+ *
+ * Audit row type stays `CLOSED` (not STATUS_CHANGED): the dashboard activity
+ * feed + run-summary bucket the close on `type === "CLOSED"`, and the
+ * tactical-run close-out gate accepts any non-TRIGGER_FIRED row. The
+ * fieldChanges payload carries the ACTIVE→CLOSED status delta.
+ *
+ * Idempotent — if no matching ACTIVE thesis is found (already flipped, or
+ * the close path's tool already handled it), it no-ops. Failures are logged
+ * but never re-thrown: a thesis-flip miss must not roll back a fill that
+ * already happened. The next agent run recovers via get_theses.
+ *
+ * P1-18: before this was wired into closeOpenPosition, a price-monitor
+ * trailing-stop close on an approval-OFF book closed the Position but left
+ * the paired thesis ACTIVE forever (an ACTIVE thesis with no position).
  */
-export async function closeThesisOnApproval(opts: {
+export async function closeThesisForPosition(opts: {
   analystId: string;
   ticker: string;
   positionId: string;
+  /** "TARGET" | "STOP" | "TIME" | "MANUAL" or a richer free-text reason. */
   closeReason: string;
   rationale: string | null;
+  /** Fill price, surfaced as priceAtTime on the audit row when known. */
+  priceAtTime?: number | null;
   runId?: string | null;
+  /** Distinguishes "approved proposal" vs "direct fill" in the summary. */
+  summaryContext?: string;
 }): Promise<void> {
   try {
     const activeThesis = await prisma.thesis.findFirst({
@@ -177,22 +198,49 @@ export async function closeThesisOnApproval(opts: {
         closeReason: opts.closeReason,
       },
     });
+    const ctxSuffix = opts.summaryContext ? ` ${opts.summaryContext}` : "";
     await writeThesisUpdate({
       thesisId: activeThesis.id,
       type: "CLOSED",
-      summary: `Closed ${opts.ticker} position on approved proposal — ${opts.closeReason}`,
+      summary: `Closed ${opts.ticker} position${ctxSuffix} — ${opts.closeReason}`,
       rationale:
-        opts.rationale ??
-        `Close proposal approved. Reason: ${opts.closeReason}.`,
+        opts.rationale ?? `Position closed. Reason: ${opts.closeReason}.`,
       fieldChanges: {
         status: { from: "ACTIVE", to: "CLOSED" },
       },
       runId: opts.runId,
+      priceAtTime: opts.priceAtTime ?? null,
     });
   } catch (err) {
     console.warn(
-      `[closeThesisOnApproval] ACTIVE → CLOSED flip failed for ${opts.ticker}:`,
+      `[closeThesisForPosition] ACTIVE → CLOSED flip failed for ${opts.ticker}:`,
       err instanceof Error ? err.message : err,
     );
   }
+}
+
+/**
+ * Flip the ACTIVE thesis on (analystId, ticker) to CLOSED on a successful
+ * close proposal. Thin wrapper over {@link closeThesisForPosition} so the
+ * approval path and the direct-fill path produce identical Thesis +
+ * ThesisUpdate shapes. See docs/plans/TRADE_AS_PROPOSAL.md.
+ */
+export async function closeThesisOnApproval(opts: {
+  analystId: string;
+  ticker: string;
+  positionId: string;
+  closeReason: string;
+  rationale: string | null;
+  runId?: string | null;
+}): Promise<void> {
+  await closeThesisForPosition({
+    analystId: opts.analystId,
+    ticker: opts.ticker,
+    positionId: opts.positionId,
+    closeReason: opts.closeReason,
+    rationale:
+      opts.rationale ?? `Close proposal approved. Reason: ${opts.closeReason}.`,
+    runId: opts.runId,
+    summaryContext: "on approved proposal",
+  });
 }

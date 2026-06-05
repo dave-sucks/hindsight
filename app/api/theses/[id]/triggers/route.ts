@@ -231,7 +231,7 @@ export async function GET(
   // they have independent mandates. Pre-fix, account-level scoping
   // produced false SUPERSEDED flags on cross-analyst PASS rows.
   const ownAnalystId = thesis.researchRun?.agentConfigId ?? null;
-  const [terminalSiblings, quote] = await Promise.all([
+  const [terminalSiblings, quote, openPosition] = await Promise.all([
     prisma.thesis.findMany({
       where: {
         accountId,
@@ -249,6 +249,22 @@ export async function GET(
       select: { id: true, ticker: true, createdAt: true },
     }),
     getStockQuote(thesis.ticker).catch(() => null),
+    // P1-14: paired open position's openedAt anchors TIME_ELAPSED for ACTIVE
+    // rows so the sheet's actionability badge measures "max hold" from the
+    // position open, not the (older) thesis row. Only relevant when held.
+    thesis.status === "ACTIVE" && ownAnalystId
+      ? prisma.position
+          .findFirst({
+            where: {
+              analystId: ownAnalystId,
+              symbol: thesis.ticker,
+              status: "OPEN",
+            },
+            orderBy: { openedAt: "desc" },
+            select: { openedAt: true },
+          })
+          .catch(() => null)
+      : Promise.resolve(null),
   ]);
   const supersessionMap = buildSupersessionMap(terminalSiblings);
   const triggersParsed = triggersArraySchema.safeParse(thesis.triggers);
@@ -268,6 +284,7 @@ export async function GET(
       nextReviewAt: thesis.nextReviewAt,
       scoring: thesis.scoring,
       parsedTriggers,
+      positionOpenedAt: openPosition?.openedAt ?? null,
     },
     currentPrice: quote && typeof quote.c === "number" && quote.c > 0 ? quote.c : null,
     supersession: supersessionMap.get(thesis.ticker) ?? null,

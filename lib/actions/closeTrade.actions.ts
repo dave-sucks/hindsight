@@ -437,6 +437,46 @@ export async function closeOpenPosition(
     });
   });
 
+  // 4c. Flip the paired thesis ACTIVE → CLOSED + write the CLOSED audit row
+  //     (P1-18). This is the ONLY close path that truly closes the position
+  //     now (fillStatus FILLED) — the proposed/AWAITING_APPROVAL path
+  //     returned early above (kind:"proposed") and its flip happens later via
+  //     closeThesisOnApproval when the user approves, so we never double-flip.
+  //
+  //     Centralizing the flip here means EVERY direct-fill close — agent
+  //     close_position / manage_position, the price-monitor trailing-stop
+  //     cron ("price_monitor"), and manual UI closes ("user") — reflects the
+  //     close on the thesis consistently. Before this, a cron trailing-stop
+  //     close on an approval-OFF book left the thesis ACTIVE with no position.
+  //
+  //     Scoped by the position's own analystId so we only touch this
+  //     analyst's thesis. Idempotent + fail-soft: the helper no-ops if the
+  //     agent tool already flipped the thesis, and never throws (the fill is
+  //     already committed). PENDING fills (4a) intentionally skip this — the
+  //     position isn't CLOSED yet; reconcile-orders flips on actual fill.
+  if (position.analystId) {
+    const { closeThesisForPosition } = await import("@/lib/proposals/thesis-flips");
+    const flipRationale =
+      auditReason ??
+      buildCloseReason(
+        source,
+        reason,
+        position.symbol,
+        closePrice,
+        position.stopLoss,
+        position.targetPrice,
+      );
+    await closeThesisForPosition({
+      analystId: position.analystId,
+      ticker: position.symbol,
+      positionId,
+      closeReason: reason,
+      rationale: flipRationale,
+      priceAtTime: closePrice,
+      runId,
+    });
+  }
+
   // 5. Post-close side effects (non-fatal).
   //
   // Two parallel side effects intentionally:

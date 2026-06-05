@@ -19,7 +19,6 @@ import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { getAccount, getOrder, getLatestPrice, closePositionPartial, placeMarketOrder } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { isExcluded } from "@/lib/agent/universe";
 import type { ToolUIItem } from "@/lib/agent/tool-result";
 import {
@@ -289,51 +288,11 @@ export const managePosition = defineTool({
             });
           }
 
-          // Mark thesis CLOSED — must mirror close-position.ts exactly:
-          // set closedAt + closeReason, AND write a CLOSED ThesisUpdate
-          // audit row. Earlier this branch only set status, leaving an
-          // audit-trail black hole (terminal-state metadata fields NULL,
-          // no CLOSED-type row). Captured the 2026-04 cmok0aynu NVDA case.
-          try {
-            const activeThesis = await prisma.thesis.findFirst({
-              where: {
-                ticker,
-                status: "ACTIVE",
-                direction: { not: "PASS" },
-                researchRun: { agentConfigId: analystId },
-              },
-              orderBy: { createdAt: "desc" },
-            });
-            if (activeThesis) {
-              const closeReasonText = `${args.close_reason ?? "MANUAL"}${args.reason ? ` — ${args.reason.slice(0, 200)}` : ""}`;
-              await prisma.thesis.update({
-                where: { id: activeThesis.id },
-                data: {
-                  status: "CLOSED",
-                  closedAt: new Date(),
-                  closeReason: closeReasonText,
-                },
-              });
-              await writeThesisUpdate({
-                thesisId: activeThesis.id,
-                type: "CLOSED",
-                summary: `Closed ${ticker} position (${args.close_reason ?? "MANUAL"}) — ${result.outcome ?? "RESULT"}`,
-                rationale:
-                  args.reason ??
-                  `Position closed via manage_position. Reason: ${args.close_reason ?? "MANUAL"}`,
-                fieldChanges: {
-                  status: { from: "ACTIVE", to: "CLOSED" },
-                },
-                runId: ctx.runId,
-                priceAtTime: result.closePrice ?? null,
-              });
-            }
-          } catch (thesisErr) {
-            console.warn(
-              `[tool] manage_position full_close failed to mark thesis CLOSED for ${ticker}:`,
-              thesisErr,
-            );
-          }
+          // Thesis ACTIVE → CLOSED flip + CLOSED audit row now happens inside
+          // closeOpenPosition's FILLED-close branch (closeThesisForPosition),
+          // shared with close_position, the price-monitor cron, and manual UI
+          // closes so every path flips identically. The awaited CLOSED row
+          // still satisfies the tactical-run close-out gate. See P1-18.
 
           return {
             summary: `Closed $${ticker}: ${result.outcome} ${pnlSign}$${result.realizedPnl.toFixed(2)}`,
