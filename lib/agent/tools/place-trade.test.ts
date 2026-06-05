@@ -73,6 +73,15 @@ jest.mock("@/lib/email-suppression", () => ({
   isInsideMorningBatch: jest.fn().mockReturnValue(false),
 }));
 
+const mockMaybeAwaitApproval = jest.fn();
+jest.mock("@/lib/proposals/maybe-await-approval", () => ({
+  maybeAwaitApproval: (args: unknown) => mockMaybeAwaitApproval(args),
+  awaitingApprovalEnvelope: (args: { ticker: string }) => ({
+    fillStatus: "AWAITING_APPROVAL" as const,
+    awaitingApproval: { ticker: args.ticker },
+  }),
+}));
+
 import { placeTrade } from "./place-trade";
 import type { ToolContext } from "@/lib/agent/tool-context";
 
@@ -294,5 +303,199 @@ describe("place_trade — analyst enabled gate (trading-paused)", () => {
     });
 
     expect(mockAgentConfigFindUnique).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Order.rationale source on OPEN proposals — surfaced 2026-06-04 by the
+ * NVTS 6/03 review. Pre-fix: place_trade's OPEN-side proposal path always
+ * pulled `Order.rationale` from `thesis.snapshot` text — which is the
+ * writer's WATCHING-side "this is a watch, not a buy" overview, not the
+ * tactical agent's actual entry-decision rationale. So the principal,
+ * approving a tactical-triggered entry, would read "the current setup is
+ * not actionable" while clicking Approve on a real-money buy.
+ *
+ * Post-fix: place_trade accepts `entry_rationale` as an optional arg.
+ * When the tactical agent passes it, that text is used. When it isn't
+ * (principal-chat one-shot entries where the snapshot IS the entry
+ * rationale), it falls back to the snapshot path. CLOSE proposals are
+ * unchanged.
+ *
+ * These tests pin the OPEN-side rationale source so the bug can't quietly
+ * regress.
+ */
+describe("place_trade — Order.rationale source on OPEN proposals", () => {
+  function setupProposalPath(opts: { snapshot?: string; livePrice?: number } = {}): void {
+    mockThesisFindUnique.mockReset();
+    mockPositionFindFirst.mockReset();
+    mockPositionCreate.mockReset();
+    mockOrderCreate.mockReset();
+    mockTransaction.mockReset();
+    mockPlaceMarketOrder.mockReset();
+    mockGetLatestPrice.mockReset();
+    mockGetAccount.mockReset();
+    mockAgentConfigFindUnique.mockReset();
+    mockMaybeAwaitApproval.mockReset();
+
+    mockAgentConfigFindUnique.mockResolvedValue({
+      enabled: true,
+      name: "Test Analyst",
+    });
+    // First findUnique call — directionCheck against thesis.direction.
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    // Second findUnique call — the snapshot fetch in the proposal block.
+    // This is the only call that should hit IF entry_rationale is absent.
+    // The V2 flat-schema `snapshot` column stores `{ text, citations }`,
+    // not a raw string; getThesisSnapshotText pulls `.text` out.
+    mockThesisFindUnique.mockResolvedValueOnce({
+      snapshot: {
+        text: opts.snapshot ?? "the current setup is not actionable; keep watching",
+        citations: [],
+      },
+    });
+    mockPositionFindFirst.mockResolvedValueOnce(null);
+    // Live-price guardrail wants price between stop and target for a LONG.
+    // Default 30.59 matches the NVTS test args; other tests pass a custom value.
+    mockGetLatestPrice.mockResolvedValueOnce(opts.livePrice ?? 30.59);
+    mockGetAccount.mockResolvedValueOnce({ cash: "10000", buying_power: "10000" });
+
+    mockPositionCreate.mockResolvedValue({
+      id: "pos_proposal_1",
+      symbol: "NVTS",
+      direction: "LONG",
+      quantity: 130,
+    });
+    mockOrderCreate.mockResolvedValue({ id: "order_proposal_1" });
+    mockTransaction.mockImplementation(async (arg: unknown) => {
+      if (typeof arg === "function") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (arg as (tx: any) => Promise<unknown>)({
+          position: { create: mockPositionCreate },
+          order: { create: mockOrderCreate, update: mockOrderUpdate },
+          positionEvent: { create: mockPositionEventCreate },
+          tradeDecision: { create: mockTradeDecisionCreate },
+          runEvent: { create: mockRunEventCreate },
+        });
+      }
+      return arg;
+    });
+
+    // The chokepoint — returns a non-null envelope so the tool returns
+    // from the proposal path. Whatever args we pass here are what we
+    // assert against.
+    mockMaybeAwaitApproval.mockResolvedValue({
+      orderId: "order_proposal_1",
+      positionId: "pos_proposal_1",
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+  }
+
+  it("uses entry_rationale verbatim when the tactical agent passes one (NVTS 2026-06-03 shape)", async () => {
+    setupProposalPath({
+      snapshot: "NVTS remains a watch-only momentum candidate; the current setup is not actionable",
+    });
+
+    const tacticalEntryReason =
+      "Trigger validated: $NVTS was trading ~$30.59, above the $29.50 continuation level, with the bullish SMA structure intact and no contradicting headline.";
+
+    const result = await makeTool(makeCtx()).execute({
+      ticker: "NVTS",
+      direction: "LONG",
+      entry_price: 30.59,
+      target_price: 40,
+      stop_loss: 29.06,
+      thesis_id: "thesis_nvts_watching",
+      notional: 4000,
+      entry_rationale: tacticalEntryReason,
+    });
+
+    expect(result.data.status).toBe("PROPOSED");
+    expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
+    const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
+    expect(callArgs.rationale).toBe(tacticalEntryReason);
+    // Critical anti-regression: the stale snapshot text must NOT have leaked
+    // through.
+    expect(callArgs.rationale).not.toMatch(/not actionable/i);
+    expect(callArgs.rationale).not.toMatch(/watch-only/i);
+  });
+
+  it("trims whitespace on entry_rationale (defensive)", async () => {
+    setupProposalPath();
+
+    await makeTool(makeCtx()).execute({
+      ticker: "NVTS",
+      direction: "LONG",
+      entry_price: 30.59,
+      target_price: 40,
+      stop_loss: 29.06,
+      thesis_id: "thesis_nvts_watching",
+      notional: 4000,
+      entry_rationale: "   Trigger validated: $NVTS broke above $29.50.   ",
+    });
+
+    expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
+    const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
+    expect(callArgs.rationale).toBe("Trigger validated: $NVTS broke above $29.50.");
+  });
+
+  it("falls back to thesis.snapshot when entry_rationale is absent (principal-chat one-shot path)", async () => {
+    const fallbackSnapshot =
+      "$NTNX is a watching candidate with a clean catalyst setup ahead of the print.";
+    setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 80 });
+
+    await makeTool(makeCtx()).execute({
+      ticker: "NTNX",
+      direction: "LONG",
+      entry_price: 80,
+      target_price: 95,
+      stop_loss: 74,
+      thesis_id: "thesis_ntnx_watching",
+      notional: 4000,
+      // entry_rationale intentionally omitted
+    });
+
+    expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
+    const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
+    expect(callArgs.rationale).toBe(fallbackSnapshot);
+  });
+
+  it("falls back to snapshot when entry_rationale is an empty string", async () => {
+    const fallbackSnapshot = "watching candidate, snapshot text";
+    setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 200 });
+
+    await makeTool(makeCtx()).execute({
+      ticker: "TXN",
+      direction: "LONG",
+      entry_price: 200,
+      target_price: 240,
+      stop_loss: 184,
+      thesis_id: "thesis_txn_watching",
+      notional: 4000,
+      entry_rationale: "",
+    });
+
+    expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
+    const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
+    expect(callArgs.rationale).toBe(fallbackSnapshot);
+  });
+
+  it("falls back to snapshot when entry_rationale is whitespace-only", async () => {
+    const fallbackSnapshot = "snapshot text";
+    setupProposalPath({ snapshot: fallbackSnapshot, livePrice: 200 });
+
+    await makeTool(makeCtx()).execute({
+      ticker: "TXN",
+      direction: "LONG",
+      entry_price: 200,
+      target_price: 240,
+      stop_loss: 184,
+      thesis_id: "thesis_txn_watching",
+      notional: 4000,
+      entry_rationale: "   \n   ",
+    });
+
+    expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
+    const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
+    expect(callArgs.rationale).toBe(fallbackSnapshot);
   });
 });
