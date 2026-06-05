@@ -180,7 +180,10 @@ Rest → PASS-record with rationale.
 *(Updated as we run discovery and see what works. Add dated entries.)*
 
 - 2026-06-04: PEAD-style "1 dispatch + many PASS theses" is the right ratio. Quality > volume.
-- *(Add more as you go.)*
+- **2026-06-05: Grok >> Perplexity for live biotech catalyst discovery.** Two parallel sessions: Perplexity-led run produced 6 stale/post-window candidates (recycled 2025 PDUFA catalog data, half were already past entry). Grok-led run produced 5 dispatches + 1 PASS — all live future PDUFAs in next 25 days, composite scores 7-9, clean discriminating triage ($LNTH, $MRK, $IONS, $ARQT, $VRDN dispatched; $ABBV PASS-recorded because at 91% of 52w range = entry window closed).
+- **Why:** Grok pulls live X chatter from biotech-focused handles (@AdamFeuerstein, @TheBioRunner, etc.) who post about THIS WEEK's PDUFAs they're actively trading. Perplexity's underlying data sources are catalogs that can be stale or recycle prior-year dates. For time-sensitive binary catalysts, freshness matters more than aggregated depth.
+- **New rule for Catalyst PM:** Lead every session with Grok. Use Perplexity AFTER for fundamentals validation on the names Grok surfaces (per-ticker setup quality, options-implied moves, sell-side probabilities). Do NOT lead with Perplexity "give me upcoming PDUFAs" queries — they pull stale catalogs.
+- **Boundary discipline working as designed:** Catalyst PM correctly rejects earnings-drift names ($NVDA, $ORCL, $ADBE — belong to PEAD), energy/utility plays ($SMR, $VST, $OKLO — belong to Compounder via energy transition theme), and "contract flow" momentum without a specific dated event ($PLTR ongoing AI narrative). This is the system enforcing analyst boundaries cleanly. The industry/sector fence is NOT too tight — it's the right shape.
 
 ---
 
