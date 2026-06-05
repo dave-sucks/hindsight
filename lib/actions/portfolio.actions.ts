@@ -633,9 +633,14 @@ export async function getDashboardData(
     // Derive the display status from Position.status + latest Order.status.
     // Position stays OPEN until its BUY actually fills; the PENDING/REJECTED
     // view-model statuses are UI-only denormalizations.
-    let displayStatus: TradeStatus = "OPEN";
-    if (fillOrder?.status === "REJECTED") displayStatus = "REJECTED";
-    else if (fillOrder?.status === "PENDING" || (fillOrder && fillOrder.filledAt == null)) displayStatus = "PENDING";
+    // Just the position's own status, with one overlay: a genuinely in-flight
+    // buy shows PENDING. A holding (OPEN) stays OPEN even if its last order was
+    // a rejected close — reject means you kept the position. A not-yet-filled
+    // buy proposal (PENDING_APPROVAL) reads PENDING, not blue. REJECTED / other
+    // terminal orders are audit history, never a standing status (that was the
+    // "Rejected" badge that used to stick to live holdings forever).
+    let displayStatus: TradeStatus = p.status === "OPEN" ? "OPEN" : "PENDING";
+    if (fillOrder?.status === "PENDING") displayStatus = "PENDING";
 
     // Trade-as-Proposal — surface the awaiting-approval order so TradeRow
     // renders the inline [Approve][Reject] in place of the P&L slot.
@@ -857,10 +862,13 @@ export async function getDashboardData(
       const order = rawPos.orders?.[0];
       // Derive tradeStatus from order fill state — same logic as trade sidebar.
       // Position.status is always "OPEN" until closed; "PENDING" is UI-only.
+      // Same as the trade sidebar: a holding is a holding. Use the POSITION
+      // status for the cancelled (rejected-buy) case, not the order — a rejected
+      // close leaves the position OPEN, and only a genuinely in-flight buy shows
+      // PENDING. (Was: any rejected order pinned this row to "Rejected" forever.)
       let tradeStatus: TradeStatus = "OPEN";
-      if (order?.status === "REJECTED") tradeStatus = "REJECTED";
-      else if (order?.status === "CANCELLED") tradeStatus = "CANCELLED";
-      else if (order && order.filledAt == null) tradeStatus = "PENDING";
+      if (rawPos.status === "CANCELLED") tradeStatus = "CANCELLED";
+      else if (order?.status === "PENDING") tradeStatus = "PENDING";
 
       positionData = {
         id: rawPos.id,
