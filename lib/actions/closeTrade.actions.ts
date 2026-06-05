@@ -34,7 +34,8 @@ export interface ClosedPositionResult {
 
 /**
  * Trade-as-Proposal — returned when the Account requires approval for
- * sells in this environment AND the close was agent-initiated. The
+ * sells in this environment AND the close was autonomous (agent OR the
+ * price-monitor trailing-stop cron), not a manual UI click. The
  * Position stays OPEN; a pending
  * Order(AWAITING_APPROVAL) carries the close intent until the user approves
  * (then the approve handler submits to Alpaca with the same idempotencyKey)
@@ -62,11 +63,16 @@ export type CloseOpenPositionOutcome =
 
 /** Who triggered the close — determines audit trail source label.
  *
- * The Trade-as-Proposal gate (see closeOpenPosition body) fires ONLY for
- * source="agent". Manual UI clicks pass source="user"; the price-monitor
- * trailing-stop cron passes source="price_monitor". Both bypass the gate
- * — the user already approved the manual click; the user already approved
- * the stop at trade-entry time. */
+ * The Trade-as-Proposal gate (see closeOpenPosition body) fires for every
+ * AUTONOMOUS source — "agent" AND "price_monitor" (the trailing-stop cron)
+ * — routing them through human approval when the Account's sell toggle for
+ * the environment is on. Only "user" (a manual UI click) bypasses the gate:
+ * the human is clicking the button, so it is self-approved.
+ *
+ * History: until 2026-06-05 the gate fired only for "agent", so the cron
+ * auto-executed live sells with no approval (MRVL sold in a LIVE account
+ * despite requireApprovalSellsLive=true). A pre-clearance requirement means
+ * NO automated sell may execute without an approval step. */
 export type CloseSource = "agent" | "price_monitor" | "user";
 
 // ─── Audit helpers ────────────────────────────────────────────────────────────
@@ -194,20 +200,25 @@ export async function closeOpenPosition(
   });
 
   // ── Trade-as-Proposal seam ──
-  // Only agent-initiated closes route through human approval. Manual UI
-  // (source="user") and the price-monitor trailing-stop cron
-  // (source="price_monitor") always auto-execute — the user already
-  // approved either by clicking the button or by setting the stop at
-  // entry. When approval IS required, maybeAwaitApproval flips the Order
-  // to AWAITING_APPROVAL + sends email; we return early before Alpaca.
-  if (source === "agent") {
+  // Every AUTONOMOUS close routes through human approval: "agent" AND the
+  // price-monitor trailing-stop cron ("price_monitor"). Only a manual UI
+  // click ("user") bypasses — the human is literally clicking the button,
+  // so it is self-approved. When the Account's sell toggle for this
+  // environment is on, maybeAwaitApproval flips the Order to
+  // AWAITING_APPROVAL + sends email; we return early before Alpaca. When
+  // it is off, it returns null and the close auto-executes as before.
+  //
+  // DO NOT narrow this back to `source === "agent"`. That bug auto-executed
+  // a live trailing-stop sell (MRVL, 2026-06-05) despite
+  // requireApprovalSellsLive=true — a compliance/pre-clearance violation.
+  if (source !== "user") {
     const awaiting = await maybeAwaitApproval({
       accountId: position.accountId,
       positionId,
       orderId: order.id,
       intent: "CLOSE",
       environment: positionEnvironment,
-      rationale: auditReason ?? null,
+      rationale: auditReason ?? `Automated ${reason} exit — ${position.symbol}`,
     });
     if (awaiting) {
       return {
