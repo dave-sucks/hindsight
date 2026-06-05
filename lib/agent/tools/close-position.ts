@@ -9,7 +9,6 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { getAccount } from "@/lib/alpaca";
-import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 
 export const closePosition = defineTool({
   description:
@@ -209,59 +208,13 @@ export const closePosition = defineTool({
         }
       }
 
-      // Mark linked thesis as CLOSED + write audit row.
-      // Without the ThesisUpdate row the timeline misses the close, AND
-      // the tactical-run close-out check (which looks for any non-
-      // TRIGGER_FIRED ThesisUpdate row to satisfy the contract) fails —
-      // so a clean stop-hit gets marked FAILED even though the agent did
-      // exactly the right thing.
-      //
-      // Filter scope: ticker + analystId via researchRun.agentConfigId.
-      // Yesterday two analysts holding NVDA both ended up with CLOSED
-      // theses after one of them ran close_position; the analystId
-      // filter SHOULD scope correctly, but adding the audit row makes
-      // any cross-analyst contamination traceable next time.
-      try {
-        const activeThesis = await prisma.thesis.findFirst({
-          where: {
-            ticker,
-            status: "ACTIVE",
-            direction: { not: "PASS" },
-            researchRun: { agentConfigId: analystId },
-          },
-          orderBy: { createdAt: "desc" },
-        });
-        if (activeThesis) {
-          await prisma.thesis.update({
-            where: { id: activeThesis.id },
-            data: {
-              status: "CLOSED",
-              closedAt: new Date(),
-              closeReason: `${args.reason}${args.notes ? ` — ${args.notes.slice(0, 200)}` : ""}`,
-            },
-          });
-          // Audit row for the timeline + tactical-run close-out gate.
-          // MUST be awaited — the tactical-run gate queries ThesisUpdate
-          // immediately after generateText returns. With void/fire-and-forget,
-          // the write may not have committed yet and the gate sees no row,
-          // marking a clean stop-hit close as FAILED. Captured the
-          // 2026-04-30 EDT NVDA tactical false-fail pattern.
-          await writeThesisUpdate({
-            thesisId: activeThesis.id,
-            type: "CLOSED",
-            summary: `Closed ${ticker} position (${args.reason}) — ${result.outcome ?? "RESULT"}`,
-            rationale:
-              args.notes ?? `Position closed via close_position. Reason: ${args.reason}`,
-            fieldChanges: {
-              status: { from: "ACTIVE", to: "CLOSED" },
-            },
-            runId: ctx.runId,
-            priceAtTime: result.closePrice ?? null,
-          });
-        }
-      } catch (thesisErr) {
-        console.warn(`[tool] close_position failed to mark thesis CLOSED for ${ticker}:`, thesisErr);
-      }
+      // Thesis ACTIVE → CLOSED flip + CLOSED audit row now happens inside
+      // closeOpenPosition's FILLED-close branch (lib/proposals/thesis-flips.ts
+      // → closeThesisForPosition), so every close path — agent, the
+      // price-monitor cron, and manual UI — flips identically. The audit row
+      // (type CLOSED, awaited inside closeOpenPosition before it returns)
+      // still satisfies the tactical-run close-out gate, which looks for any
+      // non-TRIGGER_FIRED ThesisUpdate row. See P1-18.
 
       const pnlPct = position.avgCost > 0
         ? (result.realizedPnl / (position.avgCost * position.quantity)) * 100

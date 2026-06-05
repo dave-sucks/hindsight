@@ -99,6 +99,7 @@ export async function evaluateLiveTriggerMatches({
     select: {
       id: true,
       ticker: true,
+      status: true,
       triggers: true,
       createdAt: true,
       nextReviewAt: true,
@@ -106,6 +107,32 @@ export async function evaluateLiveTriggerMatches({
   });
 
   if (theses.length === 0) return [];
+
+  // P1-14: anchor TIME_ELAPSED to the paired open position's openedAt for
+  // ACTIVE (held) theses. One query over this analyst's OPEN positions on
+  // the relevant tickers; WATCHING rows keep their createdAt clock.
+  const activeTickers = Array.from(
+    new Set(
+      theses
+        .filter((t: { status: string }) => t.status === "ACTIVE")
+        .map((t: { ticker: string }) => t.ticker),
+    ),
+  );
+  const openedAtByTicker = new Map<string, Date>();
+  if (activeTickers.length > 0) {
+    const openPositions = await prisma.position.findMany({
+      where: {
+        analystId,
+        symbol: { in: activeTickers },
+        status: "OPEN",
+      },
+      select: { symbol: true, openedAt: true },
+      orderBy: { openedAt: "desc" },
+    });
+    for (const p of openPositions) {
+      if (!openedAtByTicker.has(p.symbol)) openedAtByTicker.set(p.symbol, p.openedAt);
+    }
+  }
 
   // Batch quote fetch — one call per unique ticker.
   const tickers: string[] = Array.from(
@@ -147,6 +174,12 @@ export async function evaluateLiveTriggerMatches({
         thesis: {
           createdAt: thesis.createdAt,
           nextReviewAt: thesis.nextReviewAt,
+          // P1-14: ACTIVE rows anchor TIME_ELAPSED to the position open time.
+          status: thesis.status,
+          positionOpenedAt:
+            thesis.status === "ACTIVE"
+              ? openedAtByTicker.get(thesis.ticker) ?? null
+              : null,
         },
         now,
       });

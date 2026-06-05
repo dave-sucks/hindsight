@@ -188,6 +188,13 @@ export interface NeedsActionInput {
     createdAt: Date;
     nextReviewAt: Date | null;
     /**
+     * P1-14 — paired open Position's openedAt, for ACTIVE rows only. Lets
+     * the TRIGGER_MATCHING_NOW evaluation anchor TIME_ELAPSED to when the
+     * position opened rather than the (older) thesis row. Null when not
+     * held or the caller didn't resolve a position.
+     */
+    positionOpenedAt?: Date | null;
+    /**
      * Conviction context, frozen at promotion time. Surfaced into the
      * PROMOTED_AWAITING_RESOLUTION needsAction so the agent has the
      * doubled-conviction signal next to the decision. Null on
@@ -263,6 +270,9 @@ export function computeNeedsAction(
       thesis: {
         createdAt: thesis.createdAt,
         nextReviewAt: thesis.nextReviewAt,
+        // P1-14: ACTIVE rows anchor TIME_ELAPSED to the position open time.
+        status: thesis.status,
+        positionOpenedAt: thesis.positionOpenedAt ?? null,
       },
       now,
     });

@@ -356,6 +356,73 @@ describe("evaluateTrigger", () => {
       const predicate: TriggerPredicate = { kind: "TIME_ELAPSED", days: 90 };
       expect(evaluateTrigger(predicate, makeCtx())).toBe(false);
     });
+
+    // ── P1-14: clock selection (ACTIVE→openedAt, WATCHING→createdAt) ─────
+    // The thesis row is 28d old (THESIS_CREATED). A position opened 2d ago.
+    // A "max hold 14d" trigger must NOT fire on the 2-day-old position even
+    // though the thesis row is 28 days old.
+    const POSITION_OPENED = new Date(NOW.getTime() - 2 * 86_400_000); // 2d ago
+
+    it("ACTIVE: measures from positionOpenedAt, not createdAt (does not fire on a young position)", () => {
+      // 14d trigger; position only 2d old → must NOT fire even though the
+      // thesis is 28d old. This is the NVDA incident from P1-14.
+      const predicate: TriggerPredicate = { kind: "TIME_ELAPSED", days: 14 };
+      const ctx = makeCtx({
+        thesis: {
+          createdAt: THESIS_CREATED, // 28d old
+          nextReviewAt: null,
+          status: "ACTIVE",
+          positionOpenedAt: POSITION_OPENED, // 2d old
+        },
+      });
+      expect(evaluateTrigger(predicate, ctx)).toBe(false);
+    });
+
+    it("ACTIVE: fires once the position itself is old enough", () => {
+      // 1d trigger; position 2d old → fires off the position clock.
+      const predicate: TriggerPredicate = { kind: "TIME_ELAPSED", days: 1 };
+      const ctx = makeCtx({
+        thesis: {
+          createdAt: THESIS_CREATED,
+          nextReviewAt: null,
+          status: "ACTIVE",
+          positionOpenedAt: POSITION_OPENED, // 2d ago
+        },
+      });
+      expect(evaluateTrigger(predicate, ctx)).toBe(true);
+    });
+
+    it("WATCHING: stays on createdAt (fires off the 28d-old thesis row)", () => {
+      // Even with a positionOpenedAt present, a non-ACTIVE row must use the
+      // thesis createdAt clock — "is this watch row stale" measures from
+      // when the watch was created. 14d trigger, thesis 28d old → fires.
+      const predicate: TriggerPredicate = { kind: "TIME_ELAPSED", days: 14 };
+      const ctx = makeCtx({
+        thesis: {
+          createdAt: THESIS_CREATED, // 28d old
+          nextReviewAt: null,
+          status: "WATCHING",
+          positionOpenedAt: POSITION_OPENED, // ignored on WATCHING
+        },
+      });
+      expect(evaluateTrigger(predicate, ctx)).toBe(true);
+    });
+
+    it("ACTIVE without positionOpenedAt: falls back to createdAt (legacy callers)", () => {
+      // A caller that didn't resolve a position (status ACTIVE but
+      // positionOpenedAt null) keeps the pre-fix createdAt behavior so the
+      // clock degrades gracefully rather than never firing.
+      const predicate: TriggerPredicate = { kind: "TIME_ELAPSED", days: 14 };
+      const ctx = makeCtx({
+        thesis: {
+          createdAt: THESIS_CREATED, // 28d old → fires off createdAt
+          nextReviewAt: null,
+          status: "ACTIVE",
+          positionOpenedAt: null,
+        },
+      });
+      expect(evaluateTrigger(predicate, ctx)).toBe(true);
+    });
   });
 
   describe("REVIEW_DATE_HIT", () => {
