@@ -156,6 +156,11 @@ function ChatRow({
     router.push(`/chat?resume=${encodeURIComponent(chat.runId)}`);
   };
 
+  // Title precedence: first user message (when we managed to extract one)
+  // → "New chat" when the thread is empty → relative time when the row is
+  // malformed/parse-failed. Time always renders below as the secondary line.
+  const title = chat.preview ?? (chat.hasThread ? formatRelativeTime(chat.lastActivityAt) : "New chat");
+
   return (
     <button
       type="button"
@@ -166,22 +171,20 @@ function ChatRow({
       )}
     >
       <div className="flex w-full items-center justify-between gap-2">
-        <span className="text-sm text-foreground">
-          {formatRelativeTime(chat.lastActivityAt)}
-        </span>
+        <span className="flex-1 truncate text-sm text-foreground">{title}</span>
         {!chat.hasThread ? (
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="shrink-0 text-xs">
             empty
           </Badge>
         ) : null}
         {isCurrent ? (
-          <Badge variant="secondary" className="text-xs">
+          <Badge variant="secondary" className="shrink-0 text-xs">
             current
           </Badge>
         ) : null}
       </div>
       <span className="text-xs text-muted-foreground">
-        Started {formatExactDate(chat.startedAt)}
+        {formatRelativeTime(chat.lastActivityAt)} · started {formatExactDate(chat.startedAt)}
       </span>
     </button>
   );
