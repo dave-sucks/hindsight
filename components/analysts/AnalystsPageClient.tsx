@@ -53,7 +53,7 @@ function stripMarkdown(text: string): string {
 
 function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete: (id: string) => void }) {
   const router = useRouter();
-  const rawPrompt = analyst.analystPrompt || analyst.description || null;
+  const rawPrompt = analyst.description ?? analyst.analystPrompt ?? null;
   const promptText = rawPrompt ? stripMarkdown(rawPrompt) : null;
 
   const openCount = analyst.openTrades.length;
