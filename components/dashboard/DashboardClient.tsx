@@ -481,7 +481,7 @@ function HomeBottomSection({ picks, activity, loading }: {
   activity: ActivityFeedItem[];
   loading: boolean;
 }) {
-  const [tab, setTab] = useState<'theses' | 'activity'>('theses');
+  const [tab, setTab] = useState<'theses' | 'activity'>('activity');
   const [thesisFilter, setThesisFilter] = useState<ThesisTabFilter>('all');
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
   const [showTour, setShowTour] = useState(false);
@@ -512,8 +512,8 @@ function HomeBottomSection({ picks, activity, loading }: {
       {/* Tab bar + filter dropdown */}
       <div className="flex items-center justify-between pb-3">
         <TabsList>
-          <TabsTrigger value="theses">Theses</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
+          <TabsTrigger value="theses">Theses</TabsTrigger>
         </TabsList>
 
         <div>
@@ -660,6 +660,93 @@ function ChartEmpty({ text }: { text: string }) {
     <div className="h-52 flex items-center justify-center">
       <p className="text-xs text-muted-foreground text-center max-w-xs px-4">{text}</p>
     </div>
+  );
+}
+
+// ── PositionsPanel — Open / Closed trades list ───────────────────────────────
+//
+// The portfolio's open + closed positions as a two-tab Card. Rendered in two
+// places: the desktop right rail (w-80) and, on mobile where the rail is
+// hidden, inline in the main column between the stat tiles and the
+// Activity/Theses tabs — so the trade list (the thing the user cares about
+// most) is never hidden on a phone. Kept as one component so both surfaces
+// stay in sync.
+function PositionsPanel({
+  openTrades,
+  closedTrades,
+  loading,
+  flashIds,
+}: {
+  openTrades: MockTrade[];
+  closedTrades: MockTrade[];
+  loading: boolean;
+  flashIds: Map<string, 'win' | 'loss'>;
+}) {
+  return (
+    <Tabs defaultValue="open" className="gap-0">
+      <TabsList variant="line" className="w-auto self-start px-0">
+        <TabsTrigger value="open" className="px-0 mr-4">
+          Open
+          {openTrades.length > 0 && (
+            <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
+              {openTrades.length}
+            </span>
+          )}
+        </TabsTrigger>
+        <TabsTrigger value="closed" className="px-0">
+          Closed
+          {closedTrades.length > 0 && (
+            <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
+              {closedTrades.length}
+            </span>
+          )}
+        </TabsTrigger>
+      </TabsList>
+
+      <Card className="shadow-none p-0">
+        <CardContent className="p-0">
+          <TabsContent value="open" className="mt-0">
+            {loading ? (
+              <div className="space-y-1 px-4 pt-1 pb-2">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-14 rounded-lg" />
+                ))}
+              </div>
+            ) : openTrades.length === 0 ? (
+              <Empty
+                text="No open positions"
+                subtext="Positions appear when an analyst places a paper trade during a run."
+              />
+            ) : (
+              <div>
+                {openTrades.map((t) => (
+                  <DashboardTradeRow
+                    key={t.id}
+                    trade={t}
+                    flash={flashIds.get(t.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="closed" className="mt-0">
+            {closedTrades.length === 0 ? (
+              <Empty
+                text="No closed trades yet"
+                subtext="Trades close when they hit a target, stop-loss, or manual exit."
+              />
+            ) : (
+              <div>
+                {closedTrades.map((t) => (
+                  <DashboardTradeRow key={t.id} trade={t} />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </CardContent>
+      </Card>
+    </Tabs>
   );
 }
 
@@ -1248,6 +1335,18 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
               </UITooltipProvider>
             )}
 
+            {/* Positions — mobile only. The desktop right rail is hidden
+                below lg, so render the trade list inline here (chart → stats →
+                trades → activity) so it's reachable on a phone. */}
+            <div className="lg:hidden">
+              <PositionsPanel
+                openTrades={openTrades}
+                closedTrades={closedTrades}
+                loading={loading}
+                flashIds={flashIds}
+              />
+            </div>
+
             {/* Theses + Activity tabbed section */}
             <HomeBottomSection
               picks={recentPicks}
@@ -1256,72 +1355,14 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
             />
           </div>
 
-          {/* ══ RIGHT column — positions ═══════════════════════════════════ */}
+          {/* ══ RIGHT column — positions (desktop only) ════════════════════ */}
           <div className="hidden lg:block w-80 shrink-0">
-            <Tabs defaultValue="open" className="gap-0">
-              <TabsList variant="line" className="w-auto self-start px-0">
-                <TabsTrigger value="open" className="px-0 mr-4">
-                  Open
-                  {openTrades.length > 0 && (
-                    <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
-                      {openTrades.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="closed" className="px-0">
-                  Closed
-                  {closedTrades.length > 0 && (
-                    <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
-                      {closedTrades.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-              </TabsList>
-
-              <Card className="shadow-none p-0">
-                <CardContent className="p-0">
-                  <TabsContent value="open" className="mt-0">
-                    {loading ? (
-                      <div className="space-y-1 px-4 pt-1 pb-2">
-                        {[1, 2, 3].map((i) => (
-                          <Skeleton key={i} className="h-14 rounded-lg" />
-                        ))}
-                      </div>
-                    ) : openTrades.length === 0 ? (
-                      <Empty
-                        text="No open positions"
-                        subtext="Positions appear when an analyst places a paper trade during a run."
-                      />
-                    ) : (
-                      <div>
-                        {openTrades.map((t) => (
-                          <DashboardTradeRow
-                            key={t.id}
-                            trade={t}
-                            flash={flashIds.get(t.id)}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="closed" className="mt-0">
-                    {closedTrades.length === 0 ? (
-                      <Empty
-                        text="No closed trades yet"
-                        subtext="Trades close when they hit a target, stop-loss, or manual exit."
-                      />
-                    ) : (
-                      <div>
-                        {closedTrades.map((t) => (
-                          <DashboardTradeRow key={t.id} trade={t} />
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-                </CardContent>
-              </Card>
-            </Tabs>
+            <PositionsPanel
+              openTrades={openTrades}
+              closedTrades={closedTrades}
+              loading={loading}
+              flashIds={flashIds}
+            />
           </div>
 
         </div>
