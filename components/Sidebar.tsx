@@ -126,7 +126,7 @@ export default function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/" />}>
-              <HindsightLogo className="size-5 shrink-0 text-brand" />
+              <HindsightLogo className="size-5 shrink-0 text-brand group-data-[collapsible=icon]:mx-auto" />
               <span className="font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
                 Hindsight
               </span>
