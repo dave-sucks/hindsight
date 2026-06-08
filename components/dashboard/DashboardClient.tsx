@@ -334,10 +334,12 @@ const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; 
   NEAR_STP: { label: 'Near Stop',     dotClass: 'bg-negative',                tooltip: 'Price approaching stop loss' },
   // Trade-as-Proposal — see docs/plans/TRADE_AS_PROPOSAL.md
   PROPOSED: { label: 'Pending Review', dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
+  REJECTED: { label: 'Rejected',       dotClass: 'bg-muted-foreground/40',    tooltip: 'Proposal rejected — never executed' },
 };
 
 function getDecisionAction(item: ActivityFeedItem): string {
   if (item.type === 'PROPOSED') return 'PROPOSED';
+  if (item.type === 'REJECTED') return 'REJECTED';
   if (item.type === 'OPENED') return item.direction === 'SHORT' ? 'SHORT' : 'INITIATE';
   if (item.type === 'CLOSED') return 'EXIT';
   const lbl = item.label.toLowerCase();
@@ -427,6 +429,9 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
     // Event-log buy — just "Bought N shares at $X" (no "now trading at").
     middle = buildTradeSentence({ kind: 'holding', qty: item.shares!, entry: item.price! });
   } else if (isProposed && hasSize) {
+    middle = buildTradeSentence({ kind: 'proposed-buy', qty: item.shares!, entry: item.price! });
+  } else if (item.type === 'REJECTED' && hasSize) {
+    // Rejected/expired proposal — describe the would-be buy; no P&L (nothing executed).
     middle = buildTradeSentence({ kind: 'proposed-buy', qty: item.shares!, entry: item.price! });
   } else if (item.type === 'CLOSED' && hasSize) {
     middle = buildTradeSentence({
