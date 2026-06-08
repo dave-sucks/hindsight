@@ -152,7 +152,7 @@ export interface SpyBenchmark {
 /** A single item in the homepage activity timeline. */
 export interface ActivityFeedItem {
   id: string;
-  type: "OPENED" | "CLOSED" | "MODIFIED" | "PROPOSED";
+  type: "OPENED" | "CLOSED" | "MODIFIED" | "PROPOSED" | "REJECTED";
   positionId: string;
   symbol: string;
   direction: string;
@@ -1078,6 +1078,30 @@ export async function getDashboardData(
 
   // Recent closes (last 20)
   for (const p of dbClosedPositions.slice(0, 20)) {
+    // A CANCELLED position is a rejected/expired proposal that never filled —
+    // surface it as REJECTED, not a CLOSED/"Sold" trade. (Rejected IONS/XENE buy
+    // proposals were showing as "Sold" with $0 P&L.) It IS real activity, so we
+    // keep it in the feed — just labeled honestly.
+    if (p.status === "CANCELLED") {
+      activityFeed.push({
+        id: `reject-${p.id}`,
+        type: "REJECTED",
+        positionId: p.id,
+        symbol: p.symbol,
+        direction: p.direction,
+        timestamp: (p.closedAt ?? p.updatedAt).toISOString(),
+        label: `Rejected — buy ${p.quantity} @ $${p.avgCost.toFixed(2)}`,
+        source: (p as { closeSource?: string | null }).closeSource ?? "user",
+        reason: null,
+        pnl: null,
+        pnlPct: null,
+        outcome: null,
+        analystName: p.analyst?.name ?? null,
+        shares: p.quantity,
+        price: p.avgCost,
+      });
+      continue;
+    }
     const pnl = p.realizedPnl ?? 0;
     const positionCost = p.avgCost * p.quantity;
     const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
