@@ -684,7 +684,16 @@ export async function getDashboardData(
   });
 
   // ── 5. Map closed positions → MockTrade shape ──────────────────────────────
-  const closedTrades: MockTrade[] = dbClosedPositions.map((p) => {
+  // Only positions that actually TRADED belong in trade history. A CANCELLED
+  // position is a rejected/expired proposal that never filled (no buy, no
+  // sell) — it must not render as a closed/"Sold" trade in the Closed tab or
+  // the activity feed. (Rejected IONS/XENE buy proposals were showing as
+  // "Sold" with $0 P&L — same theme as #397: a non-executed proposal is not a
+  // trade.) Analytics (realized P&L, win-rate, equity curve) already exclude
+  // these via outcome/realizedPnl null-checks, so they keep using the full list.
+  const tradedClosedPositions = dbClosedPositions.filter((p) => p.status === "CLOSED");
+
+  const closedTrades: MockTrade[] = tradedClosedPositions.map((p) => {
     const closePrice = p.closePrice ?? p.avgCost;
     const positionCost = p.avgCost * p.quantity;
     const realizedPnl = p.realizedPnl ?? 0;
@@ -1000,8 +1009,9 @@ export async function getDashboardData(
     }
   }
 
-  // Recent closes (last 20)
-  for (const p of dbClosedPositions.slice(0, 20)) {
+  // Recent closes (last 20) — tradedClosedPositions excludes cancelled
+  // (never-filled) proposals, so a rejected buy no longer shows as "Sold".
+  for (const p of tradedClosedPositions.slice(0, 20)) {
     const pnl = p.realizedPnl ?? 0;
     const positionCost = p.avgCost * p.quantity;
     const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
