@@ -15,8 +15,14 @@ import { createClient } from "@/lib/supabase/server";
 import { tradeOpenedHtml } from "@/lib/emails/trade-opened";
 import { tradeClosedHtml } from "@/lib/emails/trade-closed";
 import { proposalPendingHtml } from "@/lib/emails/proposal-pending";
+import { dailyRunDigestHtml } from "@/lib/emails/daily-run-digest";
 
-type PreviewKind = "trade-opened" | "trade-closed" | "proposal-buy" | "proposal-sell";
+type PreviewKind =
+  | "trade-opened"
+  | "trade-closed"
+  | "proposal-buy"
+  | "proposal-sell"
+  | "daily-digest";
 
 const KINDS: Array<{ key: PreviewKind; label: string; description: string }> = [
   {
@@ -38,6 +44,11 @@ const KINDS: Array<{ key: PreviewKind; label: string; description: string }> = [
     key: "proposal-sell",
     label: "Proposal — sell",
     description: "Paper close proposal with projected gain. 53 MRVL from Momentum Breakout.",
+  },
+  {
+    key: "daily-digest",
+    label: "Daily run digest",
+    description: "Morning summary across analysts. Only analysts that took actions appear.",
   },
 ];
 
@@ -122,6 +133,48 @@ function renderSample(kind: PreviewKind): string {
           "TARGET trigger fired: $MRVL is +31.5% from entry and breached the $285 level on heavy volume. Recommending exit before the upcoming earnings print to lock in the move.",
         environment: "PAPER",
         positionId: "preview-proposal-id",
+      });
+    case "daily-digest":
+      return dailyRunDigestHtml({
+        date: now.toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+        }),
+        analysts: [
+          {
+            analystName: "AI Infrastructure Analyst",
+            actions: [
+              {
+                ticker: "NVDA",
+                kind: "BOUGHT",
+                description: "10 @ $875.40 · $8,754 · stop $840 · target $950",
+              },
+              {
+                ticker: "AMD",
+                kind: "ADDED",
+                description: "Scaled in · 30 shares now @ avg $142.50",
+              },
+            ],
+          },
+          {
+            analystName: "Catalyst Event PM",
+            actions: [
+              {
+                ticker: "AAPL",
+                kind: "SOLD",
+                description: "WIN · +8.4% · 25 @ $193.21",
+              },
+              {
+                ticker: "LNTH",
+                kind: "WATCH",
+                description: "Added to watchlist · target $118 · FDA PDUFA Jun 29",
+              },
+            ],
+          },
+          // Intentionally empty — proves the renderer filters this out.
+          { analystName: "Quiet Analyst", actions: [] },
+        ],
       });
   }
 }
