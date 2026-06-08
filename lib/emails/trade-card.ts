@@ -68,9 +68,13 @@ export const TRADE_CARD_COLORS = {
   positiveBg: "#eef8ee",    // bg-positive/10 over white
   negative: "#ff6d87",      // --negative (oklch 72.01% 0.178 11.8)
   negativeBg: "#fff0f3",    // bg-negative/10 over white
-  amber: "#6f3800",         // proposal badge text — distinct warning hue
-  amberBg: "#fff4d7",       // proposal badge bg
-  amberBorder: "#f2b966",   // proposal badge border
+  // PROPOSED badge — same pattern as LIVE (light tint + saturated brand
+  // text, NO border). Warm yellow at hue 85° matches the rest of the
+  // warm-toned palette. Border removed per design — the tinted bg is
+  // signal enough; outlines read as "stock SaaS" against the rest of
+  // the email which uses fill-only badges.
+  amber: "#bb8500",         // saturated warm yellow text
+  amberBg: "#f8f3e6",       // 10% tint of amber over white
   // LIVE badge reuses the negative red so it pops the same as a loss in
   // the rest of the UI. Same tint, same brand red text — uniform pattern.
   liveBg: "#fff0f3",
@@ -256,7 +260,7 @@ export function renderTradeCard(d: TradeCardData): string {
     ? `<span style="display:inline-block;padding:3px 9px;border-radius:6px;background:${C.liveBg};color:${C.liveText};font-size:11px;font-weight:600;letter-spacing:0.04em;">LIVE</span>`
     : `<span style="display:inline-block;padding:3px 9px;border-radius:6px;background:${C.chipBg};color:${C.chipText};font-size:11px;font-weight:600;letter-spacing:0.04em;">PAPER</span>`;
   const proposalBadge = isProposal
-    ? `<span style="display:inline-block;padding:3px 9px;border-radius:6px;background:${C.amberBg};color:${C.amber};border:1px solid ${C.amberBorder};font-size:11px;font-weight:600;letter-spacing:0.04em;">PROPOSED</span>`
+    ? `<span style="display:inline-block;padding:3px 9px;border-radius:6px;background:${C.amberBg};color:${C.amber};font-size:11px;font-weight:600;letter-spacing:0.04em;">PROPOSED</span>`
     : "";
 
   // ── Key/value rows ─────────────────────────────────────────────────────────
@@ -306,10 +310,26 @@ export function renderTradeCard(d: TradeCardData): string {
   }
   rows.push({ label: isSell ? "Dates" : "Date", value: dateValue });
 
+  // ── Reasoning row (vertical key/value) ─────────────────────────────────────
+  // Renders inline as the last row of the stats table — same divider rhythm
+  // as the other rows, but with the label on top and the prose below
+  // (full-width). No tinted banner box; the user explicitly wanted it to
+  // read as just-another-row, vertical.
+  const hasReasoning = !!d.reasoning;
+  const reasoningRow = hasReasoning
+    ? `<tr><td colspan="2" style="padding:12px 0 8px;font-size:13px;">
+        <p style="margin:0 0 6px;color:${C.textMuted};">Reasoning</p>
+        <p style="margin:0;color:${C.textPrimary};line-height:1.55;">${escapeHtml(truncate(d.reasoning!, 480))}</p>
+      </td></tr>`
+    : "";
+
   const rowsHtml = rows
     .map((r, i) => {
-      const isLast = i === rows.length - 1;
-      const border = isLast ? "" : `border-bottom:1px solid ${C.rowBorder};`;
+      // Border below every row EXCEPT the visually last one. Reasoning, when
+      // present, becomes the last visible row — so the regular rows all get
+      // a bottom border in that case.
+      const isLastVisible = !hasReasoning && i === rows.length - 1;
+      const border = isLastVisible ? "" : `border-bottom:1px solid ${C.rowBorder};`;
       const valueColor = r.color ?? C.textPrimary;
       return `<tr>
         <td style="padding:8px 0;${border}font-size:13px;color:${C.textMuted};">${r.label}</td>
@@ -317,14 +337,6 @@ export function renderTradeCard(d: TradeCardData): string {
       </tr>`;
     })
     .join("");
-
-  // ── Reasoning ──────────────────────────────────────────────────────────────
-  const reasoningBlock = d.reasoning
-    ? `<div style="margin:14px 0 0;padding:12px 14px;background:${C.logoBg};border:1px solid ${C.rowBorder};border-radius:8px;">
-        <p style="margin:0 0 4px;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${C.textFaint};">Reasoning</p>
-        <p style="margin:0;font-size:13px;line-height:1.55;color:${C.textPrimary};">${escapeHtml(truncate(d.reasoning, 480))}</p>
-      </div>`
-    : "";
 
   // ── CTA banner ─────────────────────────────────────────────────────────────
   const ctaCopy = isProposal
@@ -357,12 +369,14 @@ export function renderTradeCard(d: TradeCardData): string {
 <body style="margin:0;padding:0;background:${C.pageBg};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:${C.textPrimary};">
   <div style="max-width:560px;margin:0 auto;padding:32px 20px;">
 
-    <!-- Header -->
+    <!-- Header — eyebrow → badges → headline. The eyebrow sits ABOVE the
+         badges so the reading order is: "this is from Hindsight Agent" →
+         "here's the env + state" → "here's the sentence." -->
     <div style="margin-bottom:18px;">
+      <p style="margin:0 0 8px;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${C.textFaint};">Hindsight Agent</p>
       <div style="margin-bottom:10px;">
         ${envBadge}${proposalBadge ? ` ${proposalBadge}` : ""}
       </div>
-      <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${C.textFaint};">Hindsight Agent</p>
       <h1 style="margin:8px 0 0;font-size:20px;font-weight:700;line-height:1.3;color:${C.textPrimary};letter-spacing:-0.01em;">
         ${escapeHtml(d.analystName)} ${escapeHtml(verb)} ${d.qty.toLocaleString()} shares of ${escapeHtml(d.ticker)}${gainPhrase}
       </h1>
@@ -390,8 +404,8 @@ export function renderTradeCard(d: TradeCardData): string {
     <div style="background:${C.cardBg};border:1px solid ${C.cardBorder};border-radius:10px;padding:8px 14px;">
       <table style="width:100%;border-collapse:collapse;">
         ${rowsHtml}
+        ${reasoningRow}
       </table>
-      ${reasoningBlock}
     </div>
 
     ${ctaBlock}
