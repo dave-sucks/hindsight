@@ -57,15 +57,24 @@ export const TRADE_CARD_COLORS = {
   chipBg: "#f4f4f0",        // --muted / --accent
   chipText: "#484840",      // mid-tone foreground for chip text
   logoBg: "#f9f9f6",        // a hair lighter than --muted for inset wells
+  // Brand red/green badge pattern — mirrors `bg-positive/10 text-positive`
+  // and `bg-negative/10 text-negative` used everywhere in the app (TradeRow,
+  // PnlBadge, dashboard widgets). The background is a 10% tint of the brand
+  // hue over white; text uses the full brand color at saturation. Source of
+  // truth: lib/utils.ts PNL_HEX. Don't drift these values — if the app
+  // brand shifts, recompute via the OKLCH→sRGB script + 10% white mix and
+  // update both PNL_HEX and here together.
   positive: "#51b857",      // --positive (oklch 69.92% 0.166 144.58)
-  positiveBg: "#dff6de",    // light tint of positive hue
+  positiveBg: "#eef8ee",    // bg-positive/10 over white
   negative: "#ff6d87",      // --negative (oklch 72.01% 0.178 11.8)
-  negativeBg: "#ffe4e7",    // light tint of negative hue
-  amber: "#6f3800",         // proposal badge text (oklch 0.40 0.12 70)
+  negativeBg: "#fff0f3",    // bg-negative/10 over white
+  amber: "#6f3800",         // proposal badge text — distinct warning hue
   amberBg: "#fff4d7",       // proposal badge bg
   amberBorder: "#f2b966",   // proposal badge border
-  liveBg: "#ffe4e7",        // LIVE badge bg (shares negative tint)
-  liveText: "#991b3d",      // LIVE badge text (darker hue 11.8 for contrast on liveBg)
+  // LIVE badge reuses the negative red so it pops the same as a loss in
+  // the rest of the UI. Same tint, same brand red text — uniform pattern.
+  liveBg: "#fff0f3",
+  liveText: "#ff6d87",
 } as const;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
