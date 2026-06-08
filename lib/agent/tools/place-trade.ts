@@ -1039,10 +1039,14 @@ export const placeTrade = defineTool({
                 direction: args.direction,
                 qty: emailedShares,
                 avgCost: emailedAvgCost,
+                currentPrice: fillPrice,
                 stopLoss: args.stop_loss,
                 targetPrice: args.target_price,
                 analystName: config.name,
                 thesisSummary: thesis ? (getThesisSnapshotText(thesis) || null) : null,
+                environment: positionEnvironment,
+                positionId: position.id,
+                openedAt: position.openedAt ?? new Date(),
               }),
             });
           } catch (err) {

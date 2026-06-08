@@ -20,7 +20,7 @@
  */
 
 import { useRouter } from "next/navigation";
-import { MessageSquare } from "lucide-react";
+import { History, MessageSquare } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -35,28 +35,26 @@ import { cn } from "@/lib/utils";
 import type { ChatHistoryGroup, ChatHistoryItem } from "@/lib/actions/chat.actions";
 
 // ── Trigger button (rendered in ChatPageClient header area) ──────────────
+//
+// Ghost icon-with-text button. Same top-left spot as before; the count
+// pill was dropped — the open Sheet shows the same number more legibly.
 
 export function RecentChatsTrigger({
   onClick,
-  count,
 }: {
   onClick: () => void;
-  count: number;
+  /** Deprecated — accepted for callsite compatibility; ignored. */
+  count?: number;
 }) {
   return (
     <Button
-      variant="outline"
+      variant="ghost"
       size="sm"
       onClick={onClick}
       aria-label="Open recent chats"
     >
-      <MessageSquare className="h-4 w-4" />
-      <span>Recent chats</span>
-      {count > 0 ? (
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {count}
-        </span>
-      ) : null}
+      <History />
+      Recent
     </Button>
   );
 }
@@ -158,6 +156,11 @@ function ChatRow({
     router.push(`/chat?resume=${encodeURIComponent(chat.runId)}`);
   };
 
+  // Title precedence: first user message (when we managed to extract one)
+  // → "New chat" when the thread is empty → relative time when the row is
+  // malformed/parse-failed. Time always renders below as the secondary line.
+  const title = chat.preview ?? (chat.hasThread ? formatRelativeTime(chat.lastActivityAt) : "New chat");
+
   return (
     <button
       type="button"
@@ -168,22 +171,20 @@ function ChatRow({
       )}
     >
       <div className="flex w-full items-center justify-between gap-2">
-        <span className="text-sm text-foreground">
-          {formatRelativeTime(chat.lastActivityAt)}
-        </span>
+        <span className="flex-1 truncate text-sm text-foreground">{title}</span>
         {!chat.hasThread ? (
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="shrink-0 text-xs">
             empty
           </Badge>
         ) : null}
         {isCurrent ? (
-          <Badge variant="secondary" className="text-xs">
+          <Badge variant="secondary" className="shrink-0 text-xs">
             current
           </Badge>
         ) : null}
       </div>
       <span className="text-xs text-muted-foreground">
-        Started {formatExactDate(chat.startedAt)}
+        {formatRelativeTime(chat.lastActivityAt)} · started {formatExactDate(chat.startedAt)}
       </span>
     </button>
   );

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import AppSidebar from "@/components/Sidebar";
 import { OnboardingFlow, ProductTourDialog } from "@/components/domain/onboarding-flow";
+import type { AlpacaEnvironment } from "@/lib/actions/api-keys.actions";
 
 /**
  * Client wrapper that shares product-tour state between Sidebar and OnboardingFlow.
@@ -16,6 +17,8 @@ export function OnboardingShell({
   needsName,
   hasAlpacaKey,
   initialFullName,
+  currentEnv,
+  exposeLive,
 }: {
   user: User;
   initialStocks: StockWithWatchlistStatus[];
@@ -24,6 +27,8 @@ export function OnboardingShell({
   needsName: boolean;
   hasAlpacaKey: boolean;
   initialFullName: string;
+  currentEnv: AlpacaEnvironment;
+  exposeLive: boolean;
 }) {
   const [showTour, setShowTour] = useState(false);
 
@@ -35,6 +40,8 @@ export function OnboardingShell({
         portfolioValue={portfolioValue}
         openTradeTickers={openTradeTickers}
         onProductTour={() => setShowTour(true)}
+        currentEnv={currentEnv}
+        exposeLive={exposeLive}
       />
 
       <OnboardingFlow

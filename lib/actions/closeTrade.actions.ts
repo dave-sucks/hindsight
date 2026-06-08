@@ -513,7 +513,7 @@ export async function closeOpenPosition(
       const config = position.analystId
         ? await prisma.agentConfig.findUnique({
             where: { id: position.analystId },
-            select: { emailAlerts: true },
+            select: { emailAlerts: true, name: true },
           })
         : null;
       if (config && config.emailAlerts === false) return;
@@ -540,14 +540,20 @@ export async function closeOpenPosition(
         html: tradeClosedHtml({
           ticker: position.symbol,
           direction: position.direction as "LONG" | "SHORT",
+          qty: position.quantity,
           entryPrice: position.avgCost,
           closePrice,
+          currentPrice: closePrice,
           realizedPnl,
           realizedPnlPct: pnlPct,
           outcome,
           closeReason: reason,
           daysHeld,
           tradeId: positionId,
+          analystName: config?.name ?? "Hindsight",
+          environment: positionEnvironment,
+          openedAt: position.openedAt,
+          closedAt: new Date(),
         }),
       });
     } catch (err) {

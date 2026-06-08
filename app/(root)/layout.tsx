@@ -11,7 +11,6 @@ import { getApiKeyStatus } from "@/lib/actions/api-keys.actions";
 import { getAccountId } from "@/lib/auth/account";
 import { OnboardingShell } from "@/components/domain/onboarding-shell";
 import { getCurrentEnvironment, shouldExposeLiveEnv } from "@/lib/actions/environment.actions";
-import { EnvironmentSwitcher } from "@/components/settings/EnvironmentSwitcher";
 
 const Layout = async ({ children }: { children: React.ReactNode }) => {
     const supabase = await createClient();
@@ -66,6 +65,8 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                 needsName={needsName}
                 hasAlpacaKey={alpacaStatus.hasKey}
                 initialFullName={initialFullName}
+                currentEnv={currentEnv}
+                exposeLive={exposeLive}
             />
             <SidebarInset>
                 {/* Top bar — sidebar toggle + search + theme */}
@@ -76,7 +77,6 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                         <div className="flex-1 flex items-center md:justify-center justify-end px-0 md:px-2 order-last md:order-none">
                             <SearchCommand renderAs="icon" label="Search stocks" initialStocks={initialStocks} />
                         </div>
-                        {exposeLive && <EnvironmentSwitcher current={currentEnv} />}
                         <MarketStatusPill open={marketOpen} />
                     </div>
                 </header>

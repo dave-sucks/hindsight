@@ -97,8 +97,14 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const initialKickoff =
     kickoffAnalystValid && kickoffMessage ? kickoffMessage : null;
 
+  // Key by resumedRunId so clicking a Recent Chats row remounts the whole
+  // client tree. AgentChat's useChat seeds messages from props only on
+  // mount — without a remount, switching chats updates the URL but leaves
+  // the prior thread visible until a manual refresh. Falls back to a
+  // stable "fresh" key for net-new chats so they don't churn on rerender.
   return (
     <ChatPageClient
+      key={resumedRunId ?? "fresh"}
       analysts={analysts}
       recentChats={recentChats}
       resumedMessages={resumedMessages}

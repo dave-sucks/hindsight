@@ -41,6 +41,13 @@ export interface ChatHistoryItem {
    * a thread" is enough signal for the sidebar.
    */
   hasThread: boolean;
+  /**
+   * First user message in the thread, truncated for sidebar display.
+   * Lets the sidebar show "What's your read on TSM?" instead of bare
+   * timestamps. Null when the thread is empty / unparseable / has no user
+   * message yet (RUNNING chat that crashed before any user input).
+   */
+  preview: string | null;
 }
 
 interface ListRecentChatsArgs {
@@ -84,12 +91,14 @@ export async function listRecentChats(
       agentConfig: {
         select: { id: true, name: true },
       },
-      _count: {
-        select: {
-          messages: {
-            where: { role: "thread" },
-          },
-        },
+      messages: {
+        // Pull just the thread row's content for first-message extraction.
+        // There's at most one per run; skip the role filter from breaking the
+        // limit by selecting + taking explicitly.
+        where: { role: "thread" },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { content: true },
       },
     },
     orderBy: { updatedAt: "desc" },
@@ -108,6 +117,7 @@ export async function listRecentChats(
     const analystName = row.agentConfig.name;
     const lastActivityAt = row.updatedAt ?? row.startedAt;
 
+    const threadContent = row.messages[0]?.content ?? null;
     const item: ChatHistoryItem = {
       runId: row.id,
       analystId,
@@ -115,7 +125,8 @@ export async function listRecentChats(
       startedAt: row.startedAt,
       lastActivityAt,
       status: row.status,
-      hasThread: row._count.messages > 0,
+      hasThread: threadContent != null,
+      preview: threadContent ? extractFirstUserMessage(threadContent) : null,
     };
 
     const existing = groups.get(analystId);
@@ -188,4 +199,66 @@ export async function loadChatThread(
     analystName: run.agentConfig?.name ?? null,
     threadJson: threadRow.content,
   };
+}
+
+/**
+ * Pull the first user message text out of a persisted thread JSON blob.
+ *
+ * The thread is stored as one big stringified array of either UIMessage or
+ * ModelMessage shapes (see app/api/agent/[mode]/route.ts where it's written).
+ * Both shapes have `role: "user"` on the message; the text content lives in
+ * different places:
+ *
+ *   - UIMessage: `parts: [{ type: "text", text: "..." }, ...]`
+ *   - ModelMessage with string content: `content: "..."`
+ *   - ModelMessage with array content: `content: [{ type: "text", text: "..." }, ...]`
+ *
+ * Returns the first 100 characters with an ellipsis when truncated.
+ * Returns null on parse failure or when no user message is present —
+ * the sidebar falls back to the timestamp in that case.
+ */
+function extractFirstUserMessage(threadJson: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(threadJson);
+    if (!Array.isArray(parsed)) return null;
+
+    for (const msg of parsed) {
+      if (!isObj(msg) || msg.role !== "user") continue;
+
+      // UIMessage: parts array with text entries
+      if (Array.isArray(msg.parts)) {
+        for (const part of msg.parts) {
+          if (isObj(part) && part.type === "text" && typeof part.text === "string") {
+            return clean(part.text);
+          }
+        }
+      }
+
+      // ModelMessage: content is string or array of text chunks
+      if (typeof msg.content === "string") {
+        return clean(msg.content);
+      }
+      if (Array.isArray(msg.content)) {
+        for (const chunk of msg.content) {
+          if (isObj(chunk) && chunk.type === "text" && typeof chunk.text === "string") {
+            return clean(chunk.text);
+          }
+        }
+      }
+    }
+  } catch {
+    // Malformed JSON — sidebar will render the timestamp fallback.
+  }
+  return null;
+}
+
+function isObj(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+
+function clean(s: string): string | null {
+  const stripped = s.replace(/\s+/g, " ").trim();
+  if (!stripped) return null;
+  const MAX = 100;
+  return stripped.length > MAX ? stripped.slice(0, MAX - 1).trimEnd() + "…" : stripped;
 }
