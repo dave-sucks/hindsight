@@ -89,6 +89,16 @@ const RANGE_DAYS: Record<Range, number> = {
   Max: 99999,
 };
 
+// Header label for the P&L figure — tracks the selected range so the green
+// number is unambiguously "P&L over this window" (e.g. "1 Week P&L").
+const RANGE_PNL_LABEL: Record<Range, string> = {
+  '1D': '1 Day P&L',
+  '1W': '1 Week P&L',
+  '1M': '1 Month P&L',
+  '1Y': '1 Year P&L',
+  Max: 'All Time P&L',
+};
+
 type ChartView = 'portfolio' | 'by-analyst' | 'vs-spy';
 type DisplayMode = 'dollar' | 'percent';
 type ShowMode = 'both' | 'realized' | 'unrealized';
@@ -233,7 +243,7 @@ function groupActivityByDay(items: ActivityFeedItem[]) {
 //            of the original ordering — user explicitly asked for this.
 //
 // `info` prop renders a tiny info button next to the label that opens a
-// tooltip — used for the Net Value tile to explain semantics + surface the
+// tooltip — used for the Position Value tile to explain semantics + surface the
 // position count the label itself no longer carries.
 function StatTile({
   label,
@@ -804,6 +814,10 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
 
   const rawEquity = data && data.equityCurve.length > 0 ? data.equityCurve : mockEquityCurve;
   const rawRealizedCurve = data?.realizedCurve ?? rawEquity;
+  // Deposit-adjusted cumulative P&L (equity − net contributions). Drives the
+  // default "Total" view + the header delta so a deposit isn't read as a gain.
+  // Equals rawEquity when there are no funding events (paper / mock).
+  const rawPnlCurve = data && data.pnlCurve.length > 0 ? data.pnlCurve : rawEquity;
 
   // Derive the active equity curve based on showMode
   const activeCurve = useMemo(() => {
@@ -822,8 +836,8 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
         return { date: p.date, value: startCapital + unrealizedPnl };
       });
     }
-    return rawEquity; // 'both' — total equity from Alpaca
-  }, [showMode, rawEquity, rawRealizedCurve]);
+    return rawPnlCurve; // 'both' — deposit-adjusted total P&L (equity − contributions)
+  }, [showMode, rawEquity, rawRealizedCurve, rawPnlCurve]);
 
   const portfolio = data?.portfolio ?? {
     totalValue: mockPortfolio.totalValue,
@@ -842,6 +856,9 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
     leverageRatio: 1,
     totalPnl: mockPortfolio.totalPnl,
     accountReturnPct: 0,
+    netContributed: 100_000,
+    dayPnl: 0,
+    dayPnlPct: 0,
   };
 
   // ── Chart data (memoized) ───────────────────────────────────────────────────
@@ -850,17 +867,27 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
     [activeCurve, range],
   );
 
+  // Raw equity over the same range — used only as the % denominator (the
+  // capital actually at work). The active curve is deposit-adjusted P&L, whose
+  // first point is ~0 at inception; dividing by THAT would explode the %.
+  const equityRange = useMemo(() => filterByRange(rawEquity, range), [rawEquity, range]);
+
   // ── Portfolio header values ─────────────────────────────────────────────────
   const totalValueStr = formatCurrency(portfolio.totalValue);
 
-  // Range-aware P&L: delta over the selected range from the active (filtered) curve
+  // Range-aware P&L: delta over the selected range from the active (filtered)
+  // curve. Because that curve is deposit-adjusted, the delta is pure trading
+  // P&L — a deposit inside the window cancels out instead of showing as a gain.
   const rangePnl = portfolioData.length >= 2
     ? portfolioData[portfolioData.length - 1].value - portfolioData[0].value
-    : portfolio.unrealizedPnl + portfolio.realizedPnl;
-  const rangePnlBase = portfolioData.length >= 2 ? portfolioData[0].value : null;
-  const rangePnlPct = rangePnlBase && rangePnlBase > 0
-    ? (rangePnl / rangePnlBase) * 100
-    : 0;
+    : portfolio.totalPnl;
+  // % base: capital at the start of the window. All-Time divides by net
+  // contributed capital so "total return" = gain ÷ money-you-put-in; shorter
+  // ranges divide by the equity at the range start.
+  const rangePnlBase = range === 'Max'
+    ? (portfolio.netContributed > 0 ? portfolio.netContributed : (equityRange[0]?.value ?? 0))
+    : (equityRange[0]?.value ?? portfolio.netContributed);
+  const rangePnlPct = rangePnlBase > 0 ? (rangePnl / rangePnlBase) * 100 : 0;
   const pnlPositive = rangePnl >= 0;
 
   const spyPct: number | null =
@@ -869,16 +896,19 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
     : range === '1Y' ? spyBenchmark['1Y']
     : null;
 
-  // % return from first data point in the selected range
+  // % return curve over the selected range. value is deposit-adjusted P&L, so
+  // express each point as P&L-since-range-start ÷ capital-at-range-start. This
+  // starts at 0, is deposit-flat, and never divides by the ~0 inception P&L.
   const portfolioPercentData = useMemo(() => {
     if (portfolioData.length < 2) return portfolioData;
-    const base = portfolioData[0].value;
-    if (base === 0) return portfolioData.map((d) => ({ ...d, value: 0 }));
+    const pnlBase = portfolioData[0].value;
+    const capitalBase = equityRange[0]?.value ?? portfolio.netContributed;
+    if (!capitalBase) return portfolioData.map((d) => ({ ...d, value: 0 }));
     return portfolioData.map((d) => ({
       date: d.date,
-      value: ((d.value - base) / base) * 100,
+      value: ((d.value - pnlBase) / capitalBase) * 100,
     }));
-  }, [portfolioData]);
+  }, [portfolioData, equityRange, portfolio.netContributed]);
 
   const activePortfolioData = displayMode === 'percent' ? portfolioPercentData : portfolioData;
 
@@ -934,24 +964,36 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
           {/* ══ LEFT column ══════════════════════════════════════════════════ */}
           <div className="flex-1 min-w-0 space-y-5">
 
-            {/* Portfolio header — shared styling with the stock-detail
-                header (Trade page → app/(root)/trades/[id]/page.tsx). Both
-                total and delta are text-xl so they carry the same visual
-                weight. Mobile collapses the two into stacked rows; desktop
-                keeps them on a single row. */}
+            {/* Portfolio header — two labeled figures, mirroring a broker
+                statement: "BALANCE" over total account equity, and
+                "{RANGE} P&L" over the deposit-adjusted gain for the selected
+                window. The P&L is net of deposits/withdrawals, so funding the
+                account never reads as a gain. Both values are text-xl for
+                equal visual weight; mobile stacks them, desktop sits them
+                side by side. */}
             <div className="space-y-0.5">
               {loading ? (
-                <Skeleton className="h-8 w-72" />
+                <Skeleton className="h-12 w-80" />
               ) : (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                  <span className="text-xl font-semibold tabular-nums">
-                    {totalValueStr}
-                  </span>
-                  <PriceChange
-                    dollarChange={rangePnl}
-                    percentChange={rangePnlPct}
-                    size="xl"
-                  />
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-8">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+                      Balance
+                    </span>
+                    <span className="text-xl font-semibold tabular-nums">
+                      {totalValueStr}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+                      {RANGE_PNL_LABEL[range]}
+                    </span>
+                    <PriceChange
+                      dollarChange={rangePnl}
+                      percentChange={rangePnlPct}
+                      size="xl"
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -1274,7 +1316,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                 - Available Cash = raw Alpaca cash. Negative on margin.
                   Only the negative case shows a '-' prefix; positive shows
                   no '+' — a bare dollar amount reads as normal.
-                - Net Value = long MV + signed-short MV — net worth of
+                - Position Value = long MV + signed-short MV — net worth of
                   open positions. Info tooltip explains it + surfaces
                   position count (moved out of the tile body on user ask,
                   who found it confusing inline).
@@ -1302,7 +1344,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                     ) : undefined}
                   />
                   <StatTile
-                    label="Net Value"
+                    label="Position Value"
                     value={fmtTileCurrency(portfolio.netPositionValue)}
                     info={
                       <InfoPopover>
