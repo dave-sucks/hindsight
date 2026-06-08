@@ -53,7 +53,7 @@ function ThesisReadRow({
   thesis: ThesisCardData;
   onClick: () => void;
 }) {
-  const status = getThesisStatusDisplay(thesis.status);
+  const status = getThesisStatusDisplay(thesis.status, thesis.direction);
   const summary = thesis.reasoning_summary?.trim() || "—";
   const needsAction = thesis.needs_action ?? null;
   const needsActionLabel = needsAction ? describeNeedsAction(needsAction) : null;

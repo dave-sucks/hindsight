@@ -25,6 +25,17 @@ export interface ThesisStatusDisplay {
 }
 
 /**
+ * Display-only pseudo-status. "Pass" is stored on `Thesis.direction`
+ * (`direction === "PASS"`), not on `status` — a passed thesis lands
+ * `status: "ARCHIVED"`. But ARCHIVED is also used for non-PASS walk-aways
+ * (manual remove, editor cleanup), so we can't rename ARCHIVED → "Passed"
+ * wholesale. `PASSED` is the display key the accessor returns when it sees
+ * a PASS direction, while plain ARCHIVED keeps its "Walked away" copy.
+ * See docs/GAPS.md P1-24 + docs/THESIS_ARCHITECTURE.md §3a.
+ */
+type ThesisStatusDisplayKey = ThesisStatus | "PASSED";
+
+/**
  * Safe accessor — returns the ACTIVE display config when the input isn't a
  * known ThesisStatus. Use this everywhere instead of direct
  * `THESIS_STATUS_DISPLAY[x]` indexing. Direct indexing was the source of a
@@ -33,17 +44,29 @@ export interface ThesisStatusDisplay {
  * rendered with a missing or unexpected status string. The runtime type
  * is `string | null | undefined`; TypeScript's index-into-Record is too
  * permissive to catch it.
+ *
+ * When `direction === "PASS"`, the thesis is "Researched and declined"
+ * regardless of its (always-ARCHIVED) status — return the PASSED display.
+ * The optional `direction` param keeps the status-only signature working
+ * for callers that don't have direction in scope.
  */
 export function getThesisStatusDisplay(
   status: string | null | undefined,
+  direction?: string | null,
 ): ThesisStatusDisplay {
+  if (direction === "PASS") {
+    return THESIS_STATUS_DISPLAY.PASSED;
+  }
   if (status && status in THESIS_STATUS_DISPLAY) {
-    return THESIS_STATUS_DISPLAY[status as ThesisStatus];
+    return THESIS_STATUS_DISPLAY[status as ThesisStatusDisplayKey];
   }
   return THESIS_STATUS_DISPLAY.ACTIVE;
 }
 
-export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = {
+export const THESIS_STATUS_DISPLAY: Record<
+  ThesisStatusDisplayKey,
+  ThesisStatusDisplay
+> = {
   ACTIVE: {
     label: "Active",
     // 2026-05-13 — relabel from "Holding" to "Active".
@@ -103,6 +126,15 @@ export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = 
     dotClass: "bg-muted-foreground/40",
     tooltip:
       "Walked away from coverage — no trade outcome, no evidence-driven invalidation",
+  },
+  PASSED: {
+    label: "Passed",
+    // Display-only pseudo-status for direction === "PASS" theses (which are
+    // always status: ARCHIVED). Same gray dot as ARCHIVED — both are
+    // terminal-without-trade — but distinct copy: a PASS is "researched and
+    // declined" institutional memory, not a generic walk-away.
+    dotClass: "bg-muted-foreground/40",
+    tooltip: "Researched and declined — institutional memory",
   },
   SUPERSEDED: {
     label: "Superseded",

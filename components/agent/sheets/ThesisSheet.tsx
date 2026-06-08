@@ -138,8 +138,14 @@ export function hasFundamentalDetails(f: FundamentalsData): boolean {
 // cell, no per-status branches — same shape that appears on the
 // read-theses table, the carousel cards, the trade detail header.
 
-function StatusPill({ status }: { status: ThesisStatus }) {
-  const display = getThesisStatusDisplay(status);
+function StatusPill({
+  status,
+  direction,
+}: {
+  status: ThesisStatus;
+  direction?: "LONG" | "SHORT" | "PASS";
+}) {
+  const display = getThesisStatusDisplay(status, direction);
   return (
     <Badge variant="secondary" className="gap-1.5 font-normal">
       <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
@@ -1692,7 +1698,7 @@ export function ThesisSheetBody({
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        {liveStatus ? <StatusPill status={liveStatus} /> : null}
+        {liveStatus ? <StatusPill status={liveStatus} direction={direction} /> : null}
         <ConvictionBadge
           conviction={conviction}
           rationale={convictionRationale}

@@ -72,7 +72,7 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
   const position = state?.position ?? null;
   const positionPnl = quote?.positionPnl ?? null;
 
-  const statusDisplay = getThesisStatusDisplay(status);
+  const statusDisplay = getThesisStatusDisplay(status, direction);
   const isPass = direction === "PASS";
   const hasGauge = entryPrice != null && (targetPrice != null || stopLoss != null);
   const isHolding = status === "ACTIVE" && position != null;
