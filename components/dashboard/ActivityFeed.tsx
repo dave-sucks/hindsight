@@ -44,6 +44,8 @@ function FeedItem({ item }: { item: ActivityFeedItem }) {
   const isOpen = item.type === 'OPENED';
   const isClosed = item.type === 'CLOSED';
   const isModified = item.type === 'MODIFIED';
+  const isProposed = item.type === 'PROPOSED';
+  const isRejected = item.type === 'REJECTED';
 
   const pnlPositive = (item.pnl ?? 0) >= 0;
   const hasPnl = item.pnl != null;
@@ -65,6 +67,16 @@ function FeedItem({ item }: { item: ActivityFeedItem }) {
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
                 {item.direction}
               </Badge>
+              {isRejected && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
+                  Rejected
+                </Badge>
+              )}
+              {isProposed && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
+                  Proposed
+                </Badge>
+              )}
             </div>
             <span className="text-[11px] text-muted-foreground/70 tabular-nums shrink-0">
               {relativeTime(item.timestamp)}
@@ -77,7 +89,9 @@ function FeedItem({ item }: { item: ActivityFeedItem }) {
               {/* Status dot */}
               <span className={cn(
                 'h-1.5 w-1.5 rounded-full shrink-0',
-                isOpen ? 'bg-positive' : isClosed ? 'bg-muted-foreground/60' : 'bg-primary/60',
+                isOpen ? 'bg-positive'
+                  : isClosed || isRejected ? 'bg-muted-foreground/60'
+                  : 'bg-primary/60',
               )} />
               <span className="text-xs text-muted-foreground truncate">{item.label}</span>
               {item.analystName && (
