@@ -11,6 +11,7 @@
  */
 
 import AlpacaAPI from "@alpacahq/alpaca-trade-api";
+import type { FundingEvent } from "@/lib/portfolio/contributions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,9 @@ export interface AlpacaAccount {
   cash: string;
   portfolio_value: string;
   equity: string;
+  /** Previous trading day's closing equity. `equity − last_equity` is the
+   *  day's change (net of any same-day deposit) — drives "Day's P&L". */
+  last_equity?: string;
   buying_power: string;
   /** Long side market value. Present on margin/paper accounts; may be absent on cash accounts. */
   long_market_value?: string;
@@ -526,6 +530,86 @@ export async function getPortfolioHistory(
   }
 
   return points;
+}
+
+// ─── Funding activities (deposits / withdrawals) ───────────────────────────────
+
+/** Raw shape of a non-trade account activity (CSD/CSW) from Alpaca. */
+interface AlpacaAccountActivity {
+  id: string;
+  activity_type: string; // "CSD" (cash deposit) | "CSW" (cash withdrawal) | …
+  date?: string; // YYYY-MM-DD — present on non-trade activities
+  transaction_time?: string; // ISO fallback for `date`
+  net_amount?: string; // signed dollars
+}
+
+/**
+ * Returns every cash deposit (CSD) and withdrawal (CSW) on the account as
+ * signed `FundingEvent`s (deposit positive, withdrawal negative). This is the
+ * external-cash-flow ledger used to strip deposits out of reported P&L — see
+ * `lib/portfolio/contributions.ts`.
+ *
+ * Only meaningful on LIVE accounts: paper accounts are seeded out of thin air
+ * and have no CSD/CSW activities, so this returns []. Paginates via the
+ * documented `page_token` cursor (last id of the prior page), capped so a
+ * pathological account can't loop forever.
+ */
+export async function getFundingActivities(
+  creds?: AlpacaCredentials,
+): Promise<FundingEvent[]> {
+  const baseUrl = (creds?.baseUrl || process.env.ALPACA_BASE_URL || PAPER_BASE_URL).replace(/\/$/, "");
+  const keyId = creds?.keyId || process.env.ALPACA_API_KEY!;
+  const secretKey = creds?.secretKey || process.env.ALPACA_API_SECRET!;
+
+  const PAGE_SIZE = 100; // Alpaca's max page size for activities
+  const MAX_PAGES = 50; // safety cap — a personal account has a handful of transfers
+  const events: FundingEvent[] = [];
+  let pageToken: string | undefined;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams({
+      activity_types: "CSD,CSW",
+      page_size: String(PAGE_SIZE),
+    });
+    if (pageToken) params.set("page_token", pageToken);
+
+    const url = `${baseUrl}/v2/account/activities?${params}`;
+    const rows = await withTimeout(
+      fetch(url, {
+        headers: {
+          "APCA-API-KEY-ID": keyId,
+          "APCA-API-SECRET-KEY": secretKey,
+        },
+      }).then(async (res) => {
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw new Error(`Alpaca activities ${res.status}: ${body.slice(0, 200)}`);
+        }
+        return res.json() as Promise<AlpacaAccountActivity[]>;
+      }),
+      "getFundingActivities",
+    );
+
+    if (!Array.isArray(rows) || rows.length === 0) break;
+
+    for (const a of rows) {
+      const raw = parseFloat(a.net_amount ?? "");
+      if (!Number.isFinite(raw)) continue;
+      // Normalize by activity_type rather than trusting net_amount's sign:
+      // CSD is a deposit (+), CSW a withdrawal (−), regardless of how Alpaca
+      // happens to sign the field.
+      const amount = a.activity_type === "CSW" ? -Math.abs(raw) : Math.abs(raw);
+      const date = a.date ?? a.transaction_time?.slice(0, 10);
+      if (!date) continue;
+      events.push({ date, amount });
+    }
+
+    if (rows.length < PAGE_SIZE) break;
+    pageToken = rows[rows.length - 1]?.id;
+    if (!pageToken) break;
+  }
+
+  return events;
 }
 
 // ─── Historical bars ─────────────────────────────────────────────────────────

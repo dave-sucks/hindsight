@@ -2,7 +2,12 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { getAccount, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
+import { getAccount, getFundingActivities, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
+import {
+  netContributedTotal,
+  depositAdjustedPnlCurve,
+  type FundingEvent,
+} from "@/lib/portfolio/contributions";
 import { resolveAlpacaCredentials, type AlpacaEnvironment } from "@/lib/actions/api-keys.actions";
 import { getAccountId } from "@/lib/auth/account";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
@@ -15,6 +20,11 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+// Fallback baseline ONLY when real contributions can't be sourced — i.e. paper
+// accounts (seeded at $100k, no real CSD/CSW transfers) or a live account whose
+// activities fetch failed. Live accounts derive their cost basis from actual
+// deposits/withdrawals (see `netContributed` below). $100k matches Alpaca's
+// paper-account seed, so paper math is unchanged.
 const STARTING_CAPITAL = 100_000;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -35,7 +45,7 @@ export interface PortfolioStats {
   /**
    * Net position value — signed sum of long and short market values.
    * Math identity: `cash + netPositionValue = equity` (always, regardless
-   * of margin state). This is the "Net Value" tile on the dashboard
+   * of margin state). This is the "Position Value" tile on the dashboard
    * because the user can verify the math adds up: cash + net = total.
    */
   netPositionValue: number;
@@ -59,8 +69,19 @@ export interface PortfolioStats {
   leverageRatio: number;
   /** Total P&L (realized + unrealized). Surfaced for convenience. */
   totalPnl: number;
-  /** Total P&L as % of STARTING_CAPITAL — "how the account itself has performed." */
+  /** Total P&L as % of net contributed capital — "how the account itself has performed." */
   accountReturnPct: number;
+  /**
+   * Net contributed capital = Σ deposits − Σ withdrawals (the account's cost
+   * basis). Live: sourced from Alpaca CSD/CSW activities. Paper / no-creds:
+   * falls back to STARTING_CAPITAL. This is the denominator that keeps a cash
+   * deposit from reading as a gain.
+   */
+  netContributed: number;
+  /** Today's P&L: `equity − last_equity` minus any deposit posted today. */
+  dayPnl: number;
+  /** Today's P&L as % of the prior close. */
+  dayPnlPct: number;
 }
 
 export interface AgentConfigSummary {
@@ -165,6 +186,13 @@ export interface DashboardData {
   portfolio: PortfolioStats;
   /** Total equity curve from Alpaca Portfolio History API (realized + unrealized). Falls back to realizedCurve. */
   equityCurve: { date: string; value: number }[];
+  /**
+   * Deposit-adjusted cumulative P&L curve: `equity − cumulative net
+   * contributions` at each date. Flat across deposits (no cliff), so the
+   * homepage header delta over any range is pure trading P&L. Equals the
+   * equity curve when there are no funding events (paper).
+   */
+  pnlCurve: { date: string; value: number }[];
   /** Realized-only equity curve (cumulative closed P&L + starting capital). */
   realizedCurve: { date: string; value: number }[];
   agentConfigs: AgentConfigSummary[];
@@ -265,6 +293,9 @@ export async function getDashboardData(
     leverageRatio: 1,
     totalPnl: 0,
     accountReturnPct: 0,
+    netContributed: STARTING_CAPITAL,
+    dayPnl: 0,
+    dayPnlPct: 0,
   };
 
   if (!user) {
@@ -274,6 +305,7 @@ export async function getDashboardData(
       activityFeed: [],
       portfolio: emptyPortfolio,
       equityCurve: [],
+      pnlCurve: [],
       realizedCurve: [],
       agentConfigs: [],
       recentRuns: [],
@@ -303,6 +335,7 @@ export async function getDashboardData(
       activityFeed: [],
       portfolio: emptyPortfolio,
       equityCurve: [],
+      pnlCurve: [],
       realizedCurve: [],
       agentConfigs: [],
       recentRuns: [],
@@ -549,7 +582,7 @@ export async function getDashboardData(
     return ((end - start) / start) * 100;
   }
 
-  const [priceLookup, nameMap, spyCandles, portfolioHistory, alpacaAccount] = await Promise.all([
+  const [priceLookup, nameMap, spyCandles, portfolioHistory, alpacaAccount, fundingEvents] = await Promise.all([
     allTickers.length > 0
       ? getLatestPricesWithMeta(allTickers, alpacaCreds).catch((err) => {
           console.error(
@@ -601,6 +634,15 @@ export async function getDashboardData(
           return null;
         })
       : Promise.resolve(null),
+    // External cash flows (deposits/withdrawals) — used to strip funding out of
+    // reported P&L so a deposit doesn't read as a gain. LIVE only: paper has no
+    // real CSD/CSW transfers, so it keeps the STARTING_CAPITAL baseline.
+    alpacaCreds && environment === "LIVE"
+      ? getFundingActivities(alpacaCreds).catch((err) => {
+          console.warn(`[portfolio] getFundingActivities failed: ${err instanceof Error ? err.message : err}`);
+          return [] as FundingEvent[];
+        })
+      : Promise.resolve([] as FundingEvent[]),
   ]);
   const priceMap = priceLookup.prices;
 
@@ -711,21 +753,43 @@ export async function getDashboardData(
 
   // ── 6. Portfolio stats ─────────────────────────────────────────────────────
   const realizedPnl = dbClosedPositions.reduce((sum, p) => sum + (p.realizedPnl ?? 0), 0);
+
+  // Net contributed capital = the account's cost basis. LIVE: Σ deposits −
+  // Σ withdrawals from Alpaca CSD/CSW activities. Paper / no-creds / failed
+  // fetch: fall back to the STARTING_CAPITAL seed (paper math unchanged).
+  // This is the number that stops a cash deposit from reading as a gain.
+  const netContributed =
+    fundingEvents.length > 0 ? netContributedTotal(fundingEvents) : STARTING_CAPITAL;
+
   // Alpaca's equity is always correct — it includes every open position's
-  // live mark-to-market. Derive unrealized from that identity:
-  //   equity = starting_capital + realized + unrealized
-  //   ⇒ unrealized = equity − starting_capital − realized
+  // live mark-to-market. Derive unrealized from the account identity:
+  //   equity = net_contributed + realized + unrealized
+  //   ⇒ unrealized = equity − net_contributed − realized
   // The old path summed openTrades[].pnl, but per-position pnl is 0 when
   // the live-price fetch silently misses a ticker — so a 10-position
   // portfolio where 3 prices didn't fetch would under-count by those 3.
   // Falls back to the DB-summed path only when Alpaca creds are absent.
   const totalValue = alpacaAccount
     ? parseFloat(alpacaAccount.equity)
-    : STARTING_CAPITAL + realizedPnl + openTrades.reduce((sum, t) => sum + t.pnl, 0);
+    : netContributed + realizedPnl + openTrades.reduce((sum, t) => sum + t.pnl, 0);
   const unrealizedPnl = alpacaAccount
-    ? totalValue - STARTING_CAPITAL - realizedPnl
+    ? totalValue - netContributed - realizedPnl
     : openTrades.reduce((sum, t) => sum + t.pnl, 0);
   const totalPnl = realizedPnl + unrealizedPnl;
+
+  // Day's P&L — equity vs the prior trading day's close, minus any deposit
+  // that posted today (so funding the account today isn't a "gain" either).
+  const lastEquity = alpacaAccount?.last_equity ? parseFloat(alpacaAccount.last_equity) : null;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const depositsToday = fundingEvents
+    .filter((e) => e.date === todayIso)
+    .reduce((sum, e) => sum + e.amount, 0);
+  const dayPnl =
+    lastEquity != null && Number.isFinite(lastEquity)
+      ? totalValue - lastEquity - depositsToday
+      : 0;
+  const dayPnlPct =
+    lastEquity != null && lastEquity > 0 ? (dayPnl / lastEquity) * 100 : 0;
 
   const closedWithOutcome = dbClosedPositions.filter((p) => p.outcome);
   const winRate =
@@ -753,8 +817,8 @@ export async function getDashboardData(
   const shortMarketValue = Math.abs(shortMarketValueRaw);
   const positionMarketValue = longMarketValue + shortMarketValue; // gross
   // Net position = long − shorts. Accounting identity: cash + netPositionValue
-  // = equity. Used for the "Net Value" dashboard tile so the visible math
-  // reconciles: Available Cash + Net Value = Total Account Value.
+  // = equity. Used for the "Position Value" dashboard tile so the visible math
+  // reconciles: Available Cash + Position Value = Total Account Value.
   const netPositionValue = longMarketValue + shortMarketValueRaw; // signed sum
   // DB-only fallback (no Alpaca creds): approximate cash as starting capital
   // + realized proceeds − capital currently tied up in open positions at
@@ -766,7 +830,7 @@ export async function getDashboardData(
   );
   const cash = alpacaAccount
     ? parseFloat(alpacaAccount.cash)
-    : STARTING_CAPITAL + realizedPnl - dbOpenCostBasis;
+    : netContributed + realizedPnl - dbOpenCostBasis;
   const buyingPower = alpacaAccount
     ? parseFloat(alpacaAccount.buying_power)
     : Math.max(0, totalValue);
@@ -775,11 +839,11 @@ export async function getDashboardData(
   // aren't expecting margin semantics (negative cash, amplified P&L).
   const usingMargin = positionMarketValue > totalValue + 1; // $1 tolerance for float noise
   const leverageRatio = totalValue > 0 ? positionMarketValue / totalValue : 1;
-  const accountReturnPct = (totalPnl / STARTING_CAPITAL) * 100;
+  const accountReturnPct = netContributed > 0 ? (totalPnl / netContributed) * 100 : 0;
 
   // ── 7. Equity curves ───────────────────────────────────────────────────────
-  // realizedCurve: cumulative closed P&L starting from STARTING_CAPITAL (old behavior)
-  const realizedCurve = buildEquityCurve(dbClosedPositions, STARTING_CAPITAL, totalValue);
+  // realizedCurve: cumulative closed P&L starting from net contributed capital
+  const realizedCurve = buildEquityCurve(dbClosedPositions, netContributed, totalValue);
 
   // equityCurve: total equity from Alpaca Portfolio History API (includes unrealized)
   // Falls back to realizedCurve if Alpaca creds are missing or call failed.
@@ -787,6 +851,18 @@ export async function getDashboardData(
     portfolioHistory.length >= 2
       ? portfolioHistory.map((p) => ({ date: p.date, value: p.equity }))
       : realizedCurve;
+
+  // pnlCurve: deposit-adjusted cumulative P&L (equity − cumulative net
+  // contributions). Flat across deposits, so the homepage header delta over
+  // any range is pure trading P&L. Equals equityCurve when there are no
+  // funding events (paper / no transfers recorded).
+  const pnlCurve: { date: string; value: number }[] =
+    portfolioHistory.length >= 2
+      ? depositAdjustedPnlCurve(
+          portfolioHistory.map((p) => ({ date: p.date, equity: p.equity })),
+          fundingEvents,
+        )
+      : equityCurve;
 
   // ── 7b. Per-analyst equity curves (cumulative P&L, starting from 0) ────────
   const analystEquityCurves: Record<string, { date: string; value: number }[]> = {};
@@ -1086,8 +1162,12 @@ export async function getDashboardData(
       leverageRatio,
       totalPnl,
       accountReturnPct,
+      netContributed,
+      dayPnl,
+      dayPnlPct,
     },
     equityCurve,
+    pnlCurve,
     realizedCurve,
     agentConfigs,
     recentRuns,
