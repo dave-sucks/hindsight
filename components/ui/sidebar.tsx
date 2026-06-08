@@ -28,7 +28,11 @@ import { PanelLeftIcon } from "lucide-react"
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
-const SIDEBAR_WIDTH_MOBILE = "18rem"
+// Full viewport width on mobile — the 18rem shadcn default left ~30% of
+// the screen visible behind the panel, which read as a half-broken nav
+// rather than a proper drawer. Mobile sidebar only renders below the
+// 768px breakpoint (see useIsMobile), so this doesn't affect desktop.
+const SIDEBAR_WIDTH_MOBILE = "100%"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
