@@ -1,386 +1,77 @@
 # Hindsight — Gaps
 
-> **What this is:** the live tracker for what's broken or being improved on the live-trading loop. Scoped to what affects real money, real analysts, real runs.
+> **What this is:** the live tracker for what's **open** on the live-trading loop. Scoped to what affects real money, real analysts, real runs.
 >
-> The legacy 6-week-rework tracker is [`GAPS_LEGACY.md`](./GAPS_LEGACY.md). Most of it shipped. The remaining items there weren't important enough to land before live; they sit deferred unless production data shows them biting.
->
-> **How this file is maintained:** add new items as they're found. Move closed items to the "Done since" section with the PR # and date. Don't strike through inline. When the file's open list grows past one screen, re-evaluate priorities and demote anything that's no longer load-bearing.
+> **How this file is maintained:** **open items only.** When an item closes, move its block to [`GAPS_HISTORY.md`](./GAPS_HISTORY.md) (most-recent on top) with the PR # and date — do not leave closed items here. The PRs are the full record. Keep this file short enough to read in one screen.
 >
 > **The 5 roles (the mental model behind every item):**
 > 1. **Daily run** — manages the portfolio. Walks the book every morning. Trades, exits, trims, adds, edits targets. Reads research; never writes deep research.
 > 2. **Tactical run** — same as daily but single-thesis, wakes on triggers.
-> 3. **Discovery run** — mints net-new theses on Sundays.
-> 4. **Thesis-writer** — refreshes research on existing theses. Dispatched on promotion + on agent judgment via `dispatch_thesis_research`. Writes belief / target / stop / triggers / sections. **Never touches status.**
-> 5. **Promotion action** — closes paper positions, flips theses ACTIVE → PROMOTED, fans out writer refreshes. Output is "fresh research with urgency signal." The daily run then decides re-enter / wait / kill.
->
-> Every item below is a failure of one or more of those roles to do its job, or a missing primitive that prevents them from working.
+> 3. **Discovery run** — mints net-new theses (Sunday cron + operator-driven chat).
+> 4. **Thesis-writer** — refreshes research on existing theses. Dispatched on promotion + agent judgment. Writes belief / target / stop / triggers / sections. **Never touches status.**
+> 5. **Promotion action** — closes paper positions, flips ACTIVE → PROMOTED, fans out writer refreshes. The daily run then decides re-enter / wait / kill.
 
 ---
 
 ## P0 — Blocks the live trading loop
 
-These prevent the live agent from doing its job. Fix first.
-
-### P0-13 — Trigger evaluator runaway: agent-supplied `cooldownDays: 0` on non-EXIT trigger
-**Status:** closed in PR #377. Three-layer code defense + comprehensive data cleanup all shipped together.
-
-NVDA tactical loop on 2026-06-02 fired the same `TIME_ELAPSED 14d REVIEW` trigger every 5 minutes for ~70 minutes (15 runs, 11 COMPLETE + 4 OpenAI-flake FAILED) before manual intervention. Each run is a full GPT-5.5 tactical-mode invocation — significant unintended spend.
-
-**Root cause chain:**
-1. NVDA flipped WATCHING → ACTIVE at 12:47 ET via the PRICE_ABOVE $225 ENTER trigger.
-2. The agent then called `update_thesis` with a hand-crafted set of HELD-side triggers (custom rationale "Momentum Breakout trades are days-to-weeks holds…", NOT the template boilerplate). The agent stamped `cooldownDays: 0` on the TIME_ELAPSED REVIEW because the schema description told it "Pass 0 to opt out — useful only for terminal EXIT triggers" without enforcing the EXIT-only carve-out.
-3. `applyTriggerCooldownDefaults` in `lib/agent/triggers/defaults.ts` used `t.cooldownDays != null` to detect "user supplied a value." Since `0 != null` is true, the default-filler walked past the 0 instead of overwriting it.
-4. `shouldFire` in `lib/agent/triggers/evaluate.ts` documents `cooldownDays === 0` as "no rate limit, fire every evaluation" — explicitly intended for terminal EXIT triggers but not enforced.
-5. The Thesis row's `createdAt` is 2026-04-27 (when NVDA first hit the watchlist), so `TIME_ELAPSED(14d)` from `createdAt` evaluated true the instant the trigger landed — there's nothing in the predicate measuring against `position.openedAt`.
-6. 5-min trigger-evaluator cron + sticky-true predicate + cooldown=0 + no defense = infinite loop. The agent dutifully responded "position is 0 days old, holding" on every iteration but the trigger kept firing.
-
-**Why three layers needed:** the schema description told the agent 0 was the "opt-out" idiom. The write path missed the 0 because the existence check was `!= null`. The read path documented 0 as the escape hatch and didn't enforce EXIT-only. **Every layer was permissive.** Pressure-testing the initial 1-layer fix revealed ~28 theses on the open book already carried the bad shape from prior writer dispatches — far more than the 4 I initially patched. Write-path defense alone wouldn't have touched the existing rows.
-
-**Code fixes in PR #377 (three-layer defense):**
-
-1. **Schema (`lib/agent/triggers/schema.ts`)** — `cooldownDays` description rewritten to make EXIT-only unmissable: "The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT." No Zod `.refine()` — `triggersArraySchema` is used at disk-read time too (trigger-evaluator, get-theses, thesis-sheet-state, tactical-run, live-evaluate) and a refine() that rejected legacy bad-shape rows would fail the whole array parse and silently drop ALL triggers on that thesis including legitimate EXIT stops. That's the same silent-failure shape PR #371 just fixed for id-less triggers — don't re-introduce it.
-
-2. **Write path (`lib/agent/triggers/defaults.ts`)** — `applyTriggerCooldownDefaults` now treats `cooldownDays: 0` on any non-EXIT action as structurally invalid and overwrites with the per-predicate default. EXIT preserved (terminal opt-out is legitimate — position closes, cron's `status:ACTIVE` filter removes it from evaluation).
-
-3. **Read path (`lib/agent/triggers/evaluate.ts`)** — `shouldFire` mirrors the rule: non-EXIT `cooldownDays === 0` falls back to the per-predicate default at evaluation time instead of bypassing the rate limit. Defense in depth for any bad rows that slip through future write paths.
-
-13 new unit tests across `defaults.test.ts` and `evaluate.test.ts` pin all three behaviors, including the verbatim NVDA shape and the IREN TRIM PRICE_ABOVE $76.87 shape.
-
-**Data cleanup applied via one SQL UPDATE — 28 theses patched, not the 4 I initially caught:**
-
-The initial sweep filtered too narrowly (REVIEW + sticky predicates only). Broader audit showed nearly every open thesis carried at least one bad cooldownDays=0 on a non-EXIT trigger because the writer (Claude) has been systematically applying the schema's "Pass 0 to opt out" idiom to non-EXIT actions for some time. Cleanup applied per-predicate defaults matching the code path:
-
-- TIME_ELAPSED → max(1, round(days × 0.8))
-- EARNINGS_*, GUIDANCE_CHANGE, REVIEW_DATE_HIT → 7
-- FILING, SIGNAL_TYPE, PRICE_*, VS_SMA, RSI → 1
-
-Notable patched rows:
-
-| Thesis | Trigger | Was | Set to | Risk if left |
-|---|---|---|---|---|
-| NVDA (ACTIVE, Momentum Breakout) | TIME_ELAPSED 14d REVIEW | 0 | 14 | Active runaway — manual hotfix earlier |
-| IREN (ACTIVE, Momentum Breakout) | TRIM PRICE_ABOVE $76.87 | 0 | 1 | Would have partial-closed every 5 min if price hit target |
-| AVGO ×4 rows (incl. WATCHING ENTER + REVIEW) | various | 0 | per-kind | Earnings 6/03 would have re-fired ENTER multiple times |
-| ADBE (WATCHING) | TIME_ELAPSED 30d REVIEW | 0 | 30 | Would have blown 6/30 |
-| ON, MRVL, TSM, PANW, GOOGL, MSFT, NVTS, RBRK, VEEV, ADI, CRDO, CVV, HOOD, LITE, NTNX, POET, SNPS, TXN | various | 0 | per-kind | Latent landmines |
-
-Post-cleanup verification query (`SELECT … WHERE cooldownDays=0 AND action != 'EXIT' AND status IN open-states`) returns 0 rows. EXIT stops on all ACTIVE positions verified preserved at `cooldownDays: 0` (legitimate — sanity-spot-checked NVDA/IREN/MRVL/TSM).
-
-**Related but separate (not fixed here):** the TIME_ELAPSED predicate measures from `thesis.createdAt`, which is the wrong clock for a HELD-side "max hold" check. The trigger evaluator should measure from `position.openedAt` on ACTIVE rows. Filing as follow-up P1-14 (below).
-
-### P1-14 — TIME_ELAPSED predicate uses `thesis.createdAt`, not `position.openedAt`, on HELD-side triggers
-**Status:** ✅ **CLOSED — [#396](https://github.com/dave-sucks/hindsight/pull/396), merged 2026-06-05.** `evaluate.ts` now anchors TIME_ELAPSED to `position.openedAt` on ACTIVE rows; 6 call sites thread it via batched lookups; WATCHING stays on `createdAt`. QB-reviewed.
-
-A "max hold 14 days" REVIEW trigger on an ACTIVE position should measure 14 days from when the position opened, not 14 days from when the thesis row was created. Today the NVDA position is 0 days old but the predicate fires because the *thesis* is 36 days old. The agent self-correctly recognized the mismatch ("the live $NVDA position is only 0 days old, but the trigger is checking 14 days elapsed since thesis-row creation") and refused to exit on every iteration, but it shouldn't have had to fight an incorrect signal in the first place.
-
-**Fix:** `lib/agent/triggers/evaluate.ts` — for triggers on a Thesis with `status='ACTIVE'` and `predicate.kind='TIME_ELAPSED'`, measure elapsed from `position.openedAt` instead of `thesis.createdAt`. WATCHING-side stays on `createdAt` (the right clock for "is this watch row stale").
+_None open._ The 2026-06-04 → 08 post-launch sprint cleared the live-loop blockers (compliance auto-sell #390, EXIT-vs-proposal runaway #381, cooldown runaway #377). See [`GAPS_HISTORY.md`](./GAPS_HISTORY.md).
 
 ---
 
----
+## P1 — Quality is degraded but the live loop functions
 
-## P1 — Quality is degraded but live loop functions
+### P1-23 — The post-run "briefing" doesn't fit the 3-agent model
+**Status:** open, filed 2026-06-08 (principal). Architectural — decide its role before it drifts further.
 
-> _As of 2026-06-05: every P1 item below is **CLOSED** (merged) or **DROPPED** — see the per-item status lines + Done since. No open P1 remains._
+In the old single-**Morning-Run** world, one run did everything — discovery, signals, mint theses, **read the last 3-5 post-run briefs**, then write a new brief. The briefing was the analyst's rolling memory inside one daily cycle.
 
-### P1-2 — Audit and remove unnecessary place_trade / update_thesis gates
-**Status:** 🗑️ **DROPPED 2026-06-05** — not a crisp gap. The one concrete piece (Gates A+B composite-coupling) already shipped in [#360](https://github.com/dave-sucks/hindsight/pull/360); the rest is "look again during the proposal-layer refactor," not a tracked gap. Refile a specific gate only if one actually refuses a legitimate live trade.
+The current `AnalystBriefing` (post-run standup, written by the separate reviewer agent in `lib/agent/update-analyst-briefing.ts`) doesn't fit the new **3-agent split** (daily / tactical / discovery):
+- Written **only after the DAILY run** — not after tactical runs or discovery.
+- Fed **only into the DAILY run** (`run-input.ts` `latestBriefing` → V2 prompt "Yesterday's standup"; V1 ignores it).
+- Reads **only the last 1**, not the rolling last 3-5.
+- So it's **blind to tactical trades + discovery activity** that now happen all day. A name a tactical run entered/exited, or one discovery surfaced, never reaches the standup the next morning's daily run reads.
 
-The system has accumulated gates over time, some of which now refuse legitimate trades or block reasonable updates. Specific suspects to audit:
+**The rethink:** where does run-to-run memory live when there are 3 run types? Weigh — standup ingests tactical + discovery activity (not just the daily conversation); restore reading the last N; or a different continuity primitive. Tied to the intel-infra disposition (P2 below).
 
-- `place_trade`'s `goalpost-moving` gate (refuses raising target on WATCHING when entry condition met).
-- `place_trade`'s confidence-floor (rejects below `minConfidence` — fine, but is the threshold right?).
-- `update_thesis`'s `structural_unchanged_reason` requirement (forces a reason field on patches that don't touch belief).
-- `update_thesis`'s zero-trigger guard (rejects REVIEWED-only on theses with no triggers — fine for inert rows, but the PENDING exemption is the only sane path today).
-- `update_thesis`'s INVALIDATED-on-PROMOTED rejection (prevents legitimate "this is dead" calls during the first-live-run; should this be allowed if `close_position` already fired in the same run? Probably yes).
-- Anywhere the tool returns a Layer-1 refusal for a JUDGMENT CALL (not a STRUCTURAL violation).
+### P1-24 — Status/direction taxonomy: "Pass" lives on `direction`, surfaces disagree
+**Status:** open, filed 2026-06-08 (principal). Scoped fix below + a broader audit.
 
-Goal: keep gates that prevent STRUCTURALLY IMPOSSIBLE states (e.g., ACTIVE thesis with no position). Remove gates that second-guess the agent's judgment. Default to "let the agent decide" wherever the state would still be valid.
+**The finding.** "Pass" is stored on `Thesis.direction` (`LONG | SHORT | PASS | PENDING`), **not** `Thesis.status` (`ACTIVE | WATCHING | PROMOTED | CLOSED | INVALIDATED | ARCHIVED | SUPERSEDED`). A discovery "researched but rejected" writes `direction:"PASS"` and lands `status:ARCHIVED` — but ARCHIVED is **also** used for non-Pass cases (manual "remove from watchlist," editor cleanup), so you can't rename ARCHIVED → "Passed" wholesale.
 
-**Output:** a list of gates with a verdict (keep / remove / soften) and a follow-up PR per removal.
+Some surfaces check `direction==="PASS"` before reading status; others read status blind → the sheet header **contradicts** the row you clicked from:
+- ✅ `components/ui/thesis-row.tsx:222`, `decision-summary-card.tsx`, `run-summary-card.tsx` — render "Pass" when direction is PASS.
+- ❌ `components/agent/sheets/ThesisSheet.tsx:142` (StatusPill → `getThesisStatusDisplay(status)` blind → "Archived"), `components/domain/thesis-mini-card.tsx:75`, `components/domain/read-theses-table.tsx:56` — show "Archived."
 
-**Already removed in [#360](https://github.com/dave-sucks/hindsight/pull/360):** Gates A + B (composite-coupling on `record_thesis` + `update_thesis`) — they forced `conviction` to derive from `composite`, defeating the whole point of having a separate writer-judgment field. The remaining suspects above are unchanged. Probably folds into the trade-as-proposal refactor since the proposal layer changes which gates matter.
+**Scoped fix (~30-50 line PR):**
+1. Add `PASSED` to `THESIS_STATUS_DISPLAY` in `lib/thesis-status.ts` — same gray dot as ARCHIVED, tooltip "Researched and declined — institutional memory" (vs ARCHIVED's "Walked away from coverage").
+2. Extend `getThesisStatusDisplay(status, direction?)` — return `PASSED` when `direction==="PASS"` regardless of status; ARCHIVED-without-PASS still "Archived."
+3. Update the unsafe callsites (ThesisSheet, thesis-mini-card, read-theses-table) to pass `thesis.direction`.
 
-### P1-17 — Thesis Writer reports 100% Inngest failure while the work succeeds
-**Status:** **Closed by [#383](https://github.com/dave-sucks/hindsight/pull/383) (merged 2026-06-05)** — retry-idempotency guard shipped; Inngest retries now no-op instead of re-running. **NOT a duplicate of the P1-12 credit-exhaustion failures** — different error, different mechanism (see below).
-
-**Symptom:** the Inngest dashboard shows "Thesis Writer (sub-agent)" (`app/thesis.write.requested`) at ~100% failure over 24h, yet the work succeeds — the runs (SNOW/PACS/CRDO on PEAD Specialist, 2026-06-03) all marked `ResearchRun.status=COMPLETE` and wrote their theses. One (CRDO) also logged `parameters.error = "Thesis-writer timed out after 770s."`
-
-**Root cause (two coupled layers):**
-
-1. **One long `step.run` outlives Inngest's request tolerance.** `thesis-writer.ts` runs the entire agent inside a single `step.run("run-thesis-writer", …)`. That step takes **333–760s (avg 425s, p90 541s, max 760s; 37% hit `maxSteps=8`)**. `runThesisWriterAgent` **never throws** (both try/catch blocks return a result), so the only thing Inngest can register is the long HTTP request being abandoned → with `retries:1` it re-invokes, re-executing the whole agent from scratch (the step was never checkpointed).
-
-2. **No retry-idempotency guard.** The child `ResearchRun` is pre-created `RUNNING` by `dispatch_thesis_research`; the DB side-effects (`record_thesis`/`update_thesis` + `complete_run`) commit **mid-step**, independent of the HTTP response. So one attempt lands the thesis + marks COMPLETE; the other re-runs, usually hits the 770s `AbortSignal`, and its catch stamps `parameters.error` — but `updateMany(WHERE status='RUNNING')` matches 0 rows (already COMPLETE), so status stays COMPLETE while the error is written anyway.
-
-**Proof of double-execution:** CRDO's one `ResearchRun` row carries **both** `parameters.elapsedMs=429447` (written only by the success path) **and** `error="timed out after 770s"` (written only by the catch) — impossible in a single call. SNOW shows the pure form: COMPLETE, thesis written, *no* error, `elapsedMs=760426`, `steps=8`. (Retries do **not** duplicate Thesis rows — the cardinality gate absorbs the second mint; the cost is a wasted second full Claude agent run + the false failures.)
-
-**Frequency — don't overstate it.** 8 COMPLETE runs in 30d carry both fields, but **only 1 (CRDO, 6/03) is the *timeout* variant; the other 7 are the 2026-05-31 P1-12 credit-balance retries.** So the double-execution *mechanism* is systemic — the guard no-ops a retry-after-completion regardless of cause (timeout, credit, transient), which is a real plus — but the timeout-specific failure is **~once/30d**: a rare doubled run + a misleading 100%-failure dashboard badge, **not** a frequent spend drain. Merge it for the correct dashboard signal + the occasional saved double-run, not as an urgent fire.
-
-**Why writer-only:** morning-research (12h guard) and discovery-run (the explicit "P2-10 — idempotency on Inngest step retries" 1h-RUNNING-reuse guard) short-circuit on retry; tactical's step is short (~40–160s). 30d: THESIS_WRITER 8 COMPLETE-with-error / avg 425s vs MORNING_PLAN 0 / avg 113s, DISCOVERY 0, INTRADAY_TACTICAL 0. The writer is the one long-running agent that never got the guard.
-
-**Where the time goes (the long-step driver):** not data-gathering — it's the model *generating the persistence payload*. `write_thesis_research` ~190s, then **`record_thesis`/`update_thesis` 150–190s each** (Claude emitting the verbatim 9-section + decision/trigger/conviction blob). A Layer-1 trigger-gate rejection forces full-payload regeneration (SNOW: `update_thesis` ×2 = 337s → maxSteps=8 → 760s).
-
-**Fix:**
-- **(shipping) Retry-idempotency guard** in `run-thesis-writer.ts` — if a prior attempt already drove the child run to COMPLETE, no-op the retry and report success (mirrors discovery P2-10). Makes the Inngest retry succeed → dashboard shows success; kills the doubled Anthropic spend + the spurious error stamp. Only COMPLETE short-circuits (genuine FAILED still retries); fail-open. Residual gap: a true concurrent attempt-overlap isn't caught — same gap morning/discovery accept.
-- **(fast-follow)** Stop a trigger-gate rejection from regenerating all 9 sections (patch only the offending field); investigate the 2/30d runs that burned ~473s in `code_execution` (the native-web-search companion leak the run-thesis-writer.ts:819–845 comment claims was fixed).
-- **(optional infra)** `serve({ streaming: "force" })` in `app/api/inngest/route.ts` to hold long connections route-wide.
-
-**NOT P1-12 (but they overlap in the evidence set):** P1-12 was `"Your credit balance is too low to access the Anthropic API"` on 2026-05-31 (Anthropic billing, parallel fan-out). The CRDO timeout is `"timed out after 770s"` on 2026-06-03 — a duration/abort + un-guarded-retry bug, a different root cause. The 7 P1-12 rows show the *same double-execution mechanism* this guard fixes (a retry re-ran after the first attempt had already completed), but their cause was billing and is closed. **Cost bucket:** the writer runs **Claude Sonnet 4.6** (Anthropic), so this trims occasional Anthropic spend — it is **unrelated** to the OpenAI/gpt-5.5 tactical-run spend addressed by [#381].
-
-### P1-18 — Cron stop-out closes the Position but leaves the paired Thesis ACTIVE (close-side desync)
-**Status:** ✅ **CLOSED.** Data row fixed manually 2026-06-05 with principal go (MRVL thesis ACTIVE→CLOSED + audit row; desync scan = 0). Durable code fix **merged in [#396](https://github.com/dave-sucks/hindsight/pull/396)** — `closeOpenPosition`'s FILLED branch now flips the paired thesis via a shared helper, also closing the latent manual-UI-close no-flip. QB-reviewed. First live instance: MRVL on PEAD Specialist (LIVE). **Disambiguation:** this P1-18 (cron-close desync) is a different bug from the ARQT `place_trade` stray-`analyst_id` drop that the 2026-06-05 run review also labeled "P1-18" — that one is **P1-20** below (closed, #393).
-
-The agent's `close_position` tool flips the paired Thesis ACTIVE→CLOSED in the same transaction (PR #265 fixed the open-side mirror — `place_trade` leaving the thesis WATCHING). The **cron** stop-out path does **not**: `closeOpenPosition` ([lib/actions/closeTrade.actions.ts:392](../lib/actions/closeTrade.actions.ts)) sets `Position.status='CLOSED'` + writes a `PositionEvent('CLOSED')`, but never touches `Thesis.status` and never writes a `ThesisUpdate(STATUS_CHANGED)` audit row. So any position closed via `closeSource='price_monitor'` (the trailing-stop / exit cron, `lib/trade-exit.ts:130`) leaves a phantom ACTIVE thesis.
-
-**Concrete (MRVL, 2026-06-05):** position stopped out 14:01 ET (`closeReason='STOP'`, `closeSource='price_monitor'`, +$314.67 realized). Thesis `cmp9senxq000904ii9pgtmr95` stayed ACTIVE. It still carries a `cooldownDays:0` EXIT `PRICE_BELOW $267.53` trigger — now latched true (price sits below the stop). Because the thesis is still in the evaluator's `status:ACTIVE` scan, the hourly trigger-evaluator will keep matching it and firing GPT-5.5 tactical runs against a position that no longer exists — the same cost-bleed class as #377/#381, arriving through the close-desync door rather than a pending proposal (#381's bail is OPEN-position-only, so it doesn't catch this).
-
-**Immediate-risk calibration (don't overstate):** market closed Fri→Mon and signal-router is paused → no evaluator fire until Monday market hours, which is *after* the 8 AM PEAD daily run. Realistic weekend bleed ≈ 0, and Monday's run *may* self-heal it (ACTIVE thesis + no position → agent closes/archives) — but self-heal isn't guaranteed (the documented desync anchors the agent on the stale ACTIVE status), so a one-row pre-Monday cleanup is cheap insurance.
-
-**Two fixes:**
-- **Data (needs principal go — LIVE write):** flip thesis `cmp9senxq000904ii9pgtmr95` ACTIVE→CLOSED + write a `ThesisUpdate(STATUS_CHANGED, reason='position stopped out 2026-06-05; cron close-side desync')`. Re-run the scan after; expect 0 rows.
-- **Code (durable):** make `closeOpenPosition` flip the paired Thesis ACTIVE→CLOSED + write the STATUS_CHANGED audit row, same as the agent's `close_position` — factor the tool's thesis-flip into a shared helper both paths call. Closes the recurrence for every future cron stop-out.
-
-Scan `SELECT … WHERE t.status='ACTIVE' AND NOT EXISTS(open position)` returns exactly 1 row today (the MRVL one) — not yet systemic, but recurs on the next live stop-out.
-
-**Post-#390 scope reduction:** on approval-ON books the cron now *proposes* the close instead of auto-executing, so it no longer auto-closes a position out from under its thesis; the approve path's `closeThesisOnApproval` flips the thesis. Remaining bite: approval-OFF auto-executes (e.g. paper) + the pre-#390 MRVL row. The durable fix (factor the thesis-flip into the shared close path) still stands as defense-in-depth.
-
-### P1-19 — The approval gate (`maybeAwaitApproval`) fails OPEN
-**Status:** ✅ **CLOSED — [#394](https://github.com/dave-sucks/hindsight/pull/394), merged 2026-06-05.** The gate now throws `ApprovalGateAccountUnresolvedError` for LIVE on an unresolved account (fail CLOSED); PAPER keeps the legacy fail-open. QB-reviewed. Found during the post-#390 Alpaca-submit audit.
-
-[`maybeAwaitApproval`](../lib/proposals/maybe-await-approval.ts) does `if (!account) return null`, and a `null` return means "no approval required → submit to Alpaca." So if a syntactically-valid `accountId` ever fails to resolve to an `Account` row (deleted account, cross-env mismatch, race), the gate is silently skipped and the trade **auto-executes**. Every live path resolves `accountId` correctly today, so it isn't biting — but a money/compliance gate should fail **closed** (refuse / stage a proposal when it can't confirm the toggle), not open.
-
-**Fix:** when the `account` lookup returns null, fail closed for LIVE (treat as approval-required) instead of returning null. Requires first tracing that no legitimate autonomous path ever passes a null/stale `accountId`, or it would start staging spurious proposals. Its own PR, not bolted onto #390.
+**Broader ask (the real scope):** revisit **every** status/direction and whether it still makes sense at the entity it lives on, post 3-agent + trade-as-proposal. PASS-on-direction is the first symptom — audit the whole taxonomy: what's the source of truth for each lifecycle question across Position.status, Thesis.status, Thesis.direction, and Order.status?
 
 ---
 
-## P2 — Backlog (defer until P0+P1 clean)
+## P2 — Backlog
 
-Old GAPS items that may still matter but aren't blocking. Move out of `GAPS_LEGACY.md` if/when production data shows them biting:
-- Quote source inconsistency between Layer-1 and Layer-2 (legacy P1-11)
-- PRINCIPAL_CHAT hangs when child THESIS_WRITER fails (legacy P1-19)
-- Status-derived-from-actions refactor (legacy P1-20) — clean architecture move, not blocking
-- ~~Discovery archetype-blind prompt (legacy P1-9)~~ → promoted to active P1-13 by [#361](https://github.com/dave-sucks/hindsight/pull/361).
-- Provenance soft-gate (legacy P1-15)
+### Activity feed renders rejected proposals as "Sold" — should be "Rejected"
+**Status:** open, filed 2026-06-08. **PR #399 carries an interim revert — the next session implements this; do not ship the "drop" approach.**
 
-### New P2 — Disposition of paused intelligence infrastructure
-After [#361](https://github.com/dave-sucks/hindsight/pull/361) the following are paused but still in the codebase / DB:
-- **4 Inngest crons paused:** `firm-market-sweep`, `portfolio-watchlist-monitor`, `domain-monitor`, `signal-router`. Code lives in `lib/inngest/functions/`.
-- **65 monitors disabled** (incl. 11 podcast monitors). Rows still in the `Monitor` table with `isEnabled = false`.
-- **`read_signals` tool** stripped from daily-run allowlist + prompt. File still exists in `lib/agent/tools/`. Builder/editor allowlists may still reference it (verify before delete).
-- **`AgentConfig.feeds`** column still populated but the routing path that consumed it (signal-router) is paused.
-- **`Signal` / `SignalBatch` / `AnalystSignalRoute` tables** still exist but nothing writes to them.
+A rejected/expired **buy** proposal (`Position.status=CANCELLED`, order `REJECTED`, never filled) is rendered by the homepage activity feed as a `type:"CLOSED"` → **"Sold"** card (proposed shares/price, $0 P&L). Root cause: the closed-positions query in `lib/actions/portfolio.actions.ts` (~line 379) pulls `status IN (CLOSED, CANCELLED)`, and the "Recent closes" loop (~996) + the Closed-tab map (~682) treat CANCELLED as a real trade. Analytics (realized P&L, win-rate, equity curve) already exclude them via outcome/realizedPnl null-checks.
 
-**Decision needed (not urgent):** after ~2 weeks of clean operator-driven discovery, decide per-piece: fully delete (commit to the pivot) vs keep-paused-as-fallback (option to revive without re-implementing). Default to delete if no production need surfaces — paused-but-extant code rots silently and pollutes audits.
+**Principal's call: show them, correctly labeled — do NOT drop them.** The feed should reflect the full lifecycle: **Proposed → Bought/Sold (approved) → Rejected (buy or sell).** Implementation: add a `REJECTED` type to `ActivityFeedItem` (`portfolio.actions.ts:132`, currently `OPENED|CLOSED|MODIFIED|PROPOSED`); push REJECTED events for cancelled-buy positions **and** rejected-sell close orders (REJECTED `intent=CLOSE` on a still-OPEN position) with the right verb; add an `isRejected` branch + a muted "Rejected" badge in `components/dashboard/ActivityFeed.tsx` (currently only handles OPENED/CLOSED/MODIFIED at lines 44-46). Display-only — the DB is correct (CANCELLED is the right terminal state).
 
-### New P2 — Sunday discovery cron disposition
-`discovery-run.ts` (the Sunday 9 AM cron) still runs autonomously per-archetype. Operator-driven discovery via chat is now the primary mode; the cron is unclear value-add.
+### Disposition of paused intelligence infrastructure
+**Status:** open **decision** (principal's call). After #361: 4 Inngest crons paused (firm-market-sweep, portfolio-watchlist-monitor, domain-monitor, signal-router), 65 monitors disabled, `read_signals` stripped from the daily-run allowlist, `Signal`/`SignalBatch`/`AnalystSignalRoute` tables idle, `AgentConfig.feeds` unconsumed. Decide per-piece: **delete** (commit to the operator-driven pivot) vs **keep-paused-as-fallback.** QB rec (2026-06-05): delete — operator-driven discovery is the mode, paused code rots and pollutes audits. Intertwined with P1-23.
 
-**Options:**
-1. Kill — commit to operator-driven only.
-2. Keep as fallback — runs when operator skips a week.
-3. Repurpose — same code path, but reads from a saved-prompt source (e.g., a stored "what's worth watching this week" prompt the operator pre-writes).
-
-P1-12 needs to land first (confirm 5/5 FAILUREs were token exhaustion not a bug) before any of these are real options.
-
-### New P2 — Stale `Order.rationale` on OPEN proposals only
-**Status:** **Closed by [#386](https://github.com/dave-sucks/hindsight/pull/386) (merged 2026-06-05)** — `place_trade`'s OPEN path now stamps `Order.rationale` from the tactical entry rationale instead of the stale thesis snapshot. Was: surfaced 2026-06-04 by the 6/03 NVTS review, OPEN-proposal-only (CLOSE proposals already carried correct text).
-
-When `place_trade` creates an `Order` row for an **OPEN proposal**, `Order.rationale` is populated from the **thesis row's current rationale snapshot at proposal-creation time**. For a tactical-triggered entry, that snapshot is usually the prior morning's WATCHING-side "not actionable yet" text — NOT the tactical agent's actual entry-decision rationale.
-
-**Concrete OPEN-side example (NVTS 2026-06-03):**
-- 08:11 ET — morning run on Momentum Breakout. NVTS at $25.86, below the $29.50 breakout trigger. `update_thesis` rationale written: *"Keeping WATCHING and requiring a clean reclaim above $29.50 with volume before any entry."*
-- 09:31 ET — NVTS breaks $29.50, tactical fires.
-- 09:32 ET — tactical's `update_thesis` rationale (the correct entry reasoning): *"Trigger validated: $NVTS was trading ~$30.59, above the $29.50 continuation level, with the bullish SMA structure intact and no contradicting headline. I submitted a $4,000 long entry proposal at ~$30.59 with a tight momentum stop at $29.06 and $40 target..."*
-- The stored `Order.rationale` carries a paraphrase of the 08:11 text: *"NVTS remains a watch-only momentum candidate after the GaN/licensing breakout, but the current setup is not actionable. The stock is below the $29.50 continuation trigger, volume is light..."* — i.e., the stale "don't trade" rationale.
-
-**CLOSE proposals are not affected.** The close-side rationale matches the tactical's actual exit-decision reasoning. So the bug is scoped to `place_trade`'s OPEN path only.
-
-**Why P2 not P1:** the proposal-card UI today shows the tactical's live reasoning from the chat surface, not the stored `Order.rationale` field — so the principal is approving against the correct text. The stored field is just stale archival data. It still matters because (a) future surfaces that read `Order.rationale` (audit views, analytics, exports) would surface the wrong text, and (b) one wrong field encourages other consumers to invent workarounds.
-
-**Fix path (scoped to `place_trade` OPEN-only):** in `lib/agent/tools/place-trade.ts`'s OPEN-side proposal-creation, populate `Order.rationale` from the tactical agent's entry reason (either by accepting it as a dedicated argument or by refreshing the thesis-rationale snapshot to read the in-run `update_thesis` text written seconds before). CLOSE path is unchanged.
-
-### New P2 — Rejected-proposal indicator never auto-clears
-**Status:** ✅ **CLOSED — [#397](https://github.com/dave-sucks/hindsight/pull/397), merged 2026-06-05** (replaced #395, which was closed). Root fix per principal: *a holding is a holding.* The row now reads the position's own status (OPEN holding / CANCELLED) and only a genuinely in-flight buy shows PENDING — a rejected close just leaves you holding (OPEN). The `REJECTED` display override that pinned a live holding to "Rejected" is gone. (#395's agent-acknowledgment-clears-the-badge approach was the wrong layer — the badge shouldn't appear on a holding at all.) Surfaced 2026-06-04 by the MRVL post-rejection review.
-
-The position-list UI surfaces a "Rejected Jun 2, 12:47 PM" badge on a position whenever any historical `Order` row on that position has `status='REJECTED'`. The badge persists forever — even after the agent's next morning run has explicitly acknowledged the rejection in its narration and acted on it.
-
-**Concrete example:** MRVL's `Order(status='REJECTED')` rows from 2026-06-02 (target hit, principal rejected with "raise stop, let it run"). The 6/03 morning PEAD run wrote a `ThesisUpdate(type='UPDATED')` rationale literally beginning with *"User rejected selling into the breakout and asked for the stop to be increased..."* — explicit acknowledgment in writing — and raised the target $270 → $330 + applied the trailing stop. The badge still showed on 6/04.
-
-The audit row itself is correct as historical fact and must stay forever (you need it for "why didn't we sell at $281?" forensics). The UI's filter logic is what's wrong — it treats "any rejection ever" as a standing alert instead of "any rejection not yet acknowledged."
-
-**Fix path (UI-side):** the indicator should query "is there a `ThesisUpdate` row written by an agent (`runId IS NOT NULL`, `type IN ('UPDATED','REVIEWED','STATUS_CHANGED','INVALIDATED')`) on the same thesis with `timestamp > MAX(PROPOSAL_REJECTED.timestamp)`?" If yes → resolved, hide. If no → still pending acknowledgment, show. For the MRVL case the badge would have cleared at 08:02 ET on 6/03.
-
-Severity P2 cosmetic — doesn't affect agent behavior or correctness, but creates standing UI noise that erodes the badge's signal value.
-
-### New P2 — Silent preflight-refusal events on `complete_run`
-**Status:** 🗑️ **DROPPED 2026-06-05** — observability nicety, not a gap. No production failure is being missed today. Refile only if a real gate-fire is ever shown to go unaudited.
-
-Some morning runs end up writing `record_run_summary.count = 2` and `complete_run.count = 2` in `parameters.toolStats`, with **two `RunEvent(type='run_summary')` rows seconds apart that carry the same body**. Run ends `COMPLETE`, no `RunEvent(type='run_failed')` written between the two summaries.
-
-**Concrete example:** Secular Compounder's 6/01 morning run (`cmpv5wwxw001104l7vtg9i95x`) wrote two run_summary events 20s apart, both reading "3 tickers analyzed, 0 traded" with identical body. Final run state was COMPLETE. The shape suggests the `complete_run` preflight refused once (probably the narration-execution gate), the agent re-issued `record_run_summary` + `complete_run`, and the second attempt succeeded — but the rejection was never persisted as a `RunEvent`.
-
-**Why it matters:** if a real P0-12-shape narration-execution gap regression slips into a run and is silently retried-into-success, the rejection won't surface in future reviews — meaning the gate's job (catching prose-vs-tool-call drift before it lands a bad close) becomes invisible to the audit lane. The reviewer who relies on `RunEvent(type='run_failed')` queries to count gate fires will under-count.
-
-**Fix path:** in `lib/agent/tools/complete-run.ts`'s preflight (around `checkNarrationExecutionGap`), write a `RunEvent(type='preflight_warn' or type='run_failed_internal')` row on every refusal regardless of whether the agent's next attempt succeeds. The audit row is for the reviewer; the retry path stays as-is.
-
-Severity P2 — observability, not correctness. No production failure is being missed today; the concern is forward-looking — once a regression slips, it'd be invisible without this.
-
-Re-evaluate the rest after the live loop is stable for ~1 week.
-
----
-
-## Done since
-
-### 2026-06-05 — P0: unauthorized LIVE auto-sell — price-monitor bypassed the approval gate
-PR [#390](https://github.com/dave-sucks/hindsight/pull/390). **A live position (MRVL) was sold in production with no approval step despite `requireApprovalSellsLive=true` — a pre-clearance/disclosure violation, not just a code bug.**
-
-**Root cause:** `closeOpenPosition`'s Trade-as-Proposal gate was `if (source === "agent")`. The price-monitor trailing-stop cron calls in as `source="price_monitor"`, so it skipped `maybeAwaitApproval` and submitted straight to Alpaca. The gate encoded the pre-clearance-era assumption "a stop is pre-approved at entry," which the every-sell-needs-clearance requirement invalidates.
-
-**Fix:** gate on `source !== "user"` — every autonomous close (agent + cron) now routes through the same approval proposal; only a manual UI click bypasses (self-approved). Approval-off behavior unchanged (auto-execute).
-
-**Scope:** only `exitStrategy="TRAILING"` positions reach this path (hard stops/targets already proposed via the agent path); MRVL was the only trailing-stop position and the only live position ever auto-closed → **blast radius = 1 trade** (filled +$314.67, not reversible — flagged to principal for disclosure).
-
-**Full Alpaca-submit audit (same day; all four order primitives + every caller read):** after #390 no autonomous path places/sells at Alpaca without `maybeAwaitApproval` or an authenticated human action. `placeLimitOrder` is dead code; `approveProposal` hard-requires `AWAITING_APPROVAL` + an authed non-VIEWER same-account caller (no cron calls it); `liquidateOrphan` (Health-panel) and the ops scripts are human-only. Two follow-ups surfaced → P1-19 (fail-open gate) + a `liquidateOrphan` no-proposal-record note (manual sell that leaves no approval paper trail; human-gated so not autonomous).
-
-### 2026-06-05 — Board fully actioned (every open gap fixed, dispatched, or dropped)
-After the principal's "either fix it or it's not a gap" call, every open item was resolved in one pass:
-- **MRVL data desync** (the P1-18 live instance) — fixed manually with principal go: thesis ACTIVE→CLOSED + audit row, desync scan = 0.
-- **P1-14** (TIME_ELAPSED clock) — [#396](https://github.com/dave-sucks/hindsight/pull/396), **merged**.
-- **P1-18** (cron-close thesis-flip, durable) — [#396](https://github.com/dave-sucks/hindsight/pull/396), **merged**.
-- **P1-19** (approval gate fail-closed) — [#394](https://github.com/dave-sucks/hindsight/pull/394), **merged**.
-- **P1-20** (ARQT `place_trade` stray-`analyst_id` drop) — [#393](https://github.com/dave-sucks/hindsight/pull/393), **merged** (the run review labeled this "P1-18"; renumbered here to avoid colliding with the cron-close P1-18).
-- **Rejected-badge P2** — [#397](https://github.com/dave-sucks/hindsight/pull/397), **merged** (replaced the closed #395 with the simpler "a holding is a holding" fix).
-- **P1-2** (gate audit) — dropped: not a crisp gap.
-- **Silent-preflight P2** — dropped: observability nicety, nothing missed.
-
-Fixes dispatched via 3 background sessions (worktree-isolated, each opened its own PR). GAPS is owned solely by this docs PR (#391) — the #396 branch's GAPS edit was stripped to avoid a merge collision (one owner per concern). Still pending the principal's architecture call: delete vs keep the paused intelligence infra + Sunday discovery cron.
-
-### 2026-06-05 — P1-20: `place_trade` dropped a live entry over a stray `analyst_id` arg (ARQT)
-PR [#393](https://github.com/dave-sucks/hindsight/pull/393), merged. **A HIGH-conviction live ARQT entry was silently dropped.** GPT-5.5 passed `analyst_id="catalyst-event-pm"` (the human slug) while the run was correctly bound to Catalyst (`ctx.analystId` = the cuid). The belt-and-suspenders ownership check (`args.analyst_id !== ctx.analystId`) threw "Analyst … not found or not yours" over an argument the trade never uses — `effectiveAnalystId = ctx.analystId ?? args.analyst_id` had already bound it correctly. The tool's inner catch turned that throw into a soft FAILED envelope → run COMPLETE, no run-level error (only the thesis rationale showed it).
-
-**Fix:** gate the ownership check on `if (!ctx.analystId && args.analyst_id)` — `args.analyst_id` is consulted ONLY in principal chat (the one unscoped path); analyst-scoped runs ignore it. Root cause confirmed from the literal RunMessage args (not theory); 12/12 tests + 2 new regressions. Right layer (the tool must tolerate a model-supplied arg it doesn't use).
-
-**Numbering:** the 2026-06-05 run review (#392) labels this "P1-18"; renumbered to **P1-20** here because P1-18 is the cron-close thesis-desync. ARQT remains WATCHING — re-enter manually or let its trigger re-fire now that #393 is deployed.
-
-### 2026-06-05 — GAPS hygiene: P1-17 + Order.rationale closed
-- **P1-17** (thesis-writer Inngest false-failure) — closed by [#383](https://github.com/dave-sucks/hindsight/pull/383). Retry-idempotency guard shipped; retries no-op instead of re-running.
-- **Stale `Order.rationale` on OPEN proposals** (P2) — closed by [#386](https://github.com/dave-sucks/hindsight/pull/386). OPEN path now stamps the tactical entry rationale, not the stale thesis snapshot.
-- Both verified merged 2026-06-05; docs PRs [#382](https://github.com/dave-sucks/hindsight/pull/382) + [#385](https://github.com/dave-sucks/hindsight/pull/385) confirmed merged the same window.
-
-### 2026-06-04 — P1-16: chat→trade-tool env threading (a LIVE chat scoped to the paper book)
-
-**Closed by the principal-branch env seed in [`app/api/agent/[mode]/route.ts`](../app/api/agent/%5Bmode%5D/route.ts).** This is the follow-up [#380](https://github.com/dave-sucks/hindsight/pull/380) explicitly deferred ("whether the same unset `ctx.runEnvironment` in Principal Chat also affects `close_position` / `place_trade` scoping … needs a proper trace before touching a live-money path"). Traced end-to-end; root cause confirmed by static read **and** production data.
-
-**The bug.** A **fresh** (non-resumed) Principal Chat scoped to a LIVE analyst threaded `runEnvironment = "PAPER"` into *every* tool. `AgentChat` only puts `runId` on the request body when resuming ([AgentChat.tsx](../components/agent/AgentChat.tsx) `if (runId) body.runId = runId`), so a fresh chat sends none — for the whole session, not just message 1. `route.ts` resolves `runEnvironment` from `body.runId` at the top of `POST` (defaulting to `"PAPER"`), **before** the principal branch mints `ResearchRun(environment: ac.tradingEnvironment = "LIVE")`. The env var is never recomputed, so the shared `createResearchTools({ runEnvironment: "PAPER", alpacaCreds: <paper> })` hands every tool the wrong book. Resumed chats (`?resume=<runId>`) are unaffected — they send `runId`, so the env resolves to LIVE.
-
-**Per-tool impact (all share `ctx.runEnvironment`):**
-- `close_position` / `manage_position` — env-scoped position lookup misses the LIVE position → `NO_POSITION, success:true`. **Silent no-op; the live position stays open.**
-- `place_trade` — tags the new Position `"PAPER"` and submits with paper creds → **executes in the paper account**; `isLiveRun=false` also skips the `realMaxPosition` cap.
-- `get_portfolio_context` — scopes to PAPER → returns an **empty book** for a LIVE analyst.
-- `dispatch_thesis_research` — stamps children PAPER (the original #380 symptom).
-
-**Why #380 alone didn't fix it.** #380 changed the dispatch tool to `ctx.runEnvironment ?? analyst.tradingEnvironment`. But `route.ts` hard-defaults `runEnvironment` to the **string** `"PAPER"` (never `undefined`), so `"PAPER" ?? "LIVE"` is `"PAPER"` — the fallback is **dead code in exactly the case it targets.** The SNOW/PACS/CRDO writer children read LIVE today only because of #380's separate manual `UPDATE`, not the code change; the next fresh-chat dispatch would re-stamp PAPER. A tool can't distinguish "PAPER because paper" from "PAPER because stale-default" — only the route knows the scoped analyst is LIVE. **The fix has to live at the route.**
-
-**Production evidence (read-only, prod).** PEAD Specialist is the only LIVE analyst, with 4 open real-money positions (CRDO/PACS/MRVL/TSM, all opened by crons — env threads correctly there). Its PRINCIPAL_CHAT parent runs are stored `LIVE` while their 2026-06-03 writer children were stamped `PAPER` — parent-LIVE/child-PAPER is the smoking gun that `ctx.runEnvironment` wasn't LIVE at dispatch. **Zero non-PASS TradeDecisions have ever originated from a PRINCIPAL_CHAT** (all 12 PEAD chat decisions were PASS), so the trade tools had not yet misfired — the bug was **latent, sitting directly in front of four live positions.**
-
-**The fix.** In the principal scoped branch, after the analyst is loaded, seed `runEnvironment = ac.tradingEnvironment` and re-resolve `alpacaCreds` before the tools are built. One change corrects all five consumers and keeps the minted run's `environment` consistent with the tool ctx. It also uses the analyst's *current* book (correct after a mid-session promote/demote) rather than a stale run snapshot. #380's tool-level fallback is left in place as harmless defense-in-depth. `tsc --noEmit` clean; **prod-verify after deploy** with a fresh PEAD chat (`get_portfolio_context` should show the 4 LIVE positions; a test close should find the position).
-
-### 2026-06-04 — First live trading day: EXIT-vs-proposal runaway (P0-14) + proposal dedup + env-inheritance
-Fixes shipped after the first real live-trading day surfaced a cost-bleed and two related bugs. Context: PEAD Specialist (LIVE); first live entries beyond the MRVL/TSM promotion holdovers were **PACS — BUY 82 sh @ $37.71** and **CRDO — BUY 13 sh @ $216.17**, both filled 2026-06-04.
-
-- **P0-14 — EXIT trigger runaway under trade-as-proposal.** PR [#381](https://github.com/dave-sucks/hindsight/pull/381). EXIT/TRIM triggers carry `cooldownDays:0` ("fire every tick") on the assumption the first fire closes the position and drops it from the evaluator's ACTIVE scan. **Trade-as-proposal broke that:** with approval ON, the close sits `AWAITING_APPROVAL` while the human decides, the position stays OPEN, and the stop re-fires every 5-min tick — each a full GPT-5.5 tactical run (NVDA 12× / IREN 8× / NVTS 5× on 2026-06-04, ~25 runs / ~$25 of unintended OpenAI spend in ~1h). Distinct from P0-13 (that was agent-typed cooldown:0 on REVIEW triggers); this is the proposal-window interaction and pre-dates #377. **Fix:** `tactical-run` bails in `load-context` — before `create-run` / the agent call, so **zero GPT-5.5 cost** — when the position already has a `CLOSE`/`PARTIAL_CLOSE` order `AWAITING_APPROVAL`, or `REJECTED` within a 4h snooze. Approval-ON only. Data cleanup: 21 stale `AWAITING_APPROVAL` orders on the now-closed positions flipped to `EXPIRED`. Optional follow-up (not built): evaluator-layer suppression so the event isn't even emitted — cleanliness only, the bill is already stopped.
-- **Duplicate CLOSE proposals.** PR [#379](https://github.com/dave-sucks/hindsight/pull/379). `maybeAwaitApproval` folds a second pending full-CLOSE on the same position into the existing proposal (success-shaped) and tombstones the duplicate. CLOSE-only by design. Universal chokepoint for every duplicate-close source. Stops duplicate *proposals*, NOT the tactical *runs* — that's P0-14/#381.
-- **Dispatch env-inheritance.** PR [#380](https://github.com/dave-sucks/hindsight/pull/380). `dispatch_thesis_research` now falls back to the analyst's `tradingEnvironment` instead of blind-defaulting PAPER. Surfaced the deeper chat→trade-tool env bug — **traced + fixed as P1-16 / [#384](https://github.com/dave-sucks/hindsight/pull/384)** (the entry above): #380's tool-level fallback was dead code because `route.ts` passes the string `"PAPER"`, so the real fix had to live at the route. The chat-env bug was latent in front of 4 live positions; now closed.
-
-### 2026-06-02 — P1-10: PROMOTED is a first-class `resolved.actionability` state
-PR [#375](https://github.com/dave-sucks/hindsight/pull/375). Added `PROMOTED_DECIDE_TODAY` to the actionability enum in [`lib/agent/resolved-thesis.ts`](lib/agent/resolved-thesis.ts) and branched the decision tree so a `status === "PROMOTED"` row returns the new kind regardless of price proximity, catalyst date, or trigger state (terminal status + supersession still win first). The Trade Structure Status cell in [`ThesisSheet`](components/agent/sheets/ThesisSheet.tsx) now renders "Decide today — re-enter / wait / kill" in the affirmative emerald tone — same urgency cue ProposalActions uses — instead of falling through to "Ready to buy" or "Waiting on trigger." Daily-run prompt's Step 2 PROMOTED section notes that the resolver labels these `PROMOTED_DECIDE_TODAY` independent of price/catalyst — the conviction gate was cleared at promotion. Resolver is now consistent with [`needs-action.ts`](lib/agent/needs-action.ts), which already gave PROMOTED top precedence as `PROMOTED_AWAITING_RESOLUTION` (the agent-action label; resolver is the at-a-glance label of the same state). **Open P1 list after this entry: P1-2 only.**
-
-### 2026-06-02 — GAPS hygiene + P1-12 / P1-8 / P1-11 / P1-13 closed + conviction-backfill decision
-PR [#374](https://github.com/dave-sucks/hindsight/pull/374).
-- **P1-5** — MRVL Sonar earnings hallucination class fixed by [#357](https://github.com/dave-sucks/hindsight/pull/357) (writer date-awareness gate) on 2026-05-28. Was orphaned in the open P1 list — retroactively moved here. **2026-06-02 review evidence:** Sonar date-sanity sniff returned 0 rows. Gate is working in production.
-- **P1-7** — UI label rename ("Awaiting live entry" → "Promoted") was already shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349) on 2026-05-26 (see the "first live promotion incident fully closed" entry below). Duplicate orphan entry removed from the open P1 list.
-- **P1-8** — V2 prompt has no DAY-trader workflow. **Closed: no DAY-horizon analyst exists in the current lineup and none is planned.** If a DAY analyst is ever reintroduced, refile.
-- **P1-11** — Writer rationale-quality enforcement (sniff-driven). **Closed: 2026-06-02 review confirmed the prompt is holding** — the one fresh `convictionRationale` (LITE) was judgment-shape, not math restatement. Sample size is small but no failure signal. If math-rationale starts dominating later reviews, refile.
-- **P1-12** — Secular Compounder 5/5 writer FAILUREs on 2026-05-31 were Anthropic credit-balance-exhaustion errors, NOT a code bug. All 5 dispatches (CRDO, TSM, LRCX, ADBE, MU) started within 36ms of each other from parent run `cmptt39lf008t04l7dv6hibei` (parallel fan-out) and failed with the same provider error: `"Your credit balance is too low to access the Anthropic API."` No other days in the past 14 days had this failure shape. **Sunday-discovery cron disposition decision (P2) is unblocked.**
-- **P1-13** — BATCHED DISCOVERY archetype-blind overlay. **Closed: discovery model has been rebuilt by the principal; the 4-dim composite overlay this gap describes is no longer the active discovery design.** If a future automated-discovery v2 reintroduces a universal rubric across archetypes, refile.
-- **Conviction backfill — decision NOT to backfill** (replaces what was tentatively filed as P1-14). Reviewer surfaced that 25 of 28 directional open theses had `conviction = NULL`. A backfill was applied via the historical `prisma/migrations/manual/backfill_conviction_v4.sql` script (which derives HIGH/MEDIUM/LOW from `composite` buckets) and immediately **reverted on principal pushback.** The principal call is correct: conviction is the writer's qualitative judgment, independent of composite — that decoupling is exactly what Gates A+B were killed for in PR #360. Deriving conviction from composite (even with a marker rationale) reintroduces the coupling. The right behavior: let conviction populate organically as the thesis-writer touches each thesis on refresh / re-mint. The daily-run treats NULL conviction as "no signal" and falls back to R/R math, which is intended graceful degradation. **The backfill SQL file has been marked DO NOT RUN at the top** with the decision rationale.
-
-**Operational follow-up (not filed as a GAPS item — operational, not architectural):** a parallel writer fan-out of N dispatches will all fail simultaneously if Anthropic credit balance is below threshold at fan-out time. Solvable by Anthropic billing alerts + an optional pre-flight balance check before the dispatch fan-out. Worth doing if it bites again; otherwise just monitor billing.
-
-### 2026-06-01 — P1-3: `targetPrice` overload was a one-line trigger bug, not a schema split
-PR [#362](https://github.com/dave-sucks/hindsight/pull/362). `watchingEntryTrigger` was reading `targetPrice` (the take-profit) instead of `entryPrice` (where the writer wanted to buy in). The schema was always correct — both columns existed with separate meanings — the trigger code just wired the wrong column to the ENTER action.
-
-**Shipped:**
-- `lib/agent/triggers/defaults.ts:watchingEntryTrigger` now reads `entryPrice` instead of `targetPrice`
-- Writer prompt clarifies `entry_price = where you'd buy in` (was ambiguously "current quote from the research")
-- Long "CHOOSING THE ENTER TRIGGER" warning block in `run-thesis-writer.ts` simplified — most of it was workaround for the now-fixed default
-- `PriceTargetsBlock` gauge consistently shows `Stop · Entry · Current · Target` across every status
-
-**No schema changes. No migration.** See [`docs/plans/PRICE_LEVEL_SEMANTICS.md`](./plans/PRICE_LEVEL_SEMANTICS.md) for the postmortem on why the schema-split plan was over-engineering.
-
-### 2026-06-01 — Discovery overhaul: kill noise pipeline, ship operator-driven discovery
-PR [#361](https://github.com/dave-sucks/hindsight/pull/361). Audit of last 40 signal-pool entries showed ~5% signal-to-noise (Sherwood sports headlines, Seeking Alpha aggregator pieces, content-marketing-tier clickbait). The agent's triage was actually solid; the input layer was poisoned. Architectural insight: discovery isn't a separate agent, it's a conversation pattern — Principal Chat already has analyst scoping + the full toolbox; what was missing was a prompt section teaching multi-candidate triage.
-
-**Operational changes (executed in-session):**
-- Paused 4 Inngest crons: `firm-market-sweep`, `portfolio-watchlist-monitor`, `domain-monitor`, `signal-router`.
-- Disabled 65 non-builtIn monitors (incl. 11 podcast monitors).
-- Stripped `read_signals` from daily-run prompt + allowlist. Daily run now starts with `get_theses` + `get_portfolio_context`, walks per-thesis evidence directly.
-
-**Code changes:**
-- **BATCHED DISCOVERY prompt overlay** (~110 lines on `buildPrincipalSystemPrompt`) — activates on multi-candidate input / research pastes / discovery-shaped questions. Teaches Sunday-cron triage shape + paste-extraction + operator-context-as-composite-input + clarification turn.
-- **`twitter_search` tool** — xAI Live Search over X with `sources:["x"]`. Returns handle + ticker + archetype + claim + sentiment + recency. Sibling to `web_search`. Requires `XAI_API_KEY`.
-- **Cross-analyst dispatch dedup** in `dispatch_thesis_research` — closes the AVGO + CRDO double-dispatch waste from the 2026-06-01 cron runs.
-- **`RunDiscoveryButton`** on `/analysts/[id]` → routes to `/chat?analyst=…&kickoff=…` (server-validated). Chat now accepts kickoff URL params, threads to AgentChat's `initialPrompt`.
-
-**Dual-role catalyst-source insight (durable architecture):** one wire feeds both discovery (new names route as signals) and triggers (held names fire REVIEW/EXIT). Don't build two pipelines for 8-K filings — build the producer once, route twice. Documented in `DISCOVERY_V2.md` §3.
-
-**Decisions worth flagging:**
-- Slash command vs mode picker for explicit "discovery mode" trigger — shipped content-detection only; add `/discovery` slash command or mode picker as follow-up if real usage reveals detection failures. Current implementation activates batched-discovery mode automatically from message content; the button is convenience, not gate.
-- Grok-as-orchestrator deferred. Shipped Grok-as-tool (`twitter_search` inside Claude) first. Grok-4 as a selectable orchestrator model is Lane 4 backlog, contingent on the Claude+`twitter_search` baseline shaking out cleanly.
-
-**Three follow-ups surfaced:** P1-12 (Secular Compounder writer FAILUREs investigation), P1-13 (BATCHED DISCOVERY overlay archetype-blind — promoted from legacy P1-9), plus two P2 disposition decisions (paused intelligence infra + Sunday discovery cron).
-
-**Watch tomorrow's 8 AM ET cron** — first daily run without `read_signals`. If the agent loses bearings, it'll surface fast in `/runs/`.
-
-Design docs: [`DISCOVERY_V2.md`](./plans/DISCOVERY_V2.md) (operating model + 16-source catalog), [`DISCOVERY_OVERHAUL.md`](./plans/DISCOVERY_OVERHAUL.md) (phased to-do list with status).
-
-### 2026-05-31 — Conviction Expression (writer judgment + read-time resolver)
-- **P1-6** — Writer "urgency signal" delivered, shape differs from original spec. Instead of a `recommendedAction` enum, the writer now stamps three fields on every thesis: `conviction` (STRONG / HIGH / MEDIUM / LOW — the writer's real view, independent of composite), `convictionRationale` (≤400-char plain-talk judgment), and `variantView` (required for STRONG/HIGH — "consensus thinks X, I think Y"). `targetSizePct` promoted to required for directional theses. The daily-run prompt teaches actionability-first filtering (via the resolver, see below) then conviction-modulated sizing — STRONG → trade fast at full size; LOW → skip-by-default. Conviction is also patchable (upgrade when a catalyst prints clean, downgrade when consensus moves to your view). Shipped via [#360](https://github.com/dave-sucks/hindsight/pull/360).
-- **Read-time resolver** (new primitive, not a previously-tracked GAP). `get_theses` now returns a computed `resolved` envelope per row: live `currentPrice`, evaluated `triggerState`, `actionability` verdict (`READY_TO_BUY` / `WAITING_FOR_TRIGGER` / `CATALYST_PENDING` / `HOLDING` / `SUPERSEDED` / …), and `supersededBy` (newer thesis on the same ticker that killed this one). Computed at read time, never stored. The agent reads a resolved verdict instead of re-deriving live price + trigger state + supersession every cycle. Cross-analyst supersession bug also fixed (Catalyst PM's LONG no longer killed by Compounder's PASS).
-- **Gate-removal partial credit toward P1-2.** Gates A + B (composite-coupling on `record_thesis` + `update_thesis`) deleted — they forced `conviction` to derive from `composite`, defeating the field's purpose. Other suspect gates listed under P1-2 unchanged.
-- **UI:** `ConvictionBadge` on the sheet header next to status; `VARIANT VIEW` as a peer section alongside Key Assumptions and Invalidation Conditions; actionability shown in the Trade Structure row's Status cell (rejected the standalone third-badge approach as noisy); stock identity made clickable to `/stocks/[ticker]`.
-- **Tests:** 16 new (12 record_thesis gates, 8 update_thesis gates, 13 resolver), 303 total passing.
-- **Backfill:** `prisma/migrations/manual/backfill_conviction_v4.sql` derives HIGH/MEDIUM/LOW from composite buckets for ~38 live LONG/SHORT WATCHING+ACTIVE rows missing conviction; stamps `convictionRationale = 'backfilled from composite on 2026-05-31'` so the UI can tell derived from writer-attested.
-- **Two follow-ups surfaced:** P1-10 (PROMOTED not first-class in resolver actionability) and P1-11 (writer rationale-quality enforcement — sniff-watch first).
-
-Design doc: [`CONVICTION_EXPRESSION.md`](./plans/CONVICTION_EXPRESSION.md) (updated to v4).
-
-### 2026-05-27 — `Thesis.promotedAt` timestamptz migration + V2 prompt-preview template
-- **P1-4** — `Thesis.promotedAt` migrated from bare `timestamp(3)` to `timestamptz(6)`; existing 3 rows (AVGO/TSM/MRVL, all promoted 2026-05-26) backfilled `-12h` to undo the `@prisma/adapter-pg` AM/PM-flip. Post-migration verification confirmed `promotedAt` matches the `STATUS_CHANGED → PROMOTED` audit row to the millisecond. Schema regression test in [prisma/schema.test.ts](prisma/schema.test.ts) pins the `@db.Timestamptz(6)` annotation. Audit-row peer `ThesisUpdate.timestamp` left bare for now — written by Postgres `now()` via `@default(now())`, not affected by the adapter bug.
-- **P1-9** — `SYSTEM_PROMPT_TEMPLATE` regenerated to mirror `buildDailyRunSystemPromptV2`'s 9-section structure (Identity → Edge → Universe & rules → Yesterday's standup → Horizon glossary → Per-horizon data discipline → How you work → Your job → How tools work). The "How It Works" sheet's Daily Run prompt-preview tab now shows what the agent actually receives, not the deleted V1 procedural-stages body. Consumer (`components/domain/team-card.tsx` → `PromptBanner`) renders the markdown as-is; no section-header parsing happens downstream, so no consumer changes were needed.
-
-### 2026-05-26 — P1-1: review-driven refresh cadence (staleness gate removed)
-- **P1-1** — Deleted the hard `place_trade` staleness gate (formerly `place-trade.ts:160-243`). Research-age decisions are now soft input to the agent's REVIEW flow, not a Layer-1 refusal at trade time. `classifyResearchAge` is horizon-aware (`STALE_DAYS_BY_HORIZON`: CATALYST/TRADE 7d, TARGET 30d, COMPOUNDER 90d), and `researchAge` returns `horizonThreshold` so prompts can render "stale: 32d > 30d threshold." V2 daily-run prompt teaches the REVIEW-time decision tree (dispatch refresh, soft-patch, or proceed) and explicitly notes there is no staleness gate on `place_trade`. Tactical prompt now skips the refresh and acts on the trigger (the daily run is the right place for thorough review). Design doc: [`REVIEW_REFRESH_CADENCE.md`](./plans/REVIEW_REFRESH_CADENCE.md).
-
-### 2026-05-26 — first live promotion incident fully closed
-The 2026-05-26 first-live-day failures (Earnings Drift Trader, 3 PROMOTED theses skipped) are structurally fixed.
-
-- **P0-1** — `complete_run` preflight + new `PROMOTED_AWAITING_RESOLUTION` needsAction kind. Gate now refuses run completion when PROMOTED rows are unaddressed; agent reads the kind via `get_theses` and knows it must act. Shipped via [#346](https://github.com/dave-sucks/hindsight/pull/346).
-- **P0-2** — Deleted the deprecated V1 daily-run prompt builder (`buildV2SystemPrompt` — 625 lines, misleadingly named). The next session that updates the prompt physically can't update the wrong file. Shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349).
-- **P0-3** — Ported PROMOTED handling into the V2 daily-run prompt. Step 2 now lists `PROMOTED_AWAITING_RESOLUTION` first; new top-priority sub-section "PROMOTED — must decide today" with the three legal outcomes. Shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349).
-- **P0-4** — Thesis-writer can't flip status on PROMOTED refresh. Added the PROMOTED prompt branch + Layer-1 backstop in `update_thesis` that refuses `change_status` from `runMode: "THESIS_WRITER"` on PROMOTED rows. 10 new tests pin the behavior. Shipped via [#350](https://github.com/dave-sucks/hindsight/pull/350).
-- **P1-7** — UI label renamed from "Awaiting live entry" to "Promoted" (literal enum name; principal choice). The agent reads the structural needsAction kind, not the UI string, so the label is purely for human clarity. Shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349).
-
-**The PROMOTED loop is now end-to-end coherent:** writer keeps status as PROMOTED → gate forces resolution → prompt teaches the three legal outcomes → agent makes the call.
-
-Two new findings surfaced during the V1→V2 audit, filed as P1-8 + P1-9 below.
+### Sunday discovery cron disposition
+**Status:** open **decision**. `discovery-run.ts` (Sunday 9 AM cron) still runs per-archetype, but operator-driven discovery via chat is now primary. Kill / keep-as-fallback / repurpose (read a stored operator prompt). QB rec: kill.
 
 ---
 
 ## See also
 
+- [`GAPS_HISTORY.md`](./GAPS_HISTORY.md) — **closed items** (the 4-day live-trading sprint + the thesis-architecture rework). The PRs are the full record.
 - [`GAPS_LEGACY.md`](./GAPS_LEGACY.md) — the prior 6-week-rework tracker (mostly closed).
-- [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md) — the live reference for how the system works (the 5 roles + the lifecycle).
-- [`VISION.md`](./VISION.md) — the product north star.
-- [`run-reviews/2026-05-26-live-analyst-architecture-review.md`](./run-reviews/2026-05-26-live-analyst-architecture-review.md) — the evidence trail for P0-1 through P0-4.
-- [`plans/REVIEW_REFRESH_CADENCE.md`](./plans/REVIEW_REFRESH_CADENCE.md) — design doc that drove P1-1 (closed 2026-05-26).
+- [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md) — the live reference for the thesis system (5 roles + lifecycle).
+- [`VISION.md`](./VISION.md) — product north star.
