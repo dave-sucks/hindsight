@@ -426,3 +426,157 @@ For posterity — what got fixed in the 2026-05-06 → 2026-05-07 window:
 **Important caveat:** PR #228 in particular *claims* to generalize the narrate-vs-execute gate. This GAPS doc still lists P0-3 (generalized narrate-vs-execute) as open because the audit didn't verify whether #228 actually implements the full design or just adds a per-tool check. Verify before closing.
 
 ---
+
+---
+
+## Relocated from GAPS.md 2026-06-08 — post-launch live-trading hardening (the 4-day sprint)
+
+_Moved here when GAPS.md was trimmed to an open-only source of truth. Compliance fix (#390), lifecycle/trigger correctness (#394/#396), display fixes (#386/#397), thesis-writer idempotency (#383), ARQT (#393), MRVL reconcile. The PRs are the full record._
+
+
+### 2026-06-05 — P0: unauthorized LIVE auto-sell — price-monitor bypassed the approval gate
+PR [#390](https://github.com/dave-sucks/hindsight/pull/390). **A live position (MRVL) was sold in production with no approval step despite `requireApprovalSellsLive=true` — a pre-clearance/disclosure violation, not just a code bug.**
+
+**Root cause:** `closeOpenPosition`'s Trade-as-Proposal gate was `if (source === "agent")`. The price-monitor trailing-stop cron calls in as `source="price_monitor"`, so it skipped `maybeAwaitApproval` and submitted straight to Alpaca. The gate encoded the pre-clearance-era assumption "a stop is pre-approved at entry," which the every-sell-needs-clearance requirement invalidates.
+
+**Fix:** gate on `source !== "user"` — every autonomous close (agent + cron) now routes through the same approval proposal; only a manual UI click bypasses (self-approved). Approval-off behavior unchanged (auto-execute).
+
+**Scope:** only `exitStrategy="TRAILING"` positions reach this path (hard stops/targets already proposed via the agent path); MRVL was the only trailing-stop position and the only live position ever auto-closed → **blast radius = 1 trade** (filled +$314.67, not reversible — flagged to principal for disclosure).
+
+**Full Alpaca-submit audit (same day; all four order primitives + every caller read):** after #390 no autonomous path places/sells at Alpaca without `maybeAwaitApproval` or an authenticated human action. `placeLimitOrder` is dead code; `approveProposal` hard-requires `AWAITING_APPROVAL` + an authed non-VIEWER same-account caller (no cron calls it); `liquidateOrphan` (Health-panel) and the ops scripts are human-only. Two follow-ups surfaced → P1-19 (fail-open gate) + a `liquidateOrphan` no-proposal-record note (manual sell that leaves no approval paper trail; human-gated so not autonomous).
+
+### 2026-06-05 — Board fully actioned (every open gap fixed, dispatched, or dropped)
+After the principal's "either fix it or it's not a gap" call, every open item was resolved in one pass:
+- **MRVL data desync** (the P1-18 live instance) — fixed manually with principal go: thesis ACTIVE→CLOSED + audit row, desync scan = 0.
+- **P1-14** (TIME_ELAPSED clock) — [#396](https://github.com/dave-sucks/hindsight/pull/396), **merged**.
+- **P1-18** (cron-close thesis-flip, durable) — [#396](https://github.com/dave-sucks/hindsight/pull/396), **merged**.
+- **P1-19** (approval gate fail-closed) — [#394](https://github.com/dave-sucks/hindsight/pull/394), **merged**.
+- **P1-20** (ARQT `place_trade` stray-`analyst_id` drop) — [#393](https://github.com/dave-sucks/hindsight/pull/393), **merged** (the run review labeled this "P1-18"; renumbered here to avoid colliding with the cron-close P1-18).
+- **Rejected-badge P2** — [#397](https://github.com/dave-sucks/hindsight/pull/397), **merged** (replaced the closed #395 with the simpler "a holding is a holding" fix).
+- **P1-2** (gate audit) — dropped: not a crisp gap.
+- **Silent-preflight P2** — dropped: observability nicety, nothing missed.
+
+Fixes dispatched via 3 background sessions (worktree-isolated, each opened its own PR). GAPS is owned solely by this docs PR (#391) — the #396 branch's GAPS edit was stripped to avoid a merge collision (one owner per concern). Still pending the principal's architecture call: delete vs keep the paused intelligence infra + Sunday discovery cron.
+
+### 2026-06-05 — P1-20: `place_trade` dropped a live entry over a stray `analyst_id` arg (ARQT)
+PR [#393](https://github.com/dave-sucks/hindsight/pull/393), merged. **A HIGH-conviction live ARQT entry was silently dropped.** GPT-5.5 passed `analyst_id="catalyst-event-pm"` (the human slug) while the run was correctly bound to Catalyst (`ctx.analystId` = the cuid). The belt-and-suspenders ownership check (`args.analyst_id !== ctx.analystId`) threw "Analyst … not found or not yours" over an argument the trade never uses — `effectiveAnalystId = ctx.analystId ?? args.analyst_id` had already bound it correctly. The tool's inner catch turned that throw into a soft FAILED envelope → run COMPLETE, no run-level error (only the thesis rationale showed it).
+
+**Fix:** gate the ownership check on `if (!ctx.analystId && args.analyst_id)` — `args.analyst_id` is consulted ONLY in principal chat (the one unscoped path); analyst-scoped runs ignore it. Root cause confirmed from the literal RunMessage args (not theory); 12/12 tests + 2 new regressions. Right layer (the tool must tolerate a model-supplied arg it doesn't use).
+
+**Numbering:** the 2026-06-05 run review (#392) labels this "P1-18"; renumbered to **P1-20** here because P1-18 is the cron-close thesis-desync. ARQT remains WATCHING — re-enter manually or let its trigger re-fire now that #393 is deployed.
+
+### 2026-06-05 — GAPS hygiene: P1-17 + Order.rationale closed
+- **P1-17** (thesis-writer Inngest false-failure) — closed by [#383](https://github.com/dave-sucks/hindsight/pull/383). Retry-idempotency guard shipped; retries no-op instead of re-running.
+- **Stale `Order.rationale` on OPEN proposals** (P2) — closed by [#386](https://github.com/dave-sucks/hindsight/pull/386). OPEN path now stamps the tactical entry rationale, not the stale thesis snapshot.
+- Both verified merged 2026-06-05; docs PRs [#382](https://github.com/dave-sucks/hindsight/pull/382) + [#385](https://github.com/dave-sucks/hindsight/pull/385) confirmed merged the same window.
+
+### 2026-06-04 — P1-16: chat→trade-tool env threading (a LIVE chat scoped to the paper book)
+
+**Closed by the principal-branch env seed in [`app/api/agent/[mode]/route.ts`](../app/api/agent/%5Bmode%5D/route.ts).** This is the follow-up [#380](https://github.com/dave-sucks/hindsight/pull/380) explicitly deferred ("whether the same unset `ctx.runEnvironment` in Principal Chat also affects `close_position` / `place_trade` scoping … needs a proper trace before touching a live-money path"). Traced end-to-end; root cause confirmed by static read **and** production data.
+
+**The bug.** A **fresh** (non-resumed) Principal Chat scoped to a LIVE analyst threaded `runEnvironment = "PAPER"` into *every* tool. `AgentChat` only puts `runId` on the request body when resuming ([AgentChat.tsx](../components/agent/AgentChat.tsx) `if (runId) body.runId = runId`), so a fresh chat sends none — for the whole session, not just message 1. `route.ts` resolves `runEnvironment` from `body.runId` at the top of `POST` (defaulting to `"PAPER"`), **before** the principal branch mints `ResearchRun(environment: ac.tradingEnvironment = "LIVE")`. The env var is never recomputed, so the shared `createResearchTools({ runEnvironment: "PAPER", alpacaCreds: <paper> })` hands every tool the wrong book. Resumed chats (`?resume=<runId>`) are unaffected — they send `runId`, so the env resolves to LIVE.
+
+**Per-tool impact (all share `ctx.runEnvironment`):**
+- `close_position` / `manage_position` — env-scoped position lookup misses the LIVE position → `NO_POSITION, success:true`. **Silent no-op; the live position stays open.**
+- `place_trade` — tags the new Position `"PAPER"` and submits with paper creds → **executes in the paper account**; `isLiveRun=false` also skips the `realMaxPosition` cap.
+- `get_portfolio_context` — scopes to PAPER → returns an **empty book** for a LIVE analyst.
+- `dispatch_thesis_research` — stamps children PAPER (the original #380 symptom).
+
+**Why #380 alone didn't fix it.** #380 changed the dispatch tool to `ctx.runEnvironment ?? analyst.tradingEnvironment`. But `route.ts` hard-defaults `runEnvironment` to the **string** `"PAPER"` (never `undefined`), so `"PAPER" ?? "LIVE"` is `"PAPER"` — the fallback is **dead code in exactly the case it targets.** The SNOW/PACS/CRDO writer children read LIVE today only because of #380's separate manual `UPDATE`, not the code change; the next fresh-chat dispatch would re-stamp PAPER. A tool can't distinguish "PAPER because paper" from "PAPER because stale-default" — only the route knows the scoped analyst is LIVE. **The fix has to live at the route.**
+
+**Production evidence (read-only, prod).** PEAD Specialist is the only LIVE analyst, with 4 open real-money positions (CRDO/PACS/MRVL/TSM, all opened by crons — env threads correctly there). Its PRINCIPAL_CHAT parent runs are stored `LIVE` while their 2026-06-03 writer children were stamped `PAPER` — parent-LIVE/child-PAPER is the smoking gun that `ctx.runEnvironment` wasn't LIVE at dispatch. **Zero non-PASS TradeDecisions have ever originated from a PRINCIPAL_CHAT** (all 12 PEAD chat decisions were PASS), so the trade tools had not yet misfired — the bug was **latent, sitting directly in front of four live positions.**
+
+**The fix.** In the principal scoped branch, after the analyst is loaded, seed `runEnvironment = ac.tradingEnvironment` and re-resolve `alpacaCreds` before the tools are built. One change corrects all five consumers and keeps the minted run's `environment` consistent with the tool ctx. It also uses the analyst's *current* book (correct after a mid-session promote/demote) rather than a stale run snapshot. #380's tool-level fallback is left in place as harmless defense-in-depth. `tsc --noEmit` clean; **prod-verify after deploy** with a fresh PEAD chat (`get_portfolio_context` should show the 4 LIVE positions; a test close should find the position).
+
+### 2026-06-04 — First live trading day: EXIT-vs-proposal runaway (P0-14) + proposal dedup + env-inheritance
+Fixes shipped after the first real live-trading day surfaced a cost-bleed and two related bugs. Context: PEAD Specialist (LIVE); first live entries beyond the MRVL/TSM promotion holdovers were **PACS — BUY 82 sh @ $37.71** and **CRDO — BUY 13 sh @ $216.17**, both filled 2026-06-04.
+
+- **P0-14 — EXIT trigger runaway under trade-as-proposal.** PR [#381](https://github.com/dave-sucks/hindsight/pull/381). EXIT/TRIM triggers carry `cooldownDays:0` ("fire every tick") on the assumption the first fire closes the position and drops it from the evaluator's ACTIVE scan. **Trade-as-proposal broke that:** with approval ON, the close sits `AWAITING_APPROVAL` while the human decides, the position stays OPEN, and the stop re-fires every 5-min tick — each a full GPT-5.5 tactical run (NVDA 12× / IREN 8× / NVTS 5× on 2026-06-04, ~25 runs / ~$25 of unintended OpenAI spend in ~1h). Distinct from P0-13 (that was agent-typed cooldown:0 on REVIEW triggers); this is the proposal-window interaction and pre-dates #377. **Fix:** `tactical-run` bails in `load-context` — before `create-run` / the agent call, so **zero GPT-5.5 cost** — when the position already has a `CLOSE`/`PARTIAL_CLOSE` order `AWAITING_APPROVAL`, or `REJECTED` within a 4h snooze. Approval-ON only. Data cleanup: 21 stale `AWAITING_APPROVAL` orders on the now-closed positions flipped to `EXPIRED`. Optional follow-up (not built): evaluator-layer suppression so the event isn't even emitted — cleanliness only, the bill is already stopped.
+- **Duplicate CLOSE proposals.** PR [#379](https://github.com/dave-sucks/hindsight/pull/379). `maybeAwaitApproval` folds a second pending full-CLOSE on the same position into the existing proposal (success-shaped) and tombstones the duplicate. CLOSE-only by design. Universal chokepoint for every duplicate-close source. Stops duplicate *proposals*, NOT the tactical *runs* — that's P0-14/#381.
+- **Dispatch env-inheritance.** PR [#380](https://github.com/dave-sucks/hindsight/pull/380). `dispatch_thesis_research` now falls back to the analyst's `tradingEnvironment` instead of blind-defaulting PAPER. Surfaced the deeper chat→trade-tool env bug — **traced + fixed as P1-16 / [#384](https://github.com/dave-sucks/hindsight/pull/384)** (the entry above): #380's tool-level fallback was dead code because `route.ts` passes the string `"PAPER"`, so the real fix had to live at the route. The chat-env bug was latent in front of 4 live positions; now closed.
+
+### 2026-06-02 — P1-10: PROMOTED is a first-class `resolved.actionability` state
+PR [#375](https://github.com/dave-sucks/hindsight/pull/375). Added `PROMOTED_DECIDE_TODAY` to the actionability enum in [`lib/agent/resolved-thesis.ts`](lib/agent/resolved-thesis.ts) and branched the decision tree so a `status === "PROMOTED"` row returns the new kind regardless of price proximity, catalyst date, or trigger state (terminal status + supersession still win first). The Trade Structure Status cell in [`ThesisSheet`](components/agent/sheets/ThesisSheet.tsx) now renders "Decide today — re-enter / wait / kill" in the affirmative emerald tone — same urgency cue ProposalActions uses — instead of falling through to "Ready to buy" or "Waiting on trigger." Daily-run prompt's Step 2 PROMOTED section notes that the resolver labels these `PROMOTED_DECIDE_TODAY` independent of price/catalyst — the conviction gate was cleared at promotion. Resolver is now consistent with [`needs-action.ts`](lib/agent/needs-action.ts), which already gave PROMOTED top precedence as `PROMOTED_AWAITING_RESOLUTION` (the agent-action label; resolver is the at-a-glance label of the same state). **Open P1 list after this entry: P1-2 only.**
+
+### 2026-06-02 — GAPS hygiene + P1-12 / P1-8 / P1-11 / P1-13 closed + conviction-backfill decision
+PR [#374](https://github.com/dave-sucks/hindsight/pull/374).
+- **P1-5** — MRVL Sonar earnings hallucination class fixed by [#357](https://github.com/dave-sucks/hindsight/pull/357) (writer date-awareness gate) on 2026-05-28. Was orphaned in the open P1 list — retroactively moved here. **2026-06-02 review evidence:** Sonar date-sanity sniff returned 0 rows. Gate is working in production.
+- **P1-7** — UI label rename ("Awaiting live entry" → "Promoted") was already shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349) on 2026-05-26 (see the "first live promotion incident fully closed" entry below). Duplicate orphan entry removed from the open P1 list.
+- **P1-8** — V2 prompt has no DAY-trader workflow. **Closed: no DAY-horizon analyst exists in the current lineup and none is planned.** If a DAY analyst is ever reintroduced, refile.
+- **P1-11** — Writer rationale-quality enforcement (sniff-driven). **Closed: 2026-06-02 review confirmed the prompt is holding** — the one fresh `convictionRationale` (LITE) was judgment-shape, not math restatement. Sample size is small but no failure signal. If math-rationale starts dominating later reviews, refile.
+- **P1-12** — Secular Compounder 5/5 writer FAILUREs on 2026-05-31 were Anthropic credit-balance-exhaustion errors, NOT a code bug. All 5 dispatches (CRDO, TSM, LRCX, ADBE, MU) started within 36ms of each other from parent run `cmptt39lf008t04l7dv6hibei` (parallel fan-out) and failed with the same provider error: `"Your credit balance is too low to access the Anthropic API."` No other days in the past 14 days had this failure shape. **Sunday-discovery cron disposition decision (P2) is unblocked.**
+- **P1-13** — BATCHED DISCOVERY archetype-blind overlay. **Closed: discovery model has been rebuilt by the principal; the 4-dim composite overlay this gap describes is no longer the active discovery design.** If a future automated-discovery v2 reintroduces a universal rubric across archetypes, refile.
+- **Conviction backfill — decision NOT to backfill** (replaces what was tentatively filed as P1-14). Reviewer surfaced that 25 of 28 directional open theses had `conviction = NULL`. A backfill was applied via the historical `prisma/migrations/manual/backfill_conviction_v4.sql` script (which derives HIGH/MEDIUM/LOW from `composite` buckets) and immediately **reverted on principal pushback.** The principal call is correct: conviction is the writer's qualitative judgment, independent of composite — that decoupling is exactly what Gates A+B were killed for in PR #360. Deriving conviction from composite (even with a marker rationale) reintroduces the coupling. The right behavior: let conviction populate organically as the thesis-writer touches each thesis on refresh / re-mint. The daily-run treats NULL conviction as "no signal" and falls back to R/R math, which is intended graceful degradation. **The backfill SQL file has been marked DO NOT RUN at the top** with the decision rationale.
+
+**Operational follow-up (not filed as a GAPS item — operational, not architectural):** a parallel writer fan-out of N dispatches will all fail simultaneously if Anthropic credit balance is below threshold at fan-out time. Solvable by Anthropic billing alerts + an optional pre-flight balance check before the dispatch fan-out. Worth doing if it bites again; otherwise just monitor billing.
+
+### 2026-06-01 — P1-3: `targetPrice` overload was a one-line trigger bug, not a schema split
+PR [#362](https://github.com/dave-sucks/hindsight/pull/362). `watchingEntryTrigger` was reading `targetPrice` (the take-profit) instead of `entryPrice` (where the writer wanted to buy in). The schema was always correct — both columns existed with separate meanings — the trigger code just wired the wrong column to the ENTER action.
+
+**Shipped:**
+- `lib/agent/triggers/defaults.ts:watchingEntryTrigger` now reads `entryPrice` instead of `targetPrice`
+- Writer prompt clarifies `entry_price = where you'd buy in` (was ambiguously "current quote from the research")
+- Long "CHOOSING THE ENTER TRIGGER" warning block in `run-thesis-writer.ts` simplified — most of it was workaround for the now-fixed default
+- `PriceTargetsBlock` gauge consistently shows `Stop · Entry · Current · Target` across every status
+
+**No schema changes. No migration.** See [`docs/plans/PRICE_LEVEL_SEMANTICS.md`](./plans/PRICE_LEVEL_SEMANTICS.md) for the postmortem on why the schema-split plan was over-engineering.
+
+### 2026-06-01 — Discovery overhaul: kill noise pipeline, ship operator-driven discovery
+PR [#361](https://github.com/dave-sucks/hindsight/pull/361). Audit of last 40 signal-pool entries showed ~5% signal-to-noise (Sherwood sports headlines, Seeking Alpha aggregator pieces, content-marketing-tier clickbait). The agent's triage was actually solid; the input layer was poisoned. Architectural insight: discovery isn't a separate agent, it's a conversation pattern — Principal Chat already has analyst scoping + the full toolbox; what was missing was a prompt section teaching multi-candidate triage.
+
+**Operational changes (executed in-session):**
+- Paused 4 Inngest crons: `firm-market-sweep`, `portfolio-watchlist-monitor`, `domain-monitor`, `signal-router`.
+- Disabled 65 non-builtIn monitors (incl. 11 podcast monitors).
+- Stripped `read_signals` from daily-run prompt + allowlist. Daily run now starts with `get_theses` + `get_portfolio_context`, walks per-thesis evidence directly.
+
+**Code changes:**
+- **BATCHED DISCOVERY prompt overlay** (~110 lines on `buildPrincipalSystemPrompt`) — activates on multi-candidate input / research pastes / discovery-shaped questions. Teaches Sunday-cron triage shape + paste-extraction + operator-context-as-composite-input + clarification turn.
+- **`twitter_search` tool** — xAI Live Search over X with `sources:["x"]`. Returns handle + ticker + archetype + claim + sentiment + recency. Sibling to `web_search`. Requires `XAI_API_KEY`.
+- **Cross-analyst dispatch dedup** in `dispatch_thesis_research` — closes the AVGO + CRDO double-dispatch waste from the 2026-06-01 cron runs.
+- **`RunDiscoveryButton`** on `/analysts/[id]` → routes to `/chat?analyst=…&kickoff=…` (server-validated). Chat now accepts kickoff URL params, threads to AgentChat's `initialPrompt`.
+
+**Dual-role catalyst-source insight (durable architecture):** one wire feeds both discovery (new names route as signals) and triggers (held names fire REVIEW/EXIT). Don't build two pipelines for 8-K filings — build the producer once, route twice. Documented in `DISCOVERY_V2.md` §3.
+
+**Decisions worth flagging:**
+- Slash command vs mode picker for explicit "discovery mode" trigger — shipped content-detection only; add `/discovery` slash command or mode picker as follow-up if real usage reveals detection failures. Current implementation activates batched-discovery mode automatically from message content; the button is convenience, not gate.
+- Grok-as-orchestrator deferred. Shipped Grok-as-tool (`twitter_search` inside Claude) first. Grok-4 as a selectable orchestrator model is Lane 4 backlog, contingent on the Claude+`twitter_search` baseline shaking out cleanly.
+
+**Three follow-ups surfaced:** P1-12 (Secular Compounder writer FAILUREs investigation), P1-13 (BATCHED DISCOVERY overlay archetype-blind — promoted from legacy P1-9), plus two P2 disposition decisions (paused intelligence infra + Sunday discovery cron).
+
+**Watch tomorrow's 8 AM ET cron** — first daily run without `read_signals`. If the agent loses bearings, it'll surface fast in `/runs/`.
+
+Design docs: [`DISCOVERY_V2.md`](./plans/DISCOVERY_V2.md) (operating model + 16-source catalog), [`DISCOVERY_OVERHAUL.md`](./plans/DISCOVERY_OVERHAUL.md) (phased to-do list with status).
+
+### 2026-05-31 — Conviction Expression (writer judgment + read-time resolver)
+- **P1-6** — Writer "urgency signal" delivered, shape differs from original spec. Instead of a `recommendedAction` enum, the writer now stamps three fields on every thesis: `conviction` (STRONG / HIGH / MEDIUM / LOW — the writer's real view, independent of composite), `convictionRationale` (≤400-char plain-talk judgment), and `variantView` (required for STRONG/HIGH — "consensus thinks X, I think Y"). `targetSizePct` promoted to required for directional theses. The daily-run prompt teaches actionability-first filtering (via the resolver, see below) then conviction-modulated sizing — STRONG → trade fast at full size; LOW → skip-by-default. Conviction is also patchable (upgrade when a catalyst prints clean, downgrade when consensus moves to your view). Shipped via [#360](https://github.com/dave-sucks/hindsight/pull/360).
+- **Read-time resolver** (new primitive, not a previously-tracked GAP). `get_theses` now returns a computed `resolved` envelope per row: live `currentPrice`, evaluated `triggerState`, `actionability` verdict (`READY_TO_BUY` / `WAITING_FOR_TRIGGER` / `CATALYST_PENDING` / `HOLDING` / `SUPERSEDED` / …), and `supersededBy` (newer thesis on the same ticker that killed this one). Computed at read time, never stored. The agent reads a resolved verdict instead of re-deriving live price + trigger state + supersession every cycle. Cross-analyst supersession bug also fixed (Catalyst PM's LONG no longer killed by Compounder's PASS).
+- **Gate-removal partial credit toward P1-2.** Gates A + B (composite-coupling on `record_thesis` + `update_thesis`) deleted — they forced `conviction` to derive from `composite`, defeating the field's purpose. Other suspect gates listed under P1-2 unchanged.
+- **UI:** `ConvictionBadge` on the sheet header next to status; `VARIANT VIEW` as a peer section alongside Key Assumptions and Invalidation Conditions; actionability shown in the Trade Structure row's Status cell (rejected the standalone third-badge approach as noisy); stock identity made clickable to `/stocks/[ticker]`.
+- **Tests:** 16 new (12 record_thesis gates, 8 update_thesis gates, 13 resolver), 303 total passing.
+- **Backfill:** `prisma/migrations/manual/backfill_conviction_v4.sql` derives HIGH/MEDIUM/LOW from composite buckets for ~38 live LONG/SHORT WATCHING+ACTIVE rows missing conviction; stamps `convictionRationale = 'backfilled from composite on 2026-05-31'` so the UI can tell derived from writer-attested.
+- **Two follow-ups surfaced:** P1-10 (PROMOTED not first-class in resolver actionability) and P1-11 (writer rationale-quality enforcement — sniff-watch first).
+
+Design doc: [`CONVICTION_EXPRESSION.md`](./plans/CONVICTION_EXPRESSION.md) (updated to v4).
+
+### 2026-05-27 — `Thesis.promotedAt` timestamptz migration + V2 prompt-preview template
+- **P1-4** — `Thesis.promotedAt` migrated from bare `timestamp(3)` to `timestamptz(6)`; existing 3 rows (AVGO/TSM/MRVL, all promoted 2026-05-26) backfilled `-12h` to undo the `@prisma/adapter-pg` AM/PM-flip. Post-migration verification confirmed `promotedAt` matches the `STATUS_CHANGED → PROMOTED` audit row to the millisecond. Schema regression test in [prisma/schema.test.ts](prisma/schema.test.ts) pins the `@db.Timestamptz(6)` annotation. Audit-row peer `ThesisUpdate.timestamp` left bare for now — written by Postgres `now()` via `@default(now())`, not affected by the adapter bug.
+- **P1-9** — `SYSTEM_PROMPT_TEMPLATE` regenerated to mirror `buildDailyRunSystemPromptV2`'s 9-section structure (Identity → Edge → Universe & rules → Yesterday's standup → Horizon glossary → Per-horizon data discipline → How you work → Your job → How tools work). The "How It Works" sheet's Daily Run prompt-preview tab now shows what the agent actually receives, not the deleted V1 procedural-stages body. Consumer (`components/domain/team-card.tsx` → `PromptBanner`) renders the markdown as-is; no section-header parsing happens downstream, so no consumer changes were needed.
+
+### 2026-05-26 — P1-1: review-driven refresh cadence (staleness gate removed)
+- **P1-1** — Deleted the hard `place_trade` staleness gate (formerly `place-trade.ts:160-243`). Research-age decisions are now soft input to the agent's REVIEW flow, not a Layer-1 refusal at trade time. `classifyResearchAge` is horizon-aware (`STALE_DAYS_BY_HORIZON`: CATALYST/TRADE 7d, TARGET 30d, COMPOUNDER 90d), and `researchAge` returns `horizonThreshold` so prompts can render "stale: 32d > 30d threshold." V2 daily-run prompt teaches the REVIEW-time decision tree (dispatch refresh, soft-patch, or proceed) and explicitly notes there is no staleness gate on `place_trade`. Tactical prompt now skips the refresh and acts on the trigger (the daily run is the right place for thorough review). Design doc: [`REVIEW_REFRESH_CADENCE.md`](./plans/REVIEW_REFRESH_CADENCE.md).
+
+### 2026-05-26 — first live promotion incident fully closed
+The 2026-05-26 first-live-day failures (Earnings Drift Trader, 3 PROMOTED theses skipped) are structurally fixed.
+
+- **P0-1** — `complete_run` preflight + new `PROMOTED_AWAITING_RESOLUTION` needsAction kind. Gate now refuses run completion when PROMOTED rows are unaddressed; agent reads the kind via `get_theses` and knows it must act. Shipped via [#346](https://github.com/dave-sucks/hindsight/pull/346).
+- **P0-2** — Deleted the deprecated V1 daily-run prompt builder (`buildV2SystemPrompt` — 625 lines, misleadingly named). The next session that updates the prompt physically can't update the wrong file. Shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349).
+- **P0-3** — Ported PROMOTED handling into the V2 daily-run prompt. Step 2 now lists `PROMOTED_AWAITING_RESOLUTION` first; new top-priority sub-section "PROMOTED — must decide today" with the three legal outcomes. Shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349).
+- **P0-4** — Thesis-writer can't flip status on PROMOTED refresh. Added the PROMOTED prompt branch + Layer-1 backstop in `update_thesis` that refuses `change_status` from `runMode: "THESIS_WRITER"` on PROMOTED rows. 10 new tests pin the behavior. Shipped via [#350](https://github.com/dave-sucks/hindsight/pull/350).
+- **P1-7** — UI label renamed from "Awaiting live entry" to "Promoted" (literal enum name; principal choice). The agent reads the structural needsAction kind, not the UI string, so the label is purely for human clarity. Shipped via [#349](https://github.com/dave-sucks/hindsight/pull/349).
+
+**The PROMOTED loop is now end-to-end coherent:** writer keeps status as PROMOTED → gate forces resolution → prompt teaches the three legal outcomes → agent makes the call.
+
+Two new findings surfaced during the V1→V2 audit, filed as P1-8 + P1-9 below.
+
+---
+
