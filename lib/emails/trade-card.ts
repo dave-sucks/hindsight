@@ -32,29 +32,40 @@
  */
 
 // ─── Tokens ──────────────────────────────────────────────────────────────────
-// Email-safe hex equivalents of the app's CSS variables. Keep these in sync
-// with app/globals.css if the brand palette shifts.
+// Email-safe hex equivalents of the app's CSS oklch() variables (see
+// app/globals.css). Email clients don't reliably support oklch() — Gmail
+// + modern Apple Mail do, Outlook desktop on Windows doesn't — so we
+// flatten to hex at the source. Values were computed by feeding the live
+// `:root { --positive: oklch(...) }` triples through the OKLCH→sRGB
+// conversion; re-run the script in lib/emails/trade-card.ts comments if
+// the brand palette ever shifts. (The script lives in git history at
+// commit time — see the trade-card recolor commit.)
+//
+// IMPORTANT: do NOT swap these for Tailwind's emerald-500 / red-500 / etc.
+// Those colors look "modern web" but they are NOT the Hindsight brand
+// palette; the user runs a warm-toned theme (oklch hues ~107° for grays,
+// ~144° for green, ~12° for red) that emerald/slate cool against.
 
 export const TRADE_CARD_COLORS = {
-  pageBg: "#ffffff",
-  cardBg: "#ffffff",
-  cardBorder: "#e5e7eb",
-  rowBorder: "#f1f5f9",
-  textPrimary: "#0f172a",
-  textMuted: "#64748b",
-  textFaint: "#94a3b8",
-  chipBg: "#f1f5f9",
-  chipText: "#334155",
-  logoBg: "#f8fafc",
-  positive: "#22c55e",      // emerald-500 (CLAUDE.md: positive ONLY)
-  positiveBg: "#dcfce7",    // emerald-100
-  negative: "#ef4444",      // red-500 (CLAUDE.md: negative ONLY)
-  negativeBg: "#fee2e2",    // red-100
-  amber: "#92400e",         // amber-900 text
-  amberBg: "#fffbeb",       // amber-50
-  amberBorder: "#fbbf24",   // amber-400
-  liveBg: "#fee2e2",        // red-100
-  liveText: "#b91c1c",      // red-700
+  pageBg: "#ffffff",        // --background
+  cardBg: "#ffffff",        // --card
+  cardBorder: "#e8e8e3",    // --border
+  rowBorder: "#ebebe8",     // slightly subtler than --border for inner divides
+  textPrimary: "#0c0c09",   // --foreground (warm near-black)
+  textMuted: "#7c7c67",     // --muted-foreground (warm brown-gray)
+  textFaint: "#a6a699",     // halfway between muted and border
+  chipBg: "#f4f4f0",        // --muted / --accent
+  chipText: "#484840",      // mid-tone foreground for chip text
+  logoBg: "#f9f9f6",        // a hair lighter than --muted for inset wells
+  positive: "#51b857",      // --positive (oklch 69.92% 0.166 144.58)
+  positiveBg: "#dff6de",    // light tint of positive hue
+  negative: "#ff6d87",      // --negative (oklch 72.01% 0.178 11.8)
+  negativeBg: "#ffe4e7",    // light tint of negative hue
+  amber: "#6f3800",         // proposal badge text (oklch 0.40 0.12 70)
+  amberBg: "#fff4d7",       // proposal badge bg
+  amberBorder: "#f2b966",   // proposal badge border
+  liveBg: "#ffe4e7",        // LIVE badge bg (shares negative tint)
+  liveText: "#991b3d",      // LIVE badge text (darker hue 11.8 for contrast on liveBg)
 } as const;
 
 // ─── Types ───────────────────────────────────────────────────────────────────

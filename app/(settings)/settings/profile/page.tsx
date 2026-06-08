@@ -35,7 +35,7 @@ export default async function ProfileSettingsPage() {
       />
 
       <SettingsSection title="Account">
-        <InfoRow label="Name" value={displayName} />
+        <InfoRow label="Name" value={displayName} border={false} />
         <InfoRow label="Email" value={user.email ?? "—"} border={false} />
       </SettingsSection>
 

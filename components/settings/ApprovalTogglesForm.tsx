@@ -100,12 +100,12 @@ export function ApprovalTogglesForm({ initial, canEdit }: Props) {
 
   return (
     <>
-      {ROWS.map((row, i) => (
+      {ROWS.map((row) => (
         <InfoRow
           key={row.field}
           label={row.label}
           description={row.description}
-          border={i < ROWS.length - 1}
+          border={false}
         >
           <Switch
             checked={settings[row.field]}
