@@ -36,6 +36,7 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import {
   promoteThesisOnApproval,
   closeThesisOnApproval,
+  revertThesisToWatchingOnDecline,
 } from "@/lib/proposals/thesis-flips";
 
 export interface ProposalApprovalResult {
@@ -372,6 +373,20 @@ export async function rejectProposal(
       },
     });
   });
+
+  // Orphan-thesis revert (stopgap): a rejected OPEN proposal leaves the
+  // paired thesis stranded ACTIVE with no position (the agent flipped it to
+  // ACTIVE on the ENTER trigger before the proposal was declined). Restore
+  // it to WATCHING so its ENTER trigger comes back and the name can
+  // re-propose. Gated on OPEN, fired AFTER the Position is CANCELLED above.
+  // Fire-and-forget + fail-soft: a revert miss must not block the reject.
+  if (intent === "OPEN") {
+    void revertThesisToWatchingOnDecline({
+      analystId: order.position.analystId,
+      ticker: order.position.symbol,
+      positionId: order.position.id,
+    });
+  }
 
   // The agent reads thesis history via get_theses(include_history: true)
   // — the rationale text below is the durable signal it sees on its next

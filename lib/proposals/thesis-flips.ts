@@ -139,6 +139,149 @@ export async function promoteThesisOnApproval(opts: {
 }
 
 /**
+ * Revert the ACTIVE thesis on (analystId, ticker) back to WATCHING when a
+ * BUY proposal is declined (rejected by the user) or expires without a
+ * decision. The exact INVERSE of {@link promoteThesisOnApproval}.
+ *
+ * Why this exists: when the agent enters on an ENTER trigger it flips the
+ * thesis WATCHING → ACTIVE immediately and swaps its ENTER trigger for
+ * HELD-side EXIT/REVIEW triggers — but under Trade-as-Proposal the position
+ * is only PENDING_APPROVAL (no real holding yet). If the proposal is then
+ * REJECTED or EXPIRES, the Position is CANCELLED but the thesis is stranded
+ * ACTIVE with no open position (an "orphan"): its ENTER trigger is gone so
+ * it can never re-propose, and its live EXIT triggers point at a phantom
+ * position. Two live theses (IONS, XENE) hit this and were hand-cleaned.
+ *
+ * This restores the WATCHING shape deterministically: re-derive the
+ * WATCHING-side triggers from the thesis's STORED levels (the ENTER trigger
+ * comes back from `entryPrice`; HELD EXIT/TRIM drop), flip ACTIVE →
+ * WATCHING, and write one STATUS_CHANGED audit row mirroring
+ * promoteThesisOnApproval's shape.
+ *
+ * GUARD: if any OTHER open position (OPEN or PENDING_APPROVAL) exists for
+ * (analystId, ticker) — excluding the just-cancelled one — this no-ops. We
+ * only revert a thesis that genuinely has no holding behind it; a thesis
+ * that legitimately still holds shares stays ACTIVE.
+ *
+ * Idempotent — if no matching ACTIVE thesis is found (already reverted, or
+ * the agent never flipped it), it no-ops. FAIL-SOFT — failures are logged
+ * but never re-thrown: a revert miss must not block the reject/expire path
+ * that already cancelled the Position. The next agent run recovers via
+ * get_theses.
+ *
+ * Stopgap — the deeper fix (the agent not flipping ACTIVE at proposal time +
+ * a Layer-1 gate) is deferred to the thesis-taxonomy audit. See
+ * docs/plans/TRADE_AS_PROPOSAL.md.
+ */
+export async function revertThesisToWatchingOnDecline(opts: {
+  analystId: string;
+  ticker: string;
+  positionId?: string;
+  runId?: string | null;
+}): Promise<void> {
+  try {
+    const activeThesis = await prisma.thesis.findFirst({
+      where: {
+        ticker: opts.ticker,
+        status: "ACTIVE",
+        researchRun: { agentConfigId: opts.analystId },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        direction: true,
+        horizon: true,
+        entryPrice: true,
+        targetPrice: true,
+        stopLoss: true,
+        maxHoldDays: true,
+        catalystDate: true,
+        triggers: true,
+      },
+    });
+    if (!activeThesis) return;
+
+    // GUARD — don't revert a thesis that legitimately still holds. If any
+    // other live position (OPEN or still-pending) exists for this name,
+    // the ACTIVE status is correct; leave it alone.
+    const otherOpen = await prisma.position.findFirst({
+      where: {
+        analystId: opts.analystId,
+        symbol: opts.ticker,
+        status: { in: ["OPEN", "PENDING_APPROVAL"] },
+        ...(opts.positionId ? { id: { not: opts.positionId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (otherOpen) return;
+
+    // Regenerate WATCHING-side triggers from the thesis's STORED levels
+    // (NOT proposed-trade levels — there was no trade). The "WATCHING"
+    // template restores the ENTER trigger off entryPrice and drops HELD
+    // EXIT/TRIM, exactly undoing promoteThesisOnApproval's HELD regen.
+    const horizon = activeThesis.horizon as Horizon | null;
+    let nextTriggers: Trigger[];
+    if (horizon) {
+      const watchingDefaults = defaultTriggersForHorizon(
+        horizon,
+        {
+          entryPrice: activeThesis.entryPrice ?? null,
+          targetPrice: activeThesis.targetPrice ?? null,
+          stopLoss: activeThesis.stopLoss ?? null,
+          maxHoldDays: activeThesis.maxHoldDays ?? null,
+          catalystDate: activeThesis.catalystDate ?? null,
+          direction: activeThesis.direction as "LONG" | "SHORT",
+        },
+        "WATCHING",
+      );
+      nextTriggers = applyTriggerCooldownDefaults(watchingDefaults);
+    } else {
+      // No horizon → no template to regenerate from. Best effort: strip the
+      // HELD-action triggers so the phantom EXIT/TRIM/etc. can't fire on a
+      // position that no longer exists. We CANNOT recreate the ENTER trigger
+      // without a horizon template — acknowledged and rare: LONG/SHORT
+      // WATCHING theses always carry a horizon.
+      const existing =
+        (activeThesis.triggers as unknown as Trigger[] | null) ?? [];
+      nextTriggers = existing.filter(
+        (t) =>
+          t.action !== "EXIT" &&
+          t.action !== "TRIM" &&
+          t.action !== "MOVE_STOP" &&
+          t.action !== "ADD",
+      );
+    }
+
+    await prisma.thesis.update({
+      where: { id: activeThesis.id },
+      data: {
+        status: "WATCHING",
+        triggers: nextTriggers as unknown as object,
+      },
+    });
+    await prisma.thesisUpdate.create({
+      data: {
+        thesisId: activeThesis.id,
+        type: "STATUS_CHANGED",
+        summary: `Reverted ${opts.ticker} ${activeThesis.direction} ACTIVE → WATCHING — buy proposal declined/expired`,
+        rationale: `Reverted ${opts.ticker} ${activeThesis.direction} ACTIVE → WATCHING — buy proposal declined/expired, no position opened; ENTER trigger restored so the name can re-propose. Triggers regenerated from the WATCHING-side ${horizon ?? "(no-horizon)"} template.`,
+        fieldChanges: {
+          status: { from: "ACTIVE", to: "WATCHING" },
+          triggers: { from: "HELD-set", to: "WATCHING-set" },
+        },
+        runId: opts.runId ?? null,
+        tradeId: opts.positionId,
+      },
+    });
+  } catch (err) {
+    console.warn(
+      `[revertThesisToWatchingOnDecline] ACTIVE → WATCHING revert failed for ${opts.ticker}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/**
  * Flip the ACTIVE thesis on (analystId, ticker) to CLOSED and write the
  * status-change audit row. The single shared chokepoint for "a position
  * truly closed → reflect it on the paired thesis," used by:

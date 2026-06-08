@@ -20,6 +20,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { revertThesisToWatchingOnDecline } from "@/lib/proposals/thesis-flips";
 
 // Mon-Fri 4 AM-8 PM ET, every 30 min — covers any proposal expiring during
 // the trading day. Off-hours expiries roll over to the next ET open.
@@ -116,6 +117,20 @@ export const proposalExpiry = inngest.createFunction(
             },
           });
         });
+
+        // Orphan-thesis revert (stopgap): an expired OPEN proposal leaves the
+        // paired thesis stranded ACTIVE with no position (the agent flipped
+        // it to ACTIVE on the ENTER trigger before the proposal lapsed).
+        // Restore it to WATCHING so its ENTER trigger comes back and the name
+        // can re-propose. Gated on OPEN, fired AFTER the Position is CANCELLED
+        // above; the helper is itself fail-soft and never throws.
+        if (intent === "OPEN") {
+          await revertThesisToWatchingOnDecline({
+            analystId: order.position.analystId,
+            ticker: order.symbol,
+            positionId: order.positionId,
+          });
+        }
 
         // Write the ThesisUpdate audit OUTSIDE the position-update tx —
         // failures here shouldn't block the expiry flip. The agent reads
