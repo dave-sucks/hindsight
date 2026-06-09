@@ -50,9 +50,49 @@ Some surfaces check `direction==="PASS"` before reading status; others read stat
 
 **Broader ask (the real scope):** revisit **every** status/direction and whether it still makes sense at the entity it lives on, post 3-agent + trade-as-proposal. PASS-on-direction is the first symptom — audit the whole taxonomy: what's the source of truth for each lifecycle question across Position.status, Thesis.status, Thesis.direction, and Order.status?
 
+### P1-25 — Orphan thesis on declined/expired buy proposal (agent pre-flips WATCHING → ACTIVE before approval)
+**Status:** open, filed 2026-06-09 (principal via prior session; QB-verified live 2026-06-09). Highest-value correctness item open — corrupts thesis-state on every declined ENTER proposal under the live approval toggle. Mechanism confirmed in code + one live in-flight case (PEAD/SNOW). **Zero *completed* orphans in the DB yet** — caught before it bites, not "already recurring" (a correction to the original framing).
+
+**The bug.** On the proposal path `place_trade` creates the buy proposal and returns at the approval seam (`place-trade.ts:623` → awaiting envelope ~639) **without** flipping the thesis — its inline WATCHING→ACTIVE flip (`place-trade.ts:949`) sits past the early return and never runs; `maybeAwaitApproval` doesn't touch the thesis either (`maybe-await-approval.ts:203-222`). The flip is *meant* to happen later at approval via `promoteThesisOnApproval` (`thesis-flips.ts:39`, called from `execute.ts:245`). **But both prompts tell the agent to flip it manually right after place_trade** — tactical `intraday-tactical.ts:237-244`, daily `system-prompt.ts:224`. The agent's `update_thesis(change_status:"ACTIVE")` branch (`update-thesis.ts:1239-1286`) only requires `status==='WATCHING'` + target + stop — **no open-position check** — so it flips the thesis ACTIVE while the position is still `PENDING_APPROVAL`. Reject (`execute.ts:315`) and expire (`proposal-expiry.ts`) flip Position→CANCELLED and write a PROPOSAL_REJECTED/EXPIRED audit row but **never revert Thesis.status** → thesis stuck ACTIVE, no position.
+
+**Proof (live, PEAD / SNOW, 2026-06-08):** `14:02:51` ENTER trigger fires → `14:03:41` place_trade stages Position `PENDING_APPROVAL` + Order `AWAITING_APPROVAL` (expires 2026-06-09 14:03 UTC), thesis still WATCHING → `14:04:00` STATUS_CHANGED "…WATCHING → ACTIVE, triggers updated" (same run, tradeId = the still-awaiting order). The order has never reached Alpaca; the thesis is already ACTIVE. Reject/expire it → first completed orphan; approve it → consistent ACTIVE+OPEN. Premature flip is the bug either way.
+
+**Why SELL is immune:** the zombie-gate (`update-thesis.ts:609-661`) already refuses agent `change_status:"CLOSED"/"INVALIDATED"/"ARCHIVED"` on an ACTIVE-with-open-position unless a real close fired this run. The buy side (WATCHING→ACTIVE) has **no mirror gate**. That asymmetry is the whole bug.
+
+**Harm on completion:** position-thesis desync (pre-PR-265 class, THESIS_ARCHITECTURE §9) — `get_theses` says ACTIVE, `get_portfolio_context` shows nothing; the name drops off the watchlist so the daily run won't re-propose the entry it still wants; the flip regenerated HELD triggers (stripped ENTER); any later EXIT/stop trigger aims a tactical `close_position` at a phantom.
+
+**Fix direction — subtraction + a Layer-1 backstop (NOT prompt-only).** The WATCHING→ACTIVE flip is execution bookkeeping the tools already own; the agent should never flip status itself. Per PRINCIPLES.md, deleting the prompt line alone is a Layer-3 fix to a Layer-1 problem — do both:
+1. **L3 (subtraction):** drop "then update_thesis(change_status:'ACTIVE')" from both prompts' ENTER branches (and the redundant `close_position → update_thesis(CLOSED)` at `system-prompt.ts:228`). The daily prompt already states the truth for PROMOTED re-entry at `:218` ("trade tool auto-flips … no separate update_thesis required") — extend it and fix the contradictory `:224`.
+2. **L1 (backstop):** `update_thesis` refuses agent-initiated `change_status:"ACTIVE"`/`"CLOSED"` — owned by place_trade / close_position / approval handlers. **Watch PROMOTED:** the resolution gate (`update-thesis.ts:519`, `:563`) currently treats `change_status:"ACTIVE"` as the legal PROMOTED→ACTIVE path; move that to "place_trade fired this run" (its belt-and-suspenders flip at `:848-876` already covers it). PROMOTED→WATCHING (defer) stays agent-legal.
+3. **Optional self-heal (L1, prompt-independent):** reject/expire reverts the paired thesis ACTIVE→WATCHING (restoring the ENTER trigger) when cancelling its proposal — robust even if a premature flip slips through, but must reconstruct the stripped trigger.
+
+Deliberate ~80-120 line PR, not a one-liner. **Do not** ship the prompt deletion without the tool backstop + PROMOTED care.
+
 ---
 
 ## P2 — Backlog
+
+### LIVE per-position cap (`realMaxPosition`) is invisible + uneditable in settings — the visible box can overstate the real cap
+**Status:** open, filed 2026-06-09 (principal). UX/discoverability, **not** a safety bug — P2. QB-verified live 2026-06-09.
+
+**The model.** Two caps:
+- `maxPositionSize` — the box in `AnalystConfigForm`. The paper cap, freely editable in settings.
+- `realMaxPosition` — `@default(500)` in `prisma/schema.prisma:525`, but both analyst-create paths seed it to `maxPositionSize` (`lib/actions/analyst.actions.ts:888`, `:1103`), so 500 is effectively a dead default. After create it is written **only** by the Promote dialog (`components/analysts/PromoteAnalystDialog.tsx:123`). It does **not** appear in `AnalystConfigForm`, and no update path re-syncs it — so once you promote, it's invisible and uneditable in normal settings short of demote→re-promote or a DB write.
+
+**The mechanic** (`lib/agent/tools/place-trade.ts:402-406`): LIVE trades cap at `min(maxPositionSize, realMaxPosition)`; PAPER uses `maxPositionSize` only.
+
+**Verified live state (2026-06-09):**
+
+| Analyst | Box (visible) | `realMaxPosition` (hidden) | Real LIVE cap | Box honest? |
+|---|---|---|---|---|
+| PEAD Specialist | $3,000 | $6,000 | $3,000 | ✅ box binds |
+| Catalyst Event PM | $8,000 | $6,000 | $6,000 | ❌ box overstates by $2k |
+
+On Catalyst the hidden $6k is the binding cap: settings says $8k, live trades stop at $6k, and nothing on screen explains why. The same ceiling would bite PEAD if its box were ever raised above $6k.
+
+**Verdict — not on fire.** `min()` can only make the live cap *smaller* than the visible box, never larger → zero over-trading / compliance risk. Worst case is "Catalyst sizes smaller than intended and the operator can't see why." Discoverability gap, not safety.
+
+**Fix direction (display + edit only — leave the `min()` math alone):** surface `realMaxPosition` in `AnalystConfigForm` (read + edit) so the LIVE cap is visible/editable post-promote, and/or show the *effective* live cap `min(box, realMaxPosition)` on the settings/analyst screen with a note when it sits below the box.
 
 ### Activity feed renders rejected proposals as "Sold" — should be "Rejected"
 **Status:** open, filed 2026-06-08. **PR #399 carries an interim revert — the next session implements this; do not ship the "drop" approach.**

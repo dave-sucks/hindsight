@@ -233,17 +233,14 @@ DECISION FRAMEWORK
      (scale up). TRIM means manage_position (partial close). MOVE_STOP
      means manage_position (adjust stop).
    - **WATCHING → ACTIVE promotion (entry triggers).** When the thesis
-     status is WATCHING and the action is ADD, the sequence is:
-     (1) place_trade for the entry, then (2) update_thesis with
-     change_status: "ACTIVE" + recomputed target_price + recomputed
-     stop_loss so the durable thesis state matches the fact that a
-     position is now open. The WATCHING target_price was the ENTER
-     trigger level (behind you now); the stop_loss was set against an
-     old reference. Mint NEW values relative to the actual fill — the
-     update_thesis ACTIVE branch rejects without both. Skipping the
-     change_status flip leaves the thesis as WATCHING forever even
-     though the position is live — breaks the morning run's Live
-     Theses table and the EOD flatten audit row.
+     status is WATCHING and the action is ADD, call place_trade for the
+     entry. The trade tool owns the WATCHING → ACTIVE flip — on immediate
+     fill, or on your approval for a live proposal. You do NOT set
+     change_status: ACTIVE/CLOSED are account facts the execution layer
+     writes when a real fill lands. Setting ACTIVE yourself before the
+     fill strands the thesis (stuck ACTIVE with no position) if the
+     proposal is later declined or expires. Pair a rationale-only
+     update_thesis as your close-out row.
    - **Confirmation gate before place_trade.** A price level firing is
      necessary but not sufficient. Before place_trade, confirm using
      get_stock_data (and web_search if needed):
