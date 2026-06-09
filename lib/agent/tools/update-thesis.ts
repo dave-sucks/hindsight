@@ -660,6 +660,54 @@ export const updateThesis = defineTool({
       }
     }
 
+    // ── ACTIVE-requires-open-position gate (mirror of the zombie gate) ─────
+    // "Do we hold it?" is owned by the position lifecycle, never declared by
+    // the agent. Flipping WATCHING → ACTIVE while only a PROPOSAL exists
+    // (Position is PENDING_APPROVAL, not OPEN) is what created the orphan
+    // class: the buy proposal is later rejected/expired, the Position goes
+    // CANCELLED, but the thesis is stranded ACTIVE with no holding — its ENTER
+    // trigger gone, EXIT triggers pointing at nothing (IONS, XENE 2026-06-07).
+    // The lifecycle already owns this flip: place_trade flips it inline on a
+    // direct fill; promoteThesisOnApproval flips it when the user approves.
+    // Refuse a manual WATCHING → ACTIVE flip unless a real OPEN position backs
+    // it — the exact mirror of the terminal-without-close zombie gate above.
+    //
+    // Scope is WATCHING only: the direct-fill path already flipped the thesis
+    // to ACTIVE inside place_trade (so existing.status is ACTIVE, not
+    // WATCHING, and this is a no-op for it). PROMOTED → ACTIVE re-entry shares
+    // the same shape but is governed by the PROMOTED-resolution guard above
+    // and is a rarer path — out of scope for this gate.
+    if (
+      args.change_status === "ACTIVE" &&
+      existing.status === "WATCHING" &&
+      ctx.analystId
+    ) {
+      const openPosition = await prisma.position.findFirst({
+        where: {
+          analystId: ctx.analystId,
+          symbol: existing.ticker,
+          status: "OPEN",
+        },
+        select: { id: true },
+      });
+      if (!openPosition) {
+        return {
+          summary: `Can't flip $${existing.ticker} to ACTIVE — no open position backs it.`,
+          data: {
+            ok: false,
+            error: "active_without_open_position",
+            ticker: existing.ticker,
+            message:
+              `$${existing.ticker} has no OPEN position, so it can't be flipped to ACTIVE — "active" means we actually hold it, and that flip is owned by the trade lifecycle, not by you. ` +
+              `If you just proposed a buy, it's awaiting approval (or hasn't filled): the thesis flips to ACTIVE automatically when the proposal is approved/filled. ` +
+              `Drop change_status and record your entry rationale instead — the thesis stays WATCHING until the position is real, and the lifecycle does the flip. ` +
+              `Mirror of close_position: just as you can't mark a thesis CLOSED without a real close, you can't mark it ACTIVE without a real open.`,
+          },
+          sources: [],
+        };
+      }
+    }
+
     // ── PENDING-must-commit guard ─────────────────────────────────────────
     // 2026-05-14: observed the agent calling update_thesis on PENDING theses
     // with reasoning/bullets/nextReviewAt set but NO `direction` arg. The
