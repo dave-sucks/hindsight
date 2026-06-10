@@ -113,6 +113,66 @@ describe("computeNeedsAction — PROMOTED_AWAITING_RESOLUTION (top precedence)",
   });
 });
 
+describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 Change 4)", () => {
+  it("suppresses a fired ENTER trigger when a buy proposal is pending", () => {
+    const result = computeNeedsAction({
+      thesis: { ...baseThesis, status: "WATCHING", triggers: [ENTER_LONG] },
+      latestUpdate: {
+        type: "TRIGGER_FIRED",
+        triggerId: "trig-enter",
+        timestamp: new Date("2026-05-10T09:00:00Z"),
+      },
+      latestQuote: { price: 120, changePct: 0 },
+      now,
+      hasPendingEntryProposal: true,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("suppresses a matching-now ENTER predicate when a buy proposal is pending", () => {
+    const result = computeNeedsAction({
+      thesis: { ...baseThesis, status: "WATCHING", triggers: [ENTER_LONG] },
+      latestUpdate: null,
+      latestQuote: { price: 120, changePct: 0 }, // above 100 → ENTER matches
+      now,
+      hasPendingEntryProposal: true,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("still surfaces a fired EXIT trigger when a buy proposal is pending (only ENTER suppressed)", () => {
+    const result = computeNeedsAction({
+      thesis: { ...baseThesis, status: "WATCHING", triggers: [EXIT_LONG] },
+      latestUpdate: {
+        type: "TRIGGER_FIRED",
+        triggerId: "trig-exit",
+        timestamp: new Date("2026-05-10T09:00:00Z"),
+      },
+      latestQuote: { price: 80, changePct: 0 },
+      now,
+      hasPendingEntryProposal: true,
+    });
+    expect(result?.kind).toBe("TRIGGER_FIRED");
+  });
+
+  it("surfaces the ENTER normally when no proposal is pending", () => {
+    const result = computeNeedsAction({
+      thesis: { ...baseThesis, status: "WATCHING", triggers: [ENTER_LONG] },
+      latestUpdate: {
+        type: "TRIGGER_FIRED",
+        triggerId: "trig-enter",
+        timestamp: new Date("2026-05-10T09:00:00Z"),
+      },
+      latestQuote: { price: 120, changePct: 0 },
+      now,
+    });
+    expect(result?.kind).toBe("TRIGGER_FIRED");
+    if (result && result.kind === "TRIGGER_FIRED") {
+      expect(result.action).toBe("ENTER");
+    }
+  });
+});
+
 describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
   it("returns TRIGGER_FIRED when latest ThesisUpdate is an unanswered fire", () => {
     const result = computeNeedsAction({
