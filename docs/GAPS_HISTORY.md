@@ -11,6 +11,21 @@
 
 ---
 
+## Done since 2026-06-09 (settings transparency — live per-position cap surfaced)
+
+One settings/UX closure (not thesis-rework; relocated here as the closure home per the open-only `GAPS.md` convention).
+
+### ✅ P2 — LIVE per-position cap (`realMaxPosition`) is invisible + uneditable in settings
+
+**Filed:** 2026-06-09 (principal). `realMaxPosition` was written **only** by the Promote dialog (`PromoteAnalystDialog.tsx:123`) and never surfaced in `AnalystConfigForm`, so after promotion the visible "Max Position Size" box could silently overstate the real LIVE ceiling — `place_trade` caps live orders at `min(maxPositionSize, realMaxPosition)` (`place-trade.ts:402-406`). Verified live: **Catalyst Event PM** showed box=$8,000 with hidden `realMaxPosition=$6,000`, so live trades stopped at $6k with nothing on screen explaining why; **PEAD Specialist** ($3k box / $6k cap) was box-bound.
+
+**Closure (display + edit only — the `min()` math is untouched):**
+- `realMaxPosition` is now a **"Live per-position cap"** row in `AnalystConfigForm`'s Trading-rules section, shown + editable only when `tradingEnvironment === "LIVE"` (ignored in paper). Added to `UpdatableField`, so the settings sheet persists it via `updateAnalystField`.
+- A new `EffectiveLiveCapNote` surfaces the **effective** cap `min(maxPositionSize, realMaxPosition)`; when the live cap sits below the box it states "live trades stop there" — the discrepancy is no longer silent.
+- **Broader audit folded in:** `emailAlerts` (live across all 5 email paths — daily-run-digest, proposal-pending, place-trade open-email, closeTrade close-email, maybe-await-approval — but previously settable nowhere) is now an editable **Notifications** toggle; `tradingEnvironment` is surfaced as read-only context (promotion stays in the Promote dialog). The other unsurfaced `AgentConfig` fields were verified **orphan** (no runtime reader) and left hidden, matching the existing `maxRiskPct`/`scheduleTime` precedent: `analystVoice`, `strategyType`, `conceptPromptExtra`, `thesisPromptExtra`, `tradePolicyAutoTrade` (approval is Account-level, not analyst-level), `dailyLossLimit`, `maxRiskPct`, `minMarketCapTier`, `markets`, `exchanges` (built into the router profile but never matched), `scheduleTime`, `priceCheckFreq`, `weekendMode`, `graduation*`, `weeklyDigestEnabled`, `digestEmail`.
+
+**Files:** `components/analysts/AnalystConfigForm.tsx`, `components/analysts/AnalystConfigSheet.tsx`, `lib/actions/analyst.actions.ts`.
+
 ## Done since 2026-05-25 (PROMOTED-integration wave + doc cleanup)
 
 Five items, three code PRs (#330 + #331 + #333) plus a same-day cleanup audit that retired four stale doc entries. Headline: the PROMOTED-status work that started with PR #324 is now end-to-end across producers (promotion fan-out), consumers (decision agents read fresh research + researchAge), and the trigger layer (PROMOTED rows no longer carry orphan HELD-template EXIT triggers). One piece of the original P0-13 spec — the `place_trade` Layer-1 staleness gate — is deferred to Phase 2 of `THESIS_LIFECYCLE_FIX.md` and re-filed as the new P1-22.
