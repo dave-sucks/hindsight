@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import { updateSegmentBriefing } from "@/lib/podcast/update-segment-briefing";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
+import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import {
@@ -536,6 +537,7 @@ async function runCompleteRunPreflight(
     }
   }
 
+  const pendingEntryTickers = await getPendingEntryTickers(analystId);
   const now = new Date();
   const unaddressed: Array<{
     thesisId: string;
@@ -573,6 +575,7 @@ async function runCompleteRunPreflight(
         : null,
       latestQuote: quotes.get(t.ticker) ?? null,
       now,
+      hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
     });
     if (needsAction == null) continue;
     let detail: string;

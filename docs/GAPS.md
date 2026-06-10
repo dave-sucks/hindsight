@@ -51,7 +51,7 @@ Some surfaces check `direction==="PASS"` before reading status; others read stat
 **Broader ask (the real scope):** revisit **every** status/direction and whether it still makes sense at the entity it lives on, post 3-agent + trade-as-proposal. PASS-on-direction is the first symptom — audit the whole taxonomy: what's the source of truth for each lifecycle question across Position.status, Thesis.status, Thesis.direction, and Order.status?
 
 ### P1-25 — Orphan thesis on declined/expired buy proposal (agent pre-flips WATCHING → ACTIVE before approval)
-**Status:** open, filed 2026-06-09 (principal via prior session; QB-verified live 2026-06-09). Highest-value correctness item open — corrupts thesis-state on every declined ENTER proposal under the live approval toggle. Mechanism confirmed in code + one live in-flight case (PEAD/SNOW). **Zero *completed* orphans in the DB yet** — caught before it bites, not "already recurring" (a correction to the original framing).
+**Status:** ship-now (gate + prompts) **merged #407**; Change 4 (needsAction proposal-awareness) in this session's PR; optional self-heal (Change 3/3b) deferred. Filed 2026-06-09 (QB-verified live 2026-06-09). Highest-value correctness item open — corrupts thesis-state on every declined ENTER proposal under the live approval toggle. Mechanism confirmed in code + one live in-flight case (PEAD/SNOW). **Zero *completed* orphans in the DB yet** — caught before it bites, not "already recurring" (a correction to the original framing).
 
 **The bug.** On the proposal path `place_trade` creates the buy proposal and returns at the approval seam (`place-trade.ts:623` → awaiting envelope ~639) **without** flipping the thesis — its inline WATCHING→ACTIVE flip (`place-trade.ts:949`) sits past the early return and never runs; `maybeAwaitApproval` doesn't touch the thesis either (`maybe-await-approval.ts:203-222`). The flip is *meant* to happen later at approval via `promoteThesisOnApproval` (`thesis-flips.ts:39`, called from `execute.ts:245`). **But both prompts tell the agent to flip it manually right after place_trade** — tactical `intraday-tactical.ts:237-244`, daily `system-prompt.ts:224`. The agent's `update_thesis(change_status:"ACTIVE")` branch (`update-thesis.ts:1239-1286`) only requires `status==='WATCHING'` + target + stop — **no open-position check** — so it flips the thesis ACTIVE while the position is still `PENDING_APPROVAL`. Reject (`execute.ts:315`) and expire (`proposal-expiry.ts`) flip Position→CANCELLED and write a PROPOSAL_REJECTED/EXPIRED audit row but **never revert Thesis.status** → thesis stuck ACTIVE, no position.
 
@@ -94,18 +94,9 @@ On Catalyst the hidden $6k is the binding cap: settings says $8k, live trades st
 
 **Fix direction (display + edit only — leave the `min()` math alone):** surface `realMaxPosition` in `AnalystConfigForm` (read + edit) so the LIVE cap is visible/editable post-promote, and/or show the *effective* live cap `min(box, realMaxPosition)` on the settings/analyst screen with a note when it sits below the box.
 
-### Activity feed renders rejected proposals as "Sold" — should be "Rejected"
-**Status:** open, filed 2026-06-08. **PR #399 carries an interim revert — the next session implements this; do not ship the "drop" approach.**
-
-A rejected/expired **buy** proposal (`Position.status=CANCELLED`, order `REJECTED`, never filled) is rendered by the homepage activity feed as a `type:"CLOSED"` → **"Sold"** card (proposed shares/price, $0 P&L). Root cause: the closed-positions query in `lib/actions/portfolio.actions.ts` (~line 379) pulls `status IN (CLOSED, CANCELLED)`, and the "Recent closes" loop (~996) + the Closed-tab map (~682) treat CANCELLED as a real trade. Analytics (realized P&L, win-rate, equity curve) already exclude them via outcome/realizedPnl null-checks.
-
-**Principal's call: show them, correctly labeled — do NOT drop them.** The feed should reflect the full lifecycle: **Proposed → Bought/Sold (approved) → Rejected (buy or sell).** Implementation: add a `REJECTED` type to `ActivityFeedItem` (`portfolio.actions.ts:132`, currently `OPENED|CLOSED|MODIFIED|PROPOSED`); push REJECTED events for cancelled-buy positions **and** rejected-sell close orders (REJECTED `intent=CLOSE` on a still-OPEN position) with the right verb; add an `isRejected` branch + a muted "Rejected" badge in `components/dashboard/ActivityFeed.tsx` (currently only handles OPENED/CLOSED/MODIFIED at lines 44-46). Display-only — the DB is correct (CANCELLED is the right terminal state).
-
-### Disposition of paused intelligence infrastructure
-**Status:** open **decision** (principal's call). After #361: 4 Inngest crons paused (firm-market-sweep, portfolio-watchlist-monitor, domain-monitor, signal-router), 65 monitors disabled, `read_signals` stripped from the daily-run allowlist, `Signal`/`SignalBatch`/`AnalystSignalRoute` tables idle, `AgentConfig.feeds` unconsumed. Decide per-piece: **delete** (commit to the operator-driven pivot) vs **keep-paused-as-fallback.** QB rec (2026-06-05): delete — operator-driven discovery is the mode, paused code rots and pollutes audits. Intertwined with P1-23.
-
-### Sunday discovery cron disposition
-**Status:** open **decision**. `discovery-run.ts` (Sunday 9 AM cron) still runs per-archetype, but operator-driven discovery via chat is now primary. Kill / keep-as-fallback / repurpose (read a stored operator prompt). QB rec: kill.
+### Parked / done (not active items)
+- **Activity feed "Sold" → "Rejected"** — **shipped.** Cancelled (rejected/expired) buy proposals render as a `REJECTED` activity item ("Rejected — buy N @ $X"), not a "Sold" card (`lib/actions/portfolio.actions.ts:1085-1093`; confirmed in the live feed). Removed from the board. (Minor residual not tracked: rejected SELL orders on a still-OPEN position aren't surfaced as a feed event yet.)
+- **Paused intelligence infra + Sunday `discovery-run.ts` cron** — **paused and parked.** Fine as-is; the principal will revisit / maybe rebuild discovery later. **Not an open decision — don't re-raise each session.**
 
 ---
 
