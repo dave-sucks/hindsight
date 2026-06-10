@@ -215,6 +215,14 @@ export interface NeedsActionInput {
   latestQuote?: { price: number; changePct: number } | null;
   /** Caller-supplied `now` keeps the function pure and testable. */
   now: Date;
+  /**
+   * P1-25 Change 4 — true when this analyst has a pending buy proposal on the
+   * thesis's ticker (Position.status='PENDING_APPROVAL'). Suppresses ENTER
+   * needsAction: the entry is already proposed, so re-flagging it would make
+   * the agent re-attempt place_trade (rejected by the dedup guard) and nag
+   * complete_run. Non-ENTER triggers and REVIEW_DUE still surface.
+   */
+  hasPendingEntryProposal?: boolean;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -222,7 +230,8 @@ export interface NeedsActionInput {
 export function computeNeedsAction(
   input: NeedsActionInput,
 ): NeedsAction | null {
-  const { thesis, latestUpdate, latestQuote, now } = input;
+  const { thesis, latestUpdate, latestQuote, now, hasPendingEntryProposal } =
+    input;
 
   // 0) PROMOTED_AWAITING_RESOLUTION — highest precedence. Any PROMOTED
   //    thesis ALWAYS needs resolution this run regardless of trigger
@@ -248,13 +257,19 @@ export function computeNeedsAction(
   //    the top of the stack means the fire is still open work.
   if (latestUpdate?.type === "TRIGGER_FIRED" && latestUpdate.triggerId) {
     const t = thesis.triggers.find((x) => x.id === latestUpdate.triggerId);
-    return {
-      kind: "TRIGGER_FIRED",
-      triggerId: latestUpdate.triggerId,
-      action: (t?.action as NeedsActionVerb) ?? "REVIEW",
-      summary: t ? describePredicate(t.predicate) : "(predicate removed)",
-      firedAt: latestUpdate.timestamp.toISOString(),
-    };
+    const action = (t?.action as NeedsActionVerb) ?? "REVIEW";
+    // P1-25 Change 4: a pending buy proposal already expresses the ENTER —
+    // don't re-flag it (the agent would re-attempt place_trade and hit the
+    // PENDING_APPROVAL dedup guard). Fall through; non-ENTER work still surfaces.
+    if (!(hasPendingEntryProposal && action === "ENTER")) {
+      return {
+        kind: "TRIGGER_FIRED",
+        triggerId: latestUpdate.triggerId,
+        action,
+        summary: t ? describePredicate(t.predicate) : "(predicate removed)",
+        firedAt: latestUpdate.timestamp.toISOString(),
+      };
+    }
   }
 
   // 2) TRIGGER_MATCHING_NOW — server-side eval against the fresh quote
@@ -277,10 +292,13 @@ export function computeNeedsAction(
       now,
     });
     if (result.fires) {
+      const action = (trigger.action as NeedsActionVerb) ?? "REVIEW";
+      // P1-25 Change 4: suppress ENTER while a buy proposal is pending.
+      if (hasPendingEntryProposal && action === "ENTER") continue;
       return {
         kind: "TRIGGER_MATCHING_NOW",
         triggerId: trigger.id,
-        action: (trigger.action as NeedsActionVerb) ?? "REVIEW",
+        action,
         predicateSummary: describePredicate(trigger.predicate),
         livePrice: latestQuote?.price ?? null,
       };

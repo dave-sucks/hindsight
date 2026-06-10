@@ -28,6 +28,7 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
+import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { getLatestPrices } from "@/lib/alpaca";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -401,6 +402,9 @@ export const getTheses = defineTool({
       }
 
       const now = new Date();
+      const pendingEntryTickers = ctx.analystId
+        ? await getPendingEntryTickers(ctx.analystId)
+        : new Set<string>();
       for (const t of liveTheses) {
         const parsed = triggersArraySchema.safeParse(t.triggers);
         const triggers: Trigger[] = parsed.success
@@ -433,6 +437,7 @@ export const getTheses = defineTool({
             latestUpdate: latestByThesisId.get(t.id) ?? null,
             latestQuote,
             now,
+            hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
           }),
         );
       }
