@@ -72,28 +72,6 @@ Deliberate ~80-120 line PR, not a one-liner. **Do not** ship the prompt deletion
 
 ## P2 — Backlog
 
-### LIVE per-position cap (`realMaxPosition`) is invisible + uneditable in settings — the visible box can overstate the real cap
-**Status:** open, filed 2026-06-09 (principal). UX/discoverability, **not** a safety bug — P2. QB-verified live 2026-06-09.
-
-**The model.** Two caps:
-- `maxPositionSize` — the box in `AnalystConfigForm`. The paper cap, freely editable in settings.
-- `realMaxPosition` — `@default(500)` in `prisma/schema.prisma:525`, but both analyst-create paths seed it to `maxPositionSize` (`lib/actions/analyst.actions.ts:888`, `:1103`), so 500 is effectively a dead default. After create it is written **only** by the Promote dialog (`components/analysts/PromoteAnalystDialog.tsx:123`). It does **not** appear in `AnalystConfigForm`, and no update path re-syncs it — so once you promote, it's invisible and uneditable in normal settings short of demote→re-promote or a DB write.
-
-**The mechanic** (`lib/agent/tools/place-trade.ts:402-406`): LIVE trades cap at `min(maxPositionSize, realMaxPosition)`; PAPER uses `maxPositionSize` only.
-
-**Verified live state (2026-06-09):**
-
-| Analyst | Box (visible) | `realMaxPosition` (hidden) | Real LIVE cap | Box honest? |
-|---|---|---|---|---|
-| PEAD Specialist | $3,000 | $6,000 | $3,000 | ✅ box binds |
-| Catalyst Event PM | $8,000 | $6,000 | $6,000 | ❌ box overstates by $2k |
-
-On Catalyst the hidden $6k is the binding cap: settings says $8k, live trades stop at $6k, and nothing on screen explains why. The same ceiling would bite PEAD if its box were ever raised above $6k.
-
-**Verdict — not on fire.** `min()` can only make the live cap *smaller* than the visible box, never larger → zero over-trading / compliance risk. Worst case is "Catalyst sizes smaller than intended and the operator can't see why." Discoverability gap, not safety.
-
-**Fix direction (display + edit only — leave the `min()` math alone):** surface `realMaxPosition` in `AnalystConfigForm` (read + edit) so the LIVE cap is visible/editable post-promote, and/or show the *effective* live cap `min(box, realMaxPosition)` on the settings/analyst screen with a note when it sits below the box.
-
 ### Parked / done (not active items)
 - **Activity feed "Sold" → "Rejected"** — **shipped.** Cancelled (rejected/expired) buy proposals render as a `REJECTED` activity item ("Rejected — buy N @ $X"), not a "Sold" card (`lib/actions/portfolio.actions.ts:1085-1093`; confirmed in the live feed). Removed from the board. (Minor residual not tracked: rejected SELL orders on a still-OPEN position aren't surfaced as a feed event yet.)
 - **Paused intelligence infra + Sunday `discovery-run.ts` cron** — **paused and parked.** Fine as-is; the principal will revisit / maybe rebuild discovery later. **Not an open decision — don't re-raise each session.**

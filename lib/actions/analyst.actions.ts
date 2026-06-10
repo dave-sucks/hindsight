@@ -55,6 +55,8 @@ export interface AnalystConfig {
   feeds: string[];
   dailyLossLimit: number;
   scheduleTime: string;
+  /** Owner email opt-out for this analyst (new trades, fills, approval requests). */
+  emailAlerts: boolean;
   createdAt: Date;
   updatedAt: Date;
   // V3 intelligence fields — populated from Monitor table + AgentConfig.intelligencePolicy
@@ -651,6 +653,7 @@ export async function getAnalystDetail(
     feeds: (config.feeds as string[] | undefined) ?? [],
     dailyLossLimit: config.dailyLossLimit,
     scheduleTime: config.scheduleTime,
+    emailAlerts: config.emailAlerts,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
     intelligencePolicy: (config.intelligencePolicy as Record<string, unknown>) ?? null,
@@ -1258,6 +1261,11 @@ type UpdatableField =
   | "directionBias"
   | "minConfidence"
   | "maxPositionSize"
+  // Live per-position cap (LIVE only). Set at promotion via PromoteAnalystDialog;
+  // editable here so it isn't invisible/uneditable after promotion. place_trade
+  // caps live orders at min(maxPositionSize, realMaxPosition) — see
+  // lib/agent/tools/place-trade.ts. Ignored in PAPER.
+  | "realMaxPosition"
   | "maxOpenPositions"
   // NOTE: maxRiskPct and scheduleTime removed from the editable surface —
   // both are orphan fields at runtime (no code path reads them). If
@@ -1273,7 +1281,11 @@ type UpdatableField =
   | "marketCapMin"
   | "marketCapMax"
   // ── Feeds (firm-aggregate subscription dimension) ────────
-  | "feeds";
+  | "feeds"
+  // ── Notifications ────────────────────────────────────────
+  // Read at runtime by every email path (daily-run-digest, proposal-pending,
+  // place-trade open-email, closeTrade close-email, maybe-await-approval).
+  | "emailAlerts";
 
 /** Fields whose server payload must be coerced to BigInt for the BigInt? columns. */
 const BIGINT_FIELDS: ReadonlySet<UpdatableField> = new Set<UpdatableField>([

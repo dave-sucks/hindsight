@@ -99,6 +99,17 @@ export type FormValues = {
   maxOpenPositions: number;
   maxPositionSize: number;
 
+  // Live trading — set by the Promote dialog (PromoteAnalystDialog), surfaced
+  // here so the live cap isn't invisible/uneditable after promotion. Both are
+  // LIVE-only: realMaxPosition is ignored while PAPER (paper uses
+  // maxPositionSize). tradingEnvironment is read-only context here — promotion
+  // / demotion runs through the Promote dialog, not this form.
+  tradingEnvironment?: "PAPER" | "LIVE";
+  realMaxPosition?: number;
+
+  // Notifications — owner email opt-out, live across every email path.
+  emailAlerts?: boolean;
+
   // Signal attention (read-only — set by Builder)
   intelligencePolicy?: FormPolicy | null;
 
@@ -764,6 +775,30 @@ function SettingsTab({
             }}
           />
 
+          {/* Live per-position cap — only meaningful once promoted to LIVE.
+              Paper trades ignore it (they use Max Position Size). */}
+          {values.tradingEnvironment === "LIVE" && (
+            <>
+              <RowLabel
+                label="Live per-position cap"
+                tooltip="Hard ceiling on any single live order, set at promotion. Live trades use the lower of this and Max Position Size. Ignored while paper."
+              />
+              <Input
+                type="number"
+                defaultValue={values.realMaxPosition}
+                min={0}
+                step={100}
+                className={cn(GHOST_INPUT, "w-24 text-right tabular-nums")}
+                onBlur={(e) => {
+                  const n = parseFloat(e.target.value);
+                  if (!isNaN(n) && n !== values.realMaxPosition) {
+                    onChange("realMaxPosition", Math.max(0, n));
+                  }
+                }}
+              />
+            </>
+          )}
+
           {typeof policy?.allowLiveSearch === "boolean" && (
             <>
               <RowLabel
@@ -774,6 +809,16 @@ function SettingsTab({
             </>
           )}
         </div>
+
+        {/* Effective live cap — surfaces min(maxPositionSize, realMaxPosition)
+            so a live cap below the visible box is never silent. */}
+        {values.tradingEnvironment === "LIVE" &&
+          values.realMaxPosition != null && (
+            <EffectiveLiveCapNote
+              maxPositionSize={values.maxPositionSize}
+              realMaxPosition={values.realMaxPosition}
+            />
+          )}
 
         {/* Signal attention — same label style as the rows above */}
         {policy && total > 0 && (
@@ -875,7 +920,55 @@ function SettingsTab({
           onChange={(field, v) => onChange(field, v)}
         />
       </Section>
+
+      {/* Notifications ─────────────────────────────────────────── */}
+      {typeof values.emailAlerts === "boolean" && (
+        <Section label="Notifications">
+          <div className="grid grid-cols-[1fr_auto] items-center gap-y-1 [&>*:nth-child(even)]:justify-self-end">
+            <RowLabel
+              label="Email alerts"
+              tooltip="Email the account owner on new trades, fills, and approval requests for this analyst."
+            />
+            <Switch
+              checked={values.emailAlerts}
+              onCheckedChange={(v) => onChange("emailAlerts", v)}
+            />
+          </div>
+        </Section>
+      )}
     </div>
+  );
+}
+
+// ─── Effective live cap note ─────────────────────────────────────────────────
+// LIVE analysts cap each order at min(maxPositionSize, realMaxPosition)
+// (lib/agent/tools/place-trade.ts). When the live cap sits below the visible
+// Max Position Size box, surface the gap so the real ceiling is never silent.
+function EffectiveLiveCapNote({
+  maxPositionSize,
+  realMaxPosition,
+}: {
+  maxPositionSize: number;
+  realMaxPosition: number;
+}) {
+  const effective = Math.min(maxPositionSize, realMaxPosition);
+  const below = realMaxPosition < maxPositionSize;
+  const fmt = (n: number) => `$${Math.round(n).toLocaleString()}`;
+
+  return (
+    <p className="text-xs text-muted-foreground">
+      Live orders cap at{" "}
+      <span className="tabular-nums text-foreground">{fmt(effective)}</span>
+      {below ? (
+        <>
+          {" "}— below the{" "}
+          <span className="tabular-nums">{fmt(maxPositionSize)}</span> max
+          position size above, so live trades stop there.
+        </>
+      ) : (
+        <> — the lower of the live cap and max position size.</>
+      )}
+    </p>
   );
 }
 

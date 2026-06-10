@@ -58,6 +58,9 @@ export function AnalystConfigSheet({
     minConfidence: config.minConfidence,
     maxOpenPositions: config.maxOpenPositions,
     maxPositionSize: config.maxPositionSize,
+    tradingEnvironment: config.tradingEnvironment,
+    realMaxPosition: config.realMaxPosition,
+    emailAlerts: config.emailAlerts,
     intelligencePolicy: (config.intelligencePolicy as FormValues["intelligencePolicy"]) ?? null,
     sectors: config.sectors,
     industries: config.industries,
@@ -71,13 +74,15 @@ export function AnalystConfigSheet({
   const handleChange: FormChangeHandler = (field, value) => {
     // The form's FormValues field names align 1:1 with UpdatableField for
     // every persisted field. Fields the form surfaces but the server doesn't
-    // accept (sources, searchQueries, intelligencePolicy) never call this —
-    // sources + searchQueries mutate via add/remove handlers below;
-    // intelligencePolicy is display-only.
+    // accept never call this: sources + searchQueries mutate via add/remove
+    // handlers below; intelligencePolicy is display-only; tradingEnvironment is
+    // read-only context here (promotion/demotion runs through the Promote
+    // dialog, which force-closes positions — not a plain field write).
     if (
       field === "sources" ||
       field === "searchQueries" ||
-      field === "intelligencePolicy"
+      field === "intelligencePolicy" ||
+      field === "tradingEnvironment"
     ) {
       return;
     }
