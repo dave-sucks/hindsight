@@ -16,6 +16,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail, getUserEmail } from "@/lib/email";
 import { getOwnerUserId } from "@/lib/auth/account";
+import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import {
   renderTradeCard,
   tradeDetailUrl,
@@ -35,6 +36,13 @@ export interface ProposalPendingData {
   entryPrice?: number | null;
   /** Optional current live quote — useful when the proposal sits while the market moves. */
   currentPrice?: number | null;
+  /**
+   * Close proposals only: did we resolve a live exit quote? When false (quote
+   * lookup failed / returned 0) the card renders Est. exit "—" and suppresses
+   * P&L instead of showing a false $0 / +0.0% — the avgCost-as-exit bug.
+   * Defaults to true.
+   */
+  exitPriceKnown?: boolean;
   /** Proposed target / stop on OPEN / ADD. */
   targetPrice?: number | null;
   stopLoss?: number | null;
@@ -48,18 +56,22 @@ export interface ProposalPendingData {
 
 export function proposalPendingHtml(d: ProposalPendingData): string {
   const isClose = d.intent === "CLOSE" || d.intent === "PARTIAL_CLOSE";
+  // Defaults true; only a failed live-quote lookup sets it false.
+  const exitKnown = d.exitPriceKnown !== false;
 
-  // For sells the proposal's "exit price" is the estimated fill; entry comes
-  // from the existing position. For buys the estimated entry IS the price.
+  // For sells the proposal's "exit price" is the estimated fill (a live quote);
+  // entry comes from the existing position. For buys the estimated entry IS the
+  // price. When the exit quote is unknown, leave exit undefined → the card shows
+  // "—" and suppresses P&L rather than rendering a false $0.
   const entryPrice = isClose ? d.entryPrice ?? d.estimatedPrice : d.estimatedPrice;
-  const exitPrice = isClose ? d.estimatedPrice : undefined;
+  const exitPrice = isClose && exitKnown ? d.estimatedPrice : undefined;
 
   const realizedPnl =
-    isClose && d.entryPrice != null
+    isClose && exitKnown && d.entryPrice != null
       ? (d.estimatedPrice - d.entryPrice) * d.qty * (d.direction === "LONG" ? 1 : -1)
       : null;
   const realizedPnlPct =
-    isClose && d.entryPrice != null && d.entryPrice > 0
+    isClose && exitKnown && d.entryPrice != null && d.entryPrice > 0
       ? ((d.estimatedPrice - d.entryPrice) / d.entryPrice) * 100 *
         (d.direction === "LONG" ? 1 : -1)
       : null;
@@ -132,6 +144,21 @@ export async function sendProposalPendingEmail(orderId: string): Promise<void> {
     const intent = (order.intent ?? "OPEN") as ProposalPendingData["intent"];
     const direction = order.position.direction as "LONG" | "SHORT";
     const environment = order.position.environment as "PAPER" | "LIVE";
+    const isClose = intent === "CLOSE" || intent === "PARTIAL_CLOSE";
+
+    // BUG FIX (2026-06-09): for CLOSE/PARTIAL_CLOSE the proposal price is the
+    // EXIT — a fresh live quote — NOT the position's entry (avgCost). Feeding
+    // avgCost made the email render exit == entry → "Est. P&L +$0.00 / +0.0%"
+    // on every sell proposal. Buys are unaffected: for an OPEN/ADD the
+    // position's avgCost IS the proposed entry. If the quote is missing or 0
+    // (Finnhub returns c:0 for unknown symbols), fall back to avgCost but flag
+    // exitPriceKnown=false so the card shows "—" + no P&L, never a false zero.
+    const liveQuote = isClose ? await getStockQuote(order.symbol) : null;
+    const liveExit = liveQuote && liveQuote.c > 0 ? liveQuote.c : null;
+    const estimatedPrice = isClose
+      ? liveExit ?? order.position.avgCost
+      : order.position.avgCost;
+
     const livePrefix = environment === "LIVE" ? "[LIVE] " : "";
     const verbStr = subjectVerb(intent, direction);
     const subject = `${livePrefix}${analyst?.name ?? "Analyst"} wants to ${verbStr} ${order.quantity} ${order.symbol}`;
@@ -142,9 +169,11 @@ export async function sendProposalPendingEmail(orderId: string): Promise<void> {
       direction,
       intent,
       qty: order.quantity,
-      estimatedPrice: order.position.avgCost,
-      estimatedCost: order.quantity * order.position.avgCost,
+      estimatedPrice,
+      estimatedCost: order.quantity * estimatedPrice,
       entryPrice: order.position.avgCost,
+      currentPrice: isClose ? liveExit : order.position.avgCost,
+      exitPriceKnown: isClose ? liveExit != null : true,
       openedAt: order.position.openedAt ?? null,
       expiresAt: order.expiresAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
       rationale: order.rationale,
