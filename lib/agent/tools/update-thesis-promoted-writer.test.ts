@@ -123,6 +123,53 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
     expect(result.data.error).toBe("thesis_writer_cannot_change_promoted_status");
   });
 
+  it("refuses change_status: ACTIVE from the agent on a WATCHING thesis (tool-owned, P1-25)", async () => {
+    // WATCHING → ACTIVE is owned by place_trade (on fill/approval), not the
+    // agent. The agent flipping it here before a fill is the orphan bug.
+    mockThesisFindUnique.mockResolvedValueOnce({
+      ...promotedThesisRow,
+      status: "WATCHING",
+    });
+    const ctx = makeCtx({ runMode: "MORNING_PLAN" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = updateThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
+
+    const result = await tool.execute({
+      thesis_id: "thesis_promoted_1",
+      rationale: "Bought it — marking active",
+      change_status: "ACTIVE",
+      target_price: 220,
+      stop_loss: 185,
+    });
+
+    expect(result.data.ok).toBe(false);
+    expect(result.data.error).toBe("status_is_tool_owned");
+    expect(result.data.attempted).toBe("ACTIVE");
+    expect(mockThesisUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses change_status: CLOSED from the agent on an ACTIVE thesis (tool-owned, P1-25)", async () => {
+    // ACTIVE → CLOSED is owned by close_position (on fill/approval), not the agent.
+    mockThesisFindUnique.mockResolvedValueOnce({
+      ...promotedThesisRow,
+      status: "ACTIVE",
+    });
+    const ctx = makeCtx({ runMode: "MORNING_PLAN" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = updateThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
+
+    const result = await tool.execute({
+      thesis_id: "thesis_promoted_1",
+      rationale: "Sold it — marking closed",
+      change_status: "CLOSED",
+    });
+
+    expect(result.data.ok).toBe(false);
+    expect(result.data.error).toBe("status_is_tool_owned");
+    expect(result.data.attempted).toBe("CLOSED");
+    expect(mockThesisUpdate).not.toHaveBeenCalled();
+  });
+
   it("allows runMode=THESIS_WRITER on PROMOTED thesis WITHOUT change_status (research-only refresh)", async () => {
     // The legitimate writer path: refresh research, leave status alone.
     // The PROMOTED-requires-resolution gate kicks in next (because the

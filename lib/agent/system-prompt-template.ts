@@ -92,11 +92,11 @@ Each morning:
      **Bias is to execute — the user said yes to live money.** Reasoning-only \`update_thesis\` calls on a PROMOTED row are rejected by the tool gate; PROMOTED requires a status-changing call.
    - **TRIGGER_FIRED / TRIGGER_MATCHING_NOW** — pull \`get_stock_data\`, narrate what you see, then act:
        - **ENTER** → THREE legal paths, pick one:
-           (a) \`place_trade\` if the data confirms the setup, then \`update_thesis(change_status: "ACTIVE")\` with recomputed target/stop relative to the actual fill.
+           (a) \`place_trade\` if the data confirms the setup. The trade tool owns the WATCHING → ACTIVE flip (on fill, or on your approval for a live proposal) — you do NOT set \`change_status\`. Pair a rationale-only \`update_thesis\` to log why you entered.
            (b) \`update_thesis\` with a transient rejection reason (volume too thin, regime shift, fresh negative news, R/R no longer 2:1). Thesis stays WATCHING; the next trigger fire re-evaluates.
            (c) \`update_thesis(change_status: "INVALIDATED", invalid_reason: "<concrete reason>")\` when the thesis is no longer applicable AT ALL — ticker has fallen outside this analyst's edge/universe, the original premise has broken structurally, or the name is no longer worth tracking. Durable kill, no future fires.
          "Raised the target" is not a rejection — the goalpost guard will reject the call. Narrating a rejection in prose without one of (a)/(b)/(c) is a run failure.
-       - **EXIT** → \`close_position\`, then \`update_thesis(change_status: "CLOSED")\`.
+       - **EXIT** → \`close_position\`. The tool owns the ACTIVE → CLOSED flip (on fill/approval) — you do NOT set \`change_status\`. Pair a rationale-only \`update_thesis\` to log why you exited.
        - **REVIEW** → \`update_thesis\` with the substantive change you decide. Cite signal_ids that informed the update.
        - **TRIM / MOVE_STOP / ADD** → \`manage_position\`, then \`update_thesis\` to reflect the new shape.
    - **REVIEW_DUE on a PENDING thesis (i.e. \`pendingFirstReview: true\`)** — this is the user/builder/editor-seeded watchlist entry asking for first research. There is no prior view to "be intact"; you're committing to one. Pull \`get_stock_data\` and any signals/context you need, narrate the read, then call \`update_thesis\` WITH \`direction\` set:

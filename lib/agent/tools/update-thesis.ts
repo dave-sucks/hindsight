@@ -307,12 +307,11 @@ const updateSchema = z.object({
     .enum(["ACTIVE", "INVALIDATED", "CLOSED", "ARCHIVED", "WATCHING"])
     .optional()
     .describe(
-      "Deliberate status transition. " +
-        "ACTIVE = WATCHING → ACTIVE or PROMOTED → ACTIVE (entry condition fired and you took the trade). MUST be paired with a place_trade in the same run, AND target_price + stop_loss must be supplied — recomputed relative to the actual entry, not copied from the WATCHING row's old levels. " +
+      "Deliberate status transition — the BELIEF/lifecycle changes the analyst owns. " +
+        "ACTIVE and CLOSED are NOT settable here — they're tool-owned account facts. WATCHING → ACTIVE happens automatically when your buy fills (place_trade); ACTIVE → CLOSED when your sell fills (close_position) — on the fill, or on the user's approval for a live proposal. Call those tools; the thesis status flips itself. " +
         "WATCHING = PROMOTED → WATCHING only. The legal opt-out path when you decide not to re-enter a just-promoted thesis on the first live run. The conviction stays in the library; the analyst will re-evaluate on subsequent runs. " +
         "INVALIDATED = the belief broke; we no longer believe the thesis (use this when concrete evidence disproves the view). Not allowed on PROMOTED — use WATCHING. " +
         "ARCHIVED = walked away from coverage without evidence-based invalidation (e.g. agent or user removed it from the watchlist, PENDING flipped to PASS after first research). Off the watchlist; visible on the stock page as institutional memory. " +
-        "CLOSED = we exited the position based on this thesis (target hit, stop, manual close). Not allowed on PROMOTED (no position to close from). " +
         "For direction flips or completely new beliefs, use record_thesis with parent_thesis_id instead.",
     ),
 
@@ -564,7 +563,7 @@ export const updateThesis = defineTool({
         args.change_status !== "ACTIVE" &&
         args.change_status !== "WATCHING"
       ) {
-        const errorMsg = `PROMOTED thesis ${existing.ticker} requires an explicit resolution this run: change_status: "ACTIVE" (+ place_trade) to re-enter live, OR change_status: "WATCHING" to defer. Reasoning-only patches don't count — the thesis stays PROMOTED until you act.`;
+        const errorMsg = `PROMOTED thesis ${existing.ticker} requires an explicit resolution this run: call place_trade to re-enter live (the trade flips PROMOTED → ACTIVE on fill), OR update_thesis(change_status: "WATCHING") to defer. Reasoning-only patches don't count — the thesis stays PROMOTED until you act.`;
         return {
           summary: `PROMOTED thesis needs explicit resolution: ${existing.ticker}`,
           data: {
@@ -576,6 +575,35 @@ export const updateThesis = defineTool({
           sources: [],
         };
       }
+    }
+
+    // ── ACTIVE/CLOSED are tool-owned (P1-25) ──────────────────────────────
+    // WATCHING→ACTIVE and ACTIVE→CLOSED are facts about the Alpaca account,
+    // not analyst opinions — set ONLY by the execution/approval layer when a
+    // real fill lands (place_trade inline + promoteThesisOnApproval; close_
+    // position / closeThesisOnApproval). The agent setting them here is what
+    // stranded SNOW: on a proposal path it flipped WATCHING→ACTIVE before
+    // approval, and reject/expire never reverted it → orphan thesis with no
+    // position. The agent expresses INTENT (place_trade / close_position); the
+    // tool projects the status. Refuse both with a redirect. (The PROMOTED-
+    // specific gates above run first so their tailored messages win.)
+    if (args.change_status === "ACTIVE" || args.change_status === "CLOSED") {
+      const tool =
+        args.change_status === "ACTIVE" ? "place_trade" : "close_position";
+      const verb = args.change_status === "ACTIVE" ? "enter" : "exit";
+      return {
+        summary: `update_thesis can't set ${args.change_status} on $${existing.ticker} — that's tool-owned.`,
+        data: {
+          ok: false,
+          error: "status_is_tool_owned",
+          attempted: args.change_status,
+          message:
+            `You don't set ${args.change_status} via update_thesis. WATCHING → ACTIVE happens automatically when your buy fills (place_trade), and ACTIVE → CLOSED when your sell fills (close_position) — on the actual fill, or on the user's approval for a live proposal. ` +
+            `To ${verb} this position call \`${tool}\`; the thesis status flips itself. ` +
+            `If you're refining the thesis (target/stop/belief/triggers) or just recording rationale, drop change_status and pass those fields directly.`,
+        },
+        sources: [],
+      };
     }
 
     // ── Position-thesis pairing guard ─────────────────────────────────────
