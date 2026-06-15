@@ -1,11 +1,13 @@
 /**
- * Shared display status for trades — keeps dot colors, labels, and tooltip
+ * Shared display map for trades — keeps dot colors, labels, and tooltip
  * text consistent across every trade surface (dashboard sidebar, trades
  * table, thesis card, trade card, trade detail page).
  *
- * Derived from the two real entities:
- *   - Position.status  → OPEN | CLOSED | CANCELLED
- *   - latest Order.status → PENDING | FILLED | CANCELLED | REJECTED
+ * This is the trivial display-key → label/color map only. Callers derive
+ * the display key from the real entities (`Position.status` + `outcome`)
+ * at the call site — there is no combined-status mapper here. The old
+ * `deriveTradeStatus` Position×Order conflation was removed in the P1-24
+ * UI-cleanup PR; render the real `Position.status` directly.
  *
  * Status semantics:
  *   PENDING         Order submitted, not yet filled. Amber dot.
@@ -111,24 +113,4 @@ export const TRADE_STATUS_DISPLAY: Record<TradeStatus, TradeStatusDisplay> = {
 export function shortAlpacaId(id: string | null | undefined): string | null {
   if (!id) return null;
   return id.length > 12 ? `${id.slice(0, 8)}…` : id;
-}
-
-/**
- * Derive the display TradeStatus from raw Position.status + outcome.
- * Use this at every call site that hands a Position into TradeRow — the
- * raw enum has no win/loss split, so passing it directly makes every
- * closed row fall back to the OPEN default (blue pulse). Dashboard and
- * the analyst sidebar both go through this so the dot stays consistent.
- */
-export function deriveTradeStatus(
-  status: string,
-  outcome?: string | null,
-): TradeStatus {
-  if (status === "OPEN") return "OPEN";
-  if (status === "PENDING") return "PENDING";
-  if (status === "CANCELLED") return "CANCELLED";
-  if (status === "REJECTED") return "REJECTED";
-  if (outcome === "WIN") return "CLOSED_WIN";
-  if (outcome === "LOSS") return "CLOSED_LOSS";
-  return "CLOSED_EXPIRED";
 }
