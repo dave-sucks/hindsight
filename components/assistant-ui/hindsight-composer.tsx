@@ -429,7 +429,10 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
       attributes: {
         "data-slot": "input-group-control",
         class: [
-          "min-h-[4.5rem] w-full px-3 py-2 text-sm leading-relaxed",
+          // min-h keeps the resting size; max-h caps growth on paste and
+          // overflow-y-auto scrolls the editor internally past the cap so
+          // the chat above stays readable (Claude/GPT composer behavior).
+          "min-h-[4.5rem] max-h-[40vh] w-full overflow-y-auto px-3 py-2 text-sm leading-relaxed",
           "bg-transparent outline-none focus:outline-none",
           "[&>p]:m-0 [&>p+p]:mt-1",
         ].join(" "),
@@ -495,7 +498,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      <InputGroup className="w-full bg-background/80 backdrop-blur-sm">
+      <InputGroup variant="plain" className="w-full bg-background/80 backdrop-blur-sm">
         {/* Optional context badge — rendered above the editor as a
             block-start addon. Notion / Linear / Claude pattern. */}
         {contextChip && (
