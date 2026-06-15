@@ -184,7 +184,11 @@ export async function closeThesisForPosition(opts: {
         // P1-24 B2: held theses are HOLDING (new) or ACTIVE (legacy, pre-
         // backfill). Match both so an approved close never strands a held row.
         status: { in: ["ACTIVE", "HOLDING"] },
-        direction: { not: "PASS" },
+        // P1-24 PASS-off-direction: explicit ALLOWLIST (LONG/SHORT) replaces
+        // the old `{ not: "PASS" }` denylist. A held thesis is always
+        // directional; the allowlist is robust to direction=null and the
+        // status filter above already excludes passes (PASS → status=PASSED).
+        direction: { in: ["LONG", "SHORT"] },
         researchRun: { agentConfigId: opts.analystId },
       },
       orderBy: { createdAt: "desc" },

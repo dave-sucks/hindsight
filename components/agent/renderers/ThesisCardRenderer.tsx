@@ -193,7 +193,11 @@ function collectReadTheses(
     >;
     const cards = (data.cards as ThesisCardData[] | undefined) ?? [];
     for (const c of cards) {
-      if (c?.ticker && c?.direction) out.push(c);
+      // P1-24: a card's `direction` can legitimately be null now — an
+      // unresearched WATCHING seed, or a PASSED row (a pass stores
+      // direction=null; its meaning is on status). Gate on ticker only;
+      // dropping null-direction cards would hide passed/seed rows.
+      if (c?.ticker) out.push(c);
     }
   }
   return out;

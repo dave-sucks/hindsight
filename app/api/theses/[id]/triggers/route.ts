@@ -245,11 +245,13 @@ export async function GET(
         ...(ownAnalystId
           ? { researchRun: { agentConfigId: ownAnalystId } }
           : {}),
-        OR: [
-          // P1-24: RETIRED is the collapsed terminal; legacy values kept for dual-read.
-          { status: { in: ["INVALIDATED", "ARCHIVED", "CLOSED", "RETIRED"] } },
-          { direction: "PASS" },
-        ],
+        // P1-24: every terminal/declined sibling is caught by STATUS now.
+        // PASSED = researched-declined (was direction='PASS'); RETIRED = the
+        // collapsed terminal (incl. passed-then-terminal). Legacy
+        // INVALIDATED/ARCHIVED/CLOSED kept for dual-read until the contract
+        // PR. The old `{ direction: "PASS" }` OR-clause is gone — a pass now
+        // stores direction=null, so PASSED/RETIRED status entries cover it.
+        status: { in: ["INVALIDATED", "ARCHIVED", "CLOSED", "RETIRED", "PASSED"] },
       },
       orderBy: { createdAt: "desc" },
       take: 1,

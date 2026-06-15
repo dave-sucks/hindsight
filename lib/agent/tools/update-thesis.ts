@@ -335,7 +335,10 @@ const updateSchema = z.object({
 });
 
 type UpdatePatch = Partial<{
-  direction: string;
+  // P1-24: `LONG | SHORT | null` only. A PASS patch writes `null` here and
+  // carries the pass fact on status=PASSED (the column no longer stores
+  // 'PASS' or 'PENDING').
+  direction: string | null;
   entryPrice: number | null;
   // PR-9 flat schema: legacy plain-string columns (reasoningSummary,
   // thesisBullets, riskFlags) replaced by JSONB section columns. Per the
@@ -1123,15 +1126,25 @@ export const updateThesis = defineTool({
     // PASSED and clears triggers; PENDING → LONG/SHORT stays WATCHING with
     // the structural fields the agent supplied.
     if (args.direction !== undefined) {
-      patch.direction = args.direction;
       if (args.direction === "PASS") {
         // PASS = researched-and-declined → PASSED (was ARCHIVED before the
         // status-taxonomy migration; the walk-away change_status:"ARCHIVED"
-        // path below is unchanged). direction stays "PASS" for now.
+        // path below is unchanged).
+        //
+        // P1-24 PASS-off-direction: the pass fact now lives ENTIRELY on
+        // status=PASSED. `direction` is nulled — `LONG|SHORT|null` is the
+        // only legal column domain. The agent still SENDS direction:"PASS"
+        // (kept call signal), we just don't store it. Readers identify a
+        // pass via status=PASSED (see isPassedThesis).
+        patch.direction = null;
         patch.status = "PASSED";
         patch.closedAt = new Date();
         patch.closeReason = args.rationale.slice(0, 500);
         patch.triggers = [] as unknown as object;
+      } else {
+        // LONG / SHORT — the only other legal direction promotion (out of
+        // an unresearched seed; guarded above).
+        patch.direction = args.direction;
       }
     }
     if (args.target_size_pct !== undefined)
@@ -1363,7 +1376,15 @@ export const updateThesis = defineTool({
     // P1-24 B4: existing.direction may be null (unresearched seed). The
     // enter-guard treats any non-LONG/SHORT value (incl. null/'PENDING') as
     // a bypass, so passing null through is correct.
-    const effectiveEnterDirection = (patch.direction ?? existing.direction) as
+    // P1-24 PASS-off-direction: a PASS patch sets patch.direction=null — a
+    // VALID patched value, not "absent". Use `"direction" in patch` so the
+    // null isn't swallowed by `??` and we don't fall back to the stale
+    // existing direction (which would let the guard inspect a LONG/SHORT it
+    // no longer is). When direction was patched, the patched value wins
+    // (incl. null); otherwise keep the existing direction.
+    const effectiveEnterDirection = ("direction" in patch
+      ? patch.direction
+      : existing.direction) as
       | "LONG"
       | "SHORT"
       | "PASS"
@@ -1770,7 +1791,9 @@ export const updateThesis = defineTool({
 function thesisToCardData(t: Record<string, unknown>): {
   thesis_id: string;
   ticker: string;
-  direction: "LONG" | "SHORT" | "PASS";
+  // P1-24: `LONG | SHORT | null`. A pass stores direction=null and carries
+  // the pass fact on status=PASSED below; the renderer + sheet key on status.
+  direction: "LONG" | "SHORT" | null;
   confidence_score: number;
   reasoning_summary: string;
   thesis_bullets: string[];
@@ -1780,12 +1803,12 @@ function thesisToCardData(t: Record<string, unknown>): {
   stop_loss: number | null;
   hold_duration?: string;
   signal_types: string[];
-  status: "ACTIVE" | "HOLDING" | "WATCHING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "RETIRED";
+  status: "ACTIVE" | "HOLDING" | "WATCHING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "RETIRED" | "PASSED";
 } {
   return {
     thesis_id: t.id as string,
     ticker: t.ticker as string,
-    direction: t.direction as "LONG" | "SHORT" | "PASS",
+    direction: (t.direction as "LONG" | "SHORT" | null) ?? null,
     confidence_score: (t.confidenceScore as number) ?? 0,
     reasoning_summary: (t.reasoningSummary as string) ?? "",
     thesis_bullets: (t.thesisBullets as string[]) ?? [],
@@ -1811,7 +1834,8 @@ function thesisToCardData(t: Record<string, unknown>): {
       | "INVALIDATED"
       | "CLOSED"
       | "SUPERSEDED"
-      | "RETIRED") ?? "ACTIVE",
+      | "RETIRED"
+      | "PASSED") ?? "ACTIVE",
   };
 }
 

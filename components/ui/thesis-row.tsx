@@ -13,6 +13,7 @@ import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { TriggersResponse } from "@/components/agent/sheets/ThesisTriggersSection";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
+import { isPassedThesis } from "@/lib/agent/thesis-direction";
 
 // 2026-04-29: removed inline expand-on-click and analyst-link button.
 // The Details button opens the full ThesisSheet which has more
@@ -219,7 +220,9 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
   }
 
   // ── No position — thesis-status states (light inline line, not a banner) ──
-  if (t.direction === "PASS") {
+  // P1-24: a pass is identified by status=PASSED (new) or direction='PASS'
+  // (legacy, pre-backfill). isPassedThesis dual-reads both.
+  if (isPassedThesis(t.direction, t.status)) {
     return {
       label: "Pass",
       dotClass: "bg-muted-foreground/40",
@@ -385,7 +388,10 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
           t.sheetState?.status === "CLOSED" ||
           t.sheetState?.status === "INVALIDATED" ||
           t.sheetState?.status === "SUPERSEDED" ||
-          t.sheetState?.status === "RETIRED"
+          t.sheetState?.status === "RETIRED" ||
+          // P1-24: PASSED reaches the sheet so its isPass keys on status, not
+          // the direction prop (a pass now stores direction=null).
+          t.sheetState?.status === "PASSED"
             ? t.sheetState.status
             : undefined
         }
