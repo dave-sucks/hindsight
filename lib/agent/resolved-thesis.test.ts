@@ -43,6 +43,18 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     expect(r.actionability).toBe("DEAD");
   });
 
+  it("DEAD when status is PASSED (researched-and-declined; status-taxonomy P1-24)", () => {
+    // A PASS thesis stores status='PASSED' (was 'ARCHIVED'). It must resolve
+    // DEAD like the other terminal states so the agent/UI skip it as a live
+    // row — not WAIT_FOR_TRIGGER.
+    const r = buildResolvedEnvelope({
+      thesis: baseThesis({ status: "PASSED" }),
+      currentPrice: 100,
+      now: NOW,
+    });
+    expect(r.actionability).toBe("DEAD");
+  });
+
   it("SUPERSEDED when a newer terminal sister exists", () => {
     const r = buildResolvedEnvelope({
       thesis: baseThesis({

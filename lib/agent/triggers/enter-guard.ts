@@ -46,7 +46,12 @@ export interface EnterTriggerGuardArgs {
     | "CLOSED"
     | "INVALIDATED"
     | "ARCHIVED"
-    | "SUPERSEDED";
+    | "SUPERSEDED"
+    // PASSED (PASS theses) bypasses like the other terminal states — the
+    // guard returns ok:true for any non-LONG/SHORT direction before it
+    // ever inspects status. Listed so record_thesis/update_thesis can pass
+    // the post-write status without a cast.
+    | "PASSED";
   /** The resulting triggers array (after horizon merge + agent overlay). */
   triggers: Trigger[];
   /** The resulting target_price after the write — drives the error message. */

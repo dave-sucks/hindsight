@@ -490,11 +490,14 @@ describe("validateEnterTriggerRequired", () => {
 
   // ── Non-directional directions bypass ───────────────────────────────────
 
-  it("PASS ARCHIVED with no triggers: ok (PASS has no ENTER by design)", () => {
+  it("PASS PASSED with no triggers: ok (PASS has no ENTER by design)", () => {
+    // Post status-taxonomy migration (P1-24) a PASS lands status='PASSED'.
+    // The guard bypasses on any non-LONG/SHORT direction before it inspects
+    // status, so PASSED is fine here.
     expect(
       validateEnterTriggerRequired({
         direction: "PASS",
-        status: "ARCHIVED",
+        status: "PASSED",
         triggers: [],
         targetPrice: null,
       }),
