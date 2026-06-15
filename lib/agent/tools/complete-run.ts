@@ -442,14 +442,14 @@ async function runCompleteRunPreflight(
     thesisWhereScope = {
       id: triggeredThesisId,
       researchRun: { agentConfigId: analystId },
-      status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
+      status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
       closedAt: null,
     };
   } else {
     // Daily-run, principal-chat, etc.: full analyst book.
     thesisWhereScope = {
       researchRun: { agentConfigId: analystId },
-      status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
+      status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
       closedAt: null,
     };
   }
@@ -509,7 +509,9 @@ async function runCompleteRunPreflight(
   // trigger as unaddressed work just because the thesis row is old.
   const activeOpenedAtTickers = Array.from(
     new Set(
-      theses.filter((t) => t.status === "ACTIVE").map((t) => t.ticker),
+      theses
+        .filter((t) => t.status === "ACTIVE" || t.status === "HOLDING")
+        .map((t) => t.ticker),
     ),
   );
   const positionOpenedAtByTicker = new Map<string, Date>();
@@ -557,7 +559,7 @@ async function runCompleteRunPreflight(
         createdAt: t.createdAt,
         nextReviewAt: t.nextReviewAt,
         positionOpenedAt:
-          t.status === "ACTIVE"
+          t.status === "ACTIVE" || t.status === "HOLDING"
             ? positionOpenedAtByTicker.get(t.ticker) ?? null
             : null,
         paperTenureDays: t.paperTenureDays ?? null,

@@ -144,7 +144,9 @@ export async function GET(
 
   let position: PositionInfo | null = null;
   const isActiveish =
-    thesis.status === "ACTIVE" || thesis.status === "WATCHING";
+    thesis.status === "ACTIVE" ||
+    thesis.status === "HOLDING" ||
+    thesis.status === "WATCHING";
   const isClosed = thesis.status === "CLOSED";
   if ((isActiveish || isClosed) && thesis.researchRun?.agentConfigId) {
     const pos = await prisma.position.findFirst({
@@ -252,7 +254,7 @@ export async function GET(
     // P1-14: paired open position's openedAt anchors TIME_ELAPSED for ACTIVE
     // rows so the sheet's actionability badge measures "max hold" from the
     // position open, not the (older) thesis row. Only relevant when held.
-    thesis.status === "ACTIVE" && ownAnalystId
+    (thesis.status === "ACTIVE" || thesis.status === "HOLDING") && ownAnalystId
       ? prisma.position
           .findFirst({
             where: {

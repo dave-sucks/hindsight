@@ -110,7 +110,11 @@ export const tacticalRun = inngest.createFunction(
         },
       });
       if (!thesis) return null;
-      if (thesis.status !== "ACTIVE" && thesis.status !== "WATCHING") {
+      if (
+        thesis.status !== "ACTIVE" &&
+        thesis.status !== "HOLDING" &&
+        thesis.status !== "WATCHING"
+      ) {
         return null;
       }
       const trigger = findTriggerById(thesis.triggers, fired.triggerId);

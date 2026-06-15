@@ -452,8 +452,8 @@ export default async function TradeDetailPage({
             <TabsContent value="theses" className="mt-4 max-w-3xl space-y-6">
               {(() => {
                 type TT = typeof thesisChain[number];
-                const active = thesisChain.filter((t: TT) => t.status === "ACTIVE");
-                const prior = thesisChain.filter((t: TT) => t.status !== "ACTIVE");
+                const active = thesisChain.filter((t: TT) => t.status === "ACTIVE" || t.status === "HOLDING");
+                const prior = thesisChain.filter((t: TT) => t.status !== "ACTIVE" && t.status !== "HOLDING");
                 const toRow = (t: TT): ThesisRowData => {
                   const composite = getThesisComposite(t);
                   return {

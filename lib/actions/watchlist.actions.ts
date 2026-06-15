@@ -268,7 +268,7 @@ export async function addWatchlistItem(
   const existing = await prisma.thesis.findFirst({
     where: {
       ticker: upper,
-      status: { in: ["ACTIVE", "WATCHING"] },
+      status: { in: ["ACTIVE", "HOLDING", "WATCHING"] },
       researchRun: { agentConfigId: analystId },
     },
     select: {

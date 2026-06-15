@@ -119,7 +119,7 @@ const OPEN_POSITION = {
   openedAt: new Date("2026-06-03T14:30:00Z"),
 };
 
-const ACTIVE_THESIS = { id: "thesis-1" };
+const ACTIVE_THESIS = { id: "thesis-1", status: "ACTIVE" };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -157,7 +157,7 @@ describe("closeOpenPosition — P1-18 paired-thesis flip", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           ticker: "NVDA",
-          status: "ACTIVE",
+          status: { in: ["ACTIVE", "HOLDING"] },
           researchRun: { agentConfigId: "analyst-1" },
         }),
       }),

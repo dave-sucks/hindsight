@@ -92,7 +92,7 @@ export type ThesisCardData = {
   company_name?: string | null;
   exchange?: string | null;
   fundamentals?: FundamentalsData | null;
-  status?: "ACTIVE" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "WATCHING" | "PROMOTED";
+  status?: "ACTIVE" | "HOLDING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "WATCHING" | "PROMOTED";
   /**
    * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
    * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
@@ -1590,7 +1590,7 @@ export interface ThesisSheetBodyProps {
   /** Lifecycle status from the row that opened the sheet. Used as the
    *  initial StatusPill value so first paint matches the durable state
    *  with no flicker. The triggers API fetch refines position/PnL data. */
-  status?: "ACTIVE" | "WATCHING" | "PROMOTED" | "CLOSED" | "INVALIDATED" | "SUPERSEDED";
+  status?: "ACTIVE" | "HOLDING" | "WATCHING" | "PROMOTED" | "CLOSED" | "INVALIDATED" | "SUPERSEDED";
   /**
    * Pre-fetched /triggers payload from the parent (P2-19). When supplied,
    * the sheet renders status / belief / scoring / sources / research

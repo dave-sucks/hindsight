@@ -845,9 +845,9 @@ export const placeTrade = defineTool({
         }
       }
 
-      // ── PROMOTED → ACTIVE auto-transition ──────────────────────────────
+      // ── PROMOTED → HOLDING auto-transition ─────────────────────────────
       // If the thesis was PROMOTED (first-live-run re-entry), flip it to
-      // ACTIVE now that we have an open live position. Belt-and-suspenders
+      // HOLDING now that we have an open live position. Belt-and-suspenders
       // — the agent SHOULD have called update_thesis(change_status: ACTIVE)
       // first, but if it skipped that step the trade itself is the explicit
       // intent to enter and we shouldn't leave the thesis in PROMOTED with
@@ -865,12 +865,12 @@ export const placeTrade = defineTool({
         if (promotedThesis && promotedThesis.status === "PROMOTED") {
           await prisma.thesis.update({
             where: { id: promotedThesis.id },
-            data: { status: "ACTIVE", promotedAt: null },
+            data: { status: "HOLDING", promotedAt: null },
           });
         }
       } catch (err) {
         console.warn(
-          `[place_trade] PROMOTED → ACTIVE auto-transition failed for thesis ${args.thesis_id}:`,
+          `[place_trade] PROMOTED → HOLDING auto-transition failed for thesis ${args.thesis_id}:`,
           err instanceof Error ? err.message : err,
         );
       }
@@ -949,7 +949,7 @@ export const placeTrade = defineTool({
           await prisma.thesis.update({
             where: { id: watchingThesis.id },
             data: {
-              status: "ACTIVE",
+              status: "HOLDING",
               triggers: (nextTriggers ?? []) as unknown as object,
             },
           });
@@ -957,10 +957,10 @@ export const placeTrade = defineTool({
             data: {
               thesisId: watchingThesis.id,
               type: "STATUS_CHANGED",
-              summary: `Promoted ${ticker} ${watchingThesis.direction} WATCHING → ACTIVE on place_trade`,
+              summary: `Promoted ${ticker} ${watchingThesis.direction} WATCHING → HOLDING on place_trade`,
               rationale: `Position opened (id ${position.id}). Watchlist row archived; live position now active. Triggers regenerated for HELD-side ${horizon ?? "(no-horizon)"} template.`,
               fieldChanges: {
-                status: { from: "WATCHING", to: "ACTIVE" },
+                status: { from: "WATCHING", to: "HOLDING" },
                 triggers: { from: "WATCHING-set", to: "HELD-set" },
               },
               runId: ctx.runId,

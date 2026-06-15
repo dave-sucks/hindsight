@@ -285,7 +285,7 @@ export default async function StockDetailPage({ params }: Props) {
 
               {/* Latest Thesis */}
               {(() => {
-                const latest = tickerTheses.find((t: { status: string; direction: string }) => t.status === "ACTIVE" && t.direction !== "PASS") ?? tickerTheses[0];
+                const latest = tickerTheses.find((t: { status: string; direction: string }) => (t.status === "ACTIVE" || t.status === "HOLDING") && t.direction !== "PASS") ?? tickerTheses[0];
                 if (!latest) return null;
                 const composite = getThesisComposite(latest);
                 const rowData: ThesisRowData = {
@@ -483,7 +483,7 @@ export default async function StockDetailPage({ params }: Props) {
                   <span className="font-medium tabular-nums">{tickerTrades.length}</span>
                 </div>
                 {(() => {
-                  const activeThesis = tickerTheses.find((t) => t.status === "ACTIVE" && t.direction !== "PASS");
+                  const activeThesis = tickerTheses.find((t) => (t.status === "ACTIVE" || t.status === "HOLDING") && t.direction !== "PASS");
                   if (!activeThesis) return null;
                   const activeComposite = getThesisComposite(activeThesis);
                   return (

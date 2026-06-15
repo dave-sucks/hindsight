@@ -406,7 +406,7 @@ export async function buildRunInput(
           // contract — they MUST be acted on each run (place_trade or
           // update_thesis(WATCHING)). Inclusion here drives the expected-
           // coverage count in morning-research's coverage-violation gate.
-          status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
+          status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
           ticker: { in: allRelevantSymbols },
           researchRun: { agentConfigId: analystId },
         },
@@ -440,10 +440,12 @@ export async function buildRunInput(
     }
   }
 
-  // Link held (ACTIVE-status) theses to their positions for the portfolio block.
+  // Link held (HOLDING/ACTIVE-status) theses to their positions for the portfolio block.
   for (const pos of positions) {
     const thesis = activeTheses.find(
-      (t) => t.ticker === pos.symbol && t.status === "ACTIVE",
+      (t) =>
+        t.ticker === pos.symbol &&
+        (t.status === "ACTIVE" || t.status === "HOLDING"),
     );
     if (thesis) {
       pos.activeThesisId = thesis.id;
