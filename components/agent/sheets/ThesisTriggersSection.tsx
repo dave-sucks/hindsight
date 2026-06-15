@@ -92,6 +92,9 @@ export interface TriggersResponse {
   closeReason: string | null;
   invalidatedAt: string | null;
   invalidReason: string | null;
+  // P1-24 B3: reason a thesis reached RETIRED — "SOLD"|"INVALIDATED"|
+  // "DROPPED"|"REPLACED"|null. Drives the terminal-status banner.
+  retiredReason: string | null;
   horizon: string | null;
   entryPrice: number | null;
   targetPrice: number | null;

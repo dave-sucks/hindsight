@@ -1666,7 +1666,9 @@ export const recordThesis = defineTool({
             await prisma.thesis.update({
               where: { id: resolvedParentId },
               data: {
-                status: "INVALIDATED",
+                // P1-24 B3: parent invalidation retires the row.
+                status: "RETIRED",
+                retiredReason: "INVALIDATED",
                 invalidatedAt: new Date(),
                 invalidReason,
               },
@@ -1677,7 +1679,8 @@ export const recordThesis = defineTool({
               summary: `Invalidated by PASS thesis on ${args.ticker}`,
               rationale: invalidReason,
               fieldChanges: {
-                status: { from: "ACTIVE", to: "INVALIDATED" },
+                status: { from: "ACTIVE", to: "RETIRED" },
+                retiredReason: { from: null, to: "INVALIDATED" },
               },
               runId: ctx.runId,
               // Same moment as the new thesis — capture current price so
@@ -1687,7 +1690,8 @@ export const recordThesis = defineTool({
           } else {
             await prisma.thesis.update({
               where: { id: resolvedParentId },
-              data: { status: "SUPERSEDED" },
+              // P1-24 B3: superseded parent retires with reason REPLACED.
+              data: { status: "RETIRED", retiredReason: "REPLACED" },
             });
             await writeThesisUpdate({
               thesisId: resolvedParentId,
@@ -1695,7 +1699,8 @@ export const recordThesis = defineTool({
               summary: `Replaced by newer ${args.direction} thesis on ${args.ticker}`,
               rationale: narrativeText,
               fieldChanges: {
-                status: { from: "ACTIVE", to: "SUPERSEDED" },
+                status: { from: "ACTIVE", to: "RETIRED" },
+                retiredReason: { from: null, to: "REPLACED" },
               },
               runId: ctx.runId,
               priceAtTime: args.entry_price ?? null,

@@ -369,6 +369,7 @@ type UpdatePatch = Partial<{
   triggers: object;
   scalingPlan: object | null;
   status: string;
+  retiredReason: string;
   invalidatedAt: Date;
   invalidReason: string;
   closedAt: Date;
@@ -1225,12 +1226,18 @@ export const updateThesis = defineTool({
     // Status transitions get extra paperwork.
     let updateType: ThesisUpdateType = "UPDATED";
     if (args.change_status === "INVALIDATED") {
-      patch.status = "INVALIDATED";
+      // P1-24 B3: terminal collapse → RETIRED + retiredReason. The agent
+      // verb (change_status:"INVALIDATED") is unchanged; the stored status
+      // is RETIRED and the reason records why. invalidatedAt/invalidReason
+      // still carry the narrative; updateType stays the audit event kind.
+      patch.status = "RETIRED";
+      patch.retiredReason = "INVALIDATED";
       patch.invalidatedAt = new Date();
       patch.invalidReason = args.rationale.slice(0, 500);
       updateType = "INVALIDATED";
     } else if (args.change_status === "CLOSED") {
-      patch.status = "CLOSED";
+      patch.status = "RETIRED";
+      patch.retiredReason = "SOLD";
       patch.closedAt = new Date();
       patch.closeReason = args.rationale.slice(0, 500);
       updateType = "CLOSED";
@@ -1241,7 +1248,9 @@ export const updateThesis = defineTool({
       // that's direction:"PASS" → status=PASSED above. Distinct from
       // INVALIDATED (view disproven by evidence) and CLOSED (position was
       // held and closed). See docs/WATCHLIST_COLLAPSE_PLAN.md.
-      patch.status = "ARCHIVED";
+      // P1-24 B3: walk-away ARCHIVED → RETIRED + retiredReason=DROPPED.
+      patch.status = "RETIRED";
+      patch.retiredReason = "DROPPED";
       patch.closedAt = new Date();
       patch.closeReason = args.rationale.slice(0, 500);
       // Existing ThesisUpdateType taxonomy doesn't have ARCHIVED. Use
@@ -1352,7 +1361,8 @@ export const updateThesis = defineTool({
       | "INVALIDATED"
       | "ARCHIVED"
       | "SUPERSEDED"
-      | "PASSED";
+      | "PASSED"
+      | "RETIRED";
     const effectiveEnterTriggers: Trigger[] =
       patch.triggers !== undefined
         ? ((patch.triggers as unknown as Trigger[]) ?? [])
@@ -1753,7 +1763,7 @@ function thesisToCardData(t: Record<string, unknown>): {
   stop_loss: number | null;
   hold_duration?: string;
   signal_types: string[];
-  status: "ACTIVE" | "HOLDING" | "WATCHING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED";
+  status: "ACTIVE" | "HOLDING" | "WATCHING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "RETIRED";
 } {
   return {
     thesis_id: t.id as string,
@@ -1783,7 +1793,8 @@ function thesisToCardData(t: Record<string, unknown>): {
       | "WATCHING"
       | "INVALIDATED"
       | "CLOSED"
-      | "SUPERSEDED") ?? "ACTIVE",
+      | "SUPERSEDED"
+      | "RETIRED") ?? "ACTIVE",
   };
 }
 

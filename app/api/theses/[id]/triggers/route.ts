@@ -48,6 +48,7 @@ export async function GET(
       closeReason: true,
       invalidatedAt: true,
       invalidReason: true,
+      retiredReason: true,
       horizon: true,
       entryPrice: true,
       targetPrice: true,
@@ -147,7 +148,10 @@ export async function GET(
     thesis.status === "ACTIVE" ||
     thesis.status === "HOLDING" ||
     thesis.status === "WATCHING";
-  const isClosed = thesis.status === "CLOSED";
+  // P1-24 B3: a sold position now retires the thesis (RETIRED+SOLD). Treat
+  // RETIRED as closed-side too — the CLOSED-position lookup below finds the
+  // exit for SOLD rows and harmlessly returns null for DROPPED/REPLACED.
+  const isClosed = thesis.status === "CLOSED" || thesis.status === "RETIRED";
   if ((isActiveish || isClosed) && thesis.researchRun?.agentConfigId) {
     const pos = await prisma.position.findFirst({
       where: {
@@ -242,7 +246,8 @@ export async function GET(
           ? { researchRun: { agentConfigId: ownAnalystId } }
           : {}),
         OR: [
-          { status: { in: ["INVALIDATED", "ARCHIVED", "CLOSED"] } },
+          // P1-24: RETIRED is the collapsed terminal; legacy values kept for dual-read.
+          { status: { in: ["INVALIDATED", "ARCHIVED", "CLOSED", "RETIRED"] } },
           { direction: "PASS" },
         ],
       },
@@ -331,6 +336,7 @@ export async function GET(
     closeReason: thesis.closeReason,
     invalidatedAt: thesis.invalidatedAt,
     invalidReason: thesis.invalidReason,
+    retiredReason: thesis.retiredReason,
     horizon: thesis.horizon,
     entryPrice: thesis.entryPrice,
     targetPrice: thesis.targetPrice,

@@ -92,7 +92,7 @@ export type ThesisCardData = {
   company_name?: string | null;
   exchange?: string | null;
   fundamentals?: FundamentalsData | null;
-  status?: "ACTIVE" | "HOLDING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "WATCHING" | "PROMOTED";
+  status?: "ACTIVE" | "HOLDING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "RETIRED" | "WATCHING" | "PROMOTED";
   /**
    * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
    * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
@@ -867,12 +867,14 @@ function ProvenanceFooter({
 // fetched but never rendered.
 function TerminalStatusAlert({
   status,
+  retiredReason,
   closedAt,
   closeReason,
   invalidatedAt,
   invalidReason,
 }: {
   status: ThesisStatus | undefined;
+  retiredReason: string | null;
   closedAt: string | null;
   closeReason: string | null;
   invalidatedAt: string | null;
@@ -884,12 +886,22 @@ function TerminalStatusAlert({
   // banner exists only for terminal states with NO trade to show:
   // INVALIDATED (thesis disproven) and ARCHIVED (walked away from the
   // watchlist without ever trading).
-  if (status !== "INVALIDATED" && status !== "ARCHIVED") {
+  // P1-24 B3: legacy INVALIDATED/ARCHIVED collapse into RETIRED + retiredReason.
+  // Show the banner only for the no-trade terminals: legacy INVALIDATED /
+  // ARCHIVED, or RETIRED with reason INVALIDATED / DROPPED. RETIRED+SOLD has a
+  // real trade (TradeBlock owns it) and RETIRED+REPLACED is shown via
+  // supersession — skip both, same as CLOSED.
+  const retiredNoTrade =
+    status === "RETIRED" &&
+    (retiredReason === "INVALIDATED" || retiredReason === "DROPPED");
+  if (status !== "INVALIDATED" && status !== "ARCHIVED" && !retiredNoTrade) {
     return null;
   }
-  // INVALIDATED tracks its own date/reason fields; ARCHIVED ("walked away"
-  // without a trade outcome) reuses closedAt/closeReason.
-  const isInvalid = status === "INVALIDATED";
+  // INVALIDATED tracks its own date/reason fields; ARCHIVED / DROPPED ("walked
+  // away" without a trade outcome) reuses closedAt/closeReason.
+  const isInvalid =
+    status === "INVALIDATED" ||
+    (status === "RETIRED" && retiredReason === "INVALIDATED");
   const date = isInvalid ? invalidatedAt : closedAt;
   const reason = isInvalid ? invalidReason : closeReason;
   if (!date && !reason) return null;
@@ -1590,7 +1602,7 @@ export interface ThesisSheetBodyProps {
   /** Lifecycle status from the row that opened the sheet. Used as the
    *  initial StatusPill value so first paint matches the durable state
    *  with no flicker. The triggers API fetch refines position/PnL data. */
-  status?: "ACTIVE" | "HOLDING" | "WATCHING" | "PROMOTED" | "CLOSED" | "INVALIDATED" | "SUPERSEDED";
+  status?: "ACTIVE" | "HOLDING" | "WATCHING" | "PROMOTED" | "CLOSED" | "INVALIDATED" | "SUPERSEDED" | "RETIRED";
   /**
    * Pre-fetched /triggers payload from the parent (P2-19). When supplied,
    * the sheet renders status / belief / scoring / sources / research
@@ -1722,6 +1734,7 @@ export function ThesisSheetBody({
           the closed trade block. */}
       <TerminalStatusAlert
         status={liveStatus}
+        retiredReason={state?.retiredReason ?? null}
         closedAt={state?.closedAt ?? null}
         closeReason={state?.closeReason ?? null}
         invalidatedAt={state?.invalidatedAt ?? null}

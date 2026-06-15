@@ -56,6 +56,10 @@ const STATUS_VALUES = [
   "CLOSED",
   "ARCHIVED",
   "SUPERSEDED",
+  // P1-24 B3: RETIRED is the collapsed terminal (CLOSED/INVALIDATED/
+  // ARCHIVED/SUPERSEDED → RETIRED + retiredReason). Legacy values kept for
+  // dual-read until the contract PR.
+  "RETIRED",
   // PASS theses now store status='PASSED' (was 'ARCHIVED'). Queryable so
   // the agent can pull declined names as institutional memory.
   "PASSED",
@@ -470,7 +474,9 @@ export const getTheses = defineTool({
             ? { researchRun: { agentConfigId: ctx.analystId } }
             : {}),
           OR: [
-            { status: { in: ["INVALIDATED", "ARCHIVED", "CLOSED"] } },
+            // P1-24: RETIRED is the collapsed terminal; PASSED is covered by
+            // the direction:"PASS" clause. Keep legacy terminals for dual-read.
+            { status: { in: ["INVALIDATED", "ARCHIVED", "CLOSED", "RETIRED"] } },
             { direction: "PASS" },
           ],
         },
@@ -581,7 +587,8 @@ export const getTheses = defineTool({
           | "PROMOTED"
           | "INVALIDATED"
           | "CLOSED"
-          | "SUPERSEDED",
+          | "SUPERSEDED"
+          | "RETIRED",
         // PROMOTED-only context fields. Null on non-PROMOTED rows.
         promoted_at: t.promotedAt ? t.promotedAt.toISOString() : null,
         paper_tenure_days: t.paperTenureDays ?? null,
