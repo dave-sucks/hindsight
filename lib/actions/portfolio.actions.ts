@@ -12,7 +12,6 @@ import { resolveAlpacaCredentials, type AlpacaEnvironment } from "@/lib/actions/
 import { getAccountId } from "@/lib/auth/account";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
 import { etTradingDayDate } from "@/lib/market-hours";
-import { deriveTradeStatus } from "@/lib/trade-status";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -219,8 +218,17 @@ export interface DashboardData {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const mapStatus = (status: string, outcome: string | null): TradeStatus =>
-  deriveTradeStatus(status, outcome);
+// Closed-position display key from the real Position.status + outcome. The
+// position query feeding closedTrades is `status IN (CLOSED, CANCELLED)`, so
+// CANCELLED maps straight through; CLOSED splits into win/loss/breakeven from
+// the real `outcome` field — no fictional combined status, just the trivial
+// (status, outcome) → display-key map that TradeRow's dot/label needs.
+const closedTradeStatus = (status: string, outcome: string | null): TradeStatus => {
+  if (status === "CANCELLED") return "CANCELLED";
+  if (outcome === "WIN") return "CLOSED_WIN";
+  if (outcome === "LOSS") return "CLOSED_LOSS";
+  return "CLOSED_EXPIRED";
+};
 
 function calcPnl(
   direction: string,
@@ -765,7 +773,7 @@ export async function getDashboardData(
       targetPrice: p.targetPrice ?? p.avgCost * 1.1,
       stopPrice: p.stopLoss ?? p.avgCost * 0.9,
       confidenceScore: 0,
-      status: mapStatus(p.status, p.outcome),
+      status: closedTradeStatus(p.status, p.outcome),
       pnl: realizedPnl,
       pnlPct: positionCost > 0 ? (realizedPnl / positionCost) * 100 : 0,
       openedAt: p.openedAt.toISOString(),
