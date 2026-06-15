@@ -201,6 +201,15 @@ enum ThesisStatus {
   // those tools reject PROMOTED in their input schemas. See
   // docs/PROD_DEPLOYMENT_PLAN.md.
   PROMOTED
+
+  // ── P1-24 taxonomy (additive — see docs/plans/STATUS_TAXONOMY.md) ─────────
+  // The clean 4-state model. Rows migrate to these in PR B; the legacy values
+  // above are removed in PR E once nothing reads them. HOLDING replaces ACTIVE;
+  // PASSED replaces direction=PASS + ARCHIVED-at-write; RETIRED (+ retiredReason)
+  // replaces CLOSED / INVALIDATED / ARCHIVED / SUPERSEDED.
+  HOLDING
+  PASSED
+  RETIRED
 }
 
 model Thesis {
@@ -210,7 +219,7 @@ model Thesis {
   accountId        String
   ticker           String
   source           String // "AGENT" | "MANUAL"
-  direction        String // "LONG" | "SHORT" | "PASS" | "PENDING"
+  direction        String? // P1-24: "LONG" | "SHORT" | null (unresearched watch). PASS/PENDING removed — PASS → status=PASSED, PENDING → null + WATCHING (migrated in PR B).
   entryPrice       Float?
   targetPrice      Float?
   stopLoss         Float?
@@ -276,6 +285,10 @@ model Thesis {
 
   closedAt    DateTime? // Mirrors invalidatedAt for CLOSED state
   closeReason String?
+
+  // P1-24 taxonomy: reason a thesis reached RETIRED — "DROPPED" | "SOLD" |
+  // "INVALIDATED" | "REPLACED". Null for non-retired rows. See STATUS_TAXONOMY.md.
+  retiredReason String?
 
   // Thesis Research V2 — deep-research artifact written by the thesis-writer
   // agent. `researchData` is the raw structured-data block (~3-5KB) the
