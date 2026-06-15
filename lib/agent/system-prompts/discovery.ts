@@ -444,7 +444,8 @@ For each researched candidate, exactly one of these three actions:
         (e.g. "Surfaced via get_market_movers scope:universe — top
         gainer outside coverage").
 
-  PASS lands ARCHIVED at write — terminal, no triggers, no wake-up.
+  A PASS is recorded as Passed automatically — don't send a status
+  field. It's terminal: no triggers, no wake-up.
   It exists so a future discovery encounter reads it via
   \`get_theses(include_history)\` and sees "we already looked, here's
   what we found, here's what would change our mind." Dropping a

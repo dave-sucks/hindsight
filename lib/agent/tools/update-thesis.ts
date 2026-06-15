@@ -228,7 +228,7 @@ const updateSchema = z.object({
       "Direction commitment for a PENDING thesis (user/builder/editor seed). " +
       "Only legal when existing.direction === 'PENDING'. " +
       "LONG/SHORT: requires horizon, target_price, stop_loss, entry_price, core_belief, ≥2 key_assumptions, ≥2 invalidation_conditions, and triggers (or rely on horizon defaults). Stays WATCHING. " +
-      "PASS: requires invalidation_conditions (≥1 — the flip-criteria). Automatically flips status to ARCHIVED and clears triggers. " +
+      "PASS: requires invalidation_conditions (≥1 — the flip-criteria). Automatically flips status to PASSED and clears triggers. " +
       "For direction flips on already-committed theses (LONG↔SHORT, etc.), use record_thesis with parent_thesis_id instead — same-direction changes here are rejected."
     ),
 
@@ -311,7 +311,7 @@ const updateSchema = z.object({
         "ACTIVE and CLOSED are NOT settable here — they're tool-owned account facts. WATCHING → ACTIVE happens automatically when your buy fills (place_trade); ACTIVE → CLOSED when your sell fills (close_position) — on the fill, or on the user's approval for a live proposal. Call those tools; the thesis status flips itself. " +
         "WATCHING = PROMOTED → WATCHING only. The legal opt-out path when you decide not to re-enter a just-promoted thesis on the first live run. The conviction stays in the library; the analyst will re-evaluate on subsequent runs. " +
         "INVALIDATED = the belief broke; we no longer believe the thesis (use this when concrete evidence disproves the view). Not allowed on PROMOTED — use WATCHING. " +
-        "ARCHIVED = walked away from coverage without evidence-based invalidation (e.g. agent or user removed it from the watchlist, PENDING flipped to PASS after first research). Off the watchlist; visible on the stock page as institutional memory. " +
+        "ARCHIVED = walked away from coverage without evidence-based invalidation (e.g. agent or user removed it from the watchlist). Off the watchlist; visible on the stock page as institutional memory. (A researched-and-declined PASS is NOT this — pass direction: \"PASS\", which lands status=PASSED.) " +
         "For direction flips or completely new beliefs, use record_thesis with parent_thesis_id instead.",
     ),
 
@@ -714,7 +714,7 @@ export const updateThesis = defineTool({
             `Three legal commitments:\n` +
             `  • \`direction: "LONG"\` + horizon + entry_price + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
             `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
-            `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to ARCHIVED.\n` +
+            `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
             `Refining a PENDING's reasoning/bullets/nextReviewAt without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`,
         },
         sources: [],
@@ -878,7 +878,8 @@ export const updateThesis = defineTool({
       args.change_status === "INVALIDATED" ||
       args.change_status === "CLOSED" ||
       args.change_status === "ARCHIVED" ||
-      // PENDING → PASS is a terminal flip — clears triggers, sets ARCHIVED.
+      // PASS (incl. PENDING → PASS) is a terminal flip — clears triggers,
+      // sets PASSED.
       args.direction === "PASS";
     const existingTriggerCount = Array.isArray(existing.triggers)
       ? (existing.triggers as unknown[]).length
@@ -1103,13 +1104,16 @@ export const updateThesis = defineTool({
     if (args.stop_loss !== undefined) patch.stopLoss = args.stop_loss;
     if (args.entry_price !== undefined) patch.entryPrice = args.entry_price;
     // PENDING-promotion direction flip (guarded above so this only runs on
-    // legal transitions). PENDING → PASS also flips status to ARCHIVED and
-    // clears triggers; PENDING → LONG/SHORT stays WATCHING with the
-    // structural fields the agent supplied.
+    // legal transitions). A PASS (incl. PENDING → PASS) flips status to
+    // PASSED and clears triggers; PENDING → LONG/SHORT stays WATCHING with
+    // the structural fields the agent supplied.
     if (args.direction !== undefined) {
       patch.direction = args.direction;
       if (args.direction === "PASS") {
-        patch.status = "ARCHIVED";
+        // PASS = researched-and-declined → PASSED (was ARCHIVED before the
+        // status-taxonomy migration; the walk-away change_status:"ARCHIVED"
+        // path below is unchanged). direction stays "PASS" for now.
+        patch.status = "PASSED";
         patch.closedAt = new Date();
         patch.closeReason = args.rationale.slice(0, 500);
         patch.triggers = [] as unknown as object;
@@ -1230,12 +1234,12 @@ export const updateThesis = defineTool({
       patch.closeReason = args.rationale.slice(0, 500);
       updateType = "CLOSED";
     } else if (args.change_status === "ARCHIVED") {
-      // Terminal-without-trade-or-invalidation. Used for:
-      //   • Agent/user walking away from coverage (manage_watchlist REMOVE
-      //     pre-collapse; user UI remove; editor remove).
-      //   • PENDING flipped to PASS after first research.
-      // Distinct from INVALIDATED (view disproven by evidence) and CLOSED
-      // (position was held and closed). See docs/WATCHLIST_COLLAPSE_PLAN.md.
+      // Terminal-without-trade-or-invalidation. Used for agent/user walking
+      // away from coverage (manage_watchlist REMOVE pre-collapse; user UI
+      // remove; editor remove). NOT for a researched-and-declined PASS —
+      // that's direction:"PASS" → status=PASSED above. Distinct from
+      // INVALIDATED (view disproven by evidence) and CLOSED (position was
+      // held and closed). See docs/WATCHLIST_COLLAPSE_PLAN.md.
       patch.status = "ARCHIVED";
       patch.closedAt = new Date();
       patch.closeReason = args.rationale.slice(0, 500);
@@ -1331,7 +1335,7 @@ export const updateThesis = defineTool({
     //
     // Runs LATE so patch.status / patch.direction / patch.triggers reflect
     // every transition processed above (change_status, PENDING-promotion,
-    // PASS auto-archive, wholesale-trigger-replace). Pure helper lives in
+    // PASS → PASSED, wholesale-trigger-replace). Pure helper lives in
     // lib/agent/triggers/enter-guard.ts and is shared with record_thesis.
     const effectiveEnterDirection = (patch.direction ?? existing.direction) as
       | "LONG"
@@ -1345,7 +1349,8 @@ export const updateThesis = defineTool({
       | "CLOSED"
       | "INVALIDATED"
       | "ARCHIVED"
-      | "SUPERSEDED";
+      | "SUPERSEDED"
+      | "PASSED";
     const effectiveEnterTriggers: Trigger[] =
       patch.triggers !== undefined
         ? ((patch.triggers as unknown as Trigger[]) ?? [])

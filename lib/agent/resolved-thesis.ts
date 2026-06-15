@@ -174,7 +174,9 @@ export function buildResolvedEnvelope(args: {
   // ── Actionability decision tree ────────────────────────────────────
   // Order matters. First match wins. See CONVICTION_EXPRESSION.md §6.
   let actionability: Actionability;
-  const terminal = ["INVALIDATED", "ARCHIVED", "CLOSED"];
+  // PASSED (researched-and-declined) is terminal alongside the walk-away
+  // ARCHIVED — both resolve to DEAD so the agent/UI skip them as live rows.
+  const terminal = ["INVALIDATED", "ARCHIVED", "CLOSED", "PASSED"];
   if (terminal.includes(thesis.status)) {
     actionability = "DEAD";
   } else if (isSuperseded) {

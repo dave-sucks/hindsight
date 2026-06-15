@@ -360,10 +360,15 @@ const thesisFields = z.object({
   // it for change-of-mind). The agent should pass status explicitly when
   // intent matters; the default keeps existing call sites working.
   status: z
-    .enum(["ACTIVE", "WATCHING"])
+    // ARCHIVED/PASSED are TOLERATED on input (not recommended) only so a
+    // PASS that leaks a status field no longer Zod-rejects — the recurring
+    // discovery red error. They're ignored for directional theses: the
+    // effectiveStatusForTriggers guard below honors ONLY ACTIVE/WATCHING
+    // from input on a LONG/SHORT, and a PASS always lands PASSED regardless.
+    .enum(["ACTIVE", "WATCHING", "ARCHIVED", "PASSED"])
     .optional()
     .describe(
-      "Coverage status. ACTIVE = trade-eligible coverage (the agent intends to act now or imminently). WATCHING = on-the-radar coverage (watchlist review, discovery candidate, named-but-not-yet-actionable). Default is derived from source_kind — WATCHLIST_REVIEW → WATCHING, else ACTIVE — pass explicitly when the intent differs.",
+      "Coverage status. ACTIVE = trade-eligible coverage (the agent intends to act now or imminently). WATCHING = on-the-radar coverage (watchlist review, discovery candidate, named-but-not-yet-actionable). Default is derived from source_kind — WATCHLIST_REVIEW → WATCHING, else ACTIVE — pass explicitly when the intent differs. A PASS is recorded as Passed automatically — don't send a status field for it.",
     ),
   // Cross-analyst overlap acknowledgement. The tool blocks DAY-only
   // analysts from minting a thesis on a ticker another analyst on the
@@ -943,7 +948,14 @@ export const recordThesis = defineTool({
         args.direction !== "PASS" &&
         (isDiscoveryDirectionalEarly ||
           args.status === "WATCHING" ||
-          (args.status == null && inferredSourceKind === "WATCHLIST_REVIEW"));
+          // Mirrors effectiveStatusForTriggers below: a directional thesis
+          // whose input status isn't explicitly ACTIVE falls to the
+          // source_kind default (WATCHING for WATCHLIST_REVIEW). Pre-
+          // relaxation this read `args.status == null`; now that the input
+          // enum tolerates a leaked ARCHIVED/PASSED, "not ACTIVE" is the
+          // correct test so the two derivations can't disagree.
+          (args.status !== "ACTIVE" &&
+            inferredSourceKind === "WATCHLIST_REVIEW"));
 
       // ── nextReviewAt derivation ─────────────────────────────────────
       // PASS rows get null (terminal at write). Everything else uses one
@@ -966,7 +978,7 @@ export const recordThesis = defineTool({
 
       let nextReviewAt: Date | null = null;
       if (args.direction === "PASS") {
-        // PASS = ARCHIVED at write. No review cadence, no wake-up.
+        // PASS = PASSED at write. Terminal: no review cadence, no wake-up.
         nextReviewAt = null;
       } else if (args.next_review_at) {
         const parsed = new Date(args.next_review_at);
@@ -1004,7 +1016,7 @@ export const recordThesis = defineTool({
       // ── Effective status — derived from (direction, status) pair ──
       // Watchlist-collapse legal pairs:
       //   PENDING → WATCHING (only)
-      //   PASS    → ARCHIVED (only, terminal at write)
+      //   PASS    → PASSED (only, terminal at write)
       //   LONG/SHORT → WATCHING (default) or ACTIVE (explicit)
       // Anything else is rejected.
       // After the PENDING-rejection at the top of execute(), args.direction
@@ -1020,7 +1032,7 @@ export const recordThesis = defineTool({
       // runs that fail silently. Discovery is a WATCHING-mint surface by
       // design; ACTIVE promotion is the daily run's job (portfolio-fit
       // comparison + place_trade pairing). PASS is unaffected — it maps
-      // to ARCHIVED in the same step below.
+      // to PASSED in the same step below.
       const isDiscoveryDirectional =
         ctx.discoveryOnly === true &&
         (args.direction === "LONG" || args.direction === "SHORT");
@@ -1054,13 +1066,22 @@ export const recordThesis = defineTool({
           `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in chat-dispatch mode; forced WATCHING. User must send a follow-up trade message to promote.`,
         );
       }
-      const effectiveStatusForTriggers: "ACTIVE" | "WATCHING" | "ARCHIVED" =
+      const effectiveStatusForTriggers: "ACTIVE" | "WATCHING" | "PASSED" =
         args.direction === "PASS"
-          ? "ARCHIVED"
+          ? "PASSED"
           : isDiscoveryDirectional || isChatDispatchDirectional
             ? "WATCHING"
-            : args.status ??
-              (inferredSourceKind === "WATCHLIST_REVIEW" ? "WATCHING" : "ACTIVE");
+            : // Directional thesis (LONG/SHORT): honor ONLY an explicit
+              // ACTIVE/WATCHING from input. A leaked ARCHIVED/PASSED — now
+              // tolerated by the input enum so a stray PASS status field
+              // doesn't Zod-reject — is IGNORED here, falling to the
+              // source_kind default. A LONG/SHORT can never be born
+              // PASSED/ARCHIVED.
+              args.status === "ACTIVE" || args.status === "WATCHING"
+              ? args.status
+              : inferredSourceKind === "WATCHLIST_REVIEW"
+                ? "WATCHING"
+                : "ACTIVE";
 
       // ── Discovery LONG/SHORT WATCHING cap (Layer-1 enforcement) ────────
       // The discovery prompt has a soft cap ("mint up to 8 new WATCHING
@@ -1120,7 +1141,7 @@ export const recordThesis = defineTool({
               `Direction='${args.direction}' is incompatible with status='${args.status}'. ` +
               `Legal pairs:\n` +
               `  • PENDING → WATCHING (seed, awaiting first research)\n` +
-              `  • PASS → ARCHIVED (terminal, off the watchlist)\n` +
+              `  • PASS → PASSED (terminal, off the watchlist)\n` +
               `  • LONG/SHORT → WATCHING (entry-gated) or ACTIVE (live)\n` +
               `Retry with a legal pair.`,
           },
@@ -1138,7 +1159,7 @@ export const recordThesis = defineTool({
             thesis_id: null,
             status: "FAILED" as const,
             note:
-              `PASS = "researched, decided not to trade." It's terminal at write (status=ARCHIVED) and lives as institutional memory only — no review cadence, no entry trigger, no wake-up. ` +
+              `PASS = "researched, decided not to trade." It's terminal at write (status=PASSED) and lives as institutional memory only — no review cadence, no entry trigger, no wake-up. ` +
               `If you want the system to alert you when conditions flip, that's not a PASS — write a LONG/SHORT WATCHING thesis with an ENTER trigger at the level that would change your mind.`,
           },
           sources: [],

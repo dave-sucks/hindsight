@@ -55,6 +55,9 @@ const STATUS_VALUES = [
   "CLOSED",
   "ARCHIVED",
   "SUPERSEDED",
+  // PASS theses now store status='PASSED' (was 'ARCHIVED'). Queryable so
+  // the agent can pull declined names as institutional memory.
+  "PASSED",
 ] as const;
 
 const HORIZONS = ["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const;
@@ -64,7 +67,7 @@ const schema = z.object({
     .array(z.enum(STATUS_VALUES))
     .optional()
     .describe(
-      "Filter by status. Default = ['ACTIVE', 'WATCHING'] (the live coverage book). Pass explicitly to include INVALIDATED/CLOSED/SUPERSEDED for historical lookups.",
+      "Filter by status. Default = ['ACTIVE', 'WATCHING'] (the live coverage book). Pass explicitly to include INVALIDATED/CLOSED/SUPERSEDED/PASSED for historical lookups (PASSED = researched-and-declined names).",
     ),
   tickers: z
     .array(z.string())
