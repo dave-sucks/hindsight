@@ -42,6 +42,7 @@ export interface EnterTriggerGuardArgs {
   status:
     | "WATCHING"
     | "ACTIVE"
+    | "HOLDING"
     | "PROMOTED"
     | "CLOSED"
     | "INVALIDATED"
@@ -123,7 +124,7 @@ export function validateEnterTriggerRequired(
   // arg). place_trade re-regenerates HELD triggers on the WATCHING/PROMOTED
   // → ACTIVE flip, but theses that are ALREADY ACTIVE and get refreshed
   // mid-flight are exposed in the gap.
-  if (args.status === "ACTIVE") {
+  if (args.status === "ACTIVE" || args.status === "HOLDING") {
     const enterOffenders = args.triggers.filter((t) => t.action === "ENTER");
     if (enterOffenders.length > 0) {
       return {

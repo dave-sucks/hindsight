@@ -494,6 +494,7 @@ export const updateThesis = defineTool({
 
     if (
       existing.status !== "ACTIVE" &&
+      existing.status !== "HOLDING" &&
       existing.status !== "WATCHING" &&
       existing.status !== "PROMOTED"
     ) {
@@ -638,7 +639,7 @@ export const updateThesis = defineTool({
       (args.change_status === "INVALIDATED" ||
         args.change_status === "ARCHIVED" ||
         args.change_status === "CLOSED") &&
-      existing.status === "ACTIVE" &&
+      (existing.status === "ACTIVE" || existing.status === "HOLDING") &&
       ctx.analystId
     ) {
       const openPosition = await prisma.position.findFirst({
@@ -1345,6 +1346,7 @@ export const updateThesis = defineTool({
     const effectiveEnterStatus = (patch.status ?? existing.status) as
       | "WATCHING"
       | "ACTIVE"
+      | "HOLDING"
       | "PROMOTED"
       | "CLOSED"
       | "INVALIDATED"
@@ -1751,7 +1753,7 @@ function thesisToCardData(t: Record<string, unknown>): {
   stop_loss: number | null;
   hold_duration?: string;
   signal_types: string[];
-  status: "ACTIVE" | "WATCHING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED";
+  status: "ACTIVE" | "HOLDING" | "WATCHING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED";
 } {
   return {
     thesis_id: t.id as string,
@@ -1777,6 +1779,7 @@ function thesisToCardData(t: Record<string, unknown>): {
     signal_types: (t.signalTypes as string[]) ?? [],
     status: (t.status as
       | "ACTIVE"
+      | "HOLDING"
       | "WATCHING"
       | "INVALIDATED"
       | "CLOSED"

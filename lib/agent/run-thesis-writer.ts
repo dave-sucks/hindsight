@@ -314,7 +314,9 @@ around RE-ENTER / DOWNGRADE / INVALIDATE.
                     (+ optionally TRIM/ADD/MOVE_STOP).
 
 ${
-  opts.mode === "refresh" && opts.existingThesis?.status === "ACTIVE"
+  opts.mode === "refresh" &&
+  (opts.existingThesis?.status === "ACTIVE" ||
+    opts.existingThesis?.status === "HOLDING")
     ? `       *** YOU ARE REFRESHING AN ACTIVE THESIS ***
        The existing thesis row is status="ACTIVE" — we ALREADY OWN
        this stock and have an open Alpaca position. Apply the HELD

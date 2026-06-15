@@ -145,8 +145,11 @@ export function buildResolvedEnvelope(args: {
       : false;
     triggerState = fired ? "ENTER_FIRED" : "ENTER_WAITING";
     triggerDetail = describePredicate(enterTrigger.predicate, currentPrice);
-  } else if (exitTriggers.length > 0 && thesis.status === "ACTIVE") {
-    // Only relevant for ACTIVE rows — exit fires drive close decisions.
+  } else if (
+    exitTriggers.length > 0 &&
+    (thesis.status === "ACTIVE" || thesis.status === "HOLDING")
+  ) {
+    // Only relevant for held rows — exit fires drive close decisions.
     const fired = exitTriggers.some(
       (t) =>
         currentPrice != null && evaluateTrigger(t.predicate, evalCtx),
@@ -190,7 +193,7 @@ export function buildResolvedEnvelope(args: {
     // lib/agent/needs-action.ts (this is the resolver-layer label of
     // the same state).
     actionability = "PROMOTED_DECIDE_TODAY";
-  } else if (thesis.status === "ACTIVE") {
+  } else if (thesis.status === "ACTIVE" || thesis.status === "HOLDING") {
     actionability = "ACTIVE_HOLD";
   } else if (thesis.catalystDate != null && thesis.catalystDate.getTime() > now.getTime()) {
     actionability = "PENDING_CATALYST";

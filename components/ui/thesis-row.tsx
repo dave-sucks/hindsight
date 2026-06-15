@@ -245,7 +245,7 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
     };
   }
 
-  if (status === "ACTIVE" || status === "PROMOTED") {
+  if (status === "ACTIVE" || status === "HOLDING" || status === "PROMOTED") {
     // Trade-eligible coverage with no position open yet — show the target
     // as the next step, not a stale "@ entry".
     return {
@@ -380,6 +380,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         company_name={t.companyName}
         status={
           t.sheetState?.status === "ACTIVE" ||
+          t.sheetState?.status === "HOLDING" ||
           t.sheetState?.status === "WATCHING" ||
           t.sheetState?.status === "CLOSED" ||
           t.sheetState?.status === "INVALIDATED" ||

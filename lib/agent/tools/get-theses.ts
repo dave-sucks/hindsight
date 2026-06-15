@@ -49,6 +49,7 @@ import type { Horizon } from "@/lib/agent/horizon-policy";
 
 const STATUS_VALUES = [
   "ACTIVE",
+  "HOLDING",
   "WATCHING",
   "PROMOTED",
   "INVALIDATED",
@@ -146,7 +147,7 @@ export const getTheses = defineTool({
     // (waiting for entry trigger) + PROMOTED (waiting for first-live-run
     // decision). All three need to surface by default; the agent has to
     // resolve every PROMOTED row this run or fail the closeout gate.
-    const statuses = (args.status ?? ["ACTIVE", "WATCHING", "PROMOTED"]).map((s) =>
+    const statuses = (args.status ?? ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"]).map((s) =>
       s.toString(),
     );
     const limit = Math.min(args.limit ?? 25, 50);
@@ -321,6 +322,7 @@ export const getTheses = defineTool({
     const liveTheses = theses.filter(
       (t) =>
         t.status === "ACTIVE" ||
+        t.status === "HOLDING" ||
         t.status === "WATCHING" ||
         t.status === "PROMOTED",
     );
@@ -337,7 +339,10 @@ export const getTheses = defineTool({
     const activeTickersForOpenedAt = Array.from(
       new Set(
         theses
-          .filter((t: { status: string }) => t.status === "ACTIVE")
+          .filter(
+            (t: { status: string }) =>
+              t.status === "ACTIVE" || t.status === "HOLDING",
+          )
           .map((t: { ticker: string }) => t.ticker),
       ),
     );
@@ -361,7 +366,7 @@ export const getTheses = defineTool({
           }
         }
         for (const t of theses) {
-          if (t.status !== "ACTIVE") continue;
+          if (t.status !== "ACTIVE" && t.status !== "HOLDING") continue;
           const openedAt = openedAtByTicker.get(t.ticker);
           if (openedAt) positionOpenedAtByThesisId.set(t.id, openedAt);
         }
@@ -571,6 +576,7 @@ export const getTheses = defineTool({
         fundamentals: null,
         status: t.status as
           | "ACTIVE"
+          | "HOLDING"
           | "WATCHING"
           | "PROMOTED"
           | "INVALIDATED"
@@ -592,7 +598,9 @@ export const getTheses = defineTool({
       };
     });
 
-    const activeCount = enriched.filter((t) => t.status === "ACTIVE").length;
+    const activeCount = enriched.filter(
+      (t) => t.status === "ACTIVE" || t.status === "HOLDING",
+    ).length;
     const watchingCount = enriched.filter(
       (t) => t.status === "WATCHING",
     ).length;

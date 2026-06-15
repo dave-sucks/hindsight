@@ -93,7 +93,7 @@ export async function evaluateLiveTriggerMatches({
   const theses = await prisma.thesis.findMany({
     where: {
       researchRun: { agentConfigId: analystId },
-      status: { in: ["ACTIVE", "WATCHING"] },
+      status: { in: ["ACTIVE", "HOLDING", "WATCHING"] },
       triggers: { not: [] },
     },
     select: {
@@ -114,7 +114,10 @@ export async function evaluateLiveTriggerMatches({
   const activeTickers = Array.from(
     new Set(
       theses
-        .filter((t: { status: string }) => t.status === "ACTIVE")
+        .filter(
+          (t: { status: string }) =>
+            t.status === "ACTIVE" || t.status === "HOLDING",
+        )
         .map((t: { ticker: string }) => t.ticker),
     ),
   );
@@ -174,10 +177,10 @@ export async function evaluateLiveTriggerMatches({
         thesis: {
           createdAt: thesis.createdAt,
           nextReviewAt: thesis.nextReviewAt,
-          // P1-14: ACTIVE rows anchor TIME_ELAPSED to the position open time.
+          // P1-14: held rows anchor TIME_ELAPSED to the position open time.
           status: thesis.status,
           positionOpenedAt:
-            thesis.status === "ACTIVE"
+            thesis.status === "ACTIVE" || thesis.status === "HOLDING"
               ? openedAtByTicker.get(thesis.ticker) ?? null
               : null,
         },

@@ -1898,7 +1898,7 @@ export async function getAnalystTheses(analystId: string) {
       ? t.direction
       : "PASS";
     const status =
-      t.status === "ACTIVE" || t.status === "WATCHING" || t.status === "CLOSED" ||
+      t.status === "ACTIVE" || t.status === "HOLDING" || t.status === "WATCHING" || t.status === "CLOSED" ||
       t.status === "INVALIDATED" || t.status === "SUPERSEDED" || t.status === "PROMOTED"
         ? t.status
         : undefined;

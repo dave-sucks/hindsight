@@ -1388,7 +1388,7 @@ export const recordThesis = defineTool({
           const existingThesis = await prisma.thesis.findFirst({
             where: {
               ticker: args.ticker,
-              status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
+              status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
               researchRun: { agentConfigId: ctx.analystId },
             },
             orderBy: { createdAt: "desc" },
@@ -1474,7 +1474,7 @@ export const recordThesis = defineTool({
                 // Include PROMOTED — another analyst on the account having
                 // a PROMOTED row on this ticker still counts as duplicate
                 // coverage from our DAY analyst's perspective.
-                status: { in: ["ACTIVE", "WATCHING", "PROMOTED"] },
+                status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
                 researchRun: {
                   agentConfig: {
                     accountId: ctx.accountId,

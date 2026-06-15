@@ -89,7 +89,7 @@ export async function getPromotionPreview(
     }),
     prisma.thesis.findMany({
       where: {
-        status: "ACTIVE",
+        status: { in: ["ACTIVE", "HOLDING"] },
         // Exclude PASS (institutional memory — never traded) and PENDING
         // (user/builder/editor seed awaiting first research — no
         // conviction yet, no paper position). Both should remain untouched
@@ -280,7 +280,7 @@ export async function promoteAnalystToLive(
   // Same conviction shape; the "close paper position" step is just a no-op.
   const orphanActive = await prisma.thesis.findMany({
     where: {
-      status: "ACTIVE",
+      status: { in: ["ACTIVE", "HOLDING"] },
       direction: { not: "PASS" },
       researchRun: { agentConfigId: analystId },
     },
@@ -402,7 +402,7 @@ async function transitionThesisToPromoted(input: {
     : await prisma.thesis.findFirst({
         where: {
           ticker: input.ticker,
-          status: "ACTIVE",
+          status: { in: ["ACTIVE", "HOLDING"] },
           direction: { not: "PASS" },
           researchRun: { agentConfigId: input.analystId },
         },

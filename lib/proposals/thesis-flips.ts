@@ -28,7 +28,7 @@ import {
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 /**
- * Promote the WATCHING / PROMOTED thesis on (analystId, ticker) to ACTIVE,
+ * Promote the WATCHING / PROMOTED thesis on (analystId, ticker) to HOLDING,
  * regenerating HELD-side triggers based on the executed entry/target/stop.
  *
  * Mirrors place_trade.ts:802-874. Idempotent — if no WATCHING / PROMOTED
@@ -55,11 +55,11 @@ export async function promoteThesisOnApproval(opts: {
         status: "PROMOTED",
         researchRun: { agentConfigId: opts.analystId },
       },
-      data: { status: "ACTIVE", promotedAt: null },
+      data: { status: "HOLDING", promotedAt: null },
     });
   } catch (err) {
     console.warn(
-      `[promoteThesisOnApproval] PROMOTED → ACTIVE flip failed for ${opts.ticker}:`,
+      `[promoteThesisOnApproval] PROMOTED → HOLDING flip failed for ${opts.ticker}:`,
       err instanceof Error ? err.message : err,
     );
   }
@@ -112,7 +112,7 @@ export async function promoteThesisOnApproval(opts: {
     await prisma.thesis.update({
       where: { id: watchingThesis.id },
       data: {
-        status: "ACTIVE",
+        status: "HOLDING",
         triggers: (nextTriggers ?? []) as unknown as object,
       },
     });
@@ -120,10 +120,10 @@ export async function promoteThesisOnApproval(opts: {
       data: {
         thesisId: watchingThesis.id,
         type: "STATUS_CHANGED",
-        summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → ACTIVE on approved proposal`,
+        summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → HOLDING on approved proposal`,
         rationale: `Proposal approved (positionId=${opts.positionId}). Triggers regenerated for HELD-side ${horizon ?? "(no-horizon)"} template.`,
         fieldChanges: {
-          status: { from: "WATCHING", to: "ACTIVE" },
+          status: { from: "WATCHING", to: "HOLDING" },
           triggers: { from: "WATCHING-set", to: "HELD-set" },
         },
         runId: opts.runId ?? null,
@@ -181,12 +181,14 @@ export async function closeThesisForPosition(opts: {
     const activeThesis = await prisma.thesis.findFirst({
       where: {
         ticker: opts.ticker,
-        status: "ACTIVE",
+        // P1-24 B2: held theses are HOLDING (new) or ACTIVE (legacy, pre-
+        // backfill). Match both so an approved close never strands a held row.
+        status: { in: ["ACTIVE", "HOLDING"] },
         direction: { not: "PASS" },
         researchRun: { agentConfigId: opts.analystId },
       },
       orderBy: { createdAt: "desc" },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!activeThesis) return;
 
@@ -206,7 +208,7 @@ export async function closeThesisForPosition(opts: {
       rationale:
         opts.rationale ?? `Position closed. Reason: ${opts.closeReason}.`,
       fieldChanges: {
-        status: { from: "ACTIVE", to: "CLOSED" },
+        status: { from: activeThesis.status, to: "CLOSED" },
       },
       runId: opts.runId,
       priceAtTime: opts.priceAtTime ?? null,
