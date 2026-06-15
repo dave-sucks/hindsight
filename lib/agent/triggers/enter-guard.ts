@@ -36,8 +36,13 @@
 import type { Trigger } from "./types";
 
 export interface EnterTriggerGuardArgs {
-  /** The resulting direction after the write. */
-  direction: "LONG" | "SHORT" | "PASS" | "PENDING";
+  /**
+   * The resulting direction after the write. P1-24 B4: `null` is the
+   * unresearched-seed sentinel (legacy 'PENDING' kept for the dual-read
+   * window). Any non-LONG/SHORT value (PASS, PENDING, null) bypasses — a
+   * seed/PASS never carries directional triggers.
+   */
+  direction: "LONG" | "SHORT" | "PASS" | "PENDING" | null;
   /** The resulting status after the write (post-patch for updates). */
   status:
     | "WATCHING"
@@ -101,15 +106,16 @@ type HeldOnlyAction = (typeof HELD_ONLY_ACTIONS)[number];
  *     (EXIT/TRIM/ADD/MOVE_STOP) that can't fire without a position
  *   - ACTIVE with an ENTER trigger (already in), or with no EXIT trigger
  *     (no automated stop-loss path)
- * PASS / PENDING never carry directional triggers. PROMOTED, CLOSED,
- * INVALIDATED, ARCHIVED, SUPERSEDED bypass — PROMOTED transitions resolve
- * to ACTIVE or WATCHING and run the check there; terminal rows are
- * immutable history.
+ * PASS and unresearched seeds (direction null/new or 'PENDING'/legacy) never
+ * carry directional triggers. PROMOTED, CLOSED, INVALIDATED, ARCHIVED,
+ * SUPERSEDED bypass — PROMOTED transitions resolve to ACTIVE or WATCHING and
+ * run the check there; terminal rows are immutable history.
  */
 export function validateEnterTriggerRequired(
   args: EnterTriggerGuardArgs,
 ): EnterTriggerGuardResult {
-  // PASS / PENDING never have directional triggers by design.
+  // PASS / unresearched seeds (null or 'PENDING') never have directional
+  // triggers by design — allowlist on LONG/SHORT catches every other value.
   if (args.direction !== "LONG" && args.direction !== "SHORT") {
     return { ok: true };
   }

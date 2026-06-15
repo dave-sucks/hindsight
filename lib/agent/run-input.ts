@@ -273,6 +273,8 @@ export async function buildRunInput(
         symbol: t.ticker,
         reason: getThesisSnapshotText(t),
         priority: "NORMAL",
+        // P1-24 B4 dual-read: a new seed is direction=null (passes through);
+        // a legacy seed is 'PENDING' → null. Both surface as null = no view.
         thesisDirection: t.direction === "PENDING" ? null : t.direction,
         targetPrice: t.targetPrice,
         stopPrice: t.stopLoss,

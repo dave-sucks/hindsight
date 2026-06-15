@@ -489,6 +489,13 @@ export const recordThesis = defineTool({
 
   execute: async (args, ctx) => {
     try {
+      // P1-24 B4: the unresearched-seed sentinel is now direction=null, which
+      // agents structurally CANNOT mint — the Zod enum above is
+      // ["LONG","SHORT","PASS","PENDING"] (no null), so a `direction: null`
+      // arg fails validation before execute() ever runs. This runtime guard
+      // covers the remaining case: a leaked legacy 'PENDING'. Both seed
+      // sentinels therefore stay agent-unmintable.
+      //
       // PENDING is reserved for non-agent server actions (addWatchlistItem,
       // createAnalystFromConfig, editor analyst-update). Agents always
       // commit to LONG / SHORT / PASS. If the agent wants to promote an

@@ -34,7 +34,9 @@
  */
 
 export interface ThesisShapeArgs {
-  direction: "LONG" | "SHORT" | "PASS" | "PENDING";
+  // P1-24 B4: `null` is the unresearched-seed sentinel (legacy 'PENDING'
+  // kept for the dual-read window). Both have no shape rule.
+  direction: "LONG" | "SHORT" | "PASS" | "PENDING" | null;
   entryPrice?: number | null;
   targetPrice?: number | null;
   stopLoss?: number | null;
@@ -47,8 +49,13 @@ export type ThesisShapeResult =
 export function validateThesisShape(
   args: ThesisShapeArgs,
 ): ThesisShapeResult {
-  // PASS + PENDING theses are reference-only / pre-research; no shape rule.
-  if (args.direction === "PASS" || args.direction === "PENDING") {
+  // PASS + unresearched-seed theses are reference-only / pre-research; no
+  // shape rule. P1-24 B4: seed = direction null (new) or 'PENDING' (legacy).
+  if (
+    args.direction === "PASS" ||
+    args.direction === "PENDING" ||
+    args.direction == null
+  ) {
     return { ok: true };
   }
 

@@ -51,6 +51,7 @@
  */
 
 import { shouldFire } from "@/lib/agent/triggers/evaluate";
+import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -170,11 +171,12 @@ export interface NeedsActionInput {
   thesis: {
     id: string;
     /**
-     * Direction is needed so PENDING theses (user/builder/editor seeds
+     * Direction is needed so unresearched seeds (user/builder/editor adds
      * awaiting first research) surface as REVIEW_DUE with the
-     * `pendingFirstReview` discriminator.
+     * `pendingFirstReview` discriminator. P1-24 B4: a seed is direction=null
+     * (new) or 'PENDING' (legacy) — both must set pendingFirstReview.
      */
-    direction?: string;
+    direction?: string | null;
     /**
      * Status drives PROMOTED_AWAITING_RESOLUTION at top precedence —
      * any PROMOTED-status thesis ALWAYS needs resolution this run
@@ -316,9 +318,10 @@ export function computeNeedsAction(
   //    upfront. See lib/agent/triggers/defaults.ts header comment for
   //    the matching half (REVIEW_DATE_HIT removed from watching defaults).
   //
-  //    Special case: PENDING theses (user/builder/editor seeds) carry
-  //    nextReviewAt = createdAt so they surface as REVIEW_DUE on the
-  //    next daily run with the pendingFirstReview discriminator.
+  //    Special case: unresearched seeds (user/builder/editor adds, direction
+  //    null or legacy 'PENDING') carry nextReviewAt = createdAt so they
+  //    surface as REVIEW_DUE on the next daily run with the pendingFirstReview
+  //    discriminator.
   const REVIEW_DUE_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
   if (
     thesis.nextReviewAt &&
@@ -333,7 +336,10 @@ export function computeNeedsAction(
       ),
     );
     const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue };
-    if (thesis.direction === "PENDING") {
+    // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy). Either
+    // way it has no committed view yet → flag pendingFirstReview so the
+    // prompt routes it to the "commit a direction" path.
+    if (isUnresearchedSeed(thesis.direction)) {
       result.pendingFirstReview = true;
     }
     return result;

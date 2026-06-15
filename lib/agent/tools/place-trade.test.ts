@@ -213,6 +213,111 @@ describe("place_trade — staleness gate removed (P1-1)", () => {
   });
 });
 
+/**
+ * P1-24 B4 — Guardrail 0: place_trade must reject an UNRESEARCHED watchlist
+ * seed. Per docs/plans/STATUS_TAXONOMY.md the seed sentinel migrated from
+ * direction='PENDING' to direction=null. The gate is an ALLOWLIST on
+ * LONG/SHORT, so it catches BOTH null (new) and 'PENDING' (legacy) — a
+ * null-direction seed becoming trade-eligible is the catastrophic failure
+ * this guards against. These tests pin that behavior; if the gate ever
+ * reverts to checking only 'PENDING', the null case fails loudly here.
+ *
+ * Mock ordering note: the directionCheck is the FIRST prisma.thesis.findUnique
+ * call inside execute() (after the enabled-gate + existing-position dedup),
+ * so mockResolvedValueOnce on the thesis mock feeds exactly that lookup.
+ */
+describe("place_trade — Guardrail 0: unresearched-seed direction gate (P1-24 B4)", () => {
+  beforeEach(() => {
+    mockThesisFindUnique.mockReset();
+    mockPositionFindFirst.mockReset();
+    mockPositionCreate.mockReset();
+    mockOrderCreate.mockReset();
+    mockTransaction.mockReset();
+    mockPlaceMarketOrder.mockReset();
+    mockGetOrder.mockReset();
+    mockGetLatestPrice.mockReset();
+    mockGetAccount.mockReset();
+    mockAgentConfigFindUnique.mockReset();
+    mockAgentConfigFindUnique.mockResolvedValue({
+      enabled: true,
+      name: "Test Analyst",
+    });
+  });
+
+  it("rejects a null-direction (unresearched) seed and never touches Alpaca", async () => {
+    // The B4 sentinel: an unresearched user/builder/editor seed now stores
+    // direction=null. The gate MUST reject it.
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: null });
+    mockPositionFindFirst.mockResolvedValueOnce(null);
+
+    const result = await makeTool(makeCtx()).execute({
+      ticker: "NVDA",
+      direction: "LONG",
+      entry_price: 100,
+      target_price: 120,
+      stop_loss: 90,
+      thesis_id: "thesis_null_seed",
+      notional: 5000,
+    });
+
+    expect(result.data.success).toBe(false);
+    expect(result.data.status).toBe("FAILED");
+    expect(String(result.data.message)).toMatch(/not committed to LONG\/SHORT/i);
+    expect(String(result.summary)).toMatch(/no committed direction/i);
+    // CRITICAL: the unresearched seed must NEVER reach order submission.
+    expect(mockPlaceMarketOrder).not.toHaveBeenCalled();
+    expect(mockPositionCreate).not.toHaveBeenCalled();
+  });
+
+  it("still rejects a legacy 'PENDING' seed (dual-read window)", async () => {
+    // Pre-backfill rows still carry the legacy 'PENDING' string. The same
+    // allowlist gate must reject those too.
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "PENDING" });
+    mockPositionFindFirst.mockResolvedValueOnce(null);
+
+    const result = await makeTool(makeCtx()).execute({
+      ticker: "AMD",
+      direction: "LONG",
+      entry_price: 100,
+      target_price: 120,
+      stop_loss: 90,
+      thesis_id: "thesis_legacy_pending",
+      notional: 5000,
+    });
+
+    expect(result.data.success).toBe(false);
+    expect(result.data.status).toBe("FAILED");
+    expect(mockPlaceMarketOrder).not.toHaveBeenCalled();
+    expect(mockPositionCreate).not.toHaveBeenCalled();
+  });
+
+  it("does NOT block a committed LONG thesis at Guardrail 0 (positive control)", async () => {
+    // A committed LONG must advance PAST Guardrail 0. We feed an invalid
+    // target/stop so it fails at the LATER shape guard — proving the
+    // direction gate let it through rather than rejecting on direction.
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    mockPositionFindFirst.mockResolvedValueOnce(null);
+
+    const result = await makeTool(makeCtx()).execute({
+      ticker: "NVDA",
+      direction: "LONG",
+      entry_price: 100,
+      target_price: 90, // invalid for LONG — trips the later shape guard
+      stop_loss: 80,
+      thesis_id: "thesis_committed_long",
+      notional: 5000,
+    });
+
+    expect(result.data.success).toBe(false);
+    // The rejection is the shape guard, NOT the direction-commitment gate.
+    expect(String(result.summary)).not.toMatch(/no committed direction/i);
+    expect(String(result.data.message ?? "")).not.toMatch(
+      /not committed to LONG\/SHORT/i,
+    );
+    expect(String(result.summary)).toMatch(/invalid target\/stop/i);
+  });
+});
+
 describe("place_trade — analyst enabled gate (trading-paused)", () => {
   beforeEach(() => {
     mockThesisFindUnique.mockReset();
