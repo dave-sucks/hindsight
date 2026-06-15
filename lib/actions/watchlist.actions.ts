@@ -413,7 +413,9 @@ export async function removeWatchlistItem(
   await prisma.thesis.update({
     where: { id: target.id },
     data: {
-      status: "ARCHIVED",
+      // P1-24 B3: walk-away removal retires with reason DROPPED.
+      status: "RETIRED",
+      retiredReason: "DROPPED",
       closedAt: new Date(),
       closeReason: removeReason,
     },
@@ -424,7 +426,10 @@ export async function removeWatchlistItem(
     type: "STATUS_CHANGED",
     summary: `Removed ${upper} from watchlist`,
     rationale: removeReason,
-    fieldChanges: { status: { from: target.status, to: "ARCHIVED" } },
+    fieldChanges: {
+      status: { from: target.status, to: "RETIRED" },
+      retiredReason: { from: null, to: "DROPPED" },
+    },
   });
 
   revalidatePath(`/analysts/${analystId}`);

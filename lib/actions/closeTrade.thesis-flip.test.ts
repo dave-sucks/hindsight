@@ -138,7 +138,7 @@ beforeEach(() => {
 });
 
 describe("closeOpenPosition — P1-18 paired-thesis flip", () => {
-  it("price_monitor FILLED close flips the ACTIVE thesis to CLOSED + writes one CLOSED audit row", async () => {
+  it("price_monitor FILLED close retires the held thesis (RETIRED + SOLD) + writes one CLOSED audit row", async () => {
     const result = await closeOpenPosition(
       "pos-1",
       "STOP",
@@ -152,7 +152,7 @@ describe("closeOpenPosition — P1-18 paired-thesis flip", () => {
       expect(result.fillStatus).toBe("FILLED");
     }
 
-    // Thesis flipped ACTIVE → CLOSED.
+    // Thesis flipped held → RETIRED (retiredReason SOLD).
     expect(mockThesisFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -165,17 +165,21 @@ describe("closeOpenPosition — P1-18 paired-thesis flip", () => {
     expect(mockThesisUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "thesis-1" },
-        data: expect.objectContaining({ status: "CLOSED" }),
+        data: expect.objectContaining({ status: "RETIRED", retiredReason: "SOLD" }),
       }),
     );
 
-    // Exactly one audit row, type CLOSED, carrying the ACTIVE→CLOSED delta.
+    // Exactly one audit row, type CLOSED (event kind unchanged), carrying the
+    // ACTIVE→RETIRED status delta + the retiredReason.
     expect(mockWriteThesisUpdate).toHaveBeenCalledTimes(1);
     expect(mockWriteThesisUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         thesisId: "thesis-1",
         type: "CLOSED",
-        fieldChanges: { status: { from: "ACTIVE", to: "CLOSED" } },
+        fieldChanges: {
+          status: { from: "ACTIVE", to: "RETIRED" },
+          retiredReason: { from: null, to: "SOLD" },
+        },
       }),
     );
   });

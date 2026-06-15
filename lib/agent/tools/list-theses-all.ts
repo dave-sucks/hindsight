@@ -22,7 +22,7 @@ export const listThesesAll = defineTool({
     analyst_id: z.string().optional(),
     ticker: z.string().optional(),
     status: z
-      .enum(["ACTIVE", "HOLDING", "WATCHING", "INVALIDATED", "CLOSED", "SUPERSEDED"])
+      .enum(["ACTIVE", "HOLDING", "WATCHING", "INVALIDATED", "CLOSED", "SUPERSEDED", "RETIRED"])
       .optional(),
     direction: z.enum(["LONG", "SHORT", "PASS"]).optional(),
     limit: z.number().int().min(1).max(200).optional(),

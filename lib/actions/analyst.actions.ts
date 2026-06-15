@@ -1669,7 +1669,9 @@ export async function updateAnalystFromBuilder(
           await prisma.thesis.update({
             where: { id: t.id },
             data: {
-              status: "ARCHIVED",
+              // P1-24 B3: walk-away removal retires with reason DROPPED.
+              status: "RETIRED",
+              retiredReason: "DROPPED",
               closedAt: new Date(),
               closeReason: "Removed via editor chat",
             },
@@ -1680,7 +1682,10 @@ export async function updateAnalystFromBuilder(
               type: "STATUS_CHANGED",
               summary: `Removed ${t.ticker} from watchlist via editor chat`,
               rationale: "Editor removed this ticker from the analyst's watchlist.",
-              fieldChanges: { status: { from: t.status, to: "ARCHIVED" } },
+              fieldChanges: {
+                status: { from: t.status, to: "RETIRED" },
+                retiredReason: { from: null, to: "DROPPED" },
+              },
             },
           });
         } catch (err) {
@@ -1899,7 +1904,7 @@ export async function getAnalystTheses(analystId: string) {
       : "PASS";
     const status =
       t.status === "ACTIVE" || t.status === "HOLDING" || t.status === "WATCHING" || t.status === "CLOSED" ||
-      t.status === "INVALIDATED" || t.status === "SUPERSEDED" || t.status === "PROMOTED"
+      t.status === "INVALIDATED" || t.status === "SUPERSEDED" || t.status === "RETIRED" || t.status === "PROMOTED"
         ? t.status
         : undefined;
     return {

@@ -28,6 +28,7 @@ export type ThesisSheetStateInput = {
   closeReason: string | null;
   invalidatedAt: Date | null;
   invalidReason: string | null;
+  retiredReason: string | null;
   horizon: string | null;
   entryPrice: number | null;
   targetPrice: number | null;
@@ -101,6 +102,7 @@ export function buildThesisSheetState(t: ThesisSheetStateInput): TriggersRespons
     closeReason: t.closeReason,
     invalidatedAt: t.invalidatedAt ? t.invalidatedAt.toISOString() : null,
     invalidReason: t.invalidReason,
+    retiredReason: t.retiredReason,
     horizon: t.horizon,
     entryPrice: t.entryPrice,
     targetPrice: t.targetPrice,
@@ -151,6 +153,7 @@ export const thesisSheetStateSelect = {
   closeReason: true,
   invalidatedAt: true,
   invalidReason: true,
+  retiredReason: true,
   horizon: true,
   entryPrice: true,
   targetPrice: true,

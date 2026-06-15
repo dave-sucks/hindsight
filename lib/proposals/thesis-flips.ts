@@ -195,7 +195,11 @@ export async function closeThesisForPosition(opts: {
     await prisma.thesis.update({
       where: { id: activeThesis.id },
       data: {
-        status: "CLOSED",
+        // P1-24 B3: terminal collapse — a sold/closed position retires the
+        // thesis with retiredReason=SOLD (was status='CLOSED'). closedAt/
+        // closeReason still carry the narrative.
+        status: "RETIRED",
+        retiredReason: "SOLD",
         closedAt: new Date(),
         closeReason: opts.closeReason,
       },
@@ -208,7 +212,8 @@ export async function closeThesisForPosition(opts: {
       rationale:
         opts.rationale ?? `Position closed. Reason: ${opts.closeReason}.`,
       fieldChanges: {
-        status: { from: activeThesis.status, to: "CLOSED" },
+        status: { from: activeThesis.status, to: "RETIRED" },
+        retiredReason: { from: null, to: "SOLD" },
       },
       runId: opts.runId,
       priceAtTime: opts.priceAtTime ?? null,

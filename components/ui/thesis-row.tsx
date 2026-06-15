@@ -384,7 +384,8 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
           t.sheetState?.status === "WATCHING" ||
           t.sheetState?.status === "CLOSED" ||
           t.sheetState?.status === "INVALIDATED" ||
-          t.sheetState?.status === "SUPERSEDED"
+          t.sheetState?.status === "SUPERSEDED" ||
+          t.sheetState?.status === "RETIRED"
             ? t.sheetState.status
             : undefined
         }

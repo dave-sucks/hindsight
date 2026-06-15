@@ -179,7 +179,7 @@ export function buildResolvedEnvelope(args: {
   let actionability: Actionability;
   // PASSED (researched-and-declined) is terminal alongside the walk-away
   // ARCHIVED — both resolve to DEAD so the agent/UI skip them as live rows.
-  const terminal = ["INVALIDATED", "ARCHIVED", "CLOSED", "PASSED"];
+  const terminal = ["INVALIDATED", "ARCHIVED", "CLOSED", "PASSED", "RETIRED"];
   if (terminal.includes(thesis.status)) {
     actionability = "DEAD";
   } else if (isSuperseded) {

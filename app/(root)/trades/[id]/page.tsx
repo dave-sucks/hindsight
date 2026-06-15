@@ -478,6 +478,7 @@ export default async function TradeDetailPage({
                   if (s === "SUPERSEDED") return <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Superseded</Badge>;
                   if (s === "INVALIDATED") return <Badge variant="destructive" className="text-[10px] h-4 px-1.5">Invalidated</Badge>;
                   if (s === "CLOSED") return <Badge variant="outline" className="text-[10px] h-4 px-1.5">Closed</Badge>;
+                  if (s === "RETIRED") return <Badge variant="outline" className="text-[10px] h-4 px-1.5">Retired</Badge>;
                   return null;
                 };
                 return (
