@@ -284,7 +284,11 @@ export async function promoteAnalystToLive(
   const orphanActive = await prisma.thesis.findMany({
     where: {
       status: { in: ["ACTIVE", "HOLDING"] },
-      direction: { not: "PASS" },
+      // P1-24 PASS-off-direction: explicit ALLOWLIST (LONG/SHORT), matching
+      // the primary promote query above. Robust to direction=null; the
+      // status filter already excludes passes (PASS → status=PASSED). Was
+      // `{ not: "PASS" }`.
+      direction: { in: ["LONG", "SHORT"] },
       researchRun: { agentConfigId: analystId },
     },
     select: { id: true, ticker: true },
@@ -406,7 +410,10 @@ async function transitionThesisToPromoted(input: {
         where: {
           ticker: input.ticker,
           status: { in: ["ACTIVE", "HOLDING"] },
-          direction: { not: "PASS" },
+          // P1-24 PASS-off-direction: explicit ALLOWLIST (LONG/SHORT). Robust
+          // to direction=null; the status filter already excludes passes
+          // (PASS → status=PASSED). Was `{ not: "PASS" }`.
+          direction: { in: ["LONG", "SHORT"] },
           researchRun: { agentConfigId: input.analystId },
         },
         orderBy: { createdAt: "desc" },

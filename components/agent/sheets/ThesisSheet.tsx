@@ -92,7 +92,9 @@ export type ThesisCardData = {
   company_name?: string | null;
   exchange?: string | null;
   fundamentals?: FundamentalsData | null;
-  status?: "ACTIVE" | "HOLDING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "RETIRED" | "WATCHING" | "PROMOTED";
+  // P1-24: PASSED is the researched-declined status (a pass now stores
+  // direction=null). Threaded so the sheet's isPass keys on status.
+  status?: "ACTIVE" | "HOLDING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "RETIRED" | "WATCHING" | "PROMOTED" | "PASSED";
   /**
    * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
    * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
@@ -1601,8 +1603,9 @@ export interface ThesisSheetBodyProps {
   fundamentals?: FundamentalsData | null;
   /** Lifecycle status from the row that opened the sheet. Used as the
    *  initial StatusPill value so first paint matches the durable state
-   *  with no flicker. The triggers API fetch refines position/PnL data. */
-  status?: "ACTIVE" | "HOLDING" | "WATCHING" | "PROMOTED" | "CLOSED" | "INVALIDATED" | "SUPERSEDED" | "RETIRED";
+   *  with no flicker. The triggers API fetch refines position/PnL data.
+   *  P1-24: PASSED drives isPass now that a pass stores direction=null. */
+  status?: "ACTIVE" | "HOLDING" | "WATCHING" | "PROMOTED" | "CLOSED" | "INVALIDATED" | "SUPERSEDED" | "RETIRED" | "PASSED";
   /**
    * Pre-fetched /triggers payload from the parent (P2-19). When supplied,
    * the sheet renders status / belief / scoring / sources / research
@@ -1625,12 +1628,22 @@ export function ThesisSheetBody({
   company_name,
   exchange,
   fundamentals,
-  // `status` prop intentionally NOT destructured for rendering — status
-  // is sourced solely from the resolved `state` (see liveStatus below).
-  // Reading the prop was the cause of the pill flash.
+  // The `status` prop drives `isPass` only (NOT the StatusPill — that still
+  // reads the resolved `liveStatus` below to avoid the pill flash). P1-24:
+  // a pass stores direction=null, so status=PASSED is the authoritative pass
+  // signal; the direction prop is only a legacy fallback (see isPass below).
+  status: initialStatus,
   initialState,
 }: ThesisSheetBodyProps) {
-  const isPass = direction === "PASS";
+  // P1-24 PASS-off-direction: a pass is identified by status=PASSED. Key on
+  // the status prop (callers thread the row's status synchronously — a new
+  // pass always arrives as status="PASSED"); fall back to direction='PASS'
+  // ONLY when no status is known (legacy rows pre-backfill). Keying on status
+  // first avoids the null→"PASS" direction coercion the callers apply, which
+  // would otherwise misread a null-direction WATCHING seed as a pass.
+  const isPass =
+    initialStatus === "PASSED" ||
+    (initialStatus == null && direction === "PASS");
   const displayName = company_name ?? ticker;
   const summaryText = isPass ? (pass_reason ?? reasoning_summary) : reasoning_summary;
 

@@ -1284,12 +1284,23 @@ export const recordThesis = defineTool({
         args.analyst_consensus ||
         args.insider_technical;
 
+      // P1-24 PASS-off-direction: a pass stores `direction=null`; the pass
+      // fact lives entirely on status=PASSED (effectiveStatusForTriggers
+      // already resolves PASS → "PASSED" above). The agent still SENDS
+      // direction:"PASS" (kept call signal) — we just don't persist it.
+      // LONG/SHORT store as-is; PENDING is unreachable here (rejected at the
+      // top of execute()). Readers identify a pass via status (isPassedThesis).
+      const directionToStore: "LONG" | "SHORT" | null =
+        args.direction === "PASS"
+          ? null
+          : (args.direction as "LONG" | "SHORT");
+
       const coreData = {
         researchRunId: ctx.runId,
         userId: ctx.userId,
         accountId: ctx.accountId,
         ticker: args.ticker,
-        direction: args.direction,
+        direction: directionToStore,
         entryPrice: args.entry_price ?? null,
         targetPrice: args.target_price ?? null,
         stopLoss: args.stop_loss ?? null,

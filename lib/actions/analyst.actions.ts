@@ -1908,7 +1908,11 @@ export async function getAnalystTheses(analystId: string) {
       : "PASS";
     const status =
       t.status === "ACTIVE" || t.status === "HOLDING" || t.status === "WATCHING" || t.status === "CLOSED" ||
-      t.status === "INVALIDATED" || t.status === "SUPERSEDED" || t.status === "RETIRED" || t.status === "PROMOTED"
+      t.status === "INVALIDATED" || t.status === "SUPERSEDED" || t.status === "RETIRED" || t.status === "PROMOTED" ||
+      // P1-24: PASSED so the sheet's isPass keys on status (a pass now stores
+      // direction=null; this mapper falls direction → "PASS" only to satisfy
+      // the card type — status is the truth).
+      t.status === "PASSED"
         ? t.status
         : undefined;
     return {

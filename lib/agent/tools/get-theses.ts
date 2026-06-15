@@ -473,12 +473,16 @@ export const getTheses = defineTool({
           ...(ctx.analystId
             ? { researchRun: { agentConfigId: ctx.analystId } }
             : {}),
-          OR: [
-            // P1-24: RETIRED is the collapsed terminal; PASSED is covered by
-            // the direction:"PASS" clause. Keep legacy terminals for dual-read.
-            { status: { in: ["INVALIDATED", "ARCHIVED", "CLOSED", "RETIRED"] } },
-            { direction: "PASS" },
-          ],
+          // P1-24: every terminal/declined sibling is caught by STATUS now.
+          // PASSED = researched-declined (was direction='PASS'); RETIRED =
+          // the collapsed terminal (incl. passed-then-terminal). The legacy
+          // INVALIDATED/ARCHIVED/CLOSED values stay for dual-read until the
+          // contract PR. The old `{ direction: "PASS" }` OR-clause is gone —
+          // a pass now stores direction=null, so it would catch nothing; the
+          // PASSED/RETIRED status entries cover both pass shapes.
+          status: {
+            in: ["INVALIDATED", "ARCHIVED", "CLOSED", "RETIRED", "PASSED"],
+          },
         },
         orderBy: { createdAt: "desc" },
         select: { id: true, ticker: true, createdAt: true },
@@ -589,7 +593,10 @@ export const getTheses = defineTool({
           | "INVALIDATED"
           | "CLOSED"
           | "SUPERSEDED"
-          | "RETIRED",
+          | "RETIRED"
+          // P1-24: PASSED = researched-and-declined (a pass stores
+          // direction=null now; status is the pass signal).
+          | "PASSED",
         // PROMOTED-only context fields. Null on non-PROMOTED rows.
         promoted_at: t.promotedAt ? t.promotedAt.toISOString() : null,
         paper_tenure_days: t.paperTenureDays ?? null,

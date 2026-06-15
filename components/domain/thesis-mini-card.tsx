@@ -35,6 +35,7 @@ import { PriceChange } from "@/components/ui/price-change";
 import { PriceGauge } from "@/components/ui/gauge";
 import { ThesisSheet, type ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
+import { isPassedThesis } from "@/lib/agent/thesis-direction";
 import { useThesisCardData } from "@/lib/hooks/use-thesis-card-data";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -73,7 +74,10 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
   const positionPnl = quote?.positionPnl ?? null;
 
   const statusDisplay = getThesisStatusDisplay(status);
-  const isPass = direction === "PASS";
+  // P1-24: a pass is status=PASSED (new) or direction='PASS' (legacy). The
+  // live `status` (from /triggers, falling back to the prop snapshot) is
+  // authoritative; isPassedThesis dual-reads both.
+  const isPass = isPassedThesis(direction, status);
   const hasGauge = entryPrice != null && (targetPrice != null || stopLoss != null);
   const isHolding =
     (status === "ACTIVE" || status === "HOLDING") && position != null;
