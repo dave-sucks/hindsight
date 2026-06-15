@@ -4,7 +4,7 @@
  *
  * Replaces the ad-hoc Thesis lookups scattered across other tools.
  * Tactical mode wants ONE thesis (by ticker or id) with its recent
- * activity. Housekeeping wants ALL ACTIVE + WATCHING theses with light
+ * activity. Housekeeping wants ALL HOLDING + WATCHING theses with light
  * history. Discovery wants the catalog of WATCHING-status candidates.
  *
  * Filters compose AND-style:
@@ -72,7 +72,7 @@ const schema = z.object({
     .array(z.enum(STATUS_VALUES))
     .optional()
     .describe(
-      "Filter by status. Default = ['ACTIVE', 'WATCHING'] (the live coverage book). Pass explicitly to include INVALIDATED/CLOSED/SUPERSEDED/PASSED for historical lookups (PASSED = researched-and-declined names).",
+      "Filter by status. Default = the live coverage book (HOLDING + WATCHING + PROMOTED). Pass explicitly to include RETIRED/PASSED for historical lookups (RETIRED = terminal, carries retiredReason SOLD/INVALIDATED/REPLACED/DROPPED; PASSED = researched-and-declined names). Legacy ACTIVE/CLOSED/INVALIDATED/ARCHIVED/SUPERSEDED values still resolve during the migration dual-read window.",
     ),
   tickers: z
     .array(z.string())
@@ -122,7 +122,7 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's durable thesis library. Default returns ACTIVE + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
+    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
   schema,
   ui: "thesis-card" as const,
 

@@ -18,7 +18,7 @@ Read everything gathered since the last run. Signals come back in three buckets:
 
 ```reads
 read_signals — today's signals in three buckets: portfolio, watchlist, discovery
-get_theses — full thesis library: ACTIVE, WATCHING, and PROMOTED theses with recent update history and research excerpts
+get_theses — full thesis library: HOLDING, WATCHING, and PROMOTED theses with recent update history and research excerpts
 get_portfolio_context — live P&L, days held, distance from peak, exit levels
 read_artifact — full article content behind any signal worth a deep read
 web_search?provider=perplexity — live search, sparingly, within the per-run budget
@@ -42,13 +42,13 @@ dispatch_thesis_research — spawns a Thesis Writer to refresh stale or missing 
 wait_for_thesis_refresh — blocks until the refresh child run completes, then returns the updated excerpt
 ```
 
-**`PROMOTED` theses — conviction-pause state.** A `PROMOTED` thesis was `ACTIVE` in paper with intact conviction; then the user promoted the analyst from paper to live trading, the paper position was force-closed, and the thesis sits in this state awaiting first-live-run resolution. The row carries conviction context from the paper era: tenure, realized P&L, and how many times the analyst affirmed the thesis before promotion.
+**`PROMOTED` theses — conviction-pause state.** A `PROMOTED` thesis was `HOLDING` in paper with intact conviction; then the user promoted the analyst from paper to live trading, the paper position was force-closed, and the thesis sits in this state awaiting first-live-run resolution. The row carries conviction context from the paper era: tenure, realized P&L, and how many times the analyst affirmed the thesis before promotion.
 
 The default action on a `PROMOTED` thesis is `place_trade` — re-enter live. That's the doubled-conviction signal: both the analyst's paper track record and the user's explicit promotion decision say this name is worth real money. Research must be fresh before entry (dispatch-then-wait if stale). Recompute target and stop relative to today's price before calling `place_trade` — the paper-era levels are stale.
 
 The only opt-out is `update_thesis(change_status: "WATCHING")` to defer re-entry. `INVALIDATED`, `CLOSED`, and `ARCHIVED` transitions are rejected at the tool layer on `PROMOTED` theses. Reasoning-only patches (no `change_status`) are also rejected — `PROMOTED` requires an explicit resolution this run.
 
-**Regular `WATCHING` and `ACTIVE` theses:** for each name, the questions are: did a trigger fire? Did new evidence arrive? Is a scheduled review due? If none of the above — write a `REVIEWED`-only update and move on. If an entry trigger is currently met, the action is to promote: `update_thesis(change_status: "ACTIVE")` → `place_trade`. Raising the target instead of trading when the entry condition is met is a run failure.
+**Regular `WATCHING` and `HOLDING` theses:** for each name, the questions are: did a trigger fire? Did new evidence arrive? Is a scheduled review due? If none of the above — write a `REVIEWED`-only update and move on. If an entry trigger is currently met, the action is to enter: `place_trade` (the trade tool owns the WATCHING → HOLDING flip on fill). Raising the target instead of trading when the entry condition is met is a run failure.
 
 ```writes
 update_thesis — every thesis touched gets one audit row (UPDATED, REVIEWED, STATUS_CHANGED, or CLOSED)

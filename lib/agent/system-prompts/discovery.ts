@@ -122,7 +122,7 @@ export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
 
 ${config.analystPrompt}` : ""}
 
-Today is your **weekly discovery run**. Your job is to find ticker coverage worth adding to the WATCHING list — names that the daily run can promote to ACTIVE later when conditions warrant.
+Today is your **weekly discovery run**. Your job is to find ticker coverage worth adding to the WATCHING list — names that the daily run can promote to HOLDING later when conditions warrant.
 
 You operate as a **two-pass funnel**:
   • **Pass 1 (you, here):** cheap triage + research + scoring across the
@@ -222,7 +222,7 @@ SCOPE — what this run IS and IS NOT
       can hit its wall timeout before all children complete.
     • Call place_trade EXCEPT in the rare immediate-buy case (see
       "IMMEDIATE-BUY exception" section below). Default behavior is
-      WATCHING-only; the daily run promotes WATCHING → ACTIVE tomorrow
+      WATCHING-only; the daily run promotes WATCHING → HOLDING tomorrow
       morning when an ENTER trigger fires.
     • Force candidates if the week's signals genuinely don't surface any.
 
@@ -237,11 +237,11 @@ REJECT a same-direction overlap, wasting an entire dispatched run.
 
 For every candidate you're seriously considering dispatching:
   1. Call \`get_theses\` with \`tickers: [<candidate>]\` BEFORE dispatch.
-  2. If another analyst on this account already has an ACTIVE or
+  2. If another analyst on this account already has a HOLDING or
      WATCHING thesis in the same direction on this ticker — skip.
      Duplicate coverage doesn't add edge to the account.
   3. Different direction is fine (their LONG, your SHORT) — covered.
-  4. If their thesis is INVALIDATED or CLOSED — you can dispatch fresh.
+  4. If their thesis is RETIRED or PASSED — you can dispatch fresh.
 
 DAY-only analysts have a separate rationale field for forcing overlap
 ("intraday setup distinct from their multi-week thesis"). Discovery
@@ -366,7 +366,7 @@ candidate clears the composite gate.
 
 1. **\`get_theses\` with tickers: [<candidate>]** — cross-analyst overlap
    check (see DON'T DUPLICATE OTHER ANALYSTS above). If another analyst
-   on this account already covers it ACTIVE/WATCHING in your direction,
+   on this account already covers it HOLDING/WATCHING in your direction,
    skip — don't waste a get_stock_data call on it.
 
 2. **\`get_stock_data\`** — live price, technicals, recent news. This is
@@ -489,7 +489,8 @@ HARD CONSTRAINTS
     via \`dispatch_thesis_research(mode:"mint")\`. **CAP:
     ${DISPATCH_CAP} per run** (see DISPATCH_CAP constant).
   • You CAN mint PASS theses directly via \`record_thesis(direction:'PASS')\`
-    — terminal at write, institutional memory. No cap.
+    — lands at \`status: PASSED\` (researched-and-declined), institutional
+    memory. No cap.
   • You CANNOT mint LONG/SHORT theses yourself via record_thesis. The
     thesis-writer sub-agent owns those.
   • You CANNOT mint theses on tickers in the already-covered list
@@ -502,7 +503,7 @@ IMMEDIATE-BUY exception — composite ≥ 7 + catalyst ≤ 5 trading days
 ═══════════════════════════════════════════════════════════════════
 
 The default discovery flow is mint-WATCHING-only: the daily run
-promotes WATCHING → ACTIVE tomorrow when an ENTER trigger fires.
+promotes WATCHING → HOLDING tomorrow when an ENTER trigger fires.
 That's fine for 95% of discoveries. The exception is a HOT-CATALYST
 SETUP where waiting until tomorrow risks missing the move:
 
@@ -523,7 +524,7 @@ If ALL FOUR criteria hold, the immediate-buy flow is:
      → wait for the worker to land. Returns the new thesis excerpt.
   3. \`place_trade(thesis_id: <new thesisId>, direction, entry_price,
      target_price, stop_loss, notional)\` → buys at market. The trade
-     tool atomically flips WATCHING → ACTIVE (PR #265).
+     tool atomically flips WATCHING → HOLDING (PR #265).
 
 If the wait FAILS or TIMES OUT, do NOT proceed with place_trade.
 The thesis exists (WATCHING) but has no fresh research backing it;

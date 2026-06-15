@@ -232,14 +232,14 @@ DECISION FRAMEWORK
      EXIT means close_position. ADD means place_trade or manage_position
      (scale up). TRIM means manage_position (partial close). MOVE_STOP
      means manage_position (adjust stop).
-   - **WATCHING → ACTIVE promotion (entry triggers).** When the thesis
+   - **WATCHING → HOLDING promotion (entry triggers).** When the thesis
      status is WATCHING and the action is ADD, call place_trade for the
-     entry. The trade tool owns the WATCHING → ACTIVE flip — on immediate
+     entry. The trade tool owns the WATCHING → HOLDING flip — on immediate
      fill, or on your approval for a live proposal. You do NOT set
-     change_status: ACTIVE/CLOSED are account facts the execution layer
-     writes when a real fill lands. Setting ACTIVE yourself before the
-     fill strands the thesis (stuck ACTIVE with no position) if the
-     proposal is later declined or expires. Pair a rationale-only
+     change_status: the held/closed flip is an account fact the execution
+     layer writes when a real fill lands. Flipping the thesis to held
+     yourself before the fill strands it (stuck HOLDING with no position)
+     if the proposal is later declined or expires. Pair a rationale-only
      update_thesis as your close-out row.
    - **Confirmation gate before place_trade.** A price level firing is
      necessary but not sufficient. Before place_trade, confirm using

@@ -99,10 +99,10 @@ thesis via `Thesis.status = 'PROMOTED'`. The promotion context lives in four col
 
 Apply per PROMOTED thesis on the live analyst's book today:
 
-1. **Fan-out fired?** `researchUpdatedAt` should show a refresh **at or after** `promotedAt`. The promotion action ([lib/actions/promote-analyst.actions.ts](../../lib/actions/promote-analyst.actions.ts)) fans out a `dispatch_thesis_research(mode='refresh')` for every ACTIVE thesis it carries forward to PROMOTED — if `researchUpdatedAt < promotedAt`, the fan-out didn't reach that row. Bug or stale config.
+1. **Fan-out fired?** `researchUpdatedAt` should show a refresh **at or after** `promotedAt`. The promotion action ([lib/actions/promote-analyst.actions.ts](../../lib/actions/promote-analyst.actions.ts)) fans out a `dispatch_thesis_research(mode='refresh')` for every HOLDING thesis it carries forward to PROMOTED — if `researchUpdatedAt < promotedAt`, the fan-out didn't reach that row. Bug or stale config.
 2. **Paper-context columns populated?** Cross-check `paperTenureDays / paperRealizedPnl / paperReviewCount` against `Position` history pre-promotion + `ThesisUpdate WHERE type IN ('REVIEWED','UPDATED') AND thesisId = X` count pre-promotion. Mismatch = the snapshot at promotion-time was off.
 3. **Agent cited paper context in narration?** Read the run's `update_thesis` rationale + `record_run_summary` text for the PROMOTED ticker. Did the agent explicitly weigh paper tenure / paper P&L / review count in the re-enter / downgrade / invalidate decision? "PROMOTED, $X paper P&L over N days, M reviews → re-enter at $..." is the shape we expect. Generic "this looks good" is not.
-4. **PROMOTED → ACTIVE flip clean?** If any PROMOTED thesis flipped to ACTIVE via `place_trade` today: confirm the `ThesisUpdate(type='STATUS_CHANGED')` row exists with `tradeId` populated. The `place_trade` atomic flip ([lib/agent/tools/place-trade.ts](../../lib/agent/tools/place-trade.ts)) handles this — missing audit row is a bug.
+4. **PROMOTED → HOLDING flip clean?** If any PROMOTED thesis flipped to HOLDING via `place_trade` today: confirm the `ThesisUpdate(type='STATUS_CHANGED')` row exists with `tradeId` populated. The `place_trade` atomic flip ([lib/agent/tools/place-trade.ts](../../lib/agent/tools/place-trade.ts)) handles this — missing audit row is a bug.
 5. **PROMOTED → WATCHING / INVALIDATED?** If downgraded: the rationale should cite either paper context ("paper return was −$X over N days, conviction was weaker than the tenure suggests") OR fresh evidence ("new SEC filing breaks the bull case"). Pure narration-rewrites without a concrete reason are a quality failure on a live book.
 6. **Orphan tactical EXIT runs** ([ex-P1-21, closed via PR #333 PROMOTED-aware triggers](../GAPS.md)): a PROMOTED thesis carries no paired Position (paper position was force-closed at promotion). A tactical run spawned from a PROMOTED-thesis `PRICE_BELOW(stop)` trigger that tries to `close_position` will error out — there's no position to close. Count these. Pre-fix rows: search for `mode='INTRADAY_TACTICAL' AND parameters->>'predicateKind'='PRICE_BELOW' AND ResearchRun.status='FAILED'` with the failure cite naming `close_position`. Should be zero post-#333; flag any that surface.
 
@@ -117,7 +117,7 @@ For each MORNING_PLAN run:
 1. **List every `dispatch_thesis_research` call.** Pull from `RunMessage` regex or `parameters.toolStats.byTool.dispatch_thesis_research`. For each: ticker, mode (`mint` / `refresh`), reason field.
 2. **Did the child run complete?** Each dispatch creates a child `ResearchRun(mode='THESIS_WRITER', parentRunId=<parent>)`. Walk to `/runs/<parentId>` or query directly: `WHERE parentRunId = X AND mode='THESIS_WRITER'`. Report `status` + `elapsed_s`. Failed children burn budget and may have blocked the parent.
 3. **Judgment-driven refresh dispatch** ([PR #352](https://github.com/dave-sucks/hindsight/pull/352) removed the `place_trade` staleness gate). The agent decides during REVIEW whether to dispatch. Expected shape:
-   - For each ACTIVE / WATCHING / PROMOTED thesis at run start, check `Thesis.researchUpdatedAt` against the horizon's `STALE_DAYS_BY_HORIZON` threshold.
+   - For each HOLDING / WATCHING / PROMOTED thesis at run start, check `Thesis.researchUpdatedAt` against the horizon's `STALE_DAYS_BY_HORIZON` threshold.
    - If past threshold, the agent's REVIEW-step rationale should either (a) cite a `dispatch_thesis_research(mode='refresh')` call in the run, then `wait_for_thesis_refresh`, then act on fresh research, OR (b) explicitly document why a soft-patch via `update_thesis` is sufficient.
    - **Old gate-recovery flow is gone.** Don't look for `place_trade` returning `data.note='research is missing' / 'days stale'` anymore — that gate was deleted. The new failure mode is "agent acted on stale research without dispatching a refresh" — see Section A6.
 4. **Acted on stale research without dispatching?** Cross-check: for every `update_thesis` / `place_trade` / `close_position` / `manage_position` call today, look up `Thesis.researchUpdatedAt` at the time. If past horizon threshold (Section A6) AND no preceding `dispatch_thesis_research(refresh)` for that thesis in this run, flag it. Higher bar on LIVE-analyst PROMOTED rows than on PAPER WATCHING rows.
@@ -127,10 +127,10 @@ For each MORNING_PLAN run:
 ### D. The "moved but wasn't traded" check
 
 For every thesis on the live analyst's book at run start (snapshot from `Thesis WHERE
-agentConfigId = X AND status IN ('ACTIVE','WATCHING','PROMOTED')`):
+agentConfigId = X AND status IN ('ACTIVE','HOLDING','WATCHING','PROMOTED')`):
 
 1. **Pull today's price action** via `getStockQuote` or `Position.closePrice` at EOD, plus intraday high/low. Acceptable source: any Finnhub or Alpaca snapshot taken between run start and EOD.
-2. **ACTIVE positions, price moved ≥3% intraday?** Confirm the thesis was reviewed in the run via `ThesisUpdate WHERE thesisId = X AND runId = <today's morning runId>`. No update row = the agent skipped a meaningful move. Flag.
+2. **HOLDING positions, price moved ≥3% intraday?** Confirm the thesis was reviewed in the run via `ThesisUpdate WHERE thesisId = X AND runId = <today's morning runId>`. No update row = the agent skipped a meaningful move. Flag.
 3. **WATCHING / PROMOTED, price crossed `entryPrice` or any ENTER trigger level?** Confirm `place_trade` was called (or a tactical run was scheduled and converted). If neither: pull the agent's documented reason from `update_thesis.rationale` or `record_run_summary.decision_rationale`.
 4. **Goalpost-moving check.** [GAPS MRVL reference](../GAPS.md) — a documented anti-pattern: agent raises the target on a WATCHING thesis when price is already at or above the OLD target instead of trading. Symptom: `update_thesis` with `target` edit, ticker price ≥ old target. Flag with ticker + old target + new target + price.
 5. **Document the agent's reason VERBATIM** when a non-trade is questionable. "Agent didn't trade NVDA despite ENTER trigger conditions met at 14:23 ET (price $185.30 crossed entry $185.00). Stated reason: 'wait for tomorrow's CPI print before committing'" — quote it. The pattern matters more than any one instance.
@@ -140,7 +140,7 @@ agentConfigId = X AND status IN ('ACTIVE','WATCHING','PROMOTED')`):
 1. **`nextReviewAt` past-dated or near-future weird value?** [PR #329's record-thesis Layer-1 validator](../../lib/agent/tools/record-thesis.ts) (line ~823, `MIN_FUTURE_HOURS = 6`) rejects agent-provided dates that resolve to the past or <6h out, falling back to the horizon default with a `console.warn`. Confirm by querying `Thesis WHERE createdAt::date = today AND nextReviewAt < createdAt + INTERVAL '6 hours'` — should be zero. Non-zero rows = the validator didn't fire or got bypassed.
 2. **`REVIEW_DATE_HIT` triggers on rows whose `nextReviewAt` should be months out?** Possible data corruption from a past year-confusion bug. Query: `RunEvent WHERE type='trigger_fired' AND payload->>'predicateKind'='REVIEW_DATE_HIT' AND createdAt::date = today`, join to `Thesis`, look for `nextReviewAt` that's a year+ in the past or oddly clustered.
 3. **Tactical runs that don't make sense given the trigger?** A tactical run spawned by `PRICE_ABOVE` on a SHORT thesis should be considering EXIT, not ENTER. Mismatches between `parameters.action` (`'ENTER'` / `'EXIT'`) and the thesis's `direction`/`status` are bugs ([PR #339 + #343 trigger correctness work](../../lib/agent/triggers/enter-guard.ts)).
-4. **Symmetric ENTER-on-ACTIVE / missing-EXIT-on-ACTIVE rejections** ([PR #343 — shipped 2026-05-26 00:36 ET](../../lib/agent/triggers/enter-guard.ts)): an ACTIVE-side refresh should never produce an ENTER trigger or strip the EXIT trigger. If today's date is on or after 2026-05-26 and the agent did either, the guard didn't fire. Count `ThesisUpdate WHERE runId = <today> AND type='UPDATED'` rows whose resulting `Thesis.triggers` JSON shape has `ENTER` on an ACTIVE row OR is missing `EXIT` on an ACTIVE LONG/SHORT.
+4. **Symmetric ENTER-on-HOLDING / missing-EXIT-on-HOLDING rejections** ([PR #343 — shipped 2026-05-26 00:36 ET](../../lib/agent/triggers/enter-guard.ts)): a HOLDING-side refresh should never produce an ENTER trigger or strip the EXIT trigger. If today's date is on or after 2026-05-26 and the agent did either, the guard didn't fire. Count `ThesisUpdate WHERE runId = <today> AND type='UPDATED'` rows whose resulting `Thesis.triggers` JSON shape has `ENTER` on a HOLDING row OR is missing `EXIT` on a HOLDING LONG/SHORT.
 
 ### F. Standard checks (cross-reference, keep applying)
 
@@ -167,7 +167,7 @@ For each thesis the run touched:
 
 1. **Reconstruct `resolved.actionability` at run start.** Re-run the resolver
    (or query `Thesis` + Finnhub quote at `ResearchRun.startedAt`) for each
-   ACTIVE / WATCHING / PROMOTED thesis the run touched. Note the verdict.
+   HOLDING / WATCHING / PROMOTED thesis the run touched. Note the verdict.
 2. **`READY_TO_BUY` → trade or documented refusal.** If actionability was
    `READY_TO_BUY` at run start (price ≥ entry trigger, no blocking gate) and
    the agent didn't `place_trade`, the `update_thesis.rationale` or
@@ -272,8 +272,8 @@ Approve. Any deviation is a finding.**
    state transitions are clean.
 10. **Approve / reject UI exercised today?** If the principal actually clicked
     Approve or Reject on any proposal today: walk the full state transition.
-    Approve → Order=FILLED, Position=OPEN, Thesis flipped (WATCHING→ACTIVE on
-    buy, ACTIVE→CLOSED on full sell), `PROPOSAL_APPROVED` audit row, Alpaca
+    Approve → Order=FILLED, Position=OPEN, Thesis flipped (WATCHING→HOLDING on
+    buy, HOLDING→RETIRED on full sell), `PROPOSAL_APPROVED` audit row, Alpaca
     fill via the stored idempotency key. Reject → Order=REJECTED with the
     user's message, Position=CANCELLED (buys), `PROPOSAL_REJECTED` audit row
     with the message in rationale. If anything in that chain is missing, flag.
@@ -392,10 +392,10 @@ ORDER BY "runId", "createdAt";
 
 -- Overdue-review backlog (trend metric)
 SELECT
-  COUNT(*) FILTER (WHERE status::text IN ('ACTIVE','WATCHING','PROMOTED')) AS active_or_watching,
-  COUNT(*) FILTER (WHERE status::text IN ('ACTIVE','WATCHING','PROMOTED')
+  COUNT(*) FILTER (WHERE status::text IN ('ACTIVE','HOLDING','WATCHING','PROMOTED')) AS active_or_watching,
+  COUNT(*) FILTER (WHERE status::text IN ('ACTIVE','HOLDING','WATCHING','PROMOTED')
                    AND "nextReviewAt" < (NOW() - INTERVAL '7 days')) AS overdue_7d,
-  COUNT(*) FILTER (WHERE status::text IN ('ACTIVE','WATCHING','PROMOTED')
+  COUNT(*) FILTER (WHERE status::text IN ('ACTIVE','HOLDING','WATCHING','PROMOTED')
                    AND "nextReviewAt" < NOW()) AS overdue_any
 FROM "Thesis";
 
@@ -427,12 +427,12 @@ WHERE t.id IN (SELECT "thesisId" FROM touched)
 -- Conviction distribution across all open theses
 SELECT conviction,
        COUNT(*) AS n,
-       COUNT(*) FILTER (WHERE status = 'ACTIVE') AS n_active,
+       COUNT(*) FILTER (WHERE status IN ('ACTIVE','HOLDING')) AS n_active,
        COUNT(*) FILTER (WHERE status = 'WATCHING') AS n_watching,
        COUNT(*) FILTER (WHERE status = 'PROMOTED') AS n_promoted
 FROM "Thesis"
 WHERE direction IN ('LONG', 'SHORT')
-  AND status IN ('ACTIVE', 'WATCHING', 'PROMOTED')
+  AND status IN ('ACTIVE', 'HOLDING', 'WATCHING', 'PROMOTED')
 GROUP BY conviction
 ORDER BY CASE conviction
   WHEN 'STRONG' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 WHEN 'LOW' THEN 4 ELSE 5 END;

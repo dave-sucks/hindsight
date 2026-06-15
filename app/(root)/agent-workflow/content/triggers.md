@@ -14,7 +14,7 @@ When the [Intelligence Pipeline](agent:intelligence) emits `app/signal.routed`, 
 
 ## Price-driven path
 
-Every 15 minutes during market hours, the evaluator loads all `ACTIVE` theses with non-empty triggers, batch-fetches fresh quotes for unique tickers (capped at 200 per interval), and evaluates price and time-based predicates against the live data.
+Every 15 minutes during market hours, the evaluator loads all `HOLDING` and `WATCHING` theses with non-empty triggers, batch-fetches fresh quotes for unique tickers (capped at 200 per interval), and evaluates price and time-based predicates against the live data.
 
 ```reads
 Finnhub /quote?provider=finnhub — batch price fetch, up to 200 unique tickers per interval

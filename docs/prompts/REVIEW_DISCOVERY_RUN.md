@@ -62,7 +62,7 @@ The anchor ticker comes from the operator's paste. Good anchors:
   P1-13 doesn't muddy the test)
 - Have mixed sentiment OR a clear single-direction edge — both let you score
   rigorously
-- Are NOT already covered (`Thesis` rows in WATCHING / ACTIVE / PROMOTED)
+- Are NOT already covered (`Thesis` rows in WATCHING / HOLDING / PROMOTED)
 
 If the operator pasted 5+ candidates, pick one for the anchor and list the rest
 under §Other Candidates with a one-line pre-commit on each.
@@ -84,7 +84,7 @@ table to query anymore (signal-router is paused since PR #361). Inspect:
 SELECT id, ticker, direction, status, "agentConfigId"
 FROM "Thesis"
 WHERE ticker = '<TICKER>'
-  AND status IN ('WATCHING', 'ACTIVE', 'PROMOTED');
+  AND status IN ('WATCHING', 'ACTIVE', 'HOLDING', 'PROMOTED');
 ```
 
 ## What to commit pre-session/cron

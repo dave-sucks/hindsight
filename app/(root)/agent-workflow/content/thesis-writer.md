@@ -33,7 +33,7 @@ Before persisting, the agent verifies the 2:1 R/R floor: `(target − entry) / (
 
 For a new thesis — mint it with `record_thesis`. For a refresh — update it with `update_thesis`. Either way, the synthesized `researchData`, parsed `researchSections`, and a fresh `researchUpdatedAt` timestamp persist to the `Thesis` row. That timestamp is what the [Daily Run](agent:agent)'s and [Tactical Run](agent:tactical)'s staleness gates check before allowing a trade on that thesis.
 
-Default status on mint is `WATCHING`. The thesis writer never mints directly as `ACTIVE` — `ACTIVE` is owned by `place_trade` in the calling agent.
+Default status on mint is `WATCHING`. The thesis writer never mints directly as `HOLDING` — `HOLDING` is owned by `place_trade` in the calling agent.
 
 ```writes
 record_thesis — mint mode: persists direction, horizon, target, stop, belief, assumptions, invalidations, and the full research data block

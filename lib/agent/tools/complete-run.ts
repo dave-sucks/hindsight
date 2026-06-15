@@ -635,7 +635,7 @@ async function runCompleteRunPreflight(
       `${totalCount > 1 ? "are" : "is"} flagged needsAction but no status-changing tool call was made for ` +
       `${totalCount > 1 ? "them" : "it"} in this run. ` +
       `For PROMOTED rows: call place_trade to re-enter live, or update_thesis(change_status: "WATCHING") to defer. ` +
-      `For ACTIVE/WATCHING rows: call update_thesis with the action result (or change_status="INVALIDATED" if no longer applicable, or rationale-only REVIEW). ` +
+      `For HOLDING/WATCHING rows: call update_thesis with the action result (or change_status="INVALIDATED" if no longer applicable, or rationale-only REVIEW). ` +
       `Then call complete_run again. Unaddressed: ${summary}`,
   };
 }
