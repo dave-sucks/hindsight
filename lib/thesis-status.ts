@@ -14,7 +14,12 @@ export type ThesisStatus =
   | "CLOSED"
   | "INVALIDATED"
   | "ARCHIVED"
-  | "SUPERSEDED";
+  | "SUPERSEDED"
+  // ── P1-24 clean model — coexist with the legacy values above during the
+  // migration; the legacy ones are removed in the contract PR. ──────────────
+  | "HOLDING"
+  | "PASSED"
+  | "RETIRED";
 
 export interface ThesisStatusDisplay {
   label: string;
@@ -108,5 +113,23 @@ export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = 
     label: "Superseded",
     dotClass: "bg-muted-foreground/40",
     tooltip: "Replaced by a newer thesis on the same ticker",
+  },
+  // ── P1-24 clean model ──────────────────────────────────────────────────────
+  HOLDING: {
+    label: "Holding",
+    // Unlike the old ACTIVE, HOLDING never lies: it means an open position
+    // backs this thesis (execution-owned). Blue pulse = live holding.
+    dotClass: "bg-blue-500 animate-pulse",
+    tooltip: "Holding an open position",
+  },
+  PASSED: {
+    label: "Passed",
+    dotClass: "bg-muted-foreground/40",
+    tooltip: "Researched and declined — institutional memory",
+  },
+  RETIRED: {
+    label: "Retired",
+    dotClass: "bg-muted-foreground/60",
+    tooltip: "No longer tracked — dropped, sold, or invalidated",
   },
 };

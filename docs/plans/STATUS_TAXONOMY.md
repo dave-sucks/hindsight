@@ -79,3 +79,37 @@ Not folded into the 4-state core. It's an account transition (paper position for
 
 ## Separate (not taxonomy): `Order.status = FILLED` race
 3 uncoordinated writers (place_trade inline / reconcile cron / close path). Track + fix independently.
+
+---
+
+## Execution status + handoff (live — 2026-06-14)
+
+**The model is LOCKED (above). This section is the live state + the rule-book so any session picks it up with zero prior context.**
+
+### Done
+- **PR A (#411)** — additive schema — **merged + migration applied to prod** (verified: `HOLDING`/`PASSED`/`RETIRED` enum values, nullable `retiredReason`, nullable `direction`; 815 theses intact).
+- **PR #412** — `lib/thesis-status.ts` display foundation (the 3 new labels) — **open, awaiting merge.** Shared base; concept-PRs build on it, do **not** re-add to `thesis-status.ts`.
+
+### In flight (separate sub-sessions; each opens its own PR — review before merge)
+- **B1 — PASS → PASSED.** Store researched-declined theses as `status:"PASSED"` (was `ARCHIVED`); keep `direction:"PASS"` for now. Fixes the discovery `record_thesis` red error + the Pass-shows-as-"Archived" display bug. Touches `record-thesis.ts` (input enum ~362 + `effectiveStatusForTriggers` ~1057 + guard the non-PASS branch), `discovery.ts:447` prompt, every ARCHIVED-as-terminal query (add `PASSED`), + backfill `UPDATE "Thesis" SET status='PASSED' WHERE direction='PASS' AND status='ARCHIVED'`.
+- **Dashboard Held/Pending** — display-only: the positions list shows **held + pending-buy + pending-sell together, grouped + labeled** (NOT hidden/removed — it's the principal's main view of open trades).
+
+### Remaining concept-PRs — SEQUENTIAL (each edits the same files; do NOT parallelize)
+Order: **B2 → B3 → B4 → agent-vocab → UI cleanup → contract.** One lands + is reviewed, then the next.
+- **B2 — ACTIVE → HOLDING.** Writers: `place_trade` inline flip, `promoteThesisOnApproval`. Readers: every `status === "ACTIVE"`. Backfill `ACTIVE→HOLDING`.
+- **B3 — CLOSED / INVALIDATED / ARCHIVED / SUPERSEDED → RETIRED + `retiredReason`.** Writers: close path (`closeThesisForPosition`), `update_thesis`, record_thesis parent-flip, watchlist/editor removes. Backfill with the reason per the mapping table above (ARCHIVED-walkaway→`DROPPED`, CLOSED→`SOLD`, INVALIDATED→`INVALIDATED`, SUPERSEDED→`REPLACED`).
+- **B4 — PENDING → null direction.** Seeds (`addWatchlistItem`, builder/editor). Readers: `direction === "PENDING"`. Backfill `direction=NULL WHERE direction='PENDING'`.
+- **Agent vocab** — teach the agents the new statuses: `get_theses` / `needs-action` / `complete-run` outputs + the prompts (`system-prompt.ts`, `system-prompts/intraday-tactical.ts`, `system-prompts/discovery.ts`). The agents must understand HOLDING/PASSED/RETIRED to reason correctly.
+- **UI cleanup** — kill `deriveTradeStatus` fiction + the thesis-as-holding projection; render real statuses.
+- **Contract** — remove the legacy enum values once nothing reads them.
+
+### Per-concept recipe (apply to each)
+1. Flip the writer(s) to emit the new value.
+2. **Dual-read:** `rg "<OLD_VALUE>" lib components app` — every Thesis-status reader/query handling the old value must also handle the new. Allowlists (`status IN ('ACTIVE'…)`) are safe — the new value just isn't allowed in. **Denylists / terminal-IN lists are the danger** — add the new value or a pass/holding leaks into the wrong view.
+3. **Backfill SQL** — apply AFTER the code deploys (readers handle the new value first), via Supabase MCP, **with the principal's approval**. Count first.
+4. Verify: `npx prisma generate` → `npx tsc --noEmit` → `npx jest` (affected) → **run the app** (a migrated thesis renders right + doesn't leak into the wrong list).
+
+### Operational
+- Migrations apply **manually** (build only runs `prisma generate`). The **principal applies DB migrations + backfills**, or approves an MCP apply. Supabase project id `zomxxtqiszpkqrjrqqat`. DB-first: apply a migration **before** the schema deploys.
+- `gh auth switch --user dave-sucks` before any push. Worktrees have no `.env` — run `prisma generate` before `tsc`.
+- Reader surface ≈ 158 status/direction branches / ~42 files — much is **Position/Order** status (does NOT change); the **Thesis** subset is ~20-30 files. Grep per-concept.
