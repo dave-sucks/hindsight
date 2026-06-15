@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 
 const EMPTY_DASHBOARD: DashboardData = {
-  openTrades: [], closedTrades: [], activityFeed: [],
+  openTrades: [], pendingTrades: [], closedTrades: [], activityFeed: [],
   portfolio: {
     totalValue: 100_000,
     unrealizedPnl: 0,
