@@ -567,7 +567,8 @@ export const getTheses = defineTool({
       return {
         thesis_id: t.id,
         ticker: t.ticker,
-        direction: t.direction as "LONG" | "SHORT" | "PASS" | "PENDING",
+        // P1-24 B4: null for unresearched watchlist seeds (legacy 'PENDING').
+        direction: t.direction as "LONG" | "SHORT" | "PASS" | "PENDING" | null,
         confidence_score: composite != null ? composite * 10 : 0,
         reasoning_summary: getThesisSnapshotText(t),
         thesis_bullets: getThesisBullCaseBullets(t),

@@ -1110,7 +1110,7 @@ export async function createAnalystFromBuilder(
       },
     });
 
-    // 2. Watchlist-collapse: builder seeds as Thesis(PENDING/WATCHING,
+    // 2. Watchlist-collapse: builder seeds as Thesis(direction=null/WATCHING,
     //    source_kind='BUILDER_SEED') under a fresh BUILDER_SEED ResearchRun.
     //    Thesis is the single store; AnalystWatchlistItem is gone.
     const seedItems: Array<{ symbol: string; reason: string }> =
@@ -1135,7 +1135,7 @@ export async function createAnalystFromBuilder(
           mode: "BUILDER_SEED",
           environment: "PAPER",
           parameters: {
-            note: "Analyst-creation watchlist seed; one PENDING WATCHING thesis per ticker.",
+            note: "Analyst-creation watchlist seed; one null-direction WATCHING thesis per ticker.",
             seedCount: seedItems.length,
           },
           completedAt: new Date(),
@@ -1153,7 +1153,9 @@ export async function createAnalystFromBuilder(
               accountId,
               ticker: w.symbol,
               source: "BUILDER",
-              direction: "PENDING",
+              // P1-24 B4: unresearched watchlist seed → direction=null, status
+              // stays WATCHING. Agent promotes null → LONG/SHORT on first review.
+              direction: null,
               status: "WATCHING",
               holdDuration: "SWING",
               // PR-9 flat schema: legacy plain-string narrative columns
@@ -1179,7 +1181,7 @@ export async function createAnalystFromBuilder(
         data: createdTheses.map((t) => ({
           thesisId: t.id,
           type: "CREATED",
-          summary: `Builder-seeded ${t.ticker} on analyst creation (PENDING — awaiting research)`,
+          summary: `Builder-seeded ${t.ticker} on analyst creation (awaiting first research)`,
           rationale: "Analyst was created with this ticker on the suggested watchlist. The first daily run will research it.",
           fieldChanges: {},
           runId: builderRun.id,
@@ -1187,7 +1189,7 @@ export async function createAnalystFromBuilder(
       });
 
       console.log(
-        `[analyst] Created ${createdTheses.length} PENDING watchlist theses for analyst ${newAnalyst.id}`,
+        `[analyst] Created ${createdTheses.length} null-direction watchlist theses for analyst ${newAnalyst.id}`,
       );
     }
 
@@ -1644,7 +1646,7 @@ export async function updateAnalystFromBuilder(
       }
     }
     // Editor watchlist diff against current WATCHING theses.
-    // Adds → PENDING WATCHING under a fresh EDITOR_SEED ResearchRun.
+    // Adds → null-direction WATCHING under a fresh EDITOR_SEED ResearchRun.
     // Removes → status='ARCHIVED' on the paired thesis.
     if (structuredItems.length > 0 || watchlistSymbols.length > 0) {
       const existingWatching = await prisma.thesis.findMany({
@@ -1709,7 +1711,7 @@ export async function updateAnalystFromBuilder(
               mode: "EDITOR_SEED",
               environment: "PAPER",
               parameters: {
-                note: "Editor analyst-update watchlist additions; one PENDING WATCHING thesis per ticker.",
+                note: "Editor analyst-update watchlist additions; one null-direction WATCHING thesis per ticker.",
                 addCount: toCreate.length,
               },
               completedAt: new Date(),
@@ -1726,7 +1728,9 @@ export async function updateAnalystFromBuilder(
                 accountId,
                 ticker: w.symbol,
                 source: "EDITOR",
-                direction: "PENDING",
+                // P1-24 B4: unresearched watchlist seed → direction=null, status
+                // stays WATCHING. Agent promotes null → LONG/SHORT on first review.
+                direction: null,
                 status: "WATCHING",
                 holdDuration: "SWING",
                 // PR-9 flat schema seed (see builder-seed block above).
@@ -1746,7 +1750,7 @@ export async function updateAnalystFromBuilder(
               data: {
                 thesisId: thesis.id,
                 type: "CREATED",
-                summary: `Editor added ${w.symbol} to watchlist (PENDING — awaiting research)`,
+                summary: `Editor added ${w.symbol} to watchlist (awaiting first research)`,
                 rationale: w.reason,
                 fieldChanges: {},
                 runId: editorRun.id,
@@ -1755,7 +1759,7 @@ export async function updateAnalystFromBuilder(
           }
         } catch (err) {
           console.error(
-            `[analyst:editor-update] PENDING create FAILED for analyst ${id}:`,
+            `[analyst:editor-update] watchlist-seed create FAILED for analyst ${id}:`,
             err,
           );
         }

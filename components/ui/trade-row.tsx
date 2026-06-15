@@ -328,9 +328,14 @@ export function TradeRow({
 // ── WatchlistRow ─────────────────────────────────────────────────────────────
 // Identical to TradeRow visually. The only difference: no shares means no
 // cost basis and no P&L. Subline reflects the underlying thesis state:
-//   PENDING       → "Awaiting review"
-//   LONG/SHORT    → "Watching — long" / "Watching — short"
-//   (legacy null) → "Watching"
+//   null / 'PENDING' → "Awaiting review"  (unresearched seed — explicit)
+//   LONG / SHORT     → "Watching — long" / "Watching — short"
+//   undefined        → "Watching"         (no thesis context, e.g. config form)
+// P1-24 B4: the unresearched-seed sentinel is now direction=null (legacy
+// 'PENDING' kept for the dual-read window). Both render "Awaiting review".
+// `undefined` is distinct from `null`: it means the caller has no thesis
+// direction to report at all (the config-form watchlist), not a researched-
+// not-yet seed — so it keeps the generic "Watching".
 // Price renders the same way as on a trade row.
 
 interface WatchlistRowProps {
@@ -338,9 +343,10 @@ interface WatchlistRowProps {
   /** Live or last close price. */
   currentPrice?: number;
   /**
-   * Thesis direction for the underlying WATCHING thesis. PENDING surfaces
-   * as "Awaiting review"; LONG/SHORT surface their direction; null/undefined
-   * falls back to generic "Watching" for legacy rows.
+   * Thesis direction for the underlying WATCHING thesis. LONG/SHORT surface
+   * their direction; an unresearched seed (explicit null, or legacy
+   * 'PENDING') surfaces as "Awaiting review"; undefined (no thesis context)
+   * falls back to generic "Watching".
    */
   direction?: "LONG" | "SHORT" | "PENDING" | null;
   onRemove?: () => void;
@@ -354,14 +360,17 @@ export function WatchlistRow({
   onRemove,
   className,
 }: WatchlistRowProps) {
+  // P1-24 B4 dual-read: explicit null (new seed) or legacy 'PENDING' →
+  // "Awaiting review". LONG/SHORT surface their lean. undefined (no thesis
+  // context) keeps the generic "Watching".
   const secondary =
-    direction === "PENDING"
-      ? "Awaiting review"
-      : direction === "LONG"
-        ? "Watching — long"
-        : direction === "SHORT"
-          ? "Watching — short"
-          : "Watching";
+    direction === "LONG"
+      ? "Watching — long"
+      : direction === "SHORT"
+        ? "Watching — short"
+        : direction === undefined
+          ? "Watching"
+          : "Awaiting review";
   return (
     <TradeRowShell
       href={`/stocks/${ticker}`}

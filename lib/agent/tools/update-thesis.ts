@@ -37,6 +37,7 @@ import {
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
+import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import {
   HORIZON_REVIEW_DAYS,
   holdDurationFromHorizon,
@@ -690,29 +691,32 @@ export const updateThesis = defineTool({
       }
     }
 
-    // ── PENDING-must-commit guard ─────────────────────────────────────────
-    // 2026-05-14: observed the agent calling update_thesis on PENDING theses
+    // ── Unresearched-seed-must-commit guard ──────────────────────────────
+    // 2026-05-14: observed the agent calling update_thesis on seed theses
     // with reasoning/bullets/nextReviewAt set but NO `direction` arg. The
     // call succeeded (patch was non-empty so the empty-patch auto-bump
     // didn't fire), the agent set nextReviewAt forward 30 days, and the
-    // PENDING got buried for a month with no commitment. F1 in the V2
+    // seed got buried for a month with no commitment. F1 in the V2
     // prompt tells the agent to commit; this gate ENFORCES it tool-side.
     //
-    // Rule: any update_thesis call on a PENDING thesis MUST include
-    // `direction`. PENDING is "awaiting first research" — there's nothing
+    // Rule: any update_thesis call on an unresearched seed MUST include
+    // `direction`. The seed is "awaiting first research" — there's nothing
     // to refine until the agent commits to a view. Refining the seed's
     // reasoning/bullets/nextReviewAt without committing is the wrong
     // shape regardless of how good the rationale is.
-    if (existing.direction === "PENDING" && !args.direction) {
+    //
+    // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy) — the
+    // isUnresearchedSeed helper catches both during the dual-read window.
+    if (isUnresearchedSeed(existing.direction) && !args.direction) {
       return {
-        summary: `Thesis ${args.thesis_id} is PENDING — update_thesis must include direction.`,
+        summary: `Thesis ${args.thesis_id} is an unresearched seed — update_thesis must include direction.`,
         data: {
           ok: false,
           error: "pending_update_without_direction",
-          current_direction: "PENDING",
+          current_direction: existing.direction,
           ticker: existing.ticker,
           message:
-            `$${existing.ticker} is a PENDING seed awaiting first research. update_thesis calls on PENDING theses MUST include \`direction\` to commit to a view. ` +
+            `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
             `Three legal commitments:\n` +
             `  • \`direction: "LONG"\` + horizon + entry_price + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
             `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
@@ -723,21 +727,23 @@ export const updateThesis = defineTool({
       };
     }
 
-    // ── PENDING-promotion direction guard ─────────────────────────────────
-    // The only legal direction change is OUT of PENDING (user/builder/editor
-    // seed → agent committed to a view). Direction flips on committed
-    // (LONG ↔ SHORT) theses go through record_thesis with parent_thesis_id
-    // so the audit trail captures the chain.
+    // ── Unresearched-seed-promotion direction guard ──────────────────────
+    // The only legal direction change is OUT of an unresearched seed
+    // (user/builder/editor seed → agent committed to a view). Direction
+    // flips on committed (LONG ↔ SHORT) theses go through record_thesis
+    // with parent_thesis_id so the audit trail captures the chain.
+    //
+    // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy).
     if (args.direction) {
-      if (existing.direction !== "PENDING") {
+      if (!isUnresearchedSeed(existing.direction)) {
         return {
-          summary: `Thesis ${args.thesis_id} is ${existing.direction}, not PENDING — direction flips go through record_thesis.`,
+          summary: `Thesis ${args.thesis_id} is ${existing.direction}, not an unresearched seed — direction flips go through record_thesis.`,
           data: {
             ok: false,
             error: "direction_change_only_from_pending",
             current_direction: existing.direction,
             message:
-              `update_thesis can only change direction when the existing thesis is PENDING (user/builder/editor seed awaiting first research). ` +
+              `update_thesis can only change direction when the existing thesis is an unresearched seed (no committed direction yet — user/builder/editor watchlist add awaiting first research). ` +
               `For an actual direction flip on a committed thesis (LONG → SHORT, etc.), call record_thesis with parent_thesis_id=${args.thesis_id} — the old thesis gets SUPERSEDED, the new direction is chained for audit.`,
           },
           sources: [],
@@ -811,8 +817,10 @@ export const updateThesis = defineTool({
     // existing-row value. This catches the asymmetric case where a writer
     // lowers composite via a scoring patch on a thesis that already has
     // conviction=STRONG (the patch would silently break the invariant).
-    const isPendingPromotionForConvictionGates =
-      existing.direction === "PENDING";
+    // P1-24 B4: seed = direction null (new) or 'PENDING' (legacy).
+    const isPendingPromotionForConvictionGates = isUnresearchedSeed(
+      existing.direction,
+    );
     if (!isPendingPromotionForConvictionGates) {
       const effectiveConviction = args.conviction ?? existing.conviction;
       const effectiveVariantView =
@@ -888,9 +896,10 @@ export const updateThesis = defineTool({
       : 0;
     const updateAddsTriggers =
       args.triggers !== undefined && args.triggers.length > 0;
-    // PENDING theses always start with zero triggers — that's expected, not
-    // a violation. Only fire the zero-trigger guard on non-PENDING rows.
-    const isPendingPromotion = existing.direction === "PENDING";
+    // Unresearched seeds always start with zero triggers — that's expected,
+    // not a violation. Only fire the zero-trigger guard on committed rows.
+    // P1-24 B4: seed = direction null (new) or 'PENDING' (legacy).
+    const isPendingPromotion = isUnresearchedSeed(existing.direction);
     if (
       existingTriggerCount === 0 &&
       !updateAddsTriggers &&
@@ -997,13 +1006,17 @@ export const updateThesis = defineTool({
       // want the real entry, not the planned one. Falls back to the
       // thesis row's entryPrice for WATCHING theses (no position yet)
       // or when no open position is found.
+      // P1-24 B4: an unresearched seed (direction null or legacy 'PENDING')
+      // never has an OPEN position — skip the lookup. For committed rows the
+      // direction is LONG/SHORT; `?? undefined` keeps the Position filter
+      // happy now that the column type is `string | null`.
       const openPosition =
-        ctx.analystId && existing.direction !== "PENDING"
+        ctx.analystId && !isUnresearchedSeed(existing.direction)
           ? await prisma.position.findFirst({
               where: {
                 analystId: ctx.analystId,
                 symbol: existing.ticker,
-                direction: existing.direction,
+                direction: existing.direction ?? undefined,
                 status: "OPEN",
               },
               select: { avgCost: true },
@@ -1347,11 +1360,15 @@ export const updateThesis = defineTool({
     // every transition processed above (change_status, PENDING-promotion,
     // PASS → PASSED, wholesale-trigger-replace). Pure helper lives in
     // lib/agent/triggers/enter-guard.ts and is shared with record_thesis.
+    // P1-24 B4: existing.direction may be null (unresearched seed). The
+    // enter-guard treats any non-LONG/SHORT value (incl. null/'PENDING') as
+    // a bypass, so passing null through is correct.
     const effectiveEnterDirection = (patch.direction ?? existing.direction) as
       | "LONG"
       | "SHORT"
       | "PASS"
-      | "PENDING";
+      | "PENDING"
+      | null;
     const effectiveEnterStatus = (patch.status ?? existing.status) as
       | "WATCHING"
       | "ACTIVE"

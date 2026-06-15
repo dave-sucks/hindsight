@@ -27,6 +27,16 @@ describe("validateThesisShape", () => {
     expect(validateThesisShape({ direction: "PASS" })).toEqual({ ok: true });
   });
 
+  it("null direction (unresearched seed): no shape rule (P1-24 B4)", () => {
+    // A seed has no entry/target/stop yet; the shape rule kicks in only once
+    // it's promoted to LONG/SHORT.
+    expect(validateThesisShape({ direction: null })).toEqual({ ok: true });
+  });
+
+  it("legacy 'PENDING' direction: no shape rule (dual-read window)", () => {
+    expect(validateThesisShape({ direction: "PENDING" })).toEqual({ ok: true });
+  });
+
   // ── LONG happy path ────────────────────────────────────────────────────
 
   it("LONG with target > entry > stop: ok", () => {

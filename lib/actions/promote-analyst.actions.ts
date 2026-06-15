@@ -90,12 +90,15 @@ export async function getPromotionPreview(
     prisma.thesis.findMany({
       where: {
         status: { in: ["ACTIVE", "HOLDING"] },
-        // Exclude PASS (institutional memory — never traded) and PENDING
-        // (user/builder/editor seed awaiting first research — no
-        // conviction yet, no paper position). Both should remain untouched
-        // by promotion; the first live run handles them via the normal
-        // per-thesis review.
-        direction: { notIn: ["PASS", "PENDING"] },
+        // Only promote committed directional theses. This is an explicit
+        // ALLOWLIST (LONG/SHORT) rather than a denylist — it excludes PASS
+        // (institutional memory, never traded), unresearched seeds (legacy
+        // 'PENDING' or P1-24 B4 direction=null — no conviction, no paper
+        // position), and is robust to NULL (a `notIn` denylist would exclude
+        // NULL only by Postgres three-valued-logic accident). The status
+        // filter above already restricts to held theses; this makes the
+        // direction intent unambiguous.
+        direction: { in: ["LONG", "SHORT"] },
         researchRun: { agentConfigId: analystId },
       },
       select: { id: true, ticker: true },

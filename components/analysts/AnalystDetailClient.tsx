@@ -847,14 +847,14 @@ export default function AnalystDetailClient({
                     ticker={item.symbol}
                     currentPrice={livePrices[item.symbol]}
                     direction={
-                      // `thesisDirection` is null for PENDING theses (the
-                      // analyst hasn't taken a view yet) and a real direction
-                      // for LONG/SHORT WATCHING. Map null → "PENDING" so the
-                      // row renders "Awaiting review".
+                      // P1-24 B4: an unresearched seed has thesisDirection=null
+                      // (new) or 'PENDING' (legacy). Normalize anything that
+                      // isn't a committed LONG/SHORT to null — WatchlistRow
+                      // renders explicit null as "Awaiting review".
                       item.thesisDirection === "LONG" ||
                       item.thesisDirection === "SHORT"
                         ? item.thesisDirection
-                        : "PENDING"
+                        : null
                     }
                     onRemove={() => handleRemoveStock(item.symbol)}
                   />

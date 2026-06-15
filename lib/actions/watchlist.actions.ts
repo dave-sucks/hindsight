@@ -14,8 +14,9 @@ import {
 // Watchlist collapse — Thesis is the single store. AnalystWatchlistItem is
 // gone. The "watchlist" is now the query:
 //   Thesis WHERE researchRun.agentConfigId = X AND status = 'WATCHING'
-// Includes PENDING (awaiting first research), LONG WATCHING (entry pending),
-// SHORT WATCHING (entry pending). See docs/WATCHLIST_COLLAPSE_PLAN.md.
+// Includes null-direction seeds (awaiting first research), LONG WATCHING
+// (entry pending), SHORT WATCHING (entry pending). See
+// docs/WATCHLIST_COLLAPSE_PLAN.md.
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
 
@@ -31,8 +32,9 @@ async function getCurrentUserId(): Promise<string | null> {
 
 /**
  * What the analyst page renders for each watchlist row. Sourced from a
- * `status='WATCHING'` Thesis. `direction` is `LONG|SHORT|PENDING`; PASS
- * theses never appear here (they're ARCHIVED, off the watchlist).
+ * `status='WATCHING'` Thesis. `direction` is `LONG|SHORT|null` (null = an
+ * unresearched seed; legacy 'PENDING' during the B4 dual-read window); PASS
+ * theses never appear here (they're PASSED/ARCHIVED, off the watchlist).
  *
  * `id` is now the underlying Thesis id (was AnalystWatchlistItem.id pre-collapse).
  */
@@ -213,6 +215,9 @@ export async function getWatchlistItems(
       addedBy,
       priority: "NORMAL",
       status: "ACTIVE", // legacy contract — UI ignores
+      // P1-24 B4 dual-read: an unresearched seed is direction=null (new) or
+      // 'PENDING' (legacy, pre-backfill). Normalize both to null so the row
+      // renders "Awaiting review".
       thesisDirection: t.direction === "PENDING" ? null : t.direction,
       targetPrice: t.targetPrice,
       stopPrice: t.stopLoss,
@@ -235,7 +240,7 @@ export async function getWatchlistItems(
 // ── Mutations ────────────────────────────────────────────────────────────────
 
 /**
- * Add a stock to an analyst's watchlist. Mints a `Thesis(direction:'PENDING',
+ * Add a stock to an analyst's watchlist. Mints a `Thesis(direction:null,
  * status:'WATCHING', sourceKind:'USER_ADDED')` anchored to the analyst's
  * synthetic MANUAL ResearchRun. The next daily run will research it
  * (nextReviewAt = createdAt, surfaces as REVIEW_DUE via needsAction).
@@ -300,6 +305,7 @@ export async function addWatchlistItem(
       addedBy: addedByDisplay,
       priority: "NORMAL",
       status: "ACTIVE",
+      // P1-24 B4 dual-read: null (new seed) or legacy 'PENDING' → null.
       thesisDirection: existing.direction === "PENDING" ? null : existing.direction,
       targetPrice: existing.targetPrice,
       stopPrice: existing.stopLoss,
@@ -329,7 +335,10 @@ export async function addWatchlistItem(
       accountId,
       ticker: upper,
       source: "MANUAL",
-      direction: "PENDING",
+      // P1-24 B4: watchlist-seed sentinel is now direction=null ("on the
+      // watchlist, not yet researched"). status stays WATCHING. The agent
+      // promotes null → LONG/SHORT on first review via update_thesis.
+      direction: null,
       status: "WATCHING",
       holdDuration: "SWING",
       // PR-9 flat schema: legacy plain-string narrative columns replaced
@@ -352,7 +361,7 @@ export async function addWatchlistItem(
   await writeThesisUpdate({
     thesisId: thesis.id,
     type: "CREATED",
-    summary: `Added ${upper} to watchlist (PENDING — awaiting research)`,
+    summary: `Added ${upper} to watchlist (awaiting first research)`,
     rationale: reason,
     runId,
   });

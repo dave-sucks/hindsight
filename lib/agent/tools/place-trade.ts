@@ -203,13 +203,19 @@ export const placeTrade = defineTool({
       // a violation returns a FAILED trade result. This protects the
       // paper book from the model overriding its own stated rules.
 
-      // ── Guardrail 0: thesis direction is committed (not PENDING) ────
-      // A PENDING thesis is a user/builder/editor seed awaiting first
-      // research. It has no target/stop/triggers/belief. place_trade on
-      // a PENDING row would create an open position with no exit plan AND
-      // violate the legal (direction, status) pairs (PENDING + ACTIVE is
-      // not legal). Agent must promote PENDING → LONG/SHORT via
-      // update_thesis first.
+      // ── Guardrail 0: thesis direction is committed (LONG or SHORT) ──
+      // An UNRESEARCHED seed is a user/builder/editor watchlist entry
+      // awaiting first research. It has no target/stop/triggers/belief.
+      // place_trade on such a row would create an open position with no
+      // exit plan AND violate the legal (direction, status) pairs. The
+      // agent must promote the seed → LONG/SHORT via update_thesis first.
+      //
+      // P1-24 B4: an unresearched seed is direction=null (new) or 'PENDING'
+      // (legacy, pre-backfill). This gate is an ALLOWLIST — it rejects
+      // ANYTHING that is not exactly 'LONG' or 'SHORT', so it catches both
+      // null AND 'PENDING' (and any other non-committed value). A
+      // null-direction seed must NEVER become trade-eligible. Regression:
+      // place-trade.test.ts "rejects a null-direction (unresearched) seed".
       {
         const directionCheck = await prisma.thesis.findUnique({
           where: { id: args.thesis_id },
@@ -224,13 +230,17 @@ export const placeTrade = defineTool({
         // the per-horizon REVIEW cadence drives that work deterministically.
         // See docs/plans/REVIEW_REFRESH_CADENCE.md (P1-1).
 
-        if (directionCheck && directionCheck.direction === "PENDING") {
+        if (
+          directionCheck &&
+          directionCheck.direction !== "LONG" &&
+          directionCheck.direction !== "SHORT"
+        ) {
           const msg =
-            `$${ticker}: cannot place_trade on a PENDING thesis. PENDING is a user/builder/editor seed awaiting first research — no target, no stop, no committed view. ` +
+            `$${ticker}: cannot place_trade on an unresearched watchlist seed (direction is not committed to LONG/SHORT). It is a user/builder/editor seed awaiting first research — no target, no stop, no committed view. ` +
             `Promote it first: call update_thesis(thesis_id="${args.thesis_id}", direction: "${args.direction}", horizon: ..., entry_price: ..., target_price: ..., stop_loss: ..., core_belief: ..., key_assumptions: [...], invalidation_conditions: [...]) ` +
             `to commit. Then retry place_trade on the same thesis_id once the structural fields are set.`;
           return {
-            summary: `Trade blocked: $${ticker} — thesis is PENDING (promote via update_thesis first)`,
+            summary: `Trade blocked: $${ticker} — thesis has no committed direction (promote via update_thesis first)`,
             data: {
               success: false,
               ticker,

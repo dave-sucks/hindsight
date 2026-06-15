@@ -515,6 +515,20 @@ describe("validateEnterTriggerRequired", () => {
     ).toEqual({ ok: true });
   });
 
+  it("null-direction WATCHING with no triggers: ok (P1-24 B4 seed sentinel)", () => {
+    // An unresearched seed now stores direction=null. The allowlist on
+    // LONG/SHORT means null bypasses exactly like 'PENDING' — a seed carries
+    // no directional triggers until it's promoted.
+    expect(
+      validateEnterTriggerRequired({
+        direction: null,
+        status: "WATCHING",
+        triggers: [],
+        targetPrice: null,
+      }),
+    ).toEqual({ ok: true });
+  });
+
   // ── Note text matches record_thesis's old inline guard verbatim ─────────
 
   it("error message uses PRICE_ABOVE/PRICE_BELOW guidance for the agent", () => {

@@ -67,7 +67,9 @@ export interface ResolverThesisInput {
   id: string;
   ticker: string;
   status: string;
-  direction: string;
+  // P1-24 B4: null when the thesis is an unresearched watchlist seed.
+  // The resolver doesn't branch on direction, so null is a pure pass-through.
+  direction: string | null;
   entryPrice: number | null;
   triggers: unknown; // Json column; parsed via triggersArraySchema by caller
   catalystDate: Date | null;

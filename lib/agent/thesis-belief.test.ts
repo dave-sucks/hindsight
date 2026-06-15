@@ -26,6 +26,16 @@ describe("validateThesisBelief", () => {
     expect(validateThesisBelief({ direction: "PASS" })).toEqual({ ok: true });
   });
 
+  it("null direction (unresearched seed): bypasses the belief gate (P1-24 B4)", () => {
+    // A null-direction watchlist seed has no committed view yet; the belief
+    // contract is built when update_thesis promotes it to LONG/SHORT.
+    expect(validateThesisBelief({ direction: null })).toEqual({ ok: true });
+  });
+
+  it("legacy 'PENDING' direction: still bypasses (dual-read window)", () => {
+    expect(validateThesisBelief({ direction: "PENDING" })).toEqual({ ok: true });
+  });
+
   // ── LONG happy path ────────────────────────────────────────────────────
 
   it("LONG with all three fields populated: ok", () => {

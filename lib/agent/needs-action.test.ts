@@ -41,6 +41,12 @@ const SIGNAL_EARNINGS: Trigger = {
 
 const baseThesis = {
   id: "thesis-1",
+  // Committed direction by default — the production caller always passes the
+  // DB value (string | null, never undefined). Seed-specific tests override
+  // with direction: null / "PENDING" to exercise the pendingFirstReview path
+  // (P1-24 B4). A committed default keeps the generic REVIEW_DUE tests from
+  // accidentally tripping the seed discriminator.
+  direction: "LONG" as string | null,
   createdAt: new Date("2026-04-01T00:00:00Z"),
   nextReviewAt: null as Date | null,
 };
@@ -282,6 +288,64 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
+        triggers: [],
+        nextReviewAt: new Date("2026-05-06T00:00:00Z"),
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now,
+    });
+    expect(result).toEqual({ kind: "REVIEW_DUE", daysOverdue: 4 });
+  });
+
+  it("flags pendingFirstReview on a null-direction seed (P1-24 B4)", () => {
+    // An unresearched watchlist seed now stores direction=null. A seed is
+    // minted with nextReviewAt = createdAt so it surfaces as REVIEW_DUE on
+    // the next run; the null-direction discriminator must set
+    // pendingFirstReview so the prompt routes it to the "commit a direction"
+    // path (exactly as legacy 'PENDING' did).
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        direction: null,
+        triggers: [],
+        nextReviewAt: new Date("2026-05-06T00:00:00Z"),
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now,
+    });
+    expect(result).toEqual({
+      kind: "REVIEW_DUE",
+      daysOverdue: 4,
+      pendingFirstReview: true,
+    });
+  });
+
+  it("flags pendingFirstReview on a legacy 'PENDING' seed (dual-read window)", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        direction: "PENDING",
+        triggers: [],
+        nextReviewAt: new Date("2026-05-06T00:00:00Z"),
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now,
+    });
+    expect(result).toEqual({
+      kind: "REVIEW_DUE",
+      daysOverdue: 4,
+      pendingFirstReview: true,
+    });
+  });
+
+  it("does NOT flag pendingFirstReview on a committed LONG that is REVIEW_DUE", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        direction: "LONG",
         triggers: [],
         nextReviewAt: new Date("2026-05-06T00:00:00Z"),
       },
