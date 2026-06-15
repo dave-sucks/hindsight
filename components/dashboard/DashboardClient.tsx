@@ -680,6 +680,18 @@ function ChartEmpty({ text }: { text: string }) {
   );
 }
 
+// Small uppercase divider separating the "Pending approval" proposals from the
+// "Held" positions inside the Open tab. Matches the activity-feed day-group
+// label style so the lists stay visually consistent. Only shown when both
+// groups are present — a plain held list renders unlabeled, as before.
+function PositionGroupLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60 px-3 pt-3 pb-1.5">
+      {children}
+    </p>
+  );
+}
+
 // ── PositionsPanel — Open / Closed trades list ───────────────────────────────
 //
 // The portfolio's open + closed positions as a two-tab Card. Rendered in two
@@ -690,11 +702,13 @@ function ChartEmpty({ text }: { text: string }) {
 // stay in sync.
 function PositionsPanel({
   openTrades,
+  pendingTrades,
   closedTrades,
   loading,
   flashIds,
 }: {
   openTrades: MockTrade[];
+  pendingTrades: MockTrade[];
   closedTrades: MockTrade[];
   loading: boolean;
   flashIds: Map<string, 'win' | 'loss'>;
@@ -729,20 +743,39 @@ function PositionsPanel({
                   <Skeleton key={i} className="h-14 rounded-lg" />
                 ))}
               </div>
-            ) : openTrades.length === 0 ? (
+            ) : openTrades.length === 0 && pendingTrades.length === 0 ? (
               <Empty
                 text="No open positions"
                 subtext="Positions appear when an analyst places a paper trade during a run."
               />
             ) : (
               <div>
-                {openTrades.map((t) => (
-                  <DashboardTradeRow
-                    key={t.id}
-                    trade={t}
-                    flash={flashIds.get(t.id)}
-                  />
-                ))}
+                {pendingTrades.length > 0 && (
+                  <>
+                    <PositionGroupLabel>Pending approval</PositionGroupLabel>
+                    {pendingTrades.map((t) => (
+                      <DashboardTradeRow
+                        key={t.id}
+                        trade={t}
+                        flash={flashIds.get(t.id)}
+                      />
+                    ))}
+                  </>
+                )}
+                {openTrades.length > 0 && (
+                  <>
+                    {pendingTrades.length > 0 && (
+                      <PositionGroupLabel>Held</PositionGroupLabel>
+                    )}
+                    {openTrades.map((t) => (
+                      <DashboardTradeRow
+                        key={t.id}
+                        trade={t}
+                        flash={flashIds.get(t.id)}
+                      />
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </TabsContent>
@@ -812,6 +845,10 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
   const openTrades = (data?.openTrades ?? mockOpenTrades).filter(
     (t) => !realtimeClosedIds.has(t.id),
   );
+  // Pending buy proposals (Position.status === PENDING_APPROVAL). Kept separate
+  // from held positions so they render in their own "Pending approval" group
+  // and never inflate the "Open" count. No mock fallback — empty in mock mode.
+  const pendingTrades = data?.pendingTrades ?? [];
   const closedTrades = data?.closedTrades ?? [];
   const analysts = data?.analysts ?? [];
   const analystEquityCurves = data?.analystEquityCurves ?? {};
@@ -1390,6 +1427,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
             <div className="lg:hidden">
               <PositionsPanel
                 openTrades={openTrades}
+                pendingTrades={pendingTrades}
                 closedTrades={closedTrades}
                 loading={loading}
                 flashIds={flashIds}
@@ -1408,6 +1446,7 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
           <div className="hidden lg:block w-80 shrink-0">
             <PositionsPanel
               openTrades={openTrades}
+              pendingTrades={pendingTrades}
               closedTrades={closedTrades}
               loading={loading}
               flashIds={flashIds}

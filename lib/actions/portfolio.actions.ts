@@ -180,7 +180,15 @@ export interface ActivityFeedItem {
 }
 
 export interface DashboardData {
+  /** Held positions (Position.status === "OPEN"). Drives the "Open" count + all P&L / value math. */
   openTrades: MockTrade[];
+  /**
+   * Not-yet-approved buy proposals (Position.status === "PENDING_APPROVAL").
+   * Rendered as a distinct "Pending approval" group — never counted as a
+   * holding and never included in position-value totals (a proposal was never
+   * sent to Alpaca).
+   */
+  pendingTrades: MockTrade[];
   closedTrades: MockTrade[];
   activityFeed: ActivityFeedItem[];
   portfolio: PortfolioStats;
@@ -301,6 +309,7 @@ export async function getDashboardData(
   if (!user) {
     return {
       openTrades: [],
+      pendingTrades: [],
       closedTrades: [],
       activityFeed: [],
       portfolio: emptyPortfolio,
@@ -331,6 +340,7 @@ export async function getDashboardData(
     // leaking another account's data via a defaulted scope.
     return {
       openTrades: [],
+      pendingTrades: [],
       closedTrades: [],
       activityFeed: [],
       portfolio: emptyPortfolio,
@@ -370,10 +380,11 @@ export async function getDashboardData(
     resolveAlpacaCredentials(userId, environment).then((c) => c ?? undefined),
     prisma.position.findMany({
       // Trade-as-Proposal — include PENDING_APPROVAL positions so buy
-      // proposals show up in the homepage / analyst sidebar with their
-      // inline [Approve][Reject] buttons. CLOSED positions stay filtered
-      // (they live on the Closed tab); CANCELLED is the terminal state
-      // for rejected/expired proposals and doesn't belong in Open.
+      // proposals can render with their inline [Approve][Reject] buttons.
+      // They're split into a separate `pendingTrades` bucket downstream so a
+      // proposal never reads as a holding (see the partition below). CLOSED
+      // positions stay filtered (they live on the Closed tab); CANCELLED is
+      // the terminal state for rejected/expired proposals and doesn't belong here.
       where: {
         accountId,
         status: { in: ["OPEN", "PENDING_APPROVAL"] },
@@ -658,7 +669,15 @@ export async function getDashboardData(
   };
 
   // ── 4. Map open positions → MockTrade shape ────────────────────────────────
-  const openTrades: MockTrade[] = effectiveOpenPositions.map((p) => {
+  // Held positions (status OPEN) and not-yet-approved buy proposals (status
+  // PENDING_APPROVAL) come from the same query above (one round trip), but the
+  // homepage must show them as two distinct things — a proposal is NOT a
+  // holding. Build the view-model with one mapper, then partition by
+  // Position.status: `openTrades` (held) feeds the "Open" count + every
+  // P&L / value calc; `pendingTrades` (proposals) renders in its own "Pending
+  // approval" group and never touches position-value totals (it was never sent
+  // to Alpaca).
+  const toOpenMockTrade = (p: (typeof effectiveOpenPositions)[number]): MockTrade => {
     const livePrice = priceMap[p.symbol];
     const priceSource = priceLookup.sources[p.symbol] ?? "missing";
     const currentPrice = livePrice ?? p.avgCost;
@@ -723,7 +742,14 @@ export async function getDashboardData(
       priceUpdatedAt: livePrice !== undefined ? priceLookup.fetchedAt : undefined,
       pendingProposal,
     };
-  });
+  };
+
+  const heldPositions = effectiveOpenPositions.filter((p) => p.status === "OPEN");
+  const pendingProposalPositions = effectiveOpenPositions.filter(
+    (p) => p.status === "PENDING_APPROVAL",
+  );
+  const openTrades: MockTrade[] = heldPositions.map(toOpenMockTrade);
+  const pendingTrades: MockTrade[] = pendingProposalPositions.map(toOpenMockTrade);
 
   // ── 5. Map closed positions → MockTrade shape ──────────────────────────────
   const closedTrades: MockTrade[] = dbClosedPositions.map((p) => {
@@ -823,8 +849,9 @@ export async function getDashboardData(
   // DB-only fallback (no Alpaca creds): approximate cash as starting capital
   // + realized proceeds − capital currently tied up in open positions at
   // entry cost. Under-counts unrealized appreciation on open positions, but
-  // at least reconciles directionally with totalValue.
-  const dbOpenCostBasis = dbOpenPositions.reduce(
+  // at least reconciles directionally with totalValue. Held only — a pending
+  // proposal hasn't spent any cash, so it must not reduce available cash.
+  const dbOpenCostBasis = heldPositions.reduce(
     (s, p) => s + p.avgCost * p.quantity,
     0,
   );
@@ -1168,6 +1195,7 @@ export async function getDashboardData(
 
   return {
     openTrades,
+    pendingTrades,
     closedTrades,
     activityFeed: trimmedFeed,
     portfolio: {
