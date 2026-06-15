@@ -55,7 +55,7 @@ record_thesis — PASS rows only; direction='PASS', reasoning_summary, invalidat
 
 ## Immediate-buy exception
 
-The default outcome is `WATCHING` — the [Daily Run](agent:agent) promotes to `ACTIVE` the next morning when an entry trigger fires. The exception is a hot-catalyst setup where waiting risks missing the move.
+The default outcome is `WATCHING` — the [Daily Run](agent:agent) promotes to `HOLDING` the next morning when an entry trigger fires. The exception is a hot-catalyst setup where waiting risks missing the move.
 
 All four criteria must hold: composite ≥ 7, a specific dated catalyst within the next 5 trading days, no existing open position on this ticker, and an open slot.
 
@@ -64,7 +64,7 @@ When all four are met, the flow is sequential rather than fire-and-forget:
 ```writes
 dispatch_thesis_research — with mode:mint and the immediate-buy reason
 wait_for_thesis_refresh — blocks until the Thesis Writer completes (up to 150s)
-place_trade?provider=alpaca — same-day entry; atomically flips WATCHING → ACTIVE on fill
+place_trade?provider=alpaca — same-day entry; atomically flips WATCHING → HOLDING on fill
 ```
 
 If the wait fails or times out, do not place the trade. The `WATCHING` thesis still exists; let the next Daily Run promote it normally.
