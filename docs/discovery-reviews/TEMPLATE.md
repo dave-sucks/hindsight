@@ -64,7 +64,7 @@ Tool sequence expected (in some order):
 | `catalystFreshness` | /2 | |
 | **Composite** | /10 | |
 
-**Expected outcome from composite:** WATCHING (≥5) / ACTIVE (≥8 + clean setup) / PASS (<5).
+**Expected outcome from composite:** WATCHING (≥5) / PASSED (<5). (Discovery mints WATCHING or PASSED only — it never opens a position, so there is no HOLDING outcome here.)
 
 ### Step 3 — Mint the thesis
 
@@ -119,7 +119,7 @@ List the expected trigger predicates — ENTER, EXIT, REVIEW types.
 ### Step 4 — Cap and wrap
 
 Expected total new WATCHING theses: N–M (including TICKER + other in-universe names).
-Expected PASS+ARCHIVED rows: N–M (researched-but-declined, each with reasoningSummary + ≥1 invalidation_condition).
+Expected PASSED rows: N–M (researched-but-declined, each with reasoningSummary + ≥1 invalidation_condition).
 
 ### Step 5 — `record_run_summary` then `complete_run`
 
@@ -135,7 +135,7 @@ Expected `primary_decision`, `ranked_picks` shape, `decision_rationale`. Run mus
 | `ResearchRun` | 1 row, `mode="DISCOVERY"`, `status="COMPLETE"`, `parameters.tradesPlaced=0` |
 | `Thesis` — TICKER | 1 row: direction, status, coreBelief non-null, keyAssumptions ≥2, invalidationConds ≥2, triggers has ≥1 ENTER |
 | `Thesis` — others | N–M more WATCHING rows for in-universe names |
-| `Thesis` — PASS rows | N–M PASS+ARCHIVED rows with reasoningSummary + ≥1 invalidation_condition |
+| `Thesis` — PASSED rows | N–M PASSED rows with reasoningSummary + ≥1 invalidation_condition |
 | `ThesisUpdate` | 1 CREATED row per minted thesis |
 | `RunEvent` | thesis_complete events, run_summary, run_complete |
 | `Position` | No new rows (Discovery doesn't trade) |
