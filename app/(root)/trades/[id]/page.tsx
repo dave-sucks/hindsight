@@ -851,71 +851,14 @@ export default async function TradeDetailPage({
             </CardContent>
           </Card>
 
-          {/* Target Progress */}
-          <Card>
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium">Target Progress</p>
-                <Tooltip>
-                  <TooltipTrigger className="text-muted-foreground hover:text-foreground transition-colors">
-                    <Info className="h-3.5 w-3.5" />
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="max-w-xs">
-                    <div className="space-y-1.5 text-xs leading-relaxed">
-                      <p>
-                        The bar shows where the current price sits between
-                        your stop loss (0%) and target price (100%).
-                      </p>
-                      <p>
-                        The position closes automatically when price reaches
-                        the target OR the stop — whichever hits first. The
-                        hourly price-monitor cron does the check on every
-                        open position during market hours.
-                      </p>
-                      <p>
-                        Targets and stops don&apos;t reset daily. They&apos;re
-                        fixed when the trade opens and stay until one is hit
-                        — unless the agent explicitly scales out or moves the
-                        stop via <span className="font-mono">manage_position</span>.
-                      </p>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <PriceTargetsBlock
-                entry={trade.entryPrice}
-                target={targetPrice}
-                stop={stopPrice}
-                current={currentPrice}
-                direction={position.direction === 'SHORT' ? 'SHORT' : 'LONG'}
-              />
-
-              <div className="flex flex-col gap-1 border-t pt-3 mt-3">
-                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                  <span className="text-muted-foreground">Entry</span>
-                  <span className="font-medium tabular-nums">${trade.entryPrice.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                  <span className="text-positive">Target</span>
-                  <span className="font-medium tabular-nums text-positive">
-                    ${targetPrice.toFixed(2)}
-                    <span className="text-muted-foreground ml-1">
-                      +{(((targetPrice - trade.entryPrice) / trade.entryPrice) * 100).toFixed(1)}%
-                    </span>
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-negative">Stop</span>
-                  <span className="font-medium tabular-nums text-negative">
-                    ${stopPrice.toFixed(2)}
-                    <span className="text-muted-foreground ml-1">
-                      −{(((trade.entryPrice - stopPrice) / trade.entryPrice) * 100).toFixed(1)}%
-                    </span>
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Price Targets — standalone, identical to the thesis sheet */}
+          <PriceTargetsBlock
+            entry={trade.entryPrice}
+            target={targetPrice}
+            stop={stopPrice}
+            current={currentPrice}
+            direction={position.direction === 'SHORT' ? 'SHORT' : 'LONG'}
+          />
 
           {/* Stock Info */}
           {stockProfile && (
