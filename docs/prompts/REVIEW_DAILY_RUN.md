@@ -127,7 +127,7 @@ For each MORNING_PLAN run:
 ### D. The "moved but wasn't traded" check
 
 For every thesis on the live analyst's book at run start (snapshot from `Thesis WHERE
-agentConfigId = X AND status IN ('ACTIVE','HOLDING','WATCHING','PROMOTED')`):
+agentConfigId = X AND status IN ('HOLDING','WATCHING','PROMOTED')`):
 
 1. **Pull today's price action** via `getStockQuote` or `Position.closePrice` at EOD, plus intraday high/low. Acceptable source: any Finnhub or Alpaca snapshot taken between run start and EOD.
 2. **HOLDING positions, price moved ≥3% intraday?** Confirm the thesis was reviewed in the run via `ThesisUpdate WHERE thesisId = X AND runId = <today's morning runId>`. No update row = the agent skipped a meaningful move. Flag.
@@ -392,10 +392,10 @@ ORDER BY "runId", "createdAt";
 
 -- Overdue-review backlog (trend metric)
 SELECT
-  COUNT(*) FILTER (WHERE status::text IN ('ACTIVE','HOLDING','WATCHING','PROMOTED')) AS active_or_watching,
-  COUNT(*) FILTER (WHERE status::text IN ('ACTIVE','HOLDING','WATCHING','PROMOTED')
+  COUNT(*) FILTER (WHERE status::text IN ('HOLDING','WATCHING','PROMOTED')) AS active_or_watching,
+  COUNT(*) FILTER (WHERE status::text IN ('HOLDING','WATCHING','PROMOTED')
                    AND "nextReviewAt" < (NOW() - INTERVAL '7 days')) AS overdue_7d,
-  COUNT(*) FILTER (WHERE status::text IN ('ACTIVE','HOLDING','WATCHING','PROMOTED')
+  COUNT(*) FILTER (WHERE status::text IN ('HOLDING','WATCHING','PROMOTED')
                    AND "nextReviewAt" < NOW()) AS overdue_any
 FROM "Thesis";
 
@@ -427,12 +427,12 @@ WHERE t.id IN (SELECT "thesisId" FROM touched)
 -- Conviction distribution across all open theses
 SELECT conviction,
        COUNT(*) AS n,
-       COUNT(*) FILTER (WHERE status IN ('ACTIVE','HOLDING')) AS n_active,
+       COUNT(*) FILTER (WHERE status = 'HOLDING') AS n_holding,
        COUNT(*) FILTER (WHERE status = 'WATCHING') AS n_watching,
        COUNT(*) FILTER (WHERE status = 'PROMOTED') AS n_promoted
 FROM "Thesis"
 WHERE direction IN ('LONG', 'SHORT')
-  AND status IN ('ACTIVE', 'HOLDING', 'WATCHING', 'PROMOTED')
+  AND status IN ('HOLDING', 'WATCHING', 'PROMOTED')
 GROUP BY conviction
 ORDER BY CASE conviction
   WHEN 'STRONG' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 WHEN 'LOW' THEN 4 ELSE 5 END;
