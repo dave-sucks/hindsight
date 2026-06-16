@@ -86,22 +86,14 @@ Not folded into the 4-state core. It's an account transition (paper position for
 
 **The model is LOCKED (above). This section is the live state + the rule-book so any session picks it up with zero prior context.**
 
-### Done
-- **PR A (#411)** — additive schema — **merged + migration applied to prod** (verified: `HOLDING`/`PASSED`/`RETIRED` enum values, nullable `retiredReason`, nullable `direction`; 815 theses intact).
-- **PR #412** — `lib/thesis-status.ts` display foundation (the 3 new labels) — **open, awaiting merge.** Shared base; concept-PRs build on it, do **not** re-add to `thesis-status.ts`.
+> ⚠️ **STALE — superseded by the "Live status — updated 2026-06-15" section at the bottom of this file.** B1–B4, agent-vocab, UI-cleanup, and the dashboard split are all MERGED + deployed + backfilled. Only the contract PR (+ a brief-detail fix) remains. The original sequencing/recipe below is kept for historical reference only.
 
-### In flight (separate sub-sessions; each opens its own PR — review before merge)
-- **B1 — PASS → PASSED.** Store researched-declined theses as `status:"PASSED"` (was `ARCHIVED`); keep `direction:"PASS"` for now. Fixes the discovery `record_thesis` red error + the Pass-shows-as-"Archived" display bug. Touches `record-thesis.ts` (input enum ~362 + `effectiveStatusForTriggers` ~1057 + guard the non-PASS branch), `discovery.ts:447` prompt, every ARCHIVED-as-terminal query (add `PASSED`), + backfill `UPDATE "Thesis" SET status='PASSED' WHERE direction='PASS' AND status='ARCHIVED'`.
-- **Dashboard Held/Pending** — display-only: the positions list shows **held + pending-buy + pending-sell together, grouped + labeled** (NOT hidden/removed — it's the principal's main view of open trades).
+### Done (original plan-time snapshot — now all merged; see Live status section)
+- **PR A (#411)** — additive schema — merged + migration applied to prod.
+- **PR #412** — `lib/thesis-status.ts` display foundation (the 3 new labels) — merged. Shared base; do **not** re-add to `thesis-status.ts`.
 
-### Remaining concept-PRs — SEQUENTIAL (each edits the same files; do NOT parallelize)
-Order: **B2 → B3 → B4 → agent-vocab → UI cleanup → contract.** One lands + is reviewed, then the next.
-- **B2 — ACTIVE → HOLDING.** Writers: `place_trade` inline flip, `promoteThesisOnApproval`. Readers: every `status === "ACTIVE"`. Backfill `ACTIVE→HOLDING`.
-- **B3 — CLOSED / INVALIDATED / ARCHIVED / SUPERSEDED → RETIRED + `retiredReason`.** Writers: close path (`closeThesisForPosition`), `update_thesis`, record_thesis parent-flip, watchlist/editor removes. Backfill with the reason per the mapping table above (ARCHIVED-walkaway→`DROPPED`, CLOSED→`SOLD`, INVALIDATED→`INVALIDATED`, SUPERSEDED→`REPLACED`).
-- **B4 — PENDING → null direction.** Seeds (`addWatchlistItem`, builder/editor). Readers: `direction === "PENDING"`. Backfill `direction=NULL WHERE direction='PENDING'`.
-- **Agent vocab** — teach the agents the new statuses: `get_theses` / `needs-action` / `complete-run` outputs + the prompts (`system-prompt.ts`, `system-prompts/intraday-tactical.ts`, `system-prompts/discovery.ts`). The agents must understand HOLDING/PASSED/RETIRED to reason correctly.
-- **UI cleanup** — kill `deriveTradeStatus` fiction + the thesis-as-holding projection; render real statuses.
-- **Contract** — remove the legacy enum values once nothing reads them.
+### Concept-PRs — ALL MERGED (B1 → B2 → B3 → B4 → PASS-off-direction → agent-vocab → UI-cleanup → dashboard split)
+The sequenced value-flips landed in order, each backfilled with the principal's go. See the field-mapping table above for the value moves and the Live status section for the merged PR list. Per-concept recipe (writer flip → dual-read → backfill → verify) retained below for the contract PR.
 
 ### Per-concept recipe (apply to each)
 1. Flip the writer(s) to emit the new value.
@@ -113,3 +105,38 @@ Order: **B2 → B3 → B4 → agent-vocab → UI cleanup → contract.** One lan
 - Migrations apply **manually** (build only runs `prisma generate`). The **principal applies DB migrations + backfills**, or approves an MCP apply. Supabase project id `zomxxtqiszpkqrjrqqat`. DB-first: apply a migration **before** the schema deploys.
 - `gh auth switch --user dave-sucks` before any push. Worktrees have no `.env` — run `prisma generate` before `tsc`.
 - Reader surface ≈ 158 status/direction branches / ~42 files — much is **Position/Order** status (does NOT change); the **Thesis** subset is ~20-30 files. Grep per-concept.
+
+---
+
+## Live status — ✅ P1-24 COMPLETE (2026-06-16)
+
+**The entire migration is done — data, schema, writers, agent vocab, UI, contract code, and the destructive enum shrink are all live and verified in prod.** Final state: `ThesisStatus` enum = {WATCHING, HOLDING, PASSED, RETIRED, PROMOTED} (legacy values dropped 2026-06-16 via the contract migration); `direction` = LONG | SHORT | null. 815 theses intact, 0 data loss, 0 zombies/desync.
+
+**Data migration COMPLETE + verified in prod.** Live counts: status {RETIRED 659, PASSED 119, WATCHING 22, HOLDING 15}; direction {LONG 437, null 358, SHORT 20, PASS 0, PENDING 0}; retiredReason {REPLACED 360, SOLD 136, INVALIDATED 134, DROPPED 29 = 659}. Zero legacy enum values in the book; 0 zombies / 0 desync.
+
+**Merged:** #411 schema · #412 labels · #414 B1 PASS→PASSED · #415 B2 ACTIVE→HOLDING · #416 B3 terminals→RETIRED+reason · #417 B4 PENDING→null · #418 PASS-off-direction · #413 dashboard Held/Pending split · #419 agent-vocab (prompts + tool text + /agent-workflow + docs/prompts) · #420 UI-cleanup (killed `deriveTradeStatus`, inlined real `Position.status`+`outcome` at its 2 call sites; also fixed a latent `PENDING_APPROVAL`→"Holding" mislabel in the analyst-detail trade row) · #421 brief-detail (dropped the fake bucket-projected status tags + prose-guessed direction — audit finding #1) · #423 PriceTargetsBlock (extracted the entry/stop/target/current gauge to a shared component; reused on the trade detail page; fixed its missing current marker) · #424 contract-code (dual-read removal + legacy-literal scrub + `record_thesis` narrowed to persist only WATCHING/PASSED + Option-3 input-enum trim + audit findings #2–4 + `THESIS_ARCHITECTURE.md` rewrite).
+
+**Done (hygiene, not a PR):** stale-RUNNING-run reconcile — 37 stuck `RUNNING` ResearchRuns (oldest 2026-06-05) flipped to FAILED on 2026-06-15 (`updatedAt < now()-interval '1 hour'`); verified 0 RUNNING remain. Zero token bleed (all past the 800s serverless cap).
+
+**Contract (final phase) — DONE:**
+- **#424 contract-code** — merged + deployed. Removed dual-read (`isPassedThesis` + legacy reader branches), scrubbed legacy literals, narrowed `record_thesis` to persist only `WATCHING`/`PASSED` (caught + fixed a real latent ACTIVE-on-direction-flip write bug), trimmed dead input verbs (`change_status` ACTIVE/CLOSED + direction PENDING) while keeping `INVALIDATED`/`ARCHIVED`/`PASS` as translated input aliases (**Option 3** — agent vocab unchanged), rewrote `THESIS_ARCHITECTURE.md`, resolved audit findings #2–4. tsc 0.
+- **Contract schema → #426** (NOTE: the original #425 was merged into the `p1-24-contract-code` branch by mistake and never reached main; **#426** re-targeted the schema enum shrink + migration onto main — code-only-free, no #421/#423 revert). Merged + deployed green.
+- **Migration APPLIED 2026-06-16** via Supabase MCP (`apply_migration p1_24_taxonomy_contract`), after the step-0 guard confirmed 0 legacy rows. Post-verify: enum = the 5 final values; 815 theses intact; reads OK.
+
+**✅ P1-24 COMPLETE. Nothing else in scope remains.**
+
+**Optional cosmetic follow-up (not blocking, not done):** `docs/prompts/REVIEW_DAILY_RUN.md` + `REVIEW_DISCOVERY_RUN.md` still carry dead `'ACTIVE'` entries in their `status IN (…)` SQL allowlists. Harmless post-contract (text comparison matches nothing), just stale noise — trim when convenient.
+
+**Out of scope / deferred by design (never blocked completion):** PROMOTED revisit; agent input-vocab full flip (Option 3 kept aliases); `Order.status=FILLED` race.
+
+**Adjacent (NOT taxonomy, surfaced this session):** `PriceTargetsBlock` extraction shipped in #423 (above). Thesis-card redesign (annotated price chart: watchlist-add / entry vertical markers + target/stop horizontal lines; Tier-1 gauge → Tier-2 chart) + repurposing the deleted Post-Run brief into a portfolio summary — a design/research session is producing a proposal (`docs/plans/THESIS_VISUALIZATION.md`). Separate from the migration; discuss when the proposal lands.
+
+### UI status audit — genuine findings (2026-06-15)
+Full read-only sweep of every status/direction render across homepage, thesis rows, run/agent renderers, trades, analyst detail. **All live/primary surfaces trace to a real DB field** (`Position.status`/`outcome`/`direction`, `Order.status`/`intent`, `Thesis.status`/`direction`, server-reconciled action verbs). The exceptions:
+
+1. **✅ RESOLVED (#421).** `components/intelligence/brief-detail.tsx:97,100` — was the one genuine user-visible fake: "Holding"/"Watching" tag projected from *which MorningBrief bucket* the item came from, + an up/down arrow regex-guessed from the alert prose. #421 dropped the fake tag + arrow and re-grouped items under honest bucket-labeled sections (Portfolio / Watchlist / New Opportunities). No live `Thesis.status` join (deprecated brief data).
+2. **✅ RESOLVED (#424).** `lib/thesis-status.ts` unknown-status fallback returned the `ACTIVE`/"Active" display; #424 changed it to a neutral "Unknown" pill so a genuinely-unknown status reads as obviously-wrong, not as confident "Active."
+3. **✅ RESOLVED (#424).** `components/ui/thesis-row.tsx` `null` direction was coerced to `"PASS"`; #424 removed the coercion (now yields `null` cleanly) as part of making direction null-safe end-to-end.
+4. **✅ DISMISSED (#424 audit).** `trade-card.tsx` / `run-summary-card.tsx` — re-checked: their status maps are **Position-status** (legit enum→label), not the stale Thesis map the audit assumed. Nothing to fix; left as-is.
+
+Robustness (not a correctness bug): the activity-feed ADD/REDUCE/STOP/NEAR_* verbs re-parse a label *string* that was itself built from the real `PositionManagementAction.actionType` — a lossy round-trip that silently falls through to HOLD if the label is renamed. Worth hardening to key on `actionType` directly.

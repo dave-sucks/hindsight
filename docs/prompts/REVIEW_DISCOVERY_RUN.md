@@ -84,7 +84,7 @@ table to query anymore (signal-router is paused since PR #361). Inspect:
 SELECT id, ticker, direction, status, "agentConfigId"
 FROM "Thesis"
 WHERE ticker = '<TICKER>'
-  AND status IN ('WATCHING', 'ACTIVE', 'HOLDING', 'PROMOTED');
+  AND status IN ('WATCHING', 'HOLDING', 'PROMOTED');
 ```
 
 ## What to commit pre-session/cron
