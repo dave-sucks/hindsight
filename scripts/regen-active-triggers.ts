@@ -108,7 +108,7 @@ function summarizeTriggers(triggers: Trigger[]): {
 async function loadTargets(flags: Flags): Promise<Target[]> {
   const theses = await prisma.thesis.findMany({
     where: {
-      status: "ACTIVE",
+      status: "HOLDING",
       direction: { in: ["LONG", "SHORT"] },
       ...(flags.ticker ? { ticker: flags.ticker } : {}),
       researchRun: {

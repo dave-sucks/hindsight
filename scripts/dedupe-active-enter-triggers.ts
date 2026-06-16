@@ -39,7 +39,7 @@ async function main() {
   );
 
   const theses = await prisma.thesis.findMany({
-    where: { status: "ACTIVE" },
+    where: { status: "HOLDING" },
     select: {
       id: true,
       ticker: true,

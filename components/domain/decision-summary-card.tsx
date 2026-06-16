@@ -22,7 +22,7 @@ import { StockLogo } from "@/components/StockLogo";
 export type DecisionPick = {
   rank: number;
   ticker: string;
-  direction: string;
+  direction: string | null;
   confidence: number;
   reasoning: string;
   action: string;

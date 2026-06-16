@@ -274,7 +274,12 @@ function collectWriteTheses(
     out.push({
       thesis_id: persistedId,
       ticker: display.ticker as string,
-      direction: display.direction as "LONG" | "SHORT" | "PASS",
+      // P1-24: the agent still SENDS direction:"PASS" as an input alias; a
+      // pass renders as direction=null (its meaning lives on status=PASSED).
+      direction:
+        display.direction === "LONG" || display.direction === "SHORT"
+          ? (display.direction as "LONG" | "SHORT")
+          : null,
       confidence_score:
         (display.confidence_score as number) ??
         (display.confidenceScore as number) ??
@@ -295,7 +300,7 @@ function collectWriteTheses(
       // RunMessages that pre-date the rename.
       fundamentals: (display.stock_fundamentals ??
         display.fundamentals) as ThesisCardData["fundamentals"],
-      status: (data.status as ThesisCardData["status"]) ?? "ACTIVE",
+      status: (data.status as ThesisCardData["status"]) ?? "WATCHING",
     });
   }
   return out;

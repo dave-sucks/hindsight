@@ -2,7 +2,22 @@
 
 > **What this is:** the live reference for how the system works. The 5 roles + the thesis lifecycle + how research stays fresh. **Read this first** before touching anything in the agent or thesis system. For target state, read [`VISION.md`](./VISION.md). For what's broken right now, read [`GAPS.md`](./GAPS.md).
 >
-> **Last verified:** 2026-05-26 (first live promotion + role-split rewrite).
+> **Last verified:** 2026-06-15 (P1-24 status-taxonomy contract — clean model below).
+
+> ### P1-24 status taxonomy — the clean model (current)
+> Each thesis owns ONE `status` and a `direction`, both contracted to a clean set. See [`plans/STATUS_TAXONOMY.md`](./plans/STATUS_TAXONOMY.md).
+>
+> - **`direction`**: `LONG` | `SHORT` | `null`. `null` = on the watchlist, not yet researched (the seed sentinel; the old `PENDING` string is gone). A pass stores `direction = null` and is identified by `status = PASSED` (the old `direction = PASS` is gone).
+> - **`status`** (a 4-state core + PROMOTED):
+>   - **WATCHING** — on the radar, tracking for entry (researched-with-a-view, or a just-added/unresearched seed).
+>   - **HOLDING** — on the radar + an open position. Execution-owned: set ONLY by `place_trade` on a fill, never by the agent. (= the old `ACTIVE`.)
+>   - **PASSED** — researched, declined. Never made the radar. Institutional memory. (= the old `direction=PASS` + `ARCHIVED`-at-write.)
+>   - **RETIRED** — was on the radar (watched and/or held), now done. Carries **`retiredReason`** (`DROPPED` | `SOLD` | `INVALIDATED` | `REPLACED`). (= the old `CLOSED` / `INVALIDATED` / `ARCHIVED`-walk-away / `SUPERSEDED`.)
+>   - **PROMOTED** — paper→live conviction-pause (unchanged).
+>
+> **Legacy → clean mapping** (the rest of this doc still uses old enum names in places; read them through this table): `direction=PENDING`→`null`; `direction=PASS`→`null`+`status=PASSED`; `status=ACTIVE`→`HOLDING`; `status=CLOSED`→`RETIRED`+`SOLD`; `status=INVALIDATED`→`RETIRED`+`INVALIDATED`; `status=ARCHIVED`(PASS-at-write)→`PASSED`; `status=ARCHIVED`(walk-away)→`RETIRED`+`DROPPED`; `status=SUPERSEDED`→`RETIRED`+`REPLACED`.
+>
+> **Agent INPUT vocabulary is deliberately unchanged** (conservative alias-keep): `record_thesis`/`update_thesis` still accept `direction:"PASS"` and `change_status:"INVALIDATED"`/`"ARCHIVED"` as intent verbs — the tools translate them to the stored clean values. The tool-owned `change_status` ACTIVE/CLOSED verbs and the `direction:"PENDING"` input were removed (entering is `place_trade`→HOLDING; exiting is `close_position`→RETIRED-SOLD).
 
 ---
 

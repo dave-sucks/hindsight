@@ -149,7 +149,7 @@ export function buildResolvedEnvelope(args: {
     triggerDetail = describePredicate(enterTrigger.predicate, currentPrice);
   } else if (
     exitTriggers.length > 0 &&
-    (thesis.status === "ACTIVE" || thesis.status === "HOLDING")
+    (thesis.status === "HOLDING")
   ) {
     // Only relevant for held rows — exit fires drive close decisions.
     const fired = exitTriggers.some(
@@ -181,7 +181,7 @@ export function buildResolvedEnvelope(args: {
   let actionability: Actionability;
   // PASSED (researched-and-declined) is terminal alongside the walk-away
   // ARCHIVED — both resolve to DEAD so the agent/UI skip them as live rows.
-  const terminal = ["INVALIDATED", "ARCHIVED", "CLOSED", "PASSED", "RETIRED"];
+  const terminal = ["PASSED", "RETIRED"];
   if (terminal.includes(thesis.status)) {
     actionability = "DEAD";
   } else if (isSuperseded) {
@@ -195,7 +195,7 @@ export function buildResolvedEnvelope(args: {
     // lib/agent/needs-action.ts (this is the resolver-layer label of
     // the same state).
     actionability = "PROMOTED_DECIDE_TODAY";
-  } else if (thesis.status === "ACTIVE" || thesis.status === "HOLDING") {
+  } else if (thesis.status === "HOLDING") {
     actionability = "ACTIVE_HOLD";
   } else if (thesis.catalystDate != null && thesis.catalystDate.getTime() > now.getTime()) {
     actionability = "PENDING_CATALYST";

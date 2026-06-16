@@ -55,7 +55,7 @@ export interface WatchlistItemView {
   createdAt: Date;
   thesisCount: number;
   latestThesis: {
-    direction: string;
+    direction: string | null;
     confidenceScore: number;
     createdAt: Date;
   } | null;
@@ -214,7 +214,7 @@ export async function getWatchlistItems(
       notes: null,
       addedBy,
       priority: "NORMAL",
-      status: "ACTIVE", // legacy contract — UI ignores
+      status: "WATCHING", // legacy contract — UI ignores
       // P1-24 B4 dual-read: an unresearched seed is direction=null (new) or
       // 'PENDING' (legacy, pre-backfill). Normalize both to null so the row
       // renders "Awaiting review".
@@ -273,7 +273,7 @@ export async function addWatchlistItem(
   const existing = await prisma.thesis.findFirst({
     where: {
       ticker: upper,
-      status: { in: ["ACTIVE", "HOLDING", "WATCHING"] },
+      status: { in: ["HOLDING", "WATCHING"] },
       researchRun: { agentConfigId: analystId },
     },
     select: {
@@ -304,7 +304,7 @@ export async function addWatchlistItem(
       notes: null,
       addedBy: addedByDisplay,
       priority: "NORMAL",
-      status: "ACTIVE",
+      status: "WATCHING",
       // P1-24 B4 dual-read: null (new seed) or legacy 'PENDING' → null.
       thesisDirection: existing.direction === "PENDING" ? null : existing.direction,
       targetPrice: existing.targetPrice,
@@ -377,7 +377,7 @@ export async function addWatchlistItem(
     notes: null,
     addedBy,
     priority: "NORMAL",
-    status: "ACTIVE",
+    status: "WATCHING",
     thesisDirection: null,
     targetPrice: null,
     stopPrice: null,

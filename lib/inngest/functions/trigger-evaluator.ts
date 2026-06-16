@@ -127,7 +127,7 @@ async function buildPositionOpenedAtMap(
   const out = new Map<string, Date>();
   const active = theses.filter(
     (t) =>
-      (t.status === "ACTIVE" || t.status === "HOLDING") &&
+      (t.status === "HOLDING") &&
       t.researchRun.agentConfigId != null,
   );
   if (active.length === 0) return out;
@@ -282,7 +282,7 @@ export const triggerEvaluator = inngest.createFunction(
         const theses = await prisma.thesis.findMany({
           where: {
             researchRun: { agentConfigId: { in: payload.analystIds } },
-            status: { in: ["ACTIVE", "HOLDING", "WATCHING"] },
+            status: { in: ["HOLDING", "WATCHING"] },
             ticker: { in: signal.tickers },
             triggers: { not: [] },
           },
@@ -399,7 +399,7 @@ export const triggerEvaluator = inngest.createFunction(
       // continues to handle signal-side predicates on both statuses.
       const theses = await prisma.thesis.findMany({
         where: {
-          status: { in: ["ACTIVE", "HOLDING", "WATCHING"] },
+          status: { in: ["HOLDING", "WATCHING"] },
           triggers: { not: [] },
         },
         select: {

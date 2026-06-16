@@ -36,7 +36,7 @@ function baseThesis(overrides: Partial<Parameters<typeof buildResolvedEnvelope>[
 describe("buildResolvedEnvelope — actionability classifier", () => {
   it("DEAD when status is INVALIDATED", () => {
     const r = buildResolvedEnvelope({
-      thesis: baseThesis({ status: "INVALIDATED" }),
+      thesis: baseThesis({ status: "RETIRED" }),
       currentPrice: 100,
       now: NOW,
     });
@@ -93,7 +93,7 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
 
   it("ACTIVE_HOLD when status is ACTIVE", () => {
     const r = buildResolvedEnvelope({
-      thesis: baseThesis({ status: "ACTIVE" }),
+      thesis: baseThesis({ status: "HOLDING" }),
       currentPrice: 105,
       now: NOW,
     });

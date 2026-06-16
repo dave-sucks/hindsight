@@ -89,7 +89,7 @@ export async function getPromotionPreview(
     }),
     prisma.thesis.findMany({
       where: {
-        status: { in: ["ACTIVE", "HOLDING"] },
+        status: { in: ["HOLDING"] },
         // Only promote committed directional theses. This is an explicit
         // ALLOWLIST (LONG/SHORT) rather than a denylist — it excludes PASS
         // (institutional memory, never traded), unresearched seeds (legacy
@@ -283,7 +283,7 @@ export async function promoteAnalystToLive(
   // Same conviction shape; the "close paper position" step is just a no-op.
   const orphanActive = await prisma.thesis.findMany({
     where: {
-      status: { in: ["ACTIVE", "HOLDING"] },
+      status: { in: ["HOLDING"] },
       // P1-24 PASS-off-direction: explicit ALLOWLIST (LONG/SHORT), matching
       // the primary promote query above. Robust to direction=null; the
       // status filter already excludes passes (PASS → status=PASSED). Was
@@ -409,7 +409,7 @@ async function transitionThesisToPromoted(input: {
     : await prisma.thesis.findFirst({
         where: {
           ticker: input.ticker,
-          status: { in: ["ACTIVE", "HOLDING"] },
+          status: { in: ["HOLDING"] },
           // P1-24 PASS-off-direction: explicit ALLOWLIST (LONG/SHORT). Robust
           // to direction=null; the status filter already excludes passes
           // (PASS → status=PASSED). Was `{ not: "PASS" }`.
@@ -503,7 +503,7 @@ async function transitionThesisToPromoted(input: {
     // user a quick read on what was held without re-deriving from
     // joined Position rows.
     fieldChanges: {
-      status: { from: "ACTIVE", to: "PROMOTED" },
+      status: { from: "HOLDING", to: "PROMOTED" },
       paperRealizedPnl: { from: null, to: cumulativePaperPnl },
       paperTenureDays: { from: null, to: paperTenureDays },
       paperReviewCount: { from: null, to: reviewCount },

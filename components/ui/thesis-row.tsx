@@ -13,7 +13,6 @@ import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { TriggersResponse } from "@/components/agent/sheets/ThesisTriggersSection";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
-import { isPassedThesis } from "@/lib/agent/thesis-direction";
 
 // 2026-04-29: removed inline expand-on-click and analyst-link button.
 // The Details button opens the full ThesisSheet which has more
@@ -28,7 +27,8 @@ type SourceItem = { type: string; provider: string; title: string; url?: string 
 export interface ThesisRowData {
   id: string;
   ticker: string;
-  direction: string;
+  // P1-24: LONG | SHORT | null (a pass/seed stores direction=null).
+  direction: string | null;
   confidenceScore: number;
   reasoningSummary: string;
   entryPrice: number | null;
@@ -220,9 +220,8 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
   }
 
   // ── No position — thesis-status states (light inline line, not a banner) ──
-  // P1-24: a pass is identified by status=PASSED (new) or direction='PASS'
-  // (legacy, pre-backfill). isPassedThesis dual-reads both.
-  if (isPassedThesis(t.direction, t.status)) {
+  // P1-24: a pass is identified by status=PASSED (direction is null on a pass).
+  if (t.status === "PASSED") {
     return {
       label: "Pass",
       dotClass: "bg-muted-foreground/40",
@@ -248,7 +247,7 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
     };
   }
 
-  if (status === "ACTIVE" || status === "HOLDING" || status === "PROMOTED") {
+  if (status === "HOLDING" || status === "PROMOTED") {
     // Trade-eligible coverage with no position open yet — show the target
     // as the next step, not a stale "@ entry".
     return {
@@ -369,7 +368,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         onOpenChange={setSheetOpen}
         thesis_id={t.id}
         ticker={t.ticker}
-        direction={(t.direction === "LONG" || t.direction === "SHORT" || t.direction === "PASS") ? t.direction : "PASS"}
+        direction={t.direction === "LONG" || t.direction === "SHORT" ? t.direction : null}
         confidence_score={t.confidenceScore}
         reasoning_summary={t.reasoningSummary}
         thesis_bullets={t.thesisBullets}
@@ -382,12 +381,9 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         }
         company_name={t.companyName}
         status={
-          t.sheetState?.status === "ACTIVE" ||
           t.sheetState?.status === "HOLDING" ||
           t.sheetState?.status === "WATCHING" ||
-          t.sheetState?.status === "CLOSED" ||
-          t.sheetState?.status === "INVALIDATED" ||
-          t.sheetState?.status === "SUPERSEDED" ||
+          t.sheetState?.status === "PROMOTED" ||
           t.sheetState?.status === "RETIRED" ||
           // P1-24: PASSED reaches the sheet so its isPass keys on status, not
           // the direction prop (a pass now stores direction=null).

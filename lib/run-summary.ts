@@ -39,7 +39,7 @@
 
 export interface RunSummaryInputTheses {
   ticker: string;
-  direction: string;
+  direction: string | null;
   /**
    * Composite score JSONB (`{ trendStrength, relativeStrength, entryQuality,
    * catalystFreshness, composite }` — see `record_thesis`'s scoring arg).

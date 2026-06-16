@@ -75,7 +75,6 @@ import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
 import { cn, PNL_HEX } from '@/lib/utils';
 import { formatCurrency, formatDateLabel } from '@/lib/format';
-import { isPassedThesis } from '@/lib/agent/thesis-direction';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -504,8 +503,8 @@ function HomeBottomSection({ picks, activity, loading }: {
 
   const filteredPicks = picks.filter((p) => {
     if (thesisFilter === 'open') return p.position?.status === 'OPEN';
-    // P1-24: a pass is status=PASSED (new) or direction='PASS' (legacy).
-    if (thesisFilter === 'passed') return isPassedThesis(p.direction, p.status) || (!p.position && p.decision !== 'BUY');
+    // P1-24: a pass is status=PASSED (direction is null on a pass).
+    if (thesisFilter === 'passed') return p.status === 'PASSED' || (!p.position && p.decision !== 'BUY');
     return true;
   });
 

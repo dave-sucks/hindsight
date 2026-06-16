@@ -103,9 +103,9 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
     expect(result.summary).toMatch(/writer is research-only/i);
   });
 
-  it("refuses change_status: ACTIVE from runMode=THESIS_WRITER on PROMOTED thesis", async () => {
-    // Even ACTIVE (the legal re-entry path for orchestrators) is refused
-    // from the writer — only the orchestrator decides re-entry.
+  it("refuses any change_status from runMode=THESIS_WRITER on PROMOTED thesis", async () => {
+    // The writer is research-only — it can't change PROMOTED status at all.
+    // Only the orchestrator decides re-entry (place_trade) or defer (WATCHING).
     mockThesisFindUnique.mockResolvedValueOnce(promotedThesisRow);
     const ctx = makeCtx({ runMode: "THESIS_WRITER" });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -113,62 +113,19 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
 
     const result = await tool.execute({
       thesis_id: "thesis_promoted_1",
-      rationale: "Re-entering live after refresh",
-      change_status: "ACTIVE",
-      target_price: 220,
-      stop_loss: 185,
+      rationale: "Refresh says the view broke",
+      change_status: "INVALIDATED",
     });
 
     expect(result.data.ok).toBe(false);
     expect(result.data.error).toBe("thesis_writer_cannot_change_promoted_status");
   });
 
-  it("refuses change_status: ACTIVE from the agent on a WATCHING thesis (tool-owned, P1-25)", async () => {
-    // WATCHING → ACTIVE is owned by place_trade (on fill/approval), not the
-    // agent. The agent flipping it here before a fill is the orphan bug.
-    mockThesisFindUnique.mockResolvedValueOnce({
-      ...promotedThesisRow,
-      status: "WATCHING",
-    });
-    const ctx = makeCtx({ runMode: "MORNING_PLAN" });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tool = updateThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-
-    const result = await tool.execute({
-      thesis_id: "thesis_promoted_1",
-      rationale: "Bought it — marking active",
-      change_status: "ACTIVE",
-      target_price: 220,
-      stop_loss: 185,
-    });
-
-    expect(result.data.ok).toBe(false);
-    expect(result.data.error).toBe("status_is_tool_owned");
-    expect(result.data.attempted).toBe("ACTIVE");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
-  });
-
-  it("refuses change_status: CLOSED from the agent on an ACTIVE thesis (tool-owned, P1-25)", async () => {
-    // ACTIVE → CLOSED is owned by close_position (on fill/approval), not the agent.
-    mockThesisFindUnique.mockResolvedValueOnce({
-      ...promotedThesisRow,
-      status: "ACTIVE",
-    });
-    const ctx = makeCtx({ runMode: "MORNING_PLAN" });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tool = updateThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-
-    const result = await tool.execute({
-      thesis_id: "thesis_promoted_1",
-      rationale: "Sold it — marking closed",
-      change_status: "CLOSED",
-    });
-
-    expect(result.data.ok).toBe(false);
-    expect(result.data.error).toBe("status_is_tool_owned");
-    expect(result.data.attempted).toBe("CLOSED");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
-  });
+  // P1-24 contract: the tool-owned ACTIVE/CLOSED change_status verbs were
+  // removed from update_thesis's input enum entirely (entering is place_trade →
+  // HOLDING; exiting is close_position → RETIRED-sold). The agent can no longer
+  // even express those transitions here — Zod rejects them at parse — so the
+  // old runtime "status_is_tool_owned" rejection tests were dropped.
 
   it("allows runMode=THESIS_WRITER on PROMOTED thesis WITHOUT change_status (research-only refresh)", async () => {
     // The legitimate writer path: refresh research, leave status alone.

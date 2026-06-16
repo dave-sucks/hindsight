@@ -371,7 +371,7 @@ describe("evaluateTrigger", () => {
         thesis: {
           createdAt: THESIS_CREATED, // 28d old
           nextReviewAt: null,
-          status: "ACTIVE",
+          status: "HOLDING",
           positionOpenedAt: POSITION_OPENED, // 2d old
         },
       });
@@ -385,7 +385,7 @@ describe("evaluateTrigger", () => {
         thesis: {
           createdAt: THESIS_CREATED,
           nextReviewAt: null,
-          status: "ACTIVE",
+          status: "HOLDING",
           positionOpenedAt: POSITION_OPENED, // 2d ago
         },
       });
@@ -417,7 +417,7 @@ describe("evaluateTrigger", () => {
         thesis: {
           createdAt: THESIS_CREATED, // 28d old → fires off createdAt
           nextReviewAt: null,
-          status: "ACTIVE",
+          status: "HOLDING",
           positionOpenedAt: null,
         },
       });

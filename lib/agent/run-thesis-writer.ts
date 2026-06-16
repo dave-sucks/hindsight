@@ -82,7 +82,7 @@ export function buildThesisWriterSystemPrompt(opts: {
   existingThesis: {
     id: string;
     status: string;
-    direction: string;
+    direction: string | null;
     horizon: string | null;
     coreBelief: string | null;
     targetPrice: number | null;
@@ -217,14 +217,11 @@ around RE-ENTER / DOWNGRADE / INVALIDATE.
 3. Make the decision on top of the research:
      - direction: LONG / SHORT / PASS (PASS is allowed if the research
        does not support a directional view from your strategy's angle)
-     - status: ${opts.mode === "mint" ? `DEFAULT TO **WATCHING** on this dispatch.
-       Chat-dispatched mints are EXPLORATORY — the user wants the thesis to
-       study, not auto-trade. Only request status="ACTIVE" if the dispatch
-       reason explicitly says "trade now" / "buy immediately" / "open a
-       position". record_thesis enforces this as a Layer-1 clamp for chat
-       dispatches (forceWatchingMint), so an accidental ACTIVE will be
-       silently downgraded to WATCHING — but pass WATCHING explicitly so
-       the audit trail reads correctly.` : "(refresh mode — status is whatever the existing thesis has; don't change it unless the user explicitly asked)"}
+     - status: ${opts.mode === "mint" ? `**WATCHING** — a record_thesis mint
+       is always WATCHING (entry-gated). Chat-dispatched mints are EXPLORATORY:
+       the user wants the thesis to study, not auto-trade. Entering a position
+       is a separate place_trade step (it flips the thesis WATCHING → HOLDING
+       on the fill); the writer never mints a held thesis.` : "(refresh mode — status is whatever the existing thesis has; don't change it unless the user explicitly asked)"}
      - horizon: CATALYST / TARGET / TRADE / COMPOUNDER (pick by reasoning
        shape, not just hold length)
      - entry_price: WHERE YOU'D BUY IN. For breakout setups, the level
@@ -315,14 +312,13 @@ around RE-ENTER / DOWNGRADE / INVALIDATE.
 
 ${
   opts.mode === "refresh" &&
-  (opts.existingThesis?.status === "ACTIVE" ||
-    opts.existingThesis?.status === "HOLDING")
-    ? `       *** YOU ARE REFRESHING AN ACTIVE THESIS ***
-       The existing thesis row is status="ACTIVE" — we ALREADY OWN
+  opts.existingThesis?.status === "HOLDING"
+    ? `       *** YOU ARE REFRESHING A HELD THESIS ***
+       The existing thesis row is status="HOLDING" — we ALREADY OWN
        this stock and have an open Alpaca position. Apply the HELD
        template (EXIT + REVIEW). Do NOT apply the WATCHING template.
 
-       FORBIDDEN on ACTIVE (Layer-1 guard rejects, run will fail and
+       FORBIDDEN on a HOLDING thesis (Layer-1 guard rejects, run will fail and
        retry until you comply):
 
          ❌ ENTER       — we're already in; nothing to enter
@@ -333,7 +329,7 @@ ${
          (update_thesis(change_status: "WATCHING")) before re-entry
          conditions apply.
 
-       REQUIRED on ACTIVE (Layer-1 guard rejects without ≥1 EXIT):
+       REQUIRED on a HOLDING thesis (Layer-1 guard rejects without ≥1 EXIT):
 
          ✓ At least one EXIT — the automated stop-loss path. Without
            it the trigger evaluator has no way to fire a tactical

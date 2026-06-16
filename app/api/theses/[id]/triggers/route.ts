@@ -145,13 +145,12 @@ export async function GET(
 
   let position: PositionInfo | null = null;
   const isActiveish =
-    thesis.status === "ACTIVE" ||
     thesis.status === "HOLDING" ||
     thesis.status === "WATCHING";
   // P1-24 B3: a sold position now retires the thesis (RETIRED+SOLD). Treat
   // RETIRED as closed-side too — the CLOSED-position lookup below finds the
   // exit for SOLD rows and harmlessly returns null for DROPPED/REPLACED.
-  const isClosed = thesis.status === "CLOSED" || thesis.status === "RETIRED";
+  const isClosed = thesis.status === "RETIRED";
   if ((isActiveish || isClosed) && thesis.researchRun?.agentConfigId) {
     const pos = await prisma.position.findFirst({
       where: {
@@ -251,7 +250,7 @@ export async function GET(
         // INVALIDATED/ARCHIVED/CLOSED kept for dual-read until the contract
         // PR. The old `{ direction: "PASS" }` OR-clause is gone — a pass now
         // stores direction=null, so PASSED/RETIRED status entries cover it.
-        status: { in: ["INVALIDATED", "ARCHIVED", "CLOSED", "RETIRED", "PASSED"] },
+        status: { in: ["RETIRED", "PASSED"] },
       },
       orderBy: { createdAt: "desc" },
       take: 1,
@@ -261,7 +260,7 @@ export async function GET(
     // P1-14: paired open position's openedAt anchors TIME_ELAPSED for ACTIVE
     // rows so the sheet's actionability badge measures "max hold" from the
     // position open, not the (older) thesis row. Only relevant when held.
-    (thesis.status === "ACTIVE" || thesis.status === "HOLDING") && ownAnalystId
+    (thesis.status === "HOLDING") && ownAnalystId
       ? prisma.position
           .findFirst({
             where: {

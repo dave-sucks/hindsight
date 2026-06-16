@@ -439,7 +439,7 @@ async function findRelatedThesisId(
     where: {
       ticker,
       researchRun: { agentConfigId: analystId },
-      status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
+      status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
     },
     orderBy: { createdAt: "desc" },
     select: { id: true },

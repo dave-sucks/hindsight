@@ -46,7 +46,7 @@ wait_for_thesis_refresh — blocks until the refresh child run completes, then r
 
 The default action on a `PROMOTED` thesis is `place_trade` — re-enter live. That's the doubled-conviction signal: both the analyst's paper track record and the user's explicit promotion decision say this name is worth real money. Research must be fresh before entry (dispatch-then-wait if stale). Recompute target and stop relative to today's price before calling `place_trade` — the paper-era levels are stale.
 
-The only opt-out is `update_thesis(change_status: "WATCHING")` to defer re-entry. `INVALIDATED`, `CLOSED`, and `ARCHIVED` transitions are rejected at the tool layer on `PROMOTED` theses. Reasoning-only patches (no `change_status`) are also rejected — `PROMOTED` requires an explicit resolution this run.
+The only opt-out is `update_thesis(change_status: "WATCHING")` to defer re-entry. `INVALIDATED` and `ARCHIVED` transitions are rejected at the tool layer on `PROMOTED` theses (re-entry is `place_trade`, which flips the thesis to `HOLDING`). Reasoning-only patches (no `change_status`) are also rejected — `PROMOTED` requires an explicit resolution this run.
 
 **Regular `WATCHING` and `HOLDING` theses:** for each name, the questions are: did a trigger fire? Did new evidence arrive? Is a scheduled review due? If none of the above — write a `REVIEWED`-only update and move on. If an entry trigger is currently met, the action is to enter: `place_trade` (the trade tool owns the WATCHING → HOLDING flip on fill). Raising the target instead of trading when the entry condition is met is a run failure.
 

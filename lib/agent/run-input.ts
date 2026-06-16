@@ -52,7 +52,7 @@ export interface RunInput {
     portfolioValue: number;
     positions: Array<{
       symbol: string;
-      direction: string;
+      direction: string | null;
       quantity: number;
       avgCost: number;
       currentPrice: number;
@@ -87,7 +87,7 @@ export interface RunInput {
   activeTheses: Array<{
     id: string;
     ticker: string;
-    direction: string;
+    direction: string | null;
     confidence: number;
     reasoningSummary: string;
     entryPrice: number | null;
@@ -133,7 +133,7 @@ export interface RunInput {
   } | null;
   recentClosedTrades: Array<{
     symbol: string;
-    direction: string;
+    direction: string | null;
     outcome: string | null;
     pnlPct: number;
     closeReason: string | null;
@@ -389,7 +389,7 @@ export async function buildRunInput(
   // thesis without the coverage gate firing. Variable name is historical;
   // semantics now include WATCHING.
   let activeTheses: Array<{
-    id: string; ticker: string; direction: string; scoring: unknown;
+    id: string; ticker: string; direction: string | null; scoring: unknown;
     snapshot: unknown; bullCase: unknown; bearCase: unknown;
     entryPrice: number | null; targetPrice: number | null;
     stopLoss: number | null; createdAt: Date; researchRunId: string; status: string;
@@ -408,7 +408,7 @@ export async function buildRunInput(
           // contract — they MUST be acted on each run (place_trade or
           // update_thesis(WATCHING)). Inclusion here drives the expected-
           // coverage count in morning-research's coverage-violation gate.
-          status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
+          status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
           ticker: { in: allRelevantSymbols },
           researchRun: { agentConfigId: analystId },
         },
@@ -447,7 +447,7 @@ export async function buildRunInput(
     const thesis = activeTheses.find(
       (t) =>
         t.ticker === pos.symbol &&
-        (t.status === "ACTIVE" || t.status === "HOLDING"),
+        (t.status === "HOLDING"),
     );
     if (thesis) {
       pos.activeThesisId = thesis.id;

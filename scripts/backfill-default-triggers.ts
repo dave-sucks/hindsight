@@ -32,7 +32,7 @@ async function main() {
 
   const theses = await prisma.thesis.findMany({
     where: {
-      status: { in: ["ACTIVE", "WATCHING"] },
+      status: { in: ["HOLDING", "WATCHING"] },
     },
     select: {
       id: true,

@@ -119,7 +119,7 @@ const OPEN_POSITION = {
   openedAt: new Date("2026-06-03T14:30:00Z"),
 };
 
-const ACTIVE_THESIS = { id: "thesis-1", status: "ACTIVE" };
+const ACTIVE_THESIS = { id: "thesis-1", status: "HOLDING" };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -157,7 +157,7 @@ describe("closeOpenPosition — P1-18 paired-thesis flip", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           ticker: "NVDA",
-          status: { in: ["ACTIVE", "HOLDING"] },
+          status: { in: ["HOLDING"] },
           researchRun: { agentConfigId: "analyst-1" },
         }),
       }),
@@ -170,14 +170,14 @@ describe("closeOpenPosition — P1-18 paired-thesis flip", () => {
     );
 
     // Exactly one audit row, type CLOSED (event kind unchanged), carrying the
-    // ACTIVE→RETIRED status delta + the retiredReason.
+    // HOLDING→RETIRED status delta + the retiredReason.
     expect(mockWriteThesisUpdate).toHaveBeenCalledTimes(1);
     expect(mockWriteThesisUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         thesisId: "thesis-1",
         type: "CLOSED",
         fieldChanges: {
-          status: { from: "ACTIVE", to: "RETIRED" },
+          status: { from: "HOLDING", to: "RETIRED" },
           retiredReason: { from: null, to: "SOLD" },
         },
       }),

@@ -62,7 +62,7 @@ const thesisFields = z.object({
   ticker: z.string(),
   company_name: z.string().optional().describe("Company name from get_stock_data"),
   exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
-  direction: z.enum(["LONG", "SHORT", "PASS", "PENDING"]),
+  direction: z.enum(["LONG", "SHORT", "PASS"]),
   // ── Narrative fields ─────────────────────────────────────────────────
   // Legacy plain-string args. Kept on the Zod schema so the daily-run +
   // discovery agents that haven't been migrated to the V2 narrative shape
@@ -489,33 +489,16 @@ export const recordThesis = defineTool({
 
   execute: async (args, ctx) => {
     try {
-      // P1-24 B4: the unresearched-seed sentinel is now direction=null, which
-      // agents structurally CANNOT mint — the Zod enum above is
-      // ["LONG","SHORT","PASS","PENDING"] (no null), so a `direction: null`
-      // arg fails validation before execute() ever runs. This runtime guard
-      // covers the remaining case: a leaked legacy 'PENDING'. Both seed
-      // sentinels therefore stay agent-unmintable.
-      //
-      // PENDING is reserved for non-agent server actions (addWatchlistItem,
-      // createAnalystFromConfig, editor analyst-update). Agents always
-      // commit to LONG / SHORT / PASS. If the agent wants to promote an
-      // existing PENDING thesis to a real view, the path is
+      // P1-24 contract: the unresearched-seed sentinel is direction=null,
+      // which agents structurally CANNOT mint — the Zod enum above is
+      // ["LONG","SHORT","PASS"] (no null, no legacy "PENDING"), so a seed
+      // sentinel fails validation before execute() ever runs. PENDING was
+      // dropped from the input enum here; the seed sentinel stays
+      // agent-unmintable, reserved for non-agent server actions
+      // (addWatchlistItem, createAnalystFromConfig, editor analyst-update).
+      // Agents always commit to LONG / SHORT / PASS. To promote an existing
+      // seed thesis to a real view, the path is
       // update_thesis(thesis_id, direction: "LONG"|"SHORT"|"PASS", ...).
-      if (args.direction === "PENDING") {
-        return {
-          summary: `Thesis rejected for ${args.ticker}: agents cannot mint PENDING.`,
-          data: {
-            thesis_id: null,
-            status: "FAILED" as const,
-            note:
-              `PENDING is reserved for user/builder/editor seeds (UI manual add, analyst creation, editor chat). ` +
-              `As an agent, you commit to a view: LONG, SHORT, or PASS. ` +
-              `If you're trying to promote an existing PENDING thesis on this ticker, call update_thesis(thesis_id, direction: "LONG"|"SHORT"|"PASS", ...) with the structural fields. ` +
-              `If you want net-new coverage, pick LONG/SHORT (with target/stop/belief) or PASS (with invalidation_conditions).`,
-          },
-          sources: [],
-        };
-      }
 
       const sourceSignalIds = Array.from(new Set(args.source_signal_ids ?? []));
       const sourceRationale = args.source_rationale?.trim() ?? "";
@@ -1020,14 +1003,12 @@ export const recordThesis = defineTool({
         nextReviewAt = new Date(nowMs + days * dayMs);
       }
 
-      // ── Effective status — derived from (direction, status) pair ──
-      // Watchlist-collapse legal pairs:
-      //   PENDING → WATCHING (only)
-      //   PASS    → PASSED (only, terminal at write)
-      //   LONG/SHORT → WATCHING (default) or ACTIVE (explicit)
-      // Anything else is rejected.
-      // After the PENDING-rejection at the top of execute(), args.direction
-      // is narrowed to LONG | SHORT | PASS.
+      // ── Effective status — derived from direction ──
+      // P1-24 contract legal pairs a record_thesis mint can produce:
+      //   PASS       → PASSED (terminal at write)
+      //   LONG/SHORT → WATCHING (place_trade later flips it to HOLDING)
+      // args.direction is LONG | SHORT | PASS (the seed sentinel direction=null
+      // is unmintable by agents — not in the input enum).
       //
       // 2026-05-13 — discovery hard-clamp for LONG/SHORT (additive on top
       // of the legal-pair mapping). Discovery agents previously landed
@@ -1073,22 +1054,18 @@ export const recordThesis = defineTool({
           `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — agent requested ACTIVE in chat-dispatch mode; forced WATCHING. User must send a follow-up trade message to promote.`,
         );
       }
-      const effectiveStatusForTriggers: "ACTIVE" | "WATCHING" | "PASSED" =
-        args.direction === "PASS"
-          ? "PASSED"
-          : isDiscoveryDirectional || isChatDispatchDirectional
-            ? "WATCHING"
-            : // Directional thesis (LONG/SHORT): honor ONLY an explicit
-              // ACTIVE/WATCHING from input. A leaked ARCHIVED/PASSED — now
-              // tolerated by the input enum so a stray PASS status field
-              // doesn't Zod-reject — is IGNORED here, falling to the
-              // source_kind default. A LONG/SHORT can never be born
-              // PASSED/ARCHIVED.
-              args.status === "ACTIVE" || args.status === "WATCHING"
-              ? args.status
-              : inferredSourceKind === "WATCHLIST_REVIEW"
-                ? "WATCHING"
-                : "ACTIVE";
+      // P1-24 contract: a record_thesis mint NEVER has an open position, so
+      // the only two persistable mint statuses are WATCHING (directional
+      // coverage, entry-gated) and PASSED (researched-and-declined). The
+      // pre-contract code could fall back to legacy "ACTIVE" here for a
+      // non-discovery directional mint (e.g. a daily-run direction-flip via
+      // parent_thesis_id) — that wrote a legacy enum value the contraction
+      // removes, and it was wrong anyway (HOLDING is execution-owned, set
+      // only by place_trade on a real fill). The `status` input enum still
+      // tolerates ACTIVE as a legacy alias; it's silently collapsed to
+      // WATCHING here, never persisted.
+      const effectiveStatusForTriggers: "WATCHING" | "PASSED" =
+        args.direction === "PASS" ? "PASSED" : "WATCHING";
 
       // ── Discovery LONG/SHORT WATCHING cap (Layer-1 enforcement) ────────
       // The discovery prompt has a soft cap ("mint up to 8 new WATCHING
@@ -1147,9 +1124,8 @@ export const recordThesis = defineTool({
             note:
               `Direction='${args.direction}' is incompatible with status='${args.status}'. ` +
               `Legal pairs:\n` +
-              `  • PENDING → WATCHING (seed, awaiting first research)\n` +
               `  • PASS → PASSED (terminal, off the watchlist)\n` +
-              `  • LONG/SHORT → WATCHING (entry-gated) or ACTIVE (live)\n` +
+              `  • LONG/SHORT → WATCHING (entry-gated; place_trade flips it to HOLDING on a fill)\n` +
               `Retry with a legal pair.`,
           },
           sources: [],
@@ -1406,7 +1382,7 @@ export const recordThesis = defineTool({
           const existingThesis = await prisma.thesis.findFirst({
             where: {
               ticker: args.ticker,
-              status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
+              status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
               researchRun: { agentConfigId: ctx.analystId },
             },
             orderBy: { createdAt: "desc" },
@@ -1492,7 +1468,7 @@ export const recordThesis = defineTool({
                 // Include PROMOTED — another analyst on the account having
                 // a PROMOTED row on this ticker still counts as duplicate
                 // coverage from our DAY analyst's perspective.
-                status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
+                status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
                 researchRun: {
                   agentConfig: {
                     accountId: ctx.accountId,
@@ -1697,7 +1673,7 @@ export const recordThesis = defineTool({
               summary: `Invalidated by PASS thesis on ${args.ticker}`,
               rationale: invalidReason,
               fieldChanges: {
-                status: { from: "ACTIVE", to: "RETIRED" },
+                status: { from: "HOLDING", to: "RETIRED" },
                 retiredReason: { from: null, to: "INVALIDATED" },
               },
               runId: ctx.runId,
@@ -1717,7 +1693,7 @@ export const recordThesis = defineTool({
               summary: `Replaced by newer ${args.direction} thesis on ${args.ticker}`,
               rationale: narrativeText,
               fieldChanges: {
-                status: { from: "ACTIVE", to: "RETIRED" },
+                status: { from: "HOLDING", to: "RETIRED" },
                 retiredReason: { from: null, to: "REPLACED" },
               },
               runId: ctx.runId,

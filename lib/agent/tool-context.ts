@@ -104,10 +104,11 @@ export interface ToolContext {
   dailyRunOnly?: boolean;
 
   /**
-   * Chat-dispatched thesis-writer mints clamp to WATCHING. When true,
-   * record_thesis downgrades LONG/SHORT mints that request status="ACTIVE"
-   * to WATCHING (mirrors the discoveryOnly clamp at record-thesis.ts ~line
-   * 836). Set by dispatch_thesis_research for the Principal Chat flow so
+   * Chat-dispatched thesis-writer mints clamp to WATCHING. P1-24: a
+   * record_thesis mint is always WATCHING regardless of this flag (a mint
+   * never has a position; HOLDING is execution-owned). This flag survives as
+   * the chat-dispatch marker that also suppresses the would-be ACTIVE-request
+   * warning. Set by dispatch_thesis_research for the Principal Chat flow so
    * exploratory chat dispatches don't produce trade-eligible coverage that
    * would later fire orphan tactical EXIT runs (the same failure shape
    * the discovery clamp was added to prevent). Phase-3 daily-run refresh

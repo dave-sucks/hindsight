@@ -1,14 +1,12 @@
 /**
- * thesis-direction.test.ts — coverage for the P1-24 dual-read primitives.
+ * thesis-direction.test.ts — coverage for the seed primitive + the
+ * direction-independence of the run-summary derivation.
  *
- * Pure functions; no DB, no fetches. The PASS-off-direction PR moves the
- * "passed" fact off `Thesis.direction` (now LONG|SHORT|null only) onto
- * `Thesis.status='PASSED'`. `isPassedThesis` is the dual-read primitive every
- * reader now keys on, and the value the supersession queries' `status.in`
- * list mirrors. These tests pin the two shapes that must stay equivalent:
- *
- *   NEW:    status='PASSED', direction=null
- *   LEGACY: direction='PASS'  (pre-backfill; any status)
+ * Post P1-24 contract, `Thesis.direction` is `LONG|SHORT|null` only and the
+ * "passed" fact lives on `Thesis.status='PASSED'` (read directly via
+ * `status === "PASSED"`; the old `isPassedThesis` dual-read helper was
+ * removed when the legacy `direction='PASS'` encoding was contracted out).
+ * `isUnresearchedSeed(direction)` is now a plain null-check.
  *
  * The bottom block proves the run-summary derivation (buildRunSummary) is
  * direction-INDEPENDENT — a passed thesis with direction=null buckets exactly
@@ -16,67 +14,18 @@
  * ThesisUpdate.type, never on the stored direction string.
  */
 
-import { isPassedThesis, isUnresearchedSeed } from "./thesis-direction";
+import { isUnresearchedSeed } from "./thesis-direction";
 import { buildRunSummary, type RunSummaryInput } from "@/lib/run-summary";
 
-describe("isPassedThesis (P1-24 dual-read)", () => {
-  // ── NEW shape: status=PASSED, direction nulled ─────────────────────────
-  it("NEW shape: status='PASSED' + direction=null is a pass", () => {
-    expect(isPassedThesis(null, "PASSED")).toBe(true);
+describe("isUnresearchedSeed (P1-24)", () => {
+  it("null direction is an unresearched seed", () => {
+    expect(isUnresearchedSeed(null)).toBe(true);
+    expect(isUnresearchedSeed(undefined)).toBe(true);
   });
 
-  it("NEW shape: status='PASSED' is a pass regardless of direction value", () => {
-    // Defensive: even if a stale direction lingers pre-backfill, PASSED wins.
-    expect(isPassedThesis(undefined, "PASSED")).toBe(true);
-    expect(isPassedThesis("LONG", "PASSED")).toBe(true);
-  });
-
-  // ── LEGACY shape: direction='PASS' (not yet backfilled) ────────────────
-  it("LEGACY shape: direction='PASS' is a pass even when status is absent", () => {
-    expect(isPassedThesis("PASS")).toBe(true);
-    expect(isPassedThesis("PASS", undefined)).toBe(true);
-  });
-
-  it("LEGACY shape: direction='PASS' is a pass when status is the old ARCHIVED", () => {
-    // Pre-B1 rows: PASS-at-write landed status='ARCHIVED'. Still a pass.
-    expect(isPassedThesis("PASS", "ARCHIVED")).toBe(true);
-  });
-
-  // ── NOT a pass ─────────────────────────────────────────────────────────
-  it("directional rows are not passes", () => {
-    expect(isPassedThesis("LONG", "HOLDING")).toBe(false);
-    expect(isPassedThesis("SHORT", "WATCHING")).toBe(false);
-    expect(isPassedThesis("LONG", "ACTIVE")).toBe(false);
-  });
-
-  it("an unresearched WATCHING seed (direction=null, status=WATCHING) is NOT a pass", () => {
-    // The critical non-misfire: post-B4 a seed is direction=null. Keying a
-    // pass-check on direction alone would have been ambiguous — isPassedThesis
-    // requires status='PASSED' (or legacy direction='PASS'), so a seed is safe.
-    expect(isPassedThesis(null, "WATCHING")).toBe(false);
-    expect(isPassedThesis(undefined, "WATCHING")).toBe(false);
-  });
-
-  it("a terminal RETIRED row is NOT classified as a pass by this helper", () => {
-    // RETIRED (sold/dropped/invalidated/replaced) is its own resting state.
-    // The supersession query catches it via the status.in list directly; it
-    // is not a 'pass' for display purposes.
-    expect(isPassedThesis(null, "RETIRED")).toBe(false);
-  });
-
-  it("a fully-empty row (no direction, no status) is not a pass", () => {
-    expect(isPassedThesis(null, null)).toBe(false);
-    expect(isPassedThesis(undefined, undefined)).toBe(false);
-  });
-
-  // ── seed vs pass are distinct primitives ───────────────────────────────
-  it("isUnresearchedSeed and isPassedThesis don't overlap on a null-direction pass", () => {
-    // A PASSED row has direction=null but is NOT a seed — status disambiguates.
-    expect(isPassedThesis(null, "PASSED")).toBe(true);
-    expect(isUnresearchedSeed(null)).toBe(true); // direction-only seed check
-    // The point: callers that have status must use isPassedThesis (which reads
-    // status) to tell a passed row from an unresearched seed — both are
-    // direction=null, only status='PASSED' marks the pass.
+  it("a committed directional view is not a seed", () => {
+    expect(isUnresearchedSeed("LONG")).toBe(false);
+    expect(isUnresearchedSeed("SHORT")).toBe(false);
   });
 });
 
