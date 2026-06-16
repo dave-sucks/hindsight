@@ -183,33 +183,25 @@ model RunMessage {
 }
 
 enum ThesisStatus {
-  ACTIVE
-  INVALIDATED
-  CLOSED
-  SUPERSEDED
+  // ── P1-24 clean taxonomy (contract — see docs/plans/STATUS_TAXONOMY.md) ───
+  // The legacy values (ACTIVE / INVALIDATED / CLOSED / ARCHIVED / SUPERSEDED)
+  // were removed once nothing read or wrote them. HOLDING replaced ACTIVE;
+  // PASSED replaced direction=PASS + ARCHIVED-at-write; RETIRED (+ retiredReason)
+  // replaced CLOSED / INVALIDATED / ARCHIVED / SUPERSEDED.
+  //
+  // ⚠️ DB migration: Postgres cannot DROP a value from an enum in place — the
+  // paired migration does the create-new-type / swap-column / drop-old-type
+  // dance. Apply it ONLY after this schema's code has deployed green in prod.
   WATCHING
-  // ARCHIVED — terminal-without-trade-or-invalidation. PASS theses at write
-  // time (institutional memory), and manual/editor watchlist removals.
-  // Distinct from INVALIDATED (view was disproven) and CLOSED (position
-  // was held and closed). See docs/WATCHLIST_COLLAPSE_PLAN.md → Lifecycle.
-  ARCHIVED
-  // Set only by the promote-analyst action when the user flips an analyst
-  // PAPER→LIVE. Means: this thesis was ACTIVE in paper with intact
-  // conviction, its paper position was force-closed at promotion, and
-  // the next live run is expected to act on it (re-enter or downgrade
-  // to WATCHING). NEVER settable via record_thesis / update_thesis —
-  // those tools reject PROMOTED in their input schemas. See
-  // docs/PROD_DEPLOYMENT_PLAN.md.
-  PROMOTED
-
-  // ── P1-24 taxonomy (additive — see docs/plans/STATUS_TAXONOMY.md) ─────────
-  // The clean 4-state model. Rows migrate to these in PR B; the legacy values
-  // above are removed in PR E once nothing reads them. HOLDING replaces ACTIVE;
-  // PASSED replaces direction=PASS + ARCHIVED-at-write; RETIRED (+ retiredReason)
-  // replaces CLOSED / INVALIDATED / ARCHIVED / SUPERSEDED.
   HOLDING
   PASSED
   RETIRED
+  // Set only by the promote-analyst action when the user flips an analyst
+  // PAPER→LIVE. Means: this thesis was HOLDING in paper with intact
+  // conviction, its paper position was force-closed at promotion, and the
+  // next live run is expected to act on it (re-enter or downgrade to
+  // WATCHING). NEVER settable via record_thesis / update_thesis.
+  PROMOTED
 }
 
 model Thesis {
@@ -230,7 +222,7 @@ model Thesis {
   thoughtTrace     Json? // [{type, data, timestamp_ms}] — per-ticker event log for replay
 
   // V2: Thesis lifecycle
-  status         ThesisStatus @default(ACTIVE)
+  status         ThesisStatus @default(WATCHING)
   parentThesisId String? // Links to prior thesis on same ticker
   invalidatedAt  DateTime?
   invalidReason  String?
