@@ -21,52 +21,21 @@ _None open._ The 2026-06-04 → 08 post-launch sprint cleared the live-loop bloc
 
 ## P1 — Quality is degraded but the live loop functions
 
-### P1-23 — The post-run "briefing" doesn't fit the 3-agent model
-**Status:** open, filed 2026-06-08 (principal). Architectural — decide its role before it drifts further.
+### P1-23 — End-of-day Portfolio Digest (replaces the broken per-analyst briefing)
+**Status:** open, filed 2026-06-08, **re-scoped 2026-06-16 (principal)**. The one active P1. Part architecture (agent memory), part customer feature.
 
-In the old single-**Morning-Run** world, one run did everything — discovery, signals, mint theses, **read the last 3-5 post-run briefs**, then write a new brief. The briefing was the analyst's rolling memory inside one daily cycle.
+**Why the current briefing is dead.** `AnalystBriefing` (post-run standup, `lib/agent/update-analyst-briefing.ts`) was built for the old single-Morning-Run world. In the 3-agent split it's useless:
+- Written only after the DAILY run; fed only into the DAILY run (`run-input.ts` `latestBriefing`); reads only the last 1.
+- **Blind to tactical + discovery activity.** If 5 daily runs buy nothing and 5 tactical runs trade, none of that tactical activity reaches the next day's briefing → run-to-run memory is broken.
+- Per-analyst only — no account/portfolio-level view, for the agent OR the user (and the user-facing one is single-analyst, so also useless to read).
 
-The current `AnalystBriefing` (post-run standup, written by the separate reviewer agent in `lib/agent/update-analyst-briefing.ts`) doesn't fit the new **3-agent split** (daily / tactical / discovery):
-- Written **only after the DAILY run** — not after tactical runs or discovery.
-- Fed **only into the DAILY run** (`run-input.ts` `latestBriefing` → V2 prompt "Yesterday's standup"; V1 ignores it).
-- Reads **only the last 1**, not the rolling last 3-5.
-- So it's **blind to tactical trades + discovery activity** that now happen all day. A name a tactical run entered/exited, or one discovery surfaced, never reaches the standup the next morning's daily run reads.
+**The replacement: an end-of-day, account-level Portfolio Digest** — one per day, covering ALL run activity (daily + tactical + discovery) across ALL analysts, centered on the portfolio as a whole. Dual-purpose:
+- **Agent-consumable** (run-to-run memory): each morning's daily + tactical runs read the last N digests so they know what every run type did, plus portfolio state (capacity used, exposure, cash, concentration) + judgment ("only 3/12 slots filled," "no aggressive entry in N days").
+- **Customer-facing** (the thing the principal reads): a Perplexity-Finance-style narrative + movers + forward opinions ("consider adding to X," "book is underdeployed").
 
-**The rethink:** where does run-to-run memory live when there are 3 run types? Weigh — standup ingests tactical + discovery activity (not just the daily conversation); restore reading the last N; or a different continuity primitive. Tied to the intel-infra disposition (P2 below).
+**Build principle (three-layer):** compute the day's FACTS deterministically (trades + opens/closes/trims by run type, exposure, capacity, day P&L, watchlist adds, passes) — the LLM only narrates + forms opinions FROM those facts, never does the bookkeeping. New `PortfolioDigest` store; EOD cron after close + after the last tactical run; consumed by `run-input.ts` (agent) + a UI surface (user).
 
-### P1-24 — Status/direction taxonomy: "Pass" lives on `direction`, surfaces disagree
-**Status:** open, filed 2026-06-08 (principal). Scoped fix below + a broader audit.
-
-**The finding.** "Pass" is stored on `Thesis.direction` (`LONG | SHORT | PASS | PENDING`), **not** `Thesis.status` (`ACTIVE | WATCHING | PROMOTED | CLOSED | INVALIDATED | ARCHIVED | SUPERSEDED`). A discovery "researched but rejected" writes `direction:"PASS"` and lands `status:ARCHIVED` — but ARCHIVED is **also** used for non-Pass cases (manual "remove from watchlist," editor cleanup), so you can't rename ARCHIVED → "Passed" wholesale.
-
-Some surfaces check `direction==="PASS"` before reading status; others read status blind → the sheet header **contradicts** the row you clicked from:
-- ✅ `components/ui/thesis-row.tsx:222`, `decision-summary-card.tsx`, `run-summary-card.tsx` — render "Pass" when direction is PASS.
-- ❌ `components/agent/sheets/ThesisSheet.tsx:142` (StatusPill → `getThesisStatusDisplay(status)` blind → "Archived"), `components/domain/thesis-mini-card.tsx:75`, `components/domain/read-theses-table.tsx:56` — show "Archived."
-
-**Scoped fix (~30-50 line PR):**
-1. Add `PASSED` to `THESIS_STATUS_DISPLAY` in `lib/thesis-status.ts` — same gray dot as ARCHIVED, tooltip "Researched and declined — institutional memory" (vs ARCHIVED's "Walked away from coverage").
-2. Extend `getThesisStatusDisplay(status, direction?)` — return `PASSED` when `direction==="PASS"` regardless of status; ARCHIVED-without-PASS still "Archived."
-3. Update the unsafe callsites (ThesisSheet, thesis-mini-card, read-theses-table) to pass `thesis.direction`.
-
-**Broader ask (the real scope):** revisit **every** status/direction and whether it still makes sense at the entity it lives on, post 3-agent + trade-as-proposal. PASS-on-direction is the first symptom — audit the whole taxonomy: what's the source of truth for each lifecycle question across Position.status, Thesis.status, Thesis.direction, and Order.status?
-
-### P1-25 — Orphan thesis on declined/expired buy proposal (agent pre-flips WATCHING → ACTIVE before approval)
-**Status:** ship-now (gate + prompts) **merged #407**; Change 4 (needsAction proposal-awareness) in this session's PR; optional self-heal (Change 3/3b) deferred. Filed 2026-06-09 (QB-verified live 2026-06-09). Highest-value correctness item open — corrupts thesis-state on every declined ENTER proposal under the live approval toggle. Mechanism confirmed in code + one live in-flight case (PEAD/SNOW). **Zero *completed* orphans in the DB yet** — caught before it bites, not "already recurring" (a correction to the original framing).
-
-**The bug.** On the proposal path `place_trade` creates the buy proposal and returns at the approval seam (`place-trade.ts:623` → awaiting envelope ~639) **without** flipping the thesis — its inline WATCHING→ACTIVE flip (`place-trade.ts:949`) sits past the early return and never runs; `maybeAwaitApproval` doesn't touch the thesis either (`maybe-await-approval.ts:203-222`). The flip is *meant* to happen later at approval via `promoteThesisOnApproval` (`thesis-flips.ts:39`, called from `execute.ts:245`). **But both prompts tell the agent to flip it manually right after place_trade** — tactical `intraday-tactical.ts:237-244`, daily `system-prompt.ts:224`. The agent's `update_thesis(change_status:"ACTIVE")` branch (`update-thesis.ts:1239-1286`) only requires `status==='WATCHING'` + target + stop — **no open-position check** — so it flips the thesis ACTIVE while the position is still `PENDING_APPROVAL`. Reject (`execute.ts:315`) and expire (`proposal-expiry.ts`) flip Position→CANCELLED and write a PROPOSAL_REJECTED/EXPIRED audit row but **never revert Thesis.status** → thesis stuck ACTIVE, no position.
-
-**Proof (live, PEAD / SNOW, 2026-06-08):** `14:02:51` ENTER trigger fires → `14:03:41` place_trade stages Position `PENDING_APPROVAL` + Order `AWAITING_APPROVAL` (expires 2026-06-09 14:03 UTC), thesis still WATCHING → `14:04:00` STATUS_CHANGED "…WATCHING → ACTIVE, triggers updated" (same run, tradeId = the still-awaiting order). The order has never reached Alpaca; the thesis is already ACTIVE. Reject/expire it → first completed orphan; approve it → consistent ACTIVE+OPEN. Premature flip is the bug either way.
-
-**Why SELL is immune:** the zombie-gate (`update-thesis.ts:609-661`) already refuses agent `change_status:"CLOSED"/"INVALIDATED"/"ARCHIVED"` on an ACTIVE-with-open-position unless a real close fired this run. The buy side (WATCHING→ACTIVE) has **no mirror gate**. That asymmetry is the whole bug.
-
-**Harm on completion:** position-thesis desync (pre-PR-265 class, THESIS_ARCHITECTURE §9) — `get_theses` says ACTIVE, `get_portfolio_context` shows nothing; the name drops off the watchlist so the daily run won't re-propose the entry it still wants; the flip regenerated HELD triggers (stripped ENTER); any later EXIT/stop trigger aims a tactical `close_position` at a phantom.
-
-**Fix direction — subtraction + a Layer-1 backstop (NOT prompt-only).** The WATCHING→ACTIVE flip is execution bookkeeping the tools already own; the agent should never flip status itself. Per PRINCIPLES.md, deleting the prompt line alone is a Layer-3 fix to a Layer-1 problem — do both:
-1. **L3 (subtraction):** drop "then update_thesis(change_status:'ACTIVE')" from both prompts' ENTER branches (and the redundant `close_position → update_thesis(CLOSED)` at `system-prompt.ts:228`). The daily prompt already states the truth for PROMOTED re-entry at `:218` ("trade tool auto-flips … no separate update_thesis required") — extend it and fix the contradictory `:224`.
-2. **L1 (backstop):** `update_thesis` refuses agent-initiated `change_status:"ACTIVE"`/`"CLOSED"` — owned by place_trade / close_position / approval handlers. **Watch PROMOTED:** the resolution gate (`update-thesis.ts:519`, `:563`) currently treats `change_status:"ACTIVE"` as the legal PROMOTED→ACTIVE path; move that to "place_trade fired this run" (its belt-and-suspenders flip at `:848-876` already covers it). PROMOTED→WATCHING (defer) stays agent-legal.
-3. **Optional self-heal (L1, prompt-independent):** reject/expire reverts the paired thesis ACTIVE→WATCHING (restoring the ENTER trigger) when cancelling its proposal — robust even if a premature flip slips through, but must reconstruct the stripped trigger.
-
-Deliberate ~80-120 line PR, not a one-liner. **Do not** ship the prompt deletion without the tool backstop + PROMOTED care.
+**Sibling work:** dovetails with the thesis-card / annotated-chart redesign (`docs/plans/THESIS_VISUALIZATION.md`) — both are "see the story of the book over time." Plan together. Check existing `weekly-digest.ts` + `accuracy-scorer.ts` for overlap/consolidation. Light planning started 2026-06-16; promote to a `docs/plans/PORTFOLIO_DIGEST.md` when scoped.
 
 ---
 

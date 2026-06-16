@@ -11,6 +11,14 @@
 
 ---
 
+## Done since 2026-06-16 (status-taxonomy migration complete + orphan-thesis bug closed)
+
+### ✅ P1-24 — Status/direction taxonomy migration (the 8-week-refactor capstone)
+**Filed** 2026-06-08, **shipped + applied** 2026-06-16 across ~15 PRs. In-place value migration to the locked clean model: `Thesis.status ∈ {WATCHING, HOLDING, PASSED, RETIRED(+retiredReason), PROMOTED}`, `Thesis.direction ∈ {LONG, SHORT, null}` ("Pass" became a status, not a direction). Sequence: #411 additive schema · #414–#418 data flips + backfills (PASS→PASSED, ACTIVE→HOLDING, terminals→RETIRED+reason, PENDING→null, PASS-off-direction) · #419 agent vocab · #413 dashboard Held/Pending split · #420 UI-cleanup (killed `deriveTradeStatus` + thesis-as-holding projection) · #421 brief-detail fake-status fix · #423 PriceTargetsBlock shared · #424 contract-code · #426 contract-schema + **enum shrink migration applied via MCP 2026-06-16** (5-value enum, 815 theses intact, 0 data loss). Full record: `docs/plans/STATUS_TAXONOMY.md`. A 3-agent UI audit confirmed every live surface renders real DB statuses (no fictional projections).
+
+### ✅ P1-25 — Orphan thesis on declined/expired buy proposal — **closed structurally by the contract**
+**Filed** 2026-06-09; gate+prompts shipped #407; **fully closed 2026-06-16** as a side effect of P1-24's contract. The bug was the agent pre-flipping WATCHING→ACTIVE via `update_thesis(change_status:"ACTIVE")` before approval. The contract (#424) **removed `ACTIVE` and `CLOSED` from the `change_status` input enum entirely** (now `["INVALIDATED","ARCHIVED","WATCHING"]`) and the prompts no longer instruct a manual flip — so the offending call is now impossible to make. The deferred self-heal (revert-on-reject) is moot defense-in-depth on a bug that can't occur. Zero completed orphans ever reached the DB.
+
 ## Done since 2026-06-09 (settings transparency — live per-position cap surfaced)
 
 One settings/UX closure (not thesis-rework; relocated here as the closure home per the open-only `GAPS.md` convention).
