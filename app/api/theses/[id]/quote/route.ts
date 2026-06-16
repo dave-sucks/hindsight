@@ -77,7 +77,7 @@ export async function GET(
 
   if (
     currentPrice != null &&
-    (thesis.status === "ACTIVE" || thesis.status === "HOLDING") &&
+    (thesis.status === "HOLDING") &&
     thesis.researchRun?.agentConfigId
   ) {
     const pos = await prisma.position.findFirst({

@@ -111,7 +111,6 @@ export const tacticalRun = inngest.createFunction(
       });
       if (!thesis) return null;
       if (
-        thesis.status !== "ACTIVE" &&
         thesis.status !== "HOLDING" &&
         thesis.status !== "WATCHING"
       ) {

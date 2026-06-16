@@ -332,7 +332,7 @@ export default function AnalystDetailClient({
       notes: null,
       addedBy: "USER",
       priority: "NORMAL",
-      status: "ACTIVE",
+      status: "WATCHING",
       thesisDirection: null,
       targetPrice: null,
       stopPrice: null,

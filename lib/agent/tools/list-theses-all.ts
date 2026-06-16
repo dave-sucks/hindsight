@@ -17,12 +17,12 @@ import {
 
 export const listThesesAll = defineTool({
   description:
-    "List theses across every analyst (or scoped to analyst_id, or to one ticker). Defaults to status in (ACTIVE, HOLDING, WATCHING). Use this for portfolio-wide questions — 'show me everything actively held', 'who has a thesis on $NVDA', 'how many WATCHING theses do I have across all analysts'.",
+    "List theses across every analyst (or scoped to analyst_id, or to one ticker). Defaults to status in (HOLDING, WATCHING). Use this for portfolio-wide questions — 'show me everything actively held', 'who has a thesis on $NVDA', 'how many WATCHING theses do I have across all analysts'.",
   schema: z.object({
     analyst_id: z.string().optional(),
     ticker: z.string().optional(),
     status: z
-      .enum(["ACTIVE", "HOLDING", "WATCHING", "INVALIDATED", "CLOSED", "SUPERSEDED", "RETIRED"])
+      .enum(["HOLDING", "WATCHING", "PROMOTED", "RETIRED", "PASSED"])
       .optional(),
     direction: z.enum(["LONG", "SHORT", "PASS"]).optional(),
     limit: z.number().int().min(1).max(200).optional(),
@@ -48,7 +48,7 @@ export const listThesesAll = defineTool({
     if (args.status) {
       where.status = args.status;
     } else {
-      where.status = { in: ["ACTIVE", "HOLDING", "WATCHING"] };
+      where.status = { in: ["HOLDING", "WATCHING"] };
     }
     if (args.analyst_id) {
       where.researchRun = { agentConfigId: args.analyst_id };

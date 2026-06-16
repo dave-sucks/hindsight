@@ -34,7 +34,7 @@ wait_for_thesis_refresh — blocks until the refresh child run completes
 At most one position action per run. The confirmation gate runs before `place_trade`: (a) the live quote still confirms the level, (b) no contradicting headline in the last hour. For `TRADE`-horizon theses, a volume check also applies — 1.5x average is the bar, but only if the session is past mid-day. For `CATALYST`, `TARGET`, and `COMPOUNDER` horizons, volume is informational and never a reason to reject.
 
 ```writes
-place_trade?provider=alpaca — open a position when the action is ADD; immediately followed by update_thesis(change_status: "ACTIVE") with recomputed target and stop
+place_trade?provider=alpaca — open a position when the action is ADD; it atomically flips the thesis WATCHING/PROMOTED → HOLDING on the fill (no separate status call) and records the recomputed target and stop
 close_position?provider=alpaca — full exit when the trigger fires EXIT
 manage_position?provider=alpaca — partial close, target or stop adjustment, trail, or scale-in
 ```

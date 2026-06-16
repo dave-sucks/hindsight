@@ -35,7 +35,6 @@ import { PriceChange } from "@/components/ui/price-change";
 import { PriceGauge } from "@/components/ui/gauge";
 import { ThesisSheet, type ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
-import { isPassedThesis } from "@/lib/agent/thesis-direction";
 import { useThesisCardData } from "@/lib/hooks/use-thesis-card-data";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -63,10 +62,6 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
   // Live state takes precedence; prop snapshot is the fallback for the
   // inline-during-run case and for /triggers errors.
   const status = state?.status ?? thesis.status;
-  // TriggersResponse doesn't carry direction (it's static-at-write and the
-  // sheet pulls it from the same row's parent props). Fall back to the
-  // prop snapshot for direction-dependent rendering.
-  const direction = thesis.direction;
   const entryPrice = state?.entryPrice ?? thesis.entry_price ?? null;
   const targetPrice = state?.targetPrice ?? thesis.target_price ?? null;
   const stopLoss = state?.stopLoss ?? thesis.stop_loss ?? null;
@@ -74,13 +69,11 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
   const positionPnl = quote?.positionPnl ?? null;
 
   const statusDisplay = getThesisStatusDisplay(status);
-  // P1-24: a pass is status=PASSED (new) or direction='PASS' (legacy). The
-  // live `status` (from /triggers, falling back to the prop snapshot) is
-  // authoritative; isPassedThesis dual-reads both.
-  const isPass = isPassedThesis(direction, status);
+  // P1-24: a pass is status=PASSED. The live `status` (from /triggers, falling
+  // back to the prop snapshot) is authoritative.
+  const isPass = status === "PASSED";
   const hasGauge = entryPrice != null && (targetPrice != null || stopLoss != null);
-  const isHolding =
-    (status === "ACTIVE" || status === "HOLDING") && position != null;
+  const isHolding = status === "HOLDING" && position != null;
 
   const belief =
     state?.coreBelief?.trim() ||

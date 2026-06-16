@@ -229,7 +229,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
     it("rejects PENDING → LONG promotion missing conviction", async () => {
       mockThesisFindUnique.mockResolvedValueOnce(
         makeExistingRow({
-          direction: "PENDING",
+          direction: null,
           scoring: {},
           coreBelief: null,
           keyAssumptions: [],
@@ -271,7 +271,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
     it("PENDING → LONG with STRONG requires variant_view in the same call", async () => {
       mockThesisFindUnique.mockResolvedValueOnce(
         makeExistingRow({
-          direction: "PENDING",
+          direction: null,
           scoring: {},
           coreBelief: null,
           keyAssumptions: [],

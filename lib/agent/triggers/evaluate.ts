@@ -167,7 +167,7 @@ export function evaluateTrigger(
       // ACTIVE row missing positionOpenedAt) keeps measuring from createdAt
       // — the correct clock for "is this watch row stale."
       const anchor =
-        (ctx.thesis.status === "ACTIVE" || ctx.thesis.status === "HOLDING") &&
+        (ctx.thesis.status === "HOLDING") &&
         ctx.thesis.positionOpenedAt != null
           ? ctx.thesis.positionOpenedAt
           : ctx.thesis.createdAt;

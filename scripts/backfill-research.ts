@@ -75,7 +75,7 @@ type Target = {
 async function loadTargets(flags: Flags): Promise<Target[]> {
   const theses = await prisma.thesis.findMany({
     where: {
-      status: { in: ["WATCHING", "ACTIVE"] },
+      status: { in: ["WATCHING", "HOLDING"] },
       ...(flags.ticker ? { ticker: flags.ticker } : {}),
       researchRun: {
         agentConfig: {

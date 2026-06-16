@@ -135,7 +135,7 @@ export const getPortfolioContext = defineTool({
           const thesis = await prisma.thesis.findFirst({
             where: {
               ticker: pos.symbol,
-              status: { in: ["ACTIVE", "HOLDING"] },
+              status: { in: ["HOLDING"] },
               researchRun: { agentConfigId: analystId },
             },
             orderBy: { createdAt: "desc" },

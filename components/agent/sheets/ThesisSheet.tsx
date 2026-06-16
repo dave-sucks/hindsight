@@ -77,7 +77,9 @@ export type ThesisCardData = {
    */
   thesis_id?: string;
   ticker: string;
-  direction: "LONG" | "SHORT" | "PASS";
+  // P1-24: a committed view (LONG/SHORT) or null. A pass stores direction=null
+  // and is identified by status=PASSED, not by the direction column.
+  direction: "LONG" | "SHORT" | null;
   confidence_score: number;
   reasoning_summary?: string;
   thesis_bullets?: string[];
@@ -94,7 +96,7 @@ export type ThesisCardData = {
   fundamentals?: FundamentalsData | null;
   // P1-24: PASSED is the researched-declined status (a pass now stores
   // direction=null). Threaded so the sheet's isPass keys on status.
-  status?: "ACTIVE" | "HOLDING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "RETIRED" | "WATCHING" | "PROMOTED" | "PASSED";
+  status?: "HOLDING" | "RETIRED" | "WATCHING" | "PROMOTED" | "PASSED";
   /**
    * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
    * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
@@ -349,7 +351,7 @@ function TradeBlock({
     expiresAt: string | null;
     rationale: string | null;
   } | null;
-  direction: "LONG" | "SHORT" | "PASS";
+  direction: "LONG" | "SHORT" | null;
 }) {
   const pp = pendingProposal;
   const entry = position.avgCost;
@@ -476,74 +478,6 @@ function compositeTierVariant(
   if (score >= 7) return "positive";
   if (score >= 4) return "secondary";
   return "negative";
-}
-
-// ── IntentSuffix ──
-// Single line of dot-separated metadata appended to PositionRow and
-// WatchingRow: direction · target/stop · horizon. Hides cleanly when
-// any piece is missing — never renders an empty container.
-
-function IntentSuffix({
-  direction,
-  horizon,
-  entryPrice,
-  targetPrice,
-  stopLoss,
-  forWatching,
-}: {
-  direction: "LONG" | "SHORT" | "PASS";
-  horizon?: string | null;
-  entryPrice?: number | null;
-  targetPrice?: number | null;
-  stopLoss?: number | null;
-  forWatching?: boolean;
-}) {
-  const parts: React.ReactNode[] = [];
-
-  // Direction. PASS surfaces only on watching rows (held positions are
-  // always LONG/SHORT, never PASS).
-  if (direction !== "PASS" || forWatching) {
-    parts.push(<span key="dir" className="font-medium">{direction}</span>);
-  }
-
-  // Target / stop, joined into one token. Show whichever is set.
-  if (targetPrice != null || stopLoss != null) {
-    parts.push(
-      <span key="ts" className="tabular-nums">
-        {targetPrice != null ? `target $${targetPrice.toFixed(2)}` : null}
-        {targetPrice != null && stopLoss != null ? " / " : null}
-        {stopLoss != null ? `stop $${stopLoss.toFixed(2)}` : null}
-      </span>,
-    );
-  }
-
-  // Entry reference shown only for watching, only when no target (target
-  // is the entry trigger; entry is the analyst's reference point).
-  if (forWatching && entryPrice != null && targetPrice == null) {
-    parts.push(
-      <span key="entry" className="tabular-nums">
-        ref entry ${entryPrice.toFixed(2)}
-      </span>,
-    );
-  }
-
-  // Horizon — render the bare label; the description sits in the
-  // Schedule section below.
-  if (horizon) {
-    parts.push(
-      <span key="hz">
-        <span className="font-medium">{horizon}</span> horizon
-      </span>,
-    );
-  }
-
-  if (parts.length === 0) return null;
-
-  return (
-    <p className="text-xs text-muted-foreground leading-relaxed">
-      {parts.flatMap((p, i) => (i === 0 ? [p] : [<span key={`s${i}`} className="opacity-50"> · </span>, p]))}
-    </p>
-  );
 }
 
 // The TriggerFiredBanner that previously lived here was deleted on
@@ -896,14 +830,12 @@ function TerminalStatusAlert({
   const retiredNoTrade =
     status === "RETIRED" &&
     (retiredReason === "INVALIDATED" || retiredReason === "DROPPED");
-  if (status !== "INVALIDATED" && status !== "ARCHIVED" && !retiredNoTrade) {
+  if (!retiredNoTrade) {
     return null;
   }
-  // INVALIDATED tracks its own date/reason fields; ARCHIVED / DROPPED ("walked
-  // away" without a trade outcome) reuses closedAt/closeReason.
-  const isInvalid =
-    status === "INVALIDATED" ||
-    (status === "RETIRED" && retiredReason === "INVALIDATED");
+  // RETIRED+INVALIDATED tracks invalidatedAt/invalidReason; RETIRED+DROPPED
+  // ("walked away" without a trade outcome) reuses closedAt/closeReason.
+  const isInvalid = retiredReason === "INVALIDATED";
   const date = isInvalid ? invalidatedAt : closedAt;
   const reason = isInvalid ? invalidReason : closeReason;
   if (!date && !reason) return null;
@@ -1587,7 +1519,7 @@ export interface ThesisSheetBodyProps {
   /** Persisted Thesis id. When supplied, the Activity timeline renders. */
   thesis_id?: string;
   ticker: string;
-  direction: "LONG" | "SHORT" | "PASS";
+  direction: "LONG" | "SHORT" | null;
   confidence_score: number;
   reasoning_summary?: string;
   pass_reason?: string;
@@ -1605,7 +1537,7 @@ export interface ThesisSheetBodyProps {
    *  initial StatusPill value so first paint matches the durable state
    *  with no flicker. The triggers API fetch refines position/PnL data.
    *  P1-24: PASSED drives isPass now that a pass stores direction=null. */
-  status?: "ACTIVE" | "HOLDING" | "WATCHING" | "PROMOTED" | "CLOSED" | "INVALIDATED" | "SUPERSEDED" | "RETIRED" | "PASSED";
+  status?: "HOLDING" | "WATCHING" | "PROMOTED" | "RETIRED" | "PASSED";
   /**
    * Pre-fetched /triggers payload from the parent (P2-19). When supplied,
    * the sheet renders status / belief / scoring / sources / research
@@ -1630,20 +1562,13 @@ export function ThesisSheetBody({
   fundamentals,
   // The `status` prop drives `isPass` only (NOT the StatusPill — that still
   // reads the resolved `liveStatus` below to avoid the pill flash). P1-24:
-  // a pass stores direction=null, so status=PASSED is the authoritative pass
-  // signal; the direction prop is only a legacy fallback (see isPass below).
+  // a pass stores direction=null, so status=PASSED is the authoritative — and
+  // now only — pass signal.
   status: initialStatus,
   initialState,
 }: ThesisSheetBodyProps) {
-  // P1-24 PASS-off-direction: a pass is identified by status=PASSED. Key on
-  // the status prop (callers thread the row's status synchronously — a new
-  // pass always arrives as status="PASSED"); fall back to direction='PASS'
-  // ONLY when no status is known (legacy rows pre-backfill). Keying on status
-  // first avoids the null→"PASS" direction coercion the callers apply, which
-  // would otherwise misread a null-direction WATCHING seed as a pass.
-  const isPass =
-    initialStatus === "PASSED" ||
-    (initialStatus == null && direction === "PASS");
+  // P1-24: a pass is identified by status=PASSED (direction is null on a pass).
+  const isPass = initialStatus === "PASSED";
   const displayName = company_name ?? ticker;
   const summaryText = isPass ? (pass_reason ?? reasoning_summary) : reasoning_summary;
 

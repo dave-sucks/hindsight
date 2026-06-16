@@ -81,7 +81,7 @@ export interface AnalystConfig {
 export interface AnalystOpenTrade {
   id: string;
   ticker: string;
-  direction: string;
+  direction: string | null;
   entryPrice: number;
   shares: number;
   currentPrice: number;
@@ -121,7 +121,7 @@ export interface RunWithTheses {
   theses: {
     id: string;
     ticker: string;
-    direction: string;
+    direction: string | null;
     confidenceScore: number;
     reasoningSummary: string;
     holdDuration: string;
@@ -139,7 +139,7 @@ export interface RunWithTheses {
 export interface PositionWithThesis {
   id: string;
   symbol: string;
-  direction: string;
+  direction: string | null;
   status: string;
   avgCost: number;
   quantity: number;
@@ -225,7 +225,7 @@ export interface DashboardRun {
   completedAt: Date | null;
   theses: {
     ticker: string;
-    direction: string;
+    direction: string | null;
     confidenceScore: number;
     trade: { id: string; status: string; realizedPnl: number | null } | null;
   }[];
@@ -1903,22 +1903,22 @@ export async function getAnalystTheses(analystId: string) {
 
   return rows.map((t) => {
     const composite = getThesisComposite(t);
-    const dir = (t.direction === "LONG" || t.direction === "SHORT" || t.direction === "PASS")
-      ? t.direction
-      : "PASS";
+    // P1-24: a pass/seed stores direction=null; the card keys its isPass on
+    // status=PASSED, so pass null through honestly instead of coercing to PASS.
+    const dir =
+      t.direction === "LONG" || t.direction === "SHORT"
+        ? (t.direction as "LONG" | "SHORT")
+        : null;
     const status =
-      t.status === "ACTIVE" || t.status === "HOLDING" || t.status === "WATCHING" || t.status === "CLOSED" ||
-      t.status === "INVALIDATED" || t.status === "SUPERSEDED" || t.status === "RETIRED" || t.status === "PROMOTED" ||
-      // P1-24: PASSED so the sheet's isPass keys on status (a pass now stores
-      // direction=null; this mapper falls direction → "PASS" only to satisfy
-      // the card type — status is the truth).
+      t.status === "HOLDING" || t.status === "WATCHING" ||
+      t.status === "PROMOTED" || t.status === "RETIRED" ||
       t.status === "PASSED"
         ? t.status
         : undefined;
     return {
       thesis_id: t.id,
       ticker: t.ticker,
-      direction: dir as "LONG" | "SHORT" | "PASS",
+      direction: dir,
       confidence_score: composite != null ? Math.round(composite * 10) : 0,
       reasoning_summary: getThesisSnapshotText(t),
       entry_price: t.entryPrice,

@@ -67,7 +67,7 @@ export const housekeepingOverdueTheses = inngest.createFunction(
       // SUPERSEDED) shouldn't fire reviews.
       const overdueTheses = await prisma.thesis.findMany({
         where: {
-          status: { in: ["ACTIVE", "HOLDING", "WATCHING"] },
+          status: { in: ["HOLDING", "WATCHING"] },
           closedAt: null,
           nextReviewAt: { lt: now, not: null },
           // The thesis must belong to an analyst (we can't surface a

@@ -442,14 +442,14 @@ async function runCompleteRunPreflight(
     thesisWhereScope = {
       id: triggeredThesisId,
       researchRun: { agentConfigId: analystId },
-      status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
+      status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
       closedAt: null,
     };
   } else {
     // Daily-run, principal-chat, etc.: full analyst book.
     thesisWhereScope = {
       researchRun: { agentConfigId: analystId },
-      status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
+      status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
       closedAt: null,
     };
   }
@@ -510,7 +510,7 @@ async function runCompleteRunPreflight(
   const activeOpenedAtTickers = Array.from(
     new Set(
       theses
-        .filter((t) => t.status === "ACTIVE" || t.status === "HOLDING")
+        .filter((t) => t.status === "HOLDING")
         .map((t) => t.ticker),
     ),
   );
@@ -559,7 +559,7 @@ async function runCompleteRunPreflight(
         createdAt: t.createdAt,
         nextReviewAt: t.nextReviewAt,
         positionOpenedAt:
-          t.status === "ACTIVE" || t.status === "HOLDING"
+          t.status === "HOLDING"
             ? positionOpenedAtByTicker.get(t.ticker) ?? null
             : null,
         paperTenureDays: t.paperTenureDays ?? null,

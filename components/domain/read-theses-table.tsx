@@ -121,7 +121,7 @@ function ThesisReadRow({
               <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", status.dotClass)} />
               {status.label}
             </Badge>
-            {thesis.direction && thesis.direction !== "PASS" ? (
+            {thesis.direction ? (
               <span className="text-xs text-muted-foreground">{thesis.direction}</span>
             ) : null}
           </div>

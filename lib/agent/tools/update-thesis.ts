@@ -305,14 +305,20 @@ const updateSchema = z.object({
   // PROMOTED is intentionally excluded — only the promote-analyst action
   // sets it. Setting it here will fail Zod parse before this runs.
   change_status: z
-    .enum(["ACTIVE", "INVALIDATED", "CLOSED", "ARCHIVED", "WATCHING"])
+    // P1-24 contract: the tool-owned account facts (HOLDING on a buy fill,
+    // RETIRED-SOLD on a sell fill) are no longer accepted here — they were
+    // the legacy ACTIVE/CLOSED verbs, removed from this enum. The agent still
+    // speaks INVALIDATED / ARCHIVED as its intent verbs; the handler
+    // translates them to the stored status=RETIRED + a retiredReason
+    // (INVALIDATED → reason INVALIDATED, ARCHIVED → reason DROPPED).
+    .enum(["INVALIDATED", "ARCHIVED", "WATCHING"])
     .optional()
     .describe(
       "Deliberate status transition — the BELIEF/lifecycle changes the analyst owns. " +
-        "ACTIVE and CLOSED are NOT settable here — they're tool-owned account facts. WATCHING → ACTIVE happens automatically when your buy fills (place_trade); ACTIVE → CLOSED when your sell fills (close_position) — on the fill, or on the user's approval for a live proposal. Call those tools; the thesis status flips itself. " +
+        "Holding and sold are NOT settable here — they're tool-owned account facts. WATCHING → HOLDING happens automatically when your buy fills (place_trade); HOLDING → retired-sold when your sell fills (close_position) — on the fill, or on the user's approval for a live proposal. Call those tools; the thesis status flips itself. " +
         "WATCHING = PROMOTED → WATCHING only. The legal opt-out path when you decide not to re-enter a just-promoted thesis on the first live run. The conviction stays in the library; the analyst will re-evaluate on subsequent runs. " +
-        "INVALIDATED = the belief broke; we no longer believe the thesis (use this when concrete evidence disproves the view). Not allowed on PROMOTED — use WATCHING. " +
-        "ARCHIVED = walked away from coverage without evidence-based invalidation (e.g. agent or user removed it from the watchlist). Off the watchlist; visible on the stock page as institutional memory. (A researched-and-declined PASS is NOT this — pass direction: \"PASS\", which lands status=PASSED.) " +
+        "INVALIDATED = the belief broke; we no longer believe the thesis (use this when concrete evidence disproves the view — it retires the thesis with reason INVALIDATED). Not allowed on PROMOTED — use WATCHING. " +
+        "ARCHIVED = walked away from coverage without evidence-based invalidation (e.g. agent or user removed it from the watchlist — it retires the thesis with reason DROPPED). Off the watchlist; visible on the stock page as institutional memory. (A researched-and-declined PASS is NOT this — pass direction: \"PASS\", which lands status=PASSED.) " +
         "For direction flips or completely new beliefs, use record_thesis with parent_thesis_id instead.",
     ),
 
@@ -396,9 +402,7 @@ export const updateThesis = defineTool({
   ui: "thesis-card" as const,
 
   progressLabel: (args) => {
-    if (args.change_status === "ACTIVE") return `Promoting thesis ${args.thesis_id.slice(-8)} → ACTIVE`;
     if (args.change_status === "INVALIDATED") return `Invalidating thesis ${args.thesis_id.slice(-8)}`;
-    if (args.change_status === "CLOSED") return `Closing thesis ${args.thesis_id.slice(-8)}`;
     if (args.change_status === "ARCHIVED") return `Archiving thesis ${args.thesis_id.slice(-8)}`;
     return `Updating thesis ${args.thesis_id.slice(-8)}`;
   },
@@ -498,7 +502,6 @@ export const updateThesis = defineTool({
     }
 
     if (
-      existing.status !== "ACTIVE" &&
       existing.status !== "HOLDING" &&
       existing.status !== "WATCHING" &&
       existing.status !== "PROMOTED"
@@ -549,7 +552,6 @@ export const updateThesis = defineTool({
       }
       if (
         args.change_status === "INVALIDATED" ||
-        args.change_status === "CLOSED" ||
         args.change_status === "ARCHIVED"
       ) {
         const errorMsg = `Cannot ${args.change_status} a PROMOTED thesis. The analyst held this in paper with conviction; the user explicitly promoted it. The only legal opt-out is change_status: "WATCHING" (downgrade and keep tracking). Use that, or place_trade to re-enter.`;
@@ -565,11 +567,8 @@ export const updateThesis = defineTool({
           sources: [],
         };
       }
-      if (
-        args.change_status !== "ACTIVE" &&
-        args.change_status !== "WATCHING"
-      ) {
-        const errorMsg = `PROMOTED thesis ${existing.ticker} requires an explicit resolution this run: call place_trade to re-enter live (the trade flips PROMOTED → ACTIVE on fill), OR update_thesis(change_status: "WATCHING") to defer. Reasoning-only patches don't count — the thesis stays PROMOTED until you act.`;
+      if (args.change_status !== "WATCHING") {
+        const errorMsg = `PROMOTED thesis ${existing.ticker} requires an explicit resolution this run: call place_trade to re-enter live (the trade flips PROMOTED → HOLDING on fill), OR update_thesis(change_status: "WATCHING") to defer. Reasoning-only patches don't count — the thesis stays PROMOTED until you act.`;
         return {
           summary: `PROMOTED thesis needs explicit resolution: ${existing.ticker}`,
           data: {
@@ -583,34 +582,17 @@ export const updateThesis = defineTool({
       }
     }
 
-    // ── ACTIVE/CLOSED are tool-owned (P1-25) ──────────────────────────────
-    // WATCHING→ACTIVE and ACTIVE→CLOSED are facts about the Alpaca account,
-    // not analyst opinions — set ONLY by the execution/approval layer when a
-    // real fill lands (place_trade inline + promoteThesisOnApproval; close_
-    // position / closeThesisOnApproval). The agent setting them here is what
-    // stranded SNOW: on a proposal path it flipped WATCHING→ACTIVE before
-    // approval, and reject/expire never reverted it → orphan thesis with no
-    // position. The agent expresses INTENT (place_trade / close_position); the
-    // tool projects the status. Refuse both with a redirect. (The PROMOTED-
-    // specific gates above run first so their tailored messages win.)
-    if (args.change_status === "ACTIVE" || args.change_status === "CLOSED") {
-      const tool =
-        args.change_status === "ACTIVE" ? "place_trade" : "close_position";
-      const verb = args.change_status === "ACTIVE" ? "enter" : "exit";
-      return {
-        summary: `update_thesis can't set ${args.change_status} on $${existing.ticker} — that's tool-owned.`,
-        data: {
-          ok: false,
-          error: "status_is_tool_owned",
-          attempted: args.change_status,
-          message:
-            `You don't set ${args.change_status} via update_thesis. WATCHING → ACTIVE happens automatically when your buy fills (place_trade), and ACTIVE → CLOSED when your sell fills (close_position) — on the actual fill, or on the user's approval for a live proposal. ` +
-            `To ${verb} this position call \`${tool}\`; the thesis status flips itself. ` +
-            `If you're refining the thesis (target/stop/belief/triggers) or just recording rationale, drop change_status and pass those fields directly.`,
-        },
-        sources: [],
-      };
-    }
+    // ── HOLDING / retired-sold are tool-owned (P1-25 / P1-24) ─────────────
+    // The legacy ACTIVE/CLOSED change_status verbs were removed from this
+    // tool's input enum: WATCHING→HOLDING and HOLDING→retired-sold are facts
+    // about the Alpaca account, set ONLY by the execution/approval layer when
+    // a real fill lands (place_trade inline + promoteThesisOnApproval;
+    // close_position / closeThesisOnApproval). The agent that tried to set
+    // them here is what stranded SNOW: on a proposal path it flipped
+    // WATCHING→ACTIVE before approval, and reject/expire never reverted it →
+    // orphan thesis with no position. Now Zod rejects those verbs outright at
+    // parse time; the agent expresses INTENT (place_trade / close_position)
+    // and the tool projects the status.
 
     // ── Position-thesis pairing guard ─────────────────────────────────────
     // Terminating an ACTIVE thesis without closing its position creates a
@@ -620,31 +602,20 @@ export const updateThesis = defineTool({
     //   - 2026-05-14 Earnings Drift / TSM → INVALIDATED without close
     //   - 2026-05-14 Catalyst Event Raider / AMZN → ARCHIVED without close (F2 gap)
     //
-    // Both INVALIDATED and ARCHIVED on an ACTIVE-with-position are the same
+    // Both INVALIDATED and ARCHIVED on a HOLDING-with-position are the same
     // zombie pattern. Refuse either unless a close_position fired on the
     // same ticker in this run.
     //
     // Carve-outs:
     //   - WATCHING thesis being terminated (no position by definition) — pass.
-    //   - The thesis's status is already CLOSED (handled by terminal guard above).
-    //   - CLOSED transitions on ACTIVE are how a held thesis ends; that's the
-    //     correct path and not blocked here.
-    // 2026-05-19 extension: `change_status='CLOSED'` on an ACTIVE-with-
-    // position is also a zombie risk — the thesis goes to CLOSED but the
-    // Alpaca position stays OPEN. Pre-this-PR the comment claimed CLOSED
-    // was "the correct path and not blocked here" because close_position
-    // is supposed to flip the Thesis itself (it does, at
-    // close-position.ts:155). But if the agent calls update_thesis(CLOSED)
-    // directly (skipping close_position), the same zombie pattern emerges
-    // with no audit trail. Same guard as INVALIDATED/ARCHIVED: refuse
-    // unless close_position fired on this ticker in this run (in which
-    // case the thesis is already CLOSED via that path and this update
-    // would hit the terminal-status guard anyway).
+    //   - The thesis is already terminal (handled by the terminal guard above).
+    // (P1-24: the legacy `change_status='CLOSED'` verb is gone — exiting a held
+    // name is close_position, which flips the thesis to RETIRED-sold itself.
+    // The agent can no longer retire a held name without that paired close.)
     if (
       (args.change_status === "INVALIDATED" ||
-        args.change_status === "ARCHIVED" ||
-        args.change_status === "CLOSED") &&
-      (existing.status === "ACTIVE" || existing.status === "HOLDING") &&
+        args.change_status === "ARCHIVED") &&
+      existing.status === "HOLDING" &&
       ctx.analystId
     ) {
       const openPosition = await prisma.position.findFirst({
@@ -669,7 +640,7 @@ export const updateThesis = defineTool({
             })
           : null;
         if (!closeInRun) {
-          const action = args.change_status; // "INVALIDATED" | "ARCHIVED" | "CLOSED"
+          const action = args.change_status; // "INVALIDATED" | "ARCHIVED"
           return {
             summary: `Cannot ${action} $${existing.ticker} — open position requires close_position first.`,
             data: {
@@ -889,10 +860,8 @@ export const updateThesis = defineTool({
     // legitimate "give up on this broken thesis" path. Allow that.
     const isTerminalTransition =
       args.change_status === "INVALIDATED" ||
-      args.change_status === "CLOSED" ||
       args.change_status === "ARCHIVED" ||
-      // PASS (incl. PENDING → PASS) is a terminal flip — clears triggers,
-      // sets PASSED.
+      // PASS (seed → PASS) is a terminal flip — clears triggers, sets PASSED.
       args.direction === "PASS";
     const existingTriggerCount = Array.isArray(existing.triggers)
       ? (existing.triggers as unknown[]).length
@@ -935,13 +904,11 @@ export const updateThesis = defineTool({
     // condition triggers). It's blocked when the current price has
     // already crossed the OLD target.
     //
-    // Bypass on ACTIVE promotion: the WATCHING target_price doubled as
-    // the ENTER trigger level — promotion legitimately recomputes new
-    // target/stop relative to the actual fill, so the new target being
-    // > old target while price is ≥ old target is the EXPECTED shape
-    // of a promotion, not goalpost-moving.
+    // P1-24: promotion is place_trade (WATCHING → HOLDING), which doesn't go
+    // through this tool, so there's no longer an ACTIVE-via-update_thesis
+    // bypass to carve out — the guard applies on every WATCHING target-raise
+    // whose entry condition is already met.
     if (
-      args.change_status !== "ACTIVE" &&
       existing.status === "WATCHING" &&
       args.target_price != null &&
       existing.targetPrice != null &&
@@ -955,7 +922,7 @@ export const updateThesis = defineTool({
           ok: false,
           error: "goalpost_moving_blocked",
           message:
-            `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${existing.targetPrice.toFixed(2)}. The entry condition is MET — your action is to PROMOTE (record_thesis status=ACTIVE → place_trade), not raise the target to $${args.target_price.toFixed(2)} and walk away. If you genuinely think the setup has changed, document a concrete rejection reason in record_run_summary's decision_rationale (volume too low, regime change, fresh negative news, R/R no longer 2:1) and leave the target untouched. Or close the thesis with change_status: "INVALIDATED".`,
+            `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${existing.targetPrice.toFixed(2)}. The entry condition is MET — your action is to PROMOTE (place_trade, which flips WATCHING → HOLDING), not raise the target to $${args.target_price.toFixed(2)} and walk away. If you genuinely think the setup has changed, document a concrete rejection reason in record_run_summary's decision_rationale (volume too low, regime change, fresh negative news, R/R no longer 2:1) and leave the target untouched. Or close the thesis with change_status: "INVALIDATED".`,
         },
         sources: [],
       };
@@ -1261,20 +1228,14 @@ export const updateThesis = defineTool({
       patch.invalidatedAt = new Date();
       patch.invalidReason = args.rationale.slice(0, 500);
       updateType = "INVALIDATED";
-    } else if (args.change_status === "CLOSED") {
-      patch.status = "RETIRED";
-      patch.retiredReason = "SOLD";
-      patch.closedAt = new Date();
-      patch.closeReason = args.rationale.slice(0, 500);
-      updateType = "CLOSED";
     } else if (args.change_status === "ARCHIVED") {
       // Terminal-without-trade-or-invalidation. Used for agent/user walking
-      // away from coverage (manage_watchlist REMOVE pre-collapse; user UI
-      // remove; editor remove). NOT for a researched-and-declined PASS —
-      // that's direction:"PASS" → status=PASSED above. Distinct from
-      // INVALIDATED (view disproven by evidence) and CLOSED (position was
-      // held and closed). See docs/WATCHLIST_COLLAPSE_PLAN.md.
-      // P1-24 B3: walk-away ARCHIVED → RETIRED + retiredReason=DROPPED.
+      // away from coverage (user UI remove; editor remove). NOT for a
+      // researched-and-declined PASS — that's direction:"PASS" → status=PASSED
+      // above. Distinct from INVALIDATED (view disproven by evidence). Exiting
+      // a held position is close_position, which retires the thesis (sold)
+      // itself — there's no agent CLOSED verb here anymore.
+      // P1-24: walk-away ARCHIVED → RETIRED + retiredReason=DROPPED.
       patch.status = "RETIRED";
       patch.retiredReason = "DROPPED";
       patch.closedAt = new Date();
@@ -1296,7 +1257,7 @@ export const updateThesis = defineTool({
             error: "watching_transition_from_non_promoted",
             message:
               `change_status: "WATCHING" is reserved for the PROMOTED → WATCHING opt-out path. This thesis is ${existing.status}. ` +
-              `Did you mean change_status: "INVALIDATED" (kill the belief) or change_status: "CLOSED" (exited the position)?`,
+              `Did you mean change_status: "INVALIDATED" (kill the belief)? To exit an open position, call close_position.`,
           },
           sources: [],
         };
@@ -1304,62 +1265,12 @@ export const updateThesis = defineTool({
       patch.status = "WATCHING";
       patch.promotedAt = null;
       updateType = "STATUS_CHANGED";
-    } else if (args.change_status === "ACTIVE") {
-      // ── WATCHING → ACTIVE  or  PROMOTED → ACTIVE  promotion ─────────────
-      // Two legal entry paths:
-      //   1. WATCHING: agent saw an ENTER trigger fire, recomputed target/
-      //      stop relative to the current price, calls update_thesis(ACTIVE)
-      //      then place_trade. Pre-existing flow.
-      //   2. PROMOTED: agent is acting on a first-live-run re-entry. Same
-      //      target/stop recompute requirement (the paper-era levels are
-      //      stale relative to current price).
-      //
-      // Two requirements at promotion (either source):
-      //   1. Source must be WATCHING or PROMOTED — promoting an
-      //      already-ACTIVE row makes no sense; promoting a terminal-state
-      //      row is blocked upstream by the existing terminal_status guard.
-      //   2. target_price + stop_loss MUST be supplied and recomputed
-      //      relative to the actual entry. The pre-entry row's old
-      //      target was either the WATCHING ENTER trigger level (now
-      //      behind the agent) or the original paper entry's target
-      //      (stale at promotion). Mint NEW values either way.
-      if (existing.status !== "WATCHING" && existing.status !== "PROMOTED") {
-        return {
-          summary: `Refused promotion on $${existing.ticker} — current status is ${existing.status}, not WATCHING or PROMOTED.`,
-          data: {
-            ok: false,
-            error: "promotion_from_non_pre_entry_state",
-            message:
-              `change_status: "ACTIVE" is the WATCHING/PROMOTED → ACTIVE promotion path. This thesis is already ${existing.status}; you can't promote what's already promoted (or terminal). ` +
-              `If you meant to refine an open ACTIVE thesis, drop change_status and pass the fields you want to change directly. ` +
-              `If you meant to re-open a CLOSED thesis, mint a new one via record_thesis.`,
-          },
-          sources: [],
-        };
-      }
-      if (args.target_price == null || args.stop_loss == null) {
-        return {
-          summary: `Refused promotion on $${existing.ticker} — recomputed target_price and stop_loss required.`,
-          data: {
-            ok: false,
-            error: "promotion_missing_levels",
-            message:
-              `Promoting WATCHING → ACTIVE requires fresh target_price AND stop_loss recomputed relative to the actual entry, not copied from the WATCHING row's old levels. ` +
-              `The old target was the ENTER trigger threshold (price has now crossed it, so as a take-profit it's behind you). The old stop was set against an old reference entry that no longer applies. ` +
-              `Pass new values: LONG → target_price > current price (R/R ≥ 2:1 vs new stop), stop_loss < current price. SHORT → mirror.`,
-          },
-          sources: [],
-        };
-      }
-      patch.status = "ACTIVE";
-      // Clear PROMOTED bookkeeping if this is a PROMOTED → ACTIVE re-entry.
-      // The conviction context fields (paperTenureDays / paperRealizedPnl /
-      // paperReviewCount) stay on the row as part of the durable history.
-      if (existing.status === "PROMOTED") {
-        patch.promotedAt = null;
-      }
-      updateType = "STATUS_CHANGED";
     }
+    // P1-24: the legacy WATCHING/PROMOTED → ACTIVE promotion path was removed
+    // from this tool. Entering a position is place_trade (it flips the thesis
+    // WATCHING/PROMOTED → HOLDING atomically with the Alpaca fill and computes
+    // the levels from the actual entry); the agent no longer sets a holding
+    // status via update_thesis.
 
     // ── ENTER-trigger guard (parity with record_thesis) ──────────────────
     // A WATCHING LONG/SHORT thesis must have at least one ENTER trigger,
@@ -1384,21 +1295,11 @@ export const updateThesis = defineTool({
     // (incl. null); otherwise keep the existing direction.
     const effectiveEnterDirection = ("direction" in patch
       ? patch.direction
-      : existing.direction) as
-      | "LONG"
-      | "SHORT"
-      | "PASS"
-      | "PENDING"
-      | null;
+      : existing.direction) as "LONG" | "SHORT" | "PASS" | null;
     const effectiveEnterStatus = (patch.status ?? existing.status) as
       | "WATCHING"
-      | "ACTIVE"
       | "HOLDING"
       | "PROMOTED"
-      | "CLOSED"
-      | "INVALIDATED"
-      | "ARCHIVED"
-      | "SUPERSEDED"
       | "PASSED"
       | "RETIRED";
     const effectiveEnterTriggers: Trigger[] =
@@ -1593,13 +1494,10 @@ export const updateThesis = defineTool({
     const hasUnchangedReason =
       typeof args.structural_unchanged_reason === "string" &&
       args.structural_unchanged_reason.trim().length >= 10;
-    // The gate bypasses on ANY deliberate state transition (terminal +
-    // ACTIVE promotion). For terminal: belief is frozen by definition.
-    // For promotion: the act of putting capital behind the WATCHING
-    // belief is its own implicit justification — the agent isn't moving
-    // goalposts on an open trade, they're acting on the existing thesis.
-    const isStateTransition =
-      isTerminalTransition || args.change_status === "ACTIVE";
+    // The gate bypasses on a deliberate terminal transition — belief is
+    // frozen by definition. (The legacy ACTIVE-promotion bypass is gone; entry
+    // is place_trade, which doesn't route through this tool.)
+    const isStateTransition = isTerminalTransition;
     if (
       touchesQuant &&
       !touchesBelief &&
@@ -1803,7 +1701,7 @@ function thesisToCardData(t: Record<string, unknown>): {
   stop_loss: number | null;
   hold_duration?: string;
   signal_types: string[];
-  status: "ACTIVE" | "HOLDING" | "WATCHING" | "INVALIDATED" | "CLOSED" | "SUPERSEDED" | "RETIRED" | "PASSED";
+  status: "HOLDING" | "WATCHING" | "PROMOTED" | "RETIRED" | "PASSED";
 } {
   return {
     thesis_id: t.id as string,
@@ -1828,14 +1726,11 @@ function thesisToCardData(t: Record<string, unknown>): {
         : ((t.holdDuration as string) ?? undefined),
     signal_types: (t.signalTypes as string[]) ?? [],
     status: (t.status as
-      | "ACTIVE"
       | "HOLDING"
       | "WATCHING"
-      | "INVALIDATED"
-      | "CLOSED"
-      | "SUPERSEDED"
+      | "PROMOTED"
       | "RETIRED"
-      | "PASSED") ?? "ACTIVE",
+      | "PASSED") ?? "WATCHING",
   };
 }
 

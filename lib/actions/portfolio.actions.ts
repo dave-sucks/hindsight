@@ -105,7 +105,7 @@ export interface RecentRunSummary {
 export interface TodaysPick {
   id: string;
   ticker: string;
-  direction: string;
+  direction: string | null;
   confidenceScore: number;
   signalTypes: string[];
 }
@@ -113,7 +113,7 @@ export interface TodaysPick {
 export interface RecentPick {
   id: string;
   ticker: string;
-  direction: string;
+  direction: string | null;
   /** Lifecycle status — drives the row's leading badge (Watching / Active / etc.). */
   status: string;
   confidenceScore: number;
@@ -154,7 +154,7 @@ export interface ActivityFeedItem {
   type: "OPENED" | "CLOSED" | "MODIFIED" | "PROPOSED" | "REJECTED";
   positionId: string;
   symbol: string;
-  direction: string;
+  direction: string | null;
   timestamp: string;   // ISO — used for sort/display
   label: string;       // e.g. "Opened LONG", "Closed — WIN", "Stop → breakeven"
   source: string;      // "agent" | "price_monitor" | "user"

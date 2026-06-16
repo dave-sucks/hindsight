@@ -326,7 +326,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
-        direction: "PENDING",
+        direction: null,
         triggers: [],
         nextReviewAt: new Date("2026-05-06T00:00:00Z"),
       },

@@ -79,7 +79,7 @@ export const discoveryRun = inngest.createFunction(
         const existingTheses = await prisma.thesis.findMany({
           where: {
             researchRun: { agentConfigId: config.id },
-            status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
+            status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
           },
           select: { ticker: true },
           distinct: ["ticker"],

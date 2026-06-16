@@ -109,23 +109,23 @@ describe("buildThesisWriterSystemPrompt — status branching", () => {
       expect(prompt).not.toContain("*** YOU ARE WRITING A WATCHING THESIS ***");
     });
 
-    it("does NOT include the ACTIVE-thesis header", () => {
+    it("does NOT include the HELD-thesis header", () => {
       expect(prompt).not.toContain(
-        "*** YOU ARE REFRESHING AN ACTIVE THESIS ***",
+        "*** YOU ARE REFRESHING A HELD THESIS ***",
       );
     });
   });
 
-  describe("ACTIVE refresh — pre-existing behavior preserved", () => {
+  describe("HELD (HOLDING) refresh — pre-existing behavior preserved", () => {
     const prompt = buildThesisWriterSystemPrompt({
       ...baseOpts,
       mode: "refresh",
-      existingThesis: existingThesis("ACTIVE"),
+      existingThesis: existingThesis("HOLDING"),
     });
 
-    it("declares the ACTIVE refresh header", () => {
+    it("declares the HELD refresh header", () => {
       expect(prompt).toContain(
-        "*** YOU ARE REFRESHING AN ACTIVE THESIS ***",
+        "*** YOU ARE REFRESHING A HELD THESIS ***",
       );
     });
 
@@ -153,7 +153,7 @@ describe("buildThesisWriterSystemPrompt — status branching", () => {
         "*** YOU ARE REFRESHING A PROMOTED THESIS ***",
       );
       expect(prompt).not.toContain(
-        "*** YOU ARE REFRESHING AN ACTIVE THESIS ***",
+        "*** YOU ARE REFRESHING A HELD THESIS ***",
       );
     });
   });
@@ -218,7 +218,7 @@ describe("buildThesisWriterSystemPrompt — date-awareness gate (P1-5 / PR #354)
     const prompt = buildThesisWriterSystemPrompt({
       ...baseOpts,
       mode: "refresh",
-      existingThesis: existingThesis("ACTIVE"),
+      existingThesis: existingThesis("HOLDING"),
     });
     const dateIdx = prompt.indexOf("DATE-AWARENESS");
     const reasonIdx = prompt.indexOf("WHY YOU WERE DISPATCHED");

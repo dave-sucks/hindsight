@@ -117,7 +117,7 @@ export const listAnalysts = defineTool({
             // Live coverage book — every status the closeout contract
             // expects action on each run. PROMOTED included so the per-
             // analyst thesis count doesn't drop during the promotion window.
-            status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
+            status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
           },
           _count: true,
         })

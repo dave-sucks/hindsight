@@ -48,20 +48,14 @@ import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
 
 const STATUS_VALUES = [
-  "ACTIVE",
   "HOLDING",
   "WATCHING",
   "PROMOTED",
-  "INVALIDATED",
-  "CLOSED",
-  "ARCHIVED",
-  "SUPERSEDED",
-  // P1-24 B3: RETIRED is the collapsed terminal (CLOSED/INVALIDATED/
-  // ARCHIVED/SUPERSEDED → RETIRED + retiredReason). Legacy values kept for
-  // dual-read until the contract PR.
+  // RETIRED is the collapsed terminal (carries retiredReason SOLD /
+  // INVALIDATED / REPLACED / DROPPED). PASSED = researched-and-declined.
+  // Both queryable so the agent can pull terminal/declined names as
+  // institutional memory.
   "RETIRED",
-  // PASS theses now store status='PASSED' (was 'ARCHIVED'). Queryable so
-  // the agent can pull declined names as institutional memory.
   "PASSED",
 ] as const;
 
@@ -72,7 +66,7 @@ const schema = z.object({
     .array(z.enum(STATUS_VALUES))
     .optional()
     .describe(
-      "Filter by status. Default = the live coverage book (HOLDING + WATCHING + PROMOTED). Pass explicitly to include RETIRED/PASSED for historical lookups (RETIRED = terminal, carries retiredReason SOLD/INVALIDATED/REPLACED/DROPPED; PASSED = researched-and-declined names). Legacy ACTIVE/CLOSED/INVALIDATED/ARCHIVED/SUPERSEDED values still resolve during the migration dual-read window.",
+      "Filter by status. Default = the live coverage book (HOLDING + WATCHING + PROMOTED). Pass explicitly to include RETIRED/PASSED for historical lookups (RETIRED = terminal, carries retiredReason SOLD/INVALIDATED/REPLACED/DROPPED; PASSED = researched-and-declined names).",
     ),
   tickers: z
     .array(z.string())
@@ -151,7 +145,7 @@ export const getTheses = defineTool({
     // (waiting for entry trigger) + PROMOTED (waiting for first-live-run
     // decision). All three need to surface by default; the agent has to
     // resolve every PROMOTED row this run or fail the closeout gate.
-    const statuses = (args.status ?? ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"]).map((s) =>
+    const statuses = (args.status ?? ["HOLDING", "WATCHING", "PROMOTED"]).map((s) =>
       s.toString(),
     );
     const limit = Math.min(args.limit ?? 25, 50);
@@ -325,7 +319,6 @@ export const getTheses = defineTool({
     // signal that tells the daily-run agent to resolve it this run.
     const liveTheses = theses.filter(
       (t) =>
-        t.status === "ACTIVE" ||
         t.status === "HOLDING" ||
         t.status === "WATCHING" ||
         t.status === "PROMOTED",
@@ -345,7 +338,7 @@ export const getTheses = defineTool({
         theses
           .filter(
             (t: { status: string }) =>
-              t.status === "ACTIVE" || t.status === "HOLDING",
+              t.status === "HOLDING",
           )
           .map((t: { ticker: string }) => t.ticker),
       ),
@@ -370,7 +363,7 @@ export const getTheses = defineTool({
           }
         }
         for (const t of theses) {
-          if (t.status !== "ACTIVE" && t.status !== "HOLDING") continue;
+          if (t.status !== "HOLDING") continue;
           const openedAt = openedAtByTicker.get(t.ticker);
           if (openedAt) positionOpenedAtByThesisId.set(t.id, openedAt);
         }
@@ -481,7 +474,7 @@ export const getTheses = defineTool({
           // a pass now stores direction=null, so it would catch nothing; the
           // PASSED/RETIRED status entries cover both pass shapes.
           status: {
-            in: ["INVALIDATED", "ARCHIVED", "CLOSED", "RETIRED", "PASSED"],
+            in: ["RETIRED", "PASSED"],
           },
         },
         orderBy: { createdAt: "desc" },
@@ -571,8 +564,9 @@ export const getTheses = defineTool({
       return {
         thesis_id: t.id,
         ticker: t.ticker,
-        // P1-24 B4: null for unresearched watchlist seeds (legacy 'PENDING').
-        direction: t.direction as "LONG" | "SHORT" | "PASS" | "PENDING" | null,
+        // P1-24: LONG | SHORT | null (null = unresearched seed; a pass stores
+        // direction=null and is identified by status=PASSED).
+        direction: t.direction as "LONG" | "SHORT" | null,
         confidence_score: composite != null ? composite * 10 : 0,
         reasoning_summary: getThesisSnapshotText(t),
         thesis_bullets: getThesisBullCaseBullets(t),
@@ -586,16 +580,12 @@ export const getTheses = defineTool({
         exchange: null,
         fundamentals: null,
         status: t.status as
-          | "ACTIVE"
           | "HOLDING"
           | "WATCHING"
           | "PROMOTED"
-          | "INVALIDATED"
-          | "CLOSED"
-          | "SUPERSEDED"
+          // RETIRED = terminal (retiredReason); PASSED = researched-declined
+          // (a pass stores direction=null; status is the pass signal).
           | "RETIRED"
-          // P1-24: PASSED = researched-and-declined (a pass stores
-          // direction=null now; status is the pass signal).
           | "PASSED",
         // PROMOTED-only context fields. Null on non-PROMOTED rows.
         promoted_at: t.promotedAt ? t.promotedAt.toISOString() : null,
@@ -614,7 +604,7 @@ export const getTheses = defineTool({
     });
 
     const activeCount = enriched.filter(
-      (t) => t.status === "ACTIVE" || t.status === "HOLDING",
+      (t) => t.status === "HOLDING",
     ).length;
     const watchingCount = enriched.filter(
       (t) => t.status === "WATCHING",

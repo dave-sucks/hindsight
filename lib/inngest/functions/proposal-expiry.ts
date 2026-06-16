@@ -125,7 +125,7 @@ export const proposalExpiry = inngest.createFunction(
             where: {
               ticker: order.symbol,
               researchRun: { agentConfigId: order.position.analystId },
-              status: { in: ["ACTIVE", "HOLDING", "WATCHING", "PROMOTED"] },
+              status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
             },
             orderBy: { createdAt: "desc" },
             select: { id: true },

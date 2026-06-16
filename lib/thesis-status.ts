@@ -7,16 +7,12 @@
  * Mirrors lib/trade-status.ts.
  */
 
+// P1-24 clean model. The legacy values (ACTIVE / CLOSED / INVALIDATED /
+// ARCHIVED / SUPERSEDED) were removed in the contract PR — nothing reads or
+// writes them anymore; the DB enum drops them in the paired schema migration.
 export type ThesisStatus =
-  | "ACTIVE"
   | "WATCHING"
   | "PROMOTED"
-  | "CLOSED"
-  | "INVALIDATED"
-  | "ARCHIVED"
-  | "SUPERSEDED"
-  // ── P1-24 clean model — coexist with the legacy values above during the
-  // migration; the legacy ones are removed in the contract PR. ──────────────
   | "HOLDING"
   | "PASSED"
   | "RETIRED";
@@ -30,7 +26,7 @@ export interface ThesisStatusDisplay {
 }
 
 /**
- * Safe accessor — returns the ACTIVE display config when the input isn't a
+ * Safe accessor — returns a neutral "Unknown" display when the input isn't a
  * known ThesisStatus. Use this everywhere instead of direct
  * `THESIS_STATUS_DISPLAY[x]` indexing. Direct indexing was the source of a
  * production crash ("Cannot read properties of undefined (reading
@@ -38,6 +34,11 @@ export interface ThesisStatusDisplay {
  * rendered with a missing or unexpected status string. The runtime type
  * is `string | null | undefined`; TypeScript's index-into-Record is too
  * permissive to catch it.
+ *
+ * P1-24: the fallback used to return the ACTIVE display. ACTIVE no longer
+ * exists, and silently labeling an unknown status "Active" (blue pulse =
+ * holding) was a lie. A genuinely-unknown status now renders a neutral gray
+ * "Unknown" pill instead.
  */
 export function getThesisStatusDisplay(
   status: string | null | undefined,
@@ -45,30 +46,16 @@ export function getThesisStatusDisplay(
   if (status && status in THESIS_STATUS_DISPLAY) {
     return THESIS_STATUS_DISPLAY[status as ThesisStatus];
   }
-  return THESIS_STATUS_DISPLAY.ACTIVE;
+  return UNKNOWN_THESIS_STATUS_DISPLAY;
 }
 
+const UNKNOWN_THESIS_STATUS_DISPLAY: ThesisStatusDisplay = {
+  label: "Unknown",
+  dotClass: "bg-muted-foreground/40",
+  tooltip: "Unrecognized status",
+};
+
 export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = {
-  ACTIVE: {
-    label: "Active",
-    // 2026-05-13 — relabel from "Holding" to "Active".
-    //
-    // PRIOR BUG: ACTIVE meant "Holding" with a pulsing blue dot, on the
-    // mistaken assumption that ACTIVE always coincides with an open
-    // position. It does not — ACTIVE = "trade-eligible coverage" per the
-    // record_thesis schema, which is independent of whether a Position
-    // row exists. Plenty of ACTIVE theses sit with no position because
-    // the agent decided not to trade them today, the ENTER trigger
-    // hasn't fired, or place_trade is deferred to the next daily run.
-    // Showing "Holding" actively lied to the user (see the 2026-05-13
-    // INTC discovery run UI where two cards both said "Holding" despite
-    // zero open positions in the DB).
-    //
-    // The label tracks thesis lifecycle. Position state is rendered
-    // separately on TradeCard / portfolio-review surfaces.
-    dotClass: "bg-blue-500 animate-pulse",
-    tooltip: "Trade-eligible coverage — agent intends to act on this thesis",
-  },
   WATCHING: {
     label: "Watching",
     // Gray = passive monitoring. Distinct from blue (live) and from the
@@ -89,32 +76,6 @@ export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = 
     tooltip:
       "Held in paper, just promoted to live — next run must re-enter or downgrade to watching",
   },
-  CLOSED: {
-    label: "Closed",
-    dotClass: "bg-muted-foreground/60",
-    tooltip: "Position exited — thesis terminal",
-  },
-  INVALIDATED: {
-    label: "Invalidated",
-    dotClass: "bg-negative",
-    tooltip: "Thesis broken — exited or never entered",
-  },
-  ARCHIVED: {
-    label: "Archived",
-    // Walked away from the watchlist without an evidence-driven view-break
-    // (manual remove, editor remove, PASS-at-write). Visually distinct from
-    // INVALIDATED (which carries narrative weight) and CLOSED (which
-    // implies a position lifecycle).
-    dotClass: "bg-muted-foreground/40",
-    tooltip:
-      "Walked away from coverage — no trade outcome, no evidence-driven invalidation",
-  },
-  SUPERSEDED: {
-    label: "Superseded",
-    dotClass: "bg-muted-foreground/40",
-    tooltip: "Replaced by a newer thesis on the same ticker",
-  },
-  // ── P1-24 clean model ──────────────────────────────────────────────────────
   HOLDING: {
     label: "Holding",
     // Unlike the old ACTIVE, HOLDING never lies: it means an open position

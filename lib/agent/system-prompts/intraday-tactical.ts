@@ -21,7 +21,7 @@ interface TacticalPromptArgs {
   thesis: {
     id: string;
     ticker: string;
-    direction: string;
+    direction: string | null;
     horizon: string | null;
     coreBelief: string | null;
     keyAssumptions: string[];

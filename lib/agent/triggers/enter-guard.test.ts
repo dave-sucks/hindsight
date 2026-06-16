@@ -308,7 +308,7 @@ describe("validateEnterTriggerRequired", () => {
     expect(
       validateEnterTriggerRequired({
         direction: "LONG",
-        status: "ACTIVE",
+        status: "HOLDING",
         triggers: [EXIT_STOP, REVIEW_EARNINGS],
         targetPrice: 100,
       }),
@@ -326,7 +326,7 @@ describe("validateEnterTriggerRequired", () => {
     expect(
       validateEnterTriggerRequired({
         direction: "SHORT",
-        status: "ACTIVE",
+        status: "HOLDING",
         triggers: [exitShort, REVIEW_EARNINGS],
         targetPrice: 50,
       }),
@@ -340,7 +340,7 @@ describe("validateEnterTriggerRequired", () => {
     // structural problem (you can't ENTER what you already hold).
     const result = validateEnterTriggerRequired({
       direction: "LONG",
-      status: "ACTIVE",
+      status: "HOLDING",
       triggers: [ENTER_LONG, REVIEW_EARNINGS],
       targetPrice: 100,
     });
@@ -355,7 +355,7 @@ describe("validateEnterTriggerRequired", () => {
     // the agent must remove the ENTER triggers to clear the gate.
     const result = validateEnterTriggerRequired({
       direction: "LONG",
-      status: "ACTIVE",
+      status: "HOLDING",
       triggers: [ENTER_LONG, EXIT_STOP, REVIEW_EARNINGS],
       targetPrice: 100,
     });
@@ -371,7 +371,7 @@ describe("validateEnterTriggerRequired", () => {
     // the missing stop-loss.
     const result = validateEnterTriggerRequired({
       direction: "LONG",
-      status: "ACTIVE",
+      status: "HOLDING",
       triggers: [REVIEW_EARNINGS, REVIEW_HYGIENE],
       targetPrice: 100,
     });
@@ -384,7 +384,7 @@ describe("validateEnterTriggerRequired", () => {
   it("ACTIVE LONG with empty triggers: rejects with missing-exit-trigger-on-active", () => {
     const result = validateEnterTriggerRequired({
       direction: "LONG",
-      status: "ACTIVE",
+      status: "HOLDING",
       triggers: [],
       targetPrice: 100,
     });
@@ -404,7 +404,7 @@ describe("validateEnterTriggerRequired", () => {
     };
     const result = validateEnterTriggerRequired({
       direction: "LONG",
-      status: "ACTIVE",
+      status: "HOLDING",
       triggers: [trim, REVIEW_EARNINGS],
       targetPrice: 100,
     });
@@ -435,7 +435,7 @@ describe("validateEnterTriggerRequired", () => {
     expect(
       validateEnterTriggerRequired({
         direction: "LONG",
-        status: "ACTIVE",
+        status: "HOLDING",
         triggers: [EXIT_STOP, trim, add, moveStop, REVIEW_EARNINGS],
         targetPrice: 100,
       }),
@@ -448,7 +448,7 @@ describe("validateEnterTriggerRequired", () => {
     expect(
       validateEnterTriggerRequired({
         direction: "LONG",
-        status: "CLOSED",
+        status: "RETIRED",
         triggers: [],
         targetPrice: 100,
       }),
@@ -459,7 +459,7 @@ describe("validateEnterTriggerRequired", () => {
     expect(
       validateEnterTriggerRequired({
         direction: "LONG",
-        status: "INVALIDATED",
+        status: "RETIRED",
         triggers: [],
         targetPrice: 100,
       }),
@@ -470,7 +470,7 @@ describe("validateEnterTriggerRequired", () => {
     expect(
       validateEnterTriggerRequired({
         direction: "LONG",
-        status: "ARCHIVED",
+        status: "RETIRED",
         triggers: [],
         targetPrice: null,
       }),
@@ -507,7 +507,7 @@ describe("validateEnterTriggerRequired", () => {
   it("PENDING WATCHING with no triggers: ok (seed, awaiting first research)", () => {
     expect(
       validateEnterTriggerRequired({
-        direction: "PENDING",
+        direction: null,
         status: "WATCHING",
         triggers: [],
         targetPrice: null,

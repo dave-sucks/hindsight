@@ -42,24 +42,17 @@ export interface EnterTriggerGuardArgs {
    * window). Any non-LONG/SHORT value (PASS, PENDING, null) bypasses — a
    * seed/PASS never carries directional triggers.
    */
-  direction: "LONG" | "SHORT" | "PASS" | "PENDING" | null;
+  direction: "LONG" | "SHORT" | "PASS" | null;
   /** The resulting status after the write (post-patch for updates). */
   status:
     | "WATCHING"
-    | "ACTIVE"
     | "HOLDING"
     | "PROMOTED"
-    | "CLOSED"
-    | "INVALIDATED"
-    | "ARCHIVED"
-    | "SUPERSEDED"
-    // PASSED (PASS theses) bypasses like the other terminal states — the
-    // guard returns ok:true for any non-LONG/SHORT direction before it
-    // ever inspects status. Listed so record_thesis/update_thesis can pass
-    // the post-write status without a cast.
+    // PASSED (PASS theses) and RETIRED (terminal) both bypass like the other
+    // terminal states — the guard returns ok:true for any non-LONG/SHORT
+    // direction before it ever inspects status. Listed so
+    // record_thesis/update_thesis can pass the post-write status without a cast.
     | "PASSED"
-    // P1-24 B3: RETIRED is the collapsed terminal — also bypasses (terminal
-    // rows are never LONG/SHORT-with-live-triggers).
     | "RETIRED";
   /** The resulting triggers array (after horizon merge + agent overlay). */
   triggers: Trigger[];
@@ -133,7 +126,7 @@ export function validateEnterTriggerRequired(
   // arg). place_trade re-regenerates HELD triggers on the WATCHING/PROMOTED
   // → ACTIVE flip, but theses that are ALREADY ACTIVE and get refreshed
   // mid-flight are exposed in the gap.
-  if (args.status === "ACTIVE" || args.status === "HOLDING") {
+  if (args.status === "HOLDING") {
     const enterOffenders = args.triggers.filter((t) => t.action === "ENTER");
     if (enterOffenders.length > 0) {
       return {
