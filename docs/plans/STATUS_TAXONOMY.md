@@ -108,7 +108,9 @@ The sequenced value-flips landed in order, each backfilled with the principal's 
 
 ---
 
-## Live status — updated 2026-06-15 (supersedes the in-flight/remaining lists above)
+## Live status — ✅ P1-24 COMPLETE (2026-06-16)
+
+**The entire migration is done — data, schema, writers, agent vocab, UI, contract code, and the destructive enum shrink are all live and verified in prod.** Final state: `ThesisStatus` enum = {WATCHING, HOLDING, PASSED, RETIRED, PROMOTED} (legacy values dropped 2026-06-16 via the contract migration); `direction` = LONG | SHORT | null. 815 theses intact, 0 data loss, 0 zombies/desync.
 
 **Data migration COMPLETE + verified in prod.** Live counts: status {RETIRED 659, PASSED 119, WATCHING 22, HOLDING 15}; direction {LONG 437, null 358, SHORT 20, PASS 0, PENDING 0}; retiredReason {REPLACED 360, SOLD 136, INVALIDATED 134, DROPPED 29 = 659}. Zero legacy enum values in the book; 0 zombies / 0 desync.
 
@@ -116,13 +118,16 @@ The sequenced value-flips landed in order, each backfilled with the principal's 
 
 **Done (hygiene, not a PR):** stale-RUNNING-run reconcile — 37 stuck `RUNNING` ResearchRuns (oldest 2026-06-05) flipped to FAILED on 2026-06-15 (`updatedAt < now()-interval '1 hour'`); verified 0 RUNNING remain. Zero token bleed (all past the 800s serverless cap).
 
-**Remaining — the contract split into two PRs; only the migration APPLY is left:**
-- **#424 contract-code** — merged. Removes dual-read (`isPassedThesis` + legacy reader branches), scrubs legacy literals, narrows `record_thesis` to persist only `WATCHING`/`PASSED` (caught + fixed a real latent ACTIVE-on-direction-flip write bug), trims dead input verbs (`change_status` ACTIVE/CLOSED + direction PENDING) while keeping `INVALIDATED`/`ARCHIVED`/`PASS` as translated input aliases (**Option 3** — agent vocab unchanged), rewrites `THESIS_ARCHITECTURE.md`, and resolves audit findings #2–4. tsc 0 (cleared the nullable-direction debt). **Off-cron merge.**
-- **#425 contract-schema** — the destructive enum shrink (drop `ACTIVE/INVALIDATED/CLOSED/ARCHIVED/SUPERSEDED` from `ThesisStatus`; default→`WATCHING`). Create-new-type/swap/drop dance with a **step-0 guard** that aborts if any legacy-status row remains. `direction` is a `String?` column → no enum to contract there (code-only).
-  - ⚠️ **Merging #425 does NOT apply the migration.** The principal applies it manually (Supabase `zomxxtqiszpkqrjrqqat`) with approval. **Apply order is hard:** #424 must be **deployed green in prod first** (so prod stops writing legacy values — pre-#424 prod can still persist `ACTIVE` on a directional mint; dropping ACTIVE before #424 ships = runtime error on the next mint). Then run step-0 count → confirm 0 → apply.
-  - Apply runbook lives in #425's PR description.
+**Contract (final phase) — DONE:**
+- **#424 contract-code** — merged + deployed. Removed dual-read (`isPassedThesis` + legacy reader branches), scrubbed legacy literals, narrowed `record_thesis` to persist only `WATCHING`/`PASSED` (caught + fixed a real latent ACTIVE-on-direction-flip write bug), trimmed dead input verbs (`change_status` ACTIVE/CLOSED + direction PENDING) while keeping `INVALIDATED`/`ARCHIVED`/`PASS` as translated input aliases (**Option 3** — agent vocab unchanged), rewrote `THESIS_ARCHITECTURE.md`, resolved audit findings #2–4. tsc 0.
+- **Contract schema → #426** (NOTE: the original #425 was merged into the `p1-24-contract-code` branch by mistake and never reached main; **#426** re-targeted the schema enum shrink + migration onto main — code-only-free, no #421/#423 revert). Merged + deployed green.
+- **Migration APPLIED 2026-06-16** via Supabase MCP (`apply_migration p1_24_taxonomy_contract`), after the step-0 guard confirmed 0 legacy rows. Post-verify: enum = the 5 final values; 815 theses intact; reads OK.
 
-**Once #425 is applied, the P1-24 migration is COMPLETE.** Nothing else in scope remains.
+**✅ P1-24 COMPLETE. Nothing else in scope remains.**
+
+**Optional cosmetic follow-up (not blocking, not done):** `docs/prompts/REVIEW_DAILY_RUN.md` + `REVIEW_DISCOVERY_RUN.md` still carry dead `'ACTIVE'` entries in their `status IN (…)` SQL allowlists. Harmless post-contract (text comparison matches nothing), just stale noise — trim when convenient.
+
+**Out of scope / deferred by design (never blocked completion):** PROMOTED revisit; agent input-vocab full flip (Option 3 kept aliases); `Order.status=FILLED` race.
 
 **Adjacent (NOT taxonomy, surfaced this session):** `PriceTargetsBlock` extraction shipped in #423 (above). Thesis-card redesign (annotated price chart: watchlist-add / entry vertical markers + target/stop horizontal lines; Tier-1 gauge → Tier-2 chart) + repurposing the deleted Post-Run brief into a portfolio summary — a design/research session is producing a proposal (`docs/plans/THESIS_VISUALIZATION.md`). Separate from the migration; discuss when the proposal lands.
 
