@@ -16,7 +16,7 @@ import {
 import { StockPriceChart } from '@/components/stocks/StockPriceChart';
 import { StockThesesList } from '@/components/stocks/StockThesesList';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
-import { PriceGauge } from '@/components/ui/gauge';
+import { PriceTargetsBlock } from '@/components/domain/price-targets-block';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/lib/supabase/server';
 import { getAccountId } from '@/lib/auth/account';
@@ -882,42 +882,13 @@ export default async function TradeDetailPage({
                   </TooltipContent>
                 </Tooltip>
               </div>
-              <div className="space-y-2">
-                {(() => {
-                  // Entry marker positioning — matches PriceTargetsBlock in
-                  // ThesisSheet so the gauge looks identical between sheets
-                  // and the trade detail page.
-                  const lo = Math.min(stopPrice, trade.entryPrice, targetPrice);
-                  const hi = Math.max(stopPrice, trade.entryPrice, targetPrice);
-                  const span = hi - lo || trade.entryPrice * 0.1;
-                  const COUNT = 60;
-                  const EDGE_PAD = 3;
-                  const usable = COUNT - EDGE_PAD * 2 - 1;
-                  const entryIdx = Math.round(
-                    EDGE_PAD + ((trade.entryPrice - lo) / span) * usable,
-                  );
-                  const entryPct = entryIdx / (COUNT - 1);
-                  return (
-                    <div className="relative h-4">
-                      <span
-                        className="absolute -translate-x-1/2 text-xs font-medium tabular-nums whitespace-nowrap"
-                        style={{ left: `${entryPct * 100}%` }}
-                      >
-                        ${trade.entryPrice.toFixed(2)}
-                      </span>
-                    </div>
-                  );
-                })()}
-                <PriceGauge
-                  entry={trade.entryPrice}
-                  target={targetPrice}
-                  stop={stopPrice}
-                />
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Stop ${stopPrice.toFixed(2)}</span>
-                  <span>Target ${targetPrice.toFixed(2)}</span>
-                </div>
-              </div>
+              <PriceTargetsBlock
+                entry={trade.entryPrice}
+                target={targetPrice}
+                stop={stopPrice}
+                current={currentPrice}
+                direction={position.direction === 'SHORT' ? 'SHORT' : 'LONG'}
+              />
 
               <div className="flex flex-col gap-1 border-t pt-3 mt-3">
                 <div className="flex items-center justify-between text-sm border-b border-border pb-1">
