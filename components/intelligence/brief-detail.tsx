@@ -83,27 +83,28 @@ function IntelBriefContent({ brief }: { brief: MorningBrief }) {
   const opportunities = brief.newOpportunities ?? [];
   const risks = brief.riskFlags ?? [];
 
-  type TickerItem = {
-    ticker: string;
-    tag: "Holding" | "Watching" | "Opportunity";
-    direction?: "up" | "down" | null;
-    summary: string;
-  };
+  type TickerItem = { ticker: string; summary: string };
 
-  const items: TickerItem[] = [];
-
-  for (const a of alerts) {
-    const isBearish = /down|drop|fall|cut|freeze|miss|decline|loss|warning|lower|weak/i.test(a.alert);
-    items.push({ ticker: a.ticker, tag: "Holding", direction: isBearish ? "down" : "up", summary: a.alert });
-  }
-  for (const u of updates) {
-    items.push({ ticker: u.ticker, tag: "Watching", summary: u.update });
-  }
-  for (const o of opportunities) {
-    if (o.tickers[0]) {
-      items.push({ ticker: o.tickers[0], tag: "Opportunity", summary: o.thesisSeed || o.headline });
-    }
-  }
+  // Sections are labeled from the brief bucket the items came from — that label
+  // IS the bucket, not a projected per-ticker status. We do NOT render a status
+  // tag or direction arrow: this is a deprecated MorningBrief row with no real
+  // Thesis.status/direction to read, and a guessed one would be a fake status.
+  const sections: { heading: string; items: TickerItem[] }[] = [
+    {
+      heading: "Portfolio",
+      items: alerts.map((a) => ({ ticker: a.ticker, summary: a.alert })),
+    },
+    {
+      heading: "Watchlist",
+      items: updates.map((u) => ({ ticker: u.ticker, summary: u.update })),
+    },
+    {
+      heading: "New Opportunities",
+      items: opportunities
+        .filter((o) => o.tickers[0])
+        .map((o) => ({ ticker: o.tickers[0], summary: o.thesisSeed || o.headline })),
+    },
+  ].filter((s) => s.items.length > 0);
 
   return (
     <>
@@ -112,20 +113,18 @@ function IntelBriefContent({ brief }: { brief: MorningBrief }) {
         <p className="text-sm text-muted-foreground leading-relaxed">{brief.marketContext}</p>
       </div>
 
-      {/* Per-ticker items */}
-      {items.length > 0 && (
-        <div className="px-4 py-3 border-b space-y-4">
-          {items.map((item, i) => (
+      {/* Per-bucket sections */}
+      {sections.map((section) => (
+        <div key={section.heading} className="px-4 py-3 border-b space-y-4">
+          <p className="text-sm font-medium">{section.heading}</p>
+          {section.items.map((item, i) => (
             <div key={i} className="space-y-1">
-              <div className="flex items-center gap-2">
-                <TickerBadge ticker={item.ticker} direction={item.direction} />
-                <Badge variant="secondary">{item.tag}</Badge>
-              </div>
+              <TickerBadge ticker={item.ticker} />
               <p className="text-sm text-muted-foreground leading-relaxed">{item.summary}</p>
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       {/* Risks */}
       {risks.length > 0 && (
