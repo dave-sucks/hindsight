@@ -30,6 +30,11 @@ import { thesisWriter } from "@/lib/inngest/functions/thesis-writer";
 // and writes a PROPOSAL_EXPIRED ThesisUpdate so the agent reads it next
 // run. See docs/plans/TRADE_AS_PROPOSAL.md.
 import { proposalExpiry } from "@/lib/inngest/functions/proposal-expiry";
+// Daily Portfolio Digest (EOD, 8 PM ET Mon-Fri) — one account-level digest per
+// trading day across all run types + analysts. ADDITIVE: nothing consumes the
+// rows yet (agent rewire is a separate reviewed PR). See
+// docs/plans/PORTFOLIO_DIGEST.md (Feature A).
+import { portfolioDigest } from "@/lib/inngest/functions/portfolio-digest";
 
 // Vercel function timeout for ALL Inngest functions served from this route.
 // Set to the Vercel Pro plan's 800s ceiling because the heaviest paths
@@ -117,5 +122,7 @@ export const { GET, POST, PUT } = serve({
     // Trade-as-Proposal — sweep AWAITING_APPROVAL Orders past their
     // expiresAt. See lib/inngest/functions/proposal-expiry.ts.
     proposalExpiry,
+    // Daily Portfolio Digest — EOD account-level brief (Feature A backend).
+    portfolioDigest,
   ],
 });
