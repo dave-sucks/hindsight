@@ -191,12 +191,19 @@ export async function getCoverageData(
       anchorAt = t.createdAt.toISOString();
     }
 
-    const sinceDollar =
+    // Raw price move since the anchor.
+    const rawSinceDollar =
       current != null && anchorPrice != null ? current - anchorPrice : null;
-    const sincePct =
-      sinceDollar != null && anchorPrice != null && anchorPrice !== 0
-        ? (sinceDollar / anchorPrice) * 100
+    const rawSincePct =
+      rawSinceDollar != null && anchorPrice != null && anchorPrice !== 0
+        ? (rawSinceDollar / anchorPrice) * 100
         : null;
+    // On a HELD position "since entry" means P&L, so a SHORT gains when price
+    // falls — flip the sign. WATCHING/PASSED keep the raw price move (the pass
+    // verdict already accounts for direction separately, below).
+    const pnlSign = status === "HOLDING" && t.direction === "SHORT" ? -1 : 1;
+    const sinceDollar = rawSinceDollar != null ? rawSinceDollar * pnlSign : null;
+    const sincePct = rawSincePct != null ? rawSincePct * pnlSign : null;
 
     return {
       thesisId: t.id,
