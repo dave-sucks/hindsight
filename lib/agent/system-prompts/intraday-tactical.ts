@@ -63,6 +63,13 @@ interface TacticalPromptArgs {
     /** ISO 8601 string. Pre-computed in tactical-run.ts to avoid step.run JSON roundtrip parsing. */
     timestamp: string;
   }>;
+  /**
+   * Latest account-level PortfolioDigest narrative (Feature A,
+   * docs/plans/PORTFOLIO_DIGEST.md). Account-scoped book context for
+   * cross-run continuity — optional; null when no digest exists yet.
+   * Replaces the deprecated per-analyst AnalystBriefing.
+   */
+  latestDigest?: { narrative: string; date: string } | null;
 }
 
 function describePredicate(p: TriggerPredicate): string {
@@ -99,7 +106,7 @@ function describePredicate(p: TriggerPredicate): string {
 }
 
 export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
-  const { analyst, thesis, trigger, signal, position, recentUpdates } = args;
+  const { analyst, thesis, trigger, signal, position, recentUpdates, latestDigest } = args;
 
   const predicateSummary = describePredicate(trigger.predicate);
 
@@ -129,6 +136,15 @@ SIGNAL THAT FIRED (id: ${signal.id}):
 PATH: price/time predicate fired from the 15-min cron — no signal payload.
   Check the latest quote and any recent news on $${thesis.ticker} via get_stock_data.
 `;
+
+  const digestSection = latestDigest?.narrative
+    ? `
+═══════════════════════════════════════════════════════════════════
+YESTERDAY'S PORTFOLIO DIGEST (account-level book context)
+═══════════════════════════════════════════════════════════════════
+${latestDigest.narrative.trim()}
+`
+    : "";
 
   return `You are ${analyst.name}.${analyst.mandate ? ` ${analyst.mandate}` : ""}
 
@@ -206,7 +222,7 @@ POSITION:
 
 RECENT THESIS ACTIVITY (last 5 updates):
 ${recentLines}
-
+${digestSection}
 ═══════════════════════════════════════════════════════════════════
 TRIGGER THAT FIRED (id: ${trigger.id})
 ═══════════════════════════════════════════════════════════════════

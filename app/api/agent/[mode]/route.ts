@@ -23,7 +23,6 @@ import { buildRunInput } from "@/lib/agent/run-input";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import type { AgentMode } from "@/lib/agent/modes";
 import { suggestConfigTool } from "@/lib/agent/tools/suggest-config";
@@ -266,7 +265,7 @@ export async function POST(
             priorityReviews: null,
             triggersFiredSinceLastRun: [],
             triggersMatchingNow: [],
-            latestBriefing: null,
+            latestDigest: null,
             intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
           });
 
@@ -941,27 +940,9 @@ export async function POST(
             console.warn(`[agent/${agentMode}] ⚠️ No messages to persist for run ${runId} (input=${inputMessages.length}, response=${responseMessages.length})`);
           }
 
-          if (agentMode === "research-run") {
-            // Generate briefing if complete_run didn't
-            const updatedRun = await prisma.researchRun.findFirst({
-              where: { id: runId },
-              select: { status: true },
-            });
-            if (updatedRun?.status === "COMPLETE") {
-              const existingBriefing = await prisma.analystBriefing.findFirst({
-                where: { runId },
-                select: { id: true },
-              });
-              if (!existingBriefing && resolvedAnalystId) {
-                try {
-                  await updateAnalystBriefing({ analystId: resolvedAnalystId, runId, userId: user.id, accountId });
-                  console.log(`[agent/${agentMode}] ✅ Briefing written for run ${runId}`);
-                } catch (err) {
-                  console.error(`[agent/${agentMode}] Briefing failed:`, err);
-                }
-              }
-            }
-          }
+          // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md):
+          // continuity now comes from the account-level PortfolioDigest read
+          // by buildRunInput. updateAnalystBriefing no longer called here.
         } finally {
           resolveOnFinish!();
         }

@@ -180,21 +180,16 @@ export interface RunInput {
     rationale: string;
     matchDetail: string;
   }>;
-  // Latest AnalystBriefing — written by the briefing agent inline after
-  // every run. The V2 system prompt renders this as "Yesterday's standup"
-  // for continuity between runs. The V1 builder ignores it (the V1 prompt
-  // intentionally does not surface a synthesized briefing).
-  //
-  // watchTomorrow / selfCorrections are JSONB arrays of objects on the
-  // schema (see prisma AnalystBriefing); kept as `unknown[]` here so the
-  // prompt builder can flatten them safely.
-  latestBriefing: {
-    narrative: string | null;
-    strategyNotes: string | null;
-    marketPosture: string | null;
-    watchTomorrow: unknown[] | null;
-    selfCorrections: unknown[] | null;
-    createdAt: string;
+  // Latest account-level PortfolioDigest — written by the digest backend
+  // (Feature A, docs/plans/PORTFOLIO_DIGEST.md). Replaces the deprecated
+  // per-analyst AnalystBriefing. The V2 system prompt renders the
+  // `narrative` as "Yesterday's portfolio digest" for cross-run continuity.
+  // Account-level (NOT per-analyst): every analyst on the account reads the
+  // same most-recent digest. Most-recent 1 by default (extend to last-N
+  // later). `date` is the trading day (ET) the digest covers, ISO string.
+  latestDigest: {
+    narrative: string;
+    date: string;
   } | null;
   intelligencePolicy: IntelligencePolicy;
 }
@@ -741,41 +736,30 @@ export async function buildRunInput(
     console.error("[buildRunInput] FAILED triggersMatchingNow:", err);
   }
 
-  // 12. Latest analyst briefing — drives the V2 prompt's "Yesterday's
-  // standup" section. V1 ignores this. Written by the briefing agent
-  // inline after every run completes.
-  let latestBriefing: RunInput["latestBriefing"] = null;
+  // 12. Latest account-level portfolio digest — drives the V2 prompt's
+  // "Yesterday's portfolio digest" section. Account-scoped (NOT per-analyst):
+  // every analyst on the account reads the same most-recent digest. Written
+  // by the digest backend (Feature A); replaces the deprecated per-analyst
+  // AnalystBriefing read.
+  let latestDigest: RunInput["latestDigest"] = null;
   try {
-    const row = await prisma.analystBriefing.findFirst({
-      where: { analystId },
-      orderBy: { createdAt: "desc" },
+    const row = await prisma.portfolioDigest.findFirst({
+      where: { accountId: config.accountId },
+      orderBy: { date: "desc" },
+      take: 1,
       select: {
         narrative: true,
-        strategyNotes: true,
-        marketPosture: true,
-        watchTomorrow: true,
-        selfCorrections: true,
-        createdAt: true,
+        date: true,
       },
     });
-    if (row) {
-      latestBriefing = {
-        narrative: row.narrative ?? null,
-        strategyNotes: row.strategyNotes ?? null,
-        marketPosture: row.marketPosture ?? null,
-        watchTomorrow:
-          Array.isArray(row.watchTomorrow) && row.watchTomorrow.length > 0
-            ? (row.watchTomorrow as unknown[])
-            : null,
-        selfCorrections:
-          Array.isArray(row.selfCorrections) && row.selfCorrections.length > 0
-            ? (row.selfCorrections as unknown[])
-            : null,
-        createdAt: row.createdAt.toISOString(),
+    if (row?.narrative) {
+      latestDigest = {
+        narrative: row.narrative,
+        date: row.date.toISOString(),
       };
     }
   } catch (err) {
-    console.error("[buildRunInput] FAILED latestBriefing:", err);
+    console.error("[buildRunInput] FAILED latestDigest:", err);
   }
 
   // 13. Intelligence policy
@@ -865,7 +849,7 @@ export async function buildRunInput(
     priorityReviews,
     triggersFiredSinceLastRun,
     triggersMatchingNow,
-    latestBriefing,
+    latestDigest,
     intelligencePolicy,
   };
 }

@@ -132,10 +132,10 @@ export function buildDailyRunSystemPromptV2(
     ].join("\n"),
   );
 
-  // ── Yesterday's standup (from briefing agent — optional) ───────────────
-  if (runInput.latestBriefing?.narrative) {
-    const standup = runInput.latestBriefing.narrative.trim();
-    sections.push(`## Yesterday's standup\n\n${standup}`);
+  // ── Yesterday's portfolio digest (account-level — optional) ────────────
+  if (runInput.latestDigest?.narrative) {
+    const digest = runInput.latestDigest.narrative.trim();
+    sections.push(`## Yesterday's portfolio digest\n\n${digest}`);
   }
 
   // ── Horizon glossary ───────────────────────────────────────────────────
