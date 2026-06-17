@@ -21,7 +21,9 @@ import {
 import {
   getAccount,
   getFundingActivities,
+  getLatestPrices,
   type AlpacaAccount,
+  type AlpacaCredentials,
 } from "@/lib/alpaca";
 import { type FundingEvent } from "@/lib/portfolio/contributions";
 import { assembleDigestFacts, type DigestFacts } from "@/lib/portfolio/digest-facts";
@@ -213,7 +215,13 @@ export async function buildDigestFacts(
     },
     orderBy: { updatedAt: "desc" },
     take: 20,
-    select: { id: true, ticker: true, updatedAt: true, entryPrice: true },
+    select: {
+      id: true,
+      ticker: true,
+      direction: true,
+      updatedAt: true,
+      entryPrice: true,
+    },
   });
 
   // ── Capacity (sum of maxOpenPositions across enabled analysts) ───────────────
@@ -229,11 +237,13 @@ export async function buildDigestFacts(
   // ── Alpaca account + funding (deposit-adjusted P&L) ──────────────────────────
   let account: AlpacaAccount | null = null;
   let fundingEvents: FundingEvent[] = [];
+  let creds: AlpacaCredentials | undefined;
   const ownerUserId = await getOwnerUserId(accountId);
   if (ownerUserId) {
-    const creds = await resolveAlpacaCredentials(ownerUserId, environment).catch(
-      () => null,
-    );
+    creds =
+      (await resolveAlpacaCredentials(ownerUserId, environment).catch(
+        () => undefined,
+      )) ?? undefined;
     if (creds) {
       account = await getAccount(creds).catch((err) => {
         console.warn(
@@ -251,6 +261,30 @@ export async function buildDigestFacts(
       }
     }
   }
+
+  // ── Live quotes (one batch) for held + passed + today's traded symbols ───────
+  // Best-effort and never throws: getLatestPrices returns the symbols it could
+  // resolve; the pure assembler leaves price fields null for the rest. SAME
+  // batched util the coverage table uses (lib/alpaca.ts getLatestPrices), so the
+  // Alpaca-batch → Finnhub → single-symbol fallback ladder is shared.
+  const quoteSymbols = Array.from(
+    new Set([
+      ...heldRows.map((p) => p.symbol),
+      ...passedRows.map((t) => t.ticker),
+      ...openedRows.map((p) => p.symbol),
+      ...closedRows.map((p) => p.symbol),
+      ...mgmtRows.map((m) => m.position.symbol),
+    ]),
+  );
+  const quotes =
+    quoteSymbols.length > 0
+      ? await getLatestPrices(quoteSymbols, creds).catch((err) => {
+          console.warn(
+            `[digest-facts] getLatestPrices failed: ${err instanceof Error ? err.message : err}`,
+          );
+          return {} as Record<string, number>;
+        })
+      : ({} as Record<string, number>);
 
   return assembleDigestFacts({
     accountId,
@@ -323,6 +357,7 @@ export async function buildDigestFacts(
     passedTheses: passedRows.map((t) => ({
       id: t.id,
       ticker: t.ticker,
+      direction: t.direction ?? null,
       passedAt: t.updatedAt,
       priceAtPass: t.entryPrice,
     })),
@@ -330,5 +365,6 @@ export async function buildDigestFacts(
     fundingEvents,
     startingCapitalFallback: STARTING_CAPITAL_FALLBACK,
     account,
+    quotes,
   });
 }

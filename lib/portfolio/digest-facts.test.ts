@@ -55,6 +55,7 @@ function baseInputs(over: Partial<DigestRawInputs> = {}): DigestRawInputs {
     fundingEvents: [],
     startingCapitalFallback: 100_000,
     account: account(),
+    quotes: {},
     ...over,
   };
 }
@@ -115,7 +116,7 @@ describe("assembleDigestFacts — runs + rollup", () => {
           { id: "r1", mode: "MORNING_PLAN", status: "COMPLETE", analystId: "a1", analystName: "Momentum", startedAt: new Date("2026-06-17T12:00:00Z") },
           { id: "r2", mode: "INTRADAY_TACTICAL", status: "COMPLETE", analystId: "a2", analystName: "Catalyst", startedAt: new Date("2026-06-17T18:30:00Z") },
           { id: "r3", mode: "INTRADAY_TACTICAL", status: "FAILED", analystId: "a2", analystName: "Catalyst", startedAt: new Date("2026-06-17T19:30:00Z") },
-          { id: "r4", mode: "EOD_REFLECTIVE", status: "COMPLETE", analystId: null, analystName: null, startedAt: new Date("2026-06-17T13:00:00Z") },
+          { id: "r4", mode: "DISCOVERY", status: "COMPLETE", analystId: null, analystName: null, startedAt: new Date("2026-06-17T13:00:00Z") },
         ],
       }),
     );
@@ -124,6 +125,21 @@ describe("assembleDigestFacts — runs + rollup", () => {
     expect(f.runs.map((r) => r.runId)).toEqual(["r1", "r4", "r2", "r3"]);
     // ET time label present
     expect(f.runs[0].startedAtEt).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  it("discovery rollup maps to the REAL DISCOVERY mode, not legacy EOD_REFLECTIVE", () => {
+    const f = assembleDigestFacts(
+      baseInputs({
+        runs: [
+          { id: "d1", mode: "DISCOVERY", status: "COMPLETE", analystId: "a1", analystName: "Momentum", startedAt: new Date("2026-06-17T13:00:00Z") },
+          // EOD_REFLECTIVE is a dead schema-comment placeholder — must NOT count.
+          { id: "x1", mode: "EOD_REFLECTIVE", status: "COMPLETE", analystId: null, analystName: null, startedAt: new Date("2026-06-17T13:30:00Z") },
+          // PRINCIPAL_CHAT containers must NOT count as discovery.
+          { id: "pc1", mode: "PRINCIPAL_CHAT", status: "COMPLETE", analystId: "a1", analystName: "Momentum", startedAt: new Date("2026-06-17T14:00:00Z") },
+        ],
+      }),
+    );
+    expect(f.runRollup.discovery).toBe(1);
   });
 });
 
@@ -223,8 +239,8 @@ describe("assembleDigestFacts — cadence + passes", () => {
     const f = assembleDigestFacts(
       baseInputs({
         passedTheses: [
-          { id: "t1", ticker: "SOFI", passedAt: new Date("2026-06-15T14:00:00Z"), priceAtPass: 12 },
-          { id: "t2", ticker: "PLTR", passedAt: new Date("2026-06-10T14:00:00Z"), priceAtPass: 30 },
+          { id: "t1", ticker: "SOFI", direction: "LONG", passedAt: new Date("2026-06-15T14:00:00Z"), priceAtPass: 12 },
+          { id: "t2", ticker: "PLTR", direction: "LONG", passedAt: new Date("2026-06-10T14:00:00Z"), priceAtPass: 30 },
         ],
       }),
     );
@@ -232,6 +248,150 @@ describe("assembleDigestFacts — cadence + passes", () => {
     expect(f.passesAged[0].daysSincePass).toBe(2);
     expect(f.passesAged[1].daysSincePass).toBe(7);
     expect(f.passesAged[0].priceAtPass).toBe(12);
+  });
+});
+
+describe("assembleDigestFacts — quote-driven held fields", () => {
+  it("LONG held: sinceEntryPct is positive when the quote is above avgCost", () => {
+    const f = assembleDigestFacts(
+      baseInputs({
+        heldPositions: [
+          { id: "p1", symbol: "MU", direction: "LONG", quantity: 10, avgCost: 100, sector: null, thesisId: "t1", analystId: null, analystName: null },
+        ],
+        quotes: { MU: 112.5 },
+        dayChangePct: { MU: 1.2 },
+      }),
+    );
+    const h = f.book.held[0];
+    expect(h.currentPrice).toBe(112.5);
+    expect(h.sinceEntryPct).toBeCloseTo(12.5, 4);
+    expect(h.dayChangePct).toBeCloseTo(1.2, 4);
+  });
+
+  it("SHORT held: sinceEntryPct is POSITIVE when the quote falls (profit), negative when it rises", () => {
+    // SHORT @ 100, now 90 → +10% as the trade experiences it.
+    const profit = assembleDigestFacts(
+      baseInputs({
+        heldPositions: [
+          { id: "p1", symbol: "TSLA", direction: "SHORT", quantity: 10, avgCost: 100, sector: null, thesisId: null, analystId: null, analystName: null },
+        ],
+        quotes: { TSLA: 90 },
+      }),
+    );
+    expect(profit.book.held[0].sinceEntryPct).toBeCloseTo(10, 4);
+    // SHORT @ 100, now 110 → -10%.
+    const loss = assembleDigestFacts(
+      baseInputs({
+        heldPositions: [
+          { id: "p1", symbol: "TSLA", direction: "SHORT", quantity: 10, avgCost: 100, sector: null, thesisId: null, analystId: null, analystName: null },
+        ],
+        quotes: { TSLA: 110 },
+      }),
+    );
+    expect(loss.book.held[0].sinceEntryPct).toBeCloseTo(-10, 4);
+  });
+
+  it("missing quote: price fields are null and the digest is not blocked", () => {
+    const f = assembleDigestFacts(
+      baseInputs({
+        heldPositions: [
+          { id: "p1", symbol: "MU", direction: "LONG", quantity: 10, avgCost: 100, sector: null, thesisId: null, analystId: null, analystName: null },
+        ],
+        quotes: {}, // no quote resolved
+      }),
+    );
+    const h = f.book.held[0];
+    expect(h.currentPrice).toBeNull();
+    expect(h.sinceEntryPct).toBeNull();
+    expect(h.dayChangePct).toBeNull();
+  });
+
+  it("sector concentration prefers market value when quotes exist", () => {
+    // Same qty/avgCost as the cost-basis test, but MU has rallied so its
+    // MARKET value now dominates: MU 100×@cost200 mkt → 100×300=30k Tech,
+    // XOM 100×@cost100, no quote → cost-basis 10k Energy fallback.
+    const f = assembleDigestFacts(
+      baseInputs({
+        heldPositions: [
+          { id: "p1", symbol: "MU", direction: "LONG", quantity: 100, avgCost: 200, sector: "Technology", thesisId: null, analystId: null, analystName: null },
+          { id: "p2", symbol: "XOM", direction: "LONG", quantity: 100, avgCost: 100, sector: "Energy", thesisId: null, analystId: null, analystName: null },
+        ],
+        quotes: { MU: 300 }, // XOM missing → cost-basis fallback for it
+      }),
+    );
+    // Tech = 30k (market), Energy = 10k (cost fallback) → 30/40 = 0.75
+    expect(f.book.topSector).toBe("Technology");
+    expect(f.book.topSectorConcentration).toBeCloseTo(0.75, 4);
+  });
+});
+
+describe("assembleDigestFacts — pass verdict (quote-driven)", () => {
+  it("LONG pass that ROSE = MISSED (regret), with since-pass %", () => {
+    const f = assembleDigestFacts(
+      baseInputs({
+        passedTheses: [
+          { id: "t1", ticker: "NVDA", direction: "LONG", passedAt: new Date("2026-06-12T14:00:00Z"), priceAtPass: 100 },
+        ],
+        quotes: { NVDA: 125 },
+      }),
+    );
+    const p = f.passesAged[0];
+    expect(p.currentPrice).toBe(125);
+    expect(p.sincePassPct).toBeCloseTo(25, 4);
+    expect(p.verdict).toBe("MISSED");
+  });
+
+  it("LONG pass that FELL = DODGED (right call)", () => {
+    const f = assembleDigestFacts(
+      baseInputs({
+        passedTheses: [
+          { id: "t1", ticker: "PLUG", direction: "LONG", passedAt: new Date("2026-06-12T14:00:00Z"), priceAtPass: 10 },
+        ],
+        quotes: { PLUG: 8 },
+      }),
+    );
+    const p = f.passesAged[0];
+    expect(p.sincePassPct).toBeCloseTo(-20, 4);
+    expect(p.verdict).toBe("DODGED");
+  });
+
+  it("SHORT pass inverts: a rise = DODGED, a fall = MISSED", () => {
+    const rose = assembleDigestFacts(
+      baseInputs({
+        passedTheses: [
+          { id: "t1", ticker: "GME", direction: "SHORT", passedAt: new Date("2026-06-12T14:00:00Z"), priceAtPass: 20 },
+        ],
+        quotes: { GME: 26 },
+      }),
+    );
+    expect(rose.passesAged[0].verdict).toBe("DODGED");
+  });
+
+  it("no-direction pass uses long bias: a rise = MISSED", () => {
+    const f = assembleDigestFacts(
+      baseInputs({
+        passedTheses: [
+          { id: "t1", ticker: "AMC", direction: null, passedAt: new Date("2026-06-12T14:00:00Z"), priceAtPass: 5 },
+        ],
+        quotes: { AMC: 7 },
+      }),
+    );
+    expect(f.passesAged[0].verdict).toBe("MISSED");
+  });
+
+  it("missing quote on a pass: price null, verdict FLAT, no block", () => {
+    const f = assembleDigestFacts(
+      baseInputs({
+        passedTheses: [
+          { id: "t1", ticker: "RARE", direction: "LONG", passedAt: new Date("2026-06-12T14:00:00Z"), priceAtPass: 50 },
+        ],
+        quotes: {},
+      }),
+    );
+    const p = f.passesAged[0];
+    expect(p.currentPrice).toBeNull();
+    expect(p.sincePassPct).toBeNull();
+    expect(p.verdict).toBe("FLAT");
   });
 });
 

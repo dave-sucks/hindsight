@@ -28,7 +28,7 @@ import { netContributedTotal, type FundingEvent } from "@/lib/portfolio/contribu
 /** A run that executed today, with the ids the writer needs for `run:` tokens. */
 export interface DigestRunFact {
   runId: string;
-  mode: string; // "MORNING_PLAN" | "INTRADAY_TACTICAL" | "EOD_REFLECTIVE"
+  mode: string; // "MORNING_PLAN" | "INTRADAY_TACTICAL" | "DISCOVERY"
   status: string; // "COMPLETE" | "FAILED" | "RUNNING" | ...
   analystId: string | null;
   analystName: string | null;
@@ -78,15 +78,32 @@ export interface DigestHeldFact {
   avgCost: number;
   analystId: string | null;
   analystName: string | null;
+  /** Live quote, or null when no price could be sourced. */
+  currentPrice: number | null;
+  /** Move since entry vs avgCost, direction-aware (SHORT inverts). null when no quote. */
+  sinceEntryPct: number | null;
+  /** Today's % move from the quote's prior-close, when the feed carries it. null otherwise. */
+  dayChangePct: number | null;
 }
+
+/** Verdict on a PASSED name once it has moved (mirrors coverage.actions.ts). */
+export type DigestPassVerdict = "DODGED" | "MISSED" | "FLAT";
 
 /** A name we PASSED on that has since moved — the regret signal. */
 export interface DigestPassFact {
   thesisId: string;
   ticker: string;
+  /** "LONG" | "SHORT" | null — drives the verdict. */
+  direction: string | null;
   passedAtIso: string;
   daysSincePass: number;
   priceAtPass: number | null;
+  /** Live quote, or null when no price could be sourced. */
+  currentPrice: number | null;
+  /** Raw % move since the pass price (sign as-is, not direction-adjusted). */
+  sincePassPct: number | null;
+  /** DODGED = the pass was right; MISSED = regret; FLAT = no/unknown move. */
+  verdict: DigestPassVerdict;
 }
 
 /** Book-level snapshot of capacity, cash, exposure, concentration. */
@@ -158,9 +175,55 @@ export interface DigestFacts {
 
 // ─── Pure assembler (unit-tested) ─────────────────────────────────────────────
 
+// Run-mode → category. These are the REAL ResearchRun.mode values written by
+// the crons (verified 2026-06-17):
+//   • daily      → MORNING_PLAN       (lib/inngest/functions/morning-research.ts)
+//   • tactical   → INTRADAY_TACTICAL  (lib/inngest/functions/tactical-run.ts)
+//   • discovery  → DISCOVERY          (lib/inngest/functions/discovery-run.ts)
+// The old `EOD_REFLECTIVE` value is a schema-comment placeholder that nothing
+// actually writes — mapping discovery to it (the prior bug) meant the discovery
+// rollup was always 0.
+//
+// PRINCIPAL_CHAT is deliberately NOT counted as discovery. Those rows are
+// chat-session containers (the /runs page excludes them as "not analytical").
+// Batched-discovery inside a principal-chat session does not create a
+// DISCOVERY-mode run; its real research output lands as dispatched
+// thesis-writer child runs (mode-less workers), so counting the chat container
+// would over-count cadence. We count only true DISCOVERY-mode cron runs.
 const MODE_DAILY = "MORNING_PLAN";
 const MODE_TACTICAL = "INTRADAY_TACTICAL";
-const MODE_DISCOVERY = "EOD_REFLECTIVE";
+const MODE_DISCOVERY = "DISCOVERY";
+
+/**
+ * Verdict for a held name's "since entry" move — direction-aware. LONG up = good,
+ * SHORT up = bad. Returns the signed % AS THE TRADE EXPERIENCES IT: positive when
+ * the position is in profit, negative when underwater.
+ */
+function directionAwarePct(
+  direction: string,
+  entry: number,
+  current: number,
+): number | null {
+  if (entry === 0) return null;
+  const raw = ((current - entry) / entry) * 100;
+  return direction === "SHORT" ? -raw : raw;
+}
+
+/**
+ * Verdict for a PASSED thesis. Mirrors `passVerdict` in
+ * lib/actions/coverage.actions.ts EXACTLY: a pass on a LONG idea is DODGED if the
+ * stock fell, MISSED if it rose; SHORT inverts; no direction → long bias (any
+ * rise-since-pass is regret). `sincePct` is the raw (non-direction-adjusted) move.
+ */
+function passVerdict(
+  direction: string | null,
+  sincePct: number | null,
+): DigestPassVerdict {
+  if (sincePct == null || sincePct === 0) return "FLAT";
+  const rose = sincePct > 0;
+  if (direction === "SHORT") return rose ? "DODGED" : "MISSED";
+  return rose ? "MISSED" : "DODGED";
+}
 
 /** Raw rows handed to the pure assembler. Mirrors the DB/Alpaca reads but with
  *  no IO so the assembler is deterministic and testable. */
@@ -241,9 +304,24 @@ export interface DigestRawInputs {
   passedTheses: {
     id: string;
     ticker: string;
+    /** "LONG" | "SHORT" | null — drives the DODGED/MISSED verdict. */
+    direction: string | null;
     passedAt: Date;
     priceAtPass: number | null;
   }[];
+  /**
+   * Live quote map (symbol → current price) for the union of held + passed +
+   * today's traded symbols. Best-effort: a missing symbol is simply absent, and
+   * the assembler leaves that name's price fields null. Sourced from the SAME
+   * batched util the coverage table uses (lib/alpaca.ts getLatestPrices).
+   */
+  quotes: Record<string, number>;
+  /**
+   * Optional per-symbol intraday % change from prior close, when the quote feed
+   * carries it. getLatestPrices today returns price only, so this is usually
+   * empty — held `dayChangePct` stays null until a day-change-bearing feed lands.
+   */
+  dayChangePct?: Record<string, number>;
   /** Sum of maxOpenPositions across enabled analysts (capacity). */
   capacity: number;
   /** Funding events (LIVE only) for deposit-adjusted net contributed. */
@@ -292,7 +370,10 @@ export function assembleDigestFacts(input: DigestRawInputs): DigestFacts {
     fundingEvents,
     startingCapitalFallback,
     account,
+    quotes,
+    dayChangePct,
   } = input;
+  const dayChange = dayChangePct ?? {};
 
   // ── Runs + rollup ──────────────────────────────────────────────────────────
   const runFacts: DigestRunFact[] = runs
@@ -424,25 +505,38 @@ export function assembleDigestFacts(input: DigestRawInputs): DigestFacts {
   const grossExposure = longMarketValue + shortMarketValue;
 
   // ── Book snapshot ────────────────────────────────────────────────────────────
-  const held: DigestHeldFact[] = heldPositions.map((p) => ({
-    positionId: p.id,
-    thesisId: p.thesisId,
-    ticker: p.symbol,
-    direction: p.direction,
-    quantity: p.quantity,
-    avgCost: p.avgCost,
-    analystId: p.analystId,
-    analystName: p.analystName,
-  }));
+  const held: DigestHeldFact[] = heldPositions.map((p) => {
+    const currentPrice = quotes[p.symbol] ?? null;
+    const sinceEntryPct =
+      currentPrice != null
+        ? directionAwarePct(p.direction, p.avgCost, currentPrice)
+        : null;
+    return {
+      positionId: p.id,
+      thesisId: p.thesisId,
+      ticker: p.symbol,
+      direction: p.direction,
+      quantity: p.quantity,
+      avgCost: p.avgCost,
+      analystId: p.analystId,
+      analystName: p.analystName,
+      currentPrice,
+      sinceEntryPct,
+      dayChangePct: dayChange[p.symbol] ?? null,
+    };
+  });
 
-  // Sector concentration from notional at entry cost (Alpaca doesn't break out
-  // per-position market value here, so cost-basis weight is the deterministic
-  // proxy). Null when no sectors are known.
+  // Sector concentration from notional. Prefer CURRENT market value
+  // (price × qty) per name when a live quote exists; fall back to cost-basis
+  // (avgCost × qty) when a quote is missing. Per-position fallback so a single
+  // missing quote doesn't poison the whole table. Null when no sectors known.
   const sectorNotional = new Map<string, number>();
   let knownSectorTotal = 0;
   for (const p of heldPositions) {
     if (!p.sector) continue;
-    const notional = Math.abs(p.avgCost * p.quantity);
+    const quote = quotes[p.symbol];
+    const unitPrice = quote != null ? quote : p.avgCost;
+    const notional = Math.abs(unitPrice * p.quantity);
     sectorNotional.set(p.sector, (sectorNotional.get(p.sector) ?? 0) + notional);
     knownSectorTotal += notional;
   }
@@ -478,13 +572,24 @@ export function assembleDigestFacts(input: DigestRawInputs): DigestFacts {
   const passesAged: DigestPassFact[] = passedTheses
     .slice()
     .sort((a, b) => b.passedAt.getTime() - a.passedAt.getTime())
-    .map((t) => ({
-      thesisId: t.id,
-      ticker: t.ticker,
-      passedAtIso: t.passedAt.toISOString(),
-      daysSincePass: daysBetween(t.passedAt, generatedAtIso),
-      priceAtPass: t.priceAtPass,
-    }));
+    .map((t) => {
+      const currentPrice = quotes[t.ticker] ?? null;
+      const sincePassPct =
+        currentPrice != null && t.priceAtPass != null && t.priceAtPass !== 0
+          ? ((currentPrice - t.priceAtPass) / t.priceAtPass) * 100
+          : null;
+      return {
+        thesisId: t.id,
+        ticker: t.ticker,
+        direction: t.direction,
+        passedAtIso: t.passedAt.toISOString(),
+        daysSincePass: daysBetween(t.passedAt, generatedAtIso),
+        priceAtPass: t.priceAtPass,
+        currentPrice,
+        sincePassPct,
+        verdict: passVerdict(t.direction, sincePassPct),
+      };
+    });
 
   // ── Cadence / capacity signals ───────────────────────────────────────────────
   const fullyDeployed = capacity > 0 && heldCount >= capacity;

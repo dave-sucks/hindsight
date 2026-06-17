@@ -46,7 +46,7 @@ WHAT TO COVER (in roughly this order):
 1. Portfolio-level state: equity, day P&L and total P&L (deposit-adjusted — these are pure trading P&L, not inflated by deposits), how deployed the book is (slots used vs capacity, idle cash).
 2. The daily-vs-tactical-vs-discovery split: what each run type did today.
 3. Today's decisions and trades: entries, exits, trims, adds, reviews, passes — attribute to analyst/run where it adds traceability.
-4. The agent-memory timeline: how passes and entries have aged ("passed X N days ago at $A" — the regret signal). Call out passes "running without us."
+4. The agent-memory timeline: how passes and entries have aged. For HELD names, narrate per-name moves using the NOW price + "since entry" %% and "today" %% from facts ("MU is +12% since entry, +1.2% today"). For PASSES, use the verdict + "since pass" move from facts: a MISSED pass is regret (the name ran without us — quote the % it ran), a DODGED pass was the right call (quote the drop avoided). Name the worst MISSES explicitly.
 5. A short forward read: is the book fully deployed, idle, over-concentrated, or has stale cadence?
 
 JUDGMENT (from facts only): say things like "book is fully deployed," "two passes are running without us," "no new entry in N days — cadence is cold," "concentration is heavy in <sector>." Do not soften with hedges. Do not fabricate.
@@ -118,8 +118,19 @@ export function buildDigestPrompt(facts: DigestFacts): string {
     lines.push("HELD POSITIONS:");
     for (const h of b.held) {
       const tk = h.thesisId ? `[${h.ticker}](thesis:${h.thesisId})` : h.ticker;
+      // "MU LONG 10 @ $100.00, NOW $112.50 (+12.50% since entry, +1.20% today) (Momentum)"
+      const moveParts: string[] = [];
+      if (h.sinceEntryPct != null)
+        moveParts.push(`${pct(h.sinceEntryPct)} since entry`);
+      if (h.dayChangePct != null)
+        moveParts.push(`${pct(h.dayChangePct)} today`);
+      const now =
+        h.currentPrice != null
+          ? `, NOW ${money(h.currentPrice)}` +
+            (moveParts.length ? ` (${moveParts.join(", ")})` : "")
+          : "";
       lines.push(
-        `  - ${tk} ${h.direction} ${h.quantity} @ ${money(h.avgCost)}` +
+        `  - ${tk} ${h.direction} ${h.quantity} @ ${money(h.avgCost)}${now}` +
           (h.analystName ? ` (${h.analystName})` : ""),
       );
     }
@@ -147,13 +158,18 @@ export function buildDigestPrompt(facts: DigestFacts): string {
   }
 
   if (facts.passesAged.length) {
-    lines.push("PASSES AGED (regret signal — names we declined that are running without us):");
+    lines.push("PASSES AGED (regret signal — names we declined; DODGED = pass was right, MISSED = regret):");
     for (const p of facts.passesAged) {
       const tk = `[${p.ticker}](thesis:${p.thesisId})`;
-      lines.push(
-        `  - ${tk} passed ${p.daysSincePass}d ago` +
-          (p.priceAtPass != null ? ` at ${money(p.priceAtPass)}` : ""),
-      );
+      // "MU passed 5d ago at $100.00, NOW $112.50 (+12.50%) — MISSED"
+      const at = p.priceAtPass != null ? ` at ${money(p.priceAtPass)}` : "";
+      const now =
+        p.currentPrice != null
+          ? `, NOW ${money(p.currentPrice)}` +
+            (p.sincePassPct != null ? ` (${pct(p.sincePassPct)})` : "")
+          : "";
+      const verdict = p.verdict !== "FLAT" ? ` — ${p.verdict}` : "";
+      lines.push(`  - ${tk} passed ${p.daysSincePass}d ago${at}${now}${verdict}`);
     }
   }
 
@@ -166,7 +182,7 @@ function labelMode(mode: string): string {
       return "daily";
     case "INTRADAY_TACTICAL":
       return "tactical";
-    case "EOD_REFLECTIVE":
+    case "DISCOVERY":
       return "discovery";
     default:
       return mode.toLowerCase();
@@ -218,8 +234,21 @@ export function fallbackNarrative(facts: DigestFacts): string {
       `${facts.trades.length} trade action(s), ${facts.decisions.length} thesis decision(s) today.`,
   );
   if (facts.passesAged.length) {
+    const missed = facts.passesAged.filter((p) => p.verdict === "MISSED");
+    const dodged = facts.passesAged.filter((p) => p.verdict === "DODGED");
+    const missLabel = missed.length
+      ? ` ${missed.length} running without us (` +
+        missed
+          .slice(0, 3)
+          .map(
+            (p) =>
+              `${p.ticker}${p.sincePassPct != null ? ` ${pct(p.sincePassPct)}` : ""}`,
+          )
+          .join(", ") +
+        ")."
+      : "";
     lines.push(
-      `${facts.passesAged.length} recent pass(es) being tracked for regret.`,
+      `${facts.passesAged.length} recent pass(es) tracked: ${missed.length} missed, ${dodged.length} dodged.${missLabel}`,
     );
   }
   return lines.join("\n\n");
