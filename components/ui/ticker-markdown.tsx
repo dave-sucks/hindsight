@@ -8,6 +8,7 @@
 
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
   TickerChip,
@@ -160,6 +161,131 @@ export function TickerMarkdown({ children, className }: TickerMarkdownProps) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={tickerProseComponents}
+      >
+        {children}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+// ── Digest reference-token rendering ─────────────────────────────────────────
+// The Daily Portfolio Digest narrative uses markdown links with a typed href
+// scheme to embed clickable references inline in prose:
+//   [MU](thesis:THESIS_ID)            — a ticker → opens the ticker's stock/thesis
+//   [Momentum Breakout](analyst:ID)   — an analyst → /analysts/[id]
+//   [tactical 18:46](run:RUN_ID)      — a run → /runs/[id]
+// Any other scheme degrades to a plain underlined link, and a malformed token
+// degrades to readable text, so new reference kinds keep working for free.
+
+/** Split a typed href like "thesis:abc123" into its scheme + id. */
+function parseRefHref(href: string): { scheme: string; id: string } | null {
+  const idx = href.indexOf(":");
+  if (idx <= 0) return null;
+  const scheme = href.slice(0, idx).trim().toLowerCase();
+  const id = href.slice(idx + 1).trim();
+  if (!id) return null;
+  return { scheme, id };
+}
+
+/** Underlined inline link used for analyst/run/fallback reference tokens. */
+function RefLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="underline underline-offset-2 decoration-muted-foreground/40 hover:decoration-foreground"
+    >
+      {children}
+    </Link>
+  );
+}
+
+/**
+ * A ticker reference token. Renders the existing prose ticker chip (live price +
+ * hover card) wrapped in a link to the canonical stock page (`/stocks/[ticker]`,
+ * the same target trade rows and the thesis sheet use), so clicking opens that
+ * ticker's thesis/stock detail. Falls back to a plain underlined label if the
+ * label isn't a clean ticker symbol.
+ */
+function TickerRefLink({ label }: { label: string }) {
+  const symbol = label.trim().toUpperCase();
+  const isTicker = /^[A-Z]{1,5}$/.test(symbol);
+  if (!isTicker) {
+    return (
+      <RefLink href={`/stocks/${encodeURIComponent(label.trim())}`}>
+        {label}
+      </RefLink>
+    );
+  }
+  return (
+    <Link href={`/stocks/${symbol}`} className="no-underline">
+      <TickerChip symbol={symbol} />
+    </Link>
+  );
+}
+
+/** Renders a digest markdown link, dispatching on the typed href scheme. */
+function DigestAnchor({
+  href,
+  children,
+}: {
+  href?: string;
+  children?: ReactNode;
+}) {
+  const parsed = href ? parseRefHref(href) : null;
+
+  // No typed scheme → ordinary link (or just text if no href at all).
+  if (!parsed) {
+    if (!href) return <>{children}</>;
+    return <RefLink href={href}>{children}</RefLink>;
+  }
+
+  const { scheme, id } = parsed;
+  const label = childrenToText(children);
+
+  switch (scheme) {
+    case "thesis":
+      // A ticker token. The label is the ticker symbol; the id is the thesis.
+      // We open the canonical stock page for that ticker.
+      return label ? <TickerRefLink label={label} /> : <>{children}</>;
+    case "analyst":
+      return <RefLink href={`/analysts/${id}`}>{children}</RefLink>;
+    case "run":
+      return <RefLink href={`/runs/${id}`}>{children}</RefLink>;
+    default:
+      // Unknown scheme → degrade to a plain underlined link to the raw href.
+      return <RefLink href={href!}>{children}</RefLink>;
+  }
+}
+
+/** Flatten simple link children to a plain string (for the ticker symbol). */
+function childrenToText(children: ReactNode): string {
+  let out = "";
+  Children.forEach(children, (child) => {
+    if (typeof child === "string" || typeof child === "number") {
+      out += String(child);
+    } else if (isValidElement(child)) {
+      out += childrenToText((child.props as { children?: ReactNode }).children);
+    }
+  });
+  return out.trim();
+}
+
+// Digest component map — same prose styling as ticker markdown, plus the typed
+// `a` handler. Reuses every ticker-aware wrapper so cashtags/$TICKER still work.
+const digestProseComponents: Components = {
+  ...tickerProseComponents,
+  a: DigestAnchor,
+};
+
+export function DigestMarkdown({ children, className }: TickerMarkdownProps) {
+  const tickers = useMemo(() => extractTickers(children), [children]);
+  usePrefetchTickers(tickers);
+
+  return (
+    <div className={cn("max-w-none text-sm text-foreground/90", className)}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={digestProseComponents}
       >
         {children}
       </ReactMarkdown>
