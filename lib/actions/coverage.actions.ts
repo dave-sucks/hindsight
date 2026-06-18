@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
 import { getLatestPrices } from "@/lib/alpaca";
+import { getStockCandles } from "@/lib/actions/finnhub.actions";
 import {
   resolveAlpacaCredentials,
   type AlpacaEnvironment,
@@ -45,6 +46,11 @@ export interface CoverageRow {
   analystName: string | null;
   /** Live (or last-resolved) quote. null when no price could be sourced. */
   currentPrice: number | null;
+  /** The stock's OWN recent momentum (current vs prior/5-session close), from
+   *  daily candles. Independent of the decision anchor — "how's the name moving."
+   *  null when candles are unavailable or there isn't enough history. */
+  oneDayPct: number | null;
+  fiveDayPct: number | null;
   /** The decision anchor: entry / buy-above / pass price. */
   anchorPrice: number | null;
   /** Move since anchor, in $ and %. null when either price is missing. */
@@ -168,6 +174,32 @@ export async function getCoverageData(
     () => ({}) as Record<string, number>,
   );
 
+  // ── 1D / 5D moves from daily candles ───────────────────────────────────────
+  // current-vs-prior-session close (1D) and current-vs-5-sessions-ago (5D). One
+  // candle fetch per ticker (Next-cached, revalidate 300s — candles change once
+  // a day). The ET-date filter drops today's partial bar so "prior close" is the
+  // last COMPLETED session regardless of when the page loads.
+  const todayEt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+  }).format(new Date()); // YYYY-MM-DD
+  const moves = new Map<string, { oneDayPct: number | null; fiveDayPct: number | null }>();
+  await Promise.all(
+    tickers.map(async (tk) => {
+      const current = prices[tk];
+      if (current == null) {
+        moves.set(tk, { oneDayPct: null, fiveDayPct: null });
+        return;
+      }
+      const candles = await getStockCandles(tk, 14).catch(() => []);
+      const completed = candles.filter((c) => c.date < todayEt);
+      const prevClose = completed[completed.length - 1]?.close ?? null;
+      const close5 = completed[completed.length - 5]?.close ?? null;
+      const pct = (denom: number | null) =>
+        denom != null && denom !== 0 ? ((current - denom) / denom) * 100 : null;
+      moves.set(tk, { oneDayPct: pct(prevClose), fiveDayPct: pct(close5) });
+    }),
+  );
+
   const positionBySymbol = new Map(openPositions.map((p) => [p.symbol, p]));
 
   const rows: CoverageRow[] = theses.map((t) => {
@@ -212,6 +244,8 @@ export async function getCoverageData(
       direction: t.direction ?? null,
       analystName: t.researchRun?.agentConfig?.name ?? null,
       currentPrice: current,
+      oneDayPct: moves.get(t.ticker)?.oneDayPct ?? null,
+      fiveDayPct: moves.get(t.ticker)?.fiveDayPct ?? null,
       anchorPrice,
       sinceDollar,
       sincePct,
