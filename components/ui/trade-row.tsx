@@ -346,6 +346,13 @@ interface WatchlistRowProps {
   /** Live or last close price. */
   currentPrice?: number;
   /**
+   * The stock's % change ON THE DAY (not a since-entry P&L — a watched name
+   * isn't held). Renders in the same bottom-right slot a trade row uses for
+   * its lifetime P&L, so a watching row reads identically to a trade row.
+   * Omit when no day-change is available — the slot is simply blank.
+   */
+  dayChangePct?: number | null;
+  /**
    * Thesis direction for the underlying WATCHING thesis. LONG/SHORT surface
    * their direction; an unresearched seed (explicit null, or legacy
    * 'PENDING') surfaces as "Awaiting review"; undefined (no thesis context)
@@ -359,6 +366,7 @@ interface WatchlistRowProps {
 export function WatchlistRow({
   ticker,
   currentPrice,
+  dayChangePct,
   direction,
   onRemove,
   className,
@@ -386,6 +394,11 @@ export function WatchlistRow({
         </span>
       }
       secondary={secondary}
+      trailingBottom={
+        dayChangePct != null ? (
+          <PnlBadge value={dayChangePct} format="percent" className="text-xs" />
+        ) : undefined
+      }
       menuItems={
         onRemove
           ? [{ label: "Remove", onSelect: onRemove, destructive: true }]

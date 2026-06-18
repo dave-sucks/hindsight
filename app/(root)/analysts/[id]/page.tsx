@@ -8,6 +8,7 @@ import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getAccountId } from "@/lib/auth/account";
 import { fetchRunCardRuns } from "@/lib/actions/run-cards";
 import { RunCard } from "@/components/runs/RunCard";
+import { finnhub } from "@/lib/agent/research-helpers";
 import AnalystDetailClient from "@/components/analysts/AnalystDetailClient";
 
 type Params = { id: string };
@@ -82,6 +83,22 @@ export default async function AnalystDetailPage({
       ? await getLatestPrices(uniqueSymbols, alpacaCreds ?? undefined).catch(() => ({}))
       : {};
 
+  // Day's % change for watched names — the Watching rows show the day's move
+  // (not a since-entry P&L, since nothing's held). Finnhub `dp` per ticker;
+  // best-effort, the row's change slot is simply blank for any that fail.
+  const watchlistDayChange: Record<string, number> = {};
+  await Promise.all(
+    watchlistSymbols.map(async (s) => {
+      try {
+        const r = await finnhub(`/quote?symbol=${s}`, 1);
+        const dp = (r?.data as { dp?: number } | null)?.dp;
+        if (typeof dp === "number" && Number.isFinite(dp)) watchlistDayChange[s] = dp;
+      } catch {
+        /* leave blank */
+      }
+    }),
+  );
+
   return (
     <AnalystDetailClient
       detail={detail}
@@ -90,6 +107,7 @@ export default async function AnalystDetailPage({
       livePrices={livePrices}
       theses={theses}
       runCards={runCards}
+      watchlistDayChange={watchlistDayChange}
     />
   );
 }

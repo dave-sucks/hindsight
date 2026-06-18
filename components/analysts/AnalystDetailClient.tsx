@@ -182,6 +182,7 @@ function FloatingEditorComposer({ analystId }: { analystId: string }) {
 // ── Theses tab + Snapshot (both are thesis grids) ────────────────────────────
 
 type ThesisStatusFilter = "all" | "holding" | "watching" | "passed" | "retired";
+type SidebarBucket = "active" | "watching" | "closed";
 
 const THESIS_FILTER_OPTIONS: { value: ThesisStatusFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -236,6 +237,7 @@ export default function AnalystDetailClient({
   livePrices = {},
   theses = [],
   runCards = [],
+  watchlistDayChange = {},
 }: {
   detail: AnalystDetail;
   hasRunning: boolean;
@@ -244,6 +246,9 @@ export default function AnalystDetailClient({
   theses?: ThesisCardData[];
   /** Server-rendered RunCard elements — the SAME card /runs uses. */
   runCards?: ReactNode[];
+  /** Per-ticker day's % change for watched names (Watching rows show the
+   *  day's move, not a since-entry P&L). */
+  watchlistDayChange?: Record<string, number>;
 }) {
   const { config: rawConfig, stats, recentTrades } = detail;
 
@@ -265,6 +270,8 @@ export default function AnalystDetailClient({
   // Theses tab status filter (mirrors the Findings filter pattern — a chip row
   // under the tab). Snapshot shows active (HOLDING+WATCHING) with no filter.
   const [thesisStatus, setThesisStatus] = useState<ThesisStatusFilter>("all");
+  // Right-sidebar bucket: Active (open positions) / Watching / Closed.
+  const [sidebarBucket, setSidebarBucket] = useState<SidebarBucket>("active");
   const [watchlistItems, setWatchlistItems] = useState<WatchlistItemView[]>(initialWatchlist);
   const [, startTransition] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -768,75 +775,84 @@ export default function AnalystDetailClient({
               </div>
             )}
 
-            {/* Sidebar tabs: Holding | Watching | Closed.
-                Holding + Closed are TRADES (open vs sold positions); Watching is
-                the watched-thesis list. The old Trades tab + its all/open/closed
-                ChipTabs collapsed into these three top-level tabs. */}
-            <Tabs defaultValue={0} className="flex-1 overflow-hidden">
-              <div className="px-3 pt-2 shrink-0">
-                <TabsList>
-                  <TabsTrigger value={0}>Holding</TabsTrigger>
-                  <TabsTrigger value={1}>Watching</TabsTrigger>
-                  <TabsTrigger value={2}>Closed</TabsTrigger>
-                </TabsList>
+            {/* Sidebar buckets: Active | Watching | Closed — a single chip row
+                (not nested tabs). Active + Closed are TRADES (open vs sold
+                positions, rendered with their LIFETIME change); Watching is the
+                watched-thesis list (rendered with the DAY's change). Every row
+                is the same TradeRowShell-based component. */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="px-3 pt-2 pb-1 shrink-0">
+                <ChipTabs<SidebarBucket>
+                  options={[
+                    { value: "active", label: "Active" },
+                    { value: "watching", label: "Watching" },
+                    { value: "closed", label: "Closed" },
+                  ]}
+                  value={sidebarBucket}
+                  onChange={(v) => v && setSidebarBucket(v)}
+                  clearable={false}
+                />
               </div>
 
-              {/* Holding — open positions */}
-              <TabsContent value={0} className="flex-1 overflow-y-auto flex flex-col">
-                {holdingTrades.length === 0 ? (
-                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    No open positions.
-                  </div>
-                ) : (
-                  holdingTrades.map((trade) => (
-                    <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
-                  ))
-                )}
-              </TabsContent>
+              <div className="flex-1 overflow-y-auto flex flex-col">
+                {/* Active — open positions, lifetime change */}
+                {sidebarBucket === "active" &&
+                  (holdingTrades.length === 0 ? (
+                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                      No open positions.
+                    </div>
+                  ) : (
+                    holdingTrades.map((trade) => (
+                      <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
+                    ))
+                  ))}
 
-              {/* Watching — watched theses */}
-              <TabsContent value={1} className="flex-1 overflow-y-auto">
-                {watchlistItems.length === 0 && (
-                  <EducationEmptyState stateKey="analyst-watchlist" size="inline" />
+                {/* Watching — watched theses, day's change */}
+                {sidebarBucket === "watching" && (
+                  <>
+                    {watchlistItems.length === 0 && (
+                      <EducationEmptyState stateKey="analyst-watchlist" size="inline" />
+                    )}
+                    {watchlistItems.map((item) => (
+                      <WatchlistRow
+                        key={item.id}
+                        ticker={item.symbol}
+                        currentPrice={livePrices[item.symbol]}
+                        dayChangePct={watchlistDayChange[item.symbol]}
+                        direction={
+                          // P1-24 B4: an unresearched seed has thesisDirection=null
+                          // (new) or 'PENDING' (legacy). Normalize anything that
+                          // isn't a committed LONG/SHORT to null — WatchlistRow
+                          // renders explicit null as "Awaiting review".
+                          item.thesisDirection === "LONG" ||
+                          item.thesisDirection === "SHORT"
+                            ? item.thesisDirection
+                            : null
+                        }
+                        onRemove={() => handleRemoveStock(item.symbol)}
+                      />
+                    ))}
+                    <StockSearch
+                      onSelect={handleAddStock}
+                      excludeSymbols={watchlistItems.map((i) => i.symbol)}
+                      trigger={<AddStockRow />}
+                    />
+                  </>
                 )}
-                {watchlistItems.map((item) => (
-                  <WatchlistRow
-                    key={item.id}
-                    ticker={item.symbol}
-                    currentPrice={livePrices[item.symbol]}
-                    direction={
-                      // P1-24 B4: an unresearched seed has thesisDirection=null
-                      // (new) or 'PENDING' (legacy). Normalize anything that
-                      // isn't a committed LONG/SHORT to null — WatchlistRow
-                      // renders explicit null as "Awaiting review".
-                      item.thesisDirection === "LONG" ||
-                      item.thesisDirection === "SHORT"
-                        ? item.thesisDirection
-                        : null
-                    }
-                    onRemove={() => handleRemoveStock(item.symbol)}
-                  />
-                ))}
-                <StockSearch
-                  onSelect={handleAddStock}
-                  excludeSymbols={watchlistItems.map((i) => i.symbol)}
-                  trigger={<AddStockRow />}
-                />
-              </TabsContent>
 
-              {/* Closed — sold positions */}
-              <TabsContent value={2} className="flex-1 overflow-y-auto flex flex-col">
-                {closedTrades.length === 0 ? (
-                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    No closed trades yet.
-                  </div>
-                ) : (
-                  closedTrades.map((trade) => (
-                    <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
-                  ))
-                )}
-              </TabsContent>
-            </Tabs>
+                {/* Closed — sold positions, lifetime realized change */}
+                {sidebarBucket === "closed" &&
+                  (closedTrades.length === 0 ? (
+                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                      No closed trades yet.
+                    </div>
+                  ) : (
+                    closedTrades.map((trade) => (
+                      <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
+                    ))
+                  ))}
+              </div>
+            </div>
           </div>
         </div>
         {/* End Sidebar */}
