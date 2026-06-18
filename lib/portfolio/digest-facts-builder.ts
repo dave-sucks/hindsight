@@ -87,10 +87,13 @@ export async function buildDigestFacts(
   });
 
   // ── ThesisUpdates today (decisions) ─────────────────────────────────────────
+  // Thesis has no `environment` column — it's attributed to a book via the
+  // analyst that created it (ResearchRun.environment). Without scoping through
+  // the run, a PAPER digest mixes in LIVE-analyst decisions (and vice versa).
   const updateRows = await prisma.thesisUpdate.findMany({
     where: {
       timestamp: { gte: start, lt: end },
-      thesis: { accountId },
+      thesis: { accountId, researchRun: { environment } },
     },
     select: {
       id: true,
@@ -182,7 +185,7 @@ export async function buildDigestFacts(
   const heldSymbols = [...new Set(heldRows.map((p) => p.symbol))];
   const sectorTheses = heldSymbols.length
     ? await prisma.thesis.findMany({
-        where: { accountId, ticker: { in: heldSymbols } },
+        where: { accountId, ticker: { in: heldSymbols }, researchRun: { environment } },
         orderBy: { updatedAt: "desc" },
         select: { id: true, ticker: true, sector: true },
       })
@@ -212,6 +215,7 @@ export async function buildDigestFacts(
       accountId,
       status: "PASSED",
       updatedAt: { gte: passSince },
+      researchRun: { environment },
     },
     orderBy: { updatedAt: "desc" },
     take: 20,
