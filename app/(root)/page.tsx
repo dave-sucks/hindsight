@@ -3,6 +3,7 @@ import { getDashboardData } from "@/lib/actions/portfolio.actions";
 import type { DashboardData } from "@/lib/actions/portfolio.actions";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
+import { getLatestDigest } from "@/lib/actions/digest.actions";
 
 const EMPTY_DASHBOARD: DashboardData = {
   openTrades: [], pendingTrades: [], closedTrades: [], activityFeed: [],
@@ -36,8 +37,9 @@ const EMPTY_DASHBOARD: DashboardData = {
 export default async function Home() {
   const environment = await getCurrentEnvironment();
 
-  const [data, supabase] = await Promise.all([
+  const [data, digest, supabase] = await Promise.all([
     getDashboardData(environment).catch(() => EMPTY_DASHBOARD),
+    getLatestDigest(environment).catch(() => null),
     createClient(),
   ]);
   const {
@@ -48,6 +50,7 @@ export default async function Home() {
     <DashboardClient
       data={data}
       userId={user?.id}
+      digest={digest}
     />
   );
 }

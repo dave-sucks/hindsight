@@ -1109,6 +1109,29 @@ model AccuracyReport {
   @@index([weekStartDate])
 }
 
+// ─── PORTFOLIO DIGEST ──────────────────────────────────────────────────────
+// One account-level digest per trading day, covering activity across ALL run
+// types (daily / tactical / discovery) and ALL analysts, centered on the
+// portfolio as a whole. Replaces the dead per-analyst AnalystBriefing.
+// Two fields do the work: `narrative` (LLM prose w/ inline reference tokens)
+// and `facts` (the deterministic facts blob computed by
+// lib/portfolio/digest-facts.ts). See docs/plans/PORTFOLIO_DIGEST.md Feature A.
+// Additive — nothing consumes these rows yet (the agent rewire is a separate
+// reviewed PR).
+model PortfolioDigest {
+  id        String   @id @default(cuid())
+  accountId String // account-level, NOT per-analyst
+  date      DateTime // the trading day (ET)
+  narrative String // markdown prose with inline reference tokens
+  facts     Json // the deterministic facts blob (DigestFacts)
+  model     String? // which LLM wrote the narrative
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, date])
+  @@index([accountId])
+  @@index([date])
+}
+
 // ─── USER API KEYS ─────────────────────────────────────────────────────────
 // Stores encrypted third-party API credentials per user.
 // One row per (userId, provider) pair. Keys are AES-256-GCM encrypted at rest.
