@@ -13,6 +13,8 @@ import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { TriggersResponse } from "@/components/agent/sheets/ThesisTriggersSection";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
+import { ThesisChart } from "@/components/domain/thesis-chart";
+import type { StockCandle } from "@/lib/actions/finnhub.actions";
 
 // 2026-04-29: removed inline expand-on-click and analyst-link button.
 // The Details button opens the full ThesisSheet which has more
@@ -52,6 +54,13 @@ export interface ThesisRowData {
   runId?: string | null;
   currentPrice?: number | null;
   priceChange?: { amount: number; percent: number } | null;
+  /**
+   * Daily candles for the inline price chart (Perplexity-style). Populated
+   * only by the feed for WATCHING/HOLDING rows — absent everywhere else, so
+   * the chart is opt-in per surface. Falls back to the gauge when present but
+   * empty, and renders nothing when absent. See thesis-chart.tsx.
+   */
+  candles?: StockCandle[];
   companyName?: string | null;
   decision?: string | null;
   sourcesUsed?: unknown;
@@ -299,6 +308,32 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
           </div>
         </div>
       )}
+
+      {/* ── Price chart (feed cards only) ── */}
+      {/* Perplexity-style inline chart for the names you're actually tracking.
+          Opt-in: only renders when the feed forwarded candles AND the thesis
+          is WATCHING/HOLDING (a passed/retired thesis has nothing to track).
+          Fixed 1M window, no vertical markers — open the sheet for those.
+          See docs/plans/THESIS_VISUALIZATION.md. */}
+      {t.candles &&
+        t.candles.length >= 2 &&
+        (t.status === "WATCHING" || t.status === "HOLDING") && (
+          <div className="px-4 py-3 border-b">
+            <ThesisChart
+              ticker={t.ticker}
+              candles={t.candles}
+              direction={t.direction === "SHORT" ? "SHORT" : "LONG"}
+              entryPrice={t.entryPrice ?? null}
+              avgCost={t.position?.avgCost ?? null}
+              targetPrice={t.targetPrice ?? null}
+              stopLoss={t.stopLoss ?? null}
+              current={t.currentPrice ?? null}
+              addedAt={t.createdAt ?? null}
+              enteredAt={t.position?.openedAt ?? null}
+              variant="card"
+            />
+          </div>
+        )}
 
       {/* ── Body: status line + summary ── */}
       {/* A real trade renders as a contained rounded muted banner (the
