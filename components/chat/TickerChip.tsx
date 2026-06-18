@@ -9,54 +9,16 @@ import { StockLogo } from "@/components/StockLogo";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { cn, pnlColor } from "@/lib/utils";
 import { useEffect, useState, memo } from "react";
+import {
+  fetchQuote,
+  usePrefetchTickers,
+  type QuoteData,
+} from "@/hooks/useTickerQuote";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface QuoteData {
-  symbol: string;
-  price: number;
-  change: number;
-  changePct: number;
-  prevClose: number;
-}
-
-// ─── Global quote cache (shared across all TickerChips in the session) ────────
-
-const quoteCache = new Map<string, { data: QuoteData; fetchedAt: number }>();
-const pendingFetches = new Map<string, Promise<QuoteData | null>>();
-const CACHE_TTL_MS = 30_000; // 30s — matches Finnhub revalidate
-
-async function fetchQuote(symbol: string): Promise<QuoteData | null> {
-  const cached = quoteCache.get(symbol);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-    return cached.data;
-  }
-
-  // Deduplicate concurrent requests for the same symbol
-  const pending = pendingFetches.get(symbol);
-  if (pending) return pending;
-
-  const promise = (async () => {
-    try {
-      const res = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbol)}`);
-      if (!res.ok) return null;
-      const json = await res.json();
-      const quote = json.quotes?.[0] as QuoteData | undefined;
-      if (quote && quote.price > 0) {
-        quoteCache.set(symbol, { data: quote, fetchedAt: Date.now() });
-        return quote;
-      }
-      return null;
-    } catch {
-      return null;
-    } finally {
-      pendingFetches.delete(symbol);
-    }
-  })();
-
-  pendingFetches.set(symbol, promise);
-  return promise;
-}
+// The quote cache + fetch path now live in @/hooks/useTickerQuote (one shared
+// source behind every price/day-change surface). Re-exported here so existing
+// importers (ticker-markdown) keep working unchanged.
+export { usePrefetchTickers };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -238,29 +200,3 @@ export function parseTickerMentions(text: string): TickerSegment[] {
   return segments;
 }
 
-// ─── Batch fetcher for prefetching multiple tickers at once ──────────────────
-
-export function usePrefetchTickers(symbols: string[]) {
-  useEffect(() => {
-    if (symbols.length === 0) return;
-    // Batch fetch all unique symbols
-    const unique = [...new Set(symbols.map(s => s.toUpperCase()))];
-    const toFetch = unique.filter(s => {
-      const cached = quoteCache.get(s);
-      return !cached || Date.now() - cached.fetchedAt >= CACHE_TTL_MS;
-    });
-    if (toFetch.length === 0) return;
-
-    // Use the batch endpoint
-    fetch(`/api/quotes?symbols=${toFetch.join(",")}`)
-      .then(r => r.json())
-      .then(json => {
-        for (const q of json.quotes ?? []) {
-          if (q.price > 0) {
-            quoteCache.set(q.symbol, { data: q, fetchedAt: Date.now() });
-          }
-        }
-      })
-      .catch(() => {});
-  }, [symbols.join(",")]);
-}

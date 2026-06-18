@@ -17,6 +17,7 @@ import { formatCurrency } from "@/lib/format";
 import { getTradeStatusDisplay, shortAlpacaId } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
+import { useTickerQuote } from "@/hooks/useTickerQuote";
 
 // ── Row menu item ────────────────────────────────────────────────────────────
 // Every trade-shaped row gets the same kebab menu on the right edge. Each
@@ -363,6 +364,11 @@ export function WatchlistRow({
   onRemove,
   className,
 }: WatchlistRowProps) {
+  // The day's % change — from the SAME shared quote source every other
+  // price/day-change surface uses (ticker chips, thesis cards): /api/quotes via
+  // the useTickerQuote cache. A watched name isn't held, so the row shows the
+  // day's move in the slot a trade row uses for its lifetime P&L.
+  const dayChangePct = useTickerQuote(ticker)?.changePct;
   // P1-24 B4 dual-read: explicit null (new seed) or legacy 'PENDING' →
   // "Awaiting review". LONG/SHORT surface their lean. undefined (no thesis
   // context) keeps the generic "Watching".
@@ -386,6 +392,11 @@ export function WatchlistRow({
         </span>
       }
       secondary={secondary}
+      trailingBottom={
+        dayChangePct != null ? (
+          <PnlBadge value={dayChangePct} format="percent" className="text-xs" />
+        ) : undefined
+      }
       menuItems={
         onRemove
           ? [{ label: "Remove", onSelect: onRemove, destructive: true }]

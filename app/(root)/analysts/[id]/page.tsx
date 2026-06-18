@@ -6,6 +6,8 @@ import { getWatchlistItems } from "@/lib/actions/watchlist.actions";
 import { getLatestPrices } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getAccountId } from "@/lib/auth/account";
+import { fetchRunCardRuns } from "@/lib/actions/run-cards";
+import { RunCard } from "@/components/runs/RunCard";
 import AnalystDetailClient from "@/components/analysts/AnalystDetailClient";
 
 type Params = { id: string };
@@ -41,7 +43,7 @@ export default async function AnalystDetailPage({
     });
   }
 
-  const [detail, runningCount, watchlistItems, alpacaCreds, theses] = await Promise.all([
+  const [detail, runningCount, watchlistItems, alpacaCreds, theses, runRows] = await Promise.all([
     getAnalystDetail(id).catch((err) => {
       console.error("[analyst-page] getAnalystDetail failed:", err);
       return null;
@@ -54,9 +56,19 @@ export default async function AnalystDetailPage({
     getWatchlistItems(id).catch(() => []),
     userId ? resolveAlpacaCredentials(userId).catch(() => null) : Promise.resolve(null),
     getAnalystTheses(id).catch(() => []),
+    // Runs tab uses the SAME RunCard as /runs (one shared component + query).
+    // No environment filter — an analyst's runs are all in its own book.
+    accountId
+      ? fetchRunCardRuns({ accountId, agentConfigId: id, take: 20 }).catch(() => [])
+      : Promise.resolve([]),
   ]);
 
   if (!detail) notFound();
+
+  // Render the run cards server-side (RunCard is a server component) and pass
+  // them into the client component as a slot — avoids serializing the raw
+  // Prisma run rows (Decimal/Date) across the client boundary.
+  const runCards = runRows.map((r) => <RunCard key={r.id} run={r} />);
 
   // Fetch live prices for open positions AND watchlist tickers — both render
   // through TradeRow / WatchlistRow and need a current price.
@@ -77,6 +89,7 @@ export default async function AnalystDetailPage({
       initialWatchlist={watchlistItems}
       livePrices={livePrices}
       theses={theses}
+      runCards={runCards}
     />
   );
 }
