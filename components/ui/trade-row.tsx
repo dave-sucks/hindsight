@@ -17,6 +17,7 @@ import { formatCurrency } from "@/lib/format";
 import { getTradeStatusDisplay, shortAlpacaId } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
+import { useTickerQuote } from "@/hooks/useTickerQuote";
 
 // ── Row menu item ────────────────────────────────────────────────────────────
 // Every trade-shaped row gets the same kebab menu on the right edge. Each
@@ -346,13 +347,6 @@ interface WatchlistRowProps {
   /** Live or last close price. */
   currentPrice?: number;
   /**
-   * The stock's % change ON THE DAY (not a since-entry P&L — a watched name
-   * isn't held). Renders in the same bottom-right slot a trade row uses for
-   * its lifetime P&L, so a watching row reads identically to a trade row.
-   * Omit when no day-change is available — the slot is simply blank.
-   */
-  dayChangePct?: number | null;
-  /**
    * Thesis direction for the underlying WATCHING thesis. LONG/SHORT surface
    * their direction; an unresearched seed (explicit null, or legacy
    * 'PENDING') surfaces as "Awaiting review"; undefined (no thesis context)
@@ -366,11 +360,15 @@ interface WatchlistRowProps {
 export function WatchlistRow({
   ticker,
   currentPrice,
-  dayChangePct,
   direction,
   onRemove,
   className,
 }: WatchlistRowProps) {
+  // The day's % change — from the SAME shared quote source every other
+  // price/day-change surface uses (ticker chips, thesis cards): /api/quotes via
+  // the useTickerQuote cache. A watched name isn't held, so the row shows the
+  // day's move in the slot a trade row uses for its lifetime P&L.
+  const dayChangePct = useTickerQuote(ticker)?.changePct;
   // P1-24 B4 dual-read: explicit null (new seed) or legacy 'PENDING' →
   // "Awaiting review". LONG/SHORT surface their lean. undefined (no thesis
   // context) keeps the generic "Watching".

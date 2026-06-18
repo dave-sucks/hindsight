@@ -237,7 +237,6 @@ export default function AnalystDetailClient({
   livePrices = {},
   theses = [],
   runCards = [],
-  watchlistDayChange = {},
 }: {
   detail: AnalystDetail;
   hasRunning: boolean;
@@ -246,9 +245,6 @@ export default function AnalystDetailClient({
   theses?: ThesisCardData[];
   /** Server-rendered RunCard elements — the SAME card /runs uses. */
   runCards?: ReactNode[];
-  /** Per-ticker day's % change for watched names (Watching rows show the
-   *  day's move, not a since-entry P&L). */
-  watchlistDayChange?: Record<string, number>;
 }) {
   const { config: rawConfig, stats, recentTrades } = detail;
 
@@ -818,7 +814,6 @@ export default function AnalystDetailClient({
                         key={item.id}
                         ticker={item.symbol}
                         currentPrice={livePrices[item.symbol]}
-                        dayChangePct={watchlistDayChange[item.symbol]}
                         direction={
                           // P1-24 B4: an unresearched seed has thesisDirection=null
                           // (new) or 'PENDING' (legacy). Normalize anything that
