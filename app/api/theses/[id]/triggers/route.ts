@@ -333,6 +333,7 @@ export async function GET(
     thesisId: thesis.id,
     ticker: thesis.ticker,
     status: thesis.status,
+    createdAt: thesis.createdAt,
     closedAt: thesis.closedAt,
     closeReason: thesis.closeReason,
     invalidatedAt: thesis.invalidatedAt,

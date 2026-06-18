@@ -15,6 +15,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceTargetsBlock } from "@/components/domain/price-targets-block";
+import { ThesisChart } from "@/components/domain/thesis-chart";
+import type { StockCandle } from "@/lib/actions/finnhub.actions";
 import {
   Collapsible,
   CollapsibleContent,
@@ -1498,9 +1500,24 @@ export function ThesisSheetBody({
   // (Finnhub) so the price block keeps its skeleton until that lands.
   const [state, setState] = useState<TriggersResponse | null>(initialState ?? null);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  // Daily candles for the annotated price chart, fetched on open (single
+  // symbol, 5-min cached). ~400 days so the 1Y range pill has data. null
+  // while in-flight; [] on failure → ThesisChart degrades to the gauge.
+  const [candles, setCandles] = useState<StockCandle[] | null>(null);
   useEffect(() => {
     if (!thesis_id) return;
     let cancelled = false;
+    if (ticker) {
+      fetch(`/api/stocks/candles?symbols=${encodeURIComponent(ticker)}&days=400`)
+        .then(async (r) => {
+          if (!r.ok) return;
+          const json = (await r.json()) as { candles: Record<string, StockCandle[]> };
+          if (!cancelled) setCandles(json.candles[ticker.toUpperCase()] ?? []);
+        })
+        .catch(() => {
+          if (!cancelled) setCandles([]); // degrade to the gauge
+        });
+    }
     fetch(`/api/theses/${thesis_id}/triggers`)
       .then(async (r) => {
         if (!r.ok) return;
@@ -1522,7 +1539,7 @@ export function ThesisSheetBody({
     return () => {
       cancelled = true;
     };
-  }, [thesis_id]);
+  }, [thesis_id, ticker]);
 
   // Status has ONE source: the resolved /triggers state. We do NOT fall
   // back to the `status` prop for rendering — that dual source was the
@@ -1731,19 +1748,36 @@ export function ThesisSheetBody({
         </Card>
       ) : null}
 
-      {/* ── Price Targets (the agent's entry/target/stop + live current) ─ */}
-      {/* Gauge consistently shows Stop · Entry · Current · Target across
-          every status — no status-conditional labels. Current is live
-          from /quote (null while in-flight). See PRICE_LEVEL_SEMANTICS. */}
-      {showLevels && (
-        <PriceTargetsBlock
-          entry={entry_price!}
-          target={target_price ?? null}
-          stop={stop_loss ?? null}
-          current={quote?.currentPrice ?? null}
-          direction={direction === "SHORT" ? "SHORT" : "LONG"}
-        />
-      )}
+      {/* ── Price chart (annotated) ───────────────────────────── */}
+      {/* Full price line with horizontal Entry/Target/Stop lines + vertical
+          "Watching" (createdAt) / "Entry" (position.openedAt) markers.
+          Candles fetched on open; while in-flight we hold the gauge so the
+          block doesn't pop in. Falls back to the gauge when there are no
+          candles. See docs/plans/THESIS_VISUALIZATION.md. */}
+      {!isPass &&
+        (candles && candles.length >= 2 ? (
+          <ThesisChart
+            ticker={ticker}
+            candles={candles}
+            direction={direction === "SHORT" ? "SHORT" : "LONG"}
+            entryPrice={entry_price ?? null}
+            avgCost={position?.avgCost ?? null}
+            targetPrice={target_price ?? null}
+            stopLoss={stop_loss ?? null}
+            current={quote?.currentPrice ?? null}
+            addedAt={state?.createdAt ?? null}
+            enteredAt={position?.openedAt ?? null}
+            variant="full"
+          />
+        ) : showLevels ? (
+          <PriceTargetsBlock
+            entry={entry_price!}
+            target={target_price ?? null}
+            stop={stop_loss ?? null}
+            current={quote?.currentPrice ?? null}
+            direction={direction === "SHORT" ? "SHORT" : "LONG"}
+          />
+        ) : null)}
 
       {/* ── Analyst Consensus widget ──────────────────────────── */}
       {/* Buy/Hold/Sell distribution + Low/Avg/Median/High price target

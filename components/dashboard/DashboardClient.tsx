@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useCallback, useMemo, useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
 import { SlidersHorizontal } from 'lucide-react';
 
@@ -52,6 +52,7 @@ import type { CoverageData } from '@/lib/actions/coverage.actions';
 import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
 import { ThesisRow, type ThesisRowData } from '@/components/ui/thesis-row';
+import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import { ProposalActions } from '@/components/proposals/ProposalActions';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import { PortfolioDigestCard } from '@/components/domain/portfolio-digest-card';
@@ -381,7 +382,7 @@ function getActivitySentence(item: ActivityFeedItem): string {
   return `${item.label} via ${src}.`;
 }
 
-function pickToThesisRow(pick: RecentPick): ThesisRowData {
+function pickToThesisRow(pick: RecentPick, candles?: StockCandle[]): ThesisRowData {
   return {
     id: pick.id,
     ticker: pick.ticker,
@@ -394,6 +395,7 @@ function pickToThesisRow(pick: RecentPick): ThesisRowData {
     stopLoss: pick.stopLoss,
     createdAt: pick.position?.openedAt ?? pick.createdAt,
     currentPrice: pick.currentPrice,
+    candles,
     companyName: pick.companyName,
     analystName: pick.analystName,
     analystId: pick.analystId,
@@ -520,6 +522,39 @@ function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
     return true;
   });
 
+  // Batched candles for the inline card charts. One request for every
+  // WATCHING/HOLDING ticker in the list (the only statuses that render a
+  // chart), ~40 days to cover the card's fixed 1M window. Cards without a
+  // chart never trigger a fetch. See docs/plans/THESIS_VISUALIZATION.md §4.
+  const chartTickers = useMemo(
+    () =>
+      [
+        ...new Set(
+          picks
+            .filter((p) => p.status === 'WATCHING' || p.status === 'HOLDING')
+            .map((p) => p.ticker),
+        ),
+      ].sort(),
+    [picks],
+  );
+  const [candlesByTicker, setCandlesByTicker] = useState<Record<string, StockCandle[]>>({});
+  useEffect(() => {
+    if (chartTickers.length === 0) return;
+    let cancelled = false;
+    fetch(`/api/stocks/candles?symbols=${encodeURIComponent(chartTickers.join(','))}&days=40`)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const json = (await r.json()) as { candles: Record<string, StockCandle[]> };
+        if (!cancelled) setCandlesByTicker(json.candles);
+      })
+      .catch(() => {
+        /* non-fatal — cards just render without a chart */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chartTickers]);
+
   const filteredActivity = activity.filter((a) => {
     if (activityFilter === 'opens') return a.type === 'OPENED';
     if (activityFilter === 'closes') return a.type === 'CLOSED';
@@ -623,7 +658,11 @@ function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
         ) : (
           <div className="space-y-3">
             {filteredPicks.map((pick) => (
-              <ThesisRow key={pick.id} thesis={pickToThesisRow(pick)} showTicker={true} />
+              <ThesisRow
+                key={pick.id}
+                thesis={pickToThesisRow(pick, candlesByTicker[pick.ticker.toUpperCase()])}
+                showTicker={true}
+              />
             ))}
           </div>
         )}

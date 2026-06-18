@@ -24,6 +24,7 @@ export type ThesisSheetStateInput = {
   id: string;
   ticker: string;
   status: string;
+  createdAt: Date;
   closedAt: Date | null;
   closeReason: string | null;
   invalidatedAt: Date | null;
@@ -98,6 +99,7 @@ export function buildThesisSheetState(t: ThesisSheetStateInput): TriggersRespons
     thesisId: t.id,
     ticker: t.ticker,
     status: t.status,
+    createdAt: t.createdAt.toISOString(),
     closedAt: t.closedAt ? t.closedAt.toISOString() : null,
     closeReason: t.closeReason,
     invalidatedAt: t.invalidatedAt ? t.invalidatedAt.toISOString() : null,
@@ -149,6 +151,7 @@ export const thesisSheetStateSelect = {
   ticker: true,
   direction: true,
   status: true,
+  createdAt: true,
   closedAt: true,
   closeReason: true,
   invalidatedAt: true,

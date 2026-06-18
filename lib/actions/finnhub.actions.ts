@@ -351,6 +351,72 @@ export async function getStockCandles(
   }
 }
 
+/**
+ * Batched daily candles for a LIST of symbols in ONE request. Used by the
+ * thesis-card feed so a list of N cards is a single cached call, not N live
+ * hits. Backed by Alpaca's multi-symbol bars endpoint
+ * (`/v2/stocks/bars?symbols=…`), the sibling of the single-symbol endpoint
+ * `getStockCandles` uses. Returns a map keyed by uppercased symbol; symbols
+ * Alpaca returns no bars for are simply absent (caller degrades to the gauge).
+ *
+ * No pagination: the card window is short (≤~1 month) so even ~20 symbols
+ * stay well under the 1000-bar page cap. The single-symbol path (sheet /
+ * trade page, up to 1Y) keeps using `getStockCandles`.
+ */
+export async function getStockCandlesBatch(
+  symbols: string[],
+  days = 30,
+): Promise<Record<string, StockCandle[]>> {
+  const unique = [...new Set(symbols.map((s) => s.toUpperCase()))].filter(Boolean);
+  if (unique.length === 0) return {};
+  try {
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      console.warn('[getStockCandlesBatch] No Alpaca credentials configured');
+      return {};
+    }
+
+    const end = new Date().toISOString().slice(0, 10);
+    const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(unique.join(','))}&timeframe=1Day&start=${start}&end=${end}&limit=1000&feed=iex`;
+
+    const res = await fetch(url, {
+      headers: {
+        'APCA-API-KEY-ID': apiKey,
+        'APCA-API-SECRET-KEY': apiSecret,
+      },
+      next: { revalidate: 300 },
+    });
+
+    if (!res.ok) {
+      console.warn('[getStockCandlesBatch] Alpaca error', res.status, await res.text().catch(() => ''));
+      return {};
+    }
+
+    const data = (await res.json()) as {
+      bars?: Record<string, { c: number; o: number; h: number; l: number; v: number; t: string }[]>;
+    };
+    if (!data.bars) return {};
+
+    const out: Record<string, StockCandle[]> = {};
+    for (const [sym, bars] of Object.entries(data.bars)) {
+      out[sym] = bars.map((bar) => ({
+        date: bar.t.slice(0, 10),
+        close: bar.c,
+        open: bar.o,
+        high: bar.h,
+        low: bar.l,
+        volume: bar.v,
+      }));
+    }
+    return out;
+  } catch (err) {
+    console.error('[getStockCandlesBatch] Error:', err instanceof Error ? err.message : err);
+    return {};
+  }
+}
+
 // ─── Analyst recommendation trends ──────────────────────────────────────────
 
 export type RecommendationTrend = {

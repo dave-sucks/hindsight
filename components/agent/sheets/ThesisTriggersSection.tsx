@@ -88,6 +88,9 @@ export interface TriggersResponse {
   thesisId: string;
   ticker: string;
   status: string;
+  // When the thesis row was created — anchors the "started watching"
+  // vertical marker on the sheet's price chart.
+  createdAt: string | null;
   closedAt: string | null;
   closeReason: string | null;
   invalidatedAt: string | null;

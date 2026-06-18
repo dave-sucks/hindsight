@@ -22,9 +22,27 @@ type PriceReferenceLine = {
   dashed?: boolean;
 };
 
+// Vertical marker on the time axis — "started watching" / "entered here".
+// `date` is snapped to the nearest visible candle; markers whose date falls
+// before the visible window are dropped (off-range).
+type TimeMarker = {
+  date: string;
+  color: string;
+  label: string;
+};
+
 type Props = {
   candles: StockCandle[];
   referenceLines?: PriceReferenceLine[];
+  verticalMarkers?: TimeMarker[];
+  /** Hide the range pills (used by the compact card chart, fixed window). */
+  showControls?: boolean;
+  /** Initial range. Defaults to 3M. */
+  defaultRange?: Range;
+  /** Chart body height in px. Defaults to 300. */
+  height?: number;
+  /** Drop the outer border (when embedded inside another card). */
+  frameless?: boolean;
   children?: React.ReactNode;
 };
 
@@ -49,18 +67,48 @@ function formatDateLabel(dateStr: string): string {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function StockPriceChart({ candles, referenceLines, children }: Props) {
-  const [range, setRange] = useState<Range>('3M');
+export function StockPriceChart({
+  candles,
+  referenceLines,
+  verticalMarkers,
+  showControls = true,
+  defaultRange = '3M',
+  height = 300,
+  frameless = false,
+  children,
+}: Props) {
+  const [range, setRange] = useState<Range>(defaultRange);
 
   const data = useMemo(() => {
     const days = RANGE_DAYS[range];
     return candles.slice(-days);
   }, [candles, range]);
 
+  // Snap each marker to the nearest visible candle date (Recharts only places
+  // a vertical ReferenceLine on an x-value that exists in `data`). Markers
+  // dated before the visible window are dropped — their event is off-range.
+  const snappedMarkers = useMemo(() => {
+    if (!verticalMarkers?.length || data.length < 2) return [];
+    const firstDate = data[0].date;
+    const dates = data.map((d) => d.date);
+    return verticalMarkers
+      .map((m) => {
+        if (m.date < firstDate) return null; // off the left edge of the window
+        // nearest candle date >= marker date (markers rarely land on a
+        // non-trading day; fall back to the last date if past the window).
+        const hit = dates.find((d) => d >= m.date) ?? dates[dates.length - 1];
+        return { ...m, snapped: hit };
+      })
+      .filter((m): m is TimeMarker & { snapped: string } => m !== null);
+  }, [verticalMarkers, data]);
+
   if (data.length < 2) {
     return (
       <div
-        className="relative rounded-lg overflow-hidden border h-[300px] flex items-center justify-center"
+        className={cn(
+          'relative rounded-lg overflow-hidden h-[300px] flex items-center justify-center',
+          !frameless && 'border',
+        )}
         style={{
           backgroundImage:
             'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
@@ -81,7 +129,7 @@ export function StockPriceChart({ candles, referenceLines, children }: Props) {
 
   return (
     <div
-      className="rounded-lg overflow-hidden border"
+      className={cn('rounded-lg overflow-hidden', !frameless && 'border')}
       style={{
         backgroundImage:
           'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
@@ -92,24 +140,26 @@ export function StockPriceChart({ candles, referenceLines, children }: Props) {
       {children}
       <div className="relative">
       {/* Range pills — absolute top-left of chart area */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
-        {RANGES.map((r) => (
-          <button
-            key={r}
-            onClick={() => setRange(r)}
-            className={cn(
-              'px-2 py-0.5 text-xs rounded transition-colors',
-              range === r
-                ? 'bg-muted text-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {r}
-          </button>
-        ))}
-      </div>
+      {showControls && (
+        <div className="absolute top-3 left-3 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
+          {RANGES.map((r) => (
+            <button
+              key={r}
+              onClick={() => setRange(r)}
+              className={cn(
+                'px-2 py-0.5 text-xs rounded transition-colors',
+                range === r
+                  ? 'bg-muted text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+      )}
 
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={data} margin={{ top: 40, right: 0, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id="stockGrad" x1="0" y1="0" x2="0" y2="1">
@@ -142,6 +192,22 @@ export function StockPriceChart({ candles, referenceLines, children }: Props) {
             labelFormatter={(l: string) => formatDateLabel(l)}
             labelStyle={{ color: 'var(--muted-foreground)' }}
           />
+          {/* Vertical markers — "started watching" / "entered here" */}
+          {snappedMarkers.map((m) => (
+            <ReferenceLine
+              key={`${m.label}-${m.snapped}`}
+              x={m.snapped}
+              stroke={m.color}
+              strokeDasharray="2 3"
+              strokeWidth={1}
+              label={{
+                value: m.label,
+                position: 'insideTopLeft',
+                fontSize: 9,
+                fill: m.color,
+              }}
+            />
+          ))}
           {/* Reference lines for trade entry/target/stop */}
           {referenceLines?.map((line) => (
             <ReferenceLine
