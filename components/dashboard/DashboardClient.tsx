@@ -495,12 +495,17 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   );
 }
 
-function HomeBottomSection({ picks, activity, loading }: {
+function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
   picks: RecentPick[];
   activity: ActivityFeedItem[];
   loading: boolean;
+  // Overview tab payload (Feature A + B — docs/plans/PORTFOLIO_DIGEST.md). The
+  // brief + coverage tables live as the first/default tab; `digest === undefined`
+  // means the caller opted out of the digest entirely (card not rendered).
+  digest?: LatestDigest | null;
+  coverage?: CoverageData;
 }) {
-  const [tab, setTab] = useState<'theses' | 'activity'>('activity');
+  const [tab, setTab] = useState<'overview' | 'theses' | 'activity'>('overview');
   const [thesisFilter, setThesisFilter] = useState<ThesisTabFilter>('all');
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
   const [showTour, setShowTour] = useState(false);
@@ -532,12 +537,15 @@ function HomeBottomSection({ picks, activity, loading }: {
       {/* Tab bar + filter dropdown */}
       <div className="flex items-center justify-between pb-3">
         <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="theses">Theses</TabsTrigger>
         </TabsList>
 
+        {/* Filter dropdown — only the Activity/Theses lists are filterable;
+            the Overview tab (brief + coverage tables) has no filter. */}
         <div>
-          {tab === 'theses' ? (
+          {tab === 'overview' ? null : tab === 'theses' ? (
             <Select value={thesisFilter} onValueChange={(v) => setThesisFilter(v as ThesisTabFilter)}>
               <SelectTrigger className="h-8 w-32 text-xs">
                 <SelectValue />
@@ -563,6 +571,16 @@ function HomeBottomSection({ picks, activity, loading }: {
           )}
         </div>
       </div>
+
+      {/* Overview — the Daily Portfolio Digest (Feature A) + the Coverage
+          tables (Feature B). The default tab: the principal's at-a-glance
+          read of the whole book. */}
+      <TabsContent value="overview">
+        <div className="space-y-5">
+          {digest !== undefined && <PortfolioDigestCard digest={digest} />}
+          {coverage && <CoverageTable data={coverage} />}
+        </div>
+      </TabsContent>
 
       {/* Theses list */}
       <TabsContent value="theses">
@@ -810,17 +828,16 @@ interface DashboardClientProps {
   userId?: string;
   /**
    * Optional Daily Portfolio Digest (Feature A). When provided (even if null,
-   * which renders the empty state), a standalone PortfolioDigestCard section is
-   * mounted at the top of the left column. Omitting the prop entirely leaves the
-   * existing homepage layout untouched.
+   * which renders the empty state), the PortfolioDigestCard renders inside the
+   * Overview tab of the bottom tabbed section. Omitting the prop entirely hides
+   * the digest card.
    */
   digest?: LatestDigest | null;
   /**
-   * Coverage Table data (Feature B — docs/plans/PORTFOLIO_DIGEST.md). Optional:
-   * when present, the Active/Watching/Passed coverage section renders in the
-   * left column under the chart. Additive — omitting it leaves the dashboard
-   * exactly as before. The tabbed Snapshot/Activity/Theses homepage reorg is a
-   * held principal-review item, so this drops in as a standalone section.
+   * Coverage Table data (Feature B — docs/plans/PORTFOLIO_DIGEST.md). When
+   * present, the Active/Watching/Passed coverage tables render inside the
+   * Overview tab, beneath the digest brief. Additive — omitting it just drops
+   * the tables.
    */
   coverage?: CoverageData;
 }
@@ -1026,10 +1043,10 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
           {/* ══ LEFT column ══════════════════════════════════════════════════ */}
           <div className="flex-1 min-w-0 space-y-5">
 
-            {/* Daily Portfolio Digest — standalone, additive section. Only
-                rendered when the `digest` prop is passed (see DashboardClientProps);
-                the rest of the homepage layout is unchanged. */}
-            {digest !== undefined && <PortfolioDigestCard digest={digest} />}
+            {/* Layout: graph first (balance → chart → stat tiles), then the
+                tabbed section (Overview = brief + coverage tables / Activity /
+                Theses). The digest + coverage live inside the Overview tab —
+                see HomeBottomSection — not as standalone sections. */}
 
             {/* Portfolio header — two labeled figures, mirroring a broker
                 statement: "BALANCE" over total account equity, and
@@ -1444,14 +1461,6 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               </UITooltipProvider>
             )}
 
-            {/* Coverage Table (Feature B — docs/plans/PORTFOLIO_DIGEST.md).
-                Standalone, additive section: the principal's stock-overview
-                grouped by Thesis.status (Active/Watching/Passed). Mounted here
-                (not woven into the existing layout) because the tabbed
-                Snapshot/Activity/Theses homepage reorg is a held principal-
-                review item. Only renders when coverage data was supplied. */}
-            {coverage && <CoverageTable data={coverage} />}
-
             {/* Positions — mobile only. The desktop right rail is hidden
                 below lg, so render the trade list inline here (chart → stats →
                 trades → activity) so it's reachable on a phone. */}
@@ -1465,11 +1474,14 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               />
             </div>
 
-            {/* Theses + Activity tabbed section */}
+            {/* Overview / Activity / Theses tabbed section. Overview (default)
+                holds the digest brief + coverage tables. */}
             <HomeBottomSection
               picks={recentPicks}
               activity={data?.activityFeed ?? []}
               loading={loading}
+              digest={digest}
+              coverage={coverage}
             />
           </div>
 

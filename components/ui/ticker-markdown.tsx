@@ -6,7 +6,10 @@
  * with interactive TickerChip components (live price + hover card).
  */
 
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, {
+  type Components,
+  defaultUrlTransform,
+} from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -177,6 +180,23 @@ export function TickerMarkdown({ children, className }: TickerMarkdownProps) {
 // Any other scheme degrades to a plain underlined link, and a malformed token
 // degrades to readable text, so new reference kinds keep working for free.
 
+// The digest's typed reference schemes. react-markdown's default urlTransform
+// sanitizes any href whose protocol isn't in its safe list (http/https/mailto/
+// tel/relative), which silently strips these custom schemes down to an empty
+// href — so the DigestAnchor handler would see no scheme and the tokens would
+// render as inert text. We preserve exactly these schemes and defer to the
+// default transform (XSS protection against javascript: etc.) for everything
+// else.
+const DIGEST_REF_SCHEMES = new Set(["thesis", "analyst", "run"]);
+
+function digestUrlTransform(url: string): string {
+  const idx = url.indexOf(":");
+  if (idx > 0 && DIGEST_REF_SCHEMES.has(url.slice(0, idx).toLowerCase())) {
+    return url;
+  }
+  return defaultUrlTransform(url);
+}
+
 /** Split a typed href like "thesis:abc123" into its scheme + id. */
 function parseRefHref(href: string): { scheme: string; id: string } | null {
   const idx = href.indexOf(":");
@@ -286,6 +306,7 @@ export function DigestMarkdown({ children, className }: TickerMarkdownProps) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={digestProseComponents}
+        urlTransform={digestUrlTransform}
       >
         {children}
       </ReactMarkdown>
