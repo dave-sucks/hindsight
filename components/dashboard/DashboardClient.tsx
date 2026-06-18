@@ -53,6 +53,7 @@ import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
 import { ThesisRow, type ThesisRowData } from '@/components/ui/thesis-row';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
+import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
 import { ProposalActions } from '@/components/proposals/ProposalActions';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import { PortfolioDigestCard } from '@/components/domain/portfolio-digest-card';
@@ -208,7 +209,17 @@ function buildSpyCompareData(
 
 // ─── Home bottom section (Theses + Activity tabs) ────────────────────────────
 
-type ThesisTabFilter = 'all' | 'open' | 'passed';
+type ThesisTabFilter = 'ALL' | ThesisStatus;
+// Canonical display order for the thesis sub-filter tabs. Only statuses
+// actually present in the feed render a tab (see `presentStatuses`).
+const THESIS_STATUS_ORDER: ThesisStatus[] = [
+  'HOLDING',
+  'WATCHING',
+  'PASSED',
+  'RETIRED',
+  'PROMOTED',
+];
+const THESIS_PAGE_SIZE = 10;
 type ActivityTabFilter = 'all' | 'opens' | 'closes' | 'updates';
 
 function relTime(iso: string): string {
@@ -393,7 +404,10 @@ function pickToThesisRow(pick: RecentPick, candles?: StockCandle[]): ThesisRowDa
     entryPrice: pick.entryPrice,
     targetPrice: pick.targetPrice,
     stopLoss: pick.stopLoss,
-    createdAt: pick.position?.openedAt ?? pick.createdAt,
+    // True thesis-creation date — anchors the chart's "Watching" marker and
+    // the footer timestamp. (Previously overridden to the position's openedAt
+    // for holdings, which would have collapsed the Watching marker onto Entry.)
+    createdAt: pick.createdAt,
     currentPrice: pick.currentPrice,
     candles,
     companyName: pick.companyName,
@@ -511,41 +525,67 @@ function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
   coverage?: CoverageData;
 }) {
   const [tab, setTab] = useState<'overview' | 'theses' | 'activity'>('overview');
-  const [thesisFilter, setThesisFilter] = useState<ThesisTabFilter>('all');
+  const [thesisFilter, setThesisFilter] = useState<ThesisTabFilter>('ALL');
+  const [thesisPage, setThesisPage] = useState(0);
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
   const [showTour, setShowTour] = useState(false);
 
-  const filteredPicks = picks.filter((p) => {
-    if (thesisFilter === 'open') return p.position?.status === 'OPEN';
-    // P1-24: a pass is status=PASSED (direction is null on a pass).
-    if (thesisFilter === 'passed') return p.status === 'PASSED' || (!p.position && p.decision !== 'BUY');
-    return true;
-  });
+  // Sub-filter tabs: "All" + each thesis status actually present in the feed,
+  // in canonical order. Pure status names — no special-case logic. Labels come
+  // from the shared status display map so they never drift from the pills.
+  const thesisTabs = useMemo<{ key: ThesisTabFilter; label: string }[]>(() => {
+    const present = new Set(picks.map((p) => p.status));
+    return [
+      { key: 'ALL' as const, label: 'All' },
+      ...THESIS_STATUS_ORDER.filter((s) => present.has(s)).map((s) => ({
+        key: s,
+        label: getThesisStatusDisplay(s).label,
+      })),
+    ];
+  }, [picks]);
 
-  // Batched candles for the inline card charts. One request for every
-  // WATCHING/HOLDING ticker in the list (the only statuses that render a
-  // chart), ~40 days to cover the card's fixed 1M window. Cards without a
-  // chart never trigger a fetch. See docs/plans/THESIS_VISUALIZATION.md §4.
+  const filteredPicks = useMemo(
+    () => (thesisFilter === 'ALL' ? picks : picks.filter((p) => p.status === thesisFilter)),
+    [picks, thesisFilter],
+  );
+
+  // Paginate — only ~10 cards (and their charts) mount at once, so a long feed
+  // doesn't render dozens of charts. Reset to page 0 when the filter changes.
+  useEffect(() => {
+    setThesisPage(0);
+  }, [thesisFilter]);
+  const pageCount = Math.max(1, Math.ceil(filteredPicks.length / THESIS_PAGE_SIZE));
+  const safePage = Math.min(thesisPage, pageCount - 1);
+  const pagedPicks = useMemo(
+    () => filteredPicks.slice(safePage * THESIS_PAGE_SIZE, safePage * THESIS_PAGE_SIZE + THESIS_PAGE_SIZE),
+    [filteredPicks, safePage],
+  );
+
+  // Batched candles for the inline card charts — only the visible page's
+  // chartable rows (WATCHING/HOLDING). One request, ≤10 symbols, ~40 days for
+  // the fixed 1M window. See docs/plans/THESIS_VISUALIZATION.md §4.
   const chartTickers = useMemo(
     () =>
       [
         ...new Set(
-          picks
+          pagedPicks
             .filter((p) => p.status === 'WATCHING' || p.status === 'HOLDING')
             .map((p) => p.ticker),
         ),
       ].sort(),
-    [picks],
+    [pagedPicks],
   );
+  const chartKey = chartTickers.join(',');
   const [candlesByTicker, setCandlesByTicker] = useState<Record<string, StockCandle[]>>({});
   useEffect(() => {
-    if (chartTickers.length === 0) return;
+    if (!chartKey) return;
     let cancelled = false;
-    fetch(`/api/stocks/candles?symbols=${encodeURIComponent(chartTickers.join(','))}&days=40`)
+    fetch(`/api/stocks/candles?symbols=${encodeURIComponent(chartKey)}&days=40`)
       .then(async (r) => {
         if (!r.ok) return;
         const json = (await r.json()) as { candles: Record<string, StockCandle[]> };
-        if (!cancelled) setCandlesByTicker(json.candles);
+        // Merge so paging back doesn't refetch / flicker already-loaded names.
+        if (!cancelled) setCandlesByTicker((prev) => ({ ...prev, ...json.candles }));
       })
       .catch(() => {
         /* non-fatal — cards just render without a chart */
@@ -553,7 +593,7 @@ function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
     return () => {
       cancelled = true;
     };
-  }, [chartTickers]);
+  }, [chartKey]);
 
   const filteredActivity = activity.filter((a) => {
     if (activityFilter === 'opens') return a.type === 'OPENED';
@@ -580,21 +620,10 @@ function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
           <TabsTrigger value="theses">Theses</TabsTrigger>
         </TabsList>
 
-        {/* Filter dropdown — only the Activity/Theses lists are filterable;
-            the Overview tab (brief + coverage tables) has no filter. */}
+        {/* Filter — Activity uses the dropdown on the right; the Theses tab
+            uses the status mini-tabs row rendered below (inside the tab). */}
         <div>
-          {tab === 'overview' ? null : tab === 'theses' ? (
-            <Select value={thesisFilter} onValueChange={(v) => setThesisFilter(v as ThesisTabFilter)}>
-              <SelectTrigger className="h-8 w-32 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="open">Open</SelectItem>
-                <SelectItem value="passed">Passed</SelectItem>
-              </SelectContent>
-            </Select>
-          ) : (
+          {tab === 'overview' || tab === 'theses' ? null : (
             <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}>
               <SelectTrigger className="h-8 w-32 text-xs">
                 <SelectValue />
@@ -649,21 +678,71 @@ function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
               <ProductTourDialog open={showTour} onOpenChange={setShowTour} />
             </div>
           </div>
-        ) : filteredPicks.length === 0 ? (
-          <Card className="shadow-none">
-            <CardContent className="py-8 flex justify-center">
-              <p className="text-sm text-muted-foreground">No theses match this filter.</p>
-            </CardContent>
-          </Card>
         ) : (
           <div className="space-y-3">
-            {filteredPicks.map((pick) => (
-              <ThesisRow
-                key={pick.id}
-                thesis={pickToThesisRow(pick, candlesByTicker[pick.ticker.toUpperCase()])}
-                showTicker={true}
-              />
-            ))}
+            {/* Status sub-filter — mini-tabs (same pattern as the Trades page).
+                Pure status names; only statuses present in the feed appear. */}
+            <div className="flex w-fit items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
+              {thesisTabs.map((ft) => (
+                <button
+                  key={ft.key}
+                  onClick={() => setThesisFilter(ft.key)}
+                  className={cn(
+                    'px-2.5 py-1 text-xs rounded transition-colors',
+                    thesisFilter === ft.key
+                      ? 'bg-background text-foreground font-medium shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {ft.label}
+                </button>
+              ))}
+            </div>
+
+            {filteredPicks.length === 0 ? (
+              <Card className="shadow-none">
+                <CardContent className="py-8 flex justify-center">
+                  <p className="text-sm text-muted-foreground">No theses match this filter.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {pagedPicks.map((pick) => (
+                  <ThesisRow
+                    key={pick.id}
+                    thesis={pickToThesisRow(pick, candlesByTicker[pick.ticker.toUpperCase()])}
+                    showTicker={true}
+                  />
+                ))}
+                {pageCount > 1 && (
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {safePage * THESIS_PAGE_SIZE + 1}–
+                      {Math.min((safePage + 1) * THESIS_PAGE_SIZE, filteredPicks.length)} of{' '}
+                      {filteredPicks.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={safePage === 0}
+                        onClick={() => setThesisPage((p) => Math.max(0, p - 1))}
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={safePage >= pageCount - 1}
+                        onClick={() => setThesisPage((p) => Math.min(pageCount - 1, p + 1))}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </TabsContent>

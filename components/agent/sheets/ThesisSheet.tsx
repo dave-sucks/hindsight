@@ -1685,6 +1685,38 @@ export function ThesisSheetBody({
         </p>
       ) : null}
 
+      {/* ── Price chart (annotated) ───────────────────────────── */}
+      {/* Sits right below the main summary (Core Belief), above the triggers.
+          Full price line with horizontal Entry/Target/Stop lines + vertical
+          "Watching" (createdAt) / "Entry" (position.openedAt) markers. Candles
+          fetched on open; while in-flight we hold the gauge so the block
+          doesn't pop in. Falls back to the gauge when there are no candles.
+          See docs/plans/THESIS_VISUALIZATION.md. */}
+      {!isPass &&
+        (candles && candles.length >= 2 ? (
+          <ThesisChart
+            ticker={ticker}
+            candles={candles}
+            direction={direction === "SHORT" ? "SHORT" : "LONG"}
+            entryPrice={entry_price ?? null}
+            avgCost={position?.avgCost ?? null}
+            targetPrice={target_price ?? null}
+            stopLoss={stop_loss ?? null}
+            current={quote?.currentPrice ?? null}
+            addedAt={state?.createdAt ?? null}
+            enteredAt={position?.openedAt ?? null}
+            variant="full"
+          />
+        ) : showLevels ? (
+          <PriceTargetsBlock
+            entry={entry_price!}
+            target={target_price ?? null}
+            stop={stop_loss ?? null}
+            current={quote?.currentPrice ?? null}
+            direction={direction === "SHORT" ? "SHORT" : "LONG"}
+          />
+        ) : null)}
+
       {/* ── Triggers (moved up — they're the standing opinion in action) ── */}
       {thesis_id ? (
         <ThesisTriggersSection thesisId={thesis_id} data={state} />
@@ -1747,37 +1779,6 @@ export function ThesisSheetBody({
           </div>
         </Card>
       ) : null}
-
-      {/* ── Price chart (annotated) ───────────────────────────── */}
-      {/* Full price line with horizontal Entry/Target/Stop lines + vertical
-          "Watching" (createdAt) / "Entry" (position.openedAt) markers.
-          Candles fetched on open; while in-flight we hold the gauge so the
-          block doesn't pop in. Falls back to the gauge when there are no
-          candles. See docs/plans/THESIS_VISUALIZATION.md. */}
-      {!isPass &&
-        (candles && candles.length >= 2 ? (
-          <ThesisChart
-            ticker={ticker}
-            candles={candles}
-            direction={direction === "SHORT" ? "SHORT" : "LONG"}
-            entryPrice={entry_price ?? null}
-            avgCost={position?.avgCost ?? null}
-            targetPrice={target_price ?? null}
-            stopLoss={stop_loss ?? null}
-            current={quote?.currentPrice ?? null}
-            addedAt={state?.createdAt ?? null}
-            enteredAt={position?.openedAt ?? null}
-            variant="full"
-          />
-        ) : showLevels ? (
-          <PriceTargetsBlock
-            entry={entry_price!}
-            target={target_price ?? null}
-            stop={stop_loss ?? null}
-            current={quote?.currentPrice ?? null}
-            direction={direction === "SHORT" ? "SHORT" : "LONG"}
-          />
-        ) : null)}
 
       {/* ── Analyst Consensus widget ──────────────────────────── */}
       {/* Buy/Hold/Sell distribution + Low/Avg/Median/High price target

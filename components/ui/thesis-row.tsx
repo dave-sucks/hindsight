@@ -328,6 +328,8 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
               targetPrice={t.targetPrice ?? null}
               stopLoss={t.stopLoss ?? null}
               current={t.currentPrice ?? null}
+              addedAt={t.createdAt ?? null}
+              enteredAt={t.position?.openedAt ?? null}
               variant="card"
             />
           </div>

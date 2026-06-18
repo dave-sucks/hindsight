@@ -80,15 +80,13 @@ export function ThesisChart({
     stopLoss != null ? { price: stopLoss, color: STOP, label: 'Stop', dashed: true } : null,
   ].filter((l): l is NonNullable<typeof l> => l !== null);
 
-  // Vertical markers only on the full variant — the card's fixed short window
-  // usually starts after these events, so they'd just be dropped off-range.
-  const verticalMarkers =
-    variant === 'full'
-      ? [
-          addedAt ? { date: addedAt.slice(0, 10), color: WATCH, label: 'Watching' } : null,
-          enteredAt ? { date: enteredAt.slice(0, 10), color: ENTRY, label: 'Entry' } : null,
-        ].filter((m): m is NonNullable<typeof m> => m !== null)
-      : undefined;
+  // Vertical markers on BOTH variants — StockPriceChart drops any marker whose
+  // date falls before the visible window, so on the card's fixed window they
+  // simply appear only when the watch/entry date lands inside it.
+  const verticalMarkers = [
+    addedAt ? { date: addedAt.slice(0, 10), color: WATCH, label: 'Watching' } : null,
+    enteredAt ? { date: enteredAt.slice(0, 10), color: ENTRY, label: 'Entry' } : null,
+  ].filter((m): m is NonNullable<typeof m> => m !== null);
 
   return (
     <StockPriceChart
