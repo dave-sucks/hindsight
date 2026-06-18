@@ -12,6 +12,7 @@ import {
   cumulativeContributions,
   contributedAsOf,
   depositAdjustedPnlCurve,
+  alignFundingToEquity,
   type FundingEvent,
 } from "./contributions";
 
@@ -116,5 +117,69 @@ describe("depositAdjustedPnlCurve", () => {
   it("equals the raw equity curve when there are no funding events (paper)", () => {
     const noEvents = depositAdjustedPnlCurve(LIVE_EQUITY, []);
     expect(noEvents.map((p) => p.value)).toEqual(LIVE_EQUITY.map((p) => p.equity));
+  });
+});
+
+// Real-account regression: Alpaca dated the $40k CSD on 2026-05-21 but the
+// portfolio-history equity didn't reflect it until 2026-05-22 (settlement lag).
+// The un-aligned math produced equity(48k) − contributed(88k) = −$40k on 05-21,
+// a single outlier that wrecked the chart's auto-scale. (Mirrors the live data
+// pulled 2026-06-18: deposits 05-14 $8k, 05-15 $40k, 05-21 $40k.)
+const LAG_EVENTS: FundingEvent[] = [
+  { date: "2026-05-14", amount: 8_000 },
+  { date: "2026-05-15", amount: 40_000 },
+  { date: "2026-05-21", amount: 40_000 }, // CSD transaction date
+];
+const LAG_EQUITY = [
+  { date: "2026-05-19", equity: 48_000 },
+  { date: "2026-05-20", equity: 48_000 },
+  { date: "2026-05-21", equity: 48_000 }, // deposit not settled yet
+  { date: "2026-05-22", equity: 88_000 }, // $40k lands here
+  { date: "2026-05-30", equity: 88_529.32 },
+  { date: "2026-06-18", equity: 90_319.37 },
+];
+
+describe("alignFundingToEquity", () => {
+  it("snaps a lagged deposit forward to the equity settlement date", () => {
+    const aligned = alignFundingToEquity(LAG_EQUITY, LAG_EVENTS);
+    const may21 = aligned.find((e) => e.amount === 40_000 && e.date === "2026-05-22");
+    expect(may21).toBeTruthy(); // 05-21 CSD snapped to 05-22
+  });
+
+  it("leaves an already-settled-same-day deposit on its own date", () => {
+    // LIVE_EQUITY steps up on the deposit's own date (05-21) — no shift.
+    const aligned = alignFundingToEquity(LIVE_EQUITY, LIVE_EVENTS);
+    expect(aligned.find((e) => e.amount === 80_000)!.date).toBe("2026-05-21");
+  });
+
+  it("leaves withdrawals and the empty case untouched", () => {
+    const withdrawal: FundingEvent[] = [{ date: "2026-05-21", amount: -5_000 }];
+    expect(alignFundingToEquity(LAG_EQUITY, withdrawal)).toEqual(withdrawal);
+    expect(alignFundingToEquity(LAG_EQUITY, [])).toEqual([]);
+    expect(alignFundingToEquity([], LAG_EVENTS)).toEqual(LAG_EVENTS);
+  });
+
+  it("does not change the net contributed total (timing only)", () => {
+    const aligned = alignFundingToEquity(LAG_EQUITY, LAG_EVENTS);
+    expect(netContributedTotal(aligned)).toBe(netContributedTotal(LAG_EVENTS));
+  });
+});
+
+describe("depositAdjustedPnlCurve — settlement-lag artifact", () => {
+  const curve = depositAdjustedPnlCurve(LAG_EQUITY, LAG_EVENTS);
+
+  it("produces NO −$40k spike on the deposit's transaction date", () => {
+    const may21 = curve.find((p) => p.date === "2026-05-21")!.value;
+    expect(may21).toBeCloseTo(0, 2); // was −40,000 before the fix
+  });
+
+  it("keeps the whole curve in the true trading-P&L band (no huge outlier)", () => {
+    const values = curve.map((p) => p.value);
+    expect(Math.min(...values)).toBeGreaterThan(-1_000);
+    expect(Math.max(...values)).toBeLessThan(3_000);
+  });
+
+  it("still reports correct lifetime P&L at the end (equity − $88k)", () => {
+    expect(curve[curve.length - 1].value).toBeCloseTo(2_319.37, 2);
   });
 });
