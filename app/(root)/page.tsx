@@ -1,6 +1,7 @@
 import DashboardClient from "@/components/dashboard/DashboardClient";
 import { getDashboardData } from "@/lib/actions/portfolio.actions";
 import type { DashboardData } from "@/lib/actions/portfolio.actions";
+import { getCoverageData } from "@/lib/actions/coverage.actions";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { getLatestDigest } from "@/lib/actions/digest.actions";
@@ -37,9 +38,12 @@ const EMPTY_DASHBOARD: DashboardData = {
 export default async function Home() {
   const environment = await getCurrentEnvironment();
 
-  const [data, digest, supabase] = await Promise.all([
+  const [data, digest, coverage, supabase] = await Promise.all([
     getDashboardData(environment).catch(() => EMPTY_DASHBOARD),
     getLatestDigest(environment).catch(() => null),
+    // Coverage Table (Feature B). Read-only, additive — failure degrades to
+    // empty groups so the rest of the dashboard is unaffected.
+    getCoverageData(environment).catch(() => ({ active: [], watching: [], passed: [] })),
     createClient(),
   ]);
   const {
@@ -51,6 +55,7 @@ export default async function Home() {
       data={data}
       userId={user?.id}
       digest={digest}
+      coverage={coverage}
     />
   );
 }
