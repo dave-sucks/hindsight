@@ -47,11 +47,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
+import CoverageTable from '@/components/dashboard/CoverageTable';
+import type { CoverageData } from '@/lib/actions/coverage.actions';
 import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
 import { ThesisRow, type ThesisRowData } from '@/components/ui/thesis-row';
 import { ProposalActions } from '@/components/proposals/ProposalActions';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
+import { PortfolioDigestCard } from '@/components/domain/portfolio-digest-card';
+import type { LatestDigest } from '@/lib/actions/digest.actions';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
 import { Button } from '@/components/ui/button';
@@ -804,9 +808,24 @@ function PositionsPanel({
 interface DashboardClientProps {
   data?: DashboardData;
   userId?: string;
+  /**
+   * Optional Daily Portfolio Digest (Feature A). When provided (even if null,
+   * which renders the empty state), a standalone PortfolioDigestCard section is
+   * mounted at the top of the left column. Omitting the prop entirely leaves the
+   * existing homepage layout untouched.
+   */
+  digest?: LatestDigest | null;
+  /**
+   * Coverage Table data (Feature B — docs/plans/PORTFOLIO_DIGEST.md). Optional:
+   * when present, the Active/Watching/Passed coverage section renders in the
+   * left column under the chart. Additive — omitting it leaves the dashboard
+   * exactly as before. The tabbed Snapshot/Activity/Theses homepage reorg is a
+   * held principal-review item, so this drops in as a standalone section.
+   */
+  coverage?: CoverageData;
 }
 
-export default function DashboardClient({ data, userId }: DashboardClientProps) {
+export default function DashboardClient({ data, userId, digest, coverage }: DashboardClientProps) {
   const [range, setRange] = useState<Range>('1M');
   const [chartView, setChartView] = useState<ChartView>('portfolio');
   const [displayMode, setDisplayMode] = useState<DisplayMode>('dollar');
@@ -1006,6 +1025,11 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
 
           {/* ══ LEFT column ══════════════════════════════════════════════════ */}
           <div className="flex-1 min-w-0 space-y-5">
+
+            {/* Daily Portfolio Digest — standalone, additive section. Only
+                rendered when the `digest` prop is passed (see DashboardClientProps);
+                the rest of the homepage layout is unchanged. */}
+            {digest !== undefined && <PortfolioDigestCard digest={digest} />}
 
             {/* Portfolio header — two labeled figures, mirroring a broker
                 statement: "BALANCE" over total account equity, and
@@ -1419,6 +1443,14 @@ export default function DashboardClient({ data, userId }: DashboardClientProps) 
                 </div>
               </UITooltipProvider>
             )}
+
+            {/* Coverage Table (Feature B — docs/plans/PORTFOLIO_DIGEST.md).
+                Standalone, additive section: the principal's stock-overview
+                grouped by Thesis.status (Active/Watching/Passed). Mounted here
+                (not woven into the existing layout) because the tabbed
+                Snapshot/Activity/Theses homepage reorg is a held principal-
+                review item. Only renders when coverage data was supplied. */}
+            {coverage && <CoverageTable data={coverage} />}
 
             {/* Positions — mobile only. The desktop right rail is hidden
                 below lg, so render the trade list inline here (chart → stats →

@@ -33,7 +33,7 @@ export interface RowMenuItem {
 // watchlist rows, the "Add Stock" prompt. Keeping every variant on this shell
 // is what guarantees they stay visually identical (regression-proof).
 
-interface TradeRowShellProps {
+export interface TradeRowShellProps {
   /** Where the row links to. If omitted the row is a static <div>. */
   href?: string;
   /** Logo + (optional) dot region. */
@@ -54,7 +54,10 @@ interface TradeRowShellProps {
   onClick?: () => void;
 }
 
-function TradeRowShell({
+// Exported so other trade-shaped surfaces (e.g. the Coverage Table) compose
+// the SAME shell with status-specific slots instead of inventing a new row.
+// This is the standing "ONE trade-row design everywhere" rule made reusable.
+export function TradeRowShell({
   href,
   leading,
   primary,
