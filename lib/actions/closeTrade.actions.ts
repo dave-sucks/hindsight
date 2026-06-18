@@ -184,6 +184,13 @@ export async function closeOpenPosition(
         alpacaOrderId: null,
         idempotencyKey,
         intent: "CLOSE",
+        // Carry the originating decision so an async / proposal-approved fill
+        // (resolved later by reconcile-orders) stamps the REAL reason on
+        // Position.closeReason instead of "RECONCILED_FILL". The synchronous
+        // fill branch (4b) sets Position.closeReason directly; this is the
+        // belt for every path that doesn't fill within the 5s poll.
+        closeReason: reason,
+        closeSource: source,
         createdAt: placedAt,
       },
     });
@@ -476,6 +483,12 @@ export async function closeOpenPosition(
       runId,
     });
   }
+
+  // 4d. Void any stale sell proposals on this now-closed position. The agent
+  //     may have proposed a stop-close (Order→AWAITING_APPROVAL) that this
+  //     direct fill just made moot. Fail-soft; never blocks the committed fill.
+  const { cancelOrphanedSellProposals } = await import("@/lib/proposals/cancel-sibling-proposals");
+  await cancelOrphanedSellProposals(positionId, order.id);
 
   // 5. Post-close side effects (non-fatal).
   //

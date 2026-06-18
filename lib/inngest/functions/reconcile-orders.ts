@@ -34,6 +34,7 @@ import {
   type AlpacaOrder,
 } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { cancelOrphanedSellProposals } from "@/lib/proposals/cancel-sibling-proposals";
 
 const FIVE_MIN_CRON = "TZ=America/New_York */5 4-19 * * 1-5";
 
@@ -48,6 +49,8 @@ interface PendingOrderRow {
   alpacaOrderId: string | null;
   idempotencyKey: string | null;
   intent: string | null;
+  closeReason: string | null;
+  closeSource: string | null;
 }
 
 export const reconcileOrders = inngest.createFunction(
@@ -80,6 +83,8 @@ export const reconcileOrders = inngest.createFunction(
           alpacaOrderId: true,
           idempotencyKey: true,
           intent: true,
+          closeReason: true,
+          closeSource: true,
         },
       });
     });
@@ -162,7 +167,10 @@ export const reconcileOrders = inngest.createFunction(
                 : new Date();
 
               const handled = await applyFillByIntent(order, fillPrice, fillQty, filledAt);
-              if (handled) filled++;
+              if (handled) {
+                filled++;
+                await maybeCancelOrphanedSellProposals(order);
+              }
               return;
             }
 
@@ -187,7 +195,10 @@ export const reconcileOrders = inngest.createFunction(
                   partialQty,
                   partialFilledAt,
                 );
-                if (handled) filled++;
+                if (handled) {
+                  filled++;
+                  await maybeCancelOrphanedSellProposals(order);
+                }
                 return;
               }
               const finalStatus = status === "rejected" ? "REJECTED" : "CANCELLED";
@@ -221,6 +232,18 @@ export const reconcileOrders = inngest.createFunction(
     };
   },
 );
+
+/**
+ * After a reconciled CLOSE fill, void any stale sell proposals the agent
+ * staged on the same position (a daily-run stop-close proposal that this fill
+ * just made moot). Only for full CLOSE intents — a PARTIAL_CLOSE leaves the
+ * position open, where other sell proposals can still be legitimate. Fail-soft.
+ */
+async function maybeCancelOrphanedSellProposals(order: PendingOrderRow): Promise<void> {
+  const intent = order.intent ?? (order.side === "BUY" ? "OPEN" : "CLOSE");
+  if (intent !== "CLOSE") return;
+  await cancelOrphanedSellProposals(order.positionId, order.id);
+}
 
 /**
  * Apply a FILLED Alpaca order to the linked Position based on Order.intent.
@@ -295,16 +318,24 @@ async function applyFillByIntent(
             realizedPnl,
             outcome,
             closedAt: filledAt,
-            // Audit fields — pre-2026-05-19 this branch left closeReason
-            // and closeSource null, which is what caused the 4 mystery
-            // closes (AMZN/TSM/NVDA/AMD) on 2026-05-18 to have blank
-            // attribution. Reconcile fills always trace back to an
-            // earlier intent="CLOSE" Order submitted by the agent (via
-            // close_position) or the user (via /api/trades/.../close).
-            // We mark this path "reconcile" to distinguish from
-            // first-touch closes that set closeSource themselves.
-            closeReason: position.closeReason ?? `RECONCILED_FILL ($${fillPrice.toFixed(2)})`,
-            closeSource: position.closeSource ?? "reconcile",
+            // Audit fields. Precedence: an already-stamped Position value
+            // (synchronous-fill close wrote it) wins; otherwise the
+            // originating Order carries the real reason/source — every
+            // intent="CLOSE" order is stamped at creation by
+            // closeOpenPosition (the agent via close_position/manage_position,
+            // the price-monitor trailing-stop cron, or a manual UI close),
+            // and that survives the proposal→approve seam. RECONCILED_FILL /
+            // "reconcile" is the LAST resort — reserved for a true orphan
+            // fill with no decision row behind it (e.g. the AMZN/TSM/NVDA/AMD
+            // mystery closes on 2026-05-18). A real stop/target exit no
+            // longer masquerades as a reconciliation artifact (the bug that
+            // mislabeled Momentum Breakout's SMTC/MTSI/LRCX/MRVL 2026-06-17
+            // and dropped them from win-rate/payoff/expectancy).
+            closeReason:
+              position.closeReason ??
+              order.closeReason ??
+              `RECONCILED_FILL ($${fillPrice.toFixed(2)})`,
+            closeSource: position.closeSource ?? order.closeSource ?? "reconcile",
           },
         });
         await tx.positionEvent.create({

@@ -928,6 +928,18 @@ model Order {
   // a partial index added in the migration SQL.
   idempotencyKey    String?        @unique
   intent            String? // "OPEN" | "CLOSE" | "PARTIAL_CLOSE" | "ADD" | "CANCEL"
+  // Originating close decision — carried on every intent="CLOSE" order so an
+  // ASYNC fill (the order didn't fill inside closeOpenPosition's 5s poll, or
+  // it went through the proposal→approve seam) can stamp the REAL reason on
+  // Position.closeReason instead of the generic "RECONCILED_FILL ($price)".
+  // closeReason mirrors the closeOpenPosition `reason` arg
+  // ("TARGET" | "STOP" | "TIME" | "MANUAL"); closeSource mirrors the
+  // CloseSource ("agent" | "price_monitor" | "user"). Both null on non-close
+  // intents. reconcile-orders falls back to RECONCILED_FILL / "reconcile" ONLY
+  // when the originating order carries neither — i.e. a true orphan fill with
+  // no decision row behind it. See lib/inngest/functions/reconcile-orders.ts.
+  closeReason       String? // "TARGET" | "STOP" | "TIME" | "MANUAL" (close intents only)
+  closeSource       String? // "agent" | "price_monitor" | "user" (close intents only)
   alpacaSubmittedAt DateTime? // when we attempted the Alpaca call
   alpacaConfirmedAt DateTime? // when we got a non-error response back
   // Trade-as-Proposal — populated when status='AWAITING_APPROVAL'.

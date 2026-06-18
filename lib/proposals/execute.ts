@@ -260,7 +260,10 @@ export async function approveProposal(
       analystId: order.position.analystId,
       ticker: order.position.symbol,
       positionId: order.position.id,
-      closeReason: "MANUAL",
+      // Use the originating decision's reason (STOP/TARGET/etc.) carried on the
+      // Order, not a blanket MANUAL — keeps the thesis CLOSED audit row aligned
+      // with the Position.closeReason that reconcile-orders stamps on fill.
+      closeReason: order.closeReason ?? "MANUAL",
       rationale: order.rationale,
     });
   }
