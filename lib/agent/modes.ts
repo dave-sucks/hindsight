@@ -16,6 +16,10 @@ export interface ModelOption {
 
 export const RESEARCH_MODEL_OPTIONS: ModelOption[] = [
   { label: "GPT-5.5", value: "gpt-5.5", provider: "openai" },
+  // 2026-06-15 — gpt-5.4: ~½ the price of 5.5 (input $2.50 vs $5, output $15
+  // vs $30/M), prior frontier model. Cost-optimized default for the agent
+  // fleet. See docs/plans/OPENAI_COST_REDUCTION.md.
+  { label: "GPT-5.4", value: "gpt-5.4", provider: "openai" },
   { label: "GPT-4o", value: "gpt-4o", provider: "openai" },
   { label: "Claude Sonnet 4.6", value: "claude-sonnet-4-6", provider: "anthropic" },
 ];
@@ -115,7 +119,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     // entirely). The cron's abortSignal in morning-research.ts now reads
     // (maxDuration - 30) * 1000 = 770s, mirroring the pattern tactical +
     // discovery already use.
-    model: "gpt-5.5",
+    // 2026-06-15 — gpt-5.5 → gpt-5.4 cost swap (~½ price, near-frontier).
+    // docs/plans/OPENAI_COST_REDUCTION.md #1. Revert to gpt-5.5 if analyst
+    // quality regresses on the next morning run.
+    model: "gpt-5.4",
     provider: "openai",
     // Bumped 50 → 65 on 2026-04-24. A complete 6-stage run has roughly:
     //   Stage 1: 2–3 steps (brief + signals)
@@ -255,7 +262,8 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     // maxSteps raised 25 → 45 to support deeper research per candidate.
     // Discovery is weekly and unattended; cost difference per run is
     // small and analyst-quality difference should be meaningful.
-    model: "gpt-5.5",
+    // 2026-06-15 — gpt-5.5 → gpt-5.4 cost swap (~½ price). docs/plans/OPENAI_COST_REDUCTION.md #1.
+    model: "gpt-5.4",
     provider: "openai",
     maxSteps: 45,
     toolAllowlist: [
@@ -343,7 +351,8 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     // 800s ceiling. The motivation is consistency — the daily-run agent
     // is now gpt-5.5, so the tactical follow-up should reason in the
     // same model.
-    model: "gpt-5.5",
+    // 2026-06-15 — gpt-5.5 → gpt-5.4 cost swap (~½ price). docs/plans/OPENAI_COST_REDUCTION.md #1.
+    model: "gpt-5.4",
     provider: "openai",
     maxSteps: 15,
     toolAllowlist: [

@@ -479,7 +479,10 @@ Rules:
     // Layer 1
     try {
       const result = await generateObject({
-        model: openai("gpt-4o"),
+        // 2026-06-15 — gpt-4o → gpt-4o-mini cost swap. Briefing is a post-run
+        // summary of structured data, not a trading decision; mini is plenty
+        // and Layers 2/3 still backstop it. docs/plans/OPENAI_COST_REDUCTION.md #3.
+        model: openai("gpt-4o-mini"),
         schema: briefingSchema,
         prompt: briefingPrompt,
       });
@@ -496,7 +499,8 @@ Rules:
     if (!object) {
       try {
         const textResult = await generateText({
-          model: openai("gpt-4o"),
+          // 2026-06-15 — gpt-4o → gpt-4o-mini cost swap (Layer-2 fallback). docs/plans/OPENAI_COST_REDUCTION.md #3.
+          model: openai("gpt-4o-mini"),
           prompt: `${briefingPrompt}\n\n## Output Format\nRespond with ONLY a valid JSON object matching this exact shape (no markdown, no prose, no code fences):\n{\n  "narrative": "<400-600 word markdown briefing>",\n  "strategyNotes": "<100-200 word strategy assessment>",\n  "marketPosture": "<2-3 word stance>",\n  "watchTomorrow": [{"symbol":"TICKER","trigger":"...","suggestedAction":"...","priority":"NORMAL"}],\n  "unresolvedItems": [{"item":"...","impact":"...","affectedPositions":[]}],\n  "selfCorrections": [{"observation":"...","adjustment":"..."}]\n}\n\nUse empty arrays [] for any sections that don't apply. All fields are required.`,
         });
         // Strip code fences if present

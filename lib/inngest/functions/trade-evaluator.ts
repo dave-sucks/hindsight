@@ -96,7 +96,9 @@ export const evaluateTrade = inngest.createFunction(
       })();
 
       const { text } = await generateText({
-        model: openai("gpt-4o"),
+        // 2026-06-15 — gpt-4o → gpt-4o-mini cost swap. Post-trade post-mortem
+        // is a summary, not a decision. docs/plans/OPENAI_COST_REDUCTION.md #3.
+        model: openai("gpt-4o-mini"),
         system:
           "You are a trading coach evaluating closed paper trades. Be honest and constructive. Focus on what the analyst got right, what they missed, and what they should learn. " +
           "When the thesis included a structured belief (core_belief + key_assumptions + invalidation_conditions), grade against the BELIEF, not just the trade rationale: did each key_assumption actually hold through the hold period? Did any invalidation_condition come true? If the trade closed at a profit but the belief was already broken, name that — \"right outcome, wrong reasons\" is still a learning. " +
