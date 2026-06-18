@@ -229,8 +229,11 @@ export async function buildDigestFacts(
   });
 
   // ── Capacity (sum of maxOpenPositions across enabled analysts) ───────────────
+  // Scope to this book's analysts (AgentConfig.tradingEnvironment) — otherwise
+  // the PAPER digest's "N of X slots" denominator counts LIVE analysts' slots
+  // (and vice versa), the same cross-environment leak as the thesis queries.
   const enabledAnalysts = await prisma.agentConfig.findMany({
-    where: { accountId, enabled: true },
+    where: { accountId, enabled: true, tradingEnvironment: environment },
     select: { maxOpenPositions: true },
   });
   const capacity = enabledAnalysts.reduce(
