@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useTransition } from "react";
+import { useState, useMemo, useTransition, type ReactNode } from "react";
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
 import {
   ChartContainer,
@@ -68,7 +68,6 @@ import type {
 import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
 import { ThesisMiniCard } from "@/components/domain/thesis-mini-card";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
@@ -180,76 +179,6 @@ function FloatingEditorComposer({ analystId }: { analystId: string }) {
   );
 }
 
-// ── Runs tab ─────────────────────────────────────────────────────────────────
-
-const MODE_LABEL: Record<string, string> = {
-  MORNING_PLAN: "Morning",
-  INTRADAY_TACTICAL: "Tactical",
-  DISCOVERY: "Discovery",
-  THESIS_WRITER: "Thesis Research",
-  EOD_REFLECTIVE: "EOD Recap",
-};
-
-function AnalystRunsTab({ runs }: { runs: AnalystDetail["recentRuns"] }) {
-  if (runs.length === 0) {
-    return (
-      <div className="w-full mx-auto px-4 py-6">
-        <div className="rounded-xl border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">No runs yet for this analyst.</p>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="w-full mx-auto px-4 py-6 space-y-3">
-      {runs.map((r) => {
-        // Title is mode-aware: "Morning run", "Tactical run", "Discovery run",
-        // etc. (the old card showed "Run" for everything because `mode` wasn't
-        // fetched). New theses minted this run; morning runs review existing
-        // names and mint 0, so the count is only shown when there's something.
-        const modeLabel = r.mode ? MODE_LABEL[r.mode] ?? r.mode : "Research";
-        const newTheses = r.theses.length;
-        const tradeCount = r.theses.filter((t) => t.trade != null).length;
-        const durationSec =
-          r.completedAt != null
-            ? Math.max(0, Math.round((new Date(r.completedAt).getTime() - new Date(r.startedAt).getTime()) / 1000))
-            : null;
-        const dotClass =
-          r.status === "RUNNING"
-            ? "bg-amber-500 animate-pulse"
-            : r.status === "FAILED"
-              ? "bg-red-500"
-              : null;
-        const counts = [
-          newTheses > 0 ? `${newTheses} new ${newTheses === 1 ? "thesis" : "theses"}` : null,
-          tradeCount > 0 ? `${tradeCount} ${tradeCount === 1 ? "trade" : "trades"}` : null,
-        ].filter(Boolean);
-        return (
-          <Link key={r.id} href={`/runs/${r.id}`} className="block">
-            <div className="rounded-xl border bg-background p-3 hover:bg-accent/40 transition-colors">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  {dotClass && <span className={cn("h-2 w-2 rounded-full shrink-0", dotClass)} />}
-                  <span className="text-sm font-medium truncate">{modeLabel} run</span>
-                  {counts.length > 0 && (
-                    <span className="text-xs text-muted-foreground truncate">
-                      {counts.join(" · ")}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums shrink-0">
-                  <span>{formatDateLabel(new Date(r.startedAt).toISOString())}</span>
-                  {durationSec != null && <span>· {durationSec}s</span>}
-                </div>
-              </div>
-            </div>
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
-
 // ── Theses tab + Snapshot (both are thesis grids) ────────────────────────────
 
 type ThesisStatusFilter = "all" | "holding" | "watching" | "passed" | "retired";
@@ -306,14 +235,17 @@ export default function AnalystDetailClient({
   initialWatchlist = [],
   livePrices = {},
   theses = [],
+  runCards = [],
 }: {
   detail: AnalystDetail;
   hasRunning: boolean;
   initialWatchlist?: WatchlistItemView[];
   livePrices?: Record<string, number>;
   theses?: ThesisCardData[];
+  /** Server-rendered RunCard elements — the SAME card /runs uses. */
+  runCards?: ReactNode[];
 }) {
-  const { config: rawConfig, stats, recentTrades, recentRuns } = detail;
+  const { config: rawConfig, stats, recentTrades } = detail;
 
   // Defensive defaults for array fields that may be missing from older data
   const config = useMemo(() => ({
@@ -635,7 +567,15 @@ export default function AnalystDetailClient({
               />
             </TabsContent>
             <TabsContent value={1}>
-              <AnalystRunsTab runs={recentRuns} />
+              {runCards.length === 0 ? (
+                <div className="w-full mx-auto px-4 py-6">
+                  <div className="rounded-xl border bg-card p-8 text-center">
+                    <p className="text-sm text-muted-foreground">No runs yet for this analyst.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full mx-auto px-4 py-6 space-y-3">{runCards}</div>
+              )}
             </TabsContent>
             <TabsContent value={2}>
               <div className="px-4 pt-4">
