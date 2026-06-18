@@ -5,9 +5,10 @@
  * (Feature A; see docs/plans/PORTFOLIO_DIGEST.md).
  *
  * The digest is written after close by the `portfolio-digest` Inngest cron,
- * one row per (accountId, date) in the PortfolioDigest table. This action
- * surfaces the most-recent row for the current user's account so the homepage
- * can render the narrative. It is strictly read-only.
+ * one row per (accountId, environment, date) in the PortfolioDigest table. This
+ * action surfaces the most-recent row for the current user's account + the
+ * requested book (PAPER vs LIVE) so the homepage renders the right narrative.
+ * It is strictly read-only.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -26,18 +27,17 @@ export interface LatestDigest {
 }
 
 /**
- * Returns the most-recent PortfolioDigest for the current user's account,
- * ordered by trading date desc. Returns null when there is no signed-in user,
- * no account, or no digest has been generated yet.
+ * Returns the most-recent PortfolioDigest for the current user's account and the
+ * requested book (`environment`), ordered by trading date desc. Returns null
+ * when there is no signed-in user, no account, or no digest has been generated
+ * yet for that environment.
  *
- * `environment` is accepted for call-site symmetry with the rest of the
- * portfolio surface and to keep room for an environment-scoped digest later;
- * the PortfolioDigest row is currently keyed on (accountId, date) only, so it
- * does not change the query today.
+ * PAPER and LIVE share one accountId; environment is the discriminator (same as
+ * Position/ResearchRun). Filtering by it is what keeps a PAPER digest from
+ * rendering under the LIVE book.
  */
 export async function getLatestDigest(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _environment: AlpacaEnvironment = "PAPER",
+  environment: AlpacaEnvironment = "PAPER",
 ): Promise<LatestDigest | null> {
   const supabase = await createClient();
   const {
@@ -49,7 +49,7 @@ export async function getLatestDigest(
   if (!accountId) return null;
 
   const row = await prisma.portfolioDigest.findFirst({
-    where: { accountId },
+    where: { accountId, environment },
     orderBy: { date: "desc" },
     select: { id: true, date: true, narrative: true, model: true },
   });

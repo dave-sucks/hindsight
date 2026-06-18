@@ -1119,16 +1119,18 @@ model AccuracyReport {
 // Additive — nothing consumes these rows yet (the agent rewire is a separate
 // reviewed PR).
 model PortfolioDigest {
-  id        String   @id @default(cuid())
-  accountId String // account-level, NOT per-analyst
-  date      DateTime // the trading day (ET)
-  narrative String // markdown prose with inline reference tokens
-  facts     Json // the deterministic facts blob (DigestFacts)
-  model     String? // which LLM wrote the narrative
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  accountId   String // account-level, NOT per-analyst
+  environment String   @default("PAPER") // "PAPER" | "LIVE" — PAPER and LIVE share one accountId
+  date        DateTime // the trading day (ET)
+  narrative   String // markdown prose with inline reference tokens
+  facts       Json // the deterministic facts blob (DigestFacts)
+  model       String? // which LLM wrote the narrative
+  createdAt   DateTime @default(now())
 
-  @@unique([accountId, date])
+  @@unique([accountId, environment, date])
   @@index([accountId])
+  @@index([environment])
   @@index([date])
 }
 

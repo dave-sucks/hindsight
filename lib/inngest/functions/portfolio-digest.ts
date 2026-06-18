@@ -4,9 +4,12 @@
  *
  * Runs after market close + after the last tactical settles (8:00 PM ET,
  * Mon-Fri). For each account with activity:
- *   1. buildDigestFacts(accountId, date) — the deterministic facts blob
+ *   1. buildDigestFacts(accountId, date, environment) — the facts blob
  *   2. writeDigestNarrative(facts)       — cheap-model markdown narration
- *   3. upsert a PortfolioDigest row, idempotent on (accountId, date)
+ *   3. upsert a PortfolioDigest row, idempotent on (accountId, environment, date)
+ *
+ * The unit of work is an (account, environment) PAIR — PAPER and LIVE share one
+ * accountId, so each environment that had activity today gets its own row.
  *
  * ADDITIVE: nothing consumes these rows yet (the agent rewire is a separate
  * reviewed PR). Safe to run; it only writes to the new PortfolioDigest table.
@@ -43,9 +46,11 @@ export const portfolioDigest = inngest.createFunction(
     // The DB `date` column anchors at ET midnight (same as etTradingDayDate).
     const digestDate = today;
 
-    // Step 1: find accounts that had ANY activity today (runs / opens / closes /
-    // thesis updates). No activity → no digest (don't write empty rows).
-    const accountIds = await step.run("find-active-accounts", async () => {
+    // Step 1: find (account, environment) PAIRS that had ANY activity today
+    // (runs / opens / closes). PAPER and LIVE share one accountId, so the unit
+    // of work is the pair — each environment with activity gets its own digest.
+    // No activity → no digest (don't write empty rows).
+    const pairs = await step.run("find-active-pairs", async () => {
       const dayStart = new Date(`${dateStr}T00:00:00-05:00`);
       // Use a generous window; the facts builder does its own precise ET window.
       const since = new Date(dayStart);
@@ -54,51 +59,68 @@ export const portfolioDigest = inngest.createFunction(
       const [runRows, openRows, closeRows] = await Promise.all([
         prisma.researchRun.findMany({
           where: { startedAt: { gte: since } },
-          select: { accountId: true },
-          distinct: ["accountId"],
+          select: { accountId: true, environment: true },
+          distinct: ["accountId", "environment"],
         }),
         prisma.position.findMany({
           where: { openedAt: { gte: since } },
-          select: { accountId: true },
-          distinct: ["accountId"],
+          select: { accountId: true, environment: true },
+          distinct: ["accountId", "environment"],
         }),
         prisma.position.findMany({
           where: { closedAt: { gte: since } },
-          select: { accountId: true },
-          distinct: ["accountId"],
+          select: { accountId: true, environment: true },
+          distinct: ["accountId", "environment"],
         }),
       ]);
 
-      const ids = new Set<string>();
-      for (const r of [...runRows, ...openRows, ...closeRows]) ids.add(r.accountId);
-      return [...ids];
+      const seen = new Map<string, { accountId: string; environment: string }>();
+      for (const r of [...runRows, ...openRows, ...closeRows]) {
+        seen.set(`${r.accountId}::${r.environment}`, {
+          accountId: r.accountId,
+          environment: r.environment,
+        });
+      }
+      return [...seen.values()];
     });
 
-    if (accountIds.length === 0) {
+    if (pairs.length === 0) {
       return { skipped: true, reason: "no-active-accounts", date: dateStr };
     }
 
     const written: string[] = [];
 
-    for (const accountId of accountIds) {
-      // Build facts (IO: Prisma + Alpaca). Default PAPER book — LIVE digests are
-      // a follow-up once the LIVE path is validated.
-      const facts = await step.run(`facts-${accountId}`, async () => {
-        return buildDigestFacts(accountId, dateStr, "PAPER");
+    for (const { accountId, environment } of pairs) {
+      const key = `${accountId}::${environment}`;
+
+      // Build facts (IO: Prisma + Alpaca), scoped to this environment's book.
+      const facts = await step.run(`facts-${key}`, async () => {
+        return buildDigestFacts(
+          accountId,
+          dateStr,
+          environment as "PAPER" | "LIVE",
+        );
       });
 
       const { narrative, model } = await step.run(
-        `narrate-${accountId}`,
+        `narrate-${key}`,
         async () => {
           return writeDigestNarrative(facts as unknown as DigestFacts);
         },
       );
 
-      await step.run(`save-${accountId}`, async () => {
+      await step.run(`save-${key}`, async () => {
         await prisma.portfolioDigest.upsert({
-          where: { accountId_date: { accountId, date: digestDate } },
+          where: {
+            accountId_environment_date: {
+              accountId,
+              environment,
+              date: digestDate,
+            },
+          },
           create: {
             accountId,
+            environment,
             date: digestDate,
             narrative,
             facts: facts as unknown as object,
@@ -112,9 +134,9 @@ export const portfolioDigest = inngest.createFunction(
         });
       });
 
-      written.push(accountId);
+      written.push(key);
     }
 
-    return { written: written.length, accountIds: written, date: dateStr };
+    return { written: written.length, pairs: written, date: dateStr };
   },
 );
