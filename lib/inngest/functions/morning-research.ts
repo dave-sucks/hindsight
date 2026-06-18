@@ -7,7 +7,6 @@ import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { MODES } from "@/lib/agent/modes";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { updateAnalystBriefing } from "@/lib/agent/update-analyst-briefing";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
@@ -778,8 +777,9 @@ export const morningResearch = inngest.createFunction(
             );
           }
 
-          // Generate briefing directly (runs inside this Inngest step, guaranteed execution)
-          await updateAnalystBriefing({ analystId: config.id, runId: run.id, userId: config.userId, accountId: config.accountId });
+          // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md):
+          // continuity now comes from the account-level PortfolioDigest, read
+          // by buildRunInput. updateAnalystBriefing no longer called.
 
           return { tradesPlaced, steps: steps.length, toolCalls, elapsedMs: elapsed };
         } catch (err) {
@@ -908,11 +908,9 @@ export const morningResearch = inngest.createFunction(
             });
           } catch { /* parameter enrichment is non-critical */ }
 
-          // Generate briefing for runs that ended up COMPLETE (either we set it or complete_run did)
-          const finalRun = await prisma.researchRun.findUnique({ where: { id: run.id }, select: { status: true } });
-          if (finalRun?.status === "COMPLETE") {
-            await updateAnalystBriefing({ analystId: config.id, runId: run.id, userId: config.userId, accountId: config.accountId });
-          }
+          // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md):
+          // the account-level PortfolioDigest replaces it. No briefing write
+          // on the error/recovery path either.
 
           return { error: message, partialTheses, partialTrades };
         }

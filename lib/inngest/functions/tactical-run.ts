@@ -377,6 +377,32 @@ export const tacticalRun = inngest.createFunction(
           )
         : allTools;
 
+      // Latest account-level portfolio digest for cross-run book context
+      // (Feature A). Scoped to THIS run's book (runEnvironment) — PAPER and LIVE
+      // share an accountId but have separate digests; reading the wrong book's
+      // narrative is incoherent context. Non-fatal: a missing digest degrades
+      // to "no continuity".
+      let latestDigest: { narrative: string; date: string } | null = null;
+      try {
+        const digestRow = await prisma.portfolioDigest.findFirst({
+          where: { accountId: agentConfig.accountId, environment: runEnvironment },
+          orderBy: { date: "desc" },
+          take: 1,
+          select: { narrative: true, date: true },
+        });
+        if (digestRow?.narrative) {
+          latestDigest = {
+            narrative: digestRow.narrative,
+            date: digestRow.date.toISOString(),
+          };
+        }
+      } catch (digestErr) {
+        console.warn(
+          `[tactical-run] portfolio digest lookup failed — continuing without continuity context:`,
+          digestErr instanceof Error ? digestErr.message : digestErr,
+        );
+      }
+
       const systemPrompt = buildTacticalSystemPrompt({
         analyst: { name: agentConfig.name, mandate: agentConfig.analystPrompt },
         thesis: {
@@ -402,6 +428,7 @@ export const tacticalRun = inngest.createFunction(
         signal,
         position,
         recentUpdates: thesis.updates,
+        latestDigest,
       });
 
       // Build the kickoff message so the chat replay shows WHY this run

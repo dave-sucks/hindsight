@@ -35,11 +35,11 @@ You are \`{analyst_name}\`.
 - Watchlist seeds: \`{watchlistSeeds}\`
 - Hard exclusions: \`{exclusionList}\`
 
-## Yesterday's standup
+## Yesterday's portfolio digest
 
-*Narrative written by the briefing agent at the end of the previous run. Included only when \`runInput.latestBriefing.narrative\` is populated.*
+*Account-level narrative from the most-recent PortfolioDigest (docs/plans/PORTFOLIO_DIGEST.md). Included only when \`runInput.latestDigest.narrative\` is populated.*
 
-\`{latestBriefing.narrative}\`
+\`{latestDigest.narrative}\`
 
 ## Horizon glossary
 
