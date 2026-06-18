@@ -31,6 +31,7 @@ Read these in order:
 2. [`docs/run-reviews/TEMPLATE.md`](../run-reviews/TEMPLATE.md) — the report shape and all required sections
 3. The most recent `docs/run-reviews/YYYY-MM-DD.md` — your prior baseline for delta columns
 4. [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — the live state-machine reference. Confirm any PROMOTED / dispatch behavior you're about to claim matches §3 (states) + §11 (run-summary derivation)
+5. [`docs/plans/STATUS_TAXONOMY.md`](../plans/STATUS_TAXONOMY.md) — the P1-24 status vocabulary (LOCKED, complete 2026-06-16). **`Thesis.status`** = `WATCHING` / `HOLDING` / `PASSED` / `RETIRED` (+ `retiredReason`: DROPPED/SOLD/INVALIDATED/REPLACED) / `PROMOTED`; **`direction`** = `LONG` / `SHORT` / `null`. The legacy thesis-statuses `ACTIVE` / `INVALIDATED` / `ARCHIVED` / `SUPERSEDED` / `CLOSED` and `direction = PASS`/`PENDING` are **gone**: `HOLDING` = former ACTIVE, `PASSED` = former `direction=PASS`, `RETIRED` = former CLOSED/INVALIDATED/ARCHIVED/SUPERSEDED. (`Position.status` and `Order.status` are unchanged — `CLOSED`/`PENDING_APPROVAL`/`PENDING` there are still valid.)
 
 ## What to query (default)
 
@@ -71,7 +72,7 @@ schema, [prisma/schema.prisma:272-295](../../prisma/schema.prisma)):
 For each thesis the run touched (look at `ThesisUpdate WHERE runId = X` joined to
 `Thesis`):
 
-1. **All 9 populated?** A thesis that's been through the thesis-writer (`researchUpdatedAt IS NOT NULL`) should have all 9 non-null. Pre-V2 legacy seeds may have only `snapshot / bullCase / bearCase`; flag those as "legacy — refresh candidate" but don't grade them as a quality failure. PASS theses commonly only populate `snapshot + bearCase` (per schema doc) — that's expected.
+1. **All 9 populated?** A thesis that's been through the thesis-writer (`researchUpdatedAt IS NOT NULL`) should have all 9 non-null. Pre-V2 legacy seeds may have only `snapshot / bullCase / bearCase`; flag those as "legacy — refresh candidate" but don't grade them as a quality failure. PASSED theses commonly only populate `snapshot + bearCase` (per schema doc) — that's expected.
 2. **`bullCase.bullets[]` substantive?** Specific numbers / dates / named events. Generic strings ("strong fundamentals", "good momentum", "positive sentiment") fail this check.
 3. **`bearCase.bullets[]` substantive AND adversarial?** A LONG thesis with a vapor bear case ("market correction", "macro risk") is a quality failure even if the run is otherwise clean. Quote the bear bullets in the review when they're vapor.
 4. **`coreBelief` still holds?** Read the run's `update_thesis` rationale — did the agent re-evaluate the belief against today's price + news, or skip it? If price has moved >10% or a named catalyst landed since `researchUpdatedAt`, expect either a belief-edit or a refresh dispatch. If neither happened, flag it.
@@ -103,7 +104,7 @@ Apply per PROMOTED thesis on the live analyst's book today:
 2. **Paper-context columns populated?** Cross-check `paperTenureDays / paperRealizedPnl / paperReviewCount` against `Position` history pre-promotion + `ThesisUpdate WHERE type IN ('REVIEWED','UPDATED') AND thesisId = X` count pre-promotion. Mismatch = the snapshot at promotion-time was off.
 3. **Agent cited paper context in narration?** Read the run's `update_thesis` rationale + `record_run_summary` text for the PROMOTED ticker. Did the agent explicitly weigh paper tenure / paper P&L / review count in the re-enter / downgrade / invalidate decision? "PROMOTED, $X paper P&L over N days, M reviews → re-enter at $..." is the shape we expect. Generic "this looks good" is not.
 4. **PROMOTED → HOLDING flip clean?** If any PROMOTED thesis flipped to HOLDING via `place_trade` today: confirm the `ThesisUpdate(type='STATUS_CHANGED')` row exists with `tradeId` populated. The `place_trade` atomic flip ([lib/agent/tools/place-trade.ts](../../lib/agent/tools/place-trade.ts)) handles this — missing audit row is a bug.
-5. **PROMOTED → WATCHING / INVALIDATED?** If downgraded: the rationale should cite either paper context ("paper return was −$X over N days, conviction was weaker than the tenure suggests") OR fresh evidence ("new SEC filing breaks the bull case"). Pure narration-rewrites without a concrete reason are a quality failure on a live book.
+5. **PROMOTED → WATCHING / RETIRED?** If downgraded: the rationale should cite either paper context ("paper return was −$X over N days, conviction was weaker than the tenure suggests") OR fresh evidence ("new SEC filing breaks the bull case"). Pure narration-rewrites without a concrete reason are a quality failure on a live book.
 6. **Orphan tactical EXIT runs** ([ex-P1-21, closed via PR #333 PROMOTED-aware triggers](../GAPS.md)): a PROMOTED thesis carries no paired Position (paper position was force-closed at promotion). A tactical run spawned from a PROMOTED-thesis `PRICE_BELOW(stop)` trigger that tries to `close_position` will error out — there's no position to close. Count these. Pre-fix rows: search for `mode='INTRADAY_TACTICAL' AND parameters->>'predicateKind'='PRICE_BELOW' AND ResearchRun.status='FAILED'` with the failure cite naming `close_position`. Should be zero post-#333; flag any that surface.
 
 ### C. Dispatch behavior check
@@ -158,8 +159,9 @@ Carried over from the pre-2026-05-26 rubric. The newer checks (A–E + G) layer 
 ### G. Resolver actionability adherence ([PR #360](https://github.com/dave-sucks/hindsight/pull/360))
 
 `get_theses` returns a computed `resolved` envelope per row: `currentPrice`,
-`triggerState`, `actionability` (`READY_TO_BUY` / `WAITING_FOR_TRIGGER` /
-`CATALYST_PENDING` / `HOLDING` / `SUPERSEDED` / …), `supersededBy`.
+`triggerState`, `actionability` (`ENTER_NOW` / `WAIT_FOR_TRIGGER` /
+`PENDING_CATALYST` / `STALE_PAST_CATALYST` / `ACTIVE_HOLD` / `SUPERSEDED` /
+`PROMOTED_DECIDE_TODAY` / `DEAD` / …), `supersededBy`.
 The agent is taught to filter by `actionability` first, then modulate by
 `conviction`. This check asks: did it?
 
@@ -168,29 +170,29 @@ For each thesis the run touched:
 1. **Reconstruct `resolved.actionability` at run start.** Re-run the resolver
    (or query `Thesis` + Finnhub quote at `ResearchRun.startedAt`) for each
    HOLDING / WATCHING / PROMOTED thesis the run touched. Note the verdict.
-2. **`READY_TO_BUY` → trade or documented refusal.** If actionability was
-   `READY_TO_BUY` at run start (price ≥ entry trigger, no blocking gate) and
+2. **`ENTER_NOW` → trade or documented refusal.** If actionability was
+   `ENTER_NOW` at run start (price ≥ entry trigger, no blocking gate) and
    the agent didn't `place_trade`, the `update_thesis.rationale` or
    `record_run_summary.decision_rationale` must explicitly explain why. "Wait
    for CPI" / "size too small for live book" / "conviction downgraded
    mid-run" are all acceptable. Silence is not.
-3. **`WAITING_FOR_TRIGGER` → no trade, REVIEW-only update is fine.** The
+3. **`WAIT_FOR_TRIGGER` → no trade, REVIEW-only update is fine.** The
    agent's update should be `update_thesis(type='REVIEWED')` with light
    evidence diff, not a heavyweight rewrite.
-4. **`CATALYST_PENDING` → no trade until catalyst clears.** A trade on a
-   `CATALYST_PENDING` thesis is a PEAD-discipline violation (the whole point
+4. **`PENDING_CATALYST` → no trade until catalyst clears.** A trade on a
+   `PENDING_CATALYST` thesis is a PEAD-discipline violation (the whole point
    of the catalyst-pending state). Flag.
 5. **`SUPERSEDED` → don't act.** A `SUPERSEDED` thesis is overruled by a
    newer same-ticker thesis. If the agent acted on the superseded row, that's
    either a resolver bug or the agent reading the wrong row. Cross-check
    `supersededBy` and the actual chosen thesis ID.
 6. **Conviction modulation:** STRONG / HIGH should be acted on at full
-   `targetSizePct` when actionability is `READY_TO_BUY`. LOW should be
+   `targetSizePct` when actionability is `ENTER_NOW`. LOW should be
    skip-by-default — if the agent traded a LOW conviction thesis, the
    rationale needs to justify the override. List ticker + conviction +
    actual size vs `targetSizePct`.
 7. **Cross-analyst supersession bug regression** ([PR #360](https://github.com/dave-sucks/hindsight/pull/360)
-   fixed it): a `SUPERSEDED` verdict caused by a PASS thesis on a different
+   fixed it): a `SUPERSEDED` verdict caused by a PASSED thesis on a different
    analyst's book is a regression. Query: `Thesis WHERE supersededBy IS NOT NULL`
    and confirm the superseding thesis shares `agentConfigId` with the
    superseded one. Cross-analyst supersession = bug.

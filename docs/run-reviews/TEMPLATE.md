@@ -27,14 +27,14 @@
 | Daily-run `get_stock_data` calls | | | |
 | Daily-run `read_signals` calls * | | | |
 | Cross-analyst dispatch dedup refusals | | | |
-| Overdue-review backlog (>7d, ACTIVE+WATCHING+PROMOTED) | | | |
-| Overdue-review backlog (any, ACTIVE+WATCHING+PROMOTED) | | | |
+| Overdue-review backlog (>7d, HOLDING+WATCHING+PROMOTED) | | | |
+| Overdue-review backlog (any, HOLDING+WATCHING+PROMOTED) | | | |
 
 \* `read_signals` was stripped from the daily-run allowlist in PR #361. Expected = 0. Anything else is a regression.
 
 ### Conviction tier distribution (PR #360)
 
-| Tier | Total | ACTIVE | WATCHING | PROMOTED | Δ vs prior |
+| Tier | Total | HOLDING | WATCHING | PROMOTED | Δ vs prior |
 |------|-------|--------|----------|----------|------------|
 | STRONG | | | | | |
 | HIGH | | | | | |
@@ -47,12 +47,14 @@
 
 | Actionability | Count | Acted-on? | Notes |
 |---------------|-------|-----------|-------|
-| READY_TO_BUY | | | |
-| WAITING_FOR_TRIGGER | | | |
-| CATALYST_PENDING | | | |
-| HOLDING | | | |
+| ENTER_NOW | | | |
+| WAIT_FOR_TRIGGER | | | |
+| PENDING_CATALYST | | | |
+| STALE_PAST_CATALYST | | | |
+| ACTIVE_HOLD | | | |
 | SUPERSEDED | | | (any cross-analyst SUPERSEDED → bug, see Section G item 7) |
-| PROMOTED_DECIDE_TODAY (once [P1-10](../GAPS.md) ships) | | | |
+| PROMOTED_DECIDE_TODAY | | | |
+| DEAD | | | (PASSED / RETIRED — terminal; should never be acted on) |
 
 ### Proposal-flow integrity (PR #364 — applies when any analyst had toggle ON)
 
@@ -86,7 +88,7 @@ Per-analyst walkthrough. For each analyst that ran today:
 - **Section B (LIVE / PROMOTED only):** PROMOTED-specific checks
 - **Section C:** dispatch behavior — list every `dispatch_thesis_research` call with child status + elapsed
 - **Section D:** "moved but wasn't traded" — any thesis whose price action warranted an action the agent didn't take
-- **Section E:** trigger sanity (`nextReviewAt`, ENTER-on-ACTIVE / missing-EXIT, etc.)
+- **Section E:** trigger sanity (`nextReviewAt`, ENTER-on-HOLDING / missing-EXIT, etc.)
 - **Section F:** standard checks (tool counts, duration, complete_run, narration→execution, premature-exit retry, **`read_signals` calls = 0**)
 - **Section G:** resolver actionability adherence — for each touched thesis, what `resolved.actionability` was at run start vs what the agent did
 - **Section H (toggle-ON analysts only):** proposal-flow integrity — gate fired, audit trail, ungated paths still ungated, no orphans / dupes

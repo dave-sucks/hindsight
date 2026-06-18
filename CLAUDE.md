@@ -142,7 +142,16 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 - RunEvent — SSE event from a run (type, title, message, payload)
 - RunMessage — persisted AI SDK messages for run replay
 - Thesis — stock analysis (direction, confidence, reasoning,
-  bullets, risk flags, signal types, sourcesUsed, entry/target/stop)
+  bullets, risk flags, signal types, sourcesUsed, entry/target/stop).
+  **Status taxonomy (P1-24 — see `docs/plans/STATUS_TAXONOMY.md`):**
+  `status` = WATCHING | HOLDING | PASSED | RETIRED (+`retiredReason`
+  DROPPED/SOLD/INVALIDATED/REPLACED) | PROMOTED; `direction` = LONG | SHORT | null.
+  Legacy mapping: ACTIVE→HOLDING, direction=PASS→PASSED,
+  CLOSED/INVALIDATED/ARCHIVED/SUPERSEDED→RETIRED, direction=PENDING→null.
+  Agent INPUT keeps aliases — `record_thesis(direction:'PASS')` and
+  `update_thesis(change_status:'INVALIDATED'/'ARCHIVED')` are still accepted and
+  translated to the clean stored values; the change_status ACTIVE/CLOSED and
+  direction PENDING inputs were removed.
 - Position — paper position via Alpaca (symbol, direction, avgCost,
   qty, status, closePrice, outcome, agentEvaluation)
 - PositionEvent — position lifecycle log (OPENED, PRICE_CHECK,
@@ -209,7 +218,7 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 ### Intelligence Tools (read pre-gathered data)
 1. read_signals — signals routed by background discovery jobs
 2. read_artifact — full extracted article/document behind a signal
-3. get_theses — read the analyst's durable thesis library (default ACTIVE+WATCHING; include_history=true for the activity log)
+3. get_theses — read the analyst's durable thesis library (default HOLDING+WATCHING; include_history=true for the activity log)
 4. get_portfolio_context — open positions, exposure, available buying power, recent fills
 5. web_search — live Perplexity Sonar search (budget-limited)
    NOTE: read_morning_brief was DELETED in PR 3 — agent reads
@@ -229,15 +238,15 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 12. get_sec_filings — SEC EDGAR filings
 
 ### Action Tools
-13. record_thesis — mint a NEW thesis (LONG/SHORT/PASS/PENDING) for net-new coverage or direction flip. PASS lands ARCHIVED (institutional memory). PENDING is reserved for non-agent code paths (UI/builder/editor seeds).
-14. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, INVALIDATED, ARCHIVED, or CLOSED via STATUS_CHANGED). The single most-used tool — every daily-run REVIEWED entry, every tactical close-out, and every "remove from watchlist" is one of these.
-15. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→ACTIVE and writes STATUS_CHANGED audit row.
-16. close_position — close an existing open position fully; flips Thesis ACTIVE→CLOSED.
+13. record_thesis — mint a NEW thesis (direction LONG/SHORT/PASS) for net-new coverage or direction flip. PASS lands status=PASSED (institutional memory). Unresearched watchlist seeds (direction=null, status=WATCHING) are minted only by non-agent code paths (UI/builder/editor) — agents can't mint them.
+14. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, or STATUS_CHANGED; change_status accepts INVALIDATED/ARCHIVED/PASS as input aliases → stored as RETIRED+retiredReason or PASSED — the ACTIVE/CLOSED change_status verbs were removed). The single most-used tool — every daily-run REVIEWED entry, every tactical close-out, and every "remove from watchlist" is one of these.
+15. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→HOLDING and writes STATUS_CHANGED audit row.
+16. close_position — close an existing open position fully; flips Thesis HOLDING→RETIRED (retiredReason=SOLD).
 17. manage_position — partial close, scale in/out, move stop, trail stop, adjust target.
 18. record_run_summary — persist run summary + ranked picks + decision rationale; runs the narration-gate verb→tool gate.
 19. complete_run — mark run COMPLETE (only allowed from RUNNING; FAILED status set by the narration-gate sticks).
 
-NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To add to a watchlist, mint a `Thesis(direction='PENDING', status='WATCHING')`. To remove, call `update_thesis(change_status='ARCHIVED')`.
+NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To add to a watchlist, mint a `Thesis(direction=null, status='WATCHING')`. To remove, call `update_thesis(change_status='ARCHIVED')` (input alias → lands status=RETIRED, retiredReason=DROPPED).
 
 ### Builder/Editor-only Tools
 20. read_knowledge_library — strategy archetypes, source catalog, signal types
@@ -524,8 +533,8 @@ it with a ticker chip as if it were a traded security.
 - **What it looks like:** `get_portfolio_context` shows a position as OPEN; `get_theses` shows the same ticker as WATCHING. The agent reads both simultaneously and treats an already-held name as a watchlist candidate — narrates "Entry executed within max position size limits" in `reasoningSummary` while `status = WATCHING`.
 - **Why it confuses the agent:** the agent's reasoning anchors on the prose `reasoningSummary` field over the structured `status` enum. It sees "Entry executed" → classifies as portfolio-held → ignores the WATCHING-thesis needsAction work → may re-evaluate an ENTER trigger on a position it already holds.
 - **Root cause:** before PR #265, `place_trade` created the Position row but left the thesis in WATCHING status. Four production theses (AMD, AVGO, GOOGL, TSM) required a manual DB patch on 2026-05-13 (ThesisUpdate IDs prefixed `mfix`).
-- **Fixed by PR #265** — `place_trade` now atomically flips WATCHING → ACTIVE in the same DB transaction as the Alpaca order. No new trade can produce this desync.
-- If you see a production thesis with `status=WATCHING` and a matching OPEN Position, it's a pre-PR-#265 row. Fix: `UPDATE "Thesis" SET status='ACTIVE' WHERE id='...'` + write a manual ThesisUpdate STATUS_CHANGED row.
+- **Fixed by PR #265** — `place_trade` now atomically flips WATCHING → HOLDING in the same DB transaction as the Alpaca order. No new trade can produce this desync.
+- If you see a production thesis with `status=WATCHING` and a matching OPEN Position, it's a pre-PR-#265 row. Fix: `UPDATE "Thesis" SET status='HOLDING' WHERE id='...'` + write a manual ThesisUpdate STATUS_CHANGED row.
 
 **V1/V2 prompt dispatch only honored in cron, not in route.ts** — ~~ACTIVE BUG~~ **RESOLVED 2026-05-16 (PR #270)**
 - Historical context: `app/api/agent/[mode]/route.ts:232` always called the V1 prompt builder while `morning-research.ts` correctly read `config.useV2Prompt`. The UI "Run" button served the 600-line legacy prompt while the 8 AM cron used V2 — silent drift between the two surfaces.
@@ -556,7 +565,7 @@ new, file it there — not here.)
 - **`docs/THESIS_ARCHITECTURE.md`** — **The live reference for the thesis system.** Read this before touching anything thesis-related. Documents the end-to-end lifecycle (state machine + 9 canonical scenarios), legal `(direction, status)` pairs, producers + gates, consumers, and the 5-bucket run-summary derivation.
 
 ### Recently closed
-- **Watchlist collapse (2026-05-13)** — `AnalystWatchlistItem` deleted, `manage_watchlist` deleted, `Thesis` is now the single watchlist store. `direction='PENDING'` for seeds awaiting first research; `status='ARCHIVED'` for terminal-without-trade. See `docs/THESIS_ARCHITECTURE.md` for the post-collapse model.
+- **Watchlist collapse (2026-05-13)** — `AnalystWatchlistItem` deleted, `manage_watchlist` deleted, `Thesis` is now the single watchlist store. `direction=null` for seeds awaiting first research; terminal-without-trade is `PASSED` (researched-decline) or `RETIRED` (dropped watch). See `docs/THESIS_ARCHITECTURE.md` for the post-collapse model.
 
 ## Key Files
 ### Agent System
