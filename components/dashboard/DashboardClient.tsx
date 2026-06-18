@@ -105,7 +105,10 @@ const RANGE_PNL_LABEL: Record<Range, string> = {
 
 type ChartView = 'portfolio' | 'by-analyst' | 'vs-spy';
 type DisplayMode = 'dollar' | 'percent';
-type ShowMode = 'both' | 'realized' | 'unrealized';
+// 'equity' = total account value (real money in the account, deposits included).
+// The other three are deposit-adjusted P&L (gains) flavors. 'equity' is the
+// default so the chart matches the BALANCE figure; the gains views are filters.
+type ShowMode = 'equity' | 'both' | 'realized' | 'unrealized';
 
 const ANALYST_COLORS = [
   '#6366f1',
@@ -846,7 +849,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
   const [range, setRange] = useState<Range>('1M');
   const [chartView, setChartView] = useState<ChartView>('portfolio');
   const [displayMode, setDisplayMode] = useState<DisplayMode>('dollar');
-  const [showMode, setShowMode] = useState<ShowMode>('both');
+  const [showMode, setShowMode] = useState<ShowMode>('equity');
   const [realtimeClosedIds, setRealtimeClosedIds] = useState<Set<string>>(new Set());
   const [flashIds, setFlashIds] = useState<Map<string, 'win' | 'loss'>>(new Map());
 
@@ -898,8 +901,11 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
   // Equals rawEquity when there are no funding events (paper / mock).
   const rawPnlCurve = data && data.pnlCurve.length > 0 ? data.pnlCurve : rawEquity;
 
-  // Derive the active equity curve based on showMode
+  // Derive the active curve based on showMode. 'equity' plots the raw account
+  // value (real money, deposits included) — the default; the other modes are
+  // deposit-adjusted P&L flavors.
   const activeCurve = useMemo(() => {
+    if (showMode === 'equity') return rawEquity;
     if (showMode === 'realized') return rawRealizedCurve;
     if (showMode === 'unrealized') {
       // unrealizedPnl at each date = total equity - (startCapital + realizedPnl)
@@ -946,6 +952,16 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
     [activeCurve, range],
   );
 
+  // Header P&L series — ALWAYS the deposit-adjusted P&L curve, independent of
+  // which curve the chart is showing. The header "{Range} P&L" is the headline
+  // trading gain net of deposits; if it followed `activeCurve` it would read the
+  // raw equity delta in the default Account Value view and count a deposit as a
+  // gain (the exact bug this page keeps regressing into).
+  const pnlData = useMemo(
+    () => filterByRange(rawPnlCurve, range),
+    [rawPnlCurve, range],
+  );
+
   // Raw equity over the same range — used only as the % denominator (the
   // capital actually at work). The active curve is deposit-adjusted P&L, whose
   // first point is ~0 at inception; dividing by THAT would explode the %.
@@ -957,8 +973,8 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
   // Range-aware P&L: delta over the selected range from the active (filtered)
   // curve. Because that curve is deposit-adjusted, the delta is pure trading
   // P&L — a deposit inside the window cancels out instead of showing as a gain.
-  const rangePnl = portfolioData.length >= 2
-    ? portfolioData[portfolioData.length - 1].value - portfolioData[0].value
+  const rangePnl = pnlData.length >= 2
+    ? pnlData[pnlData.length - 1].value - pnlData[0].value
     : portfolio.totalPnl;
   // % base: capital at the start of the window. All-Time divides by net
   // contributed capital so "total return" = gain ÷ money-you-put-in; shorter
@@ -989,7 +1005,11 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
     }));
   }, [portfolioData, equityRange, portfolio.netContributed]);
 
-  const activePortfolioData = displayMode === 'percent' ? portfolioPercentData : portfolioData;
+  // % Return is a gains concept — it's undefined for raw Account Value (and
+  // would fold deposits into the denominator). So the percent transform only
+  // applies to the P&L views; Account Value always renders in dollars.
+  const chartPercent = displayMode === 'percent' && showMode !== 'equity';
+  const activePortfolioData = chartPercent ? portfolioPercentData : portfolioData;
 
   const analystCompareData = useMemo(
     () => buildAnalystCompareData(analysts, analystEquityCurves, range),
@@ -1143,9 +1163,10 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                               value={showMode}
                               onValueChange={(v) => setShowMode(v as ShowMode)}
                             >
-                              <DropdownMenuRadioItem value="both">Total (Realized + Unrealized)</DropdownMenuRadioItem>
-                              <DropdownMenuRadioItem value="realized">Realized Only</DropdownMenuRadioItem>
-                              <DropdownMenuRadioItem value="unrealized">Unrealized Only</DropdownMenuRadioItem>
+                              <DropdownMenuRadioItem value="equity">Account Value</DropdownMenuRadioItem>
+                              <DropdownMenuRadioItem value="both">Total Gain (Realized + Unrealized)</DropdownMenuRadioItem>
+                              <DropdownMenuRadioItem value="realized">Realized Gain</DropdownMenuRadioItem>
+                              <DropdownMenuRadioItem value="unrealized">Unrealized Gain</DropdownMenuRadioItem>
                             </DropdownMenuRadioGroup>
                           </DropdownMenuGroup>
                           <DropdownMenuSeparator />
@@ -1178,7 +1199,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                   <ResponsiveContainer width="100%" height={260}>
                     <AreaChart
                       data={activePortfolioData}
-                      margin={{ top: 4, right: 0, bottom: 0, left: displayMode === 'percent' ? 4 : 0 }}
+                      margin={{ top: 4, right: 0, bottom: 0, left: chartPercent ? 4 : 0 }}
                     >
                       <defs>
                         <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1195,7 +1216,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                         interval={Math.max(1, Math.floor(activePortfolioData.length / 6))}
                         padding={{ left: 0, right: 0 }}
                       />
-                      {displayMode === 'percent' ? (
+                      {chartPercent ? (
                         <YAxis
                           tick={TICK_STYLE}
                           tickLine={false}
@@ -1210,9 +1231,9 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                       <Tooltip
                         contentStyle={TOOLTIP_STYLE}
                         formatter={(v) => [
-                          displayMode === 'dollar'
-                            ? `$${Number(v).toLocaleString()}`
-                            : `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`,
+                          chartPercent
+                            ? `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`
+                            : `$${Number(v).toLocaleString()}`,
                           'Portfolio',
                         ]}
                         labelFormatter={(l: unknown) => formatDateLabel(String(l))}
