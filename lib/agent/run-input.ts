@@ -737,14 +737,19 @@ export async function buildRunInput(
   }
 
   // 12. Latest account-level portfolio digest — drives the V2 prompt's
-  // "Yesterday's portfolio digest" section. Account-scoped (NOT per-analyst):
-  // every analyst on the account reads the same most-recent digest. Written
-  // by the digest backend (Feature A); replaces the deprecated per-analyst
-  // AnalystBriefing read.
+  // "Yesterday's portfolio digest" section. Account- AND environment-scoped:
+  // PAPER and LIVE share one accountId but get separate digests (one book
+  // each), so a run must read its OWN book's digest — feeding a PAPER run the
+  // LIVE narrative (or vice versa) is incoherent context. Every analyst on the
+  // same account + environment reads the same most-recent digest. Written by
+  // the digest backend (Feature A); replaces the deprecated AnalystBriefing.
   let latestDigest: RunInput["latestDigest"] = null;
   try {
     const row = await prisma.portfolioDigest.findFirst({
-      where: { accountId: config.accountId },
+      where: {
+        accountId: config.accountId,
+        environment: config.tradingEnvironment ?? "PAPER",
+      },
       orderBy: { date: "desc" },
       take: 1,
       select: {
