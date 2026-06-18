@@ -27,12 +27,6 @@ import { getTeam } from "@/lib/agent/workflow-registry";
 import { TradeRow, WatchlistRow, AddStockRow } from "@/components/ui/trade-row";
 import { closeTrade } from "@/lib/actions/closeTrade.actions";
 import { ChipTabs } from "@/components/ui/chip-tabs";
-import { AnalystFindingsTab } from "@/components/analysts/AnalystFindingsTab";
-import { BriefCard } from "@/components/intelligence/brief-card";
-import { BriefDetailDialog } from "@/components/intelligence/brief-detail";
-import { normalizeIntelBrief, normalizeRunBrief } from "@/components/intelligence/brief-types";
-import type { UnifiedBrief } from "@/components/intelligence/brief-types";
-import { TickerMarkdown } from "@/components/ui/ticker-markdown";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,7 +58,6 @@ import {
 import { toast } from "sonner";
 import { EducationEmptyState } from "@/components/domain/education-card";
 import { RunShowcaseTrigger } from "@/components/domain/run-showcase-trigger";
-import { SkeletonCardStack } from "@/components/domain/skeleton-card";
 import { RunShowcaseDialog } from "@/components/domain/showcase-dialog";
 import { ShowcaseIcon } from "@/components/ui/showcase-icon";
 import { PromoteAnalystDialog } from "@/components/analysts/PromoteAnalystDialog";
@@ -210,32 +203,43 @@ function AnalystRunsTab({ runs }: { runs: AnalystDetail["recentRuns"] }) {
   return (
     <div className="w-full mx-auto px-4 py-6 space-y-3">
       {runs.map((r) => {
-        const mode = (r as { mode?: string }).mode;
-        const modeLabel = mode ? MODE_LABEL[mode] ?? mode : null;
-        const thesisCount = r.theses.length;
+        // Title is mode-aware: "Morning run", "Tactical run", "Discovery run",
+        // etc. (the old card showed "Run" for everything because `mode` wasn't
+        // fetched). New theses minted this run; morning runs review existing
+        // names and mint 0, so the count is only shown when there's something.
+        const modeLabel = r.mode ? MODE_LABEL[r.mode] ?? r.mode : "Research";
+        const newTheses = r.theses.length;
         const tradeCount = r.theses.filter((t) => t.trade != null).length;
+        const durationSec =
+          r.completedAt != null
+            ? Math.max(0, Math.round((new Date(r.completedAt).getTime() - new Date(r.startedAt).getTime()) / 1000))
+            : null;
         const dotClass =
           r.status === "RUNNING"
             ? "bg-amber-500 animate-pulse"
             : r.status === "FAILED"
               ? "bg-red-500"
               : null;
+        const counts = [
+          newTheses > 0 ? `${newTheses} new ${newTheses === 1 ? "thesis" : "theses"}` : null,
+          tradeCount > 0 ? `${tradeCount} ${tradeCount === 1 ? "trade" : "trades"}` : null,
+        ].filter(Boolean);
         return (
           <Link key={r.id} href={`/runs/${r.id}`} className="block">
             <div className="rounded-xl border bg-background p-3 hover:bg-accent/40 transition-colors">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   {dotClass && <span className={cn("h-2 w-2 rounded-full shrink-0", dotClass)} />}
-                  <span className="text-sm font-medium truncate">
-                    {modeLabel ?? "Run"}
-                  </span>
-                  <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-                    {formatDateLabel(new Date(r.startedAt).toISOString())}
-                  </span>
+                  <span className="text-sm font-medium truncate">{modeLabel} run</span>
+                  {counts.length > 0 && (
+                    <span className="text-xs text-muted-foreground truncate">
+                      {counts.join(" · ")}
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums shrink-0">
-                  <span>{thesisCount} {thesisCount === 1 ? "thesis" : "theses"}</span>
-                  {tradeCount > 0 && <span>{tradeCount} {tradeCount === 1 ? "trade" : "trades"}</span>}
+                <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums shrink-0">
+                  <span>{formatDateLabel(new Date(r.startedAt).toISOString())}</span>
+                  {durationSec != null && <span>· {durationSec}s</span>}
                 </div>
               </div>
             </div>
@@ -246,14 +250,39 @@ function AnalystRunsTab({ runs }: { runs: AnalystDetail["recentRuns"] }) {
   );
 }
 
-// ── Theses tab ───────────────────────────────────────────────────────────────
+// ── Theses tab + Snapshot (both are thesis grids) ────────────────────────────
 
-function AnalystThesesTab({ theses }: { theses: ThesisCardData[] }) {
+type ThesisStatusFilter = "all" | "holding" | "watching" | "passed" | "retired";
+
+const THESIS_FILTER_OPTIONS: { value: ThesisStatusFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "holding", label: "Holding" },
+  { value: "watching", label: "Watching" },
+  { value: "passed", label: "Passed" },
+  { value: "retired", label: "Retired" },
+];
+
+/** A thesis is "active" (Snapshot view) when it's a held or watched name. */
+function isActiveThesis(t: ThesisCardData): boolean {
+  return t.status === "HOLDING" || t.status === "WATCHING";
+}
+
+function matchesThesisFilter(t: ThesisCardData, f: ThesisStatusFilter): boolean {
+  if (f === "all") return true;
+  if (f === "holding") return t.status === "HOLDING";
+  if (f === "watching") return t.status === "WATCHING";
+  if (f === "passed") return t.status === "PASSED";
+  if (f === "retired") return t.status === "RETIRED";
+  return true;
+}
+
+/** The thesis grid + empty state. Shared by Snapshot (active) and Theses (all). */
+function ThesesGrid({ theses, emptyLabel }: { theses: ThesisCardData[]; emptyLabel: string }) {
   if (theses.length === 0) {
     return (
       <div className="w-full mx-auto px-4 py-6">
         <div className="rounded-xl border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">No theses yet for this analyst.</p>
+          <p className="text-sm text-muted-foreground">{emptyLabel}</p>
         </div>
       </div>
     );
@@ -301,7 +330,9 @@ export default function AnalystDetailClient({
   const [configOpen, setConfigOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [range, setRange] = useState<Range>("Max");
-  const [tradeFilter, setTradeFilter] = useState<"all" | "open" | "closed">("all");
+  // Theses tab status filter (mirrors the Findings filter pattern — a chip row
+  // under the tab). Snapshot shows active (HOLDING+WATCHING) with no filter.
+  const [thesisStatus, setThesisStatus] = useState<ThesisStatusFilter>("all");
   const [watchlistItems, setWatchlistItems] = useState<WatchlistItemView[]>(initialWatchlist);
   const [, startTransition] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -363,6 +394,9 @@ export default function AnalystDetailClient({
   // ── Chart data ──────────────────────────────────────────────────────────
   const openPositions = recentTrades.filter((t) => t.status === "OPEN");
   const hasOpenPositions = openPositions.length > 0;
+  // Sidebar tab partitions: Holding = open positions, Closed = sold positions.
+  const holdingTrades = openPositions;
+  const closedTrades = recentTrades.filter((t) => t.status === "CLOSED");
 
   // Compute total unrealized P&L from live prices
   const totalUnrealizedPnl = useMemo(() => {
@@ -580,54 +614,46 @@ export default function AnalystDetailClient({
             </div>
           </div>
 
-          {/* ── Tabs: Snapshot | Briefs | Findings ─────
-              The tabs area owns the scroll. The column itself is a flex
-              column so the composer below sits as a normal flex child,
-              always anchored to the column's bottom — sticky-inside-scroll
-              fought flex-1 and caused the composer to drift off-screen
-              when briefs grew tall. */}
+          {/* ── Tabs: Snapshot | Runs | Theses ─────
+              Snapshot = active book (HOLDING + WATCHING theses). Theses = the
+              full library with a status filter. The old Briefs + Findings tabs
+              were removed (briefs → account Portfolio Digest; see GAPS P1-26).
+              The tabs area owns the scroll; the column is a flex column so the
+              composer below stays anchored to the bottom. */}
           <Tabs defaultValue={0} className="flex-1 lg:min-h-0 lg:overflow-y-auto">
             <div className="px-4">
               <TabsList>
                 <TabsTrigger value={0}>Snapshot</TabsTrigger>
                 <TabsTrigger value={1}>Runs</TabsTrigger>
                 <TabsTrigger value={2}>Theses</TabsTrigger>
-                <TabsTrigger value={3}>Briefs</TabsTrigger>
-                <TabsTrigger value={4}>Findings</TabsTrigger>
               </TabsList>
             </div>
             <TabsContent value={0}>
-              <AnalystSnapshotSection
-                analystName={config.name}
-                morningBriefs={detail.morningBriefs}
-                runBriefs={detail.briefings}
+              <ThesesGrid
+                theses={theses.filter(isActiveThesis)}
+                emptyLabel="No active theses — holdings and watched names appear here."
               />
             </TabsContent>
             <TabsContent value={1}>
               <AnalystRunsTab runs={recentRuns} />
             </TabsContent>
             <TabsContent value={2}>
-              <AnalystThesesTab theses={theses} />
-            </TabsContent>
-            <TabsContent value={3}>
-              <AnalystAllBriefsSection
-                analystName={config.name}
-                morningBriefs={detail.morningBriefs}
-                runBriefs={detail.briefings}
-              />
-            </TabsContent>
-            <TabsContent value={4}>
-              <div className="w-full mx-auto px-4 py-6">
-                <AnalystFindingsTab
-                  analystId={config.id}
-                  tickerSuggestions={Array.from(
-                    new Set([
-                      ...openPositions.map((p) => p.symbol),
-                      ...watchlistItems.map((w) => w.symbol),
-                    ]),
-                  )}
+              <div className="px-4 pt-4">
+                <ChipTabs<ThesisStatusFilter>
+                  options={THESIS_FILTER_OPTIONS}
+                  value={thesisStatus}
+                  onChange={(v) => v && setThesisStatus(v)}
+                  clearable={false}
                 />
               </div>
+              <ThesesGrid
+                theses={theses.filter((t) => matchesThesisFilter(t, thesisStatus))}
+                emptyLabel={
+                  thesisStatus === "all"
+                    ? "No theses yet for this analyst."
+                    : `No ${thesisStatus} theses.`
+                }
+              />
             </TabsContent>
           </Tabs>
 
@@ -802,53 +828,33 @@ export default function AnalystDetailClient({
               </div>
             )}
 
-            {/* Sidebar tabs: Trades | Watching */}
+            {/* Sidebar tabs: Holding | Watching | Closed.
+                Holding + Closed are TRADES (open vs sold positions); Watching is
+                the watched-thesis list. The old Trades tab + its all/open/closed
+                ChipTabs collapsed into these three top-level tabs. */}
             <Tabs defaultValue={0} className="flex-1 overflow-hidden">
               <div className="px-3 pt-2 shrink-0">
                 <TabsList>
-                  <TabsTrigger value={0}>Trades</TabsTrigger>
+                  <TabsTrigger value={0}>Holding</TabsTrigger>
                   <TabsTrigger value={1}>Watching</TabsTrigger>
+                  <TabsTrigger value={2}>Closed</TabsTrigger>
                 </TabsList>
               </div>
 
+              {/* Holding — open positions */}
               <TabsContent value={0} className="flex-1 overflow-y-auto flex flex-col">
-                {recentTrades.length === 0 ? (
-                  <div className="space-y-0 px-3 py-2">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="flex items-center gap-3 py-2.5">
-                        <div className="h-6 w-6 rounded-full bg-muted" />
-                        <div className="flex-1 space-y-1.5">
-                          <div className="h-2.5 w-16 rounded bg-muted" />
-                          <div className="h-2 w-24 rounded bg-muted/60" />
-                        </div>
-                        <div className="h-2.5 w-12 rounded bg-muted" />
-                      </div>
-                    ))}
+                {holdingTrades.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No open positions.
                   </div>
                 ) : (
-                  <>
-                    <div className="px-3 py-2 shrink-0">
-                      <ChipTabs<"all" | "open" | "closed">
-                        options={[
-                          { value: "all", label: "All" },
-                          { value: "open", label: "Open" },
-                          { value: "closed", label: "Closed" },
-                        ]}
-                        value={tradeFilter}
-                        onChange={(v) => v && setTradeFilter(v)}
-                        clearable={false}
-                      />
-                    </div>
-                    {recentTrades
-                      .filter((t) => tradeFilter === "all" || (tradeFilter === "open" ? t.status === "OPEN" : t.status !== "OPEN"))
-                      .map((trade) => (
-                        <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
-                      ))
-                    }
-                  </>
+                  holdingTrades.map((trade) => (
+                    <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
+                  ))
                 )}
               </TabsContent>
 
+              {/* Watching — watched theses */}
               <TabsContent value={1} className="flex-1 overflow-y-auto">
                 {watchlistItems.length === 0 && (
                   <EducationEmptyState stateKey="analyst-watchlist" size="inline" />
@@ -876,6 +882,19 @@ export default function AnalystDetailClient({
                   excludeSymbols={watchlistItems.map((i) => i.symbol)}
                   trigger={<AddStockRow />}
                 />
+              </TabsContent>
+
+              {/* Closed — sold positions */}
+              <TabsContent value={2} className="flex-1 overflow-y-auto flex flex-col">
+                {closedTrades.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No closed trades yet.
+                  </div>
+                ) : (
+                  closedTrades.map((trade) => (
+                    <AnalystTradeRow key={trade.id} trade={trade} livePrice={livePrices[trade.symbol]} />
+                  ))
+                )}
               </TabsContent>
             </Tabs>
           </div>
@@ -948,113 +967,6 @@ export default function AnalystDetailClient({
   );
 }
 
-// ── Analyst Briefs Section ───────────────────────────────────────────────────
-// Inline summary from most recent + 3-col grid of recent briefs + click to dialog
-
-import type { MorningBriefItem, AnalystBriefingItem } from "@/lib/actions/analyst.actions";
-import type { MorningBrief } from "@/components/intelligence/types";
-
-// Helper to normalize all briefs into unified shape
-function buildAllBriefs(analystName: string, morningBriefs: MorningBriefItem[], runBriefs: AnalystBriefingItem[]): UnifiedBrief[] {
-  return [
-    ...morningBriefs.map((b) =>
-      normalizeIntelBrief({
-        ...b,
-        analystId: "",
-        date: new Date(b.date).toISOString(),
-        generatedAt: new Date(b.generatedAt).toISOString(),
-        analyst: { id: "", name: analystName },
-        portfolioAlerts: (b.portfolioAlerts ?? []) as MorningBrief["portfolioAlerts"],
-        watchlistUpdates: (b.watchlistUpdates ?? []) as MorningBrief["watchlistUpdates"],
-        newOpportunities: (b.newOpportunities ?? []) as MorningBrief["newOpportunities"],
-      })
-    ),
-    ...runBriefs.map((b) => normalizeRunBrief(b, analystName)),
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-}
-
-// ── Feature showcase for empty analyst ────────────────────────────────────────
-
-
-// ── Snapshot tab: latest run brief inline + 3 recent cards ──────────────────
-
-function AnalystSnapshotSection({
-  analystName,
-  morningBriefs,
-  runBriefs,
-}: {
-  analystName: string;
-  morningBriefs: MorningBriefItem[];
-  runBriefs: AnalystBriefingItem[];
-}) {
-  const [selected, setSelected] = useState<UnifiedBrief | null>(null);
-  const latestRunBrief = runBriefs[0] ?? null;
-  const allBriefs = buildAllBriefs(analystName, morningBriefs, runBriefs);
-  // For the 3 cards, exclude the latest run brief since it's shown inline
-  const cards = allBriefs.filter((b) => !(b.type === "run" && b.runBrief?.id === latestRunBrief?.id)).slice(0, 3);
-
-  if (!latestRunBrief && cards.length === 0) {
-    return (
-      <div className="px-4 py-6">
-        <SkeletonCardStack
-          count={2}
-          title="No brief yet"
-          subtitle="Your analyst runs automatically each morning at 8 AM ET. You'll see a brief here after the first session."
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full mx-auto px-4 py-6">
-      {latestRunBrief && (
-        <div className="text-sm leading-relaxed">
-          <TickerMarkdown>{latestRunBrief.narrative}</TickerMarkdown>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Briefs tab: all briefs as cards ─────────────────────────────────────────
-
-function AnalystAllBriefsSection({
-  analystName,
-  morningBriefs,
-  runBriefs,
-}: {
-  analystName: string;
-  morningBriefs: MorningBriefItem[];
-  runBriefs: AnalystBriefingItem[];
-}) {
-  const [selected, setSelected] = useState<UnifiedBrief | null>(null);
-  const allBriefs = buildAllBriefs(analystName, morningBriefs, runBriefs);
-
-  if (allBriefs.length === 0) {
-    return (
-      <div className="px-4 py-6">
-        <SkeletonCardStack
-          count={2}
-          title="No briefs yet"
-          subtitle="Morning briefs are generated at 7:45 AM ET. Post-run standups appear after each research session."
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full mx-auto px-4 py-6 space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {allBriefs.map((b) => (
-          <BriefCard key={b.id} brief={b} onClick={() => setSelected(b)} />
-        ))}
-      </div>
-
-      <BriefDetailDialog
-        brief={selected}
-        open={!!selected}
-        onOpenChange={(open) => !open && setSelected(null)}
-      />
-    </div>
-  );
-}
+// The per-analyst Briefs + Findings sections were removed in the analyst-page
+// tab cleanup (briefs → account Portfolio Digest; Findings → /intelligence). The
+// underlying code is tracked for deletion in docs/GAPS.md → P1-26.

@@ -68,6 +68,21 @@ Some surfaces check `direction==="PASS"` before reading status; others read stat
 
 Deliberate ~80-120 line PR, not a one-liner. **Do not** ship the prompt deletion without the tool backstop + PROMOTED care.
 
+### P1-26 — Delete the legacy briefs + Findings code (deferred — principal may repurpose)
+**Status:** open, filed 2026-06-18 (principal). The analyst-page **Briefs** and **Findings** tabs were removed from the UI in the analyst-page tab cleanup, and the account-level **Portfolio Digest** (#434/#436/#439) + #433 replace the per-analyst briefing as run-to-run memory. The underlying code is **intentionally NOT deleted yet** — the principal wants to decide what to keep/repurpose first. This is the deletion checklist for when that decision lands. **Ordering: the `AnalystBriefing` writes must stop first (#433 removes them); the table/columns drop last.**
+
+**Gate:** #433 (consume digest, deprecate per-analyst briefing) must be MERGED — it removes the 4 `updateAnalystBriefing` callsites + the `run-input.ts` read. Until then `AnalystBriefing` is still written every daily run.
+
+**(A) AnalystBriefing — the post-run standup.** Exclusive (safe to delete): `lib/agent/update-analyst-briefing.ts` (the writer; inlined GPT-4o-mini prompt at ~L425-468). Callsites to strip (most handled by #433): `lib/agent/tools/complete-run.ts` (briefing block), `lib/inngest/functions/morning-research.ts`, `app/api/agent/[mode]/route.ts`. Read/fetch: `lib/actions/analyst.actions.ts` `getAnalystDetail()` (the `briefings` list, ~L485-505 + the `AnalystBriefingItem` type ~L203-217). Prisma `model AnalystBriefing` (schema ~L1076-1103) — **drop last**, after all reads/writes gone.
+
+**(B) MorningBrief — the OLDER per-analyst daily brief (separate from A).** No active writer (`morning-brief-generator.ts` already deleted). Reads: `lib/actions/analyst.actions.ts` (`morningBriefs` list ~L506-523) + `app/api/intelligence/briefs/route.ts`. Prisma `model MorningBrief` (schema ~L808-829) — drop last. Type `MorningBrief` in `components/intelligence/types.ts`.
+
+**(C) Shared brief UI — prune MorningBrief/AnalystBriefing branches, do NOT delete wholesale** (these render both brief types and are reached from `/intelligence`): `components/intelligence/brief-detail.tsx` (`RunBriefContent` = AnalystBriefing, `IntelBriefContent` = MorningBrief), `brief-types.ts` (`normalizeRunBrief`/`normalizeIntelBrief`), `brief-card(s).tsx`. Decide `/intelligence` Briefs view's fate alongside this.
+
+**(D) Findings tab.** Exclusive (safe to delete): `components/analysts/AnalystFindingsTab.tsx`. **Do NOT delete** (shared with `/intelligence` + the agent's `read_signals`): `components/intelligence/signal-filters.tsx` (the Ticker/Sector/Industry/Source filter — being reused for the Theses-tab status filter), `signal-feed.tsx` (`SignalRow`), `finding-detail.tsx`, `app/api/intelligence/signals`, `lib/inngest/functions/signal-router.ts`, `lib/agent/tools/read-signals.ts`, and the `Signal` / `AnalystSignalRoute` Prisma models (core intelligence layer).
+
+**Not blocking the live loop** — pure cleanup. Pick it up once the principal confirms nothing here gets repurposed.
+
 ---
 
 ## P2 — Backlog

@@ -116,6 +116,7 @@ export interface RunWithTheses {
   id: string;
   status: string;
   source: string;
+  mode: string | null;
   startedAt: Date;
   completedAt: Date | null;
   theses: {
@@ -398,6 +399,7 @@ export async function getAnalystDetail(
         id: true,
         status: true,
         source: true,
+        mode: true,
         startedAt: true,
         completedAt: true,
         theses: {
@@ -666,6 +668,7 @@ export async function getAnalystDetail(
     id: r.id,
     status: r.status,
     source: r.source,
+    mode: r.mode,
     startedAt: r.startedAt,
     completedAt: r.completedAt,
     theses: r.theses.map((th) => {
