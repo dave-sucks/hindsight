@@ -32,6 +32,8 @@ import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+import { describeTriggerFire } from "@/lib/agent/triggers/format";
+import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -281,7 +283,14 @@ export const triggerEvaluator = inngest.createFunction(
         // cover any of the signal's tickers.
         const theses = await prisma.thesis.findMany({
           where: {
-            researchRun: { agentConfigId: { in: payload.analystIds } },
+            // enabled:true — never fire triggers for a disabled analyst. The
+            // signal path is already scoped to router-supplied analystIds (the
+            // router filters enabled), but we filter here too for defense in
+            // depth against a mid-flight disable. See OPENAI_COST_REDUCTION.md.
+            researchRun: {
+              agentConfigId: { in: payload.analystIds },
+              agentConfig: { enabled: true },
+            },
             status: { in: ["HOLDING", "WATCHING"] },
             ticker: { in: signal.tickers },
             triggers: { not: [] },
@@ -359,6 +368,32 @@ export const triggerEvaluator = inngest.createFunction(
             now,
           });
           for (const t of fires) {
+            // REVIEW-batching: a REVIEW trigger means "re-evaluate this
+            // thesis," not "act now" — it converts to a trade ~4-8% of the
+            // time, so it does not warrant a dedicated GPT-5 tactical run.
+            // Instead write the TRIGGER_FIRED audit row HERE (tactical-run.ts
+            // used to write it on spawn) so the next daily run surfaces it as
+            // needsAction=TRIGGER_FIRED and reviews it in-batch — which can
+            // still buy / sell / stop-watch / mark-reviewed. The daily run is
+            // needsAction-gated (it skips unflagged theses), so this write is
+            // load-bearing: without it a transient REVIEW that no longer
+            // matches by morning would be silently dropped. BREAKING-urgency
+            // reviews still spawn (a real catalyst can't wait for tomorrow);
+            // ENTER/EXIT always spawn. See OPENAI_COST_REDUCTION.md #2.
+            const deferToDaily =
+              t.action === "REVIEW" && ctxSignal.urgency !== "BREAKING";
+            if (deferToDaily) {
+              await writeThesisUpdate({
+                thesisId: thesis.id,
+                type: "TRIGGER_FIRED",
+                summary: `${describeTriggerFire(t)} — deferred to the next daily review`,
+                rationale: t.rationale,
+                triggerId: t.id,
+                signalIds: [signal.id],
+                runId: null,
+              });
+              continue;
+            }
             events.push({
               thesisId: thesis.id,
               triggerId: t.id,
@@ -399,6 +434,12 @@ export const triggerEvaluator = inngest.createFunction(
       // continues to handle signal-side predicates on both statuses.
       const theses = await prisma.thesis.findMany({
         where: {
+          // enabled:true — kill the zombie: a disabled analyst's HOLDING/
+          // WATCHING thesis must not fire intraday triggers. This was the
+          // EV Catalyst (ON) tactical that kept firing daily post-disable.
+          // The cron path (unlike the signal path) had no enabled gate.
+          // See OPENAI_COST_REDUCTION.md.
+          researchRun: { agentConfig: { enabled: true } },
           status: { in: ["HOLDING", "WATCHING"] },
           triggers: { not: [] },
         },
@@ -472,6 +513,25 @@ export const triggerEvaluator = inngest.createFunction(
           now,
         });
         for (const t of fires) {
+          // REVIEW-batching (see the signal path for the full rationale).
+          // Cron-path REVIEWs carry no signal/urgency, so every REVIEW defers
+          // to the daily run: write the TRIGGER_FIRED audit row (stamped with
+          // the price that fired it) and skip the tactical spawn. The daily
+          // run picks it up via needsAction=TRIGGER_FIRED. ENTER/EXIT/stop
+          // triggers still spawn a tactical. See OPENAI_COST_REDUCTION.md #2.
+          if (t.action === "REVIEW") {
+            await writeThesisUpdate({
+              thesisId: thesis.id,
+              type: "TRIGGER_FIRED",
+              summary: `${describeTriggerFire(t)} — deferred to the next daily review`,
+              rationale: t.rationale,
+              triggerId: t.id,
+              signalIds: [],
+              runId: null,
+              priceAtTime: latestQuote?.price ?? null,
+            });
+            continue;
+          }
           events.push({
             thesisId: thesis.id,
             triggerId: t.id,
