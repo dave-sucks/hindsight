@@ -72,11 +72,15 @@ export interface CoverageData {
 
 const EMPTY: CoverageData = { trades: [], watching: [], passed: [] };
 
+/** A pass only counts as right/wrong once the stock has moved meaningfully —
+ *  inside this band since the pass it's just FLAT (no verdict). */
+const PASS_FLAT_BAND_PCT = 5;
+
 /** Verdict for a PASSED thesis. Pass on a LONG idea is right (DODGED) if the
  *  stock fell, wrong (MISSED) if it rose; SHORT inverts; no direction → treat a
- *  rise-since-pass as regret (the long-bias default). */
+ *  rise-since-pass as regret (the long-bias default). Small moves → FLAT. */
 function passVerdict(direction: string | null, sincePct: number | null): CoverageVerdict {
-  if (sincePct == null || sincePct === 0) return "FLAT";
+  if (sincePct == null || Math.abs(sincePct) < PASS_FLAT_BAND_PCT) return "FLAT";
   const rose = sincePct > 0;
   if (direction === "SHORT") return rose ? "DODGED" : "MISSED";
   return rose ? "MISSED" : "DODGED";

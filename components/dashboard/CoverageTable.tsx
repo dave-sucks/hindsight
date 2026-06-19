@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, X, Minus } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -98,20 +98,27 @@ function SinceCell({ row }: { row: CoverageRow }) {
       : "";
   const sub = `${row.anchorVerb} ${fmtDate(row.anchorAt)}${subAnchor}`;
 
-  // Passed: raw green/red is backwards (up = regret), so the % is muted and a
-  // Dodged/Missed icon carries the meaning.
+  // Passed: the % AND the icon both carry the verdict — Dodged = green + ✓,
+  // Missed = red + ✗, Flat = gray + no icon (NOT raw direction coloring, which
+  // is backwards for a pass). Trades/Watching: normal green/red, muted near flat.
   const isPass = row.verdict != null;
   const flat = row.sincePct != null && Math.abs(row.sincePct) < FLAT_BAND_PCT;
-  const pctClass = isPass || flat ? "text-muted-foreground" : pnlColor(row.sincePct ?? 0);
+  const pctClass = isPass
+    ? row.verdict === "DODGED"
+      ? "text-emerald-500"
+      : row.verdict === "MISSED"
+        ? "text-red-500"
+        : "text-muted-foreground"
+    : flat
+      ? "text-muted-foreground"
+      : pnlColor(row.sincePct ?? 0);
 
   const verdictIcon =
     row.verdict === "DODGED" ? (
       <Check className="h-3.5 w-3.5 text-emerald-500" />
     ) : row.verdict === "MISSED" ? (
       <X className="h-3.5 w-3.5 text-red-500" />
-    ) : row.verdict === "FLAT" ? (
-      <Minus className="h-3.5 w-3.5 text-muted-foreground/60" />
-    ) : null;
+    ) : null; // FLAT → no icon
 
   const top = (
     <span className="inline-flex items-center gap-1.5 justify-end">
@@ -136,15 +143,13 @@ function SinceCell({ row }: { row: CoverageRow }) {
 
   return (
     <div className="flex flex-col items-end gap-0.5">
-      {isPass ? (
+      {verdictIcon != null ? (
         <Tooltip>
           <TooltipTrigger render={<span className="cursor-default">{top}</span>} />
           <TooltipContent side="top">
             {row.verdict === "DODGED"
               ? "Dodged — passed and it's down since"
-              : row.verdict === "MISSED"
-                ? "Missed — passed but it's risen since"
-                : "Roughly flat since the pass"}
+              : "Missed — passed but it's risen since"}
           </TooltipContent>
         </Tooltip>
       ) : (
@@ -264,8 +269,6 @@ export default function CoverageTable({ data }: { data: CoverageData }) {
 
   return (
     <div className="space-y-3">
-      <h2 className="text-lg font-medium">Coverage</h2>
-
       <Tabs defaultValue={"trades" satisfies Tab}>
         <TabsList>
           <TabsTrigger value="trades">Trades</TabsTrigger>
