@@ -48,6 +48,46 @@ export interface AwaitingApprovalResult {
 }
 
 /**
+ * Returned when a discretionary CLOSE proposal is suppressed because the user
+ * recently rejected the same exit and nothing material changed (P1-28). The
+ * just-created Order is tombstoned; the tool surfaces this as a clean,
+ * non-fatal "did not re-propose" result (NOT an error — a thrown error would
+ * fail the run's narration gate). The agent reads `rejectedExitCount` on the
+ * thesis via get_theses and should not have re-proposed in the first place;
+ * this gate is the Layer-1 backstop for when it does anyway.
+ */
+export interface SuppressedRecentRejectionResult {
+  state: "suppressed_recent_rejection";
+  positionId: string;
+  /** The most recent user rejection that armed the cooldown. */
+  rejectedOrderId: string;
+  rejectedAt: Date;
+  /** Discretionary re-proposal is gated until this instant. */
+  cooldownUntil: Date;
+  rejectedExitCount: number;
+}
+
+/** Days a user CLOSE rejection suppresses discretionary re-proposal (P1-28). */
+export const REJECTED_EXIT_COOLDOWN_DAYS = 5;
+
+/**
+ * Rejection messages written by the system (dedup fold, P1-28 suppression),
+ * NOT by a user. Excluded from "did the user reject this exit" reads so a
+ * systemic tombstone never counts as a rejection or arms the cooldown.
+ */
+const SYSTEMIC_REJECTION_PREFIXES = ["Duplicate close", "Suppressed —"] as const;
+
+/**
+ * True when this REJECTED order is a systemic tombstone (dedup / cooldown),
+ * not a user rejection. Used by both the L1 cooldown gate here and the L2
+ * rejectedExitCount surfacing in get_theses — keep the two definitions in sync.
+ */
+export function isSystemicRejection(rejectionMessage: string | null): boolean {
+  if (!rejectionMessage) return false;
+  return SYSTEMIC_REJECTION_PREFIXES.some((p) => rejectionMessage.startsWith(p));
+}
+
+/**
  * Thrown when the approval gate cannot resolve the Account row for a LIVE
  * trade. A money/compliance gate MUST fail CLOSED: an unresolved account
  * means we cannot read the require-approval toggles, so we cannot prove the
@@ -101,7 +141,9 @@ export class ApprovalGateAccountUnresolvedError extends Error {
  */
 export async function maybeAwaitApproval(
   args: MaybeAwaitApprovalArgs,
-): Promise<AwaitingApprovalResult | null> {
+): Promise<
+  AwaitingApprovalResult | SuppressedRecentRejectionResult | null
+> {
   const account = await prisma.account.findUnique({
     where: { id: args.accountId },
     select: {
@@ -195,6 +237,79 @@ export async function maybeAwaitApproval(
         expiresAt: existingClose.expiresAt,
         rationale: existingClose.rationale,
       };
+    }
+  }
+
+  // ── Rejected-exit cooldown: don't re-propose a discretionary CLOSE the ───
+  // user just rejected (P1-28 — proposal fatigue). Prod (2026-06-18): MU 17
+  // close-rejections / NVDA 19, re-proposed ~daily with no dampening. The
+  // L3 prompt ("read a rejection as a soft no") didn't hold — wrong layer +
+  // starved by P1-27. This is the Layer-1 backstop.
+  //
+  // CLOSE-only, mirroring the dedup block above: a full close is the terminal,
+  // idempotent decision the user keeps rejecting. PARTIAL_CLOSE scale-outs
+  // legitimately stack, so they're intentionally NOT gated here.
+  //
+  // Carve-out: risk-management exits ALWAYS flow — a trailing-stop / target
+  // close from the price-monitor (closeSource='price_monitor') or any
+  // STOP/TARGET close is a material event, not a discretionary re-pitch.
+  // Only discretionary agent closes (MANUAL/TIME, closeSource='agent'|'user')
+  // are subject to the cooldown.
+  if (args.intent === "CLOSE") {
+    const thisOrder = await prisma.order.findUnique({
+      where: { id: args.orderId },
+      select: { closeReason: true, closeSource: true },
+    });
+    const isRiskExit =
+      thisOrder?.closeSource === "price_monitor" ||
+      thisOrder?.closeReason === "STOP" ||
+      thisOrder?.closeReason === "TARGET";
+
+    if (!isRiskExit) {
+      const cooldownStart = new Date(
+        Date.now() - REJECTED_EXIT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+      );
+      const recentRejections = await prisma.order.findMany({
+        where: {
+          positionId: args.positionId,
+          side: "SELL",
+          intent: "CLOSE",
+          status: "REJECTED",
+          createdAt: { gte: cooldownStart },
+          id: { not: args.orderId },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, createdAt: true, rejectionMessage: true },
+      });
+      // Count only USER rejections — systemic tombstones (dedup, prior
+      // suppression) don't arm the cooldown.
+      const userRejections = recentRejections.filter(
+        (o) => !isSystemicRejection(o.rejectionMessage),
+      );
+      const armed = userRejections[0];
+      if (armed) {
+        const cooldownUntil = new Date(
+          armed.createdAt.getTime() +
+            REJECTED_EXIT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+        );
+        // Tombstone this call's just-created order so it doesn't linger as a
+        // PENDING/AWAITING row. Systemic message → excluded from future counts.
+        await prisma.order.update({
+          where: { id: args.orderId },
+          data: {
+            status: "REJECTED",
+            rejectionMessage: `Suppressed — recent CLOSE rejection cooldown (P1-28); last rejected ${armed.createdAt.toISOString()}`,
+          },
+        });
+        return {
+          state: "suppressed_recent_rejection" as const,
+          positionId: args.positionId,
+          rejectedOrderId: armed.id,
+          rejectedAt: armed.createdAt,
+          cooldownUntil,
+          rejectedExitCount: userRejections.length,
+        };
+      }
     }
   }
 

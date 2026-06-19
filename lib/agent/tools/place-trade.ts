@@ -638,7 +638,8 @@ export const placeTrade = defineTool({
           environment: positionEnvironment,
           rationale: proposalRationale,
         });
-        if (awaiting) {
+        // OPEN is a buy — never subject to the P1-28 CLOSE-only cooldown.
+        if (awaiting?.state === "awaiting_approval") {
           return {
             summary: `Proposed: ${args.direction} ${finalShares} $${ticker}`,
             data: {

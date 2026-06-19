@@ -57,9 +57,24 @@ export interface ProposalCreatedSummary {
  * via intersection so post-narrow code keeps using outcome.realizedPnl /
  * outcome.closePrice / etc. without restructuring.
  */
+/**
+ * Returned when a discretionary CLOSE was suppressed by the rejected-exit
+ * cooldown (P1-28): the user recently rejected this same exit and nothing
+ * material changed, so we neither propose nor execute. Non-fatal — the
+ * caller surfaces a "did not re-propose" result so the run's narration gate
+ * stays satisfied (a tool call happened; it just produced no order).
+ */
+export interface ProposalSuppressedSummary {
+  positionId: string;
+  rejectedAt: Date;
+  cooldownUntil: Date;
+  rejectedExitCount: number;
+}
+
 export type CloseOpenPositionOutcome =
   | (ClosedPositionResult & { kind: "closed" })
-  | { kind: "proposed"; proposal: ProposalCreatedSummary };
+  | { kind: "proposed"; proposal: ProposalCreatedSummary }
+  | { kind: "suppressed"; suppressed: ProposalSuppressedSummary };
 
 /** Who triggered the close — determines audit trail source label.
  *
@@ -227,6 +242,17 @@ export async function closeOpenPosition(
       environment: positionEnvironment,
       rationale: auditReason ?? `Automated ${reason} exit — ${position.symbol}`,
     });
+    if (awaiting?.state === "suppressed_recent_rejection") {
+      return {
+        kind: "suppressed" as const,
+        suppressed: {
+          positionId,
+          rejectedAt: awaiting.rejectedAt,
+          cooldownUntil: awaiting.cooldownUntil,
+          rejectedExitCount: awaiting.rejectedExitCount,
+        },
+      };
+    }
     if (awaiting) {
       return {
         kind: "proposed" as const,

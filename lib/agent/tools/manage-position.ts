@@ -42,7 +42,7 @@ function classifyAlpacaError(err: unknown): "rejected" | "uncertain" {
   return "uncertain";
 }
 
-type ManagePositionStatus = "NO_POSITION" | "CLOSED" | "PARTIAL_CLOSE" | "ADDED" | "UPDATED" | "FAILED" | "PROPOSED";
+type ManagePositionStatus = "NO_POSITION" | "CLOSED" | "PARTIAL_CLOSE" | "ADDED" | "UPDATED" | "FAILED" | "PROPOSED" | "SUPPRESSED";
 
 interface ManagePositionTicker {
   ticker: string;
@@ -80,6 +80,9 @@ interface ManagePositionData {
   newStopLoss?: number | null;
   trailPct?: number;
   portfolioUpdate?: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number };
+  // P1-28 suppressed-close branch.
+  rejectedExitCount?: number;
+  cooldownUntil?: string;
 }
 
 type ManagePositionReturn = { summary: string; data: ManagePositionData; sources: never[] };
@@ -258,6 +261,38 @@ export const managePosition = defineTool({
               sources: [],
             };
           }
+          // Rejected-exit cooldown (P1-28) — user recently rejected this same
+          // discretionary close and nothing material changed. Return a clean
+          // non-error "did not re-propose" result (the agent DID call a tool,
+          // so the narration gate stays satisfied).
+          if (outcome.kind === "suppressed") {
+            const { rejectedExitCount, cooldownUntil } = outcome.suppressed;
+            return {
+              summary: `Held $${ticker} — exit recently rejected (${rejectedExitCount}×)`,
+              data: {
+                success: true,
+                ticker,
+                action: args.action,
+                status: "SUPPRESSED" as const,
+                rejectedExitCount,
+                cooldownUntil: cooldownUntil.toISOString(),
+                message:
+                  `Did not re-propose closing ${ticker}. The user has rejected this exit ` +
+                  `${rejectedExitCount}× recently; re-proposal is on cooldown until ` +
+                  `${cooldownUntil.toISOString().slice(0, 10)} unless the thesis materially ` +
+                  `changes (a STOP/TARGET trigger or new evidence). Treat the rejection as a soft no and keep holding.`,
+                tickers: [
+                  {
+                    ticker,
+                    tag: "Held",
+                    summary: `Exit rejected ${rejectedExitCount}× — not re-proposed (cooldown)`,
+                    actionIcon: "hold",
+                  },
+                ],
+              },
+              sources: [],
+            };
+          }
           // outcome.kind === "closed" — finalize the close audit + return.
           const result = outcome;
 
@@ -368,7 +403,9 @@ export const managePosition = defineTool({
               environment: position.environment as "PAPER" | "LIVE",
               rationale: args.reason,
             });
-            if (awaiting) {
+            // PARTIAL_CLOSE is never subject to the P1-28 CLOSE-only cooldown,
+            // so awaiting is only ever awaiting_approval | null here.
+            if (awaiting?.state === "awaiting_approval") {
               return {
                 summary: `Partial close proposed: ${ticker} (-${pct}%)`,
                 data: {
@@ -693,7 +730,8 @@ export const managePosition = defineTool({
               environment: position.environment as "PAPER" | "LIVE",
               rationale: args.reason,
             });
-            if (awaiting) {
+            // ADD is risk-increasing, never subject to the CLOSE cooldown.
+            if (awaiting?.state === "awaiting_approval") {
               return {
                 summary: `Add proposed: ${ticker} +$${notional}`,
                 data: {

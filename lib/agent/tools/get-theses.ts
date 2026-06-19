@@ -29,6 +29,7 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
+import { isSystemicRejection } from "@/lib/proposals/maybe-await-approval";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { getLatestPrices } from "@/lib/alpaca";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -333,6 +334,13 @@ export const getTheses = defineTool({
     // and aren't looked up. Scoped by analyst (+ environment when known) so a
     // LIVE run never reads a PAPER position's open time and vice versa.
     const positionOpenedAtByThesisId = new Map<string, Date>();
+    // P1-28 (L2): how many times the user has REJECTED a close on this held
+    // position. Surfaced so the agent (and the L3 prompt) sees a reliable
+    // "you've already proposed this exit N×, the user said no" signal — read
+    // from the canonical Order ledger, NOT ThesisUpdate (which P1-27 showed
+    // captures only ~15% of rejections). Pairs with the Layer-1 cooldown gate
+    // in maybe-await-approval.ts that actually refuses the re-proposal.
+    const rejectedExitCountByThesisId = new Map<string, number>();
     const activeTickersForOpenedAt = Array.from(
       new Set(
         theses
@@ -353,13 +361,15 @@ export const getTheses = defineTool({
             ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
             ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
           },
-          select: { symbol: true, openedAt: true },
+          select: { id: true, symbol: true, openedAt: true },
           orderBy: { openedAt: "desc" },
         });
         const openedAtByTicker = new Map<string, Date>();
+        const positionIdByTicker = new Map<string, string>();
         for (const p of openPositions) {
           if (!openedAtByTicker.has(p.symbol)) {
             openedAtByTicker.set(p.symbol, p.openedAt);
+            positionIdByTicker.set(p.symbol, p.id);
           }
         }
         for (const t of theses) {
@@ -367,9 +377,39 @@ export const getTheses = defineTool({
           const openedAt = openedAtByTicker.get(t.ticker);
           if (openedAt) positionOpenedAtByThesisId.set(t.id, openedAt);
         }
+
+        // Count USER close-rejections per open position (Order ledger).
+        const openPositionIds = Array.from(positionIdByTicker.values());
+        if (openPositionIds.length > 0) {
+          const rejectedCloses = await prisma.order.findMany({
+            where: {
+              positionId: { in: openPositionIds },
+              side: "SELL",
+              intent: "CLOSE",
+              status: "REJECTED",
+            },
+            select: { positionId: true, rejectionMessage: true },
+          });
+          const countByPositionId = new Map<string, number>();
+          for (const o of rejectedCloses) {
+            // Exclude systemic tombstones (dedup, P1-28 cooldown) — only the
+            // user's own rejections count. Keep in sync with the L1 gate.
+            if (isSystemicRejection(o.rejectionMessage)) continue;
+            countByPositionId.set(
+              o.positionId,
+              (countByPositionId.get(o.positionId) ?? 0) + 1,
+            );
+          }
+          for (const t of theses) {
+            if (t.status !== "HOLDING") continue;
+            const posId = positionIdByTicker.get(t.ticker);
+            const n = posId ? countByPositionId.get(posId) ?? 0 : 0;
+            if (n > 0) rejectedExitCountByThesisId.set(t.id, n);
+          }
+        }
       } catch (err) {
         console.warn(
-          "[get_theses] open-position openedAt lookup failed; TIME_ELAPSED falls back to createdAt:",
+          "[get_theses] open-position openedAt/rejected-exit lookup failed; TIME_ELAPSED falls back to createdAt:",
           err,
         );
       }
@@ -550,6 +590,11 @@ export const getTheses = defineTool({
           t.researchUpdatedAt,
           t.horizon as Horizon | null,
         ),
+        // P1-28 (L2): user close-rejections on this held position (Order
+        // ledger). >0 means "you proposed this exit and the user said no N×"
+        // — don't re-propose unless the thesis materially changed. 0 for
+        // non-HOLDING rows and never-rejected holds.
+        rejectedExitCount: rejectedExitCountByThesisId.get(t.id) ?? 0,
       };
     });
 
