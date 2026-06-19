@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, X, Minus } from "lucide-react";
@@ -22,6 +23,8 @@ import {
 import { getTradeStatusDisplay } from "@/lib/trade-status";
 import { cn, pnlColor } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
+import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
+import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
 
 // ─── Coverage Table (Feature B — docs/plans/PORTFOLIO_DIGEST.md) ──────────────
@@ -157,12 +160,13 @@ function CoverageTab({
   rows,
   tab,
   emptyLabel,
+  onRowClick,
 }: {
   rows: CoverageRow[];
   tab: Tab;
   emptyLabel: string;
+  onRowClick: (row: CoverageRow) => void;
 }) {
-  const router = useRouter();
   if (rows.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -189,7 +193,7 @@ function CoverageTab({
             <TableRow
               key={row.key}
               className="cursor-pointer"
-              onClick={() => router.push(`/stocks/${row.ticker}`)}
+              onClick={() => onRowClick(row)}
             >
               <TableCell>
                 <NameCell row={row} />
@@ -222,7 +226,42 @@ function CoverageTab({
   );
 }
 
+/** Minimal ThesisCardData to seed the sheet — it fetches the rest by id. */
+function seedFor(row: CoverageRow): ThesisCardData {
+  const status: ThesisCardData["status"] =
+    row.tradeState === "OPEN"
+      ? "HOLDING"
+      : row.tradeState === "CLOSED"
+        ? "RETIRED"
+        : row.verdict != null
+          ? "PASSED"
+          : "WATCHING";
+  return {
+    thesis_id: row.thesisId ?? undefined,
+    ticker: row.ticker,
+    direction: row.direction === "LONG" || row.direction === "SHORT" ? row.direction : null,
+    confidence_score: 0,
+    status,
+  };
+}
+
 export default function CoverageTable({ data }: { data: CoverageData }) {
+  const router = useRouter();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [seed, setSeed] = useState<ThesisCardData | null>(null);
+
+  // Row click → open the thesis sheet (the principal's preferred entry point);
+  // /trades is reachable from inside the sheet. No thesis for the ticker →
+  // fall back to the stock page.
+  const handleRowClick = (row: CoverageRow) => {
+    if (row.thesisId) {
+      setSeed(seedFor(row));
+      setSheetOpen(true);
+    } else {
+      router.push(`/stocks/${row.ticker}`);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <h2 className="text-lg font-medium">Coverage</h2>
@@ -235,15 +274,19 @@ export default function CoverageTable({ data }: { data: CoverageData }) {
         </TabsList>
 
         <TabsContent value="trades" className="mt-3">
-          <CoverageTab rows={data.trades} tab="trades" emptyLabel="No trades yet." />
+          <CoverageTab rows={data.trades} tab="trades" emptyLabel="No trades yet." onRowClick={handleRowClick} />
         </TabsContent>
         <TabsContent value="watching" className="mt-3">
-          <CoverageTab rows={data.watching} tab="watching" emptyLabel="Nothing on the watchlist yet." />
+          <CoverageTab rows={data.watching} tab="watching" emptyLabel="Nothing on the watchlist yet." onRowClick={handleRowClick} />
         </TabsContent>
         <TabsContent value="passed" className="mt-3">
-          <CoverageTab rows={data.passed} tab="passed" emptyLabel="No recently passed names." />
+          <CoverageTab rows={data.passed} tab="passed" emptyLabel="No recently passed names." onRowClick={handleRowClick} />
         </TabsContent>
       </Tabs>
+
+      {seed && (
+        <ThesisSheet open={sheetOpen} onOpenChange={setSheetOpen} {...seed} />
+      )}
     </div>
   );
 }

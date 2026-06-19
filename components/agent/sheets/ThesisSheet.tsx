@@ -1626,6 +1626,16 @@ export function ThesisSheetBody({
             </p>
           </div>
         </Link>
+        {/* Secondary entry point: the thesis sheet is the primary view; when
+            there's a position, link out to the full Trades page. */}
+        {position && (
+          <Link
+            href="/trades"
+            className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
+          >
+            View on Trades page →
+          </Link>
+        )}
         {/* Live current price + day's change. Comes from the separate
             /quote endpoint (slow — Finnhub call) so this block usually
             paints after the rest of the sheet body. Skeleton while

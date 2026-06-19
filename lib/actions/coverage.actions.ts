@@ -36,7 +36,12 @@ export type CoverageAnchorVerb = "Entered" | "Sold" | "Watching since" | "Passed
 export interface CoverageRow {
   /** Unique per row (positionId or thesisId). */
   key: string;
+  /** The thesis to open on row-click (the sheet fetches the rest by id). null
+   *  when no thesis exists for the ticker — row falls back to the stock page. */
+  thesisId: string | null;
   ticker: string;
+  /** "LONG" | "SHORT" | null — seeds the thesis sheet header. */
+  direction: string | null;
   analystName: string | null;
   /** Live (or last-resolved) quote. */
   currentPrice: number | null;
@@ -148,6 +153,23 @@ export async function getCoverageData(
     return EMPTY;
   }
 
+  // Resolve a thesis per traded ticker so a trade row opens its thesis sheet
+  // (the position's thesis may be HOLDING or, for a sold name, RETIRED).
+  const tradeTickers = Array.from(new Set(positions.map((p) => p.symbol)));
+  const thesisIdByTicker = new Map<string, string>();
+  if (tradeTickers.length > 0) {
+    const tradeTheses = await prisma.thesis
+      .findMany({
+        where: { accountId, ticker: { in: tradeTickers }, researchRun: { environment } },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, ticker: true },
+      })
+      .catch(() => [] as { id: string; ticker: string }[]);
+    for (const t of tradeTheses) {
+      if (!thesisIdByTicker.has(t.ticker)) thesisIdByTicker.set(t.ticker, t.id);
+    }
+  }
+
   // ── Prices + 1D/5D/30D candle moves for every ticker on the board ───────────
   const tickers = Array.from(
     new Set([
@@ -203,7 +225,9 @@ export async function getCoverageData(
       costBasis !== 0 && sinceDollar != null ? (sinceDollar / costBasis) * 100 : null;
     return {
       key: p.id,
+      thesisId: thesisIdByTicker.get(p.symbol) ?? null,
       ticker: p.symbol,
+      direction: p.direction ?? null,
       analystName: p.analyst?.name ?? null,
       currentPrice: isOpen ? current : (p.closePrice ?? current),
       ...mv(p.symbol),
@@ -228,7 +252,9 @@ export async function getCoverageData(
       sinceDollar != null && anchor != null && anchor !== 0 ? (sinceDollar / anchor) * 100 : null;
     return {
       key: t.id,
+      thesisId: t.id,
       ticker: t.ticker,
+      direction: t.direction ?? null,
       analystName: t.researchRun?.agentConfig?.name ?? null,
       currentPrice: current,
       ...mv(t.ticker),
@@ -258,7 +284,9 @@ export async function getCoverageData(
       sinceDollar != null && anchor != null && anchor !== 0 ? (sinceDollar / anchor) * 100 : null;
     passed.push({
       key: t.id,
+      thesisId: t.id,
       ticker: t.ticker,
+      direction: t.direction ?? null,
       analystName: t.researchRun?.agentConfig?.name ?? null,
       currentPrice: current,
       ...mv(t.ticker),
