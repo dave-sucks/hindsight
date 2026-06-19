@@ -15,7 +15,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { DigestMarkdown } from "@/components/ui/ticker-markdown";
 import type { LatestDigest } from "@/lib/actions/digest.actions";
@@ -40,9 +39,6 @@ export function PortfolioDigestCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg font-medium">
-          Daily Portfolio Digest
-        </CardTitle>
         <CardDescription>
           {digest
             ? `${formatDigestDate(digest.date)} · after close`

@@ -52,6 +52,31 @@ _None open._ The 2026-06-04 → 08 post-launch sprint cleared the live-loop bloc
 
 **Not blocking the live loop** — pure cleanup. Pick it up once the principal confirms nothing here gets repurposed.
 
+### P1-27 — Proposal audit (`ThesisUpdate.PROPOSAL_*`) is unreliable — fire-and-forget write loses the serverless race
+**Status:** open, filed 2026-06-18 (principal; verified against prod DB, read-only). **Prior "fixed" claim does NOT hold.** Severity: **P1 data-integrity** — auditing approvals from `ThesisUpdate` returns wrong answers, AND it starves P1-28.
+
+**Prod evidence (2026-06-18):** **47** rejected SELL Orders (`status=REJECTED`: 45 CLOSE + 1 OPEN + 1 PARTIAL_CLOSE) but only **7** `PROPOSAL_REJECTED` ThesisUpdate rows (~15% captured). `PROPOSAL_EXPIRED` 7 vs **29** `EXPIRED/CLOSE` Orders (~24%). `PROPOSAL_APPROVED` 18 vs 75 filled sells. A reviewer reasoning from `ThesisUpdate(type LIKE 'PROPOSAL_%')` reached the FALSE conclusion "sells bypass approval" — the table is just sparse.
+
+**Root cause (verified in code).** The audit write is a **detached, un-awaited, post-transaction fire-and-forget** — `void (async () => { … await writeThesisUpdate(…) })()` in BOTH `approveProposal` (`lib/proposals/execute.ts:274`) and `rejectProposal` (`:383`). Launched *after* the tx commits and never awaited → on Vercel the function tears down before the promise resolves (the write races teardown). Compounded by: (a) `try/catch → console.warn` only (fail-soft); (b) depends on `findRelatedThesisId(...)` resolving — no thesis → no row. The expiry path (`proposal-expiry.ts:136`) runs inside a cron `step.run` (more reliable, ~24%) but is still fail-soft + thesis-dependent.
+
+**Canonical ledger = the Order table** (`status`, `intent`, `alpacaOrderId` null = never sent to broker). Reason about approvals from Order, not ThesisUpdate.
+
+**Layer-correct fix (Layer 1 — data integrity, per PRINCIPLES).** Write the `PROPOSAL_*` ThesisUpdate **inside the same Prisma transaction** as the Order status flip (atomic), or at minimum `await` it before the handler returns — kill the `void (async()=>{})()`. Resolve `thesisId` before the tx; if no thesis, still write the audit keyed to position/order (don't gate the audit on a thesis link). Decision: make it reliable (recommended — P1-28 needs this data) **or** formally demote `ThesisUpdate.PROPOSAL_*` to "best-effort" and document Order as canonical at every read site. Either way, **do not keep the fire-and-forget.**
+
+### P1-28 — Agent re-proposes the same rejected exit every run (proposal fatigue) — the Layer-3 prompt fix doesn't hold
+**Status:** open, filed 2026-06-18 (principal; verified against prod DB). **Prior "fixed" claim (the prompt block) does NOT hold.** Severity: **P1 behavior** — proposal fatigue; the user re-rejects the same trade ~daily, raising accidental-approval odds + queue clutter.
+
+**Prod evidence (2026-06-18, `Order side=SELL intent=CLOSE`):** MU **23** close proposals (17 rejected, still held), NVDA **33** (19 rejected), AVGO/MRVL/IREN 8 each — re-proposed ~daily across 06-09 → 06-18 with no dampening.
+
+**The prior fix + why it doesn't hold.** A Layer-3 prompt block exists (`lib/agent/system-prompt.ts:189`, "Read rejected proposals like a soft no … do NOT re-propose unless the stated reason materially changed"). It fails because it (a) is the **wrong layer** — prompt text for an agent-does-the-wrong-thing problem (PRINCIPLES says Layer 1/2), and (b) is **starved by P1-27**: the agent reads rejections via `get_theses(include_history)` (`get-theses.ts:269`), but ~85% of rejections have no `PROPOSAL_REJECTED` row, and surviving rows fall outside the default N=5 history window. The only real suppression today is #381's **4h tactical-run snooze** (load-context bail) — that killed the GPT-5.5 cost runaway (P0-14) but does nothing about cross-run re-proposal by the daily run.
+
+**Layer-correct fix.**
+- **L1 (the real fix):** a proposal-creation gate — refuse to stage a new CLOSE/PARTIAL_CLOSE proposal for a position with a REJECTED close Order inside a cooldown window (read from the **Order** ledger), unless the thesis materially changed (new EXIT trigger fired / price crossed stop). Extends #381's 4h tactical snooze into a real cross-run cooldown on the *proposal* side.
+- **L2 (surface state):** pre-digest a `rejectedExitCount` ("proposed this exit N×, rejected each") onto the thesis in `get_theses`, derived from the **Order** table (reliable), not ThesisUpdate.
+- **L3 (keep, not primary):** the existing prompt as belt-and-suspenders.
+
+**Linked to P1-27:** B's data paths (L2 surfacing, L3 prompt) must read the **Order** ledger, OR P1-27 must make `ThesisUpdate.PROPOSAL_*` reliable first.
+
 ---
 
 ## P2 — Backlog
