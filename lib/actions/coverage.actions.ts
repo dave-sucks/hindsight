@@ -12,100 +12,65 @@ import {
 
 // ─── Coverage Table data (Feature B — docs/plans/PORTFOLIO_DIGEST.md) ─────────
 //
-// Read-only feed for the principal's main stock-overview, grouped by the clean
-// post-P1-24 Thesis.status (HOLDING / WATCHING / PASSED). Phase-1 math only:
-// "since [anchor]" compares a stored anchor price (entry / watch-add / pass)
-// against the live quote. No candle history yet.
+// The principal's main stock-overview, three tabs:
+//   Trades   — open positions + recently-closed (sold) positions. The held book
+//              + recent realized results. "Since" = unrealized P&L (open) /
+//              realized P&L (closed, "Sold …").
+//   Watching — WATCHING theses. "Since" = move since the watch-add.
+//   Passed   — recently PASSED theses (last 14d, deduped). "Since" = move since
+//              the pass; raw green/red is backwards (a passed stock rising is
+//              regret) so the verdict (Dodged/Missed) carries the meaning.
 //
-// Anchors per tab:
-//   Active   (HOLDING)  → position.avgCost (held entry), else thesis.entryPrice.
-//                         "since entry" = live vs anchor.
-//   Watching (WATCHING) → thesis.entryPrice as the buy-above level; anchor for
-//                         "since added" is also entryPrice (best available
-//                         decision price until phase-2 decision-price capture).
-//   Passed   (PASSED)   → the pass-moment quote (ThesisUpdate.priceAtTime on the
-//                         most recent STATUS_CHANGED/UPDATED row), else
-//                         thesis.entryPrice. Verdict (Dodged/Missed) is derived
-//                         from move-direction-vs-pass, NOT raw green/red.
-//
-// TODO(phase-2): fixed 5d/10d/30d post-decision windows need Finnhub daily
-// candles cached per-day + a clean decision-price stamped on the ThesisUpdate.
-// See docs/plans/PORTFOLIO_DIGEST.md → Feature B → "The time math".
+// Each row also shows the stock's OWN momentum (1D / 5D / 30D) from daily
+// candles — independent of the decision anchor.
 
-export type CoverageStatus = "HOLDING" | "WATCHING" | "PASSED";
+/** Days back to surface PASSED theses + recently-closed trades. */
+const RECENT_DAYS = 14;
+/** Cap recently-closed trades shown inline (the rest live on /trades). */
+const CLOSED_CAP = 12;
 
-/** Dodged = the pass was right (would-be loss avoided). Missed = regret. */
 export type CoverageVerdict = "DODGED" | "MISSED" | "FLAT";
+/** The verb in a row's "Since" subhead. */
+export type CoverageAnchorVerb = "Entered" | "Sold" | "Watching since" | "Passed";
 
 export interface CoverageRow {
-  thesisId: string;
+  /** Unique per row (positionId or thesisId). */
+  key: string;
   ticker: string;
-  status: CoverageStatus;
-  /** "LONG" | "SHORT" | null (unresearched watch / pass with no view). */
-  direction: string | null;
   analystName: string | null;
-  /** Live (or last-resolved) quote. null when no price could be sourced. */
+  /** Live (or last-resolved) quote. */
   currentPrice: number | null;
-  /** The stock's OWN recent momentum (current vs prior/5-session close), from
-   *  daily candles. Independent of the decision anchor — "how's the name moving."
-   *  null when candles are unavailable or there isn't enough history. */
+  // ── The stock's own momentum (daily candles), independent of the anchor ──
   oneDayPct: number | null;
   fiveDayPct: number | null;
-  /** The decision anchor: entry / buy-above / pass price. */
-  anchorPrice: number | null;
-  /** Move since anchor, in $ and %. null when either price is missing. */
+  thirtyDayPct: number | null;
+  // ── "Since [anchor]" — move vs entry / watch / pass, or realized for sold ──
   sinceDollar: number | null;
   sincePct: number | null;
-  /** When the anchor was set (entry date / watch-add / pass date). */
-  anchorAt: string;
-  // ── Active only ──
-  targetPrice: number | null;
-  stopLoss: number | null;
-  /** 0–1 progress from entry→target along the trade direction. null if unknown. */
-  targetProximity: number | null;
-  // ── Watching only ──
-  /** Most recent REVIEWED/UPDATED timestamp, else anchorAt. */
-  lastReviewedAt: string;
-  // ── Passed only ──
-  verdict: CoverageVerdict;
+  anchorPrice: number | null;
+  anchorAt: string; // ISO — entry / watch-add / pass / sold date
+  anchorVerb: CoverageAnchorVerb;
+  // ── Trades only (null otherwise) ──
+  tradeState: "OPEN" | "CLOSED" | null;
+  shares: number | null;
+  /** avgCost × shares — the "$X — N shares" subhead. */
+  costBasis: number | null;
+  // ── Passed only (null otherwise) ──
+  verdict: CoverageVerdict | null;
 }
 
 export interface CoverageData {
-  active: CoverageRow[];
+  trades: CoverageRow[];
   watching: CoverageRow[];
   passed: CoverageRow[];
 }
 
-const EMPTY: CoverageData = { active: [], watching: [], passed: [] };
+const EMPTY: CoverageData = { trades: [], watching: [], passed: [] };
 
-/**
- * Compute target-proximity as a 0–1 fraction of the entry→target gap traversed,
- * directionally. LONG: (cur−entry)/(target−entry). SHORT: (entry−cur)/(entry−target).
- * Clamped to [0,1]. null when any leg is missing or the gap is degenerate.
- */
-function targetProximity(
-  direction: string | null,
-  entry: number | null,
-  target: number | null,
-  current: number | null,
-): number | null {
-  if (entry == null || target == null || current == null) return null;
-  const gap = direction === "SHORT" ? entry - target : target - entry;
-  if (gap <= 0) return null;
-  const moved = direction === "SHORT" ? entry - current : current - entry;
-  return Math.max(0, Math.min(1, moved / gap));
-}
-
-/**
- * Verdict for a PASSED thesis. A pass on a LONG idea is "right" (DODGED) if the
- * stock fell; "wrong" (MISSED) if it rose. A pass on a SHORT idea inverts. With
- * no stored direction, fall back to treating any rise-since-pass as regret
- * (the long-bias default the spec describes: "a passed stock going UP is regret").
- */
-function passVerdict(
-  direction: string | null,
-  sincePct: number | null,
-): CoverageVerdict {
+/** Verdict for a PASSED thesis. Pass on a LONG idea is right (DODGED) if the
+ *  stock fell, wrong (MISSED) if it rose; SHORT inverts; no direction → treat a
+ *  rise-since-pass as regret (the long-bias default). */
+function passVerdict(direction: string | null, sincePct: number | null): CoverageVerdict {
   if (sincePct == null || sincePct === 0) return "FLAT";
   const rose = sincePct > 0;
   if (direction === "SHORT") return rose ? "DODGED" : "MISSED";
@@ -124,31 +89,50 @@ export async function getCoverageData(
   const accountId = await getAccountId(user.id);
   if (!accountId) return EMPTY;
 
-  // ── DB reads (independent → parallel) ──────────────────────────────────────
-  const [theses, openPositions, alpacaCreds] = await Promise.all([
-    prisma.thesis.findMany({
+  const recentSince = new Date(Date.now() - RECENT_DAYS * 86_400_000);
+
+  // ── DB reads (parallel) ────────────────────────────────────────────────────
+  const [positions, watchingTheses, passedTheses, alpacaCreds] = await Promise.all([
+    // Open positions + recently-closed (sold) positions — the Trades tab.
+    prisma.position.findMany({
       where: {
         accountId,
-        status: { in: ["HOLDING", "WATCHING", "PASSED"] },
-        researchRun: { environment },
+        environment,
+        OR: [{ status: "OPEN" }, { status: "CLOSED", closedAt: { gte: recentSince } }],
       },
-      orderBy: { updatedAt: "desc" },
-      take: 200,
+      orderBy: { openedAt: "desc" },
       select: {
         id: true,
-        ticker: true,
-        status: true,
+        symbol: true,
         direction: true,
-        entryPrice: true,
-        targetPrice: true,
-        stopLoss: true,
-        createdAt: true,
-        updatedAt: true,
-        researchRun: {
-          select: { agentConfig: { select: { name: true } } },
-        },
-        // Most-recent audit row carrying a resolved price — used as the pass
-        // anchor and the "since last review" timestamp.
+        quantity: true,
+        avgCost: true,
+        status: true,
+        closePrice: true,
+        realizedPnl: true,
+        outcome: true,
+        openedAt: true,
+        closedAt: true,
+        analyst: { select: { name: true } },
+      },
+    }).catch(() => [] as never[]),
+    prisma.thesis.findMany({
+      where: { accountId, status: "WATCHING", researchRun: { environment } },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+      select: {
+        id: true, ticker: true, direction: true, entryPrice: true,
+        createdAt: true, updatedAt: true,
+        researchRun: { select: { agentConfig: { select: { name: true } } } },
+      },
+    }).catch(() => [] as never[]),
+    prisma.thesis.findMany({
+      where: { accountId, status: "PASSED", researchRun: { environment }, updatedAt: { gte: recentSince } },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+      select: {
+        id: true, ticker: true, direction: true, entryPrice: true, updatedAt: true,
+        researchRun: { select: { agentConfig: { select: { name: true } } } },
         updates: {
           where: { type: { in: ["STATUS_CHANGED", "UPDATED", "REVIEWED"] } },
           orderBy: { timestamp: "desc" },
@@ -157,118 +141,145 @@ export async function getCoverageData(
         },
       },
     }).catch(() => [] as never[]),
-    prisma.position.findMany({
-      where: { accountId, status: "OPEN", environment },
-      select: { symbol: true, avgCost: true, direction: true },
-    }).catch(() => [] as never[]),
-    resolveAlpacaCredentials(user.id, environment)
-      .then((c) => c ?? undefined)
-      .catch(() => undefined),
+    resolveAlpacaCredentials(user.id, environment).then((c) => c ?? undefined).catch(() => undefined),
   ]);
 
-  if (theses.length === 0) return EMPTY;
+  if (positions.length === 0 && watchingTheses.length === 0 && passedTheses.length === 0) {
+    return EMPTY;
+  }
 
-  // ── Live quotes (one batch) ────────────────────────────────────────────────
-  const tickers = Array.from(new Set(theses.map((t) => t.ticker)));
+  // ── Prices + 1D/5D/30D candle moves for every ticker on the board ───────────
+  const tickers = Array.from(
+    new Set([
+      ...positions.map((p) => p.symbol),
+      ...watchingTheses.map((t) => t.ticker),
+      ...passedTheses.map((t) => t.ticker),
+    ]),
+  );
   const prices = await getLatestPrices(tickers, alpacaCreds).catch(
     () => ({}) as Record<string, number>,
   );
+  const todayEt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+  const d30 = new Date(`${todayEt}T00:00:00Z`);
+  d30.setUTCDate(d30.getUTCDate() - 30);
+  const target30 = d30.toISOString().slice(0, 10);
 
-  // ── 1D / 5D moves from daily candles ───────────────────────────────────────
-  // current-vs-prior-session close (1D) and current-vs-5-sessions-ago (5D). One
-  // candle fetch per ticker (Next-cached, revalidate 300s — candles change once
-  // a day). The ET-date filter drops today's partial bar so "prior close" is the
-  // last COMPLETED session regardless of when the page loads.
-  const todayEt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-  }).format(new Date()); // YYYY-MM-DD
-  const moves = new Map<string, { oneDayPct: number | null; fiveDayPct: number | null }>();
+  const moves = new Map<string, { oneDayPct: number | null; fiveDayPct: number | null; thirtyDayPct: number | null }>();
   await Promise.all(
     tickers.map(async (tk) => {
       const current = prices[tk];
       if (current == null) {
-        moves.set(tk, { oneDayPct: null, fiveDayPct: null });
+        moves.set(tk, { oneDayPct: null, fiveDayPct: null, thirtyDayPct: null });
         return;
       }
-      const candles = await getStockCandles(tk, 14).catch(() => []);
-      const completed = candles.filter((c) => c.date < todayEt);
+      const candles = await getStockCandles(tk, 45).catch(() => []);
+      const completed = candles.filter((c) => c.date < todayEt); // drop today's partial bar
       const prevClose = completed[completed.length - 1]?.close ?? null;
       const close5 = completed[completed.length - 5]?.close ?? null;
-      const pct = (denom: number | null) =>
-        denom != null && denom !== 0 ? ((current - denom) / denom) * 100 : null;
-      moves.set(tk, { oneDayPct: pct(prevClose), fiveDayPct: pct(close5) });
+      let close30: number | null = null; // last completed close on/before 30 cal. days ago
+      for (const c of completed) {
+        if (c.date <= target30) close30 = c.close;
+        else break;
+      }
+      const pct = (den: number | null) =>
+        den != null && den !== 0 ? ((current - den) / den) * 100 : null;
+      moves.set(tk, { oneDayPct: pct(prevClose), fiveDayPct: pct(close5), thirtyDayPct: pct(close30) });
     }),
   );
+  const mv = (tk: string) =>
+    moves.get(tk) ?? { oneDayPct: null, fiveDayPct: null, thirtyDayPct: null };
 
-  const positionBySymbol = new Map(openPositions.map((p) => [p.symbol, p]));
-
-  const rows: CoverageRow[] = theses.map((t) => {
-    const status = t.status as CoverageStatus;
-    const pos = positionBySymbol.get(t.ticker);
-    const current = prices[t.ticker] ?? null;
-    const lastUpdate = t.updates[0];
-
-    // Anchor selection by tab.
-    let anchorPrice: number | null;
-    let anchorAt: string;
-    if (status === "HOLDING") {
-      anchorPrice = pos?.avgCost ?? t.entryPrice ?? null;
-      anchorAt = t.createdAt.toISOString();
-    } else if (status === "PASSED") {
-      anchorPrice = lastUpdate?.priceAtTime ?? t.entryPrice ?? null;
-      anchorAt = (lastUpdate?.timestamp ?? t.updatedAt).toISOString();
-    } else {
-      // WATCHING — buy-above level doubles as the anchor.
-      anchorPrice = t.entryPrice ?? null;
-      anchorAt = t.createdAt.toISOString();
-    }
-
-    // Raw price move since the anchor.
-    const rawSinceDollar =
-      current != null && anchorPrice != null ? current - anchorPrice : null;
-    const rawSincePct =
-      rawSinceDollar != null && anchorPrice != null && anchorPrice !== 0
-        ? (rawSinceDollar / anchorPrice) * 100
-        : null;
-    // On a HELD position "since entry" means P&L, so a SHORT gains when price
-    // falls — flip the sign. WATCHING/PASSED keep the raw price move (the pass
-    // verdict already accounts for direction separately, below).
-    const pnlSign = status === "HOLDING" && t.direction === "SHORT" ? -1 : 1;
-    const sinceDollar = rawSinceDollar != null ? rawSinceDollar * pnlSign : null;
-    const sincePct = rawSincePct != null ? rawSincePct * pnlSign : null;
-
+  // ── Trades (open + recently sold) ──────────────────────────────────────────
+  const trades: CoverageRow[] = positions.map((p) => {
+    const current = prices[p.symbol] ?? null;
+    const dirSign = p.direction === "SHORT" ? -1 : 1;
+    const isOpen = p.status === "OPEN";
+    const costBasis = p.avgCost * p.quantity;
+    // Open → unrealized vs avgCost; Closed → realized P&L from the DB.
+    const sinceDollar = isOpen
+      ? current != null ? (current - p.avgCost) * p.quantity * dirSign : null
+      : p.realizedPnl ?? null;
+    const sincePct =
+      costBasis !== 0 && sinceDollar != null ? (sinceDollar / costBasis) * 100 : null;
     return {
-      thesisId: t.id,
-      ticker: t.ticker,
-      status,
-      direction: t.direction ?? null,
-      analystName: t.researchRun?.agentConfig?.name ?? null,
-      currentPrice: current,
-      oneDayPct: moves.get(t.ticker)?.oneDayPct ?? null,
-      fiveDayPct: moves.get(t.ticker)?.fiveDayPct ?? null,
-      anchorPrice,
+      key: p.id,
+      ticker: p.symbol,
+      analystName: p.analyst?.name ?? null,
+      currentPrice: isOpen ? current : (p.closePrice ?? current),
+      ...mv(p.symbol),
       sinceDollar,
       sincePct,
-      anchorAt,
-      targetPrice: t.targetPrice ?? null,
-      stopLoss: t.stopLoss ?? null,
-      targetProximity: targetProximity(
-        t.direction ?? null,
-        anchorPrice,
-        t.targetPrice ?? null,
-        current,
-      ),
-      lastReviewedAt: (lastUpdate?.timestamp ?? t.updatedAt).toISOString(),
-      verdict:
-        status === "PASSED"
-          ? passVerdict(t.direction ?? null, sincePct)
-          : "FLAT",
+      anchorPrice: p.avgCost,
+      anchorAt: (isOpen ? p.openedAt : (p.closedAt ?? p.openedAt)).toISOString(),
+      anchorVerb: isOpen ? "Entered" : "Sold",
+      tradeState: isOpen ? "OPEN" : "CLOSED",
+      shares: p.quantity,
+      costBasis,
+      verdict: null,
     };
   });
 
-  return {
-    active: rows.filter((r) => r.status === "HOLDING"),
-    watching: rows.filter((r) => r.status === "WATCHING"),
-    passed: rows.filter((r) => r.status === "PASSED"),
-  };
+  // ── Watching ───────────────────────────────────────────────────────────────
+  const watching: CoverageRow[] = watchingTheses.map((t) => {
+    const current = prices[t.ticker] ?? null;
+    const anchor = t.entryPrice ?? null;
+    const sinceDollar = current != null && anchor != null ? current - anchor : null;
+    const sincePct =
+      sinceDollar != null && anchor != null && anchor !== 0 ? (sinceDollar / anchor) * 100 : null;
+    return {
+      key: t.id,
+      ticker: t.ticker,
+      analystName: t.researchRun?.agentConfig?.name ?? null,
+      currentPrice: current,
+      ...mv(t.ticker),
+      sinceDollar,
+      sincePct,
+      anchorPrice: anchor,
+      anchorAt: t.createdAt.toISOString(),
+      anchorVerb: "Watching since",
+      tradeState: null,
+      shares: null,
+      costBasis: null,
+      verdict: null,
+    };
+  });
+
+  // ── Passed (recent, deduped by ticker → most-recent) ───────────────────────
+  const seenPass = new Set<string>();
+  const passed: CoverageRow[] = [];
+  for (const t of passedTheses) {
+    if (seenPass.has(t.ticker)) continue; // dedup: keep the most-recent pass
+    seenPass.add(t.ticker);
+    const current = prices[t.ticker] ?? null;
+    const last = t.updates[0];
+    const anchor = last?.priceAtTime ?? t.entryPrice ?? null;
+    const sinceDollar = current != null && anchor != null ? current - anchor : null;
+    const sincePct =
+      sinceDollar != null && anchor != null && anchor !== 0 ? (sinceDollar / anchor) * 100 : null;
+    passed.push({
+      key: t.id,
+      ticker: t.ticker,
+      analystName: t.researchRun?.agentConfig?.name ?? null,
+      currentPrice: current,
+      ...mv(t.ticker),
+      sinceDollar,
+      sincePct,
+      anchorPrice: anchor,
+      anchorAt: (last?.timestamp ?? t.updatedAt).toISOString(),
+      anchorVerb: "Passed",
+      tradeState: null,
+      shares: null,
+      costBasis: null,
+      verdict: passVerdict(t.direction ?? null, sincePct),
+    });
+  }
+
+  // Open trades first, then most-recent sales; cap the closed list (rest → /trades).
+  const openTrades = trades.filter((r) => r.tradeState === "OPEN");
+  const closedTrades = trades
+    .filter((r) => r.tradeState === "CLOSED")
+    .sort((a, b) => (a.anchorAt < b.anchorAt ? 1 : -1))
+    .slice(0, CLOSED_CAP);
+
+  return { trades: [...openTrades, ...closedTrades], watching, passed };
 }

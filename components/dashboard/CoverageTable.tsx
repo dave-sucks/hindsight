@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Check, X, Minus } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table,
@@ -12,94 +14,155 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { getTradeStatusDisplay } from "@/lib/trade-status";
 import { cn, pnlColor } from "@/lib/utils";
-import type {
-  CoverageData,
-  CoverageRow,
-  CoverageStatus,
-} from "@/lib/actions/coverage.actions";
+import { formatCurrency } from "@/lib/format";
+import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
 
 // ─── Coverage Table (Feature B — docs/plans/PORTFOLIO_DIGEST.md) ──────────────
 //
-// The principal's main stock-overview, grouped by Thesis.status across three
-// tabs. Each tab is a columnar table: Name · Price · 1D · 5D · Since[anchor].
-// 1D/5D are the stock's OWN momentum (daily candles); "Since" is the move vs the
-// decision anchor and adapts per status (since entry / since watch / since pass).
-// On Passed, raw green/red is backwards (a passed stock rising = regret), so the
-// Since cell shows the Dodged/Missed verdict instead.
+// An expanded trade-row: each row carries the trade-row identity (logo · status
+// dot · ticker · subhead) PLUS the stock's momentum across 1D/5D/30D and the
+// move-vs-decision ("Since"). Three tabs: Trades (open + recent sales),
+// Watching, Passed (recent). See coverage.actions for the data.
 
-type Tab = "active" | "watching" | "passed";
+// Moves under this magnitude read as "flat" — shown muted, not green/red.
+const FLAT_BAND_PCT = 0.5;
 
-const SINCE_LABEL: Record<CoverageStatus, string> = {
-  HOLDING: "Since entry",
-  WATCHING: "Since watch",
-  PASSED: "Since pass",
-};
+const SINCE_LABEL = { trades: "Lifetime", watching: "Since watch", passed: "Since pass" } as const;
+type Tab = keyof typeof SINCE_LABEL;
 
-// ── A plain colored % (stock momentum — green up / red down) ─────────────────
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(d);
+}
+
+// ── A plain colored % (stock momentum — green up / red down, muted near flat) ─
 function Pct({ value }: { value: number | null }) {
   if (value == null) return <span className="text-muted-foreground/40">—</span>;
+  const flat = Math.abs(value) < FLAT_BAND_PCT;
   return (
-    <span className={cn("tabular-nums", pnlColor(value))}>
+    <span className={cn("tabular-nums", flat ? "text-muted-foreground" : pnlColor(value))}>
       {value >= 0 ? "+" : ""}
       {value.toFixed(2)}%
     </span>
   );
 }
 
-// ── The "Since [anchor]" cell — adapts to status ─────────────────────────────
-function SinceCell({ row }: { row: CoverageRow }) {
-  // Passed: verdict carries the meaning (raw color is backwards for a pass).
-  if (row.status === "PASSED") {
-    const verdict =
-      row.verdict === "DODGED" ? (
-        <Badge variant="positive">Dodged</Badge>
-      ) : row.verdict === "MISSED" ? (
-        <Badge variant="negative">Missed</Badge>
-      ) : (
-        <Badge variant="secondary">Flat</Badge>
-      );
-    return (
-      <span className="inline-flex items-center gap-1.5 justify-end">
-        {verdict}
-        {row.sincePct != null && (
-          <span className="text-xs text-muted-foreground/60 tabular-nums">
-            {row.sincePct >= 0 ? "+" : ""}
-            {row.sincePct.toFixed(2)}%
-          </span>
-        )}
-      </span>
-    );
-  }
-  // Active / Watching: the move vs anchor as $ + % (Active = P&L on the holding).
-  if (row.sincePct == null) return <span className="text-muted-foreground/40">—</span>;
+// ── The status dot — identical to the trade row's for trades; neutral else ───
+function statusDotClass(row: CoverageRow): string {
+  if (row.tradeState === "OPEN") return getTradeStatusDisplay("OPEN").dotClass;
+  if (row.tradeState === "CLOSED")
+    return getTradeStatusDisplay((row.sinceDollar ?? 0) >= 0 ? "CLOSED_WIN" : "CLOSED_LOSS").dotClass;
+  if (row.verdict != null) return "bg-muted-foreground/40"; // passed
+  return "bg-sky-500"; // watching
+}
+
+// ── Name cell — the trade-row left side (logo · dot · ticker · subhead) ───────
+function NameCell({ row }: { row: CoverageRow }) {
+  const subhead =
+    row.tradeState != null && row.costBasis != null && row.shares != null
+      ? `${formatCurrency(row.costBasis)} — ${row.shares} share${row.shares === 1 ? "" : "s"}`
+      : row.analystName;
   return (
-    <span className="inline-flex items-center gap-1.5 justify-end tabular-nums">
-      {row.sinceDollar != null && (
-        <span className={pnlColor(row.sinceDollar)}>
-          {row.sinceDollar >= 0 ? "+" : ""}${Math.abs(row.sinceDollar).toFixed(2)}
-        </span>
-      )}
-      <span className={cn("text-xs", pnlColor(row.sincePct))}>
-        {row.sincePct >= 0 ? "+" : ""}
-        {row.sincePct.toFixed(2)}%
-      </span>
-    </span>
+    <div className="flex items-center gap-2 min-w-0">
+      <StockLogo ticker={row.ticker} size="md" className="rounded-md" />
+      <div className="flex flex-col min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-medium">{row.ticker}</span>
+          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDotClass(row))} />
+        </div>
+        {subhead && (
+          <span className="text-xs text-muted-foreground tabular-nums truncate">{subhead}</span>
+        )}
+      </div>
+    </div>
   );
 }
 
-// ── One status tab's table ───────────────────────────────────────────────────
+// ── Since cell — 2-line: move (gray near flat / verdict icon for passes) + sub ─
+function SinceCell({ row }: { row: CoverageRow }) {
+  const subAnchor =
+    row.anchorPrice != null && row.anchorVerb !== "Sold"
+      ? ` · $${row.anchorPrice.toFixed(2)}`
+      : "";
+  const sub = `${row.anchorVerb} ${fmtDate(row.anchorAt)}${subAnchor}`;
+
+  // Passed: raw green/red is backwards (up = regret), so the % is muted and a
+  // Dodged/Missed icon carries the meaning.
+  const isPass = row.verdict != null;
+  const flat = row.sincePct != null && Math.abs(row.sincePct) < FLAT_BAND_PCT;
+  const pctClass = isPass || flat ? "text-muted-foreground" : pnlColor(row.sincePct ?? 0);
+
+  const verdictIcon =
+    row.verdict === "DODGED" ? (
+      <Check className="h-3.5 w-3.5 text-emerald-500" />
+    ) : row.verdict === "MISSED" ? (
+      <X className="h-3.5 w-3.5 text-red-500" />
+    ) : row.verdict === "FLAT" ? (
+      <Minus className="h-3.5 w-3.5 text-muted-foreground/60" />
+    ) : null;
+
+  const top = (
+    <span className="inline-flex items-center gap-1.5 justify-end">
+      {verdictIcon}
+      {row.sincePct == null ? (
+        <span className="text-muted-foreground/40">—</span>
+      ) : (
+        <span className={cn("tabular-nums", pctClass)}>
+          {row.tradeState != null && row.sinceDollar != null && (
+            <>
+              {row.sinceDollar >= 0 ? "+" : ""}${Math.abs(row.sinceDollar).toFixed(2)}{" "}
+            </>
+          )}
+          <span className="text-xs">
+            {row.sincePct >= 0 ? "+" : ""}
+            {row.sincePct.toFixed(2)}%
+          </span>
+        </span>
+      )}
+    </span>
+  );
+
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      {isPass ? (
+        <Tooltip>
+          <TooltipTrigger render={<span className="cursor-default">{top}</span>} />
+          <TooltipContent side="top">
+            {row.verdict === "DODGED"
+              ? "Dodged — passed and it's down since"
+              : row.verdict === "MISSED"
+                ? "Missed — passed but it's risen since"
+                : "Roughly flat since the pass"}
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        top
+      )}
+      <span className="text-xs text-muted-foreground/70 truncate">{sub}</span>
+    </div>
+  );
+}
+
+// ── One tab's table ──────────────────────────────────────────────────────────
 function CoverageTab({
   rows,
-  status,
+  tab,
   emptyLabel,
 }: {
   rows: CoverageRow[];
-  status: CoverageStatus;
+  tab: Tab;
   emptyLabel: string;
 }) {
   const router = useRouter();
-
   if (rows.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -107,11 +170,6 @@ function CoverageTab({
       </div>
     );
   }
-
-  // Default-sort by the day's move (most active on top), like the reference.
-  const sorted = [...rows].sort(
-    (a, b) => (b.oneDayPct ?? -Infinity) - (a.oneDayPct ?? -Infinity),
-  );
 
   return (
     <div className="rounded-lg border overflow-hidden">
@@ -122,45 +180,44 @@ function CoverageTab({
             <TableHead className="text-right">Price</TableHead>
             <TableHead className="text-right">1D</TableHead>
             <TableHead className="text-right">5D</TableHead>
-            <TableHead className="text-right">{SINCE_LABEL[status]}</TableHead>
+            <TableHead className="text-right">30D</TableHead>
+            <TableHead className="text-right">{SINCE_LABEL[tab]}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sorted.map((row) => (
+          {rows.map((row) => (
             <TableRow
-              key={row.thesisId}
+              key={row.key}
               className="cursor-pointer"
               onClick={() => router.push(`/stocks/${row.ticker}`)}
             >
               <TableCell>
-                <div className="flex items-center gap-2 min-w-0">
-                  <StockLogo ticker={row.ticker} size="md" className="rounded-md" />
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-medium">{row.ticker}</span>
-                    {row.analystName && (
-                      <span className="text-xs text-muted-foreground truncate">
-                        {row.analystName}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <NameCell row={row} />
               </TableCell>
               <TableCell className="text-right tabular-nums font-light">
                 {row.currentPrice != null ? `$${row.currentPrice.toFixed(2)}` : "—"}
               </TableCell>
-              <TableCell className="text-right">
-                <Pct value={row.oneDayPct} />
-              </TableCell>
-              <TableCell className="text-right">
-                <Pct value={row.fiveDayPct} />
-              </TableCell>
-              <TableCell className="text-right">
-                <SinceCell row={row} />
-              </TableCell>
+              <TableCell className="text-right"><Pct value={row.oneDayPct} /></TableCell>
+              <TableCell className="text-right"><Pct value={row.fiveDayPct} /></TableCell>
+              <TableCell className="text-right"><Pct value={row.thirtyDayPct} /></TableCell>
+              <TableCell className="text-right"><SinceCell row={row} /></TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+
+      {tab === "trades" && (
+        <div className="border-t p-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-muted-foreground"
+            render={<Link href="/trades" />}
+          >
+            All trades
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -170,21 +227,21 @@ export default function CoverageTable({ data }: { data: CoverageData }) {
     <div className="space-y-3">
       <h2 className="text-lg font-medium">Coverage</h2>
 
-      <Tabs defaultValue={"active" satisfies Tab}>
+      <Tabs defaultValue={"trades" satisfies Tab}>
         <TabsList>
-          <TabsTrigger value="active">Active ({data.active.length})</TabsTrigger>
-          <TabsTrigger value="watching">Watching ({data.watching.length})</TabsTrigger>
-          <TabsTrigger value="passed">Passed ({data.passed.length})</TabsTrigger>
+          <TabsTrigger value="trades">Trades</TabsTrigger>
+          <TabsTrigger value="watching">Watching</TabsTrigger>
+          <TabsTrigger value="passed">Passed</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="active" className="mt-3">
-          <CoverageTab rows={data.active} status="HOLDING" emptyLabel="No held positions yet." />
+        <TabsContent value="trades" className="mt-3">
+          <CoverageTab rows={data.trades} tab="trades" emptyLabel="No trades yet." />
         </TabsContent>
         <TabsContent value="watching" className="mt-3">
-          <CoverageTab rows={data.watching} status="WATCHING" emptyLabel="Nothing on the watchlist yet." />
+          <CoverageTab rows={data.watching} tab="watching" emptyLabel="Nothing on the watchlist yet." />
         </TabsContent>
         <TabsContent value="passed" className="mt-3">
-          <CoverageTab rows={data.passed} status="PASSED" emptyLabel="No passed names yet." />
+          <CoverageTab rows={data.passed} tab="passed" emptyLabel="No recently passed names." />
         </TabsContent>
       </Tabs>
     </div>
