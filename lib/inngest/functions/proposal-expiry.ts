@@ -121,15 +121,28 @@ export const proposalExpiry = inngest.createFunction(
         // failures here shouldn't block the expiry flip. The agent reads
         // this on its next run to decide whether to re-propose.
         try {
-          const thesis = await prisma.thesis.findFirst({
-            where: {
-              ticker: order.symbol,
-              researchRun: { agentConfigId: order.position.analystId },
-              status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
-            },
-            orderBy: { createdAt: "desc" },
-            select: { id: true },
-          });
+          // Prefer a live thesis, but fall back to the most recent of ANY
+          // status (P1-27) — an expired CLOSE on a position whose thesis
+          // already RETIRED still deserves its audit row. Narrow filter was
+          // part of why expiry captured only ~24% (7 of 30).
+          const thesis =
+            (await prisma.thesis.findFirst({
+              where: {
+                ticker: order.symbol,
+                researchRun: { agentConfigId: order.position.analystId },
+                status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
+              },
+              orderBy: { createdAt: "desc" },
+              select: { id: true },
+            })) ??
+            (await prisma.thesis.findFirst({
+              where: {
+                ticker: order.symbol,
+                researchRun: { agentConfigId: order.position.analystId },
+              },
+              orderBy: { createdAt: "desc" },
+              select: { id: true },
+            }));
           if (thesis) {
             await writeThesisUpdate({
               thesisId: thesis.id,

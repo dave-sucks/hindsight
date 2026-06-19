@@ -268,38 +268,43 @@ export async function approveProposal(
     });
   }
 
-  // 4. Audit row + RunEvent for the approval event. The Position lifecycle
-  //    events (OPENED/CLOSED with PnL/etc.) get written by reconcile-orders
-  //    when the fill lands — we don't pre-empt them here.
-  void (async () => {
-    try {
-      await writeThesisUpdate({
-        thesisId: await findRelatedThesisId(order.position.analystId, order.position.symbol),
-        type: "PROPOSAL_APPROVED",
-        summary: `Approved ${intent} on ${order.symbol} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
-        rationale: `User approved the ${intent} proposal. Alpaca order id ${alpacaOrderId}.`,
-        fieldChanges: {
-          proposal: {
-            from: { orderId, status: "AWAITING_APPROVAL" },
-            to: {
-              orderId,
-              status: "APPROVED",
-              intent,
-              quantity: order.quantity,
-              approvedAt: promotedAt.toISOString(),
-              approvedBy: actorUserId,
-              alpacaOrderId,
-            },
+  // 4. Audit row for the approval event. The Position lifecycle events
+  //    (OPENED/CLOSED with PnL/etc.) get written by reconcile-orders when
+  //    the fill lands — we don't pre-empt them here. AWAITED (P1-27): a
+  //    detached `void(async)()` raced the serverless teardown and dropped
+  //    most rows. writeThesisUpdate is already fail-soft (logs, never
+  //    throws), so awaiting it can't break the approval that already
+  //    committed above.
+  const approveThesisId = await findRelatedThesisId(
+    order.position.analystId,
+    order.position.symbol,
+  );
+  if (approveThesisId) {
+    await writeThesisUpdate({
+      thesisId: approveThesisId,
+      type: "PROPOSAL_APPROVED",
+      summary: `Approved ${intent} on ${order.symbol} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
+      rationale: `User approved the ${intent} proposal. Alpaca order id ${alpacaOrderId}.`,
+      fieldChanges: {
+        proposal: {
+          from: { orderId, status: "AWAITING_APPROVAL" },
+          to: {
+            orderId,
+            status: "APPROVED",
+            intent,
+            quantity: order.quantity,
+            approvedAt: promotedAt.toISOString(),
+            approvedBy: actorUserId,
+            alpacaOrderId,
           },
         },
-      });
-    } catch (err) {
-      console.warn(
-        `[approveProposal] ThesisUpdate(PROPOSAL_APPROVED) write failed for order ${orderId}:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
-  })();
+      },
+    });
+  } else {
+    console.warn(
+      `[approveProposal] no thesis found for analyst=${order.position.analystId} ${order.symbol} — PROPOSAL_APPROVED audit skipped (Order ${orderId} is canonical).`,
+    );
+  }
 
   return {
     ok: true,
@@ -348,6 +353,14 @@ export async function rejectProposal(
   const rejectedAt = new Date();
   const trimmedMessage = rejectionMessage?.trim() || null;
 
+  // Resolve the thesis to audit BEFORE the tx so the write can ride inside
+  // it (atomic with the Order flip). null = no thesis to hang the row off;
+  // the Order ledger is canonical either way.
+  const rejectThesisId = await findRelatedThesisId(
+    order.position.analystId,
+    order.position.symbol,
+  );
+
   await prisma.$transaction(async (tx) => {
     await tx.order.update({
       where: { id: orderId },
@@ -374,47 +387,45 @@ export async function rejectProposal(
         priceAt: null,
       },
     });
-  });
 
-  // The agent reads thesis history via get_theses(include_history: true)
-  // — the rationale text below is the durable signal it sees on its next
-  // run. Verbatim user wording is preserved; structural metadata lives in
-  // fieldChanges.
-  void (async () => {
-    try {
-      const thesisId = await findRelatedThesisId(
-        order.position.analystId,
-        order.position.symbol,
-      );
-      await writeThesisUpdate({
-        thesisId,
-        type: "PROPOSAL_REJECTED",
-        summary: `Rejected ${intent} proposal on ${order.symbol}${trimmedMessage ? ` — "${trimmedMessage.slice(0, 80)}"` : ""}`,
-        rationale:
-          trimmedMessage ??
-          `[REJECTED:USER] User rejected the ${intent} proposal without a written reason. Treat this as a soft no; re-proposal is allowed if the setup materially changes.`,
-        fieldChanges: {
-          proposal: {
-            from: { orderId, status: "AWAITING_APPROVAL" },
-            to: {
-              orderId,
-              status: "REJECTED",
-              intent,
-              quantity: order.quantity,
-              rejectedAt: rejectedAt.toISOString(),
-              rejectedBy: actorUserId,
-              userMessage: trimmedMessage,
+    // Audit row INSIDE the tx (P1-27): the prior detached `void(async)()`
+    // raced serverless teardown and dropped ~83% of rejections (prod:
+    // 8 PROPOSAL_REJECTED rows vs 48 rejected SELL orders). The agent reads
+    // this verbatim rationale on its next run via get_theses(include_history).
+    // No thesis → no FK target; the Order ledger still records the rejection.
+    if (rejectThesisId) {
+      await tx.thesisUpdate.create({
+        data: {
+          thesisId: rejectThesisId,
+          type: "PROPOSAL_REJECTED",
+          summary: `Rejected ${intent} proposal on ${order.symbol}${trimmedMessage ? ` — "${trimmedMessage.slice(0, 80)}"` : ""}`,
+          rationale:
+            trimmedMessage ??
+            `[REJECTED:USER] User rejected the ${intent} proposal without a written reason. Treat this as a soft no; re-proposal is allowed if the setup materially changes.`,
+          fieldChanges: {
+            proposal: {
+              from: { orderId, status: "AWAITING_APPROVAL" },
+              to: {
+                orderId,
+                status: "REJECTED",
+                intent,
+                quantity: order.quantity,
+                rejectedAt: rejectedAt.toISOString(),
+                rejectedBy: actorUserId,
+                userMessage: trimmedMessage,
+              },
             },
           },
         },
       });
-    } catch (err) {
-      console.warn(
-        `[rejectProposal] ThesisUpdate(PROPOSAL_REJECTED) write failed for order ${orderId}:`,
-        err instanceof Error ? err.message : err,
-      );
     }
-  })();
+  });
+
+  if (!rejectThesisId) {
+    console.warn(
+      `[rejectProposal] no thesis found for analyst=${order.position.analystId} ${order.symbol} — PROPOSAL_REJECTED audit skipped (Order ${orderId} is canonical).`,
+    );
+  }
 
   return {
     ok: true,
@@ -425,20 +436,26 @@ export async function rejectProposal(
 }
 
 /**
- * Resolve the most recent thesis row associated with this (analyst, ticker)
- * pair. Used to attach PROPOSAL_APPROVED / PROPOSAL_REJECTED audit rows
- * to the right thesis so the agent's get_theses(include_history) sees them.
+ * Resolve the thesis row a PROPOSAL_* audit should hang off, for this
+ * (analyst, ticker) pair. `ThesisUpdate.thesisId` is a required FK, so a
+ * proposal audit row can only be written when a thesis exists — but the
+ * Order table (status/intent/alpacaOrderId) is the canonical approval
+ * ledger regardless. The audit is a best-effort timeline annotation the
+ * agent reads via get_theses(include_history); never let its absence
+ * block the proposal flip.
  *
- * Falls back to throwing if no thesis exists — the proposal could not
- * have been created without one (place_trade requires thesis_id; the
- * other proposal paths come from manage_position on an existing position
- * whose Position.analystId we trust).
+ * Returns null instead of throwing (P1-27): a detached `void(async)` that
+ * threw used to lose the write to the serverless teardown race AND the
+ * throw silently nuked the row. Callers now await this and skip the audit
+ * when null. Prefer a live thesis (HOLDING/WATCHING/PROMOTED) but fall back
+ * to the most recent thesis of ANY status — a rejected CLOSE on a position
+ * whose thesis already RETIRED still deserves its audit row.
  */
 async function findRelatedThesisId(
   analystId: string,
   ticker: string,
-): Promise<string> {
-  const thesis = await prisma.thesis.findFirst({
+): Promise<string | null> {
+  const live = await prisma.thesis.findFirst({
     where: {
       ticker,
       researchRun: { agentConfigId: analystId },
@@ -447,10 +464,13 @@ async function findRelatedThesisId(
     orderBy: { createdAt: "desc" },
     select: { id: true },
   });
-  if (!thesis) {
-    throw new Error(
-      `No live thesis found for analyst=${analystId} ticker=${ticker} — cannot attach proposal audit row`,
-    );
-  }
-  return thesis.id;
+  if (live) return live.id;
+
+  // Fallback: most recent thesis of any status for this (analyst, ticker).
+  const any = await prisma.thesis.findFirst({
+    where: { ticker, researchRun: { agentConfigId: analystId } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  return any?.id ?? null;
 }
