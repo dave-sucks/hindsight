@@ -50,10 +50,13 @@ export interface AwaitingApprovalResult {
 /**
  * Returned when a discretionary CLOSE proposal is suppressed because the user
  * recently saw this same exit proposal and did NOT approve it — whether they
- * explicitly rejected it OR ignored it to expiry (P1-28). Prod showed the
- * dominant signal is *ignore-to-expiry*, not explicit rejection (NVDA: 10
- * ignored / 0 rejected; IREN 7/0), so the cooldown arms off both. The
- * just-created Order is tombstoned; the tool surfaces this as a clean,
+ * explicitly rejected it OR ignored it to expiry (P1-28). This gate targets
+ * re-proposal ACROSS DAYS (e.g. MU was re-proposed on 5 distinct days
+ * 06-09→06-16, each prior card rejected or left to expire). Same-DAY duplicate
+ * bursts are a different problem already handled by the dedup block below.
+ * Because the user mostly ignores cards to expiry rather than clicking Reject,
+ * the cooldown arms off both outcomes. The just-created Order is tombstoned;
+ * the tool surfaces this as a clean,
  * non-fatal "did not re-propose" result (NOT an error — a thrown error would
  * fail the run's narration gate). The agent also reads `unapprovedExitCount`
  * on the thesis via get_theses; this gate is the Layer-1 backstop.
@@ -249,18 +252,27 @@ export async function maybeAwaitApproval(
   }
 
   // ── Unapproved-exit cooldown: don't re-propose a discretionary CLOSE the ──
-  // user recently saw and did NOT approve (P1-28 — proposal fatigue). Prod
-  // (2026-06-18) showed the dominant signal is *ignore-to-expiry*, not
-  // explicit rejection: NVDA 10 ignored / 0 rejected, IREN 7/0, NVTS 4/0;
-  // MU 3 ignored / 2 rejected. So the cooldown arms off a recent staged
-  // proposal that resolved either REJECTED-by-you OR EXPIRED. The earlier
-  // rejection-only design missed the worst offenders entirely. The agent
-  // kept re-proposing daily because each prior card expired with no record
-  // that stopped the next run. This is the Layer-1 backstop.
+  // user recently saw and did NOT approve (P1-28 — proposal fatigue). This is
+  // the THIRD and last layer of re-proposal suppression; it covers the gap the
+  // other two leave:
+  //   • #379 dedup (below): folds a SAME-DAY duplicate CLOSE while one is still
+  //     AWAITING_APPROVAL. Does nothing once the prior card resolves.
+  //   • #381 tactical snooze: bails a tactical RUN in load-context if a close is
+  //     pending or REJECTED within 4h. Tactical-only, 4h, rejection-only.
+  //   • THIS gate: refuses to re-stage a discretionary close ACROSS DAYS — for
+  //     daily AND tactical runs — within UNAPPROVED_EXIT_COOLDOWN_DAYS of a
+  //     prior staged close that resolved REJECTED-by-user OR EXPIRED.
+  // The motivating case is MU: re-proposed on 5 distinct days (06-09→06-16),
+  // each prior card spaced >4h apart (past #381's snooze) and already expired
+  // (nothing for #379 to fold). The big 06-04 bursts (NVDA 12×/IREN 8×/NVTS 5×)
+  // were the P0-14 runaway, already fixed by #379+#381 — NOT this gate's target.
+  // Arming off EXPIRED as well as REJECTED matters because the user mostly
+  // IGNORES cards to expiry rather than clicking Reject.
   //
   // CLOSE-only, mirroring the dedup block above: a full close is the terminal,
   // idempotent decision being re-pitched. PARTIAL_CLOSE scale-outs legitimately
-  // stack, so they're intentionally NOT gated here.
+  // stack, so they're intentionally NOT gated here (verified: no staged
+  // PARTIAL_CLOSE/ADD proposals exist in prod — closes are the only vector).
   //
   // Carve-out: risk-management exits ALWAYS flow — a trailing-stop / target
   // close from the price-monitor (closeSource='price_monitor') or any

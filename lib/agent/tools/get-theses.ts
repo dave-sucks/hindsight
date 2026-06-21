@@ -335,11 +335,11 @@ export const getTheses = defineTool({
     // LIVE run never reads a PAPER position's open time and vice versa.
     const positionOpenedAtByThesisId = new Map<string, Date>();
     // P1-28 (L2): how many times the user has been shown a close proposal on
-    // this held position and did NOT approve it — rejected OR ignored-to-expiry.
+    // this held position and did NOT approve it — rejected OR ignored-to-expiry
+    // (the user mostly ignores cards to expiry rather than clicking Reject).
     // Surfaced so the agent sees a reliable "you've proposed this exit N×, the
-    // user keeps declining" signal, read from the canonical Order ledger. Prod
-    // showed ignore-to-expiry dominates (NVDA 10 ignored / 0 rejected), so this
-    // counts both. Pairs with the Layer-1 cooldown gate in maybe-await-approval.
+    // user keeps declining" signal, read from the canonical Order ledger. Pairs
+    // with the Layer-1 cross-day cooldown gate in maybe-await-approval.ts.
     const unapprovedExitCountByThesisId = new Map<string, number>();
     const activeTickersForOpenedAt = Array.from(
       new Set(

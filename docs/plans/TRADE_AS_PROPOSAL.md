@@ -323,21 +323,31 @@ When Dave rejects, the optional message lands on `Order.rejectionMessage`. A `Th
 
 On the agent's next run, `get_theses(include_history: true)` surfaces the audit row in the thesis's recent updates — same mechanism that already surfaces PASS thesis history. The agent reads the `rationale` verbatim ("Don't want concentration in semis this week.") and adapts.
 
-### 8.2 The prompt update — one bullet
+### 8.2 The prompt bullet (Layer 3 — belt-and-suspenders only)
 
-Added to the daily-run system prompt around the existing thesis-review block:
+The daily-run system prompt carries one bullet: *"If a thesis's history shows a recent unapproved exit, treat it as a soft no; don't re-propose unless the setup materially changed."* This was the **original** mechanism and it did **not** hold on its own — wrong layer for an agent-does-the-wrong-thing problem, and the agent re-proposed daily anyway (see 8.3). It's kept as a soft nudge; the real enforcement is the Layer-1 cooldown gate below.
 
-> If a thesis's history shows a recent `PROPOSAL_REJECTED` entry with a user rationale, treat the user's wording as a hard signal. Do not re-propose unless the stated reason has materially changed (e.g., "not this week" doesn't survive a week; "never this name" survives indefinitely).
+### 8.3 Proposal suppression — three complementary layers
 
-### 8.3 No `Thesis.proposalCooldownUntil` field
+Re-proposal of the same exit was the dominant fatigue source. It's suppressed at three layers; each covers a gap the others leave (do **not** collapse them into one):
 
-Considered: a hard-cooldown date that gates re-proposal. **Rejected** because catalyst horizons decay in hours (PEAD) while compounder horizons decay in months; one field cannot capture that variance. The user's rejection wording naturally encodes the right cooldown. The prompt + history-read pattern is already load-bearing for PASS theses and works.
+| Layer | Mechanism | Covers | Does NOT cover |
+|---|---|---|---|
+| **#379 dedup** (`maybeAwaitApproval`) | Folds a 2nd full-CLOSE into the existing one while it's `AWAITING_APPROVAL`; tombstones the duplicate `REJECTED` ("Duplicate close — folded…") | Same-day duplicate **cards** while one is pending | Anything once the prior card resolves |
+| **#381 tactical snooze** (`tactical-run` load-context bail) | Bails a tactical **run** (zero GPT-5.5 cost) if the position has a pending CLOSE or one `REJECTED` within **4h** | The compute **storm** (P0-14: NVDA 12×/IREN 8×/NVTS 5× on 2026-06-04, ~$25/hr) | Daily runs; >4h gaps; expiry |
+| **P1-28 cooldown** (`maybeAwaitApproval`, [#445]) | Refuses to re-stage a **discretionary** CLOSE across daily **and** tactical runs within `UNAPPROVED_EXIT_COOLDOWN_DAYS` (5) of a prior staged close that resolved **REJECTED-by-user OR EXPIRED** (read from the Order ledger). Returns a non-fatal `suppressed` result; tombstones the new order `REJECTED` ("Suppressed —…") | Cross-day re-proposal **cards** (e.g. MU re-proposed on 5 distinct days 06-09→06-16) | — |
 
-If this proves insufficient in practice (the agent repeatedly proposes rejected setups), a cooldown field is a future addition. Ship the simpler version first.
+**Carve-out (P1-28):** risk-management exits always flow — `closeSource='price_monitor'` or `closeReason ∈ {STOP, TARGET}` bypass the cooldown. Only discretionary closes (`MANUAL`/untagged) are gated. Verified in prod: the re-proposed cards are all untagged; genuine stops/targets carry the tags.
+
+**Scope (P1-28):** CLOSE-only. PARTIAL_CLOSE scale-outs legitimately stack, and prod has no staged PARTIAL_CLOSE/ADD proposals anyway — closes are the only re-proposal vector. Buys don't nag (one case, XENE, ever).
+
+**Why not a `Thesis.proposalCooldownUntil` field** (the originally-considered approach): a per-thesis date can't capture horizon variance (catalyst decays in hours, compounder in months) and would need bookkeeping. Reading the **Order ledger at proposal-creation time** sidesteps both — the ledger already records every staged proposal and its outcome. This is the "future addition" 8.3 anticipated, built at the right layer.
+
+**Surfaced to the agent (Layer 2):** `get_theses` returns `unapprovedExitCount` per holding (rejected + ignored, from the Order ledger) so the agent ideally never reaches the gate.
 
 ### 8.4 Expiry
 
-After 24h with no decision, the cron flips `Order → EXPIRED`. For buy proposals, the `Position(PENDING_APPROVAL) → CANCELLED`. A `ThesisUpdate(type='PROPOSAL_EXPIRED')` is written. The agent reads this on its next run and may re-propose if the setup still holds.
+After 24h with no decision, the cron flips `Order → EXPIRED`. For buy proposals, `Position(PENDING_APPROVAL) → CANCELLED`. Close proposals leave the Position OPEN. A `ThesisUpdate(type='PROPOSAL_EXPIRED')` is written (best-effort). **An expired close also arms the P1-28 cooldown** (8.3) — the user ignoring a card is as much a "not now" as an explicit reject, and is in fact the more common signal.
 
 ---
 
@@ -347,7 +357,8 @@ After 24h with no decision, the cron flips `Order → EXPIRED`. For buy proposal
 |---|---|---|
 | "When toggle is ON, agent's trade tools propose instead of execute" | Layer 2 (tool) | Right place. Each of the 4 tool paths branches internally. No prompt instruction needed. |
 | "Manual UI actions bypass the gate" | Layer 2 (tool) | The `source` parameter in `closeOpenPosition` and the absence of an agent caller in the manual API routes do this naturally. |
-| "Agent learns from `PROPOSAL_REJECTED` in thesis history" | Layer 2 (audit row) + Layer 3 (one prompt bullet) | The audit row is durable; the prompt bullet tells the agent how to weight it. Both required. |
+| "Agent learns from `PROPOSAL_REJECTED` in thesis history" | Layer 2 (audit row) + Layer 3 (one prompt bullet) | The audit row is durable; the prompt bullet tells the agent how to weight it. Prompt alone did NOT hold — see the cooldown below. |
+| "Don't re-propose a recently-unapproved discretionary exit" (P1-28) | **Layer 1 (tool gate)** + Layer 2 (`unapprovedExitCount`) | The cooldown gate in `maybeAwaitApproval` refuses the re-stage from the Order ledger; `get_theses` surfaces the count. The prompt bullet (Layer 3) is belt-and-suspenders. See §8.3. |
 | "Proposal expires after 24h" | Layer 2 (Inngest cron) | Cron flips status. NOT in the prompt. |
 | "Proposal UI surfaces approve/reject buttons" | Layer 2 (tool result envelope) + Layer 3 (renderer dispatch) | New row-kind in the existing `ToolUIRenderer`. **No new renderer.** |
 
