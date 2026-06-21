@@ -46,7 +46,7 @@ jest.mock("@/lib/emails/proposal-pending", () => ({
 import {
   maybeAwaitApproval,
   ApprovalGateAccountUnresolvedError,
-  REJECTED_EXIT_COOLDOWN_DAYS,
+  UNAPPROVED_EXIT_COOLDOWN_DAYS,
   type AwaitingApprovalResult,
 } from "./maybe-await-approval";
 
@@ -167,29 +167,30 @@ describe("maybeAwaitApproval — duplicate CLOSE dedup", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GAPS P1-28 — rejected-exit cooldown. The user kept re-rejecting the same
-// discretionary CLOSE every run (prod 2026-06-18: MU 17×, NVDA 19×). The L1
-// gate refuses to re-stage a discretionary close within the cooldown of a
-// prior USER rejection — but ALWAYS lets risk-management exits (STOP/TARGET,
-// price_monitor) through, and ignores systemic tombstones.
+// GAPS P1-28 — unapproved-exit cooldown. The agent re-proposed the same
+// discretionary CLOSE ~daily; prod showed the user mostly IGNORES the card
+// (NVDA 10 expired / 0 rejected, IREN 7/0) rather than explicitly rejecting.
+// The gate refuses to re-stage a discretionary close within the cooldown of a
+// prior unapproved proposal — REJECTED-by-user OR EXPIRED — while ALWAYS
+// letting risk-management exits (STOP/TARGET, price_monitor) through and
+// ignoring systemic tombstones.
 // ─────────────────────────────────────────────────────────────────────────────
-describe("maybeAwaitApproval — rejected-exit cooldown (P1-28)", () => {
-  it("suppresses a discretionary CLOSE when the user recently rejected this exit", async () => {
+describe("maybeAwaitApproval — unapproved-exit cooldown (P1-28)", () => {
+  it("suppresses a discretionary CLOSE the user recently REJECTED", async () => {
     mockOrderFindFirst.mockResolvedValue(null); // no pending twin
-    const rejectedAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // 1d ago
+    const expiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // within window
     mockOrderFindMany.mockResolvedValue([
-      { id: "order-rejected", createdAt: rejectedAt, rejectionMessage: null },
+      { id: "order-rejected", status: "REJECTED", expiresAt, rejectionMessage: "no thanks" },
     ]);
 
     const result = await maybeAwaitApproval(baseArgs());
 
     expect(result?.state).toBe("suppressed_recent_rejection");
     if (result?.state !== "suppressed_recent_rejection") throw new Error("unreachable");
-    expect(result.rejectedOrderId).toBe("order-rejected");
-    expect(result.rejectedExitCount).toBe(1);
+    expect(result.lastUnapprovedOrderId).toBe("order-rejected");
+    expect(result.lastUnapprovedOutcome).toBe("REJECTED");
+    expect(result.unapprovedExitCount).toBe(1);
 
-    // The just-created order is tombstoned with a systemic message (so it
-    // never counts as a future rejection), and we never stage/email.
     expect(mockOrderUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "order-new" },
@@ -203,12 +204,29 @@ describe("maybeAwaitApproval — rejected-exit cooldown (P1-28)", () => {
     expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
   });
 
+  it("suppresses when the user IGNORED the prior proposal to EXPIRY (the dominant case)", async () => {
+    mockOrderFindFirst.mockResolvedValue(null);
+    const expiresAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000); // expired 2d ago
+    // No explicit rejection — just an expired card. This is the NVDA/IREN shape
+    // the rejection-only design missed entirely.
+    mockOrderFindMany.mockResolvedValue([
+      { id: "order-expired", status: "EXPIRED", expiresAt, rejectionMessage: null },
+    ]);
+
+    const result = await maybeAwaitApproval(baseArgs());
+
+    expect(result?.state).toBe("suppressed_recent_rejection");
+    if (result?.state !== "suppressed_recent_rejection") throw new Error("unreachable");
+    expect(result.lastUnapprovedOutcome).toBe("EXPIRED");
+    expect(result.unapprovedExitCount).toBe(1);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
   it("lets a STOP close through (risk exit bypasses the cooldown)", async () => {
     mockOrderFindFirst.mockResolvedValue(null);
     mockOrderFindUnique.mockResolvedValue({ closeReason: "STOP", closeSource: "agent" });
-    // Even with a recent rejection on file, a STOP is material → not gated.
     mockOrderFindMany.mockResolvedValue([
-      { id: "order-rejected", createdAt: new Date(), rejectionMessage: null },
+      { id: "order-expired", status: "EXPIRED", expiresAt: new Date(), rejectionMessage: null },
     ]);
 
     const result = await maybeAwaitApproval(baseArgs());
@@ -232,20 +250,20 @@ describe("maybeAwaitApproval — rejected-exit cooldown (P1-28)", () => {
   it("ignores systemic tombstones — a dedup/suppression row does NOT arm the cooldown", async () => {
     mockOrderFindFirst.mockResolvedValue(null);
     mockOrderFindMany.mockResolvedValue([
-      { id: "t1", createdAt: new Date(), rejectionMessage: "Duplicate close — folded into pending proposal x" },
-      { id: "t2", createdAt: new Date(), rejectionMessage: "Suppressed — recent CLOSE rejection cooldown (P1-28)" },
+      { id: "t1", status: "REJECTED", expiresAt: new Date(), rejectionMessage: "Duplicate close — folded into pending proposal x" },
+      { id: "t2", status: "REJECTED", expiresAt: new Date(), rejectionMessage: "Suppressed — recent unapproved CLOSE cooldown (P1-28)" },
     ]);
 
     const result = await maybeAwaitApproval(baseArgs());
 
-    // No USER rejection in the window → stages normally.
+    // No real decline in the window → stages normally.
     expect(awaiting(result).orderId).toBe("order-new");
     expect(mockTransaction).toHaveBeenCalledTimes(1);
   });
 
   it("does not gate PARTIAL_CLOSE — only full CLOSE is on cooldown", async () => {
     mockOrderFindMany.mockResolvedValue([
-      { id: "order-rejected", createdAt: new Date(), rejectionMessage: null },
+      { id: "order-expired", status: "EXPIRED", expiresAt: new Date(), rejectionMessage: null },
     ]);
 
     const result = await maybeAwaitApproval({ ...baseArgs(), intent: "PARTIAL_CLOSE" });
@@ -253,7 +271,7 @@ describe("maybeAwaitApproval — rejected-exit cooldown (P1-28)", () => {
     // Cooldown query never runs for a trim; it stages.
     expect(mockOrderFindMany).not.toHaveBeenCalled();
     expect(awaiting(result).orderId).toBe("order-new");
-    expect(REJECTED_EXIT_COOLDOWN_DAYS).toBeGreaterThan(0);
+    expect(UNAPPROVED_EXIT_COOLDOWN_DAYS).toBeGreaterThan(0);
   });
 });
 

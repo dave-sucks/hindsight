@@ -81,7 +81,7 @@ interface ManagePositionData {
   trailPct?: number;
   portfolioUpdate?: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number };
   // P1-28 suppressed-close branch.
-  rejectedExitCount?: number;
+  unapprovedExitCount?: number;
   cooldownUntil?: string;
 }
 
@@ -266,26 +266,26 @@ export const managePosition = defineTool({
           // non-error "did not re-propose" result (the agent DID call a tool,
           // so the narration gate stays satisfied).
           if (outcome.kind === "suppressed") {
-            const { rejectedExitCount, cooldownUntil } = outcome.suppressed;
+            const { unapprovedExitCount, cooldownUntil } = outcome.suppressed;
             return {
-              summary: `Held $${ticker} — exit recently rejected (${rejectedExitCount}×)`,
+              summary: `Held $${ticker} — exit declined ${unapprovedExitCount}× recently`,
               data: {
                 success: true,
                 ticker,
                 action: args.action,
                 status: "SUPPRESSED" as const,
-                rejectedExitCount,
+                unapprovedExitCount,
                 cooldownUntil: cooldownUntil.toISOString(),
                 message:
-                  `Did not re-propose closing ${ticker}. The user has rejected this exit ` +
-                  `${rejectedExitCount}× recently; re-proposal is on cooldown until ` +
-                  `${cooldownUntil.toISOString().slice(0, 10)} unless the thesis materially ` +
-                  `changes (a STOP/TARGET trigger or new evidence). Treat the rejection as a soft no and keep holding.`,
+                  `Did not re-propose closing ${ticker}. The user has declined this exit ` +
+                  `${unapprovedExitCount}× recently (rejected or left to expire); re-proposal is on ` +
+                  `cooldown until ${cooldownUntil.toISOString().slice(0, 10)} unless the thesis ` +
+                  `materially changes (a STOP/TARGET trigger or new evidence). Treat it as a soft no and keep holding.`,
                 tickers: [
                   {
                     ticker,
                     tag: "Held",
-                    summary: `Exit rejected ${rejectedExitCount}× — not re-proposed (cooldown)`,
+                    summary: `Exit declined ${unapprovedExitCount}× — not re-proposed (cooldown)`,
                     actionIcon: "hold",
                   },
                 ],

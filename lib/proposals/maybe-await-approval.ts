@@ -49,38 +49,46 @@ export interface AwaitingApprovalResult {
 
 /**
  * Returned when a discretionary CLOSE proposal is suppressed because the user
- * recently rejected the same exit and nothing material changed (P1-28). The
+ * recently saw this same exit proposal and did NOT approve it — whether they
+ * explicitly rejected it OR ignored it to expiry (P1-28). Prod showed the
+ * dominant signal is *ignore-to-expiry*, not explicit rejection (NVDA: 10
+ * ignored / 0 rejected; IREN 7/0), so the cooldown arms off both. The
  * just-created Order is tombstoned; the tool surfaces this as a clean,
  * non-fatal "did not re-propose" result (NOT an error — a thrown error would
- * fail the run's narration gate). The agent reads `rejectedExitCount` on the
- * thesis via get_theses and should not have re-proposed in the first place;
- * this gate is the Layer-1 backstop for when it does anyway.
+ * fail the run's narration gate). The agent also reads `unapprovedExitCount`
+ * on the thesis via get_theses; this gate is the Layer-1 backstop.
  */
 export interface SuppressedRecentRejectionResult {
   state: "suppressed_recent_rejection";
   positionId: string;
-  /** The most recent user rejection that armed the cooldown. */
-  rejectedOrderId: string;
-  rejectedAt: Date;
+  /** The most recent unapproved proposal (rejected or expired) that armed it. */
+  lastUnapprovedOrderId: string;
+  /** How that proposal resolved. */
+  lastUnapprovedOutcome: "REJECTED" | "EXPIRED";
+  lastUnapprovedAt: Date;
   /** Discretionary re-proposal is gated until this instant. */
   cooldownUntil: Date;
-  rejectedExitCount: number;
+  /** Count of recent staged closes you saw and didn't approve (rejected + ignored). */
+  unapprovedExitCount: number;
 }
 
-/** Days a user CLOSE rejection suppresses discretionary re-proposal (P1-28). */
-export const REJECTED_EXIT_COOLDOWN_DAYS = 5;
+/**
+ * Days a recent UNAPPROVED close proposal (rejected OR ignored-to-expiry)
+ * suppresses a discretionary re-proposal of the same exit (P1-28).
+ */
+export const UNAPPROVED_EXIT_COOLDOWN_DAYS = 5;
 
 /**
  * Rejection messages written by the system (dedup fold, P1-28 suppression),
- * NOT by a user. Excluded from "did the user reject this exit" reads so a
- * systemic tombstone never counts as a rejection or arms the cooldown.
+ * NOT by a user. Excluded from "did the user decline this exit" reads so a
+ * systemic tombstone never counts as a decline or arms the cooldown.
  */
 const SYSTEMIC_REJECTION_PREFIXES = ["Duplicate close", "Suppressed —"] as const;
 
 /**
  * True when this REJECTED order is a systemic tombstone (dedup / cooldown),
  * not a user rejection. Used by both the L1 cooldown gate here and the L2
- * rejectedExitCount surfacing in get_theses — keep the two definitions in sync.
+ * unapprovedExitCount surfacing in get_theses — keep the two in sync.
  */
 export function isSystemicRejection(rejectionMessage: string | null): boolean {
   if (!rejectionMessage) return false;
@@ -240,21 +248,26 @@ export async function maybeAwaitApproval(
     }
   }
 
-  // ── Rejected-exit cooldown: don't re-propose a discretionary CLOSE the ───
-  // user just rejected (P1-28 — proposal fatigue). Prod (2026-06-18): MU 17
-  // close-rejections / NVDA 19, re-proposed ~daily with no dampening. The
-  // L3 prompt ("read a rejection as a soft no") didn't hold — wrong layer +
-  // starved by P1-27. This is the Layer-1 backstop.
+  // ── Unapproved-exit cooldown: don't re-propose a discretionary CLOSE the ──
+  // user recently saw and did NOT approve (P1-28 — proposal fatigue). Prod
+  // (2026-06-18) showed the dominant signal is *ignore-to-expiry*, not
+  // explicit rejection: NVDA 10 ignored / 0 rejected, IREN 7/0, NVTS 4/0;
+  // MU 3 ignored / 2 rejected. So the cooldown arms off a recent staged
+  // proposal that resolved either REJECTED-by-you OR EXPIRED. The earlier
+  // rejection-only design missed the worst offenders entirely. The agent
+  // kept re-proposing daily because each prior card expired with no record
+  // that stopped the next run. This is the Layer-1 backstop.
   //
   // CLOSE-only, mirroring the dedup block above: a full close is the terminal,
-  // idempotent decision the user keeps rejecting. PARTIAL_CLOSE scale-outs
-  // legitimately stack, so they're intentionally NOT gated here.
+  // idempotent decision being re-pitched. PARTIAL_CLOSE scale-outs legitimately
+  // stack, so they're intentionally NOT gated here.
   //
   // Carve-out: risk-management exits ALWAYS flow — a trailing-stop / target
   // close from the price-monitor (closeSource='price_monitor') or any
   // STOP/TARGET close is a material event, not a discretionary re-pitch.
-  // Only discretionary agent closes (MANUAL/TIME, closeSource='agent'|'user')
-  // are subject to the cooldown.
+  // Only discretionary closes (MANUAL/TIME or untagged) are gated. (Verified
+  // in prod: the spammy proposals are all closeReason/closeSource null; genuine
+  // stops/targets carry STOP/TARGET tags, so this split is correct.)
   if (args.intent === "CLOSE") {
     const thisOrder = await prisma.order.findUnique({
       where: { id: args.orderId },
@@ -266,48 +279,49 @@ export async function maybeAwaitApproval(
       thisOrder?.closeReason === "TARGET";
 
     if (!isRiskExit) {
-      const cooldownStart = new Date(
-        Date.now() - REJECTED_EXIT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
-      );
-      const recentRejections = await prisma.order.findMany({
+      const cooldownMs = UNAPPROVED_EXIT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+      const cooldownStart = new Date(Date.now() - cooldownMs);
+      // Only proposals you actually SAW (staged → expiresAt set) and did NOT
+      // approve. expiresAt is the resolution anchor: for an EXPIRED proposal
+      // it's the moment it lapsed; for a user-REJECTED one it's after the
+      // (earlier) rejection, so a recent rejection is still inside the window.
+      const recent = await prisma.order.findMany({
         where: {
           positionId: args.positionId,
           side: "SELL",
           intent: "CLOSE",
-          status: "REJECTED",
-          createdAt: { gte: cooldownStart },
+          status: { in: ["REJECTED", "EXPIRED"] },
+          expiresAt: { not: null, gte: cooldownStart },
           id: { not: args.orderId },
         },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, createdAt: true, rejectionMessage: true },
+        orderBy: { expiresAt: "desc" },
+        select: { id: true, status: true, expiresAt: true, rejectionMessage: true },
       });
-      // Count only USER rejections — systemic tombstones (dedup, prior
-      // suppression) don't arm the cooldown.
-      const userRejections = recentRejections.filter(
+      // Drop systemic tombstones (dedup folds, prior cooldown suppressions) —
+      // only a real decline (your rejection or an ignored expiry) counts.
+      const unapproved = recent.filter(
         (o) => !isSystemicRejection(o.rejectionMessage),
       );
-      const armed = userRejections[0];
-      if (armed) {
-        const cooldownUntil = new Date(
-          armed.createdAt.getTime() +
-            REJECTED_EXIT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
-        );
+      const armed = unapproved[0];
+      if (armed?.expiresAt) {
+        const cooldownUntil = new Date(armed.expiresAt.getTime() + cooldownMs);
         // Tombstone this call's just-created order so it doesn't linger as a
         // PENDING/AWAITING row. Systemic message → excluded from future counts.
         await prisma.order.update({
           where: { id: args.orderId },
           data: {
             status: "REJECTED",
-            rejectionMessage: `Suppressed — recent CLOSE rejection cooldown (P1-28); last rejected ${armed.createdAt.toISOString()}`,
+            rejectionMessage: `Suppressed — recent unapproved CLOSE cooldown (P1-28); last ${armed.status.toLowerCase()} ${armed.expiresAt.toISOString()}`,
           },
         });
         return {
           state: "suppressed_recent_rejection" as const,
           positionId: args.positionId,
-          rejectedOrderId: armed.id,
-          rejectedAt: armed.createdAt,
+          lastUnapprovedOrderId: armed.id,
+          lastUnapprovedOutcome: armed.status as "REJECTED" | "EXPIRED",
+          lastUnapprovedAt: armed.expiresAt,
           cooldownUntil,
-          rejectedExitCount: userRejections.length,
+          unapprovedExitCount: unapproved.length,
         };
       }
     }

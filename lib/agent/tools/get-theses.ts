@@ -334,13 +334,13 @@ export const getTheses = defineTool({
     // and aren't looked up. Scoped by analyst (+ environment when known) so a
     // LIVE run never reads a PAPER position's open time and vice versa.
     const positionOpenedAtByThesisId = new Map<string, Date>();
-    // P1-28 (L2): how many times the user has REJECTED a close on this held
-    // position. Surfaced so the agent (and the L3 prompt) sees a reliable
-    // "you've already proposed this exit N×, the user said no" signal — read
-    // from the canonical Order ledger, NOT ThesisUpdate (which P1-27 showed
-    // captures only ~15% of rejections). Pairs with the Layer-1 cooldown gate
-    // in maybe-await-approval.ts that actually refuses the re-proposal.
-    const rejectedExitCountByThesisId = new Map<string, number>();
+    // P1-28 (L2): how many times the user has been shown a close proposal on
+    // this held position and did NOT approve it — rejected OR ignored-to-expiry.
+    // Surfaced so the agent sees a reliable "you've proposed this exit N×, the
+    // user keeps declining" signal, read from the canonical Order ledger. Prod
+    // showed ignore-to-expiry dominates (NVDA 10 ignored / 0 rejected), so this
+    // counts both. Pairs with the Layer-1 cooldown gate in maybe-await-approval.
+    const unapprovedExitCountByThesisId = new Map<string, number>();
     const activeTickersForOpenedAt = Array.from(
       new Set(
         theses
@@ -378,22 +378,25 @@ export const getTheses = defineTool({
           if (openedAt) positionOpenedAtByThesisId.set(t.id, openedAt);
         }
 
-        // Count USER close-rejections per open position (Order ledger).
+        // Count UNAPPROVED close proposals per open position (Order ledger):
+        // staged proposals (expiresAt set = the user actually saw a card) that
+        // ended REJECTED-by-user OR EXPIRED. Excludes systemic tombstones.
         const openPositionIds = Array.from(positionIdByTicker.values());
         if (openPositionIds.length > 0) {
-          const rejectedCloses = await prisma.order.findMany({
+          const unapprovedCloses = await prisma.order.findMany({
             where: {
               positionId: { in: openPositionIds },
               side: "SELL",
               intent: "CLOSE",
-              status: "REJECTED",
+              status: { in: ["REJECTED", "EXPIRED"] },
+              expiresAt: { not: null },
             },
             select: { positionId: true, rejectionMessage: true },
           });
           const countByPositionId = new Map<string, number>();
-          for (const o of rejectedCloses) {
-            // Exclude systemic tombstones (dedup, P1-28 cooldown) — only the
-            // user's own rejections count. Keep in sync with the L1 gate.
+          for (const o of unapprovedCloses) {
+            // Exclude systemic tombstones (dedup, P1-28 cooldown) — only a real
+            // decline (rejection or ignored expiry) counts. Sync w/ the L1 gate.
             if (isSystemicRejection(o.rejectionMessage)) continue;
             countByPositionId.set(
               o.positionId,
@@ -404,7 +407,7 @@ export const getTheses = defineTool({
             if (t.status !== "HOLDING") continue;
             const posId = positionIdByTicker.get(t.ticker);
             const n = posId ? countByPositionId.get(posId) ?? 0 : 0;
-            if (n > 0) rejectedExitCountByThesisId.set(t.id, n);
+            if (n > 0) unapprovedExitCountByThesisId.set(t.id, n);
           }
         }
       } catch (err) {
@@ -590,11 +593,11 @@ export const getTheses = defineTool({
           t.researchUpdatedAt,
           t.horizon as Horizon | null,
         ),
-        // P1-28 (L2): user close-rejections on this held position (Order
-        // ledger). >0 means "you proposed this exit and the user said no N×"
-        // — don't re-propose unless the thesis materially changed. 0 for
-        // non-HOLDING rows and never-rejected holds.
-        rejectedExitCount: rejectedExitCountByThesisId.get(t.id) ?? 0,
+        // P1-28 (L2): unapproved close proposals on this held position (Order
+        // ledger) — rejected by the user OR ignored to expiry. >0 means "you
+        // proposed this exit and the user declined N×" — don't re-propose
+        // unless the thesis materially changed. 0 for non-HOLDING rows.
+        unapprovedExitCount: unapprovedExitCountByThesisId.get(t.id) ?? 0,
       };
     });
 

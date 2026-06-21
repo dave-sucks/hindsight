@@ -66,9 +66,10 @@ export interface ProposalCreatedSummary {
  */
 export interface ProposalSuppressedSummary {
   positionId: string;
-  rejectedAt: Date;
+  lastUnapprovedOutcome: "REJECTED" | "EXPIRED";
+  lastUnapprovedAt: Date;
   cooldownUntil: Date;
-  rejectedExitCount: number;
+  unapprovedExitCount: number;
 }
 
 export type CloseOpenPositionOutcome =
@@ -247,9 +248,10 @@ export async function closeOpenPosition(
         kind: "suppressed" as const,
         suppressed: {
           positionId,
-          rejectedAt: awaiting.rejectedAt,
+          lastUnapprovedOutcome: awaiting.lastUnapprovedOutcome,
+          lastUnapprovedAt: awaiting.lastUnapprovedAt,
           cooldownUntil: awaiting.cooldownUntil,
-          rejectedExitCount: awaiting.rejectedExitCount,
+          unapprovedExitCount: awaiting.unapprovedExitCount,
         },
       };
     }
