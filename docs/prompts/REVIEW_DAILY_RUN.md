@@ -199,10 +199,26 @@ For each thesis the run touched:
 
 ### H. Proposal-flow integrity ([PR #364](https://github.com/dave-sucks/hindsight/pull/364))
 
-Applies whenever any analyst on the day's runs had `Account.requireApprovalForBuys`
-or `Account.requireApprovalForSells = true` at run start. As of 2026-06-02 this is
-expected ON for all paper analysts (shakeout window). Live analyst PEAD Specialist
-remains `enabled = false` so no live data here yet.
+> **⚠️ SOURCE OF TRUTH — read before reasoning about approvals.** The **`Order` table is
+> canonical** for both execution and approval state (`status`: AWAITING_APPROVAL / REJECTED /
+> EXPIRED / FILLED; `intent`: OPEN / CLOSE; `side`: BUY / SELL uppercase; `alpacaOrderId IS NULL`
+> = never sent to broker). The **`ThesisUpdate PROPOSAL_*` audit rows are FAIL-SOFT and
+> incomplete** — the write is wrapped in try/catch + `console.warn`, so they undercount, and the
+> table has **no `orderId` and no `createdAt`** (it uses `timestamp`, links only by `thesisId`).
+> **Never count approvals from `ThesisUpdate`, and never join it on `orderId` — that column does
+> not exist.** Reasoning about approvals from that table produced a false "sells bypass approval"
+> finding on 2026-06-17. Count from `Order.status` instead. (Approved = an AWAITING_APPROVAL order
+> that reached FILLED with an `alpacaOrderId`.)
+>
+> Other schema gotchas in this section's queries: `closeSource` of `'price_monitor'`/`'user'`/
+> `'reconcile'` lives on **`Position`**, not `Order` (Order.closeSource is `'agent'`/null);
+> approval toggles are `Account.requireApprovalBuysLive` / `…SellsLive` / `…BuysPaper` /
+> `…SellsPaper` (per-env, four columns — there is no `requireApprovalForBuys`).
+
+Applies whenever any analyst on the day's runs had any
+`Account.requireApproval{Buys,Sells}{Live,Paper}` toggle = true at run start. As of 2026-06-02
+this is expected ON for all paper analysts (shakeout window), and both LIVE analysts (PEAD,
+Catalyst) run with all four toggles ON.
 
 If neither toggle was ON for any analyst that ran today, write "N/A — toggles off"
 in this section and move on. If even one analyst ran with the toggle ON, apply
@@ -479,36 +495,37 @@ HAVING COUNT(DISTINCT child."agentConfigId") > 1;
 -- Section H: Proposal-flow integrity (PR #364)
 -- ============================================
 
--- Which analysts had the toggle ON at run start?
+-- Which analysts had any approval toggle ON at run start? (four per-env columns)
 SELECT ac.id, ac.name, ac."tradingEnvironment",
-       a."requireApprovalForBuys" AS approval_buys,
-       a."requireApprovalForSells" AS approval_sells
+       a."requireApprovalBuysLive"  AS buys_live,  a."requireApprovalSellsLive"  AS sells_live,
+       a."requireApprovalBuysPaper" AS buys_paper, a."requireApprovalSellsPaper" AS sells_paper
 FROM "AgentConfig" ac
 JOIN "Account" a ON a.id = ac."accountId"
-WHERE a."requireApprovalForBuys" = TRUE OR a."requireApprovalForSells" = TRUE
-ORDER BY ac.name;
+WHERE a."requireApprovalBuysLive" OR a."requireApprovalSellsLive"
+   OR a."requireApprovalBuysPaper" OR a."requireApprovalSellsPaper"
+ORDER BY ac."tradingEnvironment", ac.name;
 
--- Today's proposals — full state map
-SELECT o.id AS order_id, o."alpacaOrderId", o.status AS order_status, o.side,
+-- Today's proposals + their resolution — Order is the canonical state (NOT ThesisUpdate).
+-- alpacaOrderId IS NULL = never sent to broker (the gate held). FILLED + alpacaOrderId = approved.
+SELECT o.id AS order_id, o."alpacaOrderId" IS NOT NULL AS hit_alpaca, o.status AS order_status,
+       o.side, o.intent,
        o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS created_et,
        o."expiresAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS expires_et,
-       p.id AS position_id, p.symbol, p.status AS position_status, p.quantity,
-       ac.name AS analyst,
-       (SELECT type::text FROM "ThesisUpdate"
-         WHERE "orderId" = o.id AND type::text LIKE 'PROPOSAL_%'
-         ORDER BY "createdAt" DESC LIMIT 1) AS latest_proposal_audit,
+       p.symbol, p.status AS position_status, p.quantity,
+       ac.name AS analyst, ac."tradingEnvironment" AS env,
        LEFT(o.rationale, 200) AS rationale_preview
 FROM "Order" o
 LEFT JOIN "Position" p ON p.id = o."positionId"
 LEFT JOIN "AgentConfig" ac ON ac.id = p."analystId"
-WHERE (o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date = DATE '<TODAY>'
-  AND (o.status::text = 'AWAITING_APPROVAL'
-       OR p.status::text = 'PENDING_APPROVAL'
-       OR EXISTS (SELECT 1 FROM "ThesisUpdate" tu
-                  WHERE tu."orderId" = o.id AND tu.type::text LIKE 'PROPOSAL_%'))
-ORDER BY o."createdAt";
+WHERE ((o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date = DATE '<TODAY>'
+       OR (o."updatedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date = DATE '<TODAY>')
+  AND o.status::text IN ('AWAITING_APPROVAL','REJECTED','EXPIRED','FILLED')
+ORDER BY o."updatedAt";
+-- Approval-outcome counts come from THIS (Order.status), not from ThesisUpdate PROPOSAL_* counts.
+-- ThesisUpdate PROPOSAL_* (queryable only by type + timestamp + thesisId) is a best-effort
+-- "did the principal click" signal — fine to eyeball, never to count.
 
--- Orphan PENDING orders (maybeAwaitApproval failed mid-flight)
+-- Orphan PENDING orders (maybeAwaitApproval failed mid-flight) — Order-canonical, correct as-is
 SELECT o.id, o.status, o."alpacaOrderId", o."createdAt", ac.name AS analyst
 FROM "Order" o
 LEFT JOIN "Position" p ON p.id = o."positionId"
@@ -518,29 +535,31 @@ WHERE (o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date =
   AND o."alpacaOrderId" IS NULL;
 -- Expected: 0 rows. Any returned = Section H item 6.
 
--- Duplicate-approval audit rows (double-click race)
-SELECT "orderId", COUNT(*) AS approval_count,
-       array_agg(id) AS update_ids,
-       array_agg("createdAt") AS created_ats
-FROM "ThesisUpdate"
-WHERE type::text = 'PROPOSAL_APPROVED'
-  AND ("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date = DATE '<TODAY>'
-GROUP BY "orderId"
+-- Double-fill check (the "double-click race", item 7). ThesisUpdate can't answer this (no orderId).
+-- The real symptom is two broker fills for one logical close → duplicate PositionEvent fill rows.
+SELECT pe."positionId", p.symbol, COUNT(*) AS fill_events
+FROM "PositionEvent" pe
+JOIN "Position" p ON p.id = pe."positionId"
+WHERE pe.type::text IN ('CLOSED','PARTIAL_CLOSE')
+  AND (pe."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date = DATE '<TODAY>'
+GROUP BY pe."positionId", p.symbol
 HAVING COUNT(*) > 1;
--- Expected: 0 rows. Any returned = Section H item 7 (the score-75 race finding).
+-- Expected: 0 rows (a single close should write one fill event). Verify PositionEvent's type
+-- enum + timestamp column name against the live schema before trusting a 0 (fail open, not closed).
 
--- Bypass-paths-still-fire check: today's price-monitor + user-source closes
--- (these should go straight to FILLED without any AWAITING_APPROVAL intermediate)
-SELECT o.id, o.status, o.side, o."closeSource",
-       o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS created_et,
-       EXISTS (SELECT 1 FROM "ThesisUpdate" tu
-               WHERE tu."orderId" = o.id AND tu.type::text LIKE 'PROPOSAL_%')
-       AS went_through_proposal
+-- Bypass-paths-still-fire check: today's price-monitor + user-source closes.
+-- closeSource of 'price_monitor'/'user' lives on POSITION (Order.closeSource is 'agent'/null).
+-- These bypass the gate by design → expect FILLED directly with an alpacaOrderId, never gated.
+SELECT o.id, o.status, o.side, o.intent, p."closeSource",
+       o."alpacaOrderId" IS NOT NULL AS hit_alpaca,
+       o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS created_et
 FROM "Order" o
+JOIN "Position" p ON p.id = o."positionId"
 WHERE (o."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York')::date = DATE '<TODAY>'
-  AND o.side = 'sell'
-  AND (o."closeSource" = 'price_monitor' OR o."closeSource" = 'user');
--- Expected: went_through_proposal = FALSE on every row. Any TRUE = Section H item 4.
+  AND o.side = 'SELL'
+  AND p."closeSource" IN ('price_monitor','user');
+-- Expected: status='FILLED', hit_alpaca=TRUE on every row, and NO AWAITING_APPROVAL detour.
+-- A row stuck AWAITING_APPROVAL = a bypass path got wrongly gated (Section H item 4).
 
 -- Proposal-expiry cron health (did it fire today?)
 SELECT id, "createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York' AS fired_et,
