@@ -4,24 +4,19 @@
  * Server-side loader for the Sources + Theses tabs on /runs/[id].
  *
  * Pulls real data from the DB instead of parsing tool-call results in the
- * browser. Three things come back:
+ * browser. Two things come back:
  *
- * 1. brief    — the analyst's MorningBrief for the run's trading day, if any.
- *               Used to render a single "Hindsight Intelligence" card that
- *               opens BriefDetailDialog when clicked.
- *
- * 2. sources  — every unique sourceUrl from the Signals routed to this analyst
+ * 1. sources  — every unique sourceUrl from the Signals routed to this analyst
  *               on the run's trading day. This is the "real" source list —
  *               news articles, filings, social posts, etc — instead of the
  *               Finnhub-spammed `_sources` arrays from each research tool call.
  *
- * 3. theses   — the run's Thesis records, normalized into the same shape as
+ * 2. theses   — the run's Thesis records, normalized into the same shape as
  *               the dashboard's RecentPick / ThesisRowData so we can reuse
  *               <ThesisRow /> in the new Theses tab.
  */
 
 import { prisma } from "@/lib/prisma";
-import type { MorningBrief as IntelMorningBrief } from "@/components/intelligence/types";
 import type { ThesisRowData } from "@/components/ui/thesis-row";
 import {
   getThesisComposite,
@@ -46,7 +41,6 @@ export type RunSourceItem = {
 };
 
 export type RunSourcesData = {
-  brief: IntelMorningBrief | null;
   sources: RunSourceItem[];
   theses: ThesisRowData[];
 };
@@ -86,43 +80,7 @@ export async function getRunSourcesData(args: {
 }): Promise<RunSourcesData> {
   const { runId, analystId, startedAt } = args;
 
-  // ── 1. Morning brief for this analyst on the run's trading day ───────
-  let brief: IntelMorningBrief | null = null;
-  if (analystId) {
-    // Match by date (00:00 UTC of the trading day). The agent reads briefs
-    // by ET trading-day date; we approximate by looking up the brief whose
-    // generatedAt is closest to startedAt within the same calendar window.
-    const dbBrief = await prisma.morningBrief.findFirst({
-      where: {
-        analystId,
-        generatedAt: {
-          gte: tradingDayWindow(startedAt).from,
-          lte: tradingDayWindow(startedAt).to,
-        },
-      },
-      include: { analyst: { select: { id: true, name: true } } },
-      orderBy: { generatedAt: "desc" },
-    });
-
-    if (dbBrief) {
-      brief = {
-        id: dbBrief.id,
-        analystId: dbBrief.analystId,
-        date: dbBrief.date.toISOString().slice(0, 10),
-        marketContext: dbBrief.marketContext,
-        portfolioAlerts: (dbBrief.portfolioAlerts as IntelMorningBrief["portfolioAlerts"]) ?? [],
-        watchlistUpdates: (dbBrief.watchlistUpdates as IntelMorningBrief["watchlistUpdates"]) ?? [],
-        newOpportunities: (dbBrief.newOpportunities as IntelMorningBrief["newOpportunities"]) ?? [],
-        attentionPriority: dbBrief.attentionPriority,
-        riskFlags: dbBrief.riskFlags,
-        signalCount: dbBrief.signalCount,
-        generatedAt: dbBrief.generatedAt.toISOString(),
-        analyst: dbBrief.analyst,
-      };
-    }
-  }
-
-  // ── 2. Sources from signals routed to this analyst that day ─────────
+  // ── 1. Sources from signals routed to this analyst that day ─────────
   // Roll up unique URLs from Signal.sourceUrls. The previous "Finnhub spam"
   // came from each research tool call appending its own _sources array even
   // when no real article was involved. Signal sourceUrls are real URLs that
@@ -171,7 +129,7 @@ export async function getRunSourcesData(args: {
     }
   }
 
-  // ── 3. Theses recorded by this run, in row format ────────────────────
+  // ── 2. Theses recorded by this run, in row format ────────────────────
   const dbTheses = await prisma.thesis.findMany({
     where: { researchRunId: runId },
     include: {
@@ -221,5 +179,5 @@ export async function getRunSourcesData(args: {
     };
   });
 
-  return { brief, sources, theses };
+  return { sources, theses };
 }
