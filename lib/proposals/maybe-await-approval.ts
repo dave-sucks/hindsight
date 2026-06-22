@@ -48,6 +48,57 @@ export interface AwaitingApprovalResult {
 }
 
 /**
+ * Returned when a discretionary CLOSE proposal is suppressed because the user
+ * recently saw this same exit proposal and did NOT approve it — whether they
+ * explicitly rejected it OR ignored it to expiry (P1-28). This gate targets
+ * re-proposal ACROSS DAYS (e.g. MU was re-proposed on 5 distinct days
+ * 06-09→06-16, each prior card rejected or left to expire). Same-DAY duplicate
+ * bursts are a different problem already handled by the dedup block below.
+ * Because the user mostly ignores cards to expiry rather than clicking Reject,
+ * the cooldown arms off both outcomes. The just-created Order is tombstoned;
+ * the tool surfaces this as a clean,
+ * non-fatal "did not re-propose" result (NOT an error — a thrown error would
+ * fail the run's narration gate). The agent also reads `unapprovedExitCount`
+ * on the thesis via get_theses; this gate is the Layer-1 backstop.
+ */
+export interface SuppressedRecentRejectionResult {
+  state: "suppressed_recent_rejection";
+  positionId: string;
+  /** The most recent unapproved proposal (rejected or expired) that armed it. */
+  lastUnapprovedOrderId: string;
+  /** How that proposal resolved. */
+  lastUnapprovedOutcome: "REJECTED" | "EXPIRED";
+  lastUnapprovedAt: Date;
+  /** Discretionary re-proposal is gated until this instant. */
+  cooldownUntil: Date;
+  /** Count of recent staged closes you saw and didn't approve (rejected + ignored). */
+  unapprovedExitCount: number;
+}
+
+/**
+ * Days a recent UNAPPROVED close proposal (rejected OR ignored-to-expiry)
+ * suppresses a discretionary re-proposal of the same exit (P1-28).
+ */
+export const UNAPPROVED_EXIT_COOLDOWN_DAYS = 5;
+
+/**
+ * Rejection messages written by the system (dedup fold, P1-28 suppression),
+ * NOT by a user. Excluded from "did the user decline this exit" reads so a
+ * systemic tombstone never counts as a decline or arms the cooldown.
+ */
+const SYSTEMIC_REJECTION_PREFIXES = ["Duplicate close", "Suppressed —"] as const;
+
+/**
+ * True when this REJECTED order is a systemic tombstone (dedup / cooldown),
+ * not a user rejection. Used by both the L1 cooldown gate here and the L2
+ * unapprovedExitCount surfacing in get_theses — keep the two in sync.
+ */
+export function isSystemicRejection(rejectionMessage: string | null): boolean {
+  if (!rejectionMessage) return false;
+  return SYSTEMIC_REJECTION_PREFIXES.some((p) => rejectionMessage.startsWith(p));
+}
+
+/**
  * Thrown when the approval gate cannot resolve the Account row for a LIVE
  * trade. A money/compliance gate MUST fail CLOSED: an unresolved account
  * means we cannot read the require-approval toggles, so we cannot prove the
@@ -101,7 +152,9 @@ export class ApprovalGateAccountUnresolvedError extends Error {
  */
 export async function maybeAwaitApproval(
   args: MaybeAwaitApprovalArgs,
-): Promise<AwaitingApprovalResult | null> {
+): Promise<
+  AwaitingApprovalResult | SuppressedRecentRejectionResult | null
+> {
   const account = await prisma.account.findUnique({
     where: { id: args.accountId },
     select: {
@@ -195,6 +248,94 @@ export async function maybeAwaitApproval(
         expiresAt: existingClose.expiresAt,
         rationale: existingClose.rationale,
       };
+    }
+  }
+
+  // ── Unapproved-exit cooldown: don't re-propose a discretionary CLOSE the ──
+  // user recently saw and did NOT approve (P1-28 — proposal fatigue). This is
+  // the THIRD and last layer of re-proposal suppression; it covers the gap the
+  // other two leave:
+  //   • #379 dedup (below): folds a SAME-DAY duplicate CLOSE while one is still
+  //     AWAITING_APPROVAL. Does nothing once the prior card resolves.
+  //   • #381 tactical snooze: bails a tactical RUN in load-context if a close is
+  //     pending or REJECTED within 4h. Tactical-only, 4h, rejection-only.
+  //   • THIS gate: refuses to re-stage a discretionary close ACROSS DAYS — for
+  //     daily AND tactical runs — within UNAPPROVED_EXIT_COOLDOWN_DAYS of a
+  //     prior staged close that resolved REJECTED-by-user OR EXPIRED.
+  // The motivating case is MU: re-proposed on 5 distinct days (06-09→06-16),
+  // each prior card spaced >4h apart (past #381's snooze) and already expired
+  // (nothing for #379 to fold). The big 06-04 bursts (NVDA 12×/IREN 8×/NVTS 5×)
+  // were the P0-14 runaway, already fixed by #379+#381 — NOT this gate's target.
+  // Arming off EXPIRED as well as REJECTED matters because the user mostly
+  // IGNORES cards to expiry rather than clicking Reject.
+  //
+  // CLOSE-only, mirroring the dedup block above: a full close is the terminal,
+  // idempotent decision being re-pitched. PARTIAL_CLOSE scale-outs legitimately
+  // stack, so they're intentionally NOT gated here (verified: no staged
+  // PARTIAL_CLOSE/ADD proposals exist in prod — closes are the only vector).
+  //
+  // Carve-out: risk-management exits ALWAYS flow — a trailing-stop / target
+  // close from the price-monitor (closeSource='price_monitor') or any
+  // STOP/TARGET close is a material event, not a discretionary re-pitch.
+  // Only discretionary closes (MANUAL/TIME or untagged) are gated. (Verified
+  // in prod: the spammy proposals are all closeReason/closeSource null; genuine
+  // stops/targets carry STOP/TARGET tags, so this split is correct.)
+  if (args.intent === "CLOSE") {
+    const thisOrder = await prisma.order.findUnique({
+      where: { id: args.orderId },
+      select: { closeReason: true, closeSource: true },
+    });
+    const isRiskExit =
+      thisOrder?.closeSource === "price_monitor" ||
+      thisOrder?.closeReason === "STOP" ||
+      thisOrder?.closeReason === "TARGET";
+
+    if (!isRiskExit) {
+      const cooldownMs = UNAPPROVED_EXIT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+      const cooldownStart = new Date(Date.now() - cooldownMs);
+      // Only proposals you actually SAW (staged → expiresAt set) and did NOT
+      // approve. expiresAt is the resolution anchor: for an EXPIRED proposal
+      // it's the moment it lapsed; for a user-REJECTED one it's after the
+      // (earlier) rejection, so a recent rejection is still inside the window.
+      const recent = await prisma.order.findMany({
+        where: {
+          positionId: args.positionId,
+          side: "SELL",
+          intent: "CLOSE",
+          status: { in: ["REJECTED", "EXPIRED"] },
+          expiresAt: { not: null, gte: cooldownStart },
+          id: { not: args.orderId },
+        },
+        orderBy: { expiresAt: "desc" },
+        select: { id: true, status: true, expiresAt: true, rejectionMessage: true },
+      });
+      // Drop systemic tombstones (dedup folds, prior cooldown suppressions) —
+      // only a real decline (your rejection or an ignored expiry) counts.
+      const unapproved = recent.filter(
+        (o) => !isSystemicRejection(o.rejectionMessage),
+      );
+      const armed = unapproved[0];
+      if (armed?.expiresAt) {
+        const cooldownUntil = new Date(armed.expiresAt.getTime() + cooldownMs);
+        // Tombstone this call's just-created order so it doesn't linger as a
+        // PENDING/AWAITING row. Systemic message → excluded from future counts.
+        await prisma.order.update({
+          where: { id: args.orderId },
+          data: {
+            status: "REJECTED",
+            rejectionMessage: `Suppressed — recent unapproved CLOSE cooldown (P1-28); last ${armed.status.toLowerCase()} ${armed.expiresAt.toISOString()}`,
+          },
+        });
+        return {
+          state: "suppressed_recent_rejection" as const,
+          positionId: args.positionId,
+          lastUnapprovedOrderId: armed.id,
+          lastUnapprovedOutcome: armed.status as "REJECTED" | "EXPIRED",
+          lastUnapprovedAt: armed.expiresAt,
+          cooldownUntil,
+          unapprovedExitCount: unapproved.length,
+        };
+      }
     }
   }
 

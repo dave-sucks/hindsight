@@ -493,6 +493,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
     // from the proposal path. Whatever args we pass here are what we
     // assert against.
     mockMaybeAwaitApproval.mockResolvedValue({
+      state: "awaiting_approval",
       orderId: "order_proposal_1",
       positionId: "pos_proposal_1",
       expiresAt: new Date(Date.now() + 86_400_000),
@@ -670,6 +671,7 @@ describe("place_trade — analyst_id ownership guard (P1-18)", () => {
       return arg;
     });
     mockMaybeAwaitApproval.mockResolvedValue({
+      state: "awaiting_approval",
       orderId: "order_arqt",
       positionId: "pos_arqt",
       expiresAt: new Date(Date.now() + 86_400_000),

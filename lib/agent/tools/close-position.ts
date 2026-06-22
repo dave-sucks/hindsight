@@ -155,6 +155,39 @@ export const closePosition = defineTool({
           sources: [{ provider: "Hindsight", title: `Proposal close ${ticker}` }],
         };
       }
+      // Rejected-exit cooldown (P1-28) — the user recently rejected this same
+      // discretionary close and nothing material changed, so closeOpenPosition
+      // neither proposed nor executed. Return a clean, non-error result the
+      // agent reads as "leave it; the user already said no." NOT an error —
+      // the agent DID call a tool, so the narration gate stays satisfied.
+      if (outcome.kind === "suppressed") {
+        const { unapprovedExitCount, cooldownUntil } = outcome.suppressed;
+        return {
+          summary: `Held $${ticker} — exit declined ${unapprovedExitCount}× recently`,
+          data: {
+            success: true,
+            ticker,
+            status: "SUPPRESSED" as const,
+            unapprovedExitCount,
+            cooldownUntil: cooldownUntil.toISOString(),
+            message:
+              `Did not re-propose closing ${ticker}. The user has declined this exit ` +
+              `${unapprovedExitCount}× recently (rejected or left to expire); re-proposal is on ` +
+              `cooldown until ${cooldownUntil.toISOString().slice(0, 10)} unless the thesis ` +
+              `materially changes (a STOP/TARGET trigger or new evidence). Treat it as a soft no and keep holding.`,
+            items: [
+              {
+                kind: "ticker" as const,
+                ticker,
+                tag: "Held",
+                text: `Exit declined ${unapprovedExitCount}× — not re-proposed (cooldown)`,
+                actionIcon: "hold" as const,
+              },
+            ],
+          },
+          sources: [],
+        };
+      }
       // outcome.kind === "closed" — proceed with the existing close-out flow.
       const result = outcome;
 
