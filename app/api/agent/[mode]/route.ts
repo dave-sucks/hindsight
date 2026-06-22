@@ -900,11 +900,16 @@ export async function POST(
               console.error(`[agent/${agentMode}] Failed to persist toolStats:`, err);
             }
           } else if (agentMode === "principal") {
-            // Principal chat — keep the run RUNNING between messages
-            // so subsequent POSTs find an open session and write tools
-            // keep working. We don't mark COMPLETE here; the run sits
-            // open until the user starts a fresh chat (which mints a
-            // new run via the page).
+            // Principal chat — mark the run COMPLETE at the end of each
+            // turn so an idle chat doesn't sit perpetually RUNNING. The
+            // session-reuse logic at the top of this route reopens it
+            // (status → RUNNING) on the next message, so continuation is
+            // unaffected; reads (sidebar, resume) don't filter on status.
+            // Mirrors the podcast-segment-run guard below.
+            await prisma.researchRun.updateMany({
+              where: { id: runId, status: "RUNNING" },
+              data: { status: "COMPLETE", completedAt: new Date() },
+            });
           } else {
             // podcast-segment-run: safety guard — mark RUNNING → COMPLETE if the
             // save_podcast_segment_transcript tool didn't already do so.
