@@ -54,6 +54,105 @@ You're the scout. The agent is the closer.
 
 ---
 
+## The Grok Scout Loop (the meta-framework)
+
+> The per-analyst query sections below are *instances* of this. This is the reusable
+> framework behind all of them. `/discovery-prep` reads this section to build each session.
+
+### The one principle
+
+**Never ask Grok for "good stocks." Ask "who's been right, and what are they saying right
+now."** Grok's real unit isn't stocks — it's **people**. Names are noise; *people with
+verifiable track records* are signal, and names fall out of them. Keep each session to
+**one theme** — broad sessions just re-pile whatever's hot.
+
+### The session shape (the funnel)
+
+Every session is the same funnel, 2–3 chats:
+
+```
+theme/name → 10–20 people → 10–20 names → triage to 5–10 → paste to Hindsight → dispatch ≤5
+```
+
+### The 4 plays
+
+**▸ Play A — ROSTER → PICKS** (forward: theme → people → names). *Best for Compounder gap-fill.*
+```
+Chat 1: I'm researching [THEME] as a multi-year area. Give me the current state of play —
+the sub-areas heating up, key developments in the last 1-2 months, and the 3-5 anchor names
+everyone references. Tight — just the lay of the land.
+Chat 2: Now the people. Who on X has a VERIFIABLE multi-year track record on [THEME] — called
+the big winners early, not just posting now? Rank 10-15 by track record; for each, what they
+nailed and whether they're posting this month. I'm drafting scouts.
+Chat 3: From those 10-15, what 5-10 names are they MOST bullish on right now? Per name: ticker,
+how many of them are on it (convergence), and the specific claim. Flag any name 3+ of them
+independently like — those are priority.
+```
+
+**▸ Play B — ORBIT** (reverse: name → people → adjacent names). *Best for "I like $X, who else is near it."*
+```
+Chat 1: Find 10-20 credible people actively talking about [$X] — conviction + real track
+record, not noise. Per person: their angle, and what they're known for nailing.
+Chat 2: What OTHER names do those same people keep talking about in this space? Give me the
+adjacency map — the stocks that come up alongside [$X], grouped by sub-theme.
+Chat 3: Of those adjacents, the 5-8 they're most bullish on now + the thesis per name +
+convergence count.
+```
+
+**▸ Play C — NARRATIVE NET** (words/news → people → names). *Best for Catalyst, PEAD, Momentum.*
+```
+Chat 1: Who on X is driving the conversation on [NARRATIVE/keywords/news]? Surface the PEOPLE
+with track records, not the loudest posts.
+Chat 2: What specific tickers are those people tying to [NARRATIVE]? Every ticker, with who's
+mentioning it.
+Chat 3: Which have the most conviction + what exactly is each saying? Rank by convergence ×
+track record. [+ analyst filters: $5B+ no-earnings-5d for Momentum; dated catalyst $1B+ for
+Catalyst; clean beat-and-raise for PEAD.]
+```
+
+**▸ Play D — TRANSFER** (reuse your roster on a new theme). *The cross-pollinate move.*
+```
+I trust these accounts on [THEME A]: [@handles]. What are these same people — or people they
+engage with — saying about [THEME B]? Names + the claim per name.
+```
+
+### The meta-game (this is why it compounds)
+
+- **🎖 Draft a bench of scouts.** Chat 2 of every session builds a roster. Persist the handles
+  that keep proving credible in [`docs/discovery/scout-roster.md`](./discovery/scout-roster.md).
+  **The durable asset is the team of scouts, not any single name.**
+- **🎯 Score by convergence.** A name's signal = (# trusted scouts independently on it) ×
+  (their track record). **3+ trusted handles = the "triple-sourced" tier** — always lead with those.
+- **📈 Level up the roster.** Every few weeks: *"Of the calls @handle made 60–90 days ago, which
+  actually played out?"* Promote the hitters, mute the talkers. `/review-discovery` updates the
+  roster's hit/miss tally.
+- **⏱ Freshness by horizon.** Momentum/Catalyst loot decays in days → re-net **2×/week**.
+  Compounder loot (roster + names) lasts months.
+- **🏁 Always close the funnel** with one clean extract per name to paste into Hindsight:
+  `ticker | scout(s) | convergence | the claim | freshness`.
+
+### Which play per analyst (the gap → play map)
+
+`/review-analysts`'s "Feed to Discovery" section names the gap; this table maps it to a play.
+
+| Analyst | Default play | Fill-in |
+|---|---|---|
+| **Secular Compounder** (gaps) | **A** (×2 sessions) | THEME = e.g. GLP-1 supply chain, then onshoring/reshoring. Scouts = multi-year fundamental holders. *Or Play D: reuse energy/AI scouts → ask the new theme.* |
+| **Catalyst Event PM** | **C** | NARRATIVE = "biotech PDUFAs/readouts dated next 2–4 weeks." |
+| **PEAD Specialist** | **C** | NARRATIVE = "clean beat-and-raises last 5–10 days + PT raises." |
+| **Momentum Breakout** | **C** | NARRATIVE = "this week's breakouts **outside semiconductors**, early-stage (<5% from pivot)." |
+
+### Per-archetype triage filters (apply in the Hindsight paste)
+
+- **Momentum:** $5B+ cap, new 52-wk high OR clean multi-month base breakout, >2× volume, +RS vs
+  SPY, sector leadership, **no earnings within 5 trading days**, common stock only, **early-stage /
+  first-pullback over extended/parabolic**, LONG only.
+- **Catalyst:** dated binary event (FDA/PDUFA/court/contract/M&A) within ~2–4 weeks, $1B+ cap.
+- **PEAD:** clean beat-AND-raise in the last 5–10 days + PT raises, within the drift window.
+- **Compounder:** best-in-class operator in a secular theme, multi-year durability, conviction-sized.
+
+---
+
 ## 1. Catalyst Event PM (LIVE)
 
 ### Mandate
@@ -495,3 +594,5 @@ WATCHING TICKERS]. Top 3-5 → dispatch. Rest → PASS-record with rationale.
 - [`docs/plans/DISCOVERY_OVERHAUL.md`](./plans/DISCOVERY_OVERHAUL.md) — PR #361 implementation history + MEDIUM-4 gap-analysis Stage 0 plan
 - [`docs/plans/DISCOVERY_V2.md`](./plans/DISCOVERY_V2.md) — operator-driven discovery design (Principal Chat batched discovery)
 - `lib/agent/knowledge/strategy-archetypes.ts` — the 10 archetypes; this playbook serves the 4 archetypes mapped to live analysts (THEMATIC_SECULAR, EARNINGS_DRIFT, CATALYST_EVENT, MOMENTUM_BREAKOUT)
+- [`docs/discovery/scout-roster.md`](./discovery/scout-roster.md) — the durable per-theme bench of credible X handles (built by the Scout Loop, scored by `/review-discovery`)
+- [`docs/prompts/DISCOVERY_PREP.md`](./prompts/DISCOVERY_PREP.md) — the `/discovery-prep` instruction doc (turns a "Feed to Discovery" gap into Grok/Perplexity prompts via the Scout Loop)
