@@ -11,6 +11,14 @@
 
 ---
 
+## Done since 2026-06-19 (proposal-fatigue cooldown + P1-27 closed as not-a-bug)
+
+### ✅ P1-27 — Proposal audit completeness — **CLOSED, not a bug**
+**Filed** 2026-06-18, **closed** 2026-06-19. The motivating stat ("47 rejected SELL Orders vs 7 `PROPOSAL_REJECTED` audit rows, ~15% captured") was an **artifact of an overloaded denominator**. `Order.status='REJECTED'` holds four different things: real user rejections, **dedup tombstones** ("Duplicate close — folded…", #379), broker 4xx rejections, and **old pre-proposal-era closes** (closeSource null). Of the 48 REJECTED SELL Orders: 19 dedup tombstones + 21 legacy (all <05-22) + **~6 real user rejections** — which **matches** the 8 `PROPOSAL_REJECTED` rows. The audit is essentially complete; the fire-and-forget write isn't dropping records in practice. PR #444 (the proposed await/atomic fix) was **closed** — it fixes a non-bug, and P1-28's fix reads the Order ledger directly so nothing depends on it. **Lesson:** never count `Order.status='REJECTED'` raw as "rejections" — filter systemic tombstones (`rejectionMessage` prefix) + require `expiresAt IS NOT NULL` (staged = the user actually saw a card).
+
+### ⏳ P1-28 — Proposal-fatigue cooldown (fix in review, [#445](https://github.com/dave-sucks/hindsight/pull/445))
+Not yet merged — this block finalizes on merge. Summary: cross-day cooldown on re-proposing a discretionary CLOSE that resolved REJECTED-or-EXPIRED within 5d (Order ledger), the third suppression layer atop #379 (same-day dedup) + #381 (tactical 4h snooze). Corrected from the original framing — the scary 06-04 bursts were P0-14, already fixed; the real residual is cross-day (MU 5 days). Full design in `docs/plans/TRADE_AS_PROPOSAL.md` §8.3.
+
 ## Done since 2026-06-16 (status-taxonomy migration complete + orphan-thesis bug closed)
 
 ### ✅ P1-24 — Status/direction taxonomy migration (the 8-week-refactor capstone)

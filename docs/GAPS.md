@@ -52,30 +52,23 @@ _None open._ The 2026-06-04 → 08 post-launch sprint cleared the live-loop bloc
 
 **Not blocking the live loop** — pure cleanup. Pick it up once the principal confirms nothing here gets repurposed.
 
-### P1-27 — Proposal audit (`ThesisUpdate.PROPOSAL_*`) is unreliable — fire-and-forget write loses the serverless race
-**Status:** open, filed 2026-06-18 (principal; verified against prod DB, read-only). **Prior "fixed" claim does NOT hold.** Severity: **P1 data-integrity** — auditing approvals from `ThesisUpdate` returns wrong answers, AND it starves P1-28.
+### P1-27 — Proposal audit completeness — **CLOSED as not-a-bug (2026-06-19)**
+Filed 2026-06-18 on a stat that turned out to be an artifact. The "47 rejected SELL Orders vs 7 `PROPOSAL_REJECTED` rows (~15%)" compared the audit against a denominator that was mostly **systemic noise**: of 48 REJECTED SELL Orders, **19 are "Duplicate close" dedup tombstones** (#379), **21 are old pre-proposal-era closes** (closeSource null, all <05-22), and only **~6 are real user rejections** — which **matches** the 8 `PROPOSAL_REJECTED` audit rows. The audit is essentially complete; there is no data-integrity bug. PR #444 (the "fix") was closed; the fire-and-forget write is mildly sloppy but isn't dropping records, and P1-28 reads the Order ledger directly so nothing depends on it. Full closure note in `GAPS_HISTORY.md`. **Lesson:** `Order.status='REJECTED'` is overloaded (user reject + dedup tombstone + broker 4xx + legacy) — never count it raw as "rejections."
 
-**Prod evidence (2026-06-18):** **47** rejected SELL Orders (`status=REJECTED`: 45 CLOSE + 1 OPEN + 1 PARTIAL_CLOSE) but only **7** `PROPOSAL_REJECTED` ThesisUpdate rows (~15% captured). `PROPOSAL_EXPIRED` 7 vs **29** `EXPIRED/CLOSE` Orders (~24%). `PROPOSAL_APPROVED` 18 vs 75 filled sells. A reviewer reasoning from `ThesisUpdate(type LIKE 'PROPOSAL_%')` reached the FALSE conclusion "sells bypass approval" — the table is just sparse.
+### P1-28 — Agent re-proposes the same exit across days (proposal fatigue)
+**Status:** **fix in review — PR [#445](https://github.com/dave-sucks/hindsight/pull/445)** (filed 2026-06-18; re-scoped + corrected 2026-06-19 after prod re-verification). Severity: **P1 behavior** — the user keeps getting the same close proposal, raising accidental-approval odds + queue clutter.
 
-**Root cause (verified in code).** The audit write is a **detached, un-awaited, post-transaction fire-and-forget** — `void (async () => { … await writeThesisUpdate(…) })()` in BOTH `approveProposal` (`lib/proposals/execute.ts:274`) and `rejectProposal` (`:383`). Launched *after* the tx commits and never awaited → on Vercel the function tears down before the promise resolves (the write races teardown). Compounded by: (a) `try/catch → console.warn` only (fail-soft); (b) depends on `findRelatedThesisId(...)` resolving — no thesis → no row. The expiry path (`proposal-expiry.ts:136`) runs inside a cron `step.run` (more reliable, ~24%) but is still fail-soft + thesis-dependent.
+**What it actually is (corrected).** The repeated cards are **cross-day** re-proposals of a discretionary close. Two adjacent problems are already fixed and are NOT this:
+- The **06-04 bursts** (NVDA 12× / IREN 8× / NVTS 5× in ~1h) were the **P0-14 EXIT-trigger runaway** — fixed by #381 (tactical 4h load-context bail, kills the compute storm) + #379 (dedup folds same-day duplicate cards). See `GAPS_HISTORY.md` 2026-06-04.
+- The genuine residual neither catches: **MU re-proposed on 5 distinct days (06-09→06-16)** — each card >4h apart (past #381's snooze) and already expired (nothing for #379 to fold). CRDO 2 days. The user mostly **ignores cards to expiry**, not explicit reject (NVDA/IREN/NVTS were 0 explicit rejects).
 
-**Canonical ledger = the Order table** (`status`, `intent`, `alpacaOrderId` null = never sent to broker). Reason about approvals from Order, not ThesisUpdate.
+**The fix (shipped in #445).**
+- **L1 — cross-day cooldown** (`maybeAwaitApproval`): refuse to re-stage a **discretionary** CLOSE within `UNAPPROVED_EXIT_COOLDOWN_DAYS` (5) of a prior staged close that resolved **REJECTED-by-user OR EXPIRED** (Order ledger). Covers daily + tactical. Carve-out: `closeSource='price_monitor'` or `closeReason ∈ {STOP,TARGET}` always flow (verified: re-proposed cards are all untagged; real stops/targets carry tags). CLOSE-only (no staged PARTIAL_CLOSE/ADD exist; buys don't nag). Non-fatal `suppressed` result through both close tools.
+- **L2 — `unapprovedExitCount`** per holding in `get_theses` (rejected + ignored, Order ledger).
+- **L3 — existing prompt** kept as belt-and-suspenders only.
+- Documented in `docs/plans/TRADE_AS_PROPOSAL.md` §8.3 (three suppression layers) + §9.
 
-**Layer-correct fix (Layer 1 — data integrity, per PRINCIPLES).** Write the `PROPOSAL_*` ThesisUpdate **inside the same Prisma transaction** as the Order status flip (atomic), or at minimum `await` it before the handler returns — kill the `void (async()=>{})()`. Resolve `thesisId` before the tx; if no thesis, still write the audit keyed to position/order (don't gate the audit on a thesis link). Decision: make it reliable (recommended — P1-28 needs this data) **or** formally demote `ThesisUpdate.PROPOSAL_*` to "best-effort" and document Order as canonical at every read site. Either way, **do not keep the fire-and-forget.**
-
-### P1-28 — Agent re-proposes the same rejected exit every run (proposal fatigue) — the Layer-3 prompt fix doesn't hold
-**Status:** open, filed 2026-06-18 (principal; verified against prod DB). **Prior "fixed" claim (the prompt block) does NOT hold.** Severity: **P1 behavior** — proposal fatigue; the user re-rejects the same trade ~daily, raising accidental-approval odds + queue clutter.
-
-**Prod evidence (2026-06-18, `Order side=SELL intent=CLOSE`):** MU **23** close proposals (17 rejected, still held), NVDA **33** (19 rejected), AVGO/MRVL/IREN 8 each — re-proposed ~daily across 06-09 → 06-18 with no dampening.
-
-**The prior fix + why it doesn't hold.** A Layer-3 prompt block exists (`lib/agent/system-prompt.ts:189`, "Read rejected proposals like a soft no … do NOT re-propose unless the stated reason materially changed"). It fails because it (a) is the **wrong layer** — prompt text for an agent-does-the-wrong-thing problem (PRINCIPLES says Layer 1/2), and (b) is **starved by P1-27**: the agent reads rejections via `get_theses(include_history)` (`get-theses.ts:269`), but ~85% of rejections have no `PROPOSAL_REJECTED` row, and surviving rows fall outside the default N=5 history window. The only real suppression today is #381's **4h tactical-run snooze** (load-context bail) — that killed the GPT-5.5 cost runaway (P0-14) but does nothing about cross-run re-proposal by the daily run.
-
-**Layer-correct fix.**
-- **L1 (the real fix):** a proposal-creation gate — refuse to stage a new CLOSE/PARTIAL_CLOSE proposal for a position with a REJECTED close Order inside a cooldown window (read from the **Order** ledger), unless the thesis materially changed (new EXIT trigger fired / price crossed stop). Extends #381's 4h tactical snooze into a real cross-run cooldown on the *proposal* side.
-- **L2 (surface state):** pre-digest a `rejectedExitCount` ("proposed this exit N×, rejected each") onto the thesis in `get_theses`, derived from the **Order** table (reliable), not ThesisUpdate.
-- **L3 (keep, not primary):** the existing prompt as belt-and-suspenders.
-
-**Linked to P1-27:** B's data paths (L2 surfacing, L3 prompt) must read the **Order** ledger, OR P1-27 must make `ThesisUpdate.PROPOSAL_*` reliable first.
+**Separate, larger follow-up (NOT in #445):** the agent *wants to exit names the user clearly wants to hold* (NVDA/IREN) — the cooldown suppresses the nagging; the root cause is over-eager EXIT triggers. Worth its own investigation.
 
 ---
 
