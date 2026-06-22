@@ -67,16 +67,19 @@
 | `manage_position(full_close)` calls on toggle-ON analysts | | | |
 | New `Order(status='AWAITING_APPROVAL')` rows created today | | | |
 | New `Position(status='PENDING_APPROVAL')` rows created today | | | |
-| `PROPOSAL_APPROVED` audit rows (Approve clicks today) | | | |
-| `PROPOSAL_REJECTED` audit rows (Reject clicks today) | | | |
-| `PROPOSAL_EXPIRED` audit rows (cron-generated) | | | |
+| Approvals today (`Order` AWAITING_APPROVAL → FILLED + `alpacaOrderId`) ‡ | | | |
+| Rejections today (`Order.status='REJECTED'`) ‡ | | | |
+| Expiries today (`Order.status='EXPIRED'`) ‡ | | | |
 | Orphan `PENDING` Orders (`alpacaOrderId IS NULL`) — Section H item 6 * | | | |
-| Duplicate `PROPOSAL_APPROVED` rows per orderId — Section H item 7 * | | | |
+| Double-fill events (>1 close `PositionEvent` per position) — Section H item 7 * | | | |
 | Ungated paths that went through proposal (`price_monitor` / `user`) — Section H item 4 * | | | |
 | Tool-envelope vs narration gap (agent narrated fill, actually awaiting) — Section H item 3 * | | | |
 | Proposal-expiry cron firings during market hours (~30 / day expected) | | | |
 
 \* Expected = 0. Any non-zero is a finding.
+
+‡ Count from the **`Order` table** (canonical). `ThesisUpdate PROPOSAL_*` rows are fail-soft +
+incomplete (no `orderId`, undercount) — best-effort eyeball only, never the count. See Section H.
 
 ## Behavior
 
