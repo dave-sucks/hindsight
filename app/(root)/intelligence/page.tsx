@@ -17,7 +17,6 @@ import {
   Search,
   Globe,
   GitBranch,
-  FileText,
   Layers,
   ScanSearch,
 } from "lucide-react";
@@ -32,9 +31,7 @@ import { toast } from "sonner";
 
 import { SignalFeed } from "@/components/intelligence/signal-feed";
 import { MonitorList } from "@/components/intelligence/config-panel";
-import { BriefCards } from "@/components/intelligence/brief-cards";
 import { HealthTab } from "@/components/intelligence/health-tab";
-import { ChipTabs } from "@/components/ui/chip-tabs";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
 import {
   IntelligenceShowcaseTrigger,
@@ -42,7 +39,6 @@ import {
 } from "@/components/domain/run-showcase-trigger";
 import type {
   Signal,
-  MorningBrief,
   Monitor,
 } from "@/components/intelligence/types";
 import type { HealthData } from "@/app/api/intelligence/health/route";
@@ -60,16 +56,10 @@ async function fetchJSON<T>(url: string): Promise<T> {
 export default function IntelligencePage() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [monitors, setMonitors] = useState<Monitor[]>([]);
-  const [briefs, setBriefs] = useState<MorningBrief[]>([]);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [healthLoading, setHealthLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("findings");
-
-  // Brief date selection
-  const [briefDate, setBriefDate] = useState<"today" | "yesterday" | "week">(
-    "today"
-  );
 
   const [triggering, setTriggering] = useState<string | null>(null);
 
@@ -98,16 +88,14 @@ export default function IntelligencePage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [sig, mon, br] = await Promise.all([
+      const [sig, mon] = await Promise.all([
         fetchJSON<Signal[]>("/api/intelligence/signals?limit=200").catch(
           () => []
         ),
         fetchJSON<Monitor[]>("/api/intelligence/monitors").catch(() => []),
-        fetchJSON<MorningBrief[]>("/api/intelligence/briefs").catch(() => []),
       ]);
       setSignals(sig);
       setMonitors(mon);
-      setBriefs(br);
     } catch (err) {
       console.error("[intelligence] Failed to load:", err);
     } finally {
@@ -138,23 +126,6 @@ export default function IntelligencePage() {
     }
   }, [activeTab, health, healthLoading, loadHealth]);
 
-  // Load briefs when date changes
-  const loadBriefs = useCallback(async () => {
-    try {
-      const dateParam = getBriefDateParam(briefDate);
-      const br = await fetchJSON<MorningBrief[]>(
-        `/api/intelligence/briefs${dateParam ? `?date=${dateParam}` : ""}`
-      );
-      setBriefs(br);
-    } catch {
-      console.error("[intelligence] Failed to load briefs");
-    }
-  }, [briefDate]);
-
-  useEffect(() => {
-    loadBriefs();
-  }, [loadBriefs]);
-
   const handleRefresh = useCallback(() => {
     loadAll();
     if (activeTab === "health") loadHealth();
@@ -173,7 +144,6 @@ export default function IntelligencePage() {
             <TabsList className="self-start">
               <TabsTrigger value="findings">Findings</TabsTrigger>
               <TabsTrigger value="monitors">Monitors</TabsTrigger>
-              <TabsTrigger value="briefs">Briefs</TabsTrigger>
               <TabsTrigger value="health">Health</TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-1.5">
@@ -238,14 +208,6 @@ export default function IntelligencePage() {
                     <GitBranch className="h-4 w-4" />
                     <span className="whitespace-nowrap">Route Signals</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() =>
-                      triggerJob("morning-brief", "Morning Briefs")
-                    }
-                  >
-                    <FileText className="h-4 w-4" />
-                    <span className="whitespace-nowrap">Generate Briefs</span>
-                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={handleRefresh}
@@ -273,22 +235,6 @@ export default function IntelligencePage() {
             <MonitorList monitors={monitors} onRefresh={loadAll} />
           </TabsContent>
 
-          {/* Briefs tab */}
-          <TabsContent value="briefs" className="pt-4 space-y-4">
-            <ChipTabs<"today" | "yesterday" | "week">
-              options={[
-                { value: "today", label: "Today" },
-                { value: "yesterday", label: "Yesterday" },
-                { value: "week", label: "This Week" },
-              ]}
-              value={briefDate}
-              onChange={(v) => v && setBriefDate(v)}
-              clearable={false}
-            />
-
-            <BriefCards briefs={briefs} />
-          </TabsContent>
-
           {/* Health tab */}
           <TabsContent value="health" className="pt-4">
             <HealthTab data={health} loading={healthLoading} />
@@ -297,29 +243,4 @@ export default function IntelligencePage() {
       </div>
     </TooltipProvider>
   );
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getBriefDateParam(
-  selection: "today" | "yesterday" | "week"
-): string | null {
-  const now = new Date();
-  if (selection === "today") {
-    return formatDateParam(now);
-  }
-  if (selection === "yesterday") {
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    return formatDateParam(yesterday);
-  }
-  // "week" — return null to get all recent briefs
-  return null;
-}
-
-function formatDateParam(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
 }

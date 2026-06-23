@@ -140,11 +140,11 @@ export default async function RunPage({
   // Load Sources + Theses tab data from the DB.
   // Wrapped in try/catch so a DB error (e.g. pending migration) never
   // crashes the whole page — tabs just render empty.
-  const { brief, sources, theses } = await getRunSourcesData({
+  const { sources, theses } = await getRunSourcesData({
     runId: run.id,
     analystId: run.agentConfig?.id ?? null,
     startedAt: run.startedAt,
-  }).catch(() => ({ brief: null, sources: [], theses: [] }));
+  }).catch(() => ({ sources: [], theses: [] }));
 
   // Build the Transcript tab payload for podcast segment runs.
   const transcriptForChat: TranscriptRowData | null =
@@ -179,7 +179,6 @@ export default async function RunPage({
             analystName={analystName}
             autoStart={isLive && !isTacticalMode && !isDiscoveryMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode}
             messages={persistedMessages ?? undefined}
-            brief={isPodcastSegmentRun ? null : brief}
             sources={isPodcastSegmentRun ? [] : sources}
             theses={isPodcastSegmentRun ? [] : theses}
             transcript={transcriptForChat}

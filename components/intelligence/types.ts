@@ -119,21 +119,6 @@ export interface SignalBatch {
   _count: { signals: number };
 }
 
-export interface MorningBrief {
-  id: string;
-  analystId: string;
-  date: string;
-  marketContext: string;
-  portfolioAlerts: Array<{ ticker: string; alert: string; urgency: string }>;
-  watchlistUpdates: Array<{ ticker: string; update: string; recommendation: string }>;
-  newOpportunities: Array<{ headline: string; tickers: string[]; thesisSeed: string }>;
-  attentionPriority: string[];
-  riskFlags: string[];
-  signalCount: number;
-  generatedAt: string;
-  analyst: { id: string; name: string };
-}
-
 export interface Monitor {
   id: string;
   name: string;

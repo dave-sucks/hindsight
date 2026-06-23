@@ -25,7 +25,6 @@ import {
   Radar,
   Search,
   BarChart3,
-  RotateCcw,
   Bot,
   Newspaper,
   Globe,
@@ -283,22 +282,7 @@ export const TEAMS: Team[] = [
     promptSource: "lib/agent/run-thesis-writer.ts → buildThesisWriterSystemPrompt",
   },
 
-  // ─── 4. Briefing Agent ─────────────────────────────────────────────────
-  {
-    id: "briefing",
-    title: "Briefing Agent",
-    phase: "track",
-    upstream: { teamId: "agent", verb: "After" },
-    summary:
-      "When any agent run completes, GPT-4o reviews the transcript + portfolio and writes the standup memo that feeds into the next run's prompt.",
-    icon: RotateCcw,
-    model: "GPT-4o",
-    schedule: "Inline after every run (no separate cron)",
-    getPrompt: () => import("@/lib/agent/briefing-prompt-template").then((m) => m.BRIEFING_PROMPT_TEMPLATE),
-    promptSource: "lib/agent/update-analyst-briefing.ts",
-  },
-
-  // ─── 5. Evaluation ─────────────────────────────────────────────────────
+  // ─── 4. Evaluation ─────────────────────────────────────────────────────
   {
     id: "evaluation",
     title: "Evaluation & Tracking",
