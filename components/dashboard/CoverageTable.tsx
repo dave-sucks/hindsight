@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { Check, X } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table,
   TableHeader,
@@ -250,8 +249,15 @@ function seedFor(row: CoverageRow): ThesisCardData {
   };
 }
 
+const COVERAGE_TABS: { key: Tab; label: string }[] = [
+  { key: "trades", label: "Trades" },
+  { key: "watching", label: "Watching" },
+  { key: "passed", label: "Passed" },
+];
+
 export default function CoverageTable({ data }: { data: CoverageData }) {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<Tab>("trades");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [seed, setSeed] = useState<ThesisCardData | null>(null);
 
@@ -267,25 +273,37 @@ export default function CoverageTable({ data }: { data: CoverageData }) {
     }
   };
 
+  const EMPTY_LABELS: Record<Tab, string> = {
+    trades: "No trades yet.",
+    watching: "Nothing on the watchlist yet.",
+    passed: "No recently passed names.",
+  };
+
   return (
     <div className="space-y-3">
-      <Tabs defaultValue={"trades" satisfies Tab}>
-        <TabsList>
-          <TabsTrigger value="trades">Trades</TabsTrigger>
-          <TabsTrigger value="watching">Watching</TabsTrigger>
-          <TabsTrigger value="passed">Passed</TabsTrigger>
-        </TabsList>
+      <div className="flex w-fit items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
+        {COVERAGE_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={cn(
+              "px-2.5 py-1 text-xs rounded transition-colors",
+              activeTab === t.key
+                ? "bg-background text-foreground font-medium shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-        <TabsContent value="trades" className="mt-3">
-          <CoverageTab rows={data.trades} tab="trades" emptyLabel="No trades yet." onRowClick={handleRowClick} />
-        </TabsContent>
-        <TabsContent value="watching" className="mt-3">
-          <CoverageTab rows={data.watching} tab="watching" emptyLabel="Nothing on the watchlist yet." onRowClick={handleRowClick} />
-        </TabsContent>
-        <TabsContent value="passed" className="mt-3">
-          <CoverageTab rows={data.passed} tab="passed" emptyLabel="No recently passed names." onRowClick={handleRowClick} />
-        </TabsContent>
-      </Tabs>
+      <CoverageTab
+        rows={data[activeTab]}
+        tab={activeTab}
+        emptyLabel={EMPTY_LABELS[activeTab]}
+        onRowClick={handleRowClick}
+      />
 
       {seed && (
         <ThesisSheet open={sheetOpen} onOpenChange={setSheetOpen} {...seed} />

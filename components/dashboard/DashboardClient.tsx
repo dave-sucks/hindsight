@@ -56,8 +56,14 @@ import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
 import { ProposalActions } from '@/components/proposals/ProposalActions';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
-import { PortfolioDigestCard } from '@/components/domain/portfolio-digest-card';
 import type { LatestDigest } from '@/lib/actions/digest.actions';
+import { DigestMarkdown } from '@/components/ui/ticker-markdown';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
 import { Button } from '@/components/ui/button';
@@ -514,17 +520,13 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   );
 }
 
-function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
+function HomeBottomSection({ picks, activity, loading, coverage }: {
   picks: RecentPick[];
   activity: ActivityFeedItem[];
   loading: boolean;
-  // Overview tab payload (Feature A + B — docs/plans/PORTFOLIO_DIGEST.md). The
-  // brief + coverage tables live as the first/default tab; `digest === undefined`
-  // means the caller opted out of the digest entirely (card not rendered).
-  digest?: LatestDigest | null;
   coverage?: CoverageData;
 }) {
-  const [tab, setTab] = useState<'overview' | 'theses' | 'activity'>('overview');
+  const [tab, setTab] = useState<'portfolio' | 'theses' | 'activity'>('portfolio');
   const [thesisFilter, setThesisFilter] = useState<ThesisTabFilter>('ALL');
   const [thesisPage, setThesisPage] = useState(0);
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
@@ -615,15 +617,15 @@ function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
       {/* Tab bar + filter dropdown */}
       <div className="flex items-center justify-between pb-3">
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="theses">Theses</TabsTrigger>
         </TabsList>
 
-        {/* Filter — Activity uses the dropdown on the right; the Theses tab
-            uses the status mini-tabs row rendered below (inside the tab). */}
+        {/* Filter — Activity uses the dropdown on the right; Portfolio and
+            Theses tabs handle their own sub-filters inline. */}
         <div>
-          {tab === 'overview' || tab === 'theses' ? null : (
+          {tab === 'portfolio' || tab === 'theses' ? null : (
             <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}>
               <SelectTrigger className="h-8 w-32 text-xs">
                 <SelectValue />
@@ -639,13 +641,18 @@ function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
         </div>
       </div>
 
-      {/* Overview — the Daily Portfolio Digest (Feature A) + the Coverage
-          tables (Feature B). The default tab: the principal's at-a-glance
-          read of the whole book. */}
-      <TabsContent value="overview">
+      {/* Portfolio — Coverage table with pill-style sub-filter. */}
+      <TabsContent value="portfolio">
         <div className="space-y-5">
-          {digest !== undefined && <PortfolioDigestCard digest={digest} />}
-          {coverage && <CoverageTable data={coverage} />}
+          {coverage ? (
+            <CoverageTable data={coverage} />
+          ) : (
+            <Card className="shadow-none">
+              <CardContent className="py-8 flex justify-center">
+                <p className="text-sm text-muted-foreground">No coverage data yet.</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </TabsContent>
 
@@ -836,6 +843,78 @@ function PositionGroupLabel({ children }: { children: ReactNode }) {
   );
 }
 
+// ── DigestPreviewCard ─────────────────────────────────────────────────────────
+// Compact teaser above the positions list. Shows the digest date + ~160 chars
+// of narrative (stripped of markdown) with a bottom fade, click opens dialog.
+
+function stripMarkdown(md: string): string {
+  return md
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // [text](url) → text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')        // **bold**
+    .replace(/\*([^*]+)\*/g, '$1')            // *italic*
+    .replace(/^#+\s/gm, '')                    // headings
+    .replace(/`[^`]*`/g, '')                   // code
+    .trim();
+}
+
+function formatDigestDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  });
+}
+
+function DigestPreviewCard({ digest }: { digest: LatestDigest | null | undefined }) {
+  const [open, setOpen] = useState(false);
+  if (digest === undefined) return null;
+
+  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 160) : null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => digest && setOpen(true)}
+        className={cn(
+          'w-full text-left rounded-lg border bg-card p-3 mb-3',
+          digest ? 'hover:bg-accent/40 transition-colors cursor-pointer' : 'cursor-default',
+        )}
+      >
+        <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1">
+          {digest ? `${formatDigestDate(digest.date)} · after close` : 'Portfolio Digest'}
+        </p>
+        {digest && preview ? (
+          <div className="relative">
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+              {preview}
+            </p>
+            <div className="absolute bottom-0 left-0 right-0 h-5 bg-gradient-to-t from-card to-transparent pointer-events-none" />
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">No digest yet — generates after close.</p>
+        )}
+      </button>
+
+      {digest && (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="sm:max-w-2xl p-0">
+            <DialogHeader className="px-5 pt-5 pb-3 border-b">
+              <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+                {formatDigestDate(digest.date)} · after close
+              </p>
+              <DialogTitle className="text-base font-semibold">Portfolio Digest</DialogTitle>
+            </DialogHeader>
+            <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
+              <DigestMarkdown>{digest.narrative}</DigestMarkdown>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  );
+}
+
 // ── PositionsPanel — Open / Closed trades list ───────────────────────────────
 //
 // The portfolio's open + closed positions as a two-tab Card. Rendered in two
@@ -847,100 +926,62 @@ function PositionGroupLabel({ children }: { children: ReactNode }) {
 function PositionsPanel({
   openTrades,
   pendingTrades,
-  closedTrades,
   loading,
   flashIds,
+  digest,
 }: {
   openTrades: MockTrade[];
   pendingTrades: MockTrade[];
-  closedTrades: MockTrade[];
   loading: boolean;
   flashIds: Map<string, 'win' | 'loss'>;
+  digest?: LatestDigest | null;
 }) {
+  const totalOpen = openTrades.length + pendingTrades.length;
   return (
-    <Tabs defaultValue="open" className="gap-0">
-      <TabsList variant="line" className="w-auto self-start px-0">
-        <TabsTrigger value="open" className="px-0 mr-4">
-          Open
-          {openTrades.length > 0 && (
-            <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
-              {openTrades.length}
-            </span>
+    <div className="space-y-0">
+      <DigestPreviewCard digest={digest} />
+      <div className="flex items-center justify-between pb-3">
+        <span className="text-sm font-medium">
+          Positions
+          {totalOpen > 0 && (
+            <span className="ml-1.5 text-[10px] tabular-nums opacity-60">{totalOpen}</span>
           )}
-        </TabsTrigger>
-        <TabsTrigger value="closed" className="px-0">
-          Closed
-          {closedTrades.length > 0 && (
-            <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
-              {closedTrades.length}
-            </span>
-          )}
-        </TabsTrigger>
-      </TabsList>
-
+        </span>
+      </div>
       <Card className="shadow-none p-0">
         <CardContent className="p-0">
-          <TabsContent value="open" className="mt-0">
-            {loading ? (
-              <div className="space-y-1 px-4 pt-1 pb-2">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-14 rounded-lg" />
-                ))}
-              </div>
-            ) : openTrades.length === 0 && pendingTrades.length === 0 ? (
-              <Empty
-                text="No open positions"
-                subtext="Positions appear when an analyst places a paper trade during a run."
-              />
-            ) : (
-              <div>
-                {pendingTrades.length > 0 && (
-                  <>
-                    <PositionGroupLabel>Pending approval</PositionGroupLabel>
-                    {pendingTrades.map((t) => (
-                      <DashboardTradeRow
-                        key={t.id}
-                        trade={t}
-                        flash={flashIds.get(t.id)}
-                      />
-                    ))}
-                  </>
-                )}
-                {openTrades.length > 0 && (
-                  <>
-                    {pendingTrades.length > 0 && (
-                      <PositionGroupLabel>Held</PositionGroupLabel>
-                    )}
-                    {openTrades.map((t) => (
-                      <DashboardTradeRow
-                        key={t.id}
-                        trade={t}
-                        flash={flashIds.get(t.id)}
-                      />
-                    ))}
-                  </>
-                )}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="closed" className="mt-0">
-            {closedTrades.length === 0 ? (
-              <Empty
-                text="No closed trades yet"
-                subtext="Trades close when they hit a target, stop-loss, or manual exit."
-              />
-            ) : (
-              <div>
-                {closedTrades.map((t) => (
-                  <DashboardTradeRow key={t.id} trade={t} />
-                ))}
-              </div>
-            )}
-          </TabsContent>
+          {loading ? (
+            <div className="space-y-1 px-4 pt-1 pb-2">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-14 rounded-lg" />
+              ))}
+            </div>
+          ) : openTrades.length === 0 && pendingTrades.length === 0 ? (
+            <Empty
+              text="No open positions"
+              subtext="Positions appear when an analyst places a paper trade during a run."
+            />
+          ) : (
+            <div>
+              {pendingTrades.map((t) => (
+                <DashboardTradeRow key={t.id} trade={t} flash={flashIds.get(t.id)} />
+              ))}
+              {openTrades.map((t) => (
+                <DashboardTradeRow key={t.id} trade={t} flash={flashIds.get(t.id)} />
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
-    </Tabs>
+      <div className="flex justify-center pt-2">
+        <Link
+          href="/trades"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-accent"
+        >
+          All Trades
+        </Link>
+      </div>
+    </div>
   );
 }
 
@@ -1609,19 +1650,17 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               <PositionsPanel
                 openTrades={openTrades}
                 pendingTrades={pendingTrades}
-                closedTrades={closedTrades}
                 loading={loading}
                 flashIds={flashIds}
+                digest={digest}
               />
             </div>
 
-            {/* Overview / Activity / Theses tabbed section. Overview (default)
-                holds the digest brief + coverage tables. */}
+            {/* Portfolio / Activity / Theses tabbed section. */}
             <HomeBottomSection
               picks={recentPicks}
               activity={data?.activityFeed ?? []}
               loading={loading}
-              digest={digest}
               coverage={coverage}
             />
           </div>
@@ -1631,9 +1670,9 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
             <PositionsPanel
               openTrades={openTrades}
               pendingTrades={pendingTrades}
-              closedTrades={closedTrades}
               loading={loading}
               flashIds={flashIds}
+              digest={digest}
             />
           </div>
 
