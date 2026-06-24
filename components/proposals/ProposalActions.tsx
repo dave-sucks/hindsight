@@ -38,8 +38,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Check, X, Loader2, ChevronDown } from "lucide-react";
+import { Check, X, Loader2, ChevronDown, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ProposalActionsProps {
@@ -57,6 +59,76 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectMessage, setRejectMessage] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
+  // "Edit & Approve" — fetch the proposal's current values on open, let the
+  // principal change shares (OPEN/ADD) + target/stop (OPEN), then approve with
+  // the edits applied before the Alpaca submit.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editIntent, setEditIntent] = useState<string>("OPEN");
+  const [editShares, setEditShares] = useState("");
+  const [editTarget, setEditTarget] = useState("");
+  const [editStop, setEditStop] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+
+  async function openEdit() {
+    setEditOpen(true);
+    setEditError(null);
+    setEditLoading(true);
+    try {
+      const res = await fetch(`/api/proposals/${orderId}`);
+      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+      const ctx = (await res.json()) as {
+        intent?: string;
+        quantity?: number | null;
+        targetPrice?: number | null;
+        stopLoss?: number | null;
+      };
+      setEditIntent(ctx.intent ?? "OPEN");
+      setEditShares(ctx.quantity != null ? String(ctx.quantity) : "");
+      setEditTarget(ctx.targetPrice != null ? String(ctx.targetPrice) : "");
+      setEditStop(ctx.stopLoss != null ? String(ctx.stopLoss) : "");
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function submitEdit() {
+    setPending("approve");
+    setEditError(null);
+    const body: Record<string, number> = {};
+    const q = Number(editShares);
+    if (
+      (editIntent === "OPEN" || editIntent === "ADD") &&
+      Number.isFinite(q) &&
+      q > 0
+    ) {
+      body.quantity = q;
+    }
+    if (editIntent === "OPEN") {
+      const t = Number(editTarget);
+      const s = Number(editStop);
+      if (Number.isFinite(t) && t > 0) body.targetPrice = t;
+      if (Number.isFinite(s) && s > 0) body.stopLoss = s;
+    }
+    try {
+      const res = await fetch(`/api/proposals/${orderId}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok && res.status !== 202) {
+        throw new Error((await res.text()) || `HTTP ${res.status}`);
+      }
+      setEditOpen(false);
+      setResolved("approved");
+      router.refresh();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : String(err));
+      setPending(null);
+    }
+  }
 
   async function approve() {
     setPending("approve");
@@ -163,6 +235,16 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
             Approve
           </DropdownMenuItem>
           <DropdownMenuItem
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void openEdit();
+            }}
+          >
+            <Pencil className="size-4" />
+            Edit…
+          </DropdownMenuItem>
+          <DropdownMenuItem
             variant="destructive"
             onClick={(e) => {
               e.preventDefault();
@@ -226,6 +308,102 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
                   <Loader2 className="size-3 animate-spin" />
                 ) : null}
                 Reject
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={editOpen}
+          onOpenChange={pending === "approve" ? undefined : setEditOpen}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit &amp; approve</DialogTitle>
+              <DialogDescription>
+                Adjust the order before approving. Your edits apply before it&apos;s
+                submitted — the agent records the change.
+              </DialogDescription>
+            </DialogHeader>
+
+            {editLoading ? (
+              <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Loading proposal…
+              </div>
+            ) : editIntent === "OPEN" || editIntent === "ADD" ? (
+              <div className="grid gap-4">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="proposal-edit-shares">Shares</Label>
+                  <Input
+                    id="proposal-edit-shares"
+                    type="number"
+                    inputMode="decimal"
+                    value={editShares}
+                    onChange={(e) => setEditShares(e.target.value)}
+                    disabled={pending === "approve"}
+                    autoFocus
+                  />
+                </div>
+                {editIntent === "OPEN" ? (
+                  <>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="proposal-edit-target">Target price</Label>
+                      <Input
+                        id="proposal-edit-target"
+                        type="number"
+                        inputMode="decimal"
+                        value={editTarget}
+                        onChange={(e) => setEditTarget(e.target.value)}
+                        disabled={pending === "approve"}
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="proposal-edit-stop">Stop price</Label>
+                      <Input
+                        id="proposal-edit-stop"
+                        type="number"
+                        inputMode="decimal"
+                        value={editStop}
+                        onChange={(e) => setEditStop(e.target.value)}
+                        disabled={pending === "approve"}
+                      />
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                This is a {editIntent.toLowerCase().replace("_", " ")} order — its
+                size isn&apos;t editable here. To change a close, reject it and adjust
+                the position&apos;s stop/target on its thesis instead.
+              </p>
+            )}
+
+            {editError ? (
+              <p className="text-xs text-destructive">{editError}</p>
+            ) : null}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setEditOpen(false)}
+                disabled={pending === "approve"}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void submitEdit()}
+                disabled={
+                  pending === "approve" ||
+                  editLoading ||
+                  !(editIntent === "OPEN" || editIntent === "ADD")
+                }
+              >
+                {pending === "approve" ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : null}
+                Save &amp; approve
               </Button>
             </DialogFooter>
           </DialogContent>

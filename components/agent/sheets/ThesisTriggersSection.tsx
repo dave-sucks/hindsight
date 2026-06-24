@@ -17,6 +17,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Zap, Clock, Loader2 } from "lucide-react";
+import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import { cn } from "@/lib/utils";
 
 interface TriggerPredicate {
@@ -415,7 +420,17 @@ function fmtFiredAt(iso?: string): string {
 //   - Value-less predicates (REVIEW_DATE_HIT, EARNINGS_BEAT without min%)
 //     render the kind cell only.
 
-function TriggerPill({ trigger }: { trigger: Trigger }) {
+function TriggerPill({
+  trigger,
+  thesisId,
+  editable,
+  onChanged,
+}: {
+  trigger: Trigger;
+  thesisId: string;
+  editable: boolean;
+  onChanged?: () => void;
+}) {
   const { kind, value } = predicateKindValue(trigger.predicate);
   return (
     <Popover>
@@ -444,55 +459,157 @@ function TriggerPill({ trigger }: { trigger: Trigger }) {
         ) : null}
       </PopoverTrigger>
 
-      <TriggerPopoverContent trigger={trigger} />
+      <TriggerPopoverContent
+        trigger={trigger}
+        thesisId={thesisId}
+        editable={editable}
+        onChanged={onChanged}
+      />
     </Popover>
   );
 }
 
+/**
+ * Popover content as a consistent label / input / save form (replacing the
+ * old sentence-led layout). Every trigger renders the same shape:
+ *   • a small field label + a full-width input (editable when the predicate
+ *     exposes a numeric value AND the thesis is editable; read-only otherwise)
+ *   • the explainer sentence + the writer's rationale
+ *   • fired / cooldown metadata as small badges
+ *   • Save / Cancel, shown only once the value is changed
+ */
 function TriggerPopoverContent({
   trigger,
+  thesisId,
+  editable,
+  onChanged,
 }: {
   trigger: Trigger;
+  thesisId: string;
+  editable: boolean;
+  onChanged?: () => void;
 }) {
-  // Title now includes the action verb so the reader gets the full
-  // "what fires + what we do" in one line: "Buy if price above $178",
-  // "Exit if price below $14.50", "Review if 7 days elapsed".
-  const titleSentence = `${actionGroupLabel(trigger.action)} ${predicateSentence(
+  const field = editableTriggerField(
+    trigger.predicate as unknown as SharedTriggerPredicate,
+  );
+  const canEdit = editable && field != null;
+  const { kind: kindLabel, value: displayValue } = predicateKindValue(
     trigger.predicate,
-  ).toLowerCase()}`;
+  );
+  const fieldLabel = `${actionGroupLabel(trigger.action)} · ${kindLabel}`;
+
+  const initial = field?.value != null ? String(field.value) : "";
+  const [val, setVal] = useState(initial);
+  const [pending, setPending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Resync the input when the underlying stored value changes (an external
+  // refresh, or this trigger's value after a save). `initial` only changes when
+  // field.value changes — NOT while the user types — so this never clobbers an
+  // in-progress edit, it just prevents a stale value lingering after a refetch.
+  useEffect(() => {
+    setVal(initial);
+  }, [initial]);
+
+  const parsed = Number(val);
+  const dirty =
+    canEdit && val.trim() !== "" && Number.isFinite(parsed) && parsed !== field?.value;
+
+  async function save() {
+    setPending(true);
+    setErr(null);
+    try {
+      const res = await fetch(
+        `/api/theses/${thesisId}/triggers/${trigger.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ value: parsed }),
+        },
+      );
+      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+      onChanged?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setPending(false);
+    }
+  }
+
   return (
-    <PopoverContent side="left" align="start" className="w-72 p-0">
-      <div className="px-3 pt-3 pb-2 border-b border-border">
-        <p className="text-sm font-medium text-foreground">{titleSentence}</p>
+    <PopoverContent side="left" align="start" className="w-72 space-y-3">
+      {/* Label + full-width input (editable or read-only) */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {fieldLabel}
+        </p>
+        {canEdit ? (
+          <div className="flex items-center gap-1.5">
+            {field?.prefix ? (
+              <span className="text-sm text-muted-foreground">{field.prefix}</span>
+            ) : null}
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={val}
+              min={field?.min}
+              step={field?.step}
+              onChange={(e) => setVal(e.target.value)}
+              disabled={pending}
+            />
+            {field?.suffix ? (
+              <span className="text-sm text-muted-foreground">{field.suffix}</span>
+            ) : null}
+          </div>
+        ) : (
+          <Input value={displayValue ?? kindLabel} readOnly disabled />
+        )}
       </div>
 
-      <div className="space-y-3 p-3 text-xs">
-        <div className="space-y-1">
-          <p className="text-muted-foreground">
-            {predicateDescription(trigger.predicate)}
-          </p>
-          {trigger.rationale ? (
-            <p className="text-foreground leading-relaxed">
-              {trigger.rationale}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="flex items-center justify-between text-muted-foreground border-t border-border pt-3">
-          <span>Last fired</span>
-          <span className="text-foreground tabular-nums">
-            {fmtFiredAt(trigger.lastFiredAt)}
-          </span>
-        </div>
-        {trigger.cooldownDays ? (
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span>Cooldown</span>
-            <span className="text-foreground tabular-nums">
-              {trigger.cooldownDays}d
-            </span>
-          </div>
+      {/* Explainer + rationale */}
+      <div className="space-y-1 text-xs">
+        <p className="text-muted-foreground">
+          {predicateDescription(trigger.predicate)}
+        </p>
+        {trigger.rationale ? (
+          <p className="text-foreground leading-relaxed">{trigger.rationale}</p>
         ) : null}
       </div>
+
+      {/* Metadata badges */}
+      <div className="flex flex-wrap gap-1.5">
+        <Badge variant="secondary">
+          <Zap className="size-3" />
+          {trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}` : "Never fired"}
+        </Badge>
+        {trigger.cooldownDays ? (
+          <Badge variant="secondary">
+            <Clock className="size-3" />
+            {trigger.cooldownDays}d cooldown
+          </Badge>
+        ) : null}
+      </div>
+
+      {err ? <p className="text-xs text-destructive">{err}</p> : null}
+
+      {dirty ? (
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setVal(initial);
+              setErr(null);
+            }}
+            disabled={pending}
+          >
+            Cancel
+          </Button>
+          <Button size="sm" onClick={() => void save()} disabled={pending}>
+            {pending ? <Loader2 className="size-3 animate-spin" /> : null}
+            Save
+          </Button>
+        </div>
+      ) : null}
     </PopoverContent>
   );
 }
@@ -512,7 +629,17 @@ const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = [
   "EXIT",
 ];
 
-function TriggerGroups({ triggers }: { triggers: Trigger[] }) {
+function TriggerGroups({
+  triggers,
+  thesisId,
+  editable,
+  onChanged,
+}: {
+  triggers: Trigger[];
+  thesisId: string;
+  editable: boolean;
+  onChanged?: () => void;
+}) {
   const grouped = new Map<string, Trigger[]>();
   for (const t of triggers) {
     const arr = grouped.get(t.action) ?? [];
@@ -534,7 +661,13 @@ function TriggerGroups({ triggers }: { triggers: Trigger[] }) {
               {actionGroupLabel(action)}
             </span>
             {items.map((t) => (
-              <TriggerPill key={t.id} trigger={t} />
+              <TriggerPill
+                key={t.id}
+                trigger={t}
+                thesisId={thesisId}
+                editable={editable}
+                onChanged={onChanged}
+              />
             ))}
           </div>
         );
@@ -549,9 +682,18 @@ interface Props {
   thesisId: string;
   /** Pre-fetched response. When omitted, the section fetches itself. */
   data?: TriggersResponse | null;
+  /** When true, value-bearing triggers become editable in the popover. */
+  editable?: boolean;
+  /** Called after a successful trigger-value edit so the parent can refresh. */
+  onChanged?: () => void;
 }
 
-export function ThesisTriggersSection({ thesisId, data: dataProp }: Props) {
+export function ThesisTriggersSection({
+  thesisId,
+  data: dataProp,
+  editable = false,
+  onChanged,
+}: Props) {
   const [internalData, setInternalData] = useState<TriggersResponse | null>(
     null,
   );
@@ -596,5 +738,12 @@ export function ThesisTriggersSection({ thesisId, data: dataProp }: Props) {
     );
   }
 
-  return <TriggerGroups triggers={data.triggers} />;
+  return (
+    <TriggerGroups
+      triggers={data.triggers}
+      thesisId={thesisId}
+      editable={editable}
+      onChanged={onChanged}
+    />
+  );
 }

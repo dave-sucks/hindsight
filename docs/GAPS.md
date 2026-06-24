@@ -74,6 +74,13 @@ Filed 2026-06-18 on a stat that turned out to be an artifact. The "47 rejected S
 
 ## P2 — Backlog
 
+### P2 — Trailing stop as a first-class trigger predicate
+**Idea (principal, 2026-06-23):** add a `TRAILING_STOP` trigger kind so "exit if price falls X% from the peak" renders + edits in the trigger popover exactly like every other trigger (`Exit if · trailing stop · 4%`), instead of being a separate `Position.exitStrategy="TRAILING"` + `trailingStopPct` side-channel only the agent can set via `manage_position.set_trailing_stop`.
+
+**Why it's more than a one-liner (scoped during the trigger-edit work):** the predicate union is referenced by *exhaustive* switches across the trigger system — adding the kind lit up 6 compile sites in one pass (`format.ts`, `evaluate.ts`, `live-evaluate.ts`, `defaults.ts` ×2, `needs-action.ts`, plus `intraday-tactical.ts` and the local helpers in `ThesisTriggersSection`). On top of the mechanical cases there are two real design pieces: (1) **enforcement** — the generic signal-driven evaluator has no peak price; cleanest is to let the **price-monitor** evaluate `TRAILING_STOP` (it already tracks `Position.peakPrice` for the existing trailing path) and treat it as never-fires in the generic evaluators, mirroring `trailPct` onto `Position.exitStrategy/trailingStopPct` on write so the existing enforcement runs untouched; (2) **creation UI** — a "change type" affordance on the stop trigger (price-below ↔ trailing), à la Notion's column "Change type."
+
+**Effort:** moderate-multi-file, not massive (~half a day). The mechanical switch cases are trivial; the value is unifying the model so the principal sets a trailing stop the same way they edit any other trigger. Pairs with the trigger-value-edit popover already shipped (`editableTriggerField` + `applyTriggerValueEdit`).
+
 ### Parked / done (not active items)
 - **Activity feed "Sold" → "Rejected"** — **shipped.** Cancelled (rejected/expired) buy proposals render as a `REJECTED` activity item ("Rejected — buy N @ $X"), not a "Sold" card (`lib/actions/portfolio.actions.ts:1085-1093`; confirmed in the live feed). Removed from the board. (Minor residual not tracked: rejected SELL orders on a still-OPEN position aren't surfaced as a feed event yet.)
 - **Paused intelligence infra + Sunday `discovery-run.ts` cron** — **paused and parked.** Fine as-is; the principal will revisit / maybe rebuild discovery later. **Not an open decision — don't re-raise each session.**
