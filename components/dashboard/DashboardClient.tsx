@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, ArrowRight } from 'lucide-react';
 
 import {
   Area,
@@ -616,16 +616,31 @@ function HomeBottomSection({ picks, activity, loading, coverage }: {
     <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="gap-0">
       {/* Tab bar + filter dropdown */}
       <div className="flex items-center justify-between pb-3">
-        <TabsList>
-          <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
-          <TabsTrigger value="activity">Activity</TabsTrigger>
-          <TabsTrigger value="theses">Theses</TabsTrigger>
-        </TabsList>
+        {/* Custom pill tabs — bigger text, no wrapper BG, subtle active state */}
+        <div className="flex items-center gap-0.5">
+          {([
+            { value: 'portfolio', label: 'Portfolio' },
+            { value: 'activity', label: 'Activity' },
+            { value: 'theses', label: 'Theses' },
+          ] as const).map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setTab(t.value)}
+              className={cn(
+                'px-3 py-1.5 text-sm rounded-md transition-colors',
+                tab === t.value
+                  ? 'bg-muted/70 text-foreground font-medium'
+                  : 'text-muted-foreground/60 hover:text-muted-foreground',
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-        {/* Filter — Activity uses the dropdown on the right; Portfolio and
-            Theses tabs handle their own sub-filters inline. */}
+        {/* Activity filter dropdown — only shown on the Activity tab */}
         <div>
-          {tab === 'portfolio' || tab === 'theses' ? null : (
+          {tab === 'activity' && (
             <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}>
               <SelectTrigger className="h-8 w-32 text-xs">
                 <SelectValue />
@@ -971,16 +986,17 @@ function PositionsPanel({
               ))}
             </div>
           )}
+          <div className="border-t border-border/40 px-3 py-2">
+            <Link
+              href="/trades"
+              className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+            >
+              All Trades
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </CardContent>
       </Card>
-      <div className="flex justify-center pt-2">
-        <Link
-          href="/trades"
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-accent"
-        >
-          All Trades
-        </Link>
-      </div>
     </div>
   );
 }
@@ -1238,28 +1254,92 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                 side by side. */}
             <div className="space-y-0.5">
               {loading ? (
-                <Skeleton className="h-12 w-80" />
+                <Skeleton className="h-16 w-80" />
               ) : (
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-8">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-                      Balance
-                    </span>
-                    <span className="text-xl font-semibold tabular-nums">
-                      {totalValueStr}
-                    </span>
+                <UITooltipProvider>
+                  <div className="flex items-start justify-between gap-8">
+                    {/* Left: Balance + P&L columns */}
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-8">
+                      {/* Balance column */}
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+                          Balance
+                        </span>
+                        <span className="text-xl font-semibold tabular-nums">
+                          {totalValueStr}
+                        </span>
+                        <UITooltip>
+                          <UITooltipTrigger render={
+                            <span className="text-xs text-muted-foreground cursor-default w-fit">
+                              {formatCurrency(portfolio.cash)} available
+                            </span>
+                          } />
+                          <UITooltipContent side="bottom">
+                            <div className="text-xs space-y-0.5">
+                              <div>Available cash</div>
+                              {portfolio.netPositionValue > 0 && (
+                                <div className="opacity-70">
+                                  {formatCurrency(portfolio.netPositionValue)} invested in positions
+                                </div>
+                              )}
+                            </div>
+                          </UITooltipContent>
+                        </UITooltip>
+                      </div>
+
+                      {/* P&L column */}
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+                          {RANGE_PNL_LABEL[range]}
+                        </span>
+                        <PriceChange
+                          dollarChange={rangePnl}
+                          percentChange={rangePnlPct}
+                          size="xl"
+                        />
+                        <span className={cn(
+                          'text-xs tabular-nums',
+                          portfolio.unrealizedPnl >= 0 ? 'text-positive' : 'text-negative',
+                        )}>
+                          {portfolio.unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(portfolio.unrealizedPnl)} unrealized
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Right: Success rate bar */}
+                    <UITooltip>
+                      <UITooltipTrigger render={
+                        <div className="flex flex-col items-end gap-1.5 cursor-default shrink-0 pt-0.5">
+                          <span className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+                            Win Rate
+                          </span>
+                          <div className="flex items-end gap-0.5">
+                            {Array.from({ length: 10 }, (_, i) => {
+                              const filled = portfolio.winRate != null && i < Math.round(portfolio.winRate * 10);
+                              return (
+                                <div
+                                  key={i}
+                                  className={cn(
+                                    'w-1.5 rounded-sm transition-colors',
+                                    filled ? 'bg-foreground/80' : 'bg-muted-foreground/20',
+                                  )}
+                                  style={{ height: `${6 + i * 1.5}px` }}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      } />
+                      <UITooltipContent side="bottom" align="end">
+                        <div className="text-xs">
+                          {portfolio.winRate != null
+                            ? `${Math.round(portfolio.winRate * 100)}% success rate`
+                            : 'No closed trades yet'}
+                        </div>
+                      </UITooltipContent>
+                    </UITooltip>
                   </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-                      {RANGE_PNL_LABEL[range]}
-                    </span>
-                    <PriceChange
-                      dollarChange={rangePnl}
-                      percentChange={rangePnlPct}
-                      size="xl"
-                    />
-                  </div>
-                </div>
+                </UITooltipProvider>
               )}
             </div>
 
@@ -1572,76 +1652,6 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               )}
             </div>
 
-            {/* ── Portfolio stats grid (below the chart) ─────────────────
-                4 tiles. Values reconcile against the top-of-page total:
-                  cash + netPositionValue = totalValue (accounting identity)
-                …so user can add tile 1 + tile 2 and get the big number.
-                Responsive: mobile = 1-col stacked rows (label left,
-                value right-aligned); desktop = 4-col grid with value
-                above label.
-                - Available Cash = raw Alpaca cash. Negative on margin.
-                  Only the negative case shows a '-' prefix; positive shows
-                  no '+' — a bare dollar amount reads as normal.
-                - Position Value = long MV + signed-short MV — net worth of
-                  open positions. Info tooltip explains it + surfaces
-                  position count (moved out of the tile body on user ask,
-                  who found it confusing inline).
-                - Unrealized Gain = derived from Alpaca equity, not DB
-                  per-position sums (which undercount when a live-price
-                  fetch silently misses a ticker).
-                - Success Rate = win rate across closed positions. */}
-            {!loading && (
-              <UITooltipProvider>
-                {/* -mt-3 pulls the grid up toward the chart — user wanted
-                    the two visually adjacent, not separated by the parent's
-                    space-y-5 gap. gap-0 on mobile stacks tile rows flush;
-                    sm:gap-4 gives the 4-col desktop tiles breathing room. */}
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-0 sm:gap-4 -mt-3 sm:mt-0">
-                  <StatTile
-                    label="Available Cash"
-                    value={fmtTileCash(portfolio.cash)}
-                    valueClassName={portfolio.cash < 0 ? 'text-negative' : undefined}
-                    info={portfolio.usingMargin ? (
-                      <InfoPopover>
-                        Negative because the account is borrowing from the
-                        margin line. You still have buying power; this is
-                        the literal Alpaca cash field.
-                      </InfoPopover>
-                    ) : undefined}
-                  />
-                  <StatTile
-                    label="Position Value"
-                    value={fmtTileCurrency(portfolio.netPositionValue)}
-                    info={
-                      <InfoPopover>
-                        Total market value of your open positions (long
-                        minus short). Combined with Available Cash, this
-                        equals the account total above.
-                        {portfolio.openCount > 0 && (
-                          <>
-                            <br />
-                            {portfolio.openCount} open position
-                            {portfolio.openCount === 1 ? '' : 's'}.
-                          </>
-                        )}
-                      </InfoPopover>
-                    }
-                  />
-                  <StatTile
-                    label="Unrealized Gain"
-                    value={fmtTileSigned(portfolio.unrealizedPnl)}
-                    valueClassName={portfolio.unrealizedPnl >= 0 ? 'text-positive' : 'text-negative'}
-                  />
-                  <StatTile
-                    label="Success Rate"
-                    value={portfolio.winRate != null ? `${Math.round(portfolio.winRate * 100)}%` : '—'}
-                    info={portfolio.winRate == null ? (
-                      <InfoPopover>No closed trades yet.</InfoPopover>
-                    ) : undefined}
-                  />
-                </div>
-              </UITooltipProvider>
-            )}
 
             {/* Positions — mobile only. The desktop right rail is hidden
                 below lg, so render the trade list inline here (chart → stats →
