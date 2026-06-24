@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/chart';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -75,7 +75,6 @@ import {
   TooltipProvider as UITooltipProvider,
   TooltipTrigger as UITooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Info } from 'lucide-react';
 import {
   mockOpenTrades,
   mockEquityCurve,
@@ -256,94 +255,6 @@ function groupActivityByDay(items: ActivityFeedItem[]) {
   return groups;
 }
 
-// ── StatTile — one cell in the portfolio stats grid below the chart ────────
-//
-// Responsive layout:
-//   Mobile — single row per tile. Label on the left (uppercase mono muted),
-//            value stretches to the right via flex-grow justify-end. This
-//            is what the user asked for on narrow screens: 4 rows stacked,
-//            each a horizontal label|value pair, not stacked inner content.
-//   Desktop — 4-column grid. Within each tile, VALUE sits on top (text-base
-//            normal weight), LABEL sits below (text-xs mono muted). Opposite
-//            of the original ordering — user explicitly asked for this.
-//
-// `info` prop renders a tiny info button next to the label that opens a
-// tooltip — used for the Position Value tile to explain semantics + surface the
-// position count the label itself no longer carries.
-function StatTile({
-  label,
-  value,
-  info,
-  valueClassName,
-}: {
-  label: string;
-  value: string;
-  info?: ReactNode;
-  valueClassName?: string;
-}) {
-  // Both label and value are text-sm on every breakpoint — differentiated
-  // by font-mono + uppercase + muted color on the label vs. tabular-nums
-  // normal-weight default color on the value. User explicitly asked for
-  // no size hierarchy here.
-  const labelNode = (
-    <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
-      {label}
-      {info}
-    </span>
-  );
-  const valueNode = (
-    <span className={cn('text-sm tabular-nums', valueClassName)}>{value}</span>
-  );
-  return (
-    <div className="flex items-baseline justify-between gap-3 sm:flex-col-reverse sm:items-start sm:justify-start sm:gap-1">
-      {labelNode}
-      {valueNode}
-    </div>
-  );
-}
-
-function fmtTileCurrency(n: number): string {
-  // Match the header — no cents, thousands separator. Large enough that
-  // decimal precision is just visual noise in a stat tile.
-  return '$' + Math.round(n).toLocaleString();
-}
-
-function fmtTileSigned(n: number): string {
-  // Like fmtTileCurrency but always explicit sign, for deltas / cash that
-  // can go negative on margin accounts. "-$7,496" reads cleaner than
-  // "$-7,496" — put the sign before the $.
-  const abs = '$' + Math.round(Math.abs(n)).toLocaleString();
-  if (n < 0) return `-${abs}`;
-  if (n > 0) return `+${abs}`;
-  return abs;
-}
-
-function fmtTileCash(n: number): string {
-  // Cash-specific: show NO sign when positive (a bare "$28,426" reads as
-  // normal account state), show explicit '-' only when negative (borrowed
-  // on margin — signals something non-default is happening).
-  const abs = '$' + Math.round(Math.abs(n)).toLocaleString();
-  return n < 0 ? `-${abs}` : abs;
-}
-
-function InfoPopover({ children }: { children: ReactNode }) {
-  return (
-    <UITooltip>
-      <UITooltipTrigger render={
-        <button
-          type="button"
-          className="inline-flex h-3 w-3 items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors cursor-help"
-          aria-label="More info"
-        >
-          <Info className="h-3 w-3" />
-        </button>
-      } />
-      <UITooltipContent side="top" className="max-w-[220px] text-xs normal-case font-normal tracking-normal">
-        {children}
-      </UITooltipContent>
-    </UITooltip>
-  );
-}
 
 // Mirrors ACTION_STATUS from decision-summary-card.tsx
 const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; tooltip: string }> = {
