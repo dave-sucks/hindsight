@@ -159,6 +159,8 @@ function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; live
       priceSource={isOpen ? (livePrice !== undefined ? "alpaca" : "missing") : undefined}
       onClose={isOpen ? handleClose : undefined}
       pendingProposal={trade.pendingProposal}
+      thesisId={trade.thesis?.id || undefined}
+      direction={trade.direction as "LONG" | "SHORT" | undefined}
     />
   );
 }
@@ -824,6 +826,7 @@ export default function AnalystDetailClient({
                             ? item.thesisDirection
                             : null
                         }
+                        thesisId={item.thesisId}
                         onRemove={() => handleRemoveStock(item.symbol)}
                       />
                     ))}

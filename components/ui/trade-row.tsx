@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { MoreVertical, Plus } from "lucide-react";
+import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import { StockLogo } from "@/components/StockLogo";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { Button } from "@/components/ui/button";
@@ -191,6 +193,10 @@ interface TradeRowProps {
     orderId: string;
     intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
   };
+  /** When present, clicking the row opens ThesisSheet instead of navigating to /trades/:id. */
+  thesisId?: string;
+  /** Thesis direction — needed as the sheet's seed prop when thesisId is set. */
+  direction?: "LONG" | "SHORT";
 }
 
 function fmtShort(d: Date | string): string {
@@ -228,7 +234,10 @@ export function TradeRow({
   className,
   onClose,
   pendingProposal,
+  thesisId,
+  direction,
 }: TradeRowProps) {
+  const [sheetOpen, setSheetOpen] = useState(false);
   const totalWorth = currentPrice * shares;
   const dateStr = openedAt ? fmtShort(openedAt) : null;
   const isPending = status === "PENDING";
@@ -249,8 +258,10 @@ export function TradeRow({
       : undefined;
 
   return (
+    <>
     <TradeRowShell
-      href={`/trades/${id}`}
+      href={thesisId ? undefined : `/trades/${id}`}
+      onClick={thesisId ? () => setSheetOpen(true) : undefined}
       flash={flash}
       className={className}
       menuItems={menuItems}
@@ -326,6 +337,17 @@ export function TradeRow({
         )
       }
     />
+    {thesisId && (
+      <ThesisSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        thesis_id={thesisId}
+        ticker={ticker}
+        direction={direction ?? null}
+        confidence_score={0}
+      />
+    )}
+    </>
   );
 }
 
@@ -355,6 +377,8 @@ interface WatchlistRowProps {
   direction?: "LONG" | "SHORT" | "PENDING" | null;
   onRemove?: () => void;
   className?: string;
+  /** When present, clicking the row opens ThesisSheet instead of navigating to /stocks/:ticker. */
+  thesisId?: string;
 }
 
 export function WatchlistRow({
@@ -363,7 +387,9 @@ export function WatchlistRow({
   direction,
   onRemove,
   className,
+  thesisId,
 }: WatchlistRowProps) {
+  const [sheetOpen, setSheetOpen] = useState(false);
   // The day's % change — from the SAME shared quote source every other
   // price/day-change surface uses (ticker chips, thesis cards): /api/quotes via
   // the useTickerQuote cache. A watched name isn't held, so the row shows the
@@ -381,8 +407,10 @@ export function WatchlistRow({
           ? "Watching"
           : "Awaiting review";
   return (
+    <>
     <TradeRowShell
-      href={`/stocks/${ticker}`}
+      href={thesisId ? undefined : `/stocks/${ticker}`}
+      onClick={thesisId ? () => setSheetOpen(true) : undefined}
       className={className}
       leading={<StockLogo ticker={ticker} size="md" className="rounded-md" />}
       primary={<span className="text-sm font-medium">{ticker}</span>}
@@ -403,6 +431,17 @@ export function WatchlistRow({
           : undefined
       }
     />
+    {thesisId && (
+      <ThesisSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        thesis_id={thesisId}
+        ticker={ticker}
+        direction={direction === "LONG" || direction === "SHORT" ? direction : null}
+        confidence_score={0}
+      />
+    )}
+    </>
   );
 }
 

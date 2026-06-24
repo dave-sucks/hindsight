@@ -799,6 +799,8 @@ function DashboardTradeRow({ trade, flash }: { trade: MockTrade; flash?: 'win' |
       alpacaOrderId={trade.alpacaOrderId}
       flash={flash}
       pendingProposal={trade.pendingProposal}
+      thesisId={trade.thesisId}
+      direction={trade.direction}
     />
   );
 }

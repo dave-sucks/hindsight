@@ -51,6 +51,8 @@ export interface MockTrade {
     orderId: string;
     intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
   };
+  /** Thesis row id — present when the position's backing thesis was found. Used to open ThesisSheet on row click. */
+  thesisId?: string;
 }
 
 export const mockOpenTrades: MockTrade[] = [
