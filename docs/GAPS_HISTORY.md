@@ -11,13 +11,23 @@
 
 ---
 
+## Done since 2026-06-22 (cooldown merged + legacy briefing code deleted + digest shipped)
+
+### ✅ P1-28 — Proposal-fatigue cooldown — **MERGED ([#445](https://github.com/dave-sucks/hindsight/pull/445))**
+Cross-day cooldown in `maybeAwaitApproval`: refuse to re-stage a discretionary CLOSE within `UNAPPROVED_EXIT_COOLDOWN_DAYS` (5) of a prior staged close that resolved REJECTED-by-user OR EXPIRED (Order ledger); covers daily + tactical; CLOSE-only; carve-out exempts `closeSource=price_monitor` and `closeReason ∈ {STOP,TARGET}`. L2 `unapprovedExitCount` in `get_theses`. The third suppression layer atop #379 (same-day dedup) + #381 (tactical 4h snooze). **Known limitation → filed as P1-29:** the TARGET carve-out lets repeatedly-rejected target exits keep nagging (CRDO). Design: `docs/plans/TRADE_AS_PROPOSAL.md` §8.3 + §9.
+
+### ✅ P1-26 — Legacy briefing CODE deleted ([#451](https://github.com/dave-sucks/hindsight/pull/451)) — table drop still open
+Full removal of the `AnalystBriefing` + `MorningBrief` + Findings code: the writer, brief UI, `/intelligence` Briefs tab, run-detail brief card, `getAnalystDetail` lists, types, workflow-registry entry (17 files). Gate verified in prod first (0 `AnalystBriefing` writes since #433). **The Prisma models + tables were intentionally KEPT** — the table-drop migration is the only remaining P1-26 work (still open in `GAPS.md`). Intelligence core + podcast `PodcastSegmentBriefing` untouched. (Bug caught + fixed in the same PR: an accidentally-committed `lib/generated` symlink broke `prisma generate` on Vercel — untracked + `.gitignore` broadened.)
+
+### ✅ P1-23 — End-of-day Portfolio Digest — shipped & live
+The account-level digest that replaced the dead per-analyst briefing is live end-to-end: deterministic facts → gpt-4o narration → `PortfolioDigest` store → read by daily + tactical runs (#433) + UI digest card + multi-timeframe coverage table (#434/#436/#439/#442/#443). Verified in prod (digests generating, env-scoped PAPER/LIVE, read into prompts). Residual polish (per-name `dayChangePct`, homepage layout reorg) moved to P2; P1-26 (delete the old briefing code) was its cleanup tail.
+
 ## Done since 2026-06-19 (proposal-fatigue cooldown + P1-27 closed as not-a-bug)
 
 ### ✅ P1-27 — Proposal audit completeness — **CLOSED, not a bug**
 **Filed** 2026-06-18, **closed** 2026-06-19. The motivating stat ("47 rejected SELL Orders vs 7 `PROPOSAL_REJECTED` audit rows, ~15% captured") was an **artifact of an overloaded denominator**. `Order.status='REJECTED'` holds four different things: real user rejections, **dedup tombstones** ("Duplicate close — folded…", #379), broker 4xx rejections, and **old pre-proposal-era closes** (closeSource null). Of the 48 REJECTED SELL Orders: 19 dedup tombstones + 21 legacy (all <05-22) + **~6 real user rejections** — which **matches** the 8 `PROPOSAL_REJECTED` rows. The audit is essentially complete; the fire-and-forget write isn't dropping records in practice. PR #444 (the proposed await/atomic fix) was **closed** — it fixes a non-bug, and P1-28's fix reads the Order ledger directly so nothing depends on it. **Lesson:** never count `Order.status='REJECTED'` raw as "rejections" — filter systemic tombstones (`rejectionMessage` prefix) + require `expiresAt IS NOT NULL` (staged = the user actually saw a card).
 
-### ⏳ P1-28 — Proposal-fatigue cooldown (fix in review, [#445](https://github.com/dave-sucks/hindsight/pull/445))
-Not yet merged — this block finalizes on merge. Summary: cross-day cooldown on re-proposing a discretionary CLOSE that resolved REJECTED-or-EXPIRED within 5d (Order ledger), the third suppression layer atop #379 (same-day dedup) + #381 (tactical 4h snooze). Corrected from the original framing — the scary 06-04 bursts were P0-14, already fixed; the real residual is cross-day (MU 5 days). Full design in `docs/plans/TRADE_AS_PROPOSAL.md` §8.3.
+### ⏳ P1-28 — Proposal-fatigue cooldown — **now merged 2026-06-22 (#445); see the 2026-06-22 block above.**
 
 ## Done since 2026-06-16 (status-taxonomy migration complete + orphan-thesis bug closed)
 
