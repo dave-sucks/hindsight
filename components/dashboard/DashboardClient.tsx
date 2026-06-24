@@ -22,6 +22,7 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { Card, CardContent } from '@/components/ui/card';
+import { TickBar, type Tick } from '@/components/ui/gauge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import {
@@ -1208,43 +1209,33 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                           percentChange={rangePnlPct}
                           size="xl"
                         />
-                        <span className={cn(
-                          'text-xs tabular-nums',
-                          portfolio.unrealizedPnl >= 0 ? 'text-positive' : 'text-negative',
-                        )}>
+                        <span className="text-xs tabular-nums text-muted-foreground">
                           {portfolio.unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(portfolio.unrealizedPnl)} unrealized
                         </span>
                       </div>
                     </div>
 
-                    {/* Right: Success rate bar */}
+                    {/* Right: Win rate tick bar — same TickBar primitive as ScoringGauge / PriceGauge */}
                     <UITooltip>
                       <UITooltipTrigger render={
                         <div className="flex flex-col items-end gap-1.5 cursor-default shrink-0 pt-0.5">
                           <span className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
                             Win Rate
                           </span>
-                          <div className="flex items-end gap-0.5">
-                            {Array.from({ length: 10 }, (_, i) => {
-                              const filled = portfolio.winRate != null && i < Math.round(portfolio.winRate * 10);
-                              return (
-                                <div
-                                  key={i}
-                                  className={cn(
-                                    'w-1.5 rounded-sm transition-colors',
-                                    filled ? 'bg-foreground/80' : 'bg-muted-foreground/20',
-                                  )}
-                                  style={{ height: `${6 + i * 1.5}px` }}
-                                />
-                              );
-                            })}
-                          </div>
+                          <TickBar
+                            ticks={Array.from({ length: 10 }, (_, i): Tick => ({
+                              color: portfolio.winRate != null && i < Math.round(portfolio.winRate * 10)
+                                ? 'bg-foreground'
+                                : 'bg-muted-foreground/25',
+                            }))}
+                            className="w-16"
+                          />
                         </div>
                       } />
                       <UITooltipContent side="bottom" align="end">
                         <div className="text-xs">
                           {portfolio.winRate != null
-                            ? `${Math.round(portfolio.winRate * 100)}% success rate`
+                            ? `${Math.round(portfolio.winRate * 100)}% win rate`
                             : 'No closed trades yet'}
                         </div>
                       </UITooltipContent>
