@@ -1171,19 +1171,16 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                 <UITooltipProvider>
                   <div className="flex items-start justify-between gap-8">
                     {/* Left: Balance + P&L columns */}
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-8">
-                      {/* Balance column */}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-10">
+                      {/* Balance column — value first, then "Balance ($X available)" on one line */}
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-                          Balance
-                        </span>
                         <span className="text-xl font-semibold tabular-nums">
                           {totalValueStr}
                         </span>
                         <UITooltip>
                           <UITooltipTrigger render={
                             <span className="text-xs text-muted-foreground cursor-default w-fit">
-                              {formatCurrency(portfolio.cash)} available
+                              Balance ({formatCurrency(portfolio.cash)} available)
                             </span>
                           } />
                           <UITooltipContent side="bottom">
@@ -1199,18 +1196,15 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                         </UITooltip>
                       </div>
 
-                      {/* P&L column */}
+                      {/* P&L column — value first, then "{Range} P&L (+$X unrealized)" on one line */}
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-                          {RANGE_PNL_LABEL[range]}
-                        </span>
                         <PriceChange
                           dollarChange={rangePnl}
                           percentChange={rangePnlPct}
                           size="xl"
                         />
                         <span className="text-xs tabular-nums text-muted-foreground">
-                          {portfolio.unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(portfolio.unrealizedPnl)} unrealized
+                          {RANGE_PNL_LABEL[range]} ({portfolio.unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(portfolio.unrealizedPnl)} unrealized)
                         </span>
                       </div>
                     </div>
@@ -1219,9 +1213,6 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                     <UITooltip>
                       <UITooltipTrigger render={
                         <div className="flex flex-col items-end gap-1.5 cursor-default shrink-0 pt-0.5">
-                          <span className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-                            Win Rate
-                          </span>
                           <TickBar
                             ticks={Array.from({ length: 10 }, (_, i): Tick => ({
                               color: portfolio.winRate != null && i < Math.round(portfolio.winRate * 10)
@@ -1230,6 +1221,9 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                             }))}
                             className="w-16"
                           />
+                          <span className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+                            Win Rate
+                          </span>
                         </div>
                       } />
                       <UITooltipContent side="bottom" align="end">
