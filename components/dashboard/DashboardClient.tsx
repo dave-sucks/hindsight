@@ -792,7 +792,25 @@ function formatDigestDate(iso: string): string {
   });
 }
 
-function DigestPreviewCard({ digest }: { digest: LatestDigest | null | undefined }) {
+// Subtle performance-tinted gradient wash, driven by today's P&L sign. A soft
+// corner glow (~10% alpha) fading into the card color — enough to make the
+// digest card read warmer/cooler than the plain-white cards around it without
+// hurting text legibility. No animated shader: this card holds prose and lives
+// on the always-open dashboard, so a static gradient beats a WebGL canvas.
+type DigestTone = 'up' | 'down' | 'flat';
+const DIGEST_TONE_GRADIENT: Record<DigestTone, string> = {
+  up: 'bg-gradient-to-br from-emerald-500/10 via-card to-card',
+  down: 'bg-gradient-to-br from-red-500/10 via-card to-card',
+  flat: 'bg-gradient-to-br from-muted/50 via-card to-card',
+};
+
+function DigestPreviewCard({
+  digest,
+  tone = 'flat',
+}: {
+  digest: LatestDigest | null | undefined;
+  tone?: DigestTone;
+}) {
   const [open, setOpen] = useState(false);
   if (digest === undefined) return null;
 
@@ -804,8 +822,9 @@ function DigestPreviewCard({ digest }: { digest: LatestDigest | null | undefined
         type="button"
         onClick={() => digest && setOpen(true)}
         className={cn(
-          'w-full text-left rounded-lg border bg-card p-3 mb-3',
-          digest ? 'hover:bg-accent/40 transition-colors cursor-pointer' : 'cursor-default',
+          'w-full text-left rounded-lg border p-3 mb-3',
+          DIGEST_TONE_GRADIENT[tone],
+          digest ? 'hover:brightness-[0.99] transition-all cursor-pointer' : 'cursor-default',
         )}
       >
         <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1">
@@ -856,17 +875,19 @@ function PositionsPanel({
   loading,
   flashIds,
   digest,
+  digestTone,
 }: {
   openTrades: MockTrade[];
   pendingTrades: MockTrade[];
   loading: boolean;
   flashIds: Map<string, 'win' | 'loss'>;
   digest?: LatestDigest | null;
+  digestTone?: DigestTone;
 }) {
   const totalOpen = openTrades.length + pendingTrades.length;
   return (
     <div className="space-y-0">
-      <DigestPreviewCard digest={digest} />
+      <DigestPreviewCard digest={digest} tone={digestTone} />
       <div className="flex items-center justify-between pb-3">
         <span className="text-sm font-medium">
           Positions
@@ -1073,6 +1094,11 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
     : (equityRange[0]?.value ?? portfolio.netContributed);
   const rangePnlPct = rangePnlBase > 0 ? (rangePnl / rangePnlBase) * 100 : 0;
   const pnlPositive = rangePnl >= 0;
+
+  // Digest card tint — today's P&L mood. $1 dead-band keeps rounding noise from
+  // coloring a flat day green/red.
+  const digestTone: DigestTone =
+    portfolio.dayPnl > 1 ? 'up' : portfolio.dayPnl < -1 ? 'down' : 'flat';
 
   const spyPct: number | null =
     range === '1W' ? spyBenchmark['1W']
@@ -1534,6 +1560,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                 loading={loading}
                 flashIds={flashIds}
                 digest={digest}
+                digestTone={digestTone}
               />
             </div>
 
@@ -1583,6 +1610,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               loading={loading}
               flashIds={flashIds}
               digest={digest}
+              digestTone={digestTone}
             />
           </div>
 
