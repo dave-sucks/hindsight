@@ -53,6 +53,20 @@ export interface ProposalRejectionResult {
   rejectionMessage: string | null;
 }
 
+/**
+ * Principal edits applied at approve time — "Edit & Approve" (the DELL case:
+ * the agent proposed 6 shares, the principal wants 12). Only OPEN/ADD honor a
+ * quantity change; only OPEN honors target/stop (the staged position's exits,
+ * which flow into the held-side trigger regen). All optional; omitted fields
+ * keep the proposed values. CLOSE/PARTIAL_CLOSE ignore edits — a "don't close,
+ * adjust instead" intent is a reject + a thesis-sheet level edit, not this path.
+ */
+export interface ProposalApprovalEdits {
+  quantity?: number;
+  targetPrice?: number;
+  stopLoss?: number;
+}
+
 export class ProposalExecutionError extends Error {
   code:
     | "NOT_FOUND"
@@ -87,6 +101,7 @@ function classifyAlpacaError(err: unknown): "rejected" | "uncertain" {
 export async function approveProposal(
   orderId: string,
   actorUserId: string,
+  edits?: ProposalApprovalEdits,
 ): Promise<ProposalApprovalResult> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -131,6 +146,25 @@ export async function approveProposal(
   }
 
   const intent = order.intent ?? "OPEN";
+
+  // ── "Edit & Approve" — apply principal edits to the staged rows BEFORE the
+  //    Alpaca submit. Quantity edits honored for OPEN/ADD; target/stop only
+  //    for OPEN (they become the held position's exits + drive trigger regen).
+  const canEditQty = intent === "OPEN" || intent === "ADD";
+  const effectiveQty =
+    edits?.quantity != null && edits.quantity > 0 && canEditQty
+      ? edits.quantity
+      : order.quantity;
+  const effectiveTarget =
+    edits?.targetPrice != null && edits.targetPrice > 0 && intent === "OPEN"
+      ? edits.targetPrice
+      : order.position.targetPrice;
+  const effectiveStop =
+    edits?.stopLoss != null && edits.stopLoss > 0 && intent === "OPEN"
+      ? edits.stopLoss
+      : order.position.stopLoss;
+  const qtyEdited = effectiveQty !== order.quantity;
+
   const positionEnvironment = order.position.environment as "PAPER" | "LIVE";
   const creds: AlpacaCredentials | undefined =
     (await resolveAlpacaCredentials(order.position.userId, positionEnvironment)) ??
@@ -147,12 +181,24 @@ export async function approveProposal(
     if (intent === "OPEN" && order.position.status === "PENDING_APPROVAL") {
       await tx.position.update({
         where: { id: order.position.id },
-        data: { status: "OPEN", openedAt: promotedAt },
+        data: {
+          status: "OPEN",
+          openedAt: promotedAt,
+          // Apply principal edits to the staged position. avgCost stays the
+          // proposal estimate; reconcile-orders corrects it to the real fill.
+          ...(qtyEdited ? { quantity: effectiveQty, initialQty: effectiveQty } : {}),
+          ...(effectiveTarget !== order.position.targetPrice ? { targetPrice: effectiveTarget } : {}),
+          ...(effectiveStop !== order.position.stopLoss ? { stopLoss: effectiveStop } : {}),
+        },
       });
     }
     await tx.order.update({
       where: { id: orderId },
-      data: { status: "PENDING", alpacaSubmittedAt: promotedAt },
+      data: {
+        status: "PENDING",
+        alpacaSubmittedAt: promotedAt,
+        ...(qtyEdited ? { quantity: effectiveQty } : {}),
+      },
     });
     await tx.positionEvent.create({
       data: {
@@ -175,18 +221,18 @@ export async function approveProposal(
     if (intent === "PARTIAL_CLOSE") {
       const ap = await closePositionPartial(
         order.symbol,
-        order.quantity,
+        effectiveQty,
         side,
         creds,
         order.idempotencyKey,
       );
       alpacaOrderId = ap.id;
     } else {
-      // OPEN / ADD / CLOSE all submit a market order with the stored qty.
+      // OPEN / ADD / CLOSE all submit a market order with the (possibly edited) qty.
       const ap = await placeMarketOrder(
         {
           symbol: order.symbol,
-          qty: order.quantity,
+          qty: effectiveQty,
           side,
           clientOrderId: order.idempotencyKey,
         },
@@ -252,8 +298,8 @@ export async function approveProposal(
       // reconcile-orders; targets/stops were already set from the
       // proposal args.
       entryPrice: order.position.avgCost,
-      targetPrice: order.position.targetPrice ?? order.position.avgCost,
-      stopLoss: order.position.stopLoss ?? order.position.avgCost,
+      targetPrice: effectiveTarget ?? order.position.avgCost,
+      stopLoss: effectiveStop ?? order.position.avgCost,
     });
   } else if (intent === "CLOSE") {
     await closeThesisOnApproval({
@@ -276,16 +322,17 @@ export async function approveProposal(
       await writeThesisUpdate({
         thesisId: await findRelatedThesisId(order.position.analystId, order.position.symbol),
         type: "PROPOSAL_APPROVED",
-        summary: `Approved ${intent} on ${order.symbol} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
-        rationale: `User approved the ${intent} proposal. Alpaca order id ${alpacaOrderId}.`,
+        summary: `Approved ${intent} on ${order.symbol}${qtyEdited ? ` (edited ${order.quantity}→${effectiveQty} sh)` : ""} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
+        rationale: `User approved the ${intent} proposal${qtyEdited ? `, resizing ${order.quantity}→${effectiveQty} shares` : ""}. Alpaca order id ${alpacaOrderId}.`,
         fieldChanges: {
           proposal: {
-            from: { orderId, status: "AWAITING_APPROVAL" },
+            from: { orderId, status: "AWAITING_APPROVAL", quantity: order.quantity },
             to: {
               orderId,
               status: "APPROVED",
               intent,
-              quantity: order.quantity,
+              quantity: effectiveQty,
+              ...(qtyEdited ? { proposedQuantity: order.quantity, edited: true } : {}),
               approvedAt: promotedAt.toISOString(),
               approvedBy: actorUserId,
               alpacaOrderId,
@@ -386,6 +433,18 @@ export async function rejectProposal(
         order.position.analystId,
         order.position.symbol,
       );
+      // P1-29: a reject WITH a written comment flags the thesis for review via
+      // the existing nextReviewAt mechanism, so the next daily run surfaces it
+      // as needsAction=REVIEW_DUE and reads the note through
+      // get_theses.principalDirective. The agent responds with judgment — no
+      // forcing needsAction kind. A no-comment reject doesn't flag a review;
+      // the cross-day cooldown already suppresses re-proposal.
+      if (trimmedMessage) {
+        await prisma.thesis.update({
+          where: { id: thesisId },
+          data: { nextReviewAt: rejectedAt },
+        });
+      }
       await writeThesisUpdate({
         thesisId,
         type: "PROPOSAL_REJECTED",

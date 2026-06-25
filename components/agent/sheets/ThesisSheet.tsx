@@ -1500,6 +1500,9 @@ export function ThesisSheetBody({
   // (Finnhub) so the price block keeps its skeleton until that lands.
   const [state, setState] = useState<TriggersResponse | null>(initialState ?? null);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  // Bumped after a trigger edit so the /triggers + /quote fetch below re-runs
+  // and the open sheet reflects the new value without a manual reopen.
+  const [refreshKey, setRefreshKey] = useState(0);
   // Daily candles for the annotated price chart, fetched on open (single
   // symbol, 5-min cached). ~400 days so the 1Y range pill has data. null
   // while in-flight; [] on failure → ThesisChart degrades to the gauge.
@@ -1539,7 +1542,7 @@ export function ThesisSheetBody({
     return () => {
       cancelled = true;
     };
-  }, [thesis_id, ticker]);
+  }, [thesis_id, ticker, refreshKey]);
 
   // Status has ONE source: the resolved /triggers state. We do NOT fall
   // back to the `status` prop for rendering — that dual source was the
@@ -1729,7 +1732,16 @@ export function ThesisSheetBody({
 
       {/* ── Triggers (moved up — they're the standing opinion in action) ── */}
       {thesis_id ? (
-        <ThesisTriggersSection thesisId={thesis_id} data={state} />
+        <ThesisTriggersSection
+          thesisId={thesis_id}
+          data={state}
+          editable={
+            !isPass &&
+            ((liveStatus ?? initialStatus) === "HOLDING" ||
+              (liveStatus ?? initialStatus) === "WATCHING")
+          }
+          onChanged={() => setRefreshKey((k) => k + 1)}
+        />
       ) : null}
 
       {/* ── Snapshot ──────────────────────────────────────────── */}

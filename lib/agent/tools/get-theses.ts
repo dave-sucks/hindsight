@@ -115,6 +115,71 @@ const schema = z.object({
     .describe("Max theses to return. Default 25, hard cap 50."),
 });
 
+/** A principal review decision surfaced to the agent (P1-29 — the learning loop). */
+export interface PrincipalDirective {
+  decision: "REJECTED" | "APPROVED" | "EDITED";
+  /** The principal's verbatim message (null on a no-message reject). */
+  message: string | null;
+  /** ISO timestamp of the decision. */
+  at: string;
+}
+
+/**
+ * Classify a thesis's MOST-RECENT ThesisUpdate row as an unaddressed principal
+ * decision, or null when the top-of-log row is an agent action. "Unaddressed"
+ * is implicit in being the top row: any agent follow-up would have replaced it
+ * (same latest-on-top contract TRIGGER_FIRED uses), so this self-clears once
+ * the agent acts. A reject WITH a message also flags the thesis for review at
+ * reject time (nextReviewAt=now), so it arrives as REVIEW_DUE and the agent
+ * reads this note during the review — there's no separate forcing needsAction.
+ */
+function classifyPrincipalDirective(
+  u:
+    | { type: string; rationale: string | null; fieldChanges: unknown; timestamp: Date }
+    | null
+    | undefined,
+): PrincipalDirective | null {
+  if (!u) return null;
+  const at = u.timestamp.toISOString();
+
+  if (u.type === "PROPOSAL_REJECTED") {
+    const msg = typeof u.rationale === "string" ? u.rationale : null;
+    // A no-message reject stores a "[REJECTED:USER] …" sentinel rationale —
+    // surface it as a bare reject (null message); a real written message rides through.
+    const hasMessage = msg != null && !msg.startsWith("[REJECTED:USER]");
+    return { decision: "REJECTED", message: hasMessage ? msg : null, at };
+  }
+
+  if (u.type === "PROPOSAL_APPROVED") {
+    // Only surface approvals that CHANGED the order (e.g. upsized 6→12); a plain
+    // approve carries no instruction worth surfacing.
+    const fc = u.fieldChanges as
+      | { proposal?: { to?: { edited?: boolean; quantity?: number; proposedQuantity?: number } } }
+      | null;
+    const to = fc?.proposal?.to;
+    if (!to?.edited) return null;
+    const msg =
+      to.proposedQuantity != null && to.quantity != null
+        ? `Approved, resized ${to.proposedQuantity}→${to.quantity} shares (principal raised the size).`
+        : "Approved with edits.";
+    return { decision: "APPROVED", message: msg, at };
+  }
+
+  if (
+    u.type === "UPDATED" &&
+    typeof u.rationale === "string" &&
+    u.rationale.startsWith("[USER]")
+  ) {
+    return {
+      decision: "EDITED",
+      message: u.rationale.replace(/^\[USER\]\s*/, ""),
+      at,
+    };
+  }
+
+  return null;
+}
+
 export const getTheses = defineTool({
   description:
     "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
@@ -325,6 +390,10 @@ export const getTheses = defineTool({
         t.status === "PROMOTED",
     );
     const needsActionByThesisId = new Map<string, NeedsAction | null>();
+    // P1-29 (L2): the most-recent unaddressed PRINCIPAL decision per thesis
+    // (reject / approve-with-edit / direct edit), surfaced verbatim so the
+    // agent reads the instruction directly instead of inferring it from a count.
+    const principalDirectiveByThesisId = new Map<string, PrincipalDirective | null>();
 
     // ── Position openedAt per ACTIVE thesis (P1-14) ─────────────────────
     // TIME_ELAPSED on a HELD thesis measures "max hold N days" from when the
@@ -429,6 +498,11 @@ export const getTheses = defineTool({
           type: true,
           triggerId: true,
           timestamp: true,
+          // P1-29 (L2): rationale + fieldChanges let us classify whether the
+          // top-of-log row is an unaddressed PRINCIPAL decision (reject /
+          // approve-with-edit / direct edit) and extract the verbatim message.
+          rationale: true,
+          fieldChanges: true,
         },
       });
       const latestByThesisId = new Map(
@@ -463,6 +537,15 @@ export const getTheses = defineTool({
           typeof price === "number" && price > 0
             ? { price, changePct: 0 }
             : null;
+        // P1-29: surface the most-recent unaddressed principal decision on the
+        // row (verbatim). A reject-with-comment also flags the thesis for review
+        // at reject time (nextReviewAt=now in rejectProposal), so it arrives as
+        // needsAction=REVIEW_DUE and the agent reads this note during the review
+        // — no separate forcing needsAction kind.
+        principalDirectiveByThesisId.set(
+          t.id,
+          classifyPrincipalDirective(latestByThesisId.get(t.id)),
+        );
         needsActionByThesisId.set(
           t.id,
           computeNeedsAction({
@@ -598,6 +681,13 @@ export const getTheses = defineTool({
         // proposed this exit and the user declined N×" — don't re-propose
         // unless the thesis materially changed. 0 for non-HOLDING rows.
         unapprovedExitCount: unapprovedExitCountByThesisId.get(t.id) ?? 0,
+        // P1-29 (L2): the most-recent unaddressed principal review decision on
+        // this thesis — reject (verbatim message), approve-with-edit, or a
+        // direct edit — surfaced so the agent reads + honors it. A reject with a
+        // message also flags the thesis for review (REVIEW_DUE) at reject time,
+        // so the agent reads this during that review. null when the latest
+        // activity is an agent action.
+        principalDirective: principalDirectiveByThesisId.get(t.id) ?? null,
       };
     });
 
