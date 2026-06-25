@@ -796,7 +796,7 @@ function DigestPreviewCard({ digest }: { digest: LatestDigest | null | undefined
   const [open, setOpen] = useState(false);
   if (digest === undefined) return null;
 
-  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 160) : null;
+  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 320) : null;
 
   return (
     <>
@@ -813,7 +813,7 @@ function DigestPreviewCard({ digest }: { digest: LatestDigest | null | undefined
         </p>
         {digest && preview ? (
           <div className="relative">
-            <p className="text-sm font-medium leading-relaxed line-clamp-3">
+            <p className="text-sm font-medium leading-relaxed line-clamp-5">
               {preview}
             </p>
             <div className="absolute bottom-0 left-0 right-0 h-5 bg-gradient-to-t from-card to-transparent pointer-events-none" />
@@ -1164,7 +1164,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                 account never reads as a gain. Both values are text-xl for
                 equal visual weight; mobile stacks them, desktop sits them
                 side by side. */}
-            <div className="space-y-0.5">
+            <div className="space-y-0.5 lg:h-16">
               {loading ? (
                 <Skeleton className="h-16 w-80" />
               ) : (
@@ -1575,6 +1575,9 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
 
           {/* ══ RIGHT column — positions (desktop only) ════════════════════ */}
           <div className="hidden lg:block w-80 shrink-0">
+            {/* Spacer mirrors the left column's header (h-16) + space-y-5 gap so
+                the digest card aligns with the top of the chart card. */}
+            <div className="h-16 mb-5" />
             <PositionsPanel
               openTrades={openTrades}
               pendingTrades={pendingTrades}
