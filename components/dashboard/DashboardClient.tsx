@@ -796,7 +796,7 @@ function DigestPreviewCard({ digest }: { digest: LatestDigest | null | undefined
   const [open, setOpen] = useState(false);
   if (digest === undefined) return null;
 
-  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 320) : null;
+  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 420) : null;
 
   return (
     <>
@@ -813,7 +813,7 @@ function DigestPreviewCard({ digest }: { digest: LatestDigest | null | undefined
         </p>
         {digest && preview ? (
           <div className="relative">
-            <p className="text-sm font-medium leading-relaxed line-clamp-5">
+            <p className="text-sm font-medium leading-relaxed line-clamp-6">
               {preview}
             </p>
             <div className="absolute bottom-0 left-0 right-0 h-5 bg-gradient-to-t from-card to-transparent pointer-events-none" />
@@ -1145,7 +1145,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
     : chartView;
 
   return (
-    <div className="overflow-y-auto h-[calc(100dvh-3rem)]">
+    <div className="overflow-y-auto h-[calc(100dvh-3rem)] bg-sidebar dark:bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         <div className="flex gap-6 items-start">
 
@@ -1169,73 +1169,46 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                 <Skeleton className="h-16 w-80" />
               ) : (
                 <UITooltipProvider>
-                  <div className="flex items-start justify-between gap-8">
-                    {/* Left: Balance + P&L columns */}
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-10">
-                      {/* Balance column — value first, then "Balance ($X available)" on one line */}
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-xl font-semibold tabular-nums">
-                          {totalValueStr}
-                        </span>
-                        <UITooltip>
-                          <UITooltipTrigger render={
-                            <span className="text-xs text-muted-foreground cursor-default w-fit">
-                              <span className="font-medium">Balance</span>
-                              <span className="font-light"> ({formatCurrency(portfolio.cash)} available)</span>
-                            </span>
-                          } />
-                          <UITooltipContent side="bottom">
-                            <div className="text-xs space-y-0.5">
-                              <div>Available cash</div>
-                              {portfolio.netPositionValue > 0 && (
-                                <div className="opacity-70">
-                                  {formatCurrency(portfolio.netPositionValue)} invested in positions
-                                </div>
-                              )}
-                            </div>
-                          </UITooltipContent>
-                        </UITooltip>
-                      </div>
-
-                      {/* P&L column — value first, then "{Range} P&L (+$X unrealized)" on one line */}
-                      <div className="flex flex-col gap-0.5">
-                        <PriceChange
-                          dollarChange={rangePnl}
-                          percentChange={rangePnlPct}
-                          size="xl"
-                        />
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          <span className="font-medium">{RANGE_PNL_LABEL[range]}</span>
-                          <span className="font-light"> ({portfolio.unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(portfolio.unrealizedPnl)} unrealized)</span>
-                        </span>
-                      </div>
+                  {/* Balance + P&L columns. Win Rate moved to the right rail
+                      (it doubles as the rail's top-alignment spacer). */}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-10">
+                    {/* Balance column — value first, then "Balance ($X available)" on one line */}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xl font-semibold tabular-nums">
+                        {totalValueStr}
+                      </span>
+                      <UITooltip>
+                        <UITooltipTrigger render={
+                          <span className="text-xs text-muted-foreground cursor-default w-fit">
+                            <span className="font-medium">Balance</span>
+                            <span className="font-light"> ({formatCurrency(portfolio.cash)} available)</span>
+                          </span>
+                        } />
+                        <UITooltipContent side="bottom">
+                          <div className="text-xs space-y-0.5">
+                            <div>Available cash</div>
+                            {portfolio.netPositionValue > 0 && (
+                              <div className="opacity-70">
+                                {formatCurrency(portfolio.netPositionValue)} invested in positions
+                              </div>
+                            )}
+                          </div>
+                        </UITooltipContent>
+                      </UITooltip>
                     </div>
 
-                    {/* Right: Win rate tick bar — same TickBar primitive as ScoringGauge / PriceGauge */}
-                    <UITooltip>
-                      <UITooltipTrigger render={
-                        <div className="flex flex-col items-end gap-1.5 cursor-default shrink-0 pt-0.5">
-                          <TickBar
-                            ticks={Array.from({ length: 10 }, (_, i): Tick => ({
-                              color: portfolio.winRate != null && i < Math.round(portfolio.winRate * 10)
-                                ? 'bg-foreground'
-                                : 'bg-muted-foreground/25',
-                            }))}
-                            className="w-16"
-                          />
-                          <span className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-                            Win Rate
-                          </span>
-                        </div>
-                      } />
-                      <UITooltipContent side="bottom" align="end">
-                        <div className="text-xs">
-                          {portfolio.winRate != null
-                            ? `${Math.round(portfolio.winRate * 100)}% win rate`
-                            : 'No closed trades yet'}
-                        </div>
-                      </UITooltipContent>
-                    </UITooltip>
+                    {/* P&L column — value first, then "{Range} P&L (+$X unrealized)" on one line */}
+                    <div className="flex flex-col gap-0.5">
+                      <PriceChange
+                        dollarChange={rangePnl}
+                        percentChange={rangePnlPct}
+                        size="xl"
+                      />
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        <span className="font-medium">{RANGE_PNL_LABEL[range]}</span>
+                        <span className="font-light"> ({portfolio.unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(portfolio.unrealizedPnl)} unrealized)</span>
+                      </span>
+                    </div>
                   </div>
                 </UITooltipProvider>
               )}
@@ -1248,7 +1221,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                 backgroundImage:
                   'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
                 backgroundSize: '18px 18px',
-                backgroundColor: 'hsl(var(--muted)/0.3)',
+                backgroundColor: 'hsl(var(--card))',
               }}
             >
               {/* Controls: range tabs (left) + settings dropdown (right) */}
@@ -1575,9 +1548,35 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
 
           {/* ══ RIGHT column — positions (desktop only) ════════════════════ */}
           <div className="hidden lg:block w-80 shrink-0">
-            {/* Spacer mirrors the left column's header (h-16) + space-y-5 gap so
-                the digest card aligns with the top of the chart card. */}
-            <div className="h-16 mb-5" />
+            {/* Win Rate — sized h-16 + mb-5 to mirror the left header (metrics
+                height + space-y-5 gap), so it doubles as the spacer that aligns
+                the digest card with the top of the chart card. */}
+            <UITooltipProvider>
+              <UITooltip>
+                <UITooltipTrigger render={
+                  <div className="flex h-16 flex-col items-end justify-center gap-1.5 mb-5 cursor-default">
+                    <TickBar
+                      ticks={Array.from({ length: 10 }, (_, i): Tick => ({
+                        color: portfolio.winRate != null && i < Math.round(portfolio.winRate * 10)
+                          ? 'bg-foreground'
+                          : 'bg-muted-foreground/25',
+                      }))}
+                      className="w-16"
+                    />
+                    <span className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+                      Win Rate
+                    </span>
+                  </div>
+                } />
+                <UITooltipContent side="bottom" align="end">
+                  <div className="text-xs">
+                    {portfolio.winRate != null
+                      ? `${Math.round(portfolio.winRate * 100)}% win rate`
+                      : 'No closed trades yet'}
+                  </div>
+                </UITooltipContent>
+              </UITooltip>
+            </UITooltipProvider>
             <PositionsPanel
               openTrades={openTrades}
               pendingTrades={pendingTrades}
