@@ -792,30 +792,10 @@ function formatDigestDate(iso: string): string {
   });
 }
 
-// "Grainient" treatment for the digest card — a static mesh gradient (layered
-// radial blobs) tinted by today's P&L, plus an SVG grain overlay for texture.
-// Replicates the React Bits Grainient look without a WebGL shader: this card
-// holds prose on an always-open dashboard, so a static paint beats a canvas.
-// Mesh is light pastel → dark card text stays legible; in dark mode the mesh is
-// dimmed so it reads as a faint glow instead of blowing out.
-type DigestTone = 'up' | 'down' | 'flat';
-
-// Fractal-noise tile (feTurbulence) — the "grain" half of the grainient.
-const DIGEST_GRAIN =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
-
-const DIGEST_TONE_MESH: Record<DigestTone, string> = {
-  up: 'radial-gradient(at 12% -10%, oklch(0.86 0.14 158 / 0.60), transparent 50%), radial-gradient(at 95% 8%, oklch(0.90 0.10 168 / 0.50), transparent 45%), radial-gradient(at 60% 115%, oklch(0.90 0.12 150 / 0.55), transparent 55%)',
-  down: 'radial-gradient(at 12% -10%, oklch(0.86 0.12 28 / 0.55), transparent 50%), radial-gradient(at 95% 8%, oklch(0.90 0.10 18 / 0.45), transparent 45%), radial-gradient(at 60% 115%, oklch(0.89 0.11 32 / 0.50), transparent 55%)',
-  flat: 'radial-gradient(at 12% -10%, oklch(0.92 0.015 106 / 0.80), transparent 50%), radial-gradient(at 95% 8%, oklch(0.95 0.01 106 / 0.70), transparent 45%), radial-gradient(at 60% 115%, oklch(0.89 0.02 106 / 0.60), transparent 55%)',
-};
-
 function DigestPreviewCard({
   digest,
-  tone = 'flat',
 }: {
   digest: LatestDigest | null | undefined;
-  tone?: DigestTone;
 }) {
   const [open, setOpen] = useState(false);
   if (digest === undefined) return null;
@@ -828,36 +808,20 @@ function DigestPreviewCard({
         type="button"
         onClick={() => digest && setOpen(true)}
         className={cn(
-          'relative w-full overflow-hidden text-left rounded-lg border bg-card p-3 mb-3',
+          'w-full text-left rounded-lg border bg-card p-3 mb-3',
           digest ? 'hover:brightness-[0.98] transition-all cursor-pointer' : 'cursor-default',
         )}
       >
-        {/* Mesh gradient — the "-ient" half. Dimmed in dark mode. */}
-        <div
-          aria-hidden
-          className="absolute inset-0 pointer-events-none dark:opacity-30"
-          style={{ backgroundImage: DIGEST_TONE_MESH[tone] }}
-        />
-        {/* Grain overlay — the "grain" half. */}
-        <div
-          aria-hidden
-          className="absolute inset-0 pointer-events-none opacity-[0.12] mix-blend-soft-light dark:mix-blend-overlay"
-          style={{ backgroundImage: DIGEST_GRAIN, backgroundSize: '160px 160px' }}
-        />
-        <div className="relative">
-          <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1">
-            {digest ? `${formatDigestDate(digest.date)} · after close` : 'Portfolio Digest'}
+        <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1">
+          {digest ? `${formatDigestDate(digest.date)} · after close` : 'Portfolio Digest'}
+        </p>
+        {digest && preview ? (
+          <p className="text-base font-medium leading-relaxed line-clamp-6">
+            {preview}
           </p>
-          {digest && preview ? (
-            <div className="relative">
-              <p className="text-sm font-medium leading-relaxed line-clamp-6">
-                {preview}
-              </p>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">No digest yet — generates after close.</p>
-          )}
-        </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">No digest yet — generates after close.</p>
+        )}
       </button>
 
       {digest && (
@@ -893,18 +857,16 @@ function PositionsPanel({
   loading,
   flashIds,
   digest,
-  digestTone,
 }: {
   openTrades: MockTrade[];
   pendingTrades: MockTrade[];
   loading: boolean;
   flashIds: Map<string, 'win' | 'loss'>;
   digest?: LatestDigest | null;
-  digestTone?: DigestTone;
 }) {
   return (
     <div className="space-y-0">
-      <DigestPreviewCard digest={digest} tone={digestTone} />
+      <DigestPreviewCard digest={digest} />
       <Card className="shadow-none p-0">
         <CardContent className="p-0">
           {loading ? (
@@ -1103,11 +1065,6 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
     : (equityRange[0]?.value ?? portfolio.netContributed);
   const rangePnlPct = rangePnlBase > 0 ? (rangePnl / rangePnlBase) * 100 : 0;
   const pnlPositive = rangePnl >= 0;
-
-  // Digest card tint — today's P&L mood. $1 dead-band keeps rounding noise from
-  // coloring a flat day green/red.
-  const digestTone: DigestTone =
-    portfolio.dayPnl > 1 ? 'up' : portfolio.dayPnl < -1 ? 'down' : 'flat';
 
   const spyPct: number | null =
     range === '1W' ? spyBenchmark['1W']
@@ -1569,7 +1526,6 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                 loading={loading}
                 flashIds={flashIds}
                 digest={digest}
-                digestTone={digestTone}
               />
             </div>
 
@@ -1619,7 +1575,6 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               loading={loading}
               flashIds={flashIds}
               digest={digest}
-              digestTone={digestTone}
             />
           </div>
 
