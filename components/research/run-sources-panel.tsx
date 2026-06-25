@@ -10,19 +10,12 @@
  *   │ Body excerpt — text-xs muted    │
  *   └─────────────────────────────────┘
  *
- * The first card is always the analyst's MorningBrief if one exists for the
- * run's trading day — clicking it opens BriefDetailDialog (the same dialog
- * the analyst overview uses). All other cards are real signal sources
- * (news, filings, social, etc.) pulled from Signal.sourceUrls.
+ * Cards are real signal sources (news, filings, social, etc.) pulled from
+ * Signal.sourceUrls.
  */
 
-import { useState } from "react";
 import { Search } from "lucide-react";
-import { BriefDetailDialog } from "@/components/intelligence/brief-detail";
-import type { UnifiedBrief } from "@/components/intelligence/brief-types";
 import type { RunSourceItem } from "@/lib/actions/run-sources.actions";
-import type { MorningBrief as IntelMorningBrief } from "@/components/intelligence/types";
-import HindsightLogo from "@/components/HindsightLogo";
 
 // ── Unified card ────────────────────────────────────────────────────────────
 
@@ -90,15 +83,11 @@ function SourceCard({
 // ── Panel ───────────────────────────────────────────────────────────────────
 
 export function RunSourcesPanel({
-  brief,
   sources,
 }: {
-  brief: IntelMorningBrief | null;
   sources: RunSourceItem[];
 }) {
-  const [openBrief, setOpenBrief] = useState<UnifiedBrief | null>(null);
-
-  const isEmpty = !brief && sources.length === 0;
+  const isEmpty = sources.length === 0;
 
   if (isEmpty) {
     return (
@@ -111,7 +100,7 @@ export function RunSourcesPanel({
     );
   }
 
-  const totalCount = sources.length + (brief ? 1 : 0);
+  const totalCount = sources.length;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 space-y-4">
@@ -124,37 +113,6 @@ export function RunSourcesPanel({
       </div>
 
       <div className="space-y-3">
-        {brief && (
-          <SourceCard
-            faviconNode={
-              <span className="size-4 shrink-0 inline-flex items-center justify-center text-brand">
-                <HindsightLogo className="size-4" />
-              </span>
-            }
-            siteName="Hindsight Morning Brief"
-            accent={
-              <span className="relative inline-flex size-1.5 shrink-0">
-                <span className="absolute inset-0 rounded-full bg-brand-blue opacity-60 animate-ping" />
-                <span className="relative size-1.5 rounded-full bg-brand-blue" />
-              </span>
-            }
-            headline={`Morning Brief — ${brief.signalCount} signal${brief.signalCount === 1 ? "" : "s"}`}
-            body={brief.marketContext}
-            onClick={() =>
-              setOpenBrief({
-                id: brief.id,
-                type: "intel",
-                analystName: brief.analyst.name,
-                date: brief.generatedAt,
-                preview: brief.marketContext,
-                tickers: brief.attentionPriority ?? [],
-                signalCount: brief.signalCount,
-                intelBrief: brief,
-              })
-            }
-          />
-        )}
-
         {sources.map((s) => (
           <SourceCard
             key={s.id}
@@ -166,12 +124,6 @@ export function RunSourcesPanel({
           />
         ))}
       </div>
-
-      <BriefDetailDialog
-        brief={openBrief}
-        open={openBrief !== null}
-        onOpenChange={(open) => !open && setOpenBrief(null)}
-      />
     </div>
   );
 }

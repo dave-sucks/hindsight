@@ -35,7 +35,6 @@ import { RunSourcesPanel } from "@/components/research/run-sources-panel";
 import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
 import { TranscriptRow, type TranscriptRowData } from "@/components/ui/transcript-row";
 import type { RunSourceItem } from "@/lib/actions/run-sources.actions";
-import type { MorningBrief as IntelMorningBrief } from "@/components/intelligence/types";
 
 // ── Model preference storage key ──────────────────────────────────────────────
 const MODEL_PREF_KEY = "hindsight_research_model";
@@ -138,7 +137,6 @@ interface AgentChatProps {
   podcastId?: string;
   autoStart?: boolean;
   headerAction?: ReactNode;
-  brief?: IntelMorningBrief | null;
   sources?: RunSourceItem[];
   theses?: ThesisRowData[];
   /** podcast-segment-run: the single transcript this run produced (mirror of theses for analyst runs). */
@@ -201,7 +199,6 @@ export function AgentChat({
   podcastId,
   autoStart,
   headerAction,
-  brief = null,
   sources = [],
   theses = [],
   transcript = null,
@@ -249,7 +246,6 @@ export function AgentChat({
         analystName={analystName}
         autoStart={autoStart}
         headerAction={headerAction}
-        brief={brief}
         sources={sources}
         theses={theses}
         transcript={transcript}
@@ -275,7 +271,6 @@ interface InnerProps {
   analystName?: string;
   autoStart?: boolean;
   headerAction?: ReactNode;
-  brief: IntelMorningBrief | null;
   sources: RunSourceItem[];
   theses: ThesisRowData[];
   transcript: TranscriptRowData | null;
@@ -299,7 +294,6 @@ function AgentChatInner({
   analystName,
   autoStart,
   headerAction,
-  brief,
   sources,
   theses,
   transcript,
@@ -482,7 +476,7 @@ function AgentChatInner({
         </TabsContent>
 
         <TabsContent value={1} className="flex-1 min-h-0 overflow-y-auto">
-          <RunSourcesPanel brief={brief} sources={sources} />
+          <RunSourcesPanel sources={sources} />
         </TabsContent>
 
         <TabsContent value={2} className="flex-1 min-h-0 overflow-y-auto">

@@ -272,15 +272,6 @@ export interface NewOpportunity {
   signalIds: string[];
 }
 
-export interface MorningBriefData {
-  marketContext: string;
-  portfolioAlerts: PortfolioAlert[];
-  watchlistUpdates: WatchlistUpdate[];
-  newOpportunities: NewOpportunity[];
-  attentionPriority: string[];
-  riskFlags: string[];
-}
-
 // ── Signal Creation Input ───────────────────────────────────────────────────
 // Used by intelligence jobs to create signals in the DB.
 
