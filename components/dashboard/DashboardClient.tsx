@@ -816,9 +816,13 @@ function DigestPreviewCard({
           {digest ? `${formatDigestDate(digest.date)} · after close` : 'Portfolio Digest'}
         </p>
         {digest && preview ? (
-          <p className="text-base font-medium leading-relaxed line-clamp-6">
-            {preview}
-          </p>
+          <div className="relative">
+            <p className="text-base font-medium leading-relaxed line-clamp-6">
+              {preview}
+            </p>
+            {/* Subtle fade so the clamped narrative trails off into the card. */}
+            <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-card to-transparent pointer-events-none" />
+          </div>
         ) : (
           <p className="text-xs text-muted-foreground">No digest yet — generates after close.</p>
         )}
