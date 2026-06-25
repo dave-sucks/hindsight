@@ -813,7 +813,7 @@ function DigestPreviewCard({ digest }: { digest: LatestDigest | null | undefined
         </p>
         {digest && preview ? (
           <div className="relative">
-            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+            <p className="text-sm font-medium leading-relaxed line-clamp-3">
               {preview}
             </p>
             <div className="absolute bottom-0 left-0 right-0 h-5 bg-gradient-to-t from-card to-transparent pointer-events-none" />
@@ -1180,7 +1180,8 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                         <UITooltip>
                           <UITooltipTrigger render={
                             <span className="text-xs text-muted-foreground cursor-default w-fit">
-                              Balance ({formatCurrency(portfolio.cash)} available)
+                              <span className="font-medium">Balance</span>
+                              <span className="font-light"> ({formatCurrency(portfolio.cash)} available)</span>
                             </span>
                           } />
                           <UITooltipContent side="bottom">
@@ -1203,8 +1204,9 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                           percentChange={rangePnlPct}
                           size="xl"
                         />
-                        <span className="text-xs tabular-nums text-muted-foreground">
-                          {RANGE_PNL_LABEL[range]} ({portfolio.unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(portfolio.unrealizedPnl)} unrealized)
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          <span className="font-medium">{RANGE_PNL_LABEL[range]}</span>
+                          <span className="font-light"> ({portfolio.unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(portfolio.unrealizedPnl)} unrealized)</span>
                         </span>
                       </div>
                     </div>
@@ -1252,15 +1254,15 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               {/* Controls: range tabs (left) + settings dropdown (right) */}
               <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
                 {/* Range tabs */}
-                <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
+                <div className="flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
                   {RANGES.map((r) => (
                     <button
                       key={r}
                       onClick={() => setRange(r)}
                       className={cn(
-                        'px-2 py-0.5 text-xs rounded transition-colors',
+                        'px-2.5 py-1 text-xs rounded transition-colors',
                         range === r
-                          ? 'bg-muted text-foreground font-medium'
+                          ? 'bg-background text-foreground font-medium shadow-sm'
                           : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
