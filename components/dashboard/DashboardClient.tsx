@@ -792,16 +792,22 @@ function formatDigestDate(iso: string): string {
   });
 }
 
-// Subtle performance-tinted gradient wash, driven by today's P&L sign. A soft
-// corner glow (~10% alpha) fading into the card color — enough to make the
-// digest card read warmer/cooler than the plain-white cards around it without
-// hurting text legibility. No animated shader: this card holds prose and lives
-// on the always-open dashboard, so a static gradient beats a WebGL canvas.
+// "Grainient" treatment for the digest card — a static mesh gradient (layered
+// radial blobs) tinted by today's P&L, plus an SVG grain overlay for texture.
+// Replicates the React Bits Grainient look without a WebGL shader: this card
+// holds prose on an always-open dashboard, so a static paint beats a canvas.
+// Mesh is light pastel → dark card text stays legible; in dark mode the mesh is
+// dimmed so it reads as a faint glow instead of blowing out.
 type DigestTone = 'up' | 'down' | 'flat';
-const DIGEST_TONE_GRADIENT: Record<DigestTone, string> = {
-  up: 'bg-gradient-to-br from-emerald-500/10 via-card to-card',
-  down: 'bg-gradient-to-br from-red-500/10 via-card to-card',
-  flat: 'bg-gradient-to-br from-muted/50 via-card to-card',
+
+// Fractal-noise tile (feTurbulence) — the "grain" half of the grainient.
+const DIGEST_GRAIN =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
+
+const DIGEST_TONE_MESH: Record<DigestTone, string> = {
+  up: 'radial-gradient(at 12% -10%, oklch(0.86 0.14 158 / 0.60), transparent 50%), radial-gradient(at 95% 8%, oklch(0.90 0.10 168 / 0.50), transparent 45%), radial-gradient(at 60% 115%, oklch(0.90 0.12 150 / 0.55), transparent 55%)',
+  down: 'radial-gradient(at 12% -10%, oklch(0.86 0.12 28 / 0.55), transparent 50%), radial-gradient(at 95% 8%, oklch(0.90 0.10 18 / 0.45), transparent 45%), radial-gradient(at 60% 115%, oklch(0.89 0.11 32 / 0.50), transparent 55%)',
+  flat: 'radial-gradient(at 12% -10%, oklch(0.92 0.015 106 / 0.80), transparent 50%), radial-gradient(at 95% 8%, oklch(0.95 0.01 106 / 0.70), transparent 45%), radial-gradient(at 60% 115%, oklch(0.89 0.02 106 / 0.60), transparent 55%)',
 };
 
 function DigestPreviewCard({
@@ -822,24 +828,36 @@ function DigestPreviewCard({
         type="button"
         onClick={() => digest && setOpen(true)}
         className={cn(
-          'w-full text-left rounded-lg border p-3 mb-3',
-          DIGEST_TONE_GRADIENT[tone],
-          digest ? 'hover:brightness-[0.99] transition-all cursor-pointer' : 'cursor-default',
+          'relative w-full overflow-hidden text-left rounded-lg border bg-card p-3 mb-3',
+          digest ? 'hover:brightness-[0.98] transition-all cursor-pointer' : 'cursor-default',
         )}
       >
-        <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1">
-          {digest ? `${formatDigestDate(digest.date)} · after close` : 'Portfolio Digest'}
-        </p>
-        {digest && preview ? (
-          <div className="relative">
-            <p className="text-sm font-medium leading-relaxed line-clamp-6">
-              {preview}
-            </p>
-            <div className="absolute bottom-0 left-0 right-0 h-5 bg-gradient-to-t from-card to-transparent pointer-events-none" />
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">No digest yet — generates after close.</p>
-        )}
+        {/* Mesh gradient — the "-ient" half. Dimmed in dark mode. */}
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none dark:opacity-30"
+          style={{ backgroundImage: DIGEST_TONE_MESH[tone] }}
+        />
+        {/* Grain overlay — the "grain" half. */}
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none opacity-[0.12] mix-blend-soft-light dark:mix-blend-overlay"
+          style={{ backgroundImage: DIGEST_GRAIN, backgroundSize: '160px 160px' }}
+        />
+        <div className="relative">
+          <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1">
+            {digest ? `${formatDigestDate(digest.date)} · after close` : 'Portfolio Digest'}
+          </p>
+          {digest && preview ? (
+            <div className="relative">
+              <p className="text-sm font-medium leading-relaxed line-clamp-6">
+                {preview}
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">No digest yet — generates after close.</p>
+          )}
+        </div>
       </button>
 
       {digest && (
@@ -884,18 +902,9 @@ function PositionsPanel({
   digest?: LatestDigest | null;
   digestTone?: DigestTone;
 }) {
-  const totalOpen = openTrades.length + pendingTrades.length;
   return (
     <div className="space-y-0">
       <DigestPreviewCard digest={digest} tone={digestTone} />
-      <div className="flex items-center justify-between pb-3">
-        <span className="text-sm font-medium">
-          Positions
-          {totalOpen > 0 && (
-            <span className="ml-1.5 text-[10px] tabular-nums opacity-60">{totalOpen}</span>
-          )}
-        </span>
-      </div>
       <Card className="shadow-none p-0">
         <CardContent className="p-0">
           {loading ? (
@@ -1171,7 +1180,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
     : chartView;
 
   return (
-    <div className="overflow-y-auto h-[calc(100dvh-3rem)] bg-sidebar dark:bg-background">
+    <div className="overflow-y-auto h-[calc(100dvh-3rem)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         <div className="flex gap-6 items-start">
 
@@ -1245,9 +1254,9 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               className="rounded-lg overflow-hidden border"
               style={{
                 backgroundImage:
-                  'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
+                  'radial-gradient(circle, var(--border) 1px, transparent 1px)',
                 backgroundSize: '18px 18px',
-                backgroundColor: 'hsl(var(--card))',
+                backgroundColor: 'var(--card)',
               }}
             >
               {/* Controls: range tabs (left) + settings dropdown (right) */}

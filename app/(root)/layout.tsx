@@ -70,7 +70,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             />
             <SidebarInset>
                 {/* Top bar — sidebar toggle + search + theme */}
-                <header className="flex h-12 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+                <header className="flex h-12 shrink-0 items-center gap-2 bg-sidebar dark:bg-background transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
                     <div className="flex flex-1 w-full items-center gap-2 px-4">
                         <SidebarTrigger className="-ml-1" />
                         <DynamicBreadcrumb />
@@ -80,7 +80,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
                         <MarketStatusPill open={marketOpen} />
                     </div>
                 </header>
-                <main className="flex-1">
+                <main className="flex-1 bg-sidebar dark:bg-background">
                     {children}
                 </main>
             </SidebarInset>
