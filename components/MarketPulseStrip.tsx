@@ -42,12 +42,7 @@ export function MarketStatusPill({ open }: { open: boolean }) {
       ) : (
         <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
       )}
-      <span
-        className={cn(
-          "text-xs font-medium tabular-nums",
-          open ? "text-positive" : "text-muted-foreground"
-        )}
-      >
+      <span className="text-xs font-medium tabular-nums text-muted-foreground">
         {open ? "OPEN" : "CLOSED"}
         <span className="hidden md:inline"> · {dateStr}</span>
       </span>

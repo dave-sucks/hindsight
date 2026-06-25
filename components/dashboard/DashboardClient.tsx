@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, ArrowRight } from 'lucide-react';
 
 import {
   Area,
@@ -22,8 +22,9 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { Card, CardContent } from '@/components/ui/card';
+import { TickBar, type Tick } from '@/components/ui/gauge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -56,8 +57,14 @@ import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
 import { ProposalActions } from '@/components/proposals/ProposalActions';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
-import { PortfolioDigestCard } from '@/components/domain/portfolio-digest-card';
 import type { LatestDigest } from '@/lib/actions/digest.actions';
+import { DigestMarkdown } from '@/components/ui/ticker-markdown';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
 import { Button } from '@/components/ui/button';
@@ -69,7 +76,6 @@ import {
   TooltipProvider as UITooltipProvider,
   TooltipTrigger as UITooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Info } from 'lucide-react';
 import {
   mockOpenTrades,
   mockEquityCurve,
@@ -250,94 +256,6 @@ function groupActivityByDay(items: ActivityFeedItem[]) {
   return groups;
 }
 
-// ── StatTile — one cell in the portfolio stats grid below the chart ────────
-//
-// Responsive layout:
-//   Mobile — single row per tile. Label on the left (uppercase mono muted),
-//            value stretches to the right via flex-grow justify-end. This
-//            is what the user asked for on narrow screens: 4 rows stacked,
-//            each a horizontal label|value pair, not stacked inner content.
-//   Desktop — 4-column grid. Within each tile, VALUE sits on top (text-base
-//            normal weight), LABEL sits below (text-xs mono muted). Opposite
-//            of the original ordering — user explicitly asked for this.
-//
-// `info` prop renders a tiny info button next to the label that opens a
-// tooltip — used for the Position Value tile to explain semantics + surface the
-// position count the label itself no longer carries.
-function StatTile({
-  label,
-  value,
-  info,
-  valueClassName,
-}: {
-  label: string;
-  value: string;
-  info?: ReactNode;
-  valueClassName?: string;
-}) {
-  // Both label and value are text-sm on every breakpoint — differentiated
-  // by font-mono + uppercase + muted color on the label vs. tabular-nums
-  // normal-weight default color on the value. User explicitly asked for
-  // no size hierarchy here.
-  const labelNode = (
-    <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
-      {label}
-      {info}
-    </span>
-  );
-  const valueNode = (
-    <span className={cn('text-sm tabular-nums', valueClassName)}>{value}</span>
-  );
-  return (
-    <div className="flex items-baseline justify-between gap-3 sm:flex-col-reverse sm:items-start sm:justify-start sm:gap-1">
-      {labelNode}
-      {valueNode}
-    </div>
-  );
-}
-
-function fmtTileCurrency(n: number): string {
-  // Match the header — no cents, thousands separator. Large enough that
-  // decimal precision is just visual noise in a stat tile.
-  return '$' + Math.round(n).toLocaleString();
-}
-
-function fmtTileSigned(n: number): string {
-  // Like fmtTileCurrency but always explicit sign, for deltas / cash that
-  // can go negative on margin accounts. "-$7,496" reads cleaner than
-  // "$-7,496" — put the sign before the $.
-  const abs = '$' + Math.round(Math.abs(n)).toLocaleString();
-  if (n < 0) return `-${abs}`;
-  if (n > 0) return `+${abs}`;
-  return abs;
-}
-
-function fmtTileCash(n: number): string {
-  // Cash-specific: show NO sign when positive (a bare "$28,426" reads as
-  // normal account state), show explicit '-' only when negative (borrowed
-  // on margin — signals something non-default is happening).
-  const abs = '$' + Math.round(Math.abs(n)).toLocaleString();
-  return n < 0 ? `-${abs}` : abs;
-}
-
-function InfoPopover({ children }: { children: ReactNode }) {
-  return (
-    <UITooltip>
-      <UITooltipTrigger render={
-        <button
-          type="button"
-          className="inline-flex h-3 w-3 items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors cursor-help"
-          aria-label="More info"
-        >
-          <Info className="h-3 w-3" />
-        </button>
-      } />
-      <UITooltipContent side="top" className="max-w-[220px] text-xs normal-case font-normal tracking-normal">
-        {children}
-      </UITooltipContent>
-    </UITooltip>
-  );
-}
 
 // Mirrors ACTION_STATUS from decision-summary-card.tsx
 const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; tooltip: string }> = {
@@ -514,17 +432,13 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   );
 }
 
-function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
+function HomeBottomSection({ picks, activity, loading, coverage }: {
   picks: RecentPick[];
   activity: ActivityFeedItem[];
   loading: boolean;
-  // Overview tab payload (Feature A + B — docs/plans/PORTFOLIO_DIGEST.md). The
-  // brief + coverage tables live as the first/default tab; `digest === undefined`
-  // means the caller opted out of the digest entirely (card not rendered).
-  digest?: LatestDigest | null;
   coverage?: CoverageData;
 }) {
-  const [tab, setTab] = useState<'overview' | 'theses' | 'activity'>('overview');
+  const [tab, setTab] = useState<'portfolio' | 'theses' | 'activity'>('portfolio');
   const [thesisFilter, setThesisFilter] = useState<ThesisTabFilter>('ALL');
   const [thesisPage, setThesisPage] = useState(0);
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
@@ -614,16 +528,31 @@ function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
     <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="gap-0">
       {/* Tab bar + filter dropdown */}
       <div className="flex items-center justify-between pb-3">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="activity">Activity</TabsTrigger>
-          <TabsTrigger value="theses">Theses</TabsTrigger>
-        </TabsList>
+        {/* Custom pill tabs — bigger text, no wrapper BG, subtle active state */}
+        <div className="flex items-center gap-0.5">
+          {([
+            { value: 'portfolio', label: 'Portfolio' },
+            { value: 'activity', label: 'Activity' },
+            { value: 'theses', label: 'Theses' },
+          ] as const).map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setTab(t.value)}
+              className={cn(
+                'px-3 py-1.5 text-sm rounded-md transition-colors',
+                tab === t.value
+                  ? 'bg-muted/70 text-foreground font-medium'
+                  : 'text-muted-foreground/60 hover:text-muted-foreground',
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-        {/* Filter — Activity uses the dropdown on the right; the Theses tab
-            uses the status mini-tabs row rendered below (inside the tab). */}
+        {/* Activity filter dropdown — only shown on the Activity tab */}
         <div>
-          {tab === 'overview' || tab === 'theses' ? null : (
+          {tab === 'activity' && (
             <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}>
               <SelectTrigger className="h-8 w-32 text-xs">
                 <SelectValue />
@@ -639,13 +568,18 @@ function HomeBottomSection({ picks, activity, loading, digest, coverage }: {
         </div>
       </div>
 
-      {/* Overview — the Daily Portfolio Digest (Feature A) + the Coverage
-          tables (Feature B). The default tab: the principal's at-a-glance
-          read of the whole book. */}
-      <TabsContent value="overview">
+      {/* Portfolio — Coverage table with pill-style sub-filter. */}
+      <TabsContent value="portfolio">
         <div className="space-y-5">
-          {digest !== undefined && <PortfolioDigestCard digest={digest} />}
-          {coverage && <CoverageTable data={coverage} />}
+          {coverage ? (
+            <CoverageTable data={coverage} />
+          ) : (
+            <Card className="shadow-none">
+              <CardContent className="py-8 flex justify-center">
+                <p className="text-sm text-muted-foreground">No coverage data yet.</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </TabsContent>
 
@@ -799,6 +733,8 @@ function DashboardTradeRow({ trade, flash }: { trade: MockTrade; flash?: 'win' |
       alpacaOrderId={trade.alpacaOrderId}
       flash={flash}
       pendingProposal={trade.pendingProposal}
+      thesisId={trade.thesisId}
+      direction={trade.direction}
     />
   );
 }
@@ -834,6 +770,83 @@ function PositionGroupLabel({ children }: { children: ReactNode }) {
   );
 }
 
+// ── DigestPreviewCard ─────────────────────────────────────────────────────────
+// Compact teaser above the positions list. Shows the digest date + ~160 chars
+// of narrative (stripped of markdown) with a bottom fade, click opens dialog.
+
+function stripMarkdown(md: string): string {
+  return md
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // [text](url) → text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')        // **bold**
+    .replace(/\*([^*]+)\*/g, '$1')            // *italic*
+    .replace(/^#+\s/gm, '')                    // headings
+    .replace(/`[^`]*`/g, '')                   // code
+    .trim();
+}
+
+function formatDigestDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  });
+}
+
+function DigestPreviewCard({
+  digest,
+}: {
+  digest: LatestDigest | null | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  if (digest === undefined) return null;
+
+  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 420) : null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => digest && setOpen(true)}
+        className={cn(
+          'w-full text-left rounded-lg border bg-card p-3 mb-3',
+          digest ? 'hover:brightness-[0.98] transition-all cursor-pointer' : 'cursor-default',
+        )}
+      >
+        <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1">
+          {digest ? `${formatDigestDate(digest.date)} · after close` : 'Portfolio Digest'}
+        </p>
+        {digest && preview ? (
+          <div className="relative">
+            <p className="text-base font-medium leading-relaxed line-clamp-6">
+              {preview}
+            </p>
+            {/* Subtle fade so the clamped narrative trails off into the card. */}
+            <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-card to-transparent pointer-events-none" />
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">No digest yet — generates after close.</p>
+        )}
+      </button>
+
+      {digest && (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="sm:max-w-2xl p-0">
+            <DialogHeader className="px-5 pt-5 pb-3 border-b">
+              <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+                {formatDigestDate(digest.date)} · after close
+              </p>
+              <DialogTitle className="text-base font-semibold">Portfolio Digest</DialogTitle>
+            </DialogHeader>
+            <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
+              <DigestMarkdown>{digest.narrative}</DigestMarkdown>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  );
+}
+
 // ── PositionsPanel — Open / Closed trades list ───────────────────────────────
 //
 // The portfolio's open + closed positions as a two-tab Card. Rendered in two
@@ -845,100 +858,54 @@ function PositionGroupLabel({ children }: { children: ReactNode }) {
 function PositionsPanel({
   openTrades,
   pendingTrades,
-  closedTrades,
   loading,
   flashIds,
+  digest,
 }: {
   openTrades: MockTrade[];
   pendingTrades: MockTrade[];
-  closedTrades: MockTrade[];
   loading: boolean;
   flashIds: Map<string, 'win' | 'loss'>;
+  digest?: LatestDigest | null;
 }) {
   return (
-    <Tabs defaultValue="open" className="gap-0">
-      <TabsList variant="line" className="w-auto self-start px-0">
-        <TabsTrigger value="open" className="px-0 mr-4">
-          Open
-          {openTrades.length > 0 && (
-            <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
-              {openTrades.length}
-            </span>
-          )}
-        </TabsTrigger>
-        <TabsTrigger value="closed" className="px-0">
-          Closed
-          {closedTrades.length > 0 && (
-            <span className="ml-1.5 text-[10px] tabular-nums opacity-60">
-              {closedTrades.length}
-            </span>
-          )}
-        </TabsTrigger>
-      </TabsList>
-
+    <div className="space-y-0">
+      <DigestPreviewCard digest={digest} />
       <Card className="shadow-none p-0">
         <CardContent className="p-0">
-          <TabsContent value="open" className="mt-0">
-            {loading ? (
-              <div className="space-y-1 px-4 pt-1 pb-2">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-14 rounded-lg" />
-                ))}
-              </div>
-            ) : openTrades.length === 0 && pendingTrades.length === 0 ? (
-              <Empty
-                text="No open positions"
-                subtext="Positions appear when an analyst places a paper trade during a run."
-              />
-            ) : (
-              <div>
-                {pendingTrades.length > 0 && (
-                  <>
-                    <PositionGroupLabel>Pending approval</PositionGroupLabel>
-                    {pendingTrades.map((t) => (
-                      <DashboardTradeRow
-                        key={t.id}
-                        trade={t}
-                        flash={flashIds.get(t.id)}
-                      />
-                    ))}
-                  </>
-                )}
-                {openTrades.length > 0 && (
-                  <>
-                    {pendingTrades.length > 0 && (
-                      <PositionGroupLabel>Held</PositionGroupLabel>
-                    )}
-                    {openTrades.map((t) => (
-                      <DashboardTradeRow
-                        key={t.id}
-                        trade={t}
-                        flash={flashIds.get(t.id)}
-                      />
-                    ))}
-                  </>
-                )}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="closed" className="mt-0">
-            {closedTrades.length === 0 ? (
-              <Empty
-                text="No closed trades yet"
-                subtext="Trades close when they hit a target, stop-loss, or manual exit."
-              />
-            ) : (
-              <div>
-                {closedTrades.map((t) => (
-                  <DashboardTradeRow key={t.id} trade={t} />
-                ))}
-              </div>
-            )}
-          </TabsContent>
+          {loading ? (
+            <div className="space-y-1 px-4 pt-1 pb-2">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-14 rounded-lg" />
+              ))}
+            </div>
+          ) : openTrades.length === 0 && pendingTrades.length === 0 ? (
+            <Empty
+              text="No open positions"
+              subtext="Positions appear when an analyst places a paper trade during a run."
+            />
+          ) : (
+            <div>
+              {pendingTrades.map((t) => (
+                <DashboardTradeRow key={t.id} trade={t} flash={flashIds.get(t.id)} />
+              ))}
+              {openTrades.map((t) => (
+                <DashboardTradeRow key={t.id} trade={t} flash={flashIds.get(t.id)} />
+              ))}
+            </div>
+          )}
+          <div className="border-t border-border/40 px-3 py-2">
+            <Link
+              href="/trades"
+              className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+            >
+              All Trades
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </CardContent>
       </Card>
-    </Tabs>
+    </div>
   );
 }
 
@@ -1193,30 +1160,53 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                 account never reads as a gain. Both values are text-xl for
                 equal visual weight; mobile stacks them, desktop sits them
                 side by side. */}
-            <div className="space-y-0.5">
+            <div className="space-y-0.5 lg:h-16">
               {loading ? (
-                <Skeleton className="h-12 w-80" />
+                <Skeleton className="h-16 w-80" />
               ) : (
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-8">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-                      Balance
-                    </span>
-                    <span className="text-xl font-semibold tabular-nums">
-                      {totalValueStr}
-                    </span>
+                <UITooltipProvider>
+                  {/* Balance + P&L columns. Win Rate moved to the right rail
+                      (it doubles as the rail's top-alignment spacer). */}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-10">
+                    {/* Balance column — value first, then "Balance ($X available)" on one line */}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xl font-semibold tabular-nums">
+                        {totalValueStr}
+                      </span>
+                      <UITooltip>
+                        <UITooltipTrigger render={
+                          <span className="text-xs text-muted-foreground cursor-default w-fit">
+                            <span className="font-medium">Balance</span>
+                            <span className="font-light"> ({formatCurrency(portfolio.cash)} available)</span>
+                          </span>
+                        } />
+                        <UITooltipContent side="bottom">
+                          <div className="text-xs space-y-0.5">
+                            <div>Available cash</div>
+                            {portfolio.netPositionValue > 0 && (
+                              <div className="opacity-70">
+                                {formatCurrency(portfolio.netPositionValue)} invested in positions
+                              </div>
+                            )}
+                          </div>
+                        </UITooltipContent>
+                      </UITooltip>
+                    </div>
+
+                    {/* P&L column — value first, then "{Range} P&L (+$X unrealized)" on one line */}
+                    <div className="flex flex-col gap-0.5">
+                      <PriceChange
+                        dollarChange={rangePnl}
+                        percentChange={rangePnlPct}
+                        size="xl"
+                      />
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        <span className="font-medium">{RANGE_PNL_LABEL[range]}</span>
+                        <span className="font-light"> ({portfolio.unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(portfolio.unrealizedPnl)} unrealized)</span>
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-                      {RANGE_PNL_LABEL[range]}
-                    </span>
-                    <PriceChange
-                      dollarChange={rangePnl}
-                      percentChange={rangePnlPct}
-                      size="xl"
-                    />
-                  </div>
-                </div>
+                </UITooltipProvider>
               )}
             </div>
 
@@ -1225,23 +1215,23 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               className="rounded-lg overflow-hidden border"
               style={{
                 backgroundImage:
-                  'radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)',
+                  'radial-gradient(circle, var(--border) 1px, transparent 1px)',
                 backgroundSize: '18px 18px',
-                backgroundColor: 'hsl(var(--muted)/0.3)',
+                backgroundColor: 'var(--card)',
               }}
             >
               {/* Controls: range tabs (left) + settings dropdown (right) */}
               <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
                 {/* Range tabs */}
-                <div className="flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
+                <div className="flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
                   {RANGES.map((r) => (
                     <button
                       key={r}
                       onClick={() => setRange(r)}
                       className={cn(
-                        'px-2 py-0.5 text-xs rounded transition-colors',
+                        'px-2.5 py-1 text-xs rounded transition-colors',
                         range === r
-                          ? 'bg-muted text-foreground font-medium'
+                          ? 'bg-background text-foreground font-medium shadow-sm'
                           : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
@@ -1529,76 +1519,6 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               )}
             </div>
 
-            {/* ── Portfolio stats grid (below the chart) ─────────────────
-                4 tiles. Values reconcile against the top-of-page total:
-                  cash + netPositionValue = totalValue (accounting identity)
-                …so user can add tile 1 + tile 2 and get the big number.
-                Responsive: mobile = 1-col stacked rows (label left,
-                value right-aligned); desktop = 4-col grid with value
-                above label.
-                - Available Cash = raw Alpaca cash. Negative on margin.
-                  Only the negative case shows a '-' prefix; positive shows
-                  no '+' — a bare dollar amount reads as normal.
-                - Position Value = long MV + signed-short MV — net worth of
-                  open positions. Info tooltip explains it + surfaces
-                  position count (moved out of the tile body on user ask,
-                  who found it confusing inline).
-                - Unrealized Gain = derived from Alpaca equity, not DB
-                  per-position sums (which undercount when a live-price
-                  fetch silently misses a ticker).
-                - Success Rate = win rate across closed positions. */}
-            {!loading && (
-              <UITooltipProvider>
-                {/* -mt-3 pulls the grid up toward the chart — user wanted
-                    the two visually adjacent, not separated by the parent's
-                    space-y-5 gap. gap-0 on mobile stacks tile rows flush;
-                    sm:gap-4 gives the 4-col desktop tiles breathing room. */}
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-0 sm:gap-4 -mt-3 sm:mt-0">
-                  <StatTile
-                    label="Available Cash"
-                    value={fmtTileCash(portfolio.cash)}
-                    valueClassName={portfolio.cash < 0 ? 'text-negative' : undefined}
-                    info={portfolio.usingMargin ? (
-                      <InfoPopover>
-                        Negative because the account is borrowing from the
-                        margin line. You still have buying power; this is
-                        the literal Alpaca cash field.
-                      </InfoPopover>
-                    ) : undefined}
-                  />
-                  <StatTile
-                    label="Position Value"
-                    value={fmtTileCurrency(portfolio.netPositionValue)}
-                    info={
-                      <InfoPopover>
-                        Total market value of your open positions (long
-                        minus short). Combined with Available Cash, this
-                        equals the account total above.
-                        {portfolio.openCount > 0 && (
-                          <>
-                            <br />
-                            {portfolio.openCount} open position
-                            {portfolio.openCount === 1 ? '' : 's'}.
-                          </>
-                        )}
-                      </InfoPopover>
-                    }
-                  />
-                  <StatTile
-                    label="Unrealized Gain"
-                    value={fmtTileSigned(portfolio.unrealizedPnl)}
-                    valueClassName={portfolio.unrealizedPnl >= 0 ? 'text-positive' : 'text-negative'}
-                  />
-                  <StatTile
-                    label="Success Rate"
-                    value={portfolio.winRate != null ? `${Math.round(portfolio.winRate * 100)}%` : '—'}
-                    info={portfolio.winRate == null ? (
-                      <InfoPopover>No closed trades yet.</InfoPopover>
-                    ) : undefined}
-                  />
-                </div>
-              </UITooltipProvider>
-            )}
 
             {/* Positions — mobile only. The desktop right rail is hidden
                 below lg, so render the trade list inline here (chart → stats →
@@ -1607,31 +1527,58 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               <PositionsPanel
                 openTrades={openTrades}
                 pendingTrades={pendingTrades}
-                closedTrades={closedTrades}
                 loading={loading}
                 flashIds={flashIds}
+                digest={digest}
               />
             </div>
 
-            {/* Overview / Activity / Theses tabbed section. Overview (default)
-                holds the digest brief + coverage tables. */}
+            {/* Portfolio / Activity / Theses tabbed section. */}
             <HomeBottomSection
               picks={recentPicks}
               activity={data?.activityFeed ?? []}
               loading={loading}
-              digest={digest}
               coverage={coverage}
             />
           </div>
 
           {/* ══ RIGHT column — positions (desktop only) ════════════════════ */}
           <div className="hidden lg:block w-80 shrink-0">
+            {/* Win Rate — sized h-16 + mb-5 to mirror the left header (metrics
+                height + space-y-5 gap), so it doubles as the spacer that aligns
+                the digest card with the top of the chart card. */}
+            <UITooltipProvider>
+              <UITooltip>
+                <UITooltipTrigger render={
+                  <div className="flex h-16 flex-col items-end justify-center gap-1.5 mb-5 cursor-default">
+                    <TickBar
+                      ticks={Array.from({ length: 10 }, (_, i): Tick => ({
+                        color: portfolio.winRate != null && i < Math.round(portfolio.winRate * 10)
+                          ? 'bg-foreground'
+                          : 'bg-muted-foreground/25',
+                      }))}
+                      className="w-16"
+                    />
+                    <span className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+                      Win Rate
+                    </span>
+                  </div>
+                } />
+                <UITooltipContent side="bottom" align="end">
+                  <div className="text-xs">
+                    {portfolio.winRate != null
+                      ? `${Math.round(portfolio.winRate * 100)}% win rate`
+                      : 'No closed trades yet'}
+                  </div>
+                </UITooltipContent>
+              </UITooltip>
+            </UITooltipProvider>
             <PositionsPanel
               openTrades={openTrades}
               pendingTrades={pendingTrades}
-              closedTrades={closedTrades}
               loading={loading}
               flashIds={flashIds}
+              digest={digest}
             />
           </div>
 

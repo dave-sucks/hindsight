@@ -41,6 +41,8 @@ async function getCurrentUserId(): Promise<string | null> {
 export interface WatchlistItemView {
   id: string;
   symbol: string;
+  /** The underlying Thesis row id — used to open ThesisSheet on row click. Absent on optimistic temp rows. */
+  thesisId?: string;
   reason: string;
   notes: string | null;
   addedBy: string;
@@ -209,6 +211,7 @@ export async function getWatchlistItems(
     const histComposite = hist?.latest ? getThesisComposite(hist.latest) : null;
     return {
       id: t.id,
+      thesisId: t.id,
       symbol: t.ticker,
       reason: getThesisSnapshotText(t),
       notes: null,
@@ -299,6 +302,7 @@ export async function addWatchlistItem(
     const existingComposite = getThesisComposite(existing);
     return {
       id: existing.id,
+      thesisId: existing.id,
       symbol: existing.ticker,
       reason: getThesisSnapshotText(existing),
       notes: null,

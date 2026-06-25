@@ -424,6 +424,10 @@ export async function getDashboardData(
             expiresAt: true,
           },
         },
+        decisions: {
+          take: 1,
+          select: { thesis: { select: { id: true } } },
+        },
       },
       orderBy: { openedAt: "desc" },
     }).catch(() => [] as never[]),
@@ -431,6 +435,10 @@ export async function getDashboardData(
       where: { accountId, status: { in: ["CLOSED", "CANCELLED"] }, environment },
       include: {
         analyst: { select: { name: true } },
+        decisions: {
+          take: 1,
+          select: { thesis: { select: { id: true } } },
+        },
       },
       orderBy: { closedAt: "desc" },
       take: 50,
@@ -749,6 +757,7 @@ export async function getDashboardData(
       priceSource,
       priceUpdatedAt: livePrice !== undefined ? priceLookup.fetchedAt : undefined,
       pendingProposal,
+      thesisId: p.decisions?.[0]?.thesis?.id ?? undefined,
     };
   };
 
@@ -782,6 +791,7 @@ export async function getDashboardData(
       shares: p.quantity,
       analystName: p.analyst?.name ?? undefined,
       analystId: p.analystId ?? undefined,
+      thesisId: p.decisions?.[0]?.thesis?.id ?? undefined,
     };
   });
 
