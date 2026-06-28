@@ -702,3 +702,34 @@ describe("shouldFire", () => {
     });
   });
 });
+
+describe("evaluateTrigger — TRAILING_STOP (peak-based exit)", () => {
+  const longThesis = { createdAt: THESIS_CREATED, nextReviewAt: null, direction: "LONG" };
+  const shortThesis = { createdAt: THESIS_CREATED, nextReviewAt: null, direction: "SHORT" };
+  const trail5: TriggerPredicate = { kind: "TRAILING_STOP", trailPct: 5 };
+
+  it("LONG: fires when price falls 5% below the peak (peak 100 → stop 95)", () => {
+    const ctx = makeCtx({ peakPrice: 100, latestQuote: { price: 94.5, changePct: 0 }, thesis: longThesis });
+    expect(evaluateTrigger(trail5, ctx)).toBe(true);
+  });
+
+  it("LONG: does NOT fire while price holds above the trail (96 > 95)", () => {
+    const ctx = makeCtx({ peakPrice: 100, latestQuote: { price: 96, changePct: 0 }, thesis: longThesis });
+    expect(evaluateTrigger(trail5, ctx)).toBe(false);
+  });
+
+  it("SHORT: fires when price rises 5% above the trough (trough 100 → stop 105)", () => {
+    const ctx = makeCtx({ peakPrice: 100, latestQuote: { price: 105.5, changePct: 0 }, thesis: shortThesis });
+    expect(evaluateTrigger(trail5, ctx)).toBe(true);
+  });
+
+  it("does NOT fire without a peak (nothing held to trail)", () => {
+    const ctx = makeCtx({ peakPrice: null, latestQuote: { price: 1, changePct: 0 }, thesis: longThesis });
+    expect(evaluateTrigger(trail5, ctx)).toBe(false);
+  });
+
+  it("does NOT fire without a quote", () => {
+    const ctx = makeCtx({ peakPrice: 100, thesis: longThesis });
+    expect(evaluateTrigger(trail5, ctx)).toBe(false);
+  });
+});

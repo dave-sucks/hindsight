@@ -1735,6 +1735,7 @@ export function ThesisSheetBody({
         <ThesisTriggersSection
           thesisId={thesis_id}
           data={state}
+          direction={direction}
           editable={
             !isPass &&
             ((liveStatus ?? initialStatus) === "HOLDING" ||

@@ -31,6 +31,7 @@ const urgencyEnum = z.enum(["LOW", "MEDIUM", "HIGH", "BREAKING"]);
 type PredicateShape =
   | { kind: "PRICE_ABOVE"; level: number }
   | { kind: "PRICE_BELOW"; level: number }
+  | { kind: "TRAILING_STOP"; trailPct: number }
   | {
       kind: "PRICE_MOVE_PCT";
       pct: number;
@@ -58,6 +59,7 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
   z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("PRICE_ABOVE"), level: z.number() }),
     z.object({ kind: z.literal("PRICE_BELOW"), level: z.number() }),
+    z.object({ kind: z.literal("TRAILING_STOP"), trailPct: z.number().positive().lt(100) }),
     z.object({
       kind: z.literal("PRICE_MOVE_PCT"),
       pct: z.number().positive(),

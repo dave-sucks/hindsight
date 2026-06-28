@@ -59,10 +59,20 @@ export interface EvaluationContext {
   /** SMA precomputed by the caller; we don't fetch candles here. */
   sma?: { 50?: number; 200?: number };
 
+  /**
+   * Running peak (LONG: high-water; SHORT: low-water) of the paired open
+   * Position, maintained by the price-monitor for every open position. Required
+   * by TRAILING_STOP; absent/null when there's no held position → the trail
+   * can't fire (correct: nothing to trail).
+   */
+  peakPrice?: number | null;
+
   /** Thesis fields needed by time-based predicates. */
   thesis: {
     createdAt: Date;
     nextReviewAt?: Date | null;
+    /** "LONG" | "SHORT" | null — orients the TRAILING_STOP trail off the peak. */
+    direction?: string | null;
     /**
      * Thesis lifecycle status. Drives the TIME_ELAPSED clock selection:
      * on an ACTIVE (held) thesis, a "max hold N days" review measures from
@@ -104,6 +114,23 @@ export function evaluateTrigger(
 
     case "PRICE_BELOW":
       return ctx.latestQuote != null && ctx.latestQuote.price < predicate.level;
+
+    // Trailing stop — fires when price has retraced trailPct% from the peak
+    // (LONG) / trough (SHORT). Peak is the Position high-water mark the
+    // price-monitor maintains; the caller supplies it on ctx.peakPrice. No
+    // peak/quote → no fire (nothing held to trail). Mirrors trade-exit.ts.
+    case "TRAILING_STOP": {
+      if (ctx.peakPrice == null || ctx.peakPrice <= 0 || ctx.latestQuote == null) {
+        return false;
+      }
+      const isLong = ctx.thesis.direction !== "SHORT";
+      const stop = isLong
+        ? ctx.peakPrice * (1 - predicate.trailPct / 100)
+        : ctx.peakPrice * (1 + predicate.trailPct / 100);
+      return isLong
+        ? ctx.latestQuote.price <= stop
+        : ctx.latestQuote.price >= stop;
+    }
 
     case "PRICE_MOVE_PCT":
       return evaluatePriceMovePct(predicate, ctx);
