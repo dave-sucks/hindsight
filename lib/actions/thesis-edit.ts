@@ -456,12 +456,13 @@ export async function applyTriggerTypeChange(
 // price stop / target — mirrored onto Thesis + the open Position so the
 // chart line, run-summary, and evaluator never drift from the pill.
 
-/** Predicate kinds the UI add-form can mint. (A new predicate KIND would
- *  touch the ~6 exhaustive switches; these three already exist everywhere.) */
+/** Predicate kinds the UI add-form can mint: a fixed price level (Target
+ *  Price) or a directional daily % move (Movement Amount). Both already exist
+ *  across the evaluator/format switches — no new predicate KIND. */
 const ADDABLE_PREDICATE_KINDS = new Set<TriggerPredicate["kind"]>([
   "PRICE_ABOVE",
   "PRICE_BELOW",
-  "TRAILING_STOP",
+  "PRICE_MOVE_PCT",
 ]);
 
 export interface TriggerAddInput {
@@ -491,9 +492,7 @@ function addedTriggerRationale(
   const cond = predicateSentence(predicate).toLowerCase();
   switch (action) {
     case "EXIT":
-      return predicate.kind === "TRAILING_STOP"
-        ? `${predicateSentence(predicate)} — exit on the pullback (set by principal).`
-        : `Exit when ${cond} (set by principal).`;
+      return `Exit when ${cond} (set by principal).`;
     case "ENTER":
       return `Consider entry when ${cond} (set by principal).`;
     case "ADD":
@@ -516,7 +515,7 @@ export async function applyTriggerAdd(
   if (!ADDABLE_PREDICATE_KINDS.has(input.predicate.kind)) {
     throw new ThesisEditError(
       "INVALID",
-      `Can only add price or trailing triggers (got ${input.predicate.kind}).`,
+      `Can only add a target-price or movement-amount trigger (got ${input.predicate.kind}).`,
     );
   }
 
@@ -547,20 +546,9 @@ export async function applyTriggerAdd(
   }
 
   const isLong = thesis.direction !== "SHORT";
-  const isTrailing = input.predicate.kind === "TRAILING_STOP";
 
-  // A trailing stop is inherently an EXIT off a live position's peak — reject
-  // it on any other action (a notify-only trail can't drive a real exit) and
-  // on an unheld name (no position ⇒ no peak ⇒ it could never fire).
-  if (isTrailing && input.action !== "EXIT") {
-    throw new ThesisEditError(
-      "INVALID",
-      "A trailing stop must be an EXIT trigger.",
-    );
-  }
-
-  // Resolve the paired open position once — needed for the stop/target mirror,
-  // the trailing peak seed, and the trailing held-only guard.
+  // Resolve the paired open position once — needed for the canonical
+  // stop/target mirror and the DIRECT held-only check.
   const analystId = thesis.researchRun?.agentConfigId ?? null;
   const position =
     thesis.status === "HOLDING"
@@ -572,21 +560,9 @@ export async function applyTriggerAdd(
             ...(analystId ? { analystId } : {}),
           },
           orderBy: { openedAt: "desc" },
-          select: {
-            id: true,
-            avgCost: true,
-            peakPrice: true,
-            environment: true,
-          },
+          select: { id: true },
         })
       : null;
-
-  if (isTrailing && !position) {
-    throw new ThesisEditError(
-      "INVALID",
-      "A trailing stop needs an open position to trail — this thesis isn't held.",
-    );
-  }
 
   // DIRECT (close without an agent) is only coherent on an EXIT of a held
   // position. Anywhere else, fall back to the judgment-bearing TACTICAL path.
@@ -657,18 +633,6 @@ export async function applyTriggerAdd(
   if (isStop && level != null) synced.stopLoss = level;
   if (isTarget && level != null) synced.targetPrice = level;
 
-  // Seed the peak high-water mark AS OF NOW when adding a trailing stop, so the
-  // trail locks in from here, not from entry. Mirrors applyTriggerTypeChange.
-  let seedPeak: number | null = null;
-  if (isTrailing && position) {
-    const current = await currentPriceFor(
-      thesis.ticker,
-      position.environment,
-      thesis.userId,
-    );
-    seedPeak = Math.max(position.peakPrice ?? 0, current ?? 0, position.avgCost);
-  }
-
   await prisma.$transaction(async (tx) => {
     await tx.thesis.update({
       where: { id: thesis.id },
@@ -679,10 +643,9 @@ export async function applyTriggerAdd(
       },
     });
     if (position) {
-      const posData: { stopLoss?: number; targetPrice?: number; peakPrice?: number } = {};
+      const posData: { stopLoss?: number; targetPrice?: number } = {};
       if (synced.stopLoss != null) posData.stopLoss = synced.stopLoss;
       if (synced.targetPrice != null) posData.targetPrice = synced.targetPrice;
-      if (seedPeak != null) posData.peakPrice = seedPeak;
       if (Object.keys(posData).length > 0) {
         await tx.position.update({ where: { id: position.id }, data: posData });
       }

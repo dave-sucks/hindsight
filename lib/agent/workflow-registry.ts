@@ -553,7 +553,7 @@ export const TOOL_REGISTRY: RegistryTool[] = [
   {
     name: "manage_position",
     category: "action",
-    summary: "Nuanced position management: partial_close, update_targets, move_stop_to_breakeven, set_trailing_stop, add_to_position. Every action audit-logged with a required reason.",
+    summary: "Nuanced position management: partial_close, update_targets, move_stop_to_breakeven, add_to_position. Every action audit-logged with a required reason.",
     providers: ["alpaca", "internal"],
     agents: ["agent", "tactical"],
   },

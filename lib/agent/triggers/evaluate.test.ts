@@ -133,6 +133,55 @@ describe("evaluateTrigger", () => {
       });
       expect(evaluateTrigger(predicate, ctx)).toBe(false);
     });
+
+    // ── Daily move (the "Movement Amount" alert) — window 1D uses the quote's
+    //    own daily % change (changePct), so it fires on the cron with no
+    //    candle history. This is the path the cron actually exercises.
+    describe("1D daily move via changePct (no recentPrices)", () => {
+      it("UP fires when the day's change ≥ pct", () => {
+        const predicate: TriggerPredicate = {
+          kind: "PRICE_MOVE_PCT",
+          pct: 5,
+          direction: "UP",
+          window: "1D",
+        };
+        const ctx = makeCtx({ latestQuote: { price: 105, changePct: 5.2 } });
+        expect(evaluateTrigger(predicate, ctx)).toBe(true);
+      });
+
+      it("UP does not fire when the day's change is below pct", () => {
+        const predicate: TriggerPredicate = {
+          kind: "PRICE_MOVE_PCT",
+          pct: 5,
+          direction: "UP",
+          window: "1D",
+        };
+        const ctx = makeCtx({ latestQuote: { price: 103, changePct: 3 } });
+        expect(evaluateTrigger(predicate, ctx)).toBe(false);
+      });
+
+      it("DOWN fires when the day's change ≤ -pct", () => {
+        const predicate: TriggerPredicate = {
+          kind: "PRICE_MOVE_PCT",
+          pct: 5,
+          direction: "DOWN",
+          window: "1D",
+        };
+        const ctx = makeCtx({ latestQuote: { price: 94, changePct: -6 } });
+        expect(evaluateTrigger(predicate, ctx)).toBe(true);
+      });
+
+      it("DOWN does not fire on an UP day", () => {
+        const predicate: TriggerPredicate = {
+          kind: "PRICE_MOVE_PCT",
+          pct: 5,
+          direction: "DOWN",
+          window: "1D",
+        };
+        const ctx = makeCtx({ latestQuote: { price: 106, changePct: 6 } });
+        expect(evaluateTrigger(predicate, ctx)).toBe(false);
+      });
+    });
   });
 
   describe("VS_SMA", () => {

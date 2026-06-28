@@ -20,7 +20,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -305,11 +304,13 @@ function predicateKindValue(p: TriggerPredicate): {
       return { kind: "price below", value: `$${p.level ?? "?"}` };
     case "TRAILING_STOP":
       return { kind: "trailing stop", value: `${p.trailPct ?? "?"}%` };
-    case "PRICE_MOVE_PCT":
-      return {
-        kind: `price ${p.direction === "UP" ? "up" : "down"} ${p.window ?? ""}`.trim(),
-        value: `${p.pct ?? "?"}%`,
-      };
+    case "PRICE_MOVE_PCT": {
+      // Daily move (window 1D) reads as a clean "up / down" — the standard
+      // "stock is up/down X% today" alert. Multi-day windows append the span.
+      const dir = p.direction === "UP" ? "up" : "down";
+      const win = p.window && p.window !== "1D" ? ` ${p.window}` : "";
+      return { kind: `${dir}${win}`, value: `${p.pct ?? "?"}%` };
+    }
     case "VS_SMA":
       return {
         kind: `${p.period ?? "?"}-day SMA`,
@@ -377,7 +378,9 @@ function predicateDescription(p: TriggerPredicate): string {
     case "TRAILING_STOP":
       return `Exits when price falls ${p.trailPct}% below its peak since entry. Trails up as the position runs.`;
     case "PRICE_MOVE_PCT":
-      return `Fires when price moves ${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}.`;
+      return p.window === "1D"
+        ? `Fires when the stock is ${p.direction === "UP" ? "up" : "down"} ${p.pct}% on the day (vs prior close).`
+        : `Fires when price moves ${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}.`;
     case "VS_SMA":
       return `Fires when price moves ${p.direction?.toLowerCase()} the ${p.period}-day SMA.`;
     case "RSI":
@@ -524,16 +527,6 @@ function TriggerPopoverContent({
   );
   const canEdit = editable && field != null;
 
-  // The stop trigger is convertible to/from a trailing stop. LONG stops are a
-  // PRICE_BELOW EXIT, SHORT stops a PRICE_ABOVE EXIT; a TRAILING_STOP is already
-  // converted. (A LONG take-profit is PRICE_ABOVE — direction keeps us off it.)
-  const stopKind = direction === "SHORT" ? "PRICE_ABOVE" : "PRICE_BELOW";
-  const isTrailing = trigger.predicate.kind === "TRAILING_STOP";
-  // The toggle only belongs on the EXIT stop trigger (fixed or trailing) — never
-  // on a take-profit or a non-EXIT trigger that merely carries a price predicate.
-  const isStopTrigger =
-    trigger.action === "EXIT" &&
-    (isTrailing || trigger.predicate.kind === stopKind);
   const { kind: kindLabel, value: displayValue } = predicateKindValue(
     trigger.predicate,
   );
@@ -568,23 +561,6 @@ function TriggerPopoverContent({
           body: JSON.stringify({ value: parsed }),
         },
       );
-      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
-      onChanged?.();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-      setPending(false);
-    }
-  }
-
-  async function setTrailing(next: boolean) {
-    setPending(true);
-    setErr(null);
-    try {
-      const res = await fetch(`/api/theses/${thesisId}/triggers/${trigger.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trailing: next }),
-      });
       if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
       onChanged?.();
     } catch (e) {
@@ -665,20 +641,6 @@ function TriggerPopoverContent({
           <Input value={displayValue ?? kindLabel} readOnly disabled />
         )}
       </div>
-
-      {/* Trailing toggle — only on the stop trigger. Flips fixed ↔ trailing. */}
-      {editable && isStopTrigger ? (
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Trailing stop
-          </span>
-          <Switch
-            checked={isTrailing}
-            onCheckedChange={(v) => void setTrailing(v)}
-            disabled={pending}
-          />
-        </div>
-      ) : null}
 
       {/* On fire — TACTICAL (wake an agent) vs DIRECT (close directly, no
           agent; still approval-gated). EXIT triggers on a held position only. */}
@@ -836,19 +798,17 @@ function TriggerGroups({
 }
 
 // ── Add-trigger form ────────────────────────────────────────────────────
-// A ghost "+" that opens a Popover form: action + predicate type + value
-// (+ fire mode on a held EXIT). Mints a new Price/Trailing trigger on any
-// action group — the gap-filler for theses missing an Exit stop / Enter /
-// etc. POSTs to /api/theses/:id/triggers; the backend validates against the
-// same Zod schema the agent uses and mirrors canonical stop/target levels.
+// A ghost "+" that opens a Popover form mirroring the Price-alert modal:
+//   • Action      — Enter / Exit / Review / …
+//   • Criterion   — Target Price (a fixed $ level) | Movement Amount (a % move)
+//   • Direction   — above/below (price)  ·  up/down (movement)
+//   • Value       — $ level  ·  % move
+//   • On fire     — tactical vs direct (held EXIT only)
+// Target Price → PRICE_ABOVE / PRICE_BELOW (fires at a level).
+// Movement Amount → PRICE_MOVE_PCT (fires on a ±% DAILY move vs prior close).
+// Both fire through the same evaluator → trigger pipeline as every trigger.
 
-const PRED_TYPE_LABEL: Record<string, string> = {
-  PRICE_ABOVE: "Price above",
-  PRICE_BELOW: "Price below",
-  TRAILING_STOP: "Trailing %",
-};
-
-type AddPredType = "PRICE_ABOVE" | "PRICE_BELOW" | "TRAILING_STOP";
+type AddCriterion = "PRICE" | "MOVE";
 
 function AddTriggerPopover({
   thesisId,
@@ -861,22 +821,31 @@ function AddTriggerPopover({
 }) {
   const [open, setOpen] = useState(false);
   const [action, setAction] = useState<string>("EXIT");
-  const [predType, setPredType] = useState<AddPredType>("PRICE_BELOW");
+  const [criterion, setCriterion] = useState<AddCriterion>("PRICE");
+  const [dir, setDir] = useState<string>("BELOW"); // ABOVE/BELOW · UP/DOWN
   const [val, setVal] = useState("");
   const [fireMode, setFireMode] = useState<"TACTICAL" | "DIRECT">("DIRECT");
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Trailing stops are EXIT-only and need an open position to trail.
-  const trailingAllowed = action === "EXIT" && held;
+  const isMove = criterion === "MOVE";
   const showFireMode = action === "EXIT" && held;
-  const isTrailing = predType === "TRAILING_STOP";
 
-  // If trailing is selected but no longer allowed (action moved off EXIT, or
-  // unheld), fall back to a price level so we never submit an invalid combo.
+  const dirOptions = isMove
+    ? [
+        { v: "UP", l: "Up" },
+        { v: "DOWN", l: "Down" },
+      ]
+    : [
+        { v: "ABOVE", l: "Above" },
+        { v: "BELOW", l: "Below" },
+      ];
+
+  // Keep `dir` valid for the selected criterion (price uses ABOVE/BELOW,
+  // movement uses UP/DOWN). Reset to a sensible default on criterion switch.
   useEffect(() => {
-    if (isTrailing && !trailingAllowed) setPredType("PRICE_BELOW");
-  }, [isTrailing, trailingAllowed]);
+    setDir(isMove ? "DOWN" : "BELOW");
+  }, [isMove]);
 
   // Default fire mode by action — EXIT → DIRECT, else TACTICAL. Mirrors the
   // server-side defaultFireModeForAction (can't import it here: defaults.ts
@@ -890,15 +859,15 @@ function AddTriggerPopover({
     val.trim() !== "" &&
     Number.isFinite(num) &&
     num > 0 &&
-    (!isTrailing || num < 100);
+    (!isMove || num < 100);
 
   async function save() {
     if (!valid) return;
     setPending(true);
     setErr(null);
-    const predicate = isTrailing
-      ? { kind: "TRAILING_STOP", trailPct: num }
-      : { kind: predType, level: num };
+    const predicate = isMove
+      ? { kind: "PRICE_MOVE_PCT", pct: num, direction: dir, window: "1D" }
+      : { kind: dir === "ABOVE" ? "PRICE_ABOVE" : "PRICE_BELOW", level: num };
     try {
       const res = await fetch(`/api/theses/${thesisId}/triggers`, {
         method: "POST",
@@ -967,54 +936,88 @@ function AddTriggerPopover({
           </Select>
         </div>
 
-        {/* Predicate type */}
+        {/* Criterion — Target Price vs Movement Amount */}
         <div className="space-y-1.5">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Condition
+            Criterion
           </span>
           <Select
-            value={predType}
-            onValueChange={(v) => setPredType(v as AddPredType)}
+            value={criterion}
+            onValueChange={(v) => {
+              if (v === "PRICE" || v === "MOVE") setCriterion(v);
+            }}
             disabled={pending}
           >
             <SelectTrigger size="sm">
-              <SelectValue>{PRED_TYPE_LABEL[predType]}</SelectValue>
+              <SelectValue>
+                {isMove ? "Movement Amount" : "Target Price"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="PRICE_ABOVE">{PRED_TYPE_LABEL.PRICE_ABOVE}</SelectItem>
-              <SelectItem value="PRICE_BELOW">{PRED_TYPE_LABEL.PRICE_BELOW}</SelectItem>
-              {trailingAllowed ? (
-                <SelectItem value="TRAILING_STOP">
-                  {PRED_TYPE_LABEL.TRAILING_STOP}
-                </SelectItem>
-              ) : null}
+              <SelectItem value="PRICE">Target Price</SelectItem>
+              <SelectItem value="MOVE">Movement Amount</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {/* Value */}
-        <div className="space-y-1.5">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {isTrailing ? "Trail %" : "Price"}
-          </span>
-          <div className="flex items-center gap-1.5">
-            {isTrailing ? null : (
-              <span className="text-sm text-muted-foreground">$</span>
-            )}
-            <Input
-              type="number"
-              inputMode="decimal"
-              value={val}
-              min={0}
-              step={isTrailing ? 0.5 : 0.01}
-              onChange={(e) => setVal(e.target.value)}
+        {/* Direction + value, side by side */}
+        <div className="flex items-end gap-2">
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Direction
+            </span>
+            <Select
+              value={dir}
+              onValueChange={(v) => {
+                if (typeof v === "string") setDir(v);
+              }}
               disabled={pending}
-            />
-            {isTrailing ? (
-              <span className="text-sm text-muted-foreground">%</span>
-            ) : null}
+            >
+              <SelectTrigger size="sm">
+                <SelectValue>
+                  {dirOptions.find((o) => o.v === dir)?.l ?? ""}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {dirOptions.map((o) => (
+                  <SelectItem key={o.v} value={o.v}>
+                    {o.l}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex-1 space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {isMove ? "Move %" : "Price"}
+            </span>
+            <div className="flex items-center gap-1.5">
+              {isMove ? null : (
+                <span className="text-sm text-muted-foreground">$</span>
+              )}
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={val}
+                min={0}
+                step={isMove ? 0.5 : 0.01}
+                onChange={(e) => setVal(e.target.value)}
+                disabled={pending}
+              />
+              {isMove ? (
+                <span className="text-sm text-muted-foreground">%</span>
+              ) : null}
+            </div>
           </div>
         </div>
+
+        {isMove ? (
+          <p className="text-xs text-muted-foreground">
+            Fires when the stock is {dir === "UP" ? "up" : "down"} this much on
+            the day (vs prior close).
+          </p>
+        ) : null}
 
         {/* Fire mode (held EXIT only) */}
         {showFireMode ? (

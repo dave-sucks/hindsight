@@ -171,6 +171,7 @@ export const DIRECT_ELIGIBLE_PREDICATE_KINDS: readonly string[] = [
   "PRICE_ABOVE",
   "PRICE_BELOW",
   "TRAILING_STOP",
+  "PRICE_MOVE_PCT",
 ];
 
 export function isDirectEligiblePredicate(kind: string): boolean {

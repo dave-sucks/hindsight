@@ -519,12 +519,12 @@ export const placeTrade = defineTool({
             avgCost: args.entry_price,
             targetPrice: args.target_price,
             stopLoss: args.stop_loss,
-            // Per-thesis triggers (lib/agent/triggers/*) own exit logic now.
-            // The agent's PRICE_BELOW level: stop EXIT trigger from the
-            // horizon defaults fires via the trigger evaluator's 5-min cron;
-            // there's no parallel auto-close path. Opt into TRAILING via
-            // manage_position.set_trailing_stop when the agent wants peak-
-            // relative exits. See docs/MORNING_RUN_V2_DESIGN.md Fix #0.
+            // Per-thesis triggers (lib/agent/triggers/*) own ALL exit logic now.
+            // The stop EXIT trigger (PRICE_BELOW from the horizon defaults) and
+            // any added Target-Price / Movement-Amount EXIT fire via the trigger
+            // evaluator's 5-min cron — there's no parallel auto-close path. The
+            // legacy exitStrategy="TRAILING" side-channel was removed; this
+            // column stays "MANUAL" for legacy-row tolerance only.
             exitStrategy: "MANUAL",
             initialQty: finalShares,
           },
