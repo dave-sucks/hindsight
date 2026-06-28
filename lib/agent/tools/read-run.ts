@@ -52,13 +52,6 @@ export const readRun = defineTool({
           },
           orderBy: { createdAt: "asc" },
         },
-        briefing: {
-          select: {
-            id: true,
-            narrative: true,
-            createdAt: true,
-          },
-        },
       },
     });
 
@@ -77,7 +70,7 @@ export const readRun = defineTool({
       },
       {
         kind: "generic",
-        text: `${run.theses.length} theses · ${run.decisions.length} decisions${run.briefing ? " · briefing written" : " · no briefing"}`,
+        text: `${run.theses.length} theses · ${run.decisions.length} decisions`,
       },
     ];
     if (toolStats) {
@@ -111,13 +104,6 @@ export const readRun = defineTool({
           status: run.status,
           startedAt: run.startedAt,
           completedAt: run.completedAt,
-          briefing: run.briefing
-            ? {
-                id: run.briefing.id,
-                narrative: run.briefing.narrative,
-                generatedAt: run.briefing.createdAt,
-              }
-            : null,
           theses: run.theses,
           decisions: run.decisions,
           toolStats,
