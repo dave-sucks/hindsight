@@ -112,30 +112,6 @@ export interface AnalystListItem {
   openTrades: AnalystOpenTrade[];
 }
 
-export interface RunWithTheses {
-  id: string;
-  status: string;
-  source: string;
-  startedAt: Date;
-  completedAt: Date | null;
-  theses: {
-    id: string;
-    ticker: string;
-    direction: string | null;
-    confidenceScore: number;
-    reasoningSummary: string;
-    holdDuration: string;
-    signalTypes: string[];
-    sourcesUsed: unknown;
-    trade: {
-      id: string;
-      status: string;
-      realizedPnl: number | null;
-      outcome: string | null;
-    } | null;
-  }[];
-}
-
 export interface PositionWithThesis {
   id: string;
   symbol: string;
@@ -180,7 +156,6 @@ export interface AnalystStats {
 
 export interface AnalystDetail {
   config: AnalystConfig;
-  recentRuns: RunWithTheses[];
   recentTrades: PositionWithThesis[];
   stats: AnalystStats;
 }
@@ -357,47 +332,7 @@ export async function getAnalystDetail(
   });
   if (!config) return null;
 
-  const [recentRuns, recentPositions, totalRuns, totalTheses, watchlistTheses, monitors] = await Promise.all([
-    // Last 20 runs with their theses (join trade info via decisions)
-    prisma.researchRun.findMany({
-      where: { agentConfigId: analystId, accountId },
-      orderBy: { startedAt: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        status: true,
-        source: true,
-        startedAt: true,
-        completedAt: true,
-        theses: {
-          select: {
-            id: true,
-            ticker: true,
-            direction: true,
-            scoring: true,
-            snapshot: true,
-            holdDuration: true,
-            decisions: {
-              take: 1,
-              where: { decision: "BUY" },
-              select: {
-                position: {
-                  select: {
-                    id: true,
-                    status: true,
-                    realizedPnl: true,
-                    outcome: true,
-                  },
-                },
-              },
-            },
-          },
-          // PR-9: was orderBy confidenceScore desc — sort client-side
-          // off scoring.composite below.
-          orderBy: { createdAt: "desc" },
-        },
-      },
-    }),
+  const [recentPositions, totalRuns, totalTheses, watchlistTheses, monitors] = await Promise.all([
     // Last 20 positions attributed to this analyst
     prisma.position.findMany({
       where: { accountId, analystId },
@@ -591,34 +526,6 @@ export async function getAnalystDetail(
     searchMonitors,
   };
 
-  // Map runs: transform theses.decisions[0].position → trade shape for backwards compat
-  const mappedRuns: RunWithTheses[] = recentRuns.map((r) => ({
-    id: r.id,
-    status: r.status,
-    source: r.source,
-    startedAt: r.startedAt,
-    completedAt: r.completedAt,
-    theses: r.theses.map((th) => {
-      const pos = th.decisions[0]?.position;
-      const composite = getThesisComposite(th);
-      return {
-        id: th.id,
-        ticker: th.ticker,
-        direction: th.direction,
-        // PR-9: legacy 0-100 confidence → composite × 10 for renderers.
-        confidenceScore: composite != null ? composite * 10 : 0,
-        reasoningSummary: getThesisSnapshotText(th),
-        holdDuration: th.holdDuration,
-        // PR-9: signalTypes / sourcesUsed columns dropped.
-        signalTypes: [],
-        sourcesUsed: [],
-        trade: pos
-          ? { id: pos.id, status: pos.status, realizedPnl: pos.realizedPnl, outcome: pos.outcome }
-          : null,
-      };
-    }),
-  }));
-
   const mappedTrades: PositionWithThesis[] = recentPositions.map((p) => {
     const th = p.decisions[0]?.thesis;
     const composite = th ? getThesisComposite(th) : null;
@@ -660,7 +567,6 @@ export async function getAnalystDetail(
 
   return {
     config: mappedConfig,
-    recentRuns: mappedRuns,
     recentTrades: mappedTrades,
     stats: {
       totalRuns,
@@ -1473,7 +1379,6 @@ export async function deleteAnalyst(analystId: string): Promise<void> {
   await prisma.position.deleteMany({ where: { id: { in: positionIds } } });
   await prisma.thesis.deleteMany({ where: { id: { in: thesisIds } } });
   // RunEvent and RunMessage cascade from ResearchRun (onDelete: Cascade)
-  await prisma.analystBriefing.deleteMany({ where: { analystId } });
   await prisma.researchRun.deleteMany({ where: { id: { in: runIds } } });
   await prisma.agentConfig.delete({ where: { id: analystId } });
 

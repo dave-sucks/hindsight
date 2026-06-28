@@ -166,15 +166,8 @@ export async function GET() {
         },
       }),
 
-      // Briefs generated in last 7 days
-      analystIds.length > 0
-        ? prisma.morningBrief.count({
-            where: {
-              analystId: { in: analystIds },
-              generatedAt: { gte: sevenDaysAgo },
-            },
-          })
-        : Promise.resolve(0),
+      // legacy MorningBrief dropped (P1-26) — briefs stat is always 0
+      Promise.resolve(0),
     ]);
 
   // ── Per-monitor 7-day signal counts ───────────────────────────────────────
