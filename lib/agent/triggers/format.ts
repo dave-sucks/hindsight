@@ -30,6 +30,8 @@ export function predicateSentence(p: TriggerPredicate): string {
       return `Price below $${p.level}`;
     case "PRICE_ABOVE":
       return `Price above $${p.level}`;
+    case "TRAILING_STOP":
+      return `Trailing stop ${p.trailPct}% from peak`;
     case "PRICE_MOVE_PCT":
       return `Price ${p.direction === "UP" ? "up" : "down"} ${p.pct}% over ${p.window}`;
     case "VS_SMA":

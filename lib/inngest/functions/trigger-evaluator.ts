@@ -118,6 +118,12 @@ function isSignalSidePredicate(p: TriggerPredicate): boolean {
  * (no open position found) simply leaves the thesis off the map, and the
  * evaluator falls back to createdAt — fail-soft, never throws.
  */
+interface PositionInfo {
+  openedAt: Date;
+  /** Running peak (LONG high-water / SHORT low-water) — drives TRAILING_STOP. */
+  peakPrice: number | null;
+}
+
 async function buildPositionOpenedAtMap(
   theses: Array<{
     id: string;
@@ -125,8 +131,8 @@ async function buildPositionOpenedAtMap(
     status: string;
     researchRun: { agentConfigId: string | null };
   }>,
-): Promise<Map<string, Date>> {
-  const out = new Map<string, Date>();
+): Promise<Map<string, PositionInfo>> {
+  const out = new Map<string, PositionInfo>();
   const active = theses.filter(
     (t) =>
       (t.status === "HOLDING") &&
@@ -147,21 +153,21 @@ async function buildPositionOpenedAtMap(
       symbol: { in: tickers },
       status: "OPEN",
     },
-    select: { analystId: true, symbol: true, openedAt: true },
+    select: { analystId: true, symbol: true, openedAt: true, peakPrice: true },
     orderBy: { openedAt: "desc" },
   });
 
   // Newest OPEN position per (analystId, symbol) wins — orderBy desc + first
   // write into the map.
-  const byKey = new Map<string, Date>();
+  const byKey = new Map<string, PositionInfo>();
   for (const p of positions) {
     const key = `${p.analystId}::${p.symbol}`;
-    if (!byKey.has(key)) byKey.set(key, p.openedAt);
+    if (!byKey.has(key)) byKey.set(key, { openedAt: p.openedAt, peakPrice: p.peakPrice });
   }
   for (const t of active) {
     const key = `${t.researchRun.agentConfigId}::${t.ticker}`;
-    const openedAt = byKey.get(key);
-    if (openedAt) out.set(t.id, openedAt);
+    const info = byKey.get(key);
+    if (info) out.set(t.id, info);
   }
   return out;
 }
@@ -299,6 +305,7 @@ export const triggerEvaluator = inngest.createFunction(
             id: true,
             ticker: true,
             status: true,
+            direction: true,
             triggers: true,
             createdAt: true,
             nextReviewAt: true,
@@ -343,13 +350,16 @@ export const triggerEvaluator = inngest.createFunction(
           const triggers = parseTriggers(thesis.triggers, thesis.id);
           if (triggers.length === 0) continue;
 
+          const posInfo = openedAtByThesisId.get(thesis.id);
           const ctx: EvaluationContext = {
             signal: ctxSignal,
+            peakPrice: posInfo?.peakPrice ?? null,
             thesis: {
               createdAt: thesis.createdAt,
               nextReviewAt: thesis.nextReviewAt,
               status: thesis.status,
-              positionOpenedAt: openedAtByThesisId.get(thesis.id) ?? null,
+              direction: thesis.direction,
+              positionOpenedAt: posInfo?.openedAt ?? null,
             },
             now,
           };
@@ -447,6 +457,7 @@ export const triggerEvaluator = inngest.createFunction(
           id: true,
           ticker: true,
           status: true,
+          direction: true,
           triggers: true,
           createdAt: true,
           nextReviewAt: true,
@@ -485,16 +496,19 @@ export const triggerEvaluator = inngest.createFunction(
         if (triggers.length === 0) continue;
         const latestQuote = quoteByTicker.get(thesis.ticker) ?? undefined;
 
+        const posInfo = openedAtByThesisId.get(thesis.id);
         const ctx: EvaluationContext = {
           // No signal on this path. PRICE_MOVE_PCT / VS_SMA / RSI return
           // false because we don't pass recentPrices / sma here — see
           // the file-header note for the rationale.
           latestQuote: latestQuote ?? undefined,
+          peakPrice: posInfo?.peakPrice ?? null,
           thesis: {
             createdAt: thesis.createdAt,
             nextReviewAt: thesis.nextReviewAt,
             status: thesis.status,
-            positionOpenedAt: openedAtByThesisId.get(thesis.id) ?? null,
+            direction: thesis.direction,
+            positionOpenedAt: posInfo?.openedAt ?? null,
           },
           now,
         };

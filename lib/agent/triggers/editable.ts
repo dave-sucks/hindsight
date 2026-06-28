@@ -4,13 +4,12 @@
  * (renders the label + input) and the trigger-edit write path (applies the
  * new value) so the two never drift.
  *
- * v1 scope: only the PRICE level triggers (the take-profit / stop levels the
- * principal actually wants to drag) are editable. Every other predicate —
- * earnings surprise %, RSI, time-elapsed days, SMA, signal, filing, review-date,
- * composites — renders read-only in the popover. Keeping the editable set to
- * positive price levels also keeps the write-path's `value > 0` guard exactly
- * right (a $0 price is invalid; a 0% min-surprise would not be). Broadening to
- * the other value-bearing predicates is a deliberate follow-up.
+ * Editable set: the PRICE levels (take-profit / stop the principal drags) and
+ * the TRAILING_STOP percent — all strictly-positive values, which keeps the
+ * write-path's `value > 0` guard exactly right (a $0 price / 0% trail is
+ * invalid). Every other predicate — earnings surprise %, RSI, time-elapsed
+ * days, SMA, signal, filing, review-date, composites — renders read-only in
+ * the popover. Broadening to those (where 0 can be valid) is a follow-up.
  */
 
 import type { TriggerPredicate } from "./types";
@@ -32,6 +31,8 @@ export function editableTriggerField(
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
       return { label: "Price", value: p.level, prefix: "$", min: 0, step: 0.01 };
+    case "TRAILING_STOP":
+      return { label: "Trail %", value: p.trailPct, suffix: "%", min: 0, step: 0.5 };
     default:
       return null;
   }
@@ -46,6 +47,8 @@ export function withEditedValue(
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
       return { ...p, level: value };
+    case "TRAILING_STOP":
+      return { ...p, trailPct: value };
     default:
       return p;
   }

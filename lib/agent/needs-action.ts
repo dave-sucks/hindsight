@@ -138,6 +138,8 @@ export function describePredicate(p: TriggerPredicate): string {
       return `price < $${p.level}`;
     case "PRICE_ABOVE":
       return `price > $${p.level}`;
+    case "TRAILING_STOP":
+      return `trailing stop ${p.trailPct}% from peak`;
     case "PRICE_MOVE_PCT":
       return `${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}`;
     case "VS_SMA":

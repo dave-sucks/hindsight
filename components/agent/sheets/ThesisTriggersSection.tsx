@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Zap, Clock, Loader2 } from "lucide-react";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,7 @@ interface TriggerPredicate {
   minSurprisePct?: number;
   formType?: string;
   days?: number;
+  trailPct?: number;
   predicates?: TriggerPredicate[];
 }
 
@@ -288,6 +290,8 @@ function predicateKindValue(p: TriggerPredicate): {
       return { kind: "price above", value: `$${p.level ?? "?"}` };
     case "PRICE_BELOW":
       return { kind: "price below", value: `$${p.level ?? "?"}` };
+    case "TRAILING_STOP":
+      return { kind: "trailing stop", value: `${p.trailPct ?? "?"}%` };
     case "PRICE_MOVE_PCT":
       return {
         kind: `price ${p.direction === "UP" ? "up" : "down"} ${p.window ?? ""}`.trim(),
@@ -357,6 +361,8 @@ function predicateDescription(p: TriggerPredicate): string {
       return `Fires when last quote crosses above $${p.level}.`;
     case "PRICE_BELOW":
       return `Fires when last quote crosses below $${p.level}.`;
+    case "TRAILING_STOP":
+      return `Exits when price falls ${p.trailPct}% below its peak since entry. Trails up as the position runs.`;
     case "PRICE_MOVE_PCT":
       return `Fires when price moves ${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}.`;
     case "VS_SMA":
@@ -423,11 +429,13 @@ function fmtFiredAt(iso?: string): string {
 function TriggerPill({
   trigger,
   thesisId,
+  direction,
   editable,
   onChanged,
 }: {
   trigger: Trigger;
   thesisId: string;
+  direction: "LONG" | "SHORT" | null;
   editable: boolean;
   onChanged?: () => void;
 }) {
@@ -462,6 +470,7 @@ function TriggerPill({
       <TriggerPopoverContent
         trigger={trigger}
         thesisId={thesisId}
+        direction={direction}
         editable={editable}
         onChanged={onChanged}
       />
@@ -481,11 +490,13 @@ function TriggerPill({
 function TriggerPopoverContent({
   trigger,
   thesisId,
+  direction,
   editable,
   onChanged,
 }: {
   trigger: Trigger;
   thesisId: string;
+  direction: "LONG" | "SHORT" | null;
   editable: boolean;
   onChanged?: () => void;
 }) {
@@ -493,6 +504,17 @@ function TriggerPopoverContent({
     trigger.predicate as unknown as SharedTriggerPredicate,
   );
   const canEdit = editable && field != null;
+
+  // The stop trigger is convertible to/from a trailing stop. LONG stops are a
+  // PRICE_BELOW EXIT, SHORT stops a PRICE_ABOVE EXIT; a TRAILING_STOP is already
+  // converted. (A LONG take-profit is PRICE_ABOVE — direction keeps us off it.)
+  const stopKind = direction === "SHORT" ? "PRICE_ABOVE" : "PRICE_BELOW";
+  const isTrailing = trigger.predicate.kind === "TRAILING_STOP";
+  // The toggle only belongs on the EXIT stop trigger (fixed or trailing) — never
+  // on a take-profit or a non-EXIT trigger that merely carries a price predicate.
+  const isStopTrigger =
+    trigger.action === "EXIT" &&
+    (isTrailing || trigger.predicate.kind === stopKind);
   const { kind: kindLabel, value: displayValue } = predicateKindValue(
     trigger.predicate,
   );
@@ -535,6 +557,23 @@ function TriggerPopoverContent({
     }
   }
 
+  async function setTrailing(next: boolean) {
+    setPending(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/theses/${thesisId}/triggers/${trigger.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ trailing: next }),
+      });
+      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+      onChanged?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setPending(false);
+    }
+  }
+
   return (
     <PopoverContent side="left" align="start" className="w-72 space-y-3">
       {/* Label + full-width input (editable or read-only) */}
@@ -564,6 +603,20 @@ function TriggerPopoverContent({
           <Input value={displayValue ?? kindLabel} readOnly disabled />
         )}
       </div>
+
+      {/* Trailing toggle — only on the stop trigger. Flips fixed ↔ trailing. */}
+      {editable && isStopTrigger ? (
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Trailing stop
+          </span>
+          <Switch
+            checked={isTrailing}
+            onCheckedChange={(v) => void setTrailing(v)}
+            disabled={pending}
+          />
+        </div>
+      ) : null}
 
       {/* Explainer + rationale */}
       <div className="space-y-1 text-xs">
@@ -632,11 +685,13 @@ const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = [
 function TriggerGroups({
   triggers,
   thesisId,
+  direction,
   editable,
   onChanged,
 }: {
   triggers: Trigger[];
   thesisId: string;
+  direction: "LONG" | "SHORT" | null;
   editable: boolean;
   onChanged?: () => void;
 }) {
@@ -665,6 +720,7 @@ function TriggerGroups({
                 key={t.id}
                 trigger={t}
                 thesisId={thesisId}
+                direction={direction}
                 editable={editable}
                 onChanged={onChanged}
               />
@@ -682,6 +738,8 @@ interface Props {
   thesisId: string;
   /** Pre-fetched response. When omitted, the section fetches itself. */
   data?: TriggersResponse | null;
+  /** Thesis direction — disambiguates the stop trigger for the trailing toggle. */
+  direction?: "LONG" | "SHORT" | null;
   /** When true, value-bearing triggers become editable in the popover. */
   editable?: boolean;
   /** Called after a successful trigger-value edit so the parent can refresh. */
@@ -691,6 +749,7 @@ interface Props {
 export function ThesisTriggersSection({
   thesisId,
   data: dataProp,
+  direction = null,
   editable = false,
   onChanged,
 }: Props) {
@@ -742,6 +801,7 @@ export function ThesisTriggersSection({
     <TriggerGroups
       triggers={data.triggers}
       thesisId={thesisId}
+      direction={direction}
       editable={editable}
       onChanged={onChanged}
     />
