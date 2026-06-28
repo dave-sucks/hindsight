@@ -167,6 +167,19 @@ export const triggerSchema = z.object({
       "Don't re-fire this trigger more than once per N days. OMIT to use the per-predicate-kind default (EARNINGS_*: 7, FILING/SIGNAL_TYPE/PRICE_*: 1, TIME_ELAPSED: ~80% of window, REVIEW_DATE_HIT: 7) — that's the right answer in almost every case. The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT.",
     ),
   lastFiredAt: z.string().datetime().optional(),
+  fireMode: z
+    .enum(["TACTICAL", "DIRECT"])
+    .default("TACTICAL")
+    .describe(
+      // How a fired trigger is acted on. TACTICAL (default) wakes a GPT-5.5
+      // tactical run that evaluates + decides. DIRECT skips the agent and
+      // closes the position directly via closeOpenPosition — EXIT-only, and
+      // still routed through the approval gate (it saves the tactical-run
+      // cost, not the approval step). The .default keeps legacy triggers
+      // (and agent-minted ones that omit it) on the historical TACTICAL
+      // behavior; the UI add-path opts new EXIT stops into DIRECT explicitly.
+      "How a fired trigger is acted on: TACTICAL (wake a tactical run, default) or DIRECT (close directly, no agent — EXIT-only, still approval-gated).",
+    ),
 });
 
 export const triggersArraySchema = z

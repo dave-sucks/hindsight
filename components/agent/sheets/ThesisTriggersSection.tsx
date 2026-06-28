@@ -21,7 +21,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Zap, Clock, Loader2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Zap, Clock, Loader2, Plus, Trash2 } from "lucide-react";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +57,8 @@ interface Trigger {
   rationale: string;
   cooldownDays?: number;
   lastFiredAt?: string;
+  /** "TACTICAL" (wake an agent) | "DIRECT" (close directly, no agent). Absent ⇒ TACTICAL. */
+  fireMode?: "TACTICAL" | "DIRECT";
 }
 
 // Position info from /triggers — quantity + cost basis + days held only.
@@ -261,8 +270,12 @@ export interface ThesisResearchSections {
 import {
   predicateSentence as sharedPredicateSentence,
   actionGroupLabel,
+  fireModeLabel,
 } from "@/lib/agent/triggers/format";
-import type { TriggerPredicate as SharedTriggerPredicate } from "@/lib/agent/triggers/types";
+import {
+  isDirectEligiblePredicate,
+  type TriggerPredicate as SharedTriggerPredicate,
+} from "@/lib/agent/triggers/types";
 
 function predicateSentence(p: TriggerPredicate): string {
   return sharedPredicateSentence(p as SharedTriggerPredicate);
@@ -431,12 +444,14 @@ function TriggerPill({
   thesisId,
   direction,
   editable,
+  held,
   onChanged,
 }: {
   trigger: Trigger;
   thesisId: string;
   direction: "LONG" | "SHORT" | null;
   editable: boolean;
+  held: boolean;
   onChanged?: () => void;
 }) {
   const { kind, value } = predicateKindValue(trigger.predicate);
@@ -472,6 +487,7 @@ function TriggerPill({
         thesisId={thesisId}
         direction={direction}
         editable={editable}
+        held={held}
         onChanged={onChanged}
       />
     </Popover>
@@ -492,12 +508,15 @@ function TriggerPopoverContent({
   thesisId,
   direction,
   editable,
+  held,
   onChanged,
 }: {
   trigger: Trigger;
   thesisId: string;
   direction: "LONG" | "SHORT" | null;
   editable: boolean;
+  /** Thesis is HOLDING (has an open position) — gates the DIRECT fire-mode control. */
+  held: boolean;
   onChanged?: () => void;
 }) {
   const field = editableTriggerField(
@@ -574,6 +593,49 @@ function TriggerPopoverContent({
     }
   }
 
+  async function setFireMode(next: "TACTICAL" | "DIRECT") {
+    setPending(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/theses/${thesisId}/triggers/${trigger.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fireMode: next }),
+      });
+      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+      onChanged?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setPending(false);
+    }
+  }
+
+  async function remove() {
+    setPending(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/theses/${thesisId}/triggers/${trigger.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+      onChanged?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setPending(false);
+    }
+  }
+
+  // DIRECT (close without an agent) is only meaningful on a price/trailing
+  // EXIT trigger of a held position — mirror applyTriggerFireModeChange. A
+  // judgment-bearing EXIT (earnings, signal, etc.) keeps the TACTICAL path,
+  // so we don't offer the control there.
+  const showFireMode =
+    editable &&
+    trigger.action === "EXIT" &&
+    held &&
+    isDirectEligiblePredicate(trigger.predicate.kind);
+  const fireMode = trigger.fireMode ?? "TACTICAL";
+
   return (
     <PopoverContent side="left" align="start" className="w-72 space-y-3">
       {/* Label + full-width input (editable or read-only) */}
@@ -618,6 +680,29 @@ function TriggerPopoverContent({
         </div>
       ) : null}
 
+      {/* On fire — TACTICAL (wake an agent) vs DIRECT (close directly, no
+          agent; still approval-gated). EXIT triggers on a held position only. */}
+      {showFireMode ? (
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            On fire
+          </span>
+          <Select
+            value={fireMode}
+            onValueChange={(v) => void setFireMode(v as "TACTICAL" | "DIRECT")}
+            disabled={pending}
+          >
+            <SelectTrigger size="sm">
+              <SelectValue>{fireModeLabel(fireMode)}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TACTICAL">{fireModeLabel("TACTICAL")}</SelectItem>
+              <SelectItem value="DIRECT">{fireModeLabel("DIRECT")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+
       {/* Explainer + rationale */}
       <div className="space-y-1 text-xs">
         <p className="text-muted-foreground">
@@ -644,23 +729,38 @@ function TriggerPopoverContent({
 
       {err ? <p className="text-xs text-destructive">{err}</p> : null}
 
-      {dirty ? (
-        <div className="flex justify-end gap-2">
+      {/* Footer: Remove on the left (always available when editable), Save/Cancel
+          on the right once the value is changed. */}
+      {editable ? (
+        <div className="flex items-center justify-between gap-2">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              setVal(initial);
-              setErr(null);
-            }}
+            onClick={() => void remove()}
             disabled={pending}
           >
-            Cancel
+            <Trash2 className="size-3" />
+            Remove
           </Button>
-          <Button size="sm" onClick={() => void save()} disabled={pending}>
-            {pending ? <Loader2 className="size-3 animate-spin" /> : null}
-            Save
-          </Button>
+          {dirty ? (
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setVal(initial);
+                  setErr(null);
+                }}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button size="sm" onClick={() => void save()} disabled={pending}>
+                {pending ? <Loader2 className="size-3 animate-spin" /> : null}
+                Save
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </PopoverContent>
@@ -687,12 +787,14 @@ function TriggerGroups({
   thesisId,
   direction,
   editable,
+  held,
   onChanged,
 }: {
   triggers: Trigger[];
   thesisId: string;
   direction: "LONG" | "SHORT" | null;
   editable: boolean;
+  held: boolean;
   onChanged?: () => void;
 }) {
   const grouped = new Map<string, Trigger[]>();
@@ -722,6 +824,7 @@ function TriggerGroups({
                 thesisId={thesisId}
                 direction={direction}
                 editable={editable}
+                held={held}
                 onChanged={onChanged}
               />
             ))}
@@ -729,6 +832,230 @@ function TriggerGroups({
         );
       })}
     </div>
+  );
+}
+
+// ── Add-trigger form ────────────────────────────────────────────────────
+// A ghost "+" that opens a Popover form: action + predicate type + value
+// (+ fire mode on a held EXIT). Mints a new Price/Trailing trigger on any
+// action group — the gap-filler for theses missing an Exit stop / Enter /
+// etc. POSTs to /api/theses/:id/triggers; the backend validates against the
+// same Zod schema the agent uses and mirrors canonical stop/target levels.
+
+const PRED_TYPE_LABEL: Record<string, string> = {
+  PRICE_ABOVE: "Price above",
+  PRICE_BELOW: "Price below",
+  TRAILING_STOP: "Trailing %",
+};
+
+type AddPredType = "PRICE_ABOVE" | "PRICE_BELOW" | "TRAILING_STOP";
+
+function AddTriggerPopover({
+  thesisId,
+  held,
+  onChanged,
+}: {
+  thesisId: string;
+  held: boolean;
+  onChanged?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [action, setAction] = useState<string>("EXIT");
+  const [predType, setPredType] = useState<AddPredType>("PRICE_BELOW");
+  const [val, setVal] = useState("");
+  const [fireMode, setFireMode] = useState<"TACTICAL" | "DIRECT">("DIRECT");
+  const [pending, setPending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Trailing stops are EXIT-only and need an open position to trail.
+  const trailingAllowed = action === "EXIT" && held;
+  const showFireMode = action === "EXIT" && held;
+  const isTrailing = predType === "TRAILING_STOP";
+
+  // If trailing is selected but no longer allowed (action moved off EXIT, or
+  // unheld), fall back to a price level so we never submit an invalid combo.
+  useEffect(() => {
+    if (isTrailing && !trailingAllowed) setPredType("PRICE_BELOW");
+  }, [isTrailing, trailingAllowed]);
+
+  // Default fire mode by action — EXIT → DIRECT, else TACTICAL. Mirrors the
+  // server-side defaultFireModeForAction (can't import it here: defaults.ts
+  // pulls node:crypto, which breaks the client bundle).
+  useEffect(() => {
+    setFireMode(action === "EXIT" ? "DIRECT" : "TACTICAL");
+  }, [action]);
+
+  const num = Number(val);
+  const valid =
+    val.trim() !== "" &&
+    Number.isFinite(num) &&
+    num > 0 &&
+    (!isTrailing || num < 100);
+
+  async function save() {
+    if (!valid) return;
+    setPending(true);
+    setErr(null);
+    const predicate = isTrailing
+      ? { kind: "TRAILING_STOP", trailPct: num }
+      : { kind: predType, level: num };
+    try {
+      const res = await fetch(`/api/theses/${thesisId}/triggers`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action,
+          predicate,
+          fireMode: action === "EXIT" ? fireMode : undefined,
+        }),
+      });
+      if (!res.ok) {
+        // Route returns { error } JSON; fall back to status text.
+        let msg = `HTTP ${res.status}`;
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body?.error) msg = body.error;
+        } catch {
+          /* non-JSON body */
+        }
+        throw new Error(msg);
+      }
+      setOpen(false);
+      setVal("");
+      setErr(null);
+      setPending(false);
+      onChanged?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setPending(false);
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button variant="ghost" size="sm">
+            <Plus className="size-3" />
+            Add trigger
+          </Button>
+        }
+      />
+      <PopoverContent side="left" align="start" className="w-72 space-y-3">
+        {/* Action */}
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Action
+          </span>
+          <Select
+            value={action}
+            onValueChange={(v) => {
+              if (typeof v === "string") setAction(v);
+            }}
+            disabled={pending}
+          >
+            <SelectTrigger size="sm">
+              <SelectValue>{actionGroupLabel(action)}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {TRIGGER_ACTION_ORDER.map((a) => (
+                <SelectItem key={a} value={a}>
+                  {actionGroupLabel(a)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Predicate type */}
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Condition
+          </span>
+          <Select
+            value={predType}
+            onValueChange={(v) => setPredType(v as AddPredType)}
+            disabled={pending}
+          >
+            <SelectTrigger size="sm">
+              <SelectValue>{PRED_TYPE_LABEL[predType]}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="PRICE_ABOVE">{PRED_TYPE_LABEL.PRICE_ABOVE}</SelectItem>
+              <SelectItem value="PRICE_BELOW">{PRED_TYPE_LABEL.PRICE_BELOW}</SelectItem>
+              {trailingAllowed ? (
+                <SelectItem value="TRAILING_STOP">
+                  {PRED_TYPE_LABEL.TRAILING_STOP}
+                </SelectItem>
+              ) : null}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Value */}
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {isTrailing ? "Trail %" : "Price"}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {isTrailing ? null : (
+              <span className="text-sm text-muted-foreground">$</span>
+            )}
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={val}
+              min={0}
+              step={isTrailing ? 0.5 : 0.01}
+              onChange={(e) => setVal(e.target.value)}
+              disabled={pending}
+            />
+            {isTrailing ? (
+              <span className="text-sm text-muted-foreground">%</span>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Fire mode (held EXIT only) */}
+        {showFireMode ? (
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              On fire
+            </span>
+            <Select
+              value={fireMode}
+              onValueChange={(v) => setFireMode(v as "TACTICAL" | "DIRECT")}
+              disabled={pending}
+            >
+              <SelectTrigger size="sm">
+                <SelectValue>{fireModeLabel(fireMode)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TACTICAL">{fireModeLabel("TACTICAL")}</SelectItem>
+                <SelectItem value="DIRECT">{fireModeLabel("DIRECT")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+
+        {err ? <p className="text-xs text-destructive">{err}</p> : null}
+
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setOpen(false)}
+            disabled={pending}
+          >
+            Cancel
+          </Button>
+          <Button size="sm" onClick={() => void save()} disabled={pending || !valid}>
+            {pending ? <Loader2 className="size-3 animate-spin" /> : null}
+            Add
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -788,22 +1115,32 @@ export function ThesisTriggersSection({
     return <p className="text-xs text-muted-foreground">Loading triggers…</p>;
   }
 
-  if (data.triggers.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        No triggers attached. Set a horizon when minting this thesis to
-        auto-attach the baseline.
-      </p>
-    );
-  }
+  // HOLDING ⇒ has an open position. Gates the DIRECT fire-mode + trailing
+  // options (both need a live position to act on).
+  const held = data.status === "HOLDING";
 
   return (
-    <TriggerGroups
-      triggers={data.triggers}
-      thesisId={thesisId}
-      direction={direction}
-      editable={editable}
-      onChanged={onChanged}
-    />
+    <div className="space-y-2">
+      {data.triggers.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No triggers attached.{" "}
+          {editable
+            ? "Add one below, or set a horizon when minting to auto-attach the baseline."
+            : "Set a horizon when minting this thesis to auto-attach the baseline."}
+        </p>
+      ) : (
+        <TriggerGroups
+          triggers={data.triggers}
+          thesisId={thesisId}
+          direction={direction}
+          editable={editable}
+          held={held}
+          onChanged={onChanged}
+        />
+      )}
+      {editable ? (
+        <AddTriggerPopover thesisId={thesisId} held={held} onChanged={onChanged} />
+      ) : null}
+    </div>
   );
 }

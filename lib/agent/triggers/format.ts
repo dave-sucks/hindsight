@@ -122,6 +122,22 @@ export function describeTriggerFire(trigger: Trigger): string {
  *   EXIT      → "Exit if"
  *   REVIEW    → "Review if"
  */
+/**
+ * Short label for a trigger's fire mode — used in the trigger popover's
+ * "On fire" control and the add-trigger form.
+ *
+ *   TACTICAL → "Review (wake an agent)"
+ *   DIRECT   → "Exit immediately (no agent)"
+ *
+ * DIRECT is only meaningful on EXIT triggers; callers gate the control on
+ * action === "EXIT".
+ */
+export function fireModeLabel(mode: "TACTICAL" | "DIRECT"): string {
+  return mode === "DIRECT"
+    ? "Exit immediately (no agent)"
+    : "Review (wake an agent)";
+}
+
 export function actionGroupLabel(action: string): string {
   switch (action) {
     case "ENTER":

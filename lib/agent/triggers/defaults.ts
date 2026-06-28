@@ -750,6 +750,26 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
  * 14d REVIEW, the old `!= null` check walked past it, and the loop
  * fired 15 times in 70 min before manual hotfix. See `docs/GAPS.md`.
  */
+/**
+ * Default fire mode for a manually-added trigger, keyed off action. A
+ * deterministic EXIT (hard stop / trailing stop / take-profit level) has
+ * nothing for an agent to decide, so it closes DIRECT — skipping the
+ * GPT-5.5 tactical run (the principal's cost driver, TRIGGER_FOLLOWUPS #3).
+ * It still flows through the approval gate. Every other action keeps the
+ * judgment-bearing TACTICAL path.
+ *
+ * Scope note: this drives the UI add-path + popover only. The horizon
+ * default templates intentionally do NOT call it — they omit fireMode, so
+ * agent-minted EXIT stops stay on the historical TACTICAL behavior until
+ * the principal opts a specific trigger into DIRECT. Changing the mass-mint
+ * default is a separate decision.
+ */
+export function defaultFireModeForAction(
+  action: Trigger["action"],
+): "TACTICAL" | "DIRECT" {
+  return action === "EXIT" ? "DIRECT" : "TACTICAL";
+}
+
 export function applyTriggerCooldownDefaults(triggers: Trigger[]): Trigger[] {
   return triggers.map((t) => {
     const needsDefault =
