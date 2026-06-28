@@ -21,11 +21,6 @@ _None open._ The 2026-06-04 → 08 post-launch sprint cleared the live-loop bloc
 
 ## P1 — Quality is degraded but the live loop functions
 
-### P1-26 — Drop the legacy briefing tables (code already deleted)
-**Status:** open; code shipped 2026-06-22 (#451). The legacy per-analyst briefing systems (`AnalystBriefing` + `MorningBrief`) are dead — replaced by the account-level **Portfolio Digest** (#433/#434/#436). **#451 deleted all the CODE** that read/wrote/displayed them (the writer, the brief UI, the `/intelligence` Briefs tab, the run-detail brief card, `getAnalystDetail` briefings/morningBriefs, the types, the workflow-registry entry). Gate verified in prod first: 0 `AnalystBriefing` writes since #433 (06-18).
-
-**Remaining (only the irreversible step):** the table-drop PR (`chore/p1-26-drop-tables`) removes the last 4 code refs #451 missed (`read-run`'s `run.briefing`, the health-tab `morningBrief.count`, the `analystBriefing.deleteMany` cascade, and the `read_database` string allowlist), removes the two Prisma models + relation fields, fixes the stale `modes.ts` schema doc, and adds the `DROP TABLE` migration (`20260626120000_drop_legacy_briefing_tables`). The migration is **not yet applied** — deploy doesn't auto-run migrations, so merging is safe; the actual DROP (641 + 120 rows, irreversible) is a deliberate MCP apply gated on principal go. Intelligence core + podcast `PodcastSegmentBriefing` untouched. **Closes when the DROP is applied to prod.**
-
 ### P1-29 — Reject-message instructions are write-only (the agent never acts on them)
 **Status:** open, filed 2026-06-22 (principal; verified against prod, read-only). Severity: **P1 behavior + trust** — the user gives the agent an explicit instruction in the reject dialog and it's silently ignored, run after run.
 
