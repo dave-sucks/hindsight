@@ -865,12 +865,10 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
   return (
     <div className="overflow-y-auto h-[calc(100dvh-3rem)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        <div className="space-y-5">
+        <div className="flex gap-6 items-start">
 
-            {/* Layout: graph first (balance → chart → stat tiles), then the
-                tabbed section (Overview = brief + coverage tables / Activity /
-                Theses). The digest + coverage live inside the Overview tab —
-                see HomeBottomSection — not as standalone sections. */}
+          {/* ══ LEFT column ═════════════════════════════════════════════════ */}
+          <div className="flex-1 min-w-0 space-y-5">
 
             {/* Portfolio header — two labeled figures, mirroring a broker
                 statement: "BALANCE" over total account equity, and
@@ -1245,7 +1243,14 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
             loading={loading}
             coverage={coverage}
           />
-      </div>
+          </div>
+
+          {/* ══ RIGHT column — digest only (desktop) ════════════════════════ */}
+          <div className="hidden lg:block w-80 shrink-0">
+            <DigestPreviewCard digest={digest} />
+          </div>
+
+        </div>
 
       {!loading && (
         <OnboardingChecklist
