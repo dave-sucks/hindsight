@@ -17,6 +17,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -833,7 +840,8 @@ function TriggerGroups({
 }
 
 // ── Add-trigger form ────────────────────────────────────────────────────
-// A ghost "+" that opens a Popover form mirroring the Price-alert modal:
+// A ghost "+" that opens a Dialog (modal — safer than a popover on mobile)
+// mirroring the Price-alert modal:
 //   • Action      — Enter / Exit / Review / …
 //   • Criterion   — Target Price (a fixed $ level) | Movement Amount (a % move)
 //   • Direction   — above/below (price)  ·  up/down (movement)
@@ -845,7 +853,7 @@ function TriggerGroups({
 
 type AddCriterion = "PRICE" | "MOVE";
 
-function AddTriggerPopover({
+function AddTriggerDialog({
   thesisId,
   held,
   onChanged,
@@ -936,8 +944,8 @@ function AddTriggerPopover({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
         render={
           <Button variant="ghost" size="sm">
             <Plus className="size-3" />
@@ -945,7 +953,11 @@ function AddTriggerPopover({
           </Button>
         }
       />
-      <PopoverContent side="left" align="start" className="w-72 space-y-2.5">
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Add trigger</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2.5">
         {/* Action — full width */}
         <div className="space-y-1">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -1096,8 +1108,9 @@ function AddTriggerPopover({
             Add
           </Button>
         </div>
-      </PopoverContent>
-    </Popover>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1181,7 +1194,7 @@ export function ThesisTriggersSection({
         />
       )}
       {editable ? (
-        <AddTriggerPopover thesisId={thesisId} held={held} onChanged={onChanged} />
+        <AddTriggerDialog thesisId={thesisId} held={held} onChanged={onChanged} />
       ) : null}
     </div>
   );
