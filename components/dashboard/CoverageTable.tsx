@@ -16,6 +16,7 @@ import {
 import { getTradeStatusDisplay } from "@/lib/trade-status";
 import { cn } from "@/lib/utils";
 import { PriceChange } from "@/components/ui/price-change";
+import { PnlBadge } from "@/components/ui/pnl-badge";
 import { formatCurrency } from "@/lib/format";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
@@ -43,7 +44,7 @@ function Pct({ value }: { value: number | null }) {
   if (value == null) return <span className="text-muted-foreground/40">—</span>;
   const flat = Math.abs(value) < FLAT_BAND_PCT;
   if (flat) return <span className="tabular-nums text-sm text-muted-foreground">{value >= 0 ? "+" : ""}{value.toFixed(2)}%</span>;
-  return <PriceChange dollarChange={value} percentOnly size="sm" className="justify-end" />;
+  return <PnlBadge value={value} format="percent" className="text-xs" />;
 }
 
 // ── Name cell ─────────────────────────────────────────────────────────────────
@@ -82,27 +83,26 @@ function NameCell({ row }: { row: CoverageRow }) {
 function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: MobileView }) {
   const isLifetime = mobileView === "lifetime";
   const pct = isLifetime ? row.sincePct : row.oneDayPct;
-  // Dollar only available for lifetime on trades; 1D has no dollar field
+  // Dollar gain only for lifetime on trades (1D has no dollar field)
   const dollar = isLifetime && row.tradeState != null ? row.sinceDollar : null;
 
   return (
     <div className="flex flex-col items-end gap-0.5">
-      {/* Price — only rendered on mobile since desktop has a dedicated Price column */}
+      {/* Price — only on mobile since desktop has a dedicated Price column */}
       {row.currentPrice != null && (
         <span className="md:hidden text-sm tabular-nums font-light">
           ${row.currentPrice.toFixed(2)}
         </span>
       )}
-      {pct != null ? (
-        <PriceChange
-          dollarChange={dollar ?? pct}
-          percentChange={dollar != null ? pct : null}
-          percentOnly={dollar == null}
-          size="sm"
-          className="justify-end"
-        />
-      ) : (
+      {pct == null ? (
         <span className="text-muted-foreground/40 text-xs">—</span>
+      ) : (
+        <span className="inline-flex items-center gap-1.5 justify-end">
+          {dollar != null && (
+            <PriceChange dollarChange={dollar} percentOnly size="sm" />
+          )}
+          <PnlBadge value={pct} format="percent" className="text-xs" />
+        </span>
       )}
     </div>
   );
@@ -142,9 +142,9 @@ function CoverageTab({
             <TableHead className="hidden md:table-cell text-right">1D</TableHead>
             <TableHead className="hidden md:table-cell text-right">5D</TableHead>
             <TableHead className="hidden md:table-cell text-right">30D</TableHead>
-            {/* Last column — "Lifetime" label on desktop, toggle on mobile */}
+            {/* Last column — "Gain" label on desktop, toggle on mobile */}
             <TableHead className="text-right">
-              <span className="hidden md:inline">Lifetime</span>
+              <span className="hidden md:inline">Gain</span>
               {/* Mobile toggle — same pill style as the chart range tabs */}
               <div className="md:hidden inline-flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
                 {(["lifetime", "1d"] as MobileView[]).map((v) => (
