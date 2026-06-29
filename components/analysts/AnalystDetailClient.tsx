@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useTransition, type ReactNode } from "react";
+import { useState, useMemo, useEffect, useTransition, type ReactNode } from "react";
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
 import {
   ChartContainer,
@@ -71,8 +71,15 @@ import { useRouter } from "next/navigation";
 import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
 import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
+import type { StockCandle } from "@/lib/actions/finnhub.actions";
 
-function thesisCardToRowData(t: ThesisCardData): ThesisRowData {
+type QuoteMap = Record<string, { price: number; change: number; changePct: number }>;
+
+function thesisCardToRowData(
+  t: ThesisCardData,
+  candles?: StockCandle[],
+  quote?: { price: number; change: number; changePct: number },
+): ThesisRowData {
   return {
     id: t.thesis_id ?? t.ticker,
     ticker: t.ticker,
@@ -86,6 +93,9 @@ function thesisCardToRowData(t: ThesisCardData): ThesisRowData {
     companyName: t.company_name ?? null,
     thesisBullets: t.thesis_bullets,
     riskFlags: t.risk_flags,
+    candles,
+    currentPrice: quote?.price ?? null,
+    priceChange: quote ? { amount: quote.change, percent: quote.changePct } : null,
   };
 }
 
@@ -227,6 +237,45 @@ function matchesThesisFilter(t: ThesisCardData, f: ThesisStatusFilter): boolean 
 
 /** The thesis grid + empty state. Shared by Snapshot (active) and Theses (all). */
 function ThesesGrid({ theses, emptyLabel }: { theses: ThesisCardData[]; emptyLabel: string }) {
+  const [candlesByTicker, setCandlesByTicker] = useState<Record<string, StockCandle[]>>({});
+  const [quotesByTicker, setQuotesByTicker] = useState<QuoteMap>({});
+
+  const chartTickers = useMemo(
+    () => [...new Set(theses.filter((t) => t.status === "WATCHING" || t.status === "HOLDING").map((t) => t.ticker))].sort(),
+    [theses],
+  );
+  const allTickers = useMemo(() => [...new Set(theses.map((t) => t.ticker))].sort(), [theses]);
+
+  useEffect(() => {
+    if (!chartTickers.length) return;
+    let cancelled = false;
+    fetch(`/api/stocks/candles?symbols=${encodeURIComponent(chartTickers.join(","))}&days=40`)
+      .then(async (r) => {
+        if (!r.ok || cancelled) return;
+        const json = (await r.json()) as { candles: Record<string, StockCandle[]> };
+        if (!cancelled) setCandlesByTicker((prev) => ({ ...prev, ...json.candles }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [chartTickers.join(",")]);
+
+  useEffect(() => {
+    if (!allTickers.length) return;
+    let cancelled = false;
+    fetch(`/api/quotes?symbols=${encodeURIComponent(allTickers.join(","))}`)
+      .then(async (r) => {
+        if (!r.ok || cancelled) return;
+        const json = (await r.json()) as { quotes: { symbol: string; price: number; change: number; changePct: number }[] };
+        if (!cancelled) {
+          const map: QuoteMap = {};
+          for (const q of json.quotes) map[q.symbol.toUpperCase()] = q;
+          setQuotesByTicker(map);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [allTickers.join(",")]);
+
   if (theses.length === 0) {
     return (
       <div className="w-full mx-auto px-4 py-6">
@@ -240,7 +289,15 @@ function ThesesGrid({ theses, emptyLabel }: { theses: ThesisCardData[]; emptyLab
     <div className="w-full mx-auto px-4 py-6">
       <div className="space-y-2">
         {theses.map((t) => (
-          <ThesisRow key={t.thesis_id ?? `${t.ticker}-${t.direction}`} thesis={thesisCardToRowData(t)} showTicker />
+          <ThesisRow
+            key={t.thesis_id ?? `${t.ticker}-${t.direction}`}
+            thesis={thesisCardToRowData(
+              t,
+              candlesByTicker[t.ticker.toUpperCase()],
+              quotesByTicker[t.ticker.toUpperCase()],
+            )}
+            showTicker
+          />
         ))}
       </div>
     </div>
