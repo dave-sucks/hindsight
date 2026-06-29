@@ -17,7 +17,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -33,6 +32,7 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "@/components/ui/input-group";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Zap, Clock, Loader2, Plus, Trash2, Calendar } from "lucide-react";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import { cn } from "@/lib/utils";
@@ -945,9 +945,9 @@ function AddTriggerPopover({
           </Button>
         }
       />
-      <PopoverContent side="left" align="start" className="w-72 space-y-3">
-        {/* Action */}
-        <div className="space-y-1.5">
+      <PopoverContent side="left" align="start" className="w-72 space-y-2.5">
+        {/* Action — full width */}
+        <div className="space-y-1">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Action
           </span>
@@ -958,7 +958,7 @@ function AddTriggerPopover({
             }}
             disabled={pending}
           >
-            <SelectTrigger size="sm">
+            <SelectTrigger className="w-full">
               <SelectValue>{actionGroupLabel(action)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -971,92 +971,92 @@ function AddTriggerPopover({
           </Select>
         </div>
 
-        {/* Criterion — Target Price vs Movement Amount */}
-        <div className="space-y-1.5">
+        {/* Criterion — full-width segmented tabs (graph date-range style) */}
+        <div className="space-y-1">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Criterion
           </span>
+          <div className="flex items-center gap-0.5 rounded-md border p-0.5">
+            {(
+              [
+                { v: "PRICE", l: "$ Price" },
+                { v: "MOVE", l: "% Movement" },
+              ] as const
+            ).map((o) => (
+              <button
+                key={o.v}
+                type="button"
+                onClick={() => setCriterion(o.v)}
+                disabled={pending}
+                className={cn(
+                  "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                  criterion === o.v
+                    ? "bg-muted text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {o.l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Direction select + value input as one full-width button group:
+            [ Above ▾ | $ ____ ]  ·  [ Up ▾ | ____ % ] */}
+        <ButtonGroup className="w-full">
           <Select
-            value={criterion}
+            value={dir}
             onValueChange={(v) => {
-              if (v === "PRICE" || v === "MOVE") setCriterion(v);
+              if (typeof v === "string") setDir(v);
             }}
             disabled={pending}
           >
-            <SelectTrigger size="sm">
+            <SelectTrigger>
               <SelectValue>
-                {isMove ? "Movement Amount" : "Target Price"}
+                {dirOptions.find((o) => o.v === dir)?.l ?? ""}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="PRICE">Target Price</SelectItem>
-              <SelectItem value="MOVE">Movement Amount</SelectItem>
+              {dirOptions.map((o) => (
+                <SelectItem key={o.v} value={o.v}>
+                  {o.l}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-        </div>
-
-        {/* Direction + value, side by side */}
-        <div className="flex items-end gap-2">
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Direction
-            </span>
-            <Select
-              value={dir}
-              onValueChange={(v) => {
-                if (typeof v === "string") setDir(v);
-              }}
+          <InputGroup>
+            {isMove ? null : (
+              <InputGroupAddon>
+                <InputGroupText>$</InputGroupText>
+              </InputGroupAddon>
+            )}
+            <InputGroupInput
+              type="number"
+              inputMode="decimal"
+              value={val}
+              min={0}
+              step={isMove ? 0.5 : 0.01}
+              placeholder={isMove ? "5" : "0.00"}
+              onChange={(e) => setVal(e.target.value)}
               disabled={pending}
-            >
-              <SelectTrigger size="sm">
-                <SelectValue>
-                  {dirOptions.find((o) => o.v === dir)?.l ?? ""}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {dirOptions.map((o) => (
-                  <SelectItem key={o.v} value={o.v}>
-                    {o.l}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            />
+            {isMove ? (
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>%</InputGroupText>
+              </InputGroupAddon>
+            ) : null}
+          </InputGroup>
+        </ButtonGroup>
 
-          <div className="flex-1 space-y-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {isMove ? "Move %" : "Price"}
-            </span>
-            <div className="flex items-center gap-1.5">
-              {isMove ? null : (
-                <span className="text-sm text-muted-foreground">$</span>
-              )}
-              <Input
-                type="number"
-                inputMode="decimal"
-                value={val}
-                min={0}
-                step={isMove ? 0.5 : 0.01}
-                onChange={(e) => setVal(e.target.value)}
-                disabled={pending}
-              />
-              {isMove ? (
-                <span className="text-sm text-muted-foreground">%</span>
-              ) : null}
-            </div>
-          </div>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          {isMove
+            ? `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much on the day (vs prior close).`
+            : `Fires when the last quote crosses ${dir === "ABOVE" ? "above" : "below"} your price.`}
+        </p>
 
-        {isMove ? (
-          <p className="text-xs text-muted-foreground">
-            Fires when the stock is {dir === "UP" ? "up" : "down"} this much on
-            the day (vs prior close).
-          </p>
-        ) : null}
-
-        {/* Fire mode (held EXIT only) */}
+        {/* On fire (held EXIT only) — full width, our verbs */}
         {showFireMode ? (
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               On fire
             </span>
@@ -1065,7 +1065,7 @@ function AddTriggerPopover({
               onValueChange={(v) => setFireMode(v as "TACTICAL" | "DIRECT")}
               disabled={pending}
             >
-              <SelectTrigger size="sm" className="w-full">
+              <SelectTrigger className="w-full">
                 <SelectValue>{fireModeLabel(fireMode, action)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
