@@ -27,7 +27,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Zap, Clock, Loader2, Plus, Trash2 } from "lucide-react";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group";
+import { Zap, Clock, Loader2, Plus, Trash2, Calendar } from "lucide-react";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import { cn } from "@/lib/utils";
 
@@ -530,7 +536,22 @@ function TriggerPopoverContent({
   const { kind: kindLabel, value: displayValue } = predicateKindValue(
     trigger.predicate,
   );
-  const fieldLabel = `${actionGroupLabel(trigger.action)} · ${kindLabel}`;
+  // Sentence title in foreground — "Exit if price below", "Review if up".
+  const fieldLabel = `${actionGroupLabel(trigger.action)} ${kindLabel}`;
+
+  // Input-group adornments. Price → leading "$"; movement → leading
+  // direction + trailing "%"; trailing-stop → trailing "%"; time-based →
+  // leading calendar icon (read-only).
+  const pk = trigger.predicate.kind;
+  const moveDir =
+    pk === "PRICE_MOVE_PCT"
+      ? trigger.predicate.direction === "UP"
+        ? "Up"
+        : "Down"
+      : null;
+  const leadingText = field?.prefix ?? moveDir;
+  const trailingText = field?.suffix ?? null;
+  const leadingIcon = pk === "TIME_ELAPSED" || pk === "REVIEW_DATE_HIT";
 
   const initial = field?.value != null ? String(field.value) : "";
   const [val, setVal] = useState(initial);
@@ -613,18 +634,22 @@ function TriggerPopoverContent({
   const fireMode = trigger.fireMode ?? "TACTICAL";
 
   return (
-    <PopoverContent side="left" align="start" className="w-72 space-y-3">
-      {/* Label + full-width input (editable or read-only) */}
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {fieldLabel}
-        </p>
-        {canEdit ? (
-          <div className="flex items-center gap-1.5">
-            {field?.prefix ? (
-              <span className="text-sm text-muted-foreground">{field.prefix}</span>
-            ) : null}
-            <Input
+    <PopoverContent side="left" align="start" className="w-72 space-y-2.5">
+      {/* Title (sentence, foreground) + full-width input group */}
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-foreground">{fieldLabel}</p>
+        <InputGroup>
+          {leadingIcon ? (
+            <InputGroupAddon>
+              <Calendar />
+            </InputGroupAddon>
+          ) : leadingText ? (
+            <InputGroupAddon>
+              <InputGroupText>{leadingText}</InputGroupText>
+            </InputGroupAddon>
+          ) : null}
+          {canEdit ? (
+            <InputGroupInput
               type="number"
               inputMode="decimal"
               value={val}
@@ -633,19 +658,22 @@ function TriggerPopoverContent({
               onChange={(e) => setVal(e.target.value)}
               disabled={pending}
             />
-            {field?.suffix ? (
-              <span className="text-sm text-muted-foreground">{field.suffix}</span>
-            ) : null}
-          </div>
-        ) : (
-          <Input value={displayValue ?? kindLabel} readOnly disabled />
-        )}
+          ) : (
+            <InputGroupInput value={displayValue ?? kindLabel} readOnly disabled />
+          )}
+          {canEdit && trailingText ? (
+            <InputGroupAddon align="inline-end">
+              <InputGroupText>{trailingText}</InputGroupText>
+            </InputGroupAddon>
+          ) : null}
+        </InputGroup>
       </div>
 
-      {/* On fire — TACTICAL (wake an agent) vs DIRECT (close directly, no
-          agent; still approval-gated). EXIT triggers on a held position only. */}
+      {/* On fire — Trigger Tactical Run (agent decides) vs Automatically
+          Exit (no agent; still approval-gated). EXIT triggers on a held
+          position only. */}
       {showFireMode ? (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             On fire
           </span>
@@ -654,75 +682,82 @@ function TriggerPopoverContent({
             onValueChange={(v) => void setFireMode(v as "TACTICAL" | "DIRECT")}
             disabled={pending}
           >
-            <SelectTrigger size="sm">
-              <SelectValue>{fireModeLabel(fireMode)}</SelectValue>
+            <SelectTrigger size="sm" className="w-full">
+              <SelectValue>{fireModeLabel(fireMode, trigger.action)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="TACTICAL">{fireModeLabel("TACTICAL")}</SelectItem>
-              <SelectItem value="DIRECT">{fireModeLabel("DIRECT")}</SelectItem>
+              <SelectItem value="TACTICAL">
+                {fireModeLabel("TACTICAL", trigger.action)}
+              </SelectItem>
+              <SelectItem value="DIRECT">
+                {fireModeLabel("DIRECT", trigger.action)}
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
       ) : null}
 
-      {/* Explainer + rationale */}
-      <div className="space-y-1 text-xs">
-        <p className="text-muted-foreground">
+      {/* One-paragraph explainer: what it does (foreground) + the writer's
+          rationale (muted), flowing together. */}
+      <p className="text-xs leading-relaxed">
+        <span className="text-foreground">
           {predicateDescription(trigger.predicate)}
-        </p>
+        </span>
         {trigger.rationale ? (
-          <p className="text-foreground leading-relaxed">{trigger.rationale}</p>
+          <span className="text-muted-foreground"> {trigger.rationale}</span>
         ) : null}
-      </div>
+      </p>
 
-      {/* Metadata badges */}
-      <div className="flex flex-wrap gap-1.5">
-        <Badge variant="secondary">
-          <Zap className="size-3" />
-          {trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}` : "Never fired"}
-        </Badge>
-        {trigger.cooldownDays ? (
-          <Badge variant="secondary">
-            <Clock className="size-3" />
-            {trigger.cooldownDays}d cooldown
-          </Badge>
-        ) : null}
-      </div>
+      {/* Metadata — fired (only when set) · cooldown · delete (icon only) */}
+      {trigger.lastFiredAt || trigger.cooldownDays || editable ? (
+        <div className="flex items-center gap-1.5">
+          {trigger.lastFiredAt ? (
+            <Badge variant="secondary">
+              <Zap className="size-3" />
+              Fired {fmtFiredAt(trigger.lastFiredAt)}
+            </Badge>
+          ) : null}
+          {trigger.cooldownDays ? (
+            <Badge variant="secondary">
+              <Clock className="size-3" />
+              {trigger.cooldownDays}d cooldown
+            </Badge>
+          ) : null}
+          {editable ? (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="ml-auto"
+              onClick={() => void remove()}
+              disabled={pending}
+              aria-label="Remove trigger"
+            >
+              <Trash2 />
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {err ? <p className="text-xs text-destructive">{err}</p> : null}
 
-      {/* Footer: Remove on the left (always available when editable), Save/Cancel
-          on the right once the value is changed. */}
-      {editable ? (
-        <div className="flex items-center justify-between gap-2">
+      {/* Save / Cancel — only once the value is changed. */}
+      {dirty ? (
+        <div className="flex justify-end gap-2">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => void remove()}
+            onClick={() => {
+              setVal(initial);
+              setErr(null);
+            }}
             disabled={pending}
           >
-            <Trash2 className="size-3" />
-            Remove
+            Cancel
           </Button>
-          {dirty ? (
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setVal(initial);
-                  setErr(null);
-                }}
-                disabled={pending}
-              >
-                Cancel
-              </Button>
-              <Button size="sm" onClick={() => void save()} disabled={pending}>
-                {pending ? <Loader2 className="size-3 animate-spin" /> : null}
-                Save
-              </Button>
-            </div>
-          ) : null}
+          <Button size="sm" onClick={() => void save()} disabled={pending}>
+            {pending ? <Loader2 className="size-3 animate-spin" /> : null}
+            Save
+          </Button>
         </div>
       ) : null}
     </PopoverContent>
@@ -1030,12 +1065,16 @@ function AddTriggerPopover({
               onValueChange={(v) => setFireMode(v as "TACTICAL" | "DIRECT")}
               disabled={pending}
             >
-              <SelectTrigger size="sm">
-                <SelectValue>{fireModeLabel(fireMode)}</SelectValue>
+              <SelectTrigger size="sm" className="w-full">
+                <SelectValue>{fireModeLabel(fireMode, action)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="TACTICAL">{fireModeLabel("TACTICAL")}</SelectItem>
-                <SelectItem value="DIRECT">{fireModeLabel("DIRECT")}</SelectItem>
+                <SelectItem value="TACTICAL">
+                  {fireModeLabel("TACTICAL", action)}
+                </SelectItem>
+                <SelectItem value="DIRECT">
+                  {fireModeLabel("DIRECT", action)}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
