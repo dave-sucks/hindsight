@@ -1245,8 +1245,34 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
           />
           </div>
 
-          {/* ══ RIGHT column — digest only (desktop) ════════════════════════ */}
+          {/* ══ RIGHT column — win rate + digest (desktop only) ════════════ */}
           <div className="hidden lg:block w-80 shrink-0">
+            {/* Win Rate — sized h-16 + mb-5 to mirror the left header height
+                so the digest card aligns with the top of the chart card. */}
+            <UITooltipProvider>
+              <UITooltip>
+                <UITooltipTrigger render={<div className="flex h-16 flex-col items-end justify-center gap-1.5 mb-5 cursor-default" />}>
+                  <TickBar
+                    ticks={Array.from({ length: 10 }, (_, i): Tick => ({
+                      color: portfolio.winRate != null && i < Math.round(portfolio.winRate * 10)
+                        ? 'bg-foreground'
+                        : 'bg-muted-foreground/25',
+                    }))}
+                    className="w-16"
+                  />
+                  <span className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+                    Win Rate
+                  </span>
+                </UITooltipTrigger>
+                <UITooltipContent side="bottom" align="end">
+                  <div className="text-xs">
+                    {portfolio.winRate != null
+                      ? `${Math.round(portfolio.winRate * 100)}% win rate`
+                      : 'No closed trades yet'}
+                  </div>
+                </UITooltipContent>
+              </UITooltip>
+            </UITooltipProvider>
             <DigestPreviewCard digest={digest} />
           </div>
 
