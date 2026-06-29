@@ -36,7 +36,14 @@ export async function GET(
       quantity: true,
       status: true,
       position: {
-        select: { accountId: true, direction: true, targetPrice: true, stopLoss: true, avgCost: true },
+        select: {
+          accountId: true,
+          analystId: true,
+          direction: true,
+          targetPrice: true,
+          stopLoss: true,
+          avgCost: true,
+        },
       },
     },
   });
@@ -44,6 +51,23 @@ export async function GET(
   if (order.position.accountId !== accountId) {
     return new Response("Forbidden", { status: 403 });
   }
+
+  // Resolve the paired thesis so the reject dialog can render its trigger
+  // editor inline (raise the stop, add a "down X%" alert, etc.). Same
+  // (account, analyst, ticker, HOLDING) linkage every close path uses — there's
+  // no direct Order→Thesis FK. Best-effort: null when it can't be resolved.
+  const thesis = await prisma.thesis.findFirst({
+    where: {
+      accountId,
+      ticker: order.symbol,
+      status: "HOLDING",
+      ...(order.position.analystId
+        ? { researchRun: { agentConfigId: order.position.analystId } }
+        : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, direction: true },
+  });
 
   return Response.json({
     orderId: order.id,
@@ -56,5 +80,8 @@ export async function GET(
     targetPrice: order.position.targetPrice,
     stopLoss: order.position.stopLoss,
     estimatedPrice: order.position.avgCost,
+    // For the reject dialog's inline trigger editor.
+    thesisId: thesis?.id ?? null,
+    thesisDirection: thesis?.direction ?? order.position.direction ?? null,
   });
 }
