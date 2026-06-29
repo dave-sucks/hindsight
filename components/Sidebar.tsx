@@ -20,6 +20,7 @@ import {
   Sparkles,
   Mic,
   MessageCircle,
+  X,
 } from 'lucide-react';
 import HindsightLogo from '@/components/HindsightLogo';
 import { SidebarMarquee } from '@/components/MarketPulseStrip';
@@ -121,18 +122,31 @@ export default function AppSidebar({
 
   return (
     <Sidebar collapsible="icon">
-      {/* Brand */}
+      {/* Brand + env switcher */}
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/" />}>
-              <HindsightLogo className="size-5 shrink-0 text-brand group-data-[collapsible=icon]:mx-auto" />
-              <span className="font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
-                Hindsight
-              </span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <div className="flex items-center gap-1 px-1 py-1 w-full">
+          <Link
+            href="/"
+            onClick={() => isMobile && setOpenMobile(false)}
+            className="flex items-center justify-center rounded-md p-1.5 text-brand hover:bg-sidebar-accent transition-colors shrink-0"
+          >
+            <HindsightLogo className="size-4" />
+          </Link>
+          {exposeLive && (
+            <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+              <EnvironmentSwitcher current={currentEnv} />
+            </div>
+          )}
+          {isMobile && (
+            <button
+              onClick={() => setOpenMobile(false)}
+              className="ml-auto flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors shrink-0"
+              aria-label="Close navigation"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
       </SidebarHeader>
 
       <SidebarContent>
@@ -201,9 +215,8 @@ export default function AppSidebar({
       {/* Ticker marquee — above user footer */}
       <SidebarMarquee openTradeTickers={openTradeTickers} />
 
-      {/* User footer — env switcher + clickable user dropdown */}
+      {/* User footer */}
       <SidebarFooter>
-        {exposeLive && <EnvironmentSwitcher current={currentEnv} />}
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>

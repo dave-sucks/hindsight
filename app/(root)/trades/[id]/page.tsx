@@ -269,7 +269,7 @@ export default async function TradeDetailPage({
           <StockLogo ticker={trade.ticker} size="lg" />
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-semibold leading-tight">
+              <h1 className="text-xl font-semibold leading-tight">
                 {companyName ?? trade.ticker}
               </h1>
               <TooltipProvider>

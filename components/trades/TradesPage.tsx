@@ -468,7 +468,7 @@ export default function TradesPage({
                       (similar to how Google Sheets / Airtable handle a
                       frozen last column). On row hover, the row's muted bg
                       shows through via bg-muted/50 to match. */}
-                  <TableCell className="pr-6 sticky right-0 bg-background group-hover:bg-muted transition-colors shadow-[inset_8px_0_6px_-6px_rgba(0,0,0,0.25)] group-hover:shadow-[inset_8px_0_6px_-6px_rgba(0,0,0,0.35)]">
+                  <TableCell className="pr-6 sticky right-0 bg-background group-hover:bg-muted transition-colors border-l border-border/50">
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                       <Tooltip>
                         <TooltipTrigger
