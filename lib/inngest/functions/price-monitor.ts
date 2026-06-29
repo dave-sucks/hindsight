@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { getLatestPrices } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { isMarketOpen } from "@/lib/market-hours";
-import { checkExitConditions } from "@/lib/trade-exit";
 import type { PositionModel } from "@/lib/generated/prisma/models";
 
 // ─── P&L helpers ─────────────────────────────────────────────────────────────
@@ -124,14 +123,13 @@ export const priceMonitor = inngest.createFunction(
             },
           });
 
-          // Trailing-stop check (TRAILING-only after Fix #0 — see
-          // docs/MORNING_RUN_V2_DESIGN.md). Per-thesis EXIT triggers
-          // handle every other exit path via the trigger evaluator's
-          // 5-min cron. checkExitConditions early-returns for any
-          // non-TRAILING exitStrategy; the call here exists so positions
-          // that opted into manage_position.set_trailing_stop continue
-          // to honor their trail-from-peak math.
-          await checkExitConditions(position as unknown as PositionModel, currentPrice, position.peakPrice);
+          // Legacy trailing-stop check removed: the `exitStrategy="TRAILING"`
+          // side-channel (set via the old manage_position.set_trailing_stop)
+          // was the pre-trigger way to trail an exit. ALL exits now run through
+          // per-thesis EXIT triggers on the trigger-evaluator's 5-min cron —
+          // including the directional Movement-Amount (% move) trigger. The
+          // price-monitor still maintains peakPrice below for any TRAILING_STOP
+          // predicate, but no longer auto-closes here.
 
           // Near-target email alert removed — the daily digest at 10 AM ET
           // covers position movement; intraday "80% to target" pings turned

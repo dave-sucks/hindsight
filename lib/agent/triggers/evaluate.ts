@@ -307,6 +307,25 @@ function evaluatePriceMovePct(
   predicate: Extract<TriggerPredicate, { kind: "PRICE_MOVE_PCT" }>,
   ctx: EvaluationContext,
 ): boolean {
+  // ── Daily move (the "Movement Amount" alert) ──────────────────────────
+  // For the 1D window, use the quote's own daily % change vs the prior close
+  // (Finnhub `dp`, carried on latestQuote.changePct). This is the standard
+  // "stock is up/down X% today" number every app shows, and it lets the
+  // trigger-evaluator CRON path fire daily-move triggers with no candle
+  // history — the cron already fetches it. UP fires at ≥ +pct, DOWN at ≤ -pct.
+  if (predicate.window === "1D" && ctx.latestQuote != null) {
+    const dailyPct = ctx.latestQuote.changePct;
+    if (typeof dailyPct === "number") {
+      return predicate.direction === "UP"
+        ? dailyPct >= predicate.pct
+        : dailyPct <= -predicate.pct;
+    }
+  }
+
+  // ── Multi-day windows (5D / 30D) ──────────────────────────────────────
+  // Need a recent-closes series to compute the move; the cron doesn't load
+  // candles, so these still evaluate via the daily-run inline / live paths
+  // that supply recentPrices.
   if (ctx.recentPrices == null || ctx.recentPrices.length === 0) return false;
   if (ctx.latestQuote == null) return false;
 

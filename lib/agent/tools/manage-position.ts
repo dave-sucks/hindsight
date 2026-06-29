@@ -99,7 +99,6 @@ const schema = z.object({
     "add_to_position",
     "update_targets",
     "move_stop_to_breakeven",
-    "set_trailing_stop",
   ]).describe("What to do with this position"),
   reason: z
     .string()
@@ -127,14 +126,6 @@ const schema = z.object({
   new_target_price: z.number().positive().optional().describe("New target price"),
   new_stop_loss: z.number().positive().optional().describe("New stop loss price"),
 
-  // set_trailing_stop
-  trail_pct: z
-    .number()
-    .min(0.5)
-    .max(25)
-    .optional()
-    .describe("For set_trailing_stop: trail percentage from peak (e.g. 4 = exit if 4% below peak)"),
-
   // full_close reason code
   close_reason: z
     .enum(["TARGET", "STOP", "THESIS_INVALIDATED", "RISK_MANAGEMENT", "MANUAL"])
@@ -146,7 +137,7 @@ export const managePosition = defineTool({
   description:
     "Manage an existing open position with nuanced actions beyond binary buy/sell. " +
     "Use this instead of close_position for any position management: partial exits, " +
-    "target/stop updates, trailing stops, or adding to a winning position. " +
+    "target/stop updates, or adding to a winning position. " +
     "Every action is audit-logged with your reason.",
   schema,
   ui: "tool-ui" as const,
@@ -165,8 +156,6 @@ export const managePosition = defineTool({
         return `Updating ${t} target and stop`;
       case "move_stop_to_breakeven":
         return `Moving ${t} stop to breakeven`;
-      case "set_trailing_stop":
-        return `Setting a ${args.trail_pct ?? 5}% trailing stop on ${t}`;
       default:
         return `Managing the ${t} position`;
     }
@@ -1070,65 +1059,6 @@ export const managePosition = defineTool({
               newStopLoss: newStop,
               message: `Stop loss moved to breakeven ($${newStop.toFixed(2)}) for ${ticker}. Trade now risk-free.`,
               tickers: [{ ticker, tag: "BE stop", summary: `Stop at $${newStop.toFixed(2)} (breakeven)`, actionIcon: "hold" }],
-            },
-            sources: [],
-          };
-        }
-
-        // ── SET TRAILING STOP ────────────────────────────────────────────────
-        case "set_trailing_stop": {
-          const pct = args.trail_pct ?? 5;
-
-          await prisma.$transaction(async (tx) => {
-            await tx.position.update({
-              where: { id: position.id },
-              data: {
-                exitStrategy: "TRAILING",
-                trailingStopPct: pct,
-              },
-            });
-
-            await tx.positionEvent.create({
-              data: {
-                positionId: position.id,
-                eventType: "MODIFIED",
-                description: `Trailing stop activated: ${pct}% from peak. Exit strategy changed from ${position.exitStrategy} to TRAILING.`,
-                priceAt: null,
-              },
-            });
-
-            await tx.positionManagementAction.create({
-              data: {
-                positionId: position.id,
-                runId: ctx.runId ?? null,
-                actionType: "SET_TRAILING_STOP",
-                source: "agent",
-                prevTrailPct: position.trailingStopPct ?? null,
-                newTrailPct: pct,
-                reason: args.reason,
-              },
-            });
-
-            if (ctx.runId) {
-              await tx.runEvent.create({
-                data: {
-                  runId: ctx.runId,
-                  type: "position_modified",
-                  title: `Trailing stop: ${ticker}`,
-                  message: `${ticker} now using ${pct}% trailing stop. ${args.reason}`,
-                  payload: { ticker, action: "set_trailing_stop", trailPct: pct } as object,
-                },
-              });
-            }
-          });
-
-          return {
-            summary: `${ticker}: ${pct}% trailing stop activated`,
-            data: {
-              success: true, ticker, action: args.action, status: "UPDATED" as const,
-              trailPct: pct,
-              message: `${ticker} now using a ${pct}% trailing stop. Will auto-exit if price falls ${pct}% from its peak.`,
-              tickers: [{ ticker, tag: `${pct}% trail`, summary: `Trailing stop: ${pct}% from peak`, actionIcon: "hold" }],
             },
             sources: [],
           };

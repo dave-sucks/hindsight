@@ -133,6 +133,21 @@ export type Trigger = {
   cooldownDays?: number;
   /** Set by the trigger evaluator; read for cooldown gating. */
   lastFiredAt?: string; // ISO timestamp
+  /**
+   * How a fired trigger is acted on:
+   *   TACTICAL — fan out `app/thesis.trigger.fired` → a GPT-5.5 tactical run
+   *              evaluates and decides. The default; every trigger written
+   *              before this field behaved this way.
+   *   DIRECT   — skip the agent: a deterministic EXIT closes the paired
+   *              position directly via `closeOpenPosition` (no tactical-run
+   *              cost). Still routed through the approval gate
+   *              (`maybeAwaitApproval`) — DIRECT saves the *agent* cost, not
+   *              the approval step. EXIT-only; on any other action it's
+   *              ignored and treated as TACTICAL (a non-EXIT trigger has no
+   *              deterministic action to execute without judgment).
+   * Absent ⇒ TACTICAL.
+   */
+  fireMode?: "TACTICAL" | "DIRECT";
 };
 
 /**
@@ -140,3 +155,25 @@ export type Trigger = {
  * default for theses created before triggers were a thing.
  */
 export type ThesisTriggers = Trigger[];
+
+/**
+ * Predicate kinds whose EXIT is deterministic enough to close DIRECT (no
+ * agent): the absolute price levels + the trailing stop. Everything else
+ * (earnings, signals, RSI, time, composites) needs judgment, so a DIRECT
+ * fire mode is refused on them — they always wake a tactical run.
+ *
+ * Single source for the gate, shared by the UI control, the
+ * applyTriggerFireModeChange backend, and the tactical-run short-circuit.
+ * Takes a plain string so the client-side (loosely-typed) trigger shape can
+ * call it without a cast.
+ */
+export const DIRECT_ELIGIBLE_PREDICATE_KINDS: readonly string[] = [
+  "PRICE_ABOVE",
+  "PRICE_BELOW",
+  "TRAILING_STOP",
+  "PRICE_MOVE_PCT",
+];
+
+export function isDirectEligiblePredicate(kind: string): boolean {
+  return DIRECT_ELIGIBLE_PREDICATE_KINDS.includes(kind);
+}

@@ -25,6 +25,7 @@ import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { describeTriggerFire } from "@/lib/agent/triggers/format";
 import { MODES } from "@/lib/agent/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
+import { isDirectEligiblePredicate } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
@@ -54,6 +55,33 @@ function findTriggerById(triggersJson: unknown, id: string): Trigger | null {
   const found = parsed.data.find((t) => t.id === id);
   if (!found || typeof found.id !== "string") return null;
   return found as Trigger;
+}
+
+/**
+ * Close reason for a DIRECT EXIT fire. Always STOP or TARGET (never
+ * MANUAL/TIME) so the close counts as a risk-management exit — those always
+ * flow through the approval gate and are exempt from the P1-28
+ * unapproved-exit cooldown. Trailing + adverse-direction price stops → STOP;
+ * the favorable-direction price level → TARGET.
+ */
+function directExitReason(
+  trigger: Trigger,
+  direction: string | null,
+): "STOP" | "TARGET" {
+  const k = trigger.predicate.kind;
+  if (k === "TRAILING_STOP") return "STOP";
+  const isLong = direction !== "SHORT";
+  if (k === "PRICE_BELOW") return isLong ? "STOP" : "TARGET";
+  if (k === "PRICE_ABOVE") return isLong ? "TARGET" : "STOP";
+  if (k === "PRICE_MOVE_PCT") {
+    // A daily-move exit is favorable (TARGET) when the move is WITH the
+    // position — LONG closing on an up day, SHORT closing on a down day —
+    // and adverse (STOP) otherwise.
+    const up = trigger.predicate.direction === "UP";
+    const favorable = isLong ? up : !up;
+    return favorable ? "TARGET" : "STOP";
+  }
+  return "STOP";
 }
 
 // How long after a REJECTED close proposal to keep suppressing re-fires of
@@ -260,6 +288,13 @@ export const tacticalRun = inngest.createFunction(
             intent: { in: ["CLOSE", "PARTIAL_CLOSE"] },
             OR: [
               { status: "AWAITING_APPROVAL" },
+              // A PENDING close is already submitted to Alpaca and awaiting
+              // fill (or reconcile). Re-firing — especially a cooldownDays:0
+              // DIRECT exit on an auto-execute book whose fill didn't land in
+              // the 5s poll — would submit a SECOND market sell and over-close.
+              // closeOpenPosition has no same-position pending guard, so we
+              // suppress here; reconcile-orders resolves the PENDING order.
+              { status: "PENDING" },
               {
                 status: "REJECTED",
                 updatedAt: {
@@ -340,6 +375,85 @@ export const tacticalRun = inngest.createFunction(
         },
       });
     });
+
+    // ── DIRECT fire mode: deterministic EXIT, no agent ────────────────
+    // A trigger marked fireMode="DIRECT" on an EXIT has nothing for the agent
+    // to decide — close the position directly via closeOpenPosition. That
+    // path still runs through maybeAwaitApproval, so the approval gate is
+    // unchanged (on require-approval-sells it PROPOSES the close; off, it
+    // executes). DIRECT only skips the expensive GPT-5.5 tactical run — the
+    // principal's cost driver (TRIGGER_FOLLOWUPS #3). Same trigger pipeline
+    // as every other fire (evaluator → event → here); we just don't spawn the
+    // model. Non-EXIT / unheld DIRECT can't happen (the add-path coerces those
+    // to TACTICAL) but we guard anyway and fall through to the agent.
+    // The predicate-kind gate is defensive: applyTriggerAdd /
+    // applyTriggerFireModeChange already refuse DIRECT on a non-deterministic
+    // EXIT, but a stale/agent-written trigger could still carry it. A
+    // judgment-bearing exit (earnings, signal) must fall through to the agent,
+    // not be auto-closed by directExitReason's STOP fallback.
+    if (
+      trigger.fireMode === "DIRECT" &&
+      trigger.action === "EXIT" &&
+      isDirectEligiblePredicate(trigger.predicate.kind) &&
+      position
+    ) {
+      const direct = await step.run("direct-close", async () => {
+        const { closeOpenPosition } = await import(
+          "@/lib/actions/closeTrade.actions"
+        );
+        const reason = directExitReason(trigger as Trigger, thesis.direction);
+        try {
+          const outcome = await closeOpenPosition(
+            position.id,
+            reason,
+            undefined, // creds resolved inside from the position's environment
+            "price_monitor", // autonomous → approval-gated; risk-exit carve-out applies
+            trigger.rationale,
+            run.id,
+          );
+          return { kind: outcome.kind, reason };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(
+            `[tactical-run] direct close failed thesis=${thesis.id} trigger=${trigger.id}: ${msg}`,
+          );
+          return { error: msg };
+        }
+      });
+
+      await step.run("finalize-direct", async () => {
+        const failed = direct != null && "error" in direct;
+        await prisma.researchRun.update({
+          where: { id: run.id },
+          data: {
+            status: failed ? "FAILED" : "COMPLETE",
+            completedAt: new Date(),
+          },
+        });
+        if (failed) {
+          await prisma.runEvent.create({
+            data: {
+              runId: run.id,
+              type: "run_failed",
+              title: "Direct exit failed",
+              message: `Direct close for ${thesis.ticker} failed: ${(direct as { error: string }).error}`,
+              payload: { thesisId: thesis.id, triggerId: trigger.id } as object,
+            },
+          });
+        }
+      });
+
+      return {
+        runId: run.id,
+        thesisId: thesis.id,
+        triggerId: trigger.id,
+        signalId: signal?.id ?? null,
+        ticker: thesis.ticker,
+        action: trigger.action,
+        fireMode: "DIRECT" as const,
+        direct,
+      };
+    }
 
     // ── Run the agent ─────────────────────────────────────────────────
     const outcome = await step.run("agent-run", async () => {

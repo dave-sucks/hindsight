@@ -17,11 +17,30 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Zap, Clock, Loader2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group";
+import { ButtonGroup } from "@/components/ui/button-group";
+import { Zap, Clock, Loader2, Plus, Trash2, Calendar } from "lucide-react";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +69,8 @@ interface Trigger {
   rationale: string;
   cooldownDays?: number;
   lastFiredAt?: string;
+  /** "TACTICAL" (wake an agent) | "DIRECT" (close directly, no agent). Absent ⇒ TACTICAL. */
+  fireMode?: "TACTICAL" | "DIRECT";
 }
 
 // Position info from /triggers — quantity + cost basis + days held only.
@@ -261,8 +282,12 @@ export interface ThesisResearchSections {
 import {
   predicateSentence as sharedPredicateSentence,
   actionGroupLabel,
+  fireModeLabel,
 } from "@/lib/agent/triggers/format";
-import type { TriggerPredicate as SharedTriggerPredicate } from "@/lib/agent/triggers/types";
+import {
+  isDirectEligiblePredicate,
+  type TriggerPredicate as SharedTriggerPredicate,
+} from "@/lib/agent/triggers/types";
 
 function predicateSentence(p: TriggerPredicate): string {
   return sharedPredicateSentence(p as SharedTriggerPredicate);
@@ -292,11 +317,13 @@ function predicateKindValue(p: TriggerPredicate): {
       return { kind: "price below", value: `$${p.level ?? "?"}` };
     case "TRAILING_STOP":
       return { kind: "trailing stop", value: `${p.trailPct ?? "?"}%` };
-    case "PRICE_MOVE_PCT":
-      return {
-        kind: `price ${p.direction === "UP" ? "up" : "down"} ${p.window ?? ""}`.trim(),
-        value: `${p.pct ?? "?"}%`,
-      };
+    case "PRICE_MOVE_PCT": {
+      // Daily move (window 1D) reads as a clean "up / down" — the standard
+      // "stock is up/down X% today" alert. Multi-day windows append the span.
+      const dir = p.direction === "UP" ? "up" : "down";
+      const win = p.window && p.window !== "1D" ? ` ${p.window}` : "";
+      return { kind: `${dir}${win}`, value: `${p.pct ?? "?"}%` };
+    }
     case "VS_SMA":
       return {
         kind: `${p.period ?? "?"}-day SMA`,
@@ -364,7 +391,9 @@ function predicateDescription(p: TriggerPredicate): string {
     case "TRAILING_STOP":
       return `Exits when price falls ${p.trailPct}% below its peak since entry. Trails up as the position runs.`;
     case "PRICE_MOVE_PCT":
-      return `Fires when price moves ${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}.`;
+      return p.window === "1D"
+        ? `Fires when the stock is ${p.direction === "UP" ? "up" : "down"} ${p.pct}% on the day (vs prior close).`
+        : `Fires when price moves ${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}.`;
     case "VS_SMA":
       return `Fires when price moves ${p.direction?.toLowerCase()} the ${p.period}-day SMA.`;
     case "RSI":
@@ -431,12 +460,14 @@ function TriggerPill({
   thesisId,
   direction,
   editable,
+  held,
   onChanged,
 }: {
   trigger: Trigger;
   thesisId: string;
   direction: "LONG" | "SHORT" | null;
   editable: boolean;
+  held: boolean;
   onChanged?: () => void;
 }) {
   const { kind, value } = predicateKindValue(trigger.predicate);
@@ -472,6 +503,7 @@ function TriggerPill({
         thesisId={thesisId}
         direction={direction}
         editable={editable}
+        held={held}
         onChanged={onChanged}
       />
     </Popover>
@@ -492,12 +524,15 @@ function TriggerPopoverContent({
   thesisId,
   direction,
   editable,
+  held,
   onChanged,
 }: {
   trigger: Trigger;
   thesisId: string;
   direction: "LONG" | "SHORT" | null;
   editable: boolean;
+  /** Thesis is HOLDING (has an open position) — gates the DIRECT fire-mode control. */
+  held: boolean;
   onChanged?: () => void;
 }) {
   const field = editableTriggerField(
@@ -505,20 +540,25 @@ function TriggerPopoverContent({
   );
   const canEdit = editable && field != null;
 
-  // The stop trigger is convertible to/from a trailing stop. LONG stops are a
-  // PRICE_BELOW EXIT, SHORT stops a PRICE_ABOVE EXIT; a TRAILING_STOP is already
-  // converted. (A LONG take-profit is PRICE_ABOVE — direction keeps us off it.)
-  const stopKind = direction === "SHORT" ? "PRICE_ABOVE" : "PRICE_BELOW";
-  const isTrailing = trigger.predicate.kind === "TRAILING_STOP";
-  // The toggle only belongs on the EXIT stop trigger (fixed or trailing) — never
-  // on a take-profit or a non-EXIT trigger that merely carries a price predicate.
-  const isStopTrigger =
-    trigger.action === "EXIT" &&
-    (isTrailing || trigger.predicate.kind === stopKind);
   const { kind: kindLabel, value: displayValue } = predicateKindValue(
     trigger.predicate,
   );
-  const fieldLabel = `${actionGroupLabel(trigger.action)} · ${kindLabel}`;
+  // Sentence title in foreground — "Exit if price below", "Review if up".
+  const fieldLabel = `${actionGroupLabel(trigger.action)} ${kindLabel}`;
+
+  // Input-group adornments. Price → leading "$"; movement → leading
+  // direction + trailing "%"; trailing-stop → trailing "%"; time-based →
+  // leading calendar icon (read-only).
+  const pk = trigger.predicate.kind;
+  const moveDir =
+    pk === "PRICE_MOVE_PCT"
+      ? trigger.predicate.direction === "UP"
+        ? "Up"
+        : "Down"
+      : null;
+  const leadingText = field?.prefix ?? moveDir;
+  const trailingText = field?.suffix ?? null;
+  const leadingIcon = pk === "TIME_ELAPSED" || pk === "REVIEW_DATE_HIT";
 
   const initial = field?.value != null ? String(field.value) : "";
   const [val, setVal] = useState(initial);
@@ -557,14 +597,14 @@ function TriggerPopoverContent({
     }
   }
 
-  async function setTrailing(next: boolean) {
+  async function setFireMode(next: "TACTICAL" | "DIRECT") {
     setPending(true);
     setErr(null);
     try {
       const res = await fetch(`/api/theses/${thesisId}/triggers/${trigger.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trailing: next }),
+        body: JSON.stringify({ fireMode: next }),
       });
       if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
       onChanged?.();
@@ -574,19 +614,49 @@ function TriggerPopoverContent({
     }
   }
 
+  async function remove() {
+    setPending(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/theses/${thesisId}/triggers/${trigger.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+      onChanged?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setPending(false);
+    }
+  }
+
+  // DIRECT (close without an agent) is only meaningful on a price/trailing
+  // EXIT trigger of a held position — mirror applyTriggerFireModeChange. A
+  // judgment-bearing EXIT (earnings, signal, etc.) keeps the TACTICAL path,
+  // so we don't offer the control there.
+  const showFireMode =
+    editable &&
+    trigger.action === "EXIT" &&
+    held &&
+    isDirectEligiblePredicate(trigger.predicate.kind);
+  const fireMode = trigger.fireMode ?? "TACTICAL";
+
   return (
-    <PopoverContent side="left" align="start" className="w-72 space-y-3">
-      {/* Label + full-width input (editable or read-only) */}
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {fieldLabel}
-        </p>
-        {canEdit ? (
-          <div className="flex items-center gap-1.5">
-            {field?.prefix ? (
-              <span className="text-sm text-muted-foreground">{field.prefix}</span>
-            ) : null}
-            <Input
+    <PopoverContent side="left" align="start" className="w-72 space-y-2.5">
+      {/* Title (sentence, foreground) + full-width input group */}
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-foreground">{fieldLabel}</p>
+        <InputGroup>
+          {leadingIcon ? (
+            <InputGroupAddon>
+              <Calendar />
+            </InputGroupAddon>
+          ) : leadingText ? (
+            <InputGroupAddon>
+              <InputGroupText>{leadingText}</InputGroupText>
+            </InputGroupAddon>
+          ) : null}
+          {canEdit ? (
+            <InputGroupInput
               type="number"
               inputMode="decimal"
               value={val}
@@ -595,55 +665,89 @@ function TriggerPopoverContent({
               onChange={(e) => setVal(e.target.value)}
               disabled={pending}
             />
-            {field?.suffix ? (
-              <span className="text-sm text-muted-foreground">{field.suffix}</span>
-            ) : null}
-          </div>
-        ) : (
-          <Input value={displayValue ?? kindLabel} readOnly disabled />
-        )}
+          ) : (
+            <InputGroupInput value={displayValue ?? kindLabel} readOnly disabled />
+          )}
+          {canEdit && trailingText ? (
+            <InputGroupAddon align="inline-end">
+              <InputGroupText>{trailingText}</InputGroupText>
+            </InputGroupAddon>
+          ) : null}
+        </InputGroup>
       </div>
 
-      {/* Trailing toggle — only on the stop trigger. Flips fixed ↔ trailing. */}
-      {editable && isStopTrigger ? (
-        <div className="flex items-center justify-between">
+      {/* On fire — Trigger Tactical Run (agent decides) vs Automatically
+          Exit (no agent; still approval-gated). EXIT triggers on a held
+          position only. */}
+      {showFireMode ? (
+        <div className="space-y-1">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Trailing stop
+            On fire
           </span>
-          <Switch
-            checked={isTrailing}
-            onCheckedChange={(v) => void setTrailing(v)}
+          <Select
+            value={fireMode}
+            onValueChange={(v) => void setFireMode(v as "TACTICAL" | "DIRECT")}
             disabled={pending}
-          />
+          >
+            <SelectTrigger size="sm" className="w-full">
+              <SelectValue>{fireModeLabel(fireMode, trigger.action)}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TACTICAL">
+                {fireModeLabel("TACTICAL", trigger.action)}
+              </SelectItem>
+              <SelectItem value="DIRECT">
+                {fireModeLabel("DIRECT", trigger.action)}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       ) : null}
 
-      {/* Explainer + rationale */}
-      <div className="space-y-1 text-xs">
-        <p className="text-muted-foreground">
+      {/* One-paragraph explainer: what it does (foreground) + the writer's
+          rationale (muted), flowing together. */}
+      <p className="text-xs leading-relaxed">
+        <span className="text-foreground">
           {predicateDescription(trigger.predicate)}
-        </p>
+        </span>
         {trigger.rationale ? (
-          <p className="text-foreground leading-relaxed">{trigger.rationale}</p>
+          <span className="text-muted-foreground"> {trigger.rationale}</span>
         ) : null}
-      </div>
+      </p>
 
-      {/* Metadata badges */}
-      <div className="flex flex-wrap gap-1.5">
-        <Badge variant="secondary">
-          <Zap className="size-3" />
-          {trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}` : "Never fired"}
-        </Badge>
-        {trigger.cooldownDays ? (
-          <Badge variant="secondary">
-            <Clock className="size-3" />
-            {trigger.cooldownDays}d cooldown
-          </Badge>
-        ) : null}
-      </div>
+      {/* Metadata — fired (only when set) · cooldown · delete (icon only) */}
+      {trigger.lastFiredAt || trigger.cooldownDays || editable ? (
+        <div className="flex items-center gap-1.5">
+          {trigger.lastFiredAt ? (
+            <Badge variant="secondary">
+              <Zap className="size-3" />
+              Fired {fmtFiredAt(trigger.lastFiredAt)}
+            </Badge>
+          ) : null}
+          {trigger.cooldownDays ? (
+            <Badge variant="secondary">
+              <Clock className="size-3" />
+              {trigger.cooldownDays}d cooldown
+            </Badge>
+          ) : null}
+          {editable ? (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="ml-auto"
+              onClick={() => void remove()}
+              disabled={pending}
+              aria-label="Remove trigger"
+            >
+              <Trash2 />
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {err ? <p className="text-xs text-destructive">{err}</p> : null}
 
+      {/* Save / Cancel — only once the value is changed. */}
       {dirty ? (
         <div className="flex justify-end gap-2">
           <Button
@@ -687,12 +791,14 @@ function TriggerGroups({
   thesisId,
   direction,
   editable,
+  held,
   onChanged,
 }: {
   triggers: Trigger[];
   thesisId: string;
   direction: "LONG" | "SHORT" | null;
   editable: boolean;
+  held: boolean;
   onChanged?: () => void;
 }) {
   const grouped = new Map<string, Trigger[]>();
@@ -722,6 +828,7 @@ function TriggerGroups({
                 thesisId={thesisId}
                 direction={direction}
                 editable={editable}
+                held={held}
                 onChanged={onChanged}
               />
             ))}
@@ -729,6 +836,284 @@ function TriggerGroups({
         );
       })}
     </div>
+  );
+}
+
+// ── Add-trigger form ────────────────────────────────────────────────────
+// A ghost "+" that opens a Dialog (modal — safer than a popover on mobile)
+// mirroring the Price-alert modal:
+//   • Action      — Enter / Exit / Review / …
+//   • Criterion   — Target Price (a fixed $ level) | Movement Amount (a % move)
+//   • Direction   — above/below (price)  ·  up/down (movement)
+//   • Value       — $ level  ·  % move
+//   • On fire     — tactical vs direct (held EXIT only)
+// Target Price → PRICE_ABOVE / PRICE_BELOW (fires at a level).
+// Movement Amount → PRICE_MOVE_PCT (fires on a ±% DAILY move vs prior close).
+// Both fire through the same evaluator → trigger pipeline as every trigger.
+
+type AddCriterion = "PRICE" | "MOVE";
+
+function AddTriggerDialog({
+  thesisId,
+  held,
+  onChanged,
+}: {
+  thesisId: string;
+  held: boolean;
+  onChanged?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [action, setAction] = useState<string>("EXIT");
+  const [criterion, setCriterion] = useState<AddCriterion>("PRICE");
+  const [dir, setDir] = useState<string>("BELOW"); // ABOVE/BELOW · UP/DOWN
+  const [val, setVal] = useState("");
+  const [fireMode, setFireMode] = useState<"TACTICAL" | "DIRECT">("DIRECT");
+  const [pending, setPending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const isMove = criterion === "MOVE";
+  const showFireMode = action === "EXIT" && held;
+
+  const dirOptions = isMove
+    ? [
+        { v: "UP", l: "Up" },
+        { v: "DOWN", l: "Down" },
+      ]
+    : [
+        { v: "ABOVE", l: "Above" },
+        { v: "BELOW", l: "Below" },
+      ];
+
+  // Keep `dir` valid for the selected criterion (price uses ABOVE/BELOW,
+  // movement uses UP/DOWN). Reset to a sensible default on criterion switch.
+  useEffect(() => {
+    setDir(isMove ? "DOWN" : "BELOW");
+  }, [isMove]);
+
+  // Default fire mode by action — EXIT → DIRECT, else TACTICAL. Mirrors the
+  // server-side defaultFireModeForAction (can't import it here: defaults.ts
+  // pulls node:crypto, which breaks the client bundle).
+  useEffect(() => {
+    setFireMode(action === "EXIT" ? "DIRECT" : "TACTICAL");
+  }, [action]);
+
+  const num = Number(val);
+  const valid =
+    val.trim() !== "" &&
+    Number.isFinite(num) &&
+    num > 0 &&
+    (!isMove || num < 100);
+
+  async function save() {
+    if (!valid) return;
+    setPending(true);
+    setErr(null);
+    const predicate = isMove
+      ? { kind: "PRICE_MOVE_PCT", pct: num, direction: dir, window: "1D" }
+      : { kind: dir === "ABOVE" ? "PRICE_ABOVE" : "PRICE_BELOW", level: num };
+    try {
+      const res = await fetch(`/api/theses/${thesisId}/triggers`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action,
+          predicate,
+          // Only send fireMode when the control was actually shown (held EXIT) —
+          // don't post a DIRECT the user never saw. Backend still coerces, but
+          // the request should match the UI.
+          fireMode: showFireMode ? fireMode : undefined,
+        }),
+      });
+      if (!res.ok) {
+        // Route returns { error } JSON; fall back to status text.
+        let msg = `HTTP ${res.status}`;
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body?.error) msg = body.error;
+        } catch {
+          /* non-JSON body */
+        }
+        throw new Error(msg);
+      }
+      setOpen(false);
+      setVal("");
+      setErr(null);
+      setPending(false);
+      onChanged?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setPending(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button variant="ghost" size="sm">
+            <Plus className="size-3" />
+            Add trigger
+          </Button>
+        }
+      />
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Add trigger</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2.5">
+        {/* Action — full width */}
+        <div className="space-y-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Action
+          </span>
+          <Select
+            value={action}
+            onValueChange={(v) => {
+              if (typeof v === "string") setAction(v);
+            }}
+            disabled={pending}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue>{actionGroupLabel(action)}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {TRIGGER_ACTION_ORDER.map((a) => (
+                <SelectItem key={a} value={a}>
+                  {actionGroupLabel(a)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Criterion — full-width segmented tabs (graph date-range style) */}
+        <div className="space-y-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Criterion
+          </span>
+          <div className="flex items-center gap-0.5 rounded-md border p-0.5">
+            {(
+              [
+                { v: "PRICE", l: "$ Price" },
+                { v: "MOVE", l: "% Movement" },
+              ] as const
+            ).map((o) => (
+              <button
+                key={o.v}
+                type="button"
+                onClick={() => setCriterion(o.v)}
+                disabled={pending}
+                className={cn(
+                  "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                  criterion === o.v
+                    ? "bg-muted text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {o.l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Direction select + value input as one full-width button group:
+            [ Above ▾ | $ ____ ]  ·  [ Up ▾ | ____ % ] */}
+        <ButtonGroup className="w-full">
+          <Select
+            value={dir}
+            onValueChange={(v) => {
+              if (typeof v === "string") setDir(v);
+            }}
+            disabled={pending}
+          >
+            <SelectTrigger>
+              <SelectValue>
+                {dirOptions.find((o) => o.v === dir)?.l ?? ""}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {dirOptions.map((o) => (
+                <SelectItem key={o.v} value={o.v}>
+                  {o.l}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <InputGroup>
+            {isMove ? null : (
+              <InputGroupAddon>
+                <InputGroupText>$</InputGroupText>
+              </InputGroupAddon>
+            )}
+            <InputGroupInput
+              type="number"
+              inputMode="decimal"
+              value={val}
+              min={0}
+              step={isMove ? 0.5 : 0.01}
+              placeholder={isMove ? "5" : "0.00"}
+              onChange={(e) => setVal(e.target.value)}
+              disabled={pending}
+            />
+            {isMove ? (
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>%</InputGroupText>
+              </InputGroupAddon>
+            ) : null}
+          </InputGroup>
+        </ButtonGroup>
+
+        <p className="text-xs text-muted-foreground">
+          {isMove
+            ? `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much on the day (vs prior close).`
+            : `Fires when the last quote crosses ${dir === "ABOVE" ? "above" : "below"} your price.`}
+        </p>
+
+        {/* On fire (held EXIT only) — full width, our verbs */}
+        {showFireMode ? (
+          <div className="space-y-1">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              On fire
+            </span>
+            <Select
+              value={fireMode}
+              onValueChange={(v) => setFireMode(v as "TACTICAL" | "DIRECT")}
+              disabled={pending}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue>{fireModeLabel(fireMode, action)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TACTICAL">
+                  {fireModeLabel("TACTICAL", action)}
+                </SelectItem>
+                <SelectItem value="DIRECT">
+                  {fireModeLabel("DIRECT", action)}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+
+        {err ? <p className="text-xs text-destructive">{err}</p> : null}
+
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setOpen(false)}
+            disabled={pending}
+          >
+            Cancel
+          </Button>
+          <Button size="sm" onClick={() => void save()} disabled={pending || !valid}>
+            {pending ? <Loader2 className="size-3 animate-spin" /> : null}
+            Add
+          </Button>
+        </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -788,22 +1173,32 @@ export function ThesisTriggersSection({
     return <p className="text-xs text-muted-foreground">Loading triggers…</p>;
   }
 
-  if (data.triggers.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        No triggers attached. Set a horizon when minting this thesis to
-        auto-attach the baseline.
-      </p>
-    );
-  }
+  // HOLDING ⇒ has an open position. Gates the DIRECT fire-mode + trailing
+  // options (both need a live position to act on).
+  const held = data.status === "HOLDING";
 
   return (
-    <TriggerGroups
-      triggers={data.triggers}
-      thesisId={thesisId}
-      direction={direction}
-      editable={editable}
-      onChanged={onChanged}
-    />
+    <div className="space-y-2">
+      {data.triggers.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No triggers attached.{" "}
+          {editable
+            ? "Add one below, or set a horizon when minting to auto-attach the baseline."
+            : "Set a horizon when minting this thesis to auto-attach the baseline."}
+        </p>
+      ) : (
+        <TriggerGroups
+          triggers={data.triggers}
+          thesisId={thesisId}
+          direction={direction}
+          editable={editable}
+          held={held}
+          onChanged={onChanged}
+        />
+      )}
+      {editable ? (
+        <AddTriggerDialog thesisId={thesisId} held={held} onChanged={onChanged} />
+      ) : null}
+    </div>
   );
 }

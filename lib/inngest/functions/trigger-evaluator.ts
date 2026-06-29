@@ -14,11 +14,13 @@
 // cooldown stamp prevents same-trigger re-fires within cooldownDays.
 //
 // PR 2 boundary notes:
-// - PRICE_MOVE_PCT and VS_SMA evaluate to false on the cron path because
-//   we don't fetch candles or precompute SMA per cron tick — that's a real
-//   tradeoff, documented in the doc. Daily run inline (PR 3) catches
-//   cumulative-drift / SMA-cross with the candle data get_stock_data
-//   already pulls.
+// - PRICE_MOVE_PCT: the 1D window (the "Movement Amount" daily-move alert)
+//   DOES fire on the cron — it evaluates off the quote's daily % change
+//   (latestQuote.changePct, derived from Finnhub dp / prior close below). The
+//   multi-day windows (5D/30D) still evaluate to false here because we don't
+//   fetch candles per tick; the daily-run inline path catches those with the
+//   candle data get_stock_data already pulls. VS_SMA likewise needs candles
+//   and stays false on the cron.
 // - RSI is stubbed in evaluate.ts; same reasoning.
 // - Cooldown lives on the trigger object inside Thesis.triggers JSONB.
 //   No schema change in PR 2. A separate TriggerFiring table is a
@@ -480,7 +482,18 @@ export const triggerEvaluator = inngest.createFunction(
           if (!q || typeof q.c !== "number" || q.c <= 0) {
             return [ticker, null] as const;
           }
-          return [ticker, { price: q.c, changePct: q.dp ?? 0 }] as const;
+          // Daily % change vs prior close. Prefer Finnhub's `dp`, but fall back
+          // to computing it from `pc` (prior close) when `dp` is missing —
+          // thin/ADR names often omit `dp`, and silently coercing to 0% would
+          // make a Movement-Amount STOP never fire on exactly those names
+          // (fail-unsafe for a stop). Only 0 when we genuinely can't tell.
+          const changePct =
+            typeof q.dp === "number"
+              ? q.dp
+              : typeof q.pc === "number" && q.pc > 0
+                ? ((q.c - q.pc) / q.pc) * 100
+                : 0;
+          return [ticker, { price: q.c, changePct }] as const;
         }),
       );
       const quoteByTicker = new Map(quoteResults);
