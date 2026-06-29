@@ -14,8 +14,8 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { getTradeStatusDisplay } from "@/lib/trade-status";
-import { cn, pnlColor } from "@/lib/utils";
-import { PnlBadge } from "@/components/ui/pnl-badge";
+import { cn } from "@/lib/utils";
+import { PriceChange } from "@/components/ui/price-change";
 import { formatCurrency } from "@/lib/format";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
@@ -42,12 +42,8 @@ function statusDotClass(row: CoverageRow): string {
 function Pct({ value }: { value: number | null }) {
   if (value == null) return <span className="text-muted-foreground/40">—</span>;
   const flat = Math.abs(value) < FLAT_BAND_PCT;
-  return (
-    <span className={cn("tabular-nums text-sm", flat ? "text-muted-foreground" : pnlColor(value))}>
-      {value >= 0 ? "+" : ""}
-      {value.toFixed(2)}%
-    </span>
-  );
+  if (flat) return <span className="tabular-nums text-sm text-muted-foreground">{value >= 0 ? "+" : ""}{value.toFixed(2)}%</span>;
+  return <PriceChange dollarChange={value} percentOnly size="sm" className="justify-end" />;
 }
 
 // ── Name cell ─────────────────────────────────────────────────────────────────
@@ -86,7 +82,7 @@ function NameCell({ row }: { row: CoverageRow }) {
 function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: MobileView }) {
   const isLifetime = mobileView === "lifetime";
   const pct = isLifetime ? row.sincePct : row.oneDayPct;
-  // Dollar amount only available for lifetime trades (not 1D, not watching/passed)
+  // Dollar only available for lifetime on trades; 1D has no dollar field
   const dollar = isLifetime && row.tradeState != null ? row.sinceDollar : null;
 
   return (
@@ -97,18 +93,17 @@ function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: Mobil
           ${row.currentPrice.toFixed(2)}
         </span>
       )}
-      <span className="inline-flex items-center gap-1.5 justify-end">
-        {dollar != null && (
-          <span className={cn("text-sm tabular-nums", pnlColor(dollar))}>
-            {dollar >= 0 ? "+" : ""}${Math.abs(dollar).toFixed(2)}
-          </span>
-        )}
-        {pct != null ? (
-          <PnlBadge value={pct} format="percent" className="text-xs" />
-        ) : (
-          <span className="text-muted-foreground/40 text-xs">—</span>
-        )}
-      </span>
+      {pct != null ? (
+        <PriceChange
+          dollarChange={dollar ?? pct}
+          percentChange={dollar != null ? pct : null}
+          percentOnly={dollar == null}
+          size="sm"
+          className="justify-end"
+        />
+      ) : (
+        <span className="text-muted-foreground/40 text-xs">—</span>
+      )}
     </div>
   );
 }
