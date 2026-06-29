@@ -69,8 +69,25 @@ import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
 import { useRouter } from "next/navigation";
 import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
-import { ThesisMiniCard } from "@/components/domain/thesis-mini-card";
+import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
+
+function thesisCardToRowData(t: ThesisCardData): ThesisRowData {
+  return {
+    id: t.thesis_id ?? t.ticker,
+    ticker: t.ticker,
+    direction: t.direction,
+    status: t.status,
+    confidenceScore: t.confidence_score,
+    reasoningSummary: t.reasoning_summary ?? "",
+    entryPrice: t.entry_price ?? null,
+    targetPrice: t.target_price ?? null,
+    stopLoss: t.stop_loss ?? null,
+    companyName: t.company_name ?? null,
+    thesisBullets: t.thesis_bullets,
+    riskFlags: t.risk_flags,
+  };
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -223,7 +240,7 @@ function ThesesGrid({ theses, emptyLabel }: { theses: ThesisCardData[]; emptyLab
     <div className="w-full mx-auto px-4 py-6">
       <div className="space-y-2">
         {theses.map((t) => (
-          <ThesisMiniCard key={t.thesis_id ?? `${t.ticker}-${t.direction}`} thesis={t} />
+          <ThesisRow key={t.thesis_id ?? `${t.ticker}-${t.direction}`} thesis={thesisCardToRowData(t)} showTicker />
         ))}
       </div>
     </div>
