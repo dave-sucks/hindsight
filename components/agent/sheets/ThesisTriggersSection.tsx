@@ -40,7 +40,7 @@ import {
   InputGroupText,
 } from "@/components/ui/input-group";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { Zap, Clock, Loader2, Plus, Trash2, Calendar } from "lucide-react";
+import { Clock, Loader2, Plus, Trash2, Calendar } from "lucide-react";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import { cn } from "@/lib/utils";
 
@@ -715,15 +715,17 @@ function TriggerPopoverContent({
         ) : null}
       </p>
 
-      {/* Metadata — fired (only when set) · cooldown · delete (icon only) */}
-      {trigger.lastFiredAt || trigger.cooldownDays || editable ? (
+      {/* Last fired — plain text, only when it has fired (a badge here grew
+          too wide next to the cooldown + delete chips). */}
+      {trigger.lastFiredAt ? (
+        <p className="text-xs text-muted-foreground">
+          Fired {fmtFiredAt(trigger.lastFiredAt)}
+        </p>
+      ) : null}
+
+      {/* Chips — cooldown + delete (icon only). */}
+      {trigger.cooldownDays || editable ? (
         <div className="flex items-center gap-1.5">
-          {trigger.lastFiredAt ? (
-            <Badge variant="secondary">
-              <Zap className="size-3" />
-              Fired {fmtFiredAt(trigger.lastFiredAt)}
-            </Badge>
-          ) : null}
           {trigger.cooldownDays ? (
             <Badge variant="secondary">
               <Clock className="size-3" />
