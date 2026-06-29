@@ -918,7 +918,10 @@ function AddTriggerDialog({
         body: JSON.stringify({
           action,
           predicate,
-          fireMode: action === "EXIT" ? fireMode : undefined,
+          // Only send fireMode when the control was actually shown (held EXIT) —
+          // don't post a DIRECT the user never saw. Backend still coerces, but
+          // the request should match the UI.
+          fireMode: showFireMode ? fireMode : undefined,
         }),
       });
       if (!res.ok) {

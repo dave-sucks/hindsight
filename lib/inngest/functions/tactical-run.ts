@@ -73,6 +73,14 @@ function directExitReason(
   const isLong = direction !== "SHORT";
   if (k === "PRICE_BELOW") return isLong ? "STOP" : "TARGET";
   if (k === "PRICE_ABOVE") return isLong ? "TARGET" : "STOP";
+  if (k === "PRICE_MOVE_PCT") {
+    // A daily-move exit is favorable (TARGET) when the move is WITH the
+    // position — LONG closing on an up day, SHORT closing on a down day —
+    // and adverse (STOP) otherwise.
+    const up = trigger.predicate.direction === "UP";
+    const favorable = isLong ? up : !up;
+    return favorable ? "TARGET" : "STOP";
+  }
   return "STOP";
 }
 
