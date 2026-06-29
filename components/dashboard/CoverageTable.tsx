@@ -99,7 +99,7 @@ function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: Mobil
       ) : (
         <span className="inline-flex items-center gap-1.5 justify-end">
           {dollar != null && (
-            <PriceChange dollarChange={dollar} percentOnly size="sm" />
+            <PriceChange dollarChange={dollar} percentChange={null} size="sm" />
           )}
           <PnlBadge value={pct} format="percent" className="text-xs" />
         </span>
