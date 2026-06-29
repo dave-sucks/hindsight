@@ -221,7 +221,7 @@ function ThesesGrid({ theses, emptyLabel }: { theses: ThesisCardData[]; emptyLab
   }
   return (
     <div className="w-full mx-auto px-4 py-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="space-y-2">
         {theses.map((t) => (
           <ThesisMiniCard key={t.thesis_id ?? `${t.ticker}-${t.direction}`} thesis={t} />
         ))}
