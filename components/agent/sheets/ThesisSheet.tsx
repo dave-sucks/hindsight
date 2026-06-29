@@ -100,6 +100,7 @@ export type ThesisCardData = {
   // P1-24: PASSED is the researched-declined status (a pass now stores
   // direction=null). Threaded so the sheet's isPass keys on status.
   status?: "HOLDING" | "RETIRED" | "WATCHING" | "PROMOTED" | "PASSED";
+  created_at?: string;
   /**
    * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
    * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
