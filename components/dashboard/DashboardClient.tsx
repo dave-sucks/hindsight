@@ -580,7 +580,9 @@ function DigestPreviewCard({
   const [open, setOpen] = useState(false);
   if (digest === undefined) return null;
 
-  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 420) : null;
+  // Slice generously so the narrative fills the taller desktop card; the
+  // line-clamp + bottom fade handle the visual cutoff at either size.
+  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 700) : null;
 
   return (
     <>
@@ -588,16 +590,18 @@ function DigestPreviewCard({
         type="button"
         onClick={() => digest && setOpen(true)}
         className={cn(
-          'w-full text-left rounded-lg border bg-card p-3 mb-3',
+          // lg:h-[310px] matches the chart card so the two columns align;
+          // flex-col + overflow-hidden let the narrative fill and fade out.
+          'w-full text-left rounded-lg border bg-card p-3 mb-3 flex flex-col overflow-hidden lg:h-[310px]',
           digest ? 'hover:brightness-[0.98] transition-all cursor-pointer' : 'cursor-default',
         )}
       >
-        <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1">
+        <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1 shrink-0">
           {digest ? `${formatDigestDate(digest.date)} · after close` : 'Portfolio Digest'}
         </p>
         {digest && preview ? (
-          <div className="relative">
-            <p className="text-base font-medium leading-relaxed line-clamp-6">
+          <div className="relative flex-1 min-h-0">
+            <p className="text-base font-medium leading-relaxed line-clamp-6 lg:line-clamp-none">
               {preview}
             </p>
             {/* Subtle fade so the clamped narrative trails off into the card. */}
@@ -927,9 +931,11 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               )}
             </div>
 
-            {/* Chart card */}
+            {/* Chart card — pinned to 310px on desktop so the digest card in
+                the right rail can match its height exactly (48px controls +
+                260px chart). */}
             <div
-              className="rounded-lg overflow-hidden border"
+              className="rounded-lg overflow-hidden border lg:h-[310px]"
               style={{
                 backgroundImage:
                   'radial-gradient(circle, var(--border) 1px, transparent 1px)',

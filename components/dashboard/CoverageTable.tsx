@@ -17,6 +17,12 @@ import { getTradeStatusDisplay } from "@/lib/trade-status";
 import { cn } from "@/lib/utils";
 import { PriceChange } from "@/components/ui/price-change";
 import { PnlBadge } from "@/components/ui/pnl-badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { formatCurrency } from "@/lib/format";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
@@ -99,7 +105,7 @@ function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: Mobil
       ) : (
         <span className="inline-flex items-center gap-1.5 justify-end">
           {dollar != null && (
-            <PriceChange dollarChange={dollar} percentChange={null} size="sm" />
+            <PriceChange dollarChange={dollar} percentChange={null} size="sm" arrowFirst />
           )}
           <PnlBadge value={pct} format="percent" className="text-xs" />
         </span>
@@ -131,20 +137,36 @@ function CoverageTab({
   }
 
   return (
-    <div className="rounded-lg border overflow-hidden">
-      <Table>
+    <div className="rounded-lg border overflow-hidden bg-card">
+      {/* table-fixed + per-column widths so the momentum/price columns stay a
+          constant size across the Trades/Watching/Passed tabs (the Gain column
+          content varies by tab); Name + Gain absorb the remaining width. */}
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
             {/* Price — hidden on mobile (it moves into the last column) */}
-            <TableHead className="hidden md:table-cell text-right">Price</TableHead>
+            <TableHead className="hidden md:table-cell w-24 text-right">Price</TableHead>
             {/* 1D/5D/30D — desktop only */}
-            <TableHead className="hidden md:table-cell text-right">1D</TableHead>
-            <TableHead className="hidden md:table-cell text-right">5D</TableHead>
-            <TableHead className="hidden md:table-cell text-right">30D</TableHead>
+            <TableHead className="hidden md:table-cell w-24 text-right">1D</TableHead>
+            <TableHead className="hidden md:table-cell w-24 text-right">5D</TableHead>
+            <TableHead className="hidden md:table-cell w-24 text-right">30D</TableHead>
             {/* Last column — "Gain" label on desktop, toggle on mobile */}
-            <TableHead className="text-right">
-              <span className="hidden md:inline">Gain</span>
+            <TableHead className="w-48 text-right">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={<span className="hidden md:inline cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-4" />}
+                  >
+                    Gain
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="end">
+                    <p className="text-xs max-w-[200px]">
+                      Total gain since the position was opened, the watch was started, or the name was passed.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               {/* Mobile toggle — same pill style as the chart range tabs */}
               <div className="md:hidden inline-flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
                 {(["lifetime", "1d"] as MobileView[]).map((v) => (

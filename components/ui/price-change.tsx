@@ -33,6 +33,12 @@ interface PriceChangeProps {
   size?: "xl" | "base" | "sm";
   /** Hide the dollar prefix and show only the percentage. Rare. */
   percentOnly?: boolean;
+  /**
+   * Render the arrow to the LEFT of the value instead of the right. Used in
+   * the coverage table's Gain column where the order reads "↗ +$X" so the
+   * arrow leads into the dollar rather than sitting between it and the badge.
+   */
+  arrowFirst?: boolean;
   className?: string;
 }
 
@@ -41,6 +47,7 @@ export function PriceChange({
   percentChange = null,
   size = "xl",
   percentOnly = false,
+  arrowFirst = false,
   className,
 }: PriceChangeProps) {
   const isUp = dollarChange >= 0;
@@ -60,6 +67,23 @@ export function PriceChange({
   const dollarText = `${isUp ? "+" : "-"}$${Math.abs(dollarChange).toFixed(2)}`;
   const percentText =
     percentChange != null ? `${Math.abs(percentChange).toFixed(2)}%` : null;
+
+  if (arrowFirst) {
+    return (
+      <span
+        className={cn(
+          sizeCls,
+          "tabular-nums inline-flex items-center gap-1.5",
+          colorClass,
+          className,
+        )}
+      >
+        <Arrow className={iconCls} />
+        {!percentOnly && dollarText}
+        {percentText}
+      </span>
+    );
+  }
 
   return (
     <span
