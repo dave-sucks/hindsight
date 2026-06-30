@@ -1129,6 +1129,13 @@ interface Props {
   direction?: "LONG" | "SHORT" | null;
   /** When true, value-bearing triggers become editable in the popover. */
   editable?: boolean;
+  /**
+   * When true, show ONLY the inline-editable triggers (price levels + % moves)
+   * and hide the rest (earnings / filing / time / signal). Used in compact
+   * contexts like the reject dialog where the read-only triggers are just
+   * noise. Add-trigger still works (it only mints price/% anyway).
+   */
+  editableOnly?: boolean;
   /** Called after a successful trigger-value edit so the parent can refresh. */
   onChanged?: () => void;
 }
@@ -1138,6 +1145,7 @@ export function ThesisTriggersSection({
   data: dataProp,
   direction = null,
   editable = false,
+  editableOnly = false,
   onChanged,
 }: Props) {
   const [internalData, setInternalData] = useState<TriggersResponse | null>(
@@ -1179,18 +1187,30 @@ export function ThesisTriggersSection({
   // options (both need a live position to act on).
   const held = data.status === "HOLDING";
 
+  // In editableOnly mode, show just the price-level + % triggers (the ones
+  // that actually have an inline-editable value); hide read-only kinds.
+  const shownTriggers = editableOnly
+    ? data.triggers.filter(
+        (t) =>
+          editableTriggerField(
+            t.predicate as unknown as SharedTriggerPredicate,
+          ) != null,
+      )
+    : data.triggers;
+
   return (
     <div className="space-y-2">
-      {data.triggers.length === 0 ? (
+      {shownTriggers.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No triggers attached.{" "}
-          {editable
-            ? "Add one below, or set a horizon when minting to auto-attach the baseline."
-            : "Set a horizon when minting this thesis to auto-attach the baseline."}
+          {editableOnly
+            ? "No price or % triggers yet. Add one below."
+            : editable
+              ? "No triggers attached. Add one below, or set a horizon when minting to auto-attach the baseline."
+              : "No triggers attached. Set a horizon when minting this thesis to auto-attach the baseline."}
         </p>
       ) : (
         <TriggerGroups
-          triggers={data.triggers}
+          triggers={shownTriggers}
           thesisId={thesisId}
           direction={direction}
           editable={editable}

@@ -338,6 +338,7 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
                     key={`${rejectThesisId}-${trigRefresh}`}
                     thesisId={rejectThesisId}
                     editable
+                    editableOnly
                     direction={rejectDirection}
                     onChanged={() => setTrigRefresh((k) => k + 1)}
                   />
