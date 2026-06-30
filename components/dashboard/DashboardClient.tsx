@@ -600,7 +600,7 @@ function DigestPreviewCard({
           {digest ? `${formatDigestDate(digest.date)} · after close` : 'Portfolio Digest'}
         </p>
         {digest && preview ? (
-          <div className="relative flex-1 min-h-0">
+          <div className="relative flex-1 min-h-0 overflow-hidden">
             <p className="text-base font-medium leading-relaxed line-clamp-6 lg:line-clamp-none">
               {preview}
             </p>
