@@ -468,7 +468,7 @@ export default function TradesPage({
                           render={
                             <Link
                               href={`/trades/${trade.id}`}
-                              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
+                              className="h-7 w-7 flex items-center justify-center rounded-md border bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
                               aria-label="Open trade details"
                             >
                               <ExternalLink className="h-4 w-4" />
@@ -479,7 +479,7 @@ export default function TradesPage({
                       </Tooltip>
                       <DropdownMenu>
                         <DropdownMenuTrigger
-                          className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
+                          className="h-7 w-7 flex items-center justify-center rounded-md border bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
                           aria-label="More actions"
                         >
                           <MoreHorizontal className="h-4 w-4" />
