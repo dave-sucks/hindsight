@@ -151,14 +151,14 @@ function CoverageTab({
             <TableHead className="hidden md:table-cell w-24 text-right">1D</TableHead>
             <TableHead className="hidden md:table-cell w-24 text-right">5D</TableHead>
             <TableHead className="hidden md:table-cell w-24 text-right">30D</TableHead>
-            {/* Last column — "Gain" label on desktop, toggle on mobile */}
+            {/* Last column — "Lifetime" label on desktop, toggle on mobile */}
             <TableHead className="w-48 text-right">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger
                     render={<span className="hidden md:inline cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-4" />}
                   >
-                    Gain
+                    Lifetime
                   </TooltipTrigger>
                   <TooltipContent side="top" align="end">
                     <p className="text-xs max-w-[200px]">
