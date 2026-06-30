@@ -14,6 +14,7 @@ Built for one user now, marketed later.
 | Understand the agent design rules (three-layer principle) | `docs/PRINCIPLES.md` |
 | Read / update the product north star | `docs/VISION.md` |
 | Read the live thesis-system reference | `docs/THESIS_ARCHITECTURE.md` |
+| Understand triggers (predicates, which fires on which path, fire modes) | `docs/TRIGGERS.md` |
 | Add an open item on the thesis architecture rework | `docs/GAPS.md` |
 | Note a code smell outside the rework | `docs/TECH_DEBT.md` |
 | Spec a big multi-PR plan | `docs/plans/<NAME>.md` |

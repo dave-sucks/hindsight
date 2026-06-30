@@ -505,7 +505,7 @@ The **structural-belief gate** (`record_thesis`) and the **structural-unchanged-
 | `horizon` | Required for LONG/SHORT. CATALYST/TRADE/TARGET/COMPOUNDER. Null for PENDING/PASS. |
 | `entryPrice`, `targetPrice`, `stopLoss` | Required for LONG/SHORT WATCHING. Validated via [`thesis-shape.ts`](../lib/agent/thesis-shape.ts) (LONG: target > entry > stop). |
 | `confidenceScore` | 0-100. Calibration tracking. |
-| `triggers` | JSONB array of structured predicates. See [`triggers/types.ts`](../lib/agent/triggers/types.ts). Auto-merged with horizon defaults from [`triggers/defaults.ts`](../lib/agent/triggers/defaults.ts). **Empty for PENDING and PASS theses.** |
+| `triggers` | JSONB array of structured predicates. **Full mechanics — predicate catalog, the cron-vs-signal firing matrix, fire modes (TACTICAL/DIRECT), cooldown — live in [`TRIGGERS.md`](./TRIGGERS.md).** Auto-merged with horizon defaults from [`triggers/defaults.ts`](../lib/agent/triggers/defaults.ts). **Empty for PENDING and PASS theses.** |
 | `catalystDate` | REQUIRED when `horizon=CATALYST`. |
 | `maxHoldDays` | REQUIRED when `horizon=TRADE` (no silent default). |
 | `nextReviewAt` | Derived from horizon if not supplied. Drives the overdue-review cron + `REVIEW_DATE_HIT` trigger. For PENDING, set to `createdAt` so first review fires immediately. |
@@ -669,6 +669,7 @@ The principle: **the system was fundamentally sound, not fundamentally broken.**
 
 ## See also
 
+- [`TRIGGERS.md`](./TRIGGERS.md) — the trigger system reference: predicate catalog, the which-predicate-fires-on-which-path matrix, fire modes (TACTICAL vs DIRECT), cooldown, and the editing surfaces
 - [`VISION.md`](./VISION.md) Pillar 2 — what "thesis quality" is supposed to look like
 - [`GAPS.md`](./GAPS.md) — the open punch list
 - [`PRINCIPLES.md`](./PRINCIPLES.md) — the three-layer principle (tool gates / tool result shape / prompt as judgment only) that drives where each invariant lives
