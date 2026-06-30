@@ -56,11 +56,15 @@ export async function GET(
   // editor inline (raise the stop, add a "down X%" alert, etc.). Same
   // (account, analyst, ticker, HOLDING) linkage every close path uses — there's
   // no direct Order→Thesis FK. Best-effort: null when it can't be resolved.
+  // HOLDING covers CLOSE/TRIM proposals (held name); WATCHING covers OPEN/ADD
+  // entry proposals (position still PENDING_APPROVAL, thesis not yet flipped) —
+  // so rejecting a proposed BUY can still retune its ENTER triggers. Newest of
+  // the two wins; normally there's only one active thesis per (analyst, ticker).
   const thesis = await prisma.thesis.findFirst({
     where: {
       accountId,
       ticker: order.symbol,
-      status: "HOLDING",
+      status: { in: ["HOLDING", "WATCHING"] },
       ...(order.position.analystId
         ? { researchRun: { agentConfigId: order.position.analystId } }
         : {}),

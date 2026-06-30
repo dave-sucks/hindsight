@@ -1136,6 +1136,12 @@ interface Props {
    * noise. Add-trigger still works (it only mints price/% anyway).
    */
   editableOnly?: boolean;
+  /**
+   * Bump to force a refetch in self-fetch mode (no `data` prop) — e.g. after an
+   * inline edit. Keeps the current list visible during the refetch (no remount
+   * flash), unlike a `key` change. Ignored when `data` is controlled.
+   */
+  refreshKey?: number;
   /** Called after a successful trigger-value edit so the parent can refresh. */
   onChanged?: () => void;
 }
@@ -1146,6 +1152,7 @@ export function ThesisTriggersSection({
   direction = null,
   editable = false,
   editableOnly = false,
+  refreshKey,
   onChanged,
 }: Props) {
   const [internalData, setInternalData] = useState<TriggersResponse | null>(
@@ -1169,7 +1176,7 @@ export function ThesisTriggersSection({
     return () => {
       cancelled = true;
     };
-  }, [thesisId, dataProp]);
+  }, [thesisId, dataProp, refreshKey]);
 
   if (error) {
     return (

@@ -77,19 +77,27 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
   const [editStop, setEditStop] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
 
+  // One read of the proposal context, shared by Edit & Approve (reads
+  // intent/quantity/target/stop) and Reject (reads thesisId/direction).
+  async function fetchProposalCtx(): Promise<{
+    intent?: string;
+    quantity?: number | null;
+    targetPrice?: number | null;
+    stopLoss?: number | null;
+    thesisId?: string | null;
+    thesisDirection?: string | null;
+  }> {
+    const res = await fetch(`/api/proposals/${orderId}`);
+    if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+    return res.json();
+  }
+
   async function openEdit() {
     setEditOpen(true);
     setEditError(null);
     setEditLoading(true);
     try {
-      const res = await fetch(`/api/proposals/${orderId}`);
-      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
-      const ctx = (await res.json()) as {
-        intent?: string;
-        quantity?: number | null;
-        targetPrice?: number | null;
-        stopLoss?: number | null;
-      };
+      const ctx = await fetchProposalCtx();
       setEditIntent(ctx.intent ?? "OPEN");
       setEditShares(ctx.quantity != null ? String(ctx.quantity) : "");
       setEditTarget(ctx.targetPrice != null ? String(ctx.targetPrice) : "");
@@ -186,21 +194,15 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
     // Resolve the paired thesis so we can offer inline trigger edits. Non-fatal:
     // reject still works as a plain note if this misses.
     try {
-      const res = await fetch(`/api/proposals/${orderId}`);
-      if (res.ok) {
-        const ctx = (await res.json()) as {
-          thesisId?: string | null;
-          thesisDirection?: string | null;
-        };
-        setRejectThesisId(ctx.thesisId ?? null);
-        setRejectDirection(
-          ctx.thesisDirection === "SHORT"
-            ? "SHORT"
-            : ctx.thesisDirection === "LONG"
-              ? "LONG"
-              : null,
-        );
-      }
+      const ctx = await fetchProposalCtx();
+      setRejectThesisId(ctx.thesisId ?? null);
+      setRejectDirection(
+        ctx.thesisDirection === "SHORT"
+          ? "SHORT"
+          : ctx.thesisDirection === "LONG"
+            ? "LONG"
+            : null,
+      );
     } catch {
       /* non-fatal */
     }
@@ -216,6 +218,7 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
     setRejectMessage("");
     setRejectError(null);
     setRejectThesisId(null);
+    setRejectDirection(null);
   }
 
   if (resolved) {
@@ -335,11 +338,11 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
                 </p>
                 <div className="max-h-64 overflow-y-auto">
                   <ThesisTriggersSection
-                    key={`${rejectThesisId}-${trigRefresh}`}
                     thesisId={rejectThesisId}
                     editable
                     editableOnly
                     direction={rejectDirection}
+                    refreshKey={trigRefresh}
                     onChanged={() => setTrigRefresh((k) => k + 1)}
                   />
                 </div>

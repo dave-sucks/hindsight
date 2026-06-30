@@ -37,6 +37,7 @@ An invalid trigger is dropped at evaluation, so the gate rejects it up front.
 | `TRAILING_STOP` | Retrace `trailPct`% from peak (dormant — not offered in the UI) | `trailPct` |
 | `VS_SMA` | Price vs 50/200-day SMA | `period`, `direction` |
 | `RSI` | RSI vs threshold (**stubbed — never fires**) | `threshold`, `direction` |
+| `SIGNAL_TYPE` | A routed signal of a given type/sentiment/urgency | `signalType`, `sentiment?`, `minUrgency?` |
 | `EARNINGS_BEAT` / `EARNINGS_MISS` | Earnings surprise | `minSurprisePct?` |
 | `GUIDANCE_CHANGE` | Guidance revision | `direction` |
 | `FILING` | SEC form filed | `formType` |
