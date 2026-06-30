@@ -36,6 +36,7 @@ import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 import { describeTriggerFire } from "@/lib/agent/triggers/format";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { isMarketOpen } from "@/lib/market-hours";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -436,6 +437,21 @@ export const triggerEvaluator = inngest.createFunction(
     }
 
     // ── Cron path (intraday price reactivity) ──────────────────────────
+    // Only evaluate price predicates during the regular session. The cron
+    // schedule (*/5 9-16) also covers the 9:00–9:25 pre-open ticks, the
+    // post-4:00 ticks, and holidays — and pre/after-hours quotes are thin and
+    // erratic, so a "down X% on the day" trigger can fire on a pre-market print
+    // (observed: a 1% movement trigger fired at 9:00 AM). Gate on isMarketOpen()
+    // (9:30–16:00 ET, holiday-aware) — the same guard price-monitor already
+    // uses. The signal-driven path above is intentionally NOT gated: news
+    // doesn't keep market hours.
+    const marketOpen = await step.run("check-market-hours", async () =>
+      isMarketOpen(),
+    );
+    if (!marketOpen) {
+      return { path: "cron", skipped: "market-closed" };
+    }
+
     const cronFires = await step.run("evaluate-cron", async () => {
       // ACTIVE + WATCHING. ACTIVE theses have positions at risk (stop /
       // target / trail). WATCHING theses carry promotion triggers — for
