@@ -519,6 +519,53 @@ function HomeBottomSection({ activity, loading, coverage }: {
 // DashboardTradeRow was removed in favour of CoverageTable (the full-width
 // portfolio view). To restore it, check git history for the SharedTradeRow usage.
 
+// ── ProposalsPanel — pending-approval trades only ────────────────────────────
+// The CoverageTable shows held positions / watching / passed, but NOT pending
+// proposals (Order AWAITING_APPROVAL — not yet a Position). This panel restores
+// the one place on the homepage to review + approve/reject them. Renders nothing
+// when there are no proposals, so it only takes up space when it matters.
+function ProposalsPanel({
+  proposals,
+  flashIds,
+}: {
+  proposals: MockTrade[];
+  flashIds: Map<string, 'win' | 'loss'>;
+}) {
+  if (proposals.length === 0) return null;
+  return (
+    <div className="mb-3">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1.5 px-1">
+        Pending approval
+      </p>
+      <Card className="p-1 gap-1">
+        {proposals.map((t) => (
+          <SharedTradeRow
+            key={t.id}
+            id={t.id}
+            ticker={t.ticker}
+            currentPrice={t.currentPrice}
+            entryPrice={t.entryPrice}
+            shares={t.shares}
+            pnl={t.pnl ?? 0}
+            pnlPct={t.pnlPct ?? 0}
+            status={t.status}
+            placedAt={t.placedAt}
+            filledAt={t.filledAt}
+            closedAt={t.closedAt}
+            priceSource={t.priceSource}
+            priceUpdatedAt={t.priceUpdatedAt}
+            alpacaOrderId={t.alpacaOrderId}
+            flash={flashIds.get(t.id)}
+            pendingProposal={t.pendingProposal}
+            thesisId={t.thesisId}
+            direction={t.direction}
+          />
+        ))}
+      </Card>
+    </div>
+  );
+}
+
 function Empty({ text, subtext }: { text: string; subtext?: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-10 gap-1.5 px-4">
@@ -1243,6 +1290,13 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
             </div>
 
 
+          {/* Pending proposals — mobile only. The desktop right rail is hidden
+              below lg, so surface proposals inline here so they're reachable
+              and reviewable on a phone. Renders nothing when empty. */}
+          <div className="lg:hidden">
+            <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
+          </div>
+
           {/* Portfolio + Activity stacked section */}
           <HomeBottomSection
             activity={data?.activityFeed ?? []}
@@ -1279,6 +1333,9 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                 </UITooltipContent>
               </UITooltip>
             </UITooltipProvider>
+            {/* Pending proposals sit above the digest — they're the most
+                time-sensitive thing on the page. Renders nothing when empty. */}
+            <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
             <DigestPreviewCard digest={digest} />
           </div>
 
