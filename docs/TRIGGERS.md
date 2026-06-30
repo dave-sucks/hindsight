@@ -125,14 +125,16 @@ per-kind default (`applyTriggerCooldownDefaults`).
 
 ## 7. Cadence + market hours
 
-The trigger-evaluator cron runs **every 5 minutes, `9-16` ET, Mon–Fri**. Two
-known boundaries:
+The trigger-evaluator cron is scheduled **every 5 minutes, `9-16` ET, Mon–Fri**,
+but the price path only **evaluates during the regular session**:
 
-- **Pre-open / holidays:** the cron's first tick is 9:00 ET (30 min before the
-  open) and the `Mon–Fri` schedule doesn't skip holidays — so a daily-% trigger
-  can fire on a thin pre-market quote. Gating price evaluation to
-  `isMarketOpen()` (regular session, holiday-aware — what `price-monitor`
-  already does) is the open follow-up.
+- **Market-hours gate:** the cron's first tick is 9:00 ET (30 min before the
+  open), the last spans past 16:00, and the `Mon–Fri` schedule doesn't skip
+  holidays — all of which would evaluate price predicates against thin/erratic
+  pre/after-market quotes (a daily-% trigger firing on a pre-market print). So
+  the cron path gates on `isMarketOpen()` (regular session 9:30–16:00 ET,
+  holiday-aware — the same guard `price-monitor` uses) and no-ops outside it.
+  The **signal path is not gated** — news doesn't keep market hours.
 - **Cap:** 200 unique tickers per tick.
 
 ## 8. Editing surfaces
