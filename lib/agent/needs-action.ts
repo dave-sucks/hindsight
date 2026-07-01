@@ -3,9 +3,10 @@
  * so the daily-run agent doesn't have to cross-reference five different
  * prompt blocks to figure out what needs attention today.
  *
- * Four kinds. The first three are trigger-driven. The fourth (PROMOTED)
- * is status-driven — any PROMOTED thesis ALWAYS requires resolution this
- * run regardless of trigger state.
+ * Five kinds. Three are trigger-driven (FIRED / MATCHING_NOW / REVIEW_DUE);
+ * PROMOTED is status-driven (any PROMOTED thesis ALWAYS requires resolution
+ * this run); RUNNING_WINNER is position-P&L-driven (a held winner that reached
+ * its target's decision point but has no trigger set to catch it).
  *
  *   PROMOTED_AWAITING_RESOLUTION — thesis.status === "PROMOTED".
  *                         The user explicitly graduated this analyst to
@@ -26,6 +27,14 @@
  *                         price/time-side predicates is currently true.
  *                         Catches matches the cron may not have
  *                         delivered yet.
+ *   RUNNING_WINNER      — a HOLDING that has reached ≥75% of the way from its
+ *                         entry (avgCost) to its target (or blown past it),
+ *                         up ≥8%, with no fired/matching trigger already
+ *                         catching it. The backstop for the "agent ignores
+ *                         winners" gap: an un-laddered winner near its target
+ *                         would otherwise resolve to needsAction=null and be
+ *                         skipped. Surfaces it as a press/hold/take decision.
+ *                         See docs/plans/SCALE_INTO_WINNERS.md + winner-signal.ts.
  *   REVIEW_DUE          — thesis.nextReviewAt falls within the next 24h
  *                         (i.e. due today or already overdue). Look-ahead
  *                         window covers reviews scheduled for later in
@@ -41,7 +50,11 @@
  *                         run.
  *
  * Precedence when multiple match:
- *   PROMOTED_AWAITING_RESOLUTION > TRIGGER_FIRED > TRIGGER_MATCHING_NOW > REVIEW_DUE
+ *   PROMOTED_AWAITING_RESOLUTION > TRIGGER_FIRED > TRIGGER_MATCHING_NOW >
+ *   RUNNING_WINNER > REVIEW_DUE
+ * (An explicit fired/matching trigger — a stop, a target-EXIT — outranks the
+ * generic running-winner flag; the winner flag outranks a routine review
+ * because it tells the agent WHY to look: a press/hold/take decision.)
  *
  * A thesis with no PROMOTED status, no fires, no matches, and a future
  * nextReviewAt returns `null` — yesterday's thesis stands and the agent
@@ -52,6 +65,7 @@
 
 import { shouldFire } from "@/lib/agent/triggers/evaluate";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
+import { computeWinnerSignal } from "@/lib/agent/winner-signal";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -93,6 +107,15 @@ export type NeedsAction =
       action: NeedsActionVerb;
       predicateSummary: string;
       livePrice: number | null;
+    }
+  | {
+      kind: "RUNNING_WINNER";
+      /** Unrealized gain %, direction-aware. */
+      unrealizedGainPct: number;
+      /** Fraction of entry→target distance covered (≥1 = past target). */
+      progressToTarget: number;
+      /** True when price has reached or exceeded the target. */
+      pastTarget: boolean;
     }
   | {
       kind: "REVIEW_DUE";
@@ -196,6 +219,14 @@ export interface NeedsActionInput {
      * held or the caller didn't resolve a position.
      */
     positionOpenedAt?: Date | null;
+    /**
+     * Paired open Position's blended avgCost + the thesis target price, for
+     * HOLDING rows only. Feed the RUNNING_WINNER computation (progress-to-
+     * target + unrealized gain). Null when not held, no target, or the caller
+     * didn't resolve a position. See lib/agent/winner-signal.ts.
+     */
+    avgCost?: number | null;
+    targetPrice?: number | null;
     /**
      * Conviction context, frozen at promotion time. Surfaced into the
      * PROMOTED_AWAITING_RESOLUTION needsAction so the agent has the
@@ -307,7 +338,31 @@ export function computeNeedsAction(
     }
   }
 
-  // 3) REVIEW_DUE — agent-set cadence (nextReviewAt) elapsed OR coming
+  // 3) RUNNING_WINNER — a held position at/near its target's decision point
+  //    with no fired/matching trigger already catching it. Backstop for the
+  //    "agent ignores winners" gap (SCALE_INTO_WINNERS.md PR3): an un-laddered
+  //    winner would otherwise fall through to null and be skipped by the
+  //    morning run. Only for HOLDING rows; needs the position avgCost + the
+  //    thesis target from the caller. Ranks below explicit trigger fires (a
+  //    stop or target-EXIT is more specific) but above a routine review.
+  if (thesis.status === "HOLDING") {
+    const winner = computeWinnerSignal({
+      direction: thesis.direction,
+      avgCost: thesis.avgCost,
+      targetPrice: thesis.targetPrice,
+      currentPrice: latestQuote?.price ?? null,
+    });
+    if (winner?.isRunningWinner && winner.progressToTarget != null) {
+      return {
+        kind: "RUNNING_WINNER",
+        unrealizedGainPct: winner.unrealizedGainPct,
+        progressToTarget: winner.progressToTarget,
+        pastTarget: winner.pastTarget,
+      };
+    }
+  }
+
+  // 4) REVIEW_DUE — agent-set cadence (nextReviewAt) elapsed OR coming
   //    due within the next 24h. The 24h look-ahead is load-bearing: the
   //    morning daily-run fires once at 08:00 ET, but the agent often
   //    sets nextReviewAt to 09:30 ET (market open) on a future calendar

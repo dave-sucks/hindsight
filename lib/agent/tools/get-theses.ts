@@ -403,6 +403,11 @@ export const getTheses = defineTool({
     // and aren't looked up. Scoped by analyst (+ environment when known) so a
     // LIVE run never reads a PAPER position's open time and vice versa.
     const positionOpenedAtByThesisId = new Map<string, Date>();
+    // Paired open-position blended avgCost per HOLDING thesis — feeds the
+    // RUNNING_WINNER needsAction flag + the resolver's inline P&L / progress
+    // (SCALE_INTO_WINNERS.md PR3). Empty on lookup failure → winner signal is
+    // null → no RUNNING_WINNER (graceful degradation).
+    const avgCostByThesisId = new Map<string, number>();
     // P1-28 (L2): how many times the user has been shown a close proposal on
     // this held position and did NOT approve it — rejected OR ignored-to-expiry
     // (the user mostly ignores cards to expiry rather than clicking Reject).
@@ -430,21 +435,27 @@ export const getTheses = defineTool({
             ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
             ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
           },
-          select: { id: true, symbol: true, openedAt: true },
+          select: { id: true, symbol: true, openedAt: true, avgCost: true },
           orderBy: { openedAt: "desc" },
         });
         const openedAtByTicker = new Map<string, Date>();
         const positionIdByTicker = new Map<string, string>();
+        const avgCostByTicker = new Map<string, number>();
         for (const p of openPositions) {
           if (!openedAtByTicker.has(p.symbol)) {
             openedAtByTicker.set(p.symbol, p.openedAt);
             positionIdByTicker.set(p.symbol, p.id);
+            avgCostByTicker.set(p.symbol, Number(p.avgCost));
           }
         }
         for (const t of theses) {
           if (t.status !== "HOLDING") continue;
           const openedAt = openedAtByTicker.get(t.ticker);
           if (openedAt) positionOpenedAtByThesisId.set(t.id, openedAt);
+          const avgCost = avgCostByTicker.get(t.ticker);
+          if (avgCost != null && Number.isFinite(avgCost)) {
+            avgCostByThesisId.set(t.id, avgCost);
+          }
         }
 
         // Count UNAPPROVED close proposals per open position (Order ledger):
@@ -557,6 +568,8 @@ export const getTheses = defineTool({
               createdAt: t.createdAt,
               nextReviewAt: t.nextReviewAt,
               positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
+              avgCost: avgCostByThesisId.get(t.id) ?? null,
+              targetPrice: t.targetPrice ?? null,
               paperTenureDays: t.paperTenureDays ?? null,
               paperRealizedPnl:
                 t.paperRealizedPnl != null
@@ -640,6 +653,8 @@ export const getTheses = defineTool({
             status: t.status,
             direction: t.direction,
             entryPrice: t.entryPrice,
+            targetPrice: t.targetPrice ?? null,
+            avgCost: avgCostByThesisId.get(t.id) ?? null,
             triggers: t.triggers,
             catalystDate: t.catalystDate,
             createdAt: t.createdAt,
