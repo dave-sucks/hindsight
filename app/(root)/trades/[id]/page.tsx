@@ -5,6 +5,7 @@ import { StockIdentityHeader } from '@/components/domain/stock-identity-header';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PriceChange } from '@/components/ui/price-change';
 import { buildTradeSentence } from '@/lib/trade-statement';
+import { formatCurrency } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -245,10 +246,10 @@ export default async function TradeDetailPage({
 
   const evalEvent = position.events.find((e) => e.eventType === 'EVALUATED');
 
+  // Shared formatter so the trade page + thesis sheet render currency
+  // identically (formatCurrency enforces 2-decimal min+max).
   const fmtCur = (n: number | null | undefined) =>
-    n != null
-      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n)
-      : '—';
+    n != null ? formatCurrency(n) : '—';
 
   // Chart reference lines for entry/target/stop
   const chartReferenceLines = [
@@ -376,7 +377,7 @@ export default async function TradeDetailPage({
                       {/* Shared trade-sentence grammar (same as the thesis
                           sheet / row / activity feed). fmtQty inside the
                           builder fixes the raw 5.953027164-shares decimals. */}
-                      <span className="tabular-nums">
+                      <span className="font-medium tabular-nums">
                         {buildTradeSentence(
                           isOpen
                             ? hasFilledBuy

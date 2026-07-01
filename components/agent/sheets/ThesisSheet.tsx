@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/sheet";
 import Link from "next/link";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
+import { formatCurrency } from "@/lib/format";
 import { TickBar, type Tick } from "@/components/ui/gauge";
 import {
   Tooltip,
@@ -1613,15 +1614,15 @@ export function ThesisSheetBody({
             /quote is still in flight; nothing if it returned null
             (Finnhub failure). */}
         {quote?.currentPrice != null ? (
-          <div className="flex items-baseline gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
             <span className="text-xl font-semibold tabular-nums">
-              ${quote.currentPrice.toFixed(2)}
+              {formatCurrency(quote.currentPrice)}
             </span>
             {quote.dayChange != null && (
               <PriceChange
                 dollarChange={quote.dayChange}
                 percentChange={quote.dayChangePct}
-                size="sm"
+                size="xl"
               />
             )}
           </div>
