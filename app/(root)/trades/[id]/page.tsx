@@ -14,7 +14,7 @@ import {
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip';
-import { StockPriceChart } from '@/components/stocks/StockPriceChart';
+import { ThesisChart } from '@/components/domain/thesis-chart';
 import { StockThesesList } from '@/components/stocks/StockThesesList';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { PriceTargetsBlock } from '@/components/domain/price-targets-block';
@@ -234,13 +234,6 @@ export default async function TradeDetailPage({
   const fmtCur = (n: number | null | undefined) =>
     n != null ? formatCurrency(n) : '—';
 
-  // Chart reference lines for entry/target/stop
-  const chartReferenceLines = [
-    { price: trade.entryPrice, color: '#a1a1aa', label: 'Entry', dashed: true },
-    { price: targetPrice, color: '#22c55e', label: 'Target', dashed: true },
-    { price: stopPrice, color: '#ef4444', label: 'Stop', dashed: true },
-  ];
-
   // Quote data for stats grid
   const changePct = stockQuote?.dp ?? null;
   const isQuoteUp = (changePct ?? 0) >= 0;
@@ -326,8 +319,23 @@ export default async function TradeDetailPage({
                 )}
               </div>
 
-              {/* Chart — simple status row above it */}
-              <StockPriceChart candles={candles} referenceLines={chartReferenceLines}>
+              {/* Chart — ThesisChart is the SAME annotated chart the thesis
+                  sheet uses (Entry/Target/Stop lines + Watching/Entry vertical
+                  markers). The trade-sentence status row is passed as children
+                  into the chart card's top edge. */}
+              <ThesisChart
+                ticker={trade.ticker}
+                candles={candles}
+                direction={trade.direction === 'SHORT' ? 'SHORT' : 'LONG'}
+                entryPrice={null}
+                avgCost={trade.entryPrice}
+                targetPrice={targetPrice}
+                stopLoss={stopPrice}
+                current={livePrice ?? currentPrice}
+                addedAt={trade.thesis?.createdAt ? new Date(trade.thesis.createdAt).toISOString() : null}
+                enteredAt={new Date(position.openedAt).toISOString()}
+                variant="full"
+              >
                 <TooltipProvider>
                   <div className="px-4 py-2.5 border-b flex items-center justify-between gap-2 text-sm">
                     <div className="flex items-center gap-2">
@@ -391,7 +399,7 @@ export default async function TradeDetailPage({
                     />
                   </div>
                 </TooltipProvider>
-              </StockPriceChart>
+              </ThesisChart>
 
               {/* Trade Thesis */}
               {trade.thesis && (() => {

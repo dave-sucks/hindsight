@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { StockPriceChart } from '@/components/stocks/StockPriceChart';
 import { PriceTargetsBlock } from '@/components/domain/price-targets-block';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
@@ -33,6 +34,9 @@ type ThesisChartProps = {
    * card — feed card: fixed 1M window, no controls, no vertical markers.
    */
   variant: 'full' | 'card';
+  /** Rendered at the top of the chart card (e.g. the trade-sentence header row
+   *  on the trade detail page). Forwarded to StockPriceChart. */
+  children?: ReactNode;
 };
 
 /**
@@ -55,6 +59,7 @@ export function ThesisChart({
   addedAt,
   enteredAt,
   variant,
+  children,
 }: ThesisChartProps) {
   const entry = avgCost ?? entryPrice; // actual fill wins over planned
   const dir: 'LONG' | 'SHORT' = direction === 'SHORT' ? 'SHORT' : 'LONG';
@@ -97,6 +102,8 @@ export function ThesisChart({
       defaultRange={variant === 'card' ? '1M' : '3M'}
       height={variant === 'card' ? 160 : 300}
       frameless={variant === 'card'}
-    />
+    >
+      {children}
+    </StockPriceChart>
   );
 }
