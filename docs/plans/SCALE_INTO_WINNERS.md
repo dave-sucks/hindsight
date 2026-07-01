@@ -20,7 +20,7 @@
 | # | Workstream | Layer | Status | Depends on |
 |---|---|---|---|---|
 | 0 | **Active trigger authorship (the spine)** — writer/daily/tactical actively set+edit the ladder | L1+L2+L3 | not started | runs through all below |
-| 1 | Caps redesign (2× per name, add-path) | L1 gate | not started | — |
+| 1 | Caps redesign (2× per name, add-path) | L1 gate | ✅ in review ([#467](https://github.com/dave-sucks/hindsight/pull/467)) | — |
 | 2 | Default trigger ladder on holdings (ADD / REVIEW / MOVE_STOP + % up/down) | L2 + builder | not started | `docs/TRIGGERS.md` |
 | 3 | `RUNNING_WINNER` attention (5th `needsAction` kind + P&L join) | L2 | not started | — |
 | 4 | Tactical add-evaluation branch (press/hold/take + checklists) | L2 result + L3 prompt | not started | 1 |
