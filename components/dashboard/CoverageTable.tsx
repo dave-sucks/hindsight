@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, X } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,65 +13,59 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
+import { getTradeStatusDisplay } from "@/lib/trade-status";
+import { cn } from "@/lib/utils";
+import { PriceChange } from "@/components/ui/price-change";
+import { PnlBadge } from "@/components/ui/pnl-badge";
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getTradeStatusDisplay } from "@/lib/trade-status";
-import { cn, pnlColor } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
 
 // ─── Coverage Table (Feature B — docs/plans/PORTFOLIO_DIGEST.md) ──────────────
-//
-// An expanded trade-row: each row carries the trade-row identity (logo · status
-// dot · ticker · subhead) PLUS the stock's momentum across 1D/5D/30D and the
-// move-vs-decision ("Since"). Three tabs: Trades (open + recent sales),
-// Watching, Passed (recent). See coverage.actions for the data.
+
+type Tab = "trades" | "watching" | "passed";
+type MobileView = "lifetime" | "1d";
 
 // Moves under this magnitude read as "flat" — shown muted, not green/red.
 const FLAT_BAND_PCT = 0.5;
 
-const SINCE_LABEL = { trades: "Lifetime", watching: "Since watch", passed: "Since pass" } as const;
-type Tab = keyof typeof SINCE_LABEL;
-
-function fmtDate(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(d);
-}
-
-// ── A plain colored % (stock momentum — green up / red down, muted near flat) ─
-function Pct({ value }: { value: number | null }) {
-  if (value == null) return <span className="text-muted-foreground/40">—</span>;
-  const flat = Math.abs(value) < FLAT_BAND_PCT;
-  return (
-    <span className={cn("tabular-nums", flat ? "text-muted-foreground" : pnlColor(value))}>
-      {value >= 0 ? "+" : ""}
-      {value.toFixed(2)}%
-    </span>
-  );
-}
-
-// ── The status dot — identical to the trade row's for trades; neutral else ───
+// ── Status dot ───────────────────────────────────────────────────────────────
 function statusDotClass(row: CoverageRow): string {
   if (row.tradeState === "OPEN") return getTradeStatusDisplay("OPEN").dotClass;
   if (row.tradeState === "CLOSED")
     return getTradeStatusDisplay((row.sinceDollar ?? 0) >= 0 ? "CLOSED_WIN" : "CLOSED_LOSS").dotClass;
-  if (row.verdict != null) return "bg-muted-foreground/40"; // passed
-  return "bg-sky-500"; // watching
+  if (row.verdict != null) return "bg-muted-foreground/40";
+  return "bg-sky-500";
 }
 
-// ── Name cell — the trade-row left side (logo · dot · ticker · subhead) ───────
+// ── Plain % cell (1D/5D/30D momentum) ────────────────────────────────────────
+function Pct({ value }: { value: number | null }) {
+  if (value == null) return <span className="text-muted-foreground/40">—</span>;
+  const flat = Math.abs(value) < FLAT_BAND_PCT;
+  if (flat) return <span className="tabular-nums text-sm text-muted-foreground">{value >= 0 ? "+" : ""}{value.toFixed(2)}%</span>;
+  return <PnlBadge value={value} format="percent" className="text-xs" />;
+}
+
+// ── Name cell ─────────────────────────────────────────────────────────────────
 function NameCell({ row }: { row: CoverageRow }) {
-  const subhead =
-    row.tradeState != null && row.costBasis != null && row.shares != null
-      ? `${formatCurrency(row.costBasis)} — ${row.shares} share${row.shares === 1 ? "" : "s"}`
-      : row.analystName;
+  let subhead: string;
+  if (row.tradeState != null && row.shares != null && row.costBasis != null) {
+    subhead = `${row.shares} share${row.shares === 1 ? "" : "s"} · ${formatCurrency(row.costBasis)}`;
+  } else if (row.verdict != null && row.anchorPrice != null) {
+    subhead = `Passed at $${row.anchorPrice.toFixed(2)}`;
+  } else if (row.anchorPrice != null) {
+    subhead = `Watch at $${row.anchorPrice.toFixed(2)}`;
+  } else {
+    subhead = row.analystName ?? "";
+  }
+
   return (
     <div className="flex items-center gap-2 min-w-0">
       <StockLogo ticker={row.ticker} size="md" className="rounded-md" />
@@ -89,77 +82,39 @@ function NameCell({ row }: { row: CoverageRow }) {
   );
 }
 
-// ── Since cell — 2-line: move (gray near flat / verdict icon for passes) + sub ─
-function SinceCell({ row }: { row: CoverageRow }) {
-  const subAnchor =
-    row.anchorPrice != null && row.anchorVerb !== "Sold"
-      ? ` · $${row.anchorPrice.toFixed(2)}`
-      : "";
-  const sub = `${row.anchorVerb} ${fmtDate(row.anchorAt)}${subAnchor}`;
-
-  // Passed: the % AND the icon both carry the verdict — Dodged = green + ✓,
-  // Missed = red + ✗, Flat = gray + no icon (NOT raw direction coloring, which
-  // is backwards for a pass). Trades/Watching: normal green/red, muted near flat.
-  const isPass = row.verdict != null;
-  const flat = row.sincePct != null && Math.abs(row.sincePct) < FLAT_BAND_PCT;
-  const pctClass = isPass
-    ? row.verdict === "DODGED"
-      ? "text-emerald-500"
-      : row.verdict === "MISSED"
-        ? "text-red-500"
-        : "text-muted-foreground"
-    : flat
-      ? "text-muted-foreground"
-      : pnlColor(row.sincePct ?? 0);
-
-  const verdictIcon =
-    row.verdict === "DODGED" ? (
-      <Check className="h-3.5 w-3.5 text-emerald-500" />
-    ) : row.verdict === "MISSED" ? (
-      <X className="h-3.5 w-3.5 text-red-500" />
-    ) : null; // FLAT → no icon
-
-  const top = (
-    <span className="inline-flex items-center gap-1.5 justify-end">
-      {verdictIcon}
-      {row.sincePct == null ? (
-        <span className="text-muted-foreground/40">—</span>
-      ) : (
-        <span className={cn("tabular-nums", pctClass)}>
-          {row.tradeState != null && row.sinceDollar != null && (
-            <>
-              {row.sinceDollar >= 0 ? "+" : ""}${Math.abs(row.sinceDollar).toFixed(2)}{" "}
-            </>
-          )}
-          <span className="text-xs">
-            {row.sincePct >= 0 ? "+" : ""}
-            {row.sincePct.toFixed(2)}%
-          </span>
-        </span>
-      )}
-    </span>
-  );
+// ── Lifetime / 1D cell (last column) ─────────────────────────────────────────
+// On desktop: just P&L (price has its own column).
+// On mobile: price on top (since Price column is hidden), then P&L below.
+// mobileView controls whether we show lifetime or 1D P&L.
+function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: MobileView }) {
+  const isLifetime = mobileView === "lifetime";
+  const pct = isLifetime ? row.sincePct : row.oneDayPct;
+  // Dollar gain only for lifetime on trades (1D has no dollar field)
+  const dollar = isLifetime && row.tradeState != null ? row.sinceDollar : null;
 
   return (
     <div className="flex flex-col items-end gap-0.5">
-      {verdictIcon != null ? (
-        <Tooltip>
-          <TooltipTrigger render={<span className="cursor-default">{top}</span>} />
-          <TooltipContent side="top">
-            {row.verdict === "DODGED"
-              ? "Dodged — passed and it's down since"
-              : "Missed — passed but it's risen since"}
-          </TooltipContent>
-        </Tooltip>
-      ) : (
-        top
+      {/* Price — only on mobile since desktop has a dedicated Price column */}
+      {row.currentPrice != null && (
+        <span className="md:hidden text-sm tabular-nums font-light">
+          ${row.currentPrice.toFixed(2)}
+        </span>
       )}
-      <span className="text-xs text-muted-foreground/70 truncate">{sub}</span>
+      {pct == null ? (
+        <span className="text-muted-foreground/40 text-xs">—</span>
+      ) : (
+        <span className="inline-flex items-center gap-1.5 justify-end">
+          {dollar != null && (
+            <PriceChange dollarChange={dollar} percentChange={null} size="sm" arrowFirst />
+          )}
+          <PnlBadge value={pct} format="percent" className="text-xs" />
+        </span>
+      )}
     </div>
   );
 }
 
-// ── One tab's table ──────────────────────────────────────────────────────────
+// ── One tab's table ───────────────────────────────────────────────────────────
 function CoverageTab({
   rows,
   tab,
@@ -171,6 +126,8 @@ function CoverageTab({
   emptyLabel: string;
   onRowClick: (row: CoverageRow) => void;
 }) {
+  const [mobileView, setMobileView] = useState<MobileView>("lifetime");
+
   if (rows.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -180,16 +137,54 @@ function CoverageTab({
   }
 
   return (
-    <div className="rounded-lg border overflow-hidden">
-      <Table>
+    <div className="rounded-lg border overflow-hidden bg-card">
+      {/* table-fixed + per-column widths so the momentum/price columns stay a
+          constant size across the Trades/Watching/Passed tabs (the Gain column
+          content varies by tab); Name + Gain absorb the remaining width. */}
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
-            <TableHead className="text-right">Price</TableHead>
-            <TableHead className="text-right">1D</TableHead>
-            <TableHead className="text-right">5D</TableHead>
-            <TableHead className="text-right">30D</TableHead>
-            <TableHead className="text-right">{SINCE_LABEL[tab]}</TableHead>
+            {/* Price — hidden on mobile (it moves into the last column) */}
+            <TableHead className="hidden md:table-cell w-24 text-right">Price</TableHead>
+            {/* 1D/5D/30D — desktop only */}
+            <TableHead className="hidden md:table-cell w-24 text-right">1D</TableHead>
+            <TableHead className="hidden md:table-cell w-24 text-right">5D</TableHead>
+            <TableHead className="hidden md:table-cell w-24 text-right">30D</TableHead>
+            {/* Last column — "Lifetime" label on desktop, toggle on mobile */}
+            <TableHead className="w-48 text-right">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={<span className="hidden md:inline cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-4" />}
+                  >
+                    Lifetime
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="end">
+                    <p className="text-xs max-w-[200px]">
+                      Total gain since the position was opened, the watch was started, or the name was passed.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {/* Mobile toggle — same pill style as the chart range tabs */}
+              <div className="md:hidden inline-flex items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
+                {(["lifetime", "1d"] as MobileView[]).map((v) => (
+                  <button
+                    key={v}
+                    onClick={(e) => { e.stopPropagation(); setMobileView(v); }}
+                    className={cn(
+                      "px-2 py-0.5 text-xs rounded transition-colors",
+                      mobileView === v
+                        ? "bg-background text-foreground font-medium shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {v === "lifetime" ? "All" : "1D"}
+                  </button>
+                ))}
+              </div>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -202,13 +197,21 @@ function CoverageTab({
               <TableCell>
                 <NameCell row={row} />
               </TableCell>
-              <TableCell className="text-right tabular-nums font-light">
+              <TableCell className="hidden md:table-cell text-right text-sm tabular-nums font-light">
                 {row.currentPrice != null ? `$${row.currentPrice.toFixed(2)}` : "—"}
               </TableCell>
-              <TableCell className="text-right"><Pct value={row.oneDayPct} /></TableCell>
-              <TableCell className="text-right"><Pct value={row.fiveDayPct} /></TableCell>
-              <TableCell className="text-right"><Pct value={row.thirtyDayPct} /></TableCell>
-              <TableCell className="text-right"><SinceCell row={row} /></TableCell>
+              <TableCell className="hidden md:table-cell text-right">
+                <Pct value={row.oneDayPct} />
+              </TableCell>
+              <TableCell className="hidden md:table-cell text-right">
+                <Pct value={row.fiveDayPct} />
+              </TableCell>
+              <TableCell className="hidden md:table-cell text-right">
+                <Pct value={row.thirtyDayPct} />
+              </TableCell>
+              <TableCell className="text-right">
+                <LifetimeCell row={row} mobileView={mobileView} />
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -261,9 +264,6 @@ export default function CoverageTable({ data }: { data: CoverageData }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [seed, setSeed] = useState<ThesisCardData | null>(null);
 
-  // Row click → open the thesis sheet (the principal's preferred entry point);
-  // /trades is reachable from inside the sheet. No thesis for the ticker →
-  // fall back to the stock page.
   const handleRowClick = (row: CoverageRow) => {
     if (row.thesisId) {
       setSeed(seedFor(row));

@@ -42,7 +42,9 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
 // side=top/bottom is unaffected — those sides are content-driven).
 // `floating` insets the panel from the screen edge by 0.5rem and rounds
 // the corners so the panel reads as a card hovering off the edge rather
-// than bolted to it.
+// than bolted to it. Only applies at sm+ — on mobile the panel falls back
+// to the base full-width edge-to-edge layout (a floating inset on a phone
+// just wastes the narrow viewport and looks broken).
 const sheetContentVariants = cva(
   "fixed z-50 flex flex-col gap-4 bg-background bg-clip-padding text-sm shadow-lg transition duration-200 ease-in-out data-ending-style:opacity-0 data-starting-style:opacity-0 overflow-y-auto data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=bottom]:data-ending-style:translate-y-[2.5rem] data-[side=bottom]:data-starting-style:translate-y-[2.5rem] data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-full data-[side=left]:sm:w-3/4 data-[side=left]:border-r data-[side=left]:data-ending-style:translate-x-[-2.5rem] data-[side=left]:data-starting-style:translate-x-[-2.5rem] data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-full data-[side=right]:sm:w-3/4 data-[side=right]:border-l data-[side=right]:data-ending-style:translate-x-[2.5rem] data-[side=right]:data-starting-style:translate-x-[2.5rem] data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=top]:data-ending-style:translate-y-[-2.5rem] data-[side=top]:data-starting-style:translate-y-[-2.5rem]",
   {
@@ -54,7 +56,7 @@ const sheetContentVariants = cva(
         xl: "data-[side=left]:sm:max-w-3xl data-[side=right]:sm:max-w-3xl",
       },
       floating: {
-        true: "data-[side=left]:inset-y-2 data-[side=left]:left-2 data-[side=left]:h-[calc(100vh-1rem)] data-[side=left]:rounded-lg data-[side=left]:border data-[side=right]:inset-y-2 data-[side=right]:right-2 data-[side=right]:h-[calc(100vh-1rem)] data-[side=right]:rounded-lg data-[side=right]:border",
+        true: "data-[side=left]:sm:inset-y-2 data-[side=left]:sm:left-2 data-[side=left]:sm:h-[calc(100vh-1rem)] data-[side=left]:sm:rounded-lg data-[side=left]:sm:border data-[side=right]:sm:inset-y-2 data-[side=right]:sm:right-2 data-[side=right]:sm:h-[calc(100vh-1rem)] data-[side=right]:sm:rounded-lg data-[side=right]:sm:border",
         false: "",
       },
     },

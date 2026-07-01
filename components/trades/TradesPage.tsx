@@ -240,10 +240,10 @@ export default function TradesPage({
               <TableHead className="text-right">Total Value</TableHead>
               <TableHead className="w-28">Target</TableHead>
               <TableHead>Placed</TableHead>
-              {/* Sticky-right action column. w-0 keeps the column from
-                  adding width when empty; bg-background keeps the header
-                  cell opaque when table content scrolls underneath it. */}
-              <TableHead className="pr-6 sticky right-0 bg-background w-0"></TableHead>
+              {/* Action overlay column — zero width, no bg. The buttons in
+                  each body row float over the right edge on hover, so this
+                  header allocates no space and adds no visible column. */}
+              <TableHead className="w-0 p-0"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -270,7 +270,11 @@ export default function TradesPage({
               const isUp = totalGain >= 0;
 
               return (
-                <TableRow key={trade.id} className="group">
+                <TableRow
+                  key={trade.id}
+                  className="group relative cursor-pointer"
+                  onClick={() => router.push(`/trades/${trade.id}`)}
+                >
                   {/* Name: logo + ticker with inline status dot + analyst
                       subhead. No longer wrapped in a Link — navigation
                       happens via the hover-revealed action buttons on the
@@ -364,7 +368,7 @@ export default function TradesPage({
                       pair so the user can decide without leaving the table. */}
                   <TableCell className="text-right">
                     {awaitingApproval ? (
-                      <div className="flex justify-end">
+                      <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
                         <ProposalActions orderId={trade.pendingProposal!.orderId} />
                       </div>
                     ) : isStalePrice && isOpen ? (
@@ -455,27 +459,23 @@ export default function TradesPage({
                     </Tooltip>
                   </TableCell>
 
-                  {/* Hover-revealed action group — opacity-0 by default,
-                      opacity-100 on row hover via `group` class on
-                      TableRow. Two buttons: open-trade (explicit nav since
-                      row is no longer a link) and the 3-dot menu (Cancel /
-                      Close).
-                      Cell is `sticky right-0` so when the table scrolls
-                      horizontally, the buttons stay pinned to the right
-                      edge and overlay whichever column is visible
-                      underneath. Solid bg-background + subtle inset
-                      shadow-on-the-left signals the float-over relationship
-                      (similar to how Google Sheets / Airtable handle a
-                      frozen last column). On row hover, the row's muted bg
-                      shows through via bg-muted/50 to match. */}
-                  <TableCell className="pr-6 sticky right-0 bg-background group-hover:bg-muted transition-colors shadow-[inset_8px_0_6px_-6px_rgba(0,0,0,0.25)] group-hover:shadow-[inset_8px_0_6px_-6px_rgba(0,0,0,0.35)]">
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                  {/* Hover-revealed action group. The cell is zero-width
+                      (w-0 p-0) and sticky to the viewport right, so it
+                      allocates no column space and adds no visible column.
+                      The buttons are absolutely positioned (out of flow, so
+                      they never widen the cell) and float over the right edge
+                      of the row only on hover — no background, no crop. */}
+                  <TableCell className="w-0 p-0 sticky right-0">
+                    <div
+                      className="absolute inset-y-0 right-0 pr-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <Tooltip>
                         <TooltipTrigger
                           render={
                             <Link
                               href={`/trades/${trade.id}`}
-                              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
+                              className="h-7 w-7 flex items-center justify-center rounded-md border bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
                               aria-label="Open trade details"
                             >
                               <ExternalLink className="h-4 w-4" />
@@ -486,7 +486,7 @@ export default function TradesPage({
                       </Tooltip>
                       <DropdownMenu>
                         <DropdownMenuTrigger
-                          className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent/60 transition-colors text-muted-foreground"
+                          className="h-7 w-7 flex items-center justify-center rounded-md border bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
                           aria-label="More actions"
                         >
                           <MoreHorizontal className="h-4 w-4" />

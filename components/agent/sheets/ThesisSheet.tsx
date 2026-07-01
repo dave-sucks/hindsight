@@ -100,6 +100,7 @@ export type ThesisCardData = {
   // P1-24: PASSED is the researched-declined status (a pass now stores
   // direction=null). Threaded so the sheet's isPass keys on status.
   status?: "HOLDING" | "RETIRED" | "WATCHING" | "PROMOTED" | "PASSED";
+  created_at?: string;
   /**
    * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
    * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
@@ -1567,23 +1568,6 @@ export function ThesisSheetBody({
 
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
-      <div className="flex flex-wrap items-center gap-2">
-        {liveStatus ? <StatusPill status={liveStatus} /> : null}
-        <ConvictionBadge
-          conviction={conviction}
-          rationale={convictionRationale}
-        />
-        {/* ActionabilityBadge intentionally NOT rendered on the sheet
-            header. The actionability rollup is most useful in list-scan
-            views (watchlist, read-theses table, runs feed) where you're
-            comparing many rows. In the sheet you're deep-reading one
-            thesis and the same info is already conveyed by status +
-            triggers + live price + position. Adding it here made the
-            header noisy and surfaced misleading SUPERSEDED on rows that
-            had a cross-analyst PASS (now also scope-fixed in the API).
-            See docs/plans/CONVICTION_EXPRESSION.md §8 — kept ONLY for
-            list views per principal feedback 2026-05-31. */}
-      </div>
 
       {/* ── Terminal-status reason ──────────────────────────── */}
       {/* When the thesis ended (CLOSED / INVALIDATED / ARCHIVED), surface
@@ -1614,31 +1598,26 @@ export function ThesisSheetBody({
           The Review control for a pending proposal lives inside the trade
           block below, not here — one unified trade section per state. */}
       <div className="space-y-2">
-        <Link
-          href={`/stocks/${ticker}`}
-          className="flex items-center gap-3 group/stocklink"
-        >
-          <StockLogo ticker={ticker} size="lg" />
+        <div className="flex items-center gap-3">
+          <Link href={`/stocks/${ticker}`} className="shrink-0">
+            <StockLogo ticker={ticker} size="lg" />
+          </Link>
           <div className="flex-1 min-w-0">
-            <p className="text-lg font-semibold truncate group-hover/stocklink:underline underline-offset-4">
-              {displayName}
-            </p>
-            <p className="font-mono text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 min-w-0">
+              <Link href={`/stocks/${ticker}`} className="group/stocklink min-w-0">
+                <p className="text-xl font-semibold truncate group-hover/stocklink:underline underline-offset-4">
+                  {displayName}
+                </p>
+              </Link>
+              {liveStatus && <StatusPill status={liveStatus} />}
+              <ConvictionBadge conviction={conviction} rationale={convictionRationale} />
+            </div>
+            <p className="font-mono text-xs uppercase tracking-wide text-muted-foreground mt-0.5">
               {ticker}
               {exchange ? ` · ${exchange}` : ""}
             </p>
           </div>
-        </Link>
-        {/* Secondary entry point: the thesis sheet is the primary view; when
-            there's a position, link out to the full Trades page. */}
-        {position && (
-          <Link
-            href="/trades"
-            className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
-          >
-            View on Trades page →
-          </Link>
-        )}
+        </div>
         {/* Live current price + day's change. Comes from the separate
             /quote endpoint (slow — Finnhub call) so this block usually
             paints after the rest of the sheet body. Skeleton while
@@ -1646,7 +1625,7 @@ export function ThesisSheetBody({
             (Finnhub failure). */}
         {quote?.currentPrice != null ? (
           <div className="flex items-baseline gap-2">
-            <span className="text-lg font-medium tabular-nums">
+            <span className="text-xl font-semibold tabular-nums">
               ${quote.currentPrice.toFixed(2)}
             </span>
             {quote.dayChange != null && (

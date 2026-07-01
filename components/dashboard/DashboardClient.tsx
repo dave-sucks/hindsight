@@ -432,82 +432,12 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   );
 }
 
-function HomeBottomSection({ picks, activity, loading, coverage }: {
-  picks: RecentPick[];
+function HomeBottomSection({ activity, loading, coverage }: {
   activity: ActivityFeedItem[];
   loading: boolean;
   coverage?: CoverageData;
 }) {
-  const [tab, setTab] = useState<'portfolio' | 'theses' | 'activity'>('portfolio');
-  const [thesisFilter, setThesisFilter] = useState<ThesisTabFilter>('ALL');
-  const [thesisPage, setThesisPage] = useState(0);
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
-  const [showTour, setShowTour] = useState(false);
-
-  // Sub-filter tabs: "All" + each thesis status actually present in the feed,
-  // in canonical order. Pure status names — no special-case logic. Labels come
-  // from the shared status display map so they never drift from the pills.
-  const thesisTabs = useMemo<{ key: ThesisTabFilter; label: string }[]>(() => {
-    const present = new Set(picks.map((p) => p.status));
-    return [
-      { key: 'ALL' as const, label: 'All' },
-      ...THESIS_STATUS_ORDER.filter((s) => present.has(s)).map((s) => ({
-        key: s,
-        label: getThesisStatusDisplay(s).label,
-      })),
-    ];
-  }, [picks]);
-
-  const filteredPicks = useMemo(
-    () => (thesisFilter === 'ALL' ? picks : picks.filter((p) => p.status === thesisFilter)),
-    [picks, thesisFilter],
-  );
-
-  // Paginate — only ~10 cards (and their charts) mount at once, so a long feed
-  // doesn't render dozens of charts. Reset to page 0 when the filter changes.
-  useEffect(() => {
-    setThesisPage(0);
-  }, [thesisFilter]);
-  const pageCount = Math.max(1, Math.ceil(filteredPicks.length / THESIS_PAGE_SIZE));
-  const safePage = Math.min(thesisPage, pageCount - 1);
-  const pagedPicks = useMemo(
-    () => filteredPicks.slice(safePage * THESIS_PAGE_SIZE, safePage * THESIS_PAGE_SIZE + THESIS_PAGE_SIZE),
-    [filteredPicks, safePage],
-  );
-
-  // Batched candles for the inline card charts — only the visible page's
-  // chartable rows (WATCHING/HOLDING). One request, ≤10 symbols, ~40 days for
-  // the fixed 1M window. See docs/plans/THESIS_VISUALIZATION.md §4.
-  const chartTickers = useMemo(
-    () =>
-      [
-        ...new Set(
-          pagedPicks
-            .filter((p) => p.status === 'WATCHING' || p.status === 'HOLDING')
-            .map((p) => p.ticker),
-        ),
-      ].sort(),
-    [pagedPicks],
-  );
-  const chartKey = chartTickers.join(',');
-  const [candlesByTicker, setCandlesByTicker] = useState<Record<string, StockCandle[]>>({});
-  useEffect(() => {
-    if (!chartKey) return;
-    let cancelled = false;
-    fetch(`/api/stocks/candles?symbols=${encodeURIComponent(chartKey)}&days=40`)
-      .then(async (r) => {
-        if (!r.ok) return;
-        const json = (await r.json()) as { candles: Record<string, StockCandle[]> };
-        // Merge so paging back doesn't refetch / flicker already-loaded names.
-        if (!cancelled) setCandlesByTicker((prev) => ({ ...prev, ...json.candles }));
-      })
-      .catch(() => {
-        /* non-fatal — cards just render without a chart */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [chartKey]);
 
   const filteredActivity = activity.filter((a) => {
     if (activityFilter === 'opens') return a.type === 'OPENED';
@@ -525,164 +455,36 @@ function HomeBottomSection({ picks, activity, loading, coverage }: {
   }
 
   return (
-    <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="gap-0">
-      {/* Tab bar + filter dropdown */}
-      <div className="flex items-center justify-between pb-3">
-        {/* Custom pill tabs — bigger text, no wrapper BG, subtle active state */}
-        <div className="flex items-center gap-0.5">
-          {([
-            { value: 'portfolio', label: 'Portfolio' },
-            { value: 'activity', label: 'Activity' },
-            { value: 'theses', label: 'Theses' },
-          ] as const).map((t) => (
-            <button
-              key={t.value}
-              onClick={() => setTab(t.value)}
-              className={cn(
-                'px-3 py-1.5 text-sm rounded-md transition-colors',
-                tab === t.value
-                  ? 'bg-muted/70 text-foreground font-medium'
-                  : 'text-muted-foreground/60 hover:text-muted-foreground',
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Activity filter dropdown — only shown on the Activity tab */}
-        <div>
-          {tab === 'activity' && (
-            <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}>
-              <SelectTrigger className="h-8 w-32 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="opens">Opens</SelectItem>
-                <SelectItem value="closes">Closes</SelectItem>
-                <SelectItem value="updates">Updates</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-        </div>
+    <div className="space-y-8">
+      {/* Portfolio — Coverage table */}
+      <div>
+        {coverage ? (
+          <CoverageTable data={coverage} />
+        ) : (
+          <Card className="shadow-none">
+            <CardContent className="py-8 flex justify-center">
+              <p className="text-sm text-muted-foreground">No coverage data yet.</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* Portfolio — Coverage table with pill-style sub-filter. */}
-      <TabsContent value="portfolio">
-        <div className="space-y-5">
-          {coverage ? (
-            <CoverageTable data={coverage} />
-          ) : (
-            <Card className="shadow-none">
-              <CardContent className="py-8 flex justify-center">
-                <p className="text-sm text-muted-foreground">No coverage data yet.</p>
-              </CardContent>
-            </Card>
-          )}
+      {/* Activity */}
+      <div>
+        <div className="flex items-center justify-between pb-3">
+          <p className="text-sm font-medium">Activity</p>
+          <Select value={activityFilter} onValueChange={(v) => setActivityFilter(v as ActivityTabFilter)}>
+            <SelectTrigger className="h-8 w-32 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="opens">Opens</SelectItem>
+              <SelectItem value="closes">Closes</SelectItem>
+              <SelectItem value="updates">Updates</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-      </TabsContent>
-
-      {/* Theses list */}
-      <TabsContent value="theses">
-        {picks.length === 0 ? (
-          <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-xl py-24 px-4">
-            <div
-              className="absolute inset-0"
-              style={{
-                maskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
-                maskComposite: 'intersect',
-                WebkitMaskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent), linear-gradient(to bottom, transparent, black 15%, black 85%, transparent)',
-                WebkitMaskComposite: 'source-in',
-              }}
-            >
-              <EmptyStateBg />
-            </div>
-            <div className="relative z-10 flex flex-col items-center gap-3">
-              <p className="text-base font-medium text-center">Theses for your Stocks appear after Agents run</p>
-              <p className="text-sm text-muted-foreground text-center max-w-xs">
-                Your analyst will research stocks, generate theses, and place paper trades autonomously.
-              </p>
-              <div className="flex items-center gap-2">
-                <Link href="/analysts" className="inline-flex items-center justify-center h-8 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm hover:bg-muted">
-                  Create an Analyst
-                </Link>
-                <Button variant="ghost" size="sm" onClick={() => setShowTour(true)}>Product Overview</Button>
-              </div>
-              <ProductTourDialog open={showTour} onOpenChange={setShowTour} />
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {/* Status sub-filter — mini-tabs (same pattern as the Trades page).
-                Pure status names; only statuses present in the feed appear. */}
-            <div className="flex w-fit items-center gap-0.5 rounded-md border bg-muted/50 px-1 py-0.5">
-              {thesisTabs.map((ft) => (
-                <button
-                  key={ft.key}
-                  onClick={() => setThesisFilter(ft.key)}
-                  className={cn(
-                    'px-2.5 py-1 text-xs rounded transition-colors',
-                    thesisFilter === ft.key
-                      ? 'bg-background text-foreground font-medium shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {ft.label}
-                </button>
-              ))}
-            </div>
-
-            {filteredPicks.length === 0 ? (
-              <Card className="shadow-none">
-                <CardContent className="py-8 flex justify-center">
-                  <p className="text-sm text-muted-foreground">No theses match this filter.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <>
-                {pagedPicks.map((pick) => (
-                  <ThesisRow
-                    key={pick.id}
-                    thesis={pickToThesisRow(pick, candlesByTicker[pick.ticker.toUpperCase()])}
-                    showTicker={true}
-                  />
-                ))}
-                {pageCount > 1 && (
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {safePage * THESIS_PAGE_SIZE + 1}–
-                      {Math.min((safePage + 1) * THESIS_PAGE_SIZE, filteredPicks.length)} of{' '}
-                      {filteredPicks.length}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={safePage === 0}
-                        onClick={() => setThesisPage((p) => Math.max(0, p - 1))}
-                      >
-                        Previous
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={safePage >= pageCount - 1}
-                        onClick={() => setThesisPage((p) => Math.min(pageCount - 1, p + 1))}
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </TabsContent>
-
-      {/* Activity list */}
-      <TabsContent value="activity">
         {activity.length === 0 ? (
           <Card className="shadow-none">
             <CardContent className="py-8 flex flex-col items-center gap-1">
@@ -708,34 +510,62 @@ function HomeBottomSection({ picks, activity, loading, coverage }: {
             ))}
           </div>
         )}
-      </TabsContent>
-    </Tabs>
+      </div>
+    </div>
   );
 }
 
 
-function DashboardTradeRow({ trade, flash }: { trade: MockTrade; flash?: 'win' | 'loss' }) {
+// DashboardTradeRow was removed in favour of CoverageTable (the full-width
+// portfolio view). To restore it, check git history for the SharedTradeRow usage.
+
+// ── ProposalsPanel — pending-approval trades only ────────────────────────────
+// The CoverageTable shows held positions / watching / passed, but NOT pending
+// proposals (Order AWAITING_APPROVAL — not yet a Position). This panel restores
+// the one place on the homepage to review + approve/reject them. Renders nothing
+// when there are no proposals, so it only takes up space when it matters.
+function ProposalsPanel({
+  proposals,
+  flashIds,
+}: {
+  proposals: MockTrade[];
+  flashIds: Map<string, 'win' | 'loss'>;
+}) {
+  if (proposals.length === 0) return null;
   return (
-    <SharedTradeRow
-      id={trade.id}
-      ticker={trade.ticker}
-      currentPrice={trade.currentPrice}
-      entryPrice={trade.entryPrice}
-      shares={trade.shares}
-      pnl={trade.pnl ?? 0}
-      pnlPct={trade.pnlPct ?? 0}
-      status={trade.status}
-      placedAt={trade.placedAt}
-      filledAt={trade.filledAt}
-      closedAt={trade.closedAt}
-      priceSource={trade.priceSource}
-      priceUpdatedAt={trade.priceUpdatedAt}
-      alpacaOrderId={trade.alpacaOrderId}
-      flash={flash}
-      pendingProposal={trade.pendingProposal}
-      thesisId={trade.thesisId}
-      direction={trade.direction}
-    />
+    <div className="mb-3">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1.5 px-1">
+        Pending approval
+      </p>
+      {/* Plain bordered container — TradeRowShell supplies its own px-3 py-2.5
+          padding + border-b dividers, so rows sit flush (matches the coverage
+          table + the prod trade list). No Card p-1/gap wrapper. */}
+      <div className="rounded-lg border overflow-hidden bg-card">
+        {proposals.map((t) => (
+          <SharedTradeRow
+            key={t.id}
+            id={t.id}
+            ticker={t.ticker}
+            currentPrice={t.currentPrice}
+            entryPrice={t.entryPrice}
+            shares={t.shares}
+            pnl={t.pnl ?? 0}
+            pnlPct={t.pnlPct ?? 0}
+            status={t.status}
+            placedAt={t.placedAt}
+            filledAt={t.filledAt}
+            closedAt={t.closedAt}
+            priceSource={t.priceSource}
+            priceUpdatedAt={t.priceUpdatedAt}
+            alpacaOrderId={t.alpacaOrderId}
+            flash={flashIds.get(t.id)}
+            pendingProposal={t.pendingProposal}
+            thesisId={t.thesisId}
+            direction={t.direction}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -800,7 +630,9 @@ function DigestPreviewCard({
   const [open, setOpen] = useState(false);
   if (digest === undefined) return null;
 
-  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 420) : null;
+  // Slice generously so the narrative fills the taller desktop card; the
+  // line-clamp + bottom fade handle the visual cutoff at either size.
+  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 700) : null;
 
   return (
     <>
@@ -808,16 +640,18 @@ function DigestPreviewCard({
         type="button"
         onClick={() => digest && setOpen(true)}
         className={cn(
-          'w-full text-left rounded-lg border bg-card p-3 mb-3',
+          // lg:h-[310px] matches the chart card so the two columns align;
+          // flex-col + overflow-hidden let the narrative fill and fade out.
+          'w-full text-left rounded-lg border bg-card p-3 mb-3 flex flex-col overflow-hidden lg:h-[310px]',
           digest ? 'hover:brightness-[0.98] transition-all cursor-pointer' : 'cursor-default',
         )}
       >
-        <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1">
+        <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1 shrink-0">
           {digest ? `${formatDigestDate(digest.date)} · after close` : 'Portfolio Digest'}
         </p>
         {digest && preview ? (
-          <div className="relative">
-            <p className="text-base font-medium leading-relaxed line-clamp-6">
+          <div className="relative flex-1 min-h-0 overflow-hidden">
+            <p className="text-base font-medium leading-relaxed line-clamp-6 lg:line-clamp-none">
               {preview}
             </p>
             {/* Subtle fade so the clamped narrative trails off into the card. */}
@@ -847,67 +681,9 @@ function DigestPreviewCard({
   );
 }
 
-// ── PositionsPanel — Open / Closed trades list ───────────────────────────────
-//
-// The portfolio's open + closed positions as a two-tab Card. Rendered in two
-// places: the desktop right rail (w-80) and, on mobile where the rail is
-// hidden, inline in the main column between the stat tiles and the
-// Activity/Theses tabs — so the trade list (the thing the user cares about
-// most) is never hidden on a phone. Kept as one component so both surfaces
-// stay in sync.
-function PositionsPanel({
-  openTrades,
-  pendingTrades,
-  loading,
-  flashIds,
-  digest,
-}: {
-  openTrades: MockTrade[];
-  pendingTrades: MockTrade[];
-  loading: boolean;
-  flashIds: Map<string, 'win' | 'loss'>;
-  digest?: LatestDigest | null;
-}) {
-  return (
-    <div className="space-y-0">
-      <DigestPreviewCard digest={digest} />
-      <Card className="shadow-none p-0">
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="space-y-1 px-4 pt-1 pb-2">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-14 rounded-lg" />
-              ))}
-            </div>
-          ) : openTrades.length === 0 && pendingTrades.length === 0 ? (
-            <Empty
-              text="No open positions"
-              subtext="Positions appear when an analyst places a paper trade during a run."
-            />
-          ) : (
-            <div>
-              {pendingTrades.map((t) => (
-                <DashboardTradeRow key={t.id} trade={t} flash={flashIds.get(t.id)} />
-              ))}
-              {openTrades.map((t) => (
-                <DashboardTradeRow key={t.id} trade={t} flash={flashIds.get(t.id)} />
-              ))}
-            </div>
-          )}
-          <div className="border-t border-border/40 px-3 py-2">
-            <Link
-              href="/trades"
-              className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
-            >
-              All Trades
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
+// PositionsPanel and DashboardTradeRow were removed in favour of CoverageTable
+// (the full-width portfolio view replacing the right-rail trade list).
+// To restore, check git history for the PositionsPanel + DashboardTradeRow implementations.
 
 // ─── DashboardClient ──────────────────────────────────────────────────────────
 
@@ -1145,13 +921,8 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         <div className="flex gap-6 items-start">
 
-          {/* ══ LEFT column ══════════════════════════════════════════════════ */}
+          {/* ══ LEFT column ═════════════════════════════════════════════════ */}
           <div className="flex-1 min-w-0 space-y-5">
-
-            {/* Layout: graph first (balance → chart → stat tiles), then the
-                tabbed section (Overview = brief + coverage tables / Activity /
-                Theses). The digest + coverage live inside the Overview tab —
-                see HomeBottomSection — not as standalone sections. */}
 
             {/* Portfolio header — two labeled figures, mirroring a broker
                 statement: "BALANCE" over total account equity, and
@@ -1210,9 +981,11 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               )}
             </div>
 
-            {/* Chart card */}
+            {/* Chart card — pinned to 310px on desktop so the digest card in
+                the right rail can match its height exactly (48px controls +
+                260px chart). */}
             <div
-              className="rounded-lg overflow-hidden border"
+              className="rounded-lg overflow-hidden border lg:h-[310px]"
               style={{
                 backgroundImage:
                   'radial-gradient(circle, var(--border) 1px, transparent 1px)',
@@ -1520,50 +1293,40 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
             </div>
 
 
-            {/* Positions — mobile only. The desktop right rail is hidden
-                below lg, so render the trade list inline here (chart → stats →
-                trades → activity) so it's reachable on a phone. */}
-            <div className="lg:hidden">
-              <PositionsPanel
-                openTrades={openTrades}
-                pendingTrades={pendingTrades}
-                loading={loading}
-                flashIds={flashIds}
-                digest={digest}
-              />
-            </div>
-
-            {/* Portfolio / Activity / Theses tabbed section. */}
-            <HomeBottomSection
-              picks={recentPicks}
-              activity={data?.activityFeed ?? []}
-              loading={loading}
-              coverage={coverage}
-            />
+          {/* Pending proposals — mobile only. The desktop right rail is hidden
+              below lg, so surface proposals inline here so they're reachable
+              and reviewable on a phone. Renders nothing when empty. */}
+          <div className="lg:hidden">
+            <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
           </div>
 
-          {/* ══ RIGHT column — positions (desktop only) ════════════════════ */}
+          {/* Portfolio + Activity stacked section */}
+          <HomeBottomSection
+            activity={data?.activityFeed ?? []}
+            loading={loading}
+            coverage={coverage}
+          />
+          </div>
+
+          {/* ══ RIGHT column — win rate + digest (desktop only) ════════════ */}
           <div className="hidden lg:block w-80 shrink-0">
-            {/* Win Rate — sized h-16 + mb-5 to mirror the left header (metrics
-                height + space-y-5 gap), so it doubles as the spacer that aligns
-                the digest card with the top of the chart card. */}
+            {/* Win Rate — sized h-16 + mb-5 to mirror the left header height
+                so the digest card aligns with the top of the chart card. */}
             <UITooltipProvider>
               <UITooltip>
-                <UITooltipTrigger render={
-                  <div className="flex h-16 flex-col items-end justify-center gap-1.5 mb-5 cursor-default">
-                    <TickBar
-                      ticks={Array.from({ length: 10 }, (_, i): Tick => ({
-                        color: portfolio.winRate != null && i < Math.round(portfolio.winRate * 10)
-                          ? 'bg-foreground'
-                          : 'bg-muted-foreground/25',
-                      }))}
-                      className="w-16"
-                    />
-                    <span className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-                      Win Rate
-                    </span>
-                  </div>
-                } />
+                <UITooltipTrigger render={<div className="flex h-16 flex-col items-end justify-center gap-1.5 mb-5 cursor-default" />}>
+                  <TickBar
+                    ticks={Array.from({ length: 10 }, (_, i): Tick => ({
+                      color: portfolio.winRate != null && i < Math.round(portfolio.winRate * 10)
+                        ? 'bg-foreground'
+                        : 'bg-muted-foreground/25',
+                    }))}
+                    className="w-16"
+                  />
+                  <span className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+                    Win Rate
+                  </span>
+                </UITooltipTrigger>
                 <UITooltipContent side="bottom" align="end">
                   <div className="text-xs">
                     {portfolio.winRate != null
@@ -1573,17 +1336,13 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
                 </UITooltipContent>
               </UITooltip>
             </UITooltipProvider>
-            <PositionsPanel
-              openTrades={openTrades}
-              pendingTrades={pendingTrades}
-              loading={loading}
-              flashIds={flashIds}
-              digest={digest}
-            />
+            {/* Pending proposals sit above the digest — they're the most
+                time-sensitive thing on the page. Renders nothing when empty. */}
+            <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
+            <DigestPreviewCard digest={digest} />
           </div>
 
         </div>
-      </div>
 
       {!loading && (
         <OnboardingChecklist
@@ -1593,6 +1352,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
           hasBrief={data?.hasBrief ?? false}
         />
       )}
+    </div>
     </div>
   );
 }

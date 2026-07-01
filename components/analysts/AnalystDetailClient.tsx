@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useTransition, type ReactNode } from "react";
+import { useState, useMemo, useEffect, useTransition, type ReactNode } from "react";
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
 import {
   ChartContainer,
@@ -69,8 +69,37 @@ import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
 import { useRouter } from "next/navigation";
 import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
-import { ThesisMiniCard } from "@/components/domain/thesis-mini-card";
+import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
+import type { StockCandle } from "@/lib/actions/finnhub.actions";
+
+const THESIS_PAGE_SIZE = 10;
+type QuoteMap = Record<string, { price: number; change: number; changePct: number }>;
+
+function thesisCardToRowData(
+  t: ThesisCardData,
+  candles?: StockCandle[],
+  quote?: { price: number; change: number; changePct: number },
+): ThesisRowData {
+  return {
+    id: t.thesis_id ?? t.ticker,
+    ticker: t.ticker,
+    direction: t.direction,
+    status: t.status,
+    confidenceScore: t.confidence_score,
+    reasoningSummary: t.reasoning_summary ?? "",
+    entryPrice: t.entry_price ?? null,
+    targetPrice: t.target_price ?? null,
+    stopLoss: t.stop_loss ?? null,
+    companyName: t.company_name ?? null,
+    thesisBullets: t.thesis_bullets,
+    riskFlags: t.risk_flags,
+    createdAt: t.created_at ?? null,
+    candles,
+    currentPrice: quote?.price ?? null,
+    priceChange: quote ? { amount: quote.change, percent: quote.changePct } : null,
+  };
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -210,6 +239,69 @@ function matchesThesisFilter(t: ThesisCardData, f: ThesisStatusFilter): boolean 
 
 /** The thesis grid + empty state. Shared by Snapshot (active) and Theses (all). */
 function ThesesGrid({ theses, emptyLabel }: { theses: ThesisCardData[]; emptyLabel: string }) {
+  const [page, setPage] = useState(0);
+  const [candlesByTicker, setCandlesByTicker] = useState<Record<string, StockCandle[]>>({});
+  const [quotesByTicker, setQuotesByTicker] = useState<QuoteMap>({});
+
+  // Reset to page 0 when the thesis list changes (e.g. status filter changes).
+  useEffect(() => { setPage(0); }, [theses]);
+
+  const pageCount = Math.max(1, Math.ceil(theses.length / THESIS_PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const pagedTheses = theses.slice(safePage * THESIS_PAGE_SIZE, (safePage + 1) * THESIS_PAGE_SIZE);
+
+  // Candles: only the visible page's WATCHING/HOLDING rows, exactly like the
+  // homepage Theses tab. One request, ≤10 symbols, 40-day window.
+  const chartTickers = useMemo(
+    () => [...new Set(
+      pagedTheses
+        .filter((t) => t.status === "WATCHING" || t.status === "HOLDING")
+        .map((t) => t.ticker),
+    )].sort(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pagedTheses.map((t) => t.ticker).join(",")],
+  );
+  const chartKey = chartTickers.join(",");
+
+  useEffect(() => {
+    if (!chartKey) return;
+    let cancelled = false;
+    fetch(`/api/stocks/candles?symbols=${encodeURIComponent(chartKey)}&days=40`)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const json = (await r.json()) as { candles: Record<string, StockCandle[]> };
+        // Merge so paging back doesn't refetch already-loaded names.
+        if (!cancelled) setCandlesByTicker((prev) => ({ ...prev, ...json.candles }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [chartKey]);
+
+  // Quotes for all visible tickers (price + day change header).
+  const quoteTickers = useMemo(
+    () => [...new Set(pagedTheses.map((t) => t.ticker))].sort(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pagedTheses.map((t) => t.ticker).join(",")],
+  );
+  const quoteKey = quoteTickers.join(",");
+
+  useEffect(() => {
+    if (!quoteKey) return;
+    let cancelled = false;
+    fetch(`/api/quotes?symbols=${encodeURIComponent(quoteKey)}`)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const json = (await r.json()) as { quotes: { symbol: string; price: number; change: number; changePct: number }[] };
+        if (!cancelled) {
+          const map: QuoteMap = {};
+          for (const q of json.quotes) map[q.symbol.toUpperCase()] = q;
+          setQuotesByTicker((prev) => ({ ...prev, ...map }));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [quoteKey]);
+
   if (theses.length === 0) {
     return (
       <div className="w-full mx-auto px-4 py-6">
@@ -219,13 +311,31 @@ function ThesesGrid({ theses, emptyLabel }: { theses: ThesisCardData[]; emptyLab
       </div>
     );
   }
+
   return (
-    <div className="w-full mx-auto px-4 py-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {theses.map((t) => (
-          <ThesisMiniCard key={t.thesis_id ?? `${t.ticker}-${t.direction}`} thesis={t} />
-        ))}
-      </div>
+    <div className="w-full mx-auto px-4 py-6 space-y-2">
+      {pagedTheses.map((t) => (
+        <ThesisRow
+          key={t.thesis_id ?? `${t.ticker}-${t.direction}`}
+          thesis={thesisCardToRowData(
+            t,
+            candlesByTicker[t.ticker.toUpperCase()],
+            quotesByTicker[t.ticker.toUpperCase()],
+          )}
+          showTicker
+        />
+      ))}
+      {pageCount > 1 && (
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {safePage * THESIS_PAGE_SIZE + 1}–{Math.min((safePage + 1) * THESIS_PAGE_SIZE, theses.length)} of {theses.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" disabled={safePage === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</Button>
+            <Button variant="outline" size="sm" disabled={safePage >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}>Next</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1731,6 +1731,7 @@ export async function getAnalystTheses(analystId: string) {
       targetPrice: true,
       stopLoss: true,
       holdDuration: true,
+      createdAt: true,
     },
   });
 
@@ -1759,6 +1760,7 @@ export async function getAnalystTheses(analystId: string) {
       stop_loss: t.stopLoss,
       hold_duration: t.holdDuration ?? undefined,
       status,
+      created_at: t.createdAt.toISOString(),
     };
   });
 }
