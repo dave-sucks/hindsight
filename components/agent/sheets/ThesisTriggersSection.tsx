@@ -40,7 +40,7 @@ import {
   InputGroupText,
 } from "@/components/ui/input-group";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { Zap, Clock, Loader2, Plus, Trash2, Calendar } from "lucide-react";
+import { Clock, Loader2, Plus, Trash2, Calendar } from "lucide-react";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import { cn } from "@/lib/utils";
 
@@ -315,8 +315,6 @@ function predicateKindValue(p: TriggerPredicate): {
       return { kind: "price above", value: `$${p.level ?? "?"}` };
     case "PRICE_BELOW":
       return { kind: "price below", value: `$${p.level ?? "?"}` };
-    case "TRAILING_STOP":
-      return { kind: "trailing stop", value: `${p.trailPct ?? "?"}%` };
     case "PRICE_MOVE_PCT": {
       // Daily move (window 1D) reads as a clean "up / down" — the standard
       // "stock is up/down X% today" alert. Multi-day windows append the span.
@@ -388,8 +386,6 @@ function predicateDescription(p: TriggerPredicate): string {
       return `Fires when last quote crosses above $${p.level}.`;
     case "PRICE_BELOW":
       return `Fires when last quote crosses below $${p.level}.`;
-    case "TRAILING_STOP":
-      return `Exits when price falls ${p.trailPct}% below its peak since entry. Trails up as the position runs.`;
     case "PRICE_MOVE_PCT":
       return p.window === "1D"
         ? `Fires when the stock is ${p.direction === "UP" ? "up" : "down"} ${p.pct}% on the day (vs prior close).`
@@ -547,8 +543,7 @@ function TriggerPopoverContent({
   const fieldLabel = `${actionGroupLabel(trigger.action)} ${kindLabel}`;
 
   // Input-group adornments. Price → leading "$"; movement → leading
-  // direction + trailing "%"; trailing-stop → trailing "%"; time-based →
-  // leading calendar icon (read-only).
+  // direction + trailing "%"; time-based → leading calendar icon (read-only).
   const pk = trigger.predicate.kind;
   const moveDir =
     pk === "PRICE_MOVE_PCT"
@@ -715,15 +710,17 @@ function TriggerPopoverContent({
         ) : null}
       </p>
 
-      {/* Metadata — fired (only when set) · cooldown · delete (icon only) */}
-      {trigger.lastFiredAt || trigger.cooldownDays || editable ? (
+      {/* Last fired — plain text, only when it has fired (a badge here grew
+          too wide next to the cooldown + delete chips). */}
+      {trigger.lastFiredAt ? (
+        <p className="text-xs text-muted-foreground">
+          Fired {fmtFiredAt(trigger.lastFiredAt)}
+        </p>
+      ) : null}
+
+      {/* Chips — cooldown + delete (icon only). */}
+      {trigger.cooldownDays || editable ? (
         <div className="flex items-center gap-1.5">
-          {trigger.lastFiredAt ? (
-            <Badge variant="secondary">
-              <Zap className="size-3" />
-              Fired {fmtFiredAt(trigger.lastFiredAt)}
-            </Badge>
-          ) : null}
           {trigger.cooldownDays ? (
             <Badge variant="secondary">
               <Clock className="size-3" />
@@ -1127,6 +1124,19 @@ interface Props {
   direction?: "LONG" | "SHORT" | null;
   /** When true, value-bearing triggers become editable in the popover. */
   editable?: boolean;
+  /**
+   * When true, show ONLY the inline-editable triggers (price levels + % moves)
+   * and hide the rest (earnings / filing / time / signal). Used in compact
+   * contexts like the reject dialog where the read-only triggers are just
+   * noise. Add-trigger still works (it only mints price/% anyway).
+   */
+  editableOnly?: boolean;
+  /**
+   * Bump to force a refetch in self-fetch mode (no `data` prop) — e.g. after an
+   * inline edit. Keeps the current list visible during the refetch (no remount
+   * flash), unlike a `key` change. Ignored when `data` is controlled.
+   */
+  refreshKey?: number;
   /** Called after a successful trigger-value edit so the parent can refresh. */
   onChanged?: () => void;
 }
@@ -1136,6 +1146,8 @@ export function ThesisTriggersSection({
   data: dataProp,
   direction = null,
   editable = false,
+  editableOnly = false,
+  refreshKey,
   onChanged,
 }: Props) {
   const [internalData, setInternalData] = useState<TriggersResponse | null>(
@@ -1159,7 +1171,7 @@ export function ThesisTriggersSection({
     return () => {
       cancelled = true;
     };
-  }, [thesisId, dataProp]);
+  }, [thesisId, dataProp, refreshKey]);
 
   if (error) {
     return (
@@ -1177,18 +1189,30 @@ export function ThesisTriggersSection({
   // options (both need a live position to act on).
   const held = data.status === "HOLDING";
 
+  // In editableOnly mode, show just the price-level + % triggers (the ones
+  // that actually have an inline-editable value); hide read-only kinds.
+  const shownTriggers = editableOnly
+    ? data.triggers.filter(
+        (t) =>
+          editableTriggerField(
+            t.predicate as unknown as SharedTriggerPredicate,
+          ) != null,
+      )
+    : data.triggers;
+
   return (
     <div className="space-y-2">
-      {data.triggers.length === 0 ? (
+      {shownTriggers.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No triggers attached.{" "}
-          {editable
-            ? "Add one below, or set a horizon when minting to auto-attach the baseline."
-            : "Set a horizon when minting this thesis to auto-attach the baseline."}
+          {editableOnly
+            ? "No price or % triggers yet. Add one below."
+            : editable
+              ? "No triggers attached. Add one below, or set a horizon when minting to auto-attach the baseline."
+              : "No triggers attached. Set a horizon when minting this thesis to auto-attach the baseline."}
         </p>
       ) : (
         <TriggerGroups
-          triggers={data.triggers}
+          triggers={shownTriggers}
           thesisId={thesisId}
           direction={direction}
           editable={editable}

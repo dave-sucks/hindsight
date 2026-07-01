@@ -5,8 +5,8 @@
  * new value) so the two never drift.
  *
  * Editable set: the PRICE levels (take-profit / stop the principal drags) and
- * the TRAILING_STOP percent — all strictly-positive values, which keeps the
- * write-path's `value > 0` guard exactly right (a $0 price / 0% trail is
+ * the PRICE_MOVE_PCT percent — all strictly-positive values, which keeps the
+ * write-path's `value > 0` guard exactly right (a $0 price / 0% move is
  * invalid). Every other predicate — earnings surprise %, RSI, time-elapsed
  * days, SMA, signal, filing, review-date, composites — renders read-only in
  * the popover. Broadening to those (where 0 can be valid) is a follow-up.
@@ -31,8 +31,6 @@ export function editableTriggerField(
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
       return { label: "Price", value: p.level, prefix: "$", min: 0, step: 0.01 };
-    case "TRAILING_STOP":
-      return { label: "Trail %", value: p.trailPct, suffix: "%", min: 0, step: 0.5 };
     case "PRICE_MOVE_PCT":
       // The "Movement Amount" alert — daily % move (direction is fixed; only
       // the magnitude is editable here, mirroring the price-level edit).
@@ -51,8 +49,6 @@ export function withEditedValue(
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
       return { ...p, level: value };
-    case "TRAILING_STOP":
-      return { ...p, trailPct: value };
     case "PRICE_MOVE_PCT":
       return { ...p, pct: value };
     default:

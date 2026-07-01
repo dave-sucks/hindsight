@@ -2,10 +2,9 @@
  * PATCH /api/theses/[id]/triggers/[triggerId]
  *
  * Principal edits one trigger from the trigger popover. Two body shapes:
- *   { value: number }                       → edit the trigger's value (applyTriggerValueEdit)
- *   { trailing: boolean, trailPct?: number } → switch the stop to/from trailing (applyTriggerTypeChange)
- *   { fireMode: "TACTICAL" | "DIRECT" }      → switch how the trigger fires (applyTriggerFireModeChange)
- * All keep Thesis/Position in sync. Pure DB — no Alpaca, no approval.
+ *   { value: number }                  → edit the trigger's value (applyTriggerValueEdit)
+ *   { fireMode: "TACTICAL" | "DIRECT" } → switch how the trigger fires (applyTriggerFireModeChange)
+ * Both keep Thesis/Position in sync. Pure DB — no Alpaca, no approval.
  *
  * DELETE removes the trigger (applyTriggerDelete).
  */
@@ -14,7 +13,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 import {
   applyTriggerValueEdit,
-  applyTriggerTypeChange,
   applyTriggerFireModeChange,
   applyTriggerDelete,
   statusForEditError,
@@ -41,8 +39,6 @@ export async function PATCH(
 
   let body: {
     value?: unknown;
-    trailing?: unknown;
-    trailPct?: unknown;
     fireMode?: unknown;
   };
   try {
@@ -51,17 +47,9 @@ export async function PATCH(
     return new Response("Invalid JSON body", { status: 400 });
   }
 
-  // Ambiguous: a single PATCH is exactly one of value-edit / type-change /
-  // fire-mode change, never a mix.
-  const shapeCount =
-    (typeof body.value === "number" ? 1 : 0) +
-    (typeof body.trailing === "boolean" ? 1 : 0) +
-    (typeof body.fireMode === "string" ? 1 : 0);
-  if (shapeCount > 1) {
-    return new Response(
-      "Send exactly one of `value`, `trailing`, or `fireMode`.",
-      { status: 400 },
-    );
+  // Ambiguous: a single PATCH is a value-edit OR a fire-mode change, not both.
+  if (typeof body.value === "number" && typeof body.fireMode === "string") {
+    return new Response("Send either `value` or `fireMode`, not both.", { status: 400 });
   }
 
   const editCtx = { accountId, actorUserId: user.id };
@@ -79,23 +67,9 @@ export async function PATCH(
       return Response.json(result);
     }
 
-    if (typeof body.trailing === "boolean") {
-      const trailPct =
-        typeof body.trailPct === "number" && Number.isFinite(body.trailPct)
-          ? body.trailPct
-          : undefined;
-      const result = await applyTriggerTypeChange(
-        id,
-        triggerId,
-        { trailing: body.trailing, trailPct },
-        editCtx,
-      );
-      return Response.json(result);
-    }
-
     if (typeof body.value !== "number" || !Number.isFinite(body.value)) {
       return new Response(
-        "Body must include a numeric `value`, a `trailing` boolean, or a `fireMode` string.",
+        "Body must include a numeric `value` or a `fireMode` string.",
         { status: 400 },
       );
     }

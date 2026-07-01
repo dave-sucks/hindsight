@@ -14,6 +14,7 @@ Built for one user now, marketed later.
 | Understand the agent design rules (three-layer principle) | `docs/PRINCIPLES.md` |
 | Read / update the product north star | `docs/VISION.md` |
 | Read the live thesis-system reference | `docs/THESIS_ARCHITECTURE.md` |
+| Understand triggers (predicates, which fires on which path, fire modes) | `docs/TRIGGERS.md` |
 | Add an open item on the thesis architecture rework | `docs/GAPS.md` |
 | Note a code smell outside the rework | `docs/TECH_DEBT.md` |
 | Spec a big multi-PR plan | `docs/plans/<NAME>.md` |
@@ -116,9 +117,10 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
   `app/signal.routed` for the trigger evaluator to consume
 - Morning brief generator was DELETED in PR 3 — agent reads durable
   state directly via `read_signals` + `get_theses(include_history: true)`
-- Trigger evaluator (separate cadence): runs hourly during US
-  market hours + on `app/signal.routed`, fires `app/thesis.trigger.fired`
-  when a thesis predicate matches, which wakes a tactical run
+- Trigger evaluator (separate cadence): runs every 5 min during regular
+  US market hours (gated on `isMarketOpen()`) + on `app/signal.routed`,
+  fires `app/thesis.trigger.fired` when a thesis predicate matches, which
+  wakes a tactical run. See `docs/TRIGGERS.md`.
 
 ### Data Sources
 - Finnhub: quotes, candles, earnings calendar, company metrics,

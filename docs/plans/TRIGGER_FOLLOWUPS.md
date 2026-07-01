@@ -1,5 +1,13 @@
 # Trigger followups (post trailing-stop PR)
 
+> **STATUS (2026-06-30): superseded — all three items resolved.** The
+> peak-trailing `TRAILING_STOP` this doc is built around was **replaced** by a
+> directional daily-% move (`PRICE_MOVE_PCT`, "Movement Amount") and then fully
+> **removed** — so ignore the `TRAILING_STOP` / `applyTriggerTypeChange`
+> mechanics below (both deleted). #2 (edit-on-reject) and #3 (per-trigger fire
+> mode: TACTICAL vs DIRECT) **shipped**. The live reference is now
+> [`docs/TRIGGERS.md`](../TRIGGERS.md). Kept for history.
+
 > Self-contained handoff for a fresh session. Three open items, ordered cheapest → biggest.
 
 ## What just shipped (context)

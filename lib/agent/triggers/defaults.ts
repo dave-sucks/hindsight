@@ -706,7 +706,6 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
       return 1;
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
-    case "TRAILING_STOP":
     case "PRICE_MOVE_PCT":
     case "VS_SMA":
     case "RSI":
@@ -792,7 +791,6 @@ function predicateKey(p: TriggerPredicate): string {
   switch (p.kind) {
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
-    case "TRAILING_STOP":
       return p.kind;
     case "PRICE_MOVE_PCT":
       return `${p.kind}:${p.window}:${p.direction}`;

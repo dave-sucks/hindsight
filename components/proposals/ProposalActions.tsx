@@ -42,6 +42,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Check, X, Loader2, ChevronDown, Pencil } from "lucide-react";
+import { ThesisTriggersSection } from "@/components/agent/sheets/ThesisTriggersSection";
 import { cn } from "@/lib/utils";
 
 export interface ProposalActionsProps {
@@ -59,6 +60,12 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectMessage, setRejectMessage] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
+  // Inline trigger editing on reject — raise the stop, bump the target, add a
+  // "down X%" alert right here, then reject with a note (TRIGGER_FOLLOWUPS #2).
+  // Resolved from the proposal's paired thesis on open.
+  const [rejectThesisId, setRejectThesisId] = useState<string | null>(null);
+  const [rejectDirection, setRejectDirection] = useState<"LONG" | "SHORT" | null>(null);
+  const [trigRefresh, setTrigRefresh] = useState(0);
   // "Edit & Approve" — fetch the proposal's current values on open, let the
   // principal change shares (OPEN/ADD) + target/stop (OPEN), then approve with
   // the edits applied before the Alpaca submit.
@@ -70,19 +77,27 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
   const [editStop, setEditStop] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
 
+  // One read of the proposal context, shared by Edit & Approve (reads
+  // intent/quantity/target/stop) and Reject (reads thesisId/direction).
+  async function fetchProposalCtx(): Promise<{
+    intent?: string;
+    quantity?: number | null;
+    targetPrice?: number | null;
+    stopLoss?: number | null;
+    thesisId?: string | null;
+    thesisDirection?: string | null;
+  }> {
+    const res = await fetch(`/api/proposals/${orderId}`);
+    if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+    return res.json();
+  }
+
   async function openEdit() {
     setEditOpen(true);
     setEditError(null);
     setEditLoading(true);
     try {
-      const res = await fetch(`/api/proposals/${orderId}`);
-      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
-      const ctx = (await res.json()) as {
-        intent?: string;
-        quantity?: number | null;
-        targetPrice?: number | null;
-        stopLoss?: number | null;
-      };
+      const ctx = await fetchProposalCtx();
       setEditIntent(ctx.intent ?? "OPEN");
       setEditShares(ctx.quantity != null ? String(ctx.quantity) : "");
       setEditTarget(ctx.targetPrice != null ? String(ctx.targetPrice) : "");
@@ -173,6 +188,26 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
     }
   }
 
+  async function openReject() {
+    setRejectOpen(true);
+    setRejectError(null);
+    // Resolve the paired thesis so we can offer inline trigger edits. Non-fatal:
+    // reject still works as a plain note if this misses.
+    try {
+      const ctx = await fetchProposalCtx();
+      setRejectThesisId(ctx.thesisId ?? null);
+      setRejectDirection(
+        ctx.thesisDirection === "SHORT"
+          ? "SHORT"
+          : ctx.thesisDirection === "LONG"
+            ? "LONG"
+            : null,
+      );
+    } catch {
+      /* non-fatal */
+    }
+  }
+
   function closeRejectDialog(open: boolean) {
     if (open) {
       setRejectOpen(true);
@@ -182,6 +217,8 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
     setRejectOpen(false);
     setRejectMessage("");
     setRejectError(null);
+    setRejectThesisId(null);
+    setRejectDirection(null);
   }
 
   if (resolved) {
@@ -249,7 +286,7 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setRejectOpen(true);
+              void openReject();
             }}
           >
             <X className="size-4" />
@@ -276,7 +313,9 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
             <DialogHeader>
               <DialogTitle>Reject proposal</DialogTitle>
               <DialogDescription>
-                Optional: tell the agent why. Your message is stored as a ThesisUpdate audit row so the agent reads it on the next run and adapts.
+                Optional: tell the agent why — stored as a ThesisUpdate the agent
+                reads next run. You can also adjust the stop/target or add a price
+                or % alert below before rejecting.
               </DialogDescription>
             </DialogHeader>
             <Textarea
@@ -288,6 +327,28 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
               disabled={pending === "reject"}
               autoFocus
             />
+
+            {/* Inline trigger editor — adjust the stop/target or add a "down X%"
+                alert without leaving the dialog. Edits persist immediately via
+                the trigger routes; the reject note is sent on Reject. */}
+            {rejectThesisId ? (
+              <div className="space-y-2 border-t pt-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Adjust triggers (optional)
+                </p>
+                <div className="max-h-64 overflow-y-auto">
+                  <ThesisTriggersSection
+                    thesisId={rejectThesisId}
+                    editable
+                    editableOnly
+                    direction={rejectDirection}
+                    refreshKey={trigRefresh}
+                    onChanged={() => setTrigRefresh((k) => k + 1)}
+                  />
+                </div>
+              </div>
+            ) : null}
+
             {rejectError ? (
               <p className="text-xs text-destructive">{rejectError}</p>
             ) : null}
