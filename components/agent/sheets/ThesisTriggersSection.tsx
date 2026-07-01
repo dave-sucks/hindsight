@@ -229,6 +229,11 @@ export interface QuoteResponse {
     unrealizedPnl: number;
     unrealizedPnlPct: number | null;
   } | null;
+  // Company name + exchange from the Finnhub profile — thesis rows rarely
+  // store them, so the sheet header reads them off the quote to show the full
+  // name + "TICKER · EXCHANGE" instead of the ticker twice.
+  companyName?: string | null;
+  exchange?: string | null;
 }
 
 // `sourcesUsed` column is Json — agents write `[{provider, title, url}]`

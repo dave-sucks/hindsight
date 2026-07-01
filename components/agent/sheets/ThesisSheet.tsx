@@ -1599,8 +1599,12 @@ export function ThesisSheetBody({
       <div className="space-y-2">
         <StockIdentityHeader
           ticker={ticker}
-          displayName={displayName}
-          exchange={exchange}
+          // The Finnhub profile (company name + exchange) lands with /quote —
+          // thesis rows rarely store them, so prefer the quote and fall back to
+          // the prop, then the ticker. Without this the header shows the ticker
+          // twice and no exchange.
+          displayName={quote?.companyName ?? displayName}
+          exchange={quote?.exchange ?? exchange}
           badges={
             <>
               {liveStatus && <StatusPill status={liveStatus} />}
