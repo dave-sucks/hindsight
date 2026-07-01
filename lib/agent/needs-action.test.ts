@@ -496,3 +496,85 @@ describe("computeNeedsAction — anti-regression (no hardcoded thresholds)", () 
     expect(result).toBeNull();
   });
 });
+
+describe("computeNeedsAction — RUNNING_WINNER (SCALE_INTO_WINNERS.md PR3)", () => {
+  const heldWinner = {
+    ...baseThesis,
+    status: "HOLDING",
+    triggers: [] as Trigger[],
+    avgCost: 100,
+    targetPrice: 200,
+  };
+
+  it("flags a held winner at ≥75% progress with no trigger catching it", () => {
+    const result = computeNeedsAction({
+      thesis: heldWinner,
+      latestUpdate: null,
+      latestQuote: { price: 180, changePct: 0 }, // 80% of the way to target, +80%
+      now,
+    });
+    expect(result?.kind).toBe("RUNNING_WINNER");
+    if (result?.kind === "RUNNING_WINNER") {
+      expect(result.unrealizedGainPct).toBeCloseTo(80);
+      expect(result.progressToTarget).toBeCloseTo(0.8);
+      expect(result.pastTarget).toBe(false);
+    }
+  });
+
+  it("does NOT flag a held position below the progress threshold", () => {
+    const result = computeNeedsAction({
+      thesis: heldWinner,
+      latestUpdate: null,
+      latestQuote: { price: 140, changePct: 0 }, // only 40% of the way to target
+      now,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("a fired EXIT trigger outranks RUNNING_WINNER", () => {
+    const result = computeNeedsAction({
+      thesis: { ...heldWinner, triggers: [EXIT_LONG] },
+      latestUpdate: {
+        type: "TRIGGER_FIRED",
+        triggerId: "trig-exit",
+        timestamp: new Date("2026-05-09T00:00:00Z"),
+      },
+      latestQuote: { price: 180, changePct: 0 },
+      now,
+    });
+    expect(result?.kind).toBe("TRIGGER_FIRED");
+  });
+
+  it("RUNNING_WINNER outranks a due review", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        ...heldWinner,
+        nextReviewAt: new Date("2026-05-01T00:00:00Z"), // overdue
+      },
+      latestUpdate: null,
+      latestQuote: { price: 190, changePct: 0 },
+      now,
+    });
+    expect(result?.kind).toBe("RUNNING_WINNER");
+  });
+
+  it("does NOT flag a non-held (WATCHING) row", () => {
+    const result = computeNeedsAction({
+      thesis: { ...heldWinner, status: "WATCHING" },
+      latestUpdate: null,
+      latestQuote: { price: 190, changePct: 0 },
+      now,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("does NOT flag when avgCost/target are absent (graceful degradation)", () => {
+    const result = computeNeedsAction({
+      thesis: { ...heldWinner, avgCost: null, targetPrice: null },
+      latestUpdate: null,
+      latestQuote: { price: 180, changePct: 0 },
+      now,
+    });
+    expect(result).toBeNull();
+  });
+});

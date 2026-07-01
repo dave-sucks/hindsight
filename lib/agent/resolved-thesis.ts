@@ -22,6 +22,7 @@
 
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
+import { computeWinnerSignal } from "@/lib/agent/winner-signal";
 
 // ── Public types ──────────────────────────────────────────────────────
 
@@ -47,6 +48,18 @@ export interface ResolvedEnvelope {
   /** Flat surfacing of scoring.entryQuality.score. */
   entryQualityScore: number | null;
 
+  /**
+   * Unrealized gain % for HOLDING rows (direction-aware), so the agent sees
+   * P&L inline instead of cross-referencing get_portfolio_context. Null for
+   * non-held rows or when avgCost/quote is unavailable. (SCALE_INTO_WINNERS.md)
+   */
+  unrealizedGainPct: number | null;
+  /**
+   * Fraction of the entry→target distance covered for HOLDING rows (≥1 = past
+   * target). The at-a-glance "how close to the decision point." Null otherwise.
+   */
+  progressToTarget: number | null;
+
   triggerState: TriggerState;
   /** Human-readable for the agent + UI: e.g. "PRICE_ABOVE 92.5 (cur 90.30, -2.4%)". */
   triggerDetail: string | null;
@@ -71,6 +84,10 @@ export interface ResolverThesisInput {
   // The resolver doesn't branch on direction, so null is a pure pass-through.
   direction: string | null;
   entryPrice: number | null;
+  /** Thesis target price — feeds progress-to-target for HOLDING rows. */
+  targetPrice?: number | null;
+  /** Paired open Position's blended avgCost — feeds P&L for HOLDING rows. */
+  avgCost?: number | null;
   triggers: unknown; // Json column; parsed via triggersArraySchema by caller
   catalystDate: Date | null;
   createdAt: Date;
@@ -220,9 +237,25 @@ export function buildResolvedEnvelope(args: {
     actionability = "WAIT_FOR_TRIGGER";
   }
 
+  // ── Running-winner P&L (HOLDING rows only) ────────────────────────
+  // Surfaces gain% + progress-to-target inline so the agent doesn't have to
+  // join get_portfolio_context by ticker. Same math the RUNNING_WINNER
+  // needsAction flag keys off (winner-signal.ts). Non-held rows → null.
+  const winner =
+    thesis.status === "HOLDING"
+      ? computeWinnerSignal({
+          direction: thesis.direction,
+          avgCost: thesis.avgCost,
+          targetPrice: thesis.targetPrice,
+          currentPrice,
+        })
+      : null;
+
   return {
     currentPrice,
     entryQualityScore,
+    unrealizedGainPct: winner?.unrealizedGainPct ?? null,
+    progressToTarget: winner?.progressToTarget ?? null,
     triggerState,
     triggerDetail,
     actionability,
