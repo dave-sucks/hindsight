@@ -123,8 +123,6 @@ function isSignalSidePredicate(p: TriggerPredicate): boolean {
  */
 interface PositionInfo {
   openedAt: Date;
-  /** Running peak (LONG high-water / SHORT low-water) — drives TRAILING_STOP. */
-  peakPrice: number | null;
 }
 
 async function buildPositionOpenedAtMap(
@@ -156,7 +154,7 @@ async function buildPositionOpenedAtMap(
       symbol: { in: tickers },
       status: "OPEN",
     },
-    select: { analystId: true, symbol: true, openedAt: true, peakPrice: true },
+    select: { analystId: true, symbol: true, openedAt: true },
     orderBy: { openedAt: "desc" },
   });
 
@@ -165,7 +163,7 @@ async function buildPositionOpenedAtMap(
   const byKey = new Map<string, PositionInfo>();
   for (const p of positions) {
     const key = `${p.analystId}::${p.symbol}`;
-    if (!byKey.has(key)) byKey.set(key, { openedAt: p.openedAt, peakPrice: p.peakPrice });
+    if (!byKey.has(key)) byKey.set(key, { openedAt: p.openedAt });
   }
   for (const t of active) {
     const key = `${t.researchRun.agentConfigId}::${t.ticker}`;
@@ -356,12 +354,10 @@ export const triggerEvaluator = inngest.createFunction(
           const posInfo = openedAtByThesisId.get(thesis.id);
           const ctx: EvaluationContext = {
             signal: ctxSignal,
-            peakPrice: posInfo?.peakPrice ?? null,
             thesis: {
               createdAt: thesis.createdAt,
               nextReviewAt: thesis.nextReviewAt,
               status: thesis.status,
-              direction: thesis.direction,
               positionOpenedAt: posInfo?.openedAt ?? null,
             },
             now,
@@ -531,12 +527,10 @@ export const triggerEvaluator = inngest.createFunction(
           // false because we don't pass recentPrices / sma here — see
           // the file-header note for the rationale.
           latestQuote: latestQuote ?? undefined,
-          peakPrice: posInfo?.peakPrice ?? null,
           thesis: {
             createdAt: thesis.createdAt,
             nextReviewAt: thesis.nextReviewAt,
             status: thesis.status,
-            direction: thesis.direction,
             positionOpenedAt: posInfo?.openedAt ?? null,
           },
           now,

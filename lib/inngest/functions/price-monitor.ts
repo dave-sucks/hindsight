@@ -123,13 +123,10 @@ export const priceMonitor = inngest.createFunction(
             },
           });
 
-          // Legacy trailing-stop check removed: the `exitStrategy="TRAILING"`
-          // side-channel (set via the old manage_position.set_trailing_stop)
-          // was the pre-trigger way to trail an exit. ALL exits now run through
+          // Trailing-stop auto-close removed. ALL exits now run through
           // per-thesis EXIT triggers on the trigger-evaluator's 5-min cron —
-          // including the directional Movement-Amount (% move) trigger. The
-          // price-monitor still maintains peakPrice below for any TRAILING_STOP
-          // predicate, but no longer auto-closes here.
+          // fixed price levels and the directional Movement-Amount (% move)
+          // trigger. The price-monitor no longer auto-closes here.
 
           // Near-target email alert removed — the daily digest at 10 AM ET
           // covers position movement; intraday "80% to target" pings turned

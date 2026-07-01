@@ -61,15 +61,14 @@ function findTriggerById(triggersJson: unknown, id: string): Trigger | null {
  * Close reason for a DIRECT EXIT fire. Always STOP or TARGET (never
  * MANUAL/TIME) so the close counts as a risk-management exit — those always
  * flow through the approval gate and are exempt from the P1-28
- * unapproved-exit cooldown. Trailing + adverse-direction price stops → STOP;
- * the favorable-direction price level → TARGET.
+ * unapproved-exit cooldown. Adverse-direction price / daily-% move → STOP;
+ * favorable-direction → TARGET.
  */
 function directExitReason(
   trigger: Trigger,
   direction: string | null,
 ): "STOP" | "TARGET" {
   const k = trigger.predicate.kind;
-  if (k === "TRAILING_STOP") return "STOP";
   const isLong = direction !== "SHORT";
   if (k === "PRICE_BELOW") return isLong ? "STOP" : "TARGET";
   if (k === "PRICE_ABOVE") return isLong ? "TARGET" : "STOP";

@@ -315,8 +315,6 @@ function predicateKindValue(p: TriggerPredicate): {
       return { kind: "price above", value: `$${p.level ?? "?"}` };
     case "PRICE_BELOW":
       return { kind: "price below", value: `$${p.level ?? "?"}` };
-    case "TRAILING_STOP":
-      return { kind: "trailing stop", value: `${p.trailPct ?? "?"}%` };
     case "PRICE_MOVE_PCT": {
       // Daily move (window 1D) reads as a clean "up / down" — the standard
       // "stock is up/down X% today" alert. Multi-day windows append the span.
@@ -388,8 +386,6 @@ function predicateDescription(p: TriggerPredicate): string {
       return `Fires when last quote crosses above $${p.level}.`;
     case "PRICE_BELOW":
       return `Fires when last quote crosses below $${p.level}.`;
-    case "TRAILING_STOP":
-      return `Exits when price falls ${p.trailPct}% below its peak since entry. Trails up as the position runs.`;
     case "PRICE_MOVE_PCT":
       return p.window === "1D"
         ? `Fires when the stock is ${p.direction === "UP" ? "up" : "down"} ${p.pct}% on the day (vs prior close).`
@@ -547,8 +543,7 @@ function TriggerPopoverContent({
   const fieldLabel = `${actionGroupLabel(trigger.action)} ${kindLabel}`;
 
   // Input-group adornments. Price → leading "$"; movement → leading
-  // direction + trailing "%"; trailing-stop → trailing "%"; time-based →
-  // leading calendar icon (read-only).
+  // direction + trailing "%"; time-based → leading calendar icon (read-only).
   const pk = trigger.predicate.kind;
   const moveDir =
     pk === "PRICE_MOVE_PCT"

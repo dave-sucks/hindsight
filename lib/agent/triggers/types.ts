@@ -55,14 +55,6 @@ export type TriggerPredicate =
   // ── Price-based — periodic worker against latest quote ────────────────
   | { kind: "PRICE_ABOVE"; level: number }
   | { kind: "PRICE_BELOW"; level: number }
-  // Trailing stop — EXIT when price falls `trailPct`% from the running peak
-  // (LONG) / rises `trailPct`% from the trough (SHORT). A first-class trigger
-  // like every other predicate: the trigger-evaluator evaluates it against the
-  // paired Position's peakPrice (the price-monitor maintains that high-water
-  // mark for every open position) and fires `app/thesis.trigger.fired` →
-  // tactical run → close proposal → the normal approve/reject flow. HELD-only
-  // (a trail needs an open position + a peak; no peak ⇒ never fires).
-  | { kind: "TRAILING_STOP"; trailPct: number }
   | {
       kind: "PRICE_MOVE_PCT";
       pct: number;
@@ -170,7 +162,6 @@ export type ThesisTriggers = Trigger[];
 export const DIRECT_ELIGIBLE_PREDICATE_KINDS: readonly string[] = [
   "PRICE_ABOVE",
   "PRICE_BELOW",
-  "TRAILING_STOP",
   "PRICE_MOVE_PCT",
 ];
 

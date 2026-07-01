@@ -34,7 +34,6 @@ An invalid trigger is dropped at evaluation, so the gate rejects it up front.
 |---|---|---|
 | `PRICE_ABOVE` / `PRICE_BELOW` | Last quote crosses a fixed level ("Target Price") | `level` ($) |
 | `PRICE_MOVE_PCT` | Daily % move vs prior close ("Movement Amount") | `pct`, `direction: UP\|DOWN`, `window` |
-| `TRAILING_STOP` | Retrace `trailPct`% from peak (dormant — not offered in the UI) | `trailPct` |
 | `VS_SMA` | Price vs 50/200-day SMA | `period`, `direction` |
 | `RSI` | RSI vs threshold (**stubbed — never fires**) | `threshold`, `direction` |
 | `SIGNAL_TYPE` | A routed signal of a given type/sentiment/urgency | `signalType`, `sentiment?`, `minUrgency?` |
@@ -85,9 +84,9 @@ Set per-trigger (`fireMode`, default `TACTICAL`):
 - **`TACTICAL`** ("Trigger Tactical Run") — fires `app/thesis.trigger.fired` →
   a focused GPT-5.5 **tactical run** validates and decides.
 - **`DIRECT`** ("Automatically Exit") — **EXIT-only**, deterministic price /
-  movement / trailing predicates (`isDirectEligiblePredicate`). The tactical-run
-  consumer **short-circuits past the agent** and calls `closeOpenPosition`
-  directly. Saves the GPT cost on mechanical exits.
+  daily-% predicates (`isDirectEligiblePredicate`). The tactical-run consumer
+  **short-circuits past the agent** and calls `closeOpenPosition` directly.
+  Saves the GPT cost on mechanical exits.
 
 **Both modes still go through the approval gate.** `closeOpenPosition` (and the
 agent's `close_position`/`place_trade`) call `maybeAwaitApproval` **before** any

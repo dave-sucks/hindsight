@@ -30,9 +30,9 @@ describe("triggerSchema.fireMode", () => {
 
   it("passes an explicit DIRECT through", () => {
     const parsed = triggerSchema.parse({
-      predicate: { kind: "TRAILING_STOP", trailPct: 5 },
+      predicate: { kind: "PRICE_MOVE_PCT", pct: 5, direction: "DOWN", window: "1D" },
       action: "EXIT",
-      rationale: "trail",
+      rationale: "down 5% on the day",
       fireMode: "DIRECT",
     });
     expect(parsed.fireMode).toBe("DIRECT");
@@ -62,8 +62,8 @@ describe("defaultFireModeForAction", () => {
   );
 });
 
-describe("isDirectEligiblePredicate — only deterministic price/trailing exits", () => {
-  it.each(["PRICE_ABOVE", "PRICE_BELOW", "TRAILING_STOP"])(
+describe("isDirectEligiblePredicate — only deterministic price/% exits", () => {
+  it.each(["PRICE_ABOVE", "PRICE_BELOW", "PRICE_MOVE_PCT"])(
     "%s is DIRECT-eligible",
     (kind) => {
       expect(isDirectEligiblePredicate(kind)).toBe(true);
@@ -78,6 +78,7 @@ describe("isDirectEligiblePredicate — only deterministic price/trailing exits"
     "TIME_ELAPSED",
     "GUIDANCE_CHANGE",
     "FILING",
+    "TRAILING_STOP",
     "AND",
     "OR",
   ])("%s is NOT DIRECT-eligible (judgment-bearing → tactical)", (kind) => {
