@@ -537,7 +537,10 @@ function ProposalsPanel({
       <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1.5 px-1">
         Pending approval
       </p>
-      <Card className="p-1 gap-1">
+      {/* Plain bordered container — TradeRowShell supplies its own px-3 py-2.5
+          padding + border-b dividers, so rows sit flush (matches the coverage
+          table + the prod trade list). No Card p-1/gap wrapper. */}
+      <div className="rounded-lg border overflow-hidden bg-card">
         {proposals.map((t) => (
           <SharedTradeRow
             key={t.id}
@@ -561,7 +564,7 @@ function ProposalsPanel({
             direction={t.direction}
           />
         ))}
-      </Card>
+      </div>
     </div>
   );
 }
