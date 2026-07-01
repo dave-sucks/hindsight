@@ -270,7 +270,11 @@ export default function TradesPage({
               const isUp = totalGain >= 0;
 
               return (
-                <TableRow key={trade.id} className="group relative">
+                <TableRow
+                  key={trade.id}
+                  className="group relative cursor-pointer"
+                  onClick={() => router.push(`/trades/${trade.id}`)}
+                >
                   {/* Name: logo + ticker with inline status dot + analyst
                       subhead. No longer wrapped in a Link — navigation
                       happens via the hover-revealed action buttons on the
@@ -364,7 +368,7 @@ export default function TradesPage({
                       pair so the user can decide without leaving the table. */}
                   <TableCell className="text-right">
                     {awaitingApproval ? (
-                      <div className="flex justify-end">
+                      <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
                         <ProposalActions orderId={trade.pendingProposal!.orderId} />
                       </div>
                     ) : isStalePrice && isOpen ? (
@@ -462,7 +466,10 @@ export default function TradesPage({
                       they never widen the cell) and float over the right edge
                       of the row only on hover — no background, no crop. */}
                   <TableCell className="w-0 p-0 sticky right-0">
-                    <div className="absolute inset-y-0 right-0 pr-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <div
+                      className="absolute inset-y-0 right-0 pr-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <Tooltip>
                         <TooltipTrigger
                           render={
