@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
-import { StockLogo } from '@/components/StockLogo';
+import { StockIdentityHeader } from '@/components/domain/stock-identity-header';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PriceChange } from '@/components/ui/price-change';
 import { buildTradeSentence } from '@/lib/trade-statement';
@@ -265,32 +265,26 @@ export default async function TradeDetailPage({
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
-          <StockLogo ticker={trade.ticker} size="lg" />
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold leading-tight">
-                {companyName ?? trade.ticker}
-              </h1>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Badge variant="secondary" className="gap-1.5 font-normal cursor-default">
-                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", status.dotClass)} />
-                        {status.label}
-                      </Badge>
-                    }
-                  />
-                  <TooltipContent side="bottom">{status.tooltip}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <p className="text-xs font-mono uppercase text-muted-foreground tracking-wide mt-0.5">
-              {trade.ticker}{exchange ? ` · ${exchange}` : ''}
-            </p>
-          </div>
-        </div>
+        <StockIdentityHeader
+          ticker={trade.ticker}
+          displayName={companyName ?? trade.ticker}
+          exchange={exchange}
+          badges={
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Badge variant="secondary" className="gap-1.5 font-normal cursor-default">
+                      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", status.dotClass)} />
+                      {status.label}
+                    </Badge>
+                  }
+                />
+                <TooltipContent side="bottom">{status.tooltip}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          }
+        />
         <TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} runId={runId} />
       </div>
 

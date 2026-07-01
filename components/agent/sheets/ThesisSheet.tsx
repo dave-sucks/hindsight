@@ -31,7 +31,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import Link from "next/link";
-import { StockLogo } from "@/components/StockLogo";
+import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
 import { TickBar, type Tick } from "@/components/ui/gauge";
 import {
   Tooltip,
@@ -1590,34 +1590,23 @@ export function ThesisSheetBody({
       />
 
       {/* ── Stock identity + live price ──────────────────────── */}
-      {/* Company name + ticker are a Link to /stocks/[ticker] — the
-          sheet is a focused view of one thesis; clicking the stock
-          identity takes you to the broader stock page (TradingView
-          chart, all theses on this ticker, etc.). Hover-underline
-          conveys affordance without disrupting the typography.
-          The Review control for a pending proposal lives inside the trade
-          block below, not here — one unified trade section per state. */}
+      {/* StockIdentityHeader is the SAME component the trade detail page uses,
+          so the two surfaces read identically. Name + logo link to
+          /stocks/[ticker] (the broad view); a "View trade →" link below adds
+          the direct path to the trade when a position exists. The Review
+          control for a pending proposal lives inside the trade block below. */}
       <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <Link href={`/stocks/${ticker}`} className="shrink-0">
-            <StockLogo ticker={ticker} size="lg" />
-          </Link>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <Link href={`/stocks/${ticker}`} className="group/stocklink min-w-0">
-                <p className="text-xl font-semibold truncate group-hover/stocklink:underline underline-offset-4">
-                  {displayName}
-                </p>
-              </Link>
+        <StockIdentityHeader
+          ticker={ticker}
+          displayName={displayName}
+          exchange={exchange}
+          badges={
+            <>
               {liveStatus && <StatusPill status={liveStatus} />}
               <ConvictionBadge conviction={conviction} rationale={convictionRationale} />
-            </div>
-            <p className="font-mono text-xs uppercase tracking-wide text-muted-foreground mt-0.5">
-              {ticker}
-              {exchange ? ` · ${exchange}` : ""}
-            </p>
-          </div>
-        </div>
+            </>
+          }
+        />
         {/* Live current price + day's change. Comes from the separate
             /quote endpoint (slow — Finnhub call) so this block usually
             paints after the rest of the sheet body. Skeleton while
@@ -1642,6 +1631,17 @@ export function ThesisSheetBody({
             <Skeleton className="h-3 w-16" />
           </div>
         ) : null}
+        {/* The stock identity links to /stocks/[ticker] (the broad view); when
+            this thesis has an actual position, offer the direct path to the
+            trade detail page too — a thesis doesn't always have a trade. */}
+        {position?.id && (
+          <Link
+            href={`/trades/${position.id}`}
+            className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
+          >
+            View trade →
+          </Link>
+        )}
       </div>
 
       {/* ── Trade block (one unified, state-aware section) ── */}

@@ -78,6 +78,9 @@ interface Trigger {
 // come from the separate /quote response (`QuoteResponse.positionPnl`)
 // and are merged into the rendered PositionRow client-side.
 export interface ThesisStatePosition {
+  /** Position row id — drives the sheet's "View trade →" link. Optional
+   *  because the pre-fetched sheetState path (P2-19) doesn't carry it. */
+  id?: string;
   quantity: number;
   avgCost: number;
   openedAt: string;

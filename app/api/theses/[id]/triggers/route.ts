@@ -130,6 +130,8 @@ export async function GET(
     rationale: string | null;
   };
   type PositionInfo = {
+    /** Position row id — drives the sheet's "View trade →" link to /trades/[id]. */
+    id: string;
     quantity: number;
     avgCost: number;
     openedAt: string;
@@ -169,6 +171,7 @@ export async function GET(
       },
       orderBy: { openedAt: "desc" },
       select: {
+        id: true,
         quantity: true,
         avgCost: true,
         openedAt: true,
@@ -198,6 +201,7 @@ export async function GET(
       const ap = pos.orders?.[0];
       const cost = Number(pos.avgCost) * Number(pos.quantity);
       position = {
+        id: pos.id,
         quantity: Number(pos.quantity),
         avgCost: Number(pos.avgCost),
         openedAt: pos.openedAt.toISOString(),
