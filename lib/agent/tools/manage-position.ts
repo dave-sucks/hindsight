@@ -25,6 +25,10 @@ import {
   maybeAwaitApproval,
   awaitingApprovalEnvelope,
 } from "@/lib/proposals/maybe-await-approval";
+import {
+  scaleInCeiling,
+  SCALE_IN_CEILING_MULTIPLE,
+} from "@/lib/agent/position-sizing";
 
 /**
  * Classify an Alpaca submit error — same shape as place_trade / closeOpenPosition.
@@ -667,16 +671,25 @@ export const managePosition = defineTool({
             }
           }
 
-          // Size guard: don't exceed 150% of configured max position size
-          const maxPosSize = ctx.maxPositionSize ?? 5000;
+          // ── Scale-in ceiling (docs/plans/SCALE_INTO_WINNERS.md, PR1) ──────
+          // A held winner may grow to SCALE_IN_CEILING_MULTIPLE × the normal
+          // per-entry cap. Base cap mirrors place_trade's effective cap and
+          // respects realMaxPosition on LIVE — previously this branch used a
+          // flat maxPositionSize × 1.5 and ignored realMaxPosition entirely,
+          // so a LIVE add could grow past the live per-position cap. Fixed.
+          const scaleCeiling = scaleInCeiling({
+            environment: position.environment,
+            maxPositionSize: ctx.maxPositionSize,
+            realMaxPosition: ctx.realMaxPosition,
+          });
           const currentValue = position.avgCost * position.quantity;
-          if (currentValue + notional > maxPosSize * 1.5) {
+          if (currentValue + notional > scaleCeiling) {
             return {
-              summary: `Add would exceed max position size`,
+              summary: `Add would exceed the ${SCALE_IN_CEILING_MULTIPLE}× scale-in ceiling`,
               data: {
                 success: false, ticker, action: args.action, status: "FAILED" as const,
-                message: `Adding $${notional} to the current $${currentValue.toFixed(0)} position would exceed 150% of max position size ($${maxPosSize}).`,
-                tickers: [{ ticker, tag: "Failed", summary: "Exceeds max size limit", actionIcon: "failed" }],
+                message: `Adding $${notional} to the current $${currentValue.toFixed(0)} position would exceed this analyst's ${SCALE_IN_CEILING_MULTIPLE}× scale-in ceiling ($${scaleCeiling.toFixed(0)}). A held winner may grow to ${SCALE_IN_CEILING_MULTIPLE}× the normal per-entry cap — trim or wait rather than adding beyond it.`,
+                tickers: [{ ticker, tag: "Failed", summary: "Exceeds scale-in ceiling", actionIcon: "failed" }],
               },
               sources: [],
             };
