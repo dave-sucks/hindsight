@@ -590,14 +590,11 @@ function ScoringGauge({ score, max }: { score: number; max: number }) {
   return <TickBar ticks={ticks} className="w-16 shrink-0" />;
 }
 
-// Skeleton placeholders for state-dependent blocks were deleted 2026-06-02.
-// They existed to hold space while /triggers was in flight — but that made
-// every block a tri-state (`state?.X ? real : loading ? skeleton : null`)
-// when the data is just a DB field that either exists or doesn't. The
-// blocks now render iff the value is present; on a row-click open the
-// parent forwards `initialState` so they paint immediately, and on an
-// unseeded open they appear after the ~50ms DB round-trip. The live price
-// (the one genuinely-slow value) keeps its skeleton — see the price block.
+// Per-block skeletons were deleted 2026-06-02. The sheet now does a single
+// atomic load (see the ThesisSheetBody effect + the `loaded` gate): one full
+// skeleton while every fetch is in flight, then the whole body renders once
+// with complete data. Each block renders iff its value is present — no
+// tri-state (`real : loading-skeleton : null`), no partial-paint window.
 
 // ── TradeStructureBlock ───────────────────────────────────────────────
 // Compact single-row block of trade-shape mechanics: next review (with
@@ -1132,35 +1129,18 @@ interface AnalystCoverageData {
  * fallback for when the live fetch fails.
  */
 function AnalystConsensusWidget({
-  thesisId,
+  coverage,
   fallbackConsensus,
   narrative,
   currentPrice,
 }: {
-  thesisId: string | undefined;
+  /** Live analyst coverage, fetched once as part of the sheet's atomic load. */
+  coverage: AnalystCoverageData | null;
   fallbackConsensus: { buy: number; hold: number; sell: number } | null;
   narrative: ResearchTextSection | null | undefined;
   currentPrice: number | null;
 }) {
-  const [coverage, setCoverage] = useState<AnalystCoverageData | null>(null);
-  useEffect(() => {
-    if (!thesisId) return;
-    let cancelled = false;
-    fetch(`/api/theses/${thesisId}/analyst-coverage`)
-      .then(async (r) => {
-        if (!r.ok) return;
-        const json = (await r.json()) as AnalystCoverageData;
-        if (!cancelled) setCoverage(json);
-      })
-      .catch(() => {
-        /* non-fatal — widget falls back to stored consensus */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [thesisId]);
-
-  // Source consensus: prefer fresh fetch; fall back to stored values from
+  // Source consensus: prefer live coverage; fall back to stored values from
   // mint time. Either may be null — render an empty state in that case.
   const consensus = coverage?.consensus
     ? {
@@ -1425,6 +1405,38 @@ function ConsensusNarrative({
 
 // ─── ThesisSheetBody ──────────────────────────────────────────────────────────
 
+// One skeleton for the ENTIRE sheet — shown while the atomic load is in flight.
+// Mirrors the real layout (identity header, price line, trade block, thesis
+// paragraph, chart) so there's no layout jump when the real content swaps in.
+function ThesisSheetSkeleton() {
+  return (
+    <div className="px-4 pb-6 pt-2 space-y-5">
+      {/* Identity header */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <Skeleton className="size-11 rounded-lg shrink-0" />
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-3 w-28" />
+          </div>
+        </div>
+        {/* Price line */}
+        <Skeleton className="h-6 w-40" />
+      </div>
+      {/* Trade block */}
+      <Skeleton className="h-20 w-full rounded-lg" />
+      {/* Thesis paragraph */}
+      <div className="space-y-2">
+        <Skeleton className="h-5 w-full" />
+        <Skeleton className="h-5 w-11/12" />
+        <Skeleton className="h-5 w-3/4" />
+      </div>
+      {/* Chart */}
+      <Skeleton className="h-[300px] w-full rounded-lg" />
+    </div>
+  );
+}
+
 export interface ThesisSheetBodyProps {
   /** Persisted Thesis id. When supplied, the Activity timeline renders. */
   thesis_id?: string;
@@ -1448,14 +1460,6 @@ export interface ThesisSheetBodyProps {
    *  with no flicker. The triggers API fetch refines position/PnL data.
    *  P1-24: PASSED drives isPass now that a pass stores direction=null. */
   status?: "HOLDING" | "WATCHING" | "PROMOTED" | "RETIRED" | "PASSED";
-  /**
-   * Pre-fetched /triggers payload from the parent (P2-19). When supplied,
-   * the sheet renders status / belief / scoring / sources / research
-   * synthesis synchronously instead of skeletons-then-fetch. The /triggers
-   * background fetch still fires to pick up live trigger updates +
-   * position changes, but every state-dependent block paints on open.
-   */
-  initialState?: TriggersResponse;
 }
 
 export function ThesisSheetBody({
@@ -1475,7 +1479,6 @@ export function ThesisSheetBody({
   // a pass stores direction=null, so status=PASSED is the authoritative — and
   // now only — pass signal.
   status: initialStatus,
-  initialState,
 }: ThesisSheetBodyProps) {
   // P1-24: a pass is identified by status=PASSED (direction is null on a pass).
   const isPass = initialStatus === "PASSED";
@@ -1487,60 +1490,59 @@ export function ThesisSheetBody({
   const hasStop = stop_loss != null;
   const showLevels = !isPass && hasEntry && (hasTarget || hasStop);
 
-  // Fetch durable thesis state once when we have an id. Drives the
-  // Two parallel fetches so the slow Finnhub call doesn't block the rest
-  // of the sheet (split on 2026-05-19). `state` (the DB-side data) lands
-  // in ~50ms and refines status / belief / scoring / triggers / activity;
-  // `quote` (the live Finnhub call) lands whenever Finnhub does and
-  // refines only the price block + position PnL. Skeleton placeholders
-  // below cover the gap so the layout doesn't jump.
-  //
-  // When `initialState` is forwarded by the parent (P2-19), seed `state`
-  // with it so every state-dependent block paints on open. The fetch
-  // below still runs to refresh — the row's data may be a few seconds
-  // stale on triggers / position. `quote` always has to round-trip
-  // (Finnhub) so the price block keeps its skeleton until that lands.
-  const [state, setState] = useState<TriggersResponse | null>(initialState ?? null);
+  // ── Atomic load ──────────────────────────────────────────────────────────
+  // The sheet fetches ALL of its data up front — durable state (/triggers),
+  // live quote + company profile (/quote), price candles, and analyst coverage
+  // — in ONE parallel batch and renders NOTHING until every piece has settled.
+  // One load, one paint: no progressive/partial render, no per-section
+  // skeletons, no ticker→company-name fallback flash. Wall-clock is the slowest
+  // call (the Finnhub quote/candles, ~1-2s). See the loading gate before the
+  // return below. `initialState` (the old P2-19 instant-paint seed) is
+  // intentionally NOT used — instant-paint-then-refine is exactly the staged
+  // render we're removing.
+  const [state, setState] = useState<TriggersResponse | null>(null);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
-  // Bumped after a trigger edit so the /triggers + /quote fetch below re-runs
-  // and the open sheet reflects the new value without a manual reopen.
-  const [refreshKey, setRefreshKey] = useState(0);
-  // Daily candles for the annotated price chart, fetched on open (single
-  // symbol, 5-min cached). ~400 days so the 1Y range pill has data. null
-  // while in-flight; [] on failure → ThesisChart degrades to the gauge.
   const [candles, setCandles] = useState<StockCandle[] | null>(null);
+  const [coverage, setCoverage] = useState<AnalystCoverageData | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  // Bumped after a trigger edit so the whole payload re-fetches and the open
+  // sheet reflects the new value without a manual reopen.
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Re-gate (show the skeleton) only when a DIFFERENT thesis opens — NOT on a
+  // refreshKey bump from a trigger edit, which should swap data in place
+  // without flashing the whole sheet back to a skeleton.
+  useEffect(() => {
+    setLoaded(false);
+  }, [thesis_id]);
+
   useEffect(() => {
     if (!thesis_id) return;
     let cancelled = false;
-    if (ticker) {
-      fetch(`/api/stocks/candles?symbols=${encodeURIComponent(ticker)}&days=400`)
-        .then(async (r) => {
-          if (!r.ok) return;
-          const json = (await r.json()) as { candles: Record<string, StockCandle[]> };
-          if (!cancelled) setCandles(json.candles[ticker.toUpperCase()] ?? []);
-        })
-        .catch(() => {
-          if (!cancelled) setCandles([]); // degrade to the gauge
-        });
-    }
-    fetch(`/api/theses/${thesis_id}/triggers`)
-      .then(async (r) => {
-        if (!r.ok) return;
-        const json = (await r.json()) as TriggersResponse;
-        if (!cancelled) setState(json);
-      })
-      .catch(() => {
-        /* non-fatal — header gracefully degrades */
-      });
-    fetch(`/api/theses/${thesis_id}/quote`)
-      .then(async (r) => {
-        if (!r.ok) return;
-        const json = (await r.json()) as QuoteResponse;
-        if (!cancelled) setQuote(json);
-      })
-      .catch(() => {
-        /* non-fatal — price block + PnL just stay null */
-      });
+    const asJson = (r: Response) => (r.ok ? r.json() : null);
+    Promise.all([
+      fetch(`/api/theses/${thesis_id}/triggers`).then(asJson).catch(() => null),
+      fetch(`/api/theses/${thesis_id}/quote`).then(asJson).catch(() => null),
+      ticker
+        ? fetch(`/api/stocks/candles?symbols=${encodeURIComponent(ticker)}&days=400`)
+            .then(asJson)
+            .catch(() => null)
+        : Promise.resolve(null),
+      fetch(`/api/theses/${thesis_id}/analyst-coverage`).then(asJson).catch(() => null),
+    ]).then((results) => {
+      if (cancelled) return;
+      const [triggersJson, quoteJson, candlesJson, coverageJson] = results as [
+        TriggersResponse | null,
+        QuoteResponse | null,
+        { candles: Record<string, StockCandle[]> } | null,
+        AnalystCoverageData | null,
+      ];
+      setState(triggersJson);
+      setQuote(quoteJson);
+      setCandles(candlesJson ? (candlesJson.candles[ticker.toUpperCase()] ?? []) : []);
+      setCoverage(coverageJson);
+      setLoaded(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -1566,6 +1568,13 @@ export function ThesisSheetBody({
     | null;
   const convictionRationale = state?.convictionRationale ?? null;
   const variantView = state?.variantView ?? null;
+
+  // One load, one paint — hold the entire body behind a single skeleton until
+  // every fetch has settled (see the atomic-load effect above). Nothing below
+  // this line ever renders against partial data.
+  if (!loaded) {
+    return <ThesisSheetSkeleton />;
+  }
 
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
@@ -1617,7 +1626,9 @@ export function ThesisSheetBody({
             paints after the rest of the sheet body. Skeleton while
             /quote is still in flight; nothing if it returned null
             (Finnhub failure). */}
-        {quote?.currentPrice != null ? (
+        {/* Post-gate: quote is present, or null on a Finnhub failure — in which
+            case we simply omit the price line (no skeleton; loading is over). */}
+        {quote?.currentPrice != null && (
           <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
             <span className="text-xl font-semibold tabular-nums">
               {formatCurrency(quote.currentPrice)}
@@ -1630,12 +1641,7 @@ export function ThesisSheetBody({
               />
             )}
           </div>
-        ) : quote == null ? (
-          <div className="flex items-baseline gap-3">
-            <Skeleton className="h-5 w-20" />
-            <Skeleton className="h-3 w-16" />
-          </div>
-        ) : null}
+        )}
         {/* The stock identity links to /stocks/[ticker] (the broad view); when
             this thesis has an actual position, offer the direct path to the
             trade detail page too — a thesis doesn't always have a trade. */}
@@ -1801,7 +1807,7 @@ export function ThesisSheetBody({
           the fetch fails or returns empty. Narrative behind a
           collapsible. */}
       <AnalystConsensusWidget
-        thesisId={thesis_id}
+        coverage={coverage}
         fallbackConsensus={fundamentals?.analyst_consensus ?? null}
         narrative={state?.analystConsensus ?? null}
         currentPrice={quote?.currentPrice ?? null}
@@ -1925,15 +1931,9 @@ export function ThesisSheetBody({
 interface ThesisSheetProps extends ThesisCardData {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /**
-   * Pre-fetched /triggers payload forwarded from a parent that already
-   * has the data (watchlist row, stock page row, trade detail row). See
-   * P2-19 — eliminates skeletons-then-fetch on sheet open.
-   */
-  initialState?: TriggersResponse;
 }
 
-export function ThesisSheet({ open, onOpenChange, initialState, ...data }: ThesisSheetProps) {
+export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
   const displayName = data.company_name ?? data.ticker;
 
   return (
@@ -1960,7 +1960,6 @@ export function ThesisSheet({ open, onOpenChange, initialState, ...data }: Thesi
           exchange={data.exchange}
           fundamentals={data.fundamentals}
           status={data.status}
-          initialState={initialState}
         />
       </SheetContent>
     </Sheet>
