@@ -223,4 +223,34 @@ describe("closeOpenPosition — P1-18 paired-thesis flip", () => {
     // And we never even submitted to Alpaca on the proposed path.
     expect(mockPlaceMarketOrder).not.toHaveBeenCalled();
   });
+
+  it("TARGET take-profit routes the held thesis back to WATCHING for re-entry (PR5)", async () => {
+    const result = await closeOpenPosition("pos-1", "TARGET", undefined, "agent");
+
+    expect(result.kind).toBe("closed");
+
+    // Routed HOLDING → WATCHING (not RETIRED); held-only triggers cleared so
+    // the next run sets a fresh re-entry trigger.
+    expect(mockThesisUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "thesis-1" },
+        data: expect.objectContaining({
+          status: "WATCHING",
+          retiredReason: null,
+          triggers: [],
+        }),
+      }),
+    );
+
+    // Exactly one CLOSED audit row carrying the HOLDING→WATCHING delta (no
+    // retiredReason — the thesis is alive, not retired).
+    expect(mockWriteThesisUpdate).toHaveBeenCalledTimes(1);
+    expect(mockWriteThesisUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        thesisId: "thesis-1",
+        type: "CLOSED",
+        fieldChanges: { status: { from: "HOLDING", to: "WATCHING" } },
+      }),
+    );
+  });
 });

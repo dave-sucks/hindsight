@@ -24,7 +24,7 @@
 | 2 | Default ladder: strength-press rung (% up → ADD) on holdings | L2 + builder | 🔨 built locally, holding push (validate PR3 first) | `docs/TRIGGERS.md` (on main ✓) |
 | 3 | `RUNNING_WINNER` attention (5th `needsAction` kind + P&L join) | L2 | ✅ merged ([#468](https://github.com/dave-sucks/hindsight/pull/468)) | — |
 | 4 | Tactical press/hold/take + strength/pullback/damage checklist; pullback (% down) rung (COMPOUNDER/TARGET/CATALYST, not TRADE) | L3 prompt + builder | 🔨 built locally, holding push | 1, 2 |
-| 5 | Re-entry of sold names (profit-take → WATCHING, daily-run re-enter) | lifecycle + L1 | not started | — |
+| 5 | Re-entry of sold names: take-profit (closeReason TARGET) → WATCHING (auto), re-entry via existing watchlist machinery | lifecycle | 🔨 built locally, holding push | — |
 | 6 | Review-due requires a targeted data pull | L1/L3 | not started | — |
 | 7 | Extend DIRECT fire-mode to ADD/TRIM (instant pre-planned rungs) | tactical + L1 | not started | fireMode on main ✓ |
 
@@ -270,8 +270,13 @@ drift — fireMode lives in `d2cb11a`/`e5b030d`, not the working tree).
 - **Trigger model:** hybrid — pre-planned ladder, each rung gated by a mini re-underwrite; driven
   by *both* the % triggers (single-day moves) and the target/`RUNNING_WINNER` checkpoint
   (cumulative). ✅
-- **Re-entry behavior:** profit-take with intact conviction → WATCHING + re-entry trigger;
-  re-entry approval-gated. ⚠️ **OPEN** — principal to confirm vs an approve-to-keep-watching prompt.
+- **Re-entry behavior:** ✅ **DECIDED (principal) — auto-keep-watching.** A take-profit
+  (`closeReason === "TARGET"`) auto-routes the thesis HOLDING → WATCHING (held-only triggers
+  cleared, `nextReviewAt` = now) instead of RETIRED; re-entry runs through the existing watchlist
+  machinery + approval gate. Stops / invalidations / risk exits still RETIRE. v1 limitation: the
+  re-entry ENTER trigger is set by the agent on its next review (not auto-seeded) — auto-seeding a
+  smart re-entry level + a daily-prompt "this is a re-entry candidate" note are follow-ups (fold
+  into the Spine's active-trigger-authorship work).
 - **Portfolio-level concentration cap (% of equity/name):** ⚠️ **OPEN** — default off until requested.
 
 ## Open questions / dependencies

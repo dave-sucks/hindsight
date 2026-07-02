@@ -139,6 +139,19 @@ export async function promoteThesisOnApproval(opts: {
 }
 
 /**
+ * A take-profit close routes the paired thesis back to WATCHING for re-entry
+ * (docs/plans/SCALE_INTO_WINNERS.md PR5) instead of terminal RETIRED. Signal =
+ * closeReason "TARGET" — the canonical deliberate profit-take (agent/tactical
+ * target-exits carry it; the price-monitor cron closes are STOP/trailing).
+ * Stops, invalidations, risk exits, and free-text reasons stay RETIRED —
+ * conservative v1, erring toward keeping a proven winner on the radar without
+ * over-keeping loss/damage exits. Exported for unit testing.
+ */
+export function isProfitTakeReentry(closeReason: string): boolean {
+  return closeReason.trim().toUpperCase() === "TARGET";
+}
+
+/**
  * Flip the ACTIVE thesis on (analystId, ticker) to CLOSED and write the
  * status-change audit row. The single shared chokepoint for "a position
  * truly closed → reflect it on the paired thesis," used by:
@@ -196,6 +209,45 @@ export async function closeThesisForPosition(opts: {
     });
     if (!activeThesis) return;
 
+    const ctxSuffix = opts.summaryContext ? ` ${opts.summaryContext}` : "";
+
+    // ── Re-entry radar (docs/plans/SCALE_INTO_WINNERS.md PR5) ──────────────
+    // A take-profit on a name we still believe in returns to WATCHING rather
+    // than terminal RETIRED, so the daily run keeps it on the radar and can
+    // re-enter on a pullback. (A RETIRED/SOLD row is DEAD — excluded from
+    // get_theses' default book, re-mintable only by Discovery.) Held-only
+    // triggers (stop EXIT, scale-in rungs) are cleared since there is no
+    // position; nextReviewAt=now flags it so the next run sets a fresh
+    // re-entry trigger or archives it. Only profit-takes route here — stops,
+    // invalidations, and risk exits stay RETIRED via the branch below.
+    if (isProfitTakeReentry(opts.closeReason)) {
+      await prisma.thesis.update({
+        where: { id: activeThesis.id },
+        data: {
+          status: "WATCHING",
+          retiredReason: null,
+          closedAt: new Date(),
+          closeReason: opts.closeReason,
+          triggers: [],
+          nextReviewAt: new Date(),
+        },
+      });
+      await writeThesisUpdate({
+        thesisId: activeThesis.id,
+        type: "CLOSED",
+        summary: `Took profit on ${opts.ticker}${ctxSuffix} — ${opts.closeReason}; kept on watch for re-entry`,
+        rationale:
+          opts.rationale ??
+          `Profit-take. Position closed; thesis kept WATCHING for a re-entry on a pullback.`,
+        fieldChanges: {
+          status: { from: activeThesis.status, to: "WATCHING" },
+        },
+        runId: opts.runId,
+        priceAtTime: opts.priceAtTime ?? null,
+      });
+      return;
+    }
+
     await prisma.thesis.update({
       where: { id: activeThesis.id },
       data: {
@@ -208,7 +260,6 @@ export async function closeThesisForPosition(opts: {
         closeReason: opts.closeReason,
       },
     });
-    const ctxSuffix = opts.summaryContext ? ` ${opts.summaryContext}` : "";
     await writeThesisUpdate({
       thesisId: activeThesis.id,
       type: "CLOSED",
