@@ -75,20 +75,49 @@ export interface ThesisShape {
  * where the tactical run gains the market-wide-vs-company-specific judgment
  * needed to add into a dip without buying into thesis damage. Threshold tunable.
  */
-const SCALE_IN_STRENGTH_PCT = 7;
+const SCALE_IN_MOVE_PCT = 7;
 
 function scaleInOnStrengthTrigger(): Trigger {
   return {
     id: createId(),
     predicate: {
       kind: "PRICE_MOVE_PCT",
-      pct: SCALE_IN_STRENGTH_PCT,
+      pct: SCALE_IN_MOVE_PCT,
       direction: "UP",
       window: "1D",
     },
     action: "ADD",
-    rationale: `Up ${SCALE_IN_STRENGTH_PCT}% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.`,
+    rationale: `Up ${SCALE_IN_MOVE_PCT}% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.`,
     // 3-day cooldown so a multi-day run doesn't re-propose an add every session.
+    cooldownDays: 3,
+  };
+}
+
+/**
+ * Reactive pullback-add rung (docs/plans/SCALE_INTO_WINNERS.md PR4).
+ *
+ * A sharp single-day DOWN move on a held conviction name spawns a tactical run
+ * to evaluate adding at the discount — but the tactical prompt runs the
+ * make-or-break "market/sector-wide vs company-specific" check first. A
+ * market-wide dip with the thesis intact is a gift; a company-specific drop is
+ * thesis damage (don't add — hold/trim/exit). ADD is held-only + TACTICAL +
+ * approval-gated, so a fire is a proposal the agent only makes after that check.
+ *
+ * Omitted for TRADE horizon on purpose: short-horizon momentum trades exit on
+ * weakness, they don't average into a dip. Strength-press applies to all
+ * horizons; pullback-add is for the conviction holds (COMPOUNDER/TARGET/CATALYST).
+ */
+function scaleInOnPullbackTrigger(): Trigger {
+  return {
+    id: createId(),
+    predicate: {
+      kind: "PRICE_MOVE_PCT",
+      pct: SCALE_IN_MOVE_PCT,
+      direction: "DOWN",
+      window: "1D",
+    },
+    action: "ADD",
+    rationale: `Down ${SCALE_IN_MOVE_PCT}% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.`,
     cooldownDays: 3,
   };
 }
@@ -156,6 +185,7 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
   );
 
   out.push(scaleInOnStrengthTrigger());
+  out.push(scaleInOnPullbackTrigger());
 
   return out;
 }
@@ -204,6 +234,7 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
     },
   );
   out.push(scaleInOnStrengthTrigger());
+  out.push(scaleInOnPullbackTrigger());
   return out;
 }
 
@@ -286,6 +317,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
     },
   );
   out.push(scaleInOnStrengthTrigger());
+  out.push(scaleInOnPullbackTrigger());
   return out;
 }
 
