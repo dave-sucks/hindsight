@@ -214,3 +214,37 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
     expect(out.cooldownDays).toBe(11);
   });
 });
+
+describe("defaultTriggersForHorizon — scale-in strength rung (SCALE_INTO_WINNERS.md PR2)", () => {
+  const HELD_HORIZONS = ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const;
+
+  for (const horizon of HELD_HORIZONS) {
+    it(`HELD ${horizon} includes a PRICE_MOVE_PCT UP → ADD rung`, () => {
+      const triggers = defaultTriggersForHorizon(horizon, base(), "HELD");
+      const add = triggers.find((t) => t.action === "ADD");
+      expect(add).toBeDefined();
+      expect(add!.predicate).toEqual({
+        kind: "PRICE_MOVE_PCT",
+        pct: 7,
+        direction: "UP",
+        window: "1D",
+      });
+      // ADD is held-only and resolves to TACTICAL by default (defaults omit fireMode).
+      expect(add!.fireMode).toBeUndefined();
+      // Cooldown so a multi-day run doesn't re-propose an add every session.
+      expect(add!.cooldownDays).toBe(3);
+    });
+  }
+
+  for (const horizon of HELD_HORIZONS) {
+    it(`WATCHING ${horizon} does NOT include an ADD rung (held-only)`, () => {
+      const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
+      expect(triggers.find((t) => t.action === "ADD")).toBeUndefined();
+    });
+  }
+
+  it("PROMOTED does NOT include an ADD rung (no live position yet)", () => {
+    const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
+    expect(triggers.find((t) => t.action === "ADD")).toBeUndefined();
+  });
+});

@@ -60,6 +60,39 @@ export interface ThesisShape {
 
 // ── Builders for each horizon ──────────────────────────────────────────
 
+/**
+ * Reactive strength-press rung (docs/plans/SCALE_INTO_WINNERS.md PR2).
+ *
+ * A strong single-day up-move on a HELD position spawns a tactical run to
+ * evaluate pressing the winner. `ADD` is a held-only action and resolves to
+ * fireMode TACTICAL by default (the agent decides + confirms; it never
+ * auto-fills), and it is approval-gated, so a fire produces an add *proposal*.
+ * `PRICE_MOVE_PCT{window:"1D"}` is cron-evaluable (reads the daily change), so
+ * this fires intraday — the reactive complement to PR3's morning RUNNING_WINNER
+ * flag.
+ *
+ * Deliberately UP-only for now. The pullback (down-day) add rung waits for PR4,
+ * where the tactical run gains the market-wide-vs-company-specific judgment
+ * needed to add into a dip without buying into thesis damage. Threshold tunable.
+ */
+const SCALE_IN_STRENGTH_PCT = 7;
+
+function scaleInOnStrengthTrigger(): Trigger {
+  return {
+    id: createId(),
+    predicate: {
+      kind: "PRICE_MOVE_PCT",
+      pct: SCALE_IN_STRENGTH_PCT,
+      direction: "UP",
+      window: "1D",
+    },
+    action: "ADD",
+    rationale: `Up ${SCALE_IN_STRENGTH_PCT}% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.`,
+    // 3-day cooldown so a multi-day run doesn't re-propose an add every session.
+    cooldownDays: 3,
+  };
+}
+
 function compounderDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
 
@@ -122,6 +155,8 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
     },
   );
 
+  out.push(scaleInOnStrengthTrigger());
+
   return out;
 }
 
@@ -168,6 +203,7 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
       cooldownDays: 25,
     },
   );
+  out.push(scaleInOnStrengthTrigger());
   return out;
 }
 
@@ -202,6 +238,7 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
     // forever once the window is reached, so without ANY cooldown it would
     // re-fire on every signal-routed evaluation.
   });
+  out.push(scaleInOnStrengthTrigger());
   return out;
 }
 
@@ -248,6 +285,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
       cooldownDays: 7,
     },
   );
+  out.push(scaleInOnStrengthTrigger());
   return out;
 }
 

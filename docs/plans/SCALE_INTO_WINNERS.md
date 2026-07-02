@@ -20,13 +20,13 @@
 | # | Workstream | Layer | Status | Depends on |
 |---|---|---|---|---|
 | 0 | **Active trigger authorship (the spine)** — writer/daily/tactical actively set+edit the ladder | L1+L2+L3 | not started | runs through all below |
-| 1 | Caps redesign (2× per name, add-path) | L1 gate | ✅ in review ([#467](https://github.com/dave-sucks/hindsight/pull/467)) | — |
-| 2 | Default trigger ladder on holdings (ADD / REVIEW / MOVE_STOP + % up/down) | L2 + builder | not started | `docs/TRIGGERS.md` |
-| 3 | `RUNNING_WINNER` attention (5th `needsAction` kind + P&L join) | L2 | ✅ in review ([#468](https://github.com/dave-sucks/hindsight/pull/468)) | — |
-| 4 | Tactical add-evaluation branch (press/hold/take + checklists) | L2 result + L3 prompt | not started | 1 |
+| 1 | Caps redesign (2× per name, add-path) | L1 gate | ✅ merged ([#467](https://github.com/dave-sucks/hindsight/pull/467)) | — |
+| 2 | Default ladder: strength-press rung (% up → ADD) on holdings | L2 + builder | 🔨 built locally, holding push (validate PR3 first) | `docs/TRIGGERS.md` (on main ✓) |
+| 3 | `RUNNING_WINNER` attention (5th `needsAction` kind + P&L join) | L2 | ✅ merged ([#468](https://github.com/dave-sucks/hindsight/pull/468)) | — |
+| 4 | Tactical add-evaluation branch (press/hold/take + checklists) — incl. **pullback-add** (% down) rung | L2 result + L3 prompt | not started | 1, 2 |
 | 5 | Re-entry of sold names (profit-take → WATCHING, daily-run re-enter) | lifecycle + L1 | not started | — |
 | 6 | Review-due requires a targeted data pull | L1/L3 | not started | — |
-| 7 | Extend DIRECT fire-mode to ADD/TRIM (instant pre-planned rungs) | tactical + L1 | not started | fireMode synced into branch |
+| 7 | Extend DIRECT fire-mode to ADD/TRIM (instant pre-planned rungs) | tactical + L1 | not started | fireMode on main ✓ |
 
 ---
 
