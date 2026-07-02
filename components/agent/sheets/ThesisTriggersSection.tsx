@@ -43,6 +43,8 @@ import { ButtonGroup } from "@/components/ui/button-group";
 import { Clock, Loader2, Plus, Trash2, Calendar } from "lucide-react";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import { cn } from "@/lib/utils";
+import type { StockCandle } from "@/lib/actions/finnhub.actions";
+import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 
 interface TriggerPredicate {
   kind: string;
@@ -139,6 +141,12 @@ export interface TriggersResponse {
   nextReviewAt: string | null;
   triggers: Trigger[];
   position: ThesisStatePosition | null;
+  // ── Full-sheet payload (present only on the /triggers?full=1 call the sheet
+  // makes). One request returns the whole sheet: durable state PLUS live quote,
+  // candles, and analyst coverage — no separate /quote, /candles, /coverage. */
+  quote?: QuoteResponse;
+  candles?: StockCandle[];
+  coverage?: AnalystCoverageData | null;
   // Structural belief — load-bearing fields the trade-evaluator + tactical
   // agent read. Surfaced to the sheet so the user can see what the agent
   // actually committed to.

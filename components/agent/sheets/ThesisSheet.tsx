@@ -16,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceTargetsBlock } from "@/components/domain/price-targets-block";
 import { ThesisChart } from "@/components/domain/thesis-chart";
-import type { StockCandle } from "@/lib/actions/finnhub.actions";
 import {
   Collapsible,
   CollapsibleContent,
@@ -51,6 +50,7 @@ import {
   type ResearchCitation,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { buildTradeSentence } from "@/lib/trade-statement";
 import {
@@ -1085,24 +1085,8 @@ function ResearchCitationChip({ citation }: { citation: ResearchCitation }) {
 // Response shape from /api/theses/:id/analyst-coverage. Returns null when
 // the fetch fails or FMP returns nothing — the widget then falls back to
 // the stored fundamentals.analyst_consensus shape (from thesis mint time).
-interface AnalystCoverageData {
-  ticker: string;
-  consensus: {
-    buy: number;
-    hold: number;
-    sell: number;
-    unknown: number;
-    total: number;
-  } | null;
-  priceTargets: {
-    low: number | null;
-    average: number;
-    median: number | null;
-    high: number | null;
-    numAnalysts: number | null;
-  } | null;
-  errors?: string[];
-}
+// AnalystCoverageData is imported from lib/actions/analyst-coverage (the shared
+// shape returned by the consolidated /triggers?full=1 payload).
 
 /**
  * AnalystConsensusWidget — single consolidated visual for the Street's
@@ -1490,28 +1474,22 @@ export function ThesisSheetBody({
   const hasStop = stop_loss != null;
   const showLevels = !isPass && hasEntry && (hasTarget || hasStop);
 
-  // ── Atomic load ──────────────────────────────────────────────────────────
-  // The sheet fetches ALL of its data up front — durable state (/triggers),
-  // live quote + company profile (/quote), price candles, and analyst coverage
-  // — in ONE parallel batch and renders NOTHING until every piece has settled.
-  // One load, one paint: no progressive/partial render, no per-section
-  // skeletons, no ticker→company-name fallback flash. Wall-clock is the slowest
-  // call (the Finnhub quote/candles, ~1-2s). See the loading gate before the
-  // return below. `initialState` (the old P2-19 instant-paint seed) is
-  // intentionally NOT used — instant-paint-then-refine is exactly the staged
-  // render we're removing.
+  // ── One thesis, one endpoint, one paint ──────────────────────────────────
+  // The sheet makes a SINGLE request — /triggers?full=1 — which returns the
+  // whole thesis: durable DB state (belief, targets, scoring, triggers,
+  // position) PLUS the live quote, company profile, price candles, and analyst
+  // coverage, all assembled server-side. There is no second source, no
+  // concatenating fetches, no ticker→name fallback. The body renders NOTHING
+  // until this one call resolves (see the loading gate below), then paints
+  // complete. Wall-clock is the server's slowest sub-fetch (~1-2s Finnhub).
   const [state, setState] = useState<TriggersResponse | null>(null);
-  const [quote, setQuote] = useState<QuoteResponse | null>(null);
-  const [candles, setCandles] = useState<StockCandle[] | null>(null);
-  const [coverage, setCoverage] = useState<AnalystCoverageData | null>(null);
   const [loaded, setLoaded] = useState(false);
-  // Bumped after a trigger edit so the whole payload re-fetches and the open
-  // sheet reflects the new value without a manual reopen.
+  // Bumped after a trigger edit so the payload re-fetches and the open sheet
+  // reflects the new value without a manual reopen.
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Re-gate (show the skeleton) only when a DIFFERENT thesis opens — NOT on a
-  // refreshKey bump from a trigger edit, which should swap data in place
-  // without flashing the whole sheet back to a skeleton.
+  // refreshKey bump from a trigger edit, which swaps data in place.
   useEffect(() => {
     setLoaded(false);
   }, [thesis_id]);
@@ -1519,34 +1497,25 @@ export function ThesisSheetBody({
   useEffect(() => {
     if (!thesis_id) return;
     let cancelled = false;
-    const asJson = (r: Response) => (r.ok ? r.json() : null);
-    Promise.all([
-      fetch(`/api/theses/${thesis_id}/triggers`).then(asJson).catch(() => null),
-      fetch(`/api/theses/${thesis_id}/quote`).then(asJson).catch(() => null),
-      ticker
-        ? fetch(`/api/stocks/candles?symbols=${encodeURIComponent(ticker)}&days=400`)
-            .then(asJson)
-            .catch(() => null)
-        : Promise.resolve(null),
-      fetch(`/api/theses/${thesis_id}/analyst-coverage`).then(asJson).catch(() => null),
-    ]).then((results) => {
-      if (cancelled) return;
-      const [triggersJson, quoteJson, candlesJson, coverageJson] = results as [
-        TriggersResponse | null,
-        QuoteResponse | null,
-        { candles: Record<string, StockCandle[]> } | null,
-        AnalystCoverageData | null,
-      ];
-      setState(triggersJson);
-      setQuote(quoteJson);
-      setCandles(candlesJson ? (candlesJson.candles[ticker.toUpperCase()] ?? []) : []);
-      setCoverage(coverageJson);
-      setLoaded(true);
-    });
+    fetch(`/api/theses/${thesis_id}/triggers?full=1`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: TriggersResponse | null) => {
+        if (cancelled) return;
+        setState(json);
+        setLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [thesis_id, ticker, refreshKey]);
+  }, [thesis_id, refreshKey]);
+
+  // Everything below is derived from the single payload — no separate state.
+  const quote = state?.quote ?? null;
+  const candles = state?.candles ?? null;
+  const coverage = state?.coverage ?? null;
 
   // Status has ONE source: the resolved /triggers state. We do NOT fall
   // back to the `status` prop for rendering — that dual source was the

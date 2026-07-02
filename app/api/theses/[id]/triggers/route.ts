@@ -25,13 +25,25 @@ import {
   buildSupersessionMap,
 } from "@/lib/agent/resolved-thesis";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { getStockQuote } from "@/lib/actions/finnhub.actions";
+import {
+  getStockQuote,
+  getStockProfile,
+  getStockCandles,
+} from "@/lib/actions/finnhub.actions";
+import { getAnalystCoverageData } from "@/lib/actions/analyst-coverage";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  // ?full=1 → this is THE consolidated thesis-sheet call. In addition to the
+  // durable state below, also fetch the company profile (name + exchange),
+  // price candles, and analyst coverage, and shape a `quote` object — so the
+  // sheet gets everything from ONE request and renders in one pass. Plain
+  // /triggers (no param) stays lean for the mini-card hook + trigger-edit
+  // refresh, which don't need the live market extras.
+  const full = new URL(req.url).searchParams.get("full") === "1";
   const supabase = await createClient();
   const {
     data: { user },
@@ -339,7 +351,72 @@ export async function GET(
   const scoringComposite =
     topLevelScoring?.composite ?? legacyFullResearch?.scoringComposite ?? null;
 
+  // ── Full-sheet market extras (only when ?full=1) ──────────────────────────
+  // Reuses the `quote` already fetched above for the resolver — no second
+  // Finnhub quote call. Adds profile + candles + coverage in one parallel
+  // batch so the sheet gets the complete payload from this single request.
+  let market: {
+    quote: {
+      currentPrice: number | null;
+      dayChange: number | null;
+      dayChangePct: number | null;
+      positionPnl: {
+        currentPrice: number;
+        marketValue: number;
+        unrealizedPnl: number;
+        unrealizedPnlPct: number | null;
+      } | null;
+      companyName: string | null;
+      exchange: string | null;
+    };
+    candles: unknown;
+    coverage: unknown;
+  } | null = null;
+  if (full) {
+    const [profile, candles, coverage] = await Promise.all([
+      getStockProfile(thesis.ticker).catch(() => null),
+      getStockCandles(thesis.ticker, 400).catch(() => [] as unknown),
+      getAnalystCoverageData(thesis.ticker).catch(() => null),
+    ]);
+    const currentPrice =
+      quote && Number.isFinite(quote.c) && quote.c > 0 ? quote.c : null;
+    const dayChange = quote && Number.isFinite(quote.d) ? quote.d : null;
+    const dayChangePct = quote && Number.isFinite(quote.dp) ? quote.dp : null;
+    // Unrealized P&L for a held position — reuses the PositionInfo built above.
+    let positionPnl: {
+      currentPrice: number;
+      marketValue: number;
+      unrealizedPnl: number;
+      unrealizedPnlPct: number | null;
+    } | null = null;
+    if (currentPrice != null && position && !position.closed) {
+      const qty = position.quantity;
+      const avgCost = position.avgCost;
+      positionPnl = {
+        currentPrice,
+        marketValue: currentPrice * qty,
+        unrealizedPnl: (currentPrice - avgCost) * qty,
+        unrealizedPnlPct: avgCost > 0 ? ((currentPrice - avgCost) / avgCost) * 100 : null,
+      };
+    }
+    market = {
+      quote: {
+        currentPrice,
+        dayChange,
+        dayChangePct,
+        positionPnl,
+        companyName: profile?.name ?? null,
+        exchange: profile?.exchange ?? null,
+      },
+      candles: candles ?? [],
+      coverage,
+    };
+  }
+
   return NextResponse.json({
+    ...(market
+      ? { quote: market.quote, candles: market.candles, coverage: market.coverage }
+      : {}),
     thesisId: thesis.id,
     ticker: thesis.ticker,
     status: thesis.status,
