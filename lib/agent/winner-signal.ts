@@ -28,6 +28,20 @@ export const RUNNING_WINNER_PROGRESS_THRESHOLD = 0.75;
  */
 export const RUNNING_WINNER_MIN_GAIN_PCT = 8;
 
+/**
+ * Absolute-gain trigger — a held position up at least this much is a running
+ * winner worth re-underwriting REGARDLESS of how far it is from its stored
+ * target. Exists because targets are frequently set well above a realistic gain
+ * (observed live 2026-07-06: the open book carried +18% to +93% targets), so a
+ * pure progress-to-target rule never fires on a genuine +15-20% winner — PACS
+ * +19% sat at only 0.65 of a +30% target. 12 ≈ "75% of a realistic ~15%
+ * target" — the number a sane target would have made progress-to-target reach
+ * on its own. Tunable. (The real fix for inflated targets is standardizing
+ * target-setting per horizon, with event-driven carve-outs — a separate
+ * workstream; this floor makes the flag fire correctly in the meantime.)
+ */
+export const RUNNING_WINNER_ABS_GAIN_PCT = 12;
+
 export interface WinnerSignal {
   /** Unrealized gain %, direction-aware (positive = winning). */
   unrealizedGainPct: number;
@@ -76,10 +90,16 @@ export function computeWinnerSignal(opts: {
   }
 
   const pastTarget = progressToTarget != null && progressToTarget >= 1;
+  // Fires when there's a valid target AND the position clears the basic winner
+  // floor AND it's either near/past target OR up big in absolute terms. The
+  // absolute-gain clause is what catches genuine winners whose (often inflated)
+  // stored target keeps progress-to-target low — the "up 19% but only 65% of a
+  // +30% target, so it never fired" case. See RUNNING_WINNER_ABS_GAIN_PCT.
   const isRunningWinner =
     progressToTarget != null &&
-    progressToTarget >= RUNNING_WINNER_PROGRESS_THRESHOLD &&
-    unrealizedGainPct >= RUNNING_WINNER_MIN_GAIN_PCT;
+    unrealizedGainPct >= RUNNING_WINNER_MIN_GAIN_PCT &&
+    (progressToTarget >= RUNNING_WINNER_PROGRESS_THRESHOLD ||
+      unrealizedGainPct >= RUNNING_WINNER_ABS_GAIN_PCT);
 
   return { unrealizedGainPct, progressToTarget, pastTarget, isRunningWinner };
 }

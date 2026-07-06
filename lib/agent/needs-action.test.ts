@@ -521,11 +521,11 @@ describe("computeNeedsAction — RUNNING_WINNER (SCALE_INTO_WINNERS.md PR3)", ()
     }
   });
 
-  it("does NOT flag a held position below the progress threshold", () => {
+  it("does NOT flag a held position below BOTH thresholds (mid-progress, modest gain)", () => {
     const result = computeNeedsAction({
-      thesis: heldWinner,
+      thesis: heldWinner, // avgCost 100, target 200
       latestUpdate: null,
-      latestQuote: { price: 140, changePct: 0 }, // only 40% of the way to target
+      latestQuote: { price: 110, changePct: 0 }, // 10% of the way, +10% gain — under 0.75 AND under the 12% floor
       now,
     });
     expect(result).toBeNull();

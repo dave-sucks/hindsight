@@ -6,6 +6,7 @@ import {
   computeWinnerSignal,
   RUNNING_WINNER_PROGRESS_THRESHOLD,
   RUNNING_WINNER_MIN_GAIN_PCT,
+  RUNNING_WINNER_ABS_GAIN_PCT,
 } from "./winner-signal";
 
 describe("computeWinnerSignal — LONG", () => {
@@ -23,8 +24,23 @@ describe("computeWinnerSignal — LONG", () => {
     expect(s.isRunningWinner).toBe(true); // 0.75 ≥ threshold, 75% ≥ floor
   });
 
-  it("does NOT flag below the progress threshold", () => {
-    // entry 22, target 38, price 28 → progress 0.375 (up 27% but far from target)
+  it("does NOT flag below BOTH thresholds (mid-progress, modest gain)", () => {
+    // entry 100, target 130 (+30%), price 110 → progress 0.33, gain 10%:
+    // under 0.75 progress AND under the 12% absolute floor → not a winner yet.
+    const s = computeWinnerSignal({
+      direction: "LONG",
+      avgCost: 100,
+      targetPrice: 130,
+      currentPrice: 110,
+    })!;
+    expect(s.progressToTarget).toBeCloseTo(0.33, 1);
+    expect(s.unrealizedGainPct).toBeCloseTo(10);
+    expect(s.isRunningWinner).toBe(false);
+  });
+
+  it("flags a big absolute winner even far from an inflated target (the PACS case)", () => {
+    // entry 22, target 38 (+73% target), price 28 → progress 0.375 but up 27%.
+    // Progress-to-target alone would miss it; the 12% absolute floor catches it.
     const s = computeWinnerSignal({
       direction: "LONG",
       avgCost: 22,
@@ -32,7 +48,8 @@ describe("computeWinnerSignal — LONG", () => {
       currentPrice: 28,
     })!;
     expect(s.progressToTarget).toBeCloseTo(0.375);
-    expect(s.isRunningWinner).toBe(false);
+    expect(s.unrealizedGainPct).toBeCloseTo(27.3, 0);
+    expect(s.isRunningWinner).toBe(true); // via the absolute-gain floor
   });
 
   it("flags past-target (blew through a lowball target — the MU case)", () => {
@@ -131,5 +148,6 @@ describe("computeWinnerSignal — guards", () => {
   it("thresholds are the documented defaults", () => {
     expect(RUNNING_WINNER_PROGRESS_THRESHOLD).toBe(0.75);
     expect(RUNNING_WINNER_MIN_GAIN_PCT).toBe(8);
+    expect(RUNNING_WINNER_ABS_GAIN_PCT).toBe(12);
   });
 });
