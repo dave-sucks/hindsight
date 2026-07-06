@@ -1677,37 +1677,44 @@ export function ThesisSheetBody({
         </p>
       ) : null}
 
-      {/* ── Price chart (annotated) ───────────────────────────── */}
+      {/* ── Price chart (annotated) + target gauge ────────────────── */}
       {/* Sits right below the main summary (Core Belief), above the triggers.
-          Full price line with horizontal Entry/Target/Stop lines + vertical
-          "Watching" (createdAt) / "Entry" (position.openedAt) markers. Candles
-          fetched on open; while in-flight we hold the gauge so the block
-          doesn't pop in. Falls back to the gauge when there are no candles.
+          The annotated chart (full price line with Entry/Target/Stop lines +
+          "Watching"/"Entry" markers) renders when candles are loaded. The
+          entry/target/current/stop GAUGE renders ALONGSIDE it whenever price
+          levels exist — it's the at-a-glance "where are we vs target/stop"
+          read (the same gauge the mini-cards show), so it must not disappear
+          the moment a chart loads. Previously this was chart-OR-gauge, which
+          dropped the gauge on every thesis that had candle data.
           See docs/plans/THESIS_VISUALIZATION.md. */}
-      {!isPass &&
-        (candles && candles.length >= 2 ? (
-          <ThesisChart
-            ticker={ticker}
-            candles={candles}
-            direction={direction === "SHORT" ? "SHORT" : "LONG"}
-            entryPrice={entry_price ?? null}
-            avgCost={position?.avgCost ?? null}
-            targetPrice={target_price ?? null}
-            stopLoss={stop_loss ?? null}
-            current={quote?.currentPrice ?? null}
-            addedAt={state?.createdAt ?? null}
-            enteredAt={position?.openedAt ?? null}
-            variant="full"
-          />
-        ) : showLevels ? (
-          <PriceTargetsBlock
-            entry={entry_price!}
-            target={target_price ?? null}
-            stop={stop_loss ?? null}
-            current={quote?.currentPrice ?? null}
-            direction={direction === "SHORT" ? "SHORT" : "LONG"}
-          />
-        ) : null)}
+      {!isPass && (
+        <>
+          {candles && candles.length >= 2 ? (
+            <ThesisChart
+              ticker={ticker}
+              candles={candles}
+              direction={direction === "SHORT" ? "SHORT" : "LONG"}
+              entryPrice={entry_price ?? null}
+              avgCost={position?.avgCost ?? null}
+              targetPrice={target_price ?? null}
+              stopLoss={stop_loss ?? null}
+              current={quote?.currentPrice ?? null}
+              addedAt={state?.createdAt ?? null}
+              enteredAt={position?.openedAt ?? null}
+              variant="full"
+            />
+          ) : null}
+          {showLevels ? (
+            <PriceTargetsBlock
+              entry={entry_price!}
+              target={target_price ?? null}
+              stop={stop_loss ?? null}
+              current={quote?.currentPrice ?? null}
+              direction={direction === "SHORT" ? "SHORT" : "LONG"}
+            />
+          ) : null}
+        </>
+      )}
 
       {/* ── Triggers (moved up — they're the standing opinion in action) ── */}
       {thesis_id ? (
