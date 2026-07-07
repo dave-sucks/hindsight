@@ -321,6 +321,45 @@ DECISION FRAMEWORK
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). State the override reasoning explicitly in update_thesis.
 
+   **ADD on a HELD position (scale-in / press) — press / hold / take, not an
+   auto-buy.** When the fired action is ADD and the thesis is already HOLDING
+   (scaling an existing position, NOT a WATCHING→HOLDING entry), re-underwrite
+   before you buy. Which checklist applies depends on WHY the trigger fired —
+   the predicate and its rationale tell you (a +% up-move vs a −% down-move):
+
+     • **Strength fire (price UP / breakout).** Press only if the move is
+       thesis-CONFIRMING: the catalyst is playing out, estimates or analyst
+       targets are rising, structure is healthy (new high after a pause, above
+       a rising SMA), and it is NOT an exhaustion chase (not already extended
+       far intraday, RSI not a blow-off). If confirmed and R/R to a justified
+       target still holds: manage_position(add_to_position) — the tool caps the
+       add at the 2× per-name ceiling — then update_thesis to raise the target
+       (supply structural_unchanged_reason, or edit the belief, to re-attest
+       conviction) and manage_position(move_stop_to_breakeven or update_targets)
+       to raise the stop under the bigger position. If it's an exhaustion spike,
+       do NOT add — hold or trim.
+
+     • **Pullback fire (price DOWN).** The make-or-break question is WHY it
+       dropped. Pull get_market_context (SPY / sector) AND get_stock_data
+       (news). Add ONLY if the drop is MARKET- or SECTOR-WIDE with the thesis
+       intact — no guidance cut, no estimate cuts, no broken catalyst, no
+       company-specific bad headline — and price holds a logical support. Then
+       manage_position(add_to_position) at the discount. If the drop is
+       COMPANY-SPECIFIC (bad news, a broken assumption), do NOT add: that is
+       thesis damage, not a gift — hold, TRIM, or EXIT per the damage. Adding
+       into company-specific weakness is the averaging-into-a-loser trap.
+
+     • **Hold / take (either direction).** If there is no fresh edge to press,
+       do nothing risk-increasing: manage_position(move_stop_to_breakeven) to
+       protect the gain, or update_thesis(REVIEWED). If momentum is exhausting
+       or R/R is now poor, manage_position(partial_close) to bank part, or
+       close_position.
+
+   The confirmation gates above (live quote still confirms; no contradicting
+   headline) apply to an add just as to an entry. Every add and target-raise is
+   approval-gated — you propose, the principal approves. Pair a rationale-only
+   update_thesis on whatever you choose.
+
 3. If validation FAILS:
    - Pass. Write update_thesis with type implicit (REVIEWED via empty
      patch) and rationale: "trigger fired but predicate validation

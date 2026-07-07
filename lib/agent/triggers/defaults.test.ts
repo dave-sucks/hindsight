@@ -214,3 +214,66 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
     expect(out.cooldownDays).toBe(11);
   });
 });
+
+describe("defaultTriggersForHorizon — scale-in rungs (SCALE_INTO_WINNERS.md PR2+PR4)", () => {
+  const HELD_HORIZONS = ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const;
+  const PULLBACK_HORIZONS = ["COMPOUNDER", "TARGET", "CATALYST"] as const; // not TRADE
+
+  const findAdd = (triggers: Trigger[], direction: "UP" | "DOWN") =>
+    triggers.find(
+      (t) =>
+        t.action === "ADD" &&
+        t.predicate.kind === "PRICE_MOVE_PCT" &&
+        t.predicate.direction === direction,
+    );
+
+  // ── Strength rung (PR2): UP → ADD on every HELD horizon ──
+  for (const horizon of HELD_HORIZONS) {
+    it(`HELD ${horizon} includes a PRICE_MOVE_PCT UP → ADD rung`, () => {
+      const add = findAdd(defaultTriggersForHorizon(horizon, base(), "HELD"), "UP");
+      expect(add).toBeDefined();
+      expect(add!.predicate).toEqual({
+        kind: "PRICE_MOVE_PCT",
+        pct: 7,
+        direction: "UP",
+        window: "1D",
+      });
+      // ADD is held-only and resolves to TACTICAL by default (defaults omit fireMode).
+      expect(add!.fireMode).toBeUndefined();
+      expect(add!.cooldownDays).toBe(3);
+    });
+  }
+
+  // ── Pullback rung (PR4): DOWN → ADD on conviction holds, NOT on TRADE ──
+  for (const horizon of PULLBACK_HORIZONS) {
+    it(`HELD ${horizon} includes a PRICE_MOVE_PCT DOWN → ADD (pullback) rung`, () => {
+      const add = findAdd(defaultTriggersForHorizon(horizon, base(), "HELD"), "DOWN");
+      expect(add).toBeDefined();
+      expect(add!.predicate).toEqual({
+        kind: "PRICE_MOVE_PCT",
+        pct: 7,
+        direction: "DOWN",
+        window: "1D",
+      });
+    });
+  }
+
+  it("HELD TRADE does NOT include a pullback (DOWN) rung — trades exit on weakness", () => {
+    const triggers = defaultTriggersForHorizon("TRADE", base(), "HELD");
+    expect(findAdd(triggers, "DOWN")).toBeUndefined();
+    expect(findAdd(triggers, "UP")).toBeDefined(); // strength rung still present
+  });
+
+  // ── ADD is held-only: never on WATCHING / PROMOTED ──
+  for (const horizon of HELD_HORIZONS) {
+    it(`WATCHING ${horizon} has no ADD rung (held-only)`, () => {
+      const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
+      expect(triggers.find((t) => t.action === "ADD")).toBeUndefined();
+    });
+  }
+
+  it("PROMOTED has no ADD rung (no live position yet)", () => {
+    const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
+    expect(triggers.find((t) => t.action === "ADD")).toBeUndefined();
+  });
+});

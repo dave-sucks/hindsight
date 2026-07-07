@@ -20,13 +20,29 @@
 | # | Workstream | Layer | Status | Depends on |
 |---|---|---|---|---|
 | 0 | **Active trigger authorship (the spine)** — writer/daily/tactical actively set+edit the ladder | L1+L2+L3 | not started | runs through all below |
-| 1 | Caps redesign (2× per name, add-path) | L1 gate | ✅ in review ([#467](https://github.com/dave-sucks/hindsight/pull/467)) | — |
-| 2 | Default trigger ladder on holdings (ADD / REVIEW / MOVE_STOP + % up/down) | L2 + builder | not started | `docs/TRIGGERS.md` |
-| 3 | `RUNNING_WINNER` attention (5th `needsAction` kind + P&L join) | L2 | ✅ in review ([#468](https://github.com/dave-sucks/hindsight/pull/468)) | — |
-| 4 | Tactical add-evaluation branch (press/hold/take + checklists) | L2 result + L3 prompt | not started | 1 |
-| 5 | Re-entry of sold names (profit-take → WATCHING, daily-run re-enter) | lifecycle + L1 | not started | — |
+| 1 | Caps redesign (2× per name, add-path) | L1 gate | ✅ merged ([#467](https://github.com/dave-sucks/hindsight/pull/467)) | — |
+| 2 | Default ladder: strength-press rung (% up → ADD) on holdings | L2 + builder | 🔨 built locally, holding push (validate PR3 first) | `docs/TRIGGERS.md` (on main ✓) |
+| 3 | `RUNNING_WINNER` attention (5th `needsAction` kind + P&L join) | L2 | ✅ merged ([#468](https://github.com/dave-sucks/hindsight/pull/468)) | — |
+| 4 | Tactical press/hold/take + strength/pullback/damage checklist; pullback (% down) rung (COMPOUNDER/TARGET/CATALYST, not TRADE) | L3 prompt + builder | 🔨 built locally, holding push | 1, 2 |
+| 5 | Re-entry of sold names: take-profit (closeReason TARGET) → WATCHING (auto), re-entry via existing watchlist machinery | lifecycle | 🔨 built locally, holding push | — |
 | 6 | Review-due requires a targeted data pull | L1/L3 | not started | — |
-| 7 | Extend DIRECT fire-mode to ADD/TRIM (instant pre-planned rungs) | tactical + L1 | not started | fireMode synced into branch |
+| 7 | Extend DIRECT fire-mode to ADD/TRIM (instant pre-planned rungs) | tactical + L1 | not started | fireMode on main ✓ |
+| 8 | Activity feed & notifications — trigger fires, press/hold/take outcomes, target-reached, near-target/near-stop | events + UI | planned (scoped below) | 3 |
+
+---
+
+## Progress snapshot (updated 2026-06-29)
+
+**✅ Live on main (merged):** PR1 (2× scale-in ceiling) + PR3 (RUNNING_WINNER attention + inline P&L). The daily agent now *notices* winners and can press them — approval-gated. Behavior shows as runs execute; validating on the next cron.
+
+**🔨 Built, held for push** — branch `claude/scale-winners-ladder`, 3 commits, verified locally (tsc clean, tests green). Held until the next cron confirms PR3's prompt is healthy, then pushed as the reactive + re-entry layer:
+- **PR2** — strength rung (+7% day → intraday press proposal)
+- **PR4** — tactical press/hold/take brain + pullback rung (−7% day → market-wide-vs-damage check)
+- **PR5** — re-entry radar (take-profit → WATCHING, not DEAD)
+
+**⏳ Remaining (enhancements on a complete core loop):** the Spine (agent-authored smart-level ladders + forward-trigger gate), PR6 (reviews fetch fresh data), PR7 (instant DIRECT adds), PR8 (activity feed & notifications — scoped below).
+
+The merged + held set = the **complete core loop**: notice winners → press on strength → add on dips → re-enter after selling. Everything remaining is refinement.
 
 ---
 
@@ -258,8 +274,45 @@ price-eligible (PRICE_ABOVE/BELOW/MOVE_PCT) **ADD or TRIM** can fire DIRECT — 
 agent — for pre-planned rungs the agent already underwrote. **Risk asymmetry to respect:** a DIRECT
 exit *reduces* risk (safe to automate); a DIRECT add *increases* it. So gate DIRECT-add behind
 approvals-ON (always a human click) and/or a conviction floor; never let it auto-fill. Still routes
-through `maybeAwaitApproval`. **Depends on fireMode being synced into this branch first** (worktree
-drift — fireMode lives in `d2cb11a`/`e5b030d`, not the working tree).
+through `maybeAwaitApproval`. fireMode is already on main (types.ts:142) — no sync needed.
+
+### PR8 — Activity feed & notifications
+The feed today (`lib/actions/portfolio.actions.ts:154`, rendered by
+`components/dashboard/ActivityFeed.tsx`) is **transaction-centric** — only
+`OPENED | CLOSED | MODIFIED | PROPOSED | REJECTED`, derived on read from
+Positions / Orders / PositionManagementActions. It's blind to the decision +
+signal layer this plan produces. Make it decision- and signal-aware. Principal
+ask (2026-06-29): richer tracking of trigger fires, re-evaluations, target
+proximity (both directions), and the press/hold/take *outcome*.
+
+**Ship-now slice (data already exists — no new detectors):**
+- **Trigger fired** — surface `ThesisUpdate` `TRIGGER_FIRED` rows as feed events
+  ("$X — ADD trigger fired, +7% day"). The feed doesn't read ThesisUpdates yet;
+  that wiring is the bulk of the slice.
+- **Press / hold / take outcome** — label the result of a RUNNING_WINNER / add-
+  eval on the row: "Pressed $X — added $Y, target → $Z" / "Held $X — stop → $W"
+  / "Took profit $X". The `manage_position` action + reasoning already exist;
+  this enriches the MODIFIED/CLOSED label with the decision.
+- **Target reached** — a first-class "🎯 reached target on $X" event (principal
+  wants this regardless of the rest). Source: the target trigger fire /
+  RUNNING_WINNER `pastTarget`.
+- **Approaching target** — surface the EXISTING `PositionEvent.NEAR_TARGET` +
+  `Position.nearTargetAlertSent` infra (already computed, just never shown).
+
+**Future (needs new work — documented, not scheduled):**
+- **Approaching floor / stop** — a new near-stop detector mirroring near-target
+  on the downside → feed event + optional alert ("⚠️ $X approaching stop").
+- **Re-evaluation stream** — surface `REVIEWED` activity, but digested (a daily
+  "N reviewed, M unchanged" roll-up, or only reviews that changed a field) so it
+  doesn't drown the transaction events.
+- **Notification routing** — push/email on target-reached, near-stop, and large
+  presses, not just the in-app feed.
+- **Durable decision-event store** — the feed is derived on read today; a
+  first-class per-decision event table would make the richer stream robust and
+  cheap to query, and is the clean long-term home for all of the above.
+
+The ship-now slice is a self-contained feed/events change and is UI-observable —
+verify in the browser preview.
 
 ---
 
@@ -270,8 +323,13 @@ drift — fireMode lives in `d2cb11a`/`e5b030d`, not the working tree).
 - **Trigger model:** hybrid — pre-planned ladder, each rung gated by a mini re-underwrite; driven
   by *both* the % triggers (single-day moves) and the target/`RUNNING_WINNER` checkpoint
   (cumulative). ✅
-- **Re-entry behavior:** profit-take with intact conviction → WATCHING + re-entry trigger;
-  re-entry approval-gated. ⚠️ **OPEN** — principal to confirm vs an approve-to-keep-watching prompt.
+- **Re-entry behavior:** ✅ **DECIDED (principal) — auto-keep-watching.** A take-profit
+  (`closeReason === "TARGET"`) auto-routes the thesis HOLDING → WATCHING (held-only triggers
+  cleared, `nextReviewAt` = now) instead of RETIRED; re-entry runs through the existing watchlist
+  machinery + approval gate. Stops / invalidations / risk exits still RETIRE. v1 limitation: the
+  re-entry ENTER trigger is set by the agent on its next review (not auto-seeded) — auto-seeding a
+  smart re-entry level + a daily-prompt "this is a re-entry candidate" note are follow-ups (fold
+  into the Spine's active-trigger-authorship work).
 - **Portfolio-level concentration cap (% of equity/name):** ⚠️ **OPEN** — default off until requested.
 
 ## Open questions / dependencies
