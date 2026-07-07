@@ -1,0 +1,18 @@
+{
+  "name": "hindsight-thesis-ingest-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server exposing a save_thesis tool that mints a Hindsight WATCHING thesis from JSON, at zero LLM cost. Wraps the /api/intelligence/thesis-ingest endpoint.",
+  "bin": {
+    "hindsight-thesis-ingest-mcp": "src/server.mjs"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "smoke": "node src/smoke.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^4.0.0"
+  }
+}
