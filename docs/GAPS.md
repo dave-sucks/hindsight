@@ -21,7 +21,37 @@ _None open._ The 2026-06-04 → 08 post-launch sprint cleared the live-loop bloc
 
 ## P1 — Quality is degraded but the live loop functions
 
-_None open._ P1-26 (legacy briefing tables) + P1-29 (reject-message write-only) both closed 2026-06-26 — see [`GAPS_HISTORY.md`](./GAPS_HISTORY.md).
+### P1-30 — Gain-protection is thin: a winner can round-trip to a loss with no sell signal
+**Status:** open, filed 2026-07-06 (principal). Real-money risk + trust — the principal does not
+trust that gains are protected, and is right not to.
+A held winner's only automatic downside trigger is its **fixed entry-stop** (e.g. −8% from entry).
+A name up 20% can give back the entire gain before that stop fires — **nothing trails the gain.**
+Caveat/history: the `TRAILING_STOP` predicate was deliberately removed in [#458](https://github.com/dave-sucks/hindsight/pull/458)
+in favor of the daily `PRICE_MOVE_PCT` move — but a daily % move does NOT protect a slow multi-day
+bleed from the high. So there is currently **no** trail-from-high or trail-from-set-point,
+automatic OR manual. Principal wants (2026-07-06):
+- Analyst-wide protection defaults: REVIEW/EXIT on a **>X% down day** (e.g. 4%), on an **X%
+  give-back from the peak** (e.g. 8% from high), and on **X% trailing from where the trigger was
+  set** (point-in-time trailing).
+- This is bringing back trail-from-high (removed in #458) in a form that protects *cumulative*
+  gains — reconcile with the daily-%-move decision rather than blindly reverting it.
+
+### P1-31 — Analyst-level (portfolio-level) standing trigger rules, not just per-thesis
+**Status:** open, filed 2026-07-06 (principal).
+Triggers today are per-thesis. Principal wants **standing rules at the analyst / portfolio level**:
+"do X when ANY of my holdings reaches +X% / drops X% in a day / week / trailing / from high." They
+auto-apply across the whole book so risk + press behavior is configured once, not per name. Pairs
+with the Spine (agent-authored per-thesis ladders in `docs/plans/SCALE_INTO_WINNERS.md` WS0):
+standing rules are the floor; the agent fills in smart per-name levels on top.
+
+### P1-32 — Surface + customize triggers / rules / thresholds in settings (UI)
+**Status:** open, filed 2026-07-06 (principal).
+The trigger ladder, the standing rules (P1-31), and the press/protect thresholds
+(`RUNNING_WINNER_ABS_GAIN_PCT`, the +7%/−7% rungs, stops) are all code-level today. Principal wants
+them **visible and editable in settings / analyst settings** — both to configure the behavior and
+to *trust* that monitoring is set up correctly.
+
+_(P1-26 + P1-29 closed 2026-06-26 — see [`GAPS_HISTORY.md`](./GAPS_HISTORY.md).)_
 
 ---
 
