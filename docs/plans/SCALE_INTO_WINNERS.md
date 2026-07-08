@@ -6,8 +6,10 @@
 > is **profit per idea**, not ticker count. A great version trades the same ~10 names for a
 > year and compounds. Today it churns.
 >
-> **Status:** planning, opened 2026-06-29. No PRs yet. Decisions below are settled with the
-> principal except where marked **OPEN**.
+> **⚡ CURRENT STATE + next steps → [`SCALE_INTO_WINNERS_HANDOFF.md`](./SCALE_INTO_WINNERS_HANDOFF.md)** (read that first).
+> The core loop is **shipped & live** (PRs #467/#468/#470/#471/#472), first-validated 2026-07-07.
+> The status table + progress snapshot below are the *original plan* and are partly superseded by
+> the handoff doc — trust the handoff for what's done vs open.
 >
 > **Read first:** [`PRINCIPLES.md`](../PRINCIPLES.md) (three-layer), [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md)
 > (lifecycle + 5 roles), and `docs/TRIGGERS.md` (firing matrix — being written alongside the
