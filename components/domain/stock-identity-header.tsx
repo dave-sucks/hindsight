@@ -54,7 +54,9 @@ export function StockIdentityHeader({
         </span>
       )}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
+        {/* Name left, badges pushed to the far right (justify-between). On a
+            narrow screen the name truncates and the badges stay pinned right. */}
+        <div className="flex items-center justify-between gap-2 min-w-0">
           {link ? (
             <Link href={link} className="group/stocklink min-w-0">
               <p className="text-xl font-semibold truncate group-hover/stocklink:underline underline-offset-4">
@@ -64,7 +66,9 @@ export function StockIdentityHeader({
           ) : (
             <p className="text-xl font-semibold truncate">{displayName}</p>
           )}
-          {badges}
+          {badges ? (
+            <div className="flex items-center gap-1.5 shrink-0">{badges}</div>
+          ) : null}
         </div>
         <p className="font-mono text-xs uppercase tracking-wide text-muted-foreground mt-0.5">
           {ticker}

@@ -5,15 +5,15 @@
  *
  *   [● label]  [sentence]  ……………………  [+$gain ↗ %]
  *
- * Left: a status dot + context label + the sentence from buildTradeSentence.
- * Right: the green/red gain via <PriceChange> (the styling used on the trade
- * detail header), OR a custom `right` slot (e.g. an approval Review dropdown)
- * which takes precedence over `gain`.
+ * Left: a status dot + optional context label + the sentence from
+ * buildTradeSentence. Right: the green/red gain via <PriceChange>, OR a custom
+ * `right` slot (e.g. an approval Review dropdown) which takes precedence.
  *
- * The LABEL is passed in by the caller because it's context-specific — the
- * activity feed says "Bought" / "Sold" (event log), the live surfaces say
- * "Holding" / "Won" / "Loss" (current state). The sentence + gain are the
- * parts that unify.
+ * The LABEL is context-specific and OPTIONAL — the activity feed / thesis card
+ * says "Bought" / "Sold" (event log) with the sentence as muted secondary text.
+ * The trade detail header + thesis sheet pass NO label, so the sentence itself
+ * is the primary font-medium line ("● Bought 7 shares at $X, now trading at
+ * $Y ...... −$Z"). Same component, one look.
  *
  * This component is chrome-agnostic: it renders just the flex row. Callers
  * wrap it however they need — a rounded muted box (thesis card / sheet), a
@@ -32,14 +32,20 @@ export interface TradeStatementGain {
 export function TradeStatement({
   label,
   dotClass,
+  dot,
   sentence,
   gain,
   right,
   labelClassName,
   className,
 }: {
-  label: string;
-  dotClass: string;
+  /** Optional context word. When omitted, the sentence is the primary line. */
+  label?: string;
+  /** Tailwind bg-* for the default dot. Ignored when `dot` is provided. */
+  dotClass?: string;
+  /** Custom leading dot (e.g. an animated + tooltip'd status dot). Overrides
+   *  the default `dotClass` circle. */
+  dot?: ReactNode;
   sentence: string | null;
   gain?: TradeStatementGain | null;
   /** Overrides `gain` on the right (e.g. an approval Review dropdown). */
@@ -50,10 +56,21 @@ export function TradeStatement({
   return (
     <div className={cn("flex items-center justify-between gap-3", className)}>
       <div className="flex items-baseline gap-1.5 min-w-0 text-sm">
-        <span className={cn("size-2 rounded-full shrink-0 self-center", dotClass)} />
-        <span className={cn("font-medium shrink-0", labelClassName)}>{label}</span>
+        {dot ?? (
+          <span className={cn("size-2 rounded-full shrink-0 self-center", dotClass)} />
+        )}
+        {label ? (
+          <span className={cn("font-medium shrink-0", labelClassName)}>{label}</span>
+        ) : null}
         {sentence ? (
-          <span className="text-muted-foreground tabular-nums truncate">
+          <span
+            className={cn(
+              "tabular-nums truncate",
+              // With a label the sentence is muted secondary text; without one
+              // it IS the primary line (matches the trade detail header).
+              label ? "text-muted-foreground" : "font-medium",
+            )}
+          >
             {sentence}
           </span>
         ) : null}

@@ -5,6 +5,7 @@ import { StockIdentityHeader } from '@/components/domain/stock-identity-header';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PriceChange } from '@/components/ui/price-change';
 import { buildTradeSentence } from '@/lib/trade-statement';
+import { TradeStatement } from '@/components/ui/trade-statement';
 import { formatCurrency } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -337,67 +338,62 @@ export default async function TradeDetailPage({
                 variant="full"
               >
                 <TooltipProvider>
-                  <div className="px-4 py-2.5 border-b flex items-center justify-between gap-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      {/* Status dot */}
-                      <Tooltip>
-                        <TooltipTrigger render={
-                          isOpen ? (
-                            hasPendingOrder ? (
-                              <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
-                              </span>
+                  {/* Shared TradeStatement row — same component the thesis sheet
+                      uses. No label, so the sentence is the primary line. The
+                      animated + tooltip'd status dot rides in via the `dot` slot. */}
+                  <TradeStatement
+                    className="px-4 py-2.5 border-b"
+                    dot={
+                      <span className="self-center">
+                        <Tooltip>
+                          <TooltipTrigger render={
+                            isOpen ? (
+                              hasPendingOrder ? (
+                                <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75" />
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+                                </span>
+                              ) : (
+                                <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
+                                </span>
+                              )
                             ) : (
-                              <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
-                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
-                              </span>
+                              <span className="flex h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/40 cursor-default" />
                             )
-                          ) : (
-                            <span className="flex h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/40 cursor-default" />
-                          )
-                        } />
-                        <TooltipContent side="bottom" className="text-xs tabular-nums">
-                          <div>Opened {fmtDateTime(position.openedAt)}</div>
-                          {openingBuy?.filledAt && <div>Buy filled {fmtDateTime(openingBuy.filledAt)}</div>}
-                          {hasPendingOrder && <div className="text-amber-500">Has pending order</div>}
-                        </TooltipContent>
-                      </Tooltip>
-                      {/* Shared trade-sentence grammar (same as the thesis
-                          sheet / row / activity feed). fmtQty inside the
-                          builder fixes the raw 5.953027164-shares decimals. */}
-                      <span className="font-medium tabular-nums">
-                        {buildTradeSentence(
-                          isOpen
-                            ? hasFilledBuy
-                              ? {
-                                  kind: 'holding',
-                                  qty: trade.shares,
-                                  entry: trade.entryPrice,
-                                  current: livePrice ?? currentPrice,
-                                }
-                              : {
-                                  kind: 'proposed-buy',
-                                  qty: trade.shares,
-                                  entry: trade.entryPrice,
-                                }
-                            : {
-                                kind: 'closed',
-                                qty: trade.shares,
-                                entry: trade.entryPrice,
-                                closePrice,
-                              },
-                        )}
+                          } />
+                          <TooltipContent side="bottom" className="text-xs tabular-nums">
+                            <div>Opened {fmtDateTime(position.openedAt)}</div>
+                            {openingBuy?.filledAt && <div>Buy filled {fmtDateTime(openingBuy.filledAt)}</div>}
+                            {hasPendingOrder && <div className="text-amber-500">Has pending order</div>}
+                          </TooltipContent>
+                        </Tooltip>
                       </span>
-                    </div>
-                    <PriceChange
-                      dollarChange={pnl}
-                      percentChange={pnlPct}
-                      size="sm"
-                      className="shrink-0"
-                    />
-                  </div>
+                    }
+                    sentence={buildTradeSentence(
+                      isOpen
+                        ? hasFilledBuy
+                          ? {
+                              kind: 'holding',
+                              qty: trade.shares,
+                              entry: trade.entryPrice,
+                              current: livePrice ?? currentPrice,
+                            }
+                          : {
+                              kind: 'proposed-buy',
+                              qty: trade.shares,
+                              entry: trade.entryPrice,
+                            }
+                        : {
+                            kind: 'closed',
+                            qty: trade.shares,
+                            entry: trade.entryPrice,
+                            closePrice,
+                          },
+                    )}
+                    gain={{ dollar: pnl, pct: pnlPct }}
+                  />
                 </TooltipProvider>
               </ThesisChart>
 

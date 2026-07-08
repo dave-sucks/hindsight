@@ -51,6 +51,7 @@ import {
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
+import { TradeStatement, type TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { buildTradeSentence } from "@/lib/trade-statement";
 import {
@@ -362,13 +363,15 @@ function TradeBlock({
   const entry = position.avgCost;
   const current = pnl?.currentPrice ?? null;
 
-  // The sentence is built by the SHARED buildTradeSentence (one grammar across
-  // sheet / row / trades-page / activity). The sheet keeps its own chrome —
-  // Review top-right, P&L on its own line below, note + meta — which differs
-  // from the compact <TradeStatement> (gain inline-right) used elsewhere.
+  // The sentence is built by the SHARED buildTradeSentence, and the row is the
+  // SHARED <TradeStatement> — the exact same component + visual the trade detail
+  // page uses (dot + font-medium sentence + inline gain). This block only picks
+  // the per-state inputs (sentence / dot color / gain / Review / note / meta);
+  // the look is not re-implemented here.
   let sentence: string | null;
   let review: ReactNode = null;
-  let pnlNode: ReactNode = null;
+  let gain: TradeStatementGain | null = null;
+  let dotClass = "bg-muted-foreground/40";
   let note: string | null = null;
   let meta: string | null = null;
 
@@ -381,6 +384,7 @@ function TradeBlock({
       buyVerb: direction === "SHORT" ? "Short" : "Buy",
     });
     review = <ProposalActions orderId={pp.orderId} align="end" />;
+    dotClass = "bg-amber-500";
     note = pp.rationale;
     meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
   } else if (pp) {
@@ -394,16 +398,8 @@ function TradeBlock({
         pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim",
     });
     review = <ProposalActions orderId={pp.orderId} align="end" />;
-    // Running P&L on the held name.
-    if (pnl != null) {
-      pnlNode = (
-        <PriceChange
-          dollarChange={pnl.unrealizedPnl}
-          percentChange={pnl.unrealizedPnlPct}
-          size="base"
-        />
-      );
-    }
+    dotClass = "bg-amber-500";
+    if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
     note = pp.rationale;
     meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
   } else if (position.closed) {
@@ -414,15 +410,9 @@ function TradeBlock({
       entry,
       closePrice: position.closePrice,
     });
-    if (position.realizedPnl != null) {
-      pnlNode = (
-        <PriceChange
-          dollarChange={position.realizedPnl}
-          percentChange={position.realizedPnlPct ?? 0}
-          size="base"
-        />
-      );
-    }
+    dotClass = "bg-muted-foreground/40";
+    if (position.realizedPnl != null)
+      gain = { dollar: position.realizedPnl, pct: position.realizedPnlPct ?? 0 };
     note = humanizeCloseReason(position.closeReason);
     meta = position.closedAt ? `Closed ${fmtTradeDate(position.closedAt)}` : null;
   } else {
@@ -433,29 +423,26 @@ function TradeBlock({
       entry,
       current,
     });
-    if (pnl != null) {
-      pnlNode = (
-        <PriceChange
-          dollarChange={pnl.unrealizedPnl}
-          percentChange={pnl.unrealizedPnlPct}
-          size="base"
-        />
-      );
-    }
+    dotClass = "bg-positive";
+    if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
     meta =
       `Opened ${fmtTradeDate(position.openedAt)}` +
       (position.daysHeld > 0 ? ` · ${position.daysHeld}d held` : "");
   }
 
   return (
-    <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium tabular-nums flex-1 min-w-0">
-          {sentence}
-        </p>
-        {review}
-      </div>
-      {pnlNode}
+    <div className="rounded-lg border px-4 py-3 space-y-1.5">
+      <TradeStatement
+        dotClass={dotClass}
+        sentence={sentence}
+        gain={review ? undefined : gain}
+        right={review ?? undefined}
+      />
+      {/* When a Review sits in the right slot, the running P&L can't share it —
+          surface it on its own line just below. */}
+      {review && gain ? (
+        <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />
+      ) : null}
       {note ? (
         <p className="text-sm text-muted-foreground leading-relaxed">{note}</p>
       ) : null}
