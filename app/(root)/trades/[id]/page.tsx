@@ -39,6 +39,7 @@ import {
   getStockCandles,
 } from '@/lib/actions/finnhub.actions';
 import { getStockInfo } from '@/lib/actions/stock-info';
+import { getPositionActivity, type ActivityEvent } from '@/lib/actions/activity';
 import { cn } from '@/lib/utils';
 import {
   CheckCircle2,
@@ -142,7 +143,6 @@ export default async function TradeDetailPage({
       events: { orderBy: { createdAt: 'asc' } },
       analyst: { select: { id: true, name: true } },
       orders: { orderBy: { createdAt: 'asc' } },
-      managementActions: { orderBy: { createdAt: 'asc' } },
       decisions: {
         take: 1,
         include: {
@@ -175,11 +175,14 @@ export default async function TradeDetailPage({
   // country / weburl), stockQuote and candles are independent — parallel.
   // The HEADER reads identity so the name + normalized exchange match the
   // thesis sheet exactly (same cache, same normalizer).
-  const [identity, stockProfile, stockQuote, candles] = await Promise.all([
+  const [identity, stockProfile, stockQuote, candles, activity] = await Promise.all([
     getStockInfo(position.symbol),
     getStockProfile(position.symbol),
     getStockQuote(position.symbol),
     getStockCandles(position.symbol, 365),
+    // Unified activity read-layer (Order fills + level changes + thesis mint) —
+    // replaces reading managementActions directly. See lib/actions/activity.ts.
+    getPositionActivity(position.id),
   ]);
 
   const trade = {
@@ -279,9 +282,9 @@ export default async function TradeDetailPage({
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="activity">
                 Activity
-                {position.managementActions.length > 0 && (
+                {activity.length > 0 && (
                   <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-medium tabular-nums">
-                    {position.managementActions.length}
+                    {activity.length}
                   </span>
                 )}
               </TabsTrigger>
@@ -437,34 +440,33 @@ export default async function TradeDetailPage({
             </TabsContent>
 
             {/* ── ACTIVITY ─────────────────────────────────────────── */}
+            {/* One unified, tier-ranked feed from the activity read-layer:
+                buys/sells/adds/trims (Order fills), target/stop changes
+                (management actions), and the thesis mint for context. */}
             <TabsContent value="activity" className="mt-4 max-w-2xl">
-              {position.managementActions.length === 0 ? (
+              {activity.length === 0 ? (
                 <div className="rounded-lg border px-4 py-10 flex flex-col items-center gap-2">
-                  <p className="text-sm text-muted-foreground text-center">No position changes recorded yet.</p>
+                  <p className="text-sm text-muted-foreground text-center">No activity recorded yet.</p>
                   <p className="text-xs text-muted-foreground/60 text-center max-w-xs">
-                    Target updates, partial closes, stop moves, and closes will appear here with the agent&apos;s reasoning.
+                    Buys, sells, target updates, and stop moves will appear here with the agent&apos;s reasoning.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-0">
-                  {position.managementActions.map((action, i) => {
-                    const isLast = i === position.managementActions.length - 1;
-                    const sourceLabel = action.source === 'price_monitor' ? 'Price monitor' : action.source === 'user' ? 'You' : 'Agent';
-                    const SourceIcon = action.source === 'price_monitor' ? Clock : action.source === 'user' ? User : Bot;
-
-                    let actionLabel = 'Position change';
-                    let ActionIcon = Pencil;
-                    if (action.actionType === 'FULL_CLOSE') { actionLabel = 'Closed'; ActionIcon = CheckCircle2; }
-                    else if (action.actionType === 'PARTIAL_CLOSE') { actionLabel = 'Partial close'; ActionIcon = TrendingDown; }
-                    else if (action.actionType === 'ADD_TO_POSITION') { actionLabel = 'Added to position'; ActionIcon = TrendingUp; }
-                    else if (action.actionType === 'UPDATE_TARGETS') { actionLabel = 'Updated targets'; ActionIcon = Target; }
-                    else if (action.actionType === 'MOVE_STOP_TO_BREAKEVEN') { actionLabel = 'Moved stop to breakeven'; ActionIcon = Target; }
-                    else if (action.actionType === 'SET_TRAILING_STOP') { actionLabel = 'Set trailing stop'; ActionIcon = TrendingDown; }
-                    else if (action.actionType === 'NEAR_TARGET') { actionLabel = 'Approaching target'; ActionIcon = Target; }
-                    else if (action.actionType === 'NEAR_STOP') { actionLabel = 'Approaching stop'; ActionIcon = TrendingDown; }
+                  {activity.map((event: ActivityEvent, i: number) => {
+                    const isLast = i === activity.length - 1;
+                    const sourceLabel = event.source === 'price_monitor' ? 'Price monitor' : event.source === 'user' ? 'You' : 'Agent';
+                    const SourceIcon = event.source === 'price_monitor' ? Clock : event.source === 'user' ? User : Bot;
+                    const ActionIcon =
+                      event.kind === 'BUY' || event.kind === 'ADD' ? TrendingUp
+                      : event.kind === 'SELL' ? CheckCircle2
+                      : event.kind === 'TRIM' ? TrendingDown
+                      : event.kind === 'LEVELS_CHANGED' ? Target
+                      : event.kind === 'THESIS_MINTED' ? Brain
+                      : Pencil;
 
                     return (
-                      <div key={action.id} className="flex gap-3 pb-5 last:pb-0">
+                      <div key={event.id} className="flex gap-3 pb-5 last:pb-0">
                         <div className="flex flex-col items-center">
                           <div className="h-7 w-7 rounded-full bg-secondary flex items-center justify-center shrink-0 text-muted-foreground">
                             <ActionIcon className="h-3.5 w-3.5" />
@@ -473,43 +475,17 @@ export default async function TradeDetailPage({
                         </div>
                         <div className="pt-0.5 pb-1 min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium">{actionLabel}</span>
+                            <span className="text-sm font-medium tabular-nums">{event.summary}</span>
                             <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                               <SourceIcon className="h-3 w-3" />
                               {sourceLabel}
                             </span>
                           </div>
-                          <p className="text-sm text-muted-foreground leading-relaxed mt-0.5">{action.reason}</p>
-
-                          {/* Before/after changes */}
-                          {(action.prevTargetPrice != null || action.newTargetPrice != null || action.prevStopLoss != null || action.newStopLoss != null || action.prevQty != null || action.newQty != null) && (
-                            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5">
-                              {action.prevTargetPrice != null && action.newTargetPrice != null && (
-                                <span className="text-xs text-muted-foreground tabular-nums">
-                                  Target: ${action.prevTargetPrice.toFixed(2)} → <span className="text-foreground">${action.newTargetPrice.toFixed(2)}</span>
-                                </span>
-                              )}
-                              {action.prevStopLoss != null && action.newStopLoss != null && (
-                                <span className="text-xs text-muted-foreground tabular-nums">
-                                  Stop: ${action.prevStopLoss.toFixed(2)} → <span className="text-foreground">${action.newStopLoss.toFixed(2)}</span>
-                                </span>
-                              )}
-                              {action.prevQty != null && action.newQty != null && (
-                                <span className="text-xs text-muted-foreground tabular-nums">
-                                  Qty: {action.prevQty} → <span className="text-foreground">{action.newQty}</span>
-                                  {action.fillPrice != null && ` @ $${action.fillPrice.toFixed(2)}`}
-                                </span>
-                              )}
-                              {action.actionType === 'FULL_CLOSE' && action.fillPrice != null && (
-                                <span className="text-xs text-muted-foreground tabular-nums">
-                                  Closed at <span className="text-foreground">${action.fillPrice.toFixed(2)}</span>
-                                </span>
-                              )}
-                            </div>
+                          {event.reason && (
+                            <p className="text-sm text-muted-foreground leading-relaxed mt-0.5">{event.reason}</p>
                           )}
-
                           <p className="text-[11px] font-mono text-muted-foreground/60 mt-1 tabular-nums">
-                            {new Date(action.createdAt).toLocaleString('en-US', {
+                            {new Date(event.at).toLocaleString('en-US', {
                               month: 'short', day: 'numeric',
                               hour: 'numeric', minute: '2-digit', hour12: true,
                             })}
