@@ -320,23 +320,12 @@ export default async function TradeDetailPage({
                 )}
               </div>
 
-              {/* Chart — ThesisChart is the SAME annotated chart the thesis
-                  sheet uses (Entry/Target/Stop lines + Watching/Entry vertical
-                  markers). The trade-sentence status row is passed as children
-                  into the chart card's top edge. */}
-              <ThesisChart
-                ticker={trade.ticker}
-                candles={candles}
-                direction={trade.direction === 'SHORT' ? 'SHORT' : 'LONG'}
-                entryPrice={null}
-                avgCost={trade.entryPrice}
-                targetPrice={targetPrice}
-                stopLoss={stopPrice}
-                current={livePrice ?? currentPrice}
-                addedAt={trade.thesis?.createdAt ? new Date(trade.thesis.createdAt).toISOString() : null}
-                enteredAt={new Date(position.openedAt).toISOString()}
-                variant="full"
-              >
+              {/* Trade banner + chart — two SIBLING elements grouped in one
+                  bordered wrapper. The banner is not part of the chart (it
+                  always renders, even when there's no candle data and the
+                  chart degrades to the gauge); the wrapper owns the border,
+                  the chart is frameless. */}
+              <div className="rounded-lg border overflow-hidden">
                 <TooltipProvider>
                   {/* Shared TradeStatement row — same component the thesis sheet
                       uses. No label, so the sentence is the primary line. The
@@ -395,7 +384,21 @@ export default async function TradeDetailPage({
                     gain={{ dollar: pnl, pct: pnlPct }}
                   />
                 </TooltipProvider>
-              </ThesisChart>
+                <ThesisChart
+                  ticker={trade.ticker}
+                  candles={candles}
+                  direction={trade.direction === 'SHORT' ? 'SHORT' : 'LONG'}
+                  entryPrice={null}
+                  avgCost={trade.entryPrice}
+                  targetPrice={targetPrice}
+                  stopLoss={stopPrice}
+                  current={livePrice ?? currentPrice}
+                  addedAt={trade.thesis?.createdAt ? new Date(trade.thesis.createdAt).toISOString() : null}
+                  enteredAt={new Date(position.openedAt).toISOString()}
+                  variant="full"
+                  frameless
+                />
+              </div>
 
               {/* Trade Thesis */}
               {trade.thesis && (() => {

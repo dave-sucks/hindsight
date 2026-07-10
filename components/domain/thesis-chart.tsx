@@ -1,6 +1,5 @@
 'use client';
 
-import type { ReactNode } from 'react';
 import { StockPriceChart } from '@/components/stocks/StockPriceChart';
 import { PriceTargetsBlock } from '@/components/domain/price-targets-block';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
@@ -34,9 +33,13 @@ type ThesisChartProps = {
    * card — feed card: fixed 1M window, no controls, no vertical markers.
    */
   variant: 'full' | 'card';
-  /** Rendered at the top of the chart card (e.g. the trade-sentence header row
-   *  on the trade detail page). Forwarded to StockPriceChart. */
-  children?: ReactNode;
+  /**
+   * Drop the chart's own border, for when a parent wrapper owns it (e.g. the
+   * trade page groups the trade-sentence banner + chart in one bordered box).
+   * Defaults to the variant's behavior (card = frameless, full = bordered).
+   * The chart is JUST a chart — no children/slot; siblings live in the wrapper.
+   */
+  frameless?: boolean;
 };
 
 /**
@@ -59,7 +62,7 @@ export function ThesisChart({
   addedAt,
   enteredAt,
   variant,
-  children,
+  frameless,
 }: ThesisChartProps) {
   const entry = avgCost ?? entryPrice; // actual fill wins over planned
   const dir: 'LONG' | 'SHORT' = direction === 'SHORT' ? 'SHORT' : 'LONG';
@@ -101,9 +104,7 @@ export function ThesisChart({
       showControls={variant === 'full'}
       defaultRange={variant === 'card' ? '1M' : '3M'}
       height={variant === 'card' ? 160 : 300}
-      frameless={variant === 'card'}
-    >
-      {children}
-    </StockPriceChart>
+      frameless={frameless ?? variant === 'card'}
+    />
   );
 }
