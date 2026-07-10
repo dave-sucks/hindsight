@@ -1,8 +1,9 @@
 "use client";
 
 // Sync Health panel — renders the latest Alpaca↔DB heartbeat snapshot AND
-// surfaces the live diff with one-click reconciliation actions per row.
-// Mounted at the top of the intelligence Health tab.
+// surfaces the live diff with one-click reconciliation actions per row. One
+// block per trading environment (Paper / Live), each reconciled against its own
+// Alpaca account. Mounted at the top of the intelligence Health tab.
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -15,14 +16,20 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { SyncHealthData } from "@/app/api/intelligence/sync-health/route";
+import type {
+  SyncHealthData,
+  SyncHealthEnvBlock,
+} from "@/app/api/intelligence/sync-health/route";
 import {
-  getSyncDiff,
+  getSyncDiffs,
   liquidateOrphan,
   closeStaleDbRow,
   trustAlpacaQty,
 } from "@/lib/actions/sync-reconcile.actions";
-import type { SyncDiff } from "@/lib/inngest/functions/sync-heartbeat";
+import type {
+  SyncDiff,
+  TradingEnvironment,
+} from "@/lib/inngest/functions/sync-heartbeat";
 
 function relTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -39,6 +46,8 @@ function fmtMoney(n: number): string {
     maximumFractionDigits: 2,
   });
 }
+
+const envLabel = (e: TradingEnvironment) => (e === "LIVE" ? "Live" : "Paper");
 
 function StatTile({
   label,
@@ -62,7 +71,7 @@ function StatTile({
 
 export function SyncHealthPanel() {
   const [data, setData] = useState<SyncHealthData | null>(null);
-  const [diff, setDiff] = useState<SyncDiff | null>(null);
+  const [diffs, setDiffs] = useState<SyncDiff[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -72,15 +81,15 @@ export function SyncHealthPanel() {
     try {
       const [snapshotRes, diffResult] = await Promise.all([
         fetch("/api/intelligence/sync-health"),
-        getSyncDiff().catch((err) => {
+        getSyncDiffs().catch((err) => {
           console.error("[sync-health-panel] live diff failed", err);
-          return null;
+          return [] as SyncDiff[];
         }),
       ]);
       if (snapshotRes.ok) {
         setData((await snapshotRes.json()) as SyncHealthData);
       }
-      setDiff(diffResult);
+      setDiffs(diffResult);
     } finally {
       setRefreshing(false);
     }
@@ -129,7 +138,8 @@ export function SyncHealthPanel() {
     );
   }
 
-  if (!data || !data.latest) {
+  const blocks = data?.environments ?? [];
+  if (blocks.length === 0) {
     return (
       <Card>
         <CardHeader className="p-3 pb-2">
@@ -145,20 +155,58 @@ export function SyncHealthPanel() {
     );
   }
 
-  const s = data.latest;
+  return (
+    <div className="space-y-3">
+      {blocks.map((block) => (
+        <EnvSyncCard
+          key={block.environment}
+          block={block}
+          diff={diffs.find((d) => d.environment === block.environment) ?? null}
+          pending={pending}
+          refreshing={refreshing}
+          runAction={runAction}
+          onRefresh={reload}
+        />
+      ))}
+    </div>
+  );
+}
+
+function EnvSyncCard({
+  block,
+  diff,
+  pending,
+  refreshing,
+  runAction,
+  onRefresh,
+}: {
+  block: SyncHealthEnvBlock;
+  diff: SyncDiff | null;
+  pending: boolean;
+  refreshing: boolean;
+  runAction: (
+    label: string,
+    fn: () => Promise<{ ok: boolean; error?: string }>,
+  ) => void;
+  onRefresh: () => Promise<void>;
+}) {
+  const s = block.latest;
+  if (!s) return null;
   const isHealthy = s.overall === "HEALTHY";
   const account = s.alpacaAccountSnapshot as {
     cash?: string;
     buyingPower?: string;
     equity?: string;
   } | null;
+  const env = block.environment;
+  const acctSub = `Alpaca ${env.toLowerCase()}`;
 
   return (
     <Card>
       <CardHeader className="p-3 pb-2">
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-xs font-medium">
-            Alpaca ↔ DB sync
+            Alpaca ↔ DB sync · {envLabel(env)}
           </CardTitle>
           <div className="flex items-center gap-2">
             <Badge variant={isHealthy ? "secondary" : "destructive"}>
@@ -200,10 +248,8 @@ export function SyncHealthPanel() {
           <div className="mt-3 pt-3 border-t border-border grid grid-cols-3 gap-3">
             <StatTile
               label="Cash"
-              value={
-                account.cash ? fmtMoney(parseFloat(account.cash)) : "—"
-              }
-              sub="Alpaca live"
+              value={account.cash ? fmtMoney(parseFloat(account.cash)) : "—"}
+              sub={acctSub}
             />
             <StatTile
               label="Buying power"
@@ -212,14 +258,12 @@ export function SyncHealthPanel() {
                   ? fmtMoney(parseFloat(account.buyingPower))
                   : "—"
               }
-              sub="Alpaca live"
+              sub={acctSub}
             />
             <StatTile
               label="Equity"
-              value={
-                account.equity ? fmtMoney(parseFloat(account.equity)) : "—"
-              }
-              sub="Alpaca live"
+              value={account.equity ? fmtMoney(parseFloat(account.equity)) : "—"}
+              sub={acctSub}
             />
           </div>
         )}
@@ -229,11 +273,11 @@ export function SyncHealthPanel() {
           pending={pending}
           refreshing={refreshing}
           runAction={runAction}
-          onRefresh={reload}
+          onRefresh={onRefresh}
         />
 
         <p className="mt-3 text-xs text-muted-foreground">
-          Snapshot {s.id} · {data.timeline24h.length} snapshots in the last 24h
+          Snapshot {s.id} · {block.timeline24h.length} snapshots in the last 24h
         </p>
       </CardContent>
     </Card>
@@ -289,6 +333,7 @@ function ReconcileSection({
   onRefresh: () => Promise<void>;
 }) {
   if (!diff) return null;
+  const env = diff.environment;
   const hasWork =
     diff.orphans.length + diff.stale.length + diff.qtyMismatches.length > 0;
 
@@ -316,7 +361,7 @@ function ReconcileSection({
           buttonVariant="destructive"
           pending={pending}
           onClick={() =>
-            runAction(`Liquidated ${o.symbol}`, () => liquidateOrphan(o.symbol))
+            runAction(`Liquidated ${o.symbol}`, () => liquidateOrphan(o.symbol, env))
           }
         />
       ))}
@@ -329,7 +374,7 @@ function ReconcileSection({
           buttonVariant="default"
           pending={pending}
           onClick={() =>
-            runAction(`Reconciled ${m.symbol}`, () => trustAlpacaQty(m.symbol))
+            runAction(`Reconciled ${m.symbol}`, () => trustAlpacaQty(m.symbol, env))
           }
         />
       ))}

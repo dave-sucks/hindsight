@@ -33,7 +33,10 @@ export interface SyncDiffRow {
   analystName: string | null;
 }
 
+export type TradingEnvironment = "PAPER" | "LIVE";
+
 export interface SyncDiff {
+  environment: TradingEnvironment;
   orphans: Array<{
     symbol: string;
     side: string;
@@ -71,18 +74,22 @@ interface AlpacaAccountSnap {
 
 export async function computeSyncDiff(
   userId: string,
+  environment: TradingEnvironment,
   creds: AlpacaCredentials,
 ): Promise<SyncDiff> {
   const now = new Date();
   const slaMs = isMarketOpen(now) ? PENDING_SLA_RTH_MS : PENDING_SLA_OFFHOURS_MS;
   const slaCutoff = new Date(now.getTime() - slaMs);
 
+  // Reconcile only the positions/orders that belong to THIS environment against
+  // this environment's Alpaca account. Mixing paper + live rows against a single
+  // account is what produced the phantom "cost-basis drift" false alarm.
   const [alpacaAccount, alpacaPositions, dbPositionsRaw, stuckOrders] =
     await Promise.all([
       getAccount(creds),
       getAllPositions(creds),
       prisma.position.findMany({
-        where: { userId, status: "OPEN" },
+        where: { userId, environment, status: "OPEN" },
         select: {
           id: true,
           symbol: true,
@@ -94,7 +101,7 @@ export async function computeSyncDiff(
         },
       }),
       prisma.order.findMany({
-        where: { userId, status: "PENDING", createdAt: { lt: slaCutoff } },
+        where: { userId, environment, status: "PENDING", createdAt: { lt: slaCutoff } },
         select: { id: true },
       }),
     ]);
@@ -173,6 +180,7 @@ export async function computeSyncDiff(
   );
 
   return {
+    environment,
     orphans,
     stale,
     qtyMismatches,
@@ -192,6 +200,7 @@ export async function computeSyncDiff(
 
 export async function writeSnapshot(
   userId: string,
+  environment: TradingEnvironment,
   diff: SyncDiff,
   source: "cron" | "manual-reconcile",
 ): Promise<{ snapshotId: string; drift: boolean }> {
@@ -214,6 +223,7 @@ export async function writeSnapshot(
       costBasisDriftDollars: diff.costBasisDrift,
       affectedIds: {
         userId,
+        environment,
         source,
         orphans: diff.orphans.map((o) => o.symbol),
         stale: diff.stale.map((r) => r.positionId),
@@ -227,7 +237,7 @@ export async function writeSnapshot(
 
   if (drift && source === "cron") {
     console.error(
-      `CRITICAL-SYNC-DRIFT user=${userId} orphans=${orphanCount} stale=${staleCount} duplicates=${duplicateCount} qtyMismatches=${qtyCount} stuckPending=${stuckCount} costBasisDrift=$${diff.costBasisDrift.toFixed(2)} snapshot=${snapshot.id}`,
+      `CRITICAL-SYNC-DRIFT user=${userId} env=${environment} orphans=${orphanCount} stale=${staleCount} duplicates=${duplicateCount} qtyMismatches=${qtyCount} stuckPending=${stuckCount} costBasisDrift=$${diff.costBasisDrift.toFixed(2)} snapshot=${snapshot.id}`,
     );
   }
   return { snapshotId: snapshot.id, drift };
@@ -237,25 +247,34 @@ export const syncHeartbeat = inngest.createFunction(
   { id: "sync-heartbeat", name: "Sync Heartbeat", retries: 0 },
   { cron: "0 * * * *" },
   async () => {
-    // Iterate over users with Alpaca configured — the User table is unused
-    // under Supabase auth, but UserApiKey is authoritative for "who has creds".
+    // One reconcile per (user, environment) pair. UserApiKey is authoritative
+    // for "who has creds" AND is keyed per environment (@@unique userId+provider
+    // +environment), so each row is exactly one Alpaca account to reconcile
+    // against its own environment's positions. A user running both paper and
+    // live analysts yields two rows → two independent snapshots.
     const apiKeys = await prisma.userApiKey.findMany({
       where: { provider: "ALPACA" },
-      select: { userId: true },
+      select: { userId: true, environment: true },
     });
     const snapshotIds: string[] = [];
     let driftCount = 0;
-    for (const { userId } of apiKeys) {
-      const creds = await resolveAlpacaCredentials(userId);
+    for (const { userId, environment: envRaw } of apiKeys) {
+      const environment: TradingEnvironment = envRaw === "LIVE" ? "LIVE" : "PAPER";
+      const creds = await resolveAlpacaCredentials(userId, environment);
       if (!creds) continue;
       try {
-        const diff = await computeSyncDiff(userId, creds);
-        const { snapshotId, drift } = await writeSnapshot(userId, diff, "cron");
+        const diff = await computeSyncDiff(userId, environment, creds);
+        const { snapshotId, drift } = await writeSnapshot(
+          userId,
+          environment,
+          diff,
+          "cron",
+        );
         snapshotIds.push(snapshotId);
         if (drift) driftCount++;
       } catch (err) {
         console.error(
-          `[sync-heartbeat] failed for user=${userId}: ${err instanceof Error ? err.message : String(err)}`,
+          `[sync-heartbeat] failed for user=${userId} env=${environment}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
