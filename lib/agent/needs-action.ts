@@ -139,6 +139,8 @@ const PRICE_OR_TIME_KINDS = new Set([
   "PRICE_ABOVE",
   "PRICE_BELOW",
   "PRICE_MOVE_PCT",
+  "GAIN_FROM_ENTRY",
+  "TRAILING_FROM_HIGH",
   "VS_SMA",
   "RSI",
   "TIME_ELAPSED",
@@ -163,6 +165,10 @@ export function describePredicate(p: TriggerPredicate): string {
       return `price > $${p.level}`;
     case "PRICE_MOVE_PCT":
       return `${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}`;
+    case "GAIN_FROM_ENTRY":
+      return `${p.direction === "UP" ? "up" : "down"} ${p.pct}% from entry`;
+    case "TRAILING_FROM_HIGH":
+      return `gives back ${p.pct}% from the high`;
     case "VS_SMA":
       return `${p.direction.toLowerCase()} ${p.period}-day SMA`;
     case "RSI":

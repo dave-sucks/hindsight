@@ -184,6 +184,157 @@ describe("evaluateTrigger", () => {
     });
   });
 
+  describe("GAIN_FROM_ENTRY", () => {
+    const up10: TriggerPredicate = {
+      kind: "GAIN_FROM_ENTRY",
+      pct: 10,
+      direction: "UP",
+    };
+    const down10: TriggerPredicate = {
+      kind: "GAIN_FROM_ENTRY",
+      pct: 10,
+      direction: "DOWN",
+    };
+
+    it("UP fires when cumulative gain from avgCost reaches pct (LONG)", () => {
+      const ctx = makeCtx({
+        latestQuote: { price: 112, changePct: 1 },
+        position: { avgCost: 100, peakPrice: 115 },
+      });
+      expect(evaluateTrigger(up10, ctx)).toBe(true);
+    });
+
+    it("UP does not fire below the milestone", () => {
+      const ctx = makeCtx({
+        latestQuote: { price: 105, changePct: 1 },
+        position: { avgCost: 100, peakPrice: 115 },
+      });
+      expect(evaluateTrigger(up10, ctx)).toBe(false);
+    });
+
+    it("DOWN fires on drawdown-from-entry (the loser-attention case)", () => {
+      const ctx = makeCtx({
+        latestQuote: { price: 88, changePct: -2 },
+        position: { avgCost: 100, peakPrice: 101 },
+      });
+      expect(evaluateTrigger(down10, ctx)).toBe(true);
+    });
+
+    it("DOWN does not fire while the position is up", () => {
+      const ctx = makeCtx({
+        latestQuote: { price: 112, changePct: 1 },
+        position: { avgCost: 100, peakPrice: 115 },
+      });
+      expect(evaluateTrigger(down10, ctx)).toBe(false);
+    });
+
+    it("SHORT inverts: a price drop is the gain", () => {
+      const ctx = makeCtx({
+        latestQuote: { price: 85, changePct: -3 },
+        position: { avgCost: 100, peakPrice: 84 },
+        thesis: {
+          createdAt: THESIS_CREATED,
+          nextReviewAt: null,
+          direction: "SHORT",
+        },
+      });
+      expect(evaluateTrigger(up10, ctx)).toBe(true);
+      expect(evaluateTrigger(down10, ctx)).toBe(false);
+    });
+
+    it("SHORT drawdown: a price rise fires DOWN", () => {
+      const ctx = makeCtx({
+        latestQuote: { price: 112, changePct: 3 },
+        position: { avgCost: 100, peakPrice: 98 },
+        thesis: {
+          createdAt: THESIS_CREATED,
+          nextReviewAt: null,
+          direction: "SHORT",
+        },
+      });
+      expect(evaluateTrigger(down10, ctx)).toBe(true);
+      expect(evaluateTrigger(up10, ctx)).toBe(false);
+    });
+
+    it("returns false without position economics (WATCHING) or a quote", () => {
+      expect(
+        evaluateTrigger(up10, makeCtx({ latestQuote: { price: 112, changePct: 0 } })),
+      ).toBe(false);
+      expect(
+        evaluateTrigger(up10, makeCtx({ position: { avgCost: 100, peakPrice: 115 } })),
+      ).toBe(false);
+      expect(
+        evaluateTrigger(
+          up10,
+          makeCtx({
+            latestQuote: { price: 112, changePct: 0 },
+            position: { avgCost: 0, peakPrice: 115 },
+          }),
+        ),
+      ).toBe(false);
+    });
+  });
+
+  describe("TRAILING_FROM_HIGH", () => {
+    const trail8: TriggerPredicate = { kind: "TRAILING_FROM_HIGH", pct: 8 };
+
+    it("LONG fires when price gives back pct from the peak", () => {
+      // peak 120 → trail 110.4
+      const ctx = makeCtx({
+        latestQuote: { price: 110, changePct: -2 },
+        position: { avgCost: 100, peakPrice: 120 },
+      });
+      expect(evaluateTrigger(trail8, ctx)).toBe(true);
+    });
+
+    it("LONG fires at exactly the trail (≤ boundary)", () => {
+      const ctx = makeCtx({
+        latestQuote: { price: 110.4, changePct: -2 },
+        position: { avgCost: 100, peakPrice: 120 },
+      });
+      expect(evaluateTrigger(trail8, ctx)).toBe(true);
+    });
+
+    it("LONG does not fire while inside the trail", () => {
+      const ctx = makeCtx({
+        latestQuote: { price: 111, changePct: -1 },
+        position: { avgCost: 100, peakPrice: 120 },
+      });
+      expect(evaluateTrigger(trail8, ctx)).toBe(false);
+    });
+
+    it("SHORT trails off the low-water mark (price rising fires)", () => {
+      // SHORT peakPrice = lowest seen = 80 → trail 86.4
+      const shortCtx = (price: number) =>
+        makeCtx({
+          latestQuote: { price, changePct: 1 },
+          position: { avgCost: 100, peakPrice: 80 },
+          thesis: {
+            createdAt: THESIS_CREATED,
+            nextReviewAt: null,
+            direction: "SHORT",
+          },
+        });
+      expect(evaluateTrigger(trail8, shortCtx(87))).toBe(true);
+      expect(evaluateTrigger(trail8, shortCtx(86))).toBe(false);
+    });
+
+    it("returns false without a peak or a quote", () => {
+      expect(
+        evaluateTrigger(trail8, makeCtx({ latestQuote: { price: 110, changePct: 0 } })),
+      ).toBe(false);
+      expect(
+        evaluateTrigger(
+          trail8,
+          makeCtx({
+            latestQuote: { price: 110, changePct: 0 },
+            position: { avgCost: 100, peakPrice: null },
+          }),
+        ),
+      ).toBe(false);
+    });
+  });
+
   describe("VS_SMA", () => {
     it("fires when price is ABOVE SMA", () => {
       const predicate: TriggerPredicate = {

@@ -37,6 +37,8 @@ type PredicateShape =
       direction: "UP" | "DOWN";
       window: "1D" | "5D" | "30D";
     }
+  | { kind: "GAIN_FROM_ENTRY"; pct: number; direction: "UP" | "DOWN" }
+  | { kind: "TRAILING_FROM_HIGH"; pct: number }
   | { kind: "VS_SMA"; period: 50 | 200; direction: "ABOVE" | "BELOW" }
   | { kind: "RSI"; threshold: number; direction: "ABOVE" | "BELOW" }
   | {
@@ -63,6 +65,17 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
       pct: z.number().positive(),
       direction: z.enum(["UP", "DOWN"]),
       window: z.enum(["1D", "5D", "30D"]),
+    }),
+    z.object({
+      kind: z.literal("GAIN_FROM_ENTRY"),
+      pct: z.number().positive(),
+      direction: z.enum(["UP", "DOWN"]),
+    }),
+    z.object({
+      kind: z.literal("TRAILING_FROM_HIGH"),
+      // ≥1%: a sub-1% trail off the peak would re-fire on ordinary noise
+      // every tick the moment the peak is set.
+      pct: z.number().min(1),
     }),
     z.object({
       kind: z.literal("VS_SMA"),

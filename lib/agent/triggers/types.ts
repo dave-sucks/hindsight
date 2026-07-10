@@ -61,6 +61,22 @@ export type TriggerPredicate =
       direction: "UP" | "DOWN";
       window: "1D" | "5D" | "30D";
     }
+  // Cumulative % vs the open position's avgCost (LONG: (price−avg)/avg;
+  // SHORT inverted). UP = gain milestone ("we're up 10%" → checkpoint
+  // re-underwrite); DOWN = drawdown-from-entry ("down 12%" → loser
+  // attention). HOLDING-only: no open position in context → false.
+  // Complements PRICE_MOVE_PCT, which only sees the single-day move —
+  // this is what catches the quiet cumulative winner/bleeder (the IONS
+  // +17%-then-loss failure; see docs/plans/THESIS_GAME_PLAN.md).
+  | { kind: "GAIN_FROM_ENTRY"; pct: number; direction: "UP" | "DOWN" }
+  // Give-back % off the position's tracked peak (Position.peakPrice —
+  // high-water for LONG, low-water for SHORT, maintained by the price
+  // monitor). The mechanical gain ratchet: the floor follows the high
+  // with no agent memory required. Deliberately distinct from the
+  // TRAILING_STOP removed in #458 (that removal traded peak-trailing for
+  // daily-% moves; this reinstates cumulative protection ALONGSIDE the
+  // daily-% predicate, not instead of it). HOLDING-only.
+  | { kind: "TRAILING_FROM_HIGH"; pct: number }
   | {
       kind: "VS_SMA";
       period: 50 | 200;
@@ -163,6 +179,8 @@ export const DIRECT_ELIGIBLE_PREDICATE_KINDS: readonly string[] = [
   "PRICE_ABOVE",
   "PRICE_BELOW",
   "PRICE_MOVE_PCT",
+  "GAIN_FROM_ENTRY",
+  "TRAILING_FROM_HIGH",
 ];
 
 export function isDirectEligiblePredicate(kind: string): boolean {

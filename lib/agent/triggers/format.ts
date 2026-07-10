@@ -32,6 +32,12 @@ export function predicateSentence(p: TriggerPredicate): string {
       return `Price above $${p.level}`;
     case "PRICE_MOVE_PCT":
       return `Price ${p.direction === "UP" ? "up" : "down"} ${p.pct}% over ${p.window}`;
+    case "GAIN_FROM_ENTRY":
+      return p.direction === "UP"
+        ? `Up ${p.pct}% from entry`
+        : `Down ${p.pct}% from entry`;
+    case "TRAILING_FROM_HIGH":
+      return `Gives back ${p.pct}% from the high`;
     case "VS_SMA":
       return `Price ${p.direction.toLowerCase()} ${p.period}-day SMA`;
     case "RSI":

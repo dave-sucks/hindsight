@@ -78,6 +78,8 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
     case "PRICE_MOVE_PCT":
+    case "GAIN_FROM_ENTRY":
+    case "TRAILING_FROM_HIGH":
     case "VS_SMA":
     case "RSI":
     case "TIME_ELAPSED":
@@ -123,6 +125,10 @@ function isSignalSidePredicate(p: TriggerPredicate): boolean {
  */
 interface PositionInfo {
   openedAt: Date;
+  /** For GAIN_FROM_ENTRY — entry economics of the open position. */
+  avgCost: number | null;
+  /** For TRAILING_FROM_HIGH — price-monitor-maintained water mark. */
+  peakPrice: number | null;
 }
 
 async function buildPositionOpenedAtMap(
@@ -154,7 +160,13 @@ async function buildPositionOpenedAtMap(
       symbol: { in: tickers },
       status: "OPEN",
     },
-    select: { analystId: true, symbol: true, openedAt: true },
+    select: {
+      analystId: true,
+      symbol: true,
+      openedAt: true,
+      avgCost: true,
+      peakPrice: true,
+    },
     orderBy: { openedAt: "desc" },
   });
 
@@ -163,7 +175,13 @@ async function buildPositionOpenedAtMap(
   const byKey = new Map<string, PositionInfo>();
   for (const p of positions) {
     const key = `${p.analystId}::${p.symbol}`;
-    if (!byKey.has(key)) byKey.set(key, { openedAt: p.openedAt });
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        openedAt: p.openedAt,
+        avgCost: p.avgCost,
+        peakPrice: p.peakPrice,
+      });
+    }
   }
   for (const t of active) {
     const key = `${t.researchRun.agentConfigId}::${t.ticker}`;
@@ -523,14 +541,20 @@ export const triggerEvaluator = inngest.createFunction(
 
         const posInfo = openedAtByThesisId.get(thesis.id);
         const ctx: EvaluationContext = {
-          // No signal on this path. PRICE_MOVE_PCT / VS_SMA / RSI return
-          // false because we don't pass recentPrices / sma here — see
-          // the file-header note for the rationale.
+          // No signal on this path. Multi-day PRICE_MOVE_PCT / VS_SMA /
+          // RSI return false because we don't pass recentPrices / sma
+          // here — see the file-header note for the rationale.
           latestQuote: latestQuote ?? undefined,
+          // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read the open position's
+          // entry cost + water mark; absent (WATCHING) → they return false.
+          position: posInfo
+            ? { avgCost: posInfo.avgCost, peakPrice: posInfo.peakPrice }
+            : null,
           thesis: {
             createdAt: thesis.createdAt,
             nextReviewAt: thesis.nextReviewAt,
             status: thesis.status,
+            direction: thesis.direction,
             positionOpenedAt: posInfo?.openedAt ?? null,
           },
           now,

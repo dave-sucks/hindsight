@@ -80,6 +80,10 @@ function describePredicate(p: TriggerPredicate): string {
       return `price < $${p.level}`;
     case "PRICE_MOVE_PCT":
       return `${p.direction === "UP" ? "+" : "-"}${p.pct}% over ${p.window}`;
+    case "GAIN_FROM_ENTRY":
+      return `position ${p.direction === "UP" ? "up" : "down"} ${p.pct}% cumulative from entry`;
+    case "TRAILING_FROM_HIGH":
+      return `price has given back ${p.pct}% from the position high`;
     case "VS_SMA":
       return `price ${p.direction.toLowerCase()} ${p.period}-day SMA`;
     case "RSI":
