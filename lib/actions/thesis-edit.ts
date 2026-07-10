@@ -217,12 +217,26 @@ export async function applyTriggerValueEdit(
 // chart line, run-summary, and evaluator never drift from the pill.
 
 /** Predicate kinds the UI add-form can mint: a fixed price level (Target
- *  Price) or a directional daily % move (Movement Amount). Both already exist
- *  across the evaluator/format switches — no new predicate KIND. */
+ *  Price), a directional daily % move (Movement Amount), a cumulative % vs
+ *  the position's entry (Gain from entry), or a give-back % off the tracked
+ *  high (Trailing from high). All exist across the evaluator/format switches
+ *  — no new predicate KIND. The last two are position-scoped (they read
+ *  avgCost / peakPrice), so applyTriggerAdd additionally requires an open
+ *  position for them (see the POSITION_SCOPED gate below). */
 const ADDABLE_PREDICATE_KINDS = new Set<TriggerPredicate["kind"]>([
   "PRICE_ABOVE",
   "PRICE_BELOW",
   "PRICE_MOVE_PCT",
+  "GAIN_FROM_ENTRY",
+  "TRAILING_FROM_HIGH",
+]);
+
+/** Kinds that evaluate off the open position (avgCost / peakPrice). With no
+ *  position they return false forever — a silent missed-trigger footgun —
+ *  so the add path refuses to mint them on an un-held thesis. */
+const POSITION_SCOPED_PREDICATE_KINDS = new Set<TriggerPredicate["kind"]>([
+  "GAIN_FROM_ENTRY",
+  "TRAILING_FROM_HIGH",
 ]);
 
 export interface TriggerAddInput {
@@ -275,7 +289,7 @@ export async function applyTriggerAdd(
   if (!ADDABLE_PREDICATE_KINDS.has(input.predicate.kind)) {
     throw new ThesisEditError(
       "INVALID",
-      `Can only add a target-price or movement-amount trigger (got ${input.predicate.kind}).`,
+      `Can only add a target-price, movement-amount, gain-from-entry, or trailing-from-high trigger (got ${input.predicate.kind}).`,
     );
   }
 
@@ -323,6 +337,18 @@ export async function applyTriggerAdd(
           select: { id: true },
         })
       : null;
+
+  // Gain-from-entry / trailing-from-high measure off the open position's
+  // avgCost / peakPrice — un-held they evaluate false forever (a silent
+  // missed-trigger, never an error), so refuse to mint them without a
+  // position. The UI hides these criteria on non-HOLDING theses; this is
+  // the backend backstop.
+  if (POSITION_SCOPED_PREDICATE_KINDS.has(input.predicate.kind) && !position) {
+    throw new ThesisEditError(
+      "INVALID",
+      "Gain-from-entry and trailing-from-high triggers measure off the open position — they can only be added to a held (HOLDING) thesis.",
+    );
+  }
 
   // DIRECT (close without an agent) is only coherent on an EXIT of a held
   // position. Anywhere else, fall back to the judgment-bearing TACTICAL path.

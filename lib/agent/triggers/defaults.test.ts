@@ -19,6 +19,8 @@
 import {
   applyTriggerCooldownDefaults,
   defaultTriggersForHorizon,
+  mergeTriggers,
+  standingProtectionTriggers,
   type ThesisShape,
 } from "./defaults";
 import type { Trigger } from "./types";
@@ -275,5 +277,131 @@ describe("defaultTriggersForHorizon — scale-in rungs (SCALE_INTO_WINNERS.md PR
   it("PROMOTED has no ADD rung (no live position yet)", () => {
     const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
     expect(triggers.find((t) => t.action === "ADD")).toBeUndefined();
+  });
+});
+
+/**
+ * Standing protection minimums (docs/plans/THESIS_GAME_PLAN.md PR-D;
+ * GAPS P1-31). Every HELD template must carry the three always-on
+ * protection rungs — gain checkpoint, trailing ratchet, loser attention —
+ * so no holding can silently repeat the IONS round-trip (+17% to a loss on
+ * a never-re-earned day-one floor).
+ */
+describe("defaultTriggersForHorizon — standing protection minimums (Game Plan PR-D)", () => {
+  const HELD_HORIZONS = ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const;
+
+  const findGain = (triggers: Trigger[], direction: "UP" | "DOWN") =>
+    triggers.find(
+      (t) =>
+        t.predicate.kind === "GAIN_FROM_ENTRY" &&
+        t.predicate.direction === direction,
+    );
+  const findTrail = (triggers: Trigger[]) =>
+    triggers.find((t) => t.predicate.kind === "TRAILING_FROM_HIGH");
+
+  for (const horizon of HELD_HORIZONS) {
+    it(`HELD ${horizon} carries GAIN_FROM_ENTRY UP 10% → REVIEW (gain checkpoint)`, () => {
+      const rung = findGain(
+        defaultTriggersForHorizon(horizon, base(), "HELD"),
+        "UP",
+      );
+      expect(rung).toBeDefined();
+      expect(rung!.predicate).toEqual({
+        kind: "GAIN_FROM_ENTRY",
+        pct: 10,
+        direction: "UP",
+      });
+      expect(rung!.action).toBe("REVIEW");
+      // cooldownDays omitted — the per-kind default (7d) fills it at write
+      // time. 0 on a REVIEW would be the NVDA-runaway shape.
+      expect(rung!.cooldownDays).toBeUndefined();
+    });
+
+    it(`HELD ${horizon} carries TRAILING_FROM_HIGH 8% → EXIT (mechanical ratchet)`, () => {
+      const rung = findTrail(defaultTriggersForHorizon(horizon, base(), "HELD"));
+      expect(rung).toBeDefined();
+      expect(rung!.predicate).toEqual({ kind: "TRAILING_FROM_HIGH", pct: 8 });
+      expect(rung!.action).toBe("EXIT");
+      // Terminal EXIT keeps the explicit cooldown opt-out, same as the hard stop.
+      expect(rung!.cooldownDays).toBe(0);
+    });
+
+    it(`HELD ${horizon} carries GAIN_FROM_ENTRY DOWN 12% → REVIEW (loser attention)`, () => {
+      const rung = findGain(
+        defaultTriggersForHorizon(horizon, base(), "HELD"),
+        "DOWN",
+      );
+      expect(rung).toBeDefined();
+      expect(rung!.predicate).toEqual({
+        kind: "GAIN_FROM_ENTRY",
+        pct: 12,
+        direction: "DOWN",
+      });
+      expect(rung!.action).toBe("REVIEW");
+      expect(rung!.cooldownDays).toBeUndefined();
+    });
+
+    it(`WATCHING ${horizon} has NO protection rungs (HOLDING-only predicates)`, () => {
+      const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
+      expect(findGain(triggers, "UP")).toBeUndefined();
+      expect(findGain(triggers, "DOWN")).toBeUndefined();
+      expect(findTrail(triggers)).toBeUndefined();
+    });
+  }
+
+  it("PROMOTED has no protection rungs (no live position yet)", () => {
+    const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
+    expect(findGain(triggers, "UP")).toBeUndefined();
+    expect(findTrail(triggers)).toBeUndefined();
+  });
+
+  it("cooldown defaults fill the REVIEW rungs with the GAIN_FROM_ENTRY 7d latch", () => {
+    const filled = applyTriggerCooldownDefaults(standingProtectionTriggers());
+    const up = findGain(filled, "UP")!;
+    const down = findGain(filled, "DOWN")!;
+    const trail = findTrail(filled)!;
+    expect(up.cooldownDays).toBe(7);
+    expect(down.cooldownDays).toBe(7);
+    expect(trail.cooldownDays).toBe(0); // EXIT opt-out preserved
+  });
+
+  it("standingProtectionTriggers mints fresh ids on every call", () => {
+    const a = standingProtectionTriggers();
+    const b = standingProtectionTriggers();
+    for (let i = 0; i < a.length; i++) {
+      expect(a[i].id).toBeTruthy();
+      expect(a[i].id).not.toBe(b[i].id);
+    }
+  });
+
+  it("mergeTriggers: an agent-authored same-bucket rung replaces the default", () => {
+    // Agent writes its own +15% gain checkpoint — the +10% default in the
+    // same (GAIN_FROM_ENTRY:UP, REVIEW) bucket must NOT stack a second one.
+    const agent: Trigger[] = [
+      {
+        id: "agent-1",
+        predicate: { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "UP" },
+        action: "REVIEW",
+        rationale: "Next milestone at +15%.",
+        cooldownDays: 7,
+      },
+    ];
+    const merged = mergeTriggers(
+      defaultTriggersForHorizon("TARGET", base(), "HELD"),
+      agent,
+    );
+    const gains = merged.filter(
+      (t) =>
+        t.predicate.kind === "GAIN_FROM_ENTRY" &&
+        t.predicate.direction === "UP",
+    );
+    expect(gains).toHaveLength(1);
+    expect(gains[0].id).toBe("agent-1");
+    expect(
+      gains[0].predicate.kind === "GAIN_FROM_ENTRY" && gains[0].predicate.pct,
+    ).toBe(15);
+    // The other two buckets are untouched by the agent's rung — defaults fill.
+    expect(findGain(merged, "DOWN")).toBeDefined();
+    expect(findTrail(merged)).toBeDefined();
   });
 });
