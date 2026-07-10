@@ -3,10 +3,11 @@
  * so the daily-run agent doesn't have to cross-reference five different
  * prompt blocks to figure out what needs attention today.
  *
- * Five kinds. Three are trigger-driven (FIRED / MATCHING_NOW / REVIEW_DUE);
+ * Six kinds. Three are trigger-driven (FIRED / MATCHING_NOW / REVIEW_DUE);
  * PROMOTED is status-driven (any PROMOTED thesis ALWAYS requires resolution
- * this run); RUNNING_WINNER is position-P&L-driven (a held winner that reached
- * its target's decision point but has no trigger set to catch it).
+ * this run); UNPROTECTED_GAIN and RUNNING_WINNER are position-P&L-driven
+ * (a held winner whose floor doesn't reflect its gain, and a held winner
+ * that reached its target's decision point with no trigger set to catch it).
  *
  *   PROMOTED_AWAITING_RESOLUTION — thesis.status === "PROMOTED".
  *                         The user explicitly graduated this analyst to
@@ -27,6 +28,14 @@
  *                         price/time-side predicates is currently true.
  *                         Catches matches the cron may not have
  *                         delivered yet.
+ *   UNPROTECTED_GAIN    — a HOLDING whose cumulative gain is meaningfully
+ *                         above what its tightest protective EXIT rung locks
+ *                         in: gain ≥ 8% AND (gain − flooredGain) ≥ 6pts, a
+ *                         missing floor counting as −infinity. The IONS
+ *                         detector (Game Plan PR-B): a +17% position with a
+ *                         day-one floor at −12% is flagged every single
+ *                         morning until the floor is raised. See
+ *                         docs/plans/THESIS_GAME_PLAN.md + ladder-health.ts.
  *   RUNNING_WINNER      — a HOLDING that has reached ≥75% of the way from its
  *                         entry (avgCost) to its target (or blown past it),
  *                         up ≥8%, with no fired/matching trigger already
@@ -51,10 +60,15 @@
  *
  * Precedence when multiple match:
  *   PROMOTED_AWAITING_RESOLUTION > TRIGGER_FIRED > TRIGGER_MATCHING_NOW >
- *   RUNNING_WINNER > REVIEW_DUE
- * (An explicit fired/matching trigger — a stop, a target-EXIT — outranks the
- * generic running-winner flag; the winner flag outranks a routine review
- * because it tells the agent WHY to look: a press/hold/take decision.)
+ *   UNPROTECTED_GAIN > RUNNING_WINNER > REVIEW_DUE
+ * (An explicit fired/matching trigger — a stop, a target-EXIT — outranks both
+ * P&L flags: it's more specific, and if the protection itself is firing the
+ * fire IS the work item. UNPROTECTED_GAIN outranks RUNNING_WINNER because
+ * locking the downside precedes pressing the upside — the two often coincide
+ * on the same big winner, and floor-first ordering means the agent fixes the
+ * ladder now; once the floor reflects the gain the flag self-clears and the
+ * press/hold/take decision surfaces on the next read. Both outrank a routine
+ * review because they tell the agent WHY to look.)
  *
  * A thesis with no PROMOTED status, no fires, no matches, and a future
  * nextReviewAt returns `null` — yesterday's thesis stands and the agent
@@ -66,6 +80,7 @@
 import { shouldFire } from "@/lib/agent/triggers/evaluate";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeWinnerSignal } from "@/lib/agent/winner-signal";
+import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -107,6 +122,22 @@ export type NeedsAction =
       action: NeedsActionVerb;
       predicateSummary: string;
       livePrice: number | null;
+    }
+  | {
+      kind: "UNPROTECTED_GAIN";
+      /** Unrealized gain %, direction-aware. */
+      unrealizedGainPct: number;
+      /**
+       * % gain locked in by the tightest protective EXIT rung (negative =
+       * floor is BELOW entry). Null = NO protective EXIT rung at all.
+       */
+      flooredGainPct: number | null;
+      /** gainPct − flooredGainPct. Null when there is no floor (unbounded). */
+      unprotectedGapPct: number | null;
+      /** True when a TRAILING_FROM_HIGH EXIT rung exists. */
+      hasTrail: boolean;
+      /** Compact description of the tightest floor, e.g. "price < $65.00". */
+      floorSummary: string | null;
     }
   | {
       kind: "RUNNING_WINNER";
@@ -234,6 +265,13 @@ export interface NeedsActionInput {
     avgCost?: number | null;
     targetPrice?: number | null;
     /**
+     * Paired open Position's water mark (high LONG / low SHORT), maintained
+     * hourly by the price monitor. Feeds the TRAILING_FROM_HIGH floor math
+     * in the UNPROTECTED_GAIN computation. Null when not held / not tracked
+     * — ladder-health falls back to the current price.
+     */
+    peakPrice?: number | null;
+    /**
      * Conviction context, frozen at promotion time. Surfaced into the
      * PROMOTED_AWAITING_RESOLUTION needsAction so the agent has the
      * doubled-conviction signal next to the decision. Null on
@@ -344,7 +382,40 @@ export function computeNeedsAction(
     }
   }
 
-  // 3) RUNNING_WINNER — a held position at/near its target's decision point
+  // 3) UNPROTECTED_GAIN — the IONS detector (Game Plan PR-B). A held winner
+  //    whose cumulative gain is meaningfully above what the tightest
+  //    protective EXIT rung locks in: the floor a thesis was born with
+  //    reflects entry-day information forever unless something forces an
+  //    update. Slotted below the explicit trigger paths (a fired/matching
+  //    trigger — often the floor itself firing — is the more specific work
+  //    item) and ABOVE RUNNING_WINNER: both flags frequently coincide on the
+  //    same big winner, and locking the downside precedes pressing the
+  //    upside — once the agent raises the floor this flag self-clears and
+  //    the press/hold/take decision surfaces on the next read. HOLDING only;
+  //    needs avgCost + a live quote (graceful null degradation otherwise).
+  if (thesis.status === "HOLDING") {
+    const ladder = computeLadderHealth({
+      direction: thesis.direction,
+      avgCost: thesis.avgCost,
+      currentPrice: latestQuote?.price ?? null,
+      peakPrice: thesis.peakPrice ?? null,
+      triggers: thesis.triggers,
+      lastLadderEditAt: null, // not needed for the flag; surfaced via get_theses
+      now,
+    });
+    if (ladder?.isUnprotectedGain) {
+      return {
+        kind: "UNPROTECTED_GAIN",
+        unrealizedGainPct: ladder.gainPct,
+        flooredGainPct: ladder.flooredGainPct,
+        unprotectedGapPct: ladder.unprotectedGapPct,
+        hasTrail: ladder.hasTrail,
+        floorSummary: ladder.floor?.label ?? null,
+      };
+    }
+  }
+
+  // 4) RUNNING_WINNER — a held position at/near its target's decision point
   //    with no fired/matching trigger already catching it. Backstop for the
   //    "agent ignores winners" gap (SCALE_INTO_WINNERS.md PR3): an un-laddered
   //    winner would otherwise fall through to null and be skipped by the
@@ -368,7 +439,7 @@ export function computeNeedsAction(
     }
   }
 
-  // 4) REVIEW_DUE — agent-set cadence (nextReviewAt) elapsed OR coming
+  // 5) REVIEW_DUE — agent-set cadence (nextReviewAt) elapsed OR coming
   //    due within the next 24h. The 24h look-ahead is load-bearing: the
   //    morning daily-run fires once at 08:00 ET, but the agent often
   //    sets nextReviewAt to 09:30 ET (market open) on a future calendar

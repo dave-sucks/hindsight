@@ -23,6 +23,7 @@
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { computeWinnerSignal } from "@/lib/agent/winner-signal";
+import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
 
 // ── Public types ──────────────────────────────────────────────────────
 
@@ -60,6 +61,17 @@ export interface ResolvedEnvelope {
    */
   progressToTarget: number | null;
 
+  /**
+   * Ladder-health block for HOLDING rows (Game Plan PR-B): gain% from entry,
+   * what the tightest protective EXIT rung locks in, whether a trail exists,
+   * the nearest forward rung + distance, days since the ladder was last
+   * edited, and the UNPROTECTED_GAIN flag (the IONS detector). Precomputed so
+   * the daily-run auditor and tactical agent read the plan's health instead
+   * of deriving it. Null for non-held rows or when avgCost/quote is
+   * unavailable. See lib/agent/ladder-health.ts.
+   */
+  ladderHealth: LadderHealth | null;
+
   triggerState: TriggerState;
   /** Human-readable for the agent + UI: e.g. "PRICE_ABOVE 92.5 (cur 90.30, -2.4%)". */
   triggerDetail: string | null;
@@ -88,6 +100,19 @@ export interface ResolverThesisInput {
   targetPrice?: number | null;
   /** Paired open Position's blended avgCost — feeds P&L for HOLDING rows. */
   avgCost?: number | null;
+  /**
+   * Paired open Position's water mark (high LONG / low SHORT) — feeds the
+   * TRAILING_FROM_HIGH floor math in the ladder-health block. Null when not
+   * held / not tracked (falls back to current price).
+   */
+  peakPrice?: number | null;
+  /**
+   * When the trigger ladder was last edited (newest CREATED or
+   * ladder-touching UPDATED ThesisUpdate row — see isLadderEditUpdate in
+   * ladder-health.ts). Null when the caller didn't resolve it; the block
+   * then omits daysSinceLadderEdit.
+   */
+  lastLadderEditAt?: Date | null;
   triggers: unknown; // Json column; parsed via triggersArraySchema by caller
   catalystDate: Date | null;
   createdAt: Date;
@@ -251,11 +276,30 @@ export function buildResolvedEnvelope(args: {
         })
       : null;
 
+  // ── Ladder health (HOLDING rows only — Game Plan PR-B) ────────────
+  // Same shared-pure-module pattern as the winner signal above: the
+  // UNPROTECTED_GAIN needsAction flag keys off the identical math in
+  // needs-action.ts; this surfaces the full block (floor, trail, nearest
+  // rung, edit staleness) inline on the row.
+  const ladderHealth =
+    thesis.status === "HOLDING"
+      ? computeLadderHealth({
+          direction: thesis.direction,
+          avgCost: thesis.avgCost,
+          currentPrice,
+          peakPrice: thesis.peakPrice ?? null,
+          triggers: thesis.parsedTriggers,
+          lastLadderEditAt: thesis.lastLadderEditAt ?? null,
+          now,
+        })
+      : null;
+
   return {
     currentPrice,
     entryQualityScore,
     unrealizedGainPct: winner?.unrealizedGainPct ?? null,
     progressToTarget: winner?.progressToTarget ?? null,
+    ladderHealth,
     triggerState,
     triggerDetail,
     actionability,

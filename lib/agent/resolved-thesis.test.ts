@@ -253,6 +253,52 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
   });
 });
 
+describe("buildResolvedEnvelope — ladder-health block (Game Plan PR-B)", () => {
+  const floorExit: Trigger = {
+    id: "trg_floor",
+    action: "EXIT",
+    predicate: { kind: "PRICE_BELOW", level: 65 },
+    cooldownDays: 0,
+    rationale: "day-one stop",
+  };
+
+  it("surfaces the block on a HOLDING row (the IONS shape)", () => {
+    const r = buildResolvedEnvelope({
+      thesis: baseThesis({
+        status: "HOLDING",
+        avgCost: 73.83,
+        peakPrice: 86.24,
+        parsedTriggers: [floorExit],
+        lastLadderEditAt: new Date("2026-05-02T12:00:00Z"), // 30d before NOW
+      }),
+      currentPrice: 86.24,
+      now: NOW,
+    });
+    expect(r.ladderHealth).not.toBeNull();
+    expect(r.ladderHealth!.gainPct).toBeCloseTo(16.81, 1);
+    expect(r.ladderHealth!.flooredGainPct).toBeCloseTo(-11.96, 1);
+    expect(r.ladderHealth!.hasTrail).toBe(false);
+    expect(r.ladderHealth!.daysSinceLadderEdit).toBe(30);
+    expect(r.ladderHealth!.isUnprotectedGain).toBe(true);
+  });
+
+  it("is null on non-held rows and when avgCost is unavailable", () => {
+    const watching = buildResolvedEnvelope({
+      thesis: baseThesis({ status: "WATCHING", parsedTriggers: [floorExit] }),
+      currentPrice: 86.24,
+      now: NOW,
+    });
+    expect(watching.ladderHealth).toBeNull();
+
+    const noCost = buildResolvedEnvelope({
+      thesis: baseThesis({ status: "HOLDING", parsedTriggers: [floorExit] }),
+      currentPrice: 86.24,
+      now: NOW,
+    });
+    expect(noCost.ladderHealth).toBeNull();
+  });
+});
+
 describe("buildSupersessionMap", () => {
   it("picks the newest terminal sibling per ticker", () => {
     const map = buildSupersessionMap([

@@ -497,7 +497,225 @@ describe("computeNeedsAction — anti-regression (no hardcoded thresholds)", () 
   });
 });
 
+describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS detector)", () => {
+  // IONS shape: bought 73.83, day-one EXIT floor at 65 (−12% below entry),
+  // ran +17% — the floor never re-earned. Must flag every morning.
+  const ionsExit: Trigger = {
+    id: "trig-ions-floor",
+    predicate: { kind: "PRICE_BELOW", level: 65 },
+    action: "EXIT",
+    rationale: "day-one stop",
+    cooldownDays: 0,
+  };
+  const ionsThesis = {
+    ...baseThesis,
+    status: "HOLDING",
+    triggers: [ionsExit],
+    avgCost: 73.83,
+    targetPrice: null as number | null, // no target → RUNNING_WINNER can't mask
+  };
+
+  it("flags a +17% holding whose floor locks −12% (the IONS shape)", () => {
+    const result = computeNeedsAction({
+      thesis: ionsThesis,
+      latestUpdate: null,
+      latestQuote: { price: 86.24, changePct: 0 },
+      now,
+    });
+    expect(result?.kind).toBe("UNPROTECTED_GAIN");
+    if (result?.kind === "UNPROTECTED_GAIN") {
+      expect(result.unrealizedGainPct).toBeCloseTo(16.81, 1);
+      expect(result.flooredGainPct).toBeCloseTo(-11.96, 1);
+      expect(result.unprotectedGapPct).toBeCloseTo(28.77, 1);
+      expect(result.hasTrail).toBe(false);
+      expect(result.floorSummary).toContain("$65.00");
+    }
+  });
+
+  it("flags a qualifying gain with NO protective EXIT rung at all", () => {
+    const result = computeNeedsAction({
+      thesis: { ...ionsThesis, triggers: [] },
+      latestUpdate: null,
+      latestQuote: { price: 82, changePct: 0 }, // +11.1%
+      now,
+    });
+    expect(result?.kind).toBe("UNPROTECTED_GAIN");
+    if (result?.kind === "UNPROTECTED_GAIN") {
+      expect(result.flooredGainPct).toBeNull();
+      expect(result.unprotectedGapPct).toBeNull();
+      expect(result.floorSummary).toBeNull();
+    }
+  });
+
+  it("does NOT flag when the floor reflects the gain (gap under threshold)", () => {
+    const raisedFloor: Trigger = {
+      ...ionsExit,
+      predicate: { kind: "PRICE_BELOW", level: 82 }, // locks +11.1% vs +16.8% gain
+    };
+    const result = computeNeedsAction({
+      thesis: { ...ionsThesis, triggers: [raisedFloor] },
+      latestUpdate: null,
+      latestQuote: { price: 86.24, changePct: 0 },
+      now,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("a fired EXIT trigger outranks UNPROTECTED_GAIN", () => {
+    const result = computeNeedsAction({
+      thesis: ionsThesis,
+      latestUpdate: {
+        type: "TRIGGER_FIRED",
+        triggerId: "trig-ions-floor",
+        timestamp: new Date("2026-05-10T09:00:00Z"),
+      },
+      latestQuote: { price: 86.24, changePct: 0 },
+      now,
+    });
+    expect(result?.kind).toBe("TRIGGER_FIRED");
+  });
+
+  it("a matching-now predicate outranks UNPROTECTED_GAIN", () => {
+    const addRung: Trigger = {
+      id: "trig-add",
+      predicate: { kind: "PRICE_ABOVE", level: 85 },
+      action: "ADD",
+      rationale: "breakout add",
+      cooldownDays: 1,
+    };
+    const result = computeNeedsAction({
+      thesis: { ...ionsThesis, triggers: [ionsExit, addRung] },
+      latestUpdate: null,
+      latestQuote: { price: 86.24, changePct: 0 }, // above 85 → ADD matches
+      now,
+    });
+    expect(result?.kind).toBe("TRIGGER_MATCHING_NOW");
+  });
+
+  it("UNPROTECTED_GAIN outranks RUNNING_WINNER when both fire (floor-first)", () => {
+    // avgCost 100, target 120, price 118: RUNNING_WINNER fires (progress 0.9,
+    // +18%) — but there's no floor, so UNPROTECTED_GAIN must win.
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        status: "HOLDING",
+        triggers: [],
+        avgCost: 100,
+        targetPrice: 120,
+      },
+      latestUpdate: null,
+      latestQuote: { price: 118, changePct: 0 },
+      now,
+    });
+    expect(result?.kind).toBe("UNPROTECTED_GAIN");
+  });
+
+  it("a protected winner falls through to RUNNING_WINNER (press/hold/take)", () => {
+    // Same winner, but a tight floor locks +14 (gap 4 < 6): the unprotected
+    // flag self-clears and the press decision surfaces.
+    const tightFloor: Trigger = {
+      id: "trig-tight",
+      predicate: { kind: "PRICE_BELOW", level: 114 },
+      action: "EXIT",
+      rationale: "ratcheted floor",
+      cooldownDays: 0,
+    };
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        status: "HOLDING",
+        triggers: [tightFloor],
+        avgCost: 100,
+        targetPrice: 120,
+      },
+      latestUpdate: null,
+      latestQuote: { price: 118, changePct: 0 },
+      now,
+    });
+    expect(result?.kind).toBe("RUNNING_WINNER");
+  });
+
+  it("UNPROTECTED_GAIN outranks a due review", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        ...ionsThesis,
+        nextReviewAt: new Date("2026-05-01T00:00:00Z"), // overdue
+      },
+      latestUpdate: null,
+      latestQuote: { price: 86.24, changePct: 0 },
+      now,
+    });
+    expect(result?.kind).toBe("UNPROTECTED_GAIN");
+  });
+
+  it("does NOT flag a non-held (WATCHING) row", () => {
+    const result = computeNeedsAction({
+      thesis: { ...ionsThesis, status: "WATCHING" },
+      latestUpdate: null,
+      latestQuote: { price: 86.24, changePct: 0 },
+      now,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("degrades gracefully when avgCost or the quote is missing", () => {
+    expect(
+      computeNeedsAction({
+        thesis: { ...ionsThesis, avgCost: null },
+        latestUpdate: null,
+        latestQuote: { price: 86.24, changePct: 0 },
+        now,
+      }),
+    ).toBeNull();
+    expect(
+      computeNeedsAction({
+        thesis: ionsThesis,
+        latestUpdate: null,
+        latestQuote: null,
+        now,
+      }),
+    ).toBeNull();
+  });
+
+  it("counts a trail as protection via peakPrice: tight trail → no flag", () => {
+    const trail: Trigger = {
+      id: "trig-trail",
+      predicate: { kind: "TRAILING_FROM_HIGH", pct: 5 },
+      action: "EXIT",
+      rationale: "gain ratchet",
+      cooldownDays: 0,
+    };
+    // peak 120, trail 5% → floor 114 locks +14; +18% gain → gap 4 → protected
+    // (falls through to RUNNING_WINNER since target progress qualifies).
+    const result = computeNeedsAction({
+      thesis: {
+        ...baseThesis,
+        status: "HOLDING",
+        triggers: [trail],
+        avgCost: 100,
+        peakPrice: 120,
+        targetPrice: 130,
+      },
+      latestUpdate: null,
+      latestQuote: { price: 118, changePct: 0 },
+      now,
+    });
+    expect(result?.kind).toBe("RUNNING_WINNER");
+  });
+});
+
 describe("computeNeedsAction — RUNNING_WINNER (SCALE_INTO_WINNERS.md PR3)", () => {
+  // Since Game Plan PR-B, an unprotected winner surfaces as UNPROTECTED_GAIN
+  // first (floor-first precedence) — so these fixtures carry a tight
+  // protective floor (gap < 6pts at their quoted price) to exercise the
+  // RUNNING_WINNER path specifically.
+  const tightFloor = (level: number): Trigger => ({
+    id: "trig-tight-floor",
+    predicate: { kind: "PRICE_BELOW", level },
+    action: "EXIT",
+    rationale: "ratcheted floor",
+    cooldownDays: 0,
+  });
   const heldWinner = {
     ...baseThesis,
     status: "HOLDING",
@@ -506,9 +724,9 @@ describe("computeNeedsAction — RUNNING_WINNER (SCALE_INTO_WINNERS.md PR3)", ()
     targetPrice: 200,
   };
 
-  it("flags a held winner at ≥75% progress with no trigger catching it", () => {
+  it("flags a protected held winner at ≥75% progress with no trigger catching it", () => {
     const result = computeNeedsAction({
-      thesis: heldWinner,
+      thesis: { ...heldWinner, triggers: [tightFloor(175)] }, // locks +75 vs +80 gain
       latestUpdate: null,
       latestQuote: { price: 180, changePct: 0 }, // 80% of the way to target, +80%
       now,
@@ -521,9 +739,9 @@ describe("computeNeedsAction — RUNNING_WINNER (SCALE_INTO_WINNERS.md PR3)", ()
     }
   });
 
-  it("does NOT flag a held position below BOTH thresholds (mid-progress, modest gain)", () => {
+  it("does NOT flag a protected held position below BOTH thresholds (mid-progress, modest gain)", () => {
     const result = computeNeedsAction({
-      thesis: heldWinner, // avgCost 100, target 200
+      thesis: { ...heldWinner, triggers: [tightFloor(105)] }, // locks +5 vs +10 gain
       latestUpdate: null,
       latestQuote: { price: 110, changePct: 0 }, // 10% of the way, +10% gain — under 0.75 AND under the 12% floor
       now,
@@ -549,6 +767,7 @@ describe("computeNeedsAction — RUNNING_WINNER (SCALE_INTO_WINNERS.md PR3)", ()
     const result = computeNeedsAction({
       thesis: {
         ...heldWinner,
+        triggers: [tightFloor(185)], // locks +85 vs +90 gain — protected
         nextReviewAt: new Date("2026-05-01T00:00:00Z"), // overdue
       },
       latestUpdate: null,
