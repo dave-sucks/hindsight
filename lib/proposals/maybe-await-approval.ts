@@ -17,6 +17,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { sendProposalPendingEmail } from "@/lib/emails/proposal-pending";
+import { sendProposalPendingPush } from "@/lib/notify/proposal-push";
 
 export type ProposalIntent = "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
 
@@ -364,6 +365,9 @@ export async function maybeAwaitApproval(
 
   // Fire-and-forget — the helper resolves OWNER email + skips on emailAlerts off.
   void sendProposalPendingEmail(args.orderId);
+  // Same event, phone/desktop channel — no-ops unless NTFY_TOPIC is set. Email
+  // is easy to miss; this is the high-signal nudge that a review is waiting.
+  void sendProposalPendingPush(args.orderId);
 
   return {
     state: "awaiting_approval" as const,
