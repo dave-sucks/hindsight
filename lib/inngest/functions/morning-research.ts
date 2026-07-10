@@ -461,34 +461,37 @@ export const morningResearch = inngest.createFunction(
             console.warn(
               `[morning-research] 🔁 ${config.name} researched ${researchedCount} tickers, expected coverage ${expectedCoverage} active theses, only ${preRetryThesisCount} touched, action tools=${actionToolCount}/${totalToolCallsSoFar} — attempting retry (process=${processViolation}, coverage=${coverageViolation}, premature=${prematureExitViolation})`,
             );
-            try {
-              const priorMessages = responseMessages;
-              const nudge = prematureExitViolation
-                ? // The agent loaded data and stopped without acting. Tell it
-                  // exactly what to do, in tool-call language, with no room
-                  // to summarize the data it just read.
-                  "You loaded the Step-1 data tools and stopped before acting. The Live Theses block in the system prompt is the source of truth — DO NOT re-summarize it in markdown. " +
-                  "Begin Step 2 NOW. For each thesis listed in the Live Theses table above, emit one tool call: " +
-                  "update_thesis(thesis_id=<id>, rationale='Reviewed; no triggers, thesis intact') for the NO branch (no triggers fired), or get_stock_data + the appropriate action tool for the YES branch. " +
-                  "After every Live Theses row has produced one tool call, run Step 3 (promotion check), Step 4 (discovery if slots open), Step 5/6 (record_run_summary then complete_run). " +
-                  "TOOL CALLS only. No markdown narrative. Each assistant turn from this point on MUST contain at least one tool call — text-only turns terminate the run as FAILED."
-                : "You researched tickers with get_stock_data but did not record / update a thesis for each. The run will be marked FAILED unless you act NOW. " +
-                  "For EVERY ticker you researched this session, emit ONE tool call as follows — TOOL CALLS only, no narration, no markdown: " +
-                  "(a) If get_theses showed an ACTIVE same-direction thesis on this ticker (or a prior record_thesis call returned status='USE_UPDATE_THESIS' with an existing_thesis_id), call update_thesis(thesis_id=<that id>, ...patch fields..., rationale='<one line>'). " +
-                  "(b) Otherwise, call record_thesis(ticker, direction, ...) for new coverage. " +
-                  "When in doubt, prefer update_thesis with empty patch + a rationale (this writes a REVIEWED entry to the timeline and counts as the required thesis touch). " +
-                  "Then call record_run_summary. Then call complete_run. Any text output beyond a short status sentence is a failure.";
+            const nudge = prematureExitViolation
+              ? // The agent loaded data and stopped without acting. Tell it
+                // exactly what to do, in tool-call language, with no room
+                // to summarize the data it just read.
+                "You loaded the Step-1 data tools and stopped before acting. The Live Theses block in the system prompt is the source of truth — DO NOT re-summarize it in markdown. " +
+                "Begin Step 2 NOW. For each thesis listed in the Live Theses table above, emit one tool call: " +
+                "update_thesis(thesis_id=<id>, rationale='Reviewed; no triggers, thesis intact') for the NO branch (no triggers fired), or get_stock_data + the appropriate action tool for the YES branch. " +
+                "After every Live Theses row has produced one tool call, run Step 3 (promotion check), Step 4 (discovery if slots open), Step 5/6 (record_run_summary then complete_run). " +
+                "TOOL CALLS only. No markdown narrative. Each assistant turn from this point on MUST contain at least one tool call — text-only turns terminate the run as FAILED."
+              : "You researched tickers with get_stock_data but did not record / update a thesis for each. The run will be marked FAILED unless you act NOW. " +
+                "For EVERY ticker you researched this session, emit ONE tool call as follows — TOOL CALLS only, no narration, no markdown: " +
+                "(a) If get_theses showed an ACTIVE same-direction thesis on this ticker (or a prior record_thesis call returned status='USE_UPDATE_THESIS' with an existing_thesis_id), call update_thesis(thesis_id=<that id>, ...patch fields..., rationale='<one line>'). " +
+                "(b) Otherwise, call record_thesis(ticker, direction, ...) for new coverage. " +
+                "When in doubt, prefer update_thesis with empty patch + a rationale (this writes a REVIEWED entry to the timeline and counts as the required thesis touch). " +
+                "Then call record_run_summary. Then call complete_run. Any text output beyond a short status sentence is a failure.";
+
+            // One retry attempt over a caller-supplied message seed. Extracted so
+            // we can try it twice: first seeded with the prior in-run context
+            // (preserves the research already loaded), and — if that seed is a
+            // malformed ModelMessage[] — historyless. The reconstructed
+            // responseMessages CAN be malformed (it threw "Invalid prompt: The
+            // messages do not match the ModelMessage[] schema" and silently killed
+            // the rescue); the system prompt already carries the Live Theses table,
+            // so a historyless retry can still complete Step 2+.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const runRetry = async (messages: any[]): Promise<number> => {
               const retry = await generateText({
                 // Same model as the main run — switches with research-run config.
                 model: openai(MODES["research-run"].model),
                 system: systemPrompt,
-                messages: [
-                  ...priorMessages,
-                  {
-                    role: "user",
-                    content: nudge,
-                  },
-                ],
+                messages,
                 tools,
                 providerOptions: { openai: { strictJsonSchema: true } },
                 stopWhen: stepCountIs(15),
@@ -538,21 +541,39 @@ export const morningResearch = inngest.createFunction(
                   }
                 },
               });
-              const retryToolCalls = retry.steps.reduce((s, x) => s + (x.toolCalls?.length ?? 0), 0);
-              const postRetryThesisCount = await prisma.thesis.count({
-                where: { researchRunId: run.id },
-              });
-              console.log(
-                `[morning-research] 🔁 ${config.name} retry: ${retry.steps.length} steps, ${retryToolCalls} tool calls, theses ${preRetryThesisCount} → ${postRetryThesisCount}`
-              );
-              toolCalls += retryToolCalls;
-              elapsed = Date.now() - t0;
-            } catch (retryErr) {
+              return retry.steps.reduce((s, x) => s + (x.toolCalls?.length ?? 0), 0);
+            };
+
+            let retryToolCalls = 0;
+            try {
+              // Tier 1 — seed from the prior in-run context.
+              retryToolCalls = await runRetry([
+                ...responseMessages,
+                { role: "user", content: nudge },
+              ]);
+            } catch (seedErr) {
+              // The seed was a malformed ModelMessage[] — don't lose the rescue.
               console.error(
-                `[morning-research] 🔁 ${config.name} retry failed:`,
-                retryErr instanceof Error ? retryErr.message : retryErr
+                `[morning-research] 🔁 ${config.name} seeded retry rejected (${seedErr instanceof Error ? seedErr.message : seedErr}); retrying historyless`
               );
+              try {
+                // Tier 2 — historyless. The system prompt carries the state.
+                retryToolCalls = await runRetry([{ role: "user", content: nudge }]);
+              } catch (retryErr) {
+                console.error(
+                  `[morning-research] 🔁 ${config.name} retry failed:`,
+                  retryErr instanceof Error ? retryErr.message : retryErr
+                );
+              }
             }
+            const postRetryThesisCount = await prisma.thesis.count({
+              where: { researchRunId: run.id },
+            });
+            console.log(
+              `[morning-research] 🔁 ${config.name} retry: ${retryToolCalls} tool calls, theses ${preRetryThesisCount} → ${postRetryThesisCount}`
+            );
+            toolCalls += retryToolCalls;
+            elapsed = Date.now() - t0;
           }
 
           // Count positions opened by checking DB (the place_trade tool already created them)
