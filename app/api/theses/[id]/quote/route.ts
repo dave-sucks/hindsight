@@ -19,7 +19,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { getStockQuote, getStockProfile } from "@/lib/actions/finnhub.actions";
+import { getStockQuote } from "@/lib/actions/finnhub.actions";
+import { getStockInfo } from "@/lib/actions/stock-info";
 import { getAccountId } from "@/lib/auth/account";
 
 export async function GET(
@@ -53,12 +54,11 @@ export async function GET(
   }
 
   // The slow part. Failure is non-fatal — the sheet just hides the price
-  // block + leaves the position row without live PnL. The profile carries the
-  // company name + exchange for the header (thesis rows rarely store them, so
-  // without this the sheet header falls back to showing the ticker twice).
-  const [liveQuote, profile] = await Promise.all([
+  // block + leaves the position row without live PnL. Identity (company name
+  // + exchange) comes from the StockInfo cache, not a live provider call.
+  const [liveQuote, identity] = await Promise.all([
     getStockQuote(thesis.ticker).catch(() => null),
-    getStockProfile(thesis.ticker).catch(() => null),
+    getStockInfo(thesis.ticker),
   ]);
   const currentPrice =
     liveQuote && Number.isFinite(liveQuote.c) && liveQuote.c > 0
@@ -111,7 +111,7 @@ export async function GET(
     dayChange,
     dayChangePct,
     positionPnl,
-    companyName: profile?.name ?? null,
-    exchange: profile?.exchange ?? null,
+    companyName: identity.companyName,
+    exchange: identity.exchange,
   });
 }

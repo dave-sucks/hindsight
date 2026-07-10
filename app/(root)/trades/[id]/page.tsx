@@ -38,6 +38,7 @@ import {
   getStockQuote,
   getStockCandles,
 } from '@/lib/actions/finnhub.actions';
+import { getStockInfo } from '@/lib/actions/stock-info';
 import { cn } from '@/lib/utils';
 import {
   CheckCircle2,
@@ -170,9 +171,12 @@ export default async function TradeDetailPage({
   const openingBuy = orders.find((o) => o.side === 'BUY');
   const closingSell = orders.filter((o) => o.side === 'SELL').slice(-1)[0];
 
-  // stockProfile, stockQuote and candles are all independent of each other
-  // (they only need position.symbol), so fire them in parallel.
-  const [stockProfile, stockQuote, candles] = await Promise.all([
+  // identity (StockInfo cache), stockProfile (sidebar info card: industry /
+  // country / weburl), stockQuote and candles are independent — parallel.
+  // The HEADER reads identity so the name + normalized exchange match the
+  // thesis sheet exactly (same cache, same normalizer).
+  const [identity, stockProfile, stockQuote, candles] = await Promise.all([
+    getStockInfo(position.symbol),
     getStockProfile(position.symbol),
     getStockQuote(position.symbol),
     getStockCandles(position.symbol, 365),
@@ -187,8 +191,8 @@ export default async function TradeDetailPage({
     events: position.events,
   };
 
-  const companyName = stockProfile?.name ?? null;
-  const exchange = stockProfile?.exchange ?? null;
+  const companyName = identity.companyName;
+  const exchange = identity.exchange;
 
   const isOpen = position.status === 'OPEN';
   const livePrice = stockQuote?.c ?? null;

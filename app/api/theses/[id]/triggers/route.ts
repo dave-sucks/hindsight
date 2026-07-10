@@ -25,11 +25,8 @@ import {
   buildSupersessionMap,
 } from "@/lib/agent/resolved-thesis";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import {
-  getStockQuote,
-  getStockProfile,
-  getStockCandles,
-} from "@/lib/actions/finnhub.actions";
+import { getStockQuote, getStockCandles } from "@/lib/actions/finnhub.actions";
+import { getStockInfo } from "@/lib/actions/stock-info";
 import { getAnalystCoverageData } from "@/lib/actions/analyst-coverage";
 
 export async function GET(
@@ -373,8 +370,10 @@ export async function GET(
     coverage: unknown;
   } | null = null;
   if (full) {
-    const [profile, candles, coverage] = await Promise.all([
-      getStockProfile(thesis.ticker).catch(() => null),
+    const [identity, candles, coverage] = await Promise.all([
+      // Identity from OUR StockInfo cache (lazily populated) — not a live
+      // provider call. Header name/exchange must never wait on Finnhub.
+      getStockInfo(thesis.ticker),
       getStockCandles(thesis.ticker, 400).catch(() => [] as unknown),
       getAnalystCoverageData(thesis.ticker).catch(() => null),
     ]);
@@ -405,8 +404,8 @@ export async function GET(
         dayChange,
         dayChangePct,
         positionPnl,
-        companyName: profile?.name ?? null,
-        exchange: profile?.exchange ?? null,
+        companyName: identity.companyName,
+        exchange: identity.exchange,
       },
       candles: candles ?? [],
       coverage,
