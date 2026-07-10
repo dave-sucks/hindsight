@@ -370,7 +370,23 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
     // Event-log buy — just "Bought N shares at $X" (no "now trading at").
     middle = buildTradeSentence({ kind: 'holding', qty: item.shares!, entry: item.price! });
   } else if (isProposed && hasSize) {
-    middle = buildTradeSentence({ kind: 'proposed-buy', qty: item.shares!, entry: item.price! });
+    // A proposal is either a buy (new entry / ADD) or an exit (CLOSE / trim).
+    // Render the matching sentence so a proposed exit never mislabels as "Buy"
+    // — the bug that made a pending CLOSE read "Proposed: Buy 100 shares".
+    middle =
+      item.intent === 'CLOSE' || item.intent === 'PARTIAL_CLOSE'
+        ? buildTradeSentence({
+            kind: 'proposed-exit',
+            qty: item.shares!,
+            entry: item.price!,
+            exitVerb: item.intent === 'PARTIAL_CLOSE' ? 'trim' : 'close',
+          })
+        : buildTradeSentence({
+            kind: 'proposed-buy',
+            qty: item.shares!,
+            entry: item.price!,
+            buyVerb: item.direction === 'SHORT' ? 'Short' : 'Buy',
+          });
   } else if (item.type === 'REJECTED' && hasSize) {
     // Rejected/expired proposal — describe the would-be buy; no P&L (nothing executed).
     middle = buildTradeSentence({ kind: 'proposed-buy', qty: item.shares!, entry: item.price! });

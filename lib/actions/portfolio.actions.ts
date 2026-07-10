@@ -762,10 +762,23 @@ export async function getDashboardData(
   };
 
   const heldPositions = effectiveOpenPositions.filter((p) => p.status === "OPEN");
-  const pendingProposalPositions = effectiveOpenPositions.filter(
-    (p) => p.status === "PENDING_APPROVAL",
-  );
   const openTrades: MockTrade[] = heldPositions.map(toOpenMockTrade);
+
+  // Pending review = anything awaiting the user's approval, NOT just brand-new
+  // buy proposals. A new buy is a Position in PENDING_APPROVAL; but a proposed
+  // exit/trim/add on an already-held name is an OPEN position carrying an
+  // AWAITING_APPROVAL order (intent CLOSE / PARTIAL_CLOSE / ADD). Both need the
+  // same top-right review surface — keying only on PENDING_APPROVAL silently
+  // dropped every exit/trim proposal, so those reviews surfaced only in the
+  // buried Activity feed and were easy to miss. A held name awaiting an exit
+  // still counts as held for P&L (it stays in `openTrades` above); this list is
+  // purely the "needs your decision" surface, so it's fine for it to appear in
+  // both places.
+  const pendingProposalPositions = effectiveOpenPositions.filter(
+    (p) =>
+      p.status === "PENDING_APPROVAL" ||
+      (p.orders ?? []).some((o) => o.status === "AWAITING_APPROVAL"),
+  );
   const pendingTrades: MockTrade[] = pendingProposalPositions.map(toOpenMockTrade);
 
   // ── 5. Map closed positions → MockTrade shape ──────────────────────────────
