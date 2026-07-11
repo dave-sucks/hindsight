@@ -19,16 +19,17 @@
  * the user explicitly asked for "action ones" only.
  *
  * Analysts that ran but took no actions collapse to "No actions taken
- * this morning." Owners with zero actions across all analysts get
+ * this morning." Accounts with zero actions across all analysts get
  * skipped entirely.
  *
- * Gated on AgentConfig.emailAlerts. Recipient is the OWNER of the
- * Account that owns the analyst — see lib/auth/account.ts.
+ * Gated on AgentConfig.emailAlerts. Recipients are every account member
+ * subscribed to DAILY_DIGEST (all members by default; per-member opt-out
+ * on /settings/team) — see lib/emails/recipients.ts.
  */
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import { sendEmail, getUserEmail } from "@/lib/email";
-import { getOwnerUserId } from "@/lib/auth/account";
+import { sendEmail } from "@/lib/email";
+import { getEmailRecipients } from "@/lib/emails/recipients";
 import { getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
 import {
   dailyRunDigestHtml,
@@ -273,28 +274,24 @@ export const dailyRunDigest = inngest.createFunction(
 
       type EmailResult = { sent: boolean; reason?: string; to?: string };
       const resultRaw = await step.run(`email-${accountId}`, async () => {
-        // Resolve the OWNER of this account — the canonical recipient.
-        const ownerUserId = await getOwnerUserId(accountId);
-        if (!ownerUserId) {
-          const r: EmailResult = { sent: false, reason: "no-owner-membership" };
+        // Every member subscribed to DAILY_DIGEST (all members by default).
+        const recipients = await getEmailRecipients(accountId, "DAILY_DIGEST");
+        if (recipients.length === 0) {
+          const r: EmailResult = { sent: false, reason: "no-recipients" };
           return r;
         }
-        const toEmail = await getUserEmail(ownerUserId);
-        if (!toEmail) {
-          const r: EmailResult = { sent: false, reason: "no-email" };
-          return r;
-        }
-        const ok = await sendEmail({
-          to: toEmail,
-          subject: `Morning Run Digest — ${dateLabel}`,
-          html: dailyRunDigestHtml({
-            date: dateLabel,
-            analysts: perAnalyst,
-          }),
+        const subject = `Morning Run Digest — ${dateLabel}`;
+        const html = dailyRunDigestHtml({
+          date: dateLabel,
+          analysts: perAnalyst,
         });
+        const results = await Promise.all(
+          recipients.map((to) => sendEmail({ to, subject, html })),
+        );
+        const ok = results.some(Boolean);
         const r: EmailResult = ok
-          ? { sent: true, to: toEmail }
-          : { sent: false, reason: "send-rejected", to: toEmail };
+          ? { sent: true, to: recipients.join(", ") }
+          : { sent: false, reason: "send-rejected", to: recipients.join(", ") };
         return r;
       });
 
