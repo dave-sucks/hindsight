@@ -1408,59 +1408,18 @@ function ThesisSheetSkeleton() {
   );
 }
 
+// The sheet's ENTIRE contract: which thesis. Everything rendered comes from
+// the one /triggers?full=1 payload — no row-snapshot props, no second source.
+// (Callers still hand ThesisSheet full ThesisCardData for back-compat; the
+// wrapper forwards only these two fields.)
 export interface ThesisSheetBodyProps {
-  /** Persisted Thesis id. When supplied, the Activity timeline renders. */
+  /** Persisted Thesis id — the sheet loads everything by this. */
   thesis_id?: string;
+  /** Only used before/without a load: skeleton a11y + the error state. */
   ticker: string;
-  direction: "LONG" | "SHORT" | null;
-  confidence_score: number;
-  reasoning_summary?: string;
-  pass_reason?: string;
-  thesis_bullets: string[];
-  risk_flags: string[];
-  entry_price?: number | null;
-  target_price?: number | null;
-  stop_loss?: number | null;
-  hold_duration?: string;
-  signal_types: string[];
-  company_name?: string | null;
-  exchange?: string | null;
-  fundamentals?: FundamentalsData | null;
-  /** Lifecycle status from the row that opened the sheet. Used as the
-   *  initial StatusPill value so first paint matches the durable state
-   *  with no flicker. The triggers API fetch refines position/PnL data.
-   *  P1-24: PASSED drives isPass now that a pass stores direction=null. */
-  status?: "HOLDING" | "WATCHING" | "PROMOTED" | "RETIRED" | "PASSED";
 }
 
-export function ThesisSheetBody({
-  thesis_id,
-  ticker,
-  direction,
-  reasoning_summary,
-  pass_reason,
-  entry_price,
-  target_price,
-  stop_loss,
-  company_name,
-  exchange,
-  fundamentals,
-  // The `status` prop drives `isPass` only (NOT the StatusPill — that still
-  // reads the resolved `liveStatus` below to avoid the pill flash). P1-24:
-  // a pass stores direction=null, so status=PASSED is the authoritative — and
-  // now only — pass signal.
-  status: initialStatus,
-}: ThesisSheetBodyProps) {
-  // P1-24: a pass is identified by status=PASSED (direction is null on a pass).
-  const isPass = initialStatus === "PASSED";
-  const displayName = company_name ?? ticker;
-  const summaryText = isPass ? (pass_reason ?? reasoning_summary) : reasoning_summary;
-
-  const hasEntry = entry_price != null;
-  const hasTarget = target_price != null;
-  const hasStop = stop_loss != null;
-  const showLevels = !isPass && hasEntry && (hasTarget || hasStop);
-
+export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
   // ── One thesis, one endpoint, one paint ──────────────────────────────────
   // The sheet makes a SINGLE request — /triggers?full=1 — which returns the
   // whole thesis: durable DB state (belief, targets, scoring, triggers,
@@ -1499,38 +1458,62 @@ export function ThesisSheetBody({
     };
   }, [thesis_id, refreshKey]);
 
-  // Everything below is derived from the single payload — no separate state.
-  const quote = state?.quote ?? null;
-  const candles = state?.candles ?? null;
-  const coverage = state?.coverage ?? null;
+  // One load, one paint — skeleton until the single fetch settles, an honest
+  // error if it failed. Past these two gates `state` is non-null, so the whole
+  // body derives from the ONE payload with zero fallbacks. A sheet without a
+  // persisted id (e.g. a failed record_thesis card) has nothing to load —
+  // that's the error state, not an eternal skeleton.
+  if (!loaded && thesis_id) {
+    return <ThesisSheetSkeleton />;
+  }
+  if (!state) {
+    return (
+      <div className="px-4 py-16 text-center space-y-1">
+        <p className="text-sm font-medium">Couldn&apos;t load this thesis</p>
+        <p className="text-xs text-muted-foreground">
+          {ticker} — the thesis data failed to load. Close and reopen the sheet to retry.
+        </p>
+      </div>
+    );
+  }
 
-  // Status has ONE source: the resolved /triggers state. We do NOT fall
-  // back to the `status` prop for rendering — that dual source was the
-  // cause of the status-pill flash (prop paints, fetch swaps it ~50ms
-  // later). The pill renders once `state` lands; for the ~50ms DB round
-  // trip on an unseeded open it's simply absent (a pill appearing is
-  // invisible; a pill *swapping* was the bug).
-  const liveStatus = state?.status as ThesisStatus | undefined;
-  const position = state?.position ?? null;
+  // ── Derived — every value below comes from the payload ────────────────────
+  const quote = state.quote ?? null;
+  const candles = state.candles ?? null;
+  const coverage = state.coverage ?? null;
+  const liveStatus = state.status as ThesisStatus;
+  const position = state.position;
+  // P1-24: a pass is identified by status=PASSED (direction is null on a pass).
+  const isPass = state.status === "PASSED";
+  const direction: "LONG" | "SHORT" | null =
+    state.direction === "LONG" || state.direction === "SHORT"
+      ? state.direction
+      : null;
+  const entryPrice = state.entryPrice;
+  const targetPrice = state.targetPrice;
+  const stopLoss = state.stopLoss;
+  const showLevels =
+    !isPass && entryPrice != null && (targetPrice != null || stopLoss != null);
+  // Identity ships in the payload (StockInfo cache via quote); the bare ticker
+  // is the degenerate case when the identity lookup itself failed.
+  const displayName = quote?.companyName ?? ticker;
+  // Legacy mint-time consensus: pre-PR-9 rows stored FundamentalsData (with
+  // analyst_consensus) in the same Thesis.fundamentals column that now holds
+  // the research section. Same column, one read — shape-sniffed for old rows.
+  const mintConsensus =
+    (state.fundamentals as { analyst_consensus?: { buy: number; hold: number; sell: number } } | null)
+      ?.analyst_consensus ?? null;
 
-  // Conviction Expression v4 — writer's tier verdict + rationale +
-  // variantView. Pulled from /triggers state. Renders null when the
-  // thesis is pre-v4 (legacy) or PASS/PENDING (which skip conviction).
-  const conviction = (state?.conviction ?? null) as
+  // Conviction Expression v4 — writer's tier verdict + rationale + variantView.
+  // Null on pre-v4 (legacy) or PASS/PENDING rows (which skip conviction).
+  const conviction = (state.conviction ?? null) as
     | "STRONG"
     | "HIGH"
     | "MEDIUM"
     | "LOW"
     | null;
-  const convictionRationale = state?.convictionRationale ?? null;
-  const variantView = state?.variantView ?? null;
-
-  // One load, one paint — hold the entire body behind a single skeleton until
-  // every fetch has settled (see the atomic-load effect above). Nothing below
-  // this line ever renders against partial data.
-  if (!loaded) {
-    return <ThesisSheetSkeleton />;
-  }
+  const convictionRationale = state.convictionRationale ?? null;
+  const variantView = state.variantView ?? null;
 
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
@@ -1564,15 +1547,12 @@ export function ThesisSheetBody({
       <div className="space-y-2">
         <StockIdentityHeader
           ticker={ticker}
-          // The Finnhub profile (company name + exchange) lands with /quote —
-          // thesis rows rarely store them, so prefer the quote and fall back to
-          // the prop, then the ticker. Without this the header shows the ticker
-          // twice and no exchange.
-          displayName={quote?.companyName ?? displayName}
-          exchange={quote?.exchange ?? exchange}
+          // Identity rides in the payload (StockInfo cache) — one source.
+          displayName={displayName}
+          exchange={quote?.exchange ?? null}
           badges={
             <>
-              {liveStatus && <StatusPill status={liveStatus} />}
+              <StatusPill status={liveStatus} />
               <ConvictionBadge conviction={conviction} rationale={convictionRationale} />
             </>
           }
@@ -1661,21 +1641,21 @@ export function ThesisSheetBody({
               ticker={ticker}
               candles={candles}
               direction={direction === "SHORT" ? "SHORT" : "LONG"}
-              entryPrice={entry_price ?? null}
+              entryPrice={entryPrice}
               avgCost={position?.avgCost ?? null}
-              targetPrice={target_price ?? null}
-              stopLoss={stop_loss ?? null}
+              targetPrice={targetPrice}
+              stopLoss={stopLoss}
               current={quote?.currentPrice ?? null}
-              addedAt={state?.createdAt ?? null}
+              addedAt={state.createdAt}
               enteredAt={position?.openedAt ?? null}
               variant="full"
             />
           ) : null}
-          {showLevels ? (
+          {showLevels && entryPrice != null ? (
             <PriceTargetsBlock
-              entry={entry_price!}
-              target={target_price ?? null}
-              stop={stop_loss ?? null}
+              entry={entryPrice}
+              target={targetPrice}
+              stop={stopLoss}
               current={quote?.currentPrice ?? null}
               direction={direction === "SHORT" ? "SHORT" : "LONG"}
             />
@@ -1690,9 +1670,7 @@ export function ThesisSheetBody({
           data={state}
           direction={direction}
           editable={
-            !isPass &&
-            ((liveStatus ?? initialStatus) === "HOLDING" ||
-              (liveStatus ?? initialStatus) === "WATCHING")
+            !isPass && (liveStatus === "HOLDING" || liveStatus === "WATCHING")
           }
           onChanged={() => setRefreshKey((k) => k + 1)}
         />
@@ -1717,13 +1695,9 @@ export function ThesisSheetBody({
         </p>
       ) : null}
 
-      {/* ── Pass reason ───────────────────────────────────────── */}
-      {/* Only renders for PASS direction — explains why the thesis was
-          rejected. LONG/SHORT theses rely on Snapshot above for the
-          equivalent descriptive context. */}
-      {isPass && summaryText && (
-        <p className="text-sm leading-relaxed">{summaryText}</p>
-      )}
+      {/* (The old props-fed "Pass reason" paragraph is gone — a PASSED
+          thesis's reasoning lives in the Snapshot section above, straight
+          from the payload.) */}
 
       {/* ── Scoring breakdown (4-dim composite) ───────────────── */}
       {/* Restyled 2026-05-18 to match the Schedule section's left/right
@@ -1758,14 +1732,12 @@ export function ThesisSheetBody({
 
       {/* ── Analyst Consensus widget ──────────────────────────── */}
       {/* Buy/Hold/Sell distribution + Low/Avg/Median/High price target
-          range vs current. Fresh FMP fetch on open; falls back to the
-          stored fundamentals.analyst_consensus shape (mint-time) when
-          the fetch fails or returns empty. Narrative behind a
-          collapsible. */}
+          range vs current, from the payload's live coverage. mintConsensus
+          is the legacy pre-PR-9 shape read off the same payload column. */}
       <AnalystConsensusWidget
         coverage={coverage}
-        fallbackConsensus={fundamentals?.analyst_consensus ?? null}
-        narrative={state?.analystConsensus ?? null}
+        fallbackConsensus={mintConsensus}
+        narrative={state.analystConsensus ?? null}
         currentPrice={quote?.currentPrice ?? null}
       />
 
@@ -1884,39 +1856,21 @@ export function ThesisSheetBody({
 
 // ─── ThesisSheet — controlled standalone sheet ────────────────────────────────
 
+// Accepts full ThesisCardData for caller back-compat, but the sheet loads
+// everything by id — only thesis_id + ticker are actually consumed.
 interface ThesisSheetProps extends ThesisCardData {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
-  const displayName = data.company_name ?? data.ticker;
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" size="xl" floating>
         <SheetHeader className="pb-0">
-          <SheetTitle className="sr-only">{displayName} Thesis</SheetTitle>
+          <SheetTitle className="sr-only">{data.ticker} Thesis</SheetTitle>
         </SheetHeader>
-        <ThesisSheetBody
-          thesis_id={data.thesis_id}
-          ticker={data.ticker}
-          direction={data.direction}
-          confidence_score={data.confidence_score}
-          reasoning_summary={data.reasoning_summary}
-          pass_reason={data.pass_reason}
-          thesis_bullets={data.thesis_bullets ?? []}
-          risk_flags={data.risk_flags ?? []}
-          entry_price={data.entry_price}
-          target_price={data.target_price}
-          stop_loss={data.stop_loss}
-          hold_duration={data.hold_duration}
-          signal_types={data.signal_types ?? []}
-          company_name={data.company_name}
-          exchange={data.exchange}
-          fundamentals={data.fundamentals}
-          status={data.status}
-        />
+        <ThesisSheetBody thesis_id={data.thesis_id} ticker={data.ticker} />
       </SheetContent>
     </Sheet>
   );

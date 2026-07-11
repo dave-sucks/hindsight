@@ -419,6 +419,10 @@ export async function GET(
     thesisId: thesis.id,
     ticker: thesis.ticker,
     status: thesis.status,
+    // LONG | SHORT | null (a pass/seed stores null). The sheet renders
+    // entirely from this payload — direction must not come from the row
+    // that opened it.
+    direction: thesis.direction,
     createdAt: thesis.createdAt,
     closedAt: thesis.closedAt,
     closeReason: thesis.closeReason,

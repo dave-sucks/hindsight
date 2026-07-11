@@ -121,6 +121,8 @@ export interface TriggersResponse {
   thesisId: string;
   ticker: string;
   status: string;
+  /** LONG | SHORT | null (pass/seed). The sheet reads direction from here. */
+  direction: string | null;
   // When the thesis row was created — anchors the "started watching"
   // vertical marker on the sheet's price chart.
   createdAt: string | null;
