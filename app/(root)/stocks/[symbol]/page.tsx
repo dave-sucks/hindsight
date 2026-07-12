@@ -27,14 +27,14 @@ import {
   getStockQuote,
   getStockMetrics,
   getStockCandles,
-  getRecommendationTrends,
 } from "@/lib/actions/finnhub.actions";
+import { getAnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
 import { cn } from "@/lib/utils";
-import { BarGauge } from "@/components/ui/bar-gauge";
+import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
 import {
   ExternalLink,
   TrendingUp,
@@ -124,12 +124,14 @@ export default async function StockDetailPage({ params }: Props) {
   const accountId = user ? await getAccountId(user.id) : null;
 
   // Fetch everything in parallel
-  const [profile, quote, metrics, candles, recommendations, tickerTrades, tickerTheses, watchlistStatus] = await Promise.all([
+  const [profile, quote, metrics, candles, coverage, tickerTrades, tickerTheses, watchlistStatus] = await Promise.all([
     getStockProfile(upperSymbol),
     getStockQuote(upperSymbol),
     getStockMetrics(upperSymbol),
     getStockCandles(upperSymbol, 365),
-    getRecommendationTrends(upperSymbol),
+    // Ratings distribution + price-target range for the shared
+    // AnalystConsensusWidget (same widget the thesis sheet renders).
+    getAnalystCoverageData(upperSymbol).catch(() => null),
     accountId
       ? prisma.position.findMany({
           where: { accountId, symbol: upperSymbol },
@@ -203,15 +205,6 @@ export default async function StockDetailPage({ params }: Props) {
     ? metrics["marketCapitalization"] * 1_000_000
     : null;
 
-  // Analyst consensus (latest period)
-  const latestRec = recommendations?.[0] ?? null;
-  const totalAnalysts = latestRec
-    ? latestRec.strongBuy + latestRec.buy + latestRec.hold + latestRec.sell + latestRec.strongSell
-    : 0;
-  const bullish = latestRec ? latestRec.strongBuy + latestRec.buy : 0;
-  const bearish = latestRec ? latestRec.strongSell + latestRec.sell : 0;
-  const neutral = latestRec?.hold ?? 0;
-  const consensus = bullish > bearish ? "Buy" : bearish > bullish ? "Sell" : "Hold";
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
@@ -441,33 +434,14 @@ export default async function StockDetailPage({ params }: Props) {
             </Card>
           )}
 
-          {/* Analyst Consensus */}
-          {latestRec && totalAnalysts > 0 && (
-            <Card>
-              <CardContent className="p-3">
-                <p className="text-sm font-medium mb-2">Analyst Consensus</p>
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant={consensus === "Buy" ? "positive" : consensus === "Sell" ? "negative" : "outline"}>
-                    {consensus}
-                  </Badge>
-                  <span className="text-sm text-muted-foreground">{totalAnalysts} analysts</span>
-                </div>
-                <div className="flex items-center gap-3 text-sm mb-2">
-                  <span className="text-negative tabular-nums">{bearish} <span className="text-muted-foreground">Bearish</span></span>
-                  <span className="text-muted-foreground tabular-nums">{neutral} <span>Neutral</span></span>
-                  <span className="text-positive tabular-nums">{bullish} <span className="text-muted-foreground">Bullish</span></span>
-                </div>
-                <BarGauge
-                  mode="distribution"
-                  ranges={[
-                    { count: bearish, color: "bg-negative" },
-                    { count: neutral, color: "bg-muted-foreground/30" },
-                    { count: bullish, color: "bg-positive" },
-                  ]}
-                />
-              </CardContent>
-            </Card>
-          )}
+          {/* Analyst Consensus — the SAME shared widget the thesis sheet
+              renders (rating badge + implied upside + proportional
+              distribution bar + bear/bull target range). */}
+          <AnalystConsensusWidget
+            coverage={coverage}
+            currentPrice={quote?.c ?? null}
+            className="p-3 gap-4"
+          />
 
           {/* Hindsight Summary */}
           {(tickerTrades.length > 0 || tickerTheses.length > 0) && (

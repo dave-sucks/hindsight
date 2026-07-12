@@ -18,7 +18,7 @@ import type {
   ResearchTextSection,
   ThesisScoring,
   TriggersResponse,
-} from "@/components/agent/sheets/ThesisTriggersSection";
+} from "@/lib/types/thesis-sheet";
 
 export type ThesisSheetStateInput = {
   id: string;

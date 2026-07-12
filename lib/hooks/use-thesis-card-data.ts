@@ -24,7 +24,7 @@ import { useEffect, useState } from "react";
 import type {
   TriggersResponse,
   QuoteResponse,
-} from "@/components/agent/sheets/ThesisTriggersSection";
+} from "@/lib/types/thesis-sheet";
 
 export interface ThesisCardLiveData {
   state: TriggersResponse | null;
