@@ -24,6 +24,11 @@ export function fmtQty(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
+/** "share" for exactly 1, "shares" otherwise (incl. fractional like 0.5/3.54). */
+function sharesWord(n: number): string {
+  return n === 1 ? "share" : "shares";
+}
+
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
 export type TradeStatementKind =
@@ -60,11 +65,12 @@ export interface TradeStatementInput {
 export function buildTradeSentence(i: TradeStatementInput): string | null {
   if (i.qty == null) return null;
   const q = fmtQty(i.qty);
-  const stem = `Bought ${q} shares at ${usd(i.entry)}`;
+  const unit = sharesWord(i.qty);
+  const stem = `Bought ${q} ${unit} at ${usd(i.entry)}`;
 
   switch (i.kind) {
     case "proposed-buy":
-      return `Proposed: ${i.buyVerb ?? "Buy"} ${q} shares${
+      return `Proposed: ${i.buyVerb ?? "Buy"} ${q} ${unit}${
         i.entry > 0 ? ` at ${usd(i.entry)}` : ""
       }`;
     case "holding":

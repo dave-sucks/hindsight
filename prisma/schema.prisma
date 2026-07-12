@@ -1127,6 +1127,23 @@ model UserApiKey {
   @@index([userId])
 }
 
+// ─── STOCK IDENTITY CACHE ───────────────────────────────────────────────────
+// Static per-ticker identity: company name + normalized exchange. Populated
+// lazily from the Finnhub profile on first touch (getStockInfo), then read
+// from our own DB forever — the sheet/trade-page headers must NOT depend on a
+// live provider call for a name that never changes. Global (not per-account):
+// a ticker's name is the same for everyone. Deliberately tiny — live data
+// (price, consensus) stays fetched fresh; only identity is cached.
+
+model StockInfo {
+  ticker      String   @id
+  companyName String
+  /// Normalized short form ("NASDAQ", "NYSE"), not Finnhub's verbose
+  /// "NASDAQ NMS - GLOBAL MARKET". See normalizeExchange().
+  exchange    String?
+  updatedAt   DateTime @updatedAt
+}
+
 // ─── PODCAST FEATURE ───────────────────────────────────────────────────────
 // Proof-of-concept podcast generator built on top of the agent runtime.
 // Podcast = container (name, voice, host style). PodcastSegment = the

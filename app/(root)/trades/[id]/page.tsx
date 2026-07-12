@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
-import { StockLogo } from '@/components/StockLogo';
+import { StockIdentityHeader } from '@/components/domain/stock-identity-header';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PriceChange } from '@/components/ui/price-change';
 import { buildTradeSentence } from '@/lib/trade-statement';
+import { TradeStatement } from '@/components/ui/trade-statement';
+import { formatCurrency } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -13,7 +15,7 @@ import {
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip';
-import { StockPriceChart } from '@/components/stocks/StockPriceChart';
+import { ThesisChart } from '@/components/domain/thesis-chart';
 import { StockThesesList } from '@/components/stocks/StockThesesList';
 import type { ThesisRowData } from '@/components/ui/thesis-row';
 import { PriceTargetsBlock } from '@/components/domain/price-targets-block';
@@ -36,6 +38,8 @@ import {
   getStockQuote,
   getStockCandles,
 } from '@/lib/actions/finnhub.actions';
+import { getStockInfo } from '@/lib/actions/stock-info';
+import { getPositionActivity, type ActivityEvent } from '@/lib/actions/activity';
 import { cn } from '@/lib/utils';
 import {
   CheckCircle2,
@@ -139,7 +143,6 @@ export default async function TradeDetailPage({
       events: { orderBy: { createdAt: 'asc' } },
       analyst: { select: { id: true, name: true } },
       orders: { orderBy: { createdAt: 'asc' } },
-      managementActions: { orderBy: { createdAt: 'asc' } },
       decisions: {
         take: 1,
         include: {
@@ -168,29 +171,18 @@ export default async function TradeDetailPage({
   const openingBuy = orders.find((o) => o.side === 'BUY');
   const closingSell = orders.filter((o) => o.side === 'SELL').slice(-1)[0];
 
-  // thesisChain, stockProfile, stockQuote and candles are all independent
-  // of each other (they only need position.symbol / analystId), so fire
-  // them in parallel instead of sequentially.
-  const [thesisChain, stockProfile, stockQuote, candles] = await Promise.all([
-    prisma.thesis.findMany({
-      where: {
-        accountId,
-        ticker: position.symbol,
-        researchRun: { agentConfigId: position.analystId },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-      select: {
-        // P2-19: forward full state so the Theses-tab rows can render
-        // sheets synchronously on open.
-        ...thesisSheetStateSelect,
-        createdAt: true,
-        researchRunId: true,
-      },
-    }),
+  // identity (StockInfo cache), stockProfile (sidebar info card: industry /
+  // country / weburl), stockQuote and candles are independent — parallel.
+  // The HEADER reads identity so the name + normalized exchange match the
+  // thesis sheet exactly (same cache, same normalizer).
+  const [identity, stockProfile, stockQuote, candles, activity] = await Promise.all([
+    getStockInfo(position.symbol),
     getStockProfile(position.symbol),
     getStockQuote(position.symbol),
     getStockCandles(position.symbol, 365),
+    // Unified activity read-layer (Order fills + level changes + thesis mint) —
+    // replaces reading managementActions directly. See lib/actions/activity.ts.
+    getPositionActivity(position.id),
   ]);
 
   const trade = {
@@ -202,8 +194,8 @@ export default async function TradeDetailPage({
     events: position.events,
   };
 
-  const companyName = stockProfile?.name ?? null;
-  const exchange = stockProfile?.exchange ?? null;
+  const companyName = identity.companyName;
+  const exchange = identity.exchange;
 
   const isOpen = position.status === 'OPEN';
   const livePrice = stockQuote?.c ?? null;
@@ -245,17 +237,10 @@ export default async function TradeDetailPage({
 
   const evalEvent = position.events.find((e) => e.eventType === 'EVALUATED');
 
+  // Shared formatter so the trade page + thesis sheet render currency
+  // identically (formatCurrency enforces 2-decimal min+max).
   const fmtCur = (n: number | null | undefined) =>
-    n != null
-      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n)
-      : '—';
-
-  // Chart reference lines for entry/target/stop
-  const chartReferenceLines = [
-    { price: trade.entryPrice, color: '#a1a1aa', label: 'Entry', dashed: true },
-    { price: targetPrice, color: '#22c55e', label: 'Target', dashed: true },
-    { price: stopPrice, color: '#ef4444', label: 'Stop', dashed: true },
-  ];
+    n != null ? formatCurrency(n) : '—';
 
   // Quote data for stats grid
   const changePct = stockQuote?.dp ?? null;
@@ -265,32 +250,26 @@ export default async function TradeDetailPage({
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
-          <StockLogo ticker={trade.ticker} size="lg" />
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold leading-tight">
-                {companyName ?? trade.ticker}
-              </h1>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Badge variant="secondary" className="gap-1.5 font-normal cursor-default">
-                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", status.dotClass)} />
-                        {status.label}
-                      </Badge>
-                    }
-                  />
-                  <TooltipContent side="bottom">{status.tooltip}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <p className="text-xs font-mono uppercase text-muted-foreground tracking-wide mt-0.5">
-              {trade.ticker}{exchange ? ` · ${exchange}` : ''}
-            </p>
-          </div>
-        </div>
+        <StockIdentityHeader
+          ticker={trade.ticker}
+          displayName={companyName ?? trade.ticker}
+          exchange={exchange}
+          badges={
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Badge variant="secondary" className="gap-1.5 font-normal cursor-default">
+                      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", status.dotClass)} />
+                      {status.label}
+                    </Badge>
+                  }
+                />
+                <TooltipContent side="bottom">{status.tooltip}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          }
+        />
         <TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} runId={runId} />
       </div>
 
@@ -301,12 +280,11 @@ export default async function TradeDetailPage({
           <Tabs defaultValue="overview">
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="theses">Theses</TabsTrigger>
               <TabsTrigger value="activity">
                 Activity
-                {position.managementActions.length > 0 && (
+                {activity.length > 0 && (
                   <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-medium tabular-nums">
-                    {position.managementActions.length}
+                    {activity.length}
                   </span>
                 )}
               </TabsTrigger>
@@ -349,72 +327,85 @@ export default async function TradeDetailPage({
                 )}
               </div>
 
-              {/* Chart — simple status row above it */}
-              <StockPriceChart candles={candles} referenceLines={chartReferenceLines}>
+              {/* Trade banner + chart — two SIBLING elements grouped in one
+                  bordered wrapper. The banner is not part of the chart (it
+                  always renders, even when there's no candle data and the
+                  chart degrades to the gauge); the wrapper owns the border,
+                  the chart is frameless. */}
+              <div className="rounded-lg border overflow-hidden">
                 <TooltipProvider>
-                  <div className="px-4 py-2.5 border-b flex items-center justify-between gap-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      {/* Status dot */}
-                      <Tooltip>
-                        <TooltipTrigger render={
-                          isOpen ? (
-                            hasPendingOrder ? (
-                              <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
-                              </span>
+                  {/* Shared TradeStatement row — same component the thesis sheet
+                      uses. No label, so the sentence is the primary line. The
+                      animated + tooltip'd status dot rides in via the `dot` slot. */}
+                  <TradeStatement
+                    className="px-4 py-2.5 border-b"
+                    dot={
+                      <span className="self-center">
+                        <Tooltip>
+                          <TooltipTrigger render={
+                            isOpen ? (
+                              hasPendingOrder ? (
+                                <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75" />
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+                                </span>
+                              ) : (
+                                <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
+                                </span>
+                              )
                             ) : (
-                              <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-positive opacity-75" />
-                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-positive" />
-                              </span>
+                              <span className="flex h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/40 cursor-default" />
                             )
-                          ) : (
-                            <span className="flex h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/40 cursor-default" />
-                          )
-                        } />
-                        <TooltipContent side="bottom" className="text-xs tabular-nums">
-                          <div>Opened {fmtDateTime(position.openedAt)}</div>
-                          {openingBuy?.filledAt && <div>Buy filled {fmtDateTime(openingBuy.filledAt)}</div>}
-                          {hasPendingOrder && <div className="text-amber-500">Has pending order</div>}
-                        </TooltipContent>
-                      </Tooltip>
-                      {/* Shared trade-sentence grammar (same as the thesis
-                          sheet / row / activity feed). fmtQty inside the
-                          builder fixes the raw 5.953027164-shares decimals. */}
-                      <span className="tabular-nums">
-                        {buildTradeSentence(
-                          isOpen
-                            ? hasFilledBuy
-                              ? {
-                                  kind: 'holding',
-                                  qty: trade.shares,
-                                  entry: trade.entryPrice,
-                                  current: livePrice ?? currentPrice,
-                                }
-                              : {
-                                  kind: 'proposed-buy',
-                                  qty: trade.shares,
-                                  entry: trade.entryPrice,
-                                }
-                            : {
-                                kind: 'closed',
-                                qty: trade.shares,
-                                entry: trade.entryPrice,
-                                closePrice,
-                              },
-                        )}
+                          } />
+                          <TooltipContent side="bottom" className="text-xs tabular-nums">
+                            <div>Opened {fmtDateTime(position.openedAt)}</div>
+                            {openingBuy?.filledAt && <div>Buy filled {fmtDateTime(openingBuy.filledAt)}</div>}
+                            {hasPendingOrder && <div className="text-amber-500">Has pending order</div>}
+                          </TooltipContent>
+                        </Tooltip>
                       </span>
-                    </div>
-                    <PriceChange
-                      dollarChange={pnl}
-                      percentChange={pnlPct}
-                      size="sm"
-                      className="shrink-0"
-                    />
-                  </div>
+                    }
+                    sentence={buildTradeSentence(
+                      isOpen
+                        ? hasFilledBuy
+                          ? {
+                              kind: 'holding',
+                              qty: trade.shares,
+                              entry: trade.entryPrice,
+                              current: livePrice ?? currentPrice,
+                            }
+                          : {
+                              kind: 'proposed-buy',
+                              qty: trade.shares,
+                              entry: trade.entryPrice,
+                            }
+                        : {
+                            kind: 'closed',
+                            qty: trade.shares,
+                            entry: trade.entryPrice,
+                            closePrice,
+                          },
+                    )}
+                    gain={{ dollar: pnl, pct: pnlPct }}
+                  />
                 </TooltipProvider>
-              </StockPriceChart>
+                <ThesisChart
+                  ticker={trade.ticker}
+                  candles={candles}
+                  direction={trade.direction === 'SHORT' ? 'SHORT' : 'LONG'}
+                  entryPrice={null}
+                  avgCost={trade.entryPrice}
+                  targetPrice={targetPrice}
+                  stopLoss={stopPrice}
+                  current={livePrice ?? currentPrice}
+                  addedAt={trade.thesis?.createdAt ? new Date(trade.thesis.createdAt).toISOString() : null}
+                  enteredAt={new Date(position.openedAt).toISOString()}
+                  variant="full"
+                  frameless
+                />
+              </div>
 
               {/* Trade Thesis */}
               {trade.thesis && (() => {
@@ -448,101 +439,34 @@ export default async function TradeDetailPage({
               })()}
             </TabsContent>
 
-            {/* ── THESES ── */}
-            <TabsContent value="theses" className="mt-4 max-w-3xl space-y-6">
-              {(() => {
-                type TT = typeof thesisChain[number];
-                const active = thesisChain.filter((t: TT) => t.status === "HOLDING");
-                const prior = thesisChain.filter((t: TT) => t.status !== "HOLDING");
-                const toRow = (t: TT): ThesisRowData => {
-                  const composite = getThesisComposite(t);
-                  return {
-                    id: t.id,
-                    ticker: trade.symbol,
-                    direction: t.direction,
-                    status: t.status,
-                    confidenceScore: composite != null ? composite * 10 : 0,
-                    reasoningSummary: getThesisSnapshotText(t),
-                    thesisBullets: getThesisBullCaseBullets(t),
-                    riskFlags: getThesisBearCaseBullets(t),
-                    entryPrice: Number(t.entryPrice) || null,
-                    targetPrice: Number(t.targetPrice) || null,
-                    stopLoss: Number(t.stopLoss) || null,
-                    horizon: t.horizon,
-                    createdAt: t.createdAt.toISOString(),
-                    runId: t.researchRunId ?? null,
-                    sheetState: buildThesisSheetState(t),
-                  };
-                };
-                const statusBadge = (s: string) => {
-                  if (s === "SUPERSEDED") return <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Superseded</Badge>;
-                  if (s === "INVALIDATED") return <Badge variant="destructive" className="text-[10px] h-4 px-1.5">Invalidated</Badge>;
-                  if (s === "CLOSED") return <Badge variant="outline" className="text-[10px] h-4 px-1.5">Closed</Badge>;
-                  if (s === "RETIRED") return <Badge variant="outline" className="text-[10px] h-4 px-1.5">Retired</Badge>;
-                  return null;
-                };
-                return (
-                  <>
-                    {active.length > 0 && (
-                      <div className="space-y-3">
-                        <StockThesesList theses={active.map(toRow)} />
-                      </div>
-                    )}
-                    {prior.length > 0 && (
-                      <div className="space-y-3">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Previous research</p>
-                        {prior.map((t: TT) => (
-                          <div key={t.id} className="space-y-1">
-                            <div className="flex items-center gap-1.5 px-1">
-                              {statusBadge(t.status)}
-                              <span className="text-[11px] text-muted-foreground/60">
-                                {new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                              </span>
-                            </div>
-                            <StockThesesList theses={[toRow(t)]} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {thesisChain.length === 0 && (
-                      <div className="py-12 text-center">
-                        <p className="text-sm text-muted-foreground">No thesis recorded for this position.</p>
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
-            </TabsContent>
-
             {/* ── ACTIVITY ─────────────────────────────────────────── */}
+            {/* One unified, tier-ranked feed from the activity read-layer:
+                buys/sells/adds/trims (Order fills), target/stop changes
+                (management actions), and the thesis mint for context. */}
             <TabsContent value="activity" className="mt-4 max-w-2xl">
-              {position.managementActions.length === 0 ? (
+              {activity.length === 0 ? (
                 <div className="rounded-lg border px-4 py-10 flex flex-col items-center gap-2">
-                  <p className="text-sm text-muted-foreground text-center">No position changes recorded yet.</p>
+                  <p className="text-sm text-muted-foreground text-center">No activity recorded yet.</p>
                   <p className="text-xs text-muted-foreground/60 text-center max-w-xs">
-                    Target updates, partial closes, stop moves, and closes will appear here with the agent&apos;s reasoning.
+                    Buys, sells, target updates, and stop moves will appear here with the agent&apos;s reasoning.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-0">
-                  {position.managementActions.map((action, i) => {
-                    const isLast = i === position.managementActions.length - 1;
-                    const sourceLabel = action.source === 'price_monitor' ? 'Price monitor' : action.source === 'user' ? 'You' : 'Agent';
-                    const SourceIcon = action.source === 'price_monitor' ? Clock : action.source === 'user' ? User : Bot;
-
-                    let actionLabel = 'Position change';
-                    let ActionIcon = Pencil;
-                    if (action.actionType === 'FULL_CLOSE') { actionLabel = 'Closed'; ActionIcon = CheckCircle2; }
-                    else if (action.actionType === 'PARTIAL_CLOSE') { actionLabel = 'Partial close'; ActionIcon = TrendingDown; }
-                    else if (action.actionType === 'ADD_TO_POSITION') { actionLabel = 'Added to position'; ActionIcon = TrendingUp; }
-                    else if (action.actionType === 'UPDATE_TARGETS') { actionLabel = 'Updated targets'; ActionIcon = Target; }
-                    else if (action.actionType === 'MOVE_STOP_TO_BREAKEVEN') { actionLabel = 'Moved stop to breakeven'; ActionIcon = Target; }
-                    else if (action.actionType === 'SET_TRAILING_STOP') { actionLabel = 'Set trailing stop'; ActionIcon = TrendingDown; }
-                    else if (action.actionType === 'NEAR_TARGET') { actionLabel = 'Approaching target'; ActionIcon = Target; }
-                    else if (action.actionType === 'NEAR_STOP') { actionLabel = 'Approaching stop'; ActionIcon = TrendingDown; }
+                  {activity.map((event: ActivityEvent, i: number) => {
+                    const isLast = i === activity.length - 1;
+                    const sourceLabel = event.source === 'price_monitor' ? 'Price monitor' : event.source === 'user' ? 'You' : 'Agent';
+                    const SourceIcon = event.source === 'price_monitor' ? Clock : event.source === 'user' ? User : Bot;
+                    const ActionIcon =
+                      event.kind === 'BUY' || event.kind === 'ADD' ? TrendingUp
+                      : event.kind === 'SELL' ? CheckCircle2
+                      : event.kind === 'TRIM' ? TrendingDown
+                      : event.kind === 'LEVELS_CHANGED' ? Target
+                      : event.kind === 'THESIS_MINTED' ? Brain
+                      : Pencil;
 
                     return (
-                      <div key={action.id} className="flex gap-3 pb-5 last:pb-0">
+                      <div key={event.id} className="flex gap-3 pb-5 last:pb-0">
                         <div className="flex flex-col items-center">
                           <div className="h-7 w-7 rounded-full bg-secondary flex items-center justify-center shrink-0 text-muted-foreground">
                             <ActionIcon className="h-3.5 w-3.5" />
@@ -551,43 +475,17 @@ export default async function TradeDetailPage({
                         </div>
                         <div className="pt-0.5 pb-1 min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium">{actionLabel}</span>
+                            <span className="text-sm font-medium tabular-nums">{event.summary}</span>
                             <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                               <SourceIcon className="h-3 w-3" />
                               {sourceLabel}
                             </span>
                           </div>
-                          <p className="text-sm text-muted-foreground leading-relaxed mt-0.5">{action.reason}</p>
-
-                          {/* Before/after changes */}
-                          {(action.prevTargetPrice != null || action.newTargetPrice != null || action.prevStopLoss != null || action.newStopLoss != null || action.prevQty != null || action.newQty != null) && (
-                            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5">
-                              {action.prevTargetPrice != null && action.newTargetPrice != null && (
-                                <span className="text-xs text-muted-foreground tabular-nums">
-                                  Target: ${action.prevTargetPrice.toFixed(2)} → <span className="text-foreground">${action.newTargetPrice.toFixed(2)}</span>
-                                </span>
-                              )}
-                              {action.prevStopLoss != null && action.newStopLoss != null && (
-                                <span className="text-xs text-muted-foreground tabular-nums">
-                                  Stop: ${action.prevStopLoss.toFixed(2)} → <span className="text-foreground">${action.newStopLoss.toFixed(2)}</span>
-                                </span>
-                              )}
-                              {action.prevQty != null && action.newQty != null && (
-                                <span className="text-xs text-muted-foreground tabular-nums">
-                                  Qty: {action.prevQty} → <span className="text-foreground">{action.newQty}</span>
-                                  {action.fillPrice != null && ` @ $${action.fillPrice.toFixed(2)}`}
-                                </span>
-                              )}
-                              {action.actionType === 'FULL_CLOSE' && action.fillPrice != null && (
-                                <span className="text-xs text-muted-foreground tabular-nums">
-                                  Closed at <span className="text-foreground">${action.fillPrice.toFixed(2)}</span>
-                                </span>
-                              )}
-                            </div>
+                          {event.reason && (
+                            <p className="text-sm text-muted-foreground leading-relaxed mt-0.5">{event.reason}</p>
                           )}
-
                           <p className="text-[11px] font-mono text-muted-foreground/60 mt-1 tabular-nums">
-                            {new Date(action.createdAt).toLocaleString('en-US', {
+                            {new Date(event.at).toLocaleString('en-US', {
                               month: 'short', day: 'numeric',
                               hour: 'numeric', minute: '2-digit', hour12: true,
                             })}

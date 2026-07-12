@@ -175,14 +175,9 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
         )}
       </Card>
 
-      {/* Seed the sheet with the state this card already fetched so the
-          sheet body paints in one pass on open instead of re-fetching and
-          flashing through skeletons. The sheet still re-fetches to refresh,
-          but the seed means there's no empty-then-full pop. */}
       <ThesisSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        initialState={state ?? undefined}
         {...thesis}
       />
     </>

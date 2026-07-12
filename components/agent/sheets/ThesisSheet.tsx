@@ -16,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceTargetsBlock } from "@/components/domain/price-targets-block";
 import { ThesisChart } from "@/components/domain/thesis-chart";
-import type { StockCandle } from "@/lib/actions/finnhub.actions";
 import {
   Collapsible,
   CollapsibleContent,
@@ -31,7 +30,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import Link from "next/link";
-import { StockLogo } from "@/components/StockLogo";
+import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
+import { formatCurrency } from "@/lib/format";
 import { TickBar, type Tick } from "@/components/ui/gauge";
 import {
   Tooltip,
@@ -50,6 +50,11 @@ import {
   type ResearchCitation,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AnalystConsensusWidget,
+  ResearchCitationChip,
+} from "@/components/domain/analyst-consensus";
+import { TradeStatement, type TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { buildTradeSentence } from "@/lib/trade-statement";
 import {
@@ -361,13 +366,15 @@ function TradeBlock({
   const entry = position.avgCost;
   const current = pnl?.currentPrice ?? null;
 
-  // The sentence is built by the SHARED buildTradeSentence (one grammar across
-  // sheet / row / trades-page / activity). The sheet keeps its own chrome —
-  // Review top-right, P&L on its own line below, note + meta — which differs
-  // from the compact <TradeStatement> (gain inline-right) used elsewhere.
+  // The sentence is built by the SHARED buildTradeSentence, and the row is the
+  // SHARED <TradeStatement> — the exact same component + visual the trade detail
+  // page uses (dot + font-medium sentence + inline gain). This block only picks
+  // the per-state inputs (sentence / dot color / gain / Review / note / meta);
+  // the look is not re-implemented here.
   let sentence: string | null;
   let review: ReactNode = null;
-  let pnlNode: ReactNode = null;
+  let gain: TradeStatementGain | null = null;
+  let dotClass = "bg-muted-foreground/40";
   let note: string | null = null;
   let meta: string | null = null;
 
@@ -380,6 +387,7 @@ function TradeBlock({
       buyVerb: direction === "SHORT" ? "Short" : "Buy",
     });
     review = <ProposalActions orderId={pp.orderId} align="end" />;
+    dotClass = "bg-amber-500";
     note = pp.rationale;
     meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
   } else if (pp) {
@@ -393,16 +401,8 @@ function TradeBlock({
         pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim",
     });
     review = <ProposalActions orderId={pp.orderId} align="end" />;
-    // Running P&L on the held name.
-    if (pnl != null) {
-      pnlNode = (
-        <PriceChange
-          dollarChange={pnl.unrealizedPnl}
-          percentChange={pnl.unrealizedPnlPct}
-          size="base"
-        />
-      );
-    }
+    dotClass = "bg-amber-500";
+    if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
     note = pp.rationale;
     meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
   } else if (position.closed) {
@@ -413,15 +413,9 @@ function TradeBlock({
       entry,
       closePrice: position.closePrice,
     });
-    if (position.realizedPnl != null) {
-      pnlNode = (
-        <PriceChange
-          dollarChange={position.realizedPnl}
-          percentChange={position.realizedPnlPct ?? 0}
-          size="base"
-        />
-      );
-    }
+    dotClass = "bg-muted-foreground/40";
+    if (position.realizedPnl != null)
+      gain = { dollar: position.realizedPnl, pct: position.realizedPnlPct ?? 0 };
     note = humanizeCloseReason(position.closeReason);
     meta = position.closedAt ? `Closed ${fmtTradeDate(position.closedAt)}` : null;
   } else {
@@ -432,29 +426,26 @@ function TradeBlock({
       entry,
       current,
     });
-    if (pnl != null) {
-      pnlNode = (
-        <PriceChange
-          dollarChange={pnl.unrealizedPnl}
-          percentChange={pnl.unrealizedPnlPct}
-          size="base"
-        />
-      );
-    }
+    dotClass = "bg-positive";
+    if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
     meta =
       `Opened ${fmtTradeDate(position.openedAt)}` +
       (position.daysHeld > 0 ? ` · ${position.daysHeld}d held` : "");
   }
 
   return (
-    <div className="rounded-lg bg-muted/50 p-3 space-y-1.5">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium tabular-nums flex-1 min-w-0">
-          {sentence}
-        </p>
-        {review}
-      </div>
-      {pnlNode}
+    <div className="rounded-lg border px-4 py-3 space-y-1.5">
+      <TradeStatement
+        dotClass={dotClass}
+        sentence={sentence}
+        gain={review ? undefined : gain}
+        right={review ?? undefined}
+      />
+      {/* When a Review sits in the right slot, the running P&L can't share it —
+          surface it on its own line just below. */}
+      {review && gain ? (
+        <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />
+      ) : null}
       {note ? (
         <p className="text-sm text-muted-foreground leading-relaxed">{note}</p>
       ) : null}
@@ -589,14 +580,11 @@ function ScoringGauge({ score, max }: { score: number; max: number }) {
   return <TickBar ticks={ticks} className="w-16 shrink-0" />;
 }
 
-// Skeleton placeholders for state-dependent blocks were deleted 2026-06-02.
-// They existed to hold space while /triggers was in flight — but that made
-// every block a tri-state (`state?.X ? real : loading ? skeleton : null`)
-// when the data is just a DB field that either exists or doesn't. The
-// blocks now render iff the value is present; on a row-click open the
-// parent forwards `initialState` so they paint immediately, and on an
-// unseeded open they appear after the ~50ms DB round-trip. The live price
-// (the one genuinely-slow value) keeps its skeleton — see the price block.
+// Per-block skeletons were deleted 2026-06-02. The sheet now does a single
+// atomic load (see the ThesisSheetBody effect + the `loaded` gate): one full
+// skeleton while every fetch is in flight, then the whole body renders once
+// with complete data. Each block renders iff its value is present — no
+// tri-state (`real : loading-skeleton : null`), no partial-paint window.
 
 // ── TradeStructureBlock ───────────────────────────────────────────────
 // Compact single-row block of trade-shape mechanics: next review (with
@@ -1063,508 +1051,150 @@ function ResearchSectionContent({
   );
 }
 
-function ResearchCitationChip({ citation }: { citation: ResearchCitation }) {
-  const label = citation.domain ?? citation.title ?? "source";
-  const inner = (
-    <Badge variant="secondary" className="ml-1 align-baseline font-mono text-[10px]">
-      {label}
-    </Badge>
-  );
-  if (!citation.url) return inner;
+// ResearchCitationChip + AnalystConsensusWidget moved to
+// components/domain/analyst-consensus.tsx — the ONE Street-view widget shared
+// with the stock page sidebar. Imported above.
+
+// ─── ThesisSheetBody ──────────────────────────────────────────────────────────
+
+// One skeleton for the ENTIRE sheet — shown while the atomic load is in flight.
+// Mirrors the real layout (identity header, price line, trade block, thesis
+// paragraph, chart) so there's no layout jump when the real content swaps in.
+function ThesisSheetSkeleton() {
   return (
-    <a
-      href={citation.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="no-underline"
-    >
-      {inner}
-    </a>
-  );
-}
-
-// ── AnalystCoverageData ────────────────────────────────────────────────
-// Response shape from /api/theses/:id/analyst-coverage. Returns null when
-// the fetch fails or FMP returns nothing — the widget then falls back to
-// the stored fundamentals.analyst_consensus shape (from thesis mint time).
-interface AnalystCoverageData {
-  ticker: string;
-  consensus: {
-    buy: number;
-    hold: number;
-    sell: number;
-    unknown: number;
-    total: number;
-  } | null;
-  priceTargets: {
-    low: number | null;
-    average: number;
-    median: number | null;
-    high: number | null;
-    numAnalysts: number | null;
-  } | null;
-  errors?: string[];
-}
-
-/**
- * AnalystConsensusWidget — single consolidated visual for the Street's
- * view on the stock. One bar, one badge, one collapsible:
- *
- *   • Header badge: consensus rating (Buy / Hold / Sell) with the implied
- *     upside % to the consensus average target appended ("Buy +37.1%").
- *     Tooltip explains the math.
- *
- *   • Distribution bar: 60-tick proportional bar showing how the covering
- *     firms split across Bearish / Neutral / Bullish (red / grey / green).
- *     The lowest bear target ($ value, red text) sits above the leftmost
- *     red tick; the highest bull target ($, green text) above the
- *     rightmost green tick — so the bar reads as both "rating distribution"
- *     and "price target range" in a single visual. The average target
- *     anchors the bottom-right corner of the key row.
- *
- *   • Collapsible synthesis narrative — the prose summary from the
- *     `analystConsensus` JSONB column, behind a "Show more" toggle so the
- *     widget stays compact by default.
- *
- * Fresh FMP/Finnhub fetch on sheet open via /api/theses/:id/analyst-coverage.
- * The stored `fundamentals.analyst_consensus` shape is the legacy mint-time
- * fallback for when the live fetch fails.
- */
-function AnalystConsensusWidget({
-  thesisId,
-  fallbackConsensus,
-  narrative,
-  currentPrice,
-}: {
-  thesisId: string | undefined;
-  fallbackConsensus: { buy: number; hold: number; sell: number } | null;
-  narrative: ResearchTextSection | null | undefined;
-  currentPrice: number | null;
-}) {
-  const [coverage, setCoverage] = useState<AnalystCoverageData | null>(null);
-  useEffect(() => {
-    if (!thesisId) return;
-    let cancelled = false;
-    fetch(`/api/theses/${thesisId}/analyst-coverage`)
-      .then(async (r) => {
-        if (!r.ok) return;
-        const json = (await r.json()) as AnalystCoverageData;
-        if (!cancelled) setCoverage(json);
-      })
-      .catch(() => {
-        /* non-fatal — widget falls back to stored consensus */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [thesisId]);
-
-  // Source consensus: prefer fresh fetch; fall back to stored values from
-  // mint time. Either may be null — render an empty state in that case.
-  const consensus = coverage?.consensus
-    ? {
-        buy: coverage.consensus.buy,
-        hold: coverage.consensus.hold,
-        sell: coverage.consensus.sell,
-        total:
-          coverage.consensus.buy +
-          coverage.consensus.hold +
-          coverage.consensus.sell,
-      }
-    : fallbackConsensus
-      ? {
-          buy: fallbackConsensus.buy,
-          hold: fallbackConsensus.hold,
-          sell: fallbackConsensus.sell,
-          total:
-            fallbackConsensus.buy +
-            fallbackConsensus.hold +
-            fallbackConsensus.sell,
-        }
-      : null;
-
-  const priceTargets = coverage?.priceTargets ?? null;
-  const impliedUpsidePct =
-    priceTargets && currentPrice != null && currentPrice > 0
-      ? ((priceTargets.average - currentPrice) / currentPrice) * 100
-      : null;
-  const hasAnyData =
-    (consensus && consensus.total > 0) || priceTargets != null || narrative != null;
-  if (!hasAnyData) return null;
-
-  return (
-    <Card className="bg-muted/40 p-2 gap-4">
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-          Analyst Consensus
-        </p>
-        {consensus ? (
-          <AnalystVerdictBadge
-            consensus={consensus}
-            impliedUpsidePct={impliedUpsidePct}
-            avgTarget={priceTargets?.average ?? null}
-            currentPrice={currentPrice}
-          />
-        ) : null}
-      </div>
-
-      {consensus && consensus.total > 0 ? (
-        <ConsensusDistributionRow
-          consensus={consensus}
-          priceTargets={priceTargets}
-        />
-      ) : null}
-
-      {narrative ? <ConsensusNarrative narrative={narrative} /> : null}
-    </Card>
-  );
-}
-
-function AnalystVerdictBadge({
-  consensus,
-  impliedUpsidePct,
-  avgTarget,
-  currentPrice,
-}: {
-  consensus: { buy: number; hold: number; sell: number; total: number };
-  impliedUpsidePct: number | null;
-  avgTarget: number | null;
-  currentPrice: number | null;
-}) {
-  const { buy, total } = consensus;
-  const buyPct = total > 0 ? buy / total : 0;
-  const verdict =
-    buyPct >= 0.7
-      ? { label: "Strong Buy", variant: "positive" as const }
-      : buyPct >= 0.5
-        ? { label: "Buy", variant: "positive" as const }
-        : buyPct >= 0.3
-          ? { label: "Hold", variant: "secondary" as const }
-          : { label: "Sell", variant: "negative" as const };
-  const upsideSuffix =
-    impliedUpsidePct != null
-      ? ` ${impliedUpsidePct >= 0 ? "+" : ""}${impliedUpsidePct.toFixed(1)}%`
-      : "";
-  const tooltipBody =
-    avgTarget != null && currentPrice != null
-      ? `Consensus rating across ${total} covering firms. ${impliedUpsidePct != null ? `${impliedUpsidePct >= 0 ? "+" : ""}${impliedUpsidePct.toFixed(1)}%` : "—"} is the implied move from the current price ($${currentPrice.toFixed(2)}) to the average 12-month price target ($${avgTarget.toFixed(2)}).`
-      : `Consensus rating across ${total} covering firms.`;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Badge variant={verdict.variant} className="font-normal cursor-help">
-            {verdict.label}
-            {upsideSuffix}
-          </Badge>
-        }
-      />
-      <TooltipContent>{tooltipBody}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-/**
- * Largest-remainder (Hamilton) apportionment: distribute exactly `slots`
- * across the input buckets in proportion to their counts. Every bucket
- * with a non-zero count gets at least 1 slot (a tiny minority bucket
- * shouldn't disappear from the bar). Returns a same-length array of
- * integer slot counts that always sums to exactly `slots`.
- */
-function allocateSlots(counts: number[], slots: number): number[] {
-  const total = counts.reduce((s, c) => s + c, 0);
-  if (total === 0) return counts.map(() => 0);
-  const exact = counts.map((c) => (c / total) * slots);
-  const out = exact.map(Math.floor);
-  // Hand out remainders to whichever buckets have the largest fractional
-  // shortfall, until the slots add up exactly.
-  let remaining = slots - out.reduce((s, n) => s + n, 0);
-  const byRemainder = exact
-    .map((e, i) => ({ i, r: e - Math.floor(e) }))
-    .sort((a, b) => b.r - a.r);
-  for (const { i } of byRemainder) {
-    if (remaining <= 0) break;
-    out[i]++;
-    remaining--;
-  }
-  // Minimum-1 nudge for non-zero buckets that rounded to 0. Steal from
-  // the largest bucket so the sum stays exactly `slots`.
-  for (let i = 0; i < counts.length; i++) {
-    if (counts[i] > 0 && out[i] === 0) {
-      let maxIdx = 0;
-      for (let j = 1; j < out.length; j++) if (out[j] > out[maxIdx]) maxIdx = j;
-      if (out[maxIdx] > 1) {
-        out[maxIdx]--;
-        out[i]++;
-      }
-    }
-  }
-  return out;
-}
-
-function ConsensusDistributionRow({
-  consensus,
-  priceTargets,
-}: {
-  consensus: { buy: number; hold: number; sell: number; total: number };
-  priceTargets: {
-    low: number | null;
-    average: number;
-    median: number | null;
-    high: number | null;
-    numAnalysts: number | null;
-  } | null;
-}) {
-  const { buy, hold, sell, total } = consensus;
-  // Fixed-width 60-tick bar with segments sized by proportion of each
-  // bucket. Prior approach (1 tick per analyst) looked anemic at 2 analysts
-  // and bled together at 50+ — proportional renders identically at any
-  // analyst count. Order across the bar: Sell (red) → Hold (grey) → Buy
-  // (green), L→R.
-  const [sellSlots, holdSlots, buySlots] = allocateSlots([sell, hold, buy], 60);
-
-  // The leftmost-bear and rightmost-bull ticks get an extra-tall treatment
-  // so they read as the range endpoints when paired with the low/high
-  // price-target labels above the bar.
-  const lastBullIdx = sellSlots + holdSlots + buySlots - 1;
-  const ticks: Tick[] = Array.from({ length: 60 }, (_, i) => {
-    const isLeftmostBear = sell > 0 && i === 0;
-    const isRightmostBull = buy > 0 && i === lastBullIdx;
-    const color =
-      i < sellSlots
-        ? "bg-negative"
-        : i < sellSlots + holdSlots
-          ? "bg-muted-foreground/40"
-          : "bg-positive";
-    return isLeftmostBear || isRightmostBull
-      ? { color, heightPx: 22 }
-      : { color, tall: true };
-  });
-
-  return (
-    <div className="space-y-1.5">
-      {/* Low/high price-target labels above the bar's endpoints. Red on the
-          left = most bearish firm's 12-mo. target; green on the right =
-          most bullish firm's target. The "Bear Target / Bull Target" prefix
-          spells out what the $ value represents — without it the numbers
-          looked like statistical aggregates of nothing in particular. */}
-      {priceTargets && (priceTargets.low != null || priceTargets.high != null) ? (
-        <div className="flex items-end justify-between text-xs tabular-nums">
-          <span className="text-negative">
-            {priceTargets.low != null
-              ? `Bear Target $${priceTargets.low.toFixed(2)}`
-              : ""}
-          </span>
-          <span className="text-positive">
-            {priceTargets.high != null
-              ? `Bull Target $${priceTargets.high.toFixed(2)}`
-              : ""}
-          </span>
-        </div>
-      ) : null}
-
-      <TickBar ticks={ticks} />
-
-      {/* Bottom row: distribution key on the left, average target on the
-          right. Key order matches the bar L→R: Bearish (red) → Neutral
-          (grey) → Bullish (green). Avg is the single "consensus number"
-          — kept in muted text so it reads as label-weight, not a
-          competing headline. */}
-      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+    <div className="px-4 pb-6 pt-2 space-y-5">
+      {/* Identity header */}
+      <div className="space-y-2">
         <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-negative" />
-            {sell} Bearish
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-muted-foreground/40" />
-            {hold} Neutral
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-positive" />
-            {buy} Bullish
-          </span>
+          <Skeleton className="size-11 rounded-lg shrink-0" />
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-3 w-28" />
+          </div>
         </div>
-        {priceTargets ? (
-          <span className="tabular-nums">
-            Avg ${priceTargets.average.toFixed(2)}
-          </span>
-        ) : null}
+        {/* Price line */}
+        <Skeleton className="h-6 w-40" />
       </div>
+      {/* Trade block */}
+      <Skeleton className="h-20 w-full rounded-lg" />
+      {/* Thesis paragraph */}
+      <div className="space-y-2">
+        <Skeleton className="h-5 w-full" />
+        <Skeleton className="h-5 w-11/12" />
+        <Skeleton className="h-5 w-3/4" />
+      </div>
+      {/* Chart */}
+      <Skeleton className="h-[300px] w-full rounded-lg" />
     </div>
   );
 }
 
-function ConsensusNarrative({
-  narrative,
-}: {
-  narrative: ResearchTextSection;
-}) {
-  return (
-    <Collapsible>
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-        <span>Synthesis</span>
-        <ChevronDown className="size-3.5 transition-transform data-[panel-open]:rotate-180" />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pt-2 text-sm leading-relaxed">
-        <p className="whitespace-pre-wrap">
-          {narrative.text}
-          {narrative.citations && narrative.citations.length > 0 ? (
-            <span className="ml-1 inline-flex flex-wrap gap-1">
-              {narrative.citations.map((c, i) => (
-                <ResearchCitationChip key={i} citation={c} />
-              ))}
-            </span>
-          ) : null}
-        </p>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-// ─── ThesisSheetBody ──────────────────────────────────────────────────────────
-
+// The sheet's ENTIRE contract: which thesis. Everything rendered comes from
+// the one /triggers?full=1 payload — no row-snapshot props, no second source.
+// (Callers still hand ThesisSheet full ThesisCardData for back-compat; the
+// wrapper forwards only these two fields.)
 export interface ThesisSheetBodyProps {
-  /** Persisted Thesis id. When supplied, the Activity timeline renders. */
+  /** Persisted Thesis id — the sheet loads everything by this. */
   thesis_id?: string;
+  /** Only used before/without a load: skeleton a11y + the error state. */
   ticker: string;
-  direction: "LONG" | "SHORT" | null;
-  confidence_score: number;
-  reasoning_summary?: string;
-  pass_reason?: string;
-  thesis_bullets: string[];
-  risk_flags: string[];
-  entry_price?: number | null;
-  target_price?: number | null;
-  stop_loss?: number | null;
-  hold_duration?: string;
-  signal_types: string[];
-  company_name?: string | null;
-  exchange?: string | null;
-  fundamentals?: FundamentalsData | null;
-  /** Lifecycle status from the row that opened the sheet. Used as the
-   *  initial StatusPill value so first paint matches the durable state
-   *  with no flicker. The triggers API fetch refines position/PnL data.
-   *  P1-24: PASSED drives isPass now that a pass stores direction=null. */
-  status?: "HOLDING" | "WATCHING" | "PROMOTED" | "RETIRED" | "PASSED";
-  /**
-   * Pre-fetched /triggers payload from the parent (P2-19). When supplied,
-   * the sheet renders status / belief / scoring / sources / research
-   * synthesis synchronously instead of skeletons-then-fetch. The /triggers
-   * background fetch still fires to pick up live trigger updates +
-   * position changes, but every state-dependent block paints on open.
-   */
-  initialState?: TriggersResponse;
 }
 
-export function ThesisSheetBody({
-  thesis_id,
-  ticker,
-  direction,
-  reasoning_summary,
-  pass_reason,
-  entry_price,
-  target_price,
-  stop_loss,
-  company_name,
-  exchange,
-  fundamentals,
-  // The `status` prop drives `isPass` only (NOT the StatusPill — that still
-  // reads the resolved `liveStatus` below to avoid the pill flash). P1-24:
-  // a pass stores direction=null, so status=PASSED is the authoritative — and
-  // now only — pass signal.
-  status: initialStatus,
-  initialState,
-}: ThesisSheetBodyProps) {
-  // P1-24: a pass is identified by status=PASSED (direction is null on a pass).
-  const isPass = initialStatus === "PASSED";
-  const displayName = company_name ?? ticker;
-  const summaryText = isPass ? (pass_reason ?? reasoning_summary) : reasoning_summary;
-
-  const hasEntry = entry_price != null;
-  const hasTarget = target_price != null;
-  const hasStop = stop_loss != null;
-  const showLevels = !isPass && hasEntry && (hasTarget || hasStop);
-
-  // Fetch durable thesis state once when we have an id. Drives the
-  // Two parallel fetches so the slow Finnhub call doesn't block the rest
-  // of the sheet (split on 2026-05-19). `state` (the DB-side data) lands
-  // in ~50ms and refines status / belief / scoring / triggers / activity;
-  // `quote` (the live Finnhub call) lands whenever Finnhub does and
-  // refines only the price block + position PnL. Skeleton placeholders
-  // below cover the gap so the layout doesn't jump.
-  //
-  // When `initialState` is forwarded by the parent (P2-19), seed `state`
-  // with it so every state-dependent block paints on open. The fetch
-  // below still runs to refresh — the row's data may be a few seconds
-  // stale on triggers / position. `quote` always has to round-trip
-  // (Finnhub) so the price block keeps its skeleton until that lands.
-  const [state, setState] = useState<TriggersResponse | null>(initialState ?? null);
-  const [quote, setQuote] = useState<QuoteResponse | null>(null);
-  // Bumped after a trigger edit so the /triggers + /quote fetch below re-runs
-  // and the open sheet reflects the new value without a manual reopen.
+export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
+  // ── One thesis, one endpoint, one paint ──────────────────────────────────
+  // The sheet makes a SINGLE request — /triggers?full=1 — which returns the
+  // whole thesis: durable DB state (belief, targets, scoring, triggers,
+  // position) PLUS the live quote, company profile, price candles, and analyst
+  // coverage, all assembled server-side. There is no second source, no
+  // concatenating fetches, no ticker→name fallback. The body renders NOTHING
+  // until this one call resolves (see the loading gate below), then paints
+  // complete. Wall-clock is the server's slowest sub-fetch (~1-2s Finnhub).
+  const [state, setState] = useState<TriggersResponse | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  // Bumped after a trigger edit so the payload re-fetches and the open sheet
+  // reflects the new value without a manual reopen.
   const [refreshKey, setRefreshKey] = useState(0);
-  // Daily candles for the annotated price chart, fetched on open (single
-  // symbol, 5-min cached). ~400 days so the 1Y range pill has data. null
-  // while in-flight; [] on failure → ThesisChart degrades to the gauge.
-  const [candles, setCandles] = useState<StockCandle[] | null>(null);
+
+  // Re-gate (show the skeleton) only when a DIFFERENT thesis opens — NOT on a
+  // refreshKey bump from a trigger edit, which swaps data in place.
+  useEffect(() => {
+    setLoaded(false);
+  }, [thesis_id]);
+
   useEffect(() => {
     if (!thesis_id) return;
     let cancelled = false;
-    if (ticker) {
-      fetch(`/api/stocks/candles?symbols=${encodeURIComponent(ticker)}&days=400`)
-        .then(async (r) => {
-          if (!r.ok) return;
-          const json = (await r.json()) as { candles: Record<string, StockCandle[]> };
-          if (!cancelled) setCandles(json.candles[ticker.toUpperCase()] ?? []);
-        })
-        .catch(() => {
-          if (!cancelled) setCandles([]); // degrade to the gauge
-        });
-    }
-    fetch(`/api/theses/${thesis_id}/triggers`)
-      .then(async (r) => {
-        if (!r.ok) return;
-        const json = (await r.json()) as TriggersResponse;
-        if (!cancelled) setState(json);
+    fetch(`/api/theses/${thesis_id}/triggers?full=1`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: TriggersResponse | null) => {
+        if (cancelled) return;
+        setState(json);
+        setLoaded(true);
       })
       .catch(() => {
-        /* non-fatal — header gracefully degrades */
-      });
-    fetch(`/api/theses/${thesis_id}/quote`)
-      .then(async (r) => {
-        if (!r.ok) return;
-        const json = (await r.json()) as QuoteResponse;
-        if (!cancelled) setQuote(json);
-      })
-      .catch(() => {
-        /* non-fatal — price block + PnL just stay null */
+        if (!cancelled) setLoaded(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [thesis_id, ticker, refreshKey]);
+  }, [thesis_id, refreshKey]);
 
-  // Status has ONE source: the resolved /triggers state. We do NOT fall
-  // back to the `status` prop for rendering — that dual source was the
-  // cause of the status-pill flash (prop paints, fetch swaps it ~50ms
-  // later). The pill renders once `state` lands; for the ~50ms DB round
-  // trip on an unseeded open it's simply absent (a pill appearing is
-  // invisible; a pill *swapping* was the bug).
-  const liveStatus = state?.status as ThesisStatus | undefined;
-  const position = state?.position ?? null;
+  // One load, one paint — skeleton until the single fetch settles, an honest
+  // error if it failed. Past these two gates `state` is non-null, so the whole
+  // body derives from the ONE payload with zero fallbacks. A sheet without a
+  // persisted id (e.g. a failed record_thesis card) has nothing to load —
+  // that's the error state, not an eternal skeleton.
+  if (!loaded && thesis_id) {
+    return <ThesisSheetSkeleton />;
+  }
+  if (!state) {
+    return (
+      <div className="px-4 py-16 text-center space-y-1">
+        <p className="text-sm font-medium">Couldn&apos;t load this thesis</p>
+        <p className="text-xs text-muted-foreground">
+          {ticker} — the thesis data failed to load. Close and reopen the sheet to retry.
+        </p>
+      </div>
+    );
+  }
 
-  // Conviction Expression v4 — writer's tier verdict + rationale +
-  // variantView. Pulled from /triggers state. Renders null when the
-  // thesis is pre-v4 (legacy) or PASS/PENDING (which skip conviction).
-  const conviction = (state?.conviction ?? null) as
+  // ── Derived — every value below comes from the payload ────────────────────
+  const quote = state.quote ?? null;
+  const candles = state.candles ?? null;
+  const coverage = state.coverage ?? null;
+  const liveStatus = state.status as ThesisStatus;
+  const position = state.position;
+  // P1-24: a pass is identified by status=PASSED (direction is null on a pass).
+  const isPass = state.status === "PASSED";
+  const direction: "LONG" | "SHORT" | null =
+    state.direction === "LONG" || state.direction === "SHORT"
+      ? state.direction
+      : null;
+  const entryPrice = state.entryPrice;
+  const targetPrice = state.targetPrice;
+  const stopLoss = state.stopLoss;
+  const showLevels =
+    !isPass && entryPrice != null && (targetPrice != null || stopLoss != null);
+  // Identity ships in the payload (StockInfo cache via quote); the bare ticker
+  // is the degenerate case when the identity lookup itself failed.
+  const displayName = quote?.companyName ?? ticker;
+  // Legacy mint-time consensus: pre-PR-9 rows stored FundamentalsData (with
+  // analyst_consensus) in the same Thesis.fundamentals column that now holds
+  // the research section. Same column, one read — shape-sniffed for old rows.
+  const mintConsensus =
+    (state.fundamentals as { analyst_consensus?: { buy: number; hold: number; sell: number } } | null)
+      ?.analyst_consensus ?? null;
+
+  // Conviction Expression v4 — writer's tier verdict + rationale + variantView.
+  // Null on pre-v4 (legacy) or PASS/PENDING rows (which skip conviction).
+  const conviction = (state.conviction ?? null) as
     | "STRONG"
     | "HIGH"
     | "MEDIUM"
     | "LOW"
     | null;
-  const convictionRationale = state?.convictionRationale ?? null;
-  const variantView = state?.variantView ?? null;
+  const convictionRationale = state.convictionRationale ?? null;
+  const variantView = state.variantView ?? null;
 
   return (
     <div className="px-4 pb-6 pt-2 space-y-5">
@@ -1582,139 +1212,112 @@ export function ThesisSheetBody({
           the closed trade block. */}
       <TerminalStatusAlert
         status={liveStatus}
-        retiredReason={state?.retiredReason ?? null}
-        closedAt={state?.closedAt ?? null}
-        closeReason={state?.closeReason ?? null}
-        invalidatedAt={state?.invalidatedAt ?? null}
-        invalidReason={state?.invalidReason ?? null}
+        retiredReason={state.retiredReason ?? null}
+        closedAt={state.closedAt ?? null}
+        closeReason={state.closeReason ?? null}
+        invalidatedAt={state.invalidatedAt ?? null}
+        invalidReason={state.invalidReason ?? null}
       />
 
       {/* ── Stock identity + live price ──────────────────────── */}
-      {/* Company name + ticker are a Link to /stocks/[ticker] — the
-          sheet is a focused view of one thesis; clicking the stock
-          identity takes you to the broader stock page (TradingView
-          chart, all theses on this ticker, etc.). Hover-underline
-          conveys affordance without disrupting the typography.
-          The Review control for a pending proposal lives inside the trade
-          block below, not here — one unified trade section per state. */}
+      {/* StockIdentityHeader is the SAME component the trade detail page uses,
+          so the two surfaces read identically. Name + logo link to
+          /stocks/[ticker] (the broad view); a "View trade →" link below adds
+          the direct path to the trade when a position exists. The Review
+          control for a pending proposal lives inside the trade block below. */}
       <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <Link href={`/stocks/${ticker}`} className="shrink-0">
-            <StockLogo ticker={ticker} size="lg" />
-          </Link>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <Link href={`/stocks/${ticker}`} className="group/stocklink min-w-0">
-                <p className="text-xl font-semibold truncate group-hover/stocklink:underline underline-offset-4">
-                  {displayName}
-                </p>
-              </Link>
-              {liveStatus && <StatusPill status={liveStatus} />}
+        <StockIdentityHeader
+          ticker={ticker}
+          // Identity rides in the payload (StockInfo cache) — one source.
+          displayName={displayName}
+          exchange={quote?.exchange ?? null}
+          badges={
+            <>
+              <StatusPill status={liveStatus} />
               <ConvictionBadge conviction={conviction} rationale={convictionRationale} />
-            </div>
-            <p className="font-mono text-xs uppercase tracking-wide text-muted-foreground mt-0.5">
-              {ticker}
-              {exchange ? ` · ${exchange}` : ""}
-            </p>
-          </div>
-        </div>
+            </>
+          }
+        />
         {/* Live current price + day's change. Comes from the separate
             /quote endpoint (slow — Finnhub call) so this block usually
             paints after the rest of the sheet body. Skeleton while
             /quote is still in flight; nothing if it returned null
             (Finnhub failure). */}
-        {quote?.currentPrice != null ? (
-          <div className="flex items-baseline gap-2">
+        {/* Post-gate: quote is present, or null on a Finnhub failure — in which
+            case we simply omit the price line (no skeleton; loading is over). */}
+        {quote?.currentPrice != null && (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
             <span className="text-xl font-semibold tabular-nums">
-              ${quote.currentPrice.toFixed(2)}
+              {formatCurrency(quote.currentPrice)}
             </span>
             {quote.dayChange != null && (
               <PriceChange
                 dollarChange={quote.dayChange}
                 percentChange={quote.dayChangePct}
-                size="sm"
+                size="xl"
               />
             )}
           </div>
-        ) : quote == null ? (
-          <div className="flex items-baseline gap-3">
-            <Skeleton className="h-5 w-20" />
-            <Skeleton className="h-3 w-16" />
-          </div>
-        ) : null}
+        )}
+        {/* The stock identity links to /stocks/[ticker] (the broad view); when
+            this thesis has an actual position, offer the direct path to the
+            trade detail page too — a thesis doesn't always have a trade. */}
+        {position?.id && (
+          <Link
+            href={`/trades/${position.id}`}
+            className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
+          >
+            View trade →
+          </Link>
+        )}
       </div>
+
+      {/* ── Core Belief headline ─────────────────────────────── */}
+      {/* The ONE durable claim — a falsifiable prediction (≤30 words) the
+          trade evaluator grades on close. Large + normal weight so it
+          reads as the load-bearing claim, and it leads the body: main
+          summary first, then the trade row, then the chart. */}
+      {state.coreBelief ? (
+        <p className="text-xl font-normal leading-relaxed">
+          {state.coreBelief}
+        </p>
+      ) : null}
 
       {/* ── Trade block (one unified, state-aware section) ── */}
       {/* The single place the trade lives. Headline morphs by state:
           held → "Bought N @ $X, now $Y" + P&L; pending buy → "Proposed:
           buy N @ $X"; held + pending sell/add/trim → the holding line PLUS
           the proposed action + rationale + Review dropdown, all in one
-          grouped block. No separate floating sections.
-          See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
+          grouped block. See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
       {position ? (
         <TradeBlock
           position={position}
           pnl={quote?.positionPnl ?? null}
-          pendingProposal={state?.position?.pendingProposal ?? null}
+          pendingProposal={state.position?.pendingProposal ?? null}
           direction={direction}
         />
       ) : null}
 
-      {/* The Most-Recent-Trigger banner that previously lived here was
-          removed 2026-05-18. The same data still surfaces inside the
-          Activity timeline at the bottom of the sheet — duplicating it
-          at the top made the header heavier than it needed to be. */}
-
-      {/* ── Core Belief headline ─────────────────────────────── */}
-      {/* The ONE durable claim — a falsifiable prediction (≤30 words) the
-          trade evaluator grades on close. Large + normal weight so it
-          reads as the load-bearing claim. The buggy "Watching for entry
-          above $X" header it replaced was a stale derivation that
-          duplicated what the ENTER trigger already says correctly below. */}
-      {state?.coreBelief ? (
-        <p className="text-xl font-normal leading-relaxed">
-          {state.coreBelief}
-        </p>
+      {/* ── Price chart (annotated) ───────────────────────────── */}
+      {/* Full price line with Entry/Target/Stop lines + "Watching"/"Entry"
+          markers, when candles are loaded. The entry/target/stop GAUGE lives
+          further down with the Price Targets / Consensus / Composite card
+          cluster. See docs/plans/THESIS_VISUALIZATION.md. */}
+      {!isPass && candles && candles.length >= 2 ? (
+        <ThesisChart
+          ticker={ticker}
+          candles={candles}
+          direction={direction === "SHORT" ? "SHORT" : "LONG"}
+          entryPrice={entryPrice}
+          avgCost={position?.avgCost ?? null}
+          targetPrice={targetPrice}
+          stopLoss={stopLoss}
+          current={quote?.currentPrice ?? null}
+          addedAt={state.createdAt}
+          enteredAt={position?.openedAt ?? null}
+          variant="full"
+        />
       ) : null}
-
-      {/* ── Price chart (annotated) + target gauge ────────────────── */}
-      {/* Sits right below the main summary (Core Belief), above the triggers.
-          The annotated chart (full price line with Entry/Target/Stop lines +
-          "Watching"/"Entry" markers) renders when candles are loaded. The
-          entry/target/current/stop GAUGE renders ALONGSIDE it whenever price
-          levels exist — it's the at-a-glance "where are we vs target/stop"
-          read (the same gauge the mini-cards show), so it must not disappear
-          the moment a chart loads. Previously this was chart-OR-gauge, which
-          dropped the gauge on every thesis that had candle data.
-          See docs/plans/THESIS_VISUALIZATION.md. */}
-      {!isPass && (
-        <>
-          {candles && candles.length >= 2 ? (
-            <ThesisChart
-              ticker={ticker}
-              candles={candles}
-              direction={direction === "SHORT" ? "SHORT" : "LONG"}
-              entryPrice={entry_price ?? null}
-              avgCost={position?.avgCost ?? null}
-              targetPrice={target_price ?? null}
-              stopLoss={stop_loss ?? null}
-              current={quote?.currentPrice ?? null}
-              addedAt={state?.createdAt ?? null}
-              enteredAt={position?.openedAt ?? null}
-              variant="full"
-            />
-          ) : null}
-          {showLevels ? (
-            <PriceTargetsBlock
-              entry={entry_price!}
-              target={target_price ?? null}
-              stop={stop_loss ?? null}
-              current={quote?.currentPrice ?? null}
-              direction={direction === "SHORT" ? "SHORT" : "LONG"}
-            />
-          ) : null}
-        </>
-      )}
 
       {/* ── Triggers (moved up — they're the standing opinion in action) ── */}
       {thesis_id ? (
@@ -1723,9 +1326,7 @@ export function ThesisSheetBody({
           data={state}
           direction={direction}
           editable={
-            !isPass &&
-            ((liveStatus ?? initialStatus) === "HOLDING" ||
-              (liveStatus ?? initialStatus) === "WATCHING")
+            !isPass && (liveStatus === "HOLDING" || liveStatus === "WATCHING")
           }
           onChanged={() => setRefreshKey((k) => k + 1)}
         />
@@ -1737,7 +1338,7 @@ export function ThesisSheetBody({
           Core Belief — Belief says what WILL happen, Snapshot says what
           IS happening. Citations render as inline chips. Skeleton while
           /triggers is in flight. */}
-      {state?.snapshot ? (
+      {state.snapshot ? (
         <p className="text-sm leading-relaxed whitespace-pre-wrap">
           {state.snapshot.text}
           {state.snapshot.citations && state.snapshot.citations.length > 0 ? (
@@ -1750,22 +1351,38 @@ export function ThesisSheetBody({
         </p>
       ) : null}
 
-      {/* ── Pass reason ───────────────────────────────────────── */}
-      {/* Only renders for PASS direction — explains why the thesis was
-          rejected. LONG/SHORT theses rely on Snapshot above for the
-          equivalent descriptive context. */}
-      {isPass && summaryText && (
-        <p className="text-sm leading-relaxed">{summaryText}</p>
-      )}
+      {/* (The old props-fed "Pass reason" paragraph is gone — a PASSED
+          thesis's reasoning lives in the Snapshot section above, straight
+          from the payload.) */}
 
-      {/* ── Scoring breakdown (4-dim composite) ───────────────── */}
-      {/* Restyled 2026-05-18 to match the Schedule section's left/right
-          InfoRow pattern: per-dim label on the left, score on the right,
-          bottom border + the agent's one-sentence justification note on
-          its own full-width line beneath. Composite is the single
-          conviction number after PR-9 (legacy `confidenceScore` int
-          dropped). */}
-      {state?.scoring ? (
+      {/* ── Card cluster: Price Targets → Analyst Consensus → Composite ── */}
+
+      {/* Price Targets — the entry/target/current/stop gauge (same visual
+          the mini-cards show). Lives here with the other assessment cards,
+          not next to the chart. */}
+      {showLevels && entryPrice != null ? (
+        <PriceTargetsBlock
+          entry={entryPrice}
+          target={targetPrice}
+          stop={stopLoss}
+          current={quote?.currentPrice ?? null}
+          direction={direction === "SHORT" ? "SHORT" : "LONG"}
+        />
+      ) : null}
+
+      {/* Analyst Consensus — Buy/Hold/Sell distribution + price-target
+          range vs current, from the payload's live coverage. mintConsensus
+          is the legacy pre-PR-9 shape read off the same payload column. */}
+      <AnalystConsensusWidget
+        coverage={coverage}
+        fallbackConsensus={mintConsensus}
+        narrative={state.analystConsensus ?? null}
+        currentPrice={quote?.currentPrice ?? null}
+      />
+
+      {/* Composite Score — 4-dim scoring breakdown. Composite is the single
+          conviction number after PR-9 (legacy `confidenceScore` int dropped). */}
+      {state.scoring ? (
         <Card className="bg-muted/40 p-2 gap-4">
           <div className="flex items-baseline justify-between gap-2">
             <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
@@ -1789,19 +1406,6 @@ export function ThesisSheetBody({
         </Card>
       ) : null}
 
-      {/* ── Analyst Consensus widget ──────────────────────────── */}
-      {/* Buy/Hold/Sell distribution + Low/Avg/Median/High price target
-          range vs current. Fresh FMP fetch on open; falls back to the
-          stored fundamentals.analyst_consensus shape (mint-time) when
-          the fetch fails or returns empty. Narrative behind a
-          collapsible. */}
-      <AnalystConsensusWidget
-        thesisId={thesis_id}
-        fallbackConsensus={fundamentals?.analyst_consensus ?? null}
-        narrative={state?.analystConsensus ?? null}
-        currentPrice={quote?.currentPrice ?? null}
-      />
-
       {/* ── Trade Structure ───────────────────────────────────── */}
       {/* Next review · Max hold (TRADE-horizon only per architecture) ·
           Target size. Extracted from the prior "Schedule" block in
@@ -1821,7 +1425,7 @@ export function ThesisSheetBody({
       {/* ≥2 falsifiable premises that must remain true for the core belief
           to hold. The daily-run prompt reads these against fresh signals
           to decide when an assumption has flipped. */}
-      {state?.keyAssumptions && state.keyAssumptions.length > 0 ? (
+      {state.keyAssumptions && state.keyAssumptions.length > 0 ? (
         <div className="space-y-2">
           <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
             Key Assumptions
@@ -1845,7 +1449,7 @@ export function ThesisSheetBody({
           The trade evaluator grades exits against these on close; the
           daily-run prompt uses them to decide when a signal counts as
           thesis-breaking. */}
-      {state?.invalidationConds && state.invalidationConds.length > 0 ? (
+      {state.invalidationConds && state.invalidationConds.length > 0 ? (
         <div className="space-y-2">
           <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
             Invalidation Conditions
@@ -1902,7 +1506,7 @@ export function ThesisSheetBody({
       {thesis_id ? (
         <div className="space-y-3">
           <ThesisTimelineSection thesisId={thesis_id} />
-          {state?.sourceKind ? (
+          {state.sourceKind ? (
             <ProvenanceFooter
               sourceKind={state.sourceKind}
               rationale={state.sourceRationale}
@@ -1917,46 +1521,21 @@ export function ThesisSheetBody({
 
 // ─── ThesisSheet — controlled standalone sheet ────────────────────────────────
 
+// Accepts full ThesisCardData for caller back-compat, but the sheet loads
+// everything by id — only thesis_id + ticker are actually consumed.
 interface ThesisSheetProps extends ThesisCardData {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /**
-   * Pre-fetched /triggers payload forwarded from a parent that already
-   * has the data (watchlist row, stock page row, trade detail row). See
-   * P2-19 — eliminates skeletons-then-fetch on sheet open.
-   */
-  initialState?: TriggersResponse;
 }
 
-export function ThesisSheet({ open, onOpenChange, initialState, ...data }: ThesisSheetProps) {
-  const displayName = data.company_name ?? data.ticker;
-
+export function ThesisSheet({ open, onOpenChange, ...data }: ThesisSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" size="xl" floating>
         <SheetHeader className="pb-0">
-          <SheetTitle className="sr-only">{displayName} Thesis</SheetTitle>
+          <SheetTitle className="sr-only">{data.ticker} Thesis</SheetTitle>
         </SheetHeader>
-        <ThesisSheetBody
-          thesis_id={data.thesis_id}
-          ticker={data.ticker}
-          direction={data.direction}
-          confidence_score={data.confidence_score}
-          reasoning_summary={data.reasoning_summary}
-          pass_reason={data.pass_reason}
-          thesis_bullets={data.thesis_bullets ?? []}
-          risk_flags={data.risk_flags ?? []}
-          entry_price={data.entry_price}
-          target_price={data.target_price}
-          stop_loss={data.stop_loss}
-          hold_duration={data.hold_duration}
-          signal_types={data.signal_types ?? []}
-          company_name={data.company_name}
-          exchange={data.exchange}
-          fundamentals={data.fundamentals}
-          status={data.status}
-          initialState={initialState}
-        />
+        <ThesisSheetBody thesis_id={data.thesis_id} ticker={data.ticker} />
       </SheetContent>
     </Sheet>
   );

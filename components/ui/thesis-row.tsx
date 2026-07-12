@@ -426,7 +426,6 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
             ? t.sheetState.status
             : undefined
         }
-        initialState={t.sheetState}
       />
     </div>
   );
