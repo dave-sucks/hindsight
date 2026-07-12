@@ -39,6 +39,7 @@ import {
   buildSupersessionMap,
   type ResolvedEnvelope,
 } from "@/lib/agent/resolved-thesis";
+import { isLadderEditUpdate } from "@/lib/agent/ladder-health";
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
@@ -408,6 +409,11 @@ export const getTheses = defineTool({
     // (SCALE_INTO_WINNERS.md PR3). Empty on lookup failure → winner signal is
     // null → no RUNNING_WINNER (graceful degradation).
     const avgCostByThesisId = new Map<string, number>();
+    // Paired open-position water mark (high LONG / low SHORT, price-monitor-
+    // maintained) — feeds the TRAILING_FROM_HIGH floor math in the
+    // ladder-health block + UNPROTECTED_GAIN flag (Game Plan PR-B). Missing →
+    // ladder-health falls back to the current price.
+    const peakPriceByThesisId = new Map<string, number>();
     // P1-28 (L2): how many times the user has been shown a close proposal on
     // this held position and did NOT approve it — rejected OR ignored-to-expiry
     // (the user mostly ignores cards to expiry rather than clicking Reject).
@@ -435,17 +441,27 @@ export const getTheses = defineTool({
             ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
             ...(ctx.runEnvironment ? { environment: ctx.runEnvironment } : {}),
           },
-          select: { id: true, symbol: true, openedAt: true, avgCost: true },
+          select: {
+            id: true,
+            symbol: true,
+            openedAt: true,
+            avgCost: true,
+            peakPrice: true,
+          },
           orderBy: { openedAt: "desc" },
         });
         const openedAtByTicker = new Map<string, Date>();
         const positionIdByTicker = new Map<string, string>();
         const avgCostByTicker = new Map<string, number>();
+        const peakPriceByTicker = new Map<string, number>();
         for (const p of openPositions) {
           if (!openedAtByTicker.has(p.symbol)) {
             openedAtByTicker.set(p.symbol, p.openedAt);
             positionIdByTicker.set(p.symbol, p.id);
             avgCostByTicker.set(p.symbol, Number(p.avgCost));
+            if (p.peakPrice != null && Number.isFinite(Number(p.peakPrice))) {
+              peakPriceByTicker.set(p.symbol, Number(p.peakPrice));
+            }
           }
         }
         for (const t of theses) {
@@ -456,6 +472,8 @@ export const getTheses = defineTool({
           if (avgCost != null && Number.isFinite(avgCost)) {
             avgCostByThesisId.set(t.id, avgCost);
           }
+          const peak = peakPriceByTicker.get(t.ticker);
+          if (peak != null) peakPriceByThesisId.set(t.id, peak);
         }
 
         // Count UNAPPROVED close proposals per open position (Order ledger):
@@ -493,6 +511,61 @@ export const getTheses = defineTool({
       } catch (err) {
         console.warn(
           "[get_theses] open-position openedAt/rejected-exit lookup failed; TIME_ELAPSED falls back to createdAt:",
+          err,
+        );
+      }
+    }
+
+    // ── Last ladder edit per HOLDING thesis (Game Plan PR-B) ────────────
+    // Feeds ladderHealth.daysSinceLadderEdit — "how stale is the game plan."
+    // One batched scan of recent CREATED/UPDATED audit rows, filtered in JS
+    // by isLadderEditUpdate (fieldChanges touching triggers/fireMode/stopLoss;
+    // TRIGGER_FIRED and rubber-stamp REVIEWED rows deliberately never count).
+    // The scan is capped: when it comes back truncated AND a thesis has no
+    // match, we can't distinguish "never edited" from "edited before the
+    // window" → leave null (the block omits the field). When the scan is
+    // complete and no match exists, the ladder was born with the thesis →
+    // anchor to thesis.createdAt.
+    const lastLadderEditAtByThesisId = new Map<string, Date>();
+    const holdingIds = theses
+      .filter((t) => t.status === "HOLDING")
+      .map((t) => t.id);
+    if (holdingIds.length > 0) {
+      try {
+        const scanTake = Math.min(40 * holdingIds.length, 300);
+        const auditRows = await prisma.thesisUpdate.findMany({
+          where: {
+            thesisId: { in: holdingIds },
+            type: { in: ["CREATED", "UPDATED"] },
+          },
+          orderBy: { timestamp: "desc" },
+          take: scanTake,
+          select: {
+            thesisId: true,
+            type: true,
+            timestamp: true,
+            fieldChanges: true,
+          },
+        });
+        const scanTruncated = auditRows.length >= scanTake;
+        const matched = new Set<string>();
+        for (const r of auditRows) {
+          if (matched.has(r.thesisId)) continue;
+          if (isLadderEditUpdate(r.type, r.fieldChanges)) {
+            lastLadderEditAtByThesisId.set(r.thesisId, r.timestamp);
+            matched.add(r.thesisId);
+          }
+        }
+        if (!scanTruncated) {
+          for (const t of theses) {
+            if (t.status === "HOLDING" && !matched.has(t.id)) {
+              lastLadderEditAtByThesisId.set(t.id, t.createdAt);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(
+          "[get_theses] ladder-edit scan failed; daysSinceLadderEdit omitted:",
           err,
         );
       }
@@ -569,6 +642,7 @@ export const getTheses = defineTool({
               nextReviewAt: t.nextReviewAt,
               positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
               avgCost: avgCostByThesisId.get(t.id) ?? null,
+              peakPrice: peakPriceByThesisId.get(t.id) ?? null,
               targetPrice: t.targetPrice ?? null,
               paperTenureDays: t.paperTenureDays ?? null,
               paperRealizedPnl:
@@ -655,6 +729,8 @@ export const getTheses = defineTool({
             entryPrice: t.entryPrice,
             targetPrice: t.targetPrice ?? null,
             avgCost: avgCostByThesisId.get(t.id) ?? null,
+            peakPrice: peakPriceByThesisId.get(t.id) ?? null,
+            lastLadderEditAt: lastLadderEditAtByThesisId.get(t.id) ?? null,
             triggers: t.triggers,
             catalystDate: t.catalystDate,
             createdAt: t.createdAt,

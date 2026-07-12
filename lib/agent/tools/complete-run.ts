@@ -581,6 +581,17 @@ async function runCompleteRunPreflight(
         ? "past target"
         : `${Math.round(needsAction.progressToTarget * 100)}% to target`;
       detail = `running winner (+${needsAction.unrealizedGainPct.toFixed(1)}%, ${prog}): press / hold / take`;
+    } else if (needsAction.kind === "UNPROTECTED_GAIN") {
+      // Defensive branch, same contract as RUNNING_WINNER above: this
+      // preflight does NOT feed avgCost/peakPrice into computeNeedsAction,
+      // so UNPROTECTED_GAIN cannot fire here at runtime — it's a get_theses
+      // attention flag; enforcement as a run-close gate is PR-C (warn-mode
+      // first, per THESIS_GAME_PLAN.md). Handled for type-completeness.
+      const floorTxt =
+        needsAction.flooredGainPct != null
+          ? `${needsAction.flooredGainPct >= 0 ? "+" : ""}${needsAction.flooredGainPct.toFixed(1)}%`
+          : "nothing";
+      detail = `unprotected gain (+${needsAction.unrealizedGainPct.toFixed(1)}% but floor locks ${floorTxt}): raise the floor`;
     } else {
       detail = `review overdue by ${needsAction.daysOverdue}d`;
     }
