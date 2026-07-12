@@ -39,9 +39,17 @@ export type TradeStatementKind =
 
 export interface TradeStatementInput {
   kind: TradeStatementKind;
-  /** Shares — held qty (holding/closed/proposed-exit) or order qty (proposed-buy). */
+  /**
+   * Shares. For holding/closed/proposed-exit this is the TOTAL held quantity;
+   * for proposed-buy it's the order quantity. Multiple adds collapse into the
+   * total (see `entry`).
+   */
   qty: number | null;
-  /** Avg cost (held/closed) or proposed entry price (proposed-buy). */
+  /**
+   * Entry price. For held/closed positions this is the AVG COST, so a
+   * position built from multiple buys still reads correctly: "bought 150
+   * shares at $41.20" = total quantity at average cost.
+   */
   entry: number;
   /** Live current price — used by holding + proposed-exit. */
   current?: number | null;
@@ -51,22 +59,32 @@ export interface TradeStatementInput {
   buyVerb?: "Buy" | "Short";
   /** proposed-exit verb. CLOSE → "close", ADD → "add", PARTIAL_CLOSE → "trim". */
   exitVerb?: "close" | "add" | "trim";
+  /**
+   * proposed-exit only: the proposal's OWN share count (an ADD or TRIM order
+   * moves a specific quantity, distinct from the total held `qty`). Omitted →
+   * the action clause has no share count (a full close doesn't need one).
+   */
+  proposalQty?: number | null;
 }
 
 /**
  * The canonical one-line description of a trade's state. Returns null when
- * there's no quantity to describe (nothing to say). The four forms:
+ * there's no quantity to describe (nothing to say). The ACTION leads, the
+ * entry context trails:
  *
- *   proposed-buy   → "Proposed: Buy 500 shares at $5.11"
- *   holding        → "Bought 500 shares at $5.11, now trading at $8.35"
- *   closed         → "Bought 500 shares at $5.11, closed at $8.35"
- *   proposed-exit  → "Proposed: Bought 500 shares at $5.11, close at $8.35"
+ *   proposed-buy   → "Proposed: Buy 100 shares at $40.93"
+ *   holding        → "Bought 100 shares at $40.93, now trading at $45.41"
+ *   closed         → "Sold at $416.63, bought 3.54 shares at $282.35"
+ *   proposed-exit  → "Proposed: Sell at $45.41, bought 100 shares at $40.93"
+ *     (trim)       → "Proposed: Trim 30 shares at $45.41, bought 100 shares at $40.93"
+ *     (add)        → "Proposed: Add 50 shares at $45.41, bought 100 shares at $40.93"
  */
 export function buildTradeSentence(i: TradeStatementInput): string | null {
   if (i.qty == null) return null;
   const q = fmtQty(i.qty);
   const unit = sharesWord(i.qty);
-  const stem = `Bought ${q} ${unit} at ${usd(i.entry)}`;
+  // Trailing entry context (lowercase — it follows the action clause).
+  const entryClause = `bought ${q} ${unit} at ${usd(i.entry)}`;
 
   switch (i.kind) {
     case "proposed-buy":
@@ -74,15 +92,24 @@ export function buildTradeSentence(i: TradeStatementInput): string | null {
         i.entry > 0 ? ` at ${usd(i.entry)}` : ""
       }`;
     case "holding":
-      return stem + (i.current != null ? `, now trading at ${usd(i.current)}` : "");
-    case "closed":
-      return stem + (i.closePrice != null ? `, closed at ${usd(i.closePrice)}` : "");
-    case "proposed-exit": {
-      const verb = i.exitVerb ?? "close";
       return (
-        `Proposed: ${stem}` +
-        (i.current != null ? `, ${verb} at ${usd(i.current)}` : `, ${verb}`)
+        `Bought ${q} ${unit} at ${usd(i.entry)}` +
+        (i.current != null ? `, now trading at ${usd(i.current)}` : "")
       );
+    case "closed":
+      return i.closePrice != null
+        ? `Sold at ${usd(i.closePrice)}, ${entryClause}`
+        : `Sold — ${entryClause}`;
+    case "proposed-exit": {
+      const verb =
+        i.exitVerb === "add" ? "Add" : i.exitVerb === "trim" ? "Trim" : "Sell";
+      // Adds/trims move a specific share count; a full close doesn't need one.
+      const pq =
+        i.proposalQty != null && i.exitVerb !== "close" && i.exitVerb !== undefined
+          ? ` ${fmtQty(i.proposalQty)} ${sharesWord(i.proposalQty)}`
+          : "";
+      const at = i.current != null ? ` at ${usd(i.current)}` : "";
+      return `Proposed: ${verb}${pq}${at}, ${entryClause}`;
     }
   }
 }
