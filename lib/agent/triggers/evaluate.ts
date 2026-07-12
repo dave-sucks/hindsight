@@ -59,10 +59,29 @@ export interface EvaluationContext {
   /** SMA precomputed by the caller; we don't fetch candles here. */
   sma?: { 50?: number; 200?: number };
 
+  /**
+   * Open-position economics — required by GAIN_FROM_ENTRY (avgCost) and
+   * TRAILING_FROM_HIGH (peakPrice). Supplied by the cron + live paths for
+   * HOLDING theses; absent/null (WATCHING, or caller didn't join the
+   * position) → those predicates return false (missed trigger, not a
+   * crash). peakPrice is the price-monitor-maintained water mark:
+   * high-water for LONG, low-water for SHORT.
+   */
+  position?: {
+    avgCost?: number | null;
+    peakPrice?: number | null;
+  } | null;
+
   /** Thesis fields needed by time-based predicates. */
   thesis: {
     createdAt: Date;
     nextReviewAt?: Date | null;
+    /**
+     * "LONG" | "SHORT" | null — orients GAIN_FROM_ENTRY and
+     * TRAILING_FROM_HIGH (a SHORT's gain is a price DROP; its peak is the
+     * low-water mark). Absent → treated as LONG, the overwhelming default.
+     */
+    direction?: string | null;
     /**
      * Thesis lifecycle status. Drives the TIME_ELAPSED clock selection:
      * on an ACTIVE (held) thesis, a "max hold N days" review measures from
@@ -107,6 +126,35 @@ export function evaluateTrigger(
 
     case "PRICE_MOVE_PCT":
       return evaluatePriceMovePct(predicate, ctx);
+
+    case "GAIN_FROM_ENTRY": {
+      // Cumulative % vs entry. UP fires at gain ≥ pct (milestone
+      // checkpoint), DOWN fires at gain ≤ −pct (drawdown / loser
+      // attention). SHORT gain = price drop from entry.
+      const avg = ctx.position?.avgCost;
+      if (avg == null || avg <= 0 || ctx.latestQuote == null) return false;
+      const isLong = ctx.thesis.direction !== "SHORT";
+      const gainPct = isLong
+        ? ((ctx.latestQuote.price - avg) / avg) * 100
+        : ((avg - ctx.latestQuote.price) / avg) * 100;
+      return predicate.direction === "UP"
+        ? gainPct >= predicate.pct
+        : gainPct <= -predicate.pct;
+    }
+
+    case "TRAILING_FROM_HIGH": {
+      // Give-back off the tracked water mark. LONG: fires when price has
+      // fallen pct% from the high; SHORT: risen pct% from the low.
+      const peak = ctx.position?.peakPrice;
+      if (peak == null || peak <= 0 || ctx.latestQuote == null) return false;
+      const isLong = ctx.thesis.direction !== "SHORT";
+      const trail = isLong
+        ? peak * (1 - predicate.pct / 100)
+        : peak * (1 + predicate.pct / 100);
+      return isLong
+        ? ctx.latestQuote.price <= trail
+        : ctx.latestQuote.price >= trail;
+    }
 
     case "VS_SMA": {
       const smaVal = ctx.sma?.[predicate.period];

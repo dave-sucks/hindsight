@@ -35,6 +35,10 @@ export function editableTriggerField(
       // The "Movement Amount" alert — daily % move (direction is fixed; only
       // the magnitude is editable here, mirroring the price-level edit).
       return { label: "Move %", value: p.pct, suffix: "%", min: 0, step: 0.5 };
+    case "GAIN_FROM_ENTRY":
+      return { label: "Gain %", value: p.pct, suffix: "%", min: 0, step: 0.5 };
+    case "TRAILING_FROM_HIGH":
+      return { label: "Trail %", value: p.pct, suffix: "%", min: 1, step: 0.5 };
     default:
       return null;
   }
@@ -50,6 +54,8 @@ export function withEditedValue(
     case "PRICE_BELOW":
       return { ...p, level: value };
     case "PRICE_MOVE_PCT":
+    case "GAIN_FROM_ENTRY":
+    case "TRAILING_FROM_HIGH":
       return { ...p, pct: value };
     default:
       return p;

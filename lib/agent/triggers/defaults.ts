@@ -780,6 +780,16 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
     case "VS_SMA":
     case "RSI":
       return 1;
+    case "GAIN_FROM_ENTRY":
+      // A gain milestone LATCHES (up 10% stays up 10%): the acting agent
+      // is expected to replace the fired rung with the next checkpoint;
+      // 7d stops a same-week re-fire if it doesn't.
+      return 7;
+    case "TRAILING_FROM_HIGH":
+      // Also latches while price sits below the trail. EXIT is terminal
+      // anyway; REVIEW/TRIM rungs get one nudge per day, matching the
+      // other price predicates.
+      return 1;
     case "TIME_ELAPSED":
       // Most TIME_ELAPSED predicates fire once and stay fired; pick a
       // cooldown ~80% of the window so they don't re-fire every tick once
@@ -864,6 +874,10 @@ function predicateKey(p: TriggerPredicate): string {
       return p.kind;
     case "PRICE_MOVE_PCT":
       return `${p.kind}:${p.window}:${p.direction}`;
+    case "GAIN_FROM_ENTRY":
+      return `${p.kind}:${p.direction}`;
+    case "TRAILING_FROM_HIGH":
+      return p.kind;
     case "VS_SMA":
       return `${p.kind}:${p.period}:${p.direction}`;
     case "RSI":

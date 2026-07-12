@@ -32,6 +32,8 @@ const PRICE_OR_TIME_KINDS = new Set([
   "PRICE_ABOVE",
   "PRICE_BELOW",
   "PRICE_MOVE_PCT",
+  "GAIN_FROM_ENTRY",
+  "TRAILING_FROM_HIGH",
   "VS_SMA",
   "RSI",
   "TIME_ELAPSED",
@@ -55,6 +57,10 @@ function describePredicate(p: TriggerPredicate): string {
       return `price > $${p.level}`;
     case "PRICE_MOVE_PCT":
       return `${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}`;
+    case "GAIN_FROM_ENTRY":
+      return `${p.direction === "UP" ? "up" : "down"} ${p.pct}% from entry`;
+    case "TRAILING_FROM_HIGH":
+      return `gives back ${p.pct}% from the high`;
     case "VS_SMA":
       return `${p.direction.toLowerCase()} ${p.period}-day SMA`;
     case "RSI":
@@ -100,6 +106,7 @@ export async function evaluateLiveTriggerMatches({
       id: true,
       ticker: true,
       status: true,
+      direction: true,
       triggers: true,
       createdAt: true,
       nextReviewAt: true,
@@ -121,7 +128,10 @@ export async function evaluateLiveTriggerMatches({
         .map((t: { ticker: string }) => t.ticker),
     ),
   );
-  const openedAtByTicker = new Map<string, Date>();
+  const positionInfoByTicker = new Map<
+    string,
+    { openedAt: Date; avgCost: number | null; peakPrice: number | null }
+  >();
   if (activeTickers.length > 0) {
     const openPositions = await prisma.position.findMany({
       where: {
@@ -129,11 +139,22 @@ export async function evaluateLiveTriggerMatches({
         symbol: { in: activeTickers },
         status: "OPEN",
       },
-      select: { symbol: true, openedAt: true },
+      select: {
+        symbol: true,
+        openedAt: true,
+        avgCost: true,
+        peakPrice: true,
+      },
       orderBy: { openedAt: "desc" },
     });
     for (const p of openPositions) {
-      if (!openedAtByTicker.has(p.symbol)) openedAtByTicker.set(p.symbol, p.openedAt);
+      if (!positionInfoByTicker.has(p.symbol)) {
+        positionInfoByTicker.set(p.symbol, {
+          openedAt: p.openedAt,
+          avgCost: p.avgCost,
+          peakPrice: p.peakPrice,
+        });
+      }
     }
   }
 
@@ -172,17 +193,24 @@ export async function evaluateLiveTriggerMatches({
     for (const trigger of triggers) {
       if (!isPriceOrTimePredicate(trigger.predicate)) continue;
 
+      const posInfo =
+        thesis.status === "HOLDING"
+          ? positionInfoByTicker.get(thesis.ticker) ?? null
+          : null;
       const fires = evaluateTrigger(trigger.predicate, {
         latestQuote,
+        // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read entry cost + water
+        // mark from the open position; WATCHING rows get null → false.
+        position: posInfo
+          ? { avgCost: posInfo.avgCost, peakPrice: posInfo.peakPrice }
+          : null,
         thesis: {
           createdAt: thesis.createdAt,
           nextReviewAt: thesis.nextReviewAt,
           // P1-14: held rows anchor TIME_ELAPSED to the position open time.
           status: thesis.status,
-          positionOpenedAt:
-            thesis.status === "HOLDING"
-              ? openedAtByTicker.get(thesis.ticker) ?? null
-              : null,
+          direction: thesis.direction,
+          positionOpenedAt: posInfo?.openedAt ?? null,
         },
         now,
       });
