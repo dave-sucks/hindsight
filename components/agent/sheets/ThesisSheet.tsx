@@ -1272,13 +1272,23 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         )}
       </div>
 
+      {/* ── Core Belief headline ─────────────────────────────── */}
+      {/* The ONE durable claim — a falsifiable prediction (≤30 words) the
+          trade evaluator grades on close. Large + normal weight so it
+          reads as the load-bearing claim, and it leads the body: main
+          summary first, then the trade row, then the chart. */}
+      {state.coreBelief ? (
+        <p className="text-xl font-normal leading-relaxed">
+          {state.coreBelief}
+        </p>
+      ) : null}
+
       {/* ── Trade block (one unified, state-aware section) ── */}
       {/* The single place the trade lives. Headline morphs by state:
           held → "Bought N @ $X, now $Y" + P&L; pending buy → "Proposed:
           buy N @ $X"; held + pending sell/add/trim → the holding line PLUS
           the proposed action + rationale + Review dropdown, all in one
-          grouped block. No separate floating sections.
-          See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
+          grouped block. See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
       {position ? (
         <TradeBlock
           position={position}
@@ -1288,61 +1298,26 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         />
       ) : null}
 
-      {/* The Most-Recent-Trigger banner that previously lived here was
-          removed 2026-05-18. The same data still surfaces inside the
-          Activity timeline at the bottom of the sheet — duplicating it
-          at the top made the header heavier than it needed to be. */}
-
-      {/* ── Core Belief headline ─────────────────────────────── */}
-      {/* The ONE durable claim — a falsifiable prediction (≤30 words) the
-          trade evaluator grades on close. Large + normal weight so it
-          reads as the load-bearing claim. The buggy "Watching for entry
-          above $X" header it replaced was a stale derivation that
-          duplicated what the ENTER trigger already says correctly below. */}
-      {state.coreBelief ? (
-        <p className="text-xl font-normal leading-relaxed">
-          {state.coreBelief}
-        </p>
+      {/* ── Price chart (annotated) ───────────────────────────── */}
+      {/* Full price line with Entry/Target/Stop lines + "Watching"/"Entry"
+          markers, when candles are loaded. The entry/target/stop GAUGE lives
+          further down with the Price Targets / Consensus / Composite card
+          cluster. See docs/plans/THESIS_VISUALIZATION.md. */}
+      {!isPass && candles && candles.length >= 2 ? (
+        <ThesisChart
+          ticker={ticker}
+          candles={candles}
+          direction={direction === "SHORT" ? "SHORT" : "LONG"}
+          entryPrice={entryPrice}
+          avgCost={position?.avgCost ?? null}
+          targetPrice={targetPrice}
+          stopLoss={stopLoss}
+          current={quote?.currentPrice ?? null}
+          addedAt={state.createdAt}
+          enteredAt={position?.openedAt ?? null}
+          variant="full"
+        />
       ) : null}
-
-      {/* ── Price chart (annotated) + target gauge ────────────────── */}
-      {/* Sits right below the main summary (Core Belief), above the triggers.
-          The annotated chart (full price line with Entry/Target/Stop lines +
-          "Watching"/"Entry" markers) renders when candles are loaded. The
-          entry/target/current/stop GAUGE renders ALONGSIDE it whenever price
-          levels exist — it's the at-a-glance "where are we vs target/stop"
-          read (the same gauge the mini-cards show), so it must not disappear
-          the moment a chart loads. Previously this was chart-OR-gauge, which
-          dropped the gauge on every thesis that had candle data.
-          See docs/plans/THESIS_VISUALIZATION.md. */}
-      {!isPass && (
-        <>
-          {candles && candles.length >= 2 ? (
-            <ThesisChart
-              ticker={ticker}
-              candles={candles}
-              direction={direction === "SHORT" ? "SHORT" : "LONG"}
-              entryPrice={entryPrice}
-              avgCost={position?.avgCost ?? null}
-              targetPrice={targetPrice}
-              stopLoss={stopLoss}
-              current={quote?.currentPrice ?? null}
-              addedAt={state.createdAt}
-              enteredAt={position?.openedAt ?? null}
-              variant="full"
-            />
-          ) : null}
-          {showLevels && entryPrice != null ? (
-            <PriceTargetsBlock
-              entry={entryPrice}
-              target={targetPrice}
-              stop={stopLoss}
-              current={quote?.currentPrice ?? null}
-              direction={direction === "SHORT" ? "SHORT" : "LONG"}
-            />
-          ) : null}
-        </>
-      )}
 
       {/* ── Triggers (moved up — they're the standing opinion in action) ── */}
       {thesis_id ? (
@@ -1380,13 +1355,33 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           thesis's reasoning lives in the Snapshot section above, straight
           from the payload.) */}
 
-      {/* ── Scoring breakdown (4-dim composite) ───────────────── */}
-      {/* Restyled 2026-05-18 to match the Schedule section's left/right
-          InfoRow pattern: per-dim label on the left, score on the right,
-          bottom border + the agent's one-sentence justification note on
-          its own full-width line beneath. Composite is the single
-          conviction number after PR-9 (legacy `confidenceScore` int
-          dropped). */}
+      {/* ── Card cluster: Price Targets → Analyst Consensus → Composite ── */}
+
+      {/* Price Targets — the entry/target/current/stop gauge (same visual
+          the mini-cards show). Lives here with the other assessment cards,
+          not next to the chart. */}
+      {showLevels && entryPrice != null ? (
+        <PriceTargetsBlock
+          entry={entryPrice}
+          target={targetPrice}
+          stop={stopLoss}
+          current={quote?.currentPrice ?? null}
+          direction={direction === "SHORT" ? "SHORT" : "LONG"}
+        />
+      ) : null}
+
+      {/* Analyst Consensus — Buy/Hold/Sell distribution + price-target
+          range vs current, from the payload's live coverage. mintConsensus
+          is the legacy pre-PR-9 shape read off the same payload column. */}
+      <AnalystConsensusWidget
+        coverage={coverage}
+        fallbackConsensus={mintConsensus}
+        narrative={state.analystConsensus ?? null}
+        currentPrice={quote?.currentPrice ?? null}
+      />
+
+      {/* Composite Score — 4-dim scoring breakdown. Composite is the single
+          conviction number after PR-9 (legacy `confidenceScore` int dropped). */}
       {state.scoring ? (
         <Card className="bg-muted/40 p-2 gap-4">
           <div className="flex items-baseline justify-between gap-2">
@@ -1410,17 +1405,6 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           </div>
         </Card>
       ) : null}
-
-      {/* ── Analyst Consensus widget ──────────────────────────── */}
-      {/* Buy/Hold/Sell distribution + Low/Avg/Median/High price target
-          range vs current, from the payload's live coverage. mintConsensus
-          is the legacy pre-PR-9 shape read off the same payload column. */}
-      <AnalystConsensusWidget
-        coverage={coverage}
-        fallbackConsensus={mintConsensus}
-        narrative={state.analystConsensus ?? null}
-        currentPrice={quote?.currentPrice ?? null}
-      />
 
       {/* ── Trade Structure ───────────────────────────────────── */}
       {/* Next review · Max hold (TRADE-horizon only per architecture) ·
