@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { StockLogo } from "@/components/StockLogo";
 import { StockPriceChart } from "@/components/stocks/StockPriceChart";
 import { StockThesesList } from "@/components/stocks/StockThesesList";
 import type { ThesisRowData } from "@/components/ui/thesis-row";
@@ -29,6 +28,9 @@ import {
   getStockCandles,
 } from "@/lib/actions/finnhub.actions";
 import { getAnalystCoverageData } from "@/lib/actions/analyst-coverage";
+import { getStockInfo } from "@/lib/actions/stock-info";
+import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
+import { PriceChange } from "@/components/ui/price-change";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
@@ -37,8 +39,6 @@ import { cn } from "@/lib/utils";
 import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
 import {
   ExternalLink,
-  TrendingUp,
-  TrendingDown,
 } from "lucide-react";
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -124,7 +124,11 @@ export default async function StockDetailPage({ params }: Props) {
   const accountId = user ? await getAccountId(user.id) : null;
 
   // Fetch everything in parallel
-  const [profile, quote, metrics, candles, coverage, tickerTrades, tickerTheses, watchlistStatus] = await Promise.all([
+  const [identity, profile, quote, metrics, candles, coverage, tickerTrades, tickerTheses, watchlistStatus] = await Promise.all([
+    // Header identity from the StockInfo cache — same name + normalized
+    // exchange the trade page + thesis sheet show. profile stays for the
+    // Company Info card (industry / IPO / weburl).
+    getStockInfo(upperSymbol),
     getStockProfile(upperSymbol),
     getStockQuote(upperSymbol),
     getStockMetrics(upperSymbol),
@@ -188,7 +192,6 @@ export default async function StockDetailPage({ params }: Props) {
   const price = quote?.c ?? null;
   const change = quote?.d ?? null;
   const changePct = quote?.dp ?? null;
-  const isUp = (changePct ?? 0) >= 0;
 
   const prevClose = quote?.pc;
   const open = quote?.o;
@@ -208,21 +211,16 @@ export default async function StockDetailPage({ params }: Props) {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-      {/* ── Header ─────────────────────────────────────────────────────── */}
+      {/* ── Header — the SAME StockIdentityHeader the trade page + thesis
+          sheet render (identical sizes, normalized exchange). href={null}:
+          we're already on the stock page. */}
       <div className="flex items-start justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
-          <StockLogo ticker={upperSymbol} size="lg" />
-          <div>
-            <h1 className="text-2xl font-semibold leading-tight">
-              {profile?.name ?? upperSymbol}
-            </h1>
-            <p className="text-xs font-mono uppercase text-muted-foreground tracking-wide mt-0.5">
-              {upperSymbol}
-              {profile?.exchange ? ` · ${profile.exchange}` : ""}
-            </p>
-          </div>
-        </div>
-
+        <StockIdentityHeader
+          ticker={upperSymbol}
+          displayName={identity.companyName}
+          exchange={identity.exchange}
+          href={null}
+        />
         <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
       </div>
 
@@ -240,22 +238,23 @@ export default async function StockDetailPage({ params }: Props) {
 
             {/* ── OVERVIEW ─────────────────────────────────────────── */}
             <TabsContent value="overview" className="mt-4 space-y-4">
-              {/* Price block */}
+              {/* Price block — same treatment as the trade page + thesis
+                  sheet: text-xl price + shared PriceChange (arrow + color). */}
               {price != null && (
-                <div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-semibold tabular-nums">
+                <div className="space-y-0.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                    <span className="text-xl font-semibold tabular-nums">
                       {fmtCur(price)}
                     </span>
-                    <span className={cn(
-                      "text-sm font-medium tabular-nums flex items-center gap-0.5",
-                      isUp ? "text-positive" : "text-negative",
-                    )}>
-                      {isUp ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                      {fmtCur(change)} ({change != null && changePct != null ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%` : "—"})
-                    </span>
+                    {change != null && (
+                      <PriceChange
+                        dollarChange={change}
+                        percentChange={changePct ?? null}
+                        size="xl"
+                      />
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground tabular-nums">
                     At close · {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   </p>
                 </div>
