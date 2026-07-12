@@ -7,8 +7,10 @@ import {
 } from "@/components/settings/SettingsSection";
 import { ModelPreferenceForm } from "@/components/settings/ModelPreferenceForm";
 import { ApprovalTogglesForm } from "@/components/settings/ApprovalTogglesForm";
+import { EmailNotificationsForm } from "@/components/settings/EmailNotificationsForm";
 import { getAccountApprovalSettings } from "@/lib/actions/account-settings.actions";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
+import { prisma } from "@/lib/prisma";
 
 export default async function ProfileSettingsPage() {
   const supabase = await createClient();
@@ -20,9 +22,17 @@ export default async function ProfileSettingsPage() {
   const accountId = await getAccountId(user.id);
   if (!accountId) redirect("/sign-in");
 
-  const [role, approvalSettings] = await Promise.all([
+  const [role, approvalSettings, membership] = await Promise.all([
     getUserRole(user.id, accountId),
     getAccountApprovalSettings(),
+    prisma.accountMembership.findUnique({
+      where: { accountId_userId: { accountId, userId: user.id } },
+      select: {
+        emailTradeProposals: true,
+        emailTradeActivity: true,
+        emailDailyDigest: true,
+      },
+    }),
   ]);
   const isOwner = role === "OWNER";
   const displayName = user.user_metadata?.full_name ?? user.email ?? "—";
@@ -53,6 +63,15 @@ export default async function ProfileSettingsPage() {
       >
         <ApprovalTogglesForm initial={approvalSettings} canEdit={isOwner} />
       </SettingsSection>
+
+      {membership && (
+        <SettingsSection
+          title="Email notifications"
+          description="Which account emails land in your inbox. These are personal — every member manages their own."
+        >
+          <EmailNotificationsForm userId={user.id} initial={membership} />
+        </SettingsSection>
+      )}
     </div>
   );
 }

@@ -12,9 +12,6 @@ export interface TeamMemberDTO {
   email: string | null;
   role: "OWNER" | "EDITOR" | "VIEWER";
   joinedAt: string;
-  emailTradeProposals: boolean;
-  emailTradeActivity: boolean;
-  emailDailyDigest: boolean;
 }
 
 export interface TeamInviteDTO {
@@ -54,14 +51,7 @@ export async function GET() {
     prisma.accountMembership.findMany({
       where: { accountId },
       orderBy: { createdAt: "asc" },
-      select: {
-        userId: true,
-        role: true,
-        createdAt: true,
-        emailTradeProposals: true,
-        emailTradeActivity: true,
-        emailDailyDigest: true,
-      },
+      select: { userId: true, role: true, createdAt: true },
     }),
     prisma.accountInvite.findMany({
       where: { accountId, acceptedAt: null, expiresAt: { gt: new Date() } },
@@ -77,9 +67,6 @@ export async function GET() {
       email: await getUserEmail(m.userId),
       role: m.role,
       joinedAt: m.createdAt.toISOString(),
-      emailTradeProposals: m.emailTradeProposals,
-      emailTradeActivity: m.emailTradeActivity,
-      emailDailyDigest: m.emailDailyDigest,
     })),
   );
 

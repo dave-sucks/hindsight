@@ -3,9 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 
-// PATCH  /api/settings/team/members/[userId] — update a member's email
-//        notification preferences. Members can update their own; OWNER
-//        can update anyone's.
+// PATCH  /api/settings/team/members/[userId] — update the caller's OWN
+//        email notification preferences. Notification prefs are personal:
+//        cross-member edits are rejected for everyone, including OWNER.
 // DELETE /api/settings/team/members/[userId]
 // OWNER-only. Removes the AccountMembership for the given userId on
 // the caller's account. The user's Supabase identity is left intact —
@@ -34,13 +34,10 @@ export async function PATCH(
   if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
 
   if (targetUserId !== user.id) {
-    const role = await getUserRole(user.id, accountId);
-    if (role !== "OWNER") {
-      return NextResponse.json(
-        { error: "Only the account OWNER can change another member's notifications." },
-        { status: 403 },
-      );
-    }
+    return NextResponse.json(
+      { error: "You can only change your own notification preferences." },
+      { status: 403 },
+    );
   }
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;

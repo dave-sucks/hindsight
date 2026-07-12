@@ -24,7 +24,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -33,17 +32,6 @@ import type {
 } from "@/app/api/settings/team/route";
 
 type Role = "OWNER" | "EDITOR" | "VIEWER";
-
-type EmailPrefKey =
-  | "emailTradeProposals"
-  | "emailTradeActivity"
-  | "emailDailyDigest";
-
-const EMAIL_PREF_COLUMNS: { key: EmailPrefKey; label: string }[] = [
-  { key: "emailTradeProposals", label: "Trade proposals" },
-  { key: "emailTradeActivity", label: "Trade activity" },
-  { key: "emailDailyDigest", label: "Daily digest" },
-];
 
 export function TeamSettingsClient({
   accountName,
@@ -106,25 +94,6 @@ export function TeamSettingsClient({
       }
       toast.success("Member removed.");
       router.refresh();
-    });
-  }
-
-  function handleTogglePref(userId: string, key: EmailPrefKey, value: boolean) {
-    const prev = members;
-    setMembers((ms) =>
-      ms.map((m) => (m.userId === userId ? { ...m, [key]: value } : m)),
-    );
-    startTransition(async () => {
-      const res = await fetch(`/api/settings/team/members/${userId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [key]: value }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        toast.error(body.error ?? "Failed to update notifications.");
-        setMembers(prev);
-      }
     });
   }
 
@@ -201,57 +170,6 @@ export function TeamSettingsClient({
                       </Button>
                     )}
                   </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </section>
-
-      {/* ── Email notifications ─────────────────────────────────────
-          Per-member, per-category opt-out. Everyone is subscribed to
-          everything by default (defaults live on AccountMembership).
-          You can flip your own toggles; the OWNER can flip anyone's. */}
-      <section className="space-y-3">
-        <div className="space-y-1">
-          <h2 className="text-lg font-medium">Email notifications</h2>
-          <p className="text-sm text-muted-foreground">
-            Which account emails each member receives. Trade proposals are
-            approval requests; trade activity covers opened and closed
-            positions; the daily digest summarizes each morning run.
-          </p>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Member</TableHead>
-              {EMAIL_PREF_COLUMNS.map((c) => (
-                <TableHead key={c.key}>{c.label}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.map((m) => {
-              const isMe = m.userId === myUserId;
-              const canEdit = isMe || canManageTeam;
-              return (
-                <TableRow key={m.userId}>
-                  <TableCell className="font-medium">
-                    {m.email ?? <span className="text-muted-foreground">unknown</span>}
-                    {isMe && (
-                      <span className="ml-2 text-xs text-muted-foreground">(you)</span>
-                    )}
-                  </TableCell>
-                  {EMAIL_PREF_COLUMNS.map((c) => (
-                    <TableCell key={c.key}>
-                      <Switch
-                        checked={m[c.key]}
-                        disabled={!canEdit || isPending}
-                        onCheckedChange={(v) => handleTogglePref(m.userId, c.key, v)}
-                        aria-label={`${c.label} emails for ${m.email ?? m.userId}`}
-                      />
-                    </TableCell>
-                  ))}
                 </TableRow>
               );
             })}
