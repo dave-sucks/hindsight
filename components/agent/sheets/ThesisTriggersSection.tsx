@@ -322,6 +322,16 @@ function predicateKindValue(p: TriggerPredicate): {
       const win = p.window && p.window !== "1D" ? ` ${p.window}` : "";
       return { kind: `${dir}${win}`, value: `${p.pct ?? "?"}%` };
     }
+    case "GAIN_FROM_ENTRY":
+      // Cumulative move vs the position's entry (avg cost) — distinct from
+      // the daily "up/down" above: "up from entry 10%" is the milestone.
+      return {
+        kind: `${p.direction === "UP" ? "up" : "down"} from entry`,
+        value: `${p.pct ?? "?"}%`,
+      };
+    case "TRAILING_FROM_HIGH":
+      // Give-back off the tracked peak — "Exit if · off the high · 8%".
+      return { kind: "off the high", value: `${p.pct ?? "?"}%` };
     case "VS_SMA":
       return {
         kind: `${p.period ?? "?"}-day SMA`,
@@ -390,6 +400,12 @@ function predicateDescription(p: TriggerPredicate): string {
       return p.window === "1D"
         ? `Fires when the stock is ${p.direction === "UP" ? "up" : "down"} ${p.pct}% on the day (vs prior close).`
         : `Fires when price moves ${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}.`;
+    case "GAIN_FROM_ENTRY":
+      return p.direction === "UP"
+        ? `Fires when the position is up ${p.pct}% from entry (avg cost) — the cumulative gain milestone.`
+        : `Fires when the position is down ${p.pct}% from entry (avg cost) — drawdown attention.`;
+    case "TRAILING_FROM_HIGH":
+      return `Fires when price gives back ${p.pct}% from its high since entry. The high ratchets up as the position runs.`;
     case "VS_SMA":
       return `Fires when price moves ${p.direction?.toLowerCase()} the ${p.period}-day SMA.`;
     case "RSI":
@@ -542,11 +558,13 @@ function TriggerPopoverContent({
   // Sentence title in foreground — "Exit if price below", "Review if up".
   const fieldLabel = `${actionGroupLabel(trigger.action)} ${kindLabel}`;
 
-  // Input-group adornments. Price → leading "$"; movement → leading
-  // direction + trailing "%"; time-based → leading calendar icon (read-only).
+  // Input-group adornments. Price → leading "$"; movement / gain-from-entry
+  // → leading direction + trailing "%"; time-based → leading calendar icon
+  // (read-only). Trailing-from-high has no direction (the give-back is
+  // orientation-aware by thesis direction), so it gets the plain % input.
   const pk = trigger.predicate.kind;
   const moveDir =
-    pk === "PRICE_MOVE_PCT"
+    pk === "PRICE_MOVE_PCT" || pk === "GAIN_FROM_ENTRY"
       ? trigger.predicate.direction === "UP"
         ? "Up"
         : "Down"
@@ -841,14 +859,22 @@ function TriggerGroups({
 // mirroring the Price-alert modal:
 //   • Action      — Enter / Exit / Review / …
 //   • Criterion   — Target Price (a fixed $ level) | Movement Amount (a % move)
-//   • Direction   — above/below (price)  ·  up/down (movement)
+//                   | Gain from entry (± % vs avg cost) | Trailing from high
+//                   (% give-back off the peak) — the last two on HELD only
+//   • Direction   — above/below (price)  ·  up/down (movement, gain)
 //   • Value       — $ level  ·  % move
 //   • On fire     — tactical vs direct (held EXIT only)
 // Target Price → PRICE_ABOVE / PRICE_BELOW (fires at a level).
 // Movement Amount → PRICE_MOVE_PCT (fires on a ±% DAILY move vs prior close).
-// Both fire through the same evaluator → trigger pipeline as every trigger.
+// Gain from entry → GAIN_FROM_ENTRY (cumulative ±% vs the position's avgCost).
+// Trailing from high → TRAILING_FROM_HIGH (give-back % off Position.peakPrice;
+//   no direction — orientation follows the thesis direction).
+// The position-scoped kinds (gain / trail) evaluate false with no open
+// position, so the form only offers them when the thesis is HOLDING —
+// applyTriggerAdd rejects them un-held as the backend backstop.
+// All fire through the same evaluator → trigger pipeline as every trigger.
 
-type AddCriterion = "PRICE" | "MOVE";
+type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL";
 
 function AddTriggerDialog({
   thesisId,
@@ -869,23 +895,46 @@ function AddTriggerDialog({
   const [err, setErr] = useState<string | null>(null);
 
   const isMove = criterion === "MOVE";
+  const isGain = criterion === "GAIN";
+  const isTrail = criterion === "TRAIL";
+  /** %-valued criteria share the % input adornment + 0.5 step. */
+  const isPct = isMove || isGain || isTrail;
   const showFireMode = action === "EXIT" && held;
 
-  const dirOptions = isMove
+  // Criterion options — the position-scoped kinds (gain from entry, trailing
+  // from high) only exist on a held thesis (no position → the predicate
+  // evaluates false forever), so un-held keeps the original two.
+  const criterionOptions: ReadonlyArray<{ v: AddCriterion; l: string }> = held
     ? [
-        { v: "UP", l: "Up" },
-        { v: "DOWN", l: "Down" },
+        { v: "PRICE", l: "$ Price" },
+        { v: "MOVE", l: "% Move" },
+        { v: "GAIN", l: "% Gain" },
+        { v: "TRAIL", l: "% Trail" },
       ]
     : [
-        { v: "ABOVE", l: "Above" },
-        { v: "BELOW", l: "Below" },
+        { v: "PRICE", l: "$ Price" },
+        { v: "MOVE", l: "% Movement" },
       ];
 
+  const dirOptions =
+    isMove || isGain
+      ? [
+          { v: "UP", l: "Up" },
+          { v: "DOWN", l: "Down" },
+        ]
+      : [
+          { v: "ABOVE", l: "Above" },
+          { v: "BELOW", l: "Below" },
+        ];
+
   // Keep `dir` valid for the selected criterion (price uses ABOVE/BELOW,
-  // movement uses UP/DOWN). Reset to a sensible default on criterion switch.
+  // movement/gain use UP/DOWN — gain defaults UP, the milestone case).
+  // Reset to a sensible default on criterion switch. TRAIL has no direction.
   useEffect(() => {
-    setDir(isMove ? "DOWN" : "BELOW");
-  }, [isMove]);
+    if (criterion === "GAIN") setDir("UP");
+    else if (criterion === "MOVE") setDir("DOWN");
+    else if (criterion === "PRICE") setDir("BELOW");
+  }, [criterion]);
 
   // Default fire mode by action — EXIT → DIRECT, else TACTICAL. Mirrors the
   // server-side defaultFireModeForAction (can't import it here: defaults.ts
@@ -899,15 +948,23 @@ function AddTriggerDialog({
     val.trim() !== "" &&
     Number.isFinite(num) &&
     num > 0 &&
-    (!isMove || num < 100);
+    // Daily-move and trail are give-back/-move fractions — ≥100% is nonsense.
+    // Gain from entry CAN exceed 100 (up 150% from entry is a real milestone).
+    (!(isMove || isTrail) || num < 100) &&
+    // Zod floors the trail at 1% (sub-1% off the peak re-fires on noise).
+    (!isTrail || num >= 1);
 
   async function save() {
     if (!valid) return;
     setPending(true);
     setErr(null);
-    const predicate = isMove
-      ? { kind: "PRICE_MOVE_PCT", pct: num, direction: dir, window: "1D" }
-      : { kind: dir === "ABOVE" ? "PRICE_ABOVE" : "PRICE_BELOW", level: num };
+    const predicate = isGain
+      ? { kind: "GAIN_FROM_ENTRY", pct: num, direction: dir }
+      : isTrail
+        ? { kind: "TRAILING_FROM_HIGH", pct: num }
+        : isMove
+          ? { kind: "PRICE_MOVE_PCT", pct: num, direction: dir, window: "1D" }
+          : { kind: dir === "ABOVE" ? "PRICE_ABOVE" : "PRICE_BELOW", level: num };
     try {
       const res = await fetch(`/api/theses/${thesisId}/triggers`, {
         method: "POST",
@@ -989,12 +1046,7 @@ function AddTriggerDialog({
             Criterion
           </span>
           <div className="flex items-center gap-0.5 rounded-md border p-0.5">
-            {(
-              [
-                { v: "PRICE", l: "$ Price" },
-                { v: "MOVE", l: "% Movement" },
-              ] as const
-            ).map((o) => (
+            {criterionOptions.map((o) => (
               <button
                 key={o.v}
                 type="button"
@@ -1014,30 +1066,34 @@ function AddTriggerDialog({
         </div>
 
         {/* Direction select + value input as one full-width button group:
-            [ Above ▾ | $ ____ ]  ·  [ Up ▾ | ____ % ] */}
+            [ Above ▾ | $ ____ ]  ·  [ Up ▾ | ____ % ]. Trailing from high
+            has no direction (orientation follows the thesis direction), so
+            the group collapses to the % input alone. */}
         <ButtonGroup className="w-full">
-          <Select
-            value={dir}
-            onValueChange={(v) => {
-              if (typeof v === "string") setDir(v);
-            }}
-            disabled={pending}
-          >
-            <SelectTrigger>
-              <SelectValue>
-                {dirOptions.find((o) => o.v === dir)?.l ?? ""}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {dirOptions.map((o) => (
-                <SelectItem key={o.v} value={o.v}>
-                  {o.l}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {isTrail ? null : (
+            <Select
+              value={dir}
+              onValueChange={(v) => {
+                if (typeof v === "string") setDir(v);
+              }}
+              disabled={pending}
+            >
+              <SelectTrigger>
+                <SelectValue>
+                  {dirOptions.find((o) => o.v === dir)?.l ?? ""}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {dirOptions.map((o) => (
+                  <SelectItem key={o.v} value={o.v}>
+                    {o.l}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <InputGroup>
-            {isMove ? null : (
+            {isPct ? null : (
               <InputGroupAddon>
                 <InputGroupText>$</InputGroupText>
               </InputGroupAddon>
@@ -1046,13 +1102,13 @@ function AddTriggerDialog({
               type="number"
               inputMode="decimal"
               value={val}
-              min={0}
-              step={isMove ? 0.5 : 0.01}
-              placeholder={isMove ? "5" : "0.00"}
+              min={isTrail ? 1 : 0}
+              step={isPct ? 0.5 : 0.01}
+              placeholder={isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"}
               onChange={(e) => setVal(e.target.value)}
               disabled={pending}
             />
-            {isMove ? (
+            {isPct ? (
               <InputGroupAddon align="inline-end">
                 <InputGroupText>%</InputGroupText>
               </InputGroupAddon>
@@ -1061,9 +1117,13 @@ function AddTriggerDialog({
         </ButtonGroup>
 
         <p className="text-xs text-muted-foreground">
-          {isMove
-            ? `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much on the day (vs prior close).`
-            : `Fires when the last quote crosses ${dir === "ABOVE" ? "above" : "below"} your price.`}
+          {isGain
+            ? `Fires when the position is ${dir === "UP" ? "up" : "down"} this much from entry (avg cost) — cumulative, not a single day.`
+            : isTrail
+              ? "Fires when price gives back this much from its high since entry. The high ratchets up as the position runs."
+              : isMove
+                ? `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much on the day (vs prior close).`
+                : `Fires when the last quote crosses ${dir === "ABOVE" ? "above" : "below"} your price.`}
         </p>
 
         {/* On fire (held EXIT only) — full width, our verbs */}

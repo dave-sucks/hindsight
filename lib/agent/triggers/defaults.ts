@@ -122,6 +122,94 @@ function scaleInOnPullbackTrigger(): Trigger {
   };
 }
 
+// ── Standing protection minimums (docs/plans/THESIS_GAME_PLAN.md PR-D; GAPS P1-31) ──
+//
+// Three always-on protection rungs every HELD thesis carries, so no holding
+// can quietly run up (or bleed) without forcing a decision. The motivating
+// failure is the IONS autopsy: bought $73.83, day-one floor at $65, ran +17%,
+// three rubber-stamp reviews, then crashed and fired the day-one floor for a
+// LOSS. No level was ever re-earned. These rungs make that impossible to do
+// silently: the gain milestone forces a re-underwrite, the trail banks the
+// gain mechanically, and the drawdown rung forces a hold-vs-cut decision
+// before the hard stop decides for us.
+//
+// GAIN_FROM_ENTRY / TRAILING_FROM_HIGH are HOLDING-only predicates (no open
+// position ⇒ evaluate false), so these are wired into the HELD templates
+// only — never WATCHING / PROMOTED.
+//
+// The three constants are PRINCIPAL-TUNABLE: change the number here and
+// every future mint picks it up. Existing theses keep the value they were
+// minted with (editable per-thesis in the trigger popover).
+
+/** Gain milestone: up X% from entry → checkpoint re-underwrite (REVIEW). */
+const PROTECT_CHECKPOINT_GAIN_PCT = 10;
+/** Mechanical ratchet: give back X% off the tracked high → banked EXIT. */
+const PROTECT_TRAIL_PCT = 8;
+/** Loser attention: down X% from entry → hold-vs-cut REVIEW. */
+const LOSER_ATTENTION_DRAWDOWN_PCT = 12;
+
+function gainCheckpointTrigger(): Trigger {
+  return {
+    id: createId(),
+    predicate: {
+      kind: "GAIN_FROM_ENTRY",
+      pct: PROTECT_CHECKPOINT_GAIN_PCT,
+      direction: "UP",
+    },
+    action: "REVIEW",
+    rationale: `Up ${PROTECT_CHECKPOINT_GAIN_PCT}% from entry — gain milestone checkpoint. Re-underwrite at the new price: raise the floor to lock the gain in, and arm the next milestone.`,
+    // cooldownDays intentionally unset — per-kind default (GAIN_FROM_ENTRY:
+    // 7d). The milestone latches once hit; the acting agent is expected to
+    // replace the fired rung with the next checkpoint, and 7d stops a
+    // same-week re-fire if it doesn't.
+  };
+}
+
+function trailingRatchetTrigger(): Trigger {
+  return {
+    id: createId(),
+    predicate: { kind: "TRAILING_FROM_HIGH", pct: PROTECT_TRAIL_PCT },
+    action: "EXIT",
+    rationale: `Gave back ${PROTECT_TRAIL_PCT}% from the high — mechanical gain ratchet. Bank the gain instead of round-tripping it (the IONS lesson: +17% became a loss because no level was ever re-earned).`,
+    cooldownDays: 0, // explicit opt-out — terminal EXIT, same convention as the hard stop.
+  };
+}
+
+function loserAttentionTrigger(): Trigger {
+  return {
+    id: createId(),
+    predicate: {
+      kind: "GAIN_FROM_ENTRY",
+      pct: LOSER_ATTENTION_DRAWDOWN_PCT,
+      direction: "DOWN",
+    },
+    action: "REVIEW",
+    rationale: `Down ${LOSER_ATTENTION_DRAWDOWN_PCT}% from entry — loser attention. Decide hold-vs-cut deliberately, before the hard stop decides for us.`,
+    // cooldownDays intentionally unset — per-kind default (GAIN_FROM_ENTRY: 7d).
+  };
+}
+
+/**
+ * The three standing protection minimums, fresh ids per call. Pushed into
+ * every HELD horizon template below; also exported for
+ * scripts/convert-static-floors-to-trails.ts, which retrofits them onto the
+ * 2026-07-09 hand-backfilled live ladders (the `bf79-*` trigger ids).
+ *
+ * mergeTriggers dedup: an agent-authored rung in the same
+ * (predicateKey, action) bucket wins over these — predicateKey is
+ * `GAIN_FROM_ENTRY:UP` / `GAIN_FROM_ENTRY:DOWN` / `TRAILING_FROM_HIGH`, so
+ * an agent that writes its own +15% gain checkpoint REVIEW replaces the
+ * +10% default rather than stacking a second one, while a custom
+ * GAIN_FROM_ENTRY DOWN rung leaves the UP default intact.
+ */
+export function standingProtectionTriggers(): Trigger[] {
+  return [
+    gainCheckpointTrigger(),
+    trailingRatchetTrigger(),
+    loserAttentionTrigger(),
+  ];
+}
+
 function compounderDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
 
@@ -186,6 +274,7 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
 
   out.push(scaleInOnStrengthTrigger());
   out.push(scaleInOnPullbackTrigger());
+  out.push(...standingProtectionTriggers());
 
   return out;
 }
@@ -235,6 +324,7 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
   );
   out.push(scaleInOnStrengthTrigger());
   out.push(scaleInOnPullbackTrigger());
+  out.push(...standingProtectionTriggers());
   return out;
 }
 
@@ -270,6 +360,7 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
     // re-fire on every signal-routed evaluation.
   });
   out.push(scaleInOnStrengthTrigger());
+  out.push(...standingProtectionTriggers());
   return out;
 }
 
@@ -318,6 +409,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
   );
   out.push(scaleInOnStrengthTrigger());
   out.push(scaleInOnPullbackTrigger());
+  out.push(...standingProtectionTriggers());
   return out;
 }
 
@@ -901,7 +993,15 @@ function predicateKey(p: TriggerPredicate): string {
   }
 }
 
-function triggerBucket(t: Trigger): string {
+/**
+ * The merge bucket for one trigger — `(predicateKey, action)`. Two triggers
+ * in the same bucket express the same intent (mergeTriggers keeps only one:
+ * agent-supplied wins). Exported for
+ * scripts/convert-static-floors-to-trails.ts, which needs "is a same-bucket
+ * rung already present?" WITHOUT mergeTriggers' within-list dedup (the
+ * hand-written ladders must be preserved verbatim, duplicates and all).
+ */
+export function triggerBucket(t: Trigger): string {
   return `${predicateKey(t.predicate)}::${t.action}`;
 }
 
