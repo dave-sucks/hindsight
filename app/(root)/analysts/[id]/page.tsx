@@ -7,6 +7,7 @@ import { getLatestPrices } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getAccountId } from "@/lib/auth/account";
 import { fetchRunCardRuns } from "@/lib/actions/run-cards";
+import { buildTriggerDefaultsView } from "@/lib/agent/triggers/defaults-preview";
 import { RunCard } from "@/components/runs/RunCard";
 import AnalystDetailClient from "@/components/analysts/AnalystDetailClient";
 
@@ -82,6 +83,12 @@ export default async function AnalystDetailPage({
       ? await getLatestPrices(uniqueSymbols, alpacaCreds ?? undefined).catch(() => ({}))
       : {};
 
+  // "Analyst Trigger Defaults" card (GAPS P1-33) — derived from the ACTUAL
+  // default trigger templates server-side (defaults.ts is server-only), so
+  // the Settings-sheet display can never drift from the code that stamps
+  // rungs onto theses.
+  const triggerDefaults = buildTriggerDefaultsView();
+
   return (
     <AnalystDetailClient
       detail={detail}
@@ -90,6 +97,7 @@ export default async function AnalystDetailPage({
       livePrices={livePrices}
       theses={theses}
       runCards={runCards}
+      triggerDefaults={triggerDefaults}
     />
   );
 }

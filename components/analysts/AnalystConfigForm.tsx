@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Info, Search, ArrowRight, Plus, X } from "lucide-react";
+import { Info, Search, ArrowRight, Plus, X, Lock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+// Type-only import — defaults-preview is server-only (pulls node:crypto
+// via defaults.ts). The view is computed in the analyst detail page
+// (server component) and threaded down as a serializable prop.
+import type { TriggerDefaultsView } from "@/lib/agent/triggers/defaults-preview";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,6 +153,14 @@ export interface AnalystConfigFormProps {
   onAddDomainMonitor?: (input: { name: string; domain: string }) => Promise<void> | void;
   onAddSearchMonitor?: (input: { name?: string; query: string }) => Promise<void> | void;
   onRemoveMonitor?: (monitorId: string) => Promise<void> | void;
+  /**
+   * Read-only "Analyst Trigger Defaults" card data (GAPS P1-33) — the
+   * standing rungs every thesis gets automatically. Computed server-side
+   * by buildTriggerDefaultsView() (defaults.ts is server-only) and
+   * threaded down from the analyst detail page. Absent on surfaces
+   * without a server loader (builder/editor panel) — section hides.
+   */
+  triggerDefaults?: TriggerDefaultsView | null;
 }
 
 export function AnalystConfigForm({
@@ -161,6 +173,7 @@ export function AnalystConfigForm({
   onAddDomainMonitor,
   onAddSearchMonitor,
   onRemoveMonitor,
+  triggerDefaults,
 }: AnalystConfigFormProps) {
   return (
     <TooltipProvider>
@@ -202,7 +215,11 @@ export function AnalystConfigForm({
 
         <TabsContent value="settings" className="flex-1 min-h-0 mt-0">
           <ScrollArea className="h-full">
-            <SettingsTab values={values} onChange={onChange} />
+            <SettingsTab
+              values={values}
+              onChange={onChange}
+              triggerDefaults={triggerDefaults}
+            />
           </ScrollArea>
         </TabsContent>
       </Tabs>
@@ -664,9 +681,11 @@ function AddSearchRow({
 function SettingsTab({
   values,
   onChange,
+  triggerDefaults,
 }: {
   values: FormValues;
   onChange: FormChangeHandler;
+  triggerDefaults?: TriggerDefaultsView | null;
 }) {
   const policy = values.intelligencePolicy;
 
@@ -852,6 +871,11 @@ function SettingsTab({
         )}
       </Section>
 
+      {/* Analyst Trigger Defaults (GAPS P1-33) — read-only visibility ── */}
+      {triggerDefaults && (
+        <TriggerDefaultsSection view={triggerDefaults} />
+      )}
+
       {/* Universe ──────────────────────────────────────────────── */}
       <Section label="Universe">
         <FieldGroup
@@ -969,6 +993,101 @@ function EffectiveLiveCapNote({
         <> — the lower of the live cap and max position size.</>
       )}
     </p>
+  );
+}
+
+// ─── Analyst Trigger Defaults (GAPS P1-33) ───────────────────────────────────
+// Read-only visibility card: the standing rungs every thesis this analyst
+// mints carries automatically (authority layers 1+3 of
+// docs/plans/TRIGGER_LIFECYCLE.md §1). Rungs come from the ACTUAL default
+// templates — computed server-side by buildTriggerDefaultsView(), never
+// re-declared here — so the display can't drift from code. Pills reuse the
+// thesis sheet's trigger-pill visual language (ThesisTriggersSection); the
+// lock marks them as not-yet-configurable (that's PR-E).
+
+const TRIGGER_DEFAULT_LOCK_LABEL =
+  "Default — applies automatically; configurable in a future update.";
+
+function LockedRungPill({
+  sentence,
+  rationale,
+}: {
+  sentence: string;
+  rationale: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="inline-flex h-7 cursor-default items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 text-xs" />
+        }
+      >
+        <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
+        <span className="text-foreground">{sentence}</span>
+      </TooltipTrigger>
+      <TooltipContent side="left" className="max-w-xs text-xs">
+        <p>{rationale}</p>
+        <p className="text-muted-foreground">{TRIGGER_DEFAULT_LOCK_LABEL}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function TriggerDefaultsSection({ view }: { view: TriggerDefaultsView }) {
+  return (
+    <Section
+      label="Analyst Trigger Defaults"
+      tooltip="Standing rungs every thesis this analyst mints carries automatically, on top of its own stop and target. Read-only for now — per-analyst tuning arrives in a future update."
+    >
+      <FieldGroup
+        label="Every holding carries"
+        tooltip="The always-on protection and scale-in rungs stamped onto every held thesis at mint or fill. Derived live from the default templates in code."
+      >
+        <div className="flex flex-col gap-1.5">
+          {view.everyHolding.map((g) => (
+            <div
+              key={g.group}
+              className="flex flex-wrap items-center gap-x-2 gap-y-1.5"
+            >
+              <span className="text-sm text-muted-foreground shrink-0">
+                {g.group}
+              </span>
+              {g.rungs.map((r) => (
+                <LockedRungPill
+                  key={r.sentence}
+                  sentence={r.sentence}
+                  rationale={r.rationale}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </FieldGroup>
+
+      <FieldGroup
+        label="By horizon"
+        tooltip="How each horizon's held-side template differs — target handling, event reviews, scheduled-review cadence."
+      >
+        <div className="flex flex-col gap-1">
+          {view.horizonNotes.map((n) => (
+            <p key={n.horizon} className="text-xs leading-relaxed">
+              <span className="font-medium uppercase tracking-wide text-foreground">
+                {n.horizon}
+              </span>{" "}
+              <span className="text-muted-foreground">— {n.note}</span>
+            </p>
+          ))}
+        </div>
+      </FieldGroup>
+
+      {view.watchingNote && (
+        <p className="text-xs text-muted-foreground/60">{view.watchingNote}</p>
+      )}
+      <p className="text-xs text-muted-foreground/60">
+        The analyst overrides these with its own levels per name; its rungs win
+        over defaults. Not configurable yet — these apply automatically.
+      </p>
+    </Section>
   );
 }
 

@@ -65,6 +65,7 @@ import type {
   AnalystDetail,
   PositionWithThesis,
 } from "@/lib/actions/analyst.actions";
+import type { TriggerDefaultsView } from "@/lib/agent/triggers/defaults-preview";
 import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
 import { useRouter } from "next/navigation";
@@ -349,6 +350,7 @@ export default function AnalystDetailClient({
   livePrices = {},
   theses = [],
   runCards = [],
+  triggerDefaults = null,
 }: {
   detail: AnalystDetail;
   hasRunning: boolean;
@@ -357,6 +359,11 @@ export default function AnalystDetailClient({
   theses?: ThesisCardData[];
   /** Server-rendered RunCard elements — the SAME card /runs uses. */
   runCards?: ReactNode[];
+  /**
+   * "Analyst Trigger Defaults" card data (GAPS P1-33), computed server-side
+   * in the page (buildTriggerDefaultsView) and shown in the Settings sheet.
+   */
+  triggerDefaults?: TriggerDefaultsView | null;
 }) {
   const { config: rawConfig, stats, recentTrades } = detail;
 
@@ -972,6 +979,7 @@ export default function AnalystDetailClient({
         onOpenChange={setConfigOpen}
         config={config}
         livePrices={livePrices}
+        triggerDefaults={triggerDefaults}
       />
 
       {/* Agent overview sheet */}

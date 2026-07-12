@@ -19,6 +19,7 @@ import {
   removeAnalystMonitor,
 } from "@/lib/actions/analyst.actions";
 import type { AnalystConfig } from "@/lib/actions/analyst.actions";
+import type { TriggerDefaultsView } from "@/lib/agent/triggers/defaults-preview";
 
 interface AnalystConfigSheetProps {
   open: boolean;
@@ -26,6 +27,11 @@ interface AnalystConfigSheetProps {
   config: AnalystConfig;
   /** Live prices keyed by symbol, forwarded to the Monitors-tab watchlist. */
   livePrices?: Record<string, number>;
+  /**
+   * "Analyst Trigger Defaults" card data (GAPS P1-33), computed server-side
+   * on the analyst detail page and forwarded to the form's Settings tab.
+   */
+  triggerDefaults?: TriggerDefaultsView | null;
 }
 
 // Sheet wrapper — shown from the analyst detail header. Adapts the DB-shape
@@ -36,6 +42,7 @@ export function AnalystConfigSheet({
   onOpenChange,
   config,
   livePrices,
+  triggerDefaults,
 }: AnalystConfigSheetProps) {
   const [, startTransition] = useTransition();
 
@@ -131,6 +138,7 @@ export function AnalystConfigSheet({
             onAddDomainMonitor={handleAddDomain}
             onAddSearchMonitor={handleAddSearch}
             onRemoveMonitor={handleRemoveMonitor}
+            triggerDefaults={triggerDefaults}
           />
         </div>
       </SheetContent>
