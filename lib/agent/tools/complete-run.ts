@@ -15,6 +15,7 @@ import { computeNeedsAction } from "@/lib/agent/needs-action";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import {
   detectNarrationHits,
   findGaps,
@@ -210,8 +211,75 @@ export const completeRun = defineTool({
         console.error(`[tool] complete_run: failed to write briefing_generated event:`, evtErr);
       }
 
+      // ── Ladder warn-gate (Game Plan PR-C — WARN-MODE, never blocks) ──────
+      // Structural invariant from docs/plans/THESIS_GAME_PLAN.md §4: no
+      // HOLDING should leave a run without a forward ladder — at minimum a
+      // protective EXIT rung (fixed floor or trail). This is deliberately
+      // warn-only for the first live cycle; the price-dependent
+      // UNPROTECTED_GAIN check runs every morning via get_theses/needsAction
+      // (which has live quotes), so this close-out gate only checks the
+      // quote-free structural failures. Escalate to a hard refusal once a
+      // week of warn telemetry shows no false positives.
+      const ladderWarnings: string[] = [];
+      if (ctx.analystId) {
+        try {
+          const holdings = await prisma.thesis.findMany({
+            where: {
+              researchRun: { agentConfigId: ctx.analystId },
+              status: "HOLDING",
+            },
+            select: { ticker: true, triggers: true },
+          });
+          for (const h of holdings) {
+            const parsed = triggersArraySchema.safeParse(h.triggers);
+            if (!parsed.success || parsed.data.length === 0) {
+              ladderWarnings.push(
+                `$${h.ticker}: HOLDING with ${parsed.success ? "zero triggers" : "an unparseable trigger array"} — no ladder at all`,
+              );
+              continue;
+            }
+            const hasProtectiveExit = parsed.data.some(
+              (t) =>
+                t.action === "EXIT" &&
+                ["PRICE_BELOW", "PRICE_ABOVE", "TRAILING_FROM_HIGH", "GAIN_FROM_ENTRY"].includes(
+                  t.predicate.kind,
+                ),
+            );
+            if (!hasProtectiveExit) {
+              ladderWarnings.push(
+                `$${h.ticker}: HOLDING with no protective EXIT rung (no floor, no trail)`,
+              );
+            }
+          }
+          if (ladderWarnings.length > 0) {
+            await prisma.runEvent.create({
+              data: {
+                runId: ctx.runId,
+                type: "ladder_warning",
+                title: `Ladder warn-gate: ${ladderWarnings.length} unprotected holding(s)`,
+                message: ladderWarnings.join("; "),
+                payload: { warnings: ladderWarnings, mode: "warn" } as object,
+              },
+            });
+            console.warn(
+              `[tool] complete_run ladder warn-gate (run=${ctx.runId}):`,
+              ladderWarnings.join("; "),
+            );
+          }
+        } catch (warnErr) {
+          // Warn-gate must never break run completion.
+          console.error(
+            `[tool] complete_run ladder warn-gate errored (non-fatal):`,
+            warnErr instanceof Error ? warnErr.message : warnErr,
+          );
+        }
+      }
+
       return {
-        summary: "Run complete. Briefing: skipped (deprecated).",
+        summary:
+          ladderWarnings.length > 0
+            ? `Run complete. ⚠ ${ladderWarnings.length} holding(s) left without a protective ladder — see ladder_warning event.`
+            : "Run complete. Briefing: skipped (deprecated).",
         data: {
           ok: true,
           briefing: "skipped" as const,
@@ -221,6 +289,10 @@ export const completeRun = defineTool({
               kind: "generic" as const,
               text: "Briefing: skipped — continuity now via the account portfolio digest",
             },
+            ...ladderWarnings.map((w) => ({
+              kind: "generic" as const,
+              text: `⚠ Ladder warning: ${w}`,
+            })),
           ],
         },
         sources: [],

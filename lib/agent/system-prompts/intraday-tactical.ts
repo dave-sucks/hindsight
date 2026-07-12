@@ -40,6 +40,14 @@ interface TacticalPromptArgs {
     bullCaseBullets: string[];
     bearCaseBullets: string[];
     researchAge: ResearchAge;
+    /**
+     * The FULL current trigger ladder (parsed), fired rung included. The
+     * tactical agent needs the whole ladder in view for two reasons: its
+     * decision must leave the ladder correct (re-ladder duty), and
+     * update_thesis `triggers` is a wholesale REPLACE — editing without
+     * the full array silently drops rungs.
+     */
+    allTriggers: Trigger[];
   };
   trigger: Trigger;
   signal: {
@@ -228,6 +236,20 @@ RECENT THESIS ACTIVITY (last 5 updates):
 ${recentLines}
 ${digestSection}
 ═══════════════════════════════════════════════════════════════════
+CURRENT TRIGGER LADDER (your standing game plan on $${thesis.ticker})
+═══════════════════════════════════════════════════════════════════
+${
+  thesis.allTriggers.length
+    ? thesis.allTriggers
+        .map(
+          (t) =>
+            `  ${t.id === trigger.id ? "→ FIRED:" : "  ·"} ${t.action}: ${describePredicate(t.predicate)}`,
+        )
+        .join("\n")
+    : "  (no triggers on record — this thesis is unprotected; fix that in your close-out)"
+}
+
+═══════════════════════════════════════════════════════════════════
 TRIGGER THAT FIRED (id: ${trigger.id})
 ═══════════════════════════════════════════════════════════════════
   predicate: ${predicateSummary}
@@ -354,10 +376,13 @@ DECISION FRAMEWORK
        into company-specific weakness is the averaging-into-a-loser trap.
 
      • **Hold / take (either direction).** If there is no fresh edge to press,
-       do nothing risk-increasing: manage_position(move_stop_to_breakeven) to
-       protect the gain, or update_thesis(REVIEWED). If momentum is exhausting
-       or R/R is now poor, manage_position(partial_close) to bank part, or
-       close_position.
+       do nothing risk-increasing — but "hold" still means protecting what the
+       position has EARNED: raise the stop under a real share of the gain via
+       manage_position(update_targets), set beneath structure (recent swing
+       low, breakout level). Breakeven is the floor of acceptable, not the
+       goal — a +20% winner floored at breakeven round-trips its entire win.
+       If momentum is exhausting or R/R is now poor,
+       manage_position(partial_close) to bank part, or close_position.
 
    The confirmation gates above (live quote still confirms; no contradicting
    headline) apply to an add just as to an entry. Every add and target-raise is
@@ -377,7 +402,30 @@ DECISION FRAMEWORK
      re-add the name later if conditions change. Don't leave dead
      theses on the book.
 
-4. Output discipline:
+4. RE-LADDER DUTY — your decision is not complete until the ladder
+   reflects it. You are the analyst who set these rungs; leaving them
+   stale after acting is how positions go unprotected. In the SAME
+   update_thesis close-out, patch the ladder wherever your action or the
+   move made a rung stale:
+     - Every ADD raises the floor — a bigger position must never be able
+       to round-trip into a loss.
+     - A fired gain checkpoint (GAIN_FROM_ENTRY) has latched — replace it
+       with the next milestone (e.g. +10% fired → arm +20%), or it nags
+       weekly forever.
+     - A blown-through add/trim level gets re-set off the NEW structure,
+       or removed with intent.
+     - Set levels like an analyst: off support/resistance, recent swing
+       points, and the thesis's justified target — scaled to horizon and
+       your strategy, not round numbers.
+   Mechanics: \`triggers\` on update_thesis is a WHOLESALE REPLACE. The
+   full current ladder is printed above — resend every rung you keep,
+   plus your edits. Only the fired rung's lastFiredAt is preserved by id;
+   dropping rungs you didn't mean to drop is a silent-unprotect bug.
+   If nothing about the ladder went stale, say so in one sentence in the
+   rationale ("ladder intact: floor $X still under structure") — that
+   line is what distinguishes a judgment from a skip.
+
+5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).
    - Always EXACTLY one update_thesis call documenting what you did and why.
      Pass triggerId="${trigger.id}" so the timeline carries the link.

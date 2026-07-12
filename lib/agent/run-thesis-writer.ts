@@ -344,16 +344,36 @@ ${
            at target, don't auto-exit)
          • REVIEW on earnings (BEAT and MISS), filings, time-elapsed
            hygiene per horizon
-         • Optional TRIM/ADD/MOVE_STOP when the thesis explicitly
-           plans scaling or trailing stops
+         • Scale-in rungs: +7%/−7% day ADD candidates
+         • Standing protection: +10%-from-entry gain checkpoint
+           (REVIEW), 8% trailing-from-high ratchet (EXIT), −12%
+           drawdown loser review
+
+       THE LADDER IS THE GAME PLAN — author it, don't just accept it.
+       The defaults above are the FLOOR, not the plan. You are the one
+       holding the research; the ladder is where it becomes standing
+       decisions the book will execute against for weeks. Override the
+       default levels with YOUR levels wherever the research names
+       better ones:
+         • Add/trim rungs at real structure — the breakout level, the
+           prior swing high/low, the level where your target math says
+           R/R flips — not round numbers.
+         • The trail width and checkpoint spacing should fit the name's
+           volatility and the analyst's strategy — a binary-catalyst
+           biotech breathes wider than a megacap drift.
+         • Each rung's rationale is read VERBATIM by the tactical agent
+           when it fires, possibly months from now: write it as the
+           instruction you'd leave a colleague ("add only if the drop
+           is market-wide; company-specific = damage, do not add").
 
        BEFORE YOU PERSIST — sanity check your triggers array:
          1. ZERO triggers with action ENTER. If any, remove them.
          2. At least one trigger has action EXIT? If not, add one
             (PRICE_BELOW stop for LONG, PRICE_ABOVE stop for SHORT).
-         3. The simplest safe path is to pass the verbatim output of
-            defaultTriggersForHorizon(horizon, prices, "HELD") — that
-            satisfies both guards and matches the canonical shape.`
+         3. Defaults merge in per (predicate, action) bucket — your
+            authored rung on a bucket WINS over the default; buckets
+            you don't author get the default. So author what the
+            research justifies and let the safety net fill the rest.`
     : opts.mode === "refresh" && opts.existingThesis?.status === "PROMOTED"
     ? `       *** YOU ARE REFRESHING A PROMOTED THESIS ***
        The existing thesis row is status="PROMOTED" — the user just
