@@ -22,8 +22,16 @@ _None open._ The 2026-06-04 → 08 post-launch sprint cleared the live-loop bloc
 ## P1 — Quality is degraded but the live loop functions
 
 ### P1-30 — Gain-protection is thin: a winner can round-trip to a loss with no sell signal
-**Status:** open, filed 2026-07-06 (principal). Real-money risk + trust — the principal does not
-trust that gains are protected, and is right not to.
+**Status:** **shipped, pending live validation** (2026-07-12). The Game Plan stack landed:
+[#477](https://github.com/dave-sucks/hindsight/pull/477) `GAIN_FROM_ENTRY` + `TRAILING_FROM_HIGH`
+predicates · [#481](https://github.com/dave-sucks/hindsight/pull/481) ladder-health +
+`UNPROTECTED_GAIN` needsAction · [#480](https://github.com/dave-sucks/hindsight/pull/480) standing
+protection minimums (+10% checkpoint / 8% trail / −12% loser review) in every held template +
+conversion script (executed — all 11 live holdings verified carrying the rungs) ·
+[#483](https://github.com/dave-sucks/hindsight/pull/483) (open) the Spine prompts + warn-gate.
+See `docs/plans/THESIS_GAME_PLAN.md` + `docs/plans/TRIGGER_LIFECYCLE.md` (the authority/visibility
+contract). **Close after #483 merges + one validated run + the first live trail/checkpoint cycle.**
+Original filing follows for context:
 A held winner's only automatic downside trigger is its **fixed entry-stop** (e.g. −8% from entry).
 A name up 20% can give back the entire gain before that stop fires — **nothing trails the gain.**
 Caveat/history: the `TRAILING_STOP` predicate was deliberately removed in [#458](https://github.com/dave-sucks/hindsight/pull/458)
@@ -50,6 +58,24 @@ The trigger ladder, the standing rules (P1-31), and the press/protect thresholds
 (`RUNNING_WINNER_ABS_GAIN_PCT`, the +7%/−7% rungs, stops) are all code-level today. Principal wants
 them **visible and editable in settings / analyst settings** — both to configure the behavior and
 to *trust* that monitoring is set up correctly.
+
+### P1-33 — Trigger lifecycle visibility: the chain is recorded but not traceable in the UI
+**Status:** open, filed 2026-07-12 (principal). Trust gap: "I need to know when a trigger fired,
+whether it woke an agent, what the agent did, and how the ladder/position changed — flawless."
+Every step IS in the DB (`TRIGGER_FIRED` rows with `triggerId`, tactical close-outs carrying the
+same `triggerId`, `UPDATED` rows with exact `fieldChanges`, proposal outcome rows) but no surface
+shows the chain. Build order (spec: `docs/plans/TRIGGER_LIFECYCLE.md` §4): (1) per-trigger timeline
+in the thesis sheet, (2) book-level protection strip (per holding: gain, floor-locked %, trail?,
+nearest rung), (3) PR8 feed ship-now slice (fires / press-hold-take outcomes / target-reached),
+(4) config side folds into PR-E (P1-31/32).
+
+### P1-34 — Signals/news architecture needs a ground-up rethink (dedicated session)
+**Status:** open, filed 2026-07-12 (principal). Routing is severed — 0 `AnalystSignalRoute` rows in
+14d against 327 flowing signals — so every news/earnings/filing rung on every ladder is decorative
+and monitor-ROI crediting (Pillar 5) is dark. History: all-day routing was trash + expensive;
+morning-run read-everything was unfocused. Three candidate models framed in
+`docs/plans/TRIGGER_LIFECYCLE.md` §6 (vetted push / review-time pull / hybrid: event-class push for
+HELD names + review-time targeted pull). **Do not rebuild the pipeline before that design session.**
 
 _(P1-26 + P1-29 closed 2026-06-26 — see [`GAPS_HISTORY.md`](./GAPS_HISTORY.md).)_
 
