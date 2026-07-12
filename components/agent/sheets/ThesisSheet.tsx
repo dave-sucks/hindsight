@@ -438,10 +438,10 @@ function TradeBlock({
 
   return (
     <div className="rounded-lg border px-4 py-3 space-y-1.5">
-      {/* Review sits on its own row ABOVE the statement — the statement row is
-          always the same shape (dot + sentence left, P&L right), never squeezed
-          by an action control. */}
-      {review ? <div className="flex justify-end">{review}</div> : null}
+      {/* Review sits on its own row ABOVE the statement, left-aligned — the
+          statement row is always the same shape (dot + sentence left, P&L
+          right), never squeezed by an action control. */}
+      {review ? <div className="flex justify-start">{review}</div> : null}
       <TradeStatement dotClass={dotClass} sentence={sentence} gain={gain} />
       {note ? (
         <p className="text-sm text-muted-foreground leading-relaxed">{note}</p>
