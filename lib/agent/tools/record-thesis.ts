@@ -449,7 +449,7 @@ const thesisFields = z.object({
     ),
 });
 
-const thesisSchema = thesisFields.superRefine((val, ctx) => {
+export const thesisSchema = thesisFields.superRefine((val, ctx) => {
   // If source_kind is absent the inference fallback in execute()
   // handles it — don't reject here.
   if (val.source_kind === "ROUTED_SIGNAL") {
