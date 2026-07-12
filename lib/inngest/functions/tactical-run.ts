@@ -218,6 +218,11 @@ export const tacticalRun = inngest.createFunction(
       const thesisSnapshotText = getThesisSnapshotText(thesis);
       const thesisBullBullets = getThesisBullCaseBullets(thesis);
       const thesisBearBullets = getThesisBearCaseBullets(thesis);
+      // Full ladder for the prompt's CURRENT TRIGGER LADDER section +
+      // re-ladder duty: update_thesis `triggers` is wholesale-replace, so
+      // the agent needs every rung in view to edit without dropping any.
+      const parsedLadder = triggersArraySchema.safeParse(thesis.triggers);
+      const allTriggers = parsedLadder.success ? parsedLadder.data : [];
       return {
         thesis: {
           id: thesis.id,
@@ -238,6 +243,7 @@ export const tacticalRun = inngest.createFunction(
           bullCaseBullets: thesisBullBullets,
           bearCaseBullets: thesisBearBullets,
           researchAge: thesisResearchAge,
+          allTriggers,
           updates: thesis.updates.map((u) => ({
             type: u.type,
             summary: u.summary,
@@ -536,6 +542,7 @@ export const tacticalRun = inngest.createFunction(
           bullCaseBullets: thesis.bullCaseBullets,
           bearCaseBullets: thesis.bearCaseBullets,
           researchAge: thesis.researchAge,
+          allTriggers: thesis.allTriggers,
         },
         trigger,
         signal,
