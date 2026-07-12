@@ -88,8 +88,8 @@ jest.mock("@/lib/email", () => ({
   sendEmail: jest.fn().mockResolvedValue(undefined),
   getUserEmail: jest.fn().mockResolvedValue(null),
 }));
-jest.mock("@/lib/auth/account", () => ({
-  getOwnerUserId: jest.fn().mockResolvedValue("user-1"),
+jest.mock("@/lib/emails/recipients", () => ({
+  getEmailRecipients: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("@/lib/emails/trade-closed", () => ({
   tradeClosedHtml: jest.fn().mockReturnValue("<html></html>"),

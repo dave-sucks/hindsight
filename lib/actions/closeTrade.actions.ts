@@ -11,8 +11,8 @@ import {
   type AlpacaOrder,
 } from "@/lib/alpaca";
 import { inngest } from "@/lib/inngest/client";
-import { sendEmail, getUserEmail } from "@/lib/email";
-import { getOwnerUserId } from "@/lib/auth/account";
+import { sendEmail } from "@/lib/email";
+import { getEmailRecipients } from "@/lib/emails/recipients";
 import { tradeClosedHtml } from "@/lib/emails/trade-closed";
 import { maybeAwaitApproval } from "@/lib/proposals/maybe-await-approval";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
@@ -558,13 +558,16 @@ export async function closeOpenPosition(
           })
         : null;
       if (config && config.emailAlerts === false) return;
-      // Send to the account OWNER, not whoever placed the trade. For
-      // single-OWNER accounts they're identical; for team workspaces the
-      // OWNER is the canonical recipient. Falls back to position.userId
-      // if the account membership lookup misses for any reason.
-      const ownerUserId = await getOwnerUserId(position.accountId);
-      const toEmail = await getUserEmail(ownerUserId ?? position.userId);
-      if (!toEmail) return;
+      // Every account member subscribed to TRADE_ACTIVITY gets the alert
+      // (default: all members; per-member opt-out on /settings/team).
+      // Falls back to position.userId only when the account has no
+      // membership rows at all.
+      const recipients = await getEmailRecipients(
+        position.accountId,
+        "TRADE_ACTIVITY",
+        { fallbackUserId: position.userId },
+      );
+      if (recipients.length === 0) return;
       const pnlPct = positionCost > 0 ? (realizedPnl / positionCost) * 100 : 0;
       const daysHeld = Math.max(
         1,
@@ -573,30 +576,30 @@ export async function closeOpenPosition(
       const isWin = outcome === "WIN";
       const sign2 = realizedPnl >= 0 ? "+" : "";
       const livePrefix = positionEnvironment === "LIVE" ? "[LIVE] " : "";
-      await sendEmail({
-        to: toEmail,
-        subject: isWin
-          ? `${livePrefix}✅ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — WIN`
-          : `${livePrefix}⛔ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — ${outcome}`,
-        html: tradeClosedHtml({
-          ticker: position.symbol,
-          direction: position.direction as "LONG" | "SHORT",
-          qty: position.quantity,
-          entryPrice: position.avgCost,
-          closePrice,
-          currentPrice: closePrice,
-          realizedPnl,
-          realizedPnlPct: pnlPct,
-          outcome,
-          closeReason: reason,
-          daysHeld,
-          tradeId: positionId,
-          analystName: config?.name ?? "Hindsight",
-          environment: positionEnvironment,
-          openedAt: position.openedAt,
-          closedAt: new Date(),
-        }),
+      const subject = isWin
+        ? `${livePrefix}✅ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — WIN`
+        : `${livePrefix}⛔ ${position.symbol} closed ${sign2}${pnlPct.toFixed(1)}% — ${outcome}`;
+      const html = tradeClosedHtml({
+        ticker: position.symbol,
+        direction: position.direction as "LONG" | "SHORT",
+        qty: position.quantity,
+        entryPrice: position.avgCost,
+        closePrice,
+        currentPrice: closePrice,
+        realizedPnl,
+        realizedPnlPct: pnlPct,
+        outcome,
+        closeReason: reason,
+        daysHeld,
+        tradeId: positionId,
+        analystName: config?.name ?? "Hindsight",
+        environment: positionEnvironment,
+        openedAt: position.openedAt,
+        closedAt: new Date(),
       });
+      await Promise.all(
+        recipients.map((to) => sendEmail({ to, subject, html })),
+      );
     } catch (err) {
       console.warn(
         "[closeOpenPosition] trade-closed email failed:",

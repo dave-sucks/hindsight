@@ -65,8 +65,8 @@ jest.mock("@/lib/email", () => ({
   getUserEmail: jest.fn().mockResolvedValue(null),
 }));
 
-jest.mock("@/lib/auth/account", () => ({
-  getOwnerUserId: jest.fn().mockResolvedValue(null),
+jest.mock("@/lib/emails/recipients", () => ({
+  getEmailRecipients: jest.fn().mockResolvedValue([]),
 }));
 
 jest.mock("@/lib/emails/trade-opened", () => ({

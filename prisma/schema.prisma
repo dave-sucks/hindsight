@@ -66,6 +66,15 @@ model AccountMembership {
   role      MemberRole @default(VIEWER)
   createdAt DateTime   @default(now())
 
+  // Per-member email notification preferences. Every member of an account
+  // receives every email category by default (the OWNER-only routing was
+  // the pre-2026-07 behavior); a member flips their own toggles off on
+  // /settings/team. Recipient resolution lives in lib/emails/recipients.ts —
+  // email send sites go through getEmailRecipients(), never getOwnerUserId().
+  emailTradeProposals Boolean @default(true) // proposal-pending (approval requests)
+  emailTradeActivity  Boolean @default(true) // trade-opened + trade-closed alerts
+  emailDailyDigest    Boolean @default(true) // morning run digest
+
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 

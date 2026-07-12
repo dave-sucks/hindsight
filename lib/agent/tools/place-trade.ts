@@ -11,8 +11,8 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
-import { sendEmail, getUserEmail } from "@/lib/email";
-import { getOwnerUserId } from "@/lib/auth/account";
+import { sendEmail } from "@/lib/email";
+import { getEmailRecipients } from "@/lib/emails/recipients";
 import { tradeOpenedHtml } from "@/lib/emails/trade-opened";
 import {
   maybeAwaitApproval,
@@ -1030,36 +1030,40 @@ export const placeTrade = defineTool({
               select: { emailAlerts: true, name: true },
             });
             if (!config?.emailAlerts) return;
-            // Send to the account OWNER, not the user that placed the trade.
-            // For solo OWNER they're the same; for team workspaces an EDITOR
-            // placing a trade still pings the OWNER (canonical inbox).
-            const ownerUserId = await getOwnerUserId(ctx.accountId);
-            const toEmail = await getUserEmail(ownerUserId ?? ctx.userId);
-            if (!toEmail) return;
+            // Every account member subscribed to TRADE_ACTIVITY gets the
+            // alert (default: all members; per-member opt-out on
+            // /settings/team). Falls back to the placing user only when
+            // the account has no membership rows.
+            const recipients = await getEmailRecipients(
+              ctx.accountId,
+              "TRADE_ACTIVITY",
+              { fallbackUserId: ctx.userId },
+            );
+            if (recipients.length === 0) return;
             const thesis = await prisma.thesis.findUnique({
               where: { id: args.thesis_id },
               select: { snapshot: true },
             });
             const verb = args.direction === "LONG" ? "📈 Bought" : "📉 Shorted";
             const livePrefix = positionEnvironment === "LIVE" ? "[LIVE] " : "";
-            await sendEmail({
-              to: toEmail,
-              subject: `${livePrefix}${verb} ${ticker} — ${config.name}`,
-              html: tradeOpenedHtml({
-                ticker,
-                direction: args.direction,
-                qty: emailedShares,
-                avgCost: emailedAvgCost,
-                currentPrice: fillPrice,
-                stopLoss: args.stop_loss,
-                targetPrice: args.target_price,
-                analystName: config.name,
-                thesisSummary: thesis ? (getThesisSnapshotText(thesis) || null) : null,
-                environment: positionEnvironment,
-                positionId: position.id,
-                openedAt: position.openedAt ?? new Date(),
-              }),
+            const subject = `${livePrefix}${verb} ${ticker} — ${config.name}`;
+            const html = tradeOpenedHtml({
+              ticker,
+              direction: args.direction,
+              qty: emailedShares,
+              avgCost: emailedAvgCost,
+              currentPrice: fillPrice,
+              stopLoss: args.stop_loss,
+              targetPrice: args.target_price,
+              analystName: config.name,
+              thesisSummary: thesis ? (getThesisSnapshotText(thesis) || null) : null,
+              environment: positionEnvironment,
+              positionId: position.id,
+              openedAt: position.openedAt ?? new Date(),
             });
+            await Promise.all(
+              recipients.map((to) => sendEmail({ to, subject, html })),
+            );
           } catch (err) {
             console.warn(
               "[place_trade] trade-opened email failed:",

@@ -14,8 +14,8 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { sendEmail, getUserEmail } from "@/lib/email";
-import { getOwnerUserId } from "@/lib/auth/account";
+import { sendEmail } from "@/lib/email";
+import { getEmailRecipients } from "@/lib/emails/recipients";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import {
   renderTradeCard,
@@ -102,9 +102,11 @@ export function proposalPendingHtml(d: ProposalPendingData): string {
 }
 
 /**
- * Fire-and-forget — sends the proposal-pending email to the Account OWNER.
- * Resolves the Order + Position + analyst details, composes the subject and
- * HTML, calls sendEmail. Never throws — failures are logged.
+ * Fire-and-forget — sends the proposal-pending email to every account
+ * member subscribed to TRADE_PROPOSALS (all members by default; per-member
+ * opt-out on /settings/team). Resolves the Order + Position + analyst
+ * details, composes the subject and HTML, calls sendEmail per recipient.
+ * Never throws — failures are logged.
  */
 export async function sendProposalPendingEmail(orderId: string): Promise<void> {
   try {
@@ -134,12 +136,15 @@ export async function sendProposalPendingEmail(orderId: string): Promise<void> {
     });
     if (analyst?.emailAlerts === false) return;
 
-    // OWNER is the canonical recipient. Solo OWNER = self; team workspaces
-    // route to the OWNER regardless of which EDITOR's run produced the
-    // proposal (Dave decides for the Account).
-    const ownerUserId = await getOwnerUserId(order.position.accountId);
-    const toEmail = await getUserEmail(ownerUserId ?? order.position.userId);
-    if (!toEmail) return;
+    // Every account member subscribed to TRADE_PROPOSALS gets the email
+    // (default: all members). Falls back to the position's userId only
+    // when the account has no membership rows at all.
+    const recipients = await getEmailRecipients(
+      order.position.accountId,
+      "TRADE_PROPOSALS",
+      { fallbackUserId: order.position.userId },
+    );
+    if (recipients.length === 0) return;
 
     const intent = (order.intent ?? "OPEN") as ProposalPendingData["intent"];
     const direction = order.position.direction as "LONG" | "SHORT";
@@ -181,7 +186,9 @@ export async function sendProposalPendingEmail(orderId: string): Promise<void> {
       positionId: order.position.id,
     });
 
-    await sendEmail({ to: toEmail, subject, html });
+    await Promise.all(
+      recipients.map((to) => sendEmail({ to, subject, html })),
+    );
   } catch (err) {
     console.warn(
       "[proposal-pending-email] send failed:",

@@ -31,7 +31,14 @@ export default async function TeamSettingsPage() {
     prisma.accountMembership.findMany({
       where: { accountId },
       orderBy: { createdAt: "asc" },
-      select: { userId: true, role: true, createdAt: true },
+      select: {
+        userId: true,
+        role: true,
+        createdAt: true,
+        emailTradeProposals: true,
+        emailTradeActivity: true,
+        emailDailyDigest: true,
+      },
     }),
     prisma.accountInvite.findMany({
       where: { accountId, acceptedAt: null, expiresAt: { gt: new Date() } },
@@ -46,6 +53,9 @@ export default async function TeamSettingsPage() {
       email: await getUserEmail(m.userId),
       role: m.role,
       joinedAt: m.createdAt.toISOString(),
+      emailTradeProposals: m.emailTradeProposals,
+      emailTradeActivity: m.emailTradeActivity,
+      emailDailyDigest: m.emailDailyDigest,
     })),
   );
 
