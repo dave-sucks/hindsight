@@ -186,3 +186,56 @@ export const DIRECT_ELIGIBLE_PREDICATE_KINDS: readonly string[] = [
 export function isDirectEligiblePredicate(kind: string): boolean {
   return DIRECT_ELIGIBLE_PREDICATE_KINDS.includes(kind);
 }
+
+/**
+ * Map a protective/price EXIT predicate to the STOP/TARGET close reason it
+ * should carry — the single source of truth for "what tag does a
+ * price-level protective exit close with." Returns null for any predicate
+ * that isn't a deterministic price/gain protective kind (earnings, signals,
+ * RSI, time, composites) — those are judgment exits the agent tags itself.
+ *
+ * Why this exists: a price-level protective exit (trail-from-high give-back,
+ * gain-from-entry lock, absolute stop/target, daily-% move) is a MATERIAL
+ * risk event, not a discretionary re-pitch. The P1-28 unapproved-exit
+ * cooldown (lib/proposals/maybe-await-approval.ts) exempts closes tagged
+ * STOP/TARGET so a rejected protective exit still re-fires when price
+ * re-crosses the level — exactly the re-alert the principal asked for. Both
+ * close paths use this mapping so the tag is deterministic and never depends
+ * on the LLM remembering to pick STOP:
+ *   • DIRECT fire  → directExitReason() (tactical-run.ts) delegates here.
+ *   • agent (TACTICAL) fire → the reason is precomputed here and threaded
+ *     into the tool context (ToolContext.protectiveExitReason); close_position
+ *     uses it in place of the model-chosen reason.
+ *
+ * STOP vs TARGET: adverse-direction move → STOP; favorable-direction → TARGET.
+ * Both are cooldown-exempt; the split only affects the audit label. Trail /
+ * gain-lock exits are protective give-backs → STOP.
+ */
+export function protectiveExitCloseReason(
+  predicate: TriggerPredicate,
+  direction: string | null,
+): "STOP" | "TARGET" | null {
+  if (!isDirectEligiblePredicate(predicate.kind)) return null;
+  const isLong = direction !== "SHORT";
+  switch (predicate.kind) {
+    case "PRICE_BELOW":
+      return isLong ? "STOP" : "TARGET";
+    case "PRICE_ABOVE":
+      return isLong ? "TARGET" : "STOP";
+    case "PRICE_MOVE_PCT": {
+      // Favorable (TARGET) when the move is WITH the position — LONG on an
+      // up day, SHORT on a down day — adverse (STOP) otherwise.
+      const up = predicate.direction === "UP";
+      const favorable = isLong ? up : !up;
+      return favorable ? "TARGET" : "STOP";
+    }
+    // GAIN_FROM_ENTRY (gain-lock) and TRAILING_FROM_HIGH (give-back) are
+    // protective ratchets — treat as STOP so the gain is protected as a
+    // material risk exit.
+    case "GAIN_FROM_ENTRY":
+    case "TRAILING_FROM_HIGH":
+      return "STOP";
+    default:
+      return "STOP";
+  }
+}

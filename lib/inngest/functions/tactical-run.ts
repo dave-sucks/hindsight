@@ -25,7 +25,10 @@ import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { describeTriggerFire } from "@/lib/agent/triggers/format";
 import { MODES } from "@/lib/agent/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
-import { isDirectEligiblePredicate } from "@/lib/agent/triggers/types";
+import {
+  isDirectEligiblePredicate,
+  protectiveExitCloseReason,
+} from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
@@ -68,19 +71,11 @@ function directExitReason(
   trigger: Trigger,
   direction: string | null,
 ): "STOP" | "TARGET" {
-  const k = trigger.predicate.kind;
-  const isLong = direction !== "SHORT";
-  if (k === "PRICE_BELOW") return isLong ? "STOP" : "TARGET";
-  if (k === "PRICE_ABOVE") return isLong ? "TARGET" : "STOP";
-  if (k === "PRICE_MOVE_PCT") {
-    // A daily-move exit is favorable (TARGET) when the move is WITH the
-    // position — LONG closing on an up day, SHORT closing on a down day —
-    // and adverse (STOP) otherwise.
-    const up = trigger.predicate.direction === "UP";
-    const favorable = isLong ? up : !up;
-    return favorable ? "TARGET" : "STOP";
-  }
-  return "STOP";
+  // Single source of truth for the protective-exit → STOP/TARGET mapping
+  // (shared with the agent-path threading below and close_position). The
+  // caller has already gated on isDirectEligiblePredicate, so this is always
+  // non-null; the ?? "STOP" is a defensive floor.
+  return protectiveExitCloseReason(trigger.predicate, direction) ?? "STOP";
 }
 
 // How long after a REJECTED close proposal to keep suppressing re-fires of
@@ -468,12 +463,32 @@ export const tacticalRun = inngest.createFunction(
         undefined;
 
       const watchlistSymbols = await getWatchlistSymbols(agentConfig.id);
+      // ── Protective-exit cooldown exemption (P1-28) ────────────────────
+      // This tactical run was woken BY a specific trigger. When that trigger
+      // is a protective/price EXIT (trail-from-high, gain-from-entry, stop /
+      // target price level, daily-% move), the resulting close is a MATERIAL
+      // risk event, not a discretionary re-pitch — it must stay exempt from
+      // the unapproved-exit cooldown so a rejected gain-lock re-fires when
+      // price re-crosses the level. We can't trust the LLM to tag STOP, so we
+      // deterministically precompute the reason from the fired predicate and
+      // thread it into the tool context; close_position uses it in place of
+      // the model-chosen reason. Non-protective EXIT triggers (earnings,
+      // signals, etc.) leave this undefined → the agent's own MANUAL/STOP tag
+      // stands and genuinely discretionary MANUAL closes stay on cooldown.
+      const protectiveExitReason =
+        (trigger as Trigger).action === "EXIT"
+          ? protectiveExitCloseReason(
+              (trigger as Trigger).predicate,
+              thesis.direction,
+            ) ?? undefined
+          : undefined;
       const allTools = createResearchTools({
         runId: run.id,
         userId: agentConfig.userId,
         accountId: agentConfig.accountId,
         analystId: agentConfig.id,
         runMode: "INTRADAY_TACTICAL",
+        protectiveExitReason,
         watchlist: watchlistSymbols,
         exclusionList: agentConfig.exclusionList ?? [],
         sectors: agentConfig.sectors ?? [],
