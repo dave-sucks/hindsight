@@ -165,6 +165,22 @@ export interface ToolContext {
    * the Pillar 5 self-improvement loop. Populated by read_signals.
    */
   signalsByTicker?: Map<string, Set<string>>;
+
+  /**
+   * Deterministic close reason for a protective/price EXIT tactical run
+   * (P1-28). Set by lib/inngest/functions/tactical-run.ts when THIS run was
+   * woken by a price-level protective EXIT trigger (TRAILING_FROM_HIGH,
+   * GAIN_FROM_ENTRY, PRICE_BELOW/PRICE_ABOVE, PRICE_MOVE_PCT). When present,
+   * close_position tags the close with this STOP/TARGET reason INSTEAD of the
+   * model-chosen `reason` arg — so the close is treated as a material risk
+   * event and stays exempt from the unapproved-exit cooldown (a rejected
+   * gain-lock must re-fire when price re-crosses the level). Undefined for
+   * daily runs and for tactical runs woken by judgment EXIT triggers
+   * (earnings, signals) — those keep the LLM's own tag and a discretionary
+   * MANUAL close correctly stays on cooldown. See
+   * lib/agent/triggers/types.ts → protectiveExitCloseReason.
+   */
+  protectiveExitReason?: "STOP" | "TARGET";
 }
 
 /** Create a ToolContext from plain options (adds the groupId method). */

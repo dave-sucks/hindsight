@@ -109,6 +109,14 @@ interface ToolCtx {
    * by discovery-run.ts. See ToolContext.coveredTickers.
    */
   coveredTickers?: string[];
+  /**
+   * Deterministic STOP/TARGET close tag for a protective/price EXIT tactical
+   * run — see ToolContext.protectiveExitReason. Set by tactical-run.ts when
+   * the fired trigger is a price-level protective exit; close_position uses
+   * it in place of the model-chosen reason so the close inherits the P1-28
+   * cooldown exemption.
+   */
+  protectiveExitReason?: "STOP" | "TARGET";
 }
 
 export function createResearchTools(ctx: ToolCtx) {

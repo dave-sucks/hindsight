@@ -30,6 +30,19 @@ export const closePosition = defineTool({
 
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
+    // ── Protective-exit cooldown exemption (P1-28) ────────────────────────
+    // When this tactical run was woken by a price-level protective EXIT
+    // trigger (trail-from-high, gain-from-entry, stop/target level, daily-%
+    // move), tactical-run.ts precomputes the STOP/TARGET tag and threads it in
+    // as ctx.protectiveExitReason. Use it INSTEAD of the model-chosen reason
+    // so the close is tagged as a material risk exit and stays exempt from the
+    // unapproved-exit cooldown — a rejected gain-lock must re-fire when price
+    // re-crosses the level (the ARQT $26.50 re-alert the principal asked for).
+    // We don't trust the LLM to remember the tag: this is deterministic. For
+    // daily runs and judgment EXIT triggers (earnings/signals) the field is
+    // undefined, so a genuinely discretionary MANUAL close keeps its tag and
+    // stays on cooldown — the P1-28 anti-nag protection is preserved.
+    const reason = ctx.protectiveExitReason ?? args.reason;
     try {
       // ── PROMOTED guard (P1-21) ─────────────────────────────────────────
       // A PROMOTED thesis was an ACTIVE paper position that the user just
@@ -59,7 +72,7 @@ export const closePosition = defineTool({
             data: {
               success: false,
               ticker,
-              reason: args.reason,
+              reason: reason,
               status: "FAILED" as const,
               message: msg,
               tickers: [{ ticker, tag: "Promoted", summary: msg, actionIcon: "failed" }],
@@ -98,7 +111,7 @@ export const closePosition = defineTool({
           data: {
             success: true,
             ticker,
-            reason: args.reason,
+            reason: reason,
             status: "NO_POSITION" as const,
             message: noPosMsg,
             tickers: [{ ticker, tag: "N/A", summary: noPosMsg, actionIcon: "failed" }],
@@ -110,8 +123,8 @@ export const closePosition = defineTool({
       const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
       const agentAuditReason = args.notes
         ? args.notes
-        : `${position.direction} position in ${ticker} closed by agent — reason: ${args.reason}.`;
-      const outcome = await closeOpenPosition(position.id, args.reason, undefined, "agent", agentAuditReason, ctx.runId);
+        : `${position.direction} position in ${ticker} closed by agent — reason: ${reason}.`;
+      const outcome = await closeOpenPosition(position.id, reason, undefined, "agent", agentAuditReason, ctx.runId);
 
       // Trade-as-Proposal — when the Account requires approval for sells in this environment,
       // closeOpenPosition stages the close as Order(AWAITING_APPROVAL) and
@@ -126,7 +139,7 @@ export const closePosition = defineTool({
           data: {
             success: true,
             ticker,
-            reason: args.reason,
+            reason: reason,
             shares: position.quantity,
             status: "PROPOSED" as const,
             fillStatus: "AWAITING_APPROVAL" as const,
@@ -194,8 +207,8 @@ export const closePosition = defineTool({
       const analystId = ctx.analystId || position.analystId;
       const fillNote = result.fillStatus === "PENDING" ? " (close order pending fill)" : "";
       const reasoningNote = args.notes
-        ? `Closed ${position.direction} position: ${args.reason}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`
-        : `Closed ${position.direction} position: ${args.reason}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`;
+        ? `Closed ${position.direction} position: ${reason}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`
+        : `Closed ${position.direction} position: ${reason}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`;
 
       try {
         await prisma.tradeDecision.create({
@@ -231,7 +244,7 @@ export const closePosition = defineTool({
                 close_price: result.closePrice,
                 realized_pnl: result.realizedPnl,
                 outcome: result.outcome,
-                reason: args.reason,
+                reason: reason,
                 notes: args.notes ?? null,
               } as object,
             },
@@ -289,7 +302,7 @@ export const closePosition = defineTool({
         data: {
           success: true,
           ticker,
-          reason: args.reason,
+          reason: reason,
           shares: position.quantity,
           status: isPending ? ("PENDING" as const) : ("CLOSED" as const),
           fillStatus: result.fillStatus,
@@ -317,7 +330,7 @@ export const closePosition = defineTool({
         data: {
           success: false,
           ticker,
-          reason: args.reason,
+          reason: reason,
           status: "FAILED" as const,
           message: msg,
           tickers: [{ ticker, tag: "Failed", summary: msg, actionIcon: "failed" }],
