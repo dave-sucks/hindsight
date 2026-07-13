@@ -16,6 +16,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email";
 import { getEmailRecipients } from "@/lib/emails/recipients";
+import { proposalHeadline } from "@/lib/emails/proposal-headline";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import {
   renderTradeCard,
@@ -164,12 +165,30 @@ export async function sendProposalPendingEmail(orderId: string): Promise<void> {
       ? liveExit ?? order.position.avgCost
       : order.position.avgCost;
 
-    const livePrefix = environment === "LIVE" ? "[LIVE] " : "";
-    const verbStr = subjectVerb(intent, direction);
-    const subject = `${livePrefix}${analyst?.name ?? "Analyst"} wants to ${verbStr} ${order.quantity} ${order.symbol}`;
+    // Subject mirrors the push body and the card headline — one canonical
+    // sentence, built by proposalHeadline. Closes carry signed P&L when the
+    // live exit quote resolved; opens/adds carry estimated cost.
+    const pnlKnown = isClose && liveExit != null && order.position.avgCost > 0;
+    const dirSign = direction === "LONG" ? 1 : -1;
+    const subject = proposalHeadline({
+      intent,
+      direction,
+      environment,
+      ticker: order.symbol,
+      qty: order.quantity,
+      pnlPct: pnlKnown
+        ? ((liveExit - order.position.avgCost) / order.position.avgCost) * 100 * dirSign
+        : null,
+      pnlUsd: pnlKnown
+        ? (liveExit - order.position.avgCost) * order.quantity * dirSign
+        : null,
+      estimatedCost: isClose ? null : order.quantity * estimatedPrice,
+    });
 
     const html = proposalPendingHtml({
-      analystName: analyst?.name ?? "Analyst",
+      // Branded, not the analyst — see proposal-headline.ts. The analyst
+      // is still fetched above for the emailAlerts gate.
+      analystName: "Hindsight",
       ticker: order.symbol,
       direction,
       intent,
@@ -197,14 +216,3 @@ export async function sendProposalPendingEmail(orderId: string): Promise<void> {
   }
 }
 
-/** Subject-line verb only. The card body uses the shared primitive's verb. */
-function subjectVerb(
-  intent: ProposalPendingData["intent"],
-  direction: "LONG" | "SHORT",
-): string {
-  if (intent === "OPEN") return direction === "LONG" ? "buy" : "short";
-  if (intent === "ADD") return direction === "LONG" ? "add to" : "add to short on";
-  if (intent === "CLOSE") return "close";
-  if (intent === "PARTIAL_CLOSE") return "trim";
-  return "trade";
-}
