@@ -32,6 +32,7 @@ Read these in order:
 3. The most recent `docs/run-reviews/YYYY-MM-DD.md` — your prior baseline for delta columns
 4. [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — the live state-machine reference. Confirm any PROMOTED / dispatch behavior you're about to claim matches §3 (states) + §11 (run-summary derivation)
 5. [`docs/plans/STATUS_TAXONOMY.md`](../plans/STATUS_TAXONOMY.md) — the P1-24 status vocabulary (LOCKED, complete 2026-06-16). **`Thesis.status`** = `WATCHING` / `HOLDING` / `PASSED` / `RETIRED` (+ `retiredReason`: DROPPED/SOLD/INVALIDATED/REPLACED) / `PROMOTED`; **`direction`** = `LONG` / `SHORT` / `null`. The legacy thesis-statuses `ACTIVE` / `INVALIDATED` / `ARCHIVED` / `SUPERSEDED` / `CLOSED` and `direction = PASS`/`PENDING` are **gone**: `HOLDING` = former ACTIVE, `PASSED` = former `direction=PASS`, `RETIRED` = former CLOSED/INVALIDATED/ARCHIVED/SUPERSEDED. (`Position.status` and `Order.status` are unchanged — `CLOSED`/`PENDING_APPROVAL`/`PENDING` there are still valid.)
+6. [`docs/plans/TRIGGER_LIFECYCLE.md`](../plans/TRIGGER_LIFECYCLE.md) — for trigger/ladder mechanics, the rubric is this file. Read §1 (who sets which level, at which layer) + §2 (which rungs wake an agent / batch to the next morning / fire mechanically / carry cooldowns) before grading [Section I](#i-trigger--ladder-health-checklist-game-plan). Companion: [`docs/plans/THESIS_GAME_PLAN.md`](../plans/THESIS_GAME_PLAN.md) (the behavioral blueprint the ladder rules come from) and [`docs/TRIGGERS.md`](../TRIGGERS.md) (predicate mechanics).
 
 ## What to query (default)
 
@@ -307,6 +308,124 @@ Approve. Any deviation is a finding.**
 checks) pass, the feature is working. Items 6–11 are deeper checks for the
 follow-up review; first day they're "verify nothing broke," not "verify
 quality."
+
+### I. Trigger & ladder health checklist (Game Plan)
+
+The Game Plan stack (#477/#481/#480 merged, PR-C #483) makes every thesis a
+*standing conditional playbook* — a trigger ladder the agent authors, re-earns
+on every review, and re-ladders on every tactical fire. This section grades
+whether the runs actually **engaged** the ladder or **rubber-stamped** it. The
+grading rubric is [`docs/plans/TRIGGER_LIFECYCLE.md`](../plans/TRIGGER_LIFECYCLE.md):
+**§1** tells you who is allowed to set which level (code minimum vs
+analyst-authored-with-nuance vs principal-set), and **§2** tells you what each
+rung is *supposed* to do when it fires (wake a tactical run / batch to the next
+morning / fire a mechanical DIRECT exit / carry a cooldown). Read both before
+scoring any item below — a "violation" that's actually the contract working as
+designed is a false finding.
+
+The motivating failure is the IONS autopsy ([`THESIS_GAME_PLAN.md`](../plans/THESIS_GAME_PLAN.md) §1):
+a name up +17% reviewed "no changes" three mornings running, then crashed and
+fired its **day-one** floor for a loss. Every check here exists to make that
+impossible. The non-negotiable contract: **every review re-earns the ladder** —
+a level a thesis is born with reflects entry-day information forever unless a
+review moves it.
+
+Apply per morning run (and cross-reference the day's tactical runs):
+
+1. **Did held-name reviews ENGAGE the ladder, or rubber-stamp it?** For every
+   HOLDING the run touched, read the `ThesisUpdate` row and its `fieldChanges`.
+   A review of a name that **moved** (≥3% intraday, a fired checkpoint, or any
+   `ladderHealth.isUnprotectedGain = true`) must show a concrete ladder edit:
+   a raised floor, a replaced/re-armed checkpoint rung, a fitted trail, a
+   retuned add/trim level. A bare `REVIEWED` audit row with `fieldChanges` empty
+   (or a rationale that says "Reviewed — no changes") on a mover is the IONS
+   rubber-stamp — **flag it with ticker, the day's move, and the verbatim
+   rationale.** Cite the "every review re-earns the ladder" contract
+   ([`THESIS_GAME_PLAN.md`](../plans/THESIS_GAME_PLAN.md) §4 Moment 3;
+   [`TRIGGER_LIFECYCLE.md`](../plans/TRIGGER_LIFECYCLE.md) §1 layer 4). A
+   genuinely-unchanged name that didn't move is allowed a REVIEWED-only row —
+   the test is "did it move," not "did it edit every time."
+
+2. **Were `UNPROTECTED_GAIN` flags resolved or dodged?** The `get_theses`
+   ladder-health block sets `isUnprotectedGain` when a holding's gain% outruns
+   its floor-locked% past threshold ([lib/agent/ladder-health.ts](../../lib/agent/ladder-health.ts),
+   surfaced as the `UNPROTECTED_GAIN` needsAction kind). For every holding that
+   carried the flag at run start, the review must **either** raise the floor
+   toward the gain (a `fieldChanges` floor edit / a new trail) **or** write an
+   explicit one-sentence attestation of why not. Grade the attestation for
+   honesty: "holding the wide stop through the 7/18 earnings print by design,
+   re-tighten after" is honest; "reviewed, comfortable with current levels" on a
+   name up 15% with a day-one floor is the **lazy dodge** the gate is meant to
+   catch — flag it. A flag that's neither resolved nor attested is a hard fail.
+
+3. **On tactical fires — did the agent RE-LADDER?** [`TRIGGER_LIFECYCLE.md`](../plans/TRIGGER_LIFECYCLE.md)
+   §1 layer 4 and [`THESIS_GAME_PLAN.md`](../plans/THESIS_GAME_PLAN.md) §4
+   Moment 2 make re-laddering a **duty on every fire**, not an option. For each
+   INTRADAY_TACTICAL run today, read the close-out `update_thesis` `fieldChanges`:
+   - **Every ADD raises the floor.** A tactical run that added to a position
+     (`place_trade` / `manage_position(add_to_position)`) and left the floor
+     where it was is a re-ladder skip — flag with ticker + run ID.
+   - **A fired `GAIN_FROM_ENTRY` checkpoint is replaced with the next milestone.**
+     If the +10% checkpoint fired, the close-out should re-arm +20% (or the next
+     rung) and lift the floor under it. A fire that leaves the same +10% rung
+     armed will re-fire and re-nag — flag it.
+   - **Stale rungs retuned to the new price.** An add at a materially higher
+     price with trim/target rungs still set for the old entry is a half-done
+     re-ladder.
+   Cross-reference: the tactical run must pass `triggerId` on its close-out
+   (Section E / [`tactical.md`](../../app/(root)/agent-workflow/content/tactical.md)),
+   so the `ThesisUpdate` links back to the firing rung — confirm the link exists
+   before trusting the fire's audit trail.
+
+4. **Were protective exits tagged correctly (STOP vs MANUAL)?** A protective
+   close must carry the right `closeReason` — a mis-tag has a real cost. The
+   P1-28 cooldown carve-out (#445, [`docs/GAPS.md`](../GAPS.md)) exempts
+   `closeReason ∈ {STOP, TARGET}` from re-fire dampening; a floor/trail exit
+   mis-tagged as a discretionary MANUAL close can therefore get **suppressed**
+   as a re-alert (or, inverted, a discretionary exit mis-tagged STOP dodges the
+   dampener and re-nags). Cross-reference the intended fire behavior in
+   [`TRIGGER_LIFECYCLE.md`](../plans/TRIGGER_LIFECYCLE.md) §2 (DIRECT floors/trails
+   fire a mechanical close proposal; the cooldown row governs whether a repeat
+   fires again). For every protective close today, confirm the `closeReason` /
+   `closeSource` matches how it actually fired (`price_monitor` stop vs agent
+   decision vs user click — schema note in [Section H](#h-proposal-flow-integrity-pr-364)).
+   Flag any exit whose tag would mis-route the cooldown.
+
+5. **Did any run leave a HOLDING with no protective rung?** `complete_run`
+   carries the Game Plan PR-C **ladder warn-gate** (warn-mode, never blocks —
+   [lib/agent/tools/complete-run.ts:214](../../lib/agent/tools/complete-run.ts)).
+   When a run finishes with a HOLDING that has no floor and no trail, it writes a
+   `RunEvent(type='ladder_warning', title='Ladder warn-gate: N unprotected
+   holding(s)')`. Query today's `RunEvent WHERE type='ladder_warning'`; for every
+   holding named, confirm the *next* action (this run's own late edit, a follow-up
+   tactical, or a flagged carry into tomorrow) closes the gap. A holding that
+   sits unprotected across multiple `ladder_warning` events on consecutive days
+   is the IONS setup re-forming — escalate it in the TL;DR, don't bury it. (The
+   gate is warn-only for the first live cycle; treat a warning as a finding to
+   chase, not proof the run failed.)
+
+6. **Authority sanity — did the right layer set the level?** Spot-check that the
+   levels edited today were set by whoever is entitled to set them
+   ([`TRIGGER_LIFECYCLE.md`](../plans/TRIGGER_LIFECYCLE.md) §1): standing
+   minimums (+10% checkpoint / 8% trail / −12% loser review / ±7% scale rungs)
+   are code constants and should appear on every holding *for free*; the agent
+   authors the **actual** floor/trail/add levels with nuance; a `principalDirective`
+   fed back from a reject dialog beats the agent's own edit and the agent must
+   honor it, not overwrite it. An agent edit that strips a standing minimum, or
+   silently reverses a `principalDirective`, is a layer violation — flag with the
+   before/after levels.
+
+**How to score this section:** items 1–3 are the core "did the analyst brain
+run" checks — a day where reviews and fires engaged the ladder passes even if
+6 is clean-by-default. Items 4–6 are integrity checks that guard the plumbing
+around the ladder. Because PR-C's behavior is **unvalidated until the first
+post-merge runs** ([`TRIGGER_LIFECYCLE.md`](../plans/TRIGGER_LIFECYCLE.md) §7 step
+1), the first few reviews after #483 merges should treat every rubber-stamp /
+re-ladder-skip as a **prompt-tuning signal** (feed it back to PR-C's wording per
+[`THESIS_GAME_PLAN.md`](../plans/THESIS_GAME_PLAN.md) §8), not just a per-run
+grade. The IONS replay (raise the floor on the +10% checkpoint, bank the gain on
+the crash instead of eating the day-one stop) is the acceptance test for the
+whole system.
 
 ## Canonical SQL — top of every review
 
