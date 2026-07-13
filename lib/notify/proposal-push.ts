@@ -19,7 +19,7 @@ import {
   proposalHeadline,
   type ProposalIntent,
 } from "@/lib/emails/proposal-headline";
-import { getStockQuote } from "@/lib/actions/finnhub.actions";
+import { getLiveExitPrice } from "@/lib/proposals/exit-quote";
 
 export async function sendProposalPendingPush(orderId: string): Promise<void> {
   // Cheap early exit when push is disabled — skips the DB round trip entirely.
@@ -49,10 +49,11 @@ export async function sendProposalPendingPush(orderId: string): Promise<void> {
     const isClose = intent === "CLOSE" || intent === "PARTIAL_CLOSE";
 
     // Same canonical sentence as the email subject (proposalHeadline) —
-    // closes carry signed P&L off a live exit quote, opens carry est. cost.
-    // A failed/zero quote just drops the P&L clause, never blocks the push.
-    const liveQuote = isClose ? await getStockQuote(order.symbol).catch(() => null) : null;
-    const liveExit = liveQuote && liveQuote.c > 0 ? liveQuote.c : null;
+    // closes carry signed P&L off the live exit price, opens carry est. cost.
+    // Alpaca real-time last trade (getLiveExitPrice), NOT Finnhub /quote.c
+    // which returns a stale prior close near open — see exit-quote.ts. On
+    // null the P&L clause is simply dropped; the push never blocks or lies.
+    const liveExit = isClose ? await getLiveExitPrice(order.symbol) : null;
     const pnlKnown = isClose && liveExit != null && order.position.avgCost > 0;
     const dirSign = direction === "LONG" ? 1 : -1;
 

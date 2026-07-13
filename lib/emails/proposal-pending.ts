@@ -17,7 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email";
 import { getEmailRecipients } from "@/lib/emails/recipients";
 import { proposalHeadline } from "@/lib/emails/proposal-headline";
-import { getStockQuote } from "@/lib/actions/finnhub.actions";
+import { getLiveExitPrice } from "@/lib/proposals/exit-quote";
 import {
   renderTradeCard,
   tradeDetailUrl,
@@ -152,15 +152,20 @@ export async function sendProposalPendingEmail(orderId: string): Promise<void> {
     const environment = order.position.environment as "PAPER" | "LIVE";
     const isClose = intent === "CLOSE" || intent === "PARTIAL_CLOSE";
 
-    // BUG FIX (2026-06-09): for CLOSE/PARTIAL_CLOSE the proposal price is the
-    // EXIT — a fresh live quote — NOT the position's entry (avgCost). Feeding
-    // avgCost made the email render exit == entry → "Est. P&L +$0.00 / +0.0%"
-    // on every sell proposal. Buys are unaffected: for an OPEN/ADD the
-    // position's avgCost IS the proposed entry. If the quote is missing or 0
-    // (Finnhub returns c:0 for unknown symbols), fall back to avgCost but flag
-    // exitPriceKnown=false so the card shows "—" + no P&L, never a false zero.
-    const liveQuote = isClose ? await getStockQuote(order.symbol) : null;
-    const liveExit = liveQuote && liveQuote.c > 0 ? liveQuote.c : null;
+    // For CLOSE/PARTIAL_CLOSE the proposal price is the EXIT — the live price
+    // at send time — NOT the position's entry (avgCost). Feeding avgCost made
+    // the email render exit == entry → "Est. P&L +$0.00" on every sell
+    // (2026-06-09). Buys are unaffected: for OPEN/ADD the position's avgCost
+    // IS the proposed entry.
+    //
+    // BUG FIX (2026-07-13): the exit quote came from Finnhub /quote.c, which
+    // returns the PRIOR CLOSE in the minutes after market open — the XENE
+    // close email showed exit $68.92 (yesterday's close) / +29.2% while XENE
+    // was live ~$66.14, a price never hit that day. Source is now Alpaca's
+    // real-time last trade (getLiveExitPrice). On null (no live trade) we keep
+    // the exitPriceKnown=false path → card shows "—" + no P&L, never a stale
+    // or false number. In-app views are untouched; they stay live per render.
+    const liveExit = isClose ? await getLiveExitPrice(order.symbol) : null;
     const estimatedPrice = isClose
       ? liveExit ?? order.position.avgCost
       : order.position.avgCost;
