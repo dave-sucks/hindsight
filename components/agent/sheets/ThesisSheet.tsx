@@ -392,6 +392,8 @@ function TradeBlock({
     meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
   } else if (pp) {
     // ── Held + pending sell / add / trim ──
+    // Action leads, entry context trails: "Proposed: Sell at $45.41, bought
+    // 100 shares at $40.93". Adds/trims carry the proposal's own share count.
     sentence = buildTradeSentence({
       kind: "proposed-exit",
       qty: position.quantity,
@@ -399,6 +401,7 @@ function TradeBlock({
       current,
       exitVerb:
         pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim",
+      proposalQty: pp.quantity,
     });
     review = <ProposalActions orderId={pp.orderId} align="end" />;
     dotClass = "bg-amber-500";
@@ -435,17 +438,11 @@ function TradeBlock({
 
   return (
     <div className="rounded-lg border px-4 py-3 space-y-1.5">
-      <TradeStatement
-        dotClass={dotClass}
-        sentence={sentence}
-        gain={review ? undefined : gain}
-        right={review ?? undefined}
-      />
-      {/* When a Review sits in the right slot, the running P&L can't share it —
-          surface it on its own line just below. */}
-      {review && gain ? (
-        <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />
-      ) : null}
+      {/* Review sits on its own row ABOVE the statement, left-aligned — the
+          statement row is always the same shape (dot + sentence left, P&L
+          right), never squeezed by an action control. */}
+      {review ? <div className="flex justify-start">{review}</div> : null}
+      <TradeStatement dotClass={dotClass} sentence={sentence} gain={gain} />
       {note ? (
         <p className="text-sm text-muted-foreground leading-relaxed">{note}</p>
       ) : null}
