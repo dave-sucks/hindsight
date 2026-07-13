@@ -15,18 +15,11 @@
 import { prisma } from "@/lib/prisma";
 import { sendNtfy } from "@/lib/notify/ntfy";
 import { tradeDetailUrl } from "@/lib/emails/trade-card";
-
-/** Human verb for the subject line — mirrors the email's subjectVerb. */
-function proposalVerb(
-  intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE",
-  direction: "LONG" | "SHORT",
-): string {
-  if (intent === "OPEN") return direction === "LONG" ? "buy" : "short";
-  if (intent === "ADD") return direction === "LONG" ? "add to" : "add to short on";
-  if (intent === "CLOSE") return "close";
-  if (intent === "PARTIAL_CLOSE") return "trim";
-  return "trade";
-}
+import {
+  proposalHeadline,
+  type ProposalIntent,
+} from "@/lib/emails/proposal-headline";
+import { getLiveExitPrice } from "@/lib/proposals/exit-quote";
 
 export async function sendProposalPendingPush(orderId: string): Promise<void> {
   // Cheap early exit when push is disabled — skips the DB round trip entirely.
@@ -39,35 +32,49 @@ export async function sendProposalPendingPush(orderId: string): Promise<void> {
         position: {
           select: {
             id: true,
-            analystId: true,
             environment: true,
             direction: true,
             symbol: true,
+            avgCost: true,
           },
         },
       },
     });
     if (!order || order.status !== "AWAITING_APPROVAL") return;
 
-    const analyst = await prisma.agentConfig.findUnique({
-      where: { id: order.position.analystId },
-      select: { name: true },
-    });
-
-    const intent = (order.intent ?? "OPEN") as
-      | "OPEN"
-      | "ADD"
-      | "CLOSE"
-      | "PARTIAL_CLOSE";
+    const intent = (order.intent ?? "OPEN") as ProposalIntent;
     const direction = order.position.direction as "LONG" | "SHORT";
     const environment = order.position.environment as "PAPER" | "LIVE";
-    const verb = proposalVerb(intent, direction);
     const livePrefix = environment === "LIVE" ? "[LIVE] " : "";
+    const isClose = intent === "CLOSE" || intent === "PARTIAL_CLOSE";
 
-    // "PEAD wants to close 100 EWTX" — matches the email subject wording so the
-    // two channels read identically.
+    // Same canonical sentence as the email subject (proposalHeadline) —
+    // closes carry signed P&L off the live exit price, opens carry est. cost.
+    // Alpaca real-time last trade (getLiveExitPrice), NOT Finnhub /quote.c
+    // which returns a stale prior close near open — see exit-quote.ts. On
+    // null the P&L clause is simply dropped; the push never blocks or lies.
+    const liveExit = isClose ? await getLiveExitPrice(order.symbol) : null;
+    const pnlKnown = isClose && liveExit != null && order.position.avgCost > 0;
+    const dirSign = direction === "LONG" ? 1 : -1;
+
+    const headline = proposalHeadline({
+      intent,
+      direction,
+      environment,
+      ticker: order.symbol,
+      qty: order.quantity,
+      pnlPct: pnlKnown
+        ? ((liveExit - order.position.avgCost) / order.position.avgCost) * 100 * dirSign
+        : null,
+      pnlUsd: pnlKnown
+        ? (liveExit - order.position.avgCost) * order.quantity * dirSign
+        : null,
+      estimatedCost: isClose ? null : order.quantity * order.position.avgCost,
+      includeLivePrefix: false, // LIVE is carried by the title
+    });
+
     const title = `${livePrefix}Trade review needed`;
-    const message = `${analyst?.name ?? "An analyst"} wants to ${verb} ${order.quantity} ${order.symbol} — approve or reject in the app.`;
+    const message = `${headline} — approve or reject in the app.`;
 
     await sendNtfy(message, {
       title,
