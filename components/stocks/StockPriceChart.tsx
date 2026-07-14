@@ -89,11 +89,45 @@ function formatTimeLabel(v: string | number): string {
   });
 }
 
-// Regular US session length (9:30 AM → 4:00 PM ET). The 1D chart pins its x-axis
-// to this full span and lets the line stop at the last bar — so mid-session the
-// line only fills the left portion (a "we're N hours into the day" cue) instead
-// of stretching a handful of bars across the whole width.
-const RTH_SESSION_MS = 6.5 * 60 * 60 * 1000;
+// The 1D chart pins its x-axis to a fixed clock window for the session date
+// (7 AM–8 PM ET: pre-market → after-hours) and lets the line stop at the last
+// bar — so mid-day the line fills only the left portion (a "we're N hours into
+// the day" cue) instead of stretching a handful of bars across the width. The
+// span is anchored to real clock times (not "first bar + N hours"), so it holds
+// whether the data starts at pre-market or the 9:30 open. Derives the ET offset
+// for the session date from the first candle (DST-safe) — no tz library.
+function intradaySessionAxis(firstISO: string): {
+  domain: [number, number];
+  ticks: number[];
+} {
+  const first = new Date(firstISO);
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const o: Record<string, string> = {};
+  for (const p of dtf.formatToParts(first)) o[p.type] = p.value;
+  const etAsUtc = Date.UTC(
+    +o.year,
+    +o.month - 1,
+    +o.day,
+    +o.hour % 24,
+    +o.minute,
+    +o.second,
+  );
+  const offsetMs = first.getTime() - etAsUtc; // UTC = ET wall + offsetMs
+  const clock = (h: number) =>
+    Date.UTC(+o.year, +o.month - 1, +o.day, h, 0, 0) + offsetMs; // h:00 ET → UTC ms
+  const ticks: number[] = [];
+  for (let h = 8; h <= 20; h += 2) ticks.push(clock(h)); // 8 AM … 8 PM ET
+  return { domain: [clock(7), clock(20)], ticks };
+}
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -136,11 +170,7 @@ export function StockPriceChart({
   // full-day backdrop. Null when not intraday or no data.
   const intradayAxis = useMemo(() => {
     if (!isIntraday || data.length === 0) return null;
-    const open = new Date(data[0].date).getTime();
-    const close = open + RTH_SESSION_MS;
-    const ticks: number[] = [];
-    for (let t = open; t <= close; t += 90 * 60 * 1000) ticks.push(t);
-    return { domain: [open, close] as [number, number], ticks };
+    return intradaySessionAxis(data[0].date);
   }, [isIntraday, data]);
 
   // Snap each marker to the nearest visible candle date (Recharts only places

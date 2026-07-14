@@ -419,20 +419,103 @@ export async function getStockCandlesBatch(
 
 /**
  * Intraday 1-minute candles for the MOST RECENT trading session — the data
- * behind the sheet chart's "1D" tab. Same Alpaca IEX feed / creds as the daily
- * `getStockCandles`, just `timeframe=1Min`. 1-minute (not 5) so early-session
- * the chart has enough points to show real movement (dips/spikes) instead of a
- * handful of bars a smoothing curve rounds into a fake S. Queries a 4-day
- * window so the tab is never empty over a weekend, then keeps only the latest
- * ET session's bars: intraday it shows today so far, outside hours the prior
- * full session.
+ * behind the sheet chart's "1D" tab. Each candle's `date` carries the FULL ISO
+ * (UTC) timestamp (not a YYYY-MM-DD day) so the chart can render time-of-day.
  *
- * Unlike the daily fetchers, each candle's `date` carries the FULL ISO
- * timestamp (not a YYYY-MM-DD day) so the chart can render time-of-day labels.
- * IEX is slightly delayed / thinner than the consolidated tape — fine for a
- * paper-trading intraday direction read.
+ * Source preference:
+ *   1. FMP `/historical-chart/1min` — CONSOLIDATED tape incl. pre/post-market.
+ *      This is what makes the 1D line span the whole trading day (pre-market →
+ *      now) like a real finance chart, instead of just the regular session.
+ *   2. Alpaca IEX (regular hours only) — fallback when FMP is unavailable or the
+ *      plan doesn't serve intraday. IEX is thin (~2-3% of volume) and carries
+ *      little pre-market, so this degrades to a clean 9:30–close session.
  */
 export async function getIntradayCandles(symbol: string): Promise<StockCandle[]> {
+  const fmp = await getIntradayCandlesFmp(symbol);
+  if (fmp.length >= 2) return fmp;
+  return getIntradayCandlesAlpaca(symbol);
+}
+
+/**
+ * FMP intraday timestamps are ET wall-clock with no zone ("2026-07-14
+ * 07:31:00"). Convert to a real UTC epoch using the ACTUAL ET offset for that
+ * instant (DST-safe): treat the string as UTC, format that guess back into ET,
+ * and the delta between the two IS the offset.
+ */
+function etNaiveToUtcMs(naive: string): number {
+  const asIfUtc = Date.parse(naive.replace(' ', 'T') + 'Z');
+  if (Number.isNaN(asIfUtc)) return NaN;
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const o: Record<string, string> = {};
+  for (const p of dtf.formatToParts(new Date(asIfUtc))) o[p.type] = p.value;
+  const etAsUtc = Date.UTC(
+    +o.year,
+    +o.month - 1,
+    +o.day,
+    +o.hour % 24,
+    +o.minute,
+    +o.second,
+  );
+  return asIfUtc + (asIfUtc - etAsUtc);
+}
+
+async function getIntradayCandlesFmp(symbol: string): Promise<StockCandle[]> {
+  try {
+    const key = process.env.FMP_API_KEY;
+    if (!key) return [];
+    const to = new Date().toISOString().slice(0, 10);
+    const from = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const url = `https://financialmodelingprep.com/api/v3/historical-chart/1min/${encodeURIComponent(
+      symbol.toUpperCase(),
+    )}?from=${from}&to=${to}&apikey=${key}`;
+
+    const res = await fetch(url, { next: { revalidate: 30 } });
+    if (!res.ok) {
+      // 403 here = plan doesn't serve intraday; caller falls back to Alpaca.
+      console.warn('[getIntradayCandles] FMP error', res.status);
+      return [];
+    }
+
+    const rows = (await res.json()) as
+      | { date: string; open: number; high: number; low: number; close: number; volume: number }[]
+      | { 'Error Message'?: string };
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+
+    // FMP dates are "YYYY-MM-DD HH:MM:SS" (ET). Keep the latest session date's
+    // rows (all hours — pre/RTH/post), normalize ET→UTC ISO, sort ascending
+    // (FMP returns newest-first).
+    const latest = rows.reduce(
+      (max, r) => (r.date.slice(0, 10) > max ? r.date.slice(0, 10) : max),
+      '',
+    );
+    return rows
+      .filter((r) => r.date.slice(0, 10) === latest)
+      .map((r) => ({
+        date: new Date(etNaiveToUtcMs(r.date)).toISOString(),
+        close: r.close,
+        open: r.open,
+        high: r.high,
+        low: r.low,
+        volume: r.volume,
+      }))
+      .filter((c) => !Number.isNaN(Date.parse(c.date)))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  } catch (err) {
+    console.error('[getIntradayCandles] FMP error:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> {
   try {
     const apiKey = process.env.ALPACA_API_KEY;
     const apiSecret = process.env.ALPACA_API_SECRET;
@@ -481,9 +564,8 @@ export async function getIntradayCandles(symbol: string): Promise<StockCandle[]>
     const latest = stamped.reduce((max, s) => (s.etDate > max ? s.etDate : max), '');
 
     // Latest session, REGULAR HOURS ONLY (9:30–16:00 ET = minutes 570–960).
-    // IEX can return pre/post-market prints; excluding them keeps the chart's
-    // fixed 6.5h x-axis domain anchored to the 9:30 open (first bar) instead of
-    // being skewed early by an 8 AM pre-market bar.
+    // IEX pre/post-market is too thin to be useful; excluding it keeps a clean
+    // regular session for the fixed x-axis domain.
     return stamped
       .filter((s) => s.etDate === latest && s.etMinutes >= 570 && s.etMinutes <= 960)
       .map(({ bar }) => ({
@@ -495,7 +577,7 @@ export async function getIntradayCandles(symbol: string): Promise<StockCandle[]>
         volume: bar.v,
       }));
   } catch (err) {
-    console.error('[getIntradayCandles] Error:', err instanceof Error ? err.message : err);
+    console.error('[getIntradayCandles] Alpaca error:', err instanceof Error ? err.message : err);
     return [];
   }
 }
