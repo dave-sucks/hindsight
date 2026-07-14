@@ -293,7 +293,11 @@ export function StockPriceChart({
           style={{ height }}
         >
           <p className="text-xs text-muted-foreground">
-            {intradayLoading ? 'Loading intraday…' : 'No intraday data'}
+            {isIntraday
+              ? intradayLoading
+                ? 'Loading intraday…'
+                : 'No intraday data'
+              : 'No price data available'}
           </p>
         </div>
       )}

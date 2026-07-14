@@ -1124,9 +1124,16 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Re-gate (show the skeletons) only when a DIFFERENT thesis opens — NOT on a
-  // refreshKey bump from a trigger edit, which swaps the dossier in place.
+  // refreshKey bump from a trigger edit, which swaps the dossier in place. Clear
+  // the live data too, not just the loading flags: otherwise an in-place
+  // thesis_id switch briefly renders the PREVIOUS thesis's price/chart/coverage
+  // (the coverage gate keys on `!coverage`, so a stale value suppresses its
+  // skeleton).
   useEffect(() => {
     setLoaded(false);
+    setQuote(null);
+    setCandles(null);
+    setCoverage(null);
     setQuoteLoading(true);
     setCandlesLoading(true);
     setCoverageLoading(true);
@@ -1152,12 +1159,16 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     };
   }, [thesis_id, refreshKey]);
 
-  // Live layers — each hydrates its own region and none gate the paint. Keyed
-  // on thesis_id / ticker only: a trigger edit doesn't move the price or chart.
+  // Live layers — each hydrates its own region and none gate the paint. Quote
+  // ALSO re-fetches on refreshKey: it carries the `resolved` envelope, whose
+  // actionability is computed from the thesis's triggers, so a trigger edit
+  // must re-resolve it (candles/coverage don't move on a trigger edit).
   useEffect(() => {
     if (!thesis_id) return;
     let cancelled = false;
-    setQuoteLoading(true);
+    // Note: quoteLoading is NOT set here — it's true initially + re-asserted by
+    // the thesis-change reset effect. A refreshKey refetch (trigger edit) then
+    // updates price + resolved in place without flashing the header skeleton.
     fetch(`/api/theses/${thesis_id}/quote`)
       .then((r) => (r.ok ? r.json() : null))
       .then((json: QuoteResponse | null) => {
@@ -1172,10 +1183,16 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     return () => {
       cancelled = true;
     };
-  }, [thesis_id]);
+  }, [thesis_id, refreshKey]);
 
   useEffect(() => {
-    if (!thesis_id || !ticker) return;
+    if (!thesis_id) return;
+    // No ticker → nothing to chart; clear the loading flag so the chart region
+    // doesn't sit on an eternal skeleton (the reset effect set it true).
+    if (!ticker) {
+      setCandlesLoading(false);
+      return;
+    }
     let cancelled = false;
     setCandlesLoading(true);
     fetch(`/api/stocks/candles?symbols=${encodeURIComponent(ticker)}&days=400`)

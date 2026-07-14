@@ -420,8 +420,9 @@ export async function getStockCandlesBatch(
 /**
  * Intraday 5-minute candles for the MOST RECENT trading session — the data
  * behind the sheet chart's "1D" tab. Same Alpaca IEX feed / creds as the daily
- * `getStockCandles`, just `timeframe=5Min`. Queries a 4-day window (survives
- * weekends/holidays) so the tab is never empty: intraday it shows today so far,
+ * `getStockCandles`, just `timeframe=5Min`. Queries a 7-day window so the tab is
+ * never empty even across a long closure (a mid-week holiday + weekend can put
+ * the last session >4 calendar days back): intraday it shows today so far,
  * outside hours it shows the prior full session. Only the bars from the latest
  * ET session date are returned.
  *
@@ -440,7 +441,7 @@ export async function getIntradayCandles(symbol: string): Promise<StockCandle[]>
     }
 
     const end = new Date().toISOString();
-    const start = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+    const start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=5Min&start=${start}&end=${end}&limit=10000&feed=iex`;
 
     const res = await fetch(url, {
@@ -461,17 +462,19 @@ export async function getIntradayCandles(symbol: string): Promise<StockCandle[]>
     };
     if (!data.bars?.length) return [];
 
-    // Keep only the latest ET session. en-CA gives a string-sortable YYYY-MM-DD.
-    const etDate = (iso: string) =>
-      new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-    const latest = data.bars.reduce((max, b) => {
-      const d = etDate(b.t);
-      return d > max ? d : max;
-    }, '');
+    // Keep only the latest ET session. Compute each bar's ET date ONCE
+    // (Intl formatting isn't free, and this runs on a 30s poll); en-CA gives a
+    // string-sortable YYYY-MM-DD.
+    const etFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
+    const stamped = data.bars.map((bar) => ({
+      bar,
+      etDate: etFmt.format(new Date(bar.t)),
+    }));
+    const latest = stamped.reduce((max, s) => (s.etDate > max ? s.etDate : max), '');
 
-    return data.bars
-      .filter((bar) => etDate(bar.t) === latest)
-      .map((bar) => ({
+    return stamped
+      .filter((s) => s.etDate === latest)
+      .map(({ bar }) => ({
         date: bar.t, // full ISO timestamp — chart renders time-of-day for 1D
         close: bar.c,
         open: bar.o,
