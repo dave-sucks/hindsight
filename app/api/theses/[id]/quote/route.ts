@@ -1,19 +1,17 @@
 /**
  * GET /api/theses/:id/quote
  *
- * Returns ONLY the live quote and PnL math for a thesis. Split out from
- * /api/theses/:id/triggers on 2026-05-19 because the inline Finnhub call
- * (~1-2s) was blocking every other piece of the sheet — status pill,
- * core belief, scoring, triggers, all of it sat behind a network call
- * that has nothing to do with their data.
+ * The LIVE layer for a thesis — everything that depends on the current price:
+ * the quote (price + day change), position PnL math, and the `resolved`
+ * actionability envelope (trigger evaluation + supersession + the
+ * ENTER_NOW / WAIT_FOR_TRIGGER / ACTIVE_HOLD rollup). All of it needs a live
+ * price, so it lives here rather than in the durable dossier
+ * (/api/theses/:id), which is pure DB and gates the sheet's first paint.
  *
- * Now the sheet fires both endpoints in parallel: triggers resolves in
- * ~50ms and refines the body, quote resolves whenever Finnhub does and
- * refines just the price header + position PnL.
- *
- * Powers the price/change line in the ThesisSheet header and the live
- * PnL fields on the PositionRow (currentPrice, marketValue, unrealizedPnl).
- * Scoped to the requesting user.
+ * The sheet fires this in parallel with the dossier: the dossier paints the
+ * body in ~50ms; this refines the price header, the position PnL, and the
+ * Trade-Structure "Status" cell whenever Finnhub resolves. Also the mini-card
+ * carousel's live-price source. Scoped to the requesting user.
  */
 
 import { NextResponse } from "next/server";
@@ -22,6 +20,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { getStockInfo } from "@/lib/actions/stock-info";
 import { getAccountId } from "@/lib/auth/account";
+import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import {
+  buildResolvedEnvelope,
+  buildSupersessionMap,
+} from "@/lib/agent/resolved-thesis";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 export async function GET(
   _req: Request,
@@ -39,13 +43,22 @@ export async function GET(
   const accountId = await getAccountId(user.id);
   if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
 
-  // Minimal thesis lookup — we need the ticker for the quote and the
-  // ACTIVE-position FK to compute PnL math. Nothing else from the row.
+  // Thesis fields needed for the quote (ticker) + the resolved envelope
+  // (entry / triggers / dates / scoring / status). Everything price-dependent
+  // is computed here; the durable body comes from /api/theses/[id].
   const thesis = await prisma.thesis.findFirst({
     where: { id, accountId },
     select: {
+      id: true,
       ticker: true,
       status: true,
+      direction: true,
+      entryPrice: true,
+      triggers: true,
+      catalystDate: true,
+      createdAt: true,
+      nextReviewAt: true,
+      scoring: true,
       researchRun: { select: { agentConfigId: true } },
     },
   });
@@ -53,13 +66,46 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // The slow part. Failure is non-fatal — the sheet just hides the price
-  // block + leaves the position row without live PnL. Identity (company name
-  // + exchange) comes from the StockInfo cache, not a live provider call.
-  const [liveQuote, identity] = await Promise.all([
-    getStockQuote(thesis.ticker).catch(() => null),
-    getStockInfo(thesis.ticker),
-  ]);
+  const ownAnalystId = thesis.researchRun?.agentConfigId ?? null;
+  const isHolding = thesis.status === "HOLDING";
+
+  // One parallel batch: the slow Finnhub quote, the StockInfo cache identity,
+  // the terminal-sibling supersession lookup (same-analyst scope), and the
+  // open position (qty/avgCost for PnL + openedAt for TIME_ELAPSED). Quote
+  // failure is non-fatal — the sheet just omits the price line + PnL.
+  const [liveQuote, identity, terminalSiblings, openPosition] =
+    await Promise.all([
+      getStockQuote(thesis.ticker).catch(() => null),
+      getStockInfo(thesis.ticker),
+      prisma.thesis.findMany({
+        where: {
+          accountId,
+          ticker: thesis.ticker,
+          ...(ownAnalystId
+            ? { researchRun: { agentConfigId: ownAnalystId } }
+            : {}),
+          status: { in: ["RETIRED", "PASSED"] },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, ticker: true, createdAt: true },
+      }),
+      isHolding && ownAnalystId
+        ? prisma.position
+            .findFirst({
+              where: {
+                accountId,
+                analystId: ownAnalystId,
+                symbol: thesis.ticker,
+                status: "OPEN",
+              },
+              orderBy: { openedAt: "desc" },
+              select: { quantity: true, avgCost: true, openedAt: true },
+            })
+            .catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
   const currentPrice =
     liveQuote && Number.isFinite(liveQuote.c) && liveQuote.c > 0
       ? liveQuote.c
@@ -69,42 +115,54 @@ export async function GET(
   const dayChangePct =
     liveQuote && Number.isFinite(liveQuote.dp) ? liveQuote.dp : null;
 
-  // PnL math for ACTIVE theses. Mirrors the calculation that used to live
-  // in /triggers — quantity + avgCost come from Position; currentPrice
-  // from the quote above. All fields null when the quote couldn't resolve
-  // or when there's no open position.
+  // PnL math for held theses — quantity + avgCost from the open Position,
+  // currentPrice from the quote. Null when the quote failed or nothing's held.
   let positionPnl: {
     currentPrice: number;
     marketValue: number;
     unrealizedPnl: number;
     unrealizedPnlPct: number | null;
   } | null = null;
-
-  if (
-    currentPrice != null &&
-    (thesis.status === "HOLDING") &&
-    thesis.researchRun?.agentConfigId
-  ) {
-    const pos = await prisma.position.findFirst({
-      where: {
-        accountId,
-        analystId: thesis.researchRun.agentConfigId,
-        symbol: thesis.ticker,
-        status: "OPEN",
-      },
-      select: { quantity: true, avgCost: true },
-    });
-    if (pos) {
-      const qty = Number(pos.quantity);
-      const avgCost = Number(pos.avgCost);
-      positionPnl = {
-        currentPrice,
-        marketValue: currentPrice * qty,
-        unrealizedPnl: (currentPrice - avgCost) * qty,
-        unrealizedPnlPct: avgCost > 0 ? ((currentPrice - avgCost) / avgCost) * 100 : null,
-      };
-    }
+  if (currentPrice != null && openPosition) {
+    const qty = Number(openPosition.quantity);
+    const avgCost = Number(openPosition.avgCost);
+    positionPnl = {
+      currentPrice,
+      marketValue: currentPrice * qty,
+      unrealizedPnl: (currentPrice - avgCost) * qty,
+      unrealizedPnlPct:
+        avgCost > 0 ? ((currentPrice - avgCost) / avgCost) * 100 : null,
+    };
   }
+
+  // Resolved envelope — live trigger evaluation + supersession + actionability
+  // rollup. Drives the Trade-Structure "Status" cell. Price-dependent, so it
+  // reflects whatever `currentPrice` the quote produced (null → the
+  // price-independent states still resolve; ENTER_NOW/WAIT fall back cleanly).
+  const supersessionMap = buildSupersessionMap(terminalSiblings);
+  const triggersParsed = triggersArraySchema.safeParse(thesis.triggers);
+  const parsedTriggers = (triggersParsed.success
+    ? triggersParsed.data
+    : []) as Trigger[];
+  const resolved = buildResolvedEnvelope({
+    thesis: {
+      id: thesis.id,
+      ticker: thesis.ticker,
+      status: thesis.status,
+      direction: thesis.direction,
+      entryPrice: thesis.entryPrice,
+      triggers: thesis.triggers,
+      catalystDate: thesis.catalystDate,
+      createdAt: thesis.createdAt,
+      nextReviewAt: thesis.nextReviewAt,
+      scoring: thesis.scoring,
+      parsedTriggers,
+      positionOpenedAt: openPosition?.openedAt ?? null,
+    },
+    currentPrice,
+    supersession: supersessionMap.get(thesis.ticker) ?? null,
+    now: new Date(),
+  });
 
   return NextResponse.json({
     currentPrice,
@@ -113,5 +171,6 @@ export async function GET(
     positionPnl,
     companyName: identity.companyName,
     exchange: identity.exchange,
+    resolved,
   });
 }

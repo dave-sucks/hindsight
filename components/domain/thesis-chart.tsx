@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { StockPriceChart } from '@/components/stocks/StockPriceChart';
 import { PriceTargetsBlock } from '@/components/domain/price-targets-block';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
@@ -68,6 +69,40 @@ export function ThesisChart({
   const dir: 'LONG' | 'SHORT' = direction === 'SHORT' ? 'SHORT' : 'LONG';
   const hasLevels = entry != null && (targetPrice != null || stopLoss != null);
 
+  // Intraday "1D" tab — full variant only. Lazily fetch 5-min bars for the
+  // current session the moment the user selects 1D, then re-poll every 30s
+  // while that tab stays active (cheap IEX re-fetch — no equity WS needed).
+  // Switch away or unmount → the interval is cleared. Cards keep daily-only.
+  const enableIntraday = variant === 'full';
+  const [intraday, setIntraday] = useState<StockCandle[] | undefined>(undefined);
+  const [intradayLoading, setIntradayLoading] = useState(false);
+  const [is1D, setIs1D] = useState(false);
+
+  useEffect(() => {
+    if (!is1D) return;
+    let cancelled = false;
+    const load = async () => {
+      setIntradayLoading(true);
+      try {
+        const res = await fetch(
+          `/api/stocks/intraday?symbol=${encodeURIComponent(ticker)}`,
+        );
+        const json = (await res.json()) as { candles?: StockCandle[] };
+        if (!cancelled) setIntraday(Array.isArray(json.candles) ? json.candles : []);
+      } catch {
+        if (!cancelled) setIntraday([]);
+      } finally {
+        if (!cancelled) setIntradayLoading(false);
+      }
+    };
+    load();
+    const id = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [is1D, ticker]);
+
   // ── No candles → gauge fallback (or nothing if there's nothing to show) ──
   if (candles.length < 2) {
     if (!hasLevels || entry == null) return null;
@@ -105,6 +140,10 @@ export function ThesisChart({
       defaultRange={variant === 'card' ? '1M' : '3M'}
       height={variant === 'card' ? 160 : 300}
       frameless={frameless ?? variant === 'card'}
+      showIntraday={enableIntraday}
+      intradayCandles={intraday}
+      intradayLoading={intradayLoading}
+      onRangeChange={(r) => setIs1D(r === '1D')}
     />
   );
 }

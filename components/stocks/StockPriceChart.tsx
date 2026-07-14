@@ -24,7 +24,8 @@ type PriceReferenceLine = {
 
 // Vertical marker on the time axis — "started watching" / "entered here".
 // `date` is snapped to the nearest visible candle; markers whose date falls
-// before the visible window are dropped (off-range).
+// before the visible window are dropped (off-range). Suppressed on the 1D
+// intraday view — a watch/entry date is never inside a single session window.
 type TimeMarker = {
   date: string;
   color: string;
@@ -43,15 +44,28 @@ type Props = {
   height?: number;
   /** Drop the outer border (when embedded inside another card). */
   frameless?: boolean;
+  /**
+   * Expose the "1D" intraday pill. When true, `intradayCandles` supplies the
+   * bars for that tab (fetched lazily by the parent — undefined until loaded).
+   * Off by default so cards and the stock page keep their daily-only pills.
+   */
+  showIntraday?: boolean;
+  /** 5-min bars for the current session — rendered when the 1D tab is active. */
+  intradayCandles?: StockCandle[];
+  /** True while the parent is (re)fetching the intraday series. */
+  intradayLoading?: boolean;
+  /** Fired on every pill click so the parent can start/stop intraday polling. */
+  onRangeChange?: (range: Range) => void;
   children?: React.ReactNode;
 };
 
 // ─── Range config ───────────────────────────────────────────────────────────
 
-const RANGES = ['1W', '1M', '3M', '1Y'] as const;
-type Range = (typeof RANGES)[number];
+const DAILY_RANGES = ['1W', '1M', '3M', '1Y'] as const;
+type DailyRange = (typeof DAILY_RANGES)[number];
+type Range = '1D' | DailyRange;
 
-const RANGE_DAYS: Record<Range, number> = {
+const RANGE_DAYS: Record<DailyRange, number> = {
   '1W': 5,
   '1M': 22,
   '3M': 66,
@@ -65,6 +79,16 @@ function formatDateLabel(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+// Intraday candles carry a full ISO timestamp in `date`; label them as ET
+// time-of-day (e.g. "9:35 AM") instead of a calendar date.
+function formatTimeLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function StockPriceChart({
@@ -75,20 +99,32 @@ export function StockPriceChart({
   defaultRange = '3M',
   height = 300,
   frameless = false,
+  showIntraday = false,
+  intradayCandles,
+  intradayLoading = false,
+  onRangeChange,
   children,
 }: Props) {
   const [range, setRange] = useState<Range>(defaultRange);
+  const isIntraday = range === '1D';
+
+  const ranges = useMemo<Range[]>(
+    () => (showIntraday ? ['1D', ...DAILY_RANGES] : [...DAILY_RANGES]),
+    [showIntraday],
+  );
 
   const data = useMemo(() => {
-    const days = RANGE_DAYS[range];
-    return candles.slice(-days);
-  }, [candles, range]);
+    if (isIntraday) return intradayCandles ?? [];
+    return candles.slice(-RANGE_DAYS[range as DailyRange]);
+  }, [candles, intradayCandles, range, isIntraday]);
 
   // Snap each marker to the nearest visible candle date (Recharts only places
   // a vertical ReferenceLine on an x-value that exists in `data`). Markers
   // dated before the visible window are dropped — their event is off-range.
+  // Intraday has no such markers (a single session never contains the
+  // watch/entry date), so skip entirely.
   const snappedMarkers = useMemo(() => {
-    if (!verticalMarkers?.length || data.length < 2) return [];
+    if (isIntraday || !verticalMarkers?.length || data.length < 2) return [];
     const firstDate = data[0].date;
     const dates = data.map((d) => d.date);
     return verticalMarkers
@@ -100,9 +136,15 @@ export function StockPriceChart({
         return { ...m, snapped: hit };
       })
       .filter((m): m is TimeMarker & { snapped: string } => m !== null);
-  }, [verticalMarkers, data]);
+  }, [verticalMarkers, data, isIntraday]);
 
-  if (data.length < 2) {
+  const hasBody = data.length >= 2;
+
+  // Legacy empty state — only when the 1D pill isn't in play (cards / stock
+  // page). Keeps the original bordered "no data" panel with no pills. When
+  // intraday is enabled we always render the frame + pills below so the user
+  // can switch back out of an empty/loading 1D tab.
+  if (!hasBody && !showIntraday) {
     return (
       <div
         className={cn(
@@ -121,11 +163,16 @@ export function StockPriceChart({
     );
   }
 
-  const firstClose = data[0].close;
-  const lastClose = data[data.length - 1].close;
+  const firstClose = hasBody ? data[0].close : 0;
+  const lastClose = hasBody ? data[data.length - 1].close : 0;
   const isUp = lastClose >= firstClose;
   // Use hex colors — CSS variables are oklch() which don't work in SVG stroke/fill
   const strokeColor = isUp ? '#22c55e' : '#ef4444';
+
+  const handleRange = (r: Range) => {
+    setRange(r);
+    onRangeChange?.(r);
+  };
 
   return (
     <div
@@ -142,10 +189,10 @@ export function StockPriceChart({
       {/* Range pills — absolute top-left of chart area */}
       {showControls && (
         <div className="absolute top-3 left-3 z-10 flex items-center gap-0.5 bg-background/80 backdrop-blur-sm rounded-md border px-1 py-0.5">
-          {RANGES.map((r) => (
+          {ranges.map((r) => (
             <button
               key={r}
-              onClick={() => setRange(r)}
+              onClick={() => handleRange(r)}
               className={cn(
                 'px-2 py-0.5 text-xs rounded transition-colors',
                 range === r
@@ -159,6 +206,7 @@ export function StockPriceChart({
         </div>
       )}
 
+      {hasBody ? (
       <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={data} margin={{ top: 40, right: 0, bottom: 0, left: 0 }}>
           <defs>
@@ -172,7 +220,9 @@ export function StockPriceChart({
             tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(v) => formatDateLabel(v).toUpperCase()}
+            tickFormatter={(v) =>
+              isIntraday ? formatTimeLabel(v) : formatDateLabel(v).toUpperCase()
+            }
             interval={Math.max(1, Math.floor(data.length / 6))}
             padding={{ left: 0, right: 0 }}
           />
@@ -189,7 +239,9 @@ export function StockPriceChart({
               `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
               'Close',
             ]}
-            labelFormatter={(l: string) => formatDateLabel(l)}
+            labelFormatter={(l: string) =>
+              isIntraday ? formatTimeLabel(l) : formatDateLabel(l)
+            }
             labelStyle={{ color: 'var(--muted-foreground)' }}
           />
           {/* Vertical markers — "started watching" / "entered here" */}
@@ -235,6 +287,16 @@ export function StockPriceChart({
           />
         </AreaChart>
       </ResponsiveContainer>
+      ) : (
+        <div
+          className="flex items-center justify-center"
+          style={{ height }}
+        >
+          <p className="text-xs text-muted-foreground">
+            {intradayLoading ? 'Loading intraday…' : 'No intraday data'}
+          </p>
+        </div>
+      )}
       </div>
     </div>
   );

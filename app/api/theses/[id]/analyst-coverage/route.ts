@@ -3,10 +3,10 @@
  *
  * Thin wrapper over getAnalystCoverageData — the standing Bullish/Neutral/
  * Bearish ratings snapshot (Finnhub) + the consensus price-target range (FMP)
- * for the thesis's ticker. The shaping logic lives in
- * lib/actions/analyst-coverage.ts so the consolidated thesis-sheet endpoint
- * (/triggers?full=1) can reuse it inline. Kept as a standalone route for any
- * caller that wants coverage on its own.
+ * for the thesis's ticker. This is the sheet's consensus-widget hydration
+ * source: it's the slowest vendor (FMP), so it loads on its own boundary and
+ * never blocks the price chart. Shaping logic lives in
+ * lib/actions/analyst-coverage.ts.
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";

@@ -42,13 +42,16 @@ import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
 import {
   ThesisTriggersSection,
-  type TriggersResponse,
+  type ThesisDossier,
   type QuoteResponse,
+  type ResolvedEnvelope,
   type ThesisResearchSections,
   type ResearchTextSection,
   type ResearchBulletSection,
   type ResearchCitation,
 } from "@/components/agent/sheets/ThesisTriggersSection";
+import type { StockCandle } from "@/lib/actions/finnhub.actions";
+import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AnalystConsensusWidget,
@@ -226,7 +229,7 @@ function ConvictionBadge({
 function ActionabilityBadge({
   resolved,
 }: {
-  resolved: NonNullable<TriggersResponse["resolved"]>;
+  resolved: ResolvedEnvelope;
 }) {
   if (resolved.actionability === "DEAD") return null;
 
@@ -351,7 +354,7 @@ function TradeBlock({
   pendingProposal,
   direction,
 }: {
-  position: NonNullable<TriggersResponse["position"]>;
+  position: NonNullable<ThesisDossier["position"]>;
   pnl: QuoteResponse["positionPnl"] | null;
   pendingProposal: {
     orderId: string;
@@ -617,7 +620,7 @@ function TradeStructureBlock({
     nextReviewAt: string | null;
     maxHoldDays: number | null;
     targetSizePct: number | null;
-    resolved?: TriggersResponse["resolved"];
+    resolved?: ResolvedEnvelope | null;
   };
 }) {
   const hasHorizon = state.horizon != null;
@@ -1086,10 +1089,11 @@ function ThesisSheetSkeleton() {
   );
 }
 
-// The sheet's ENTIRE contract: which thesis. Everything rendered comes from
-// the one /triggers?full=1 payload — no row-snapshot props, no second source.
-// (Callers still hand ThesisSheet full ThesisCardData for back-compat; the
-// wrapper forwards only these two fields.)
+// The sheet's ENTIRE contract: which thesis. Everything rendered is fetched by
+// thesis_id — the durable dossier (GET /api/theses/:id) gates the paint, then
+// the live layers (quote, candles, coverage) hydrate their own regions. No
+// row-snapshot props, no second source. (Callers still hand ThesisSheet full
+// ThesisCardData for back-compat; the wrapper forwards only these two fields.)
 export interface ThesisSheetBodyProps {
   /** Persisted Thesis id — the sheet loads everything by this. */
   thesis_id?: string;
@@ -1098,32 +1102,44 @@ export interface ThesisSheetBodyProps {
 }
 
 export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
-  // ── One thesis, one endpoint, one paint ──────────────────────────────────
-  // The sheet makes a SINGLE request — /triggers?full=1 — which returns the
-  // whole thesis: durable DB state (belief, targets, scoring, triggers,
-  // position) PLUS the live quote, company profile, price candles, and analyst
-  // coverage, all assembled server-side. There is no second source, no
-  // concatenating fetches, no ticker→name fallback. The body renders NOTHING
-  // until this one call resolves (see the loading gate below), then paints
-  // complete. Wall-clock is the server's slowest sub-fetch (~1-2s Finnhub).
-  const [state, setState] = useState<TriggersResponse | null>(null);
+  // ── Durable-first paint, progressive live hydration ──────────────────────
+  // The sheet fires FOUR requests on open, but only the durable dossier gates
+  // the paint. Everything price/vendor-dependent hydrates its own region after
+  // the body is already readable, so the slowest vendor never blocks the sheet:
+  //   • GET /api/theses/:id                  → dossier (DB only) — GATES paint
+  //   • GET /api/theses/:id/quote            → price + PnL + resolved (Finnhub)
+  //   • GET /api/stocks/candles?symbols=…    → price chart (Alpaca)
+  //   • GET /api/theses/:id/analyst-coverage → consensus (FMP — the slow one)
+  // Each live layer has its own loading flag driving a region-level skeleton.
+  const [state, setState] = useState<ThesisDossier | null>(null);
   const [loaded, setLoaded] = useState(false);
-  // Bumped after a trigger edit so the payload re-fetches and the open sheet
-  // reflects the new value without a manual reopen.
+  const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(true);
+  const [candles, setCandles] = useState<StockCandle[] | null>(null);
+  const [candlesLoading, setCandlesLoading] = useState(true);
+  const [coverage, setCoverage] = useState<AnalystCoverageData | null>(null);
+  const [coverageLoading, setCoverageLoading] = useState(true);
+  // Bumped after a trigger edit so the dossier re-fetches and the open sheet
+  // reflects the new value without a manual reopen (live layers don't move).
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Re-gate (show the skeleton) only when a DIFFERENT thesis opens — NOT on a
-  // refreshKey bump from a trigger edit, which swaps data in place.
+  // Re-gate (show the skeletons) only when a DIFFERENT thesis opens — NOT on a
+  // refreshKey bump from a trigger edit, which swaps the dossier in place.
   useEffect(() => {
     setLoaded(false);
+    setQuoteLoading(true);
+    setCandlesLoading(true);
+    setCoverageLoading(true);
   }, [thesis_id]);
 
+  // Durable dossier — the ONLY fetch that gates the paint. Re-runs on a
+  // trigger edit (refreshKey) to swap the new triggers in place.
   useEffect(() => {
     if (!thesis_id) return;
     let cancelled = false;
-    fetch(`/api/theses/${thesis_id}/triggers?full=1`)
+    fetch(`/api/theses/${thesis_id}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((json: TriggersResponse | null) => {
+      .then((json: ThesisDossier | null) => {
         if (cancelled) return;
         setState(json);
         setLoaded(true);
@@ -1136,9 +1152,72 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     };
   }, [thesis_id, refreshKey]);
 
-  // One load, one paint — skeleton until the single fetch settles, an honest
-  // error if it failed. Past these two gates `state` is non-null, so the whole
-  // body derives from the ONE payload with zero fallbacks. A sheet without a
+  // Live layers — each hydrates its own region and none gate the paint. Keyed
+  // on thesis_id / ticker only: a trigger edit doesn't move the price or chart.
+  useEffect(() => {
+    if (!thesis_id) return;
+    let cancelled = false;
+    setQuoteLoading(true);
+    fetch(`/api/theses/${thesis_id}/quote`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: QuoteResponse | null) => {
+        if (!cancelled) setQuote(json);
+      })
+      .catch(() => {
+        if (!cancelled) setQuote(null);
+      })
+      .finally(() => {
+        if (!cancelled) setQuoteLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [thesis_id]);
+
+  useEffect(() => {
+    if (!thesis_id || !ticker) return;
+    let cancelled = false;
+    setCandlesLoading(true);
+    fetch(`/api/stocks/candles?symbols=${encodeURIComponent(ticker)}&days=400`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: { candles?: Record<string, StockCandle[]> } | null) => {
+        if (cancelled) return;
+        setCandles(json?.candles?.[ticker.toUpperCase()] ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setCandles(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCandlesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [thesis_id, ticker]);
+
+  useEffect(() => {
+    if (!thesis_id) return;
+    let cancelled = false;
+    setCoverageLoading(true);
+    fetch(`/api/theses/${thesis_id}/analyst-coverage`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: AnalystCoverageData | null) => {
+        if (!cancelled) setCoverage(json);
+      })
+      .catch(() => {
+        if (!cancelled) setCoverage(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCoverageLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [thesis_id]);
+
+  // Skeleton until the DURABLE dossier settles, an honest error if it failed.
+  // Past these two gates `state` is non-null, so the body renders from durable
+  // DB data; the live regions fill in as their fetches land. A sheet without a
   // persisted id (e.g. a failed record_thesis card) has nothing to load —
   // that's the error state, not an eternal skeleton.
   if (!loaded && thesis_id) {
@@ -1155,10 +1234,8 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     );
   }
 
-  // ── Derived — every value below comes from the payload ────────────────────
-  const quote = state.quote ?? null;
-  const candles = state.candles ?? null;
-  const coverage = state.coverage ?? null;
+  // ── Derived — durable from `state`, live from the hydration states ────────
+  const resolved = quote?.resolved ?? null;
   const liveStatus = state.status as ThesisStatus;
   const position = state.position;
   // P1-24: a pass is identified by status=PASSED (direction is null on a pass).
@@ -1240,9 +1317,12 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
             paints after the rest of the sheet body. Skeleton while
             /quote is still in flight; nothing if it returned null
             (Finnhub failure). */}
-        {/* Post-gate: quote is present, or null on a Finnhub failure — in which
-            case we simply omit the price line (no skeleton; loading is over). */}
-        {quote?.currentPrice != null && (
+        {/* Live price hydrates from /quote after the dossier paints: skeleton
+            while in flight, the price line once it lands, nothing if Finnhub
+            failed (currentPrice null). */}
+        {quoteLoading ? (
+          <Skeleton className="h-7 w-32" />
+        ) : quote?.currentPrice != null ? (
           <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
             <span className="text-xl font-semibold tabular-nums">
               {formatCurrency(quote.currentPrice)}
@@ -1255,7 +1335,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
               />
             )}
           </div>
-        )}
+        ) : null}
         {/* The stock identity links to /stocks/[ticker] (the broad view); when
             this thesis has an actual position, offer the direct path to the
             trade detail page too — a thesis doesn't always have a trade. */}
@@ -1300,7 +1380,9 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           markers, when candles are loaded. The entry/target/stop GAUGE lives
           further down with the Price Targets / Consensus / Composite card
           cluster. See docs/plans/THESIS_VISUALIZATION.md. */}
-      {!isPass && candles && candles.length >= 2 ? (
+      {!isPass && candlesLoading ? (
+        <Skeleton className="h-[300px] w-full rounded-lg" />
+      ) : !isPass && candles && candles.length >= 2 ? (
         <ThesisChart
           ticker={ticker}
           candles={candles}
@@ -1367,15 +1449,20 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         />
       ) : null}
 
-      {/* Analyst Consensus — Buy/Hold/Sell distribution + price-target
-          range vs current, from the payload's live coverage. mintConsensus
-          is the legacy pre-PR-9 shape read off the same payload column. */}
-      <AnalystConsensusWidget
-        coverage={coverage}
-        fallbackConsensus={mintConsensus}
-        narrative={state.analystConsensus ?? null}
-        currentPrice={quote?.currentPrice ?? null}
-      />
+      {/* Analyst Consensus — Buy/Hold/Sell distribution + price-target range
+          vs current. Coverage (FMP — the slow vendor) hydrates on its own
+          boundary so it never blocks the chart; skeleton until it lands.
+          mintConsensus is the legacy pre-PR-9 shape read off the dossier. */}
+      {coverageLoading && !coverage ? (
+        <Skeleton className="h-40 w-full rounded-lg" />
+      ) : (
+        <AnalystConsensusWidget
+          coverage={coverage}
+          fallbackConsensus={mintConsensus}
+          narrative={state.analystConsensus ?? null}
+          currentPrice={quote?.currentPrice ?? null}
+        />
+      )}
 
       {/* Composite Score — 4-dim scoring breakdown. Composite is the single
           conviction number after PR-9 (legacy `confidenceScore` int dropped). */}
@@ -1409,7 +1496,9 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           ThesisTriggersSection so it can sit next to price targets where
           it belongs — these are the trade-shape mechanics that pair with
           entry/target/stop, not metadata about the trigger pile. */}
-      {state ? <TradeStructureBlock state={state} /> : null}
+      {state ? (
+        <TradeStructureBlock state={{ ...state, resolved }} />
+      ) : null}
 
       {/* ── Variant View (Conviction Expression v4) ─────────── */}
       {/* The writer's contrarian take — "consensus thinks X, I think Y."

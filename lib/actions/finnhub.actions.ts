@@ -417,6 +417,74 @@ export async function getStockCandlesBatch(
   }
 }
 
+/**
+ * Intraday 5-minute candles for the MOST RECENT trading session — the data
+ * behind the sheet chart's "1D" tab. Same Alpaca IEX feed / creds as the daily
+ * `getStockCandles`, just `timeframe=5Min`. Queries a 4-day window (survives
+ * weekends/holidays) so the tab is never empty: intraday it shows today so far,
+ * outside hours it shows the prior full session. Only the bars from the latest
+ * ET session date are returned.
+ *
+ * Unlike the daily fetchers, each candle's `date` carries the FULL ISO
+ * timestamp (not a YYYY-MM-DD day) so the chart can render time-of-day labels.
+ * IEX is slightly delayed / thinner than the consolidated tape — fine for a
+ * paper-trading intraday direction read.
+ */
+export async function getIntradayCandles(symbol: string): Promise<StockCandle[]> {
+  try {
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      console.warn('[getIntradayCandles] No Alpaca credentials configured');
+      return [];
+    }
+
+    const end = new Date().toISOString();
+    const start = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=5Min&start=${start}&end=${end}&limit=10000&feed=iex`;
+
+    const res = await fetch(url, {
+      headers: {
+        'APCA-API-KEY-ID': apiKey,
+        'APCA-API-SECRET-KEY': apiSecret,
+      },
+      next: { revalidate: 30 },
+    });
+
+    if (!res.ok) {
+      console.warn('[getIntradayCandles] Alpaca error', res.status, await res.text().catch(() => ''));
+      return [];
+    }
+
+    const data = (await res.json()) as {
+      bars?: { c: number; o: number; h: number; l: number; v: number; t: string }[];
+    };
+    if (!data.bars?.length) return [];
+
+    // Keep only the latest ET session. en-CA gives a string-sortable YYYY-MM-DD.
+    const etDate = (iso: string) =>
+      new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const latest = data.bars.reduce((max, b) => {
+      const d = etDate(b.t);
+      return d > max ? d : max;
+    }, '');
+
+    return data.bars
+      .filter((bar) => etDate(bar.t) === latest)
+      .map((bar) => ({
+        date: bar.t, // full ISO timestamp — chart renders time-of-day for 1D
+        close: bar.c,
+        open: bar.o,
+        high: bar.h,
+        low: bar.l,
+        volume: bar.v,
+      }));
+  } catch (err) {
+    console.error('[getIntradayCandles] Error:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
 // ─── Analyst recommendation trends ──────────────────────────────────────────
 
 export type RecommendationTrend = {

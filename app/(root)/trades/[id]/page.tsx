@@ -24,7 +24,6 @@ import { createClient } from '@/lib/supabase/server';
 import { getAccountId } from '@/lib/auth/account';
 import { holdDurationFromHorizon } from '@/lib/agent/horizon-policy';
 import {
-  buildThesisSheetState,
   thesisSheetStateSelect,
 } from '@/lib/agent/thesis-sheet-state';
 import {
@@ -427,7 +426,6 @@ export default async function TradeDetailPage({
                   createdAt: t.createdAt?.toISOString?.() ?? null,
                   analystName: null,
                   runId: t.researchRunId ?? null,
-                  sheetState: buildThesisSheetState(t),
                   position: {
                     id: trade.id,
                     status: trade.status,

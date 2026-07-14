@@ -11,7 +11,6 @@ import type { ThesisRowData } from "@/components/ui/thesis-row";
 import { ViewAllThesesLink } from "@/components/stocks/ViewAllThesesLink";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import {
-  buildThesisSheetState,
   thesisSheetStateSelect,
 } from "@/lib/agent/thesis-sheet-state";
 import {
@@ -300,7 +299,6 @@ export default async function StockDetailPage({ params }: Props) {
                   createdAt: latest.createdAt.toISOString(),
                   analystName: latest.researchRun?.agentConfig?.name ?? null,
                   runId: latest.researchRunId,
-                  sheetState: buildThesisSheetState(latest),
                 };
                 return <StockThesesList theses={[rowData]} />;
               })()}
@@ -388,7 +386,6 @@ export default async function StockDetailPage({ params }: Props) {
                   createdAt: t.createdAt.toISOString(),
                   analystName: t.researchRun?.agentConfig?.name ?? null,
                   runId: t.researchRunId,
-                  sheetState: buildThesisSheetState(t),
                 };
               })} />
             </TabsContent>

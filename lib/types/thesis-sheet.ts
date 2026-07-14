@@ -1,12 +1,15 @@
 /**
- * thesis-sheet contract types — the shape of the /api/theses/:id/triggers
- * payload (and its ?full=1 superset) that the thesis sheet renders from.
- * Lives in lib/ because BOTH sides speak it: the server route + state
- * builders produce it, the sheet/rows/hooks consume it. Component files
- * re-export for their existing import paths.
+ * thesis-sheet contract types. The sheet renders from a durable/live split:
+ *
+ *   • ThesisDossier — durable DB state (GET /api/theses/:id). Gates first paint.
+ *   • QuoteResponse — the live layer (GET /api/theses/:id/quote): price + PnL +
+ *     the price-dependent `resolved` envelope.
+ *   • candles (StockCandle[]) and coverage (AnalystCoverageData) hydrate from
+ *     their own ticker-scoped endpoints, each on its own boundary.
+ *
+ * Lives in lib/ because BOTH sides speak it: server routes produce it, the
+ * sheet/rows/hooks consume it. Component files re-export for import paths.
  */
-import type { StockCandle } from "@/lib/actions/finnhub.actions";
-import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 
 export interface TriggerPredicate {
   kind: string;
@@ -79,7 +82,7 @@ export interface ThesisScoring {
   catalystFreshness?: ThesisScoringDim;
 }
 
-export interface TriggersResponse {
+export interface ThesisDossier {
   thesisId: string;
   ticker: string;
   status: string;
@@ -105,12 +108,6 @@ export interface TriggersResponse {
   nextReviewAt: string | null;
   triggers: Trigger[];
   position: ThesisStatePosition | null;
-  // ── Full-sheet payload (present only on the /triggers?full=1 call the sheet
-  // makes). One request returns the whole sheet: durable state PLUS live quote,
-  // candles, and analyst coverage — no separate /quote, /candles, /coverage. */
-  quote?: QuoteResponse;
-  candles?: StockCandle[];
-  coverage?: AnalystCoverageData | null;
   // Structural belief — load-bearing fields the trade-evaluator + tactical
   // agent read. Surfaced to the sheet so the user can see what the agent
   // actually committed to.
@@ -132,31 +129,6 @@ export interface TriggersResponse {
   conviction: "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
   convictionRationale: string | null;
   variantView: string | null;
-  // ── Conviction Expression v4 (reader-side resolver §6) ──────────────
-  // Read-time computed envelope. Live price + trigger evaluation +
-  // supersession + actionability rollup. Drives the actionability
-  // state pill in the sheet header. Optional because the field is
-  // server-computed in /api/theses/:id/triggers only — the pre-fetched
-  // sheetState path (P2-19) doesn't have it.
-  resolved?: {
-    currentPrice: number | null;
-    entryQualityScore: number | null;
-    triggerState: "ENTER_FIRED" | "ENTER_WAITING" | "EXIT_FIRED" | "NONE";
-    triggerDetail: string | null;
-    actionability:
-      | "ENTER_NOW"
-      | "WAIT_FOR_TRIGGER"
-      | "PENDING_CATALYST"
-      | "ACTIVE_HOLD"
-      | "STALE_PAST_CATALYST"
-      | "SUPERSEDED"
-      | "PROMOTED_DECIDE_TODAY"
-      | "DEAD";
-    supersededBy: string | null;
-    staleness: "FRESH" | "STALE";
-    resolvedAt: string;
-    quoteAgeMs: number | null;
-  } | null;
   // ── V2 9-section narrative dossier (PR-9 flat schema) ────────────────
   // The 9 first-class JSONB columns that replaced the `researchSections`
   // blob. Three retypes of legacy fields (snapshot ↔ reasoningSummary,
@@ -186,11 +158,34 @@ export interface TriggersResponse {
   parentThesisId: string | null;
 }
 
-// Response shape from /api/theses/:id/quote — split from /triggers on
-// 2026-05-19 because the inline Finnhub call was blocking everything
-// else on the sheet for ~1-2s. The sheet now fires both endpoints in
-// parallel; this one trickles in whenever Finnhub does and refines only
-// the price header + position PnL fields.
+// Conviction Expression v4 — read-time resolver envelope (§6). Live price +
+// trigger evaluation + supersession + the actionability rollup that drives the
+// Trade-Structure "Status" cell. Price-dependent, so it rides on the live
+// QuoteResponse rather than the durable dossier.
+export interface ResolvedEnvelope {
+  currentPrice: number | null;
+  entryQualityScore: number | null;
+  triggerState: "ENTER_FIRED" | "ENTER_WAITING" | "EXIT_FIRED" | "NONE";
+  triggerDetail: string | null;
+  actionability:
+    | "ENTER_NOW"
+    | "WAIT_FOR_TRIGGER"
+    | "PENDING_CATALYST"
+    | "ACTIVE_HOLD"
+    | "STALE_PAST_CATALYST"
+    | "SUPERSEDED"
+    | "PROMOTED_DECIDE_TODAY"
+    | "DEAD";
+  supersededBy: string | null;
+  staleness: "FRESH" | "STALE";
+  resolvedAt: string;
+  quoteAgeMs: number | null;
+}
+
+// Response shape from /api/theses/:id/quote — the live layer. Split from the
+// durable dossier so the ~1-2s Finnhub call never blocks the readable body.
+// The sheet fires both in parallel: the dossier paints, this refines the price
+// header, position PnL, and the resolved "Status" cell whenever Finnhub lands.
 export interface QuoteResponse {
   currentPrice: number | null;
   dayChange: number | null;
@@ -206,6 +201,9 @@ export interface QuoteResponse {
   // name + "TICKER · EXCHANGE" instead of the ticker twice.
   companyName?: string | null;
   exchange?: string | null;
+  // Price-dependent actionability envelope (see ResolvedEnvelope). Null when
+  // the resolver couldn't run.
+  resolved?: ResolvedEnvelope | null;
 }
 
 // `sourcesUsed` column is Json — agents write `[{provider, title, url}]`
