@@ -81,13 +81,19 @@ function formatDateLabel(dateStr: string): string {
 
 // Intraday candles carry a full ISO timestamp in `date`; label them as ET
 // time-of-day (e.g. "9:35 AM") instead of a calendar date.
-function formatTimeLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-US', {
+function formatTimeLabel(v: string | number): string {
+  return new Date(v).toLocaleTimeString('en-US', {
     timeZone: 'America/New_York',
     hour: 'numeric',
     minute: '2-digit',
   });
 }
+
+// Regular US session length (9:30 AM → 4:00 PM ET). The 1D chart pins its x-axis
+// to this full span and lets the line stop at the last bar — so mid-session the
+// line only fills the left portion (a "we're N hours into the day" cue) instead
+// of stretching a handful of bars across the whole width.
+const RTH_SESSION_MS = 6.5 * 60 * 60 * 1000;
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -114,9 +120,28 @@ export function StockPriceChart({
   );
 
   const data = useMemo(() => {
-    if (isIntraday) return intradayCandles ?? [];
+    if (isIntraday) {
+      // Attach an epoch-ms `x` so the 1D chart can use a real time axis (fixed
+      // full-session domain) rather than evenly spacing a handful of bars.
+      return (intradayCandles ?? []).map((c) => ({
+        ...c,
+        x: new Date(c.date).getTime(),
+      }));
+    }
     return candles.slice(-RANGE_DAYS[range as DailyRange]);
   }, [candles, intradayCandles, range, isIntraday]);
+
+  // 1D axis: pin the domain to the full RTH session (first bar → +6.5h) and
+  // place hourly-ish ticks, so the line stops at the latest bar against a
+  // full-day backdrop. Null when not intraday or no data.
+  const intradayAxis = useMemo(() => {
+    if (!isIntraday || data.length === 0) return null;
+    const open = new Date(data[0].date).getTime();
+    const close = open + RTH_SESSION_MS;
+    const ticks: number[] = [];
+    for (let t = open; t <= close; t += 90 * 60 * 1000) ticks.push(t);
+    return { domain: [open, close] as [number, number], ticks };
+  }, [isIntraday, data]);
 
   // Snap each marker to the nearest visible candle date (Recharts only places
   // a vertical ReferenceLine on an x-value that exists in `data`). Markers
@@ -215,18 +240,38 @@ export function StockPriceChart({
               <stop offset="95%" stopColor={strokeColor} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <XAxis
-            dataKey="date"
-            tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
-            tickLine={false}
-            axisLine={false}
-            tickFormatter={(v) =>
-              isIntraday ? formatTimeLabel(v) : formatDateLabel(v).toUpperCase()
+          {isIntraday ? (
+            <XAxis
+              dataKey="x"
+              type="number"
+              scale="time"
+              domain={intradayAxis?.domain ?? ['dataMin', 'dataMax']}
+              ticks={intradayAxis?.ticks}
+              tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v) => formatTimeLabel(v)}
+              padding={{ left: 0, right: 0 }}
+            />
+          ) : (
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v) => formatDateLabel(v).toUpperCase()}
+              interval={Math.max(1, Math.floor(data.length / 6))}
+              padding={{ left: 0, right: 0 }}
+            />
+          )}
+          <YAxis
+            hide
+            domain={
+              isIntraday
+                ? ['dataMin * 0.997', 'dataMax * 1.003']
+                : ['dataMin * 0.98', 'dataMax * 1.15']
             }
-            interval={Math.max(1, Math.floor(data.length / 6))}
-            padding={{ left: 0, right: 0 }}
           />
-          <YAxis hide domain={['dataMin * 0.98', 'dataMax * 1.15']} />
           <Tooltip
             contentStyle={{
               background: 'var(--popover)',
@@ -239,8 +284,8 @@ export function StockPriceChart({
               `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
               'Close',
             ]}
-            labelFormatter={(l: string) =>
-              isIntraday ? formatTimeLabel(l) : formatDateLabel(l)
+            labelFormatter={(l: string | number) =>
+              isIntraday ? formatTimeLabel(l) : formatDateLabel(l as string)
             }
             labelStyle={{ color: 'var(--muted-foreground)' }}
           />
@@ -277,13 +322,17 @@ export function StockPriceChart({
             />
           ))}
           <Area
-            type="monotone"
+            // Intraday: linear, so real tick-by-tick movement (the V-dips and
+            // spikes) shows instead of monotone rounding a few bars into a fake
+            // smooth curve. Daily: monotone reads cleaner over months.
+            type={isIntraday ? 'linear' : 'monotone'}
             dataKey="close"
             stroke={strokeColor}
             strokeWidth={1.5}
             fill="url(#stockGrad)"
             dot={false}
             activeDot={{ r: 3, fill: strokeColor }}
+            isAnimationActive={!isIntraday}
           />
         </AreaChart>
       </ResponsiveContainer>

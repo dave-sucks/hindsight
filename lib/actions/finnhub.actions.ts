@@ -418,13 +418,14 @@ export async function getStockCandlesBatch(
 }
 
 /**
- * Intraday 5-minute candles for the MOST RECENT trading session — the data
+ * Intraday 1-minute candles for the MOST RECENT trading session — the data
  * behind the sheet chart's "1D" tab. Same Alpaca IEX feed / creds as the daily
- * `getStockCandles`, just `timeframe=5Min`. Queries a 7-day window so the tab is
- * never empty even across a long closure (a mid-week holiday + weekend can put
- * the last session >4 calendar days back): intraday it shows today so far,
- * outside hours it shows the prior full session. Only the bars from the latest
- * ET session date are returned.
+ * `getStockCandles`, just `timeframe=1Min`. 1-minute (not 5) so early-session
+ * the chart has enough points to show real movement (dips/spikes) instead of a
+ * handful of bars a smoothing curve rounds into a fake S. Queries a 4-day
+ * window so the tab is never empty over a weekend, then keeps only the latest
+ * ET session's bars: intraday it shows today so far, outside hours the prior
+ * full session.
  *
  * Unlike the daily fetchers, each candle's `date` carries the FULL ISO
  * timestamp (not a YYYY-MM-DD day) so the chart can render time-of-day labels.
@@ -441,8 +442,8 @@ export async function getIntradayCandles(symbol: string): Promise<StockCandle[]>
     }
 
     const end = new Date().toISOString();
-    const start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=5Min&start=${start}&end=${end}&limit=10000&feed=iex`;
+    const start = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Min&start=${start}&end=${end}&limit=10000&feed=iex`;
 
     const res = await fetch(url, {
       headers: {
@@ -462,18 +463,29 @@ export async function getIntradayCandles(symbol: string): Promise<StockCandle[]>
     };
     if (!data.bars?.length) return [];
 
-    // Keep only the latest ET session. Compute each bar's ET date ONCE
-    // (Intl formatting isn't free, and this runs on a 30s poll); en-CA gives a
-    // string-sortable YYYY-MM-DD.
-    const etFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
-    const stamped = data.bars.map((bar) => ({
-      bar,
-      etDate: etFmt.format(new Date(bar.t)),
-    }));
+    // Stamp each bar with its ET session date + minutes-since-midnight ONCE
+    // (Intl formatting isn't free, and this runs on a 30s poll). en-CA gives a
+    // string-sortable YYYY-MM-DD; en-GB 24h gives HH:MM.
+    const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
+    const timeFmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/New_York',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const stamped = data.bars.map((bar) => {
+      const d = new Date(bar.t);
+      const [hh, mm] = timeFmt.format(d).split(':').map(Number);
+      return { bar, etDate: dayFmt.format(d), etMinutes: hh * 60 + mm };
+    });
     const latest = stamped.reduce((max, s) => (s.etDate > max ? s.etDate : max), '');
 
+    // Latest session, REGULAR HOURS ONLY (9:30–16:00 ET = minutes 570–960).
+    // IEX can return pre/post-market prints; excluding them keeps the chart's
+    // fixed 6.5h x-axis domain anchored to the 9:30 open (first bar) instead of
+    // being skewed early by an 8 AM pre-market bar.
     return stamped
-      .filter((s) => s.etDate === latest)
+      .filter((s) => s.etDate === latest && s.etMinutes >= 570 && s.etMinutes <= 960)
       .map(({ bar }) => ({
         date: bar.t, // full ISO timestamp — chart renders time-of-day for 1D
         close: bar.c,
