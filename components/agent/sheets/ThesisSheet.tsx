@@ -1411,6 +1411,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           current={quote?.currentPrice ?? null}
           addedAt={state.createdAt}
           enteredAt={position?.openedAt ?? null}
+          soldAt={position?.closedAt ?? null}
           variant="full"
         />
       ) : null}

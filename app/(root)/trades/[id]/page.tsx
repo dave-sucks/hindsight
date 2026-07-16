@@ -401,6 +401,7 @@ export default async function TradeDetailPage({
                   current={livePrice ?? currentPrice}
                   addedAt={trade.thesis?.createdAt ? new Date(trade.thesis.createdAt).toISOString() : null}
                   enteredAt={new Date(position.openedAt).toISOString()}
+                  soldAt={position.closedAt ? new Date(position.closedAt).toISOString() : null}
                   variant="full"
                   frameless
                 />

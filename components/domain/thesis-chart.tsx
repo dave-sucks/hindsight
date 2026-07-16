@@ -12,6 +12,7 @@ const ENTRY = '#a1a1aa'; // zinc-400
 const TARGET = '#22c55e'; // green-500
 const STOP = '#ef4444'; // red-500
 const WATCH = '#a1a1aa'; // zinc-400 (muted "started watching" mark)
+const SOLD = '#e4e4e7'; // zinc-200 (brighter — the "closed the book" exit mark)
 
 type ThesisChartProps = {
   ticker: string;
@@ -29,6 +30,8 @@ type ThesisChartProps = {
   addedAt?: string | null;
   /** Position.openedAt — "entered" vertical marker (full only). */
   enteredAt?: string | null;
+  /** Position.closedAt — "sold" vertical marker + end of the Trade window. */
+  soldAt?: string | null;
   /**
    * full — sheet / trade page: range pills, vertical add/entry markers, 3M.
    * card — feed card: fixed 1M window, no controls, no vertical markers.
@@ -62,6 +65,7 @@ export function ThesisChart({
   current,
   addedAt,
   enteredAt,
+  soldAt,
   variant,
   frameless,
 }: ThesisChartProps) {
@@ -129,7 +133,18 @@ export function ThesisChart({
   const verticalMarkers = [
     addedAt ? { date: addedAt.slice(0, 10), color: WATCH, label: 'Watching' } : null,
     enteredAt ? { date: enteredAt.slice(0, 10), color: ENTRY, label: 'Entry' } : null,
+    soldAt ? { date: soldAt.slice(0, 10), color: SOLD, label: 'Sold' } : null,
   ].filter((m): m is NonNullable<typeof m> => m !== null);
+
+  // "Trade" window — the position's own lifespan (full variant only). Starts at
+  // the watch date (falls back to entry), ends at the sold date or stays open
+  // (null → windows to the latest candle while held). Powers the Trade pill;
+  // a sold thesis opens on it so the whole story is visible at a glance.
+  const watchStart = (addedAt ?? enteredAt)?.slice(0, 10) ?? null;
+  const tradeSpan =
+    variant === 'full' && watchStart
+      ? { start: watchStart, end: soldAt ? soldAt.slice(0, 10) : null }
+      : undefined;
 
   return (
     <StockPriceChart
@@ -137,13 +152,16 @@ export function ThesisChart({
       referenceLines={referenceLines}
       verticalMarkers={verticalMarkers}
       showControls={variant === 'full'}
-      defaultRange={variant === 'card' ? '1M' : '3M'}
+      defaultRange={
+        variant === 'card' ? '1M' : soldAt && tradeSpan ? 'Trade' : '3M'
+      }
       height={variant === 'card' ? 160 : 300}
       frameless={frameless ?? variant === 'card'}
       showIntraday={enableIntraday}
       intradayCandles={intraday}
       intradayLoading={intradayLoading}
       onRangeChange={(r) => setIs1D(r === '1D')}
+      tradeSpan={tradeSpan}
     />
   );
 }

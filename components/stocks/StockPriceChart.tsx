@@ -56,6 +56,12 @@ type Props = {
   intradayLoading?: boolean;
   /** Fired on every pill click so the parent can start/stop intraday polling. */
   onRangeChange?: (range: Range) => void;
+  /**
+   * Position lifespan for the "Trade" pill: start = watch/thesis date, end =
+   * sold date (null while still held → windows to the latest candle). When set,
+   * the "Trade" range becomes available (full variant only).
+   */
+  tradeSpan?: { start: string; end: string | null };
   children?: React.ReactNode;
 };
 
@@ -63,7 +69,9 @@ type Props = {
 
 const DAILY_RANGES = ['1W', '1M', '3M', '1Y'] as const;
 type DailyRange = (typeof DAILY_RANGES)[number];
-type Range = '1D' | DailyRange;
+// "Trade" windows the daily candles to a position's own lifespan (watch → sold,
+// or watch → now while held) rather than a fixed trailing day-count.
+type Range = '1D' | 'Trade' | DailyRange;
 
 const RANGE_DAYS: Record<DailyRange, number> = {
   '1W': 5,
@@ -143,14 +151,19 @@ export function StockPriceChart({
   intradayCandles,
   intradayLoading = false,
   onRangeChange,
+  tradeSpan,
   children,
 }: Props) {
   const [range, setRange] = useState<Range>(defaultRange);
   const isIntraday = range === '1D';
 
   const ranges = useMemo<Range[]>(
-    () => (showIntraday ? ['1D', ...DAILY_RANGES] : [...DAILY_RANGES]),
-    [showIntraday],
+    () => [
+      ...(showIntraday ? (['1D'] as Range[]) : []),
+      ...DAILY_RANGES,
+      ...(tradeSpan ? (['Trade'] as Range[]) : []),
+    ],
+    [showIntraday, tradeSpan],
   );
 
   const data = useMemo(() => {
@@ -162,8 +175,16 @@ export function StockPriceChart({
         x: new Date(c.date).getTime(),
       }));
     }
+    if (range === 'Trade') {
+      // The position's own lifespan: watch date → sold date (or the latest
+      // candle while still held). Candle `date` + span bounds are both
+      // YYYY-MM-DD, so plain string comparison is correct.
+      if (!tradeSpan) return candles;
+      const end = tradeSpan.end ?? '9999-12-31';
+      return candles.filter((c) => c.date >= tradeSpan.start && c.date <= end);
+    }
     return candles.slice(-RANGE_DAYS[range as DailyRange]);
-  }, [candles, intradayCandles, range, isIntraday]);
+  }, [candles, intradayCandles, range, isIntraday, tradeSpan]);
 
   // 1D axis: pin the domain to the full RTH session (first bar → +6.5h) and
   // place hourly-ish ticks, so the line stops at the latest bar against a
@@ -291,7 +312,9 @@ export function StockPriceChart({
               axisLine={false}
               tickFormatter={(v) => formatDateLabel(v).toUpperCase()}
               interval={Math.max(1, Math.floor(data.length / 6))}
-              padding={{ left: 0, right: 0 }}
+              // Trade mode ends at the Sold marker (or "now"); pad the right so
+              // that edge marker's label isn't clipped against the frame.
+              padding={{ left: 0, right: range === 'Trade' ? 44 : 0 }}
             />
           )}
           <YAxis
