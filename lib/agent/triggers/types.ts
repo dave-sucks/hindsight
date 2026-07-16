@@ -130,6 +130,26 @@ export type TriggerPredicate =
  */
 export type TriggerAction = "REVIEW" | "EXIT" | "ENTER" | "ADD" | "TRIM" | "MOVE_STOP";
 
+/**
+ * Trigger provenance — WHO authored this rung (TRIGGER_MODEL.md §5 gap 2;
+ * TRIGGER_LIFECYCLE.md §1's authority layers, made visible per-rung):
+ *   DEFAULT   — a code template rung (defaults.ts horizon templates,
+ *               standing protection minimums, scale-in rungs).
+ *   AGENT     — authored by an agent (record_thesis / update_thesis).
+ *   PRINCIPAL — added by the user via the thesis-sheet trigger UI
+ *               (applyTriggerAdd, incl. the reject-dialog editor).
+ *
+ * "ANALYST_RULE" (per-analyst standing-rule overrides) is RESERVED for the
+ * PR-E cascade (TRIGGER_MODEL.md §5 gap 5) — do not add the value until
+ * that layer exists, so the union stays honest about what can actually be
+ * stamped today.
+ *
+ * Server-stamped at write time; the evaluator IGNORES it (pure metadata —
+ * see the note in evaluate.ts's shouldFire). Legacy on-disk triggers have
+ * no source; render them unlabeled, never fabricate provenance.
+ */
+export type TriggerSource = "DEFAULT" | "AGENT" | "PRINCIPAL";
+
 export type Trigger = {
   /** Stable cuid — same id across thesis updates so cooldown can be tracked. */
   id: string;
@@ -156,6 +176,13 @@ export type Trigger = {
    * Absent ⇒ TACTICAL.
    */
   fireMode?: "TACTICAL" | "DIRECT";
+  /**
+   * Provenance — who authored this rung (see TriggerSource above).
+   * Server-stamped at each write path; preserved by id across
+   * update_thesis's wholesale replace (same mechanism as lastFiredAt).
+   * Absent on legacy rows ⇒ unknown; render unlabeled.
+   */
+  source?: TriggerSource;
 };
 
 /**

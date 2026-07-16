@@ -267,6 +267,11 @@ export function shouldFire(
   trigger: Trigger,
   ctx: EvaluationContext,
 ): { fires: boolean; reason: "match" | "no-match" | "cooldown" } {
+  // NOTE: `trigger.source` (provenance — DEFAULT/AGENT/PRINCIPAL) is
+  // deliberately IGNORED here. It's display/audit metadata, not part of the
+  // triple-sync rule's evaluation surface — a default rung and a principal
+  // rung with the same predicate fire identically. Don't "fix" this by
+  // branching on it.
   const matched = evaluateTrigger(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };
 

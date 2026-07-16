@@ -35,6 +35,8 @@ export interface Trigger {
   lastFiredAt?: string;
   /** "TACTICAL" (wake an agent) | "DIRECT" (close directly, no agent). Absent ⇒ TACTICAL. */
   fireMode?: "TACTICAL" | "DIRECT";
+  /** Provenance — who authored this rung. Absent on legacy rows ⇒ render unlabeled. */
+  source?: "DEFAULT" | "AGENT" | "PRINCIPAL";
 }
 
 // Position info from /triggers — quantity + cost basis + days held only.

@@ -1162,12 +1162,17 @@ export const recordThesis = defineTool({
         if (args.direction === "PASS") {
           return [];
         }
+        // Provenance: every trigger the agent supplies on a NEW thesis is
+        // agent-authored — stamp "AGENT" (overwriting anything the model
+        // fabricated; source is server-owned metadata). Template rungs come
+        // back from defaultTriggersForHorizon already stamped "DEFAULT".
+        const agentTriggers: Trigger[] = ((args.triggers ?? []) as Trigger[]).map(
+          (t) => ({ ...t, source: "AGENT" as const }),
+        );
         // Without horizon we can't pick a defaults template — agent's
         // raw triggers are all we have. Cooldown backfill still runs.
         if (!args.horizon) {
-          return applyTriggerCooldownDefaults(
-            (args.triggers ?? []) as Trigger[],
-          );
+          return applyTriggerCooldownDefaults(agentTriggers);
         }
         const defaults = defaultTriggersForHorizon(
           args.horizon as Horizon,
@@ -1181,10 +1186,7 @@ export const recordThesis = defineTool({
           },
           effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
         );
-        const merged = mergeTriggers(
-          defaults,
-          (args.triggers ?? []) as Trigger[],
-        );
+        const merged = mergeTriggers(defaults, agentTriggers);
         return applyTriggerCooldownDefaults(merged);
       })();
 

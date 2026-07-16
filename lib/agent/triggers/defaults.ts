@@ -22,10 +22,11 @@
  * trigger so cooldown stamps survive subsequent merges.
  */
 
-import { randomUUID } from "node:crypto";
-
-const createId = () => randomUUID();
-import type { Trigger, TriggerPredicate } from "./types";
+// Web Crypto (global since Node 19 + all browsers) instead of node:crypto —
+// keeps this module importable from client components (the trigger popover
+// reads defaultCooldownDaysForPredicate for its cooldown explainer line).
+const createId = () => globalThis.crypto.randomUUID();
+import type { Trigger, TriggerPredicate, TriggerSource } from "./types";
 
 export type Horizon = "CATALYST" | "TARGET" | "TRADE" | "COMPOUNDER";
 
@@ -203,11 +204,21 @@ function loserAttentionTrigger(): Trigger {
  * GAIN_FROM_ENTRY DOWN rung leaves the UP default intact.
  */
 export function standingProtectionTriggers(): Trigger[] {
-  return [
-    gainCheckpointTrigger(),
-    trailingRatchetTrigger(),
-    loserAttentionTrigger(),
-  ];
+  return stampSource(
+    [gainCheckpointTrigger(), trailingRatchetTrigger(), loserAttentionTrigger()],
+    "DEFAULT",
+  );
+}
+
+/**
+ * Provenance stamp for template-built rungs (TRIGGER_MODEL.md §5 gap 2).
+ * Applied at the two public exits of this module — standingProtectionTriggers
+ * and defaultTriggersForHorizon — so every rung a code template mints carries
+ * `source: "DEFAULT"` regardless of which internal builder produced it.
+ * Idempotent: a rung that already carries a source keeps it.
+ */
+function stampSource(triggers: Trigger[], source: TriggerSource): Trigger[] {
+  return triggers.map((t) => (t.source ? t : { ...t, source }));
 }
 
 function compounderDefaults(thesis: ThesisShape): Trigger[] {
@@ -809,24 +820,24 @@ export function defaultTriggersForHorizon(
     // PROMOTED branch is a straight delegation.
     switch (horizon) {
       case "CATALYST":
-        return watchingCatalystDefaults(thesis);
+        return stampSource(watchingCatalystDefaults(thesis), "DEFAULT");
       case "TRADE":
-        return watchingTradeDefaults(thesis);
+        return stampSource(watchingTradeDefaults(thesis), "DEFAULT");
       case "TARGET":
-        return watchingTargetDefaults(thesis);
+        return stampSource(watchingTargetDefaults(thesis), "DEFAULT");
       case "COMPOUNDER":
-        return watchingCompounderDefaults(thesis);
+        return stampSource(watchingCompounderDefaults(thesis), "DEFAULT");
     }
   }
   switch (horizon) {
     case "COMPOUNDER":
-      return compounderDefaults(thesis);
+      return stampSource(compounderDefaults(thesis), "DEFAULT");
     case "TARGET":
-      return targetDefaults(thesis);
+      return stampSource(targetDefaults(thesis), "DEFAULT");
     case "TRADE":
-      return tradeDefaults(thesis);
+      return stampSource(tradeDefaults(thesis), "DEFAULT");
     case "CATALYST":
-      return catalystDefaults(thesis);
+      return stampSource(catalystDefaults(thesis), "DEFAULT");
   }
 }
 
@@ -1010,6 +1021,53 @@ export function triggerBucket(t: Trigger): string {
  * (predicate, action) bucket; defaults fill the gaps. Returns a fresh
  * array; never mutates inputs.
  */
+/**
+ * Reconcile an agent's wholesale trigger REPLACE (update_thesis) against the
+ * on-disk array — the two server-managed fields must survive the swap, keyed
+ * by trigger id:
+ *
+ *   1. `lastFiredAt` — the cooldown stamp. The agent never sees nor reasons
+ *      about it; trusting its payload verbatim wipes firing memory on every
+ *      update and the next signal re-fires the trigger. (An agent-provided
+ *      value is respected — the evaluator itself resends triggers with the
+ *      stamp intact.)
+ *
+ *   2. `source` — provenance (TRIGGER_MODEL.md §5 gap 2). A resent trigger
+ *      whose id matches an existing one KEEPS the existing rung's source
+ *      (including "no source" on legacy rungs — we never fabricate
+ *      provenance); only genuinely new ids are stamped "AGENT". Without
+ *      this, every agent review — which resends the full array by design —
+ *      would silently relabel default/principal rungs as agent rungs.
+ *      The existing value is authoritative over anything the agent sent
+ *      (source is server-owned metadata, not agent input).
+ *
+ * Pure; returns a fresh array. Caller still runs
+ * applyTriggerCooldownDefaults afterwards (same as before).
+ */
+export function reconcileTriggerReplace(
+  existing: Trigger[],
+  incoming: Trigger[],
+): Trigger[] {
+  const byId = new Map(existing.filter((t) => t.id).map((t) => [t.id, t]));
+  return incoming.map((t) => {
+    const prior = t.id ? byId.get(t.id) : undefined;
+    const next: Trigger = { ...t };
+    // (1) lastFiredAt — agent-provided wins, else carry the prior stamp.
+    if (next.lastFiredAt == null && prior?.lastFiredAt != null) {
+      next.lastFiredAt = prior.lastFiredAt;
+    }
+    // (2) source — prior rung's provenance is authoritative on a resend
+    // (absent stays absent); a genuinely new id is agent-authored.
+    if (prior) {
+      if (prior.source) next.source = prior.source;
+      else delete next.source;
+    } else {
+      next.source = "AGENT";
+    }
+    return next;
+  });
+}
+
 export function mergeTriggers(
   defaults: Trigger[],
   agentSupplied: Trigger[],

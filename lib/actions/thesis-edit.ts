@@ -366,6 +366,12 @@ export async function applyTriggerAdd(
       input.rationale?.trim() || addedTriggerRationale(input.action, input.predicate),
     ...(input.cooldownDays != null ? { cooldownDays: input.cooldownDays } : {}),
     fireMode,
+    // Provenance: every UI-minted trigger is principal-authored. Note the
+    // sibling edit paths (applyTriggerValueEdit / applyTriggerFireModeChange)
+    // deliberately do NOT touch `source` — editing a default's % doesn't make
+    // it yours; the rung keeps its original provenance. (Letting the
+    // principal "claim" an edited rung is a future concern, kept out of v1.)
+    source: "PRINCIPAL" as const,
   };
   const parsedOne = triggerSchema.safeParse(candidate);
   if (!parsedOne.success) {

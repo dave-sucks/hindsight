@@ -40,7 +40,7 @@ import {
   InputGroupText,
 } from "@/components/ui/input-group";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { Clock, Loader2, Plus, Trash2, Calendar } from "lucide-react";
+import { Clock, Loader2, Lock, Plus, Trash2, Calendar } from "lucide-react";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import { cn } from "@/lib/utils";
 
@@ -90,9 +90,13 @@ import {
   predicateSentence as sharedPredicateSentence,
   actionGroupLabel,
   fireModeLabel,
+  fireRouteSentence,
+  cooldownSentence,
+  sourceLabel,
 } from "@/lib/agent/triggers/format";
 import {
   isDirectEligiblePredicate,
+  type Trigger as SharedTrigger,
   type TriggerPredicate as SharedTriggerPredicate,
 } from "@/lib/agent/triggers/types";
 
@@ -301,13 +305,17 @@ function TriggerPill({
           />
         }
       >
-        {/* Cell 1 — kind label, faint muted background */}
+        {/* Cell 1 — kind label, faint muted background. Default (template)
+            rungs carry a small lock as the origin marker — agent/principal
+            rungs stay unmarked in v1; the popover's "Set by" line carries
+            the full answer. */}
         <div
           className={cn(
-            "flex items-center px-2 bg-muted/30 text-muted-foreground",
+            "flex items-center gap-1 px-2 bg-muted/30 text-muted-foreground",
             value ? "border-r border-border" : "",
           )}
         >
+          {trigger.source === "DEFAULT" ? <Lock className="size-3" /> : null}
           {kind}
         </div>
 
@@ -535,6 +543,18 @@ function TriggerPopoverContent({
         ) : null}
       </p>
 
+      {/* Self-documenting lines (TRIGGER_MODEL.md §6 step 2) — fire route
+          (TRIGGER_LIFECYCLE.md §2), effective cooldown (evaluator semantics
+          via defaultCooldownDaysForPredicate), and provenance. The source
+          line is omitted for legacy rungs with no stamp. */}
+      <div className="space-y-0.5 text-xs text-muted-foreground">
+        <p>{fireRouteSentence(trigger.action, fireMode)}</p>
+        <p>{cooldownSentence(trigger as unknown as SharedTrigger)}</p>
+        {sourceLabel(trigger.source) ? (
+          <p>Set by: {sourceLabel(trigger.source)}</p>
+        ) : null}
+      </div>
+
       {/* Last fired — plain text, only when it has fired (a badge here grew
           too wide next to the cooldown + delete chips). */}
       {trigger.lastFiredAt ? (
@@ -744,8 +764,9 @@ function AddTriggerDialog({
   }, [criterion]);
 
   // Default fire mode by action — EXIT → DIRECT, else TACTICAL. Mirrors the
-  // server-side defaultFireModeForAction (can't import it here: defaults.ts
-  // pulls node:crypto, which breaks the client bundle).
+  // server-side defaultFireModeForAction. (defaults.ts is client-safe as of
+  // the provenance build — it uses Web Crypto — but the one-liner mirror is
+  // kept to avoid pulling the whole templates module into this bundle path.)
   useEffect(() => {
     setFireMode(action === "EXIT" ? "DIRECT" : "TACTICAL");
   }, [action]);

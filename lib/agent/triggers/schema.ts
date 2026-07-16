@@ -191,6 +191,20 @@ export const triggerSchema = z.object({
       // behavior; the UI add-path opts new EXIT stops into DIRECT explicitly.
       "How a fired trigger is acted on: TACTICAL (wake a tactical run, default) or DIRECT (close directly, no agent — EXIT-only, still approval-gated).",
     ),
+  source: z
+    .enum(["DEFAULT", "AGENT", "PRINCIPAL"])
+    .optional()
+    .describe(
+      // Provenance metadata (TRIGGER_MODEL.md §5 gap 2). Server-stamped at
+      // each write path — DEFAULT by the defaults.ts builders, AGENT by
+      // record_thesis/update_thesis (new ids only; resent ids keep their
+      // existing source), PRINCIPAL by the UI add path. Deliberately
+      // OPTIONAL, not .default()ed: this schema is also the disk-read gate
+      // (parseTriggers, get-theses, thesis-sheet-state), and legacy rows
+      // have no source — defaulting here would fabricate provenance for
+      // historical rungs. "ANALYST_RULE" is reserved for the PR-E cascade.
+      "Internal provenance metadata — do NOT supply this; the server stamps it. Omit.",
+    ),
 });
 
 export const triggersArraySchema = z

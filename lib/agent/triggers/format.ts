@@ -14,7 +14,12 @@
  * Pure functions, no React, safe to import server-side.
  */
 
-import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+import type {
+  Trigger,
+  TriggerPredicate,
+  TriggerSource,
+} from "@/lib/agent/triggers/types";
+import { defaultCooldownDaysForPredicate } from "@/lib/agent/triggers/defaults";
 
 /**
  * One sentence describing what the predicate evaluates. Used in pills
@@ -147,6 +152,63 @@ export function fireModeLabel(
       : "Automatically Exit";
   }
   return "Trigger Tactical Run";
+}
+
+/**
+ * Plain-English fire-route line for the trigger popover — what actually
+ * happens when this rung fires, per TRIGGER_LIFECYCLE.md §2:
+ *
+ *   REVIEW (always Agent-mode, batched) → logged + queued for next morning.
+ *   non-REVIEW + TACTICAL              → wakes a tactical run to validate.
+ *   non-REVIEW + DIRECT                → stages the proposal, no agent.
+ *
+ * Every route ends at the approval gate — nothing auto-trades.
+ */
+export function fireRouteSentence(
+  action: string,
+  fireMode: "TACTICAL" | "DIRECT" | undefined,
+): string {
+  if (action === "REVIEW") {
+    return "When this fires: logs it and queues for the next morning run — no instant action.";
+  }
+  if (fireMode === "DIRECT") {
+    return `When this fires: stages the ${action.toLowerCase().replace(/_/g, " ")} proposal directly, no agent — you approve.`;
+  }
+  return "When this fires: wakes an analyst run (~5 min) to validate and propose — you approve.";
+}
+
+/**
+ * Plain-English cooldown line for the trigger popover. Mirrors evaluator
+ * semantics (shouldFire): an absent cooldownDays — or the structurally
+ * invalid 0-on-non-EXIT — falls back to defaultCooldownDaysForPredicate;
+ * a genuine 0 on EXIT means the rung re-fires while the condition holds.
+ */
+export function cooldownSentence(trigger: Trigger): string {
+  const invalidZero = trigger.cooldownDays === 0 && trigger.action !== "EXIT";
+  const effective =
+    trigger.cooldownDays != null && !invalidZero
+      ? trigger.cooldownDays
+      : defaultCooldownDaysForPredicate(trigger.predicate);
+  return effective === 0
+    ? "Re-fires while the condition holds."
+    : `Won't re-fire for ${effective}d after firing.`;
+}
+
+/**
+ * "Set by" label for a trigger's provenance. Returns null when source is
+ * absent (legacy rung — render nothing rather than fabricate an origin).
+ */
+export function sourceLabel(source: TriggerSource | undefined): string | null {
+  switch (source) {
+    case "DEFAULT":
+      return "app default";
+    case "AGENT":
+      return "the analyst";
+    case "PRINCIPAL":
+      return "you";
+    default:
+      return null;
+  }
 }
 
 export function actionGroupLabel(action: string): string {
