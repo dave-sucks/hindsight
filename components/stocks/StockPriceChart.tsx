@@ -87,6 +87,13 @@ function formatDateLabel(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+// Shift a YYYY-MM-DD by N calendar days (used to pad the Trade window).
+function shiftDay(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 // Intraday candles carry a full ISO timestamp in `date`; label them as ET
 // time-of-day (e.g. "9:35 AM") instead of a calendar date.
 function formatTimeLabel(v: string | number): string {
@@ -177,11 +184,14 @@ export function StockPriceChart({
     }
     if (range === 'Trade') {
       // The position's own lifespan: watch date → sold date (or the latest
-      // candle while still held). Candle `date` + span bounds are both
-      // YYYY-MM-DD, so plain string comparison is correct.
+      // candle while still held), padded a week each side for context — some
+      // "before I was watching" lead-in, and post-sale action to judge the
+      // exit. Candle `date` + span bounds are both YYYY-MM-DD, so plain string
+      // comparison is correct.
       if (!tradeSpan) return candles;
-      const end = tradeSpan.end ?? '9999-12-31';
-      return candles.filter((c) => c.date >= tradeSpan.start && c.date <= end);
+      const start = shiftDay(tradeSpan.start, -7);
+      const end = tradeSpan.end ? shiftDay(tradeSpan.end, 7) : '9999-12-31';
+      return candles.filter((c) => c.date >= start && c.date <= end);
     }
     return candles.slice(-RANGE_DAYS[range as DailyRange]);
   }, [candles, intradayCandles, range, isIntraday, tradeSpan]);
