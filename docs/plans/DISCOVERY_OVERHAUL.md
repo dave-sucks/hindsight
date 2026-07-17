@@ -303,5 +303,5 @@ This sequence assumes the operator-driven discovery flow proves itself. If after
 - [`DISCOVERY_V2.md`](./DISCOVERY_V2.md) — operating model + 16-archetype signal-source catalog
 - [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — the role split (writer produces research, orchestrator decides status); the cardinal rule downstream tools rely on
 - [`PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle (each producer is Layer 2 pre-digest; the chat agent's discovery judgment is Layer 3)
-- [`MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — the daily run prompt this stops feeding garbage to
-- [`CONVICTION_EXPRESSION.md`](./CONVICTION_EXPRESSION.md) — adjacent design (Thesis structure) that improves conviction expression on every dispatched thesis
+- [`MORNING_RUN_V2_DESIGN.md`](./legacy/MORNING_RUN_V2_DESIGN.md) — the daily run prompt this stops feeding garbage to
+- [`CONVICTION_EXPRESSION.md`](./legacy/CONVICTION_EXPRESSION.md) — adjacent design (Thesis structure) that improves conviction expression on every dispatched thesis

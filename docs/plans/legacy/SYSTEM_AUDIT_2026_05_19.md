@@ -1,10 +1,12 @@
+> **SHIPPED/closed (point-in-time audit; items resolved or migrated to [`../../GAPS.md`](../../GAPS.md)); kept as build history.**
+
 # Hindsight — System Audit 2026-05-19 (priority queue)
 
 > **⚠️ STATUS: CLOSED OUT 2026-05-23.** This doc was a one-shot snapshot of the
 > 2026-05-19 audit findings. All A1-A7 and B1-B7 items have shipped (see status
 > table below for actual merged PR numbers). A8 (cross-analyst discovery
 > duplication) re-filed as `GAPS.md` P2-22 and deferred. The "Done since
-> 2026-05-20" block in [`GAPS_HISTORY.md`](../GAPS_HISTORY.md) is the canonical
+> 2026-05-20" block in [`GAPS_HISTORY.md`](../../GAPS_HISTORY.md) is the canonical
 > record of what shipped. **Live tracking for ongoing items is in `GAPS.md`**;
 > don't update this doc further.
 >
@@ -13,10 +15,10 @@
 > looks like a re-emergence of one of the original audit symptoms.
 
 > **What this WAS:** the live priority queue for the post-tactical-review system
-> audit. Lived outside [`GAPS.md`](../GAPS.md) because every item was a P0
+> audit. Lived outside [`GAPS.md`](../../GAPS.md) because every item was a P0
 > blocker; the GAPS doc is the rolling thesis-architecture rework punch list,
 > this doc was the "stop everything and fix these" list. Companion to
-> [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) (the live reference)
+> [`THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) (the live reference)
 > and to the daily / discovery / tactical run reviews in `docs/run-reviews/`,
 > `docs/discovery-reviews/`, `docs/tactical-reviews/`.
 >
@@ -29,7 +31,7 @@
 > where it sits in the order of attack.
 >
 > **What's NOT in scope:** anything already tracked in
-> [`THESIS_RESEARCH_V2.md`](./THESIS_RESEARCH_V2.md) (the deep-research
+> [`THESIS_RESEARCH_V2.md`](../THESIS_RESEARCH_V2.md) (the deep-research
 > rewrite). The audit findings are pre-V2 hygiene; V2 lands on top of a
 > system that doesn't have these holes.
 >
@@ -77,7 +79,7 @@
 ## 1. Production data snapshot (the numbers driving this list)
 
 Snapshot as of 2026-05-19 morning. Re-run the queries at the bottom of the
-tactical-review file ([`docs/tactical-reviews/2026-05-18.md`](../tactical-reviews/2026-05-18.md))
+tactical-review file ([`docs/tactical-reviews/2026-05-18.md`](../../tactical-reviews/2026-05-18.md))
 to refresh.
 
 ### Tactical surface — 14 days
@@ -175,14 +177,14 @@ Affected tickers cover the full market-cap spectrum — MDB ($25B), AVGO ($2T),
 ZS ($20B), DELL ($158B), NVDA, AMD. Not just small-caps.
 
 **Why this breaks trading.** The tactical prompt at
-[`lib/agent/system-prompts/intraday-tactical.ts:210-214`](../../lib/agent/system-prompts/intraday-tactical.ts:210)
+[`lib/agent/system-prompts/intraday-tactical.ts:210-214`](../../../lib/agent/system-prompts/intraday-tactical.ts:210)
 mandates *"today's volume needs to be 1.5x the 20-day average"* as a
 pre-`place_trade` confirmation gate. The required data (`technicals.volumeRatio`)
 isn't present. Agent reads instructions, calls `get_stock_data`, gets nothing
 back, does the only thing possible — passes on entry. Every breakout becomes
 a non-entry. The daily-run agent reads the same data and behaves identically.
 
-**Code path.** [`lib/agent/tools/get-stock-data.ts:130-180`](../../lib/agent/tools/get-stock-data.ts:130).
+**Code path.** [`lib/agent/tools/get-stock-data.ts:130-180`](../../../lib/agent/tools/get-stock-data.ts:130).
 The function builds `candles` from FMP `historical-price-full` (primary) or
 Alpaca bars (fallback). When `candles` ends up empty/null, `technicals` ends
 up null. The downstream `volumeRatio` computation at line 178 never runs.
@@ -232,12 +234,12 @@ Every one is a tactical run that should never have happened. Agent reads
 trigger is stale — position is already active."* The position has been ACTIVE
 for over a month and the same ENTER trigger fires every single day.
 
-**Root cause.** `place_trade` ([`lib/agent/tools/place-trade.ts`](../../lib/agent/tools/place-trade.ts))
+**Root cause.** `place_trade` ([`lib/agent/tools/place-trade.ts`](../../../lib/agent/tools/place-trade.ts))
 flips a thesis WATCHING → ACTIVE atomically (PR #265). But it does NOT drop
 the ENTER triggers from the now-active thesis's `triggers[]` array. They sit
 there forever, re-firing every time price ticks above the breakout level.
 
-The trigger evaluator ([`lib/inngest/functions/trigger-evaluator.ts`](../../lib/inngest/functions/trigger-evaluator.ts))
+The trigger evaluator ([`lib/inngest/functions/trigger-evaluator.ts`](../../../lib/inngest/functions/trigger-evaluator.ts))
 doesn't filter by thesis status — it walks triggers for ACTIVE + WATCHING
 theses uniformly. An ENTER trigger on an ACTIVE thesis is structurally
 nonsensical (you can't "enter" something you already hold), but the system
@@ -327,8 +329,8 @@ TARGET        8             7.0        ← reasonable (TARGET = weekly)
 ```
 
 **Why this matters.** The trigger system already encodes per-horizon review
-cadences correctly in [`horizon-policy.ts`](../../lib/agent/horizon-policy.ts)
-and [`triggers/defaults.ts`](../../lib/agent/triggers/defaults.ts):
+cadences correctly in [`horizon-policy.ts`](../../../lib/agent/horizon-policy.ts)
+and [`triggers/defaults.ts`](../../../lib/agent/triggers/defaults.ts):
 
 | Horizon | `HORIZON_REVIEW_DAYS` | Hygiene trigger cadence |
 |---|---|---|
@@ -357,7 +359,7 @@ based on the hygiene-trigger cadence in the WATCHING template:
 | TARGET | createdAt + 30 days (monthly hygiene) |
 | COMPOUNDER | createdAt + 90 days (quarterly hygiene) |
 
-**Fix path.** `record_thesis` ([`lib/agent/tools/record-thesis.ts`](../../lib/agent/tools/record-thesis.ts))
+**Fix path.** `record_thesis` ([`lib/agent/tools/record-thesis.ts`](../../../lib/agent/tools/record-thesis.ts))
 when minting a LONG/SHORT WATCHING thesis:
 
 ```ts
@@ -393,7 +395,7 @@ horizon. A COMPOUNDER WATCHING fires daily-then-7d-then-7d-then-7d. Should
 be quarterly.
 
 **Source:** Code read at
-[`lib/agent/triggers/defaults.ts:317-322`](../../lib/agent/triggers/defaults.ts:317).
+[`lib/agent/triggers/defaults.ts:317-322`](../../../lib/agent/triggers/defaults.ts:317).
 
 ```ts
 function reviewDateHitTrigger(): Trigger {
@@ -407,7 +409,7 @@ function reviewDateHitTrigger(): Trigger {
 }
 ```
 
-And at [`lib/agent/triggers/defaults.ts:625-627`](../../lib/agent/triggers/defaults.ts:625):
+And at [`lib/agent/triggers/defaults.ts:625-627`](../../../lib/agent/triggers/defaults.ts:625):
 
 ```ts
 case "REVIEW_DATE_HIT":
@@ -469,12 +471,12 @@ firing. But:
 **Source:** Tactical run review 2026-05-18 (deep dive) + 5/15 daily review
 Open Question 6 (caught, never resolved).
 
-**Symptom.** `complete_run` preflight ([`lib/agent/tools/complete-run.ts:286-300`](../../lib/agent/tools/complete-run.ts:286))
+**Symptom.** `complete_run` preflight ([`lib/agent/tools/complete-run.ts:286-300`](../../../lib/agent/tools/complete-run.ts:286))
 fires for every run with `runId && analystId && !podcastSegmentId`. It
 doesn't check mode. The first gate checks for a `run_summary` RunEvent row;
 if missing, returns `no_run_summary`.
 
-But tactical's allowlist ([`lib/agent/modes.ts:268-283`](../../lib/agent/modes.ts:268))
+But tactical's allowlist ([`lib/agent/modes.ts:268-283`](../../../lib/agent/modes.ts:268))
 does NOT include `record_run_summary`. The agent literally cannot fix the
 violation. Today: 70 `complete_run` calls for 35 tactical runs (2× per run).
 
@@ -516,7 +518,7 @@ gpt-5.5 swap day). Run reviews can no longer tell "agent looked at it" from
 
 **Root cause.** Under gpt-5.5 the agent fills `reasoning_summary` +
 `risk_flags` + `next_review_at` even on pure-housekeeping reviews. The
-update-thesis tool ([`lib/agent/tools/update-thesis.ts:825`](../../lib/agent/tools/update-thesis.ts:825))
+update-thesis tool ([`lib/agent/tools/update-thesis.ts:825`](../../../lib/agent/tools/update-thesis.ts:825))
 sees a non-empty patch and classifies UPDATED. Under gpt-4o the agent
 called `update_thesis(rationale: "...")` with no other fields → empty
 patch → REVIEWED.
@@ -557,7 +559,7 @@ specialization — pile-on.
 cap (A3) is enforced. If the per-run cap is 5 and 6 analysts each pick 5,
 some duplication is inherent (5 hot tickers × 6 analysts = 30 picks). The
 real question is whether the universe fences differentiate enough — and
-that's a [`P1-9` in GAPS.md](../GAPS.md#p1-9--discovery-prompt-is-archetype-blind) territory.
+that's a [`P1-9` in GAPS.md](../../GAPS.md#p1-9--discovery-prompt-is-archetype-blind) territory.
 
 For now: a one-line addition to discovery's prompt — *"Before adding a
 candidate, call `get_theses({ tickers: [X], scope: 'all-analysts' })`. If
@@ -571,7 +573,7 @@ unless you have a structurally different angle."* Soft-form Layer-3 guard.
 The trigger system is the operational backbone — it's what decides when to
 wake tactical runs. Built on three layers:
 
-### Layer 1 — Per-horizon templates ([`lib/agent/triggers/defaults.ts`](../../lib/agent/triggers/defaults.ts))
+### Layer 1 — Per-horizon templates ([`lib/agent/triggers/defaults.ts`](../../../lib/agent/triggers/defaults.ts))
 
 Every (horizon, state) pair has a built-in trigger template. The agent
 inherits these automatically when it mints a thesis; agent-supplied
@@ -618,7 +620,7 @@ review.
 | TARGET | 7 |
 | COMPOUNDER | 30 |
 
-These come from `HORIZON_REVIEW_DAYS` in [`horizon-policy.ts`](../../lib/agent/horizon-policy.ts).
+These come from `HORIZON_REVIEW_DAYS` in [`horizon-policy.ts`](../../../lib/agent/horizon-policy.ts).
 Note: these are operational cadences for held positions, not watchlist
 hygiene cadences. Held positions get reviewed more often than watchlist
 candidates — different jobs.
@@ -627,7 +629,7 @@ candidates — different jobs.
 the held-side `HORIZON_REVIEW_DAYS` table. COMPOUNDER WATCHING theses are
 scheduled for first review in 30 days when they should be 90.
 
-### Layer 3 — Trigger evaluator cron ([`lib/inngest/functions/trigger-evaluator.ts`](../../lib/inngest/functions/trigger-evaluator.ts))
+### Layer 3 — Trigger evaluator cron ([`lib/inngest/functions/trigger-evaluator.ts`](../../../lib/inngest/functions/trigger-evaluator.ts))
 
 Runs every 5 minutes during market hours + on `app/signal.routed`. Walks
 all ACTIVE + WATCHING theses, evaluates each trigger via `shouldFire`
@@ -713,7 +715,7 @@ the audit then. Targets for the next snapshot:
 
 ## 6. Out of scope (referenced for navigation)
 
-- **Deep-research thesis rewrite.** [`THESIS_RESEARCH_V2.md`](./THESIS_RESEARCH_V2.md)
+- **Deep-research thesis rewrite.** [`THESIS_RESEARCH_V2.md`](../THESIS_RESEARCH_V2.md)
   + [`THESIS_SCHEMA_AUDIT.md`](./THESIS_SCHEMA_AUDIT.md). The Phase 1
   thesis-writer agent is being built; Phase 2 wires it into Discovery. The
   audit items here are pre-V2 hygiene that V2 doesn't replace — V2 raises
@@ -736,10 +738,10 @@ the audit then. Targets for the next snapshot:
 
 ## See also
 
-- [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — live thesis-system reference
-- [`GAPS.md`](../GAPS.md) — rolling thesis-architecture rework punch list
-- [`PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle (which layer each fix lives on)
-- [`docs/run-reviews/2026-05-15.md`](../run-reviews/2026-05-15.md) — last daily review
-- [`docs/tactical-reviews/2026-05-18.md`](../tactical-reviews/2026-05-18.md) — first tactical review (the audit that surfaced this list)
-- [`lib/agent/triggers/defaults.ts`](../../lib/agent/triggers/defaults.ts) — the trigger templates that this audit explains
-- [`lib/agent/horizon-policy.ts`](../../lib/agent/horizon-policy.ts) — horizon → review-days mapping
+- [`THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) — live thesis-system reference
+- [`GAPS.md`](../../GAPS.md) — rolling thesis-architecture rework punch list
+- [`PRINCIPLES.md`](../../PRINCIPLES.md) — three-layer principle (which layer each fix lives on)
+- [`docs/run-reviews/2026-05-15.md`](../../run-reviews/2026-05-15.md) — last daily review
+- [`docs/tactical-reviews/2026-05-18.md`](../../tactical-reviews/2026-05-18.md) — first tactical review (the audit that surfaced this list)
+- [`lib/agent/triggers/defaults.ts`](../../../lib/agent/triggers/defaults.ts) — the trigger templates that this audit explains
+- [`lib/agent/horizon-policy.ts`](../../../lib/agent/horizon-policy.ts) — horizon → review-days mapping

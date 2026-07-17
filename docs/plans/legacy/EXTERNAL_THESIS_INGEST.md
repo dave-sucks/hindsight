@@ -1,3 +1,5 @@
+> **SHIPPED (#460) — see [`../../prompts/INGEST_THESIS.md`](../../prompts/INGEST_THESIS.md); kept as build history.**
+
 # External Thesis Ingest — offload research to flat-rate chats
 
 **Status:** 🟢 Phase 1 shipped (#460) + hardened & verified end-to-end. Phase 2 MCP server built (`mcp/thesis-ingest/`) + verified. Per-analyst prompts + `/ingest-thesis` skill done. Remaining: wire the secret in Vercel + install the MCP server in Claude Desktop; then retire the Sunday discovery cron.

@@ -1,7 +1,9 @@
 # Hindsight V3 — Persistent Intelligence Architecture
 
+> **HISTORICAL (2026-03-28) — the V3 signal-routing pipeline documented here is PARKED, not the current design.** Signal routing is deliberately severed (0 routes in 14d) and the morning-brief generator was deleted; news/earnings/filing trigger rungs can't fire today. Current thinking for how signals should reach analysts is [`plans/SIGNALS_REDESIGN.md`](./plans/SIGNALS_REDESIGN.md) + GAPS **P1-34** (the vetted-push / review-time-pull / hybrid decision). **Do not rebuild the pipeline off this doc before that session.** Kept for historical value — the producers, monitor model, and signal schema described below are still real.
+
 **Date:** March 22, 2026
-**Status:** SHIPPED (Core Pipeline) — March 23, 2026
+**Status:** SHIPPED (Core Pipeline) — March 23, 2026; **signal routing PARKED since ~2026-07 (P1-34)**
 
 ---
 
