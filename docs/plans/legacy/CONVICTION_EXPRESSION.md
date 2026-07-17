@@ -1,8 +1,10 @@
+> **SHIPPED/SUPERSEDED — see [`../THESIS_GAME_PLAN.md`](../THESIS_GAME_PLAN.md) (the trigger ladder is how conviction is expressed now); kept as build history.**
+
 # Conviction Expression — how the writer says "high conviction, urgent buy"
 
 > **What this is:** design for letting the thesis-writer (and discovery) emit a structured **conviction tier**, a required **variant view** on top-tier calls, and a one-line **rationale** for the tier — so the daily-run + tactical agents read the writer's verdict as structured input instead of re-deriving it from prose rationale every run.
 >
-> **Status:** design, not yet implemented. Generalizes (and absorbs) [`GAPS.md`](../GAPS.md) **P1-6** (writer urgency signal on promotion refreshes). Touches **P1-3** at the edges but does not fix it.
+> **Status:** design, not yet implemented. Generalizes (and absorbs) [`GAPS.md`](../../GAPS.md) **P1-6** (writer urgency signal on promotion refreshes). Touches **P1-3** at the edges but does not fix it.
 >
 > **Owner:** principal. **Audience:** future session implementing this.
 >
@@ -904,10 +906,10 @@ Time urgency is NOT a separate dimension — it's a derived view from triggers (
 ## 15. See also
 
 ### Hindsight internal
-- [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) §0 (the five roles) and §8 (Fields — the three new fields join the operational-state group)
-- [`GAPS.md`](../GAPS.md) **P1-6** (writer urgency signal on promotion refreshes — absorbed)
-- [`GAPS.md`](../GAPS.md) **P1-3** (targetPrice overload — adjacent, not fixed here)
-- [`PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle. Conviction lives at Layer-2 (structured tool-result fields the agent reads) + Layer-3 (daily-run prompt teaches per-tier judgment). Layer-1 gate enforces required fields; doesn't second-guess WHICH tier.
+- [`THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) §0 (the five roles) and §8 (Fields — the three new fields join the operational-state group)
+- [`GAPS.md`](../../GAPS.md) **P1-6** (writer urgency signal on promotion refreshes — absorbed)
+- [`GAPS.md`](../../GAPS.md) **P1-3** (targetPrice overload — adjacent, not fixed here)
+- [`PRINCIPLES.md`](../../PRINCIPLES.md) — three-layer principle. Conviction lives at Layer-2 (structured tool-result fields the agent reads) + Layer-3 (daily-run prompt teaches per-tier judgment). Layer-1 gate enforces required fields; doesn't second-guess WHICH tier.
 - [`MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — the V2 daily-run prompt this builds on.
 
 ### Real-world conviction-vocabulary sources

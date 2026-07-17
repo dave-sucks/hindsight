@@ -161,7 +161,7 @@ different from the first.
 - [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — §3 state diagram, Scenario J
 - [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle (the framing for "prompt says X, gate doesn't enforce X")
 - [`docs/plans/THESIS_RESEARCH_V2.md`](../plans/THESIS_RESEARCH_V2.md) — the writer's design (the per-orchestrator invocation pattern table in §6.1)
-- [`docs/plans/THESIS_LIFECYCLE_FIX.md`](../plans/THESIS_LIFECYCLE_FIX.md) — Phase 2 (where P1-22 lives)
+- [`docs/plans/THESIS_LIFECYCLE_FIX.md`](../plans/legacy/THESIS_LIFECYCLE_FIX.md) — Phase 2 (where P1-22 lives)
 - PR [#330](https://github.com/dave-sucks/hindsight/pull/330) (promotion fan-out + synthesis-prompt PROMOTED context)
 - PR [#333](https://github.com/dave-sucks/hindsight/pull/333) (PROMOTED-aware trigger templates)
 - The 3 promotion-time THESIS_WRITER runs: `cmpm5fmgg000b04jxvtgm3s0p` (AVGO), `cmpm5fmgg000904jx6puwbp54` (MRVL), `cmpm5fmgg000a04jxc543iafq` (TSM)

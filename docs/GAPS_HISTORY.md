@@ -604,7 +604,7 @@ Design docs: [`DISCOVERY_V2.md`](./plans/DISCOVERY_V2.md) (operating model + 16-
 - **Backfill:** `prisma/migrations/manual/backfill_conviction_v4.sql` derives HIGH/MEDIUM/LOW from composite buckets for ~38 live LONG/SHORT WATCHING+ACTIVE rows missing conviction; stamps `convictionRationale = 'backfilled from composite on 2026-05-31'` so the UI can tell derived from writer-attested.
 - **Two follow-ups surfaced:** P1-10 (PROMOTED not first-class in resolver actionability) and P1-11 (writer rationale-quality enforcement — sniff-watch first).
 
-Design doc: [`CONVICTION_EXPRESSION.md`](./plans/CONVICTION_EXPRESSION.md) (updated to v4).
+Design doc: [`CONVICTION_EXPRESSION.md`](./plans/legacy/CONVICTION_EXPRESSION.md) (updated to v4).
 
 ### 2026-05-27 — `Thesis.promotedAt` timestamptz migration + V2 prompt-preview template
 - **P1-4** — `Thesis.promotedAt` migrated from bare `timestamp(3)` to `timestamptz(6)`; existing 3 rows (AVGO/TSM/MRVL, all promoted 2026-05-26) backfilled `-12h` to undo the `@prisma/adapter-pg` AM/PM-flip. Post-migration verification confirmed `promotedAt` matches the `STATUS_CHANGED → PROMOTED` audit row to the millisecond. Schema regression test in [prisma/schema.test.ts](prisma/schema.test.ts) pins the `@db.Timestamptz(6)` annotation. Audit-row peer `ThesisUpdate.timestamp` left bare for now — written by Postgres `now()` via `@default(now())`, not affected by the adapter bug.

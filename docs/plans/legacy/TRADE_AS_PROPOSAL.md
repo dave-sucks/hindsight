@@ -1,3 +1,5 @@
+> **SHIPPED — see [`../../TRIGGERS.md`](../../TRIGGERS.md) §4 (fire modes) + [`../TRIGGER_LIFECYCLE.md`](../TRIGGER_LIFECYCLE.md) §2 (everything fires as approval-gated proposals); kept as build history.**
+
 # Hindsight — Trade-as-Proposal
 
 > **Status (as of 2026-05-31):** Proposed. Step 1 (schema) starting now.
@@ -9,10 +11,10 @@
 > **Owner:** principal. **Audience:** future sessions picking this up cold.
 >
 > **Related docs:**
-> - [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — live thesis system reference; this plan is additive
-> - [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle; rejection-feedback bullet lives in the prompt layer
-> - [`docs/plans/PROD_DEPLOYMENT_PLAN.md`](./PROD_DEPLOYMENT_PLAN.md) — PAPER↔LIVE environment split; this composes cleanly with it
-> - [`docs/TEAM_ACCESS_PLAN.md`](../TEAM_ACCESS_PLAN.md) — Account model + memberships; the two new settings live on `Account`
+> - [`docs/THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) — live thesis system reference; this plan is additive
+> - [`docs/PRINCIPLES.md`](../../PRINCIPLES.md) — three-layer principle; rejection-feedback bullet lives in the prompt layer
+> - [`docs/plans/PROD_DEPLOYMENT_PLAN.md`](../PROD_DEPLOYMENT_PLAN.md) — PAPER↔LIVE environment split; this composes cleanly with it
+> - [`docs/TEAM_ACCESS_PLAN.md`](../../TEAM_ACCESS_PLAN.md) — Account model + memberships; the two new settings live on `Account`
 
 ---
 

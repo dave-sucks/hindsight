@@ -583,7 +583,7 @@ it with a ticker chip as if it were a traded security.
 new, file it there — not here.)
 
 ## Active multi-PR plans
-- **`docs/plans/MORNING_RUN_V2_DESIGN.md`** — Daily-run prompt rewrite + `needsAction` tool field + mode allowlist locking. All 7 fixes shipped as of 2026-05-13. See the status table at the top of that doc.
+- **`docs/plans/legacy/MORNING_RUN_V2_DESIGN.md`** — Daily-run prompt rewrite + `needsAction` tool field + mode allowlist locking. All 7 fixes shipped 2026-05-13; archived as build history. The live thesis reference is `docs/THESIS_ARCHITECTURE.md`.
 - **`docs/THESIS_ARCHITECTURE.md`** — **The live reference for the thesis system.** Read this before touching anything thesis-related. Documents the end-to-end lifecycle (state machine + 9 canonical scenarios), legal `(direction, status)` pairs, producers + gates, consumers, and the 5-bucket run-summary derivation.
 
 ### Recently closed

@@ -1,3 +1,5 @@
+> **SHIPPED/SUPERSEDED — see [`../../THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md); kept as build history.**
+
 # Thesis Lifecycle Fix — closing the read / refresh / immediate-buy loop
 
 **Status:** Plan written 2026-05-24. Nothing implemented yet. Open for review.
@@ -551,16 +553,16 @@ implementing:
 
 ## See also
 
-- [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — the durable
+- [`THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) — the durable
   thesis lifecycle reference. Update §9 (producers + gates) and §10
   (consumers) once Phases 1+2 land.
-- [`THESIS_RESEARCH_V2.md`](./THESIS_RESEARCH_V2.md) — the V2 plan that
+- [`THESIS_RESEARCH_V2.md`](../THESIS_RESEARCH_V2.md) — the V2 plan that
   built the producer side. Mark Phase 3 (read-side surfacing) as
   superseded by this plan.
-- [`PROD_DEPLOYMENT_PLAN.md`](./PROD_DEPLOYMENT_PLAN.md) — the
+- [`PROD_DEPLOYMENT_PLAN.md`](../PROD_DEPLOYMENT_PLAN.md) — the
   PAPER→LIVE promotion plan. This plan's Phase 3 supersedes its
   "first-live-run rebuy steering" because promotion-refresh is now the
   primary mechanism.
-- [`PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle. All
+- [`PRINCIPLES.md`](../../PRINCIPLES.md) — three-layer principle. All
   refresh logic lives at Layer 1 (tool gates) so prompts don't have to
   remember the rule.

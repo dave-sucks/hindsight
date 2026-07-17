@@ -1,9 +1,11 @@
+> **SHIPPED/SUPERSEDED — see [`../../THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md); kept as build history.**
+
 # Hindsight — Thesis Schema Audit
 
 > **Status (as of 2026-05-16):** Complete. Synthesis-prompt update bundled into
 > this PR. Phase 1 session is wiring `thesis-writer`; this audit landed first
 > so Phase 1's agent prompt can be written against a complete spec rather than
-> the partial mapping in [`THESIS_RESEARCH_V2.md`](./THESIS_RESEARCH_V2.md).
+> the partial mapping in [`THESIS_RESEARCH_V2.md`](../THESIS_RESEARCH_V2.md).
 >
 > **What this is:** a full inventory of every field on the `Thesis` Prisma
 > model + every `record_thesis` tool arg, mapped to (a) who fills it and
@@ -11,21 +13,21 @@
 > synthesis prompt produces narrative but doesn't surface the decision-fields
 > the agent has to fill into `record_thesis`.
 >
-> **Companion change in this PR:** [`lib/agent/thesis-research/build-synthesis-prompt.ts`](../../lib/agent/thesis-research/build-synthesis-prompt.ts)
+> **Companion change in this PR:** [`lib/agent/thesis-research/build-synthesis-prompt.ts`](../../../lib/agent/thesis-research/build-synthesis-prompt.ts)
 > gains a new `## Decision Fields (Recommended)` section so the deep-research
 > model produces schema-shaped recommendations the agent can directly copy
 > into the tool call.
 >
 > **Related docs:**
-> - [`docs/plans/THESIS_RESEARCH_V2.md`](./THESIS_RESEARCH_V2.md) — the parent plan
-> - [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — live thesis-system reference
-> - [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle
+> - [`docs/plans/THESIS_RESEARCH_V2.md`](../THESIS_RESEARCH_V2.md) — the parent plan
+> - [`docs/THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) — live thesis-system reference
+> - [`docs/PRINCIPLES.md`](../../PRINCIPLES.md) — three-layer principle
 
 ---
 
 ## 1. Why this audit was needed
 
-Looking at an existing Snowflake WATCHING thesis card in production, the rendered surface includes way more fields than the [Phase 0 synthesis prompt](../../lib/agent/thesis-research/build-synthesis-prompt.ts) explicitly produces:
+Looking at an existing Snowflake WATCHING thesis card in production, the rendered surface includes way more fields than the [Phase 0 synthesis prompt](../../../lib/agent/thesis-research/build-synthesis-prompt.ts) explicitly produces:
 
 - **Belief layer** — Core Belief box, Key Assumptions list, Invalidation Conditions
 - **Scoring** — 4-dim composite (Trend / RS / Entry / Catalyst Freshness) with notes per dim
@@ -34,7 +36,7 @@ Looking at an existing Snowflake WATCHING thesis card in production, the rendere
 - **Schedule** — Next review date, Target size %
 - **Activity log** — ThesisUpdate rows
 
-The Phase 0 synthesis prompt produces **research** (snapshot / catalysts / fundamentals / earnings / bull / bear / consensus / insider). The Phase 1 agent has to translate that into **decisions** (direction / horizon / target / stop / confidence / belief / triggers). Without explicit recommendations in the synthesis output, the agent has to invent them — which is exactly the layer-mixing the [three-layer principle](../PRINCIPLES.md) warns against.
+The Phase 0 synthesis prompt produces **research** (snapshot / catalysts / fundamentals / earnings / bull / bear / consensus / insider). The Phase 1 agent has to translate that into **decisions** (direction / horizon / target / stop / confidence / belief / triggers). Without explicit recommendations in the synthesis output, the agent has to invent them — which is exactly the layer-mixing the [three-layer principle](../../PRINCIPLES.md) warns against.
 
 The fix: synthesis produces both. Narrative for human readers + `reasoning_summary` / `thesisBullets` / `riskFlags`. Decision Fields block as soft-form recommendations the agent can copy into `record_thesis` with minimal interpretation.
 
@@ -76,10 +78,10 @@ Three buckets: **agent provides** (judgment), **system derives** (computed at wr
 | Field | How |
 |---|---|
 | `status` | Derived from `(direction, sourceKind, runMode)`. Discovery LONG/SHORT → WATCHING. PASS → ARCHIVED. `place_trade` flips WATCHING → ACTIVE. `close_position` flips ACTIVE → CLOSED. |
-| Default `triggers[]` | [`defaultTriggersForHorizon()`](../../lib/agent/triggers/defaults.ts) emits the standard set per `(horizon, direction, state)`. WATCHING LONG auto-gets `PRICE_ABOVE(target) → ENTER cd=1d`. HELD LONG auto-gets `PRICE_BELOW(stop) → EXIT cd=0` + `PRICE_ABOVE(target) → REVIEW cd=0`. CATALYST adds filing-OR + earnings REVIEW. TRADE adds `TIME_ELAPSED(maxHoldDays)`. TARGET adds 30d hygiene. COMPOUNDER adds 90d hygiene. |
+| Default `triggers[]` | [`defaultTriggersForHorizon()`](../../../lib/agent/triggers/defaults.ts) emits the standard set per `(horizon, direction, state)`. WATCHING LONG auto-gets `PRICE_ABOVE(target) → ENTER cd=1d`. HELD LONG auto-gets `PRICE_BELOW(stop) → EXIT cd=0` + `PRICE_ABOVE(target) → REVIEW cd=0`. CATALYST adds filing-OR + earnings REVIEW. TRADE adds `TIME_ELAPSED(maxHoldDays)`. TARGET adds 30d hygiene. COMPOUNDER adds 90d hygiene. |
 | `nextReviewAt` | Default from `HORIZON_REVIEW_DAYS`. CATALYST=1d, TRADE=1d, TARGET=7d, COMPOUNDER=30d. |
-| Cooldown defaults | [`defaultCooldownDaysForPredicate()`](../../lib/agent/triggers/defaults.ts) backfills any agent-supplied trigger missing `cooldownDays`. EARNINGS_* = 7, FILING = 1, price = 1, etc. |
-| `modelUsed` | Hard-coded to `"gpt-4o"` today in [`record-thesis.ts:852`](../../lib/agent/tools/record-thesis.ts). **NEEDS UPDATE for Phase 1 thesis-writer** — should be `"claude-sonnet-4-6"` (or whatever wins the bake-off). Flag for Phase 1 session. |
+| Cooldown defaults | [`defaultCooldownDaysForPredicate()`](../../../lib/agent/triggers/defaults.ts) backfills any agent-supplied trigger missing `cooldownDays`. EARNINGS_* = 7, FILING = 1, price = 1, etc. |
+| `modelUsed` | Hard-coded to `"gpt-4o"` today in [`record-thesis.ts:852`](../../../lib/agent/tools/record-thesis.ts). **NEEDS UPDATE for Phase 1 thesis-writer** — should be `"claude-sonnet-4-6"` (or whatever wins the bake-off). Flag for Phase 1 session. |
 | `researchData` | JSONB. Phase 1 thesis-writer passes raw data block; persisted as-is. |
 | `researchSections` | JSONB. Phase 1 thesis-writer passes parsed sections; persisted as-is. |
 | `researchUpdatedAt` | Set to `Date.now()` on any write that includes `researchData`. |
@@ -101,7 +103,7 @@ Three buckets: **agent provides** (judgment), **system derives** (computed at wr
 
 ## 3. What the synthesis prompt produces today
 
-The [Phase 0 synthesis prompt](../../lib/agent/thesis-research/build-synthesis-prompt.ts) produces 9 markdown sections:
+The [Phase 0 synthesis prompt](../../../lib/agent/thesis-research/build-synthesis-prompt.ts) produces 9 markdown sections:
 
 | Section | Schema field it feeds (or could feed) |
 |---|---|
@@ -238,7 +240,7 @@ Override discipline:
     one-line reason in the persisted thesis.
 ```
 
-Also: update [`record_thesis.ts:852`](../../lib/agent/tools/record-thesis.ts) `modelUsed` to be derived from `ctx.runId`'s mode, not hard-coded to `"gpt-4o"`. Phase 1 includes this small change.
+Also: update [`record_thesis.ts:852`](../../../lib/agent/tools/record-thesis.ts) `modelUsed` to be derived from `ctx.runId`'s mode, not hard-coded to `"gpt-4o"`. Phase 1 includes this small change.
 
 ---
 
@@ -265,10 +267,10 @@ Also: update [`record_thesis.ts:852`](../../lib/agent/tools/record-thesis.ts) `m
 
 ## See also
 
-- [`docs/plans/THESIS_RESEARCH_V2.md`](./THESIS_RESEARCH_V2.md) — parent plan
-- [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — lifecycle, state machine, scenarios
-- [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle
-- [`lib/agent/tools/record-thesis.ts`](../../lib/agent/tools/record-thesis.ts) — write tool with all gates
-- [`lib/agent/triggers/defaults.ts`](../../lib/agent/triggers/defaults.ts) — per-horizon trigger templates
-- [`lib/agent/triggers/types.ts`](../../lib/agent/triggers/types.ts) — predicate union
-- [`lib/agent/thesis-research/build-synthesis-prompt.ts`](../../lib/agent/thesis-research/build-synthesis-prompt.ts) — updated in this PR
+- [`docs/plans/THESIS_RESEARCH_V2.md`](../THESIS_RESEARCH_V2.md) — parent plan
+- [`docs/THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) — lifecycle, state machine, scenarios
+- [`docs/PRINCIPLES.md`](../../PRINCIPLES.md) — three-layer principle
+- [`lib/agent/tools/record-thesis.ts`](../../../lib/agent/tools/record-thesis.ts) — write tool with all gates
+- [`lib/agent/triggers/defaults.ts`](../../../lib/agent/triggers/defaults.ts) — per-horizon trigger templates
+- [`lib/agent/triggers/types.ts`](../../../lib/agent/triggers/types.ts) — predicate union
+- [`lib/agent/thesis-research/build-synthesis-prompt.ts`](../../../lib/agent/thesis-research/build-synthesis-prompt.ts) — updated in this PR

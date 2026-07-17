@@ -1,8 +1,10 @@
+> **SUPERSEDED — see [`../THESIS_GAME_PLAN.md`](../THESIS_GAME_PLAN.md) (the trigger-ladder stack that absorbed and extended this); kept as build history.**
+
 # Scale Into Winners — Session Handoff (2026-07-07)
 
 > **Single entry point for the next session.** Read this first, then
 > [`SCALE_INTO_WINNERS.md`](./SCALE_INTO_WINNERS.md) (full workstream specs) and
-> [`GAPS.md`](../GAPS.md) (P1-30/31/32). Goal: make the agent *manage conviction* —
+> [`GAPS.md`](../../GAPS.md) (P1-30/31/32). Goal: make the agent *manage conviction* —
 > press winners, protect gains, re-enter — not run one-shot bets. The core loop is
 > LIVE and validated; the finish line is protection + smart authoring.
 

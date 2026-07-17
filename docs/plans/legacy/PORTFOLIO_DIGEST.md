@@ -1,3 +1,5 @@
+> **SHIPPED (P1-23, #434/#436) — see [`../../THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md); kept as build history.**
+
 # Portfolio Digest + Coverage Table — Plan
 
 > Filed 2026-06-16 (principal + QB). Closes GAPS **P1-23**. Two **separate** features that both live on the homepage. North-star mockup: the `daily_portfolio_digest_draft` widget from the 2026-06-16 session (Perplexity-style article + tabbed table).
