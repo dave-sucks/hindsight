@@ -609,6 +609,15 @@ new, file it there — not here.)
 - app/api/agent/[mode]/route.ts — unified route (research-run/builder/editor)
 - app/api/research/agent-run/route.ts — creates ResearchRun row
 
+### Triggers (the living ladder)
+- lib/agent/triggers/types.ts — predicate union (incl. GAIN_FROM_ENTRY + TRAILING_FROM_HIGH) + isDirectEligiblePredicate + protectiveExitCloseReason
+- lib/agent/triggers/evaluate.ts — pure evaluator (1D daily-move + HOLDING-only gain/trail paths)
+- lib/agent/triggers/defaults.ts — horizon templates + standingProtectionTriggers() (+10%/8%/−12%) + scaleInOn* (±7%) + cooldown defaults
+- lib/inngest/functions/trigger-evaluator.ts — 5-min cron + signal paths
+- lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer
+- lib/actions/thesis-edit.ts — UI add / edit / delete / fire-mode write paths
+- Mechanics: docs/TRIGGERS.md · model: docs/plans/TRIGGER_MODEL.md · lifecycle: docs/plans/TRIGGER_LIFECYCLE.md · why: docs/plans/THESIS_GAME_PLAN.md
+
 ### Run Pages
 - app/(root)/runs/[id]/page.tsx — run detail (AgentThread vs
   RunUnifiedChat based on mode/status)
