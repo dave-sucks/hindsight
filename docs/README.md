@@ -7,7 +7,8 @@
 
 ## Live state (current system reference)
 
-- [THESIS_ARCHITECTURE.md](./THESIS_ARCHITECTURE.md) — how the thesis system works today (state machine, producers, gates, lifecycle)
+- [THESIS_ARCHITECTURE.md](./THESIS_ARCHITECTURE.md) — how the thesis system works today (state machine, producers, gates, lifecycle). **Current with the trigger ladder** (§1a living-ladder reality, verified 2026-07-17).
+- [TRIGGERS.md](./TRIGGERS.md) — **canonical for trigger mechanics**: predicate catalog (incl. the `GAIN_FROM_ENTRY` / `TRAILING_FROM_HIGH` gain-protection predicates), the standing protection minimums, the cron-vs-signal firing matrix, fire modes (TACTICAL/DIRECT), cooldown, editing surfaces. Current with the ladder (#477/#490).
 - [/agent-workflow](../app/(root)/agent-workflow/page.tsx) in the app — runtime registry (driven by `lib/agent/workflow-registry.ts`)
 
 ## Trackers (the deltas)
@@ -18,13 +19,26 @@
 
 ## Plans (project-scoped, finite lifespan)
 
-- [plans/MORNING_RUN_V2_DESIGN.md](./plans/MORNING_RUN_V2_DESIGN.md) — daily-run prompt rewrite + needsAction field (all 7 fixes shipped 2026-05-13)
+### The Trigger Game Plan (shipped 2026-07-12 — the conceptual spine for the ladder)
+
+- [plans/TRIGGER_MODEL.md](./plans/TRIGGER_MODEL.md) — the trigger conceptual model (`condition·action·mode·timing`; what is/isn't a trigger) + the two verified reference grids. **Current.**
+- [plans/TRIGGER_LIFECYCLE.md](./plans/TRIGGER_LIFECYCLE.md) — authority + visibility contract (who sets which level, when; what wakes an agent). **Current.**
+- [plans/THESIS_GAME_PLAN.md](./plans/THESIS_GAME_PLAN.md) — why the ladder exists (conviction management: press winners / protect gains; the IONS motivating failure). **Current.**
+- [plans/SIGNALS_REDESIGN.md](./plans/SIGNALS_REDESIGN.md) — the paused-signals rethink (GAPS P1-34; design-ready, not built). **Current.**
+
+### Reference-grade (complete, kept as living reference)
+
+- [plans/STATUS_TAXONOMY.md](./plans/STATUS_TAXONOMY.md) — the P1-24 status/direction contract (complete; THESIS_ARCHITECTURE §P1-24 summarizes it)
+- [plans/ANALYST_LINEUP.md](./plans/ANALYST_LINEUP.md) — why the analyst roster looks like it does
+
+### Open
+
 - [plans/DISCOVERY_V2.md](./plans/DISCOVERY_V2.md) — discovery operating model + signal-source catalog
 - [plans/DISCOVERY_OVERHAUL.md](./plans/DISCOVERY_OVERHAUL.md) — discovery overhaul to-do list (NOW / SOON / MEDIUM / LATER)
 - [plans/PROD_DEPLOYMENT_PLAN.md](./plans/PROD_DEPLOYMENT_PLAN.md) — per-analyst paper→live promotion
 - [plans/TEAM_ACCESS_PLAN.md](./plans/TEAM_ACCESS_PLAN.md) — team access rollout
 - [plans/TRADE_ALERTS_PLAN.md](./plans/TRADE_ALERTS_PLAN.md) — trade alert notifications
-- (Done plans go to [legacy/](./legacy))
+- (Shipped/superseded plans go to [plans/legacy/](./plans/legacy) — e.g. the daily-run V2 rewrite, the scale-into-winners pair, conviction-expression, trade-as-proposal.)
 
 ## Recurring work templates
 
@@ -39,7 +53,7 @@
 
 ## Reference
 
-- [INTELLIGENCE.md](./INTELLIGENCE.md) — V3 intelligence pipeline architecture (Sonar, Firecrawl, signal router, monitors)
+- [INTELLIGENCE.md](./INTELLIGENCE.md) — V3 intelligence pipeline architecture (Sonar, Firecrawl, signal router, monitors). **Historical** — the V3 signal-routing pipeline is parked; current thinking is [plans/SIGNALS_REDESIGN.md](./plans/SIGNALS_REDESIGN.md) + GAPS P1-34.
 
 ## Archive
 
