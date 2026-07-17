@@ -16,7 +16,7 @@
 > - "What shipped in PR #X?" → GitHub PRs (search by label or date).
 > - Product north star → [`VISION.md`](./VISION.md).
 > - Live thesis-system reference → [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md).
-> - Big multi-PR plans → `docs/plans/<NAME>.md` (e.g., [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/MORNING_RUN_V2_DESIGN.md)).
+> - Big multi-PR plans → `docs/plans/<NAME>.md` (e.g., [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/legacy/MORNING_RUN_V2_DESIGN.md)).
 >
 > **How to use it:** start at P0. P0s block the rework's correctness. P1s degrade quality. P2s are papercuts but still part of the rework. Don't skip levels. When something closes, **move it** to a "Done since" section below, not strike-through inline.
 >

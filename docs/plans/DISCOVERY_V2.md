@@ -338,4 +338,4 @@ The architecture decision *is* in this doc now (§§0-3 above). What's outside t
 - [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — the role split + the dispatchable thesis-writer that downstream tools rely on
 - [`INTELLIGENCE.md`](../INTELLIGENCE.md) — what discovery actually looks like in production today
 - [`PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle (any future ingestion design has to respect this)
-- [`CONVICTION_EXPRESSION.md`](./CONVICTION_EXPRESSION.md) — adjacent design (Thesis structure) that improves the conviction signal on every dispatched thesis
+- [`CONVICTION_EXPRESSION.md`](./legacy/CONVICTION_EXPRESSION.md) — adjacent design (Thesis structure) that improves the conviction signal on every dispatched thesis

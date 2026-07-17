@@ -1,3 +1,5 @@
+> **SHIPPED (all 7 fixes, 2026-05-13) — see [`../../THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) + [`../../TRIGGERS.md`](../../TRIGGERS.md); kept as build history.**
+
 # MORNING_PLAN_V2 — Design Doc (FINAL)
 
 **Status (last verified 2026-05-13):**
@@ -68,7 +70,7 @@ The fix is small and surgical. Land Fix #0 first; everything downstream follows 
 
 ### Fix #0 — Make per-thesis triggers authoritative *(NEW — must land first)*
 
-**Current state:** every position created by `place_trade` is set to `exitStrategy: "PRICE_TARGET"` ([place-trade.ts:330](../lib/agent/tools/place-trade.ts)). Every hour, `lib/inngest/functions/price-monitor.ts` calls `checkExitConditions(position, currentPrice, peakPrice)`, which runs the `PRICE_TARGET` branch of `lib/trade-exit.ts` and calls `closeOpenPosition` directly when price hits the stop or target. **No LLM in the loop, no per-thesis trigger consulted.** The same cron also writes `NEAR_TARGET` (≥0.9 progress) and `NEAR_STOP` (≥0.8 progress) `PositionManagementAction` rows on hardcoded thresholds — these become the daily-run prompt's "Priority Reviews — MUST act today" block.
+**Current state:** every position created by `place_trade` is set to `exitStrategy: "PRICE_TARGET"` ([place-trade.ts:330](../../lib/agent/tools/place-trade.ts)). Every hour, `lib/inngest/functions/price-monitor.ts` calls `checkExitConditions(position, currentPrice, peakPrice)`, which runs the `PRICE_TARGET` branch of `lib/trade-exit.ts` and calls `closeOpenPosition` directly when price hits the stop or target. **No LLM in the loop, no per-thesis trigger consulted.** The same cron also writes `NEAR_TARGET` (≥0.9 progress) and `NEAR_STOP` (≥0.8 progress) `PositionManagementAction` rows on hardcoded thresholds — these become the daily-run prompt's "Priority Reviews — MUST act today" block.
 
 The trigger evaluator (`lib/inngest/functions/trigger-evaluator.ts`, 5-min cron) evaluates the agent's per-thesis triggers correctly — but `checkExitConditions` runs every hour and short-circuits straight to `closeOpenPosition` before the trigger system can spawn a tactical run. **The agent's careful per-thesis decisions are racing a generic auto-close layer and losing.**
 

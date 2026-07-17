@@ -696,6 +696,6 @@ The principle: **the system was fundamentally sound, not fundamentally broken.**
 - [`VISION.md`](./VISION.md) Pillar 2 — what "thesis quality" is supposed to look like
 - [`GAPS.md`](./GAPS.md) — the open punch list
 - [`PRINCIPLES.md`](./PRINCIPLES.md) — the three-layer principle (tool gates / tool result shape / prompt as judgment only) that drives where each invariant lives
-- [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/MORNING_RUN_V2_DESIGN.md) — the V2 prompt rewrite that applied the three-layer principle to the daily run
+- [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/legacy/MORNING_RUN_V2_DESIGN.md) — the V2 prompt rewrite that applied the three-layer principle to the daily run
 - [`legacy/WATCHLIST_COLLAPSE_PLAN.md`](./legacy/WATCHLIST_COLLAPSE_PLAN.md) — the implementation plan for the 2026-05-13 collapse (closed; this doc supersedes it)
 - [`/agent-workflow`](../app/(root)/agent-workflow/page.tsx) — the live operational view, driven by [`workflow-registry.ts`](../lib/agent/workflow-registry.ts)

@@ -130,7 +130,7 @@ The fix only affects NEW WATCHING theses (those created after this lands). Exist
 
 - [`docs/GAPS.md`](../GAPS.md) — P1-3 (now DONE)
 - [`docs/GAPS_LEGACY.md`](../GAPS_LEGACY.md) — P1-23 (the original entry with production evidence)
-- [`docs/plans/CONVICTION_EXPRESSION.md`](./CONVICTION_EXPRESSION.md) — §13, where this was deferred
+- [`docs/plans/CONVICTION_EXPRESSION.md`](./legacy/CONVICTION_EXPRESSION.md) — §13, where this was deferred
 - [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle. This is a Layer-1 (tool code) fix for what was previously a Layer-3 (writer prompt) workaround.
 - [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) §8 (Fields) — update if any new info needs to land in the live reference.
 
