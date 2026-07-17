@@ -81,6 +81,60 @@ _(P1-26 + P1-29 closed 2026-06-26 — see [`GAPS_HISTORY.md`](./GAPS_HISTORY.md)
 
 ---
 
+## Proposed — pending triage (surfaced 2026-07-17, not yet prioritized)
+
+> These came out of the 7/13–16 run review ([`run-reviews/2026-07-16.md`](./run-reviews/2026-07-16.md))
+> and the sold-name / discovery-remint discussion. **Principal to flag which
+> become tracked P1/P2 and assign numbers.** Kept out of the numbered list until
+> triaged so priorities stay meaningful.
+
+- **[C1] Sold-name continuity (recycle + re-mint).** Selling severs a thesis from
+  its own history, both ways: protective/trailing exits go `RETIRED (SOLD)` with
+  no recycle (only `closeReason=TARGET` returns to WATCHING — the "did we sell the
+  dip?" case gets no re-look), AND discovery re-mints a sold name blind
+  (`record_thesis` same-ticker guard skips RETIRED; minting agent skips
+  `get_theses`; `parentThesisId=null`; re-underwrites at the stop-out price;
+  re-buyable). Live cases: ARQT/VRDN went dark; XENE re-minted 9h post-sale at
+  entry $67 vs the $66.53 stop-out. Full frame + fix options:
+  [`plans/SOLD_NAME_CONTINUITY.md`](./plans/SOLD_NAME_CONTINUITY.md). **Suggested
+  P1** — it's the direct sequel to the Game Plan and touches the live book.
+
+- **[C2] Shape gate vs gain-locked floor.** `update_thesis`/`record_thesis` shape
+  gate (LONG: `target > entry > stop`) rejects a `stopLoss` at/above cost basis —
+  but a gain-locking floor above cost basis is the whole point of the ratchet.
+  MU's floor was **lowered** 940→840 on 7/14, the agent citing "to satisfy shape
+  discipline," so the `stopLoss` column (which mirrors to Positions +
+  price-monitor) now understates protection. The Ratchet Invariant and the shape
+  gate contradict each other on winners. Fix: relax the gate for HOLDING (allow
+  stop ≥ entry when gain-locked), or make trigger rungs the sole home of gain
+  floors. **Suggested P1** (correctness on the live book). Run-review Finding B.
+
+- **[C3] `closeReason` mis-tagging → wrong cooldown routing.** 7/13 protective
+  closes were tagged `closeReason=MANUAL` (only ARQT carried `STOP`), so EWTX's
+  genuine floor breach was wrongly P1-28-suppressed as a discretionary re-pitch.
+  Self-corrected to `STOP` from 7/14 (coincident with #490 deploy). The whole #490
+  risk-exit carve-out keys off this field. Fix: Layer-1 assertion — a close from a
+  protective/trailing trigger fire must carry STOP/TARGET (refuse/auto-tag on
+  mismatch). **Suggested P2** (self-corrected; verify it holds one more window).
+  Run-review Finding C.
+
+- **[C4] ENTER re-fire tax (decline-with-retune duty).** NOW/PLTR/CEG/LLY/HPE
+  fired near-daily and were declined near-daily on unchanged reasons (~15
+  redundant GPT-5.5 tacticals in one window). A declined ENTER leaves the same
+  rung armed at the same level for tomorrow. Fix (symmetric with the re-ladder
+  duty on fires): a tactical that declines an ENTER on a stable reason must retune
+  the rung (raise level / widen cooldown) or attest why it should re-fire.
+  **Suggested P2** (cost + noise). Run-review Finding E.
+
+- **[C5] Completion-gate retry churn.** PEAD 7/15 called `complete_run` ×8 +
+  `record_run_summary` ×7 in one 87s run (Secular 7/14: ×7/×7). Runs complete, so
+  it's a token tax, not a correctness bug — new since the Spine added audit
+  obligations. Fix candidate: refusal envelope should name the exact unaddressed
+  thesisIds + which obligation is open, so one retry suffices. **Suggested P2.**
+  Run-review Finding D.
+
+---
+
 ## P2 — Backlog
 
 ### Active
