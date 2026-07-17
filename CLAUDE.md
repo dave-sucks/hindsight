@@ -8,6 +8,23 @@ researches stocks, generates trade theses, places paper trades
 via Alpaca, tracks performance, and learns from results.
 Built for one user now, marketed later.
 
+## The Trigger Game Plan (shipped 2026-07-12 — read before touching anything trigger/position-related)
+Every thesis carries a **trigger ladder** (condition → action: ENTER/ADD/TRIM/
+EXIT/REVIEW) the agents author and maintain. New predicates `GAIN_FROM_ENTRY`
+(cumulative % vs entry) + `TRAILING_FROM_HIGH` (give-back off the tracked
+peak) protect gains. Every HOLDING auto-carries standing minimums (+10%
+checkpoint REVIEW / 8% trail EXIT / −12% loser REVIEW, `defaults.ts`) —
+stamped at mint AND at the buy fill (`place-trade.ts` held-side re-seed).
+`resolved.ladderHealth` + the `UNPROTECTED_GAIN` needsAction flag nag winners
+whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
+Everything fires as approval-gated proposals — nothing auto-trades. The three
+docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
+`docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
+`docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).
+Gotcha: `update_thesis.triggers` is wholesale-REPLACE — resend every rung you
+keep. Signal-side rungs (earnings/filing/news) can't fire today — routing is
+deliberately paused (GAPS P1-34; design doc `docs/plans/SIGNALS_REDESIGN.md`).
+
 ## Where to put what (doc navigation)
 | You want to... | File |
 |---|---|
@@ -15,6 +32,9 @@ Built for one user now, marketed later.
 | Read / update the product north star | `docs/VISION.md` |
 | Read the live thesis-system reference | `docs/THESIS_ARCHITECTURE.md` |
 | Understand triggers (predicates, which fires on which path, fire modes) | `docs/TRIGGERS.md` |
+| **The trigger CONCEPTUAL model (condition·action·mode·timing; what is/isn't a trigger)** | **`docs/plans/TRIGGER_MODEL.md`** |
+| **Trigger authority + visibility contract (who sets which level, when; what wakes an agent)** | **`docs/plans/TRIGGER_LIFECYCLE.md`** |
+| **Why the trigger ladder exists (conviction management: press winners / protect gains)** | **`docs/plans/THESIS_GAME_PLAN.md`** |
 | Add an open item on the thesis architecture rework | `docs/GAPS.md` |
 | Note a code smell outside the rework | `docs/TECH_DEBT.md` |
 | Spec a big multi-PR plan | `docs/plans/<NAME>.md` |
