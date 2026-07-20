@@ -104,44 +104,37 @@ function formatTimeLabel(v: string | number): string {
   });
 }
 
-// The 1D chart pins its x-axis to a fixed clock window for the session date
-// (7 AM–8 PM ET: pre-market → after-hours) and lets the line stop at the last
-// bar — so mid-day the line fills only the left portion (a "we're N hours into
-// the day" cue) instead of stretching a handful of bars across the width. The
-// span is anchored to real clock times (not "first bar + N hours"), so it holds
-// whether the data starts at pre-market or the 9:30 open. Derives the ET offset
-// for the session date from the first candle (DST-safe) — no tz library.
-function intradaySessionAxis(firstISO: string): {
+// 1D axis geometry, fit to whatever session data we actually have.
+//   • x-domain: first bar → last bar (+ a little right breathing room), so the
+//     line fills the width and reads — rather than crushing a partial session
+//     onto a fixed full-day backdrop (which, without pre-market data, is just a
+//     vertical sliver). When a pre-market-capable feed lands, revisit a fixed
+//     full-day window here.
+//   • y-domain: padded ~25% of the range each side so the line clears the top
+//     and bottom edges (a real price axis renders these values).
+function intradayAxisGeometry(candles: { date: string; close: number }[]): {
   domain: [number, number];
   ticks: number[];
+  yDomain: [number, number];
 } {
-  const first = new Date(firstISO);
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  const o: Record<string, string> = {};
-  for (const p of dtf.formatToParts(first)) o[p.type] = p.value;
-  const etAsUtc = Date.UTC(
-    +o.year,
-    +o.month - 1,
-    +o.day,
-    +o.hour % 24,
-    +o.minute,
-    +o.second,
-  );
-  const offsetMs = first.getTime() - etAsUtc; // UTC = ET wall + offsetMs
-  const clock = (h: number) =>
-    Date.UTC(+o.year, +o.month - 1, +o.day, h, 0, 0) + offsetMs; // h:00 ET → UTC ms
+  const xs = candles.map((c) => new Date(c.date).getTime());
+  const firstX = xs[0];
+  const lastX = xs[xs.length - 1];
+  const span = Math.max(lastX - firstX, 60_000);
   const ticks: number[] = [];
-  for (let h = 8; h <= 20; h += 2) ticks.push(clock(h)); // 8 AM … 8 PM ET
-  return { domain: [clock(7), clock(20)], ticks };
+  const N = 5;
+  for (let i = 0; i <= N; i++) ticks.push(firstX + ((lastX - firstX) * i) / N);
+
+  const closes = candles.map((c) => c.close);
+  const lo = Math.min(...closes);
+  const hi = Math.max(...closes);
+  const pad = Math.max((hi - lo) * 0.25, hi * 0.0015);
+
+  return {
+    domain: [firstX, lastX + span * 0.04],
+    ticks,
+    yDomain: [lo - pad, hi + pad],
+  };
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -196,12 +189,10 @@ export function StockPriceChart({
     return candles.slice(-RANGE_DAYS[range as DailyRange]);
   }, [candles, intradayCandles, range, isIntraday, tradeSpan]);
 
-  // 1D axis: pin the domain to the full RTH session (first bar → +6.5h) and
-  // place hourly-ish ticks, so the line stops at the latest bar against a
-  // full-day backdrop. Null when not intraday or no data.
+  // 1D axis: x fit to the session so far + buffered y-domain. Null otherwise.
   const intradayAxis = useMemo(() => {
-    if (!isIntraday || data.length === 0) return null;
-    return intradaySessionAxis(data[0].date);
+    if (!isIntraday || data.length < 2) return null;
+    return intradayAxisGeometry(data);
   }, [isIntraday, data]);
 
   // Snap each marker to the nearest visible candle date (Recharts only places
@@ -327,14 +318,20 @@ export function StockPriceChart({
               padding={{ left: 0, right: range === 'Trade' ? 44 : 0 }}
             />
           )}
-          <YAxis
-            hide
-            domain={
-              isIntraday
-                ? ['dataMin * 0.997', 'dataMax * 1.003']
-                : ['dataMin * 0.98', 'dataMax * 1.15']
-            }
-          />
+          {isIntraday ? (
+            <YAxis
+              orientation="left"
+              domain={intradayAxis?.yDomain ?? ['dataMin', 'dataMax']}
+              tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
+              tickLine={false}
+              axisLine={false}
+              width={38}
+              tickCount={4}
+              tickFormatter={(v: number) => v.toFixed(2)}
+            />
+          ) : (
+            <YAxis hide domain={['dataMin * 0.98', 'dataMax * 1.15']} />
+          )}
           <Tooltip
             contentStyle={{
               background: 'var(--popover)',
