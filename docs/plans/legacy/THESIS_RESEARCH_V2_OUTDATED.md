@@ -1,3 +1,5 @@
+> **OUTDATED/SUPERSEDED — see [`../../THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) + [`../THESIS_RESEARCH_V2.md`](../THESIS_RESEARCH_V2.md); kept as build history.**
+
 # Hindsight — Thesis Research V2
 
 > **Status (as of 2026-05-14):** Proposed. Not yet implemented. Two
@@ -22,9 +24,9 @@
 > **Owner:** principal. **Audience:** future sessions picking this up cold.
 >
 > **Related docs:**
-> - [`docs/VISION.md`](../VISION.md) — Pillar 2 (Thesis quality) is the success bar
-> - [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — the live thesis system reference; this plan is additive
-> - [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle; every rule in this plan maps to its correct layer
+> - [`docs/VISION.md`](../../VISION.md) — Pillar 2 (Thesis quality) is the success bar
+> - [`docs/THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) — the live thesis system reference; this plan is additive
+> - [`docs/PRINCIPLES.md`](../../PRINCIPLES.md) — three-layer principle; every rule in this plan maps to its correct layer
 > - [`docs/plans/MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — sibling plan that rewrote the daily-run prompt; same layering applied to a different surface
 
 ---
@@ -205,7 +207,7 @@ Both are Python codebases. Running either inside Hindsight requires:
 - RPC bridge between Inngest and the Python service
 - Re-wiring their data layer from yfinance / Alpha Vantage to Finnhub / FMP / Alpaca / Sonar / Firecrawl / SEC EDGAR (most of the build)
 - Translating their output back into Hindsight's `Thesis` schema + `ThesisUpdate` audit log + streaming AssistantUI rendering surface
-- Inheriting their architectural choice of **procedure-in-prompt** rather than **gates-in-tools** — exactly the maze-prompt pattern your [`PRINCIPLES.md`](../PRINCIPLES.md) was written to delete
+- Inheriting their architectural choice of **procedure-in-prompt** rather than **gates-in-tools** — exactly the maze-prompt pattern your [`PRINCIPLES.md`](../../PRINCIPLES.md) was written to delete
 
 Concrete inheritance cost:
 
@@ -231,7 +233,7 @@ The five mechanics from §2 collapse to ~600 lines of TypeScript inside existing
 | Cross-run memory | `ResearchJournal` model + weekly rollup cron + prompt block | ~150 |
 | Orchestrator-worker plumbing | `dispatch_thesis_research` tool + `thesis-writer.ts` Inngest function + `parentRunId` column + child-run UI | ~250 |
 
-Plus 5 new tools (~1000 LOC total) following existing [`defineTool()`](../../lib/agent/define-tool.ts) patterns.
+Plus 5 new tools (~1000 LOC total) following existing [`defineTool()`](../../../lib/agent/define-tool.ts) patterns.
 
 The valuable bits are **patterns**, not **code**. Importing the Python codebases imports the tax without the lift.
 
@@ -239,7 +241,7 @@ The valuable bits are **patterns**, not **code**. Importing the Python codebases
 
 ## 5. The thesis-writer agent mode (concrete spec)
 
-### 5.1. Mode entry in [`lib/agent/modes.ts`](../../lib/agent/modes.ts)
+### 5.1. Mode entry in [`lib/agent/modes.ts`](../../../lib/agent/modes.ts)
 
 ```ts
 "thesis-writer": {
@@ -343,7 +345,7 @@ Layer-3 discipline: describe what good looks like; do not enumerate procedure. T
 
 ### 5.4. Execution function
 
-`lib/agent/run-thesis-writer.ts` — same shape as `runDailyResearchAgent()` in [`lib/inngest/functions/morning-research.ts`](../../lib/inngest/functions/morning-research.ts). Loads context, builds prompt, calls AI SDK `generateText` with the Opus model + extended thinking + tool allowlist, persists tool calls + final thesis. Streams events on the existing SSE channel keyed by runId.
+`lib/agent/run-thesis-writer.ts` — same shape as `runDailyResearchAgent()` in [`lib/inngest/functions/morning-research.ts`](../../../lib/inngest/functions/morning-research.ts). Loads context, builds prompt, calls AI SDK `generateText` with the Opus model + extended thinking + tool allowlist, persists tool calls + final thesis. Streams events on the existing SSE channel keyed by runId.
 
 ---
 
@@ -432,8 +434,8 @@ The Thesis row is a **smart form**: agent provides judgment, system computes ope
 
 | Field | How |
 |---|---|
-| **Default `triggers[]`** | [`defaultTriggersForHorizon()`](../../lib/agent/triggers/defaults.ts) attaches the standard set per horizon × direction × status. LONG WATCHING auto-gets `PRICE_ABOVE(target) → ENTER`. ACTIVE auto-gets `PRICE_BELOW(stop) → EXIT`. CATALYST auto-gets filing-OR triggers + earnings REVIEW. Agent only writes *custom* triggers on top. |
-| `nextReviewAt` | Derived from `horizon` via [`HORIZON_REVIEW_DAYS`](../../lib/agent/horizon-policy.ts). CATALYST=1d, TRADE=1d, TARGET=7d, COMPOUNDER=30d. Agent never sets manually. |
+| **Default `triggers[]`** | [`defaultTriggersForHorizon()`](../../../lib/agent/triggers/defaults.ts) attaches the standard set per horizon × direction × status. LONG WATCHING auto-gets `PRICE_ABOVE(target) → ENTER`. ACTIVE auto-gets `PRICE_BELOW(stop) → EXIT`. CATALYST auto-gets filing-OR triggers + earnings REVIEW. Agent only writes *custom* triggers on top. |
+| `nextReviewAt` | Derived from `horizon` via [`HORIZON_REVIEW_DAYS`](../../../lib/agent/horizon-policy.ts). CATALYST=1d, TRADE=1d, TARGET=7d, COMPOUNDER=30d. Agent never sets manually. |
 | `status` | Derived from `direction` + run context. Discovery's LONG/SHORT → WATCHING, PASS → ARCHIVED. `place_trade` flips WATCHING → ACTIVE atomically. `close_position` flips ACTIVE → CLOSED. |
 | `hold_duration` | Derived from `horizon`. TRADE/TARGET/CATALYST → SWING, COMPOUNDER → POSITION. |
 | `signal_types` | Inferred from `sourceSignalIds`' normalized types. (Today agent provides; this is a candidate for auto-derivation in PR 1.1.) |
@@ -449,7 +451,7 @@ The Thesis row is a **smart form**: agent provides judgment, system computes ope
 
 ### 7.4. Triggers — who sets what
 
-**Automatic** (from [`triggers/defaults.ts`](../../lib/agent/triggers/defaults.ts)):
+**Automatic** (from [`triggers/defaults.ts`](../../../lib/agent/triggers/defaults.ts)):
 
 | Horizon × Direction × Status | Auto-attached triggers |
 |---|---|
@@ -504,7 +506,7 @@ enum ThesisUpdateType {
 
 **Work:**
 
-1. Stand up the `thesis-writer` mode entry in [`lib/agent/modes.ts`](../../lib/agent/modes.ts) with current tool set (no new tools yet)
+1. Stand up the `thesis-writer` mode entry in [`lib/agent/modes.ts`](../../../lib/agent/modes.ts) with current tool set (no new tools yet)
 2. Build the bare `runThesisWriterAgent()` execution function with a one-paragraph prompt
 3. Stand up `thesis-writer.ts` Inngest function listening for `app/thesis.write.requested`
 4. Add `parentRunId` schema migration
@@ -544,7 +546,7 @@ enum ThesisUpdateType {
 
 #### PR 1.1 — Multi-section thesis schema
 
-Add the `research` block to [`record-thesis.ts`](../../lib/agent/tools/record-thesis.ts):
+Add the `research` block to [`record-thesis.ts`](../../../lib/agent/tools/record-thesis.ts):
 
 ```ts
 const citationRef = z.object({
@@ -584,7 +586,7 @@ research: z.object({
 
 **Layer-1 citation validator:** for each citation, validate the id appears in this run's tool-call history. Reject with the specific failing IDs called out so the agent retries.
 
-**Tool context extension:** [`lib/agent/tool-context.ts`](../../lib/agent/tool-context.ts) gains `ctx.toolResults: Map<callId, {tool, args, result}>` so the validator has something to validate against.
+**Tool context extension:** [`lib/agent/tool-context.ts`](../../../lib/agent/tool-context.ts) gains `ctx.toolResults: Map<callId, {tool, args, result}>` so the validator has something to validate against.
 
 **Server-side derivation:** when `research` is present, server derives `reasoning_summary`, `thesis_bullets`, `risk_flags` from it. Old direct-write paths still work (additive rollout).
 
@@ -602,7 +604,7 @@ research: z.object({
 | `get_peer_comparison` | Relative positioning | Finnhub `/stock/peers` + fan-out `get_stock_data` | peers[], comparison[], ranking[] | Low |
 | `get_analyst_notes` | Recent street notes | Sonar with publisher domain filter + Firecrawl on top hits | notes[] with rating + PT deltas + summary, consensusShift | Medium — Sonar quality |
 
-Each follows the existing [`defineTool()`](../../lib/agent/define-tool.ts) pattern. UI: `tool-ui` with one ticker row + N generic rows. Allowlist: thesis-writer + tactical (some).
+Each follows the existing [`defineTool()`](../../../lib/agent/define-tool.ts) pattern. UI: `tool-ui` with one ticker row + N generic rows. Allowlist: thesis-writer + tactical (some).
 
 #### PR 1.7 — Full thesis-writer prompt
 
@@ -949,8 +951,8 @@ Hindsight's `MODES` registry is already built for this. Adding `thesis-writer` i
 
 ## See also
 
-- [`docs/VISION.md`](../VISION.md) — Pillar 2 (Thesis quality), the success bar
-- [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — live thesis-system reference; this plan is additive
-- [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle; every PR is mapped to its correct layer
+- [`docs/VISION.md`](../../VISION.md) — Pillar 2 (Thesis quality), the success bar
+- [`docs/THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) — live thesis-system reference; this plan is additive
+- [`docs/PRINCIPLES.md`](../../PRINCIPLES.md) — three-layer principle; every PR is mapped to its correct layer
 - [`docs/plans/MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — sibling plan that rewrote the daily-run prompt; same layering, applied to a different surface
-- [`docs/GAPS.md`](../GAPS.md) — open punch list; this plan addresses the "thesis quality" gap directly
+- [`docs/GAPS.md`](../../GAPS.md) — open punch list; this plan addresses the "thesis quality" gap directly

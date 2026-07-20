@@ -583,7 +583,7 @@ it with a ticker chip as if it were a traded security.
 new, file it there — not here.)
 
 ## Active multi-PR plans
-- **`docs/plans/MORNING_RUN_V2_DESIGN.md`** — Daily-run prompt rewrite + `needsAction` tool field + mode allowlist locking. All 7 fixes shipped as of 2026-05-13. See the status table at the top of that doc.
+- **`docs/plans/legacy/MORNING_RUN_V2_DESIGN.md`** — Daily-run prompt rewrite + `needsAction` tool field + mode allowlist locking. All 7 fixes shipped 2026-05-13; archived as build history. The live thesis reference is `docs/THESIS_ARCHITECTURE.md`.
 - **`docs/THESIS_ARCHITECTURE.md`** — **The live reference for the thesis system.** Read this before touching anything thesis-related. Documents the end-to-end lifecycle (state machine + 9 canonical scenarios), legal `(direction, status)` pairs, producers + gates, consumers, and the 5-bucket run-summary derivation.
 
 ### Recently closed
@@ -608,6 +608,15 @@ new, file it there — not here.)
 - components/agent/sheets/ThesisSheet.tsx — ThesisSheetBody + ThesisSheet
 - app/api/agent/[mode]/route.ts — unified route (research-run/builder/editor)
 - app/api/research/agent-run/route.ts — creates ResearchRun row
+
+### Triggers (the living ladder)
+- lib/agent/triggers/types.ts — predicate union (incl. GAIN_FROM_ENTRY + TRAILING_FROM_HIGH) + isDirectEligiblePredicate + protectiveExitCloseReason
+- lib/agent/triggers/evaluate.ts — pure evaluator (1D daily-move + HOLDING-only gain/trail paths)
+- lib/agent/triggers/defaults.ts — horizon templates + standingProtectionTriggers() (+10%/8%/−12%) + scaleInOn* (±7%) + cooldown defaults
+- lib/inngest/functions/trigger-evaluator.ts — 5-min cron + signal paths
+- lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer
+- lib/actions/thesis-edit.ts — UI add / edit / delete / fire-mode write paths
+- Mechanics: docs/TRIGGERS.md · model: docs/plans/TRIGGER_MODEL.md · lifecycle: docs/plans/TRIGGER_LIFECYCLE.md · why: docs/plans/THESIS_GAME_PLAN.md
 
 ### Run Pages
 - app/(root)/runs/[id]/page.tsx — run detail (AgentThread vs

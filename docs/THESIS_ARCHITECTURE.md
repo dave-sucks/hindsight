@@ -2,7 +2,7 @@
 
 > **What this is:** the live reference for how the system works. The 5 roles + the thesis lifecycle + how research stays fresh. **Read this first** before touching anything in the agent or thesis system. For target state, read [`VISION.md`](./VISION.md). For what's broken right now, read [`GAPS.md`](./GAPS.md).
 >
-> **Last verified:** 2026-06-15 (P1-24 status-taxonomy contract — clean model below).
+> **Last verified:** 2026-07-17 (P1-24 status-taxonomy contract — clean model below; §1a living-ladder reality added after the Trigger Game Plan shipped 2026-07-12).
 
 > ### P1-24 status taxonomy — the clean model (current)
 > Each thesis owns ONE `status` and a `direction`, both contracted to a clean set. See [`plans/STATUS_TAXONOMY.md`](./plans/STATUS_TAXONOMY.md).
@@ -27,10 +27,10 @@ Everything in this system maps to one of five roles. If a change you're making d
 
 | Role | Cadence | Allowed to do | Forbidden from |
 |---|---|---|---|
-| **Daily run** | Every weekday 8 AM ET | Walk the whole book. Trade, exit, trim, add, edit targets. Refresh research via `dispatch_thesis_research` when judgment says it's needed. Decide all PROMOTED rows today. | Mint net-new theses on un-covered tickers. Write deep-research content (only patches via `update_thesis`). |
-| **Tactical run** | On trigger fire | Same as daily but scoped to ONE thesis. Place/exit/trim/add. Refresh research mid-run if stale. | Touch other theses. Mint net-new. |
-| **Discovery run** | Sundays 9 AM ET | Mint net-new WATCHING and PASS-ARCHIVED theses on un-covered tickers. | Trade. Touch existing theses. Update statuses on other rows. |
-| **Thesis-writer** | On promotion fan-out + on daily/tactical's `dispatch_thesis_research` call | Refresh research content (snapshot, bull, bear, fundamentals, etc.) on ONE thesis. Recompute target / stop / triggers from fresh data. | Touch status. Place trades. The status decision belongs to the orchestrator that dispatched the writer. |
+| **Daily run** | Every weekday 8 AM ET | Walk the whole book. Trade, exit, trim, add, edit targets. Refresh research via `dispatch_thesis_research` when judgment says it's needed. Decide all PROMOTED rows today. **Audit the trigger ladder** on every holding — act on `UNPROTECTED_GAIN` / `ladderHealth` flags, re-arm fired checkpoints, patch rungs via `update_thesis`. | Mint net-new theses on un-covered tickers. Write deep-research content (only patches via `update_thesis`). |
+| **Tactical run** | On trigger fire | Same as daily but scoped to ONE thesis. Place/exit/trim/add. Refresh research mid-run if stale. **Re-ladder duty:** on every fire it validates the move AND re-earns the ladder (raise the floor, arm the next milestone, refit the trail). | Touch other theses. Mint net-new. |
+| **Discovery run** | Sundays 9 AM ET | Mint net-new WATCHING and PASS-ARCHIVED theses on un-covered tickers, **with an authored entry ladder**. | Trade. Touch existing theses. Update statuses on other rows. |
+| **Thesis-writer** | On promotion fan-out + on daily/tactical's `dispatch_thesis_research` call | Refresh research content (snapshot, bull, bear, fundamentals, etc.) on ONE thesis. **Author the ladder from research** — recompute target / stop / trigger levels (add at the breakout shelf, floor under the swing low, trail fitted to the name's volatility) from fresh data. | Touch status. Place trades. The status decision belongs to the orchestrator that dispatched the writer. |
 | **Promotion action** | User clicks "Promote to live" | Close paper positions. Flip ACTIVE theses → PROMOTED with conviction context frozen. Fan out thesis-writer refreshes per PROMOTED row. Flip `AgentConfig.tradingEnvironment` to LIVE. | Trade. Touch WATCHING/PENDING/PASS theses. Decide the first-live entry (that's the next daily run's call). |
 
 **The cardinal rule that ties them together:** the writer produces research; the orchestrator (daily/tactical/discovery) acts. Status decisions live exclusively with orchestrators. Research content lives exclusively with the writer. Mixing those two is the source of every PROMOTED-related bug we've seen.
@@ -68,6 +68,26 @@ Distinct from the supporting cast:
 - **Watchlist** — *not a table.* The watchlist is the query `Thesis WHERE status='WATCHING'`. PENDING (seeded, awaiting first research), LONG WATCHING, and SHORT WATCHING are the only states that appear on it.
 
 **Cardinality rule:** at most one ACTIVE-or-WATCHING thesis per (analyst, ticker, direction). Direction flips create a new row with the parent SUPERSEDED. INVALIDATED/CLOSED/SUPERSEDED/ARCHIVED rows are immutable history.
+
+---
+
+## 1a. The thesis carries a LIVING trigger ladder (the Game Plan, shipped 2026-07-12)
+
+> **This is the single biggest change since this doc's status-taxonomy verification.** `triggers[]` is **not a static field set once at mint** — it's a *living ladder* the agents author and maintain across the thesis's whole life. Read this before treating any trigger content as write-once. Full mechanics: [`TRIGGERS.md`](./TRIGGERS.md); the conceptual model: [`plans/TRIGGER_MODEL.md`](./plans/TRIGGER_MODEL.md); authority/visibility contract: [`plans/TRIGGER_LIFECYCLE.md`](./plans/TRIGGER_LIFECYCLE.md); why it exists: [`plans/THESIS_GAME_PLAN.md`](./plans/THESIS_GAME_PLAN.md).
+
+Every thesis carries a **trigger ladder** — a set of `(condition → action)` rungs (ENTER / ADD / TRIM / EXIT / REVIEW) that expresses conviction management: press winners, protect gains, cut losers deliberately. The ladder has a defined authorship + maintenance loop across the five roles:
+
+- **Writer authors at mint.** The thesis-writer fits the actual levels from research — add at the breakout shelf, floor under the swing low, a trail width fitted to the name's volatility — on top of the horizon-template skeleton.
+- **Tactical run re-ladders on every fire.** A rung firing never changes a level by itself; the tactical run validates the move and then *re-earns the ladder* (raises the floor, arms the next milestone, refits the trail). This is the fix for the write-once failure: without it a holding runs up and the day-one floor never moves.
+- **Daily run is the auditor.** Every morning it reads `resolved.ladderHealth` and the `UNPROTECTED_GAIN` needsAction flag (a winner whose tightest floor lags its gain), and it must act or explicitly attest. `complete_run` warn-gates unprotected holdings so a no-op review can't quietly pass.
+
+**Standing minimums make protection automatic.** Every HOLDING auto-carries three code-stamped protection rungs — **+10% checkpoint REVIEW / 8% trail EXIT / −12% loser REVIEW** — plus ±7% scale rungs, stamped at mint AND re-seeded at the buy fill (`place-trade.ts` held-side re-seed). Two predicates carry the gain protection: `GAIN_FROM_ENTRY` (cumulative % vs `avgCost`) and `TRAILING_FROM_HIGH` (give-back off `Position.peakPrice`, ratcheting with no agent memory required). See [`TRIGGERS.md`](./TRIGGERS.md) §2a.
+
+The motivating failure (IONS): bought $73.83, day-one floor at $65, ran +17%, three rubber-stamp reviews, then crashed and fired the day-one floor for a LOSS — no level was ever re-earned. The living ladder makes that impossible to do silently.
+
+**The footgun** (see [`TRIGGERS.md`](./TRIGGERS.md) §8): `update_thesis.triggers` is **wholesale-REPLACE**, not merge. Resend every rung you keep or it's dropped; keep each rung's `id` or the server-managed `lastFiredAt` cooldown stamp is lost and the predicate re-fires.
+
+**Signal-side rungs (earnings/filing/news) can't fire today** — signal routing is deliberately paused (0 routes in 14d; GAPS P1-34, design in [`plans/SIGNALS_REDESIGN.md`](./plans/SIGNALS_REDESIGN.md)). Price/gain/time rungs on the 5-min cron are the live protection surface; the earnings/filing REVIEW rungs on every ladder are currently decorative.
 
 ---
 
@@ -505,7 +525,7 @@ The **structural-belief gate** (`record_thesis`) and the **structural-unchanged-
 | `horizon` | Required for LONG/SHORT. CATALYST/TRADE/TARGET/COMPOUNDER. Null for PENDING/PASS. |
 | `entryPrice`, `targetPrice`, `stopLoss` | Required for LONG/SHORT WATCHING. Validated via [`thesis-shape.ts`](../lib/agent/thesis-shape.ts) (LONG: target > entry > stop). |
 | `confidenceScore` | 0-100. Calibration tracking. |
-| `triggers` | JSONB array of structured predicates. **Full mechanics — predicate catalog, the cron-vs-signal firing matrix, fire modes (TACTICAL/DIRECT), cooldown — live in [`TRIGGERS.md`](./TRIGGERS.md).** Auto-merged with horizon defaults from [`triggers/defaults.ts`](../lib/agent/triggers/defaults.ts). **Empty for PENDING and PASS theses.** |
+| `triggers` | JSONB array of structured predicates — the **living ladder** (§1a), NOT a write-once field: authored at mint, re-earned on every tactical fire, audited every daily run. **Full mechanics — predicate catalog (incl. `GAIN_FROM_ENTRY` / `TRAILING_FROM_HIGH`), the standing protection minimums, the cron-vs-signal firing matrix, fire modes (TACTICAL/DIRECT), cooldown, and the wholesale-REPLACE footgun — live in [`TRIGGERS.md`](./TRIGGERS.md).** `record_thesis` auto-merges with horizon defaults from [`triggers/defaults.ts`](../lib/agent/triggers/defaults.ts); `update_thesis` replaces wholesale (preserving `lastFiredAt` by id). **Empty for PENDING and PASS theses.** |
 | `catalystDate` | REQUIRED when `horizon=CATALYST`. |
 | `maxHoldDays` | REQUIRED when `horizon=TRADE` (no silent default). |
 | `nextReviewAt` | Derived from horizon if not supplied. Drives the overdue-review cron + `REVIEW_DATE_HIT` trigger. For PENDING, set to `createdAt` so first review fires immediately. |
@@ -669,10 +689,13 @@ The principle: **the system was fundamentally sound, not fundamentally broken.**
 
 ## See also
 
-- [`TRIGGERS.md`](./TRIGGERS.md) — the trigger system reference: predicate catalog, the which-predicate-fires-on-which-path matrix, fire modes (TACTICAL vs DIRECT), cooldown, and the editing surfaces
+- [`TRIGGERS.md`](./TRIGGERS.md) — the trigger system reference: predicate catalog (incl. the gain-protection predicates), the standing protection minimums, the which-predicate-fires-on-which-path matrix, fire modes (TACTICAL vs DIRECT), cooldown, and the editing surfaces
+- [`plans/TRIGGER_MODEL.md`](./plans/TRIGGER_MODEL.md) — the trigger conceptual model (`condition·action·mode·timing`; what is/isn't a trigger) + the two verified reference grids
+- [`plans/TRIGGER_LIFECYCLE.md`](./plans/TRIGGER_LIFECYCLE.md) — trigger authority + visibility contract (who sets which level, when; what wakes an agent)
+- [`plans/THESIS_GAME_PLAN.md`](./plans/THESIS_GAME_PLAN.md) — why the trigger ladder exists (conviction management; the IONS motivating failure)
 - [`VISION.md`](./VISION.md) Pillar 2 — what "thesis quality" is supposed to look like
 - [`GAPS.md`](./GAPS.md) — the open punch list
 - [`PRINCIPLES.md`](./PRINCIPLES.md) — the three-layer principle (tool gates / tool result shape / prompt as judgment only) that drives where each invariant lives
-- [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/MORNING_RUN_V2_DESIGN.md) — the V2 prompt rewrite that applied the three-layer principle to the daily run
+- [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/legacy/MORNING_RUN_V2_DESIGN.md) — the V2 prompt rewrite that applied the three-layer principle to the daily run
 - [`legacy/WATCHLIST_COLLAPSE_PLAN.md`](./legacy/WATCHLIST_COLLAPSE_PLAN.md) — the implementation plan for the 2026-05-13 collapse (closed; this doc supersedes it)
 - [`/agent-workflow`](../app/(root)/agent-workflow/page.tsx) — the live operational view, driven by [`workflow-registry.ts`](../lib/agent/workflow-registry.ts)

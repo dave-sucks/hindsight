@@ -1,3 +1,5 @@
+> **SUPERSEDED — see [`../THESIS_GAME_PLAN.md`](../THESIS_GAME_PLAN.md) (the trigger-ladder stack that absorbed and extended this); kept as build history.**
+
 # Plan — Scale Into Winners (press / hold / take + re-entry)
 
 > **What this is:** the multi-PR plan to make the agent *manage conviction* — add to
@@ -11,7 +13,7 @@
 > The status table + progress snapshot below are the *original plan* and are partly superseded by
 > the handoff doc — trust the handoff for what's done vs open.
 >
-> **Read first:** [`PRINCIPLES.md`](../PRINCIPLES.md) (three-layer), [`THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md)
+> **Read first:** [`PRINCIPLES.md`](../../PRINCIPLES.md) (three-layer), [`THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md)
 > (lifecycle + 5 roles), and `docs/TRIGGERS.md` (firing matrix — being written alongside the
 > market-hours-gate PR; this plan depends on it as the canonical trigger reference).
 

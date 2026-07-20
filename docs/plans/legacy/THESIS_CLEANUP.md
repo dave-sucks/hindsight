@@ -1,8 +1,10 @@
+> **SHIPPED/SUPERSEDED — see [`../../THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md); kept as build history.**
+
 # Hindsight — Thesis Surface Cleanup (tracker)
 
 > **What this is:** delta + PR tracker for the Thesis schema, UI, and
 > prompt-field cleanup done in prep for
-> [Phase 1 of THESIS_RESEARCH_V2.md](./THESIS_RESEARCH_V2.md) (the
+> [Phase 1 of THESIS_RESEARCH_V2.md](../THESIS_RESEARCH_V2.md) (the
 > deep-research thesis-writer agent). This is a **living tracker** — not
 > a planning doc — covering both shipped work and the still-to-do
 > consolidation that the V2 rollout makes possible.
@@ -348,7 +350,7 @@ The work in §1 above. Runs alongside the V2 thesis-writer ship.
 
 ## 7. Migration runtime notes
 
-- **Migration application** — `prisma migrate dev` is broken in this repo ([TD-3](../TECH_DEBT.md)). Apply via Supabase MCP `apply_migration` or `prisma db execute`, then insert into `_prisma_migrations` manually with SHA-256 checksum of the SQL file. PR-1's migration followed this path on 2026-05-18.
+- **Migration application** — `prisma migrate dev` is broken in this repo ([TD-3](../../TECH_DEBT.md)). Apply via Supabase MCP `apply_migration` or `prisma db execute`, then insert into `_prisma_migrations` manually with SHA-256 checksum of the SQL file. PR-1's migration followed this path on 2026-05-18.
 - **Production DB** — Supabase project `zomxxtqiszpkqrjrqqat` (Hindsight). Each migration must be reviewed before it runs against prod.
 - **PR-9 ordering** — the rename+retype migrations write the new column from the legacy column inside the same migration. The DROP happens at the end. So a single MCP `apply_migration` call is sufficient. Pre-PR-9 sanity check: confirm every code path that writes to `reasoningSummary` / `thesisBullets` / `riskFlags` has been updated to write `snapshot` / `bullCase` / `bearCase` instead — otherwise post-migration writes will fail.
 
@@ -357,7 +359,7 @@ The work in §1 above. Runs alongside the V2 thesis-writer ship.
 ## See also
 
 - [`docs/plans/THESIS_SCHEMA_AUDIT.md`](./THESIS_SCHEMA_AUDIT.md) — original field-by-field audit + Decision Fields synthesis-prompt block
-- [`docs/plans/THESIS_RESEARCH_V2.md`](./THESIS_RESEARCH_V2.md) — RAG-based research rewrite; PR-9 ships alongside its Phase 1. The V2 plan's `researchSections` blob design is superseded by the flat-column design in §1.2 above.
-- [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — live thesis-system reference
-- [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle
-- [`docs/TECH_DEBT.md`](../TECH_DEBT.md) — TD-3 (broken `migrate dev` workflow)
+- [`docs/plans/THESIS_RESEARCH_V2.md`](../THESIS_RESEARCH_V2.md) — RAG-based research rewrite; PR-9 ships alongside its Phase 1. The V2 plan's `researchSections` blob design is superseded by the flat-column design in §1.2 above.
+- [`docs/THESIS_ARCHITECTURE.md`](../../THESIS_ARCHITECTURE.md) — live thesis-system reference
+- [`docs/PRINCIPLES.md`](../../PRINCIPLES.md) — three-layer principle
+- [`docs/TECH_DEBT.md`](../../TECH_DEBT.md) — TD-3 (broken `migrate dev` workflow)
