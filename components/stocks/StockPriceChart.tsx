@@ -8,6 +8,7 @@ import {
   YAxis,
   Tooltip,
   ReferenceLine,
+  ReferenceArea,
   ResponsiveContainer,
 } from 'recharts';
 import { cn } from '@/lib/utils';
@@ -22,10 +23,10 @@ type PriceReferenceLine = {
   dashed?: boolean;
 };
 
-// Vertical marker on the time axis — "started watching" / "entered here".
-// `date` is snapped to the nearest visible candle; markers whose date falls
-// before the visible window are dropped (off-range). Suppressed on the 1D
-// intraday view — a watch/entry date is never inside a single session window.
+// Vertical marker on the time axis — "started watching" / "entered" / "sold".
+// `date` is snapped to the nearest visible candle; markers before the visible
+// window are dropped. Not shown on the 1D intraday view (a single session never
+// contains the watch/entry date).
 type TimeMarker = {
   date: string;
   color: string;
@@ -50,7 +51,7 @@ type Props = {
    * Off by default so cards and the stock page keep their daily-only pills.
    */
   showIntraday?: boolean;
-  /** 5-min bars for the current session — rendered when the 1D tab is active. */
+  /** 1-min bars for the current session — rendered when the 1D tab is active. */
   intradayCandles?: StockCandle[];
   /** True while the parent is (re)fetching the intraday series. */
   intradayLoading?: boolean;
@@ -80,6 +81,13 @@ const RANGE_DAYS: Record<DailyRange, number> = {
   '1Y': 252,
 };
 
+// Axis / mark colors — hardcoded hex (SVG stroke/fill can't consume our oklch()
+// theme vars).
+const AXIS_TICK = '#71717a';
+// Off-hours (pre-market / after-hours) shading — a faint lightening of the
+// regions outside the 9:30–16:00 regular session.
+const OFF_HOURS_FILL = '#e4e4e7';
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatDateLabel(dateStr: string): string {
@@ -104,36 +112,57 @@ function formatTimeLabel(v: string | number): string {
   });
 }
 
-// 1D axis geometry, fit to whatever session data we actually have.
-//   • x-domain: first bar → last bar (+ a little right breathing room), so the
-//     line fills the width and reads — rather than crushing a partial session
-//     onto a fixed full-day backdrop (which, without pre-market data, is just a
-//     vertical sliver). When a pre-market-capable feed lands, revisit a fixed
-//     full-day window here.
-//   • y-domain: padded ~25% of the range each side so the line clears the top
-//     and bottom edges (a real price axis renders these values).
-function intradayAxisGeometry(candles: { date: string; close: number }[]): {
-  domain: [number, number];
-  ticks: number[];
-  yDomain: [number, number];
-} {
-  const xs = candles.map((c) => new Date(c.date).getTime());
-  const firstX = xs[0];
-  const lastX = xs[xs.length - 1];
-  const span = Math.max(lastX - firstX, 60_000);
-  const ticks: number[] = [];
-  const N = 5;
-  for (let i = 0; i <= N; i++) ticks.push(firstX + ((lastX - firstX) * i) / N);
+// Consistent price-axis label (all ranges): whole dollars for ≥$100, cents below.
+function formatPriceTick(v: number): string {
+  return v.toLocaleString(undefined, { maximumFractionDigits: v >= 100 ? 0 : 2 });
+}
 
-  const closes = candles.map((c) => c.close);
+// A buffered price domain so the line always clears the top and bottom edges —
+// applied to every range so they read consistently. ~12% of the visible range
+// each side, with a floor for near-flat sessions.
+function priceDomain(closes: number[]): [number, number] {
   const lo = Math.min(...closes);
   const hi = Math.max(...closes);
-  const pad = Math.max((hi - lo) * 0.25, hi * 0.0015);
+  const pad = Math.max((hi - lo) * 0.12, hi * 0.0025);
+  return [lo - pad, hi + pad];
+}
 
+// The 1D chart pins its x-axis to the full trading day (7 AM–8 PM ET) so the
+// line fills only the elapsed portion — a real "N hours into the day" view —
+// and the pre-market (7–9:30) + after-hours (16–20) regions render as shaded
+// off-hours bands even when we have no data to draw in them. The clock times
+// are anchored to the session date's actual ET offset (DST-safe, no tz lib),
+// derived from the first candle's timestamp.
+function intradaySessionGeometry(firstISO: string): {
+  domain: [number, number];
+  ticks: number[];
+  rthStart: number;
+  rthEnd: number;
+} {
+  const first = new Date(firstISO);
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const o: Record<string, string> = {};
+  for (const p of dtf.formatToParts(first)) o[p.type] = p.value;
+  const etAsUtc = Date.UTC(+o.year, +o.month - 1, +o.day, +o.hour % 24, +o.minute, +o.second);
+  const offsetMs = first.getTime() - etAsUtc; // UTC = ET wall + offsetMs
+  const clock = (h: number, m = 0) =>
+    Date.UTC(+o.year, +o.month - 1, +o.day, h, m, 0) + offsetMs;
+  const ticks: number[] = [];
+  for (let h = 8; h <= 20; h += 2) ticks.push(clock(h));
   return {
-    domain: [firstX, lastX + span * 0.04],
+    domain: [clock(7), clock(20)],
     ticks,
-    yDomain: [lo - pad, hi + pad],
+    rthStart: clock(9, 30),
+    rthEnd: clock(16),
   };
 }
 
@@ -168,19 +197,16 @@ export function StockPriceChart({
 
   const data = useMemo(() => {
     if (isIntraday) {
-      // Attach an epoch-ms `x` so the 1D chart can use a real time axis (fixed
-      // full-session domain) rather than evenly spacing a handful of bars.
+      // Attach an epoch-ms `x` so the 1D chart uses a real time axis.
       return (intradayCandles ?? []).map((c) => ({
         ...c,
         x: new Date(c.date).getTime(),
       }));
     }
     if (range === 'Trade') {
-      // The position's own lifespan: watch date → sold date (or the latest
-      // candle while still held), padded a week each side for context — some
-      // "before I was watching" lead-in, and post-sale action to judge the
-      // exit. Candle `date` + span bounds are both YYYY-MM-DD, so plain string
-      // comparison is correct.
+      // The position's own lifespan: watch → sold (or the latest candle while
+      // held), padded a week each side. Candle `date` + span bounds are both
+      // YYYY-MM-DD, so string comparison is correct.
       if (!tradeSpan) return candles;
       const start = shiftDay(tradeSpan.start, -7);
       const end = tradeSpan.end ? shiftDay(tradeSpan.end, 7) : '9999-12-31';
@@ -189,38 +215,51 @@ export function StockPriceChart({
     return candles.slice(-RANGE_DAYS[range as DailyRange]);
   }, [candles, intradayCandles, range, isIntraday, tradeSpan]);
 
-  // 1D axis: x fit to the session so far + buffered y-domain. Null otherwise.
-  const intradayAxis = useMemo(() => {
-    if (!isIntraday || data.length < 2) return null;
-    return intradayAxisGeometry(data);
+  // 1D full-day geometry (domain + ticks + regular-session bounds). Null else.
+  const intradayGeo = useMemo(() => {
+    if (!isIntraday || data.length < 1) return null;
+    return intradaySessionGeometry(data[0].date);
   }, [isIntraday, data]);
 
-  // Snap each marker to the nearest visible candle date (Recharts only places
-  // a vertical ReferenceLine on an x-value that exists in `data`). Markers
-  // dated before the visible window are dropped — their event is off-range.
-  // Intraday has no such markers (a single session never contains the
-  // watch/entry date), so skip entirely.
+  // Buffered price (y) domain — same treatment on every range.
+  const yDomain = useMemo<[number, number] | undefined>(() => {
+    if (data.length < 1) return undefined;
+    return priceDomain(data.map((d) => d.close));
+  }, [data]);
+
+  // Snap each marker to the nearest visible candle, then stagger labels that
+  // land on (or near) the same candle so they don't overprint — Watching and
+  // Entry often share a date or sit a day apart.
   const snappedMarkers = useMemo(() => {
     if (isIntraday || !verticalMarkers?.length || data.length < 2) return [];
-    const firstDate = data[0].date;
     const dates = data.map((d) => d.date);
-    return verticalMarkers
+    const firstDate = dates[0];
+    const snapped = verticalMarkers
       .map((m) => {
-        if (m.date < firstDate) return null; // off the left edge of the window
-        // nearest candle date >= marker date (markers rarely land on a
-        // non-trading day; fall back to the last date if past the window).
+        if (m.date < firstDate) return null; // off the left edge
         const hit = dates.find((d) => d >= m.date) ?? dates[dates.length - 1];
-        return { ...m, snapped: hit };
+        return { ...m, snapped: hit, idx: dates.indexOf(hit) };
       })
-      .filter((m): m is TimeMarker & { snapped: string } => m !== null);
+      .filter((m): m is TimeMarker & { snapped: string; idx: number } => m !== null)
+      .sort((a, b) => a.idx - b.idx);
+
+    // Two labels collide when their candles are within ~12% of the window.
+    const near = Math.max(2, Math.floor(data.length * 0.12));
+    let lastIdx = -Infinity;
+    let lastStagger = -1;
+    return snapped.map((m) => {
+      const stagger = m.idx - lastIdx <= near ? lastStagger + 1 : 0;
+      lastIdx = m.idx;
+      lastStagger = stagger;
+      return { ...m, stagger };
+    });
   }, [verticalMarkers, data, isIntraday]);
 
   const hasBody = data.length >= 2;
 
   // Legacy empty state — only when the 1D pill isn't in play (cards / stock
-  // page). Keeps the original bordered "no data" panel with no pills. When
-  // intraday is enabled we always render the frame + pills below so the user
-  // can switch back out of an empty/loading 1D tab.
+  // page). When intraday is enabled we always render the frame + pills so the
+  // user can switch out of an empty/loading 1D tab.
   if (!hasBody && !showIntraday) {
     return (
       <div
@@ -243,7 +282,6 @@ export function StockPriceChart({
   const firstClose = hasBody ? data[0].close : 0;
   const lastClose = hasBody ? data[data.length - 1].close : 0;
   const isUp = lastClose >= firstClose;
-  // Use hex colors — CSS variables are oklch() which don't work in SVG stroke/fill
   const strokeColor = isUp ? '#22c55e' : '#ef4444';
 
   const handleRange = (r: Range) => {
@@ -292,14 +330,14 @@ export function StockPriceChart({
               <stop offset="95%" stopColor={strokeColor} stopOpacity={0} />
             </linearGradient>
           </defs>
+
           {isIntraday ? (
             <XAxis
               dataKey="x"
               type="number"
-              scale="time"
-              domain={intradayAxis?.domain ?? ['dataMin', 'dataMax']}
-              ticks={intradayAxis?.ticks}
-              tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
+              domain={intradayGeo?.domain ?? ['dataMin', 'dataMax']}
+              ticks={intradayGeo?.ticks}
+              tick={{ fontSize: 9, fill: AXIS_TICK, fontFamily: 'var(--font-mono)' }}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v) => formatTimeLabel(v)}
@@ -308,7 +346,7 @@ export function StockPriceChart({
           ) : (
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
+              tick={{ fontSize: 9, fill: AXIS_TICK, fontFamily: 'var(--font-mono)' }}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v) => formatDateLabel(v).toUpperCase()}
@@ -318,20 +356,20 @@ export function StockPriceChart({
               padding={{ left: 0, right: range === 'Trade' ? 44 : 0 }}
             />
           )}
-          {isIntraday ? (
-            <YAxis
-              orientation="left"
-              domain={intradayAxis?.yDomain ?? ['dataMin', 'dataMax']}
-              tick={{ fontSize: 9, fill: '#71717a', fontFamily: 'var(--font-mono)' }}
-              tickLine={false}
-              axisLine={false}
-              width={38}
-              tickCount={4}
-              tickFormatter={(v: number) => v.toFixed(2)}
-            />
-          ) : (
-            <YAxis hide domain={['dataMin * 0.98', 'dataMax * 1.15']} />
-          )}
+
+          {/* Price axis — shown on EVERY range for consistency, with a buffered
+              domain so the line clears the top/bottom edges. */}
+          <YAxis
+            orientation="left"
+            domain={yDomain ?? ['dataMin', 'dataMax']}
+            tick={{ fontSize: 9, fill: AXIS_TICK, fontFamily: 'var(--font-mono)' }}
+            tickLine={false}
+            axisLine={false}
+            width={44}
+            tickCount={4}
+            tickFormatter={(v: number) => formatPriceTick(v)}
+          />
+
           <Tooltip
             contentStyle={{
               background: 'var(--popover)',
@@ -349,7 +387,38 @@ export function StockPriceChart({
             }
             labelStyle={{ color: 'var(--muted-foreground)' }}
           />
-          {/* Vertical markers — "started watching" / "entered here" */}
+
+          {/* Off-hours bands (1D only): pre-market + after-hours, a faint
+              lightening so the regular session stands out even with no data in
+              them. Must be DIRECT children (not a fragment) AND declared after
+              the axes, or recharts can't resolve their coordinates. */}
+          {isIntraday && intradayGeo && yDomain ? (
+            <ReferenceArea
+              x1={intradayGeo.domain[0]}
+              x2={intradayGeo.rthStart}
+              y1={yDomain[0]}
+              y2={yDomain[1]}
+              fill={OFF_HOURS_FILL}
+              fillOpacity={0.12}
+              stroke="none"
+              ifOverflow="visible"
+            />
+          ) : null}
+          {isIntraday && intradayGeo && yDomain ? (
+            <ReferenceArea
+              x1={intradayGeo.rthEnd}
+              x2={intradayGeo.domain[1]}
+              y1={yDomain[0]}
+              y2={yDomain[1]}
+              fill={OFF_HOURS_FILL}
+              fillOpacity={0.12}
+              stroke="none"
+              ifOverflow="visible"
+            />
+          ) : null}
+
+          {/* Vertical markers — Watching / Entry / Sold. Labels stagger down
+              when two land on (or near) the same candle so they don't overprint. */}
           {snappedMarkers.map((m) => (
             <ReferenceLine
               key={`${m.label}-${m.snapped}`}
@@ -357,14 +426,24 @@ export function StockPriceChart({
               stroke={m.color}
               strokeDasharray="2 3"
               strokeWidth={1}
-              label={{
-                value: m.label,
-                position: 'insideTopLeft',
-                fontSize: 9,
-                fill: m.color,
+              label={(props: { viewBox?: { x?: number; y?: number } }) => {
+                const vx = props.viewBox?.x ?? 0;
+                const vy = props.viewBox?.y ?? 0;
+                return (
+                  <text
+                    x={vx + 4}
+                    y={vy + 10 + m.stagger * 12}
+                    fill={m.color}
+                    fontSize={9}
+                    textAnchor="start"
+                  >
+                    {m.label}
+                  </text>
+                );
               }}
             />
           ))}
+
           {/* Reference lines for trade entry/target/stop */}
           {referenceLines?.map((line) => (
             <ReferenceLine
@@ -381,10 +460,10 @@ export function StockPriceChart({
               }}
             />
           ))}
+
           <Area
-            // Intraday: linear, so real tick-by-tick movement (the V-dips and
-            // spikes) shows instead of monotone rounding a few bars into a fake
-            // smooth curve. Daily: monotone reads cleaner over months.
+            // Intraday: linear so real tick-by-tick movement shows. Daily:
+            // monotone reads cleaner over months.
             type={isIntraday ? 'linear' : 'monotone'}
             dataKey="close"
             stroke={strokeColor}
@@ -397,10 +476,7 @@ export function StockPriceChart({
         </AreaChart>
       </ResponsiveContainer>
       ) : (
-        <div
-          className="flex items-center justify-center"
-          style={{ height }}
-        >
+        <div className="flex items-center justify-center" style={{ height }}>
           <p className="text-xs text-muted-foreground">
             {isIntraday
               ? intradayLoading
