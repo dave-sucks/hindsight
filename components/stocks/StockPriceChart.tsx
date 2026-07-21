@@ -112,11 +112,6 @@ function formatTimeLabel(v: string | number): string {
   });
 }
 
-// Consistent price-axis label (all ranges): whole dollars for ≥$100, cents below.
-function formatPriceTick(v: number): string {
-  return v.toLocaleString(undefined, { maximumFractionDigits: v >= 100 ? 0 : 2 });
-}
-
 // A buffered price domain so the line always clears the top and bottom edges —
 // applied to every range so they read consistently. ~12% of the visible range
 // each side, with a floor for near-flat sessions.
@@ -357,18 +352,11 @@ export function StockPriceChart({
             />
           )}
 
-          {/* Price axis — shown on EVERY range for consistency, with a buffered
-              domain so the line clears the top/bottom edges. */}
-          <YAxis
-            orientation="left"
-            domain={yDomain ?? ['dataMin', 'dataMax']}
-            tick={{ fontSize: 9, fill: AXIS_TICK, fontFamily: 'var(--font-mono)' }}
-            tickLine={false}
-            axisLine={false}
-            width={44}
-            tickCount={4}
-            tickFormatter={(v: number) => formatPriceTick(v)}
-          />
+          {/* Hidden price axis — provides the buffered domain (line clears the
+              top/bottom edges) without reserving a left gutter, so the line
+              full-bleeds to the container edges on every range. Consistent
+              across frames; exact prices are available on hover. */}
+          <YAxis hide domain={yDomain ?? ['dataMin', 'dataMax']} />
 
           <Tooltip
             contentStyle={{
