@@ -77,67 +77,64 @@ morning-run read-everything was unfocused. Three candidate models framed in
 `docs/plans/TRIGGER_LIFECYCLE.md` §6 (vetted push / review-time pull / hybrid: event-class push for
 HELD names + review-time targeted pull). **Do not rebuild the pipeline before that design session.**
 
+### P1-35 — Sold-name continuity: a sold name loses all thread with its history (REALIZED on the live book)
+**Status:** open, promoted from candidate 2026-07-21. **Live — it has already moved real money.**
+Selling severs a thesis from its own history both ways:
+- **(a) No recycle on protective exits.** A stop/trailing close goes `RETIRED (SOLD)` and is terminal;
+  only `closeReason=TARGET` returns to WATCHING. So the "did we sell the dip?" case — the highest-risk
+  one — gets no re-look. ARQT/VRDN went dark after +$845/+$445 protective stops.
+- **(b) Blind re-mint.** `record_thesis`'s same-ticker guard only checks HOLDING/WATCHING/PROMOTED
+  (skips RETIRED); the minting writer never calls `get_theses`; `parentThesisId=null`; it re-underwrites
+  from a blank prompt at the stop-out price.
+**Confirmed executed:** XENE trailed out 2026-07-16 at ~$66.53 (+$966 banked), was blindly re-minted
+that night, and **re-bought LIVE 2026-07-17 at $68.84** — the acting agent could not see it had sold the
+name ~20h earlier. Frame + fix options: [`plans/SOLD_NAME_CONTINUITY.md`](./plans/SOLD_NAME_CONTINUITY.md).
+Fix: belief-gated recycle on protective exits + extend the same-ticker guard to recent RETIRED rows
+(auto-chain the parent, surface the prior exit) + require a history read before any mint. **The #1 new gap.**
+
+### P1-36 — Shape gate contradicts the gain-locked floor (protection silently understated on live names)
+**Status:** open, promoted 2026-07-21. The `record_thesis`/`update_thesis` shape gate (LONG:
+`target > entry > stop`) rejects a `stopLoss` at/above cost basis — but a gain-locking floor above cost
+is the entire point of the Ratchet Invariant. On 2026-07-14 MU's floor was **lowered** 940→840, the agent
+explicitly citing "to satisfy shape discipline," so the `stopLoss` column (which mirrors to `Position` +
+price-monitor) now understates protection by ~$100 on a live position. The Ratchet and the shape gate
+contradict each other on every winner whose floor should exceed entry. Fix: relax the shape gate for
+HOLDING (allow stop ≥ entry when gain-locked), OR make trigger rungs the sole home of gain floors and stop
+mirroring them into `stopLoss`. Run-review Finding B (7/16).
+
+### P1-37 — Decline-with-retune duty: fired-but-blocked ENTER rungs re-fire forever
+**Status:** open, promoted from P2 2026-07-21 (frequency + live cost). A declined ENTER leaves the same
+rung armed at the same level, so it re-fires every 5-min tick and every morning. Sharpest case — the
+**composite-gate deadlock**: CAPR fired ~5× and CEG 4× over 2026-07-20→21, each blocked because the thesis
+composite is 6/10 (< the 65% entry bar); the agent each time says "needs a scoring refresh before deploying"
+but **never dispatches one** (0 THESIS_WRITER refreshes), so it loops indefinitely. ~9 wasted GPT-5.5
+tactical runs in two days. Fix (symmetric with the re-ladder duty on fires): a tactical that declines an
+ENTER on a stable reason must **retune the rung** (raise the level to the real confirmation price / widen
+cooldown) or **dispatch the refresh it says it needs** — not silently re-arm. Often the root is a
+mis-specified entry level (see P1-38). Run-review Finding E.
+
+### P1-38 — Discovery-mint quality + live-feeder velocity (unvetted mints reach live capital in days)
+**Status:** open, filed 2026-07-21. One Grok-seeded discovery batch (2026-07-16) put **4 names into the
+LIVE book within 2 trading days** (MNKD/CYTK/XENE 7/17, PRAX 7/20). Discovery is now a fast live-capital
+feeder, not just a watchlist populator — with no executability vet on the mint. Symptom: CAPR's entry was
+minted at `PRICE_ABOVE $19.12` — a level ~17–26% *below* the 20d/50d, so the predicate is chronically true
+while the real entry condition (a confirmed reclaim) never is; paired with a sub-threshold composite it can
+never fill, so it just re-fires (feeds P1-37). Fix: vet minted entry levels against structure
+(MAs/confirmation), and gate or flag discovery mints before they can reach live capital. Cross-refs P1-35
+(blind re-mint) + P1-37 (deadlock).
+
 _(P1-26 + P1-29 closed 2026-06-26 — see [`GAPS_HISTORY.md`](./GAPS_HISTORY.md).)_
-
----
-
-## Proposed — pending triage (surfaced 2026-07-17, not yet prioritized)
-
-> These came out of the 7/13–16 run review ([`run-reviews/2026-07-16.md`](./run-reviews/2026-07-16.md))
-> and the sold-name / discovery-remint discussion. **Principal to flag which
-> become tracked P1/P2 and assign numbers.** Kept out of the numbered list until
-> triaged so priorities stay meaningful.
-
-- **[C1] Sold-name continuity (recycle + re-mint).** Selling severs a thesis from
-  its own history, both ways: protective/trailing exits go `RETIRED (SOLD)` with
-  no recycle (only `closeReason=TARGET` returns to WATCHING — the "did we sell the
-  dip?" case gets no re-look), AND discovery re-mints a sold name blind
-  (`record_thesis` same-ticker guard skips RETIRED; minting agent skips
-  `get_theses`; `parentThesisId=null`; re-underwrites at the stop-out price;
-  re-buyable). Live cases: ARQT/VRDN went dark; XENE re-minted 9h post-sale at
-  entry $67 vs the $66.53 stop-out. Full frame + fix options:
-  [`plans/SOLD_NAME_CONTINUITY.md`](./plans/SOLD_NAME_CONTINUITY.md). **Suggested
-  P1** — it's the direct sequel to the Game Plan and touches the live book.
-
-- **[C2] Shape gate vs gain-locked floor.** `update_thesis`/`record_thesis` shape
-  gate (LONG: `target > entry > stop`) rejects a `stopLoss` at/above cost basis —
-  but a gain-locking floor above cost basis is the whole point of the ratchet.
-  MU's floor was **lowered** 940→840 on 7/14, the agent citing "to satisfy shape
-  discipline," so the `stopLoss` column (which mirrors to Positions +
-  price-monitor) now understates protection. The Ratchet Invariant and the shape
-  gate contradict each other on winners. Fix: relax the gate for HOLDING (allow
-  stop ≥ entry when gain-locked), or make trigger rungs the sole home of gain
-  floors. **Suggested P1** (correctness on the live book). Run-review Finding B.
-
-- **[C3] `closeReason` mis-tagging → wrong cooldown routing.** 7/13 protective
-  closes were tagged `closeReason=MANUAL` (only ARQT carried `STOP`), so EWTX's
-  genuine floor breach was wrongly P1-28-suppressed as a discretionary re-pitch.
-  Self-corrected to `STOP` from 7/14 (coincident with #490 deploy). The whole #490
-  risk-exit carve-out keys off this field. Fix: Layer-1 assertion — a close from a
-  protective/trailing trigger fire must carry STOP/TARGET (refuse/auto-tag on
-  mismatch). **Suggested P2** (self-corrected; verify it holds one more window).
-  Run-review Finding C.
-
-- **[C4] ENTER re-fire tax (decline-with-retune duty).** NOW/PLTR/CEG/LLY/HPE
-  fired near-daily and were declined near-daily on unchanged reasons (~15
-  redundant GPT-5.5 tacticals in one window). A declined ENTER leaves the same
-  rung armed at the same level for tomorrow. Fix (symmetric with the re-ladder
-  duty on fires): a tactical that declines an ENTER on a stable reason must retune
-  the rung (raise level / widen cooldown) or attest why it should re-fire.
-  **Suggested P2** (cost + noise). Run-review Finding E.
-
-- **[C5] Completion-gate retry churn.** PEAD 7/15 called `complete_run` ×8 +
-  `record_run_summary` ×7 in one 87s run (Secular 7/14: ×7/×7). Runs complete, so
-  it's a token tax, not a correctness bug — new since the Spine added audit
-  obligations. Fix candidate: refusal envelope should name the exact unaddressed
-  thesisIds + which obligation is open, so one retry suffices. **Suggested P2.**
-  Run-review Finding D.
 
 ---
 
 ## P2 — Backlog
 
 ### Active
+- **Discovery-mint executability vet.** *(Sharper half of P1-38, tracked here for the tuning slice.)* Vet each minted `entryPrice` / ENTER level against structure (20d/50d, confirmation) at write time so discovery can't mint a chronically-true-but-unfillable entry. CAPR 7/16 = the case.
+- **`closeReason` mis-tag assertion (ex-C3).** 7/13 protective closes tagged `closeReason=MANUAL` (only ARQT carried `STOP`) → EWTX's floor breach wrongly P1-28-suppressed. Self-corrected to `STOP` from 7/14 (coincident with #490). The #490 risk-exit carve-out keys off this field. Fix: Layer-1 assertion — a close from a protective/trailing fire must carry STOP/TARGET (refuse/auto-tag on mismatch). Verify tagging holds one more window. Run-review Finding C.
+- **Completion-gate retry churn (ex-C5).** PEAD 7/15 called `complete_run` ×8 + `record_run_summary` ×7 in one 87s run (Secular 7/14 ×7/×7). Runs complete — token tax, not a correctness bug; new since the Spine's audit obligations. Fix: refusal envelope should name the exact unaddressed thesisIds + the open obligation, so one retry suffices. Run-review Finding D.
+- **Protective-exit proposal fatigue → "hold + retune floor" affordance.** Held protective-stop proposals (DELL/SNOW, 7/17→20) keep proposing → expiring → re-arming when the principal deliberately holds through them. Legal (an expiry-as-hold is the system working), but there's no structured off-ramp. Fix: a proposal-card "hold + retune floor to $X / review-at-level" control that turns the principal's prose reject-directives (ARQT/VRDN 7/13) into `principalDirective`. EXIT-side twin of P1-37. Run-review Finding E.
+- **Docs housekeeping: two archive dirs + trigger-doc sprawl.** After #496, archives are split across `docs/legacy/` (30) and `docs/plans/legacy/` (13) — reconcile to one convention. And the trigger space now carries four overlapping docs (`TRIGGERS.md` reference + `TRIGGER_MODEL` + `TRIGGER_LIFECYCLE` + `THESIS_GAME_PLAN`) — consolidation candidate once the model settles.
 - **`/performance` is deposit-naive.** `analytics.actions.ts` still hardcodes `STARTING_CAPITAL=100k` (the homepage was fixed via `lib/portfolio/contributions.ts`; /performance + the chart's Unrealized-Only / vs-S&P toggles weren't). Reuse the contributions helper. See the recurring-bug entry in `CLAUDE.md`.
 - **Narrow the P1-28 cooldown carve-out (optional stopgap, ex-P1-29 (a)).** The #445 cooldown exempts `closeReason ∈ {STOP,TARGET}`, so an agent-decided TARGET exit the principal keeps rejecting isn't dampened. One-line change: don't blanket-exempt a STOP/TARGET close that has a recent USER rejection. **Low value now** — P1-29's #457 fix means the agent reads the directive + the principal can edit the target/stop directly, so the root cause of the nagging is addressed. Only bother if residual re-proposals annoy in practice.
 
