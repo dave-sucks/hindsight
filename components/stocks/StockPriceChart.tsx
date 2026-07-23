@@ -9,6 +9,7 @@ import {
   Tooltip,
   ReferenceLine,
   ReferenceArea,
+  ReferenceDot,
   ResponsiveContainer,
 } from 'recharts';
 import { cn } from '@/lib/utils';
@@ -84,9 +85,14 @@ const RANGE_DAYS: Record<DailyRange, number> = {
 // Axis / mark colors — hardcoded hex (SVG stroke/fill can't consume our oklch()
 // theme vars).
 const AXIS_TICK = '#71717a';
-// Off-hours (pre-market / after-hours) shading — a faint lightening of the
-// regions outside the 9:30–16:00 regular session.
-const OFF_HOURS_FILL = '#e4e4e7';
+// The line is colored green ABOVE and red BELOW the graph's starting price
+// (the first visible point), switching mid-line — same convention as most
+// finance charts. Applied to every range.
+const LINE_GREEN = '#22c55e';
+const LINE_RED = '#ef4444';
+// Faint uniform color for the entry/target/stop reference lines — the small
+// colored dot at the left edge carries the meaning, the line stays quiet.
+const REF_LINE = '#71717a';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -122,12 +128,12 @@ function priceDomain(closes: number[]): [number, number] {
   return [lo - pad, hi + pad];
 }
 
-// The 1D chart pins its x-axis to the full trading day (7 AM–8 PM ET) so the
-// line fills only the elapsed portion — a real "N hours into the day" view —
-// and the pre-market (7–9:30) + after-hours (16–20) regions render as shaded
-// off-hours bands even when we have no data to draw in them. The clock times
-// are anchored to the session date's actual ET offset (DST-safe, no tz lib),
-// derived from the first candle's timestamp.
+// The 1D chart pins its x-axis to a clock window CENTERED on the regular
+// session: 2.5h of off-hours on each side (7:00 AM → 6:30 PM ET, with RTH
+// 9:30–16:00 dead-center), so the session sits balanced with equal dead space
+// left and right rather than lopsided. The pre-market + after-hours regions
+// render as a faint dot texture even with no data. Clock times are anchored to
+// the session date's actual ET offset (DST-safe, no tz lib) from the first bar.
 function intradaySessionGeometry(firstISO: string): {
   domain: [number, number];
   ticks: number[];
@@ -152,9 +158,9 @@ function intradaySessionGeometry(firstISO: string): {
   const clock = (h: number, m = 0) =>
     Date.UTC(+o.year, +o.month - 1, +o.day, h, m, 0) + offsetMs;
   const ticks: number[] = [];
-  for (let h = 8; h <= 20; h += 2) ticks.push(clock(h));
+  for (let h = 8; h <= 18; h += 2) ticks.push(clock(h));
   return {
-    domain: [clock(7), clock(20)],
+    domain: [clock(7), clock(18, 30)],
     ticks,
     rthStart: clock(9, 30),
     rthEnd: clock(16),
@@ -274,10 +280,38 @@ export function StockPriceChart({
     );
   }
 
-  const firstClose = hasBody ? data[0].close : 0;
+  // Color split: the line is green above / red below the graph's STARTING
+  // price (first visible point), switching mid-line. baselineOffset is where
+  // that price sits in the vertical (0 = top/high, 1 = bottom/low).
+  const baseline = hasBody ? data[0].close : 0;
   const lastClose = hasBody ? data[data.length - 1].close : 0;
-  const isUp = lastClose >= firstClose;
-  const strokeColor = isUp ? '#22c55e' : '#ef4444';
+  const [yLo, yHi] = yDomain ?? [baseline - 1, baseline + 1];
+  const baselineOffset = Math.min(
+    0.999,
+    Math.max(0.001, (yHi - baseline) / (yHi - yLo || 1)),
+  );
+  const endColor = lastClose >= baseline ? LINE_GREEN : LINE_RED;
+
+  // Left edge x-value for the reference-line dots (numeric epoch for 1D, the
+  // first candle date for daily/Trade).
+  const leftX = isIntraday
+    ? intradayGeo?.domain[0] ?? (data[0] as { x?: number }).x
+    : data[0].date;
+
+  // Floating price labels (overlaid, so the plot still full-bleeds). Positioned
+  // from the buffered domain over the plot band (top margin 40, x-axis ~28).
+  // Uniform decimal precision across the axis (so it's 129/107/85, not
+  // 129/107/85.01), keyed to the top value's magnitude.
+  const priceDigits = yHi >= 100 ? 0 : yHi >= 1 ? 2 : 4;
+  const priceLabels = yDomain
+    ? [0.16, 0.5, 0.84].map((f) => ({
+        value: (yHi - f * (yHi - yLo)).toLocaleString(undefined, {
+          minimumFractionDigits: priceDigits,
+          maximumFractionDigits: priceDigits,
+        }),
+        top: 40 + f * (height - 40 - 28),
+      }))
+    : [];
 
   const handleRange = (r: Range) => {
     setRange(r);
@@ -316,13 +350,51 @@ export function StockPriceChart({
         </div>
       )}
 
+      {/* Floating price labels — overlaid on the left so the plot still
+          full-bleeds (a reserved y-axis gutter would push the line off the
+          edges). Non-interactive so they never block chart hover. */}
+      {hasBody && priceLabels.length > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10">
+          {priceLabels.map((p) => (
+            <span
+              key={p.value + p.top}
+              className="absolute left-1.5 text-[9px] font-mono text-muted-foreground/70"
+              style={{ top: p.top }}
+            >
+              {p.value}
+            </span>
+          ))}
+        </div>
+      )}
+
       {hasBody ? (
       <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={data} margin={{ top: 40, right: 0, bottom: 0, left: 0 }}>
           <defs>
-            <linearGradient id="stockGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={strokeColor} stopOpacity={0.2} />
-              <stop offset="95%" stopColor={strokeColor} stopOpacity={0} />
+            {/* Off-hours dot texture — matches the dashboard chart's grid, so
+                pre/post-market read as a subtle pattern, not a gray slab. */}
+            <pattern
+              id="offHoursDots"
+              width={7}
+              height={7}
+              patternUnits="userSpaceOnUse"
+            >
+              <circle cx={1} cy={1} r={1} fill={AXIS_TICK} fillOpacity={0.35} />
+            </pattern>
+            {/* Line color split at the graph's starting price. */}
+            <linearGradient id="lineSplit" x1="0" y1="0" x2="0" y2="1">
+              <stop offset={0} stopColor={LINE_GREEN} />
+              <stop offset={baselineOffset} stopColor={LINE_GREEN} />
+              <stop offset={baselineOffset} stopColor={LINE_RED} />
+              <stop offset={1} stopColor={LINE_RED} />
+            </linearGradient>
+            {/* Area fill split — filled between the line and the baseline,
+                green above / red below, fading toward the baseline. */}
+            <linearGradient id="fillSplit" x1="0" y1="0" x2="0" y2="1">
+              <stop offset={0} stopColor={LINE_GREEN} stopOpacity={0.18} />
+              <stop offset={baselineOffset} stopColor={LINE_GREEN} stopOpacity={0.02} />
+              <stop offset={baselineOffset} stopColor={LINE_RED} stopOpacity={0.02} />
+              <stop offset={1} stopColor={LINE_RED} stopOpacity={0.18} />
             </linearGradient>
           </defs>
 
@@ -376,18 +448,17 @@ export function StockPriceChart({
             labelStyle={{ color: 'var(--muted-foreground)' }}
           />
 
-          {/* Off-hours bands (1D only): pre-market + after-hours, a faint
-              lightening so the regular session stands out even with no data in
-              them. Must be DIRECT children (not a fragment) AND declared after
-              the axes, or recharts can't resolve their coordinates. */}
+          {/* Off-hours bands (1D only): pre-market + after-hours, filled with a
+              faint DOT TEXTURE (not a gray slab) so they read as "no session
+              here" without glaring. Must be DIRECT children (not a fragment)
+              AND after the axes, or recharts can't resolve their coordinates. */}
           {isIntraday && intradayGeo && yDomain ? (
             <ReferenceArea
               x1={intradayGeo.domain[0]}
               x2={intradayGeo.rthStart}
               y1={yDomain[0]}
               y2={yDomain[1]}
-              fill={OFF_HOURS_FILL}
-              fillOpacity={0.12}
+              fill="url(#offHoursDots)"
               stroke="none"
               ifOverflow="visible"
             />
@@ -398,8 +469,7 @@ export function StockPriceChart({
               x2={intradayGeo.domain[1]}
               y1={yDomain[0]}
               y2={yDomain[1]}
-              fill={OFF_HOURS_FILL}
-              fillOpacity={0.12}
+              fill="url(#offHoursDots)"
               stroke="none"
               ifOverflow="visible"
             />
@@ -432,33 +502,44 @@ export function StockPriceChart({
             />
           ))}
 
-          {/* Reference lines for trade entry/target/stop */}
+          {/* Entry / target / stop — quiet faint lines; a small colored dot at
+              the left edge (green target / red stop / neutral entry) carries the
+              meaning without the loud full-width labels. */}
           {referenceLines?.map((line) => (
             <ReferenceLine
               key={line.label}
               y={line.price}
-              stroke={line.color}
-              strokeDasharray={line.dashed !== false ? '4 4' : undefined}
+              stroke={REF_LINE}
+              strokeOpacity={0.4}
+              strokeDasharray="2 4"
               strokeWidth={1}
-              label={{
-                value: `${line.label} $${line.price.toFixed(2)}`,
-                position: 'right',
-                fontSize: 9,
-                fill: line.color,
-              }}
+              ifOverflow="hidden"
+            />
+          ))}
+          {referenceLines?.map((line) => (
+            <ReferenceDot
+              key={`${line.label}-dot`}
+              x={leftX}
+              y={line.price}
+              r={2.5}
+              fill={line.color}
+              stroke="none"
+              ifOverflow="hidden"
             />
           ))}
 
           <Area
             // Intraday: linear so real tick-by-tick movement shows. Daily:
-            // monotone reads cleaner over months.
+            // monotone reads cleaner over months. Filled to the starting-price
+            // baseline and colored green above / red below it.
             type={isIntraday ? 'linear' : 'monotone'}
             dataKey="close"
-            stroke={strokeColor}
+            stroke="url(#lineSplit)"
             strokeWidth={1.5}
-            fill="url(#stockGrad)"
+            fill="url(#fillSplit)"
+            baseValue={baseline}
             dot={false}
-            activeDot={{ r: 3, fill: strokeColor }}
+            activeDot={{ r: 3, fill: endColor }}
             isAnimationActive={!isIntraday}
           />
         </AreaChart>
