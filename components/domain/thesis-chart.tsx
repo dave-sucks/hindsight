@@ -9,8 +9,8 @@ import type { StockCandle } from '@/lib/actions/finnhub.actions';
 // chart renders to SVG and our theme vars are oklch(), which SVG stroke/fill
 // can't consume — same constraint StockPriceChart documents.
 const ENTRY = '#a1a1aa'; // zinc-400
-const TARGET = '#22c55e'; // green-500
-const STOP = '#ef4444'; // red-500
+const TARGET = '#51b857'; // sRGB of --positive (app green)
+const STOP = '#ff6d87'; // sRGB of --negative (app red)
 const WATCH = '#a1a1aa'; // zinc-400 (muted "started watching" mark)
 const SOLD = '#e4e4e7'; // zinc-200 (brighter — the "closed the book" exit mark)
 

@@ -86,10 +86,12 @@ const RANGE_DAYS: Record<DailyRange, number> = {
 // theme vars).
 const AXIS_TICK = '#71717a';
 // The line is colored green ABOVE and red BELOW the graph's starting price
-// (the first visible point), switching mid-line — same convention as most
-// finance charts. Applied to every range.
-const LINE_GREEN = '#22c55e';
-const LINE_RED = '#ef4444';
+// (the first visible point), switching mid-line. These are the sRGB hex of the
+// app's --positive / --negative tokens (oklch(69.92% .166 144.58) /
+// oklch(72.01% .178 11.8)) — SVG can't consume oklch, so we hardcode the exact
+// equivalents to match the P&L colors used everywhere else. Keep in sync.
+const LINE_GREEN = '#51b857';
+const LINE_RED = '#ff6d87';
 // Faint uniform color for the entry/target/stop reference lines — the small
 // colored dot at the left edge carries the meaning, the line stays quiet.
 const REF_LINE = '#71717a';
