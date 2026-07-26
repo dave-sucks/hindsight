@@ -24,7 +24,6 @@ import { createClient } from '@/lib/supabase/server';
 import { getAccountId } from '@/lib/auth/account';
 import { holdDurationFromHorizon } from '@/lib/agent/horizon-policy';
 import {
-  buildThesisSheetState,
   thesisSheetStateSelect,
 } from '@/lib/agent/thesis-sheet-state';
 import {
@@ -402,6 +401,7 @@ export default async function TradeDetailPage({
                   current={livePrice ?? currentPrice}
                   addedAt={trade.thesis?.createdAt ? new Date(trade.thesis.createdAt).toISOString() : null}
                   enteredAt={new Date(position.openedAt).toISOString()}
+                  soldAt={position.closedAt ? new Date(position.closedAt).toISOString() : null}
                   variant="full"
                   frameless
                 />
@@ -427,7 +427,6 @@ export default async function TradeDetailPage({
                   createdAt: t.createdAt?.toISOString?.() ?? null,
                   analystName: null,
                   runId: t.researchRunId ?? null,
-                  sheetState: buildThesisSheetState(t),
                   position: {
                     id: trade.id,
                     status: trade.status,

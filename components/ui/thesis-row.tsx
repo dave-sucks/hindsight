@@ -10,7 +10,6 @@ import { Favicon } from "@/components/intelligence/signal-feed";
 import { getTradeStatusDisplay } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
-import type { TriggersResponse } from "@/components/agent/sheets/ThesisTriggersSection";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
 import { ThesisChart } from "@/components/domain/thesis-chart";
@@ -80,16 +79,6 @@ export interface ThesisRowData {
    * `getThesisStatusDisplay` falls back gracefully on unknown values.
    */
   status?: string;
-  /**
-   * Pre-fetched durable-state snapshot to seed ThesisSheet on open (P2-19).
-   * Shape matches the `/api/theses/[id]/triggers` response so the sheet
-   * can render status / belief / scoring / sources / research synthesis
-   * synchronously instead of skeletons-then-fetch. The sheet still fires
-   * /triggers in the background to pick up live trigger fires + position
-   * changes. Omit on rows that don't have the data forwarded yet — the
-   * sheet falls back to its async fetch path.
-   */
-  sheetState?: TriggersResponse;
   position?: {
     id: string;
     status: string;
@@ -416,14 +405,14 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         }
         company_name={t.companyName}
         status={
-          t.sheetState?.status === "HOLDING" ||
-          t.sheetState?.status === "WATCHING" ||
-          t.sheetState?.status === "PROMOTED" ||
-          t.sheetState?.status === "RETIRED" ||
+          t.status === "HOLDING" ||
+          t.status === "WATCHING" ||
+          t.status === "PROMOTED" ||
+          t.status === "RETIRED" ||
           // P1-24: PASSED reaches the sheet so its isPass keys on status, not
           // the direction prop (a pass now stores direction=null).
-          t.sheetState?.status === "PASSED"
-            ? t.sheetState.status
+          t.status === "PASSED"
+            ? t.status
             : undefined
         }
       />
