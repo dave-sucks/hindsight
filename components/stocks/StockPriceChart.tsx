@@ -293,10 +293,13 @@ export function StockPriceChart({
   const endColor = lastClose >= baseline ? LINE_GREEN : LINE_RED;
 
   // Left edge x-value for the reference-line dots (numeric epoch for 1D, the
-  // first candle date for daily/Trade).
-  const leftX = isIntraday
-    ? intradayGeo?.domain[0] ?? (data[0] as { x?: number }).x
-    : data[0].date;
+  // first candle date for daily/Trade). Undefined when there's no data yet —
+  // e.g. the 1D tab before intraday bars load — so we never deref data[0].
+  const leftX = !hasBody
+    ? undefined
+    : isIntraday
+      ? intradayGeo?.domain[0]
+      : data[0].date;
 
   // Floating price labels (overlaid, so the plot still full-bleeds). Positioned
   // from the buffered domain over the plot band (top margin 40, x-axis ~28).
