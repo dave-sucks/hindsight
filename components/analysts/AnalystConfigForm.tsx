@@ -1017,7 +1017,11 @@ function RunDaysControl({
   };
 
   return (
-    <DropdownMenu>
+    // modal={false}: a modal menu locks scroll + compensates for the
+    // scrollbar on open, which shifts the whole config sheet sideways
+    // (the Select-based Direction/Hold-Duration dropdowns are non-modal and
+    // don't). Non-modal matches them and keeps the panel from reflowing.
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger
         render={
           <Button variant="ghost" size="sm">
