@@ -748,10 +748,19 @@ function SettingsTab({
                 label="Daily run days"
                 tooltip="ISO weekdays the 8 AM ET morning run executes for this analyst. Fewer days = lower cost. Intraday triggers are unaffected."
               />
-              <RunDaysControl
-                value={values.runDaysOfWeek}
-                onChange={(next) => onChange("runDaysOfWeek", next)}
-              />
+              {/* Wrapper is load-bearing: base-ui DropdownMenu injects
+                  data-base-ui-focus-guard <span>s as in-flow SIBLINGS of the
+                  trigger while open. Without this div those guards become
+                  direct children of the grid, shifting the nth-child(even)
+                  alignment count and reflowing every row (the whole sheet
+                  "jumps right" on open). The div keeps the trigger + its
+                  guards as ONE stable grid cell. */}
+              <div className="justify-self-end">
+                <RunDaysControl
+                  value={values.runDaysOfWeek}
+                  onChange={(next) => onChange("runDaysOfWeek", next)}
+                />
+              </div>
             </>
           )}
 
