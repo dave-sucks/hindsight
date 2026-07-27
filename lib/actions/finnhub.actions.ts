@@ -319,7 +319,13 @@ export async function getStockCandles(
 
     const end = new Date().toISOString().slice(0, 10);
     const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Day&start=${start}&end=${end}&limit=1000&feed=iex`;
+    // adjustment=split back-adjusts historical bars for stock splits, matching
+    // the price line every other source shows (Finnhub, Perplexity, Yahoo).
+    // Without it Alpaca defaults to `raw`, so a split renders as a phantom
+    // plateau→cliff→plateau (e.g. a 3:1 split shows pre-split bars ~3x higher).
+    // `split` (not `all`) keeps dividend-unadjusted prices so non-splitting
+    // dividend payers stay pixel-identical to those same sources.
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=iex`;
 
     const res = await fetch(url, {
       headers: {
@@ -379,7 +385,9 @@ export async function getStockCandlesBatch(
 
     const end = new Date().toISOString().slice(0, 10);
     const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(unique.join(','))}&timeframe=1Day&start=${start}&end=${end}&limit=1000&feed=iex`;
+    // adjustment=split — see getStockCandles: back-adjust for splits so the
+    // chart matches Finnhub/Perplexity and a split doesn't show as a cliff.
+    const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(unique.join(','))}&timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=iex`;
 
     const res = await fetch(url, {
       headers: {

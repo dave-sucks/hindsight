@@ -534,10 +534,12 @@ export function StockPriceChart({
           ))}
 
           <Area
-            // Intraday: linear so real tick-by-tick movement shows. Daily:
-            // monotone reads cleaner over months. Filled to the starting-price
+            // Linear on every range — straight segments between real closes,
+            // matching Perplexity/finance-chart convention. (Monotone splined
+            // daily closes into smooth "rolling hills" that read nothing like
+            // the actual day-to-day movement.) Filled to the starting-price
             // baseline and colored green above / red below it.
-            type={isIntraday ? 'linear' : 'monotone'}
+            type="linear"
             dataKey="close"
             stroke="url(#lineSplit)"
             strokeWidth={1.5}
