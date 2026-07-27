@@ -695,41 +695,52 @@ function SettingsTab({
             label="Direction"
             tooltip="Bias the agent can take: Long only, Short only, or Both."
           />
-          <Select
-            value={values.directionBias}
-            onValueChange={(val) =>
-              onChange("directionBias", val as FormValues["directionBias"])
-            }
-          >
-            <SelectTrigger size="sm" variant="ghost">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="LONG">Long</SelectItem>
-              <SelectItem value="SHORT">Short</SelectItem>
-              <SelectItem value="BOTH">Both</SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Wrapper is load-bearing: base-ui Select.Root renders the trigger
+              PLUS a visually-hidden form <input> as a SIBLING (see
+              @base-ui/react SelectRoot: `children: [children, input]`). Without
+              this div those are TWO direct grid children, throwing off the
+              parent's `nth-child(even)` right-align count and shoving the NEXT
+              row's label (Hold Duration) to the right. Keep the div. */}
+          <div className="justify-self-end">
+            <Select
+              value={values.directionBias}
+              onValueChange={(val) =>
+                onChange("directionBias", val as FormValues["directionBias"])
+              }
+            >
+              <SelectTrigger size="sm" variant="ghost">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="LONG">Long</SelectItem>
+                <SelectItem value="SHORT">Short</SelectItem>
+                <SelectItem value="BOTH">Both</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           <RowLabel
             label="Hold Duration"
             tooltip="Day (intraday), Swing (days–weeks), Position (weeks–months)."
           />
-          <Select
-            value={values.holdDurations[0] ?? "SWING"}
-            onValueChange={(val) => {
-              if (typeof val === "string") onChange("holdDurations", [val]);
-            }}
-          >
-            <SelectTrigger size="sm" variant="ghost">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="DAY">Day</SelectItem>
-              <SelectItem value="SWING">Swing</SelectItem>
-              <SelectItem value="POSITION">Position</SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Wrapped for the same base-ui hidden-input reason as Direction above. */}
+          <div className="justify-self-end">
+            <Select
+              value={values.holdDurations[0] ?? "SWING"}
+              onValueChange={(val) => {
+                if (typeof val === "string") onChange("holdDurations", [val]);
+              }}
+            >
+              <SelectTrigger size="sm" variant="ghost">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="DAY">Day</SelectItem>
+                <SelectItem value="SWING">Swing</SelectItem>
+                <SelectItem value="POSITION">Position</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           {values.runDaysOfWeek !== undefined && (
             <>
