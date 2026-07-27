@@ -15,6 +15,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
+import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { getAccount, getOrder, getLatestPrice, closePositionPartial, placeMarketOrder } from "@/lib/alpaca";
@@ -108,7 +109,8 @@ const schema = z.object({
     .string()
     .min(20)
     .describe(
-      "Required: 1–3 sentences explaining your decision. Written to the audit log visible to the user. Be specific — cite the price, catalyst, and expected outcome.",
+      "Required: 1–3 sentences explaining your decision. Written to the audit log visible to the user, and surfaced as Order.rationale on the approval proposal for add / trim / move-stop actions. Be specific — cite the price, catalyst, and expected outcome." +
+        PROPOSAL_RATIONALE_VOICE,
     ),
 
   // partial_close
