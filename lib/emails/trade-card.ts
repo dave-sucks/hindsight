@@ -319,7 +319,7 @@ export function renderTradeCard(d: TradeCardData): string {
   const reasoningRow = hasReasoning
     ? `<tr><td colspan="2" style="padding:12px 0 8px;font-size:13px;">
         <p style="margin:0 0 6px;color:${C.textMuted};">Reasoning</p>
-        <p style="margin:0;color:${C.textPrimary};line-height:1.55;">${escapeHtml(truncate(d.reasoning!, 480))}</p>
+        <p style="margin:0;color:${C.textPrimary};line-height:1.55;">${escapeHtml(truncate(d.reasoning!, 700))}</p>
       </td></tr>`
     : "";
 

@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
 import { prisma } from "@/lib/prisma";
 import { getAccount } from "@/lib/alpaca";
 
@@ -21,7 +22,13 @@ export const closePosition = defineTool({
       .enum(["TARGET", "STOP", "MANUAL"])
       .default("MANUAL")
       .describe("TARGET if hit price target, STOP if risk management, MANUAL for portfolio rebalancing"),
-    notes: z.string().optional().describe("Optional notes explaining the close decision"),
+    notes: z
+      .string()
+      .optional()
+      .describe(
+        "Notes explaining the close decision. Surfaced as Order.rationale on the approval proposal, so the principal reads this when deciding whether to approve the sell — always supply it." +
+          PROPOSAL_RATIONALE_VOICE,
+      ),
   }),
   ui: "tool-ui" as const,
   groupId: "Executing",
