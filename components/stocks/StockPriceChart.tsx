@@ -56,6 +56,14 @@ type Props = {
   intradayCandles?: StockCandle[];
   /** True while the parent is (re)fetching the intraday series. */
   intradayLoading?: boolean;
+  /**
+   * Hourly bars over the last ~month — when present, the 1W and 1M tabs render
+   * these (dense, Perplexity-like) instead of slicing ~3–22 daily closes. Each
+   * bar's `date` is a full ISO timestamp; the categorical axis collapses the
+   * overnight/weekend gaps. Undefined until the parent lazily fetches it, so
+   * 1W/1M fall back to the daily slice in the meantime.
+   */
+  hourlyCandles?: StockCandle[];
   /** Fired on every pill click so the parent can start/stop intraday polling. */
   onRangeChange?: (range: Range) => void;
   /**
@@ -98,9 +106,22 @@ const REF_LINE = '#71717a';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+// Tolerates both a plain YYYY-MM-DD (daily bars) and a full ISO timestamp
+// (hourly bars, whose `date` carries the hour) — both render as a date label.
 function formatDateLabel(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
+  const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Hourly tooltip: date + time-of-day in ET (the bar's `date` is a UTC ISO).
+function formatDateTimeLabel(v: string | number): string {
+  return new Date(v).toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 // Shift a YYYY-MM-DD by N calendar days (used to pad the Trade window).
@@ -182,12 +203,17 @@ export function StockPriceChart({
   showIntraday = false,
   intradayCandles,
   intradayLoading = false,
+  hourlyCandles,
   onRangeChange,
   tradeSpan,
   children,
 }: Props) {
   const [range, setRange] = useState<Range>(defaultRange);
   const isIntraday = range === '1D';
+  // 1W / 1M render the hourly series when the parent has fetched it; until then
+  // they fall back to the daily slice (so there's no empty beat on selection).
+  const isHourly =
+    (range === '1W' || range === '1M') && !!hourlyCandles && hourlyCandles.length >= 2;
 
   const ranges = useMemo<Range[]>(
     () => [
@@ -206,6 +232,15 @@ export function StockPriceChart({
         x: new Date(c.date).getTime(),
       }));
     }
+    if (isHourly && hourlyCandles) {
+      // 1M = the full ~month of hourly bars; 1W = its last 7 calendar days.
+      // Bars keep their ISO-timestamp `date` and flow through the categorical
+      // axis, which collapses the overnight/weekend gaps (matching Perplexity).
+      if (range === '1M') return hourlyCandles;
+      const lastTs = new Date(hourlyCandles[hourlyCandles.length - 1].date).getTime();
+      const cutoff = lastTs - 7 * 24 * 60 * 60 * 1000;
+      return hourlyCandles.filter((c) => new Date(c.date).getTime() >= cutoff);
+    }
     if (range === 'Trade') {
       // The position's own lifespan: watch → sold (or the latest candle while
       // held), padded a week each side. Candle `date` + span bounds are both
@@ -216,7 +251,7 @@ export function StockPriceChart({
       return candles.filter((c) => c.date >= start && c.date <= end);
     }
     return candles.slice(-RANGE_DAYS[range as DailyRange]);
-  }, [candles, intradayCandles, range, isIntraday, tradeSpan]);
+  }, [candles, intradayCandles, hourlyCandles, range, isIntraday, isHourly, tradeSpan]);
 
   // 1D full-day geometry (domain + ticks + regular-session bounds). Null else.
   const intradayGeo = useMemo(() => {
@@ -448,7 +483,11 @@ export function StockPriceChart({
               'Close',
             ]}
             labelFormatter={(l: string | number) =>
-              isIntraday ? formatTimeLabel(l) : formatDateLabel(l as string)
+              isIntraday
+                ? formatTimeLabel(l)
+                : isHourly
+                  ? formatDateTimeLabel(l)
+                  : formatDateLabel(l as string)
             }
             labelStyle={{ color: 'var(--muted-foreground)' }}
           />
