@@ -60,6 +60,7 @@ export function AnalystConfigSheet({
     maxPositionSize: config.maxPositionSize,
     tradingEnvironment: config.tradingEnvironment,
     realMaxPosition: config.realMaxPosition,
+    runDaysOfWeek: config.runDaysOfWeek,
     emailAlerts: config.emailAlerts,
     intelligencePolicy: (config.intelligencePolicy as FormValues["intelligencePolicy"]) ?? null,
     sectors: config.sectors,

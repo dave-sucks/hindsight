@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Info, Search, ArrowRight, Plus, X } from "lucide-react";
+import { Info, Search, ArrowRight, Plus, X, ChevronDownIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -23,6 +23,12 @@ import {
   useComboboxAnchor,
 } from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { WatchlistRow, AddStockRow } from "@/components/ui/trade-row";
 import { StockSearch } from "@/components/stocks/StockSearch";
 import {
@@ -106,6 +112,10 @@ export type FormValues = {
   // / demotion runs through the Promote dialog, not this form.
   tradingEnvironment?: "PAPER" | "LIVE";
   realMaxPosition?: number;
+
+  // Schedule — ISO weekdays (1=Mon..5=Fri) the daily morning run executes on.
+  // Empty = every weekday (the cron reads empty defensively as "all weekdays").
+  runDaysOfWeek?: number[];
 
   // Notifications — owner email opt-out, live across every email path.
   emailAlerts?: boolean;
@@ -685,41 +695,74 @@ function SettingsTab({
             label="Direction"
             tooltip="Bias the agent can take: Long only, Short only, or Both."
           />
-          <Select
-            value={values.directionBias}
-            onValueChange={(val) =>
-              onChange("directionBias", val as FormValues["directionBias"])
-            }
-          >
-            <SelectTrigger size="sm" variant="ghost">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="LONG">Long</SelectItem>
-              <SelectItem value="SHORT">Short</SelectItem>
-              <SelectItem value="BOTH">Both</SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Wrapper is load-bearing: base-ui Select.Root renders the trigger
+              PLUS a visually-hidden form <input> as a SIBLING (see
+              @base-ui/react SelectRoot: `children: [children, input]`). Without
+              this div those are TWO direct grid children, throwing off the
+              parent's `nth-child(even)` right-align count and shoving the NEXT
+              row's label (Hold Duration) to the right. Keep the div. */}
+          <div className="justify-self-end">
+            <Select
+              value={values.directionBias}
+              onValueChange={(val) =>
+                onChange("directionBias", val as FormValues["directionBias"])
+              }
+            >
+              <SelectTrigger size="sm" variant="ghost">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="LONG">Long</SelectItem>
+                <SelectItem value="SHORT">Short</SelectItem>
+                <SelectItem value="BOTH">Both</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           <RowLabel
             label="Hold Duration"
             tooltip="Day (intraday), Swing (days–weeks), Position (weeks–months)."
           />
-          <Select
-            value={values.holdDurations[0] ?? "SWING"}
-            onValueChange={(val) => {
-              if (typeof val === "string") onChange("holdDurations", [val]);
-            }}
-          >
-            <SelectTrigger size="sm" variant="ghost">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="DAY">Day</SelectItem>
-              <SelectItem value="SWING">Swing</SelectItem>
-              <SelectItem value="POSITION">Position</SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Wrapped for the same base-ui hidden-input reason as Direction above. */}
+          <div className="justify-self-end">
+            <Select
+              value={values.holdDurations[0] ?? "SWING"}
+              onValueChange={(val) => {
+                if (typeof val === "string") onChange("holdDurations", [val]);
+              }}
+            >
+              <SelectTrigger size="sm" variant="ghost">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="DAY">Day</SelectItem>
+                <SelectItem value="SWING">Swing</SelectItem>
+                <SelectItem value="POSITION">Position</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {values.runDaysOfWeek !== undefined && (
+            <>
+              <RowLabel
+                label="Daily run days"
+                tooltip="ISO weekdays the 8 AM ET morning run executes for this analyst. Fewer days = lower cost. Intraday triggers are unaffected."
+              />
+              {/* Wrapper is load-bearing: base-ui DropdownMenu injects
+                  data-base-ui-focus-guard <span>s as in-flow SIBLINGS of the
+                  trigger while open. Without this div those guards become
+                  direct children of the grid, shifting the nth-child(even)
+                  alignment count and reflowing every row (the whole sheet
+                  "jumps right" on open). The div keeps the trigger + its
+                  guards as ONE stable grid cell. */}
+              <div className="justify-self-end">
+                <RunDaysControl
+                  value={values.runDaysOfWeek}
+                  onChange={(next) => onChange("runDaysOfWeek", next)}
+                />
+              </div>
+            </>
+          )}
 
           <RowLabel
             label="Min Confidence"
@@ -937,6 +980,88 @@ function SettingsTab({
         </Section>
       )}
     </div>
+  );
+}
+
+// ─── Run days control ────────────────────────────────────────────────────────
+// Dropdown multi-select (Mon–Fri) driving AgentConfig.runDaysOfWeek (ISO
+// weekdays 1=Mon..5=Fri). The morning-research cron gates on this array; the
+// 5-min trigger cron ignores it, so intraday reactivity fires every day.
+//
+// Visually a peer of the Direction / Hold-Duration trading-rule dropdowns —
+// a ghost-button trigger + chevron summarizing the current selection, with a
+// checkbox menu (check on the RIGHT via DropdownMenuCheckboxItem, stays open
+// on toggle so multiple days can be picked in one pass).
+//
+// An empty stored value means "all weekdays" (the cron's defensive default),
+// so a null/empty/unset value renders as all five selected. To keep the stored
+// value unambiguous, the control refuses to deselect the final remaining day —
+// there's always at least one run day.
+const RUN_DAYS: ReadonlyArray<{ iso: number; label: string }> = [
+  { iso: 1, label: "Mon" },
+  { iso: 2, label: "Tue" },
+  { iso: 3, label: "Wed" },
+  { iso: 4, label: "Thu" },
+  { iso: 5, label: "Fri" },
+];
+
+function RunDaysControl({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (next: number[]) => void;
+}) {
+  // null/empty = all weekdays (cron semantics) → treat as all five selected.
+  const selected =
+    !value || value.length === 0 ? RUN_DAYS.map((d) => d.iso) : value;
+
+  const summary =
+    selected.length === RUN_DAYS.length
+      ? "Every weekday"
+      : RUN_DAYS.filter((d) => selected.includes(d.iso))
+          .map((d) => d.label)
+          .join(", ");
+
+  const toggle = (iso: number, checked: boolean) => {
+    const set = new Set(selected);
+    if (checked) {
+      set.add(iso);
+    } else {
+      // Never allow zero days — an empty array would be read as "all
+      // weekdays", the opposite of what deselecting the last day looks like.
+      if (set.size <= 1) return;
+      set.delete(iso);
+    }
+    onChange([...set].sort((a, b) => a - b));
+  };
+
+  return (
+    // modal={false}: a modal menu locks scroll + compensates for the
+    // scrollbar on open, which shifts the whole config sheet sideways
+    // (the Select-based Direction/Hold-Duration dropdowns are non-modal and
+    // don't). Non-modal matches them and keeps the panel from reflowing.
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="sm">
+            {summary}
+            <ChevronDownIcon className="text-muted-foreground" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="end">
+        {RUN_DAYS.map((day) => (
+          <DropdownMenuCheckboxItem
+            key={day.iso}
+            checked={selected.includes(day.iso)}
+            onCheckedChange={(checked) => toggle(day.iso, checked === true)}
+          >
+            {day.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

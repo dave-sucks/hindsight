@@ -8,6 +8,7 @@ import { MODES } from "@/lib/agent/modes";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
+import { isAnalystScheduledToday, etWeekdayName } from "@/lib/market-hours";
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
 
@@ -42,11 +43,41 @@ export const morningResearch = inngest.createFunction(
       return { ran: 0, reason: "no-enabled-configs" };
     }
 
+    // ── Per-analyst run-days schedule gate (daily-run cost control) ──────────
+    //
+    // Each analyst's `runDaysOfWeek` (ISO weekdays 1=Mon..5=Fri) decides which
+    // days its morning run executes. Skip any analyst not scheduled for today's
+    // Eastern-Time weekday. A null/empty array means "all weekdays" (defensive:
+    // legacy rows keep running). Computed via the ET helper, NOT server-local
+    // UTC day-of-week. The 5-min trigger cron is untouched, so intraday
+    // reactivity still fires every day on off days.
+    //
+    // An explicit manual run for one analyst (targetConfigId set — the "Run"
+    // button / urgent-signal path) bypasses this gate: the user is asking for
+    // that analyst NOW, regardless of the day.
+    const scheduledConfigs = targetConfigId
+      ? configs
+      : configs.filter((config) => {
+          const scheduled = isAnalystScheduledToday(config.runDaysOfWeek);
+          if (!scheduled) {
+            console.log(
+              `[morning-research] skipping ${config.name} (${config.id}): ` +
+                `not scheduled for ${etWeekdayName()} ` +
+                `(runDaysOfWeek=[${(config.runDaysOfWeek ?? []).join(",")}])`,
+            );
+          }
+          return scheduled;
+        });
+
+    if (scheduledConfigs.length === 0) {
+      return { ran: 0, reason: "none-scheduled-today" };
+    }
+
     let totalTradesPlaced = 0;
 
     // ── Step 2: Per-analyst agent run ──────────────────────────────────────
 
-    for (const config of configs) {
+    for (const config of scheduledConfigs) {
       const result = await step.run(`research-${config.id}`, async () => {
         const t0 = Date.now();
 
@@ -953,7 +984,7 @@ export const morningResearch = inngest.createFunction(
           status: "RUNNING",
           source: "AGENT",
           startedAt: { lt: staleThreshold },
-          agentConfigId: { in: configs.map((c) => c.id) },
+          agentConfigId: { in: scheduledConfigs.map((c) => c.id) },
         },
         data: {
           status: "FAILED",
@@ -965,6 +996,6 @@ export const morningResearch = inngest.createFunction(
       }
     });
 
-    return { ran: configs.length, totalTradesPlaced };
+    return { ran: scheduledConfigs.length, totalTradesPlaced };
   }
 );
