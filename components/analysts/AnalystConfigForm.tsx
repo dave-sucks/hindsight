@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Info, Search, ArrowRight, Plus, X } from "lucide-react";
+import { Info, Search, ArrowRight, Plus, X, ChevronDownIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,12 @@ import {
   useComboboxAnchor,
 } from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { WatchlistRow, AddStockRow } from "@/components/ui/trade-row";
 import { StockSearch } from "@/components/stocks/StockSearch";
 import {
@@ -726,6 +731,19 @@ function SettingsTab({
             </SelectContent>
           </Select>
 
+          {values.runDaysOfWeek !== undefined && (
+            <>
+              <RowLabel
+                label="Daily run days"
+                tooltip="ISO weekdays the 8 AM ET morning run executes for this analyst. Fewer days = lower cost. Intraday triggers are unaffected."
+              />
+              <RunDaysControl
+                value={values.runDaysOfWeek}
+                onChange={(next) => onChange("runDaysOfWeek", next)}
+              />
+            </>
+          )}
+
           <RowLabel
             label="Min Confidence"
             tooltip="Lowest thesis confidence (0–100) that can place a trade. Enforced."
@@ -926,24 +944,6 @@ function SettingsTab({
         />
       </Section>
 
-      {/* Schedule ──────────────────────────────────────────────── */}
-      {values.runDaysOfWeek !== undefined && (
-        <Section
-          label="Schedule"
-          tooltip="The morning run only executes on the selected days. Triggers still fire intraday every day, so held positions stay monitored on off days."
-        >
-          <FieldGroup
-            label="Daily run days"
-            tooltip="ISO weekdays the 8 AM ET morning run executes for this analyst. Fewer days = lower cost. Intraday triggers are unaffected."
-          >
-            <RunDaysControl
-              value={values.runDaysOfWeek}
-              onChange={(next) => onChange("runDaysOfWeek", next)}
-            />
-          </FieldGroup>
-        </Section>
-      )}
-
       {/* Notifications ─────────────────────────────────────────── */}
       {typeof values.emailAlerts === "boolean" && (
         <Section label="Notifications">
@@ -964,13 +964,18 @@ function SettingsTab({
 }
 
 // ─── Run days control ────────────────────────────────────────────────────────
-// Five weekday checkboxes (Mon–Fri) driving AgentConfig.runDaysOfWeek (ISO
+// Dropdown multi-select (Mon–Fri) driving AgentConfig.runDaysOfWeek (ISO
 // weekdays 1=Mon..5=Fri). The morning-research cron gates on this array; the
 // 5-min trigger cron ignores it, so intraday reactivity fires every day.
 //
+// Visually a peer of the Direction / Hold-Duration trading-rule dropdowns —
+// a ghost-button trigger + chevron summarizing the current selection, with a
+// checkbox menu (check on the RIGHT via DropdownMenuCheckboxItem, stays open
+// on toggle so multiple days can be picked in one pass).
+//
 // An empty stored value means "all weekdays" (the cron's defensive default),
-// so a null/empty/unset value renders as all five checked. To keep the stored
-// value unambiguous, the control refuses to uncheck the final remaining day —
+// so a null/empty/unset value renders as all five selected. To keep the stored
+// value unambiguous, the control refuses to deselect the final remaining day —
 // there's always at least one run day.
 const RUN_DAYS: ReadonlyArray<{ iso: number; label: string }> = [
   { iso: 1, label: "Mon" },
@@ -987,9 +992,16 @@ function RunDaysControl({
   value: number[];
   onChange: (next: number[]) => void;
 }) {
-  // null/empty = all weekdays (cron semantics) → show all five checked.
+  // null/empty = all weekdays (cron semantics) → treat as all five selected.
   const selected =
     !value || value.length === 0 ? RUN_DAYS.map((d) => d.iso) : value;
+
+  const summary =
+    selected.length === RUN_DAYS.length
+      ? "Every weekday"
+      : RUN_DAYS.filter((d) => selected.includes(d.iso))
+          .map((d) => d.label)
+          .join(", ");
 
   const toggle = (iso: number, checked: boolean) => {
     const set = new Set(selected);
@@ -997,7 +1009,7 @@ function RunDaysControl({
       set.add(iso);
     } else {
       // Never allow zero days — an empty array would be read as "all
-      // weekdays", the opposite of what unchecking the last day looks like.
+      // weekdays", the opposite of what deselecting the last day looks like.
       if (set.size <= 1) return;
       set.delete(iso);
     }
@@ -1005,23 +1017,27 @@ function RunDaysControl({
   };
 
   return (
-    <div className="flex flex-wrap gap-3">
-      {RUN_DAYS.map((day) => {
-        const isChecked = selected.includes(day.iso);
-        return (
-          <label
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="sm">
+            {summary}
+            <ChevronDownIcon className="text-muted-foreground" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="end">
+        {RUN_DAYS.map((day) => (
+          <DropdownMenuCheckboxItem
             key={day.iso}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer"
+            checked={selected.includes(day.iso)}
+            onCheckedChange={(checked) => toggle(day.iso, checked === true)}
           >
-            <Checkbox
-              checked={isChecked}
-              onCheckedChange={(checked) => toggle(day.iso, checked === true)}
-            />
             {day.label}
-          </label>
-        );
-      })}
-    </div>
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
