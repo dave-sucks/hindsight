@@ -55,6 +55,12 @@ export interface AnalystConfig {
   feeds: string[];
   dailyLossLimit: number;
   scheduleTime: string;
+  /**
+   * Per-analyst daily-run schedule. ISO weekdays (1=Mon..5=Fri) the morning
+   * run executes on; [] / all-of-Mon–Fri = every weekday. The 5-min trigger
+   * cron is independent — intraday reactivity fires every day regardless.
+   */
+  runDaysOfWeek: number[];
   /** Owner email opt-out for this analyst (new trades, fills, approval requests). */
   emailAlerts: boolean;
   createdAt: Date;
@@ -518,6 +524,7 @@ export async function getAnalystDetail(
     feeds: (config.feeds as string[] | undefined) ?? [],
     dailyLossLimit: config.dailyLossLimit,
     scheduleTime: config.scheduleTime,
+    runDaysOfWeek: (config.runDaysOfWeek as number[] | undefined) ?? [1, 2, 3, 4, 5],
     emailAlerts: config.emailAlerts,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
@@ -1118,6 +1125,10 @@ type UpdatableField =
   | "marketCapMax"
   // ── Feeds (firm-aggregate subscription dimension) ────────
   | "feeds"
+  // ── Schedule ─────────────────────────────────────────────
+  // Per-analyst daily-run days (ISO weekdays 1=Mon..5=Fri). Read by the
+  // morning-research cron gate (lib/inngest/functions/morning-research.ts).
+  | "runDaysOfWeek"
   // ── Notifications ────────────────────────────────────────
   // Read at runtime by every email path (daily-run-digest, proposal-pending,
   // place-trade open-email, closeTrade close-email, maybe-await-approval).
@@ -1172,6 +1183,18 @@ export async function updateAnalystField(
     storedValue = normalizeThemes(value as string[]);
   } else if (field === "feeds" && Array.isArray(value)) {
     storedValue = normalizeFeeds(value as string[]);
+  } else if (field === "runDaysOfWeek" && Array.isArray(value)) {
+    // ISO weekdays, Mon–Fri only (1..5). Dedupe + sort so the stored array is
+    // canonical regardless of click order. Weekends are out of scope (the cron
+    // is Mon–Fri). Empty is allowed — the cron reads empty as "all weekdays".
+    const days = Array.from(
+      new Set(
+        (value as unknown[])
+          .map((d) => Math.trunc(Number(d)))
+          .filter((d) => Number.isInteger(d) && d >= 1 && d <= 5),
+      ),
+    ).sort((a, b) => a - b);
+    storedValue = days;
   }
 
   await prisma.agentConfig.update({

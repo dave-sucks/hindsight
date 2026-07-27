@@ -57,6 +57,59 @@ export function etTradingDayDate(now: Date = new Date()): Date {
   return new Date(`${ymd}T00:00:00.000Z`);
 }
 
+/**
+ * ISO weekday (1=Mon … 7=Sun) of the given instant, evaluated in Eastern Time.
+ *
+ * Vercel runs in UTC, so a naive `Date.getDay()` can report the wrong weekday
+ * near midnight ET (e.g. the 8 AM ET Monday cron fires at 12:00 UTC — fine —
+ * but any pre-market or late-evening path can straddle the UTC date line).
+ * Always derive the schedule weekday through this helper, never `getDay()`.
+ */
+export function etWeekday(now: Date = new Date()): number {
+  const short = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+  }).format(now);
+  const map: Record<string, number> = {
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+    Sun: 7,
+  };
+  return map[short] ?? 0;
+}
+
+/**
+ * Should the daily morning run execute for an analyst today?
+ *
+ * `runDaysOfWeek` holds ISO weekdays (1=Mon..5=Fri). A null/empty array is
+ * treated defensively as "all weekdays" — legacy rows written before the
+ * column existed must never silently stop running. Weekends are out of scope
+ * (the cron is Mon–Fri and markets are closed), but the predicate stays honest
+ * for any day it's asked about.
+ *
+ * Pure + timezone-correct: the weekday is computed in Eastern Time via
+ * {@link etWeekday}, so it's safe to call from UTC infrastructure.
+ */
+export function isAnalystScheduledToday(
+  runDaysOfWeek: number[] | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!runDaysOfWeek || runDaysOfWeek.length === 0) return true;
+  return runDaysOfWeek.includes(etWeekday(now));
+}
+
+/** Full ET weekday name for logging, e.g. "Monday". */
+export function etWeekdayName(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "long",
+  }).format(now);
+}
+
 export function isMarketOpen(now: Date = new Date()): boolean {
   // Convert to Eastern Time
   const etFormatter = new Intl.DateTimeFormat("en-US", {

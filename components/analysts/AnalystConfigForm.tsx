@@ -23,6 +23,7 @@ import {
   useComboboxAnchor,
 } from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { WatchlistRow, AddStockRow } from "@/components/ui/trade-row";
 import { StockSearch } from "@/components/stocks/StockSearch";
 import {
@@ -106,6 +107,10 @@ export type FormValues = {
   // / demotion runs through the Promote dialog, not this form.
   tradingEnvironment?: "PAPER" | "LIVE";
   realMaxPosition?: number;
+
+  // Schedule — ISO weekdays (1=Mon..5=Fri) the daily morning run executes on.
+  // Empty = every weekday (the cron reads empty defensively as "all weekdays").
+  runDaysOfWeek?: number[];
 
   // Notifications — owner email opt-out, live across every email path.
   emailAlerts?: boolean;
@@ -921,6 +926,24 @@ function SettingsTab({
         />
       </Section>
 
+      {/* Schedule ──────────────────────────────────────────────── */}
+      {values.runDaysOfWeek !== undefined && (
+        <Section
+          label="Schedule"
+          tooltip="The morning run only executes on the selected days. Triggers still fire intraday every day, so held positions stay monitored on off days."
+        >
+          <FieldGroup
+            label="Daily run days"
+            tooltip="ISO weekdays the 8 AM ET morning run executes for this analyst. Fewer days = lower cost. Intraday triggers are unaffected."
+          >
+            <RunDaysControl
+              value={values.runDaysOfWeek}
+              onChange={(next) => onChange("runDaysOfWeek", next)}
+            />
+          </FieldGroup>
+        </Section>
+      )}
+
       {/* Notifications ─────────────────────────────────────────── */}
       {typeof values.emailAlerts === "boolean" && (
         <Section label="Notifications">
@@ -936,6 +959,68 @@ function SettingsTab({
           </div>
         </Section>
       )}
+    </div>
+  );
+}
+
+// ─── Run days control ────────────────────────────────────────────────────────
+// Five weekday checkboxes (Mon–Fri) driving AgentConfig.runDaysOfWeek (ISO
+// weekdays 1=Mon..5=Fri). The morning-research cron gates on this array; the
+// 5-min trigger cron ignores it, so intraday reactivity fires every day.
+//
+// An empty stored value means "all weekdays" (the cron's defensive default),
+// so a null/empty/unset value renders as all five checked. To keep the stored
+// value unambiguous, the control refuses to uncheck the final remaining day —
+// there's always at least one run day.
+const RUN_DAYS: ReadonlyArray<{ iso: number; label: string }> = [
+  { iso: 1, label: "Mon" },
+  { iso: 2, label: "Tue" },
+  { iso: 3, label: "Wed" },
+  { iso: 4, label: "Thu" },
+  { iso: 5, label: "Fri" },
+];
+
+function RunDaysControl({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (next: number[]) => void;
+}) {
+  // null/empty = all weekdays (cron semantics) → show all five checked.
+  const selected =
+    !value || value.length === 0 ? RUN_DAYS.map((d) => d.iso) : value;
+
+  const toggle = (iso: number, checked: boolean) => {
+    const set = new Set(selected);
+    if (checked) {
+      set.add(iso);
+    } else {
+      // Never allow zero days — an empty array would be read as "all
+      // weekdays", the opposite of what unchecking the last day looks like.
+      if (set.size <= 1) return;
+      set.delete(iso);
+    }
+    onChange([...set].sort((a, b) => a - b));
+  };
+
+  return (
+    <div className="flex flex-wrap gap-3">
+      {RUN_DAYS.map((day) => {
+        const isChecked = selected.includes(day.iso);
+        return (
+          <label
+            key={day.iso}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer"
+          >
+            <Checkbox
+              checked={isChecked}
+              onCheckedChange={(checked) => toggle(day.iso, checked === true)}
+            />
+            {day.label}
+          </label>
+        );
+      })}
     </div>
   );
 }
