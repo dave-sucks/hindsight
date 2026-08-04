@@ -142,6 +142,8 @@ export interface PositionWithThesis {
   pendingProposal?: {
     orderId: string;
     intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+    /** Shares this proposal moves — the Order's qty, not the position's. */
+    quantity: number;
   };
 }
 
@@ -362,7 +364,7 @@ export async function getAnalystDetail(
           where: { status: "AWAITING_APPROVAL" },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { id: true, intent: true, expiresAt: true },
+          select: { id: true, intent: true, expiresAt: true, quantity: true },
         },
         decisions: {
           take: 1,
@@ -567,6 +569,7 @@ export async function getAnalystDetail(
               | "ADD"
               | "CLOSE"
               | "PARTIAL_CLOSE",
+            quantity: awaiting.quantity ?? p.quantity,
           }
         : undefined,
     };

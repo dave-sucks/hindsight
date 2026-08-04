@@ -192,12 +192,22 @@ interface TradeRowProps {
   pendingProposal?: {
     orderId: string;
     intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+    /** Shares this proposal moves — the Order's qty, not the position's. */
+    quantity: number;
   };
   /** When present, clicking the row opens ThesisSheet instead of navigating to /trades/:id. */
   thesisId?: string;
   /** Thesis direction — needed as the sheet's seed prop when thesisId is set. */
   direction?: "LONG" | "SHORT";
 }
+
+/** The verb the row leads with when a proposal is awaiting approval. */
+const PROPOSAL_VERB: Record<"OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE", string> = {
+  OPEN: "Buy",
+  ADD: "Add",
+  CLOSE: "Sell",
+  PARTIAL_CLOSE: "Trim",
+};
 
 function fmtShort(d: Date | string): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
@@ -238,10 +248,18 @@ export function TradeRow({
   direction,
 }: TradeRowProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const totalWorth = currentPrice * shares;
   const dateStr = openedAt ? fmtShort(openedAt) : null;
   const isPending = status === "PENDING";
   const isAwaitingApproval = pendingProposal != null;
+
+  // A proposal row describes the ORDER, not the holding. `shares` is the
+  // position size (it drives P&L everywhere else), so a trim of 13 out of a
+  // 52-share position was rendering as "52 shares / $15,992" next to an
+  // Approve button that would only move 13. Show what's actually being
+  // approved, and keep the holding size visible as "13 of 52".
+  const displayShares = isAwaitingApproval ? pendingProposal.quantity : shares;
+  const totalWorth = currentPrice * displayShares;
+  const isPartial = isAwaitingApproval && pendingProposal.quantity < shares;
   const isOpen = status === "OPEN" || isPending || isAwaitingApproval;
   const isStalePrice = isOpen && priceSource === "missing" && !isAwaitingApproval;
 
@@ -268,6 +286,15 @@ export function TradeRow({
       leading={<StockLogo ticker={ticker} size="md" className="rounded-md" />}
       primary={
         <>
+          {/* Reads as "Trim SNOW" / "Buy HPE". The dropdown offers Approve
+              before you'd otherwise know what you're approving — the verb is
+              the missing half of that decision. Lighter weight so the ticker
+              still leads the row visually. */}
+          {isAwaitingApproval && (
+            <span className="text-sm font-light text-muted-foreground">
+              {PROPOSAL_VERB[pendingProposal.intent]}
+            </span>
+          )}
           <span className="text-sm font-medium">{ticker}</span>
           <Tooltip>
             <TooltipTrigger
@@ -316,7 +343,8 @@ export function TradeRow({
       }
       secondary={
         <>
-          {formatCurrency(totalWorth)} — {shares} share{shares !== 1 ? "s" : ""}
+          {formatCurrency(totalWorth)} — {displayShares}
+          {isPartial && <> of {shares}</>} share{displayShares !== 1 ? "s" : ""}
           {dateStr && <> · {dateStr}</>}
         </>
       }

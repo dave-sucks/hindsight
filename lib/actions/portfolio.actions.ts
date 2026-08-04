@@ -729,6 +729,11 @@ export async function getDashboardData(
             | "ADD"
             | "CLOSE"
             | "PARTIAL_CLOSE",
+          // Order quantity, NOT p.quantity. A trim proposes moving a slice of
+          // the holding; the row was showing the whole position (52 shares /
+          // $15,992 for a 13-share $4k SNOW trim). `shares` below deliberately
+          // stays the position size — it feeds value + P&L for the held row.
+          quantity: awaitingOrder.quantity ?? p.quantity,
         }
       : undefined;
 

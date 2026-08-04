@@ -50,7 +50,11 @@ const ACCOUNT_SCOPED: Record<ReadModel, boolean> = {
   analystSignalRoute: false, // scoped via analyst relation
   artifact: false, // not account-owned
   accuracyReport: true,
-  order: true,
+  // Order has userId + positionId but NO accountId column. Claiming
+  // otherwise injected `where.accountId` and made EVERY order query throw
+  // "Unknown argument `accountId`" — which is how the principal agent lost
+  // its only path to the approval queue. Scoped via position relation below.
+  order: false,
 };
 
 // Relation-based scope fallback for models without a direct accountId.
@@ -64,6 +68,7 @@ const ACCOUNT_RELATION: Partial<Record<ReadModel, (accountId: string) => Record<
     OR: [{ scope: "FIRM" }, { analyst: { accountId } }],
   }),
   analystSignalRoute: (accountId) => ({ analyst: { accountId } }),
+  order: (accountId) => ({ position: { accountId } }),
 };
 
 export const readDatabase = defineTool({
@@ -110,26 +115,15 @@ export const readDatabase = defineTool({
   execute: async (args, ctx) => {
     const model = args.model as ReadModel;
     const take = args.take ?? 25;
-    const where: Record<string, unknown> = { ...(args.where ?? {}) };
+    const callerWhere: Record<string, unknown> = { ...(args.where ?? {}) };
 
-    // Enforce account scope. Direct accountId column for most models;
-    // relation filter (analyst / run / thesis / position) for nested ones.
     if (!ctx.accountId) {
       throw new Error("read_database requires an authenticated account context.");
-    }
-    if (ACCOUNT_SCOPED[model] && !("accountId" in where)) {
-      where.accountId = ctx.accountId;
-    } else if (ACCOUNT_RELATION[model]) {
-      const rel = ACCOUNT_RELATION[model]!(ctx.accountId);
-      // Merge — caller's filters compose with the relation scope.
-      for (const k of Object.keys(rel)) {
-        if (!(k in where)) where[k] = rel[k];
-      }
     }
 
     // Reject mutating-looking keys defensively. These shouldn't be in a
     // where clause but the model could send anything.
-    for (const k of Object.keys(where)) {
+    for (const k of Object.keys(callerWhere)) {
       if (k.startsWith("$") || ["create", "update", "delete", "upsert", "set"].includes(k)) {
         throw new Error(`Suspicious where-clause key: ${k}`);
       }
@@ -137,6 +131,16 @@ export const readDatabase = defineTool({
     if (args.select && args.include) {
       throw new Error("Pass select OR include, not both.");
     }
+
+    // Enforce account scope by AND-ing our filter alongside the caller's,
+    // rather than merging keys into the same object. Merging let a caller
+    // that happened to use the scoping key (`accountId`, or a relation like
+    // `position`) silently drop the scope for the whole query.
+    const scope: Record<string, unknown> = ACCOUNT_SCOPED[model]
+      ? { accountId: ctx.accountId }
+      : (ACCOUNT_RELATION[model]?.(ctx.accountId) ?? {});
+    const where: Record<string, unknown> =
+      Object.keys(scope).length > 0 ? { AND: [scope, callerWhere] } : callerWhere;
 
     const queryArgs: Record<string, unknown> = {
       where,
