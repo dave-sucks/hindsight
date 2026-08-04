@@ -456,9 +456,10 @@ export async function POST(
         // returns analystId: null, and listRecentChats groups them under
         // Portfolio.
         //
-        // This does NOT unlock unscoped writes: place_trade and friends
-        // resolve an analyst from ctx.analystId, which is still undefined, so
-        // they fail the same way they did before.
+        // Giving these chats a real runId DOES remove the accidental write
+        // block that used to exist here (the sentinel runId FK-violated on
+        // TradeDecision). The block is now explicit — see
+        // UNSCOPED_BLOCKED_WRITES where the tool allowlist is filtered.
         if (!runId && chatSessionId) {
           const bySession = await prisma.researchRun.findFirst({
             where: {
@@ -715,13 +716,45 @@ export async function POST(
     });
 
     // Filter by allowlist if mode restricts tools
-    const filteredTools = modeConfig.toolAllowlist
+    let filteredTools = modeConfig.toolAllowlist
       ? Object.fromEntries(
           modeConfig.toolAllowlist
             .map((name) => [name, allTools[name as keyof typeof allTools]])
             .filter(([, v]) => v != null),
         )
       : allTools;
+
+    // Unscoped principal chat can't write. The prompt states this ("Writes
+    // that require an analyst FK ... will FAIL in this scope") but nothing
+    // enforced it — it held only by accident, because ctx.runId was the
+    // sentinel string "principal" (see `runId || agentMode` above) and
+    // TradeDecision.runId FK-violated, rolling the transaction back before
+    // the Alpaca call.
+    //
+    // Persisting unscoped chats gives them a REAL runId, which silently
+    // removed that accident. place_trade is the live exposure: unlike the
+    // other write tools it falls back to `args.analyst_id` when ctx.analystId
+    // is unset (place-trade.ts:104), so the model could have opened a
+    // position from a portfolio-level chat. Make the boundary explicit
+    // instead of inferring it from an FK.
+    //
+    // dispatch_thesis_research is deliberately NOT in this list — it takes an
+    // explicit analyst_id and the prompt documents an unscoped flow for it
+    // ("If unscoped, ASK the user which analyst to scope to").
+    const UNSCOPED_BLOCKED_WRITES = [
+      "place_trade",
+      "close_position",
+      "manage_position",
+      "record_thesis",
+      "update_thesis",
+    ] as const;
+    if (agentMode === "principal" && !resolvedAnalystId) {
+      filteredTools = Object.fromEntries(
+        Object.entries(filteredTools).filter(
+          ([name]) => !UNSCOPED_BLOCKED_WRITES.includes(name as never),
+        ),
+      );
+    }
 
     // Layer in mode-specific "suggest" tools that aren't part of the
     // createResearchTools registry (they're plain `tool()` calls, not
