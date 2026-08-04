@@ -150,6 +150,10 @@ export async function POST(
     const config: Record<string, unknown> | undefined = body.config;
     const currentConfig: Record<string, unknown> | undefined = body.currentConfig;
     const modelOverride: string | undefined = body.modelOverride;
+    // Client-minted, stable for the life of one chat session. Principal-chat
+    // keys its ResearchRun on this so a conversation is ONE run instead of one
+    // per message. See components/agent/AgentChat.tsx.
+    const chatSessionId: string | undefined = body.chatSessionId;
 
     console.log(
       `[agent/${agentMode}] POST runId=${runId} analystId=${analystId} messages=${messages?.length ?? 0}${modelOverride ? ` model=${modelOverride}` : ""}`,
@@ -355,6 +359,34 @@ export async function POST(
         // Create or reuse a PRINCIPAL_CHAT ResearchRun for this scoped
         // session. Account-scoped: only reuse runs owned by THIS account.
         // Scope-flip mid-chat invalidates the runId (different agentConfig).
+        //
+        // Second lookup key: the client-minted chatSessionId. Without it a
+        // fresh chat POSTs with no runId every turn and the block below is
+        // skipped entirely, so `if (!runId)` minted a new run per message —
+        // one conversation rendered as N identical rows in Recent Chats.
+        // Reusing "the most recent run for this analyst" instead would be
+        // worse: starting a genuinely new chat would overwrite the previous
+        // conversation's thread row.
+        if (!runId && chatSessionId) {
+          const bySession = await prisma.researchRun.findFirst({
+            where: {
+              accountId,
+              mode: "PRINCIPAL_CHAT",
+              agentConfigId: resolvedAnalystId,
+              parameters: { path: ["chatSessionId"], equals: chatSessionId },
+            },
+            select: { id: true, status: true },
+          });
+          if (bySession) {
+            runId = bySession.id;
+            if (bySession.status !== "RUNNING") {
+              await prisma.researchRun.update({
+                where: { id: runId },
+                data: { status: "RUNNING" },
+              });
+            }
+          }
+        }
         if (runId) {
           const existing = await prisma.researchRun.findFirst({
             where: {
@@ -409,16 +441,51 @@ export async function POST(
               status: "RUNNING",
               mode: "PRINCIPAL_CHAT",
               environment: (ac.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER",
-              parameters: {} as object,
+              parameters: (chatSessionId ? { chatSessionId } : {}) as object,
             },
             select: { id: true },
           });
           runId = newRun.id;
         }
       } else {
-        // Unscoped — no ResearchRun, no runId. Write tools will fail
-        // cleanly; reads work freely.
-        runId = undefined;
+        // Unscoped (portfolio-level) chat. It still gets a ResearchRun so the
+        // conversation is PERSISTED and resumable — previously this branch set
+        // runId = undefined and nothing was ever written, so every unscoped
+        // chat vanished the moment you navigated away (0 unscoped rows in the
+        // DB, all time). agentConfigId stays null; loadChatThread already
+        // returns analystId: null, and listRecentChats groups them under
+        // Portfolio.
+        //
+        // This does NOT unlock unscoped writes: place_trade and friends
+        // resolve an analyst from ctx.analystId, which is still undefined, so
+        // they fail the same way they did before.
+        if (!runId && chatSessionId) {
+          const bySession = await prisma.researchRun.findFirst({
+            where: {
+              accountId,
+              mode: "PRINCIPAL_CHAT",
+              agentConfigId: null,
+              parameters: { path: ["chatSessionId"], equals: chatSessionId },
+            },
+            select: { id: true },
+          });
+          if (bySession) runId = bySession.id;
+        }
+        if (!runId) {
+          const newRun = await prisma.researchRun.create({
+            data: {
+              userId: user.id,
+              accountId,
+              source: "MANUAL",
+              status: "RUNNING",
+              mode: "PRINCIPAL_CHAT",
+              environment: runEnvironment,
+              parameters: (chatSessionId ? { chatSessionId } : {}) as object,
+            },
+            select: { id: true },
+          });
+          runId = newRun.id;
+        }
       }
 
       systemPrompt = buildPrincipalSystemPrompt({ scopedAnalyst });
