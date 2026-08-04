@@ -150,6 +150,10 @@ export async function POST(
     const config: Record<string, unknown> | undefined = body.config;
     const currentConfig: Record<string, unknown> | undefined = body.currentConfig;
     const modelOverride: string | undefined = body.modelOverride;
+    // Client-minted, stable for the life of one chat session. Principal-chat
+    // keys its ResearchRun on this so a conversation is ONE run instead of one
+    // per message. See components/agent/AgentChat.tsx.
+    const chatSessionId: string | undefined = body.chatSessionId;
 
     console.log(
       `[agent/${agentMode}] POST runId=${runId} analystId=${analystId} messages=${messages?.length ?? 0}${modelOverride ? ` model=${modelOverride}` : ""}`,
@@ -355,6 +359,34 @@ export async function POST(
         // Create or reuse a PRINCIPAL_CHAT ResearchRun for this scoped
         // session. Account-scoped: only reuse runs owned by THIS account.
         // Scope-flip mid-chat invalidates the runId (different agentConfig).
+        //
+        // Second lookup key: the client-minted chatSessionId. Without it a
+        // fresh chat POSTs with no runId every turn and the block below is
+        // skipped entirely, so `if (!runId)` minted a new run per message —
+        // one conversation rendered as N identical rows in Recent Chats.
+        // Reusing "the most recent run for this analyst" instead would be
+        // worse: starting a genuinely new chat would overwrite the previous
+        // conversation's thread row.
+        if (!runId && chatSessionId) {
+          const bySession = await prisma.researchRun.findFirst({
+            where: {
+              accountId,
+              mode: "PRINCIPAL_CHAT",
+              agentConfigId: resolvedAnalystId,
+              parameters: { path: ["chatSessionId"], equals: chatSessionId },
+            },
+            select: { id: true, status: true },
+          });
+          if (bySession) {
+            runId = bySession.id;
+            if (bySession.status !== "RUNNING") {
+              await prisma.researchRun.update({
+                where: { id: runId },
+                data: { status: "RUNNING" },
+              });
+            }
+          }
+        }
         if (runId) {
           const existing = await prisma.researchRun.findFirst({
             where: {
@@ -409,16 +441,52 @@ export async function POST(
               status: "RUNNING",
               mode: "PRINCIPAL_CHAT",
               environment: (ac.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER",
-              parameters: {} as object,
+              parameters: (chatSessionId ? { chatSessionId } : {}) as object,
             },
             select: { id: true },
           });
           runId = newRun.id;
         }
       } else {
-        // Unscoped — no ResearchRun, no runId. Write tools will fail
-        // cleanly; reads work freely.
-        runId = undefined;
+        // Unscoped (portfolio-level) chat. It still gets a ResearchRun so the
+        // conversation is PERSISTED and resumable — previously this branch set
+        // runId = undefined and nothing was ever written, so every unscoped
+        // chat vanished the moment you navigated away (0 unscoped rows in the
+        // DB, all time). agentConfigId stays null; loadChatThread already
+        // returns analystId: null, and listRecentChats groups them under
+        // Portfolio.
+        //
+        // Giving these chats a real runId DOES remove the accidental write
+        // block that used to exist here (the sentinel runId FK-violated on
+        // TradeDecision). The block is now explicit — see
+        // UNSCOPED_BLOCKED_WRITES where the tool allowlist is filtered.
+        if (!runId && chatSessionId) {
+          const bySession = await prisma.researchRun.findFirst({
+            where: {
+              accountId,
+              mode: "PRINCIPAL_CHAT",
+              agentConfigId: null,
+              parameters: { path: ["chatSessionId"], equals: chatSessionId },
+            },
+            select: { id: true },
+          });
+          if (bySession) runId = bySession.id;
+        }
+        if (!runId) {
+          const newRun = await prisma.researchRun.create({
+            data: {
+              userId: user.id,
+              accountId,
+              source: "MANUAL",
+              status: "RUNNING",
+              mode: "PRINCIPAL_CHAT",
+              environment: runEnvironment,
+              parameters: (chatSessionId ? { chatSessionId } : {}) as object,
+            },
+            select: { id: true },
+          });
+          runId = newRun.id;
+        }
       }
 
       systemPrompt = buildPrincipalSystemPrompt({ scopedAnalyst });
@@ -648,13 +716,45 @@ export async function POST(
     });
 
     // Filter by allowlist if mode restricts tools
-    const filteredTools = modeConfig.toolAllowlist
+    let filteredTools = modeConfig.toolAllowlist
       ? Object.fromEntries(
           modeConfig.toolAllowlist
             .map((name) => [name, allTools[name as keyof typeof allTools]])
             .filter(([, v]) => v != null),
         )
       : allTools;
+
+    // Unscoped principal chat can't write. The prompt states this ("Writes
+    // that require an analyst FK ... will FAIL in this scope") but nothing
+    // enforced it — it held only by accident, because ctx.runId was the
+    // sentinel string "principal" (see `runId || agentMode` above) and
+    // TradeDecision.runId FK-violated, rolling the transaction back before
+    // the Alpaca call.
+    //
+    // Persisting unscoped chats gives them a REAL runId, which silently
+    // removed that accident. place_trade is the live exposure: unlike the
+    // other write tools it falls back to `args.analyst_id` when ctx.analystId
+    // is unset (place-trade.ts:104), so the model could have opened a
+    // position from a portfolio-level chat. Make the boundary explicit
+    // instead of inferring it from an FK.
+    //
+    // dispatch_thesis_research is deliberately NOT in this list — it takes an
+    // explicit analyst_id and the prompt documents an unscoped flow for it
+    // ("If unscoped, ASK the user which analyst to scope to").
+    const UNSCOPED_BLOCKED_WRITES = [
+      "place_trade",
+      "close_position",
+      "manage_position",
+      "record_thesis",
+      "update_thesis",
+    ] as const;
+    if (agentMode === "principal" && !resolvedAnalystId) {
+      filteredTools = Object.fromEntries(
+        Object.entries(filteredTools).filter(
+          ([name]) => !UNSCOPED_BLOCKED_WRITES.includes(name as never),
+        ),
+      );
+    }
 
     // Layer in mode-specific "suggest" tools that aren't part of the
     // createResearchTools registry (they're plain `tool()` calls, not

@@ -86,7 +86,12 @@ export const Thread: FC<ThreadProps> = ({
   return (
     <ToolDedupeProvider>
     <ThreadPrimitive.Root
-      className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
+      // No bg here on purpose — inherit the app shell (bg-sidebar in light,
+      // bg-background in dark, set on <main> in app/(root)/layout.tsx). Hard-
+      // coding bg-background painted every chat surface white over the muted
+      // shell, so the top nav read as a different color than the page on
+      // /chat, /runs/[id], analyst chat and podcast alike.
+      className="aui-root aui-thread-root @container flex h-full flex-col"
       style={{
         ["--thread-max-width" as string]: "48rem",
       }}
@@ -109,7 +114,11 @@ export const Thread: FC<ThreadProps> = ({
           }}
         />
 
-        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-[56rem] flex-col gap-4 overflow-visible rounded-t-3xl bg-background pb-4 md:pb-6">
+        {/* Must be a SOLID color — it masks messages scrolling under the
+            sticky composer, so bg-inherit/transparent would let them bleed
+            through. Mirrors the shell pair from app/(root)/layout.tsx; keep
+            the two in sync or the mask reads as a slab in a different color. */}
+        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-[56rem] flex-col gap-4 overflow-visible rounded-t-3xl bg-sidebar dark:bg-background pb-4 md:pb-6">
           <ThreadScrollToBottom />
           {ComposerComponent}
         </ThreadPrimitive.ViewportFooter>

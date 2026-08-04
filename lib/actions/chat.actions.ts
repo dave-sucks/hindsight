@@ -24,6 +24,12 @@ export interface ChatHistoryGroup {
   lastActivityMs: number;
 }
 
+/**
+ * Group key for portfolio-level chats that were never scoped to an analyst.
+ * Deliberately not a cuid so it can never collide with a real AgentConfig id.
+ */
+export const UNSCOPED_GROUP_ID = "__unscoped__";
+
 export interface ChatHistoryItem {
   runId: string;
   analystId: string;
@@ -78,9 +84,10 @@ export async function listRecentChats(
       userId: args.userId,
       accountId: args.accountId,
       mode: "PRINCIPAL_CHAT",
-      // Exclude unscoped chats — they have no analyst to group under and
-      // can't be resumed via the analyst-scoped reopen flow.
-      agentConfigId: { not: null },
+      // Unscoped chats are INCLUDED. They used to be filtered out here as
+      // "can't be resumed" — but loadChatThread has always handled a null
+      // analystId, and they're now persisted (see the unscoped branch in
+      // app/api/agent/[mode]/route.ts). They group under Portfolio below.
     },
     select: {
       id: true,
@@ -111,10 +118,12 @@ export async function listRecentChats(
   const groups = new Map<string, ChatHistoryGroup>();
 
   for (const row of rows) {
-    if (!row.agentConfig) continue; // shouldn't happen given the where clause, but type-narrow
-
-    const analystId = row.agentConfig.id;
-    const analystName = row.agentConfig.name;
+    // No agentConfig = a portfolio-level chat that was never scoped to an
+    // analyst. Real and resumable; it just has no analyst to group under, so
+    // it gets its own synthetic group. The sentinel id is not a real
+    // AgentConfig id — resume goes by runId, so nothing dereferences it.
+    const analystId = row.agentConfig?.id ?? UNSCOPED_GROUP_ID;
+    const analystName = row.agentConfig?.name ?? "Portfolio";
     const lastActivityAt = row.updatedAt ?? row.startedAt;
 
     const threadContent = row.messages[0]?.content ?? null;

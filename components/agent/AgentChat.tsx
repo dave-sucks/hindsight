@@ -11,7 +11,7 @@
  * Uses the unified /api/agent/[mode] route.
  */
 
-import { useMemo, useCallback, useTransition, useState } from "react";
+import { useMemo, useCallback, useTransition, useState, useRef } from "react";
 import type { UIMessage } from "ai";
 import type { ReactNode } from "react";
 import type { AgentMode } from "@/lib/agent/modes";
@@ -230,8 +230,23 @@ export function AgentChat({
     if (supportsModelSwitch) storeModel(value);
   }, [supportsModelSwitch]);
 
+  // One stable id per mounted chat session, minted client-side.
+  //
+  // The server previously had no way to recognize a continuing conversation:
+  // it only reused a ResearchRun when the client sent back a runId, and it
+  // never sent the runId it created. So a fresh chat POSTed with no runId
+  // every turn and minted a NEW run per message — one conversation showed up
+  // in Recent Chats six times. Keying the run on a client-owned id fixes that
+  // without a round-trip, and works for unscoped chats too.
+  //
+  // A ref, not state: it's read into the transport body and never rendered,
+  // so it triggers no re-render and an SSR/client value mismatch is harmless.
+  const sessionIdRef = useRef<string | null>(null);
+  if (sessionIdRef.current === null) sessionIdRef.current = crypto.randomUUID();
+
   const body: Record<string, unknown> = {};
   if (runId) body.runId = runId;
+  body.chatSessionId = sessionIdRef.current;
   if (analystId) body.analystId = analystId;
   if (podcastId) body.podcastId = podcastId;
   if (currentConfig) body.currentConfig = currentConfig;
