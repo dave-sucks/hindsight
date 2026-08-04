@@ -319,7 +319,13 @@ export async function getStockCandles(
 
     const end = new Date().toISOString().slice(0, 10);
     const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Day&start=${start}&end=${end}&limit=1000&feed=iex`;
+    // adjustment=split back-adjusts historical bars for stock splits, matching
+    // the price line every other source shows (Finnhub, Perplexity, Yahoo).
+    // Without it Alpaca defaults to `raw`, so a split renders as a phantom
+    // plateau→cliff→plateau (e.g. a 3:1 split shows pre-split bars ~3x higher).
+    // `split` (not `all`) keeps dividend-unadjusted prices so non-splitting
+    // dividend payers stay pixel-identical to those same sources.
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=iex`;
 
     const res = await fetch(url, {
       headers: {
@@ -379,7 +385,9 @@ export async function getStockCandlesBatch(
 
     const end = new Date().toISOString().slice(0, 10);
     const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(unique.join(','))}&timeframe=1Day&start=${start}&end=${end}&limit=1000&feed=iex`;
+    // adjustment=split — see getStockCandles: back-adjust for splits so the
+    // chart matches Finnhub/Perplexity and a split doesn't show as a cliff.
+    const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(unique.join(','))}&timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=iex`;
 
     const res = await fetch(url, {
       headers: {
@@ -414,6 +422,246 @@ export async function getStockCandlesBatch(
   } catch (err) {
     console.error('[getStockCandlesBatch] Error:', err instanceof Error ? err.message : err);
     return {};
+  }
+}
+
+/**
+ * Intraday 1-minute candles for the MOST RECENT trading session — the data
+ * behind the sheet chart's "1D" tab. Each candle's `date` carries the FULL ISO
+ * (UTC) timestamp (not a YYYY-MM-DD day) so the chart can render time-of-day.
+ *
+ * Source preference:
+ *   1. FMP `/historical-chart/1min` — CONSOLIDATED tape incl. pre/post-market.
+ *      This is what makes the 1D line span the whole trading day (pre-market →
+ *      now) like a real finance chart, instead of just the regular session.
+ *   2. Alpaca IEX (regular hours only) — fallback when FMP is unavailable or the
+ *      plan doesn't serve intraday. IEX is thin (~2-3% of volume) and carries
+ *      little pre-market, so this degrades to a clean 9:30–close session.
+ */
+export async function getIntradayCandles(symbol: string): Promise<StockCandle[]> {
+  const fmp = await getIntradayCandlesFmp(symbol);
+  if (fmp.length >= 2) return fmp;
+  return getIntradayCandlesAlpaca(symbol);
+}
+
+/**
+ * FMP intraday timestamps are ET wall-clock with no zone ("2026-07-14
+ * 07:31:00"). Convert to a real UTC epoch using the ACTUAL ET offset for that
+ * instant (DST-safe): treat the string as UTC, format that guess back into ET,
+ * and the delta between the two IS the offset.
+ */
+function etNaiveToUtcMs(naive: string): number {
+  const asIfUtc = Date.parse(naive.replace(' ', 'T') + 'Z');
+  if (Number.isNaN(asIfUtc)) return NaN;
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const o: Record<string, string> = {};
+  for (const p of dtf.formatToParts(new Date(asIfUtc))) o[p.type] = p.value;
+  const etAsUtc = Date.UTC(
+    +o.year,
+    +o.month - 1,
+    +o.day,
+    +o.hour % 24,
+    +o.minute,
+    +o.second,
+  );
+  return asIfUtc + (asIfUtc - etAsUtc);
+}
+
+async function getIntradayCandlesFmp(symbol: string): Promise<StockCandle[]> {
+  try {
+    const key = process.env.FMP_API_KEY;
+    if (!key) return [];
+    const to = new Date().toISOString().slice(0, 10);
+    const from = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const url = `https://financialmodelingprep.com/api/v3/historical-chart/1min/${encodeURIComponent(
+      symbol.toUpperCase(),
+    )}?from=${from}&to=${to}&apikey=${key}`;
+
+    const res = await fetch(url, { next: { revalidate: 30 } });
+    if (!res.ok) {
+      // 403 here = plan doesn't serve intraday; caller falls back to Alpaca.
+      console.warn('[getIntradayCandles] FMP error', res.status);
+      return [];
+    }
+
+    const rows = (await res.json()) as
+      | { date: string; open: number; high: number; low: number; close: number; volume: number }[]
+      | { 'Error Message'?: string };
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+
+    // FMP dates are "YYYY-MM-DD HH:MM:SS" (ET). Keep the latest session date's
+    // rows (all hours — pre/RTH/post), normalize ET→UTC ISO, sort ascending
+    // (FMP returns newest-first).
+    const latest = rows.reduce(
+      (max, r) => (r.date.slice(0, 10) > max ? r.date.slice(0, 10) : max),
+      '',
+    );
+    return rows
+      .filter((r) => r.date.slice(0, 10) === latest)
+      .map((r) => ({
+        date: new Date(etNaiveToUtcMs(r.date)).toISOString(),
+        close: r.close,
+        open: r.open,
+        high: r.high,
+        low: r.low,
+        volume: r.volume,
+      }))
+      .filter((c) => !Number.isNaN(Date.parse(c.date)))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  } catch (err) {
+    console.error('[getIntradayCandles] FMP error:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> {
+  try {
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      console.warn('[getIntradayCandles] No Alpaca credentials configured');
+      return [];
+    }
+
+    const end = new Date().toISOString();
+    const start = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Min&start=${start}&end=${end}&limit=10000&feed=iex`;
+
+    const res = await fetch(url, {
+      headers: {
+        'APCA-API-KEY-ID': apiKey,
+        'APCA-API-SECRET-KEY': apiSecret,
+      },
+      next: { revalidate: 30 },
+    });
+
+    if (!res.ok) {
+      console.warn('[getIntradayCandles] Alpaca error', res.status, await res.text().catch(() => ''));
+      return [];
+    }
+
+    const data = (await res.json()) as {
+      bars?: { c: number; o: number; h: number; l: number; v: number; t: string }[];
+    };
+    if (!data.bars?.length) return [];
+
+    // Stamp each bar with its ET session date + minutes-since-midnight ONCE
+    // (Intl formatting isn't free, and this runs on a 30s poll). en-CA gives a
+    // string-sortable YYYY-MM-DD; en-GB 24h gives HH:MM.
+    const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
+    const timeFmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/New_York',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const stamped = data.bars.map((bar) => {
+      const d = new Date(bar.t);
+      const [hh, mm] = timeFmt.format(d).split(':').map(Number);
+      return { bar, etDate: dayFmt.format(d), etMinutes: hh * 60 + mm };
+    });
+    const latest = stamped.reduce((max, s) => (s.etDate > max ? s.etDate : max), '');
+
+    // Latest session, REGULAR HOURS ONLY (9:30–16:00 ET = minutes 570–960).
+    // IEX pre/post-market is too thin to be useful; excluding it keeps a clean
+    // regular session for the fixed x-axis domain.
+    return stamped
+      .filter((s) => s.etDate === latest && s.etMinutes >= 570 && s.etMinutes <= 960)
+      .map(({ bar }) => ({
+        date: bar.t, // full ISO timestamp — chart renders time-of-day for 1D
+        close: bar.c,
+        open: bar.o,
+        high: bar.h,
+        low: bar.l,
+        volume: bar.v,
+      }));
+  } catch (err) {
+    console.error('[getIntradayCandles] Alpaca error:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+/**
+ * Hourly candles over the last ~month — powers the sheet chart's 1W and 1M
+ * tabs. Daily candles make 1W ~3 dots and 1M ~22; hourly makes them read like
+ * a real finance chart (Perplexity uses intraday bars for its short ranges
+ * too). Same FREE Alpaca IEX feed as the 1D tab — thin on illiquid names and
+ * regular-hours only (no pre/post), but a big density step up at $0. The paid
+ * upgrade (feed=sip) is the drop-in for full-volume + extended hours.
+ *
+ * `date` carries the FULL ISO timestamp so the chart keys each hour uniquely;
+ * the categorical axis then collapses overnight/weekend gaps (no flat spans),
+ * matching Perplexity. adjustment=split so a split doesn't render as a cliff.
+ */
+export async function getHourlyCandles(
+  symbol: string,
+  days = 31,
+): Promise<StockCandle[]> {
+  try {
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      console.warn('[getHourlyCandles] No Alpaca credentials configured');
+      return [];
+    }
+
+    const end = new Date().toISOString();
+    const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Hour&start=${start}&end=${end}&limit=10000&adjustment=split&feed=iex`;
+
+    const res = await fetch(url, {
+      headers: {
+        'APCA-API-KEY-ID': apiKey,
+        'APCA-API-SECRET-KEY': apiSecret,
+      },
+      next: { revalidate: 300 },
+    });
+
+    if (!res.ok) {
+      console.warn('[getHourlyCandles] Alpaca error', res.status, await res.text().catch(() => ''));
+      return [];
+    }
+
+    const data = (await res.json()) as {
+      bars?: { c: number; o: number; h: number; l: number; v: number; t: string }[];
+    };
+    if (!data.bars?.length) return [];
+
+    // Regular-hours bars only (9:00–16:00 ET = minutes 540–960). IEX pre/post is
+    // too thin to plot and would add stray points to the categorical axis; the
+    // loose lower bound keeps the opening bar whatever the hour alignment.
+    const timeFmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/New_York',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return data.bars
+      .filter((bar) => {
+        const [hh, mm] = timeFmt.format(new Date(bar.t)).split(':').map(Number);
+        const etMinutes = hh * 60 + mm;
+        return etMinutes >= 540 && etMinutes <= 960;
+      })
+      .map((bar) => ({
+        date: bar.t, // full ISO timestamp — unique per hour, collapses gaps
+        close: bar.c,
+        open: bar.o,
+        high: bar.h,
+        low: bar.l,
+        volume: bar.v,
+      }));
+  } catch (err) {
+    console.error('[getHourlyCandles] Error:', err instanceof Error ? err.message : err);
+    return [];
   }
 }
 

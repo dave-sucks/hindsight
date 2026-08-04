@@ -8,6 +8,23 @@ researches stocks, generates trade theses, places paper trades
 via Alpaca, tracks performance, and learns from results.
 Built for one user now, marketed later.
 
+## The Trigger Game Plan (shipped 2026-07-12 — read before touching anything trigger/position-related)
+Every thesis carries a **trigger ladder** (condition → action: ENTER/ADD/TRIM/
+EXIT/REVIEW) the agents author and maintain. New predicates `GAIN_FROM_ENTRY`
+(cumulative % vs entry) + `TRAILING_FROM_HIGH` (give-back off the tracked
+peak) protect gains. Every HOLDING auto-carries standing minimums (+10%
+checkpoint REVIEW / 8% trail EXIT / −12% loser REVIEW, `defaults.ts`) —
+stamped at mint AND at the buy fill (`place-trade.ts` held-side re-seed).
+`resolved.ladderHealth` + the `UNPROTECTED_GAIN` needsAction flag nag winners
+whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
+Everything fires as approval-gated proposals — nothing auto-trades. The three
+docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
+`docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
+`docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).
+Gotcha: `update_thesis.triggers` is wholesale-REPLACE — resend every rung you
+keep. Signal-side rungs (earnings/filing/news) can't fire today — routing is
+deliberately paused (GAPS P1-34; design doc `docs/plans/SIGNALS_REDESIGN.md`).
+
 ## Where to put what (doc navigation)
 | You want to... | File |
 |---|---|
@@ -15,6 +32,9 @@ Built for one user now, marketed later.
 | Read / update the product north star | `docs/VISION.md` |
 | Read the live thesis-system reference | `docs/THESIS_ARCHITECTURE.md` |
 | Understand triggers (predicates, which fires on which path, fire modes) | `docs/TRIGGERS.md` |
+| **The trigger CONCEPTUAL model (condition·action·mode·timing; what is/isn't a trigger)** | **`docs/plans/TRIGGER_MODEL.md`** |
+| **Trigger authority + visibility contract (who sets which level, when; what wakes an agent)** | **`docs/plans/TRIGGER_LIFECYCLE.md`** |
+| **Why the trigger ladder exists (conviction management: press winners / protect gains)** | **`docs/plans/THESIS_GAME_PLAN.md`** |
 | Add an open item on the thesis architecture rework | `docs/GAPS.md` |
 | Note a code smell outside the rework | `docs/TECH_DEBT.md` |
 | Spec a big multi-PR plan | `docs/plans/<NAME>.md` |
@@ -563,7 +583,7 @@ it with a ticker chip as if it were a traded security.
 new, file it there — not here.)
 
 ## Active multi-PR plans
-- **`docs/plans/MORNING_RUN_V2_DESIGN.md`** — Daily-run prompt rewrite + `needsAction` tool field + mode allowlist locking. All 7 fixes shipped as of 2026-05-13. See the status table at the top of that doc.
+- **`docs/plans/legacy/MORNING_RUN_V2_DESIGN.md`** — Daily-run prompt rewrite + `needsAction` tool field + mode allowlist locking. All 7 fixes shipped 2026-05-13; archived as build history. The live thesis reference is `docs/THESIS_ARCHITECTURE.md`.
 - **`docs/THESIS_ARCHITECTURE.md`** — **The live reference for the thesis system.** Read this before touching anything thesis-related. Documents the end-to-end lifecycle (state machine + 9 canonical scenarios), legal `(direction, status)` pairs, producers + gates, consumers, and the 5-bucket run-summary derivation.
 
 ### Recently closed
@@ -588,6 +608,15 @@ new, file it there — not here.)
 - components/agent/sheets/ThesisSheet.tsx — ThesisSheetBody + ThesisSheet
 - app/api/agent/[mode]/route.ts — unified route (research-run/builder/editor)
 - app/api/research/agent-run/route.ts — creates ResearchRun row
+
+### Triggers (the living ladder)
+- lib/agent/triggers/types.ts — predicate union (incl. GAIN_FROM_ENTRY + TRAILING_FROM_HIGH) + isDirectEligiblePredicate + protectiveExitCloseReason
+- lib/agent/triggers/evaluate.ts — pure evaluator (1D daily-move + HOLDING-only gain/trail paths)
+- lib/agent/triggers/defaults.ts — horizon templates + standingProtectionTriggers() (+10%/8%/−12%) + scaleInOn* (±7%) + cooldown defaults
+- lib/inngest/functions/trigger-evaluator.ts — 5-min cron + signal paths
+- lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer
+- lib/actions/thesis-edit.ts — UI add / edit / delete / fire-mode write paths
+- Mechanics: docs/TRIGGERS.md · model: docs/plans/TRIGGER_MODEL.md · lifecycle: docs/plans/TRIGGER_LIFECYCLE.md · why: docs/plans/THESIS_GAME_PLAN.md
 
 ### Run Pages
 - app/(root)/runs/[id]/page.tsx — run detail (AgentThread vs

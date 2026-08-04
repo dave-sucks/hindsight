@@ -6,10 +6,9 @@
  *
  * Both endpoints already exist and are what the open ThesisSheet uses:
  *
- *   • /api/theses/:id/triggers — durable thesis state (status, levels,
+ *   • /api/theses/:id       — durable thesis dossier (status, levels,
  *     coreBelief, snapshot, position metadata, scoring, triggers, etc.)
- *   • /api/theses/:id/quote    — live current price + day change +
- *     position P&L
+ *   • /api/theses/:id/quote — live current price + day change + position P&L
  *
  * Until this hook existed, the mini-card in the agent chat carousel was
  * reading from PERSISTED tool-call snapshots in RunMessage rows. Those
@@ -22,12 +21,12 @@
  */
 import { useEffect, useState } from "react";
 import type {
-  TriggersResponse,
+  ThesisDossier,
   QuoteResponse,
 } from "@/lib/types/thesis-sheet";
 
 export interface ThesisCardLiveData {
-  state: TriggersResponse | null;
+  state: ThesisDossier | null;
   quote: QuoteResponse | null;
   loading: boolean;
   error: string | null;
@@ -36,7 +35,7 @@ export interface ThesisCardLiveData {
 export function useThesisCardData(
   thesisId: string | null | undefined,
 ): ThesisCardLiveData {
-  const [state, setState] = useState<TriggersResponse | null>(null);
+  const [state, setState] = useState<ThesisDossier | null>(null);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(!!thesisId);
   const [error, setError] = useState<string | null>(null);
@@ -50,10 +49,10 @@ export function useThesisCardData(
     setLoading(true);
     setError(null);
 
-    const triggersFetch = fetch(`/api/theses/${thesisId}/triggers`)
+    const dossierFetch = fetch(`/api/theses/${thesisId}`)
       .then(async (r) => {
-        if (!r.ok) throw new Error(`triggers HTTP ${r.status}`);
-        return (await r.json()) as TriggersResponse;
+        if (!r.ok) throw new Error(`dossier HTTP ${r.status}`);
+        return (await r.json()) as ThesisDossier;
       })
       .then((json) => {
         if (!cancelled) setState(json);
@@ -68,7 +67,7 @@ export function useThesisCardData(
         if (!cancelled) setQuote(json);
       });
 
-    Promise.allSettled([triggersFetch, quoteFetch]).then((results) => {
+    Promise.allSettled([dossierFetch, quoteFetch]).then((results) => {
       if (cancelled) return;
       const firstError = results.find(
         (r): r is PromiseRejectedResult => r.status === "rejected",

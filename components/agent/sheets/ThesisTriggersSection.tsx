@@ -54,8 +54,9 @@ export type {
   ThesisStatePosition,
   ThesisScoringDim,
   ThesisScoring,
-  TriggersResponse,
+  ThesisDossier,
   QuoteResponse,
+  ResolvedEnvelope,
   ThesisSourcesUsedItem,
   ThesisSourcesUsed,
   ResearchCitation,
@@ -70,8 +71,9 @@ import type {
   ThesisStatePosition,
   ThesisScoringDim,
   ThesisScoring,
-  TriggersResponse,
+  ThesisDossier,
   QuoteResponse,
+  ResolvedEnvelope,
   ThesisSourcesUsedItem,
   ThesisSourcesUsed,
   ResearchCitation,
@@ -985,8 +987,8 @@ function AddTriggerDialog({
 
 interface Props {
   thesisId: string;
-  /** Pre-fetched response. When omitted, the section fetches itself. */
-  data?: TriggersResponse | null;
+  /** Pre-fetched durable dossier. When omitted, the section fetches itself. */
+  data?: ThesisDossier | null;
   /** Thesis direction — disambiguates the stop trigger for the trailing toggle. */
   direction?: "LONG" | "SHORT" | null;
   /** When true, value-bearing triggers become editable in the popover. */
@@ -1017,7 +1019,7 @@ export function ThesisTriggersSection({
   refreshKey,
   onChanged,
 }: Props) {
-  const [internalData, setInternalData] = useState<TriggersResponse | null>(
+  const [internalData, setInternalData] = useState<ThesisDossier | null>(
     null,
   );
   const data = dataProp !== undefined ? dataProp : internalData;
@@ -1026,10 +1028,10 @@ export function ThesisTriggersSection({
   useEffect(() => {
     if (dataProp !== undefined) return;
     let cancelled = false;
-    fetch(`/api/theses/${thesisId}/triggers`)
+    fetch(`/api/theses/${thesisId}`)
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const json = (await r.json()) as TriggersResponse;
+        const json = (await r.json()) as ThesisDossier;
         if (!cancelled) setInternalData(json);
       })
       .catch((e) => {

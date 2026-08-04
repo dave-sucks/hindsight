@@ -1,3 +1,5 @@
+> **SHIPPED (gpt-5.4 + REVIEW-batching, validated) — kept as build history.**
+
 # OpenAI Cost Reduction — living plan
 
 **Status:** 🔴 Audit complete, no fixes shipped yet

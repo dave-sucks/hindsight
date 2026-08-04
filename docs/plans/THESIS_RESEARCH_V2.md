@@ -5,7 +5,7 @@
 > **The persistence shape described below (a single `researchSections` JSONB
 > blob with 9 nested sub-keys) is OBSOLETE.** It is replaced by the **9 flat
 > top-level columns** design in
-> [`THESIS_CLEANUP.md` §1.1-1.5](./THESIS_CLEANUP.md#11-what-the-v2-thesis-writer-actually-produces),
+> [`THESIS_CLEANUP.md` §1.1-1.5](./legacy/THESIS_CLEANUP.md#11-what-the-v2-thesis-writer-actually-produces),
 > shipped/pending via PR-9. Three sections (Snapshot, Bull Case, Bear Case)
 > are **rename+retype** of existing `reasoningSummary` / `thesisBullets` /
 > `riskFlags`. Six sections are new columns. The blob is dropped.
@@ -24,7 +24,7 @@
 >
 > **Status (as of 2026-05-14):** Proposed. Not yet implemented.
 >
-> **Supersedes:** [`THESIS_RESEARCH_V2_OUTDATED.md`](./THESIS_RESEARCH_V2_OUTDATED.md)
+> **Supersedes:** [`THESIS_RESEARCH_V2_OUTDATED.md`](./legacy/THESIS_RESEARCH_V2_OUTDATED.md)
 > — that doc had a 10-week build path that this doc collapses to ~1 week
 > by using a RAG (retrieval-augmented generation) pattern instead of building
 > 5 specialist tools + a multi-section schema + per-claim citation gates.
@@ -46,12 +46,12 @@
 > **Owner:** principal. **Audience:** future sessions picking this up cold.
 >
 > **Related docs:**
-> - [`docs/plans/THESIS_CLEANUP.md`](./THESIS_CLEANUP.md) — canonical schema cleanup tracker (the 9-flat-columns design supersedes §7 of this doc)
+> - [`docs/plans/THESIS_CLEANUP.md`](./legacy/THESIS_CLEANUP.md) — canonical schema cleanup tracker (the 9-flat-columns design supersedes §7 of this doc)
 > - [`docs/VISION.md`](../VISION.md) — Pillar 2 (Thesis quality) is the success bar
 > - [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — the live thesis system reference; this plan is additive
 > - [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle; every rule maps to its correct layer
-> - [`docs/plans/THESIS_RESEARCH_V2_OUTDATED.md`](./THESIS_RESEARCH_V2_OUTDATED.md) — the original 10-week plan, kept as V2.5 fallback if RAG quality falls short
-> - [`docs/plans/MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — sibling plan that rewrote the daily-run prompt
+> - [`docs/plans/THESIS_RESEARCH_V2_OUTDATED.md`](./legacy/THESIS_RESEARCH_V2_OUTDATED.md) — the original 10-week plan, kept as V2.5 fallback if RAG quality falls short
+> - [`docs/plans/MORNING_RUN_V2_DESIGN.md`](./legacy/MORNING_RUN_V2_DESIGN.md) — sibling plan that rewrote the daily-run prompt
 
 ---
 
@@ -81,7 +81,7 @@ A thesis is **not** "let an LLM go figure it all out." A thesis is:
 
 This is **retrieval-augmented generation** for theses. It's how every production financial AI system actually works. You don't ask the LLM to "find Ford's revenue" — you pull revenue from FMP, hand it over, say "use this revenue, write the section."
 
-The previous V2 plan ([OUTDATED doc](./THESIS_RESEARCH_V2_OUTDATED.md)) tried to build 5 specialist tools and a multi-section schema with per-claim Layer-1 citation gates. That's the right shape for a fully-audited V2.5. For V2, RAG with a single meta-tool is much cheaper and ships in a week.
+The previous V2 plan ([OUTDATED doc](./legacy/THESIS_RESEARCH_V2_OUTDATED.md)) tried to build 5 specialist tools and a multi-section schema with per-claim Layer-1 citation gates. That's the right shape for a fully-audited V2.5. For V2, RAG with a single meta-tool is much cheaper and ships in a week.
 
 ---
 
@@ -892,7 +892,7 @@ For V2 (this doc), RAG is the right choice because:
 - 1 week to ship vs 10 weeks
 - Per-thesis cost is ~$1-2 — totally fine
 
-If V2 ships and the quality falls short of Google-AI depth, re-open the [OUTDATED doc](./THESIS_RESEARCH_V2_OUTDATED.md) for the V2.5 build path. The structured data tools from this V2 are also usable in V2.5 — they're a strict subset.
+If V2 ships and the quality falls short of Google-AI depth, re-open the [OUTDATED doc](./legacy/THESIS_RESEARCH_V2_OUTDATED.md) for the V2.5 build path. The structured data tools from this V2 are also usable in V2.5 — they're a strict subset.
 
 ---
 
@@ -929,6 +929,6 @@ The wait-and-synthesize variant (orchestrator pauses, reviews all worker outputs
 - [`docs/VISION.md`](../VISION.md) — Pillar 2 (Thesis quality), the success bar
 - [`docs/THESIS_ARCHITECTURE.md`](../THESIS_ARCHITECTURE.md) — live thesis-system reference; this plan is additive
 - [`docs/PRINCIPLES.md`](../PRINCIPLES.md) — three-layer principle
-- [`docs/plans/THESIS_RESEARCH_V2_OUTDATED.md`](./THESIS_RESEARCH_V2_OUTDATED.md) — the original 10-week plan, kept as V2.5 fallback
-- [`docs/plans/MORNING_RUN_V2_DESIGN.md`](./MORNING_RUN_V2_DESIGN.md) — sibling daily-run prompt rewrite plan
+- [`docs/plans/THESIS_RESEARCH_V2_OUTDATED.md`](./legacy/THESIS_RESEARCH_V2_OUTDATED.md) — the original 10-week plan, kept as V2.5 fallback
+- [`docs/plans/MORNING_RUN_V2_DESIGN.md`](./legacy/MORNING_RUN_V2_DESIGN.md) — sibling daily-run prompt rewrite plan
 - [`docs/GAPS.md`](../GAPS.md) — open punch list

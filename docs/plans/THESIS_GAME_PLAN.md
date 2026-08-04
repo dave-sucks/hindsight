@@ -3,9 +3,9 @@
 > **What this is:** the blueprint for making every thesis a *standing conditional
 > playbook* the agent authors, maintains, and acts on — the way a real analyst
 > manages a book. This supersedes the finish-line ordering in
-> [`SCALE_INTO_WINNERS_HANDOFF.md`](./SCALE_INTO_WINNERS_HANDOFF.md) and absorbs
+> [`SCALE_INTO_WINNERS_HANDOFF.md`](./legacy/SCALE_INTO_WINNERS_HANDOFF.md) and absorbs
 > GAPS **P1-30** (gain protection), the **Spine** (WS0 in
-> [`SCALE_INTO_WINNERS.md`](./SCALE_INTO_WINNERS.md)), and loser-attention.
+> [`SCALE_INTO_WINNERS.md`](./legacy/SCALE_INTO_WINNERS.md)), and loser-attention.
 > Locked with the principal 2026-07-09. **Do not re-litigate the model.**
 >
 > Non-negotiables from the principal:

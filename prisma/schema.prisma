@@ -522,6 +522,14 @@ model AgentConfig {
   signalTypes            String[]
   minMarketCapTier       String               @default("LARGE")
   scheduleTime           String               @default("07:30")
+  // Per-analyst daily-run schedule (daily-run cost control). ISO weekdays,
+  // 1=Mon..5=Fri. The morning-research cron only runs an analyst whose
+  // runDaysOfWeek includes today's ET weekday. Default [1,2,3,4,5] (Mon–Fri)
+  // preserves the pre-existing "runs every weekday" behavior — existing rows
+  // keep running until the owner narrows the days. A null/empty array is
+  // treated defensively as "all weekdays" so no analyst silently stops.
+  // The 5-min trigger cron is unaffected — intraday reactivity fires every day.
+  runDaysOfWeek          Int[]                @default([1, 2, 3, 4, 5])
   priceCheckFreq         String               @default("HOURLY")
   weekendMode            Boolean              @default(false)
   graduationWinRate      Float                @default(0.65)

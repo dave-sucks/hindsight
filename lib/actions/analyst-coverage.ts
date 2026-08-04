@@ -4,7 +4,7 @@
  * (FMP). Powers the AnalystConsensusWidget on the thesis sheet.
  *
  * Extracted from app/api/theses/[id]/analyst-coverage/route.ts so the
- * consolidated thesis-sheet endpoint (/triggers?full=1) can fetch it inline
+ * thesis-sheet consensus endpoint (/api/theses/:id/analyst-coverage) can fetch it
  * alongside the quote/candles instead of the client making a separate call.
  */
 import { getRecommendationTrends } from "@/lib/actions/finnhub.actions";

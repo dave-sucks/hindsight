@@ -102,5 +102,5 @@ mechanics.
 ## See also
 
 - [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md) — how the thesis lifecycle implements Layer 1 gates
-- [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/MORNING_RUN_V2_DESIGN.md) — the V2 prompt rewrite that applied this principle to the daily run
+- [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/legacy/MORNING_RUN_V2_DESIGN.md) — the V2 prompt rewrite that applied this principle to the daily run
 - [`GAPS.md`](./GAPS.md) — open items, many of which are Layer violations still to fix

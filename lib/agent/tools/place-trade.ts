@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
+import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
 import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
@@ -68,7 +69,8 @@ export const placeTrade = defineTool({
       .string()
       .optional()
       .describe(
-        "REQUIRED on trigger-fired tactical entries. Your live entry-decision reasoning at proposal time — the validation you ran (price level, structure, volume, contradicting headlines), why this is the trade NOW. Surfaced as Order.rationale on the proposal so the principal reads the entry decision, not the prior WATCHING-side 'not actionable yet' snapshot text. Skip only when this place_trade is invoked from a non-tactical context (e.g. principal-chat one-shot entries) where the thesis snapshot IS the entry rationale.",
+        "REQUIRED on every buy proposal — trigger-fired tactical entries AND daily-run direct entries. Your live entry-decision reasoning at proposal time — the validation you ran (price level, structure, volume, contradicting headlines), why this is the trade NOW. Surfaced as Order.rationale on the proposal so the principal reads the entry decision, not the prior WATCHING-side 'not actionable yet' snapshot text. Skip only for principal-chat one-shot entries, where the thesis snapshot you just wrote IS the fresh entry rationale." +
+          PROPOSAL_RATIONALE_VOICE,
       ),
     analyst_id: z
       .string()
