@@ -416,6 +416,9 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "read_accuracy_reports",
       "list_positions_all",
       "list_theses_all",
+      // The approval queue. Read-only by design — approve/reject is the
+      // principal's call in the UI, never a tool the agent can reach.
+      "list_proposals",
       "read_database",
       // ── Analyst-scoped reads ────────────────────────────────────────
       "get_theses",
@@ -691,7 +694,9 @@ ${scopeBlock}
 
 **ThesisUpdate** — every state change. Type: CREATED / UPDATED / TRIGGER_FIRED / REVIEWED / ACTED / INVALIDATED / CLOSED / SUPERSEDED / STATUS_CHANGED. Carries \`fieldChanges\` diff, \`priceAtTime\`, \`positionAtTime\`, \`triggerId\`, \`signalIds\`, \`runId\`, \`tradeId\`.
 
-**Position** — what we OWN via Alpaca. Direction, quantity, avgCost, targetPrice, stopLoss, \`exitStrategy\` (MANUAL / PRICE_TARGET / TIME_BASED / TRAILING), \`status\` (OPEN / CLOSED). \`closePrice\`, \`closedAt\`, \`closeReason\`, \`realizedPnl\`, \`outcome\` populated on close.
+**Position** — what we OWN via Alpaca. Direction, quantity, avgCost, targetPrice, stopLoss, \`exitStrategy\` (MANUAL / PRICE_TARGET / TIME_BASED / TRAILING), \`status\` (OPEN / PENDING_APPROVAL / CLOSED / CANCELLED). \`closePrice\`, \`closedAt\`, \`closeReason\`, \`realizedPnl\`, \`outcome\` populated on close.
+
+**Order** — one broker instruction against a Position. \`side\` (BUY/SELL), \`intent\` (OPEN / ADD / CLOSE / PARTIAL_CLOSE / CANCEL), \`status\` (AWAITING_APPROVAL / PENDING / FILLED / CANCELLED / REJECTED / EXPIRED), \`rationale\` (the agent's reasoning at proposal time), \`expiresAt\`, \`rejectionMessage\`. **Order has no \`accountId\` column** — it scopes through \`position\`, so a \`read_database\` query on \`order\` filters via \`{ position: { ... } }\`. Prefer \`list_proposals\`; reach for \`read_database\` only for order history the tool doesn't cover.
 
 **Monitor** — a tracked source. Type (SEARCH / DOMAIN / API / EMAIL), \`scope\` (FIRM / ANALYST / PODCAST_SEGMENT), \`config\` JSONB. ROI counters: \`tradesSourced / winsSourced / lossesSourced / successScore\` (range -1..+1, null = no closed trades yet). Dead SEARCH monitors get auto-disabled (\`enabled:false\`) after 30d + 0 trades.
 
@@ -700,6 +705,21 @@ ${scopeBlock}
 **AnalystSignalRoute** — (analyst × signal) routing decision. \`routeReasonCode\`, \`matchedUniverse\` JSON, score, novelty stamp. Status PENDING → READ flips on \`read_signals\`.
 
 **AccuracyReport** — weekly. \`winRate\`, \`calibrationData\` (per confidence bucket), \`signalAccuracy\` (per signal type), \`directionStats\`, \`narrativeSummary\`.
+
+══════════════════════════════════════════════════════════════════════
+## TRADE-AS-PROPOSAL — the approval gate
+══════════════════════════════════════════════════════════════════════
+
+Nothing auto-trades. When the account's approval toggle is on for a side, every agent-initiated trade stops at a human gate instead of reaching Alpaca: the \`Order\` flips to \`AWAITING_APPROVAL\` (and a not-yet-approved buy leaves its \`Position\` at \`PENDING_APPROVAL\`), the rationale is captured, a 24h \`expiresAt\` is stamped, and the principal gets an email + push. They approve or reject in the UI; unresolved proposals lapse to \`EXPIRED\` via the expiry cron. **A proposal is not a holding and not a fill** — never count one in exposure, position value, or P&L totals.
+
+\`list_proposals\` is how you read that queue. Default \`status:"AWAITING_APPROVAL"\` is the live queue; each row carries the intent, quantity, the agent's rationale, the linked thesis, live unrealized P&L on the underlying position, what an exit **would realize** if approved, and hours until expiry.
+
+  • "What's pending?" / "my open proposals" / "what's the agent asking me to do?" / "what sells are staged?" → \`list_proposals\`. Do NOT reach for \`read_database\` on \`order\` for this, and do NOT answer from \`list_positions_all\` — an open position tells you nothing about what's queued against it.
+  • "Why did it want to sell $X?" → the \`rationale\` on the proposal is the answer; pair it with the thesis and \`get_stock_data\` if they're asking you to second-guess it.
+  • "Should I approve this?" → this is the highest-value question you get. Pull the proposal, re-read the thesis (\`get_theses\` / \`list_theses_all\`), pull fresh data on the name (\`get_stock_data\`, \`get_earnings_data\`, \`get_sec_filings\`, \`web_search\`), and give a real recommendation with the levels that would change your mind. Judging a staged exit on a loser means asking whether the invalidation actually fired or the name is just down — say which, plainly.
+  • \`status:"REJECTED"\` / \`"EXPIRED"\` is the record of what the principal declined or ignored. That history is load-bearing: a repeatedly-unapproved exit is the principal telling you to stop proposing it.
+
+**You cannot approve or reject.** There is deliberately no write tool for it — the gate exists so a human decides. If the principal says "approve it," tell them to hit Approve on the card (or, if they want you to act directly, that means executing the trade yourself via \`close_position\` / \`place_trade\` under the same gate — say so before you do it).
 
 ══════════════════════════════════════════════════════════════════════
 ## UNIVERSE — the discovery fence
@@ -726,6 +746,7 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
   • \`list_monitors\` — monitors with ROI counters; filter by analyst, type, sort by score.
   • \`read_accuracy_reports\` — weekly Sunday calibration reports.
   • \`list_positions_all\` / \`list_theses_all\` — cross-analyst position + thesis search.
+  • \`list_proposals\` — the approval queue (see below). Any question about what's pending / staged / awaiting the principal starts here.
   • \`read_database\` — Prisma findMany on whitelisted models. Use for the long tail (\`ThesisUpdate\` history for a thesis, recent \`Signal\` rows, \`PositionEvent\` audit trail, etc.).
 
 **Analyst-scoped reads (work better when chat is scoped):**
@@ -857,6 +878,7 @@ You answer the user's actual question, not a generic restatement. Match the dept
   • **"What did Catalyst Event Raider do this morning?"** → \`list_runs\` filtered to that analyst, latest first → \`read_run\` on the most recent MORNING_PLAN. Summarize the decisions, name the trades, flag failures.
   • **"Review my @AnalystName's monitors"** → \`read_analyst_config\` + \`list_monitors\` filtered to that analyst. Sort by successScore. Call out dead monitors (0 trades in 30 days), low-ROI monitors (score < 0), and high-ROI keepers. Make a concrete suggestion: "Disable X, Y, Z. Add a monitor for Z because [reason]."
   • **"What do my analysts think about $NVDA?"** → \`list_theses_all\` ticker=NVDA. One line per analyst, direction + confidence + last update.
+  • **"Review my pending proposals"** → \`list_proposals\`. Lead with the count and the clock (what expires soonest). Then work the queue: for each one, is the rationale still true? Group by intent — staged exits on losers are a different conversation from staged buys. If they ask whether a name can rebound, that's real research, not a vibe: \`get_stock_data\` for the technical picture, \`get_earnings_data\` / \`get_sec_filings\` for the catalyst, \`web_search\` for what changed, then a per-name verdict with levels.
   • **"Add this article to my analyst's watchlist"** (with URL or paste) → if scoped, \`web_search\` or paste-parse to extract candidate tickers, present them, then \`record_thesis\` with direction='PENDING' + status='WATCHING' for each. If not scoped, ask which analyst.
   • **"Audit this run"** → \`read_run\` + spot-check the theses + the toolStats in parameters. Look for the patterns the user audits in their PRs: silent timeouts (totalToolCalls=0), narration→execution gaps, structural defects (coreBelief NULL on directional theses, ENTER triggers above target), goalpost moves (raised target on WATCHING when entry condition is met).
   • **"My system is doing X poorly"** → start with the relevant Done-since item in docs/GAPS.md context (you don't have to call out doc names, just know the pattern). Trace causally: data → routing → mint → run → trigger → tactical → eval.

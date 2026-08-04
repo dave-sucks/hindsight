@@ -50,6 +50,13 @@ export interface MockTrade {
   pendingProposal?: {
     orderId: string;
     intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+    /**
+     * Shares THIS PROPOSAL would move — the Order's quantity, not the
+     * position's. They differ only on a PARTIAL_CLOSE (trim 13 of a 52-share
+     * holding); the row must show what you're approving, while `shares` on
+     * the trade keeps meaning "position size" for every P&L / value calc.
+     */
+    quantity: number;
   };
   /** Thesis row id — present when the position's backing thesis was found. Used to open ThesisSheet on row click. */
   thesisId?: string;

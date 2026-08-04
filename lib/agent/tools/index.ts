@@ -60,6 +60,7 @@ import { listMonitors } from "./list-monitors";
 import { readAccuracyReports } from "./read-accuracy-reports";
 import { listPositionsAll } from "./list-positions-all";
 import { listThesesAll } from "./list-theses-all";
+import { listProposals } from "./list-proposals";
 import { readDatabase } from "./read-database";
 
 interface ToolCtx {
@@ -191,6 +192,7 @@ export function createResearchTools(ctx: ToolCtx) {
     read_accuracy_reports: readAccuracyReports(newCtx),
     list_positions_all: listPositionsAll(newCtx),
     list_theses_all: listThesesAll(newCtx),
+    list_proposals: listProposals(newCtx),
     read_database: readDatabase(newCtx),
   };
 
@@ -254,4 +256,5 @@ export { listMonitors } from "./list-monitors";
 export { readAccuracyReports } from "./read-accuracy-reports";
 export { listPositionsAll } from "./list-positions-all";
 export { listThesesAll } from "./list-theses-all";
+export { listProposals } from "./list-proposals";
 export { readDatabase } from "./read-database";
