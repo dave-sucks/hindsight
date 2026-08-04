@@ -18,6 +18,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendProposalPendingEmail } from "@/lib/emails/proposal-pending";
 import { sendProposalPendingPush } from "@/lib/notify/proposal-push";
+import { getStockQuote } from "@/lib/actions/finnhub.actions";
 
 export type ProposalIntent = "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
 
@@ -38,6 +39,49 @@ export interface MaybeAwaitApprovalArgs {
    * it's the manage_position / close_position `reason` arg.
    */
   rationale: string | null;
+  /**
+   * Market price at proposal time (the "Est. exit" in the approval UI). Stored
+   * on the staged Order and used by the P1-39 protective-exit fatigue escape:
+   * a re-proposed STOP/TARGET close is only re-surfaced when the breach
+   * materially WORSENED vs this price at the last unapproved proposal. Omit /
+   * null on paths that don't have a price → the gate fails OPEN (flows), never
+   * suppressing a protective exit on uncertainty. See docs/plans/PROPOSAL_FATIGUE.md.
+   */
+  proposedPrice?: number | null;
+}
+
+/**
+ * How much deeper (further into the losing direction) the breach must be, vs.
+ * the price at the last unapproved protective proposal, to re-surface a close
+ * the principal already held through. Below this, it's the same breach they
+ * declined — stay quiet. Above it, the situation materially worsened — re-ask.
+ */
+export const PROTECTIVE_REASK_WORSENING_PCT = 3;
+
+/**
+ * Can we PROVE this re-proposed protective exit is NOT materially worse than the
+ * one the principal already declined? Only then do we suppress it. Returns false
+ * whenever we can't tell (either price missing) — the safe default is to flow a
+ * protective exit, never to swallow a possible real breakdown.
+ *
+ * `direction` is the POSITION direction: a LONG stop worsens as price falls, a
+ * SHORT stop worsens as price rises.
+ */
+export function isSameOrBetterBreach(
+  current: number | null | undefined,
+  prior: number | null | undefined,
+  direction: "LONG" | "SHORT",
+  worseningPct: number = PROTECTIVE_REASK_WORSENING_PCT,
+): boolean {
+  if (current == null || prior == null || prior <= 0) return false;
+  const threshold = worseningPct / 100;
+  // LONG: materially worse means current is >threshold BELOW prior.
+  // SHORT: materially worse means current is >threshold ABOVE prior.
+  const worsened =
+    direction === "LONG"
+      ? current < prior * (1 - threshold)
+      : current > prior * (1 + threshold);
+  return !worsened;
 }
 
 export interface AwaitingApprovalResult {
@@ -199,6 +243,12 @@ export async function maybeAwaitApproval(
       : account.requireApprovalSellsPaper;
   if (!need) return null;
 
+  // Market price at proposal time — anchors the P1-39 protective-exit escape and
+  // is stored on the staged proposal. Prefer a caller-supplied price; the CLOSE
+  // block below fetches a live quote as fallback. Any failure leaves it null, and
+  // the escape fails OPEN (a protective exit is never suppressed on missing data).
+  let resolvedProposedPrice: number | null = args.proposedPrice ?? null;
+
   // ── Dedup: at most one pending full-CLOSE proposal per position ──────────
   // Two triggers firing on the same thesis in one evaluator tick spawn two
   // tactical runs that each independently decide to close, each creating an
@@ -275,23 +325,50 @@ export async function maybeAwaitApproval(
   // stack, so they're intentionally NOT gated here (verified: no staged
   // PARTIAL_CLOSE/ADD proposals exist in prod — closes are the only vector).
   //
-  // Carve-out: risk-management exits ALWAYS flow — a trailing-stop / target
-  // close from the price-monitor (closeSource='price_monitor') or any
-  // STOP/TARGET close is a material event, not a discretionary re-pitch.
-  // Only discretionary closes (MANUAL/TIME or untagged) are gated. (Verified
-  // in prod: the spammy proposals are all closeReason/closeSource null; genuine
-  // stops/targets carry STOP/TARGET tags, so this split is correct.)
+  // Carve-out (NARROWED — P1-39, see docs/plans/PROPOSAL_FATIGUE.md):
+  // Only the REAL-TIME price-monitor stop (closeSource='price_monitor') always
+  // flows — that cron fires only when price is below the level right now, so it
+  // is a genuine live breach, never a re-derivation. Everything else runs the
+  // cooldown, INCLUDING agent-sourced STOP/TARGET closes. The old carve-out
+  // exempted every STOP/TARGET close; that was safe when protective exits were
+  // rare, but the Game Plan (#480) put a protective floor on every holding, so
+  // the exemption leaked the entire protective-exit stream past the cooldown and
+  // re-nagged (MU: 49 proposals across 22 days, ~71% of all exits never approved).
+  //
+  // Protective (STOP/TARGET) closes keep a SAFETY escape discretionary ones don't:
+  // even inside the cooldown, a re-proposal flows if the breach materially
+  // WORSENED vs the price the principal last declined — we never swallow a real
+  // breakdown to kill a nag. Discretionary (MANUAL/TIME/untagged) closes suppress
+  // unconditionally, exactly as before.
   if (args.intent === "CLOSE") {
     const thisOrder = await prisma.order.findUnique({
       where: { id: args.orderId },
-      select: { closeReason: true, closeSource: true },
+      select: {
+        symbol: true,
+        closeReason: true,
+        closeSource: true,
+        position: { select: { direction: true } },
+      },
     });
-    const isRiskExit =
-      thisOrder?.closeSource === "price_monitor" ||
-      thisOrder?.closeReason === "STOP" ||
-      thisOrder?.closeReason === "TARGET";
+    const isStop = thisOrder?.closeReason === "STOP";
+    // A STOP (protective floor/trail) — from the AGENT or the price-monitor —
+    // runs the escape below; the MU/MNKD fatigue is STOP re-proposals from BOTH
+    // sources. Only take-profits (TARGET) and non-STOP price-monitor closes still
+    // always flow; discretionary MANUAL/TIME closes still suppress after a decline.
+    const bypassCooldown =
+      !isStop &&
+      (thisOrder?.closeSource === "price_monitor" ||
+        thisOrder?.closeReason === "TARGET");
+    const direction =
+      thisOrder?.position?.direction === "SHORT" ? "SHORT" : "LONG";
 
-    if (!isRiskExit) {
+    // Resolve the current price (caller override, else a live quote). Only needed
+    // for the protective escape + to stamp the proposal; failure → null → flow.
+    if (resolvedProposedPrice == null && thisOrder?.symbol) {
+      resolvedProposedPrice = (await getStockQuote(thisOrder.symbol))?.c ?? null;
+    }
+
+    if (!bypassCooldown) {
       const cooldownMs = UNAPPROVED_EXIT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
       const cooldownStart = new Date(Date.now() - cooldownMs);
       // Only proposals you actually SAW (staged → expiresAt set) and did NOT
@@ -308,7 +385,13 @@ export async function maybeAwaitApproval(
           id: { not: args.orderId },
         },
         orderBy: { expiresAt: "desc" },
-        select: { id: true, status: true, expiresAt: true, rejectionMessage: true },
+        select: {
+          id: true,
+          status: true,
+          expiresAt: true,
+          rejectionMessage: true,
+          proposedPrice: true,
+        },
       });
       // Drop systemic tombstones (dedup folds, prior cooldown suppressions) —
       // only a real decline (your rejection or an ignored expiry) counts.
@@ -316,7 +399,14 @@ export async function maybeAwaitApproval(
         (o) => !isSystemicRejection(o.rejectionMessage),
       );
       const armed = unapproved[0];
-      if (armed?.expiresAt) {
+      // A protective exit re-surfaces if the breach materially worsened vs the
+      // last decline; discretionary exits never do. `isSameOrBetterBreach` fails
+      // safe (false ⇒ re-ask) whenever a price is unknown, so a protective exit
+      // is suppressed ONLY when we can prove it's the same breach already held.
+      const breachWorsened =
+        isStop &&
+        !isSameOrBetterBreach(resolvedProposedPrice, armed?.proposedPrice, direction);
+      if (armed?.expiresAt && !breachWorsened) {
         const cooldownUntil = new Date(armed.expiresAt.getTime() + cooldownMs);
         // Tombstone this call's just-created order so it doesn't linger as a
         // PENDING/AWAITING row. Systemic message → excluded from future counts.
@@ -324,7 +414,7 @@ export async function maybeAwaitApproval(
           where: { id: args.orderId },
           data: {
             status: "REJECTED",
-            rejectionMessage: `Suppressed — recent unapproved CLOSE cooldown (P1-28); last ${armed.status.toLowerCase()} ${armed.expiresAt.toISOString()}`,
+            rejectionMessage: `Suppressed — recent unapproved CLOSE cooldown (P1-28/P1-39); last ${armed.status.toLowerCase()} ${armed.expiresAt.toISOString()}`,
           },
         });
         return {
@@ -359,6 +449,9 @@ export async function maybeAwaitApproval(
         status: "AWAITING_APPROVAL",
         expiresAt,
         rationale: args.rationale,
+        // Anchor for the P1-39 protective-exit escape: the next re-proposal
+        // compares its price against this one to decide "same breach vs. worse".
+        proposedPrice: resolvedProposedPrice ?? undefined,
       },
     });
   });

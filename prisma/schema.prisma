@@ -929,6 +929,14 @@ model Order {
   // no decision row behind it. See lib/inngest/functions/reconcile-orders.ts.
   closeReason       String? // "TARGET" | "STOP" | "TIME" | "MANUAL" (close intents only)
   closeSource       String? // "agent" | "price_monitor" | "user" (close intents only)
+  // Market price at proposal time (the "Est. exit" shown in the approval UI).
+  // Load-bearing for the P1-39 proposal-fatigue gate: a re-proposed protective
+  // exit is only re-surfaced if the breach materially WORSENED vs the price at
+  // the last unapproved proposal — otherwise it's the same breach you already
+  // held through, and the gate stays quiet. Null on legacy rows + paths that
+  // don't pass it → the gate fails OPEN (flows) rather than risk suppressing a
+  // real stop. See docs/plans/PROPOSAL_FATIGUE.md.
+  proposedPrice     Float?
   alpacaSubmittedAt DateTime? // when we attempted the Alpaca call
   alpacaConfirmedAt DateTime? // when we got a non-error response back
   // Trade-as-Proposal — populated when status='AWAITING_APPROVAL'.

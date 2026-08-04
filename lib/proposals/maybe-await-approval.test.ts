@@ -43,10 +43,19 @@ jest.mock("@/lib/emails/proposal-pending", () => ({
   sendProposalPendingEmail: mockSendProposalPendingEmail,
 }));
 
+// P1-39: the gate fetches a live quote to anchor the protective-exit escape.
+// Default null → resolvedProposedPrice stays null → the escape fails OPEN.
+const mockGetStockQuote = jest.fn().mockResolvedValue(null);
+jest.mock("@/lib/actions/finnhub.actions", () => ({
+  getStockQuote: mockGetStockQuote,
+}));
+
 import {
   maybeAwaitApproval,
   ApprovalGateAccountUnresolvedError,
   UNAPPROVED_EXIT_COOLDOWN_DAYS,
+  isSameOrBetterBreach,
+  PROTECTIVE_REASK_WORSENING_PCT,
   type AwaitingApprovalResult,
 } from "./maybe-await-approval";
 
@@ -222,28 +231,55 @@ describe("maybeAwaitApproval — unapproved-exit cooldown (P1-28)", () => {
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 
-  it("lets a protective/trail EXIT re-fire on re-cross even after a user REJECTION (ARQT $26.50 case)", async () => {
-    // The principal rejected a trail-from-high gain-lock exit at +21% because
-    // they wanted to keep holding — but explicitly asked to be re-alerted if
-    // price re-crosses the level. tactical-run threads ctx.protectiveExitReason
-    // for that predicate so close_position tags the close STOP (agent source).
-    // A STOP close is a MATERIAL risk event, so it must bypass the P1-28
-    // cooldown and re-stage — NOT be silently suppressed for 5 days like a
-    // discretionary re-pitch would be.
-    mockOrderFindFirst.mockResolvedValue(null); // no pending twin
-    mockOrderFindUnique.mockResolvedValue({ closeReason: "STOP", closeSource: "agent" });
-    const expiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // rejection inside window
+  it("re-surfaces a protective STOP when the breach materially WORSENED vs the last decline (P1-39)", async () => {
+    // The principal declined a stop at $3.95 and held. Days later the position
+    // has broken down to $3.50 — materially worse than what they held through.
+    // That is new information, so the protective exit re-stages rather than
+    // being suppressed. (LONG: worse = a materially LOWER price.)
+    mockOrderFindFirst.mockResolvedValue(null);
+    mockOrderFindUnique.mockResolvedValue({
+      symbol: "MNKD",
+      closeReason: "STOP",
+      closeSource: "agent",
+      position: { direction: "LONG" },
+    });
+    mockGetStockQuote.mockResolvedValueOnce({ c: 3.5 }); // current — deep breach
+    const expiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
     mockOrderFindMany.mockResolvedValue([
-      { id: "order-rejected", status: "REJECTED", expiresAt, rejectionMessage: "keep holding" },
+      { id: "order-rejected", status: "REJECTED", expiresAt, rejectionMessage: "keep holding", proposedPrice: 3.95 },
     ]);
 
     const result = await maybeAwaitApproval(baseArgs());
 
-    // Re-stages a fresh proposal — the re-alert the principal asked for.
     expect(awaiting(result).orderId).toBe("order-new");
-    expect(mockOrderFindMany).not.toHaveBeenCalled(); // short-circuits on risk exit
+    expect(mockOrderFindMany).toHaveBeenCalledTimes(1); // now runs the cooldown check
     expect(mockTransaction).toHaveBeenCalledTimes(1);
     expect(mockSendProposalPendingEmail).toHaveBeenCalledWith("order-new");
+  });
+
+  it("SUPPRESSES a re-proposed protective STOP the principal held through when price hasn't materially worsened (P1-39, the MU/MNKD fix)", async () => {
+    // The core fatigue fix: declined the stop at $3.95, price is now $3.93 —
+    // the SAME breach they already held through, not a new event. The protective
+    // exit is suppressed exactly like a discretionary re-pitch, instead of the
+    // pre-P1-39 behavior where any STOP tag bypassed the cooldown and re-nagged.
+    mockOrderFindFirst.mockResolvedValue(null);
+    mockOrderFindUnique.mockResolvedValue({
+      symbol: "MNKD",
+      closeReason: "STOP",
+      closeSource: "agent",
+      position: { direction: "LONG" },
+    });
+    mockGetStockQuote.mockResolvedValueOnce({ c: 3.93 }); // ~same breach
+    const expiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    mockOrderFindMany.mockResolvedValue([
+      { id: "order-rejected", status: "REJECTED", expiresAt, rejectionMessage: "keep holding", proposedPrice: 3.95 },
+    ]);
+
+    const result = await maybeAwaitApproval(baseArgs());
+
+    expect(result?.state).toBe("suppressed_recent_rejection");
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
   });
 
   it("STILL suppresses a discretionary MANUAL close after a REJECTION (anti-nag preserved)", async () => {
@@ -266,21 +302,29 @@ describe("maybeAwaitApproval — unapproved-exit cooldown (P1-28)", () => {
     expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
   });
 
-  it("lets a STOP close through (risk exit bypasses the cooldown)", async () => {
+  it("fails OPEN — a protective STOP re-fires when the breach can't be compared (missing price) (P1-39 safety)", async () => {
+    // The safety default: if we can't PROVE it's the same breach (no stored
+    // price on the prior proposal, or no live quote), a protective exit always
+    // flows. We never swallow a possible real breakdown to kill a nag.
     mockOrderFindFirst.mockResolvedValue(null);
-    mockOrderFindUnique.mockResolvedValue({ closeReason: "STOP", closeSource: "agent" });
+    mockOrderFindUnique.mockResolvedValue({
+      symbol: "MNKD",
+      closeReason: "STOP",
+      closeSource: "agent",
+      position: { direction: "LONG" },
+    });
+    mockGetStockQuote.mockResolvedValueOnce(null); // quote unavailable
     mockOrderFindMany.mockResolvedValue([
-      { id: "order-expired", status: "EXPIRED", expiresAt: new Date(), rejectionMessage: null },
+      { id: "order-expired", status: "EXPIRED", expiresAt: new Date(), rejectionMessage: null, proposedPrice: null },
     ]);
 
     const result = await maybeAwaitApproval(baseArgs());
 
     expect(awaiting(result).orderId).toBe("order-new");
-    expect(mockOrderFindMany).not.toHaveBeenCalled(); // short-circuits on risk exit
     expect(mockTransaction).toHaveBeenCalledTimes(1);
   });
 
-  it("lets a price_monitor close through (trailing-stop cron bypasses)", async () => {
+  it("lets a non-STOP price_monitor close through (only STOP runs the escape)", async () => {
     mockOrderFindFirst.mockResolvedValue(null);
     mockOrderFindUnique.mockResolvedValue({ closeReason: "MANUAL", closeSource: "price_monitor" });
 
@@ -289,6 +333,29 @@ describe("maybeAwaitApproval — unapproved-exit cooldown (P1-28)", () => {
     expect(awaiting(result).orderId).toBe("order-new");
     expect(mockOrderFindMany).not.toHaveBeenCalled();
     expect(mockTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("SUPPRESSES a price_monitor STOP re-nag at the same level (the MU $860 case) (P1-39)", async () => {
+    // The re-nag comes from BOTH agent and price-monitor STOP closes — MU's $860
+    // floor was re-proposed by the price-monitor across many days. A STOP runs the
+    // escape regardless of source, so a same-level price-monitor re-nag suppresses.
+    mockOrderFindFirst.mockResolvedValue(null);
+    mockOrderFindUnique.mockResolvedValue({
+      symbol: "MU",
+      closeReason: "STOP",
+      closeSource: "price_monitor",
+      position: { direction: "LONG" },
+    });
+    mockGetStockQuote.mockResolvedValueOnce({ c: 858 }); // ~same breach as $860
+    const expiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    mockOrderFindMany.mockResolvedValue([
+      { id: "order-expired", status: "EXPIRED", expiresAt, rejectionMessage: null, proposedPrice: 860 },
+    ]);
+
+    const result = await maybeAwaitApproval(baseArgs());
+
+    expect(result?.state).toBe("suppressed_recent_rejection");
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 
   it("ignores systemic tombstones — a dedup/suppression row does NOT arm the cooldown", async () => {
@@ -374,5 +441,38 @@ describe("maybeAwaitApproval — unresolved account fails CLOSED on LIVE", () =>
     expect(mockOrderFindFirst).not.toHaveBeenCalled();
     expect(mockTransaction).not.toHaveBeenCalled();
     expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("isSameOrBetterBreach — the P1-39 protective re-ask predicate", () => {
+  const PCT = PROTECTIVE_REASK_WORSENING_PCT;
+
+  it("LONG: same-ish price ⇒ same breach ⇒ suppress (true)", () => {
+    expect(isSameOrBetterBreach(3.93, 3.95, "LONG")).toBe(true);
+  });
+  it("LONG: materially lower price ⇒ worse breach ⇒ re-ask (false)", () => {
+    expect(isSameOrBetterBreach(3.5, 3.95, "LONG")).toBe(false);
+  });
+  it("LONG: price recovered above prior ⇒ definitely not worse ⇒ suppress (true)", () => {
+    expect(isSameOrBetterBreach(4.1, 3.95, "LONG")).toBe(true);
+  });
+  it("SHORT: materially higher price ⇒ worse breach ⇒ re-ask (false)", () => {
+    expect(isSameOrBetterBreach(110, 100, "SHORT")).toBe(false);
+  });
+  it("SHORT: same-ish price ⇒ suppress (true)", () => {
+    expect(isSameOrBetterBreach(101, 100, "SHORT")).toBe(true);
+  });
+  it("fails safe (false ⇒ re-ask) when either price is missing or invalid", () => {
+    expect(isSameOrBetterBreach(null, 3.95, "LONG")).toBe(false);
+    expect(isSameOrBetterBreach(3.5, null, "LONG")).toBe(false);
+    expect(isSameOrBetterBreach(undefined, undefined, "LONG")).toBe(false);
+    expect(isSameOrBetterBreach(3.5, 0, "LONG")).toBe(false);
+  });
+  it("honors the threshold boundary (just inside = suppress, just past = re-ask)", () => {
+    const prior = 100;
+    const justInside = prior * (1 - PCT / 100) + 0.01; // not yet materially worse
+    const justPast = prior * (1 - PCT / 100) - 0.01; // materially worse
+    expect(isSameOrBetterBreach(justInside, prior, "LONG")).toBe(true);
+    expect(isSameOrBetterBreach(justPast, prior, "LONG")).toBe(false);
   });
 });
