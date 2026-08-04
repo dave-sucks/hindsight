@@ -319,7 +319,13 @@ export async function getStockCandles(
 
     const end = new Date().toISOString().slice(0, 10);
     const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Day&start=${start}&end=${end}&limit=1000&feed=iex`;
+    // adjustment=split back-adjusts historical bars for stock splits, matching
+    // the price line every other source shows (Finnhub, Perplexity, Yahoo).
+    // Without it Alpaca defaults to `raw`, so a split renders as a phantom
+    // plateau→cliff→plateau (e.g. a 3:1 split shows pre-split bars ~3x higher).
+    // `split` (not `all`) keeps dividend-unadjusted prices so non-splitting
+    // dividend payers stay pixel-identical to those same sources.
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=iex`;
 
     const res = await fetch(url, {
       headers: {
@@ -379,7 +385,9 @@ export async function getStockCandlesBatch(
 
     const end = new Date().toISOString().slice(0, 10);
     const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(unique.join(','))}&timeframe=1Day&start=${start}&end=${end}&limit=1000&feed=iex`;
+    // adjustment=split — see getStockCandles: back-adjust for splits so the
+    // chart matches Finnhub/Perplexity and a split doesn't show as a cliff.
+    const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(unique.join(','))}&timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=iex`;
 
     const res = await fetch(url, {
       headers: {
@@ -578,6 +586,81 @@ async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> 
       }));
   } catch (err) {
     console.error('[getIntradayCandles] Alpaca error:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+/**
+ * Hourly candles over the last ~month — powers the sheet chart's 1W and 1M
+ * tabs. Daily candles make 1W ~3 dots and 1M ~22; hourly makes them read like
+ * a real finance chart (Perplexity uses intraday bars for its short ranges
+ * too). Same FREE Alpaca IEX feed as the 1D tab — thin on illiquid names and
+ * regular-hours only (no pre/post), but a big density step up at $0. The paid
+ * upgrade (feed=sip) is the drop-in for full-volume + extended hours.
+ *
+ * `date` carries the FULL ISO timestamp so the chart keys each hour uniquely;
+ * the categorical axis then collapses overnight/weekend gaps (no flat spans),
+ * matching Perplexity. adjustment=split so a split doesn't render as a cliff.
+ */
+export async function getHourlyCandles(
+  symbol: string,
+  days = 31,
+): Promise<StockCandle[]> {
+  try {
+    const apiKey = process.env.ALPACA_API_KEY;
+    const apiSecret = process.env.ALPACA_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      console.warn('[getHourlyCandles] No Alpaca credentials configured');
+      return [];
+    }
+
+    const end = new Date().toISOString();
+    const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Hour&start=${start}&end=${end}&limit=10000&adjustment=split&feed=iex`;
+
+    const res = await fetch(url, {
+      headers: {
+        'APCA-API-KEY-ID': apiKey,
+        'APCA-API-SECRET-KEY': apiSecret,
+      },
+      next: { revalidate: 300 },
+    });
+
+    if (!res.ok) {
+      console.warn('[getHourlyCandles] Alpaca error', res.status, await res.text().catch(() => ''));
+      return [];
+    }
+
+    const data = (await res.json()) as {
+      bars?: { c: number; o: number; h: number; l: number; v: number; t: string }[];
+    };
+    if (!data.bars?.length) return [];
+
+    // Regular-hours bars only (9:00–16:00 ET = minutes 540–960). IEX pre/post is
+    // too thin to plot and would add stray points to the categorical axis; the
+    // loose lower bound keeps the opening bar whatever the hour alignment.
+    const timeFmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/New_York',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return data.bars
+      .filter((bar) => {
+        const [hh, mm] = timeFmt.format(new Date(bar.t)).split(':').map(Number);
+        const etMinutes = hh * 60 + mm;
+        return etMinutes >= 540 && etMinutes <= 960;
+      })
+      .map((bar) => ({
+        date: bar.t, // full ISO timestamp — unique per hour, collapses gaps
+        close: bar.c,
+        open: bar.o,
+        high: bar.h,
+        low: bar.l,
+        volume: bar.v,
+      }));
+  } catch (err) {
+    console.error('[getHourlyCandles] Error:', err instanceof Error ? err.message : err);
     return [];
   }
 }

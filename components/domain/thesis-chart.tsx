@@ -107,6 +107,37 @@ export function ThesisChart({
     };
   }, [is1D, ticker]);
 
+  // Hourly bars for 1W / 1M — fetched once the moment either short range is
+  // first selected (full variant only). Unlike 1D these move slowly, so no
+  // 30s poll; one fetch covers both ranges (StockPriceChart slices 1W from the
+  // ~month of hourly bars). Reset on ticker change so a re-keyed chart refetches.
+  const [hourly, setHourly] = useState<StockCandle[] | undefined>(undefined);
+  const [wantHourly, setWantHourly] = useState(false);
+
+  useEffect(() => {
+    setHourly(undefined);
+    setWantHourly(false);
+  }, [ticker]);
+
+  useEffect(() => {
+    if (!wantHourly || hourly !== undefined) return; // fetch once per ticker
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/stocks/hourly?symbol=${encodeURIComponent(ticker)}`,
+        );
+        const json = (await res.json()) as { candles?: StockCandle[] };
+        if (!cancelled) setHourly(Array.isArray(json.candles) ? json.candles : []);
+      } catch {
+        if (!cancelled) setHourly([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [wantHourly, hourly, ticker]);
+
   // ── No candles → gauge fallback (or nothing if there's nothing to show) ──
   if (candles.length < 2) {
     if (!hasLevels || entry == null) return null;
@@ -160,7 +191,11 @@ export function ThesisChart({
       showIntraday={enableIntraday}
       intradayCandles={intraday}
       intradayLoading={intradayLoading}
-      onRangeChange={(r) => setIs1D(r === '1D')}
+      hourlyCandles={enableIntraday ? hourly : undefined}
+      onRangeChange={(r) => {
+        setIs1D(r === '1D');
+        if (r === '1W' || r === '1M') setWantHourly(true);
+      }}
       tradeSpan={tradeSpan}
     />
   );
