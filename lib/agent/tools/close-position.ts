@@ -18,10 +18,21 @@ export const closePosition = defineTool({
     "Call this during the execution phase when your analysis indicates a position should be exited.",
   schema: z.object({
     ticker: z.string().describe("Ticker symbol of the position to close"),
+    // Vocabulary is deliberately identical to manage_position's `close_reason`
+    // (lib/agent/tools/manage-position.ts). Both tools can fully close a
+    // position and both are in the principal-chat allowlist, so a model reaching for
+    // THESIS_INVALIDATED on the wrong one used to eat a hard Zod rejection
+    // (2026-08-09, XENE). Same enum on both = the mismatch can't happen.
+    // THESIS_INVALIDATED / RISK_MANAGEMENT collapse to MANUAL below —
+    // closeOpenPosition only stores TARGET | STOP | TIME | MANUAL.
     reason: z
-      .enum(["TARGET", "STOP", "MANUAL"])
+      .enum(["TARGET", "STOP", "THESIS_INVALIDATED", "RISK_MANAGEMENT", "MANUAL"])
       .default("MANUAL")
-      .describe("TARGET if hit price target, STOP if risk management, MANUAL for portfolio rebalancing"),
+      .describe(
+        "TARGET if hit price target, STOP if a protective level tripped, " +
+          "THESIS_INVALIDATED if the setup broke structurally, " +
+          "RISK_MANAGEMENT if trimming exposure, MANUAL for portfolio rebalancing",
+      ),
     notes: z
       .string()
       .optional()
@@ -49,7 +60,17 @@ export const closePosition = defineTool({
     // daily runs and judgment EXIT triggers (earnings/signals) the field is
     // undefined, so a genuinely discretionary MANUAL close keeps its tag and
     // stays on cooldown — the P1-28 anti-nag protection is preserved.
-    const reason = ctx.protectiveExitReason ?? args.reason;
+    const intent = ctx.protectiveExitReason ?? args.reason;
+    // closeOpenPosition (and Position.closeReason) only store
+    // TARGET | STOP | TIME | MANUAL. The two judgment codes collapse to
+    // MANUAL — identical to manage_position's full_close mapping, so both
+    // close paths tag the row the same way. Note the P1-28 consequence:
+    // MANUAL is NOT exempt from the unapproved-exit cooldown, so a rejected
+    // THESIS_INVALIDATED close goes on cooldown like any discretionary exit.
+    // That's intended (a broken setup is a judgment call, not a level re-cross);
+    // GAPS P1-39 is where persisting the finer intent gets decided.
+    const reason: "TARGET" | "STOP" | "MANUAL" =
+      intent === "TARGET" || intent === "STOP" ? intent : "MANUAL";
     try {
       // ── PROMOTED guard (P1-21) ─────────────────────────────────────────
       // A PROMOTED thesis was an ACTIVE paper position that the user just
@@ -130,7 +151,7 @@ export const closePosition = defineTool({
       const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
       const agentAuditReason = args.notes
         ? args.notes
-        : `${position.direction} position in ${ticker} closed by agent — reason: ${reason}.`;
+        : `${position.direction} position in ${ticker} closed by agent — reason: ${intent}.`;
       const outcome = await closeOpenPosition(position.id, reason, undefined, "agent", agentAuditReason, ctx.runId);
 
       // Trade-as-Proposal — when the Account requires approval for sells in this environment,
@@ -214,8 +235,8 @@ export const closePosition = defineTool({
       const analystId = ctx.analystId || position.analystId;
       const fillNote = result.fillStatus === "PENDING" ? " (close order pending fill)" : "";
       const reasoningNote = args.notes
-        ? `Closed ${position.direction} position: ${reason}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`
-        : `Closed ${position.direction} position: ${reason}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`;
+        ? `Closed ${position.direction} position: ${intent}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`
+        : `Closed ${position.direction} position: ${intent}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`;
 
       try {
         await prisma.tradeDecision.create({
