@@ -1,5 +1,9 @@
 # ANALYST_LINEUP — Reference Doc
 
+> **2026-07-16 live-book gap review is the current decision record — see the section directly below.**
+> The 2026-05-27 migration content beneath it is preserved for forensics; where it conflicts, the
+> 2026-07-16 review and the live `AgentConfig` table win.
+
 **Status (last verified 2026-06-02):**
 
 | Analyst | Before | After | Outcome |
@@ -15,6 +19,197 @@
 **Anchor:** principal's stated goal — "big gains, conviction holds like the $MU breakout, ideally long-term." All sizing math is for a $100k paper book, LONG-only across the board.
 
 **This doc now serves as:** the reference for *why* the lineup looks like it does (4 archetype-based PMs, not 5+ theme-locked analysts), what was changed in the 2026-05-27 migration, and the sizing math. Live config state is in the `AgentConfig` table — when fields drift from this doc, the table wins.
+
+---
+
+## 2026-07-16 — Live-book gap review + lineup decision
+
+**Why this review happened:** during a `/discovery-prep` session the operator flagged that the two
+paper analysts "aren't doing jack shit" and that the live portfolio has "a massive gap" running on
+only two live seats. Rather than rage-scrap, we ran a data-driven gap analysis. The conclusion: the
+instinct is directionally right (there IS a real hole), but the fix is **surgical, not a rebuild** —
+the seat that fills the hole already exists in paper and is just under-executing.
+
+### Current live book (real money, from `Position` WHERE status=OPEN)
+
+| Analyst | Env | Open positions | ~Cost basis | Style | Horizon |
+|---|---|---|---|---|---|
+| **Catalyst PM** | LIVE | LNTH, MLTX, EWTX, MRK | ~$17k | Dated binary event | Weeks |
+| **PEAD** | LIVE | MU, PACS, SNOW, ZETA, DELL | ~$41k | Post-earnings drift | 30–60d |
+| Secular Compounder | PAPER | LITE, ADI, ISRG, CRWD | ~$23k | Secular hold | Position |
+| Momentum Breakout | PAPER | *(none)* | — | Breakout | Trade |
+
+**Post-overhaul scorecard (closed trades since 2026-05-27, RECONCILE excluded):**
+
+| Analyst | Env | W/L/BE | Realized P&L | Read |
+|---|---|---|---|---|
+| Catalyst PM | LIVE | 3 / 1 / 0 | **+$1,504** | ✅ Working |
+| PEAD | LIVE | 2 / 1 / 0 | **+$1,056** | ✅ Working |
+| Secular Compounder | PAPER | 1 / 0 / 0 | +$343 | 🟠 Barely tested, mis-sized |
+| Momentum Breakout | PAPER | 0 / 6 / 2 | **−$1,289** | ❌ Enters and loses |
+
+### The gaps (evidence-based)
+
+1. **Horizon gap — the big one.** 100% of live money sits in ≤60-day event trades. Zero durable
+   exposure. A 6-month secular run (AVGO/NVDA-type) isn't held by anything live — PEAD sells into
+   the drift, Catalyst never touches it.
+2. **Style correlation.** Both live seats are "react to a discrete event." In an event-light tape
+   (August doldrums, no earnings, no PDUFA cluster) **both go quiet at once** — two engines that
+   idle on the same days. Not diversification.
+3. **The hole-filling seat is stuck in paper AND under-executing.** Secular Compounder is the only
+   durable/trend archetype, but it holds LITE/ADI/ISRG/CRWD = **100% tech/medtech, zero
+   energy/defense/GLP-1** despite all seven themes being configured, and still mis-sizes (1-share
+   LITE). It isn't executing its own mandate.
+4. **Momentum is a structural misfit, not a discovery problem.** 0W/6L/2BE, −$1,289 post-overhaul.
+   It's a days-horizon style running on a once-daily 8AM cron — a day-trading strategy on a
+   daily-batch engine. No discovery prep fixes a cadence mismatch.
+
+### Decision
+
+| Seat | Verdict | Action |
+|---|---|---|
+| **Catalyst PM** | KEEP | Live + green. Don't touch archetype. (Config-drift cleanup — see below.) |
+| **PEAD** | KEEP | Live + green. Don't touch. (MU cost-basis reconcile — see below.) |
+| **Secular Compounder** | **FIX + GRADUATE — priority #1** | (a) Apply the sizing-prompt rule ("size to conviction ≥10% or it's a WATCH; no profit-taking inside 30d"). (b) Run a discovery session to populate the non-tech themes (energy / defense / GLP-1). Then graduate to live once it strings a positive stretch. Fills gap #1 and #2 at once. |
+| **Momentum Breakout** | **SCRAP or REDESIGN** | Either kill it, or redesign into a multi-week **Trend/Swing** seat (buy strength on the first pullback, hold weeks not days) that fits the daily cadence. If we want trend exposure, the redesign delivers it; if not, killing it costs nothing. |
+| **5th net-new seat** | DEFER | Running 4 seats well beats running 5 badly. Get Compounder live and proven first. |
+
+**Bottom line:** the operator already owns the seat that closes the live-book gap (Secular
+Compounder). It's stuck in paper and not sourcing its own themes. The highest-leverage move on the
+platform right now is **fix Compounder → graduate it**, then **kill-or-redesign Momentum** — not a
+from-scratch rebuild.
+
+### Config-drift flags found in passing (not the analysis; hand to operator)
+
+- **Catalyst PM** live config drifted from the 2026-05-27 target: `minConfidence 65` (doc says 70),
+  `maxOpenPositions 10` (doc says 5), `marketCapMax = null` (doc says $20B ceiling). Running looser
+  than documented.
+- **PEAD's MU** open position shows `avgCost ≈ $943.67` → ~$16k basis, which *exceeds* PEAD's live
+  `maxPositionSize` and is ~2× any prior MU price. Looks like a **bad cost-basis reconcile** that
+  would corrupt that position's P&L. Verify before trusting MU's reported P&L.
+
+### Deferred decision — Catalyst PM market-cap floor (2026-07-16)
+
+The discovery agent proposed dropping `marketCapMin` from $1B → $500M to widen the PDUFA pool. **Held
+off.** Rationale: the thin-yield problem was caused by the sourcing *window* (2–4 wks vs. the 6–8 wks
+actionable) and scout-only sourcing (no primary FDA-calendar scan) — **not** the cap floor. Widening
+the window + adding the primary calendar solves the pool without adding risk. Sub-$1B single-product
+biotech carries gap-through-stop blowup risk (cf. IONS −$751, and that was a large-cap); the seat's
+actual winners (XENE, ARQT, VRDN, LNTH) were all $1B+. **If revisited:** don't blanket-drop at full
+size — go to ~$750M *only* paired with (a) half-size ($4k) on sub-$1B names and (b) restricting the
+sub-$1B pool to high-base-rate events (orphan/rare disease, Class 1 CRL resubmissions,
+positive-data-in-hand pre-PDUFA). Make it a deliberate config change, not a reflexive floor-drop.
+
+### Next actions (sequence)
+
+1. Draft the Compounder sizing-prompt patch (show the `UPDATE` before running) + a Compounder
+   discovery-prep block for energy/defense/GLP-1.
+2. Decide Momentum: kill vs. redesign into Trend/Swing (spec the alternative before deciding).
+3. (Parked) Finish the PEAD discovery-prep block started this session.
+4. (Operator) Reconcile the two config-drift flags above.
+
+---
+
+## 2026-07-27 — FINAL lineup recommendation (research-backed; supersedes the open questions above)
+
+**Method:** deep-research pass over academic + practitioner sources (Fung & Hsieh, Hurst/Ooi/Pedersen,
+AQR, Bailey & López de Prado, Howard Marks memos, MPRA PEAD-vs-momentum study), mapped onto the
+2026-07-16 gap analysis. Operator constraint: **3 seats, maybe 4 — not 5.**
+
+### The three research findings that decide it
+
+1. **PEAD and price-momentum are the same bet.** Zero-investment PEAD and momentum portfolio returns
+   correlate at **0.63** (NYSE/AMEX/NASDAQ, 1975–2010), and **PEAD subsumes momentum** — PEAD returns
+   explain momentum returns better than the reverse
+   ([MPRA 97458](https://mpra.ub.uni-muenchen.de/97458/1/MPRA_paper_97458.pdf)). We already run the
+   more fundamental of the two, live and profitably. **A momentum seat was never a diversifier for
+   this book — it duplicates PEAD.**
+2. **The genuine diversifiers to short-horizon underreaction are (a) quality/defensive and
+   (b) long-horizon styles.** Long-horizon reversal correlates ~0.15 with PEAD and ~0.00 with
+   momentum (same MPRA source). AQR: quality's ideal environment (uncertain/volatile tapes) is the
+   *opposite* of momentum's (trending tapes) — productive/idle periods offset
+   ([AQR Quality Factor](https://funds.aqr.com/Insights/Strategies/Quality-Factor)). Marks frames the
+   book as a deliberate aggressive/defensive balance
+   ([Fewer Losers, or More Winners?](https://www.brookfieldoaktree.com/insight/memos-howard-marks-fewer-losers-or-more-winners)),
+   and the Buffett/Munger record backs few, heavily-sized, long-held winners. **The Compounder is the
+   missing leg, and it deserves the biggest sleeve.** (Trend-following also verified as a true
+   diversifier — [Fung & Hsieh](https://www.trendfollowing.com/whitepaper/hsieh_fung_final_paper.pdf)
+   CONFIRMED 3-0, [Hurst/Ooi/Pedersen](https://fairmodel.econ.yale.edu/ec439/hurst.pdf) — but the
+   evidence is for multi-asset managed-futures trend, which this platform can't honestly implement;
+   an equity-long "trend" seat would collapse back into the PEAD-correlated underreaction bet.)
+3. **8 trades cannot statistically convict a strategy — so the Momentum kill must rest on structure,
+   not the 0W/6L record.** Minimum Track Record Length: even an observed Sharpe-2 strategy needs
+   ~2.7 *years* of daily returns to beat a Sharpe-1 bar at 95% confidence; skewed/fat-tailed returns
+   push it to ~5 years ([Bailey & López de Prado, MinTRL](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1821643);
+   [Deflated Sharpe](https://www.davidhbailey.com/dhbpapers/deflated-sharpe.pdf)). The defensible kill
+   rationale is the two structural facts: **redundancy with live PEAD** (finding 1) + **cadence
+   mismatch** (day-scale style on a once-daily cron). Those are design errors, not variance.
+   Corollary: the same math says the two live seats' green records (n=3–4 each) are also
+   statistically unproven — keep them because they're on-archetype and structurally sound, not
+   because the P&L "proves" the edge yet.
+
+### The final lineup: 3 seats now, a defined bar for a 4th
+
+| # | Seat | Verdict | Role (return source) |
+|---|---|---|---|
+| 1 | **Catalyst Event PM** | KEEP (live) + drift cleanup | Event risk-premium capture (aggressive) |
+| 2 | **PEAD Specialist** | KEEP (live), untouched | Underreaction/drift — the fundamental version; subsumes momentum |
+| 3 | **Secular Compounder** | **REBUILD-IN-PLACE** (same seat + archetype, fresh prompt), then graduate | Quality/defensive + long-horizon — the leg the book lacks; biggest sleeve |
+| — | **Momentum Breakout** | **DELETE.** Do not rebuild as another momentum/trend variant | (redundant with #2) |
+| 4? | *Open slot* | DEFER with a bar (below) | — |
+
+**Per-seat actions:**
+
+- **Catalyst (#1):** config drift cleanup only — `minConfidence 65→70`, `maxOpenPositions 10→5`,
+  `marketCapMax null→$20B` (restore the 2026-05-27 targets). Keep the $1B floor (deferred-decision
+  section above). Wake the in-fence tech-catalyst lane via discovery; no fence widening.
+- **PEAD (#2):** no changes. It is the book's proven underreaction engine and the research says it's
+  the *right one of the pair* to own.
+- **Compounder (#3) — the priority move.** Rebuild-in-place, not a new row: keep the seat, archetype
+  (THEMATIC_SECULAR), and $15k×4 @ conf-78 config; replace the `analystPrompt` from scratch with the
+  two hard rules the seat keeps ignoring — *"size to conviction: ≥10% of book or it's a WATCH, never
+  a 1% position"* and *"no profit-taking inside 30 days unless an invalidation trips"* — then run a
+  theme-population discovery (energy transition / defense / GLP-1) so the book stops being 100% tech.
+  Graduate to LIVE after it strings a positive stretch executing at mandate size. Sleeve logic per
+  Marks/Buffett concentration + the slow-sleeve-dominant weighting evidence
+  ([17/83 fast/slow optimum](https://arxiv.org/pdf/2507.15876)): this seat carries the largest
+  per-position size in the book by design.
+- **Momentum:** `enabled:false` now; delete the row after a week's stability (same procedure as the
+  EV seat, 2026-05-27). Its $5k×5 soft allocation folds back into headroom.
+
+> **Execution status (2026-08-03):** Momentum disabled ✅ · Compounder `analystPrompt` rebuilt with
+> the 4 non-negotiable rules ✅ · Catalyst drift cleanup applied (`maxOpenPositions` 10→5,
+> `minConfidence` 65→70, `marketCapMax` null→$20B) ✅ · position-size **floors** added to PEAD ($7k)
+> and Catalyst ($5k) `analystPrompt`s ✅. Remaining: Compounder theme-population discovery → promote
+> to LIVE; Momentum row deletion after ~1 week.
+
+### Final sizing bands (2026-08-03) — $100k book
+
+| Seat | Env | Floor → Cap | Max positions | Capacity |
+|---|---|---|---|---|
+| Catalyst Event PM | LIVE | $5,000 → $8,000 | 5 | $40,000 |
+| PEAD Specialist | LIVE | $7,000 → $14,000 | 6 | $84,000 |
+| Secular Compounder | PAPER→LIVE | $10,000 → $15,000 | 4 | $60,000 |
+
+Full capacity $184,000 = **184% of book, intentional soft over-allocation** (conviction wins the
+slot; the buying-power gate prevents over-commitment). Realistic steady state: **10–13 positions,
+60–90% deployed.** Caps are ceilings, not targets — no two seats run full simultaneously.
+
+**Why floors live in the prompt:** `AgentConfig` has *two ceilings* (`maxPositionSize` and the
+live-only `realMaxPosition`, live order = the lower of the two) and **no minimum-position-size
+field**. Agents were choosing far below cap (PEAD proposed $3,566 against a $14k cap; Compounder
+opened a 1-share $922 LITE). Until a config floor exists, Layer 3 carries it. Config-side fix is
+filed as its own task (add `minPositionSize`, surface as Floor/Ceiling, rename the promotion
+throttle).
+- **The bar for any 4th seat:** it must bring a return source with **offset idle periods** vs all
+  three keepers — not another underreaction lookback
+  ([time-scale diversification can conceal redundancy](https://arxiv.org/pdf/2510.23150)). Candidates
+  that could clear it: true managed-futures-style trend (needs multi-asset + intraday infra the
+  platform lacks today), or a vol/hedge sleeve. Nothing currently buildable clears it → run 3.
+
+**Bottom line:** the well-rounded book is **aggressive event capture (Catalyst) + systematic drift
+(PEAD) + defensive long-horizon quality at conviction size (Compounder)** — three genuinely distinct
+return sources per the correlation evidence — with Momentum deleted as a duplicate, not replaced.
 
 ---
 
