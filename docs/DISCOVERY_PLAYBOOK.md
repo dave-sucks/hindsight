@@ -4,20 +4,30 @@
 >
 > **Status:** living doc. Updated as we learn what queries actually surface tradeable setups vs. what produces noise. See "Learnings" at the bottom of each analyst section.
 >
-> **Last updated:** 2026-06-05.
+> **Last updated:** 2026-08-03.
 
 ---
 
 ## The roster (quick reference)
 
-| Analyst | Env | Horizon | Per-position | Max open | Conf | What it hunts |
+| Analyst | Env | Horizon | Per-position (floor → cap) | Max open | Conf | What it hunts |
 |---|---|---|---|---|---|---|
-| **PEAD Specialist** | LIVE | TARGET (30-60d) | $6k live / $3k paper | 6 | 70 | Clean beat-and-raise prints; 30-60d drift |
-| **Catalyst Event PM** | LIVE | CATALYST (weeks) | $8k | 5 | 70 | Binary dated events (FDA, courts, contracts, M&A, earnings) |
-| **Secular Compounder** | PAPER | COMPOUNDER (years) | $15k | 4 | 78 | Best-in-class operators in secular themes (multi-year holds) |
-| **Momentum Breakout** | PAPER | TRADE (days-weeks) | $5k | 5 | 75 | 52-week-high breakouts, $5B+ market cap, sector-agnostic |
+| **PEAD Specialist** | LIVE | TARGET (30-60d) | **$7k → $14k** | 6 | 70 | Clean beat-and-raise prints; 30-60d drift |
+| **Catalyst Event PM** | LIVE | CATALYST (weeks) | **$5k → $8k** | 5 | 70 | Binary dated events (FDA, courts, contracts, M&A, earnings) |
+| **Secular Compounder** | PAPER | COMPOUNDER (years) | **$10k → $15k** | 4 | 78 | Best-in-class operators in secular themes (multi-year holds) |
+| *4th seat — **open slot*** | — | — | — | — | — | *Deferred, not vacant-by-accident. Must bring **offset idle periods** vs all three above — not another underreaction/lookback style. See `ANALYST_LINEUP.md` (2026-07-27).* |
 
-Disabled: EV Catalyst Event Trader (themes folded into Compounder, 2026-05-27).
+**Position-size floors are real and enforced in each analyst's prompt** (there is no `minPositionSize`
+config field yet — a fix is in flight). A candidate that only justifies a sub-floor position is a
+**WATCHING thesis, not a dispatch**. Size the conviction you actually have.
+
+**Compounder is deliberately still PAPER.** Graduation bar: **2–3 consecutive proposals at ≥$10k
+across at least 2 different themes** (proves both the sizing rule and the theme-balance rule took).
+Discovery for it should assume it is building toward live, not already there.
+
+Retired: **Momentum Breakout** (disabled 2026-07-27 — PEAD/momentum zero-investment returns correlate
+0.63 and PEAD subsumes momentum, so it duplicated a live seat rather than diversifying it; deliberately
+**not replaced**). EV Catalyst Event Trader (themes folded into Compounder, 2026-05-27).
 
 ---
 
@@ -137,19 +147,22 @@ engage with — saying about [THEME B]? Names + the claim per name.
 
 | Analyst | Default play | Fill-in |
 |---|---|---|
-| **Secular Compounder** (gaps) | **A** (×2 sessions) | THEME = e.g. GLP-1 supply chain, then onshoring/reshoring. Scouts = multi-year fundamental holders. *Or Play D: reuse energy/AI scouts → ask the new theme.* |
-| **Catalyst Event PM** | **C** | NARRATIVE = "biotech PDUFAs/readouts dated next 2–4 weeks." |
+| **Secular Compounder** (gaps) | **A** (×2 sessions) | THEME = e.g. GLP-1 supply chain, then onshoring/reshoring. Scouts = multi-year fundamental holders. *Or Play D: reuse energy/AI scouts → ask the new theme.* **Priority seat — its watchlist is the firm's biggest gap.** |
+| **Catalyst Event PM** | **C** | NARRATIVE = "biotech PDUFAs/readouts dated next 2–4 weeks." Also wake the **dormant in-fence tech lane**: semis IPR/patent rulings, Big Tech antitrust dates, semis/software M&A votes. |
 | **PEAD Specialist** | **C** | NARRATIVE = "clean beat-and-raises last 5–10 days + PT raises." |
-| **Momentum Breakout** | **C** | NARRATIVE = "this week's breakouts **outside semiconductors**, early-stage (<5% from pivot)." |
 
 ### Per-archetype triage filters (apply in the Hindsight paste)
 
-- **Momentum:** $5B+ cap, new 52-wk high OR clean multi-month base breakout, >2× volume, +RS vs
-  SPY, sector leadership, **no earnings within 5 trading days**, common stock only, **early-stage /
-  first-pullback over extended/parabolic**, LONG only.
-- **Catalyst:** dated binary event (FDA/PDUFA/court/contract/M&A) within ~2–4 weeks, $1B+ cap.
-- **PEAD:** clean beat-AND-raise in the last 5–10 days + PT raises, within the drift window.
+- **Catalyst:** dated binary event (FDA/PDUFA/court/contract/M&A) within ~2–4 weeks, **$1B–$20B cap**.
+  Hard gate: **no specific primary-sourced forward date = not this archetype**, however good the story.
+  At equal upside prefer **"positive data already in hand + filing/PDUFA ahead"** (the de-risked-drift
+  pattern behind XENE/ARQT) over pure coin-flip readouts.
+- **PEAD:** clean beat-AND-raise in the last 5–10 days + PT raises, within the drift window. Reject
+  **guidance reiterated (not raised)** — the #1 false positive — one-time-item beats, and names that
+  already gapped >10% on the print.
 - **Compounder:** best-in-class operator in a secular theme, multi-year durability, conviction-sized.
+  **Theme-balance gate:** the current book is all tech/medtech — candidates in energy transition,
+  defense, GLP-1 and onshoring outrank another AI name at equal quality.
 
 ---
 
@@ -483,7 +496,17 @@ dispatch. Rest → PASS-record with rationale.
 
 ---
 
-## 4. Momentum Breakout (PAPER)
+## 4. Momentum Breakout — ⚠️ RETIRED 2026-07-27, DO NOT RUN DISCOVERY
+
+> **This seat is disabled and will be deleted.** Do not source names for it.
+>
+> **Why:** it duplicated PEAD rather than diversifying it. PEAD and price-momentum zero-investment
+> returns correlate **0.63**, and PEAD *subsumes* momentum (drift explains momentum better than the
+> reverse) — so this seat was a second helping of a live bet, not a new return source. Compounding
+> that, it ran a day-scale style on a once-daily cron: 0W / 6L / 2BE, −$1,289. Structural, not variance.
+>
+> **It is deliberately not replaced.** The open 4th slot must bring *offset idle periods* vs the three
+> live archetypes. Everything below is kept for forensics only.
 
 ### Mandate
 

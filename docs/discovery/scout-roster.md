@@ -34,7 +34,10 @@ dispatched theses' outcomes; the operator can override from taste.
 > last verified · notes. Keep one section per theme so Play D ("reuse theme-A scouts on theme-B")
 > is a copy-paste.
 
-### Technical / breakouts (Momentum)
+### Technical / breakouts — ⚠️ seat RETIRED 2026-07-27 (Momentum deleted)
+> The Momentum seat is gone and not replaced. **Don't source for this theme.** Handles kept only in
+> case a future 4th seat can use them; all remain unscored, so treat them as unproven if reused.
+
 | Handle | Tier | Known for | Last verified | Notes |
 |---|---|---|---|---|
 | @AdamMancini4 | 🔍 watch | ES/SPX levels, high-tight breakout setups | — | named in Momentum playbook queries; unscored |

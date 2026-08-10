@@ -36,10 +36,13 @@ Read these in order:
 For the chosen analyst, output a single ready-to-use block the operator can work straight down:
 
 1. **Going-in context** (2–4 bullets): which analyst, the gap from "Feed to Discovery", the
-   success metric + the lever this discovery is pushing (e.g. "Momentum's 35% WR bleeds from
-   chasing extended breakouts → these prompts force early/first-pullback setups"), cadence
-   (Momentum/Catalyst = 2×/week; Compounder = monthly), and whether there's a skip-list (names
+   success metric + the lever this discovery is pushing (e.g. "Compounder holds an all-tech book on a
+   7-theme mandate → these prompts force energy/defense/GLP-1 candidates"), cadence
+   (Catalyst/PEAD = 2×/week; Compounder = monthly), and whether there's a skip-list (names
    already held/watching — pull from `Thesis` WATCHING/HOLDING/PROMOTED so you don't re-source).
+   **Also check free slots before sourcing** — an analyst at its `maxOpenPositions` can't act on
+   anything you find (as of 2026-08-03 Catalyst sits at 7 holdings against a new max of 5, so it
+   has zero usable slots until exits clear).
 2. **The play** — name it (A/B/C/D) per the gap→play map, and say why.
 3. **Grok prompts** — 2–4 variants, copy-pasteable, lead with the operator's preferred mandate
    style. Each is a full prompt, not a fragment. Bake in the per-archetype triage filters
