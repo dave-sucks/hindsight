@@ -57,6 +57,7 @@ export function AnalystConfigSheet({
     holdDurations: config.holdDurations,
     minConfidence: config.minConfidence,
     maxOpenPositions: config.maxOpenPositions,
+    minPositionSize: config.minPositionSize,
     maxPositionSize: config.maxPositionSize,
     tradingEnvironment: config.tradingEnvironment,
     realMaxPosition: config.realMaxPosition,

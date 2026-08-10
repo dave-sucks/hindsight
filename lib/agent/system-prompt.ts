@@ -33,8 +33,10 @@ export interface AgentConfigInput {
   marketCapMax?: number | bigint | null;
   signalTypes?: string[];
   minConfidence?: number;
+  /** Per-entry floor. 0/undefined = off. See ToolContext.minPositionSize. */
+  minPositionSize?: number;
   maxPositionSize?: number;
-  /** LIVE-only per-position cap. PAPER runs ignore. See ToolContext.realMaxPosition. */
+  /** LIVE-only promotion cap. PAPER runs ignore. See ToolContext.realMaxPosition. */
   realMaxPosition?: number;
   maxOpenPositions?: number;
   watchlist?: string[];
@@ -92,6 +94,14 @@ export function buildDailyRunSystemPromptV2(
   const hold = config.holdDurations?.length ? config.holdDurations.join(", ") : "SWING";
   const minConf = config.minConfidence ?? 70;
   const maxPosSize = config.maxPositionSize ?? 2500;
+  const minPosSize = config.minPositionSize ?? 0;
+  // Position sizing is a BAND, not a ceiling. When a floor is configured we
+  // state the band — place_trade rejects entries on either side of it, so the
+  // agent should size into it up front rather than learn from a rejection.
+  const posSizeLine =
+    minPosSize > 0
+      ? `- Position size: $${minPosSize.toLocaleString()}–$${maxPosSize.toLocaleString()} per entry (both ends enforced — an undersized entry is rejected, not resized)`
+      : `- Max position size: $${maxPosSize.toLocaleString()}`;
   const maxOpenPos = config.maxOpenPositions ?? 5;
   const capMin =
     config.marketCapMin != null ? formatCap(Number(config.marketCapMin)) : "no minimum";
@@ -125,7 +135,7 @@ export function buildDailyRunSystemPromptV2(
       `- Direction: ${directionLabel}`,
       `- Hold style: ${hold}`,
       `- Min confidence: ${minConf}%`,
-      `- Max position size: $${maxPosSize.toLocaleString()}`,
+      posSizeLine,
       `- Max open positions: ${maxOpenPos}`,
       `- Watchlist seeds: ${watchSeeds}`,
       `- Hard exclusions: ${exclusions}`,

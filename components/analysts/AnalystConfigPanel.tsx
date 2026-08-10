@@ -133,6 +133,7 @@ function toFormValues(config: AgentConfigData): FormValues {
     holdDurations: config.holdDurations ?? ["SWING"],
     minConfidence: config.minConfidence ?? 65,
     maxOpenPositions: config.maxOpenPositions ?? 5,
+    minPositionSize: config.minPositionSize ?? 0,
     maxPositionSize: config.maxPositionSize ?? 5000,
     intelligencePolicy: config.intelligencePolicy ?? null,
     sectors: config.sectors ?? [],
@@ -159,6 +160,7 @@ function applyChange<K extends keyof FormValues>(
     case "holdDurations":
     case "minConfidence":
     case "maxOpenPositions":
+    case "minPositionSize":
     case "maxPositionSize":
     case "sectors":
     case "industries":

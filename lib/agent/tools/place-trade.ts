@@ -27,6 +27,10 @@ import {
 } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import {
+  positionBand,
+  DEFAULT_POSITION_CAP,
+} from "@/lib/agent/position-sizing";
+import {
   getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
@@ -405,31 +409,75 @@ export const placeTrade = defineTool({
         );
       }
 
-      // ── Guardrail 5: requested notional ≤ effective per-position cap ───
-      // PAPER → maxPositionSize. LIVE → min(maxPositionSize, realMaxPosition)
-      // so a forgotten realMaxPosition can't accidentally uncap a live order.
+      // ── Guardrail 5: requested notional inside the per-position band ───
+      // The band is resolved by positionBand() (lib/agent/position-sizing.ts):
+      //   ceiling — PAPER → maxPositionSize; LIVE → min(maxPositionSize,
+      //     realMaxPosition), so a forgotten promotion cap can't accidentally
+      //     uncap a live order.
+      //   floor   — minPositionSize, clamped to the ceiling when a live
+      //     promotion cap sits below the analyst's configured floor.
       // Only checks when the model explicitly sized the trade (notional or
-      // shares). If neither is set, the fallback path below uses the same
-      // effective cap as the budget so no violation is possible.
-      const isLiveRun = ctx.runEnvironment === "LIVE";
-      const effectiveCap =
-        isLiveRun && ctx.realMaxPosition != null
-          ? Math.min(ctx.maxPositionSize ?? Infinity, ctx.realMaxPosition)
-          : ctx.maxPositionSize;
-      if (effectiveCap != null && Number.isFinite(effectiveCap)) {
+      // shares). If neither is set, the fallback path below uses the ceiling as
+      // the budget, which is inside the band by construction.
+      const band = positionBand({
+        environment: ctx.runEnvironment,
+        minPositionSize: ctx.minPositionSize,
+        maxPositionSize: ctx.maxPositionSize,
+        realMaxPosition: ctx.realMaxPosition,
+      });
+      const effectiveCap = band.ceiling;
+      {
         const requestedNotional =
           args.notional != null && args.notional > 0
             ? args.notional
             : args.shares != null && args.shares > 0
               ? args.shares * args.entry_price
               : null;
-        if (requestedNotional != null && requestedNotional > effectiveCap) {
-          const capLabel = isLiveRun && ctx.realMaxPosition != null
-            ? "live per-position cap"
-            : "max position size";
-          const blockedMsg = `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} exceeds this analyst's ${capLabel} ($${effectiveCap.toLocaleString()}). Scale it down.`;
+
+        // 5a — too big.
+        if (
+          requestedNotional != null &&
+          band.ceiling != null &&
+          requestedNotional > band.ceiling
+        ) {
+          const blockedMsg = `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} exceeds this analyst's ${band.ceilingLabel} ($${band.ceiling.toLocaleString()}). Scale it down.`;
           return {
-            summary: `Trade blocked: $${ticker} — exceeds ${capLabel}`,
+            summary: `Trade blocked: $${ticker} — exceeds ${band.ceilingLabel}`,
+            data: {
+              success: false,
+              ticker,
+              status: "FAILED" as const,
+              direction: args.direction,
+              message: blockedMsg,
+              tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+
+        // 5b — too small. A position below the floor is a config failure, not a
+        // conviction signal: an analyst with a $14k ceiling opening $3.5k (HPE)
+        // or a 1-share $922 sliver (LITE) can't move the book either way. We
+        // REJECT rather than silently rounding up, so the sizing decision stays
+        // the agent's — it either commits real size or skips the name. Sized
+        // conviction below the floor belongs in a smaller-floor seat.
+        if (
+          requestedNotional != null &&
+          band.floor > 0 &&
+          requestedNotional < band.floor
+        ) {
+          const bandLabel =
+            band.ceiling != null
+              ? `$${band.floor.toLocaleString()}–$${band.ceiling.toLocaleString()}`
+              : `$${band.floor.toLocaleString()}+`;
+          const blockedMsg =
+            `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} is below this analyst's minimum position size ($${band.floor.toLocaleString()}). ` +
+            (band.floorClampedByCeiling
+              ? `Its live promotion cap ($${band.ceiling?.toLocaleString()}) sits at or below the configured floor, so a live entry must be sized exactly $${band.floor.toLocaleString()}. `
+              : `Its position band is ${bandLabel}. `) +
+            `Either size the entry into the band or skip the name — a position this small can't move the book, and the analyst's own risk rules already assume full-size entries.`;
+          return {
+            summary: `Trade blocked: $${ticker} — below min position size`,
             data: {
               success: false,
               ticker,
@@ -454,13 +502,15 @@ export const placeTrade = defineTool({
       } else if (args.shares != null && args.shares > 0) {
         resolvedShares = args.shares;
       } else {
-        // Final fallback: use the effective cap (LIVE = realMaxPosition,
-        // PAPER = maxPositionSize) so a sizeless place_trade on a live
-        // analyst can't blow past the per-position ceiling.
-        const fallbackCap =
-          effectiveCap != null && Number.isFinite(effectiveCap)
-            ? effectiveCap
-            : ctx.maxPositionSize ?? 5000;
+        // Final fallback: use the band's ceiling (LIVE = the promotion cap,
+        // PAPER = maxPositionSize) so a sizeless place_trade on a live analyst
+        // can't blow past the per-position ceiling. Math.max against the floor
+        // covers the one case where the ceiling is unconfigured and the flat
+        // DEFAULT_POSITION_CAP would land below a configured minimum.
+        const fallbackCap = Math.max(
+          band.floor,
+          effectiveCap ?? DEFAULT_POSITION_CAP,
+        );
         resolvedNotional = fallbackCap;
         resolvedShares = Math.max(1, Math.floor(fallbackCap / args.entry_price));
       }

@@ -29,7 +29,10 @@ export interface AnalystConfig {
   enabled: boolean;
   /** PAPER (default) or LIVE — drives which Alpaca account this analyst trades into. */
   tradingEnvironment: "PAPER" | "LIVE";
-  /** Per-position cap when tradingEnvironment="LIVE". Ignored in PAPER. */
+  /**
+   * Live promotion cap — a temporary throttle on live order size set at
+   * promotion, not a peer of maxPositionSize. LIVE only; ignored in PAPER.
+   */
   realMaxPosition: number;
   analystPrompt: string | null;
   description: string | null;
@@ -39,6 +42,8 @@ export interface AnalystConfig {
   directionBias: string;
   minConfidence: number;
   maxOpenPositions: number;
+  /** Per-entry floor; 0 = no floor. Enforced in place_trade. */
+  minPositionSize: number;
   maxPositionSize: number;
   maxRiskPct: number | null;
   minMarketCapTier: string | null;
@@ -513,6 +518,7 @@ export async function getAnalystDetail(
     directionBias: config.directionBias,
     minConfidence: config.minConfidence,
     maxOpenPositions: config.maxOpenPositions,
+    minPositionSize: config.minPositionSize,
     maxPositionSize: config.maxPositionSize,
     maxRiskPct: config.maxRiskPct,
     minMarketCapTier: config.minMarketCapTier,
@@ -752,6 +758,8 @@ interface BuilderConfig {
   sectors: string[];
   signalTypes: string[];
   minConfidence: number;
+  /** Per-entry floor; omit or 0 for no floor. */
+  minPositionSize?: number;
   maxPositionSize: number;
   maxOpenPositions: number;
   minMarketCapTier: "LARGE" | "MID" | "SMALL";
@@ -814,6 +822,9 @@ export async function createAnalystFromBuilder(
   const name = String(data.name || "Untitled Analyst");
   const prompt = String(data.analystPrompt || "General market research analyst");
   const posSize = Number(data.maxPositionSize) || 5000;
+  // Floor is optional and clamped to the ceiling — a builder that proposes a
+  // floor above the ceiling would otherwise mint an analyst that can't trade.
+  const posFloor = Math.min(Math.max(Number(data.minPositionSize) || 0, 0), posSize);
   const maxPos = Math.round(Number(data.maxOpenPositions) || 5);
   const minConf = Math.round(Number(data.minConfidence) || 70);
   const bias = (["LONG", "SHORT", "BOTH"] as const).includes(data.directionBias as "LONG" | "SHORT" | "BOTH")
@@ -931,6 +942,7 @@ export async function createAnalystFromBuilder(
         // Watchlist removed from AgentConfig — Thesis(status=WATCHING) is
         // the single store now. Seed theses are minted below.
         exclusionList: combinedExclusions,
+        minPositionSize: posFloor,
         maxPositionSize: posSize,
         maxOpenPositions: maxPos,
         minConfidence: minConf,
@@ -1106,11 +1118,16 @@ type UpdatableField =
   | "description"
   | "directionBias"
   | "minConfidence"
+  // Position-size band. minPositionSize is the floor (0 = off); place_trade
+  // rejects an entry below it rather than resizing — see Guardrail 5b in
+  // lib/agent/tools/place-trade.ts and lib/agent/position-sizing.ts.
+  | "minPositionSize"
   | "maxPositionSize"
-  // Live per-position cap (LIVE only). Set at promotion via PromoteAnalystDialog;
-  // editable here so it isn't invisible/uneditable after promotion. place_trade
-  // caps live orders at min(maxPositionSize, realMaxPosition) — see
-  // lib/agent/tools/place-trade.ts. Ignored in PAPER.
+  // Live promotion cap (LIVE only) — a temporary throttle set at promotion via
+  // PromoteAnalystDialog, editable here so it isn't invisible after promotion.
+  // NOT a peer ceiling: place_trade caps live orders at
+  // min(maxPositionSize, realMaxPosition), and it's meant to be raised toward
+  // maxPositionSize as the seat proves out. Ignored in PAPER.
   | "realMaxPosition"
   | "maxOpenPositions"
   // NOTE: maxRiskPct and scheduleTime removed from the editable surface —
@@ -1438,6 +1455,7 @@ export async function updateAnalystFromBuilder(
   if (data.sectors !== undefined) updateData.sectors = normalizeSectors(data.sectors);
   if (data.signalTypes !== undefined) updateData.signalTypes = data.signalTypes;
   if (data.minConfidence !== undefined) updateData.minConfidence = data.minConfidence;
+  if (data.minPositionSize !== undefined) updateData.minPositionSize = data.minPositionSize;
   if (data.maxPositionSize !== undefined) updateData.maxPositionSize = data.maxPositionSize;
   if (data.maxOpenPositions !== undefined) updateData.maxOpenPositions = data.maxOpenPositions;
   if (data.minMarketCapTier !== undefined) updateData.minMarketCapTier = data.minMarketCapTier;

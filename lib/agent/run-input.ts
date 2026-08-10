@@ -43,6 +43,8 @@ export interface RunInput {
     marketCapMax: number | null; // dollars; null = no upper bound
     exclusionList: string[];
     minConfidence: number;
+    /** Per-entry floor; 0 = none. See lib/agent/position-sizing.ts. */
+    minPositionSize: number;
     maxPositionSize: number;
     maxOpenPositions: number;
   };
@@ -791,6 +793,7 @@ export async function buildRunInput(
       marketCapMax: config.marketCapMax != null ? Number(config.marketCapMax) : null,
       exclusionList: config.exclusionList,
       minConfidence: config.minConfidence,
+      minPositionSize: Number(config.minPositionSize),
       maxPositionSize: Number(config.maxPositionSize),
       maxOpenPositions: config.maxOpenPositions,
     },

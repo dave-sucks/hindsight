@@ -512,6 +512,13 @@ model AgentConfig {
   exchanges              String[] // ["NASDAQ", "NYSE"]
   sectors                String[] // ["TECH", "FINANCE", ...]
   exclusionList          String[]
+  // Position-size BAND. `minPositionSize` is the floor, `maxPositionSize` the
+  // ceiling; both are enforced in place_trade (Guardrails 5a/5b). The floor
+  // exists because nothing else stopped an analyst with a $14k ceiling from
+  // opening a $3.5k position — sizing conviction is the analyst's job, but a
+  // position too small to matter is a config failure, not a judgment call.
+  // 0 = no floor (the default, so existing rows keep their old behavior).
+  minPositionSize        Float                @default(0)
   maxPositionSize        Float                @default(500)
   maxOpenPositions       Int                  @default(5)
   minConfidence          Int                  @default(70)
@@ -540,8 +547,13 @@ model AgentConfig {
   // paper positions for the analyst (theses are preserved with no position,
   // re-evaluated on first live run). See docs/PROD_DEPLOYMENT_PLAN.md.
   tradingEnvironment     String               @default("PAPER") // "PAPER" | "LIVE"
-  // Notional cap per position when tradingEnvironment="LIVE". Ignored in
-  // PAPER (paper uses maxPositionSize). Enforced inside place_trade.
+  // LIVE PROMOTION CAP (surfaced in the UI under that name; the column keeps
+  // its legacy `realMaxPosition` identifier). This is a temporary throttle set
+  // at promotion, NOT a peer of the maxPositionSize ceiling: it exists to run
+  // a freshly-promoted analyst small with real money for a while, and it is
+  // meant to be raised toward maxPositionSize once the seat proves out. Ignored
+  // in PAPER. Live order size = min(maxPositionSize, realMaxPosition); the
+  // minPositionSize floor still applies below that. Enforced in place_trade.
   realMaxPosition        Float                @default(500)
   emailAlerts            Boolean              @default(true)
   weeklyDigestEnabled    Boolean              @default(true)

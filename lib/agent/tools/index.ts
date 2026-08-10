@@ -82,8 +82,10 @@ interface ToolCtx {
   themes?: string[];
   marketCapMin?: number | null;
   marketCapMax?: number | null;
+  /** Per-entry floor — see ToolContext.minPositionSize. 0/undefined = off. */
+  minPositionSize?: number;
   maxPositionSize?: number;
-  /** Per-position cap when runEnvironment="LIVE" — see ToolContext.realMaxPosition. */
+  /** Live promotion cap, LIVE only — see ToolContext.realMaxPosition. */
   realMaxPosition?: number;
   maxOpenPositions?: number;
   /** Min thesis confidence (0-100) required for place_trade — enforced. */

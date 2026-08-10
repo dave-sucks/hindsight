@@ -523,6 +523,44 @@ feeds: [MARKET_MOVERS_LOSERS, MARKET_MOVERS_GAINERS]
 
 ---
 
+## Position-size band (floor + ceiling + promotion cap) — added 2026-08-09
+
+Sizing config used to be **ceilings only**, and it cost real trades. Two
+production misses:
+
+| Analyst | Ceiling | What it actually did |
+|---|---|---|
+| PEAD Specialist | $14,000 | proposed a **$3,566** HPE entry |
+| Secular Compounder | $15,000 | opened a **1-share, $922** LITE position |
+
+Nothing in config stopped either one. The stopgap was prose floors written into
+`analystPrompt` (PEAD $7k, Catalyst $5k, Compounder $10k) — Layer 3 doing
+Layer 1's job, exactly the failure `docs/PRINCIPLES.md` warns about.
+
+**The model now has three numbers, and only two of them are peers:**
+
+| Field | UI label | Meaning |
+|---|---|---|
+| `minPositionSize` | Position Size Floor | Smallest single entry. 0 = no floor. |
+| `maxPositionSize` | Position Size Ceiling | Largest single entry. |
+| `realMaxPosition` | Live promotion cap | **Temporary throttle**, LIVE only. Run a freshly-promoted seat small with real money, then raise it toward the ceiling as it proves out. Not a second ceiling. |
+
+Live order size = `min(maxPositionSize, realMaxPosition)`; the floor applies
+below that. If the promotion cap lands *below* the floor, the band collapses to
+a single size rather than making every live entry unplaceable.
+
+**Enforcement is Layer 1.** `place_trade` Guardrail 5b **rejects** a below-floor
+entry with the band in the message — it does not round the order up. The sizing
+decision stays the agent's: commit real size or skip the name. All band math is
+one pure helper, `positionBand()` in `lib/agent/position-sizing.ts`, shared by
+the tool gate and the Settings UI. The floor governs **entries only** — a $2k
+add onto a $12k winner is a legitimate scale-in and `add_to_position` ignores it.
+
+Once a seat's floor is set in config, its `analystPrompt` prose floor should be
+trimmed to a one-line restatement (or dropped) — the gate is the authority now.
+
+---
+
 ## Sizing math + portfolio logic
 
 Total at full simultaneous deployment:

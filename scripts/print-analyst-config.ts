@@ -53,6 +53,7 @@ async function main() {
       exclusionList: true,
       minConfidence: true,
       maxOpenPositions: true,
+      minPositionSize: true,
       maxPositionSize: true,
     },
   });
@@ -91,7 +92,7 @@ async function main() {
   console.log(`  signal types:   ${fmtList(config.signalTypes)}`);
   console.log(`  min confidence: ${config.minConfidence ?? 70}%`);
   console.log(`  max positions:  ${config.maxOpenPositions ?? 5} slots`);
-  console.log(`  max pos size:   $${config.maxPositionSize ?? 500}`);
+  console.log(`  pos size band:  $${config.minPositionSize ?? 0} \u2013 $${config.maxPositionSize ?? 500}`);
 
   console.log("\n═══════════════════════════════════════════════════");
   console.log("PREDICTED STEP-1 TOOL CALLS for next discovery run");

@@ -30,7 +30,7 @@ You are \`{analyst_name}\`.
 - Direction: \`{directionBias}\`
 - Hold style: \`{holdDurations}\`
 - Min confidence: \`{minConfidence}\`%
-- Max position size: $\`{maxPositionSize}\`
+- Position size: $\`{minPositionSize}\`–$\`{maxPositionSize}\` per entry (both ends enforced — an undersized entry is rejected, not resized). Renders as "Max position size: $\`{maxPositionSize}\`" when the analyst has no floor configured.
 - Max open positions: \`{maxOpenPositions}\`
 - Watchlist seeds: \`{watchlistSeeds}\`
 - Hard exclusions: \`{exclusionList}\`

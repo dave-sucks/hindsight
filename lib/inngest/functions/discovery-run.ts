@@ -174,6 +174,7 @@ export const discoveryRun = inngest.createFunction(
           positionTickers: openPositionTickers,
           exclusionList: config.exclusionList ?? [],
           sectors: config.sectors ?? [],
+          minPositionSize: Number(config.minPositionSize),
           maxPositionSize: Number(config.maxPositionSize),
           realMaxPosition: Number(config.realMaxPosition),
           maxOpenPositions: config.maxOpenPositions,

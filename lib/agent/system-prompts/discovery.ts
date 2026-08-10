@@ -83,6 +83,7 @@ export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
     : "SWING";
   const minConf = config.minConfidence ?? 70;
   const maxPosSize = config.maxPositionSize ?? 500;
+  const minPosSize = config.minPositionSize ?? 0;
   const maxOpenPos = config.maxOpenPositions ?? 5;
   const signalTypes = config.signalTypes?.length
     ? config.signalTypes.join(", ")
@@ -143,7 +144,7 @@ YOUR CONFIG — what bounds your work this run
   Direction bias:    ${directionLabel}
   Hold style(s):     ${holdDurations}
   Min confidence:    ${minConf}%
-  Max position size: $${maxPosSize}
+  Position size: ${minPosSize > 0 ? `$${minPosSize.toLocaleString()}\u2013$${maxPosSize.toLocaleString()} per entry (both ends enforced)` : `max $${maxPosSize.toLocaleString()}`}
   Max open slots:    ${maxOpenPos}
   Signal types you trade: ${signalTypes}
   Subscribed feeds:  ${feedsList}

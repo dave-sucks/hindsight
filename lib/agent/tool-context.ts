@@ -65,12 +65,21 @@ export interface ToolContext {
   themes?: string[];
   marketCapMin?: number | null;
   marketCapMax?: number | null;
+  /**
+   * Floor of the per-entry position band. Wired from
+   * AgentConfig.minPositionSize; 0/undefined = no floor. place_trade rejects
+   * an entry below it (Guardrail 5b) rather than resizing the order — the
+   * agent either commits real size or skips the name. Does NOT apply to
+   * add_to_position scale-ins. See lib/agent/position-sizing.ts.
+   */
+  minPositionSize?: number;
   maxPositionSize?: number;
   /**
-   * Per-position cap that takes precedence over maxPositionSize when
-   * runEnvironment="LIVE". Wired from AgentConfig.realMaxPosition. The
-   * smaller of the two values wins so a forgetful LIVE promotion can't
-   * uncap by accident. PAPER runs ignore this field entirely.
+   * The LIVE PROMOTION CAP (AgentConfig.realMaxPosition). A temporary throttle
+   * set at promotion so a freshly-live analyst trades small with real money —
+   * not a peer of maxPositionSize. Applies only when runEnvironment="LIVE",
+   * where the smaller of the two wins so a forgetful promotion can't uncap by
+   * accident. PAPER runs ignore this field entirely.
    */
   realMaxPosition?: number;
   maxOpenPositions?: number;
