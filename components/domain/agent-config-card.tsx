@@ -40,6 +40,8 @@ export type AgentConfigData = {
   marketCapMax?: number | null;
   signalTypes?: string[];
   minConfidence?: number;
+  /** Per-entry floor; 0 = none. Pairs with maxPositionSize as a band. */
+  minPositionSize?: number;
   maxPositionSize?: number;
   maxOpenPositions?: number;
   minMarketCapTier?: string;
@@ -103,6 +105,7 @@ export function AgentConfigCard({
   marketCapMax,
   signalTypes = [],
   minConfidence = 0,
+  minPositionSize = 0,
   maxPositionSize = 0,
   maxOpenPositions = 0,
   watchlist = [],
@@ -161,7 +164,15 @@ export function AgentConfigCard({
       {/* ── Config rows ───────────────────────────────────────────── */}
       <div className="p-3 border-b flex flex-col gap-1">
         <InfoRow label="Min Confidence" value={`${minConfidence}%`} mono />
-        <InfoRow label="Position Size" value={`$${maxPositionSize.toLocaleString()}`} mono />
+        <InfoRow
+          label="Position Size"
+          value={
+            minPositionSize > 0
+              ? `$${minPositionSize.toLocaleString()} – $${maxPositionSize.toLocaleString()}`
+              : `$${maxPositionSize.toLocaleString()}`
+          }
+          mono
+        />
         <InfoRow label="Max Positions" value={String(maxOpenPositions)} mono />
         <InfoRow label="Hold Duration" value={holdDurations.join(", ") || "—"} border={false} />
       </div>

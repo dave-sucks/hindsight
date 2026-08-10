@@ -198,11 +198,26 @@ const rawConfigSchema = z.object({
     .min(40)
     .max(95)
     .describe("Minimum confidence score (0-100) to auto-place a paper trade. Default 70"),
+  // Position sizing is a BAND, not a single ceiling. The floor is what stops an
+  // analyst from opening a position too small to matter (a $14k-ceiling seat
+  // proposing $3.5k); place_trade rejects below-floor entries outright.
+  minPositionSize: z
+    .number()
+    .min(0)
+    .max(50000)
+    .optional()
+    .describe(
+      "Minimum dollar amount per trade — the floor of the position band. An entry below it is " +
+      "REJECTED, not resized, so set it to the smallest size that still moves this analyst's book " +
+      "(a common choice is ~half the ceiling). Omit or 0 for no floor.",
+    ),
   maxPositionSize: z
     .number()
     .min(100)
-    .max(10000)
-    .describe("Maximum dollar amount per trade. Paper money."),
+    // 50000, not the old 10000: live conviction seats already run $15k
+    // ceilings, and the old bound silently clamped any config restating one.
+    .max(50000)
+    .describe("Maximum dollar amount per trade — the ceiling of the position band."),
   maxOpenPositions: z
     .number()
     .min(1)

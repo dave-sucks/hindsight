@@ -78,7 +78,7 @@ export const readAnalystConfig = defineTool({
       },
       {
         kind: "generic" as const,
-        text: `Sizing: minConfidence ${analyst.minConfidence} · maxPositionSize $${analyst.maxPositionSize} · maxOpenPositions ${analyst.maxOpenPositions}`,
+        text: `Sizing: minConfidence ${analyst.minConfidence} · position band ${analyst.minPositionSize > 0 ? `$${analyst.minPositionSize.toLocaleString()}–` : "up to "}$${analyst.maxPositionSize.toLocaleString()} · maxOpenPositions ${analyst.maxOpenPositions}`,
       },
       {
         kind: "generic" as const,
@@ -109,6 +109,7 @@ export const readAnalystConfig = defineTool({
           exclusionList: analyst.exclusionList,
           signalTypes: analyst.signalTypes,
           minConfidence: analyst.minConfidence,
+          minPositionSize: analyst.minPositionSize,
           maxPositionSize: analyst.maxPositionSize,
           maxOpenPositions: analyst.maxOpenPositions,
           intelligencePolicy: analyst.intelligencePolicy,

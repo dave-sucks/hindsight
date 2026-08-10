@@ -185,6 +185,7 @@ export const morningResearch = inngest.createFunction(
           sectors: config.sectors,
           signalTypes: config.signalTypes,
           minConfidence: config.minConfidence,
+          minPositionSize: Number(config.minPositionSize),
           maxPositionSize: Number(config.maxPositionSize),
           maxOpenPositions: slotsRemaining, // Use remaining slots, not max
           watchlist: watchlistSymbols,
@@ -216,6 +217,7 @@ export const morningResearch = inngest.createFunction(
           watchlist: watchlistSymbols,
           exclusionList: config.exclusionList ?? [],
           sectors: config.sectors ?? [],
+          minPositionSize: Number(config.minPositionSize),
           maxPositionSize: Number(config.maxPositionSize),
           realMaxPosition: Number(config.realMaxPosition),
           maxOpenPositions: config.maxOpenPositions,

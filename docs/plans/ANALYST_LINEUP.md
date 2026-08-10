@@ -182,6 +182,11 @@ AQR, Bailey & López de Prado, Howard Marks memos, MPRA PEAD-vs-momentum study),
 > `minConfidence` 65→70, `marketCapMax` null→$20B) ✅ · position-size **floors** added to PEAD ($7k)
 > and Catalyst ($5k) `analystPrompt`s ✅. Remaining: Compounder theme-population discovery → promote
 > to LIVE; Momentum row deletion after ~1 week.
+>
+> **Update 2026-08-09:** the config-side floor (`minPositionSize`) shipped — see the band table
+> below. Still open: set the three floors on the live rows (the column defaults to 0 = off, so
+> nothing is enforced until they're set), then trim the PEAD/Catalyst/Compounder prompt floors to
+> a one-liner.
 
 ### Final sizing bands (2026-08-03) — $100k book
 
@@ -195,12 +200,30 @@ Full capacity $184,000 = **184% of book, intentional soft over-allocation** (con
 slot; the buying-power gate prevents over-commitment). Realistic steady state: **10–13 positions,
 60–90% deployed.** Caps are ceilings, not targets — no two seats run full simultaneously.
 
-**Why floors live in the prompt:** `AgentConfig` has *two ceilings* (`maxPositionSize` and the
-live-only `realMaxPosition`, live order = the lower of the two) and **no minimum-position-size
-field**. Agents were choosing far below cap (PEAD proposed $3,566 against a $14k cap; Compounder
-opened a 1-share $922 LITE). Until a config floor exists, Layer 3 carries it. Config-side fix is
-filed as its own task (add `minPositionSize`, surface as Floor/Ceiling, rename the promotion
-throttle).
+**Floors now live in CONFIG (shipped 2026-08-09) — this table is the source for the numbers.**
+The "Why floors live in the prompt" note that sat here is obsolete: `AgentConfig` was
+ceilings-only, so agents could size far below cap (PEAD proposed $3,566 against a $14k cap;
+Compounder opened a 1-share $922 LITE) and Layer 3 prose was the only backstop. The config-side
+fix landed:
+
+| Field | UI label | Meaning |
+|---|---|---|
+| `minPositionSize` | Position Size Floor | The **Floor** column above. 0 = no floor (the default; existing rows opt in). |
+| `maxPositionSize` | Position Size Ceiling | The **Cap** column above. |
+| `realMaxPosition` | Live promotion cap | **Temporary throttle**, LIVE only — run a freshly-promoted seat small with real money, then raise it toward the ceiling as it proves out. *Not* a second ceiling. |
+
+Live order size = `min(maxPositionSize, realMaxPosition)`, floor applies below that. A promotion
+cap under the floor collapses the band to one size rather than making every live entry
+unplaceable. Enforcement is **Layer 1**: `place_trade` Guardrail 5b *rejects* a below-floor entry
+with the band in the message — it does not round the order up, so the sizing decision stays the
+agent's (commit real size or skip the name). Band math is one pure helper, `positionBand()` in
+`lib/agent/position-sizing.ts`, shared by the tool gate and the Settings UI so the displayed
+number can't drift from the enforcing one. The floor governs **entries only** — a $2k add onto a
+$12k winner is a legitimate scale-in and `add_to_position` ignores it.
+
+**Operator follow-through:** once a seat's floor is set in config, trim its `analystPrompt` prose
+floor to a one-line restatement (or drop it) — a prose rule that drifts from config is worse than
+no prose rule.
 - **The bar for any 4th seat:** it must bring a return source with **offset idle periods** vs all
   three keepers — not another underreaction lookback
   ([time-scale diversification can conceal redundancy](https://arxiv.org/pdf/2510.23150)). Candidates

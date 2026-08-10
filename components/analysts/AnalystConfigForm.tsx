@@ -58,6 +58,7 @@ import {
 } from "@/components/ui/tooltip";
 
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
+import { positionBand } from "@/lib/agent/position-sizing";
 import { FEEDS, feedLabel } from "@/lib/universe/feeds";
 
 // ─── Form value shape ────────────────────────────────────────────────────────
@@ -103,13 +104,16 @@ export type FormValues = {
   holdDurations: string[];
   minConfidence: number;
   maxOpenPositions: number;
+  // Position-size BAND — floor and ceiling, both enforced in place_trade.
+  // minPositionSize of 0 means no floor.
+  minPositionSize: number;
   maxPositionSize: number;
 
   // Live trading — set by the Promote dialog (PromoteAnalystDialog), surfaced
-  // here so the live cap isn't invisible/uneditable after promotion. Both are
-  // LIVE-only: realMaxPosition is ignored while PAPER (paper uses
-  // maxPositionSize). tradingEnvironment is read-only context here — promotion
-  // / demotion runs through the Promote dialog, not this form.
+  // here so the promotion cap isn't invisible/uneditable after promotion. Both
+  // are LIVE-only: realMaxPosition is ignored while PAPER (paper uses the plain
+  // band). tradingEnvironment is read-only context here — promotion / demotion
+  // runs through the Promote dialog, not this form.
   tradingEnvironment?: "PAPER" | "LIVE";
   realMaxPosition?: number;
 
@@ -800,9 +804,32 @@ function SettingsTab({
             }}
           />
 
+          {/* Position size is a BAND. The floor is the half that was missing:
+              without it nothing stopped a $14k-ceiling analyst from opening a
+              $3.5k position, and the only workaround was prose rules in the
+              analyst prompt. Floor sits above Ceiling so the pair reads as one
+              range. See lib/agent/position-sizing.ts. */}
           <RowLabel
-            label="Max Position Size"
-            tooltip="Biggest single trade (paper dollars) this analyst can open. Enforced."
+            label="Position Size Floor"
+            tooltip="Smallest single trade this analyst may open. An entry below this is rejected, not resized — the analyst commits real size or skips the name. 0 = no floor."
+          />
+          <Input
+            type="number"
+            defaultValue={values.minPositionSize}
+            min={0}
+            step={100}
+            className={cn(GHOST_INPUT, "w-24 text-right tabular-nums")}
+            onBlur={(e) => {
+              const n = parseFloat(e.target.value);
+              if (!isNaN(n) && n !== values.minPositionSize) {
+                onChange("minPositionSize", Math.max(0, n));
+              }
+            }}
+          />
+
+          <RowLabel
+            label="Position Size Ceiling"
+            tooltip="Biggest single trade this analyst can open. Enforced."
           />
           <Input
             type="number"
@@ -818,13 +845,15 @@ function SettingsTab({
             }}
           />
 
-          {/* Live per-position cap — only meaningful once promoted to LIVE.
-              Paper trades ignore it (they use Max Position Size). */}
+          {/* Live promotion cap — a temporary throttle set at promotion so a
+              freshly-live analyst trades small with real money, NOT a second
+              ceiling. Raise it toward the band ceiling as the seat proves out.
+              Paper runs ignore it entirely. */}
           {values.tradingEnvironment === "LIVE" && (
             <>
               <RowLabel
-                label="Live per-position cap"
-                tooltip="Hard ceiling on any single live order, set at promotion. Live trades use the lower of this and Max Position Size. Ignored while paper."
+                label="Live promotion cap"
+                tooltip="Temporary throttle on live orders, set at promotion so a newly-live analyst trades small with real money. Live orders cap at the lower of this and the ceiling. Raise it toward the ceiling as the seat proves out. Ignored while paper."
               />
               <Input
                 type="number"
@@ -853,15 +882,18 @@ function SettingsTab({
           )}
         </div>
 
-        {/* Effective live cap — surfaces min(maxPositionSize, realMaxPosition)
-            so a live cap below the visible box is never silent. */}
-        {values.tradingEnvironment === "LIVE" &&
-          values.realMaxPosition != null && (
-            <EffectiveLiveCapNote
-              maxPositionSize={values.maxPositionSize}
-              realMaxPosition={values.realMaxPosition}
-            />
-          )}
+        {/* Effective band — shown whenever either half is non-trivial, so a
+            floor or a promotion cap below the visible boxes is never silent. */}
+        {(values.minPositionSize > 0 ||
+          (values.tradingEnvironment === "LIVE" &&
+            values.realMaxPosition != null)) && (
+          <PositionBandNote
+            minPositionSize={values.minPositionSize}
+            maxPositionSize={values.maxPositionSize}
+            realMaxPosition={values.realMaxPosition}
+            tradingEnvironment={values.tradingEnvironment}
+          />
+        )}
 
         {/* Signal attention — same label style as the rows above */}
         {policy && total > 0 && (
@@ -1065,33 +1097,61 @@ function RunDaysControl({
   );
 }
 
-// ─── Effective live cap note ─────────────────────────────────────────────────
-// LIVE analysts cap each order at min(maxPositionSize, realMaxPosition)
-// (lib/agent/tools/place-trade.ts). When the live cap sits below the visible
-// Max Position Size box, surface the gap so the real ceiling is never silent.
-function EffectiveLiveCapNote({
+// ─── Effective position-band note ────────────────────────────────────────────
+// Restates the band place_trade will actually enforce, resolved by the SAME
+// pure helper the tool gate uses (lib/agent/position-sizing.ts) so the number
+// on screen can't drift from the number that rejects a trade. Two things it
+// makes non-silent: a live promotion cap sitting below the ceiling, and a
+// promotion cap sitting below the floor (band collapses to a single size).
+function PositionBandNote({
+  minPositionSize,
   maxPositionSize,
   realMaxPosition,
+  tradingEnvironment,
 }: {
+  minPositionSize: number;
   maxPositionSize: number;
-  realMaxPosition: number;
+  realMaxPosition?: number;
+  tradingEnvironment?: "PAPER" | "LIVE";
 }) {
-  const effective = Math.min(maxPositionSize, realMaxPosition);
-  const below = realMaxPosition < maxPositionSize;
+  const band = positionBand({
+    environment: tradingEnvironment,
+    minPositionSize,
+    maxPositionSize,
+    realMaxPosition,
+  });
   const fmt = (n: number) => `$${Math.round(n).toLocaleString()}`;
+  const isLive = tradingEnvironment === "LIVE";
+  const throttled =
+    isLive && band.ceiling != null && band.ceiling < maxPositionSize;
+
+  if (band.floorClampedByCeiling) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        The live promotion cap sits at or below the floor, so every live entry
+        is sized exactly{" "}
+        <span className="tabular-nums text-foreground">{fmt(band.floor)}</span>.
+        Raise the cap to reopen the band.
+      </p>
+    );
+  }
 
   return (
     <p className="text-xs text-muted-foreground">
-      Live orders cap at{" "}
-      <span className="tabular-nums text-foreground">{fmt(effective)}</span>
-      {below ? (
+      {isLive ? "Live entries" : "Entries"} land between{" "}
+      <span className="tabular-nums text-foreground">{fmt(band.floor)}</span>{" "}
+      and{" "}
+      <span className="tabular-nums text-foreground">
+        {band.ceiling != null ? fmt(band.ceiling) : "no ceiling"}
+      </span>
+      {throttled ? (
         <>
-          {" "}— below the{" "}
-          <span className="tabular-nums">{fmt(maxPositionSize)}</span> max
-          position size above, so live trades stop there.
+          {" "}— the promotion cap, below the{" "}
+          <span className="tabular-nums">{fmt(maxPositionSize)}</span> ceiling
+          above, so live trades stop there.
         </>
       ) : (
-        <> — the lower of the live cap and max position size.</>
+        <>. Anything outside the band is rejected, not resized.</>
       )}
     </p>
   );

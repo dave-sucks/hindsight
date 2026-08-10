@@ -158,7 +158,16 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 - AgentConfig — analyst persona config (name, analystPrompt,
   sectors, signals, confidence threshold, direction bias,
   hold durations, position sizing, watchlist, exclusionList,
-  intelligencePolicy)
+  intelligencePolicy). **Position sizing is a BAND, not a ceiling:**
+  `minPositionSize` (floor, 0 = off) + `maxPositionSize` (ceiling), both
+  enforced in `place_trade` Guardrails 5a/5b. `realMaxPosition` is the
+  **live promotion cap** — a temporary throttle set at promotion, LIVE-only,
+  meant to be raised toward the ceiling as the seat proves out. Live order
+  size = min(maxPositionSize, realMaxPosition), floor still applies below
+  that. All band math is one pure helper: `positionBand()` in
+  `lib/agent/position-sizing.ts` — the tool gate and the Settings UI both
+  call it, so the number on screen can't drift from the number that rejects
+  a trade.
 - ResearchRun — one execution; links to AgentConfig; status
   (RUNNING/COMPLETE/FAILED); parameters JSON snapshot
 - RunEvent — SSE event from a run (type, title, message, payload)

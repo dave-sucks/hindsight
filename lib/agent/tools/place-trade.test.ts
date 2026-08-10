@@ -736,3 +736,157 @@ describe("place_trade — analyst_id ownership guard (P1-18)", () => {
     expect(mockMaybeAwaitApproval).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Guardrail 5b — the position-size FLOOR.
+ *
+ * Config used to express sizing as ceilings only, so nothing stopped an
+ * analyst from opening a position far below its intended size. Production:
+ * PEAD Specialist proposed a $3,566 HPE entry against a $14,000 ceiling;
+ * Secular Compounder opened a 1-share $922 LITE position against a $15,000
+ * ceiling. The only workaround was prose floors in `analystPrompt` — Layer 3
+ * doing Layer 1's job (docs/PRINCIPLES.md).
+ *
+ * The gate REJECTS rather than rounding up: the sizing decision stays the
+ * agent's (commit real size or skip the name), and code never invents a
+ * position size the agent didn't ask for — which matters on LIVE.
+ */
+describe("place_trade — Guardrail 5b: minimum position size", () => {
+  function primeGate(): void {
+    mockThesisFindUnique.mockReset();
+    mockPositionFindFirst.mockReset();
+    mockPositionCreate.mockReset();
+    mockOrderCreate.mockReset();
+    mockTransaction.mockReset();
+    mockPlaceMarketOrder.mockReset();
+    mockGetLatestPrice.mockReset();
+    mockGetAccount.mockReset();
+    mockAgentConfigFindUnique.mockReset();
+    mockAgentConfigFindFirst.mockReset();
+    mockMaybeAwaitApproval.mockReset();
+
+    mockAgentConfigFindUnique.mockResolvedValue({
+      enabled: true,
+      name: "PEAD Specialist",
+    });
+    mockThesisFindUnique
+      .mockResolvedValueOnce({ direction: "LONG" }) // directionCheck
+      .mockResolvedValueOnce({ snapshot: { text: "snap", citations: [] } });
+    mockPositionFindFirst.mockResolvedValueOnce(null);
+    mockGetLatestPrice.mockResolvedValue(30);
+    mockGetAccount.mockResolvedValue({ cash: "100000", buying_power: "100000" });
+    mockPositionCreate.mockResolvedValue({
+      id: "pos_1",
+      symbol: "HPE",
+      direction: "LONG",
+      quantity: 100,
+    });
+    mockOrderCreate.mockResolvedValue({ id: "order_1" });
+    mockTransaction.mockImplementation(async (arg: unknown) => {
+      if (typeof arg === "function") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (arg as (tx: any) => Promise<unknown>)({
+          position: { create: mockPositionCreate },
+          order: { create: mockOrderCreate, update: mockOrderUpdate },
+          positionEvent: { create: mockPositionEventCreate },
+          tradeDecision: { create: mockTradeDecisionCreate },
+          runEvent: { create: mockRunEventCreate },
+        });
+      }
+      return arg;
+    });
+    mockMaybeAwaitApproval.mockResolvedValue({
+      state: "awaiting_approval",
+      orderId: "order_1",
+      positionId: "pos_1",
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+  }
+
+  const baseArgs = {
+    ticker: "HPE",
+    direction: "LONG" as const,
+    entry_price: 30,
+    target_price: 40,
+    stop_loss: 26,
+    thesis_id: "thesis_hpe",
+  };
+
+  it("rejects the $3,566 notional against a $7,000 floor (the HPE shape)", async () => {
+    primeGate();
+
+    const result = await makeTool(
+      makeCtx({ minPositionSize: 7000, maxPositionSize: 14000 }),
+    ).execute({ ...baseArgs, notional: 3566 });
+
+    expect(result.data.success).toBe(false);
+    expect(result.data.status).toBe("FAILED");
+    expect(String(result.data.message)).toMatch(/below this analyst's minimum position size/i);
+    // The message names the floor and the band so the agent can re-size.
+    expect(String(result.data.message)).toMatch(/\$7,000/);
+    expect(String(result.data.message)).toMatch(/\$7,000–\$14,000/);
+    // REJECTED, not resized: nothing was submitted.
+    expect(mockMaybeAwaitApproval).not.toHaveBeenCalled();
+    expect(mockPlaceMarketOrder).not.toHaveBeenCalled();
+  });
+
+  it("rejects a 1-share sliver priced off `shares` (the LITE shape)", async () => {
+    primeGate();
+    // Guardrail 4 (live price vs target/stop) runs first — quote the real
+    // LITE price so the run reaches the sizing band.
+    mockGetLatestPrice.mockResolvedValue(922);
+
+    const result = await makeTool(
+      makeCtx({ minPositionSize: 10000, maxPositionSize: 15000 }),
+    ).execute({
+      ...baseArgs,
+      ticker: "LITE",
+      entry_price: 922,
+      target_price: 1100,
+      stop_loss: 800,
+      shares: 1, // $922 — the floor must apply to the shares path too
+    });
+
+    expect(result.data.success).toBe(false);
+    expect(String(result.data.message)).toMatch(/below this analyst's minimum position size/i);
+    expect(mockMaybeAwaitApproval).not.toHaveBeenCalled();
+  });
+
+  it("lets an in-band notional through to the proposal path", async () => {
+    primeGate();
+
+    const result = await makeTool(
+      makeCtx({ minPositionSize: 7000, maxPositionSize: 14000 }),
+    ).execute({ ...baseArgs, notional: 9000 });
+
+    expect(result.data.status).toBe("PROPOSED");
+    expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
+  });
+
+  it("no floor configured → an undersized entry still goes through (back-compat)", async () => {
+    primeGate();
+
+    const result = await makeTool(
+      makeCtx({ maxPositionSize: 14000 }),
+    ).execute({ ...baseArgs, notional: 3566 });
+
+    expect(result.data.status).toBe("PROPOSED");
+  });
+
+  it("still rejects above the ceiling, naming the live promotion cap on LIVE", async () => {
+    primeGate();
+
+    const result = await makeTool(
+      makeCtx({
+        minPositionSize: 2000,
+        maxPositionSize: 14000,
+        realMaxPosition: 6000,
+        runEnvironment: "LIVE",
+      }),
+    ).execute({ ...baseArgs, notional: 9000 });
+
+    expect(result.data.success).toBe(false);
+    expect(String(result.data.message)).toMatch(/exceeds this analyst's live promotion cap/i);
+    expect(String(result.data.message)).toMatch(/\$6,000/);
+  });
+});
