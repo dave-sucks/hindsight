@@ -55,7 +55,13 @@ deliberately paused (GAPS P1-34; design doc `docs/plans/SIGNALS_REDESIGN.md`).
 - Supabase (Postgres + Auth + Realtime)
 - Prisma ORM (v7 with adapter-pg)
 - Inngest for background jobs and crons
-- Vercel (Next.js only — no Railway)
+- Vercel (Next.js only — no Railway). **Migrations auto-apply on
+  production deploys** — `build` starts with `scripts/deploy-migrate.mjs`
+  (`prisma migrate deploy`, production only, using `DIRECT_URL`). Merging a
+  migration is enough; don't apply it by hand. Preview deploys deliberately
+  skip it. See `docs/plans/PROD_DEPLOYMENT_PLAN.md` → "Deploying schema
+  changes". One-off data heals still live in `prisma/manual-sql/` and are
+  still run by hand.
 - Vercel AI SDK v6 + AssistantUI (@assistant-ui/react)
 - TradingView Lightweight Charts for price charts
 - Recharts for performance/analytics charts

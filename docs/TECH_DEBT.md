@@ -72,13 +72,13 @@ hand-written `migration.sql` → `prisma db execute` →
    directory to a distinct timestamp + run `prisma migrate resolve`
    on prod's `_prisma_migrations` table to match.
 
-2. **`_prisma_migrations` out of sync with prod.** `migrate status`
-   reports 8 local migrations as "have not yet been applied"
-   (including ones whose columns clearly ARE on prod, e.g.
-   `20260512000000_trading_environment`) and 1 prod migration
-   (`20260317100000_drop_old_trade_tables`) missing locally. Fix
-   shape: for each name, decide truth (apply locally / mark applied
-   / mark rolled-back) and reconcile.
+2. ~~**`_prisma_migrations` out of sync with prod.**~~ **RESOLVED
+   2026-07-27** via `migrate resolve --applied` (context in PR #500).
+   Verified 2026-08-09: all 58 migration folders have a ledger row,
+   **zero failed rows**, and `migrate deploy` reports "No pending
+   migrations to apply" against prod. The one remaining oddity is the
+   DB-only `20260317100000_drop_old_trade_tables` row, which has no
+   folder; `migrate deploy` ignores extra ledger rows, so it is inert.
 
 3. **Schema-vs-prod drift.** `prisma migrate diff --from-config-
    datasource --to-schema` reports unrelated cleanup the schema
@@ -91,13 +91,23 @@ hand-written `migration.sql` → `prisma db execute` →
    delta, write one reconciliation migration, then `migrate resolve
    --applied`.
 
+**Does this block the automated deploy?** No — verified 2026-08-09.
+`migrate deploy` is now the first step of the production build
+(`scripts/deploy-migrate.mjs`), and neither (1) nor (3) affects it:
+`deploy` never builds a shadow DB, so the duplicate timestamp is a
+`migrate dev`-only failure, and `deploy` only applies pending folders,
+so it ignores schema-vs-prod drift entirely. It also tolerates ledger
+rows with no matching folder. Checksums *are* compared, though — a
+migration.sql edited after it was applied will fail the build, which
+is the correct behavior but a surprising way to discover it.
+
 **Why not urgent:** the workaround works, every new migration just
 needs ~3 extra commands. But it's a sharp edge anyone new to this
 repo will cut themselves on, and every additional `migrate dev`
 attempt by an unsuspecting session burns time before falling back to
 the workaround.
 
-**Fix shape:** half-day session focused on (1) → (2) → (3) in order.
+**Fix shape:** half-day session focused on (1) → (3). (2) is done.
 (1) is mechanical; (2) needs careful per-row reasoning; (3) needs
 spot-checks against code references for each dropped column.
 
