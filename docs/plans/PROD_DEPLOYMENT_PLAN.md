@@ -38,24 +38,50 @@ Pages that still pull cross-env data and need converting:
 - [ ] `/stocks/[symbol]` — the per-ticker page shows positions/theses across envs; on a promoted analyst with both paper history and live position you'd see both stacked. Scope to current env.
 - [ ] Weekly digest email — currently aggregates cross-env. Should split by env or filter to current env.
 
-## Deploying schema changes — manual step
+## Deploying schema changes — AUTOMATIC since 2026-08-09
 
-This repo's `build` script is `prisma generate && next build` — it does NOT
-run `prisma migrate deploy`. New migration files do not auto-apply on Vercel
-deploys. Apply each new migration manually before (or immediately after)
-pushing the code, e.g. via the Supabase MCP `apply_migration` tool or
-`supabase db push` against the production project (`zomxxtqiszpkqrjrqqat`).
+**Merging a migration is now enough.** The `build` script starts with
+`node scripts/deploy-migrate.mjs`, which runs `prisma migrate deploy` on
+**production builds only**. Vercel builds, *then* promotes — so the schema is
+in place before the new code serves its first request, and a failed migration
+fails the build instead of shipping code that can't talk to its own database.
 
-Symptom of forgetting this step: every page on the deployed site returns
-"Application error: a server-side exception has occurred" because Prisma
-queries against the new columns throw at runtime. Caught us once on
-`20260512000000_trading_environment`; don't repeat.
+> **History:** this was manual for months. `build` was `prisma generate &&
+> next build`, nothing applied migrations, and every schema change had to be
+> run by hand. Forgetting produced "Application error: a server-side exception
+> has occurred" on every page. It bit `20260512000000_trading_environment`,
+> and again on `20260809000000_analyst_min_position_size`, where the
+> production deploy went READY **~2 minutes before** the column was added by
+> hand — only the late hour kept it off the morning cron. The cleanup was
+> blocked on `_prisma_migrations` being out of sync; PR #500's
+> `migrate resolve --applied` pass fixed that, and `migrate deploy` now reports
+> a clean "No pending migrations to apply" against prod.
 
-Wiring `migrate deploy` into the build script is a separate cleanup —
-the existing `_prisma_migrations` table is out of sync with several recent
-migrations (podcast_*, agent_config_use_v2_prompt), so flipping it on
-without first reconciling history would cause `migrate deploy` to attempt
-to re-apply migrations whose columns already exist.
+**Rules that keep it working:**
+
+- **`DIRECT_URL` must stay set in the Vercel Production environment.** It is
+  the connection `prisma.config.ts` hands to migrations. It must NOT be the
+  runtime `DATABASE_URL` — that's Supabase's transaction pooler (port 6543),
+  which can't hold the session-level advisory lock `migrate deploy` takes. Use
+  the direct connection (`db.<ref>.supabase.co:5432`) or the **session** pooler
+  (`aws-0-<region>.pooler.supabase.com:5432`). Prefer the session pooler on
+  Vercel: the direct host is IPv6-only without the IPv4 add-on. If `DIRECT_URL`
+  is missing, the build **fails on purpose** with instructions — production
+  keeps serving the previous deployment, so a missing var costs you a deploy,
+  never an outage.
+- **Preview deployments deliberately do NOT migrate.** They build from unmerged
+  branches against the *same* production database; letting them migrate would
+  apply unreviewed schema changes the moment someone opened a PR. Consequence:
+  a preview of a PR that adds a migration shows errors for the new columns
+  until it merges. That's the intended trade — a broken preview is cheap, a
+  prod schema mutated by an abandoned branch is not.
+- **Destructive migrations still need care.** Rolling back a deployment rolls
+  back *code*, not schema. Additive changes (new nullable/defaulted columns —
+  nearly all of ours) are rollback-safe. A `DROP`/`RENAME`/`NOT NULL`-without-
+  default is not: rolling back leaves old code querying something gone. Ship
+  those as an expand/contract pair across two deploys.
+- **One-off data heals still go in `prisma/manual-sql/`** and are still run by
+  hand. This automation covers `prisma/migrations/` only.
 
 ## What we are NOT building
 
