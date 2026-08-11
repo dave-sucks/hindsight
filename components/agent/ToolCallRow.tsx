@@ -27,7 +27,7 @@ import { ConfigPreviewRenderer } from "./renderers/ConfigPreviewRenderer";
 import { AskQuestionRenderer } from "./renderers/AskQuestionRenderer";
 import { PodcastConfigPreviewRenderer } from "./renderers/PodcastConfigPreviewRenderer";
 import { TranscriptCardRenderer } from "./renderers/TranscriptCardRenderer";
-import { Card, CardContent } from "@/components/ui/card";
+import { ToolErrorRow } from "./ToolErrorRow";
 
 interface Props {
   toolName: string;
@@ -46,13 +46,7 @@ export function ToolCallRow({ toolName, toolCallId, args, rawResult, loading, in
     : { ok: true, ui: inferLoadingUI(toolName), summary: "", data: null, sources: [] };
 
   if (!result.ok) {
-    return (
-      <Card className="border-destructive/50 bg-destructive/5">
-        <CardContent className="p-3 text-sm text-destructive">
-          {toolName}: {result.error}
-        </CardContent>
-      </Card>
-    );
+    return <ToolErrorRow toolName={toolName} error={result.error} />;
   }
 
   const ui: ToolUI = result.ui;
