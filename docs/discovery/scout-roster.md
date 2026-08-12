@@ -77,10 +77,45 @@ durable monitor so the seat stops depending on whether a handle happened to post
 |---|---|---|---|---|
 | _(seed from the next PEAD prep session)_ | | | | |
 
-### Secular themes (Compounder — nuclear/power, defense, GLP-1, onshoring, AI infra)
+### Secular themes — GLP-1 supply chain (Compounder)
+> First seeded 2026-08-12 from the Compounder discovery session. All unproven — Grok's own
+> assessment was that verifiable *pre-2024* supply-chain track records are **thin** in this
+> theme (most early X discussion was clinical/demand-side, not manufacturing capacity).
+> Treat this bench as provisional until `/review-discovery` scores the WST/STVN calls.
+
 | Handle | Tier | Known for | Last verified | Notes |
 |---|---|---|---|---|
-| _(the Grok multi-year-compounder play surfaced GEV/CEG/BWXT/GD/VST/ETN — log the handles behind those calls)_ | | | | |
+| @Biohazard3737 | 🔍 watch | GLP-1 manufacturing / CDMO capacity commentary | 2026-08-12 | Surfaced in the GLP-1 scout pass; unscored |
+| @Ashwinreads | 🔍 watch | Peptide / CDMO supply-chain fundamentals | 2026-08-12 | Unscored |
+| @academianlcap | 🔍 watch | Device/consumable names in the GLP-1 chain | 2026-08-12 | Flagged Lifecore pre-take-private; unscored |
+| @punitbansal14 | 🔍 watch | Indian CDMO capacity (Divi's etc.) | 2026-08-12 | Mostly non-US-listed coverage — low actionability for this platform |
+| @AndrewPannu | 🔍 watch | Fundamental supply-chain commentary | 2026-08-12 | Unscored |
+
+### Secular themes — onshoring / industrial capex (Compounder)
+> Seeded 2026-08-12. Same caveat: Grok judged genuinely *early* (2023–early-2024) X-native
+> calls on the electrical-equipment / E&C backlog story to be scarce; most loud voices arrived
+> after the re-rating.
+
+| Handle | Tier | Known for | Last verified | Notes |
+|---|---|---|---|---|
+| @YOCspread | 🔍 watch | Industrial backlog / lead-time practitioner commentary | 2026-08-12 | Unscored |
+| @TheStalwart | 🔍 watch | Odd Lots orbit — macro-industrial framing | 2026-08-12 | Broad macro, not a stock-picker; useful for theme state-of-play, not names |
+| Chris Snyder (Morgan Stanley) | 🔍 watch | Multi-industry sell-side, early on the capex cycle | 2026-08-12 | Sell-side, not an X-native scout — sourced via research notes |
+
+### Secular themes — nuclear / power / defense (Compounder)
+| Handle | Tier | Known for | Last verified | Notes |
+|---|---|---|---|---|
+| _(the June Grok multi-year-compounder play surfaced GEV/CEG/BWXT/GD/VST/ETN — handles were never logged and are now unrecoverable. **CEG became the seat's first live position.** Do not repeat this: log Chat 2's handles the same session.)_ | | | | |
+
+### Demographic aging (Compounder) — ⚠️ Play D transfer FAILED here
+> 2026-08-12: transferring the onshoring/industrial scouts onto aging returned **essentially
+> zero** — those accounts have no sustained engagement with medtech or healthcare demand.
+> **Learning: Play D transfers across adjacent domains, not arbitrary ones.** Aging needs its
+> own cold-start Play A session, not a transfer.
+
+| Handle | Tier | Known for | Last verified | Notes |
+|---|---|---|---|---|
+| _(none — needs a dedicated Play A session)_ | | | | |
 
 ---
 
@@ -89,6 +124,14 @@ durable monitor so the seat stops depending on whether a handle happened to post
 > One line per Scout Loop session: date · analyst/theme · play · new handles added · names that
 > hit the triple-sourced tier. This is the audit trail for promotions.
 
+- **2026-08-12 · Secular Compounder · GLP-1 + onshoring + aging · Play A ×2 + Play D** — first
+  roster seeding for this seat. 8 handles added (5 GLP-1, 3 industrial), all 🔍 unscored. Play D
+  transfer onto aging returned nothing (see that section). Session output: 5 dispatched to
+  thesis-writer (WST, SYK, ISRG, EME, ABT), 4 PASS-recorded (TMO, STVN, FIX, POWL). No name
+  reached the triple-sourced tier. Structural finding: **the best GLP-1 picks-and-shovels names
+  are not US-listed** (Bachem, Ypsomed, Gerresheimer, SHL, Divi's) — add "US-listed only" to
+  future supply-chain prompts. Echoes the Catalyst session below: this bench is also a *map*
+  source more than an alpha source, and it was thin on genuinely early track records.
 - **2026-08-09 · Catalyst Event PM · Play D→C (3 Grok threads).** Bench went 5 → 10 named
   handles; **first real grading applied** (2 muted, 3 trusted-as-calendar, 5 watch). New:
   @SheffStation, @Biopharma_Watch, @AndyBiotech, @catalystalert, @adamfeuerstein.
