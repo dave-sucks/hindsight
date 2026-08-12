@@ -70,8 +70,9 @@ deliberately paused (GAPS P1-34; design doc `docs/plans/SIGNALS_REDESIGN.md`).
 
 ### The Agent (what the "Run" button and morning cron both use)
 - User clicks "Run" → POST /api/research/agent-run creates ResearchRun
-- Redirects to /runs/[id] → renders AgentThread component
-- AgentThread uses AI SDK v6 useChat → POST /api/agent/research-run
+- Redirects to /runs/[id] → renders AgentChat (components/agent/AgentChat.tsx)
+- AgentChat wraps ChatRuntime (DefaultChatTransport + useChatRuntime) →
+  POST /api/agent/research-run
 - GPT-5.5 (maxSteps 65, temperature 0.2) + the full tool catalog
   autonomously researches, updates theses, manages positions, and
   places trades via Alpaca
@@ -214,9 +215,10 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
   tabs for Runs and Trades
 - /runs — research run feed with status dots, analyst names,
   thesis counts, logo stacks
-- /runs/[id] — run detail with 2 render modes:
-  - AgentThread (live agent, agentMode=true + RUNNING)
-  - RunUnifiedChat (completed runs, events→chat)
+- /runs/[id] — run detail; ONE renderer (AgentChat) for both live and
+  completed runs. RUNNING → live stream (autoStart, guarded off for
+  server-side modes); COMPLETE/FAILED → replay hydrated from the
+  persisted `thread` RunMessage via convertPersistedToUIMessages
 - /trades — paper trade list with live P&L
 - /performance — accuracy reports, win rate charts
 - /stocks — stock search
@@ -409,14 +411,25 @@ Custom chain-of-thought and source display components:
   ChainOfThoughtSearchResults, ChainOfThoughtSearchResult)
 - **Citation** — inline/chip source citation with favicon + domain
 
-## Agent Run Flow (AgentThread)
+## Agent Run Flow (AgentChat)
 The agent run page (`/runs/[id]`) renders via:
-1. **page.tsx** checks `agentMode` + `RUNNING` → renders `<AgentThread>`
-2. **AgentThread** connects to `/api/agent/research-run` via ChatRuntime
+1. **page.tsx** renders `<AgentChat>` for BOTH live and completed runs.
+   `isLive` (status RUNNING) drives `autoStart`; COMPLETE/FAILED runs
+   hydrate `messages` from the persisted `thread` RunMessage through
+   `convertPersistedToUIMessages` (`lib/agent/convert-messages.ts`).
+   Not live and no persisted thread → empty state instead. `autoStart` is
+   suppressed for server-side modes (INTRADAY_TACTICAL, DISCOVERY,
+   THESIS_WRITER, PRINCIPAL_CHAT, Inngest podcast segment runs) so the
+   page can't launch a second competing agent on the same runId.
+2. **AgentChat** connects to `/api/agent/[mode]` via **ChatRuntime**
+   (`components/chat/chat-runtime.tsx` — DefaultChatTransport +
+   useChatRuntime + AssistantRuntimeProvider) and renders
+   **Thread** (`components/assistant-ui/thread.tsx`).
 3. **ToolCallGroup** (registered as the ToolGroup slot in Thread) reads all
    tool-call parts from `useMessage`, groups by `result.groupId`, and renders
-   each via **ToolCallRow** dispatching on `result.ui`. **Only 5 renderers exist**
-   (see "Tool UI architecture" below):
+   each via **ToolCallRow** dispatching on `result.ui`. **Only 5 trading
+   renderers exist** (see "Tool UI architecture" below; the podcast feature
+   adds 2 more — `podcast-config-preview`, `transcript-card`):
    - `tool-ui` → **ToolUIRenderer** — the ONE generic renderer. ~90% of tools
      route here. Reads `data.items[]` where each item is either ticker-kind
      (logo + chip + text) or generic-kind (dot + text). No per-tool wrappers.
@@ -424,9 +437,13 @@ The agent run page (`/runs/[id]`) renders via:
    - `run-summary` → RunSummaryRenderer → ranked-picks DecisionSummaryCard
    - `config-preview` → ConfigPreviewRenderer (builder/editor diff view)
    - `ask-question` → AskQuestionRenderer (interactive QuickReply flow)
-4. Extended thinking blocks render via **Reasoning** component (collapsible)
-5. Quick replies appear after run completes via **FollowupQuickReplies**.
-6. For COMPLETE runs, **RunUnifiedChat** renders synthesized events.
+4. Extended thinking blocks render via the **Reasoning** component
+   (`components/agent/Reasoning.tsx`), registered as Thread's Reasoning slot.
+5. Follow-up conversation happens in the SAME AgentChat instance (its
+   composer stays live after the run finishes) — there is no separate
+   post-run chat component or route.
+6. Sources / Theses (and, for podcast segment runs, Transcript) are tabs
+   inside AgentChat, fed by `getRunSourcesData` from the page.
 
 ## Tool UI architecture
 The primitive is `components/ai-elements/tool-progress.tsx` (`ToolProgress` +
@@ -498,8 +515,8 @@ it with a ticker chip as if it were a traded security.
 
 ## Run Flow (Button Click → Completion)
 1. Click "Run" → POST /api/research/agent-run → creates ResearchRun
-2. Redirect to /runs/[id] → AgentThread renders with autoStart
-3. AgentThread → ChatRuntime → POST /api/agent/research-run
+2. Redirect to /runs/[id] → AgentChat renders with autoStart
+3. AgentChat → ChatRuntime → POST /api/agent/research-run
 4. Route loads config + historical context (portfolio, watchlist,
    briefs, trades, accuracy, intelligence policy)
 5. GPT-5.5 (temperature 0.2) follows the per-thesis review flow with
@@ -616,7 +633,11 @@ new, file it there — not here.)
 - lib/agent/tool-context.ts — ToolContext interface + createToolContext()
 - lib/agent/modes.ts — model, provider, thinking budget, tool allowlists
 - lib/agent/system-prompt.ts — agent persona + instructions
-- components/research/AgentThread.tsx — live agent UI
+- components/agent/AgentChat.tsx — THE chat component (run, builder,
+  editor, podcast, principal). Replaced AgentThread + the Analyst*Chat family.
+- components/chat/chat-runtime.tsx — ChatRuntime (DefaultChatTransport)
+- components/assistant-ui/thread.tsx — Thread; registers ToolCallGroup as
+  the ToolGroup slot and Reasoning as the Reasoning slot
 - components/agent/ToolCallGroup.tsx — groups tool calls by groupId
 - components/agent/ToolCallRow.tsx — dispatches on result.ui to renderers
 - components/agent/renderers/ — one renderer per ui discriminator
@@ -634,10 +655,12 @@ new, file it there — not here.)
 - Mechanics: docs/TRIGGERS.md · model: docs/plans/TRIGGER_MODEL.md · lifecycle: docs/plans/TRIGGER_LIFECYCLE.md · why: docs/plans/THESIS_GAME_PLAN.md
 
 ### Run Pages
-- app/(root)/runs/[id]/page.tsx — run detail (AgentThread vs
-  RunUnifiedChat based on mode/status)
-- components/research/RunUnifiedChat.tsx — events→chat renderer
-- components/research/RunFollowupChat.tsx — post-run chat
+- app/(root)/runs/[id]/page.tsx — run detail; renders AgentChat for live
+  AND completed runs, and owns the per-mode autoStart guards
+- lib/agent/convert-messages.ts — convertPersistedToUIMessages(), the
+  replay hydrator for COMPLETE/FAILED runs
+- components/research/run-sources-panel.tsx — Sources tab body
+  (the only file left in components/research/)
 
 ### Analyst System
 - components/analysts/AnalystBuilderChat.tsx — AI creation chat
