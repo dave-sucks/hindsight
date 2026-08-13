@@ -3,7 +3,7 @@
  * refresh until the worker completes (or times out).
  *
  * Pattern: dispatch_thesis_research returns a childRunId immediately and
- * fires `app/thesis.write.requested`. The actual research takes ~60-120s.
+ * fires `app/thesis.write.requested`. The actual research typically takes ~3-4 minutes (V2 pipeline).
  * If the caller's next action depends on fresh research being on the
  * Thesis row (e.g. place_trade on a thesis whose researchUpdatedAt was
  * stale), it must wait for the worker to land first. This tool is the
@@ -55,10 +55,15 @@ export const waitForThesisRefresh = defineTool({
       .number()
       .int()
       .min(30)
-      .max(180)
+      // The V1 cap was 180s against a worker that averaged 523s — waiters
+      // timed out on healthy runs by construction. V2's pipeline typically
+      // lands in ~200-250s (worst case ~440s, see THESIS_WRITER_V2.md);
+      // 480 covers the worst case while the parent's own 770s abort still
+      // bounds total wall time.
+      .max(480)
       .optional()
       .describe(
-        "Max wait. Default 150s (covers the ~60-120s typical worker run + headroom). Caps at 180s to keep the parent agent's wall-time bounded.",
+        "Max wait. Default 300s (covers the ~3-4 min typical V2 worker run + headroom). Caps at 480s — the worker's own worst-case budget — to keep the parent agent's wall-time bounded.",
       ),
   }),
   ui: "tool-ui" as const,
@@ -68,7 +73,7 @@ export const waitForThesisRefresh = defineTool({
     `Waiting for thesis-writer ${child_run_id.slice(0, 8)}…`,
 
   execute: async (args, ctx) => {
-    const timeoutMs = (args.timeout_seconds ?? 150) * 1000;
+    const timeoutMs = (args.timeout_seconds ?? 300) * 1000;
     const deadline = Date.now() + timeoutMs;
     const childRunId = args.child_run_id;
 

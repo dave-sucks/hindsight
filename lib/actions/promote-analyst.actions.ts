@@ -318,7 +318,7 @@ export async function promoteAnalystToLive(
   });
 
   // 5. Fan out thesis-writer rewrites for every PROMOTED thesis. Fire-and-
-  // forget — the worker runs async (~60-120s each). Promotion is already
+  // forget — the worker runs async (~3-4 min each). Promotion is already
   // complete at this point; missing a rewrite means the first live daily
   // run will read the pre-promotion research. The Phase-2 staleness gate
   // (see docs/plans/THESIS_LIFECYCLE_FIX.md) will let the daily agent
@@ -530,7 +530,7 @@ async function transitionThesisToPromoted(input: {
  * Spawn a thesis-writer "refresh" sub-agent for each promoted thesis. Mirrors
  * dispatch_thesis_research's logic — create the child ResearchRun row, fire
  * `app/thesis.write.requested` carrying the promotion context. The worker
- * runs ~60-120s per thesis; we return the child run IDs immediately so the
+ * runs ~3-4 min per thesis; we return the child run IDs immediately so the
  * promote dialog can surface deep-links. Promise.all runs them in parallel.
  *
  * Failures here are non-fatal to the promotion itself — the analyst is

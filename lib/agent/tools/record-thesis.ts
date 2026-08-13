@@ -1072,7 +1072,7 @@ export const recordThesis = defineTool({
       // theses per run") that GPT-4o doesn't honor — 2026-05-17's run
       // produced 7-8 mints per analyst across 5 analysts (38 new WATCHING
       // theses in one Sunday, against a documented 8/run target). Given
-      // each thesis gets ~60-120s of deep research in V2, 5 is closer to
+      // each thesis gets ~3-4 min of deep research in V2, 5 is closer to
       // a quality bar than 8. Enforce as a Layer-1 reject so the prompt
       // can't override it.
       //
