@@ -139,13 +139,30 @@ skips the cross-day cooldown for any protective exit — an assumption that was 
 Plan put a protective floor on **every** holding, so the carve-out now leaks the entire protective-exit
 stream past the cooldown, ignoring rejections *and* expiries. Deeper: the daily-run/tactical agent has no
 read path to its own pending queue (only `unapprovedExitCount`, a count), so it re-derives the exit every
-run. **Two-layer fix:** (1) narrow the carve-out to fire only on a genuine price re-cross (honor an
-expiry/reject as a hold otherwise — #490's real intent); (2) extend `list_proposals` (#502) to the
-daily-run/tactical allowlist so the agent dedups against its own queue. Full diagnosis + acceptance test:
+run. **CORRECTED FIX (2026-08-13, with the principal):** suppression is the wrong lever — the system must
+NEVER go silent on an exit (a name can collapse the next day; an unwanted repeat is fine, silence is not).
+A suppression PR (#504) was closed. The real fix is two run-side moves: **(1) ✅ SHIPPED (#513):** remove the
+cross-day suppression entirely so every agent-decided exit surfaces (~daily) — this stopped the LIVE silence
+on MU + CYTK; **(2) TODO (Lane 1):** the morning run trails the floor to just under the recent low on a
+held-through breach, so alerts track a live line instead of a stale one. Full diagnosis + acceptance test:
 [`plans/PROPOSAL_FATIGUE.md`](./plans/PROPOSAL_FATIGUE.md). **Subsumes the ex-P2 "hold + retune affordance"
 and "narrow the P1-28 carve-out" items.** Secondary (real but NOT the loop's cause, see the doc): the
 `Order→TradeDecision→Thesis` null-on-held relation bug (P2 below) + the `PROPOSAL_*` audit lossiness (folds
 into the `fieldChanges: {}` P2 item).
+
+### P1-40 — ENTER trigger fires, validates, then never buys — silently (the RARE gap)
+**Status:** open, filed 2026-08-13, **code-traced.** Live money, and *invisible*. RARE's ENTER trigger fired
+2026-08-05; the agent validated every condition (price $28.02 above the $27.50 entry, supportive news, Q2
+beat) — wrote it down — and **never called `place_trade`.** No error, no failure, no alert. It was the only
+shot: RARE hasn't traded above $27.50 since ($24.93→$26.86), every review since repeats "still below the
+trigger," and the window closes ~08-16. **Why nothing caught it:** the narration→execution gate
+([`record-run-summary.ts`](../lib/agent/tools/record-run-summary.ts), CLAUDE.md P0-12) only watches
+*close/exit/sell* language — an **ENTER** that fires-validates-vanishes is undetected. **Compounding
+(see P2 sizing item):** RARE's `targetSizePct = 4%` ≈ $4k < the $5k `minPositionSize` floor, so Guardrail 5b
+may have rejected the entry by its own sizing even if it had tried. Also feeds P1-37 (RARE reviewed 15+ days
+for a name actionable one afternoon). **Fix:** extend the narration→execution gate to the ENTER path — an
+ENTER trigger that validates in a run with no paired `place_trade` (and no documented refusal) is a run
+failure, same as the close-side gap. It'll recur on SRRK/MIRM in September.
 
 _(P1-26 + P1-29 closed 2026-06-26 — see [`GAPS_HISTORY.md`](./GAPS_HISTORY.md).)_
 
@@ -154,6 +171,7 @@ _(P1-26 + P1-29 closed 2026-06-26 — see [`GAPS_HISTORY.md`](./GAPS_HISTORY.md)
 ## P2 — Backlog
 
 ### Active
+- **`targetSizePct` below the `minPositionSize` floor → self-rejecting entries (pairs with P1-40).** RARE's thesis carried `targetSizePct = 4%` ≈ $4k on a ~$100k book, under the $5k `minPositionSize` floor — so `place_trade` Guardrail 5b (`positionBand()`, `lib/agent/position-sizing.ts`) would reject the entry by the thesis's own sizing, even on a valid ENTER. Fix: when authoring/refreshing a thesis, clamp `targetSizePct` up to the analyst's floor (or refuse to mint a sub-floor size). Silent contributor to missed entries — the agent never sees "your own size is below the floor."
 - **Discovery-mint executability vet.** *(Sharper half of P1-38, tracked here for the tuning slice.)* Vet each minted `entryPrice` / ENTER level against structure (20d/50d, confirmation) at write time so discovery can't mint a chronically-true-but-unfillable entry. CAPR 7/16 = the case.
 - **`closeReason` mis-tag assertion (ex-C3).** 7/13 protective closes tagged `closeReason=MANUAL` (only ARQT carried `STOP`) → EWTX's floor breach wrongly P1-28-suppressed. Self-corrected to `STOP` from 7/14 (coincident with #490). The #490 risk-exit carve-out keys off this field. Fix: Layer-1 assertion — a close from a protective/trailing fire must carry STOP/TARGET (refuse/auto-tag on mismatch). Verify tagging holds one more window. Run-review Finding C.
 - **Completion-gate retry churn (ex-C5).** PEAD 7/15 called `complete_run` ×8 + `record_run_summary` ×7 in one 87s run (Secular 7/14 ×7/×7). Runs complete — token tax, not a correctness bug; new since the Spine's audit obligations. Fix: refusal envelope should name the exact unaddressed thesisIds + the open obligation, so one retry suffices. Run-review Finding D.
