@@ -27,11 +27,14 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
-import { computeNeedsAction } from "@/lib/agent/needs-action";
+import {
+  computeNeedsAction,
+  HELD_THROUGH_WINDOW_DAYS,
+} from "@/lib/agent/needs-action";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { isSystemicRejection } from "@/lib/proposals/maybe-await-approval";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { getLatestPrices } from "@/lib/alpaca";
+import { getBars, getLatestPrices } from "@/lib/alpaca";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import {
@@ -464,6 +467,16 @@ export const getTheses = defineTool({
     // user keeps declining" signal, read from the canonical Order ledger. Pairs
     // with the Layer-1 cross-day cooldown gate in maybe-await-approval.ts.
     const unapprovedExitCountByThesisId = new Map<string, number>();
+    // P1-39 (PROPOSAL_FATIGUE.md): held-through-floor context per HOLDING
+    // thesis — recent protective (closeReason=STOP) close proposals the
+    // principal rejected or let expire, plus their most recent written
+    // reject message. Feeds the HELD_THROUGH_FLOOR needsAction flag; the
+    // recent low to trail to is resolved separately below (needs the
+    // ladder-edit scan first).
+    const heldThroughByThesisId = new Map<
+      string,
+      { heldThroughCount: number; rejectMessage: string | null }
+    >();
     const activeTickersForOpenedAt = Array.from(
       new Set(
         theses
@@ -532,9 +545,26 @@ export const getTheses = defineTool({
               status: { in: ["REJECTED", "EXPIRED"] },
               expiresAt: { not: null },
             },
-            select: { positionId: true, rejectionMessage: true },
+            orderBy: { createdAt: "desc" },
+            select: {
+              positionId: true,
+              rejectionMessage: true,
+              closeReason: true,
+              createdAt: true,
+            },
           });
           const countByPositionId = new Map<string, number>();
+          // P1-39: recent protective declines per position — the held-through
+          // signal. Window matches "the principal saw this exit recently and
+          // still holds"; post-#513 the exit stream re-surfaces ~daily, so the
+          // window self-refreshes while the breach persists.
+          const heldThroughCutoff = new Date(
+            Date.now() - HELD_THROUGH_WINDOW_DAYS * 86_400_000,
+          );
+          const heldThroughByPositionId = new Map<
+            string,
+            { heldThroughCount: number; rejectMessage: string | null }
+          >();
           for (const o of unapprovedCloses) {
             // Exclude systemic tombstones (dedup, P1-28 cooldown) — only a real
             // decline (rejection or ignored expiry) counts. Sync w/ the L1 gate.
@@ -543,12 +573,26 @@ export const getTheses = defineTool({
               o.positionId,
               (countByPositionId.get(o.positionId) ?? 0) + 1,
             );
+            // Protective declines only (STOP-tagged): a declined TARGET exit
+            // means "let it run" — a different, benign hold. Rows are newest-
+            // first, so the first message seen is the most recent one.
+            if (o.closeReason === "STOP" && o.createdAt >= heldThroughCutoff) {
+              const prev = heldThroughByPositionId.get(o.positionId);
+              heldThroughByPositionId.set(o.positionId, {
+                heldThroughCount: (prev?.heldThroughCount ?? 0) + 1,
+                rejectMessage: prev?.rejectMessage ?? o.rejectionMessage ?? null,
+              });
+            }
           }
           for (const t of theses) {
             if (t.status !== "HOLDING") continue;
             const posId = positionIdByTicker.get(t.ticker);
             const n = posId ? countByPositionId.get(posId) ?? 0 : 0;
             if (n > 0) unapprovedExitCountByThesisId.set(t.id, n);
+            const heldThrough = posId
+              ? heldThroughByPositionId.get(posId)
+              : undefined;
+            if (heldThrough) heldThroughByThesisId.set(t.id, heldThrough);
           }
         }
       } catch (err) {
@@ -612,6 +656,58 @@ export const getTheses = defineTool({
           err,
         );
       }
+    }
+
+    // ── Recent low per held-through thesis (P1-39) ──────────────────────
+    // The trail-to line for HELD_THROUGH_FLOOR: lowest daily low (LONG; the
+    // recent HIGH for SHORT) since the ladder was last edited — the window
+    // PROPOSAL_FATIGUE.md §7 Q1 names as the starting point. Clamped to
+    // [2, 30] days so a same-day edit still sees yesterday's bar and an
+    // ancient ladder doesn't drag the floor to a months-old low. Only the
+    // held-through candidates are fetched (typically 0-3 tickers); bar-fetch
+    // failure degrades to recentLow=null (the flag still fires, the agent
+    // falls back to fresh data / judgment).
+    const recentLowByThesisId = new Map<string, number>();
+    const heldThroughCandidates = theses.filter(
+      (t) => t.status === "HOLDING" && heldThroughByThesisId.has(t.id),
+    );
+    if (heldThroughCandidates.length > 0) {
+      const nowMs = Date.now();
+      await Promise.all(
+        heldThroughCandidates.map(async (t) => {
+          try {
+            const since = lastLadderEditAtByThesisId.get(t.id);
+            const daysBack = since
+              ? Math.ceil((nowMs - since.getTime()) / 86_400_000)
+              : 30;
+            const clampedDays = Math.min(Math.max(daysBack, 2), 30);
+            const start = new Date(nowMs - clampedDays * 86_400_000)
+              .toISOString()
+              .slice(0, 10);
+            const end = new Date(nowMs).toISOString().slice(0, 10);
+            const bars = await getBars(
+              t.ticker,
+              { start, end },
+              ctx.alpacaCreds,
+            );
+            const isLong = t.direction !== "SHORT";
+            const extremes = bars
+              .map((b) => (isLong ? b.low ?? b.close : b.high ?? b.close))
+              .filter((v): v is number => typeof v === "number" && v > 0);
+            if (extremes.length > 0) {
+              recentLowByThesisId.set(
+                t.id,
+                isLong ? Math.min(...extremes) : Math.max(...extremes),
+              );
+            }
+          } catch (err) {
+            console.warn(
+              `[get_theses] recent-low fetch failed for ${t.ticker}; HELD_THROUGH_FLOOR degrades to recentLow=null:`,
+              err,
+            );
+          }
+        }),
+      );
     }
 
     if (liveTheses.length > 0) {
@@ -706,6 +802,17 @@ export const getTheses = defineTool({
             latestQuote,
             now,
             hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
+            // P1-39: recent protective declines + the trail-to low. The flag
+            // itself only fires when price is still under the ladder floor.
+            heldThroughFloor: (() => {
+              const ht = heldThroughByThesisId.get(t.id);
+              if (!ht) return null;
+              return {
+                heldThroughCount: ht.heldThroughCount,
+                rejectMessage: ht.rejectMessage,
+                recentLow: recentLowByThesisId.get(t.id) ?? null,
+              };
+            })(),
           }),
         );
       }
