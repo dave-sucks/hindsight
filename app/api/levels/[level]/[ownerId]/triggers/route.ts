@@ -106,6 +106,10 @@ export async function GET(
         ? parseLevelTriggers(own, `account=${ownerId}`)
         : parseLevelTriggers(accountRungs, `account=${accountId}`),
     defaults: inheritableDefaultLadder("TARGET", "HELD"),
+    // Own rungs solid + editable; everything below dashed + read-only.
+    // Without this every level renders its OWN rules as inherited and the
+    // page can't edit the thing it exists to edit.
+    viewLevel: auth.level,
   });
 
   return Response.json({

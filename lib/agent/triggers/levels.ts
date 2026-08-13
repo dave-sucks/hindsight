@@ -65,9 +65,15 @@ export const LEVEL_PRECEDENCE: readonly TriggerLevel[] = [
 export type ResolvedTrigger = Trigger & {
   level: TriggerLevel;
   /**
-   * `level !== "THESIS"` — the rung is not stored on this thesis. Drives
-   * the dotted border and the read-only popover. Precomputed because
-   * every call site needs it and `!== "THESIS"` invites typos.
+   * The rung is not stored at the level currently being VIEWED — it comes
+   * from somewhere further down the cascade. Drives the dashed border and
+   * the read-only popover.
+   *
+   * Relative to `viewLevel`, not to THESIS: on `/settings/triggers` an
+   * ACCOUNT rung is the thing you own and a DEFAULT rung is inherited,
+   * while on a thesis both are inherited. Hardcoding THESIS here made the
+   * account and analyst pages render their own rules dashed and
+   * read-only — the exact opposite of their purpose.
    */
   inherited: boolean;
   /**
@@ -112,6 +118,19 @@ export interface LadderLevels {
    * for no benefit.
    */
   triggerState?: Record<string, string | null | undefined>;
+  /**
+   * Which level the caller is rendering FROM. Everything below it is
+   * inherited; rungs at this level are owned and editable.
+   *
+   *   THESIS  (default) — the thesis sheet
+   *   ANALYST — the analyst config's Triggers tab
+   *   ACCOUNT — /settings/triggers
+   *
+   * Levels ABOVE the view are not passed in by those callers (there is no
+   * thesis in scope on a settings page), so this only ever partitions
+   * what was supplied.
+   */
+  viewLevel?: TriggerLevel;
 }
 
 /**
@@ -207,7 +226,7 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
       claimed.add(bucket);
       winnerIndexByBucket.set(bucket, out.length);
 
-      const inherited = level !== "THESIS";
+      const inherited = level !== (input.viewLevel ?? "THESIS");
       // Inherited rungs read fire state from the per-thesis map; thesis
       // rungs keep theirs inline. `?? undefined` because the map stores
       // null for "never fired" and the Trigger type wants the field absent.

@@ -182,6 +182,45 @@ describe("resolveLadder — purity", () => {
   });
 });
 
+describe("resolveLadder — viewLevel", () => {
+  it("marks a level's OWN rungs as owned when viewed from that level", () => {
+    // The bug this pins: /settings/triggers rendered the account's own
+    // rules dashed + read-only, because `inherited` was hardcoded to
+    // `level !== "THESIS"`. The page could not edit the thing it exists
+    // to edit.
+    const resolved = resolveLadder({
+      thesis: [],
+      account: [trail(6, "acct")],
+      defaults: [gainReview(10, "def")],
+      viewLevel: "ACCOUNT",
+    });
+    const own = resolved.find((t) => t.id === "acct")!;
+    const def = resolved.find((t) => t.id === "def")!;
+    expect(own.inherited).toBe(false);
+    expect(def.inherited).toBe(true);
+  });
+
+  it("treats the account as inherited when viewed from the analyst", () => {
+    const resolved = resolveLadder({
+      thesis: [],
+      analyst: [trail(5, "an")],
+      account: [gainReview(15, "acct")],
+      viewLevel: "ANALYST",
+    });
+    expect(resolved.find((t) => t.id === "an")!.inherited).toBe(false);
+    expect(resolved.find((t) => t.id === "acct")!.inherited).toBe(true);
+  });
+
+  it("defaults to THESIS so the sheet is unchanged", () => {
+    const resolved = resolveLadder({
+      thesis: [trail(4, "own")],
+      account: [gainReview(15, "acct")],
+    });
+    expect(resolved.find((t) => t.id === "own")!.inherited).toBe(false);
+    expect(resolved.find((t) => t.id === "acct")!.inherited).toBe(true);
+  });
+});
+
 describe("resolveLadder — override annotation", () => {
   it("tells a winning rung what it displaced", () => {
     const [only] = resolveLadder({

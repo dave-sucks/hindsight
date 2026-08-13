@@ -73,38 +73,70 @@ export function LevelTriggersSection({
     return <p className="text-xs text-muted-foreground">Loading triggers…</p>;
   }
 
-  const ownCount = data.triggers.filter((t) => !t.inherited).length;
+  const own = data.triggers.filter((t) => !t.inherited);
+  // Inherited rungs are split BY SOURCE LEVEL rather than shown as one
+  // dashed pile. On the thesis sheet a single dashed treatment is right —
+  // there, "not from here" is the whole message. On a settings page it
+  // isn't: the account page and the analyst tab both show the same five
+  // app defaults, and with no origin label they read as the same rules
+  // duplicated across two screens instead of one set of defaults
+  // inherited by both.
+  const inheritedByLevel: Array<{ level: string; heading: string; items: Trigger[] }> = [
+    {
+      level: "ACCOUNT",
+      heading: "From your account rules",
+      items: data.triggers.filter((t) => t.inherited && t.level === "ACCOUNT"),
+    },
+    {
+      level: "DEFAULT",
+      heading: "From the app defaults",
+      items: data.triggers.filter((t) => t.inherited && t.level === "DEFAULT"),
+    },
+  ].filter((g) => g.items.length > 0);
+
+  const groupProps = {
+    thesisId: "",
+    direction: null,
+    held: true,
+    endpointBase,
+    onChanged: () => void load(),
+  } as const;
 
   return (
-    <div className="space-y-3">
-      <TriggerGroups
-        triggers={data.triggers}
-        // No thesis in scope. The pills only use this for the thesis-scoped
-        // write endpoint, which the endpointBase below replaces.
-        thesisId=""
-        direction={null}
-        editable={editable}
-        held
-        endpointBase={endpointBase}
-        onChanged={() => void load()}
-      />
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {level === "account" ? "Set on this account" : "Set on this analyst"}
+        </span>
+        {own.length > 0 ? (
+          <TriggerGroups {...groupProps} triggers={own} editable={editable} />
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {level === "account"
+              ? "Nothing set here yet — everything below is an app default. Add a rule of the same kind to override one."
+              : "Nothing set here yet — everything below comes from the account or the app defaults. Add a rule of the same kind to override one for this analyst only."}
+          </p>
+        )}
+        {editable ? (
+          <AddTriggerDialog
+            held
+            endpointBase={endpointBase}
+            allowAbsolutePrice={false}
+            onChanged={() => void load()}
+          />
+        ) : null}
+      </div>
 
-      {ownCount === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {level === "account"
-            ? "No account-wide rules yet — every rung above is an app default. Add one to override a default for every analyst."
-            : "No rules for this analyst yet — every rung above comes from the account or the app defaults. Add one to override for this analyst only."}
-        </p>
-      ) : null}
-
-      {editable ? (
-        <AddTriggerDialog
-          held
-          endpointBase={endpointBase}
-          allowAbsolutePrice={false}
-          onChanged={() => void load()}
-        />
-      ) : null}
+      {inheritedByLevel.map((g) => (
+        <div key={g.level} className="space-y-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {g.heading}
+          </span>
+          {/* editable=false: these are owned elsewhere. The pills render
+              dashed and their popovers explain where to change them. */}
+          <TriggerGroups {...groupProps} triggers={g.items} editable={false} />
+        </div>
+      ))}
     </div>
   );
 }
