@@ -112,6 +112,19 @@ function predicateSentence(p: TriggerPredicate): string {
   return sharedPredicateSentence(p as SharedTriggerPredicate);
 }
 
+/** How to name the level a rung overrode, in running prose. */
+function overriddenLevelPhrase(level: string): string {
+  switch (level) {
+    case "ANALYST":
+      return "this analyst's rule";
+    case "ACCOUNT":
+      return "your account rule";
+    case "DEFAULT":
+    default:
+      return "the app default";
+  }
+}
+
 /**
  * Split a predicate into a left-side "kind" label and a right-side value
  * for the two-cell trigger pill (2026-05-20 redesign):
@@ -293,6 +306,7 @@ function TriggerPill({
   editable,
   held,
   analystId,
+  endpointBase,
   onChanged,
 }: {
   trigger: Trigger;
@@ -301,6 +315,7 @@ function TriggerPill({
   editable: boolean;
   held: boolean;
   analystId?: string | null;
+  endpointBase: string;
   onChanged?: () => void;
 }) {
   const { kind, value } = predicateKindValue(trigger.predicate);
@@ -348,6 +363,7 @@ function TriggerPill({
         editable={editable && !inherited}
         held={held}
         analystId={analystId}
+        endpointBase={endpointBase}
         onChanged={onChanged}
       />
     </Popover>
@@ -370,6 +386,7 @@ function TriggerPopoverContent({
   editable,
   held,
   analystId,
+  endpointBase,
   onChanged,
 }: {
   trigger: Trigger;
@@ -380,6 +397,13 @@ function TriggerPopoverContent({
   held: boolean;
   /** Owning analyst — deep-link target for an ANALYST-level rung. */
   analystId?: string | null;
+  /**
+   * REST base for this ladder's writes — `/api/theses/:id/triggers` on a
+   * thesis, `/api/levels/:level/:ownerId/triggers` at the account/analyst
+   * levels. Both speak the same PATCH/DELETE/POST shapes, which is what
+   * lets one popover edit a rung wherever it lives.
+   */
+  endpointBase: string;
   onChanged?: () => void;
 }) {
   const field = editableTriggerField(
@@ -443,7 +467,7 @@ function TriggerPopoverContent({
     setErr(null);
     try {
       const res = await fetch(
-        `/api/theses/${thesisId}/triggers/${trigger.id}`,
+        `${endpointBase}/${trigger.id}`,
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
@@ -462,7 +486,7 @@ function TriggerPopoverContent({
     setPending(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/theses/${thesisId}/triggers/${trigger.id}`, {
+      const res = await fetch(`${endpointBase}/${trigger.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ fireMode: next }),
@@ -479,7 +503,7 @@ function TriggerPopoverContent({
     setPending(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/theses/${thesisId}/triggers/${trigger.id}`, {
+      const res = await fetch(`${endpointBase}/${trigger.id}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
@@ -576,6 +600,18 @@ function TriggerPopoverContent({
         ) : null}
       </p>
 
+      {/* What this rung displaced. Only on a rung that actually overrode
+          something — otherwise the cascade is only half visible (the
+          dashed border explains inherited rungs, nothing explains an
+          override). Reads "Overrides the app default: gives back 8% from
+          the high." */}
+      {trigger.overrides ? (
+        <p className="text-xs text-muted-foreground">
+          Overrides {overriddenLevelPhrase(trigger.overrides.level)}:{" "}
+          {predicateSentence(trigger.overrides.predicate).toLowerCase()}.
+        </p>
+      ) : null}
+
       {/* Level — only on an inherited rung, where it answers "why is this
           read-only?" The link goes to the surface that owns it; a DEFAULT
           rung is a code constant with no owner, so it gets the sentence
@@ -667,13 +703,14 @@ const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = [
   "EXIT",
 ];
 
-function TriggerGroups({
+export function TriggerGroups({
   triggers,
   thesisId,
   direction,
   editable,
   held,
   analystId,
+  endpointBase,
   onChanged,
 }: {
   triggers: Trigger[];
@@ -682,6 +719,7 @@ function TriggerGroups({
   editable: boolean;
   held: boolean;
   analystId?: string | null;
+  endpointBase: string;
   onChanged?: () => void;
 }) {
   const grouped = new Map<string, Trigger[]>();
@@ -713,6 +751,7 @@ function TriggerGroups({
                 editable={editable}
                 held={held}
                 analystId={analystId}
+                endpointBase={endpointBase}
                 onChanged={onChanged}
               />
             ))}
@@ -745,18 +784,29 @@ function TriggerGroups({
 
 type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL";
 
-function AddTriggerDialog({
-  thesisId,
+export function AddTriggerDialog({
   held,
+  endpointBase,
+  allowAbsolutePrice = true,
   onChanged,
 }: {
-  thesisId: string;
   held: boolean;
+  endpointBase: string;
+  /**
+   * False at the account/analyst levels: an absolute dollar level means
+   * nothing applied across every ticker, so the "$ Price" criterion is
+   * withheld. `addLevelTrigger` refuses it server-side regardless.
+   */
+  allowAbsolutePrice?: boolean;
   onChanged?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [action, setAction] = useState<string>("EXIT");
-  const [criterion, setCriterion] = useState<AddCriterion>("PRICE");
+  const [criterion, setCriterion] = useState<AddCriterion>(
+    // "$ Price" is withheld at the account/analyst levels, so the first
+    // legal criterion there is a % move.
+    allowAbsolutePrice ? "PRICE" : "MOVE",
+  );
   const [dir, setDir] = useState<string>("BELOW"); // ABOVE/BELOW · UP/DOWN
   const [val, setVal] = useState("");
   const [fireMode, setFireMode] = useState<"TACTICAL" | "DIRECT">("DIRECT");
@@ -773,17 +823,13 @@ function AddTriggerDialog({
   // Criterion options — the position-scoped kinds (gain from entry, trailing
   // from high) only exist on a held thesis (no position → the predicate
   // evaluates false forever), so un-held keeps the original two.
-  const criterionOptions: ReadonlyArray<{ v: AddCriterion; l: string }> = held
-    ? [
-        { v: "PRICE", l: "$ Price" },
-        { v: "MOVE", l: "% Move" },
-        { v: "GAIN", l: "% Gain" },
-        { v: "TRAIL", l: "% Trail" },
-      ]
-    : [
-        { v: "PRICE", l: "$ Price" },
-        { v: "MOVE", l: "% Movement" },
-      ];
+  const criterionOptions: ReadonlyArray<{ v: AddCriterion; l: string }> = [
+    ...(allowAbsolutePrice
+      ? ([{ v: "PRICE", l: "$ Price" }] as const)
+      : ([] as const)),
+    { v: "MOVE", l: held || !allowAbsolutePrice ? "% Move" : "% Movement" },
+    ...(held ? ([{ v: "GAIN", l: "% Gain" }, { v: "TRAIL", l: "% Trail" }] as const) : ([] as const)),
+  ];
 
   const dirOptions =
     isMove || isGain
@@ -835,7 +881,7 @@ function AddTriggerDialog({
           ? { kind: "PRICE_MOVE_PCT", pct: num, direction: dir, window: "1D" }
           : { kind: dir === "ABOVE" ? "PRICE_ABOVE" : "PRICE_BELOW", level: num };
     try {
-      const res = await fetch(`/api/theses/${thesisId}/triggers`, {
+      const res = await fetch(endpointBase, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -1152,11 +1198,16 @@ export function ThesisTriggersSection({
           editable={editable}
           held={held}
           analystId={data.analystId}
+          endpointBase={`/api/theses/${thesisId}/triggers`}
           onChanged={onChanged}
         />
       )}
       {editable ? (
-        <AddTriggerDialog thesisId={thesisId} held={held} onChanged={onChanged} />
+        <AddTriggerDialog
+          held={held}
+          endpointBase={`/api/theses/${thesisId}/triggers`}
+          onChanged={onChanged}
+        />
       ) : null}
     </div>
   );

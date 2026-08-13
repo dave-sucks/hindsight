@@ -182,6 +182,45 @@ describe("resolveLadder — purity", () => {
   });
 });
 
+describe("resolveLadder — override annotation", () => {
+  it("tells a winning rung what it displaced", () => {
+    const [only] = resolveLadder({
+      thesis: [gainReview(20)],
+      defaults: [gainReview(10)],
+    });
+    expect(only.level).toBe("THESIS");
+    expect(only.overrides?.level).toBe("DEFAULT");
+    expect((only.overrides?.predicate as { pct: number }).pct).toBe(10);
+  });
+
+  it("names the NEAREST level below, not the bottom of the chain", () => {
+    const [only] = resolveLadder({
+      thesis: [trail(4)],
+      analyst: [trail(5)],
+      account: [trail(6)],
+      defaults: [trail(8)],
+    });
+    expect(only.overrides?.level).toBe("ANALYST");
+    expect((only.overrides?.predicate as { pct: number }).pct).toBe(5);
+  });
+
+  it("leaves `overrides` absent when nothing was displaced", () => {
+    const [only] = resolveLadder({ thesis: [trail(4)] });
+    expect(only.overrides).toBeUndefined();
+  });
+
+  it("annotates an inherited winner too", () => {
+    const [only] = resolveLadder({
+      thesis: [],
+      account: [trail(6)],
+      defaults: [trail(8)],
+    });
+    expect(only.level).toBe("ACCOUNT");
+    expect(only.inherited).toBe(true);
+    expect(only.overrides?.level).toBe("DEFAULT");
+  });
+});
+
 describe("dropRedundantInherited — the anti-drift guard", () => {
   it("drops a rung that merely restates what is inherited", () => {
     const kept = dropRedundantInherited([trail(8, "resent")], [trail(8, "inherited")]);

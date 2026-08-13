@@ -70,6 +70,20 @@ export type ResolvedTrigger = Trigger & {
    * every call site needs it and `!== "THESIS"` invites typos.
    */
   inherited: boolean;
+  /**
+   * The rung this one displaced, if any — the next level down that had a
+   * rung in the same bucket.
+   *
+   * Without this the cascade is only half legible: a dashed border tells
+   * you about levels nothing has overridden, but an override looks
+   * identical to a rule invented from scratch. On a thesis reviewing at
+   * +20% from entry, nothing on screen says the app default is +10% and
+   * the analyst deliberately moved it. Surfaced in the popover.
+   */
+  overrides?: {
+    level: TriggerLevel;
+    predicate: Trigger["predicate"];
+  };
 };
 
 export interface LadderLevels {
@@ -171,14 +185,27 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
 
   const claimed = new Set<string>();
   const out: ResolvedTrigger[] = [];
+  // Bucket → the winning rung's index in `out`, so a later (lower) level
+  // can record itself as the thing that rung overrode.
+  const winnerIndexByBucket = new Map<string, number>();
 
   for (const level of LEVEL_PRECEDENCE) {
     for (const t of byLevel[level]) {
       const bucket = triggerBucket(t);
       // First level to claim a bucket owns it. Also dedupes within a
       // level, matching mergeTriggers' within-list behavior.
-      if (claimed.has(bucket)) continue;
+      if (claimed.has(bucket)) {
+        // Losing rung: annotate the winner with what it displaced, but
+        // only the FIRST one found — "overrides the analyst rule" is what
+        // the reader needs, not the whole chain down to the code default.
+        const winnerIdx = winnerIndexByBucket.get(bucket);
+        if (winnerIdx != null && out[winnerIdx].overrides === undefined) {
+          out[winnerIdx].overrides = { level, predicate: t.predicate };
+        }
+        continue;
+      }
       claimed.add(bucket);
+      winnerIndexByBucket.set(bucket, out.length);
 
       const inherited = level !== "THESIS";
       // Inherited rungs read fire state from the per-thesis map; thesis

@@ -129,6 +129,7 @@ export function AnalystConfigSheet({
           <AnalystConfigForm
             values={values}
             onChange={handleChange}
+            analystId={config.id}
             livePrices={livePrices}
             onAddDomainMonitor={handleAddDomain}
             onAddSearchMonitor={handleAddSearch}

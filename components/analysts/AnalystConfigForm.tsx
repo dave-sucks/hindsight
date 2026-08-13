@@ -57,6 +57,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
 import { positionBand } from "@/lib/agent/position-sizing";
 import { FEEDS, feedLabel } from "@/lib/universe/feeds";
@@ -149,7 +150,14 @@ export interface AnalystConfigFormProps {
   onChange: FormChangeHandler;
   /** When true, Brief tab hides the name field (the wrapper renders it in a header). */
   hideName?: boolean;
-  defaultTab?: "brief" | "watchlist" | "monitors" | "settings";
+  defaultTab?: "brief" | "watchlist" | "monitors" | "triggers" | "settings";
+  /**
+   * AgentConfig id. When supplied, a Triggers tab renders this analyst's
+   * standing rules (the ANALYST level of the trigger cascade). Omitted on
+   * the builder, where the analyst doesn't exist yet and so has nothing
+   * to hang rules on.
+   */
+  analystId?: string;
   /** Symbol → live price, used by the watchlist rows. */
   livePrices?: Record<string, number>;
   /** When true, expose a Watchlist tab. Sheet hides it; builder/editor shows it. */
@@ -167,6 +175,7 @@ export interface AnalystConfigFormProps {
 
 export function AnalystConfigForm({
   values,
+  analystId,
   onChange,
   hideName = false,
   defaultTab = "brief",
@@ -184,6 +193,7 @@ export function AnalystConfigForm({
             <TabsTrigger value="brief">Brief</TabsTrigger>
             {showWatchlist && <TabsTrigger value="watchlist">Watchlist</TabsTrigger>}
             <TabsTrigger value="monitors">Monitors</TabsTrigger>
+            {analystId && <TabsTrigger value="triggers">Triggers</TabsTrigger>}
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
         </div>
@@ -213,6 +223,22 @@ export function AnalystConfigForm({
             />
           </ScrollArea>
         </TabsContent>
+
+        {analystId && (
+          <TabsContent value="triggers" className="flex-1 min-h-0 mt-0">
+            <ScrollArea className="h-full">
+              <div className="space-y-3 p-3">
+                <p className="text-xs text-muted-foreground">
+                  Standing rules for every thesis this analyst covers. Solid
+                  rungs are set here; dashed rungs come from the account or
+                  the app defaults. A single thesis can still override any of
+                  them.
+                </p>
+                <LevelTriggersSection level="analyst" ownerId={analystId} />
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        )}
 
         <TabsContent value="settings" className="flex-1 min-h-0 mt-0">
           <ScrollArea className="h-full">

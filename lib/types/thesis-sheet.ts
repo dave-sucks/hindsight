@@ -59,6 +59,16 @@ export interface Trigger {
   inherited?: boolean;
   /** Who authored the value — informational, shown in the popover. */
   source?: "DEFAULT" | "AGENT" | "PRINCIPAL";
+  /**
+   * The rung this one displaced, if any. Makes an override legible: a
+   * dashed border only ever explains levels nothing has overridden, so
+   * without this a `+20% from entry` rung looks identical whether it
+   * replaced the +10% default or was invented from scratch.
+   */
+  overrides?: {
+    level: "THESIS" | "ANALYST" | "ACCOUNT" | "DEFAULT";
+    predicate: TriggerPredicate;
+  };
 }
 
 // Position info from /triggers — quantity + cost basis + days held only.
