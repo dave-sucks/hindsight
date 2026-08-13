@@ -522,80 +522,44 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     hasSuggestConfig: false,
     maxDuration: 180,
   },
-  // ── Thesis Writer (THESIS_RESEARCH_V2 Phase 1) ───────────────────────────
-  // Sub-agent that produces one deep-research thesis on one ticker. Spawned
-  // by dispatch_thesis_research (orchestrator-side) via Inngest. The
-  // write_thesis_research meta-tool does ~95% of the work — parallel data
-  // pulls + deep-research-model synthesis — so this agent only needs to
-  // layer direction / horizon / target / stop / belief / confidence on top
-  // via record_thesis or update_thesis.
+  // ── Thesis Writer (THESIS_WRITER_V2 — single agent, zero relay) ──────────
+  // Pipeline that produces one deep-research thesis on one ticker. Spawned
+  // by dispatch_thesis_research (orchestrator-side) via Inngest. V2
+  // (2026-08, docs/plans/THESIS_WRITER_V2.md) deleted the V1 two-model
+  // relay: ONE research call writes the 9-section note as plain text and
+  // emits a compact submit_thesis decision object; the server parses the
+  // note and persists through record_thesis / update_thesis's existing
+  // Layer-1 gates (lib/agent/run-thesis-writer.ts). This mode entry now
+  // supplies only model / provider / maxSteps for the research loop —
+  // toolAllowlist is vestigial (the loop's tools are native web_search +
+  // submit_thesis, defined inline; persistence is a server-side call, not
+  // a model tool) and complete_run is gone from this mode entirely: the
+  // run's terminal status is derived from whether a thesis row landed.
   //
   // Model choice (2026-05-16 bake-off, docs/plans/THESIS_RESEARCH_V2.md):
   //   • PICKED: claude-sonnet-4-6 + Anthropic native web_search tool.
   //     Wins on grounded synthesis depth, citation density, fiscal-year
-  //     accuracy. Native web_search is plumbed into both the agent loop
-  //     here AND the synthesis call inside write_thesis_research — that's
-  //     where the bake-off's depth advantage actually lands.
-  //   • AVOID: GPT-5 / GPT-5.5 / o3 family. The bake-off found these
-  //     models hallucinate fiscal-year framing — observed citing "Q1
-  //     FY2026" numbers that were actually a year stale. The structured
-  //     data block names dates explicitly, but the synthesis-layer
-  //     reframing introduces the drift. Re-test if a new GPT generation
-  //     ships, but the prior generation's failure mode is reason enough
-  //     to default away from it.
-  //   • FALLBACK: gemini-2.5-pro with Google Search grounding. Close
-  //     second on every dimension. If a future Claude API/provider regression
-  //     breaks this mode, swap to:
-  //         model: "gemini-2.5-pro",
-  //         provider: "google",        (need @ai-sdk/google + GOOGLE_API_KEY)
-  //     and pass googleSearch grounding via providerOptions instead of the
-  //     anthropic webSearch tool. Don't silently fall back to Sonar — the
-  //     bake-off found Sonar deep research alone is the weakest of the
-  //     four candidates for this prompt shape.
+  //     accuracy.
+  //   • AVOID: GPT-5 / GPT-5.5 / o3 family — the bake-off found these
+  //     hallucinate fiscal-year framing (citing "Q1 FY2026" numbers a
+  //     year stale). Re-test on a new GPT generation before switching.
+  //   • FALLBACK: gemini-2.5-pro with Google Search grounding (close
+  //     second). Don't silently fall back to Sonar — weakest of the four
+  //     candidates for this prompt shape.
   "thesis-writer": {
     model: "claude-sonnet-4-6",
     provider: "anthropic",
-    // Generous budget — synthesis-model call inside write_thesis_research
-    // takes ~60-90s and counts as ONE step in the agent loop.
+    // Steps for the single research loop: note-writing turns + up to 4
+    // native web searches + submit_thesis (+ validation-repair calls).
     maxSteps: 8,
-    toolAllowlist: [
-      // The meta-tool — handles the entire data-pull + synthesis pipeline.
-      "write_thesis_research",
-      // Persisters — record_thesis for mint, update_thesis for refresh.
-      "record_thesis",
-      "update_thesis",
-      // Edge-case escape hatches: if the meta-tool fails partway through
-      // the agent may want to grab a fresh quote or a niche web search to
-      // validate one number before recording. Kept minimal on purpose.
-      "get_stock_data",
-      "web_search",
-      // Terminal
-      "complete_run",
-    ] as const,
+    // Vestigial in V2 — kept for the ModeConfig shape. The research loop
+    // does not read this; persistence calls record/update_thesis directly.
+    toolAllowlist: [] as const,
     hasSuggestConfig: false,
-    // 2026-05-20: bumped 300 → 800. A real $MDB refresh test on 2026-05-20
-    // hit the 270s abort signal with `Thesis-writer timed out after 271s`.
-    // Worker budget breakdown:
-    //   parallel data pulls (7 sources)         ~10s
-    //   synthesis call w/ Anthropic web_search  ~150-180s (3 search rounds)
-    //   outer agent decision turn               ~30-60s (read meta-tool
-    //                                            result, pick direction /
-    //                                            target / stop, web_search
-    //                                            escape hatch if needed)
-    //   update_thesis (refresh path)            ~5s
-    //   complete_run                            ~2s
-    //   total                                   ~200-260s — right at the
-    //                                            300s wall on first try.
-    //
-    // Vercel Pro's 800s ceiling gives the agent (800 - 30) * 1000 = 770s
-    // of actual budget via the AbortSignal in run-thesis-writer.ts. The
-    // inner synthesis call's own 180s abort still bounds the meta-tool's
-    // longest leg; this just stops Vercel from killing the outer agent
-    // before it can record_thesis + complete_run.
-    //
-    // Also bumped /api/inngest/route.ts maxDuration 300 → 800 in the
-    // same change — the route's ceiling was silently capping every
-    // Inngest function to 5 min regardless of per-mode setting.
+    // V2 phase budgets live in run-thesis-writer.ts (RESEARCH_TIMEOUT_MS
+    // 330s etc.); typical pipeline is ~200-250s, worst case ~440s. This
+    // value no longer drives an AbortSignal — the /api/inngest route's own
+    // maxDuration (800) is the process ceiling.
     maxDuration: 800,
   },
 };

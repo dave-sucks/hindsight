@@ -1,18 +1,34 @@
 /**
  * thesis-writer Inngest function — consumes `app/thesis.write.requested`
- * (emitted by dispatch_thesis_research) and drives one focused sub-agent
- * that produces a deep-research thesis on one ticker.
+ * (emitted by dispatch_thesis_research / promote-analyst) and drives the
+ * V2 single-agent thesis-writer pipeline for one ticker.
  *
- * Pattern mirrors lib/inngest/functions/tactical-run.ts: thin Inngest
- * wrapper, the actual agent loop lives in lib/agent/run-thesis-writer.ts.
- * Emits `app/thesis.written` on completion so waiters (Phase 3 daily run
- * promote-to-active) can step.waitForEvent.
+ * THESIS_WRITER_V2: the pipeline runs as REAL Inngest steps — pull /
+ * research / persist — instead of V1's single 333-760s step. That single
+ * step was long enough for Inngest to abandon the HTTP request and
+ * re-invoke the function, silently re-running the entire agent (double
+ * Anthropic spend, spurious "timed out" errors stamped onto COMPLETE
+ * runs — see the idempotency-guard note in run-thesis-writer.ts). With
+ * step boundaries, a retry replays completed phases from memo and re-runs
+ * only the phase that was in flight. Phases never throw — failures are
+ * contained in the phase output so the persist step always runs and every
+ * run leaves a replayable thread + events.
  *
- * See docs/plans/THESIS_RESEARCH_V2.md §6.
+ * Emits `app/thesis.written` on completion so waiters can
+ * step.waitForEvent. See docs/plans/THESIS_WRITER_V2.md.
  */
 
 import { inngest } from "@/lib/inngest/client";
-import { runThesisWriterAgent } from "@/lib/agent/run-thesis-writer";
+import {
+  writerIdempotencyCheck,
+  writerPullPhase,
+  writerResearchPhase,
+  writerPersistPhase,
+  type RunThesisWriterArgs,
+  type RunThesisWriterResult,
+  type WriterPullPhaseOutput,
+  type WriterResearchPhaseOutput,
+} from "@/lib/agent/run-thesis-writer";
 
 interface ThesisWriteRequestedPayload {
   childRunId: string;
@@ -25,19 +41,14 @@ interface ThesisWriteRequestedPayload {
   /**
    * Layer-1 clamp: when true, record_thesis downgrades any
    * LONG/SHORT/ACTIVE mint request to LONG/SHORT/WATCHING. Set by
-   * dispatch_thesis_research for chat-dispatched mints (Phase 1) so
-   * chat exploration doesn't accidentally produce trade-eligible
-   * coverage. Mirrors the discoveryOnly/clamp pattern in record_thesis.
-   * Optional for backwards-compat with pre-2026-05-23 events that
-   * didn't include the flag (treated as false).
+   * dispatch_thesis_research for chat-dispatched mints so chat
+   * exploration doesn't accidentally produce trade-eligible coverage.
    */
   forceWatchingMint?: boolean;
   /**
-   * PAPER→LIVE promotion framing. Auto-populated by dispatch_thesis_research
-   * when refreshing a PROMOTED thesis (or threaded through verbatim from a
-   * caller). Forwarded into write_thesis_research so the synthesis prompt
-   * frames the Decision Fields block around RE-ENTER / DOWNGRADE /
-   * INVALIDATE. Null/undefined on every non-promotion dispatch.
+   * PAPER→LIVE promotion framing. Auto-populated by
+   * dispatch_thesis_research when refreshing a PROMOTED thesis. Frames
+   * the research prompt's decision block around RE-ENTER / DEFER / KILL.
    */
   promotionContext?: {
     paperTenureDays: number | null;
@@ -51,10 +62,9 @@ export const thesisWriter = inngest.createFunction(
   {
     id: "thesis-writer",
     name: "Thesis Writer (sub-agent)",
-    // Cap fan-out. Discovery (Phase 2) will spawn ~5 per analyst; with
-    // 6 analysts that's 30 dispatches every Sunday. concurrency:5 keeps
+    // Cap fan-out. Discovery spawns ~5 per analyst; concurrency:5 keeps
     // FMP/Finnhub/SEC rate limits sane and the Anthropic per-org budget
-    // bounded. Tune up after the Phase-2 rollout shows the real shape.
+    // bounded.
     concurrency: { limit: 5 },
     retries: 1,
   },
@@ -73,25 +83,44 @@ export const thesisWriter = inngest.createFunction(
     if (payload.mode === "refresh" && !payload.existingThesisId) {
       return { skipped: "refresh-without-thesis-id", payload };
     }
-    const args = payload as ThesisWriteRequestedPayload;
 
-    const result = await step.run("run-thesis-writer", () =>
-      runThesisWriterAgent({
-        childRunId: args.childRunId,
-        analystId: args.analystId,
-        ticker: args.ticker,
-        mode: args.mode,
-        existingThesisId: args.existingThesisId ?? null,
-        reason: args.reason,
-        parentRunId: args.parentRunId ?? null,
-        forceWatchingMint: args.forceWatchingMint === true,
-        promotionContext: args.promotionContext ?? null,
-      }),
+    const t0 = Date.now();
+    const args: RunThesisWriterArgs = {
+      childRunId: payload.childRunId,
+      analystId: payload.analystId,
+      ticker: payload.ticker,
+      mode: payload.mode,
+      existingThesisId: payload.existingThesisId ?? null,
+      reason: payload.reason,
+      parentRunId: payload.parentRunId ?? null,
+      forceWatchingMint: payload.forceWatchingMint === true,
+      promotionContext: payload.promotionContext ?? null,
+    };
+
+    // Cheap COMPLETE short-circuit for full-function retries (PR #383).
+    const idempotent = await step.run("idempotency-check", () =>
+      writerIdempotencyCheck(args),
     );
 
-    // Emit completion event so waiters (Phase 3 daily-run staleness gate)
-    // can step.waitForEvent on (childRunId, parentRunId). Best-effort —
-    // result already lives durably on the ResearchRun row + Thesis.
+    const result: RunThesisWriterResult = idempotent
+      ? (idempotent as RunThesisWriterResult)
+      : await (async () => {
+          const pullOutput = (await step.run("pull-data", () =>
+            writerPullPhase(args),
+          )) as WriterPullPhaseOutput;
+
+          const research = (await step.run("research", () =>
+            writerResearchPhase(args, pullOutput),
+          )) as WriterResearchPhaseOutput;
+
+          return (await step.run("persist-finalize", () =>
+            writerPersistPhase(args, pullOutput, research, t0),
+          )) as RunThesisWriterResult;
+        })();
+
+    // Emit completion event so waiters can step.waitForEvent on
+    // (childRunId, parentRunId). Best-effort — result already lives
+    // durably on the ResearchRun row + Thesis.
     await step.run("emit-thesis-written", async () => {
       await inngest.send({
         name: "app/thesis.written",
