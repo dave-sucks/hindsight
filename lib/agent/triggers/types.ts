@@ -156,6 +156,21 @@ export type Trigger = {
    * Absent ⇒ TACTICAL.
    */
   fireMode?: "TACTICAL" | "DIRECT";
+  /**
+   * Who authored this rung's VALUE. Informational only — it does NOT
+   * determine the rung's level (see TriggerLevel in ./levels). Level comes
+   * from which record the rung is stored on; `source` answers the softer
+   * question the popover asks: "where did this number come from?"
+   *
+   *   DEFAULT   — minted by a code template in ./defaults
+   *   AGENT     — authored by the writer / daily / tactical agent
+   *   PRINCIPAL — added or edited through the UI
+   *
+   * Absent on every rung written before 2026-08-05; renders unlabeled.
+   * Never fabricate a value for a legacy rung — absent is honest, a guess
+   * is not.
+   */
+  source?: "DEFAULT" | "AGENT" | "PRINCIPAL";
 };
 
 /**

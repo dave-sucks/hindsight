@@ -27,6 +27,13 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { applyTriggerCooldownDefaults } from "@/lib/agent/triggers/defaults";
+import { dropRedundantInherited } from "@/lib/agent/triggers/levels";
+import {
+  loadLevelSources,
+  parseTriggerState,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
+import { triggerBucket } from "@/lib/agent/triggers/bucket";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import {
@@ -377,6 +384,8 @@ type UpdatePatch = Partial<{
   maxHoldDays: number | null;
   nextReviewAt: Date | null;
   triggers: object;
+  /** Fire state for inherited rungs — see the triggers patch block. */
+  triggerState: object;
   scalingPlan: object | null;
   status: string;
   retiredReason: string;
@@ -458,6 +467,9 @@ export const updateThesis = defineTool({
         maxHoldDays: true,
         nextReviewAt: true,
         triggers: true,
+        // Per-thesis fire state for inherited rungs — read so a rung
+        // dropped as redundant can hand its cooldown stamp over.
+        triggerState: true,
         scalingPlan: true,
       },
     });
@@ -868,14 +880,52 @@ export const updateThesis = defineTool({
     //
     // Exception: status transition to INVALIDATED/CLOSED is the
     // legitimate "give up on this broken thesis" path. Allow that.
+    //
+    // Since the cascade landed, "can this thesis react to anything?" is a
+    // question about the RESOLVED ladder, not the stored column: a thesis
+    // storing zero rungs of its own still inherits its analyst's, its
+    // account's, and the standing code minimums. Counting only the column
+    // would refuse legitimate reviews on exactly the theses that are
+    // protected purely by inherited rungs.
     const isTerminalTransition =
       args.change_status === "INVALIDATED" ||
       args.change_status === "ARCHIVED" ||
       // PASS (seed → PASS) is a terminal flip — clears triggers, sets PASSED.
       args.direction === "PASS";
-    const existingTriggerCount = Array.isArray(existing.triggers)
+
+    // The levels above this thesis, resolved against an EMPTY thesis array
+    // so we see them unmasked by the thesis's own rungs. Used twice: by
+    // the guard just below, and by the wholesale-replace path further down
+    // to keep inherited rungs from being copied onto the row.
+    //
+    // Lazy: update_thesis is the most-called tool in the app and most
+    // calls don't touch triggers at all. Only pay the two level queries
+    // when the answer can actually change something — a trigger replace,
+    // or a stored-count of zero where the guard needs to know whether
+    // inherited rungs are covering the thesis.
+    const storedTriggerCount = Array.isArray(existing.triggers)
       ? (existing.triggers as unknown[]).length
       : 0;
+    const needsLevels = args.triggers !== undefined || storedTriggerCount === 0;
+    let inheritedLadder: Trigger[] = [];
+    if (needsLevels) {
+      const analystId = existing.researchRun?.agentConfigId ?? null;
+      const levelSources = analystId
+        ? (await loadLevelSources([analystId])).get(analystId)
+        : undefined;
+      inheritedLadder = resolveThesisLadder(
+        {
+          triggers: [],
+          triggerState: {},
+          status: existing.status,
+          horizon: args.horizon ?? existing.horizon,
+        },
+        levelSources,
+        `thesis=${args.thesis_id}`,
+      );
+    }
+
+    const existingTriggerCount = storedTriggerCount + inheritedLadder.length;
     const updateAddsTriggers =
       args.triggers !== undefined && args.triggers.length > 0;
     // Unresearched seeds always start with zero triggers — that's expected,
@@ -1214,13 +1264,67 @@ export const updateThesis = defineTool({
           .filter((t) => t.id && t.lastFiredAt)
           .map((t) => [t.id, t.lastFiredAt] as const),
       );
-      const incoming = args.triggers as Trigger[];
+      //   3. Rungs the thesis INHERITS must not be copied onto it. The
+      //      agent now reads the resolved ladder (get_theses), so a
+      //      faithful wholesale-replace resends the analyst / account /
+      //      default rungs too. Storing those would promote them to
+      //      THESIS level and freeze a snapshot of the level above —
+      //      after one review cycle every standing rule would be
+      //      overridden everywhere by a copy of itself. Only a rung whose
+      //      VALUE or fire mode actually differs is kept as an override.
+      //      See dropRedundantInherited in lib/agent/triggers/levels.
+      const incoming = dropRedundantInherited(
+        args.triggers as Trigger[],
+        inheritedLadder,
+      );
+
+      // Dropping a redundant rung must not drop its COOLDOWN. A thesis
+      // that carries a materialized copy of a default (most rows minted
+      // before the cascade do) converges to inheriting it the first time
+      // the agent resends the ladder — and the inherited rung has a
+      // different id, so its `lastFiredAt` would not carry over and a
+      // rung mid-cooldown could immediately re-fire. Same family as the
+      // 2026-06-02 NVDA runaway. Carry the stamp across, into the
+      // per-thesis fire state the inherited rung actually reads.
+      const droppedIds = new Set(
+        (args.triggers as Trigger[])
+          .filter((t) => !incoming.some((k) => k.id === t.id))
+          .map((t) => t.id),
+      );
+      if (droppedIds.size > 0) {
+        const state = parseTriggerState(existing.triggerState);
+        const inheritedByBucket = new Map(
+          inheritedLadder.map((t) => [triggerBucket(t), t] as const),
+        );
+        for (const t of existingTriggers) {
+          if (!droppedIds.has(t.id) || !t.lastFiredAt) continue;
+          const target = inheritedByBucket.get(triggerBucket(t));
+          // Keep the LATER of the two — the inherited rung may already
+          // have fired on its own since the copy was made.
+          if (target && (state[target.id] ?? "") < t.lastFiredAt) {
+            state[target.id] = t.lastFiredAt;
+          }
+        }
+        patch.triggerState = state as object;
+      }
       const preserved = incoming.map((t) => {
         if (t.lastFiredAt != null) return t; // agent provided one — respect it
         const prior = t.id ? lastFiredById.get(t.id) : undefined;
         return prior ? { ...t, lastFiredAt: prior } : t;
       });
-      patch.triggers = applyTriggerCooldownDefaults(preserved) as object;
+      // Agent-authored rungs are stamped AGENT. A rung whose id matches an
+      // existing one keeps whatever source it already had — resending a
+      // rung you didn't author doesn't make it yours.
+      const sourceById = new Map(
+        existingTriggers.filter((t) => t.id).map((t) => [t.id, t.source] as const),
+      );
+      const stamped = preserved.map((t) => {
+        const prior = t.id ? sourceById.get(t.id) : undefined;
+        return prior !== undefined
+          ? { ...t, source: prior }
+          : { ...t, source: "AGENT" as const };
+      });
+      patch.triggers = applyTriggerCooldownDefaults(stamped) as object;
     }
     if (args.scaling_plan !== undefined)
       patch.scalingPlan =

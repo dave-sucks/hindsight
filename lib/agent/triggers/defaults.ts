@@ -26,6 +26,7 @@ import { randomUUID } from "node:crypto";
 
 const createId = () => randomUUID();
 import type { Trigger, TriggerPredicate } from "./types";
+import { triggerBucket } from "./bucket";
 
 export type Horizon = "CATALYST" | "TARGET" | "TRADE" | "COMPOUNDER";
 
@@ -208,6 +209,78 @@ export function standingProtectionTriggers(): Trigger[] {
     trailingRatchetTrigger(),
     loserAttentionTrigger(),
   ];
+}
+
+// ── The DEFAULT level of the cascade (lib/agent/triggers/levels) ────────
+//
+// The same constant rungs as above, but as the bottom LEVEL of the
+// cascade rather than rows copied onto a thesis at mint. Two differences
+// from `standingProtectionTriggers()`, both load-bearing:
+//
+//   1. STABLE ids. These rungs are not stored anywhere, so their fire
+//      bookkeeping lives in `Thesis.triggerState` keyed BY ID. A fresh
+//      uuid per call (what the mint-time builders do, by design — see the
+//      "mints fresh ids on every call" test) would orphan that state on
+//      every read, and a rung whose cooldown resets every 5 minutes is a
+//      rung with no cooldown. Prefixed `default:` so they are obviously
+//      not database ids when they turn up in an audit row.
+//   2. `source: "DEFAULT"` stamped, so the popover can say where the
+//      number came from.
+//
+// Only the CONSTANT rungs are inheritable. Rungs parameterized by the
+// thesis's own numbers (hard stop at `stopLoss`, target at `targetPrice`,
+// max-hold off `maxHoldDays`) cannot live at a level above the thesis —
+// there is no account-wide "$64.00". Those stay materialized on the
+// thesis by `defaultTriggersForHorizon`, which is why that function keeps
+// emitting them.
+
+export const DEFAULT_LADDER_IDS = {
+  scaleInStrength: "default:scale-in-strength",
+  scaleInPullback: "default:scale-in-pullback",
+  gainCheckpoint: "default:gain-checkpoint",
+  trailRatchet: "default:trail-ratchet",
+  loserAttention: "default:loser-attention",
+} as const;
+
+/**
+ * The code-constant rungs every HELD thesis carries, as the DEFAULT level
+ * of the cascade. An account or analyst rung in the same bucket overrides
+ * one of these; a thesis rung overrides both.
+ *
+ * Empty for WATCHING / PROMOTED: `GAIN_FROM_ENTRY` and
+ * `TRAILING_FROM_HIGH` are position-scoped predicates that evaluate false
+ * with no open position, and the scale-in rungs act on a position too.
+ *
+ * TRADE horizon omits the pullback-add for the same reason the HELD
+ * template does: short-horizon momentum trades exit on weakness, they
+ * don't average into a dip.
+ */
+export function inheritableDefaultLadder(
+  horizon: Horizon,
+  state: ThesisState = "HELD",
+): Trigger[] {
+  if (state !== "HELD") return [];
+
+  const stamp = (t: Trigger, id: string): Trigger => ({
+    ...t,
+    id,
+    source: "DEFAULT",
+  });
+
+  const out: Trigger[] = [
+    stamp(scaleInOnStrengthTrigger(), DEFAULT_LADDER_IDS.scaleInStrength),
+  ];
+  if (horizon !== "TRADE") {
+    out.push(
+      stamp(scaleInOnPullbackTrigger(), DEFAULT_LADDER_IDS.scaleInPullback),
+    );
+  }
+  out.push(
+    stamp(gainCheckpointTrigger(), DEFAULT_LADDER_IDS.gainCheckpoint),
+    stamp(trailingRatchetTrigger(), DEFAULT_LADDER_IDS.trailRatchet),
+    stamp(loserAttentionTrigger(), DEFAULT_LADDER_IDS.loserAttention),
+  );
+  return out;
 }
 
 function compounderDefaults(thesis: ThesisShape): Trigger[] {
@@ -800,6 +873,19 @@ export function defaultTriggersForHorizon(
   thesis: ThesisShape,
   state: ThesisState = "HELD",
 ): Trigger[] {
+  return stampDefaultSource(defaultTriggersForHorizonInner(horizon, thesis, state));
+}
+
+/** source=DEFAULT on every rung a code template mints. */
+function stampDefaultSource(triggers: Trigger[]): Trigger[] {
+  return triggers.map((t) => ({ ...t, source: "DEFAULT" as const }));
+}
+
+function defaultTriggersForHorizonInner(
+  horizon: Horizon,
+  thesis: ThesisShape,
+  state: ThesisState,
+): Trigger[] {
   if (state === "WATCHING" || state === "PROMOTED") {
     // PROMOTED reuses the WATCHING template family: no EXIT (there's no
     // open position), an ENTER trigger off the target level (the re-entry
@@ -952,58 +1038,13 @@ export function applyTriggerCooldownDefaults(triggers: Trigger[]): Trigger[] {
 }
 
 /**
- * Stable key for the precedence rule: agent-supplied triggers win on
- * the same (predicate.kind, action) bucket, defaults fill the rest.
- *
- * AND/OR composites use a structural fingerprint so an agent's custom
- * "OR(FILING 8-K, FILING 10-Q)" doesn't get duplicated by the catalyst
- * default's similar OR — same intent, same key.
+ * `triggerBucket` — the `(predicateKey, action)` precedence key — moved to
+ * ./bucket on 2026-08-05 so the cascade resolver (./levels) and the client
+ * trigger UI can share it without pulling this module's `node:crypto`
+ * import into the browser bundle. Re-exported here so existing import
+ * paths keep working.
  */
-function predicateKey(p: TriggerPredicate): string {
-  switch (p.kind) {
-    case "PRICE_ABOVE":
-    case "PRICE_BELOW":
-      return p.kind;
-    case "PRICE_MOVE_PCT":
-      return `${p.kind}:${p.window}:${p.direction}`;
-    case "GAIN_FROM_ENTRY":
-      return `${p.kind}:${p.direction}`;
-    case "TRAILING_FROM_HIGH":
-      return p.kind;
-    case "VS_SMA":
-      return `${p.kind}:${p.period}:${p.direction}`;
-    case "RSI":
-      return `${p.kind}:${p.direction}`;
-    case "SIGNAL_TYPE":
-      return `${p.kind}:${p.signalType}:${p.sentiment ?? ""}`;
-    case "EARNINGS_BEAT":
-    case "EARNINGS_MISS":
-      return p.kind;
-    case "GUIDANCE_CHANGE":
-      return `${p.kind}:${p.direction}`;
-    case "FILING":
-      return `${p.kind}:${p.formType}`;
-    case "TIME_ELAPSED":
-      return p.kind;
-    case "REVIEW_DATE_HIT":
-      return p.kind;
-    case "AND":
-    case "OR":
-      return `${p.kind}:${p.predicates.map(predicateKey).sort().join("|")}`;
-  }
-}
-
-/**
- * The merge bucket for one trigger — `(predicateKey, action)`. Two triggers
- * in the same bucket express the same intent (mergeTriggers keeps only one:
- * agent-supplied wins). Exported for
- * scripts/convert-static-floors-to-trails.ts, which needs "is a same-bucket
- * rung already present?" WITHOUT mergeTriggers' within-list dedup (the
- * hand-written ladders must be preserved verbatim, duplicates and all).
- */
-export function triggerBucket(t: Trigger): string {
-  return `${predicateKey(t.predicate)}::${t.action}`;
-}
+export { triggerBucket };
 
 /**
  * Merge agent-supplied triggers with horizon defaults. Agent wins per

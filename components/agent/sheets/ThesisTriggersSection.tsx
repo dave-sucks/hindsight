@@ -40,7 +40,15 @@ import {
   InputGroupText,
 } from "@/components/ui/input-group";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { Clock, Loader2, Plus, Trash2, Calendar } from "lucide-react";
+import Link from "next/link";
+import {
+  Clock,
+  Loader2,
+  Plus,
+  Trash2,
+  Calendar,
+  SlidersHorizontal,
+} from "lucide-react";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import { cn } from "@/lib/utils";
 
@@ -92,6 +100,8 @@ import {
   predicateSentence as sharedPredicateSentence,
   actionGroupLabel,
   fireModeLabel,
+  levelScopeLabel,
+  levelBadgeLabel,
 } from "@/lib/agent/triggers/format";
 import {
   isDirectEligiblePredicate,
@@ -282,6 +292,7 @@ function TriggerPill({
   direction,
   editable,
   held,
+  analystId,
   onChanged,
 }: {
   trigger: Trigger;
@@ -289,9 +300,14 @@ function TriggerPill({
   direction: "LONG" | "SHORT" | null;
   editable: boolean;
   held: boolean;
+  analystId?: string | null;
   onChanged?: () => void;
 }) {
   const { kind, value } = predicateKindValue(trigger.predicate);
+  // Inherited = stored at a level above this thesis (analyst / account /
+  // code default). One treatment for all three per the 2026-08-05 design
+  // call: a dashed border. The popover names which level it is.
+  const inherited = trigger.inherited ?? false;
   return (
     <Popover>
       <PopoverTrigger
@@ -299,7 +315,10 @@ function TriggerPill({
           <div
             role="button"
             tabIndex={0}
-            className="inline-flex h-7 cursor-pointer items-stretch overflow-hidden rounded-md border border-border text-xs transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className={cn(
+              "inline-flex h-7 cursor-pointer items-stretch overflow-hidden rounded-md border text-xs transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              inherited ? "border-dashed border-muted-foreground/40" : "border-border",
+            )}
           />
         }
       >
@@ -323,8 +342,12 @@ function TriggerPill({
         trigger={trigger}
         thesisId={thesisId}
         direction={direction}
-        editable={editable}
+        // An inherited rung is never editable HERE — it is edited at the
+        // level that owns it, so one edit can't silently mean different
+        // things on different theses. The popover deep-links there instead.
+        editable={editable && !inherited}
         held={held}
+        analystId={analystId}
         onChanged={onChanged}
       />
     </Popover>
@@ -346,6 +369,7 @@ function TriggerPopoverContent({
   direction,
   editable,
   held,
+  analystId,
   onChanged,
 }: {
   trigger: Trigger;
@@ -354,12 +378,27 @@ function TriggerPopoverContent({
   editable: boolean;
   /** Thesis is HOLDING (has an open position) — gates the DIRECT fire-mode control. */
   held: boolean;
+  /** Owning analyst — deep-link target for an ANALYST-level rung. */
+  analystId?: string | null;
   onChanged?: () => void;
 }) {
   const field = editableTriggerField(
     trigger.predicate as unknown as SharedTriggerPredicate,
   );
+  // `editable` already arrives false for an inherited rung (TriggerPill
+  // ANDs it), so the value input, fire-mode control and delete button are
+  // all read-only here without further gating.
   const canEdit = editable && field != null;
+
+  const inherited = trigger.inherited ?? false;
+  // Where the rung can actually be changed. A DEFAULT rung is a code
+  // constant — there is no settings screen that owns it, so no link.
+  const editHref =
+    trigger.level === "ANALYST" && analystId
+      ? `/analysts/${analystId}`
+      : trigger.level === "ACCOUNT"
+        ? "/settings/triggers"
+        : null;
 
   const { kind: kindLabel, value: displayValue } = predicateKindValue(
     trigger.predicate,
@@ -537,6 +576,24 @@ function TriggerPopoverContent({
         ) : null}
       </p>
 
+      {/* Level — only on an inherited rung, where it answers "why is this
+          read-only?" The link goes to the surface that owns it; a DEFAULT
+          rung is a code constant with no owner, so it gets the sentence
+          without a link. */}
+      {inherited ? (
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground">
+            {levelScopeLabel(trigger.level, null)}
+          </p>
+          {editHref ? (
+            <Button variant="outline" size="sm" render={<Link href={editHref} />}>
+              <SlidersHorizontal />
+              Edit in {levelBadgeLabel(trigger.level)} settings
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Last fired — plain text, only when it has fired (a badge here grew
           too wide next to the cooldown + delete chips). */}
       {trigger.lastFiredAt ? (
@@ -616,6 +673,7 @@ function TriggerGroups({
   direction,
   editable,
   held,
+  analystId,
   onChanged,
 }: {
   triggers: Trigger[];
@@ -623,6 +681,7 @@ function TriggerGroups({
   direction: "LONG" | "SHORT" | null;
   editable: boolean;
   held: boolean;
+  analystId?: string | null;
   onChanged?: () => void;
 }) {
   const grouped = new Map<string, Trigger[]>();
@@ -653,6 +712,7 @@ function TriggerGroups({
                 direction={direction}
                 editable={editable}
                 held={held}
+                analystId={analystId}
                 onChanged={onChanged}
               />
             ))}
@@ -1063,6 +1123,11 @@ export function ThesisTriggersSection({
   const shownTriggers = editableOnly
     ? data.triggers.filter(
         (t) =>
+          // Inherited rungs are read-only here for the same reason the
+          // earnings/filing kinds are filtered: in the reject dialog you
+          // are retuning THIS thesis's levels, and a rung you can't touch
+          // from here is noise.
+          !t.inherited &&
           editableTriggerField(
             t.predicate as unknown as SharedTriggerPredicate,
           ) != null,
@@ -1086,6 +1151,7 @@ export function ThesisTriggersSection({
           direction={direction}
           editable={editable}
           held={held}
+          analystId={data.analystId}
           onChanged={onChanged}
         />
       )}

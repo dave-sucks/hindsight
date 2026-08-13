@@ -33,7 +33,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { inngest } from "@/lib/inngest/client";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 
 const bodySchema = z.object({
@@ -78,6 +81,10 @@ export async function POST(req: NextRequest) {
       id: true,
       ticker: true,
       triggers: true,
+      // Cascade inputs — so an inherited rung can be manually fired too.
+      triggerState: true,
+      horizon: true,
+      status: true,
       researchRun: { select: { agentConfigId: true } },
     },
   });
@@ -92,14 +99,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const parsed = triggersArraySchema.safeParse(thesis.triggers);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Thesis.triggers JSON failed validation" },
-      { status: 422 },
-    );
-  }
-  const trigger = parsed.data.find((t) => t.id === body.triggerId);
+  // Resolved ladder, not the raw column — an inherited rung (analyst /
+  // account / code default) is not stored on the thesis, and a manual
+  // fire of one is exactly as legitimate as a manual fire of its own.
+  const ladder = resolveThesisLadder(
+    thesis,
+    (await loadLevelSources([analystId])).get(analystId),
+    `thesis=${thesis.id}`,
+  );
+  const trigger = ladder.find((t) => t.id === body.triggerId);
   if (!trigger) {
     return NextResponse.json(
       { error: "Trigger not found on this thesis" },

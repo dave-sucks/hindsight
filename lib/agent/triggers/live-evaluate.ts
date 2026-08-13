@@ -18,7 +18,10 @@
  */
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices, type AlpacaCredentials } from "@/lib/alpaca";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import type {
   Trigger,
@@ -95,12 +98,15 @@ export async function evaluateLiveTriggerMatches({
   analystId: string;
   alpacaCreds?: AlpacaCredentials;
 }): Promise<LiveMatch[]> {
-  // Pull every active+watching thesis with non-empty triggers.
+  // Every active+watching thesis. No `triggers: { not: [] }` filter —
+  // since the cascade landed, a thesis with an empty own-array can still
+  // carry analyst / account / default rungs, and filtering on the stored
+  // column would hide exactly the holdings protected only by inherited
+  // minimums.
   const theses = await prisma.thesis.findMany({
     where: {
       researchRun: { agentConfigId: analystId },
       status: { in: ["HOLDING", "WATCHING"] },
-      triggers: { not: [] },
     },
     select: {
       id: true,
@@ -108,6 +114,10 @@ export async function evaluateLiveTriggerMatches({
       status: true,
       direction: true,
       triggers: true,
+      // Cascade inputs — matching-now must evaluate the RESOLVED ladder,
+      // or the daily run never sees an inherited rung sitting live.
+      triggerState: true,
+      horizon: true,
       createdAt: true,
       nextReviewAt: true,
     },
@@ -176,10 +186,16 @@ export async function evaluateLiveTriggerMatches({
   const matches: LiveMatch[] = [];
   const now = new Date();
 
+  // ANALYST + ACCOUNT levels once for the batch — this function is
+  // already scoped to a single analyst.
+  const levelSources = (await loadLevelSources([analystId])).get(analystId);
+
   for (const thesis of theses) {
-    const parsed = triggersArraySchema.safeParse(thesis.triggers);
-    if (!parsed.success) continue;
-    const triggers = parsed.data as Trigger[];
+    const triggers = resolveThesisLadder(
+      thesis,
+      levelSources,
+      `thesis=${thesis.id}`,
+    ) as Trigger[];
 
     const price = prices[thesis.ticker];
     // changePct from a single quote isn't available without a prior

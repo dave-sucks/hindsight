@@ -15,7 +15,10 @@ import { computeNeedsAction } from "@/lib/agent/needs-action";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 import {
   detectNarrationHits,
   findGaps,
@@ -228,17 +231,32 @@ export const completeRun = defineTool({
               researchRun: { agentConfigId: ctx.analystId },
               status: "HOLDING",
             },
-            select: { ticker: true, triggers: true },
+            select: {
+              ticker: true,
+              triggers: true,
+              // Cascade inputs — this gate must judge the RESOLVED ladder.
+              // Reading the stored column alone reports a holding whose
+              // floor is inherited as having "no floor, no trail", so the
+              // warn-gate would nag every run about a ladder that is
+              // already correct — and the agent would "fix" it by
+              // materializing a duplicate.
+              triggerState: true,
+              horizon: true,
+              status: true,
+            },
           });
+          const levelSources = ctx.analystId
+            ? (await loadLevelSources([ctx.analystId])).get(ctx.analystId)
+            : undefined;
           for (const h of holdings) {
-            const parsed = triggersArraySchema.safeParse(h.triggers);
-            if (!parsed.success || parsed.data.length === 0) {
+            const ladder = resolveThesisLadder(h, levelSources, `ticker=${h.ticker}`);
+            if (ladder.length === 0) {
               ladderWarnings.push(
-                `$${h.ticker}: HOLDING with ${parsed.success ? "zero triggers" : "an unparseable trigger array"} — no ladder at all`,
+                `$${h.ticker}: HOLDING with zero triggers — no ladder at all`,
               );
               continue;
             }
-            const hasProtectiveExit = parsed.data.some(
+            const hasProtectiveExit = ladder.some(
               (t) =>
                 t.action === "EXIT" &&
                 ["PRICE_BELOW", "PRICE_ABOVE", "TRAILING_FROM_HIGH", "GAIN_FROM_ENTRY"].includes(

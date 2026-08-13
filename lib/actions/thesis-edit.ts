@@ -110,7 +110,14 @@ export async function applyTriggerValueEdit(
   const triggers: Trigger[] = parsed.success ? (parsed.data as Trigger[]) : [];
   const target = triggers.find((t) => t.id === triggerId);
   if (!target) {
-    throw new ThesisEditError("NOT_FOUND", `Trigger ${triggerId} not found on thesis.`);
+    throw new ThesisEditError(
+      "NOT_FOUND",
+      // Most likely cause since the cascade landed: the rung is INHERITED
+      // (analyst / account / code default) and so isn't stored on this
+      // thesis at all. The UI renders those read-only, so this is a
+      // backstop for a stale client — but say why, not just "not found".
+      `Trigger ${triggerId} is not stored on this thesis. Inherited triggers (analyst, account, or app default) are edited at the level that owns them.`,
+    );
   }
   if (!editableTriggerField(target.predicate)) {
     throw new ThesisEditError("INVALID", `Trigger ${triggerId} has no editable value.`);
@@ -376,7 +383,12 @@ export async function applyTriggerAdd(
   }
   // Cooldown discipline (0-on-non-EXIT → per-kind default; same as the agent
   // write path). applyTriggerCooldownDefaults returns a fresh array.
-  const newTrigger = applyTriggerCooldownDefaults([parsedOne.data as Trigger])[0];
+  // source=PRINCIPAL — added by hand through the UI. Server-owned: stamped
+  // here rather than trusted from the request body.
+  const newTrigger: Trigger = {
+    ...applyTriggerCooldownDefaults([parsedOne.data as Trigger])[0],
+    source: "PRINCIPAL",
+  };
 
   // Re-parse the existing array. If it fails to parse, REFUSE — falling back
   // to [] here would persist only the new trigger and silently destroy every
@@ -514,7 +526,14 @@ export async function applyTriggerDelete(
   const triggers: Trigger[] = parsed.success ? (parsed.data as Trigger[]) : [];
   const target = triggers.find((t) => t.id === triggerId);
   if (!target) {
-    throw new ThesisEditError("NOT_FOUND", `Trigger ${triggerId} not found on thesis.`);
+    throw new ThesisEditError(
+      "NOT_FOUND",
+      // Most likely cause since the cascade landed: the rung is INHERITED
+      // (analyst / account / code default) and so isn't stored on this
+      // thesis at all. The UI renders those read-only, so this is a
+      // backstop for a stale client — but say why, not just "not found".
+      `Trigger ${triggerId} is not stored on this thesis. Inherited triggers (analyst, account, or app default) are edited at the level that owns them.`,
+    );
   }
   const nextTriggers = triggers.filter((t) => t.id !== triggerId);
 
@@ -608,7 +627,14 @@ export async function applyTriggerFireModeChange(
   const triggers: Trigger[] = parsed.success ? (parsed.data as Trigger[]) : [];
   const target = triggers.find((t) => t.id === triggerId);
   if (!target) {
-    throw new ThesisEditError("NOT_FOUND", `Trigger ${triggerId} not found on thesis.`);
+    throw new ThesisEditError(
+      "NOT_FOUND",
+      // Most likely cause since the cascade landed: the rung is INHERITED
+      // (analyst / account / code default) and so isn't stored on this
+      // thesis at all. The UI renders those read-only, so this is a
+      // backstop for a stale client — but say why, not just "not found".
+      `Trigger ${triggerId} is not stored on this thesis. Inherited triggers (analyst, account, or app default) are edited at the level that owns them.`,
+    );
   }
   if (
     fireMode === "DIRECT" &&

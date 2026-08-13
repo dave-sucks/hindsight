@@ -23,6 +23,12 @@ jest.mock("@/lib/prisma", () => ({
     },
     position: { findFirst: mockPositionFindFirst },
     thesisUpdate: { findFirst: mockThesisUpdateFindFirst },
+    // The trigger cascade (lib/agent/triggers/load-levels) reads the
+    // ANALYST + ACCOUNT levels on every update_thesis call. Empty rows
+    // here ⇒ the thesis resolves against the code defaults alone, which
+    // is what these role-gate tests care about.
+    agentConfig: { findMany: jest.fn().mockResolvedValue([]) },
+    account: { findMany: jest.fn().mockResolvedValue([]) },
   },
 }));
 jest.mock("@/lib/actions/finnhub.actions", () => ({

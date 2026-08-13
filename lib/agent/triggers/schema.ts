@@ -191,6 +191,18 @@ export const triggerSchema = z.object({
       // behavior; the UI add-path opts new EXIT stops into DIRECT explicitly.
       "How a fired trigger is acted on: TACTICAL (wake a tactical run, default) or DIRECT (close directly, no agent — EXIT-only, still approval-gated).",
     ),
+  // Server-owned provenance. Deliberately NO .default() — this schema is
+  // also the disk-READ gate (trigger-evaluator, get-theses, thesis-sheet-
+  // state, tactical-run, live-evaluate), so a default would silently
+  // relabel every legacy rung as whatever we picked. Absent stays absent.
+  // The write paths stamp it; the model never supplies it (anything it
+  // fabricates is overwritten server-side).
+  source: z
+    .enum(["DEFAULT", "AGENT", "PRINCIPAL"])
+    .optional()
+    .describe(
+      "Server-owned. Who authored this rung's value: DEFAULT (code template), AGENT, or PRINCIPAL (UI). Do not set — it is stamped server-side and any supplied value is overwritten.",
+    ),
 });
 
 export const triggersArraySchema = z

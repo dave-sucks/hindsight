@@ -49,6 +49,18 @@ model Account {
   requireApprovalBuysPaper  Boolean @default(false)
   requireApprovalSellsPaper Boolean @default(false)
 
+  // ── Account-level standing triggers (the ACCOUNT level of the cascade) ──
+  // Same `Trigger[]` shape as Thesis.triggers (lib/agent/triggers/types),
+  // validated by the same Zod schema. These apply to every thesis under
+  // every analyst on the account unless a more specific level overrides
+  // the same (predicate, action) bucket — see lib/agent/triggers/levels.
+  //
+  // Only CONSTANT rungs belong here: "trail 6%", "review at +15% from
+  // entry". A rung parameterized by one thesis's own numbers (a $64.00
+  // hard stop) has no meaning account-wide and is rejected at the write
+  // path. Empty array = inherit the code defaults beneath.
+  triggers Json @default("[]")
+
   memberships AccountMembership[]
   invites     AccountInvite[]
 }
@@ -278,6 +290,18 @@ model Thesis {
   // LLM only runs after a trigger fires. Stored as Json so the union can
   // grow without schema migrations.
   triggers Json @default("[]")
+
+  // Fire bookkeeping for rungs this thesis INHERITS (analyst / account /
+  // code default). Shape: { [triggerId]: ISO-8601 } — the same thing
+  // `Trigger.lastFiredAt` records for thesis-level rungs.
+  //
+  // Why it can't live on the rung: an analyst rung is one row on the
+  // AgentConfig shared by every thesis under that analyst. Writing
+  // lastFiredAt onto it when ONE thesis fires would put every other
+  // thesis into cooldown on a trigger that never fired for them. So
+  // shared rungs keep their fire state here, per thesis, and
+  // resolveLadder overlays it. See lib/agent/triggers/levels.
+  triggerState Json @default("{}")
 
   catalystDate DateTime? // CATALYST horizon only
   maxHoldDays  Int? // TRADE horizon only
@@ -537,6 +561,14 @@ model AgentConfig {
   // treated defensively as "all weekdays" so no analyst silently stops.
   // The 5-min trigger cron is unaffected — intraday reactivity fires every day.
   runDaysOfWeek          Int[]                @default([1, 2, 3, 4, 5])
+  // ── Analyst standing triggers (the ANALYST level of the cascade) ──────
+  // Per-analyst overrides of the account rules and the code defaults —
+  // "Momentum trails 5%, the Compounder trails 12%." Same `Trigger[]`
+  // shape and same Zod schema as Thesis.triggers; constant rungs only
+  // (see the note on Account.triggers). Overridden per-name by a thesis
+  // rung in the same bucket. Empty array = inherit from the account.
+  // Resolution lives in lib/agent/triggers/levels.
+  triggers               Json                 @default("[]")
   priceCheckFreq         String               @default("HOURLY")
   weekendMode            Boolean              @default(false)
   graduationWinRate      Float                @default(0.65)

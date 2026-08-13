@@ -20,7 +20,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { getStockInfo } from "@/lib/actions/stock-info";
 import { getAccountId } from "@/lib/auth/account";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 import {
   buildResolvedEnvelope,
   buildSupersessionMap,
@@ -55,6 +58,12 @@ export async function GET(
       direction: true,
       entryPrice: true,
       triggers: true,
+      // Cascade inputs — the resolved envelope must evaluate the SAME
+      // ladder the sheet's pills draw, or "matching now" and ladder health
+      // would ignore every inherited rung and report a holding as
+      // unprotected while its floor is showing on screen.
+      triggerState: true,
+      horizon: true,
       catalystDate: true,
       createdAt: true,
       nextReviewAt: true,
@@ -140,10 +149,15 @@ export async function GET(
   // reflects whatever `currentPrice` the quote produced (null → the
   // price-independent states still resolve; ENTER_NOW/WAIT fall back cleanly).
   const supersessionMap = buildSupersessionMap(terminalSiblings);
-  const triggersParsed = triggersArraySchema.safeParse(thesis.triggers);
-  const parsedTriggers = (triggersParsed.success
-    ? triggersParsed.data
-    : []) as Trigger[];
+  // The resolved ladder — own rungs plus everything inherited. Same
+  // resolver as the dossier route, the evaluator and get_theses.
+  const parsedTriggers = resolveThesisLadder(
+    thesis,
+    ownAnalystId
+      ? (await loadLevelSources([ownAnalystId])).get(ownAnalystId)
+      : undefined,
+    `thesis=${thesis.id}`,
+  ) as Trigger[];
   const resolved = buildResolvedEnvelope({
     thesis: {
       id: thesis.id,
