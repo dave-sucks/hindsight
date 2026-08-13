@@ -74,25 +74,23 @@ export function LevelTriggersSection({
   }
 
   const own = data.triggers.filter((t) => !t.inherited);
-  // Inherited rungs are split BY SOURCE LEVEL rather than shown as one
-  // dashed pile. On the thesis sheet a single dashed treatment is right —
-  // there, "not from here" is the whole message. On a settings page it
-  // isn't: the account page and the analyst tab both show the same five
-  // app defaults, and with no origin label they read as the same rules
-  // duplicated across two screens instead of one set of defaults
-  // inherited by both.
-  const inheritedByLevel: Array<{ level: string; heading: string; items: Trigger[] }> = [
-    {
-      level: "ACCOUNT",
-      heading: "From your account rules",
-      items: data.triggers.filter((t) => t.inherited && t.level === "ACCOUNT"),
-    },
-    {
-      level: "DEFAULT",
-      heading: "From the app defaults",
-      items: data.triggers.filter((t) => t.inherited && t.level === "DEFAULT"),
-    },
-  ].filter((g) => g.items.length > 0);
+
+  // A settings page shows what is SET AT THAT LEVEL — nothing else.
+  //
+  // The merged, everything-in-force view belongs on the thesis sheet,
+  // because that is where a ladder actually fires. Rendering it here too
+  // meant the account page and the analyst tab both displayed the same
+  // five app defaults, which reads as one rule existing at two levels at
+  // once. It can't; a rung is stored in exactly one place.
+  //
+  // The one exception is the app defaults on the ACCOUNT page. Those are
+  // account-scope constants — they apply to every analyst — so the
+  // account page is their home and the only place they appear. The
+  // analyst tab shows analyst rules and points at Settings for the rest.
+  const appDefaults =
+    level === "account"
+      ? data.triggers.filter((t) => t.inherited && t.level === "DEFAULT")
+      : [];
 
   const groupProps = {
     thesisId: "",
@@ -113,8 +111,8 @@ export function LevelTriggersSection({
         ) : (
           <p className="text-xs text-muted-foreground">
             {level === "account"
-              ? "Nothing set here yet — everything below is an app default. Add a rule of the same kind to override one."
-              : "Nothing set here yet — everything below comes from the account or the app defaults. Add a rule of the same kind to override one for this analyst only."}
+              ? "No account rules yet. Every holding runs on the app defaults below."
+              : "No rules for this analyst yet. Its theses run on the account rules and app defaults — see Settings → Triggers."}
           </p>
         )}
         {editable ? (
@@ -127,16 +125,18 @@ export function LevelTriggersSection({
         ) : null}
       </div>
 
-      {inheritedByLevel.map((g) => (
-        <div key={g.level} className="space-y-2">
+      {appDefaults.length > 0 ? (
+        <div className="space-y-2">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {g.heading}
+            App defaults
           </span>
-          {/* editable=false: these are owned elsewhere. The pills render
-              dashed and their popovers explain where to change them. */}
-          <TriggerGroups {...groupProps} triggers={g.items} editable={false} />
+          <p className="text-xs text-muted-foreground">
+            Built in, applied to every holding on the account. Add a rule of
+            the same kind above to override one.
+          </p>
+          <TriggerGroups {...groupProps} triggers={appDefaults} editable={false} />
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }

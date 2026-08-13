@@ -39,7 +39,7 @@ export default async function TriggerSettingsPage() {
 
       <SettingsSection
         title="Account rules"
-        description="Solid rungs are yours. Dashed rungs are app defaults — they apply automatically and can't be edited, but adding a rule of the same kind here overrides one."
+        description="Rules you set for every analyst, and the built-in defaults they sit on top of."
       >
         <LevelTriggersSection
           level="account"

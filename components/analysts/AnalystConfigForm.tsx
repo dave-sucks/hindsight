@@ -229,10 +229,10 @@ export function AnalystConfigForm({
             <ScrollArea className="h-full">
               <div className="space-y-3 p-3">
                 <p className="text-xs text-muted-foreground">
-                  Standing rules for every thesis this analyst covers. Solid
-                  rungs are set here; dashed rungs come from the account or
-                  the app defaults. A single thesis can still override any of
-                  them.
+                  Standing rules for every thesis this analyst covers. Anything
+                  not set here falls through to your account rules and the app
+                  defaults; a single thesis can still override any of them. The
+                  full ladder in force on a name is on its thesis.
                 </p>
                 <LevelTriggersSection level="analyst" ownerId={analystId} />
               </div>
