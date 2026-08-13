@@ -143,8 +143,12 @@ run. **CORRECTED FIX (2026-08-13, with the principal):** suppression is the wron
 NEVER go silent on an exit (a name can collapse the next day; an unwanted repeat is fine, silence is not).
 A suppression PR (#504) was closed. The real fix is two run-side moves: **(1) ✅ SHIPPED (#513):** remove the
 cross-day suppression entirely so every agent-decided exit surfaces (~daily) — this stopped the LIVE silence
-on MU + CYTK; **(2) TODO (Lane 1):** the morning run trails the floor to just under the recent low on a
-held-through breach, so alerts track a live line instead of a stale one. Full diagnosis + acceptance test:
+on MU + CYTK; **(2) 🔎 BUILT ([#518](https://github.com/dave-sucks/hindsight/pull/518), 2026-08-13, awaiting
+principal review — Lane 1):** the morning run trails the floor to just under the recent low on a held-through
+breach, so alerts track a live line instead of a stale one. `HELD_THROUGH_FLOOR` needsAction (outranks the
+floor rung's own fire) + Order-ledger read in `get_theses` + the prompt duty (move the floor / honor the
+reject message / re-underwrite — never unchanged). Validated by replaying MU's real ladder + declines.
+Close after merge + one validated manual run + the first live trail cycle. Full diagnosis + acceptance test:
 [`plans/PROPOSAL_FATIGUE.md`](./plans/PROPOSAL_FATIGUE.md). **Subsumes the ex-P2 "hold + retune affordance"
 and "narrow the P1-28 carve-out" items.** Secondary (real but NOT the loop's cause, see the doc): the
 `Order→TradeDecision→Thesis` null-on-held relation bug (P2 below) + the `PROPOSAL_*` audit lossiness (folds

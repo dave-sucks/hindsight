@@ -21,7 +21,10 @@
 - ✅ **GAPS fully documented** on main (P1-30 → P1-40 + P2 backlog).
 - ✅ **#513 merged** — removed the cross-day exit suppression that was going *silent*
   on live positions (MU, CYTK). Exits surface again (~daily).
-- ⏸️ **Everything below is unstarted.** Next up: **Lane 1**.
+- 🔎 **Lane 1 built** — [#518](https://github.com/dave-sucks/hindsight/pull/518)
+  awaiting principal review (LIVE-money code, never auto-merge). After merge:
+  validate the prompt duty on a manual run before the 8 AM cron.
+- ⏸️ **Everything below is unstarted.** Next up: **Lane 2**.
 
 ---
 
@@ -30,7 +33,7 @@
 These are the ones where the system quietly does the wrong thing with real money and
 *tells no one*. Highest priority by far.
 
-- [ ] **Lane 1 — Finish the exit fix: trail the floor.** ([P1-39](../GAPS.md) · [`PROPOSAL_FATIGUE.md`](./PROPOSAL_FATIGUE.md))
+- [x] **Lane 1 — Finish the exit fix: trail the floor.** ([P1-39](../GAPS.md) · [`PROPOSAL_FATIGUE.md`](./PROPOSAL_FATIGUE.md))
   - #513 stopped the silence. This completes it: on a held-through floor breach, the
     morning run **trails the floor to just under the recent low** (or honors the
     principal's reject message), so alerts track a live line, not a stale one.
@@ -39,6 +42,11 @@ These are the ones where the system quietly does the wrong thing with real money
     daily-run prompt duty (delicate — **validate on a manual run before the cron**).
   - **Done when:** a held-through name's floor visibly moves on the next run; alerts
     never go silent; validated on MU/CYTK against live data.
+  - ✅ **Built in [#518](https://github.com/dave-sucks/hindsight/pull/518)** (2026-08-13,
+    awaiting principal review). Validated by replaying MU's real ladder + declined
+    proposals: 08-07 (held-through, price under $860) fires the flag; 08-13 (recovered
+    to $962) correctly doesn't; systemic tombstones excluded. Post-merge: one manual
+    run to validate the prompt duty before the cron.
 - [ ] **Lane 2 — ENTER fires, validates, never buys.** ([P1-40](../GAPS.md))
   - Extend the narration→execution gate to the ENTER path: a validated ENTER with no
     paired `place_trade` (and no documented refusal) is a run failure. Also fix the
