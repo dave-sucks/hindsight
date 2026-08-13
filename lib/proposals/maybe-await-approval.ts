@@ -252,93 +252,25 @@ export async function maybeAwaitApproval(
     }
   }
 
-  // ── Unapproved-exit cooldown: don't re-propose a discretionary CLOSE the ──
-  // user recently saw and did NOT approve (P1-28 — proposal fatigue). This is
-  // the THIRD and last layer of re-proposal suppression; it covers the gap the
-  // other two leave:
-  //   • #379 dedup (below): folds a SAME-DAY duplicate CLOSE while one is still
-  //     AWAITING_APPROVAL. Does nothing once the prior card resolves.
-  //   • #381 tactical snooze: bails a tactical RUN in load-context if a close is
-  //     pending or REJECTED within 4h. Tactical-only, 4h, rejection-only.
-  //   • THIS gate: refuses to re-stage a discretionary close ACROSS DAYS — for
-  //     daily AND tactical runs — within UNAPPROVED_EXIT_COOLDOWN_DAYS of a
-  //     prior staged close that resolved REJECTED-by-user OR EXPIRED.
-  // The motivating case is MU: re-proposed on 5 distinct days (06-09→06-16),
-  // each prior card spaced >4h apart (past #381's snooze) and already expired
-  // (nothing for #379 to fold). The big 06-04 bursts (NVDA 12×/IREN 8×/NVTS 5×)
-  // were the P0-14 runaway, already fixed by #379+#381 — NOT this gate's target.
-  // Arming off EXPIRED as well as REJECTED matters because the user mostly
-  // IGNORES cards to expiry rather than clicking Reject.
+  // ── Cross-day exit suppression REMOVED (P1-39 emergency, 2026-08-10) ────────
+  // The P1-28 cooldown used to refuse re-staging a discretionary CLOSE within 5
+  // days of a prior one the principal rejected or ignored-to-expiry. In practice
+  // it went SILENT on positions the agent wanted out of: MU + CYTK (both LIVE)
+  // sat with an agent-wanted exit swallowed for days, unmanaged, with no alert.
+  // The principal's rule is absolute: the system must NEVER go silent on an exit —
+  // an unwanted repeat is acceptable (remind me daily), silence is not.
   //
-  // CLOSE-only, mirroring the dedup block above: a full close is the terminal,
-  // idempotent decision being re-pitched. PARTIAL_CLOSE scale-outs legitimately
-  // stack, so they're intentionally NOT gated here (verified: no staged
-  // PARTIAL_CLOSE/ADD proposals exist in prod — closes are the only vector).
+  // So the cross-day cooldown is gone: every exit the agent decides on now
+  // surfaces. The remaining, still-correct suppression layers stay in place:
+  //   • #379 dedup (above): folds a duplicate CLOSE while one is still
+  //     AWAITING_APPROVAL — prevents same-tick twins, not cross-day reminders.
+  //   • #381 tactical snooze (tactical-run.ts): skips re-SPAWNING a tactical run
+  //     within 4h of a pending/rejected close — saves GPT cost, still ~1 alert/run.
   //
-  // Carve-out: risk-management exits ALWAYS flow — a trailing-stop / target
-  // close from the price-monitor (closeSource='price_monitor') or any
-  // STOP/TARGET close is a material event, not a discretionary re-pitch.
-  // Only discretionary closes (MANUAL/TIME or untagged) are gated. (Verified
-  // in prod: the spammy proposals are all closeReason/closeSource null; genuine
-  // stops/targets carry STOP/TARGET tags, so this split is correct.)
-  if (args.intent === "CLOSE") {
-    const thisOrder = await prisma.order.findUnique({
-      where: { id: args.orderId },
-      select: { closeReason: true, closeSource: true },
-    });
-    const isRiskExit =
-      thisOrder?.closeSource === "price_monitor" ||
-      thisOrder?.closeReason === "STOP" ||
-      thisOrder?.closeReason === "TARGET";
-
-    if (!isRiskExit) {
-      const cooldownMs = UNAPPROVED_EXIT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
-      const cooldownStart = new Date(Date.now() - cooldownMs);
-      // Only proposals you actually SAW (staged → expiresAt set) and did NOT
-      // approve. expiresAt is the resolution anchor: for an EXPIRED proposal
-      // it's the moment it lapsed; for a user-REJECTED one it's after the
-      // (earlier) rejection, so a recent rejection is still inside the window.
-      const recent = await prisma.order.findMany({
-        where: {
-          positionId: args.positionId,
-          side: "SELL",
-          intent: "CLOSE",
-          status: { in: ["REJECTED", "EXPIRED"] },
-          expiresAt: { not: null, gte: cooldownStart },
-          id: { not: args.orderId },
-        },
-        orderBy: { expiresAt: "desc" },
-        select: { id: true, status: true, expiresAt: true, rejectionMessage: true },
-      });
-      // Drop systemic tombstones (dedup folds, prior cooldown suppressions) —
-      // only a real decline (your rejection or an ignored expiry) counts.
-      const unapproved = recent.filter(
-        (o) => !isSystemicRejection(o.rejectionMessage),
-      );
-      const armed = unapproved[0];
-      if (armed?.expiresAt) {
-        const cooldownUntil = new Date(armed.expiresAt.getTime() + cooldownMs);
-        // Tombstone this call's just-created order so it doesn't linger as a
-        // PENDING/AWAITING row. Systemic message → excluded from future counts.
-        await prisma.order.update({
-          where: { id: args.orderId },
-          data: {
-            status: "REJECTED",
-            rejectionMessage: `Suppressed — recent unapproved CLOSE cooldown (P1-28); last ${armed.status.toLowerCase()} ${armed.expiresAt.toISOString()}`,
-          },
-        });
-        return {
-          state: "suppressed_recent_rejection" as const,
-          positionId: args.positionId,
-          lastUnapprovedOrderId: armed.id,
-          lastUnapprovedOutcome: armed.status as "REJECTED" | "EXPIRED",
-          lastUnapprovedAt: armed.expiresAt,
-          cooldownUntil,
-          unapprovedExitCount: unapproved.length,
-        };
-      }
-    }
-  }
+  // The proper cure for repeat-fatigue is NOT silence — it's the morning run
+  // re-drawing the floor on a held-through breach (trail it to the recent low) so
+  // alerts track a live line instead of a stale one. That is the follow-on build;
+  // see docs/plans/PROPOSAL_FATIGUE.md. This change just stops the bleeding.
 
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
