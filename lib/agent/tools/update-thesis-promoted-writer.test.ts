@@ -75,7 +75,21 @@ const promotedThesisRow = {
   catalystDate: null,
   maxHoldDays: null,
   nextReviewAt: null,
-  triggers: [],
+  // Real PROMOTED rows always carry the standing ladder (stamped at mint);
+  // a zero-trigger fixture would trip the unrelated zero_trigger_thesis
+  // gate on the accept-path test below.
+  triggers: [
+    {
+      id: "t1",
+      condition: { type: "PRICE_ABOVE", value: 110 },
+      action: "ENTER",
+    },
+    {
+      id: "t2",
+      condition: { type: "PRICE_BELOW", value: 180 },
+      action: "REVIEW",
+    },
+  ],
   scalingPlan: null,
 };
 
@@ -127,12 +141,13 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
   // even express those transitions here — Zod rejects them at parse — so the
   // old runtime "status_is_tool_owned" rejection tests were dropped.
 
-  it("allows runMode=THESIS_WRITER on PROMOTED thesis WITHOUT change_status (research-only refresh)", async () => {
-    // The legitimate writer path: refresh research, leave status alone.
-    // The PROMOTED-requires-resolution gate kicks in next (because the
-    // writer didn't pass change_status: ACTIVE or WATCHING). That's the
-    // correct downstream behavior for the writer-only path — the writer
-    // shouldn't be able to resolve PROMOTED at all.
+  it("ACCEPTS runMode=THESIS_WRITER on PROMOTED thesis WITHOUT change_status (research-only refresh)", async () => {
+    // The legitimate writer path: refresh research, leave status alone,
+    // the NEXT orchestrator run resolves PROMOTED. Before 2026-08-13 the
+    // resolution gate also fired on this status-less call (undefined !==
+    // "WATCHING"), which combined with the writer-role gate to make every
+    // writer refresh on a PROMOTED row structurally impossible — no legal
+    // call existed. See docs/plans/AGENT_PERF_COST_FIX.md §1.
     mockThesisFindUnique.mockResolvedValueOnce(promotedThesisRow);
     const ctx = makeCtx({ runMode: "THESIS_WRITER" });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -146,12 +161,37 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
       invalidation_conditions: ["i1 refreshed", "i2 refreshed"],
     });
 
-    // The writer-role gate did NOT fire (no change_status arg) — the
-    // downstream PROMOTED-requires-resolution gate is what blocks here,
-    // not the writer-role gate.
+    // Neither PROMOTED gate fires — the refresh persists.
     expect(result.data.error).not.toBe(
       "thesis_writer_cannot_change_promoted_status",
     );
+    expect(result.data.error).not.toBe("promoted_thesis_requires_resolution");
+    expect(result.data.ok).not.toBe(false);
+    expect(mockThesisUpdate).toHaveBeenCalled();
+    // The refresh must not touch status — PROMOTED persists until the
+    // orchestrator acts.
+    const updateArg = mockThesisUpdate.mock.calls.at(-1)?.[0];
+    expect(updateArg?.data?.status).toBeUndefined();
+  });
+
+  it("still REFUSES a status-less update on PROMOTED from an orchestrator run", async () => {
+    // The resolution requirement is orchestrator-scoped: a daily/tactical
+    // run touching a PROMOTED thesis must resolve it (place_trade to
+    // re-enter, or change_status: "WATCHING" to defer). Reasoning-only
+    // patches don't count. The 2026-08-13 fix must NOT have loosened this.
+    mockThesisFindUnique.mockResolvedValueOnce(promotedThesisRow);
+    const ctx = makeCtx({ runMode: "MORNING_PLAN" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tool = updateThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
+
+    const result = await tool.execute({
+      thesis_id: "thesis_promoted_1",
+      rationale: "Just refreshing the reasoning",
+      core_belief: "Patched belief",
+    });
+
+    expect(result.data.ok).toBe(false);
+    expect(result.data.error).toBe("promoted_thesis_requires_resolution");
   });
 
   it("allows change_status: WATCHING from runMode=DAILY (orchestrator) on PROMOTED thesis", async () => {
