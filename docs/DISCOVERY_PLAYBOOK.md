@@ -141,6 +141,90 @@ engage with — saying about [THEME B]? Names + the claim per name.
 - **🏁 Always close the funnel** with one clean extract per name to paste into Hindsight:
   `ticker | scout(s) | convergence | the claim | freshness`.
 
+### Query design rules (added 2026-08-09, learned the hard way)
+
+A Catalyst tech-lane session returned **"no rows qualify"** on every turn. The window wasn't
+empty — the prompts were broken. Four rules came out of it. Apply them to every prompt this
+playbook generates.
+
+**1. Two filters max during retrieval. Everything else after.**
+Date-window AND market-cap AND sector AND "must cite a primary docket" returns an empty set
+every time — and worse, you can't tell whether the world is empty or your query was. Ask
+wide, have the model *label* the attributes, and filter in the Hindsight paste (which
+already hard-gates on cap, date, industry, and size).
+
+**2. Never require the scout to have cited a primary source in-post.**
+Almost nobody tweets EDIS/PTAB paper numbers or 8-K links. Ask for the claim + the date;
+verify the date afterward in Perplexity/EDGAR. Requiring in-post citation deletes the
+entire result set at the retrieval step.
+
+**3. Never scope a summarize turn to the conversation when the thread was thin.**
+`"Do not add names that didn't come up earlier"` is correct after a rich thread and fatal
+after a thin one — the model intersects its own thin output instead of researching. Safer
+close: *"keep every row with an exact date; mark unverified sources 'unverified' rather
+than dropping the row."*
+
+**4. Match the source to the beat, and fish where the fish are.**
+X has a real biotech-catalyst beat (PDUFA handles post daily) — Grok is right for it. X has
+**no ITC/PTAB beat**; nobody live-tweets docket target dates, so docket-shaped catalysts are
+a primary-calendar job (EDGAR full-text, USITC EDIS, PTAB) → Perplexity, not Grok scouts.
+Likewise, in the $1B–$20B tech band, IPR/antitrust is the *rarest* slice (chip patent fights
+and Big Tech antitrust are mega-cap = out of fence). The **abundant** slice is announced
+**M&A** (shareholder-vote dates, HSR expirations, outside dates — PE take-privates land
+squarely in the band) and **index rebalance** adds. Aim the tech lane there.
+
+> **Diagnostic habit:** an empty result is data. Log it in
+> [`discovery/FUNNEL.md`](./discovery/FUNNEL.md) with the prompt that produced it. "Few names
+> returned" and "many returned, none passed the gates" are different failures with different
+> fixes — you can only tell them apart if both are recorded.
+
+### Convergence is TWO metrics, and one of them is a warning (added 2026-08-09)
+
+The Scout Loop's headline rule — *"a name's signal = (# trusted scouts on it) × (their track
+record); 3+ handles = the triple-sourced tier, always lead with those"* — **is not safe to
+apply uniformly.** A Catalyst session made this unmissable: the single highest-convergence
+name in a 38-ticker sweep (seven named independent traders, "very high" convergence, the one
+name flagged as a clear standout) was **TENX — a ~$0.5B unread Phase 3 binary**. Below the
+cap floor, wrong archetype, and precisely the shape the seat's rules exist to exclude.
+
+That is structural, not bad luck. **X convergence measures retail attention, not edge.**
+Attention concentrates on small-cap, high-volatility, *unread* binaries because those are the
+most exciting — not the most tradeable. Split the metric:
+
+| Kind | What it actually measures | How to use it |
+|---|---|---|
+| **Calendar convergence** — N independent *calendar* sources carry the same date | The date is real | ✅ **Verification.** Use it. |
+| **Trader convergence** — N traders are positioned in the name | The trade is crowded | ⚠️ **Caution flag, not confirmation.** |
+
+**Per archetype:**
+- **Catalyst (de-risked drift):** high trader convergence is arguably a *negative*. The seat's
+  winners (XENE, ARQT, VRDN) were boring de-risked drifts; its losers (IONS, MLTX) were
+  coin-flip binaries — the crowded kind. Rank on **event quality + de-risking**, use trader
+  convergence only to ask "why is this still cheap?"
+- **Compounder (thematic):** convergence among *multi-year fundamental holders* is still the
+  right signal — the universe is genuinely unbounded there and the social graph is the map.
+- **PEAD:** convergence on *analyst revisions* (PT raises) is signal; convergence on trader
+  excitement is not.
+
+### Calendar-first vs. Grok-first — which lane is Grok actually good at
+
+Same session, same day, same model: the **wide calendar sweep produced 6 usable names; the
+social orbit/adjacency turn produced 0.** The difference was what Grok was reading — calendars
+versus people.
+
+**For dated-binary archetypes the candidate universe *is a calendar.*** The complete set of
+PDUFAs in a window is enumerable from primary sources; it does not need to be discovered
+socially. Play B (orbit) is for thematic discovery, where the universe is unbounded. Run it on
+Catalyst and it just re-surfaces the loudest names on a list you could already enumerate.
+
+**So Grok's job for Catalyst is narrower than this playbook originally assumed:** not
+discovery, but (a) is the date real, (b) what is the residual risk / trade framing, (c) how
+crowded is it. Get the candidate list from the calendar (pdufa.bio, BiopharmaWatch, FDA.gov).
+
+> This **refines rather than overturns** the 2026-06-05 "lead with Grok, not Perplexity"
+> learning. That finding was correct *against Perplexity's stale recycled catalogs*. The right
+> shape is not Grok-first — it is **calendar-first, Grok-second as the qualitative layer.**
+
 ### Which play per analyst (the gap → play map)
 
 `/review-analysts`'s "Feed to Discovery" section names the gap; this table maps it to a play.
