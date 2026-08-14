@@ -13,6 +13,29 @@ const API_TIMEOUT_MS = 10_000;
 const finnhubCache = new Map<string, { data: unknown; ts: number }>();
 const CACHE_TTL = 5 * 60 * 1000;
 
+// Live quotes get their own (much shorter) TTL and skip the Next.js Data
+// Cache entirely — see `isLiveQuote` below. 30s is short enough that a
+// trigger evaluating a stop is never acting on a materially old price, but
+// long enough to absorb the per-tick burst (the trigger evaluator fans out
+// over up to 200 tickers) without tripping Finnhub's 60/min limit.
+const QUOTE_CACHE_TTL = 30 * 1000;
+
+/**
+ * A price that must reflect the market RIGHT NOW, not "recently".
+ *
+ * Quotes must never enter the Next.js Data Cache. That cache is
+ * stale-while-revalidate and persists across invocations and deploys on
+ * Vercel, so the first read after any idle gap is served an arbitrarily old
+ * value — the previous session's close after an overnight gap. For the
+ * trigger evaluator that means the first evaluation after a quiet period can
+ * score GAIN_FROM_ENTRY / TRAILING_FROM_HIGH against yesterday's price, which
+ * is precisely when a gap move makes a protective stop matter most.
+ * Slow-moving endpoints (profile, metrics, financials) keep the normal cache.
+ */
+function isLiveQuote(path: string): boolean {
+  return path.startsWith("/quote");
+}
+
 // ── Soft concurrency limit (60/min Finnhub rate limit) ──────────────────────
 
 let finnhubInFlight = 0;
@@ -46,9 +69,12 @@ export async function finnhub(
   retries = 2,
   stats: ApiCallStats = defaultStats,
 ): Promise<{ data: unknown; error?: string }> {
-  // Check cache first
+  // Check cache first. Live quotes use the short TTL; everything else keeps
+  // the 5-minute one.
+  const liveQuote = isLiveQuote(path);
+  const ttl = liveQuote ? QUOTE_CACHE_TTL : CACHE_TTL;
   const cached = finnhubCache.get(path);
-  if (cached && Date.now() - cached.ts < CACHE_TTL) {
+  if (cached && Date.now() - cached.ts < ttl) {
     return { data: cached.data };
   }
 
@@ -63,7 +89,10 @@ export async function finnhub(
       try {
         t0 = Date.now();
         const res = await fetch(url, {
-          next: { revalidate: 300 },
+          // Quotes bypass the Data Cache outright; slower endpoints keep it.
+          ...(liveQuote
+            ? { cache: "no-store" as const }
+            : { next: { revalidate: 300 } }),
           signal: AbortSignal.timeout(API_TIMEOUT_MS),
         });
         const elapsed = Date.now() - t0;
@@ -111,6 +140,30 @@ export async function finnhub(
     finnhubRelease();
   }
 }
+
+// ── Quote freshness ─────────────────────────────────────────────────────────
+
+/**
+ * Age of a Finnhub quote in milliseconds, from its `t` field (unix seconds),
+ * or null when the payload carries no usable timestamp.
+ *
+ * Every Finnhub /quote response has carried `t` all along and nothing read it,
+ * which is why the 2026-08-14 stale-price bug was invisible for weeks: a
+ * day-old quote is structurally identical to a live one. Callers on the
+ * trading path should log (or refuse to act on) an implausible age rather
+ * than silently scoring triggers against it.
+ */
+export function quoteAgeMs(
+  quote: { t?: unknown } | null | undefined,
+  now = Date.now(),
+): number | null {
+  const t = quote?.t;
+  if (typeof t !== "number" || !Number.isFinite(t) || t <= 0) return null;
+  return now - t * 1000;
+}
+
+/** Quotes older than this during market hours mean something is wrong. */
+export const STALE_QUOTE_THRESHOLD_MS = 15 * 60 * 1000;
 
 // ── Technical indicator calculations ────────────────────────────────────────
 
