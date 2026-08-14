@@ -296,7 +296,18 @@ export const morningResearch = inngest.createFunction(
             // read_signals even after bucket was removed from the schema) that
             // Zod silently strips, leaving the transcript misleading.
             providerOptions: {
-              openai: { strictJsonSchema: true },
+              openai: {
+                strictJsonSchema: true,
+                // Prompt-cache routing (2026-08-14). First measured morning
+                // showed a 6-9% cache hit rate on an agent loop that should
+                // re-hit its entire growing prefix every step — near-total
+                // routing misses, every step re-billed at list price.
+                // prompt_cache_key pins all of a run's requests to the same
+                // cache route (OpenAI's documented fix for exactly this
+                // shape). Zero behavioral change; effect is measured by
+                // parameters.tokenUsage.cachedInput the next morning.
+                promptCacheKey: run.id,
+              },
             },
             stopWhen: stepCountIs(30),
             // (maxDuration - 30) * 1000 leaves 30s of headroom before Vercel's
@@ -596,7 +607,8 @@ export const morningResearch = inngest.createFunction(
                 system: systemPrompt,
                 messages,
                 tools,
-                providerOptions: { openai: { strictJsonSchema: true } },
+                // Same cache route as the main loop — the retry replays the same prefix.
+                providerOptions: { openai: { strictJsonSchema: true, promptCacheKey: run.id } },
                 stopWhen: stepCountIs(15),
                 // Retry is a quick fallback — keep a tight 120s budget regardless
                 // of the main run's maxDuration. gpt-5.5 at ~13s/call still fits
@@ -949,7 +961,8 @@ export const morningResearch = inngest.createFunction(
                   `Your first action this turn is read_signals, get_portfolio_context, and get_theses in parallel — no narration before the tool calls. ` +
                   `Then proceed with your normal playbook.`,
                 tools,
-                providerOptions: { openai: { strictJsonSchema: true } },
+                // Same cache route as the main loop — the retry replays the same prefix.
+                providerOptions: { openai: { strictJsonSchema: true, promptCacheKey: run.id } },
                 stopWhen: stepCountIs(30),
                 // Recovery is a quick fallback after a zero-tool-call timeout —
                 // keep 120s regardless of main maxDuration. If recovery itself
