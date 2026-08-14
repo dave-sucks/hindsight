@@ -26,16 +26,19 @@ jest.mock("@/lib/prisma", () => ({
 }));
 jest.mock("@/lib/alpaca", () => ({
   getLatestPrices: jest.fn().mockResolvedValue({}),
+  // P1-39: daily bars for the HELD_THROUGH_FLOOR recent-low fetch.
+  getBars: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("@/lib/proposals/pending-entry", () => ({
   getPendingEntryTickers: jest.fn().mockResolvedValue(new Set()),
 }));
 
 import { getTheses } from "./get-theses";
-import { getLatestPrices } from "@/lib/alpaca";
+import { getBars, getLatestPrices } from "@/lib/alpaca";
 import type { ToolContext } from "@/lib/agent/tool-context";
 
 const mockGetLatestPrices = getLatestPrices as jest.Mock;
+const mockGetBars = getBars as jest.Mock;
 
 function makeCtx(runMode?: string): ToolContext {
   return {
@@ -108,6 +111,8 @@ beforeEach(() => {
   mockOrderFindMany.mockResolvedValue([]);
   mockGetLatestPrices.mockReset();
   mockGetLatestPrices.mockResolvedValue({});
+  mockGetBars.mockReset();
+  mockGetBars.mockResolvedValue([]);
 });
 
 describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
@@ -196,6 +201,70 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     expect(res.data.theses[0].ticker).toBe("BUYNOW");
     expect(res.data.theses[0].resolved?.actionability).toBe("ENTER_NOW");
     expect(res.data.quiet_theses).toHaveLength(0);
+  });
+
+  it("a HELD_THROUGH_FLOOR row lands FULL in `theses`, not `quiet_theses` (P1-39)", async () => {
+    // HOLDING with a protective floor at $90, price $85 (still breached),
+    // and one genuine declined STOP proposal in the last 7 days → the
+    // HELD_THROUGH_FLOOR needsAction fires, which makes the row full-detail.
+    mockGetLatestPrices.mockResolvedValue({ HELD: 85 });
+    mockPositionFindMany.mockResolvedValue([
+      {
+        id: "pos_held",
+        symbol: "HELD",
+        openedAt: new Date("2026-08-01"),
+        avgCost: 100,
+        peakPrice: 110,
+      },
+    ]);
+    mockOrderFindMany.mockResolvedValue([
+      {
+        positionId: "pos_held",
+        rejectionMessage: "hold, re-propose if it drops more",
+        closeReason: "STOP",
+        createdAt: new Date(Date.now() - 2 * 86_400_000),
+      },
+    ]);
+    mockGetBars.mockResolvedValue([
+      { close: 86, volume: 1000, low: 84.2, high: 88 },
+      { close: 87, volume: 900, low: 85.1, high: 89 },
+    ]);
+    mockThesisFindMany.mockResolvedValue([
+      thesisRow({
+        id: "t_held",
+        ticker: "HELD",
+        status: "HOLDING",
+        entryPrice: 100,
+        stopLoss: 90,
+        triggers: [
+          {
+            id: "trig-floor",
+            action: "EXIT",
+            predicate: { kind: "PRICE_BELOW", level: 90 },
+            rationale: "protective floor",
+            cooldownDays: 0,
+          },
+        ],
+      }),
+    ]);
+
+    const res = await run(makeCtx("MORNING_PLAN"));
+
+    expect(res.data.quiet_theses).toHaveLength(0);
+    expect(res.data.theses).toHaveLength(1);
+    const row = res.data.theses[0];
+    expect(row.ticker).toBe("HELD");
+    expect(row.snapshot).toBeDefined(); // full weight
+    expect(row.needsAction).toEqual({
+      kind: "HELD_THROUGH_FLOOR",
+      floorPrice: 90,
+      floorSummary: "price < $90.00",
+      floorTriggerId: "trig-floor",
+      heldThroughCount: 1,
+      rejectMessage: "hold, re-propose if it drops more",
+      recentLow: 84.2,
+      livePrice: 85,
+    });
   });
 
   it("a live-quote outage fails OPEN to the full book (review finding #3)", async () => {
