@@ -282,3 +282,98 @@ describe("validateThesisDecision — trigger action-set by position state", () =
     expect(v.errors.join(" ")).toContain("OMIT the triggers field");
   });
 });
+
+describe("validateThesisDecision — persist-gate mirrors (review finding #4)", () => {
+  it("rejects a PASS carrying triggers", () => {
+    const v = validateThesisDecision(
+      {
+        direction: "PASS",
+        rationale: "No edge at current prices; keep an eye on the reclaim level.",
+        horizon: "TARGET",
+        triggers: [
+          { predicate: { kind: "PRICE_ABOVE", level: 100 }, action: "ENTER", rationale: "x" },
+        ],
+      },
+      mintOpts,
+    );
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("PASS decision cannot carry triggers");
+  });
+
+  it("goalpost mirror: rejects a target raise on WATCHING when price already crossed the old target", () => {
+    const v = validateThesisDecision(
+      { ...validLong, target_price: 140 },
+      {
+        mode: "refresh",
+        existingStatus: "WATCHING",
+        currentPrice: 132,
+        existingTargetPrice: 130,
+        existingHasTriggers: true,
+      },
+    );
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("goalpost");
+  });
+
+  it("goalpost mirror: allows a target raise while price is still below the old target", () => {
+    const v = validateThesisDecision(
+      { ...validLong, target_price: 140, stop_loss: 84 },
+      {
+        mode: "refresh",
+        existingStatus: "WATCHING",
+        currentPrice: 101,
+        existingTargetPrice: 130,
+        existingHasTriggers: true,
+      },
+    );
+    expect(v.ok).toBe(true);
+  });
+
+  it("zero-trigger mirror: a refresh on a bare thesis may not omit triggers", () => {
+    const v = validateThesisDecision({ ...validLong, triggers: undefined }, {
+      mode: "refresh",
+      existingStatus: "WATCHING",
+      currentPrice: 101,
+      existingTargetPrice: 130,
+      existingHasTriggers: false,
+    });
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("NO triggers");
+  });
+
+  it("enter-guard mirror: WATCHING refresh with a REVIEW-only ladder is rejected...", () => {
+    const reviewOnly = [
+      { predicate: { kind: "REVIEW_DATE_HIT" }, action: "REVIEW", rationale: "hygiene" },
+    ];
+    const v = validateThesisDecision(
+      { ...validLong, triggers: reviewOnly },
+      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 90, existingTargetPrice: 130, existingHasTriggers: true },
+    );
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("ENTER rung");
+  });
+
+  it("...unless entry equals the live price (buy-at-market carve-out)", () => {
+    const reviewOnly = [
+      { predicate: { kind: "REVIEW_DATE_HIT" }, action: "REVIEW", rationale: "hygiene" },
+    ];
+    const v = validateThesisDecision(
+      { ...validLong, triggers: reviewOnly },
+      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 100, existingTargetPrice: 130, existingHasTriggers: true },
+    );
+    expect(v.ok).toBe(true);
+  });
+
+  it("enter-guard mirror: HOLDING refresh ladder must carry an EXIT rung", () => {
+    const noExit = [
+      { predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" }, action: "ADD", rationale: "press" },
+      { predicate: { kind: "REVIEW_DATE_HIT" }, action: "REVIEW", rationale: "hygiene" },
+    ];
+    const v = validateThesisDecision(
+      { ...validLong, triggers: noExit },
+      { mode: "refresh", existingStatus: "HOLDING", currentPrice: 110, existingTargetPrice: 130, existingHasTriggers: true },
+    );
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("EXIT rung");
+  });
+});

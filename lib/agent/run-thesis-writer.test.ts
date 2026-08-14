@@ -381,3 +381,49 @@ describe("runThesisWriterAgent — idempotency guard on Inngest retries (P1-17)"
     );
   });
 });
+
+// ── Citation shape mapping (review finding #1) ─────────────────────────────
+// The parser emits raw citation STRINGS; record/update_thesis's
+// sectionCitationSchema wants OBJECTS. sectionArgsFrom must convert, or
+// every persist with citations fails Zod.
+import { sectionArgsFrom, toCitationObject } from "./run-thesis-writer";
+
+describe("sectionArgsFrom — citation objects, not strings", () => {
+  it("maps WEB and STRUCTURED markers to sectionCitationSchema objects", () => {
+    expect(toCitationObject("WEB:https://example.com/a")).toEqual({
+      kind: "WEB",
+      url: "https://example.com/a",
+      domain: "example.com",
+    });
+    expect(toCitationObject("STRUCTURED:revenue_q3")).toEqual({
+      kind: "STRUCTURED",
+      title: "revenue_q3",
+    });
+  });
+
+  it("converts text and bullet sections to the persist schema shape", () => {
+    const args = sectionArgsFrom({
+      snapshot: { text: "para", citations: ["STRUCTURED:quote", "WEB:https://e.com/x"] },
+      bullCase: {
+        bullets: [
+          { text: "b1", citation: "WEB:https://e.com/y" },
+          { text: "b2" },
+        ],
+      },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const snapshot = args.snapshot as any;
+    expect(snapshot.citations).toEqual([
+      { kind: "STRUCTURED", title: "quote" },
+      { kind: "WEB", url: "https://e.com/x", domain: "e.com" },
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bull = args.bull_case as any;
+    expect(bull.bullets[0].citation).toEqual({
+      kind: "WEB",
+      url: "https://e.com/y",
+      domain: "e.com",
+    });
+    expect(bull.bullets[1].citation).toBeUndefined();
+  });
+});

@@ -106,6 +106,15 @@ export interface DecisionValidationOpts {
   existingStatus?: string | null;
   /** Live price from the pull phase, when available. */
   currentPrice?: number | null;
+  /** Existing thesis target on refresh — feeds the goalpost-guard mirror. */
+  existingTargetPrice?: number | null;
+  /**
+   * Whether the existing thesis carries any triggers (refresh only).
+   * update_thesis is wholesale-REPLACE with NO default merge, and its
+   * zero-trigger gate refuses a review-shaped patch on a bare thesis —
+   * so a refresh on a trigger-less row must supply a full ladder.
+   */
+  existingHasTriggers?: boolean;
 }
 
 export interface DecisionValidationResult {
@@ -236,6 +245,37 @@ export function validateThesisDecision(
     }
   }
 
+  // ── Persist-gate mirrors (review finding #4) ────────────────────────
+  // These reproduce update_thesis/record_thesis gates IN the loop so the
+  // model repairs for one step instead of the whole run dying at persist.
+  if (directional && opts.mode === "refresh") {
+    // Goalpost guard mirror (update-thesis.ts "Goalpost-moving guard"):
+    // raising the target on a WATCHING thesis whose live price has already
+    // crossed the OLD target is moving the bar instead of acting.
+    if (
+      opts.existingStatus === "WATCHING" &&
+      d.target_price != null &&
+      opts.existingTargetPrice != null &&
+      d.target_price > opts.existingTargetPrice &&
+      opts.currentPrice != null &&
+      opts.currentPrice >= opts.existingTargetPrice
+    ) {
+      errors.push(
+        `target_price: the live price (${opts.currentPrice}) has already crossed the stored target (${opts.existingTargetPrice}) — raising the target now would be rejected by the goalpost gate. Keep target_price ≤ ${opts.existingTargetPrice}; note the re-rating case in the rationale and let the orchestrator decide entry.`,
+      );
+    }
+    // Zero-trigger gate mirror: update_thesis refuses a patch that leaves
+    // a thesis with no triggers at all.
+    if (opts.existingHasTriggers === false && d.triggers === undefined) {
+      errors.push(
+        "triggers: the existing thesis has NO triggers, and omitting the field would leave it bare (update_thesis rejects zero-trigger patches). Supply a full ladder for this refresh.",
+      );
+    }
+  }
+  if (d.direction === "PASS" && d.triggers !== undefined && (d.triggers as unknown[]).length > 0) {
+    errors.push("triggers: a PASS decision cannot carry triggers — omit the field entirely.");
+  }
+
   // ── Triggers (optional — omission means horizon defaults) ───────────
   let parsedTriggers: z.infer<typeof triggersArraySchema> | undefined;
   if (d.triggers !== undefined) {
@@ -268,6 +308,31 @@ export function validateThesisDecision(
           errors.push(
             `triggers: no position exists (${opts.mode === "mint" ? "mint" : `refresh on ${opts.existingStatus}`}) — ${forbidden.join("/")} triggers are forbidden. Use ENTER + REVIEW only.`,
           );
+        }
+      }
+
+      // Required-action mirrors of the persist-side enter-guard (review
+      // finding #4c). update_thesis is wholesale-REPLACE with no default
+      // merge, so a refresh ladder must itself carry the load-bearing rung.
+      if (opts.mode === "refresh" && directional && parsedTriggers.length > 0) {
+        if (held && !actions.has("EXIT")) {
+          errors.push(
+            "triggers: a HOLDING ladder must carry at least one EXIT rung (the automated stop-loss path) — the persist gate rejects ladders without one.",
+          );
+        }
+        if (!held && !actions.has("ENTER")) {
+          // Buy-now carve-out: no ENTER trigger is the legitimate shape
+          // when the entry IS the current price (the writer's "buy at
+          // market" signal) — mirror the persist-side allowance.
+          const buyNow =
+            d.entry_price != null &&
+            opts.currentPrice != null &&
+            Math.abs(opts.currentPrice - d.entry_price) / d.entry_price <= 0.01;
+          if (!buyNow) {
+            errors.push(
+              "triggers: an unheld ladder must carry an ENTER rung (PRICE_ABOVE entry for LONG, mirror for SHORT) unless entry_price equals the current price (buy-at-market shape). Add the ENTER rung or omit the triggers field.",
+            );
+          }
         }
       }
     }

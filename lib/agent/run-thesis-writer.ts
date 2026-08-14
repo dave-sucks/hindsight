@@ -652,6 +652,10 @@ Write the research note now, then call submit_thesis.`;
           mode: args.mode,
           existingStatus: existingThesis?.status ?? null,
           currentPrice,
+          // Persist-gate mirrors (goalpost + zero-trigger) need the
+          // existing row's shape — see decision.ts review-finding-#4 block.
+          existingTargetPrice: existingThesis?.targetPrice ?? null,
+          existingHasTriggers: existingThesis?.hasTriggers,
         });
         if (!v.ok) {
           console.log(
@@ -706,6 +710,13 @@ Write the research note now, then call submit_thesis.`;
           toolCallCount += step.toolCalls.length;
           searchCount += step.toolCalls.filter((c) => c.toolName === "web_search").length;
           if (step.text) noteParts.push(step.text);
+          // step.response.messages is the CUMULATIVE whole-call array
+          // (ai@6.0.116 structuredClones responseMessages per step) —
+          // REPLACE, don't append, or the thread duplicates step 1's
+          // messages N times (review finding #2). The last snapshot is the
+          // full conversation so far, which is exactly what a mid-run
+          // abort should persist.
+          capturedMessages.length = 0;
           capturedMessages.push(...(step.response?.messages ?? []));
           console.log(
             `[thesis-writer] STEP #${stepCount} child=${args.childRunId} ticker=${T} tools=[${step.toolCalls.map((c) => c.toolName).join(", ") || "none"}] text=${step.text?.length ?? 0}ch`,
@@ -739,12 +750,17 @@ Write the research note now, then call submit_thesis.`;
         ["insiderTechnical", "## Insider & Technical"],
       ].filter(([key]) => !have.has(key));
       try {
+        // TEXT-ONLY continuation (review finding #3): replaying
+        // capturedMessages here would send tool_use/tool_result blocks
+        // (submit_thesis + server web_search) to a call with NO tools
+        // param — the API rejects that with a 400, which made the repair
+        // path dead on arrival. The note text is all the repair needs.
         const repair = await generateText({
           model,
           system: systemPrompt,
           messages: [
             { role: "user", content: userPrompt },
-            ...capturedMessages,
+            { role: "assistant", content: noteText || "(no note text produced yet)" },
             {
               role: "user",
               content: `The note is missing these sections: ${wanted.map(([, h]) => h).join(", ")}. Write ONLY the missing sections now, in the exact template format with citations. No other text.`,
@@ -835,17 +851,61 @@ type SectionArgs = Partial<
   >
 >;
 
-function sectionArgsFrom(sections: ParsedSections): SectionArgs {
+/**
+ * Map a raw parsed citation marker ("WEB:https://…" / "STRUCTURED:field")
+ * to record/update_thesis's sectionCitationSchema OBJECT shape
+ * ({ kind, url?, title?, domain? }). Review finding #1: the parser emits
+ * raw STRINGS, the persist schema wants objects — splatting the strings
+ * through fails Zod on every section that has citations, i.e. every run
+ * that followed the prompt. (V1 survived this only because the relay
+ * model reshaped citations by hand — part of its 60% first-attempt
+ * bounce rate.)
+ */
+export function toCitationObject(raw: string): {
+  kind: "STRUCTURED" | "WEB";
+  url?: string;
+  title?: string;
+  domain?: string;
+} {
+  const colon = raw.indexOf(":");
+  const kindStr = colon > 0 ? raw.slice(0, colon).toUpperCase() : "";
+  const ref = colon > 0 ? raw.slice(colon + 1) : raw;
+  if (kindStr === "WEB") {
+    let domain: string | undefined;
+    try {
+      domain = new URL(ref).hostname;
+    } catch {
+      /* malformed url — leave domain undefined */
+    }
+    return { kind: "WEB", url: ref, ...(domain ? { domain } : {}) };
+  }
+  return { kind: "STRUCTURED", title: ref };
+}
+
+function toSchemaTextSection(s: { text: string; citations: string[] }) {
+  return { text: s.text, citations: s.citations.map(toCitationObject) };
+}
+
+function toSchemaBulletSection(s: { bullets: Array<{ text: string; citation?: string }> }) {
+  return {
+    bullets: s.bullets.map((b) => ({
+      text: b.text,
+      ...(b.citation !== undefined ? { citation: toCitationObject(b.citation) } : {}),
+    })),
+  };
+}
+
+export function sectionArgsFrom(sections: ParsedSections): SectionArgs {
   const out: SectionArgs = {};
-  if (sections.snapshot) out.snapshot = sections.snapshot;
-  if (sections.recentCatalysts) out.recent_catalysts = sections.recentCatalysts;
-  if (sections.fundamentals) out.fundamentals = sections.fundamentals;
-  if (sections.latestEarnings) out.latest_earnings = sections.latestEarnings;
-  if (sections.catalystsAndEvents) out.catalysts_and_events = sections.catalystsAndEvents;
-  if (sections.bullCase) out.bull_case = sections.bullCase;
-  if (sections.bearCase) out.bear_case = sections.bearCase;
-  if (sections.analystConsensus) out.analyst_consensus = sections.analystConsensus;
-  if (sections.insiderTechnical) out.insider_technical = sections.insiderTechnical;
+  if (sections.snapshot) out.snapshot = toSchemaTextSection(sections.snapshot);
+  if (sections.recentCatalysts) out.recent_catalysts = toSchemaTextSection(sections.recentCatalysts);
+  if (sections.fundamentals) out.fundamentals = toSchemaTextSection(sections.fundamentals);
+  if (sections.latestEarnings) out.latest_earnings = toSchemaBulletSection(sections.latestEarnings);
+  if (sections.catalystsAndEvents) out.catalysts_and_events = toSchemaBulletSection(sections.catalystsAndEvents);
+  if (sections.bullCase) out.bull_case = toSchemaBulletSection(sections.bullCase);
+  if (sections.bearCase) out.bear_case = toSchemaBulletSection(sections.bearCase);
+  if (sections.analystConsensus) out.analyst_consensus = toSchemaTextSection(sections.analystConsensus);
+  if (sections.insiderTechnical) out.insider_technical = toSchemaTextSection(sections.insiderTechnical);
   return out;
 }
 
@@ -950,7 +1010,9 @@ export async function writerPersistPhase(
           core_belief: d.core_belief,
           key_assumptions: d.key_assumptions,
           invalidation_conditions: d.invalidation_conditions,
-          triggers: d.triggers,
+          // PASS theses cannot carry triggers (record_thesis gate) — the
+          // validator rejects this too; strip defensively.
+          triggers: d.direction === "PASS" ? undefined : d.triggers,
           source_kind: "WEB_SEARCH",
           source_rationale: args.reason.slice(0, 300),
           research_data: pullOutput.pull?.rawDataBlock,
