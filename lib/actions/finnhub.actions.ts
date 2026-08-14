@@ -46,10 +46,15 @@ function formatArticle(
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const NEXT_PUBLIC_FINNHUB_API_KEY = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '';
 
-async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T> {
+async function fetchJSON<T>(
+  url: string,
+  revalidateSeconds?: number,
+  timeoutMs?: number,
+): Promise<T> {
   const options: RequestInit & { next?: { revalidate?: number } } = revalidateSeconds
     ? { cache: 'force-cache', next: { revalidate: revalidateSeconds } }
     : { cache: 'no-store' };
+  if (timeoutMs) options.signal = AbortSignal.timeout(timeoutMs);
 
   const res = await fetch(url, options);
   if (!res.ok) {
@@ -258,16 +263,59 @@ export async function getStockProfile(symbol: string): Promise<StockProfile | nu
   }
 }
 
+// ── Live-quote cache ────────────────────────────────────────────────────────
+// A quote must NEVER go in the Next.js Data Cache. That cache is
+// stale-while-revalidate AND persists across invocations and deploys on
+// Vercel, so its staleness is bounded by how often a surface is hit, not by
+// the `revalidate` value. `getStockQuote` used `force-cache` + `revalidate:30`
+// and on 2026-08-14 served the *prior session's close* ($337.38 +1.54%) on a
+// sheet opened at 11:38 AM ET while SNOW was live at $329.43 −2.36%.
+//
+// The defect was the STORE, not caching as such. This module-level map is the
+// right shape: per-instance, seconds-long, dropped on cold start — it damps
+// bursts without any way to survive to the next morning. It also collapses
+// concurrent callers for the same symbol (the in-flight map), which matters
+// because `/api/quotes` is polled every 30s by every open tab and the two
+// `Promise.all` fan-outs over `getStockQuote` (lib/alpaca.ts, complete-run.ts)
+// are unthrottled. Keep this TTL in SECONDS. See CLAUDE.md → recurring bugs.
+const QUOTE_TTL_MS = 10_000;
+const QUOTE_TIMEOUT_MS = 8_000;
+const quoteCache = new Map<string, { quote: StockQuote | null; ts: number }>();
+const quoteInFlight = new Map<string, Promise<StockQuote | null>>();
+
 export async function getStockQuote(symbol: string): Promise<StockQuote | null> {
-  try {
-    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
-    if (!token) return null;
-    const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`;
-    const data = await fetchJSON<StockQuote>(url, 30);
-    return data ?? null;
-  } catch {
-    return null;
-  }
+  const key = symbol.toUpperCase();
+
+  const hit = quoteCache.get(key);
+  if (hit && Date.now() - hit.ts < QUOTE_TTL_MS) return hit.quote;
+
+  // Coalesce concurrent callers for the same symbol onto one request.
+  const pending = quoteInFlight.get(key);
+  if (pending) return pending;
+
+  const task = (async (): Promise<StockQuote | null> => {
+    try {
+      const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+      if (!token) return null;
+      const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(key)}&token=${token}`;
+      // No revalidateSeconds → `cache: 'no-store'`. The timeout is required,
+      // not cosmetic: callers are coalesced onto this one promise, so a hung
+      // request without it would stall every waiter for that symbol.
+      const data = await fetchJSON<StockQuote>(url, undefined, QUOTE_TIMEOUT_MS);
+      const quote = data ?? null;
+      quoteCache.set(key, { quote, ts: Date.now() });
+      return quote;
+    } catch {
+      // Don't cache failures — the next caller should retry rather than be
+      // pinned to a null for the whole TTL.
+      return null;
+    } finally {
+      quoteInFlight.delete(key);
+    }
+  })();
+
+  quoteInFlight.set(key, task);
+  return task;
 }
 
 export async function getStockMetrics(symbol: string): Promise<Record<string, number> | null> {
@@ -486,7 +534,8 @@ async function getIntradayCandlesFmp(symbol: string): Promise<StockCandle[]> {
       symbol.toUpperCase(),
     )}?from=${from}&to=${to}&apikey=${key}`;
 
-    const res = await fetch(url, { next: { revalidate: 30 } });
+    // Live session bars — no Data Cache (see the Alpaca twin below).
+    const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) {
       // 403 here = plan doesn't serve intraday; caller falls back to Alpaca.
       console.warn('[getIntradayCandles] FMP error', res.status);
@@ -541,7 +590,11 @@ async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> 
         'APCA-API-KEY-ID': apiKey,
         'APCA-API-SECRET-KEY': apiSecret,
       },
-      next: { revalidate: 30 },
+      // Current-session bars are live price data — no Data Cache. The chart
+      // polls this every 30s, and a 30s `revalidate` meant every poll sat
+      // exactly on the staleness boundary, so the tab rendered one cycle
+      // behind rather than live. Poll rate (and upstream volume) is unchanged.
+      cache: 'no-store',
     });
 
     if (!res.ok) {

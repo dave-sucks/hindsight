@@ -29,7 +29,11 @@
 import { randomUUID } from "node:crypto";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import { finnhub } from "@/lib/agent/research-helpers";
+import {
+  finnhub,
+  quoteAgeMs,
+  STALE_QUOTE_THRESHOLD_MS,
+} from "@/lib/agent/research-helpers";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
@@ -511,6 +515,17 @@ export const triggerEvaluator = inngest.createFunction(
           const q = r.data as Record<string, number> | null;
           if (!q || typeof q.c !== "number" || q.c <= 0) {
             return [ticker, null] as const;
+          }
+          // Observability only — this does NOT suppress firing. A stale price
+          // is fail-unsafe in both directions (act on it and a stop fires at
+          // the wrong level; skip it and the stop doesn't fire at all), so the
+          // evaluator still scores the quote and we make the staleness loud
+          // instead. See the 2026-08-14 stale-quote bug.
+          const age = quoteAgeMs(q);
+          if (age != null && age > STALE_QUOTE_THRESHOLD_MS) {
+            console.warn(
+              `[trigger-evaluator] STALE QUOTE ${ticker}: ${Math.round(age / 60_000)}min old (price ${q.c}) — evaluating anyway`,
+            );
           }
           // Daily % change vs prior close. Prefer Finnhub's `dp`, but fall back
           // to computing it from `pc` (prior close) when `dp` is missing —
