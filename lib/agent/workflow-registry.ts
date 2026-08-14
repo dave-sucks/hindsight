@@ -275,11 +275,11 @@ export const TEAMS: Team[] = [
     title: "Thesis Writer",
     phase: "run",
     summary:
-      "Focused sub-agent that produces one deep-research thesis on one ticker. Spawned on-demand via dispatch_thesis_research. Pulls 7 structured-data sources in parallel, then synthesizes a multi-section equity-research note via Claude Sonnet 4.6 + native web search.",
+      "Single-agent pipeline that produces one deep-research thesis on one ticker. Spawned on-demand via dispatch_thesis_research. Pulls 7 structured-data sources in parallel (deterministic step), then ONE Claude Sonnet 4.6 call with native web search writes the 9-section research note and submits a compact decision object; the server parses the note and persists through record/update_thesis's Layer-1 gates. Run is COMPLETE only if a thesis row landed.",
     icon: FileText,
     model: "Claude Sonnet 4.6",
     schedule: "Event-driven (app/thesis.write.requested)",
-    promptSource: "lib/agent/run-thesis-writer.ts → buildThesisWriterSystemPrompt",
+    promptSource: "lib/agent/run-thesis-writer.ts → buildWriterResearchPrompt",
   },
 
   // ─── 4. Evaluation ─────────────────────────────────────────────────────
@@ -582,21 +582,22 @@ export const TOOL_REGISTRY: RegistryTool[] = [
   {
     name: "complete_run",
     category: "system",
-    summary: "No-args. Marks the run COMPLETE in DB and triggers the briefing agent inline. Always the final tool call.",
+    summary: "No-args. Marks the run COMPLETE in DB and triggers the briefing agent inline. Always the final tool call. (Thesis-writer V2 no longer calls this — its terminal status is derived server-side from whether a thesis row landed.)",
     providers: ["internal"],
-    agents: ["agent", "tactical", "discovery", "thesis-writer"],
+    agents: ["agent", "tactical", "discovery"],
   },
-  // ── THESIS_RESEARCH_V2 Phase 1 ──────────────────────────────────────────
+  // ── Thesis-writer V2 pipeline (THESIS_WRITER_V2) ─────────────────────────
   {
-    name: "write_thesis_research",
-    category: "research",
-    summary: "The thesis-writer meta-tool. ONE call fans out 7 structured-data tools in parallel (financials_deep, analyst_coverage, insider_activity, earnings_history, peers_with_metrics, stock_data, sec_filings), formats into a ~3-5KB markdown ground-truth block, then synthesizes a multi-section equity-research note via Claude Sonnet 4.6 + Anthropic native web_search. Returns { sections, citations, rawDataBlock }.",
+    name: "submit_thesis",
+    category: "action",
+    summary: "The V2 thesis-writer's terminal tool: after writing the 9-section research note as plain text, the model submits the compact decision object (direction / horizon / entry-target-stop / conviction / triggers, ~1-2k chars). Validation errors return as the tool result so a repair costs one step — the server then parses the note and persists through record/update_thesis's Layer-1 gates. Replaces the V1 relay where a second model re-typed the entire 25k-char note into record_thesis args.",
     providers: ["internal", "anthropic", "finnhub", "fmp", "sec"],
     agents: ["thesis-writer"],
     resources: [
-      { source: "internal", title: "Parallel data pulls", description: "Promise.allSettled over 7 data-layer tools — partial tolerance, errors[] surfaced.", type: "internal", endpointOrPath: "lib/agent/tools/write-thesis-research.ts" },
-      { source: "anthropic", title: "Claude Sonnet 4.6 + native web_search", description: "Synthesis call with anthropic.tools.webSearch_20260209({ maxUses: 6 }), stepCountIs(6), 180s abort. Bake-off winner over GPT-5 (fiscal-year hallucination) and Gemini 2.5 Pro (close second, kept as fallback).", type: "api", endpointOrPath: "generateText({ model: anthropic('claude-sonnet-4-6'), tools: { web_search } })" },
-      { source: "internal", title: "Section + citation parser", description: "Extracts ## Snapshot / Fundamentals / Latest Earnings / Catalysts / Bull / Bear / Analyst Consensus / Insider+Technical and [STRUCTURED:...] / [WEB:...] markers.", type: "internal", endpointOrPath: "parseIntoSections + parseCitations" },
+      { source: "internal", title: "Parallel data pulls (deterministic phase)", description: "Promise.allSettled over 7 data-layer tools — partial tolerance, errors surfaced as RunEvents.", type: "internal", endpointOrPath: "lib/agent/thesis-research/pull-data.ts" },
+      { source: "anthropic", title: "Claude Sonnet 4.6 + native web_search", description: "ONE research call: anthropic.tools.webSearch_20260209({ maxUses: 4 }), 330s budget. Bake-off winner over GPT-5 (fiscal-year hallucination) and Gemini 2.5 Pro (close second, kept as fallback).", type: "api", endpointOrPath: "lib/agent/run-thesis-writer.ts → writerResearchPhase" },
+      { source: "internal", title: "Decision validation (in-loop repair)", description: "R/R ≥ 2:1 floor, price ordering, belief/conviction requirements, trigger action-set by position state — errors feed back into the loop instead of bouncing a full persist payload.", type: "internal", endpointOrPath: "lib/agent/thesis-research/decision.ts" },
+      { source: "internal", title: "Section + citation parser (server-side persist)", description: "Extracts ## Snapshot / Fundamentals / Latest Earnings / Catalysts / Bull / Bear / Analyst Consensus / Insider+Technical and [STRUCTURED:...] / [WEB:...] markers; persisted via record/update_thesis execute().", type: "internal", endpointOrPath: "lib/agent/thesis-research/parse-sections.ts" },
     ],
   },
   {
