@@ -234,7 +234,7 @@ function CitedP({ className, children, ...props }: React.ComponentProps<"p">) {
   // for the user. Mirrors the h3 filter below.
   if (isStepLabel(children)) return null;
   return (
-    <p className={cn("aui-md-p my-2.5 leading-normal first:mt-0 last:mb-0", className)} {...props}>
+    <p className={cn("aui-md-p my-3 leading-[1.6] first:mt-0 last:mb-0", className)} {...props}>
       {processCitationChildren(children, sources)}
     </p>
   );
@@ -266,7 +266,7 @@ function extractText(node: React.ReactNode): string {
 function CitedLi({ className, children, ...props }: React.ComponentProps<"li">) {
   const sources = useSources();
   return (
-    <li className={cn("aui-md-li leading-normal", className)} {...props}>
+    <li className={cn("aui-md-li leading-[1.6]", className)} {...props}>
       {processCitationChildren(children, sources)}
     </li>
   );
@@ -361,7 +361,7 @@ const citedComponents = memoizeMarkdownComponents({
   h2: ({ className, ...props }) => (
     <h2
       className={cn(
-        "aui-md-h2 mt-3 mb-1.5 scroll-m-20 font-semibold text-sm first:mt-0 last:mb-0",
+        "aui-md-h2 mt-5 mb-2 scroll-m-20 font-semibold text-[15px] first:mt-0 last:mb-0",
         className,
       )}
       {...props}
@@ -378,7 +378,7 @@ const citedComponents = memoizeMarkdownComponents({
     return (
       <h3
         className={cn(
-          "aui-md-h3 mt-2.5 mb-1 scroll-m-20 font-semibold text-sm first:mt-0 last:mb-0",
+          "aui-md-h3 mt-4 mb-1.5 scroll-m-20 font-semibold text-[15px] first:mt-0 last:mb-0",
           className,
         )}
         {...props}
@@ -420,6 +420,11 @@ const citedComponents = memoizeMarkdownComponents({
   td: CitedTd,
   blockquote: CitedBlockquote,
   // ── Non-citation components (same as base) ──
+  // Host Grotesk's 700 reads as shouting at body size — inline emphasis
+  // sits at 600 so bold lead-ins separate from prose without a weight cliff.
+  strong: ({ className, ...props }) => (
+    <strong className={cn("aui-md-strong font-semibold", className)} {...props} />
+  ),
   a: ({ className, ...props }) => (
     <a
       className={cn(
@@ -432,7 +437,7 @@ const citedComponents = memoizeMarkdownComponents({
   ul: ({ className, ...props }) => (
     <ul
       className={cn(
-        "aui-md-ul my-2 ml-4 list-disc marker:text-muted-foreground [&>li]:mt-1",
+        "aui-md-ul my-3 ml-4 list-disc marker:text-muted-foreground [&>li]:mt-1.5",
         className,
       )}
       {...props}
@@ -441,7 +446,7 @@ const citedComponents = memoizeMarkdownComponents({
   ol: ({ className, ...props }) => (
     <ol
       className={cn(
-        "aui-md-ol my-2 ml-4 list-decimal marker:text-muted-foreground [&>li]:mt-1",
+        "aui-md-ol my-3 ml-4 list-decimal marker:text-muted-foreground [&>li]:mt-1.5",
         className,
       )}
       {...props}

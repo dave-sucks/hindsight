@@ -121,6 +121,8 @@ export interface AnalystListItem {
   winRate: number | null;
   totalPnl: number;
   openTrades: AnalystOpenTrade[];
+  /** True count of OPEN positions. openTrades is sliced to 3 for display. */
+  openPositionCount: number;
 }
 
 export interface PositionWithThesis {
@@ -278,8 +280,13 @@ export async function getAnalystList(
       0
     );
 
-    const openTrades: AnalystOpenTrade[] = configPositions
-      .filter((p) => p.status === "OPEN")
+    const openPositions = configPositions.filter((p) => p.status === "OPEN");
+
+    // openTrades is capped for display — openPositionCount is the real total,
+    // so the card badge can't under-report an analyst holding more than 3.
+    const openPositionCount = openPositions.length;
+
+    const openTrades: AnalystOpenTrade[] = openPositions
       .slice(0, 3)
       .map((p) => {
         const livePrice = priceLookup.prices[p.symbol];
@@ -326,6 +333,7 @@ export async function getAnalystList(
       winRate,
       totalPnl,
       openTrades,
+      openPositionCount,
     };
   });
 }

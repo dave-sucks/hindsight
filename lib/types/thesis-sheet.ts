@@ -108,6 +108,8 @@ export interface ThesisDossier {
   nextReviewAt: string | null;
   triggers: Trigger[];
   position: ThesisStatePosition | null;
+  /** Analyst that authored the thesis. Null for manual/legacy runs. */
+  analystName: string | null;
   // Structural belief — load-bearing fields the trade-evaluator + tactical
   // agent read. Surfaced to the sheet so the user can see what the agent
   // actually committed to.

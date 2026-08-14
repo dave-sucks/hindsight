@@ -8,7 +8,6 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AnalystConfigSheet } from "@/components/analysts/AnalystConfigSheet";
 import { StockSearch } from "@/components/stocks/StockSearch";
@@ -20,7 +19,6 @@ import {
 } from "@/lib/actions/watchlist.actions";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
-import { RunDiscoveryButton } from "@/components/RunDiscoveryButton";
 import { Sheet, SheetContent, SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { TeamSheetContent } from "@/components/domain/team-card";
 import { getTeam } from "@/lib/agent/workflow-registry";
@@ -46,6 +44,7 @@ import {
   ScanSearch,
   Rocket,
   ShieldOff,
+  MessageSquare,
 } from "lucide-react";
 import {
   Dialog,
@@ -68,7 +67,7 @@ import type {
 import { cn, PNL_HEX, pnlBadgeClasses } from "@/lib/utils";
 import { formatCurrency, formatDateLabel } from "@/lib/format";
 import { useRouter } from "next/navigation";
-import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
+import Link from "next/link";
 import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import type { StockCandle } from "@/lib/actions/finnhub.actions";
@@ -190,22 +189,6 @@ function AnalystTradeRow({ trade, livePrice }: { trade: PositionWithThesis; live
       pendingProposal={trade.pendingProposal}
       thesisId={trade.thesis?.id || undefined}
       direction={trade.direction as "LONG" | "SHORT" | undefined}
-    />
-  );
-}
-
-// ── Floating composer (redirects to editor page on send) ─────────────────
-
-function FloatingEditorComposer({ analystId }: { analystId: string }) {
-  return (
-    <ChatEntryComposer
-      targetUrl={`/analysts/${analystId}/edit`}
-      queryParam="message"
-      features={{
-        placeholder: "Ask a question or suggest strategy changes…",
-        tickerSearch: true,
-        slashCommands: true,
-      }}
     />
   );
 }
@@ -557,7 +540,11 @@ export default function AnalystDetailClient({
     <>
       <RunShowcaseTrigger />
       <RunShowcaseDialog open={showRunShowcase} onOpenChange={setShowRunShowcase} />
-      <div className="lg:grid lg:grid-cols-3 h-[calc(100dvh-3rem)] overflow-y-auto lg:overflow-hidden">
+      {/* grid-rows-[minmax(0,1fr)]: without an explicit row track the single
+          auto row grows to the LEFT column's max-content height, so the right
+          column's h-full resolves taller than the viewport and its list never
+          becomes scrollable — it just runs off the bottom of the screen. */}
+      <div className="lg:grid lg:grid-cols-3 lg:grid-rows-[minmax(0,1fr)] h-[calc(100dvh-3rem)] overflow-y-auto lg:overflow-hidden">
         {/* ── Left: Analyst briefing ──────────────────────────────────── */}
         <div className="lg:col-span-2 lg:h-full flex flex-col lg:min-h-0">
           {/* Header */}
@@ -574,21 +561,9 @@ export default function AnalystDetailClient({
                       : "bg-muted-foreground/40",
                   )}
                 />
-                {config.tradingEnvironment === "LIVE" && (
-                  <Badge variant="destructive">LIVE</Badge>
-                )}
-                {stats.promotedCount > 0 && (
-                  <Badge variant="secondary">
-                    {stats.promotedCount} promoted
-                  </Badge>
-                )}
-                {hasRunning && (
-                  <Badge
-                    variant="secondary"
-                  >
-                    Research Running…
-                  </Badge>
-                )}
+                {/* No badges here by design: live-vs-paper is an app-level
+                    mode (sidebar env switcher), and "research running" is
+                    already carried by the Run button's spinner. */}
               </div>
               {/* Stats strip */}
               <div className="flex items-center gap-3 flex-wrap">
@@ -613,13 +588,13 @@ export default function AnalystDetailClient({
                   </Button>
                 } />
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => router.push(`/analysts/${config.id}/edit`)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                    Edit
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setConfigOpen(true)}>
                     <Settings2 className="h-3.5 w-3.5" />
                     Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push(`/analysts/${config.id}/edit`)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit with Agent
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setPromoteOpen(true)}>
                     {config.tradingEnvironment === "LIVE" ? (
@@ -653,7 +628,17 @@ export default function AnalystDetailClient({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <RunDiscoveryButton analystId={config.id} />
+              {/* Opens /chat pre-scoped to this analyst — same scope pill the
+                  composer's Scope menu sets. Replaced the in-page composer,
+                  which only ever redirected to the editor. */}
+              <Button
+                variant="outline"
+                size="sm"
+                render={<Link href={`/chat?analyst=${config.id}`} />}
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                Chat
+              </Button>
               <RunResearchButton
                 analystId={config.id}
                 hasRunning={hasRunning}
@@ -711,15 +696,10 @@ export default function AnalystDetailClient({
               />
             </TabsContent>
           </Tabs>
-
-          {/* ── Floating composer — desktop only ── */}
-          <div className="hidden lg:block px-4 pb-4 shrink-0">
-            <FloatingEditorComposer analystId={config.id} />
-          </div>
         </div>
 
         {/* ── Right sidebar: portfolio-style ─────────────────────────────── */}
-        <div className="p-4 lg:h-full">
+        <div className="p-4 lg:h-full lg:min-h-0">
           <div className="h-full rounded-xl border bg-background overflow-hidden flex flex-col">
             {/* Equity chart */}
             {equityData.length < 2 ? (

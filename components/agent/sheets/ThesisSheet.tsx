@@ -620,9 +620,11 @@ function TradeStructureBlock({
     nextReviewAt: string | null;
     maxHoldDays: number | null;
     targetSizePct: number | null;
+    analystName: string | null;
     resolved?: ResolvedEnvelope | null;
   };
 }) {
+  const hasAnalyst = state.analystName != null;
   const hasHorizon = state.horizon != null;
   const hasNextReview = state.nextReviewAt != null;
   const showMaxHold = state.horizon === "TRADE" && state.maxHoldDays != null;
@@ -633,7 +635,7 @@ function TradeStructureBlock({
   const hasStatus =
     state.resolved != null && state.resolved.actionability !== "DEAD";
 
-  if (!hasHorizon && !hasNextReview && !showMaxHold && !hasSize && !hasStatus)
+  if (!hasHorizon && !hasNextReview && !showMaxHold && !hasSize && !hasStatus && !hasAnalyst)
     return null;
 
   const cells: { label: string; value: React.ReactNode; tooltip?: string }[] = [];
@@ -702,6 +704,15 @@ function TradeStructureBlock({
     cells.push({
       label: "Target size",
       value: `${state.targetSizePct}% of portfolio`,
+    });
+  }
+  // Last cell — "who authored this" is context for the row above it, not
+  // the lead. Null on manual/legacy runs with no analyst attached.
+  if (hasAnalyst) {
+    cells.push({
+      label: "Analyst",
+      value: state.analystName,
+      tooltip: "The analyst whose research run authored this thesis.",
     });
   }
 

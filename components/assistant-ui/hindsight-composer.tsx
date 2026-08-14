@@ -53,7 +53,7 @@ import {
   type TickerItem,
 } from "./suggestion-list";
 import {
-  Send,
+  ArrowUp,
   Square,
   Slash,
   Globe,
@@ -410,7 +410,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
           // min-h keeps the resting size; max-h caps growth on paste and
           // overflow-y-auto scrolls the editor internally past the cap so
           // the chat above stays readable (Claude/GPT composer behavior).
-          "min-h-[4.5rem] max-h-[40vh] w-full overflow-y-auto px-3 py-2 text-sm leading-relaxed",
+          "min-h-[4.5rem] max-h-[27vh] w-full overflow-y-auto px-3 py-2 text-sm leading-relaxed",
           "bg-transparent outline-none focus:outline-none",
           "[&>p]:m-0 [&>p+p]:mt-1",
         ].join(" "),
@@ -476,11 +476,16 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      <InputGroup variant="plain" className="w-full bg-background/80 backdrop-blur-sm">
+      <InputGroup variant="plain" className="w-full rounded-xl bg-background/80 backdrop-blur-sm">
         {/* Optional context badge — rendered above the editor as a
-            block-start addon. Notion / Linear / Claude pattern. */}
+            block-start addon. Notion / Linear / Claude pattern.
+            pb-0: text scrolling under the chip row should crop against the
+            chip itself, not against a strip of empty background below it. */}
         {contextChip && (
-          <InputGroupAddon align="block-start" className={cn(isCollapsed && "hidden sm:flex")}>
+          <InputGroupAddon
+            align="block-start"
+            className={cn("pb-0", isCollapsed && "hidden sm:flex")}
+          >
             {contextChip}
           </InputGroupAddon>
         )}
@@ -734,7 +739,7 @@ export const HindsightComposer: FC<{ features?: HindsightComposerFeatures }> = (
                 onClick={handleSend}
                 aria-label="Send"
               >
-                <Send className="size-3" />
+                <ArrowUp className="size-4" />
               </Button>
             )}
           </div>

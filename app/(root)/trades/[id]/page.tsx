@@ -55,6 +55,7 @@ import {
   Info,
 } from 'lucide-react';
 import { TradeActions } from '@/components/trades/TradeActions';
+import { ProposalActions } from '@/components/proposals/ProposalActions';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -74,6 +75,16 @@ function getStatusDisplay(
   hasPendingOrder: boolean,
   hasFilledBuy: boolean,
 ) {
+  // PENDING_APPROVAL is a real state, not a terminal one. Without this
+  // branch it fell through to the `return { label: 'Closed' }` at the
+  // bottom and every `!isOpen` gate below rendered the closed-trade UI.
+  if (positionStatus === 'PENDING_APPROVAL') {
+    return {
+      label: 'Pending approval',
+      dotClass: 'bg-amber-500 animate-pulse',
+      tooltip: 'The agent proposed this trade. Nothing has been sent to Alpaca — approve it to place the order.',
+    };
+  }
   if (positionStatus === 'OPEN') {
     if (!hasFilledBuy && hasPendingOrder) {
       return {
@@ -165,6 +176,11 @@ export default async function TradeDetailPage({
   if (!position || !accountId || position.accountId !== accountId) notFound();
 
   const orders = position.orders;
+  // The unapproved buy proposal, if this position is still awaiting a
+  // decision. Its Order sits at AWAITING_APPROVAL — NOT 'PENDING', which is
+  // "submitted to Alpaca, not yet filled". Conflating the two is what made
+  // `hasPendingOrder` miss proposals entirely.
+  const proposalOrder = orders.find((o) => o.status === 'AWAITING_APPROVAL') ?? null;
   const hasPendingOrder = orders.some((o) => o.status === 'PENDING');
   const hasFilledBuy = orders.some((o) => o.side === 'BUY' && o.status === 'FILLED');
   const openingBuy = orders.find((o) => o.side === 'BUY');
@@ -197,11 +213,16 @@ export default async function TradeDetailPage({
   const exchange = identity.exchange;
 
   const isOpen = position.status === 'OPEN';
+  // Three states, not two. `!isOpen` used to mean "closed", which swept
+  // PENDING_APPROVAL into every closed-trade branch on the page.
+  const isProposal = position.status === 'PENDING_APPROVAL';
+  const isClosed = !isOpen && !isProposal;
   const livePrice = stockQuote?.c ?? null;
   const closePrice = position.closePrice; // actual fill price per share at close
-  const currentPrice = isOpen && livePrice ? livePrice : (closePrice ?? position.avgCost);
+  const currentPrice = !isClosed && livePrice ? livePrice : (closePrice ?? position.avgCost);
 
-  // P&L
+  // P&L. A proposal has no P&L of any kind — no shares were ever bought, so
+  // realized is meaningless and unrealized is not yet real.
   const realizedPnl = position.realizedPnl ?? 0;
   const unrealizedDollars = isOpen
     ? position.direction === 'LONG'
@@ -287,7 +308,7 @@ export default async function TradeDetailPage({
                   </span>
                 )}
               </TabsTrigger>
-              {!isOpen && evalEvent && (
+              {isClosed && evalEvent && (
                 <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
               )}
             </TabsList>
@@ -319,7 +340,7 @@ export default async function TradeDetailPage({
                     </TooltipProvider>
                   )}
                 </div>
-                {!isOpen && closePrice != null && (
+                {isClosed && closePrice != null && (
                   <p className="text-xs text-muted-foreground tabular-nums">
                     current market price · trade exited at {fmtCur(closePrice)}
                   </p>
@@ -342,8 +363,8 @@ export default async function TradeDetailPage({
                       <span className="self-center">
                         <Tooltip>
                           <TooltipTrigger render={
-                            isOpen ? (
-                              hasPendingOrder ? (
+                            isOpen || isProposal ? (
+                              hasPendingOrder || isProposal ? (
                                 <span className="relative flex h-2.5 w-2.5 shrink-0 cursor-default">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75" />
                                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
@@ -359,35 +380,50 @@ export default async function TradeDetailPage({
                             )
                           } />
                           <TooltipContent side="bottom" className="text-xs tabular-nums">
-                            <div>Opened {fmtDateTime(position.openedAt)}</div>
+                            <div>
+                              {isProposal ? 'Proposed' : 'Opened'} {fmtDateTime(position.openedAt)}
+                            </div>
                             {openingBuy?.filledAt && <div>Buy filled {fmtDateTime(openingBuy.filledAt)}</div>}
+                            {isProposal && <div className="text-amber-500">Awaiting your approval</div>}
                             {hasPendingOrder && <div className="text-amber-500">Has pending order</div>}
                           </TooltipContent>
                         </Tooltip>
                       </span>
                     }
                     sentence={buildTradeSentence(
-                      isOpen
-                        ? hasFilledBuy
-                          ? {
-                              kind: 'holding',
-                              qty: trade.shares,
-                              entry: trade.entryPrice,
-                              current: livePrice ?? currentPrice,
-                            }
-                          : {
-                              kind: 'proposed-buy',
-                              qty: trade.shares,
-                              entry: trade.entryPrice,
-                            }
-                        : {
-                            kind: 'closed',
-                            qty: trade.shares,
+                      isProposal
+                        ? {
+                            kind: 'proposed-buy',
+                            qty: proposalOrder?.quantity ?? trade.shares,
                             entry: trade.entryPrice,
-                            closePrice,
-                          },
+                            buyVerb: position.direction === 'SHORT' ? 'Short' : 'Buy',
+                          }
+                        : isOpen
+                          ? hasFilledBuy
+                            ? {
+                                kind: 'holding',
+                                qty: trade.shares,
+                                entry: trade.entryPrice,
+                                current: livePrice ?? currentPrice,
+                              }
+                            : {
+                                kind: 'proposed-buy',
+                                qty: trade.shares,
+                                entry: trade.entryPrice,
+                              }
+                          : {
+                              kind: 'closed',
+                              qty: trade.shares,
+                              entry: trade.entryPrice,
+                              closePrice,
+                            },
                     )}
-                    gain={{ dollar: pnl, pct: pnlPct }}
+                    gain={isProposal ? null : { dollar: pnl, pct: pnlPct }}
+                    right={
+                      isProposal && proposalOrder ? (
+                        <ProposalActions orderId={proposalOrder.id} align="end" />
+                      ) : undefined
+                    }
                   />
                 </TooltipProvider>
                 <ThesisChart
@@ -498,7 +534,7 @@ export default async function TradeDetailPage({
             </TabsContent>
 
             {/* ── EVALUATION ──────────────────────────────────────── */}
-            {!isOpen && evalEvent && (
+            {isClosed && evalEvent && (
               <TabsContent value="evaluation" className="mt-4 max-w-3xl space-y-6">
                 {/* Post-mortem */}
                 <div className="space-y-2">
@@ -566,8 +602,48 @@ export default async function TradeDetailPage({
         {/* ════ SIDEBAR ════ */}
         <div className="hidden lg:block space-y-4">
 
+          {/* ── Pending proposal (nothing bought yet) ── */}
+          {isProposal && (
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500">
+                  Pending approval
+                </span>
+                {proposalOrder?.expiresAt && (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    Expires {fmtDateTime(proposalOrder.expiresAt)}
+                  </span>
+                )}
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                Proposed by the agent. No order has been sent to Alpaca and no
+                shares are held.
+              </p>
+
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                  <span className="text-muted-foreground">
+                    {position.direction === 'SHORT' ? 'Short' : 'Buy'} @ {fmtCur(trade.entryPrice)}
+                  </span>
+                  <span className="font-medium tabular-nums">
+                    {proposalOrder?.quantity ?? trade.shares} sh
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Est. cost</span>
+                  <span className="font-medium tabular-nums">{fmtCur(positionCost)}</span>
+                </div>
+              </div>
+
+              {proposalOrder && (
+                <ProposalActions orderId={proposalOrder.id} align="start" />
+              )}
+            </div>
+          )}
+
           {/* ── Post-Sale Result (closed trades only) ── */}
-          {!isOpen && (
+          {isClosed && (
             <div className={cn(
               'rounded-lg border p-4 space-y-3',
               isPos ? 'border-positive/20 bg-positive/5' : 'border-negative/20 bg-negative/5',
@@ -652,9 +728,9 @@ export default async function TradeDetailPage({
                 </div>
               )}
 
-              {/* Opened row */}
+              {/* Opened row — a proposal hasn't opened anything yet. */}
               <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                <span className="text-muted-foreground">Opened</span>
+                <span className="text-muted-foreground">{isProposal ? 'Proposed' : 'Opened'}</span>
                 <span className="font-medium tabular-nums text-xs">{fmtDateTime(position.openedAt)}</span>
               </div>
 
@@ -667,13 +743,22 @@ export default async function TradeDetailPage({
                       <TooltipTrigger render={
                         <span className={cn(
                           'font-medium tabular-nums text-xs cursor-default underline decoration-dotted decoration-muted-foreground/40 underline-offset-2',
-                          openingBuy.status === 'PENDING' && 'text-amber-500',
+                          (openingBuy.status === 'PENDING' || openingBuy.status === 'AWAITING_APPROVAL') && 'text-amber-500',
                         )}>
-                          {openingBuy.filledAt ? fmtDateTime(openingBuy.filledAt) : 'Pending fill'}
+                          {openingBuy.filledAt
+                            ? fmtDateTime(openingBuy.filledAt)
+                            : openingBuy.status === 'AWAITING_APPROVAL'
+                              ? 'Not ordered'
+                              : 'Pending fill'}
                         </span>
                       } />
                       <TooltipContent side="left" className="text-xs max-w-xs">
-                        <div>{openingBuy.filledAt ? `Filled ${fmtDateTime(openingBuy.filledAt)}` : `Ordered ${fmtDateTime(openingBuy.createdAt)}`}</div>
+                        <div>
+                          {openingBuy.filledAt
+                            ? `Filled ${fmtDateTime(openingBuy.filledAt)}`
+                            : `${openingBuy.status === 'AWAITING_APPROVAL' ? 'Proposed' : 'Ordered'} ${fmtDateTime(openingBuy.createdAt)}`}
+                        </div>
+                        {openingBuy.status === 'AWAITING_APPROVAL' && <div className="text-amber-500">Awaiting your approval · nothing sent to Alpaca</div>}
                         {openingBuy.status === 'PENDING' && <div className="text-amber-500">Awaiting fill · reconciles every 5 min</div>}
                         {openingBuy.alpacaOrderId && <div className="opacity-60 font-mono text-[10px]">Alpaca {openingBuy.alpacaOrderId}</div>}
                       </TooltipContent>

@@ -16,10 +16,11 @@ const inputGroupVariants = cva(
         // Default ShadCN treatment: 3px focus ring + invalid-state ring.
         default:
           "has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-3 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot][aria-invalid=true]]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40",
-        // Seamless treatment for chat composers: subtle border that only
-        // shifts color on focus — no chunky glow ring (Claude/GPT style).
+        // Seamless treatment for chat composers: subtle border that goes
+        // brand blue on focus. The 1px ring sits outside the 1px border so
+        // the active edge reads as double-weight — no chunky glow.
         plain:
-          "has-[[data-slot=input-group-control]:focus-visible]:border-ring",
+          "has-[[data-slot=input-group-control]:focus-visible]:border-brand-blue has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-brand-blue",
       },
     },
     defaultVariants: {
