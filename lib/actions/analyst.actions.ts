@@ -66,6 +66,8 @@ export interface AnalystConfig {
    * cron is independent — intraday reactivity fires every day regardless.
    */
   runDaysOfWeek: number[];
+  /** Entry style — see docs/plans/ENTRY_TRIGGER_SEMANTICS.md. */
+  entryTriggerMode: "BREAKOUT" | "DIP";
   /** Owner email opt-out for this analyst (new trades, fills, approval requests). */
   emailAlerts: boolean;
   createdAt: Date;
@@ -533,6 +535,8 @@ export async function getAnalystDetail(
     dailyLossLimit: config.dailyLossLimit,
     scheduleTime: config.scheduleTime,
     runDaysOfWeek: (config.runDaysOfWeek as number[] | undefined) ?? [1, 2, 3, 4, 5],
+    entryTriggerMode:
+      config.entryTriggerMode === "DIP" ? ("DIP" as const) : ("BREAKOUT" as const),
     emailAlerts: config.emailAlerts,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
@@ -1149,6 +1153,12 @@ type UpdatableField =
   // Per-analyst daily-run days (ISO weekdays 1=Mon..5=Fri). Read by the
   // morning-research cron gate (lib/inngest/functions/morning-research.ts).
   | "runDaysOfWeek"
+  // ── Entry style ──────────────────────────────────────────
+  // "BREAKOUT" (ENTER when price rises through entryPrice) | "DIP"
+  // (ENTER when price falls to it). Decides the direction of the ENTER
+  // rung the WATCHING/PROMOTED templates mint. See
+  // docs/plans/ENTRY_TRIGGER_SEMANTICS.md.
+  | "entryTriggerMode"
   // ── Notifications ────────────────────────────────────────
   // Read at runtime by every email path (daily-run-digest, proposal-pending,
   // place-trade open-email, closeTrade close-email, maybe-await-approval).

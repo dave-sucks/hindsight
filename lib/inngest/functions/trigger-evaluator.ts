@@ -221,11 +221,25 @@ function evaluateThesisTriggers<T extends Trigger>(args: {
   triggers: T[];
   ctx: EvaluationContext;
   predicateFilter?: (p: TriggerPredicate) => boolean;
-}): { fires: T[]; updatedTriggers: T[] } {
+  /** Per-thesis arming state — `Thesis.triggerState[id].side`. */
+  triggerState?: Record<string, { side?: "MATCH" | "NO_MATCH" }>;
+}): {
+  fires: T[];
+  updatedTriggers: T[];
+  /** Edge-triggered rungs whose side CHANGED — the caller persists these. */
+  sideUpdates: Array<{ id: string; side: "MATCH" | "NO_MATCH" }>;
+} {
   const fires: T[] = [];
+  const sideUpdates: Array<{ id: string; side: "MATCH" | "NO_MATCH" }> = [];
   const updatedTriggers = args.triggers.map((t) => {
     if (args.predicateFilter && !args.predicateFilter(t.predicate)) return t;
-    const result = shouldFire(t, args.ctx);
+    const priorSide = args.triggerState?.[t.id]?.side;
+    const result = shouldFire(t, args.ctx, priorSide);
+    // Record the transition even when nothing fires: crossing back below a
+    // level is what RE-ARMS the rung, and that produces no fire.
+    if (result.side != null && result.side !== priorSide) {
+      sideUpdates.push({ id: t.id, side: result.side });
+    }
     if (!result.fires) return t;
     fires.push(t);
     return {
@@ -233,7 +247,7 @@ function evaluateThesisTriggers<T extends Trigger>(args: {
       lastFiredAt: args.ctx.now.toISOString(),
     };
   });
-  return { fires, updatedTriggers };
+  return { fires, updatedTriggers, sideUpdates };
 }
 
 /**
@@ -258,11 +272,14 @@ async function stampLastFiredAt(args: {
   firedTriggerIds: string[];
   /** Rungs inherited from a level above — stamped into `triggerState`. */
   firedInheritedTriggerIds: string[];
+  /** Edge-triggered rungs whose side changed this tick. */
+  sideUpdates?: Array<{ id: string; side: "MATCH" | "NO_MATCH" }>;
   now: Date;
 }): Promise<void> {
   if (
     args.firedTriggerIds.length === 0 &&
-    args.firedInheritedTriggerIds.length === 0
+    args.firedInheritedTriggerIds.length === 0 &&
+    (args.sideUpdates?.length ?? 0) === 0
   ) {
     return;
   }
@@ -281,7 +298,15 @@ async function stampLastFiredAt(args: {
     );
 
     const state = parseTriggerState(row.triggerState);
-    for (const id of args.firedInheritedTriggerIds) state[id] = stampedAt;
+    for (const id of args.firedInheritedTriggerIds) {
+      state[id] = { ...state[id], firedAt: stampedAt };
+    }
+    // Edge-trigger arming. Persisted on every SIDE CHANGE, not only on a
+    // fire — a rung that crosses back below its level has to re-arm, and
+    // that transition produces no fire to hang the write on.
+    for (const { id, side } of args.sideUpdates ?? []) {
+      state[id] = { ...state[id], side };
+    }
 
     await tx.thesis.update({
       where: { id: args.thesisId },
@@ -448,19 +473,22 @@ export const triggerEvaluator = inngest.createFunction(
             now,
           };
 
-          const { fires } = evaluateThesisTriggers({
+          const { fires, sideUpdates } = evaluateThesisTriggers({
             thesisId: thesis.id,
             triggers,
             ctx,
             predicateFilter: isSignalSidePredicate,
+            triggerState: parseTriggerState(thesis.triggerState),
           });
 
-          if (fires.length === 0) continue;
+          if (fires.length === 0 && sideUpdates.length === 0) continue;
           await stampLastFiredAt({
             thesisId: thesis.id,
             ...splitFiresByLevel(fires),
+            sideUpdates,
             now,
           });
+          if (fires.length === 0) continue;
           for (const t of fires) {
             // REVIEW-batching: a REVIEW trigger means "re-evaluate this
             // thesis," not "act now" — it converts to a trade ~4-8% of the
@@ -668,19 +696,22 @@ export const triggerEvaluator = inngest.createFunction(
           now,
         };
 
-        const { fires } = evaluateThesisTriggers({
+        const { fires, sideUpdates } = evaluateThesisTriggers({
           thesisId: thesis.id,
           triggers,
           ctx,
           predicateFilter: isPriceSidePredicate,
+          triggerState: parseTriggerState(thesis.triggerState),
         });
 
-        if (fires.length === 0) continue;
+        if (fires.length === 0 && sideUpdates.length === 0) continue;
         await stampLastFiredAt({
           thesisId: thesis.id,
           ...splitFiresByLevel(fires),
+          sideUpdates,
           now,
         });
+        if (fires.length === 0) continue;
         for (const t of fires) {
           // REVIEW-batching (see the signal path for the full rationale).
           // Cron-path REVIEWs carry no signal/urgency, so every REVIEW defers

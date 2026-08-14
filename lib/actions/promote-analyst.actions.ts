@@ -14,6 +14,7 @@ import {
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { entryTriggerModeForAnalyst } from "@/lib/agent/triggers/load-levels";
 import { revalidatePath } from "next/cache";
 
 async function getServerUserId(): Promise<string> {
@@ -456,6 +457,7 @@ async function transitionThesisToPromoted(input: {
   // PR #324) + REVIEW only; no EXIT. Falls back to a conservative
   // strip of EXIT/TRIM/ADD/MOVE_STOP if horizon is missing (rare).
   const horizon = thesis.horizon as Horizon | null;
+  const entryMode = await entryTriggerModeForAnalyst(input.analystId);
   let promotedTriggers: Trigger[] | undefined;
   if (horizon) {
     const defaults = defaultTriggersForHorizon(
@@ -469,6 +471,10 @@ async function transitionThesisToPromoted(input: {
         direction: thesis.direction as "LONG" | "SHORT",
       },
       "PROMOTED",
+      // A promoted seat re-enters with REAL money, so its entry rung must
+      // follow the analyst's own entry style rather than the app default.
+      // Flagged in docs/plans/ENTRY_TRIGGER_SEMANTICS.md → "Don't break".
+      entryMode,
     );
     promotedTriggers = applyTriggerCooldownDefaults(defaults);
   }

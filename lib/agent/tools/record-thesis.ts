@@ -16,6 +16,7 @@ import {
   applyTriggerCooldownDefaults,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
+import { entryTriggerModeForAnalyst } from "@/lib/agent/triggers/load-levels";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -1156,6 +1157,10 @@ export const recordThesis = defineTool({
       // WATCHING/LONG-or-SHORT theses with no ENTER actions — matches the
       // upstream guard in manage_watchlist.ts and closes the last creation
       // hole for inert watching theses.
+      // The analyst's entry style (BREAKOUT / DIP) — decides which
+      // direction the WATCHING template's ENTER rung compares in. See
+      // docs/plans/ENTRY_TRIGGER_SEMANTICS.md.
+      const entryMode = await entryTriggerModeForAnalyst(ctx.analystId);
       const mergedTriggers: Trigger[] = (() => {
         // PASS theses are terminal — no triggers. Future re-encounter
         // mints a fresh directional thesis via parent_thesis_id.
@@ -1185,6 +1190,7 @@ export const recordThesis = defineTool({
             direction: args.direction,
           },
           effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
+          entryMode,
         );
         const merged = mergeTriggers(defaults, supplied);
         return applyTriggerCooldownDefaults(merged);

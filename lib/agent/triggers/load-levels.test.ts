@@ -98,10 +98,23 @@ describe("parseLevelTriggers — fail-open", () => {
 });
 
 describe("parseTriggerState", () => {
-  it("keeps string entries and drops everything else", () => {
+  it("lifts the legacy bare-string shape to { firedAt } and drops junk", () => {
     expect(
       parseTriggerState({ a: "2026-08-01T00:00:00.000Z", b: 42, c: null }),
-    ).toEqual({ a: "2026-08-01T00:00:00.000Z" });
+    ).toEqual({ a: { firedAt: "2026-08-01T00:00:00.000Z" } });
+  });
+
+  it("reads the object shape, keeping firedAt and side", () => {
+    expect(
+      parseTriggerState({
+        a: { firedAt: "2026-08-01T00:00:00.000Z", side: "MATCH" },
+        b: { side: "NO_MATCH" },
+        c: { side: "SIDEWAYS" },
+      }),
+    ).toEqual({
+      a: { firedAt: "2026-08-01T00:00:00.000Z", side: "MATCH" },
+      b: { side: "NO_MATCH" },
+    });
   });
 
   it("treats a non-object (or array) as empty", () => {

@@ -1301,8 +1301,8 @@ export const updateThesis = defineTool({
           const target = inheritedByBucket.get(triggerBucket(t));
           // Keep the LATER of the two — the inherited rung may already
           // have fired on its own since the copy was made.
-          if (target && (state[target.id] ?? "") < t.lastFiredAt) {
-            state[target.id] = t.lastFiredAt;
+          if (target && (state[target.id]?.firedAt ?? "") < t.lastFiredAt) {
+            state[target.id] = { ...state[target.id], firedAt: t.lastFiredAt };
           }
         }
         patch.triggerState = state as object;

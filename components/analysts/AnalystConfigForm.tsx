@@ -118,6 +118,10 @@ export type FormValues = {
   tradingEnvironment?: "PAPER" | "LIVE";
   realMaxPosition?: number;
 
+  // Entry style — how this analyst reads its own entryPrice on a watching
+  // thesis. See docs/plans/ENTRY_TRIGGER_SEMANTICS.md.
+  entryTriggerMode?: "BREAKOUT" | "DIP";
+
   // Schedule — ISO weekdays (1=Mon..5=Fri) the daily morning run executes on.
   // Empty = every weekday (the cron reads empty defensively as "all weekdays").
   runDaysOfWeek?: number[];
@@ -227,7 +231,42 @@ export function AnalystConfigForm({
         {analystId && (
           <TabsContent value="triggers" className="flex-1 min-h-0 mt-0">
             <ScrollArea className="h-full">
-              <div className="space-y-3 p-3">
+              <div className="space-y-4 p-3">
+                <div className="space-y-1">
+                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Entry style
+                  </span>
+                  <Select
+                    value={values.entryTriggerMode ?? "BREAKOUT"}
+                    onValueChange={(v) => {
+                      if (v === "BREAKOUT" || v === "DIP") {
+                        onChange("entryTriggerMode", v);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue>
+                        {values.entryTriggerMode === "DIP"
+                          ? "Buy the dip — enter when price falls to my level"
+                          : "Buy confirmation — enter when price breaks above my level"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BREAKOUT">
+                        Buy confirmation — enter when price breaks above my level
+                      </SelectItem>
+                      <SelectItem value="DIP">
+                        Buy the dip — enter when price falls to my level
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Decides which way a watching thesis&apos;s entry trigger
+                    compares against its entry price. Applies to new and
+                    re-generated entry rungs.
+                  </p>
+                </div>
+
                 <p className="text-xs text-muted-foreground">
                   Standing rules for every thesis this analyst covers. Anything
                   not set here falls through to your account rules and the app

@@ -49,6 +49,15 @@ export type ThesisState = "HELD" | "WATCHING" | "PROMOTED";
 
 export type ThesisDirection = "LONG" | "SHORT" | "PASS";
 
+/**
+ * How an analyst reads its own `entryPrice` — see `watchingEntryTrigger`.
+ * BREAKOUT is the app default so no existing seat changes behavior
+ * without an explicit opt-in.
+ */
+export type EntryTriggerMode = "BREAKOUT" | "DIP";
+
+export const DEFAULT_ENTRY_TRIGGER_MODE: EntryTriggerMode = "BREAKOUT";
+
 export interface ThesisShape {
   entryPrice?: number | null;
   targetPrice?: number | null;
@@ -545,23 +554,52 @@ function watchingEntryTrigger(
   thesis: ThesisShape,
   direction: ThesisDirection,
   cooldownDays: number,
+  mode: EntryTriggerMode = "BREAKOUT",
 ): Trigger | null {
   if (thesis.entryPrice == null) return null;
+
+  // `entryPrice` means "the price you'd buy at" (docs/plans/
+  // PRICE_LEVEL_SEMANTICS.md), and there are two legitimate readings of
+  // when that becomes actionable:
+  //
+  //   BREAKOUT — price rises THROUGH the level: confirmation. The historic
+  //              hardcoded behavior, and right for a momentum seat.
+  //   DIP      — price falls TO the level: your bid got hit. Right for an
+  //              accumulator, and the only reading under which a cheap
+  //              stock is ever actionable.
+  //
+  // Hardcoding BREAKOUT made a dip-buying analyst's ENTER rung fire only
+  // once the name cost MORE than it said it would pay — so it declined
+  // every fire, while eight names sat below their own stated buy price
+  // and could never produce an entry at all. See
+  // docs/plans/ENTRY_TRIGGER_SEMANTICS.md for the production evidence.
+  const dip = mode === "DIP";
   if (direction === "LONG") {
     return {
       id: createId(),
-      predicate: { kind: "PRICE_ABOVE", level: thesis.entryPrice },
+      predicate: {
+        kind: dip ? "PRICE_BELOW" : "PRICE_ABOVE",
+        level: thesis.entryPrice,
+      },
       action: "ENTER",
-      rationale: `Entry trigger — price broke above $${thesis.entryPrice}. Validate setup and consider INITIATE.`,
+      rationale: dip
+        ? `Entry trigger — price came back to $${thesis.entryPrice}, the level this thesis wanted to pay. Validate the thesis is intact (a company-specific break is not a discount) and consider INITIATE.`
+        : `Entry trigger — price broke above $${thesis.entryPrice}. Validate setup and consider INITIATE.`,
       cooldownDays,
     };
   }
   if (direction === "SHORT") {
+    // Mirrored: a dip-buyer's short waits for a rally INTO the level.
     return {
       id: createId(),
-      predicate: { kind: "PRICE_BELOW", level: thesis.entryPrice },
+      predicate: {
+        kind: dip ? "PRICE_ABOVE" : "PRICE_BELOW",
+        level: thesis.entryPrice,
+      },
       action: "ENTER",
-      rationale: `Short entry trigger — price broke below $${thesis.entryPrice}. Validate setup and consider INITIATE short.`,
+      rationale: dip
+        ? `Short entry trigger — price rallied to $${thesis.entryPrice}, the level this thesis wanted to short. Validate the thesis is intact and consider INITIATE short.`
+        : `Short entry trigger — price broke below $${thesis.entryPrice}. Validate setup and consider INITIATE short.`,
       cooldownDays,
     };
   }
@@ -579,7 +617,7 @@ function watchingEntryTrigger(
 // REVIEW_DATE_HIT predicate stays in types/evaluator for back-compat with
 // existing rows; new theses no longer get it.
 
-function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
+function watchingCatalystDefaults(thesis: ThesisShape, mode: EntryTriggerMode): Trigger[] {
   const out: Trigger[] = [];
   const direction = thesis.direction ?? "LONG";
 
@@ -627,7 +665,7 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
       cooldownDays: 7,
     });
   } else {
-    const entry = watchingEntryTrigger(thesis, direction, 1);
+    const entry = watchingEntryTrigger(thesis, direction, 1, mode);
     if (entry) out.push(entry);
   }
 
@@ -696,14 +734,14 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
   return out;
 }
 
-function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
+function watchingTradeDefaults(thesis: ThesisShape, mode: EntryTriggerMode): Trigger[] {
   const out: Trigger[] = [];
   const direction = thesis.direction ?? "LONG";
 
   // TRADE-horizon entries are tight by design — the agent set a specific
   // breakout level on a known short-term setup. Cooldown 1d so an
   // intraday cross fires once and tactical-run takes it from there.
-  const entry = watchingEntryTrigger(thesis, direction, 1);
+  const entry = watchingEntryTrigger(thesis, direction, 1, mode);
   if (entry) out.push(entry);
 
   // No support-REVIEW for TRADE: the setup IS the entry plan; if price
@@ -736,11 +774,11 @@ function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
   return out;
 }
 
-function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
+function watchingTargetDefaults(thesis: ThesisShape, mode: EntryTriggerMode): Trigger[] {
   const out: Trigger[] = [];
   const direction = thesis.direction ?? "LONG";
 
-  const entry = watchingEntryTrigger(thesis, direction, 1);
+  const entry = watchingEntryTrigger(thesis, direction, 1, mode);
   if (entry) out.push(entry);
 
   // Support-REVIEW for LONG: a pullback to the stop level is either
@@ -789,7 +827,7 @@ function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
   return out;
 }
 
-function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
+function watchingCompounderDefaults(thesis: ThesisShape, mode: EntryTriggerMode): Trigger[] {
   const out: Trigger[] = [];
   const direction = thesis.direction ?? "LONG";
 
@@ -797,7 +835,7 @@ function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
   // breakout level are noise on a multi-year hold. 7d cooldown means a
   // single fleeting cross doesn't spam tactical runs; if price holds
   // above the level over a week the cron will re-fire.
-  const entry = watchingEntryTrigger(thesis, direction, 7);
+  const entry = watchingEntryTrigger(thesis, direction, 7, mode);
   if (entry) out.push(entry);
 
   // No support-REVIEW. Compounder watches don't react to intra-month
@@ -872,8 +910,17 @@ export function defaultTriggersForHorizon(
   horizon: Horizon,
   thesis: ThesisShape,
   state: ThesisState = "HELD",
+  /**
+   * The owning analyst's entry style. Only affects WATCHING / PROMOTED
+   * templates (the ENTER rung); HELD templates have no entry trigger.
+   * Defaults to BREAKOUT so a caller that doesn't know the analyst keeps
+   * the historic behavior.
+   */
+  entryMode: EntryTriggerMode = DEFAULT_ENTRY_TRIGGER_MODE,
 ): Trigger[] {
-  return stampDefaultSource(defaultTriggersForHorizonInner(horizon, thesis, state));
+  return stampDefaultSource(
+    defaultTriggersForHorizonInner(horizon, thesis, state, entryMode),
+  );
 }
 
 /** source=DEFAULT on every rung a code template mints. */
@@ -885,6 +932,7 @@ function defaultTriggersForHorizonInner(
   horizon: Horizon,
   thesis: ThesisShape,
   state: ThesisState,
+  mode: EntryTriggerMode,
 ): Trigger[] {
   if (state === "WATCHING" || state === "PROMOTED") {
     // PROMOTED reuses the WATCHING template family: no EXIT (there's no
@@ -895,13 +943,13 @@ function defaultTriggersForHorizonInner(
     // PROMOTED branch is a straight delegation.
     switch (horizon) {
       case "CATALYST":
-        return watchingCatalystDefaults(thesis);
+        return watchingCatalystDefaults(thesis, mode);
       case "TRADE":
-        return watchingTradeDefaults(thesis);
+        return watchingTradeDefaults(thesis, mode);
       case "TARGET":
-        return watchingTargetDefaults(thesis);
+        return watchingTargetDefaults(thesis, mode);
       case "COMPOUNDER":
-        return watchingCompounderDefaults(thesis);
+        return watchingCompounderDefaults(thesis, mode);
     }
   }
   switch (horizon) {

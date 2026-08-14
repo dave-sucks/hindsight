@@ -75,5 +75,19 @@ export function triggerBucket(t: {
   predicate: TriggerPredicate;
   action: TriggerAction;
 }): string {
+  // An ENTER rung on an absolute price level is ONE intent — "the price
+  // at which I'd start this position" — whether it's expressed as a
+  // breakout (PRICE_ABOVE) or a dip (PRICE_BELOW). Collapsing the two
+  // into a single bucket is what makes the analyst's entry mode an
+  // override rather than an addition: without it, flipping a seat to
+  // buy-the-dip leaves the old PRICE_ABOVE rung in place and the thesis
+  // carries two contradictory ENTERs, one of which can never be right.
+  // Flagged in docs/plans/ENTRY_TRIGGER_SEMANTICS.md → "Don't break".
+  if (
+    t.action === "ENTER" &&
+    (t.predicate.kind === "PRICE_ABOVE" || t.predicate.kind === "PRICE_BELOW")
+  ) {
+    return "PRICE_LEVEL::ENTER";
+  }
   return `${predicateKey(t.predicate)}::${t.action}`;
 }

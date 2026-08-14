@@ -13,7 +13,13 @@
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "./schema";
 import { resolveLadder, type ResolvedTrigger } from "./levels";
-import { inheritableDefaultLadder, type Horizon, type ThesisState } from "./defaults";
+import {
+  inheritableDefaultLadder,
+  DEFAULT_ENTRY_TRIGGER_MODE,
+  type EntryTriggerMode,
+  type Horizon,
+  type ThesisState,
+} from "./defaults";
 import type { Trigger } from "./types";
 
 /** The two stored levels above a thesis, for one analyst. */
@@ -87,6 +93,23 @@ export async function loadLevelSources(
 }
 
 /**
+ * The owning analyst's entry style, for the WATCHING/PROMOTED templates.
+ * Unknown analyst (or an unrecognised stored value) falls back to the app
+ * default, so a bad row can never silently flip a seat's entry direction.
+ * See docs/plans/ENTRY_TRIGGER_SEMANTICS.md.
+ */
+export async function entryTriggerModeForAnalyst(
+  analystId: string | null | undefined,
+): Promise<EntryTriggerMode> {
+  if (!analystId) return DEFAULT_ENTRY_TRIGGER_MODE;
+  const row = await prisma.agentConfig.findUnique({
+    where: { id: analystId },
+    select: { entryTriggerMode: true },
+  });
+  return row?.entryTriggerMode === "DIP" ? "DIP" : DEFAULT_ENTRY_TRIGGER_MODE;
+}
+
+/**
  * The thesis-state axis the default templates key off. `HELD` is the only
  * state that carries position-scoped rungs (gain-from-entry, trail,
  * scale-ins) — see `inheritableDefaultLadder`.
@@ -136,23 +159,63 @@ export function resolveThesisLadder(
       horizonFor(thesis.horizon),
       thesisStateFor(thesis.status),
     ),
-    triggerState: parseTriggerState(thesis.triggerState),
+    // resolveLadder only wants the cooldown stamp; `side` is the
+    // evaluator's business.
+    triggerState: Object.fromEntries(
+      Object.entries(parseTriggerState(thesis.triggerState)).map(
+        ([id, e]) => [id, e.firedAt] as const,
+      ),
+    ),
   });
 }
 
 /**
- * `Thesis.triggerState` — `{ [triggerId]: ISO-8601 }`. Hand-validated
- * rather than Zod'd: it is a server-written map with no user input path,
- * and a malformed entry should cost that one rung its fire history, not
- * the whole ladder.
+ * Per-thesis, per-trigger bookkeeping held in `Thesis.triggerState`.
+ *
+ * Two things live here, both of which are per-THESIS facts about a rung
+ * rather than properties of the rung itself:
+ *
+ *   firedAt — cooldown stamp for an INHERITED rung. It can't live on the
+ *             rung because that rung is shared by every thesis under its
+ *             level (thesis-level rungs keep `lastFiredAt` inline).
+ *   side    — the last evaluated side of an edge-triggered predicate, so
+ *             "price crossed above $X" fires once instead of every tick
+ *             while it stays above. Kept here for EVERY level, including
+ *             thesis rungs: `update_thesis` replaces the triggers array
+ *             wholesale, and arming state must survive that.
+ */
+export interface TriggerStateEntry {
+  firedAt?: string;
+  side?: "MATCH" | "NO_MATCH";
+}
+
+/**
+ * Parse `Thesis.triggerState`. Hand-validated rather than Zod'd: it is a
+ * server-written map with no user input path, and a malformed entry
+ * should cost that one rung its history, not the whole ladder.
+ *
+ * Accepts the original bare-string shape (`{ [id]: ISO }`) written before
+ * `side` existed and lifts it to `{ firedAt }` — rows stamped between the
+ * cascade migration and this change parse correctly rather than silently
+ * losing their cooldown.
  */
 export function parseTriggerState(
   raw: unknown,
-): Record<string, string | undefined> {
+): Record<string, TriggerStateEntry> {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out: Record<string, string | undefined> = {};
+  const out: Record<string, TriggerStateEntry> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === "string") out[k] = v;
+    if (typeof v === "string") {
+      out[k] = { firedAt: v };
+      continue;
+    }
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const e = v as { firedAt?: unknown; side?: unknown };
+      const entry: TriggerStateEntry = {};
+      if (typeof e.firedAt === "string") entry.firedAt = e.firedAt;
+      if (e.side === "MATCH" || e.side === "NO_MATCH") entry.side = e.side;
+      if (entry.firedAt || entry.side) out[k] = entry;
+    }
   }
   return out;
 }

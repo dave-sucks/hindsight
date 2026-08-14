@@ -21,6 +21,8 @@ import {
   defaultTriggersForHorizon,
   mergeTriggers,
   standingProtectionTriggers,
+  mergeTriggers,
+  triggerBucket,
   type ThesisShape,
 } from "./defaults";
 import type { Trigger } from "./types";
@@ -403,5 +405,60 @@ describe("defaultTriggersForHorizon — standing protection minimums (Game Plan 
     // The other two buckets are untouched by the agent's rung — defaults fill.
     expect(findGain(merged, "DOWN")).toBeDefined();
     expect(findTrail(merged)).toBeDefined();
+  });
+});
+
+// ── Entry style (docs/plans/ENTRY_TRIGGER_SEMANTICS.md Fix 1) ──────────
+
+describe("watchingEntryTrigger — entry mode", () => {
+  const shape = { entryPrice: 262, targetPrice: 340, stopLoss: 210, direction: "LONG" as const };
+  const enterRung = (mode?: "BREAKOUT" | "DIP") =>
+    defaultTriggersForHorizon("COMPOUNDER", shape, "WATCHING", mode).find(
+      (t) => t.action === "ENTER",
+    );
+
+  it("defaults to BREAKOUT — existing seats are unchanged", () => {
+    expect(enterRung()?.predicate.kind).toBe("PRICE_ABOVE");
+    expect(enterRung("BREAKOUT")?.predicate.kind).toBe("PRICE_ABOVE");
+  });
+
+  it("DIP flips the comparison so a cheap name is reachable", () => {
+    // KLAC: $180 against a $262 entry. Under BREAKOUT the ENTER path is
+    // structurally unreachable; under DIP it is exactly the setup.
+    const rung = enterRung("DIP");
+    expect(rung?.predicate.kind).toBe("PRICE_BELOW");
+    expect((rung?.predicate as { level: number }).level).toBe(262);
+  });
+
+  it("mirrors for SHORT — a dip-buyer shorts a rally into the level", () => {
+    const short = { ...shape, direction: "SHORT" as const };
+    const dip = defaultTriggersForHorizon("TARGET", short, "WATCHING", "DIP").find(
+      (t) => t.action === "ENTER",
+    );
+    const breakout = defaultTriggersForHorizon("TARGET", short, "WATCHING").find(
+      (t) => t.action === "ENTER",
+    );
+    expect(dip?.predicate.kind).toBe("PRICE_ABOVE");
+    expect(breakout?.predicate.kind).toBe("PRICE_BELOW");
+  });
+
+  it("applies to PROMOTED re-entry too (that seat trades real money)", () => {
+    const rung = defaultTriggersForHorizon("TARGET", shape, "PROMOTED", "DIP").find(
+      (t) => t.action === "ENTER",
+    );
+    expect(rung?.predicate.kind).toBe("PRICE_BELOW");
+  });
+
+  it("a mode flip OVERRIDES the old entry rung rather than stacking one", () => {
+    // The dedup hazard from the doc's "Don't break": PRICE_ABOVE and
+    // PRICE_BELOW are different predicate kinds, so without collapsing the
+    // ENTER price bucket a flipped seat would carry two contradictory
+    // ENTERs, one of which can never be right.
+    const breakoutRung = enterRung("BREAKOUT")!;
+    const dipRung = enterRung("DIP")!;
+    expect(triggerBucket(breakoutRung)).toBe(triggerBucket(dipRung));
+
+    const merged = mergeTriggers([dipRung], [breakoutRung]);
+    expect(merged.filter((t) => t.action === "ENTER")).toHaveLength(1);
   });
 });

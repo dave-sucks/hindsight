@@ -569,6 +569,16 @@ model AgentConfig {
   // rung in the same bucket. Empty array = inherit from the account.
   // Resolution lives in lib/agent/triggers/levels.
   triggers               Json                 @default("[]")
+  // How this analyst reads its own `entryPrice` on a WATCHING thesis.
+  //   BREAKOUT — ENTER fires when price rises THROUGH the level
+  //              (confirmation). The app default; historic behavior.
+  //   DIP      — ENTER fires when price falls TO the level (your bid got
+  //              hit). Correct for an accumulator, and the only reading
+  //              under which a name trading BELOW its stated buy price
+  //              can ever produce an entry.
+  // See docs/plans/ENTRY_TRIGGER_SEMANTICS.md for why this was a bug as a
+  // hardcoded constant. Applies to PROMOTED re-entry too.
+  entryTriggerMode       String               @default("BREAKOUT")
   priceCheckFreq         String               @default("HOURLY")
   weekendMode            Boolean              @default(false)
   graduationWinRate      Float                @default(0.65)

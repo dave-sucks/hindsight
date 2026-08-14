@@ -737,7 +737,7 @@ describe("shouldFire", () => {
 
   it("returns reason='match' when predicate true and no cooldown set", () => {
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(baseTrigger, ctx)).toEqual({
+    expect(shouldFire(baseTrigger, ctx)).toMatchObject({
       fires: true,
       reason: "match",
     });
@@ -745,7 +745,7 @@ describe("shouldFire", () => {
 
   it("returns reason='no-match' when predicate false", () => {
     const ctx = makeCtx({ latestQuote: { price: 90, changePct: 0 } });
-    expect(shouldFire(baseTrigger, ctx)).toEqual({
+    expect(shouldFire(baseTrigger, ctx)).toMatchObject({
       fires: false,
       reason: "no-match",
     });
@@ -759,7 +759,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 86_400_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: false,
       reason: "cooldown",
     });
@@ -773,7 +773,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 10 * 86_400_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: true,
       reason: "match",
     });
@@ -788,7 +788,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: false,
       reason: "cooldown",
     });
@@ -805,7 +805,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: true,
       reason: "match",
     });
@@ -832,7 +832,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: false,
       reason: "cooldown",
     });
@@ -846,7 +846,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: false,
       reason: "cooldown",
     });
@@ -862,7 +862,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: false,
       reason: "cooldown",
     });
@@ -879,7 +879,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 2 * 86_400_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: true,
       reason: "match",
     });
@@ -896,9 +896,107 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: true,
       reason: "match",
     });
+  });
+});
+
+// ── Edge triggering (docs/plans/ENTRY_TRIGGER_SEMANTICS.md Fix 2) ──────
+//
+// PRICE_ABOVE/PRICE_BELOW are STATES, permanently true once crossed, so
+// firing on the state re-alerts every cooldown forever. PLTR sat 33%
+// above its $128.47 entry level and fired 27 tactical runs in 14 days,
+// each one declined. These pin "fire on the crossing, re-arm on the way
+// back."
+
+describe("shouldFire — edge-triggered price levels", () => {
+  const enterRung: Trigger = {
+    id: "enter-1",
+    predicate: { kind: "PRICE_ABOVE", level: 128.47 },
+    action: "ENTER",
+    rationale: "entry",
+    cooldownDays: 0,
+  };
+  const at = (price: number): EvaluationContext => ({
+    latestQuote: { price, changePct: 0 },
+    thesis: { createdAt: new Date("2026-01-01"), status: "WATCHING" },
+    now: new Date("2026-08-12T14:00:00Z"),
+  });
+
+  it("fires on the first evaluation that matches (no prior side recorded)", () => {
+    expect(shouldFire(enterRung, at(171)).fires).toBe(true);
+  });
+
+  it("does NOT re-fire while it stays on the matching side — the PLTR bug", () => {
+    const first = shouldFire(enterRung, at(171));
+    expect(first.fires).toBe(true);
+    expect(first.side).toBe("MATCH");
+
+    const second = shouldFire(enterRung, at(175), first.side);
+    expect(second.fires).toBe(false);
+    expect(second.reason).toBe("latched");
+  });
+
+  it("re-arms after price crosses back, then fires again on the next crossing", () => {
+    const above = shouldFire(enterRung, at(171));
+    expect(above.side).toBe("MATCH");
+
+    const backBelow = shouldFire(enterRung, at(120), above.side);
+    expect(backBelow.fires).toBe(false);
+    expect(backBelow.side).toBe("NO_MATCH");
+
+    const crossesAgain = shouldFire(enterRung, at(130), backBelow.side);
+    expect(crossesAgain.fires).toBe(true);
+  });
+
+  it("still respects cooldown on a genuine crossing", () => {
+    const cooled: Trigger = {
+      ...enterRung,
+      cooldownDays: 7,
+      lastFiredAt: new Date("2026-08-12T10:00:00Z").toISOString(),
+    };
+    expect(shouldFire(cooled, at(171), "NO_MATCH").reason).toBe("cooldown");
+  });
+
+  it("leaves the gain checkpoint latching on purpose", () => {
+    // GAIN_FROM_ENTRY is deliberately NOT edge-triggered: the acting agent
+    // is expected to re-arm it at the next milestone, and the 7d cooldown
+    // is the backstop when it doesn't. Edge-triggering would drop that.
+    const checkpoint: Trigger = {
+      id: "gain-1",
+      predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" },
+      action: "REVIEW",
+      rationale: "checkpoint",
+    };
+    const ctx: EvaluationContext = {
+      latestQuote: { price: 120, changePct: 0 },
+      position: { avgCost: 100, peakPrice: 120 },
+      thesis: { createdAt: new Date("2026-01-01"), status: "HOLDING" },
+      now: new Date("2026-08-12T14:00:00Z"),
+    };
+    const r = shouldFire(checkpoint, ctx);
+    expect(r.fires).toBe(true);
+    expect(r.side).toBeUndefined();
+    // Passing a prior side must not latch a non-edge predicate.
+    expect(shouldFire(checkpoint, ctx, "MATCH").fires).toBe(true);
+  });
+
+  it("leaves the trailing stop re-firing while in breach", () => {
+    const trail: Trigger = {
+      id: "trail-1",
+      predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 },
+      action: "EXIT",
+      rationale: "trail",
+      cooldownDays: 0,
+    };
+    const ctx: EvaluationContext = {
+      latestQuote: { price: 90, changePct: 0 },
+      position: { avgCost: 80, peakPrice: 110 },
+      thesis: { createdAt: new Date("2026-01-01"), status: "HOLDING" },
+      now: new Date("2026-08-12T14:00:00Z"),
+    };
+    expect(shouldFire(trail, ctx, "MATCH").fires).toBe(true);
   });
 });
