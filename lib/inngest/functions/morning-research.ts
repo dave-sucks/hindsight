@@ -252,6 +252,22 @@ export const morningResearch = inngest.createFunction(
         // UI-triggered runs. Without this, toolStats is null on every cron row
         // and we cannot tell from the DB what the agent actually called.
         const toolStats: Record<string, { count: number; totalLatencyMs: number; errors: number }> = {};
+        // Token accounting (2026-08-13 cost fix). Per-step usage was logged
+        // to console and thrown away while the fleet quietly burned ~1M
+        // tokens per analyst per morning. Accumulated across the main loop
+        // AND the retry pass, persisted into parameters.toolStats so cost
+        // is a queryable metric per run. cachedInput tells us whether
+        // OpenAI's automatic prompt caching is actually hitting.
+        const tokenUsage = { input: 0, cachedInput: 0, output: 0, total: 0, requests: 0 };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const trackUsage = (usage: any) => {
+          if (!usage) return;
+          tokenUsage.input += usage.inputTokens ?? 0;
+          tokenUsage.cachedInput += usage.cachedInputTokens ?? 0;
+          tokenUsage.output += usage.outputTokens ?? 0;
+          tokenUsage.total += usage.totalTokens ?? 0;
+          tokenUsage.requests += 1;
+        };
         const failedToolCalls: Array<{ toolName: string; error: string; at: string }> = [];
         let lastStepTimeMs = t0;
 
@@ -291,6 +307,7 @@ export const morningResearch = inngest.createFunction(
               (MODES["research-run"].maxDuration - 30) * 1000,
             ),
             onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, text: stepText, finishReason, usage }) {
+              trackUsage(usage);
               const now = Date.now();
               const elapsed = now - t0;
               const stepLatencyMs = now - lastStepTimeMs;
@@ -394,21 +411,74 @@ export const morningResearch = inngest.createFunction(
           const researchedCount = stockDataTickers.size;
           const processViolation =
             researchedCount > 0 && preRetryThesisCount < researchedCount;
-          // Coverage violation: every thesis in runInput.activeTheses (now
-          // ACTIVE + WATCHING) was explicitly shown to the agent in the
-          // prompt's Live Theses table. Step 2's contract requires one tool
-          // call per thesis (typically update_thesis with empty patch →
-          // REVIEWED row). If the agent ends without that coverage, we retry
-          // with the same nudge as the process-violation path. Without this
-          // gate, an agent that ends Step 1 with narration like "all theses
-          // look fine, nothing changed" produces 0 audit rows and the run
-          // looks empty even though it should have N REVIEWED rows. Pre-fix
-          // the gate scoped only to ACTIVE; an all-watchlist analyst had
-          // expectedCoverage=0 and the gate never fired. Captured 2026-05-01
-          // EVT and 2026-05-04 Earnings Drift Trader failure modes.
-          const expectedCoverage = runInput.activeTheses?.length ?? 0;
+          // Coverage violation (2026-08-13 fix): the expectation is the
+          // ACTIONABLE set, not the whole book. The pre-fix gate expected a
+          // touch on EVERY active thesis — stale V1 "walk everything" logic
+          // that survived into the trigger-gated V2 design, so a healthy
+          // needsAction-driven run (e.g. 3 of 21 theses actionable, 3
+          // touched) fired the retry EVERY morning. Worse, the seeded retry
+          // always crashes on the ModelMessage schema and falls back to a
+          // historyless mini-run that re-loads the whole book, burns ~25%
+          // of the run's tokens, and accomplishes nothing ("theses 3 → 0"
+          // in the logs — see docs/plans/AGENT_PERF_COST_FIX.md).
+          //
+          // The actionable set mirrors what get_theses surfaces as
+          // needsAction, approximated from runInput (price-dependent kinds
+          // like UNPROTECTED_GAIN / RUNNING_WINNER can't be recomputed here
+          // cheaply — undercounting is fine for a gross-under-coverage
+          // safety net):
+          //   • triggers fired since last run + matching right now
+          //   • priority reviews (near target/stop alerts)
+          //   • PROMOTED rows (must resolve this run)
+          //   • review-due rows (nextReviewAt in the past)
+          //   • unresearched seeds (direction=null → first-research due)
+          const nowMs = Date.now();
+          const actionableThesisIds = new Set<string>();
+          for (const f of runInput.triggersFiredSinceLastRun ?? []) {
+            actionableThesisIds.add(f.thesisId);
+          }
+          for (const m of runInput.triggersMatchingNow ?? []) {
+            actionableThesisIds.add(m.thesisId);
+          }
+          for (const t of runInput.activeTheses ?? []) {
+            const reviewDue =
+              t.nextReviewAt != null && new Date(t.nextReviewAt).getTime() <= nowMs;
+            if (t.status === "PROMOTED" || reviewDue || t.direction == null) {
+              actionableThesisIds.add(t.id);
+            }
+          }
+          // priorityReviews carry position ids, not thesis ids — map via
+          // ticker against the active book.
+          for (const p of runInput.priorityReviews ?? []) {
+            const match = (runInput.activeTheses ?? []).find(
+              (t) => t.ticker === p.symbol,
+            );
+            if (match) actionableThesisIds.add(match.id);
+          }
+          const expectedCoverage = actionableThesisIds.size;
+          // ZERO-TOUCH only (review finding #1). The cron-side actionable
+          // set is an approximation from runInput streams the agent never
+          // sees — it over-counts in ordinary states (fire already answered
+          // by a tactical run, fire on a since-RETIRED thesis, ENTER
+          // suppressed by a pending buy proposal, near-stop priorityReviews
+          // with no needsAction, seeds whose review was legitimately
+          // bumped). A count-vs-count comparison would re-trigger the
+          // daily phantom retry this PR removes. So the gate only fires on
+          // the shape it exists for: work signal present, agent touched
+          // NOTHING (the 2026-05-01 EVT / 05-04 Earnings Drift failure).
+          // Per-thesis closeout obligations are complete_run's warn-gate's
+          // job (Layer 1), not this blunt net's.
           const coverageViolation =
-            expectedCoverage > 0 && preRetryThesisCount < expectedCoverage;
+            expectedCoverage > 0 && preRetryThesisCount === 0;
+          if (
+            expectedCoverage > 0 &&
+            preRetryThesisCount > 0 &&
+            preRetryThesisCount < expectedCoverage
+          ) {
+            console.warn(
+              `[morning-research] coverage note: ${config.name} touched ${preRetryThesisCount}/${expectedCoverage} estimated-actionable theses — not retrying (estimate over-counts answered/suppressed fires); complete_run's warn-gate owns per-thesis closeout.`,
+            );
+          }
 
           // Premature-exit violation: agent loaded data tools (read_signals
           // / get_portfolio_context / get_theses) and stopped without
@@ -492,7 +562,7 @@ export const morningResearch = inngest.createFunction(
 
           if (shouldRetry) {
             console.warn(
-              `[morning-research] 🔁 ${config.name} researched ${researchedCount} tickers, expected coverage ${expectedCoverage} active theses, only ${preRetryThesisCount} touched, action tools=${actionToolCount}/${totalToolCallsSoFar} — attempting retry (process=${processViolation}, coverage=${coverageViolation}, premature=${prematureExitViolation})`,
+              `[morning-research] 🔁 ${config.name} researched ${researchedCount} tickers, expected coverage ${expectedCoverage} ACTIONABLE theses (fired/matching/promoted/review-due/seeds), only ${preRetryThesisCount} touched, action tools=${actionToolCount}/${totalToolCallsSoFar} — attempting retry (process=${processViolation}, coverage=${coverageViolation}, premature=${prematureExitViolation})`,
             );
             const nudge = prematureExitViolation
               ? // The agent loaded data and stopped without acting. Tell it
@@ -532,7 +602,8 @@ export const morningResearch = inngest.createFunction(
                 // of the main run's maxDuration. gpt-5.5 at ~13s/call still fits
                 // 9 calls in 120s, plenty for a focused finish-the-summary pass.
                 abortSignal: AbortSignal.timeout(120_000),
-                onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, finishReason }) {
+                onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, finishReason, usage }) {
+                  trackUsage(usage);
                   const now = Date.now();
                   const stepLatencyMs = now - lastStepTimeMs;
                   lastStepTimeMs = now;
@@ -771,6 +842,14 @@ export const morningResearch = inngest.createFunction(
                     durationMs: elapsed,
                     byTool: toolStats,
                     failedToolCalls,
+                  },
+                  // Cost accounting — model + summed usage across main loop
+                  // and retry pass. cachedInput / input = the prompt-cache
+                  // hit rate; if it stays ~0, every step re-bills the full
+                  // growing context at list price.
+                  tokenUsage: {
+                    ...tokenUsage,
+                    model: MODES["research-run"].model,
                   },
                 } as object,
               },

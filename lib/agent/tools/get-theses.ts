@@ -114,6 +114,12 @@ const schema = z.object({
     .max(50)
     .optional()
     .describe("Max theses to return. Default 25, hard cap 50."),
+  detail: z
+    .enum(["actionable", "book"])
+    .optional()
+    .describe(
+      "Row weight. \"actionable\" returns FULL rows (narrative excerpts, triggers, resolved envelope) only for theses with a non-null needsAction or status=PROMOTED; every quiet row comes back as a one-line index entry in `quiet_theses` (ticker, status, prices, next review, core belief). \"book\" returns full rows for everything. Default: \"actionable\" on the Daily Run's unfiltered read (the trigger system already decided what needs work today — 2026-08-13 cost fix: full-book reads were ~4k tokens/thesis × every step), \"book\" everywhere else and whenever you filter by ticker/id (drill-down is always full).",
+    ),
 });
 
 /** A principal review decision surfaced to the agent (P1-29 — the learning loop). */
@@ -183,7 +189,7 @@ function classifyPrincipalDirective(
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
+    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; quiet rows come back as one-line index entries in `quiet_theses` (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
   schema,
   ui: "thesis-card" as const,
 
@@ -217,6 +223,43 @@ export const getTheses = defineTool({
     );
     const limit = Math.min(args.limit ?? 25, 50);
     const histLimit = Math.min(args.history_limit ?? 5, 50);
+
+    // ── Row weight (2026-08-13 morning-cost fix) ────────────────────────
+    // The trigger-gated daily-run design (THESIS_GAME_PLAN / MORNING_RUN_V2)
+    // says only fired/due theses get reviewed — but this tool was shipping
+    // the FULL book (narrative excerpts + triggers + resolved envelope,
+    // ~4k tokens/thesis) on the morning run's opening read, and that
+    // payload rode in the model's context for every subsequent step.
+    // Measured 2026-08-13: 21 theses → ~91k tokens in one tool result →
+    // ~820k of a 1.03M-token run. Under "actionable" detail, quiet rows
+    // (needsAction=null, non-PROMOTED) collapse to one-line index entries.
+    // Any explicit scope (ticker/id/status/horizon filter, history or
+    // research includes) is a deliberate drill-down and stays full-weight,
+    // as does every non-MORNING_PLAN caller.
+    // A ticker/id-targeted read is ALWAYS a full-detail drill-down, even if
+    // the caller (or a model copying its earlier args) also passes
+    // detail:"actionable" — otherwise the drill-down the prompt recommends
+    // could never reach the full row (review finding #4).
+    const explicitTarget = !!(
+      (args.tickers && args.tickers.length > 0) ||
+      (args.ids && args.ids.length > 0)
+    );
+    const explicitScope =
+      explicitTarget ||
+      !!(
+        (args.status && args.status.length > 0) ||
+        (args.horizon && args.horizon.length > 0) ||
+        args.watching_review_due_only ||
+        args.include_history ||
+        args.include_research
+      );
+    const detailMode: "actionable" | "book" = explicitTarget
+      ? "book"
+      : args.detail ??
+        (ctx.runMode === "MORNING_PLAN" && !explicitScope ? "actionable" : "book");
+    // Set when the live-quote fetch throws — forces full-book detail so a
+    // data outage can't hide actionable rows behind the quiet split.
+    let priceFetchFailed = false;
 
     // Scope by analyst when present (the right thing for normal calls);
     // fall back to userId scope for any builder/editor or system call
@@ -601,6 +644,13 @@ export const getTheses = defineTool({
       try {
         priceByTicker = await getLatestPrices(uniqueTickers, ctx.alpacaCreds);
       } catch (err) {
+        // Review finding #3: when quotes are down, every price-dependent
+        // needsAction kind (TRIGGER_MATCHING_NOW / UNPROTECTED_GAIN /
+        // RUNNING_WINNER) degrades to null — under actionable detail that
+        // would silently collapse the whole winner book to quiet index rows
+        // on exactly the mornings data is flaky. Fail OPEN: degraded data
+        // forces full-book detail (see isFullDetail below).
+        priceFetchFailed = true;
         console.warn(
           "[get_theses] live quote fetch failed; matching-now skipped:",
           err,
@@ -746,7 +796,62 @@ export const getTheses = defineTool({
       );
     }
 
-    const enriched = theses.map((t) => {
+    // Actionable-detail split: full rows for work-list theses; one-line
+    // index entries for the quiet rest. "book" mode keeps everything full.
+    // Full-row criteria (review findings #2/#3):
+    //   • needsAction non-null — the trigger system's work list
+    //   • status PROMOTED — must be resolved this run
+    //   • resolved.actionability ENTER_NOW / STALE_PAST_CATALYST /
+    //     PROMOTED_DECIDE_TODAY — actionable shapes that carry NO
+    //     needsAction flag (the writer's "buy at market" shape is a
+    //     WATCHING row with no ENTER trigger and price ≈ entry; hiding it
+    //     would strand an intended entry indefinitely)
+    //   • priceFetchFailed — fail open; degraded data must not hide winners
+    // ACTIVE_HOLD deliberately stays quiet: it's the healthy-holding
+    // default, and its work signals (UNPROTECTED_GAIN / RUNNING_WINNER /
+    // trigger fires) all arrive via needsAction.
+    const ACTIONABLE_RESOLVED = new Set([
+      "ENTER_NOW",
+      "STALE_PAST_CATALYST",
+      "PROMOTED_DECIDE_TODAY",
+    ]);
+    const isFullDetail = (t: (typeof theses)[number]): boolean =>
+      detailMode === "book" ||
+      priceFetchFailed ||
+      t.status === "PROMOTED" ||
+      (needsActionByThesisId.get(t.id) ?? null) !== null ||
+      ACTIONABLE_RESOLVED.has(resolvedByThesisId.get(t.id)?.actionability ?? "");
+
+    const fullTheses = theses.filter((t) => isFullDetail(t));
+    const quietTheses = theses.filter((t) => !isFullDetail(t));
+
+    // Compact index row — the roster line for a thesis nothing fired on.
+    // Enough to reason about exposure and to decide whether to drill down
+    // (get_theses(tickers: ["X"]) returns the full row), nothing more.
+    const quietRows = quietTheses.map((t) => ({
+      id: t.id,
+      ticker: t.ticker,
+      status: t.status,
+      direction: t.direction,
+      horizon: t.horizon,
+      conviction: t.conviction ?? null,
+      composite: getThesisComposite(t),
+      coreBelief: t.coreBelief,
+      entryPrice: t.entryPrice,
+      targetPrice: t.targetPrice,
+      stopLoss: t.stopLoss,
+      nextReviewAt: t.nextReviewAt,
+      catalystDate: t.catalystDate,
+      triggerCount: Array.isArray(t.triggers) ? (t.triggers as unknown[]).length : 0,
+      researchAge: classifyResearchAge(
+        t.researchUpdatedAt,
+        t.horizon as Horizon | null,
+      ),
+      resolvedActionability: resolvedByThesisId.get(t.id)?.actionability ?? null,
+      needsAction: null,
+    }));
+
+    const enriched = fullTheses.map((t) => {
       const triggerCount = Array.isArray(t.triggers)
         ? (t.triggers as unknown[]).length
         : 0;
@@ -832,29 +937,46 @@ export const getTheses = defineTool({
       };
     });
 
-    const activeCount = enriched.filter(
+    const activeCount = theses.filter(
       (t) => t.status === "HOLDING",
     ).length;
-    const watchingCount = enriched.filter(
+    const watchingCount = theses.filter(
       (t) => t.status === "WATCHING",
     ).length;
-    const promotedCount = enriched.filter(
+    const promotedCount = theses.filter(
       (t) => t.status === "PROMOTED",
     ).length;
     const summary =
-      enriched.length === 0
+      theses.length === 0
         ? "No theses match those filters."
-        : `${enriched.length} thes${enriched.length === 1 ? "is" : "es"} (${activeCount} active, ${watchingCount} watching${promotedCount > 0 ? `, ${promotedCount} promoted` : ""}).`;
+        : `${theses.length} thes${theses.length === 1 ? "is" : "es"} (${activeCount} active, ${watchingCount} watching${promotedCount > 0 ? `, ${promotedCount} promoted` : ""})${
+            quietRows.length > 0
+              ? ` — ${enriched.length} actionable in full, ${quietRows.length} quiet as index rows`
+              : ""
+          }.`;
 
     return {
       summary,
       data: {
-        count: enriched.length,
+        count: theses.length,
         active: activeCount,
         watching: watchingCount,
+        // Full rows: the work list (needsAction non-null / PROMOTED), or
+        // the whole book under detail="book".
         theses: enriched,
+        // One-line roster entries for quiet rows (actionable mode only —
+        // empty array under "book"). Drill down on any of them with
+        // get_theses(tickers: ["X"]).
+        quiet_theses: quietRows,
+        ...(quietRows.length > 0
+          ? {
+              note:
+                `${quietRows.length} quiet thes${quietRows.length === 1 ? "is" : "es"} returned as index rows (nothing fired, no review due — the trigger system already evaluated them). ` +
+                `They need no touch this run. To read one in full: get_theses(tickers: ["<TICKER>"]).`,
+            }
+          : {}),
         // ThesisCardData[] for ThesisCardRenderer — drives the
-        // "Read theses" carousel in the chat.
+        // "Read theses" carousel in the chat (full-detail rows only).
         cards,
       },
       sources: [],
