@@ -431,7 +431,7 @@ export function buildActionSegments(summary: RunSummary): ActionSegment[] {
       // bucketed into updated. Don't over-engineer the detection; the
       // status field on the run row drives the verb:
       //   COMPLETE  → "Wrote thesis on $X" / "Refreshed thesis on $X"
-      //   RUNNING   → "Researching $X" (~60-120s)
+      //   RUNNING   → "Researching $X" (~3-4 min)
       //   anything else → "Thesis research on $X"
       // status is on the parent caller, not on RunSummary directly —
       // we infer from the action buckets: any action means COMPLETE,
@@ -459,7 +459,7 @@ export function buildActionSegments(summary: RunSummary): ActionSegment[] {
         {
           color: "muted",
           partial: false,
-          text: `Researching $${ticker} (deep research, ~60-120s)`,
+          text: `Researching $${ticker} (deep research, ~3-4 min)`,
         },
       ];
     }

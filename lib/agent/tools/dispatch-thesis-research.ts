@@ -25,9 +25,9 @@ export const dispatchThesisResearch = defineTool({
     "ticker. Use this whenever the user (or your orchestration logic) wants a fresh, " +
     "multi-section equity-research note — it spawns a focused child agent that pulls the " +
     "structured data, calls the deep-research model, and persists the thesis. Returns " +
-    "immediately with a child run ID; the research itself takes ~60-120s and runs " +
-    "asynchronously in an Inngest function. The user can watch the child run stream live " +
-    "at /runs/<childRunId>.",
+    "immediately with a child run ID; the research itself typically takes ~3-4 minutes and " +
+    "runs asynchronously in an Inngest function. The user can watch the child run stream " +
+    "live at /runs/<childRunId>.",
   schema: z.object({
     ticker: z.string().describe("Stock ticker symbol, e.g. NVDA"),
     analyst_id: z
@@ -392,7 +392,11 @@ export const dispatchThesisResearch = defineTool({
         ticker: T,
         mode: args.mode,
         analystName: analyst.name,
-        estimatedDurationMs: 90_000,
+        // V2 writer typical wall time (~200-250s observed target; see
+        // docs/plans/THESIS_WRITER_V2.md). The old 90_000 was copied from
+        // the V1 synthesis sub-call's budget and was fiction for the
+        // pipeline as a whole.
+        estimatedDurationMs: 240_000,
         items: [
           {
             kind: "ticker" as const,
@@ -403,7 +407,7 @@ export const dispatchThesisResearch = defineTool({
           {
             kind: "generic" as const,
             text:
-              `Watch progress at /runs/${childRun.id}. ETA ~60-120s. ` +
+              `Watch progress at /runs/${childRun.id}. ETA ~3-4 min. ` +
               `Result lands as a Thesis with researchData + researchSections populated.`,
           },
         ],
