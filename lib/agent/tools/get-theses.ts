@@ -236,18 +236,30 @@ export const getTheses = defineTool({
     // Any explicit scope (ticker/id/status/horizon filter, history or
     // research includes) is a deliberate drill-down and stays full-weight,
     // as does every non-MORNING_PLAN caller.
-    const explicitScope = !!(
+    // A ticker/id-targeted read is ALWAYS a full-detail drill-down, even if
+    // the caller (or a model copying its earlier args) also passes
+    // detail:"actionable" — otherwise the drill-down the prompt recommends
+    // could never reach the full row (review finding #4).
+    const explicitTarget = !!(
       (args.tickers && args.tickers.length > 0) ||
-      (args.ids && args.ids.length > 0) ||
-      (args.status && args.status.length > 0) ||
-      (args.horizon && args.horizon.length > 0) ||
-      args.watching_review_due_only ||
-      args.include_history ||
-      args.include_research
+      (args.ids && args.ids.length > 0)
     );
-    const detailMode: "actionable" | "book" =
-      args.detail ??
-      (ctx.runMode === "MORNING_PLAN" && !explicitScope ? "actionable" : "book");
+    const explicitScope =
+      explicitTarget ||
+      !!(
+        (args.status && args.status.length > 0) ||
+        (args.horizon && args.horizon.length > 0) ||
+        args.watching_review_due_only ||
+        args.include_history ||
+        args.include_research
+      );
+    const detailMode: "actionable" | "book" = explicitTarget
+      ? "book"
+      : args.detail ??
+        (ctx.runMode === "MORNING_PLAN" && !explicitScope ? "actionable" : "book");
+    // Set when the live-quote fetch throws — forces full-book detail so a
+    // data outage can't hide actionable rows behind the quiet split.
+    let priceFetchFailed = false;
 
     // Scope by analyst when present (the right thing for normal calls);
     // fall back to userId scope for any builder/editor or system call
@@ -632,6 +644,13 @@ export const getTheses = defineTool({
       try {
         priceByTicker = await getLatestPrices(uniqueTickers, ctx.alpacaCreds);
       } catch (err) {
+        // Review finding #3: when quotes are down, every price-dependent
+        // needsAction kind (TRIGGER_MATCHING_NOW / UNPROTECTED_GAIN /
+        // RUNNING_WINNER) degrades to null — under actionable detail that
+        // would silently collapse the whole winner book to quiet index rows
+        // on exactly the mornings data is flaky. Fail OPEN: degraded data
+        // forces full-book detail (see isFullDetail below).
+        priceFetchFailed = true;
         console.warn(
           "[get_theses] live quote fetch failed; matching-now skipped:",
           err,
@@ -777,13 +796,31 @@ export const getTheses = defineTool({
       );
     }
 
-    // Actionable-detail split: full rows for work-list theses (needsAction
-    // non-null, or PROMOTED which must be resolved this run); one-line
+    // Actionable-detail split: full rows for work-list theses; one-line
     // index entries for the quiet rest. "book" mode keeps everything full.
+    // Full-row criteria (review findings #2/#3):
+    //   • needsAction non-null — the trigger system's work list
+    //   • status PROMOTED — must be resolved this run
+    //   • resolved.actionability ENTER_NOW / STALE_PAST_CATALYST /
+    //     PROMOTED_DECIDE_TODAY — actionable shapes that carry NO
+    //     needsAction flag (the writer's "buy at market" shape is a
+    //     WATCHING row with no ENTER trigger and price ≈ entry; hiding it
+    //     would strand an intended entry indefinitely)
+    //   • priceFetchFailed — fail open; degraded data must not hide winners
+    // ACTIVE_HOLD deliberately stays quiet: it's the healthy-holding
+    // default, and its work signals (UNPROTECTED_GAIN / RUNNING_WINNER /
+    // trigger fires) all arrive via needsAction.
+    const ACTIONABLE_RESOLVED = new Set([
+      "ENTER_NOW",
+      "STALE_PAST_CATALYST",
+      "PROMOTED_DECIDE_TODAY",
+    ]);
     const isFullDetail = (t: (typeof theses)[number]): boolean =>
       detailMode === "book" ||
+      priceFetchFailed ||
       t.status === "PROMOTED" ||
-      (needsActionByThesisId.get(t.id) ?? null) !== null;
+      (needsActionByThesisId.get(t.id) ?? null) !== null ||
+      ACTIONABLE_RESOLVED.has(resolvedByThesisId.get(t.id)?.actionability ?? "");
 
     const fullTheses = theses.filter((t) => isFullDetail(t));
     const quietTheses = theses.filter((t) => !isFullDetail(t));

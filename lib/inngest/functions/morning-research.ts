@@ -456,8 +456,29 @@ export const morningResearch = inngest.createFunction(
             if (match) actionableThesisIds.add(match.id);
           }
           const expectedCoverage = actionableThesisIds.size;
+          // ZERO-TOUCH only (review finding #1). The cron-side actionable
+          // set is an approximation from runInput streams the agent never
+          // sees — it over-counts in ordinary states (fire already answered
+          // by a tactical run, fire on a since-RETIRED thesis, ENTER
+          // suppressed by a pending buy proposal, near-stop priorityReviews
+          // with no needsAction, seeds whose review was legitimately
+          // bumped). A count-vs-count comparison would re-trigger the
+          // daily phantom retry this PR removes. So the gate only fires on
+          // the shape it exists for: work signal present, agent touched
+          // NOTHING (the 2026-05-01 EVT / 05-04 Earnings Drift failure).
+          // Per-thesis closeout obligations are complete_run's warn-gate's
+          // job (Layer 1), not this blunt net's.
           const coverageViolation =
-            expectedCoverage > 0 && preRetryThesisCount < expectedCoverage;
+            expectedCoverage > 0 && preRetryThesisCount === 0;
+          if (
+            expectedCoverage > 0 &&
+            preRetryThesisCount > 0 &&
+            preRetryThesisCount < expectedCoverage
+          ) {
+            console.warn(
+              `[morning-research] coverage note: ${config.name} touched ${preRetryThesisCount}/${expectedCoverage} estimated-actionable theses — not retrying (estimate over-counts answered/suppressed fires); complete_run's warn-gate owns per-thesis closeout.`,
+            );
+          }
 
           // Premature-exit violation: agent loaded data tools (read_signals
           // / get_portfolio_context / get_theses) and stopped without

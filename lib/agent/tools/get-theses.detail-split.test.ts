@@ -25,14 +25,17 @@ jest.mock("@/lib/prisma", () => ({
   },
 }));
 jest.mock("@/lib/alpaca", () => ({
-  getLatestPrices: jest.fn().mockResolvedValue(new Map()),
+  getLatestPrices: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("@/lib/proposals/pending-entry", () => ({
   getPendingEntryTickers: jest.fn().mockResolvedValue(new Set()),
 }));
 
 import { getTheses } from "./get-theses";
+import { getLatestPrices } from "@/lib/alpaca";
 import type { ToolContext } from "@/lib/agent/tool-context";
+
+const mockGetLatestPrices = getLatestPrices as jest.Mock;
 
 function makeCtx(runMode?: string): ToolContext {
   return {
@@ -103,6 +106,8 @@ beforeEach(() => {
   mockThesisUpdateFindMany.mockResolvedValue([]);
   mockPositionFindMany.mockResolvedValue([]);
   mockOrderFindMany.mockResolvedValue([]);
+  mockGetLatestPrices.mockReset();
+  mockGetLatestPrices.mockResolvedValue({});
 });
 
 describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
@@ -160,6 +165,52 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     const res = await run(makeCtx("MORNING_PLAN"), { detail: "book" });
 
     expect(res.data.theses).toHaveLength(1);
+    expect(res.data.quiet_theses).toHaveLength(0);
+  });
+
+  it("a ticker drill-down beats an explicit detail:\"actionable\" (review finding #4)", async () => {
+    mockThesisFindMany.mockResolvedValue([thesisRow({ id: "t_quiet", ticker: "QUIET" })]);
+
+    const res = await run(makeCtx("MORNING_PLAN"), {
+      tickers: ["QUIET"],
+      detail: "actionable",
+    });
+
+    expect(res.data.theses).toHaveLength(1);
+    expect(res.data.theses[0].snapshot).toBeDefined();
+    expect(res.data.quiet_theses).toHaveLength(0);
+  });
+
+  it("the writer's buy-at-market shape (ENTER_NOW, no needsAction) stays a FULL row (review finding #2)", async () => {
+    // WATCHING, no ENTER trigger, live price ≈ entry → resolver says
+    // ENTER_NOW while needsAction stays null. Hiding this row would strand
+    // a writer-intended market entry indefinitely.
+    mockGetLatestPrices.mockResolvedValue({ BUYNOW: 100 });
+    mockThesisFindMany.mockResolvedValue([
+      thesisRow({ id: "t_buynow", ticker: "BUYNOW", entryPrice: 100 }),
+    ]);
+
+    const res = await run(makeCtx("MORNING_PLAN"));
+
+    expect(res.data.theses).toHaveLength(1);
+    expect(res.data.theses[0].ticker).toBe("BUYNOW");
+    expect(res.data.theses[0].resolved?.actionability).toBe("ENTER_NOW");
+    expect(res.data.quiet_theses).toHaveLength(0);
+  });
+
+  it("a live-quote outage fails OPEN to the full book (review finding #3)", async () => {
+    // When prices are down, the price-dependent needsAction kinds all
+    // degrade to null — the split must not hide the winner book on
+    // exactly the mornings data is flaky.
+    mockGetLatestPrices.mockRejectedValue(new Error("quotes down"));
+    mockThesisFindMany.mockResolvedValue([
+      thesisRow({ id: "t_quiet", ticker: "QUIET" }),
+    ]);
+
+    const res = await run(makeCtx("MORNING_PLAN"));
+
+    expect(res.data.theses).toHaveLength(1);
+    expect(res.data.theses[0].snapshot).toBeDefined();
     expect(res.data.quiet_theses).toHaveLength(0);
   });
 });
