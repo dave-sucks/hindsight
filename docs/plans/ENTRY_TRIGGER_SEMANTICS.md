@@ -16,6 +16,31 @@ said it would pay, and it can never fire when the stock is cheap.
 
 ---
 
+## Not the same as GAPS P1-40 — read this before merging the two
+
+[`docs/GAPS.md`](../GAPS.md) **P1-40 — "ENTER trigger fires, validates, then never buys"** (RARE,
+2026-08-05) looks identical from a distance. It isn't, and the distinction decides the fix:
+
+| | P1-40 (RARE) | This doc (Compounder) |
+|---|---|---|
+| Trigger fires? | Yes | Yes |
+| Agent validates it? | Yes — every condition checked out | Yes |
+| Does it buy? | No | No |
+| **Does it say why?** | **No — silent. No error, no refusal, nothing.** | **Yes — it documents a refusal every time** |
+
+P1-40's proposed fix is to extend the narration→execution gate: *"an ENTER trigger that validates
+in a run with no paired `place_trade` **and no documented refusal** is a run failure."* That gate
+would **not** catch this bug, because the Compounder always writes a refusal — a *correct* one
+("price is above the level I wanted to pay"). The trigger is asking the wrong question, so a
+well-reasoned "no" is the right answer to it.
+
+Ship both. P1-40 catches silent drops; this catches a rung that can only ever ask at the wrong
+price. Fix 3 below also overlaps the P2 backlog item **"Discovery-mint executability vet"**
+(vet each minted `entryPrice` against structure at write time — CAPR 7/16) — same root, different
+end of the lifecycle: that one is about minting a bad level, this is about never revisiting it.
+
+---
+
 ## Where it comes from
 
 `lib/agent/triggers/defaults.ts:471-503`, `watchingEntryTrigger()`:
