@@ -567,7 +567,17 @@ export const updateThesis = defineTool({
           sources: [],
         };
       }
-      if (args.change_status !== "WATCHING") {
+      // ── Resolution requirement — ORCHESTRATORS ONLY ──────────────────────
+      // A THESIS_WRITER reaching this line necessarily has no change_status
+      // (the role gate above already refused any defined value). That is the
+      // legal research-only refresh: content lands on the row, status stays
+      // PROMOTED, and the NEXT orchestrator run resolves it. Before
+      // 2026-08-13 this guard also fired on the writer's status-less call
+      // (undefined !== "WATCHING"), which combined with the role gate to
+      // make EVERY writer refresh on a PROMOTED row structurally impossible
+      // — the CRWD/CEG promotion burn on 2026-08-11. See
+      // docs/plans/AGENT_PERF_COST_FIX.md §1.
+      if (ctx.runMode !== "THESIS_WRITER" && args.change_status !== "WATCHING") {
         const errorMsg = `PROMOTED thesis ${existing.ticker} requires an explicit resolution this run: call place_trade to re-enter live (the trade flips PROMOTED → HOLDING on fill), OR update_thesis(change_status: "WATCHING") to defer. Reasoning-only patches don't count — the thesis stays PROMOTED until you act.`;
         return {
           summary: `PROMOTED thesis needs explicit resolution: ${existing.ticker}`,
