@@ -340,6 +340,9 @@ function AgentChatInner({
             // AgentConfig columns. Without this, new analysts start with
             // empty industries/themes even though the Builder proposed them.
             const result = await createAnalystFromBuilder({
+              // Seeds entry style + archetype-specific standing rules,
+              // derived server-side from the id.
+              archetypeId: config.archetypeId,
               name: config.name ?? "Untitled Analyst",
               analystPrompt: config.analystPrompt ?? "General market research analyst",
               description: config.description,

@@ -14,6 +14,11 @@
  * the agent expands them during config synthesis.
  */
 
+import type {
+  TriggerPredicate,
+  TriggerAction,
+} from "@/lib/agent/triggers/types";
+
 export type HoldDuration = "DAY" | "SWING" | "POSITION";
 export type DirectionBias = "LONG" | "SHORT" | "BOTH";
 
@@ -41,6 +46,28 @@ export interface StrategyArchetype {
    * get_earnings_calendar / get_market_movers.
    */
   defaultFeeds: string[];
+  /**
+   * How this seat reads its own `entryPrice` — see
+   * docs/plans/ENTRY_TRIGGER_SEMANTICS.md. An accumulator wants ENTER to
+   * fire when price falls TO its level; a momentum seat wants it on the
+   * break above. Hardcoding BREAKOUT for everyone made a dip-buyer's
+   * entry path structurally unreachable on exactly its best setups.
+   * Seeded onto `AgentConfig.entryTriggerMode` at creation.
+   */
+  defaultEntryMode: "BREAKOUT" | "DIP";
+  /**
+   * Analyst-level standing rules seeded at creation, as
+   * `{ predicate, action }` shapes the seeder validates and stamps.
+   * These OVERRIDE the account rules for this seat — use them only where
+   * the archetype genuinely differs from the house default (a momentum
+   * seat trailing tighter, a compounder wider). Empty = inherit the
+   * account, which is the right answer for most archetypes.
+   */
+  defaultTriggers: Array<{
+    predicate: TriggerPredicate;
+    action: TriggerAction;
+    rationale: string;
+  }>;
   /** Source catalog IDs that matter most — narrows domain monitors */
   keySources: string[];
   /** Rule-of-thumb risk profile the builder should propose */
@@ -83,6 +110,8 @@ export const STRATEGY_ARCHETYPES: StrategyArchetype[] = [
     holdDurations: ["SWING", "POSITION"],
     primarySignals: ["EARNINGS_BEAT", "ANALYST_REVISION", "INSTITUTIONAL_FLOW"],
     defaultFeeds: ["EARNINGS_CALENDAR"],
+    defaultEntryMode: "BREAKOUT",
+    defaultTriggers: [],
     keySources: ["SEEKING_ALPHA", "FMP_EARNINGS", "FINNHUB_RECOMMENDATIONS", "STREET_INSIDER"],
     risk: { minConfidence: [65, 75], positionSizeBand: [1000, 3000], maxOpenPositions: 6 },
     universeHints: {
@@ -124,6 +153,14 @@ You do not trade earnings lotteries. You don't hold into the next print. You don
     // Movers gainers + most-actives ARE the discovery firehose for momentum.
     // Earnings calendar is risk-context (avoid breakouts into earnings week).
     defaultFeeds: ["MARKET_MOVERS_GAINERS", "MARKET_MOVERS_ACTIVES", "EARNINGS_CALENDAR"],
+    defaultEntryMode: "BREAKOUT",
+    defaultTriggers: [
+      {
+        predicate: { kind: "TRAILING_FROM_HIGH", pct: 6 },
+        action: "EXIT",
+        rationale: "Gave back 6% from the high — this seat's give-back tolerance, tighter or wider than the house rule because of how long it holds.",
+      },
+    ],
     keySources: ["FINVIZ", "STOCKCHARTS", "CNBC", "BARRONS"],
     risk: { minConfidence: [70, 80], positionSizeBand: [1000, 2500], maxOpenPositions: 5 },
     promptSkeleton: `You trade relative strength momentum breakouts. The edge is persistence — stocks that are strong stay strong longer than mean reversion theory predicts.
@@ -163,6 +200,8 @@ You exit on a close below the 10-day EMA, a volume-climactic top, or hitting the
     // setup. Most-actives surfaces stocks with the volume needed for a
     // tradeable bounce.
     defaultFeeds: ["MARKET_MOVERS_LOSERS", "MARKET_MOVERS_ACTIVES"],
+    defaultEntryMode: "DIP",
+    defaultTriggers: [],
     keySources: ["FINVIZ", "STOCKCHARTS", "MARKETWATCH", "CNBC"],
     risk: { minConfidence: [60, 70], positionSizeBand: [500, 2000], maxOpenPositions: 5 },
     promptSkeleton: `You trade oversold bounces on quality names. The edge is behavioral — fear sells quality indiscriminately, and quality reverts once the fear clears.
@@ -200,6 +239,8 @@ You exit in 1-3 days once the bounce plays out. This is not a "buy and hope" str
     // calendars don't have a firm-aggregate feed yet (TODO: add when producer
     // exists).
     defaultFeeds: ["EARNINGS_CALENDAR"],
+    defaultEntryMode: "BREAKOUT",
+    defaultTriggers: [],
     keySources: ["SEC_EDGAR", "FDA_CALENDAR", "BIO_PHARMA_CATALYSTS", "BENZINGA"],
     risk: { minConfidence: [65, 80], positionSizeBand: [500, 2000], maxOpenPositions: 4 },
     promptSkeleton: `You trade known binary catalysts. The edge is not predicting the outcome — it is correctly pricing the probability and sizing for the asymmetric payoff.
@@ -239,6 +280,8 @@ Sources you respect: SEC EDGAR primary documents, FDA official calendar, BioPhar
     // sector-rotation feed). Movers gainers gives a partial signal of which
     // sectors are leading on a given day.
     defaultFeeds: ["MARKET_MOVERS_GAINERS"],
+    defaultEntryMode: "BREAKOUT",
+    defaultTriggers: [],
     keySources: ["SPDR_SECTOR", "BARRONS", "WSJ_MARKETS", "BLOOMBERG"],
     risk: { minConfidence: [65, 75], positionSizeBand: [1000, 3000], maxOpenPositions: 6 },
     promptSkeleton: `You trade sector rotation. The edge is macro-aware — you know which sectors lead in which regimes and you rotate into the leader early.
@@ -276,6 +319,8 @@ Sources you respect: SPDR sector ETF data, macro research from major banks, yiel
     // Form 4 / insider cluster aggregate feed isn't built yet — relies on
     // domain monitors for now (TODO: add INSIDER_CLUSTER feed).
     defaultFeeds: [],
+    defaultEntryMode: "BREAKOUT",
+    defaultTriggers: [],
     keySources: ["SEC_EDGAR", "INSIDER_MONKEY", "FINVIZ_INSIDER", "OPENINSIDER"],
     risk: { minConfidence: [65, 75], positionSizeBand: [1000, 3000], maxOpenPositions: 5 },
     promptSkeleton: `You trade insider cluster buying. The edge is signal quality — a cluster of insiders buying with real dollars signals internal conviction that usually precedes a fundamental improvement.
@@ -314,6 +359,8 @@ Sources you respect: SEC EDGAR Form 4 filings directly, OpenInsider for aggregat
     // Options flow firehose isn't a firm feed yet (TODO: add UNUSUAL_OPTIONS
     // feed). Most-actives is a coarse proxy for unusual underlying activity.
     defaultFeeds: ["MARKET_MOVERS_ACTIVES"],
+    defaultEntryMode: "BREAKOUT",
+    defaultTriggers: [],
     keySources: ["CHEDDAR_FLOW", "UNUSUAL_WHALES", "BENZINGA_PRO"],
     risk: { minConfidence: [65, 75], positionSizeBand: [500, 2000], maxOpenPositions: 4 },
     promptSkeleton: `You trade unusual options flow. The edge is information asymmetry — big directional options trades often precede the move in the underlying.
@@ -354,6 +401,14 @@ Sources you respect: Cheddar Flow and Unusual Whales for raw flow, Benzinga Pro 
     // Movers + actives are the discovery firehose. Earnings calendar
     // matters as RISK CONTEXT (post-earnings names trade differently).
     defaultFeeds: ["MARKET_MOVERS_GAINERS", "MARKET_MOVERS_LOSERS", "MARKET_MOVERS_ACTIVES", "EARNINGS_CALENDAR"],
+    defaultEntryMode: "BREAKOUT",
+    defaultTriggers: [
+      {
+        predicate: { kind: "TRAILING_FROM_HIGH", pct: 4 },
+        action: "EXIT",
+        rationale: "Gave back 4% from the high — this seat's give-back tolerance, tighter or wider than the house rule because of how long it holds.",
+      },
+    ],
     keySources: ["FINVIZ", "BENZINGA", "STOCKCHARTS", "CHEDDAR_FLOW"],
     risk: { minConfidence: [55, 70], positionSizeBand: [500, 2000], maxOpenPositions: 4 },
     universeHints: {
@@ -421,6 +476,14 @@ Sources you respect: FMP movers feed for ranking, Finviz for screen filters, Sto
     // Quarterly cadence — daily firehoses are noise. Analyst will use the
     // pull tools on demand if a name appears via fundamentals.
     defaultFeeds: [],
+    defaultEntryMode: "DIP",
+    defaultTriggers: [
+      {
+        predicate: { kind: "TRAILING_FROM_HIGH", pct: 15 },
+        action: "EXIT",
+        rationale: "Gave back 15% from the high — this seat's give-back tolerance, tighter or wider than the house rule because of how long it holds.",
+      },
+    ],
     keySources: ["SEC_EDGAR", "SEEKING_ALPHA", "MORNINGSTAR", "VIC"],
     risk: { minConfidence: [70, 85], positionSizeBand: [1500, 4000], maxOpenPositions: 5 },
     promptSkeleton: `You trade deep value contrarian setups. The edge is patience and discipline — buying quality businesses priced for crisis when the crisis is temporary, not structural.
@@ -462,6 +525,14 @@ Sources you respect: primary 10-K/10-Q filings, management commentary on earning
     // Multi-year holds — daily movers / earnings calendar are noise at this
     // cadence. Earnings calendar is occasionally useful to time additions.
     defaultFeeds: ["EARNINGS_CALENDAR"],
+    defaultEntryMode: "DIP",
+    defaultTriggers: [
+      {
+        predicate: { kind: "TRAILING_FROM_HIGH", pct: 14 },
+        action: "EXIT",
+        rationale: "Gave back 14% from the high — this seat's give-back tolerance, tighter or wider than the house rule because of how long it holds.",
+      },
+    ],
     keySources: ["BARRONS", "BLOOMBERG", "STRATECHERY", "THE_INFORMATION"],
     risk: { minConfidence: [70, 85], positionSizeBand: [1500, 4000], maxOpenPositions: 5 },
     promptSkeleton: `You allocate to secular themes via best-in-class operators. The edge is not identifying the theme (everyone knows it) — it is picking the operators that compound the theme into shareholder value.

@@ -21,7 +21,12 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { inheritableDefaultLadder } from "./defaults";
+import {
+  inheritableDefaultLadder,
+  defaultCooldownDaysForPredicate,
+  defaultFireModeForAction,
+} from "./defaults";
+import { STRATEGY_ARCHETYPES } from "@/lib/agent/knowledge/strategy-archetypes";
 import type { Trigger } from "./types";
 
 /**
@@ -80,4 +85,42 @@ export function unseededAccountFallback(accountId: string): Trigger[] {
       `falling back to the code constants. Run seedAccountTriggers().`,
   );
   return inheritableDefaultLadder("TARGET", "HELD");
+}
+
+// ── Analyst seeding from a strategy archetype ─────────────────────────
+
+/**
+ * The analyst-level rules and entry style a new seat starts with, derived
+ * from its strategy archetype.
+ *
+ * Deliberately sparse: an archetype only overrides where it GENUINELY
+ * differs from the house rule — a scalper trailing 4%, a deep-value seat
+ * 15%. Everything else inherits the account, which is what makes the
+ * cascade worth having. Seeding a full copy of the account rules onto
+ * every analyst would give each seat a frozen snapshot and make the
+ * account page powerless, which is the drift this whole model exists to
+ * prevent.
+ *
+ * Unknown/absent archetype ⇒ no rules, BREAKOUT entry: the historic
+ * behavior, so a seat built without an archetype is unchanged.
+ */
+export function analystSeedFromArchetype(archetypeId: string | null | undefined): {
+  entryTriggerMode: "BREAKOUT" | "DIP";
+  triggers: Trigger[];
+} {
+  const archetype = STRATEGY_ARCHETYPES.find((a) => a.id === archetypeId);
+  if (!archetype) return { entryTriggerMode: "BREAKOUT", triggers: [] };
+
+  return {
+    entryTriggerMode: archetype.defaultEntryMode,
+    triggers: archetype.defaultTriggers.map((t) => ({
+      id: globalThis.crypto.randomUUID(),
+      predicate: t.predicate,
+      action: t.action,
+      rationale: t.rationale,
+      cooldownDays: defaultCooldownDaysForPredicate(t.predicate),
+      fireMode: defaultFireModeForAction(t.action),
+      source: "DEFAULT" as const,
+    })),
+  };
 }

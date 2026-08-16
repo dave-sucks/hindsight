@@ -19,6 +19,12 @@ import { StockLogo } from "@/components/StockLogo";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type AgentConfigData = {
+  /**
+   * Strategy archetype the builder grounded this config in. Carried
+   * through to creation, where the server derives the entry style and any
+   * archetype-specific standing trigger rules from it.
+   */
+  archetypeId?: string;
   name: string;
   description?: string;
   analystPrompt: string;
