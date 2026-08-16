@@ -22,6 +22,11 @@ jest.mock("@/lib/prisma", () => ({
     thesisUpdate: { findMany: mockThesisUpdateFindMany },
     position: { findMany: mockPositionFindMany },
     order: { findMany: mockOrderFindMany },
+    // The trigger cascade (lib/agent/triggers/load-levels) resolves the
+    // ANALYST + ACCOUNT levels for every row. Empty ⇒ these theses
+    // resolve to their own rungs, which is what the split tests care about.
+    agentConfig: { findMany: jest.fn().mockResolvedValue([]) },
+    account: { findMany: jest.fn().mockResolvedValue([]) },
   },
 }));
 jest.mock("@/lib/alpaca", () => ({
