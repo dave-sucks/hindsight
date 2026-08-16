@@ -76,22 +76,12 @@ export function LevelTriggersSection({
   const editable = data.canEdit;
   const own = data.triggers.filter((t) => !t.inherited);
 
-  // A settings page shows what is SET AT THAT LEVEL — nothing else.
-  //
-  // The merged, everything-in-force view belongs on the thesis sheet,
-  // because that is where a ladder actually fires. Rendering it here too
-  // meant the account page and the analyst tab both displayed the same
-  // five app defaults, which reads as one rule existing at two levels at
-  // once. It can't; a rung is stored in exactly one place.
-  //
-  // The one exception is the app defaults on the ACCOUNT page. Those are
-  // account-scope constants — they apply to every analyst — so the
-  // account page is their home and the only place they appear. The
-  // analyst tab shows analyst rules and points at Settings for the rest.
-  const appDefaults =
-    level === "account"
-      ? data.triggers.filter((t) => t.inherited && t.level === "DEFAULT")
-      : [];
+  // Inherited rungs on a settings page: the analyst tab shows only its
+  // own rules (its account rules live one screen up), and the account
+  // page is the bottom of the cascade, so this is normally empty. Kept as
+  // a group rather than dropped so an unseeded account — which falls back
+  // to the code constants — still shows what its holdings are running on.
+  const inherited = data.triggers.filter((t) => t.inherited);
 
   const groupProps = {
     direction: null,
@@ -111,7 +101,7 @@ export function LevelTriggersSection({
         ) : (
           <p className="text-xs text-muted-foreground">
             {level === "account"
-              ? "No account rules yet. Every holding runs on the app defaults below."
+              ? "No account rules. Nothing standing applies to your holdings — add a rule to protect every position."
               : "No rules for this analyst yet. Its theses run on the account rules and app defaults — see Settings → Triggers."}
           </p>
         )}
@@ -125,16 +115,16 @@ export function LevelTriggersSection({
         ) : null}
       </div>
 
-      {appDefaults.length > 0 ? (
+      {level === "account" && inherited.length > 0 ? (
         <div className="space-y-2">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            App defaults
+            Built-in fallback
           </span>
           <p className="text-xs text-muted-foreground">
-            Built in, applied to every holding on the account. Add a rule of
-            the same kind above to override one.
+            This account hasn&apos;t been set up with its own rules yet, so
+            its holdings are running on the built-in minimums.
           </p>
-          <TriggerGroups {...groupProps} triggers={appDefaults} editable={false} />
+          <TriggerGroups {...groupProps} triggers={inherited} editable={false} />
         </div>
       ) : null}
     </div>

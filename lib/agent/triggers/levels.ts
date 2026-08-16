@@ -131,7 +131,22 @@ export interface LadderLevels {
    * what was supplied.
    */
   viewLevel?: TriggerLevel;
+  /**
+   * The thesis's state, for gating position-scoped predicates.
+   *
+   * `GAIN_FROM_ENTRY` and `TRAILING_FROM_HIGH` measure off an open
+   * position's avgCost / peak, so on a WATCHING or PROMOTED thesis they
+   * evaluate false forever. That used to be handled by the DEFAULT
+   * level's HELD-only templates; now that those rungs are seeded onto the
+   * ACCOUNT (where there is no per-thesis state), the gate belongs here —
+   * otherwise every watchlist thesis renders a trail rung that can never
+   * fire. Omit ⇒ no gating (settings surfaces, which have no thesis).
+   */
+  state?: "HELD" | "WATCHING" | "PROMOTED";
 }
+
+/** Predicates that measure off an open position and are inert without one. */
+const POSITION_SCOPED_KINDS = new Set(["GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH"]);
 
 /**
  * Resolve the levels into the one ladder that is actually in force.
@@ -208,8 +223,13 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
   // can record itself as the thing that rung overrode.
   const winnerIndexByBucket = new Map<string, number>();
 
+  const dropPositionScoped = input.state != null && input.state !== "HELD";
+
   for (const level of LEVEL_PRECEDENCE) {
     for (const t of byLevel[level]) {
+      if (dropPositionScoped && POSITION_SCOPED_KINDS.has(t.predicate.kind)) {
+        continue;
+      }
       const bucket = triggerBucket(t);
       // First level to claim a bucket owns it. Also dedupes within a
       // level, matching mergeTriggers' within-list behavior.

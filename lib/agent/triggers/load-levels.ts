@@ -14,13 +14,13 @@ import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "./schema";
 import { resolveLadder, type ResolvedTrigger } from "./levels";
 import {
-  inheritableDefaultLadder,
   DEFAULT_ENTRY_TRIGGER_MODE,
   type EntryTriggerMode,
   type Horizon,
   type ThesisState,
 } from "./defaults";
 import type { Trigger } from "./types";
+import { unseededAccountFallback } from "./seed-account";
 
 /** The two stored levels above a thesis, for one analyst. */
 export interface LevelSources {
@@ -76,11 +76,19 @@ export async function loadLevelSources(
   const accounts = accountIds.length
     ? await prisma.account.findMany({
         where: { id: { in: accountIds } },
-        select: { id: true, triggers: true },
+        select: { id: true, triggers: true, triggersSeededAt: true },
       })
     : [];
+  // A seeded account's array is authoritative — including when it is
+  // empty, which means the principal deleted every rule. Only a NEVER
+  // seeded account falls back to the code constants.
   const accountTriggers = new Map(
-    accounts.map((a) => [a.id, parseLevelTriggers(a.triggers, `account=${a.id}`)]),
+    accounts.map((a) => [
+      a.id,
+      a.triggersSeededAt == null
+        ? unseededAccountFallback(a.id)
+        : parseLevelTriggers(a.triggers, `account=${a.id}`),
+    ]),
   );
 
   for (const c of configs) {
@@ -155,10 +163,13 @@ export function resolveThesisLadder(
     thesis: parseLevelTriggers(thesis.triggers, label),
     analyst,
     account,
-    defaults: inheritableDefaultLadder(
-      horizonFor(thesis.horizon),
-      thesisStateFor(thesis.status),
-    ),
+    // No DEFAULT level any more — the constant rungs are seeded onto the
+    // account as editable rules (lib/agent/triggers/seed-account), so the
+    // cascade bottoms out at ACCOUNT. `state` still gates the
+    // position-scoped kinds, which are meaningless without a position at
+    // ANY level.
+    defaults: [],
+    state: thesisStateFor(thesis.status),
     // resolveLadder only wants the cooldown stamp; `side` is the
     // evaluator's business.
     triggerState: Object.fromEntries(

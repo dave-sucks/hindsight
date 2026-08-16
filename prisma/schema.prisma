@@ -60,6 +60,11 @@ model Account {
   // hard stop) has no meaning account-wide and is rejected at the write
   // path. Empty array = inherit the code defaults beneath.
   triggers Json @default("[]")
+  // When the starting standing rules were written (lib/agent/triggers/
+  // seed-account). Distinguishes "never seeded" from "the principal
+  // deleted every rule" — without it, emptying your account rules would
+  // silently resurrect the defaults on the next read.
+  triggersSeededAt DateTime?
 
   memberships AccountMembership[]
   invites     AccountInvite[]

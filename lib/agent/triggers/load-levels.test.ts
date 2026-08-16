@@ -27,7 +27,7 @@ import {
   thesisStateFor,
   horizonFor,
 } from "./load-levels";
-import { DEFAULT_LADDER_IDS } from "./defaults";
+import { accountSeedTriggers } from "./seed-account";
 import type { Trigger } from "./types";
 
 const trail = (pct: number, id: string): Trigger => ({
@@ -49,7 +49,7 @@ describe("loadLevelSources", () => {
       { id: "an2", accountId: "acc1", triggers: [] },
     ]);
     mockAccountFindMany.mockResolvedValue([
-      { id: "acc1", triggers: [trail(7, "acc-trail")] },
+      { id: "acc1", triggers: [trail(7, "acc-trail")], triggersSeededAt: new Date() },
     ]);
 
     const map = await loadLevelSources(["an1", "an2"]);
@@ -140,16 +140,20 @@ describe("thesisStateFor / horizonFor", () => {
 });
 
 describe("resolveThesisLadder", () => {
-  it("gives a thesis with NO stored triggers a full inherited ladder", () => {
+  it("gives a thesis with NO stored triggers the account's rules", () => {
     const ladder = resolveThesisLadder(
       { triggers: [], triggerState: {}, status: "HOLDING", horizon: "TARGET" },
-      { analyst: [], account: [] },
+      { analyst: [], account: accountSeedTriggers() },
     );
 
-    // The standing protection minimums arrive from the DEFAULT level.
+    // The standing minimums now arrive from the ACCOUNT level — they are
+    // seeded rows, not a code layer.
     expect(ladder.length).toBeGreaterThan(0);
     expect(ladder.every((t) => t.inherited)).toBe(true);
-    expect(ladder.map((t) => t.id)).toContain(DEFAULT_LADDER_IDS.trailRatchet);
+    expect(ladder.every((t) => t.level === "ACCOUNT")).toBe(true);
+    expect(
+      ladder.some((t) => t.predicate.kind === "TRAILING_FROM_HIGH"),
+    ).toBe(true);
   });
 
   it("lets an account rule override a code default, and an analyst rule override the account", () => {
@@ -186,35 +190,43 @@ describe("resolveThesisLadder", () => {
     expect((own.predicate as { pct: number }).pct).toBe(4);
   });
 
-  it("carries no position-scoped defaults on a WATCHING thesis", () => {
+  it("drops position-scoped rungs on a WATCHING thesis, whatever level they came from", () => {
+    // The account can't know a thesis has no position, so the gate moved
+    // into the resolver when these rungs became account rows.
     const ladder = resolveThesisLadder(
       { triggers: [], triggerState: {}, status: "WATCHING", horizon: "TARGET" },
-      { analyst: [], account: [] },
+      { analyst: [], account: accountSeedTriggers() },
     );
-    expect(ladder.map((t) => t.id)).not.toContain(DEFAULT_LADDER_IDS.trailRatchet);
+    expect(ladder.some((t) => t.predicate.kind === "TRAILING_FROM_HIGH")).toBe(false);
+    expect(ladder.some((t) => t.predicate.kind === "GAIN_FROM_ENTRY")).toBe(false);
+    // The daily-move scale-ins are not position-scoped and survive.
+    expect(ladder.some((t) => t.predicate.kind === "PRICE_MOVE_PCT")).toBe(true);
   });
 
   it("overlays inherited fire state from triggerState", () => {
     const fired = "2026-08-04T15:00:00.000Z";
+    const acct = trail(8, "acct-trail");
     const ladder = resolveThesisLadder(
       {
         triggers: [],
-        triggerState: { [DEFAULT_LADDER_IDS.trailRatchet]: fired },
+        triggerState: { "acct-trail": fired },
         status: "HOLDING",
         horizon: "TARGET",
       },
-      { analyst: [], account: [] },
+      { analyst: [], account: [acct] },
     );
-    const t = ladder.find((x) => x.id === DEFAULT_LADDER_IDS.trailRatchet)!;
-    expect(t.lastFiredAt).toBe(fired);
+    expect(ladder.find((x) => x.id === "acct-trail")!.lastFiredAt).toBe(fired);
   });
 
-  it("resolves against code defaults alone when the thesis has no analyst owner", () => {
+  it("resolves to the thesis's own rungs when it has no analyst owner", () => {
+    // No analyst ⇒ no account ⇒ nothing to inherit. Such a thesis can't
+    // be dispatched to a tactical run either (the evaluator skips it), so
+    // an empty inherited ladder is the honest answer rather than
+    // pretending a code layer still applies.
     const ladder = resolveThesisLadder(
-      { triggers: [], triggerState: {}, status: "HOLDING", horizon: "TARGET" },
+      { triggers: [trail(4, "own")], triggerState: {}, status: "HOLDING", horizon: "TARGET" },
       undefined,
     );
-    expect(ladder.length).toBeGreaterThan(0);
-    expect(ladder.every((t) => t.level === "DEFAULT")).toBe(true);
+    expect(ladder.map((t) => t.id)).toEqual(["own"]);
   });
 });
