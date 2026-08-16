@@ -673,8 +673,11 @@ export const getTheses = defineTool({
     // The trail-to line for HELD_THROUGH_FLOOR: lowest daily low (LONG; the
     // recent HIGH for SHORT) since the ladder was last edited — the window
     // PROPOSAL_FATIGUE.md §7 Q1 names as the starting point. Clamped to
-    // [2, 30] days so a same-day edit still sees yesterday's bar and an
-    // ancient ladder doesn't drag the floor to a months-old low. Only the
+    // [5, 30] days: the 5-day minimum guarantees at least one trading session
+    // is in range even when the window spans a long weekend or a market
+    // holiday (a 2-day window on the Tuesday after a Monday holiday contains
+    // zero sessions), and the 30-day cap keeps an ancient ladder from
+    // suggesting a months-old low. Only the
     // held-through candidates are fetched (typically 0-3 tickers); bar-fetch
     // failure degrades to recentLow=null (the flag still fires, the agent
     // falls back to fresh data / judgment).
@@ -691,7 +694,7 @@ export const getTheses = defineTool({
             const daysBack = since
               ? Math.ceil((nowMs - since.getTime()) / 86_400_000)
               : 30;
-            const clampedDays = Math.min(Math.max(daysBack, 2), 30);
+            const clampedDays = Math.min(Math.max(daysBack, 5), 30);
             const start = new Date(nowMs - clampedDays * 86_400_000)
               .toISOString()
               .slice(0, 10);
@@ -996,7 +999,22 @@ export const getTheses = defineTool({
         heldThroughFloor: (() => {
           const ht = heldThroughByThesisId.get(t.id);
           if (!ht) return null;
+          // Only surface while the breach is LIVE — price still on the losing
+          // side of the ladder's tightest protective floor. Once price
+          // recovers above the line, the floor held and the held-through
+          // framing is false; the next breach is a fresh, meaningful ask.
+          // Reuses the resolver's already-computed floor + live price (no
+          // second fetch). Can't prove the breach (no floor rung, or quotes
+          // degraded) → omit rather than assert something unverified.
+          const r = resolvedByThesisId.get(t.id);
+          const floorPrice = r?.ladderHealth?.floor?.price ?? null;
+          const price = r?.currentPrice ?? null;
+          if (floorPrice == null || price == null || price <= 0) return null;
+          const stillBreached =
+            t.direction === "SHORT" ? price >= floorPrice : price <= floorPrice;
+          if (!stillBreached) return null;
           return {
+            floorPrice,
             heldThroughCount: ht.heldThroughCount,
             rejectMessage: ht.rejectMessage,
             recentLow: recentLowByThesisId.get(t.id) ?? null,
