@@ -112,10 +112,16 @@ export async function GET(
     viewLevel: auth.level,
   });
 
+  // Whether THIS caller may write here. Returned by the server rather
+  // than passed in by each surface: the analyst Triggers tab has no role
+  // in scope and was rendering edit controls to a VIEWER that the write
+  // routes then refused.
+  const role = await getUserRole(auth.user.id, accountId);
   return Response.json({
     level: auth.level,
     ownerId,
     ownerLabel,
+    canEdit: role !== "VIEWER",
     triggers: resolved,
   });
 }

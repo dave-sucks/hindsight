@@ -21,10 +21,9 @@ import {
   defaultTriggersForHorizon,
   mergeTriggers,
   standingProtectionTriggers,
-  mergeTriggers,
-  triggerBucket,
   type ThesisShape,
 } from "./defaults";
+import { triggerBucket } from "./bucket";
 import type { Trigger } from "./types";
 
 function base(overrides: Partial<ThesisShape> = {}): ThesisShape {

@@ -48,6 +48,59 @@ export class ThesisEditError extends Error {
   }
 }
 
+/**
+ * Build ONE validated, principal-authored trigger from UI input.
+ *
+ * Shared by the thesis write path (below) and the account/analyst write
+ * path (./level-triggers): both run the same Zod gate, the same DIRECT
+ * fire-mode restriction, the same cooldown discipline and the same
+ * `source` stamp. Only what surrounds this differs — the thesis path
+ * mirrors canonical stop/target onto the Thesis + Position and writes an
+ * audit row; the level path checks predicate eligibility and refuses a
+ * duplicate bucket.
+ *
+ * Extracted 2026-08-16 so the two paths can't drift on validation, which
+ * is the part where drift would be dangerous rather than merely untidy.
+ */
+export function buildPrincipalTrigger(input: {
+  action: TriggerAction;
+  predicate: TriggerPredicate;
+  fireMode?: "TACTICAL" | "DIRECT";
+  rationale?: string;
+  cooldownDays?: number;
+  /** Fallback prose when the caller supplies no rationale. */
+  defaultRationale: string;
+  /**
+   * Whether a DIRECT fire mode is permissible here at all. The thesis
+   * path also requires an open position; the level path has none to
+   * check, so it passes the predicate gate alone.
+   */
+  allowDirect: boolean;
+}): Trigger {
+  let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);
+  if (fireMode === "DIRECT" && !input.allowDirect) fireMode = "TACTICAL";
+
+  const parsed = triggerSchema.safeParse({
+    predicate: input.predicate,
+    action: input.action,
+    rationale: input.rationale?.trim() || input.defaultRationale,
+    ...(input.cooldownDays != null ? { cooldownDays: input.cooldownDays } : {}),
+    fireMode,
+  });
+  if (!parsed.success) {
+    throw new ThesisEditError(
+      "INVALID",
+      `Invalid trigger: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
+    );
+  }
+  // Cooldown discipline (0-on-non-EXIT → per-kind default), then
+  // source=PRINCIPAL — server-owned, never trusted from the request body.
+  return {
+    ...applyTriggerCooldownDefaults([parsed.data as Trigger])[0],
+    source: "PRINCIPAL",
+  };
+}
+
 /** Map a ThesisEditError code → HTTP status. Shared by every trigger route. */
 export function statusForEditError(code: ThesisEditCode): number {
   return code === "NOT_FOUND"
@@ -364,31 +417,13 @@ export async function applyTriggerAdd(
     fireMode = "TACTICAL";
   }
 
-  // Validate the single trigger through the same Zod gate the agent uses —
-  // generates a stable id, normalizes the enum, rejects out-of-range trail %.
-  const candidate = {
-    predicate: input.predicate,
-    action: input.action,
-    rationale:
-      input.rationale?.trim() || addedTriggerRationale(input.action, input.predicate),
-    ...(input.cooldownDays != null ? { cooldownDays: input.cooldownDays } : {}),
-    fireMode,
-  };
-  const parsedOne = triggerSchema.safeParse(candidate);
-  if (!parsedOne.success) {
-    throw new ThesisEditError(
-      "INVALID",
-      `Invalid trigger: ${parsedOne.error.issues.map((i) => i.message).join("; ")}`,
-    );
-  }
-  // Cooldown discipline (0-on-non-EXIT → per-kind default; same as the agent
-  // write path). applyTriggerCooldownDefaults returns a fresh array.
-  // source=PRINCIPAL — added by hand through the UI. Server-owned: stamped
-  // here rather than trusted from the request body.
-  const newTrigger: Trigger = {
-    ...applyTriggerCooldownDefaults([parsedOne.data as Trigger])[0],
-    source: "PRINCIPAL",
-  };
+  const newTrigger = buildPrincipalTrigger({
+    ...input,
+    defaultRationale: addedTriggerRationale(input.action, input.predicate),
+    // A DIRECT close needs a position to close and a deterministic
+    // predicate; `fireMode` was already narrowed above.
+    allowDirect: fireMode === "DIRECT",
+  });
 
   // Re-parse the existing array. If it fails to parse, REFUSE — falling back
   // to [] here would persist only the new trigger and silently destroy every

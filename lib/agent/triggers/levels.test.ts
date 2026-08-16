@@ -2,6 +2,8 @@ import {
   resolveLadder,
   LEVEL_PRECEDENCE,
   dropRedundantInherited,
+  splitFiresByLevel,
+  carryOverDroppedFireState,
 } from "./levels";
 import { inheritableDefaultLadder, DEFAULT_LADDER_IDS } from "./defaults";
 import { triggerBucket } from "./bucket";
@@ -366,5 +368,71 @@ describe("inheritableDefaultLadder", () => {
     expect(resolveLadder({ thesis: [], defaults: ladder })).toHaveLength(
       ladder.length,
     );
+  });
+});
+
+describe("splitFiresByLevel", () => {
+  it("files thesis rungs inline and inherited rungs into triggerState", () => {
+    const resolved = resolveLadder({
+      thesis: [trail(4, "own")],
+      account: [gainReview(15, "acct")],
+      defaults: [gainReview(10, "def-masked")],
+    });
+    const split = splitFiresByLevel(resolved);
+    expect(split.firedTriggerIds).toEqual(["own"]);
+    expect(split.firedInheritedTriggerIds).toEqual(["acct"]);
+  });
+
+  it("handles an all-inherited and an all-owned batch", () => {
+    const inheritedOnly = resolveLadder({ thesis: [], defaults: [trail(8, "d")] });
+    expect(splitFiresByLevel(inheritedOnly).firedTriggerIds).toEqual([]);
+
+    const ownedOnly = resolveLadder({ thesis: [trail(8, "t")] });
+    expect(splitFiresByLevel(ownedOnly).firedInheritedTriggerIds).toEqual([]);
+  });
+
+  it("returns empty arrays for an empty batch", () => {
+    expect(splitFiresByLevel([])).toEqual({
+      firedTriggerIds: [],
+      firedInheritedTriggerIds: [],
+    });
+  });
+});
+
+describe("carryOverDroppedFireState", () => {
+  const fired = "2026-08-10T00:00:00.000Z";
+
+  it("hands a dropped rung's cooldown to the inherited rung that replaces it", () => {
+    const dropped = { ...trail(8, "thesis-copy"), lastFiredAt: fired };
+    const next = carryOverDroppedFireState([dropped], [trail(8, "inherited")], {});
+    expect(next["inherited"]).toEqual({ firedAt: fired });
+  });
+
+  it("keeps the LATER stamp when the inherited rung already fired", () => {
+    const later = "2026-08-12T00:00:00.000Z";
+    const dropped = { ...trail(8, "thesis-copy"), lastFiredAt: fired };
+    const next = carryOverDroppedFireState([dropped], [trail(8, "inh")], {
+      inh: { firedAt: later },
+    });
+    expect(next["inh"].firedAt).toBe(later);
+  });
+
+  it("ignores a dropped rung that never fired", () => {
+    const next = carryOverDroppedFireState([trail(8, "copy")], [trail(8, "inh")], {});
+    expect(next).toEqual({});
+  });
+
+  it("ignores a dropped rung with no inherited counterpart", () => {
+    const dropped = { ...trail(8, "copy"), lastFiredAt: fired };
+    expect(carryOverDroppedFireState([dropped], [], {})).toEqual({});
+  });
+
+  it("preserves unrelated entries and never mutates the input", () => {
+    const state = { other: { firedAt: fired, side: "MATCH" } };
+    const snapshot = JSON.stringify(state);
+    const dropped = { ...trail(8, "copy"), lastFiredAt: fired };
+    const next = carryOverDroppedFireState([dropped], [trail(8, "inh")], state);
+    expect(next["other"]).toEqual({ firedAt: fired, side: "MATCH" });
+    expect(JSON.stringify(state)).toBe(snapshot);
   });
 });

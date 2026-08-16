@@ -240,3 +240,51 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
 
   return out;
 }
+
+/**
+ * Split fired rungs by where their cooldown bookkeeping lives: rungs
+ * stored on the thesis stamp `lastFiredAt` inline, inherited rungs stamp
+ * into the thesis's `triggerState` map.
+ *
+ * Pure, and here rather than in the evaluator so it can be tested without
+ * standing up Inngest — getting this partition wrong silently mis-files a
+ * cooldown, which shows up as a rung that re-fires or one that goes quiet.
+ */
+export function splitFiresByLevel(fires: ResolvedTrigger[]): {
+  firedTriggerIds: string[];
+  firedInheritedTriggerIds: string[];
+} {
+  return {
+    firedTriggerIds: fires.filter((t) => !t.inherited).map((t) => t.id),
+    firedInheritedTriggerIds: fires.filter((t) => t.inherited).map((t) => t.id),
+  };
+}
+
+/**
+ * When a wholesale trigger replace drops a rung as redundant with an
+ * inherited one, hand its cooldown stamp to the inherited rung.
+ *
+ * The inherited rung has a DIFFERENT id, so without this the thesis loses
+ * that rung's fire history the first time the agent resends its ladder,
+ * and a rung mid-cooldown can re-fire immediately — the 2026-06-02 NVDA
+ * runaway shape. Returns a fresh state map; never mutates its input.
+ */
+export function carryOverDroppedFireState(
+  droppedRungs: Trigger[],
+  inherited: Trigger[],
+  state: Record<string, { firedAt?: string; side?: string }>,
+): Record<string, { firedAt?: string; side?: string }> {
+  const out = { ...state };
+  const inheritedByBucket = new Map(inherited.map((t) => [triggerBucket(t), t]));
+  for (const t of droppedRungs) {
+    if (!t.lastFiredAt) continue;
+    const target = inheritedByBucket.get(triggerBucket(t));
+    if (!target) continue;
+    // Keep the LATER of the two — the inherited rung may already have
+    // fired on its own since the copy was made.
+    if ((out[target.id]?.firedAt ?? "") < t.lastFiredAt) {
+      out[target.id] = { ...out[target.id], firedAt: t.lastFiredAt };
+    }
+  }
+  return out;
+}

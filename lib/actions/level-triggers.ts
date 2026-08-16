@@ -19,11 +19,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
-import {
-  applyTriggerCooldownDefaults,
-  defaultFireModeForAction,
-} from "@/lib/agent/triggers/defaults";
+import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { editableTriggerField, withEditedValue } from "@/lib/agent/triggers/editable";
 import { predicateSentence } from "@/lib/agent/triggers/format";
 import { isDirectEligiblePredicate } from "@/lib/agent/triggers/types";
@@ -33,7 +29,7 @@ import type {
   TriggerAction,
   TriggerPredicate,
 } from "@/lib/agent/triggers/types";
-import { ThesisEditError } from "@/lib/actions/thesis-edit";
+import { ThesisEditError, buildPrincipalTrigger } from "@/lib/actions/thesis-edit";
 
 /** The two levels this module writes. THESIS goes through ./thesis-edit. */
 export type WritableLevel = "ACCOUNT" | "ANALYST";
@@ -48,6 +44,11 @@ export type WritableLevel = "ACCOUNT" | "ANALYST";
  *   • REVIEW_DATE_HIT — reads `Thesis.nextReviewAt`, a per-thesis date.
  *   • AND / OR — composites of the above; allow once there's a UI that
  *     can build them, not before.
+ *   • EARNINGS_* / GUIDANCE_CHANGE / FILING / SIGNAL_TYPE — these need
+ *     the signal-routing path, which is severed (GAPS P1-34: 0 routes in
+ *     14d). Accepting them here would mint standing rules that are born
+ *     unable to fire, on the surface whose whole purpose is making rules
+ *     visible and trustworthy. Re-add when routing is rebuilt.
  *
  * GAIN_FROM_ENTRY and TRAILING_FROM_HIGH ARE allowed even though they're
  * position-scoped: they evaluate false with no open position rather than
@@ -62,11 +63,6 @@ export const LEVEL_ELIGIBLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"
     "TIME_ELAPSED",
     "VS_SMA",
     "RSI",
-    "EARNINGS_BEAT",
-    "EARNINGS_MISS",
-    "GUIDANCE_CHANGE",
-    "FILING",
-    "SIGNAL_TYPE",
   ]);
 
 export interface LevelTriggerContext {
@@ -191,34 +187,13 @@ export async function addLevelTrigger(
   // DIRECT (act with no agent) stays restricted to deterministic EXITs,
   // exactly as on the thesis. There's no position to check here, so the
   // predicate gate is the whole gate.
-  let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);
-  if (
-    fireMode === "DIRECT" &&
-    (input.action !== "EXIT" || !isDirectEligiblePredicate(input.predicate.kind))
-  ) {
-    fireMode = "TACTICAL";
-  }
-
-  const parsedOne = triggerSchema.safeParse({
-    predicate: input.predicate,
-    action: input.action,
-    rationale:
-      input.rationale?.trim() ||
-      `${predicateSentence(input.predicate)} — standing rule set by the principal.`,
-    ...(input.cooldownDays != null ? { cooldownDays: input.cooldownDays } : {}),
-    fireMode,
+  const created = buildPrincipalTrigger({
+    ...input,
+    defaultRationale: `${predicateSentence(input.predicate)} — standing rule set by the principal.`,
+    allowDirect:
+      input.action === "EXIT" && isDirectEligiblePredicate(input.predicate.kind),
   });
-  if (!parsedOne.success) {
-    throw new ThesisEditError(
-      "INVALID",
-      parsedOne.error.issues[0]?.message ?? "Invalid trigger.",
-    );
-  }
 
-  const created: Trigger = {
-    ...applyTriggerCooldownDefaults([parsedOne.data as Trigger])[0],
-    source: "PRINCIPAL",
-  };
   const next = [...existing, created];
   if (!triggersArraySchema.safeParse(next).success) {
     throw new ThesisEditError("INVALID", "That would exceed the 20-trigger cap.");

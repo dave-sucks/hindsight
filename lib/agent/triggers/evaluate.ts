@@ -266,38 +266,22 @@ export function evaluateTrigger(
 export function shouldFire(
   trigger: Trigger,
   ctx: EvaluationContext,
-  /**
-   * The side this trigger was on at the previous evaluation, for
-   * edge-triggered predicates. Comes from `Thesis.triggerState[id].side`.
-   * Omit and an edge predicate that is already matching fires once, then
-   * latches — the correct behavior for a rung being evaluated for the
-   * first time.
-   */
-  lastSide?: "MATCH" | "NO_MATCH",
-): {
-  fires: boolean;
-  reason: "match" | "no-match" | "cooldown" | "latched";
-  /** Current side, for the caller to persist. Undefined for level predicates. */
-  side?: "MATCH" | "NO_MATCH";
-} {
+): { fires: boolean; reason: "match" | "no-match" | "cooldown" } {
   const matched = evaluateTrigger(trigger.predicate, ctx);
-  const edge = isEdgeTriggeredPredicate(trigger.predicate.kind);
-  const side: "MATCH" | "NO_MATCH" | undefined = edge
-    ? matched
-      ? "MATCH"
-      : "NO_MATCH"
-    : undefined;
+  if (!matched) return { fires: false, reason: "no-match" };
 
-  if (!matched) return { fires: false, reason: "no-match", side };
-
-  // Edge semantics: a level predicate is permanently true once crossed,
-  // so firing on the STATE re-alerts every cooldown forever. PLTR sat 33%
-  // above its entry level and fired 27 times in 14 days, each one a
-  // tactical run the analyst declined. Fire on the crossing; re-arm only
-  // after price crosses back. See docs/plans/ENTRY_TRIGGER_SEMANTICS.md.
-  if (edge && lastSide === "MATCH") {
-    return { fires: false, reason: "latched", side };
-  }
+  // NOTE — a trigger is a STANDING ORDER (principal ruling 2026-08-16).
+  // It fires every day its condition holds; an expired or declined
+  // proposal means "did nothing", so it fires again tomorrow. Cooldown is
+  // the only rate limit, deliberately.
+  //
+  // An edge-triggered variant was built here on 2026-08-13 (fire once on
+  // the crossing, re-arm only after price crossed back) to kill PLTR's 27
+  // fires in 14 days. The ruling reverses it: latching turns a declined
+  // standing order into a silent one, which is the failure mode, not the
+  // fix. Noise belongs to cooldown and to the resolution obligation on a
+  // fired rung (a decline must move the level or stop the watch) — never
+  // to suppressing the condition. Don't reintroduce it.
 
   // Read-path defense — see (2) in the docstring above.
   const isInvalidZero =
@@ -311,37 +295,11 @@ export function shouldFire(
     const lastFired = new Date(trigger.lastFiredAt).getTime();
     const cooldownMs = effectiveCooldown * 86_400_000;
     if (ctx.now.getTime() - lastFired < cooldownMs) {
-      return { fires: false, reason: "cooldown", side };
+      return { fires: false, reason: "cooldown" };
     }
   }
 
-  return { fires: true, reason: "match", side };
-}
-
-/**
- * Predicates evaluated as a STATE that latches true rather than as an
- * event — "price is above $X" stays true for as long as it stays above.
- * These fire on the crossing; everything else fires on the state and
- * relies on cooldown alone.
- *
- * Deliberately NOT included:
- *   • GAIN_FROM_ENTRY — the +10% checkpoint latches ON PURPOSE. The
- *     acting agent is expected to replace the fired rung with the next
- *     milestone, and the 7d cooldown is the backstop if it doesn't.
- *     Edge-triggering it would silently drop that backstop.
- *   • TRAILING_FROM_HIGH — a terminal EXIT with cooldown 0 by design; it
- *     SHOULD keep re-firing while the position is in breach.
- *   • TIME_ELAPSED / REVIEW_DATE_HIT — latch, but they're time-shaped and
- *     the cooldown already expresses their cadence.
- *   • Signal-side kinds — genuinely event-shaped already.
- */
-export function isEdgeTriggeredPredicate(kind: string): boolean {
-  return (
-    kind === "PRICE_ABOVE" ||
-    kind === "PRICE_BELOW" ||
-    kind === "VS_SMA" ||
-    kind === "RSI"
-  );
+  return { fires: true, reason: "match" };
 }
 
 // ── Internals ─────────────────────────────────────────────────────────

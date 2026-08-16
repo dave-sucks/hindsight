@@ -41,11 +41,7 @@ export default async function TriggerSettingsPage() {
         title="Account rules"
         description="Rules you set for every analyst, and the built-in defaults they sit on top of."
       >
-        <LevelTriggersSection
-          level="account"
-          ownerId={accountId}
-          editable={role !== "VIEWER"}
-        />
+        <LevelTriggersSection level="account" ownerId={accountId} />
       </SettingsSection>
 
       <SettingsSection

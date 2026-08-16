@@ -30,18 +30,18 @@ interface LevelTriggersResponse {
   level: "ACCOUNT" | "ANALYST";
   ownerId: string;
   ownerLabel: string;
+  /** Server-computed from the caller's role — see the GET route. */
+  canEdit: boolean;
   triggers: Trigger[];
 }
 
 export function LevelTriggersSection({
   level,
   ownerId,
-  editable = true,
 }: {
   level: "account" | "analyst";
   /** accountId for the account level; the AgentConfig id for an analyst. */
   ownerId: string;
-  editable?: boolean;
 }) {
   const [data, setData] = useState<LevelTriggersResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +73,7 @@ export function LevelTriggersSection({
     return <p className="text-xs text-muted-foreground">Loading triggers…</p>;
   }
 
+  const editable = data.canEdit;
   const own = data.triggers.filter((t) => !t.inherited);
 
   // A settings page shows what is SET AT THAT LEVEL — nothing else.
@@ -93,7 +94,6 @@ export function LevelTriggersSection({
       : [];
 
   const groupProps = {
-    thesisId: "",
     direction: null,
     held: true,
     endpointBase,

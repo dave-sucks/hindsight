@@ -27,13 +27,15 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { applyTriggerCooldownDefaults } from "@/lib/agent/triggers/defaults";
-import { dropRedundantInherited } from "@/lib/agent/triggers/levels";
+import {
+  dropRedundantInherited,
+  carryOverDroppedFireState,
+} from "@/lib/agent/triggers/levels";
 import {
   loadLevelSources,
   parseTriggerState,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { triggerBucket } from "@/lib/agent/triggers/bucket";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import {
@@ -1292,21 +1294,13 @@ export const updateThesis = defineTool({
           .map((t) => t.id),
       );
       if (droppedIds.size > 0) {
-        const state = parseTriggerState(existing.triggerState);
-        const inheritedByBucket = new Map(
-          inheritedLadder.map((t) => [triggerBucket(t), t] as const),
-        );
-        for (const t of existingTriggers) {
-          if (!droppedIds.has(t.id) || !t.lastFiredAt) continue;
-          const target = inheritedByBucket.get(triggerBucket(t));
-          // Keep the LATER of the two — the inherited rung may already
-          // have fired on its own since the copy was made.
-          if (target && (state[target.id]?.firedAt ?? "") < t.lastFiredAt) {
-            state[target.id] = { ...state[target.id], firedAt: t.lastFiredAt };
-          }
-        }
-        patch.triggerState = state as object;
+        patch.triggerState = carryOverDroppedFireState(
+          existingTriggers.filter((t) => droppedIds.has(t.id)),
+          inheritedLadder,
+          parseTriggerState(existing.triggerState),
+        ) as object;
       }
+
       const preserved = incoming.map((t) => {
         if (t.lastFiredAt != null) return t; // agent provided one — respect it
         const prior = t.id ? lastFiredById.get(t.id) : undefined;

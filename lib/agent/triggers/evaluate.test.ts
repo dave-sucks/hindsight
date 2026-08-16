@@ -903,100 +903,56 @@ describe("shouldFire", () => {
   });
 });
 
-// ── Edge triggering (docs/plans/ENTRY_TRIGGER_SEMANTICS.md Fix 2) ──────
+// ── Standing-order semantics (principal ruling 2026-08-16) ────────────
 //
-// PRICE_ABOVE/PRICE_BELOW are STATES, permanently true once crossed, so
-// firing on the state re-alerts every cooldown forever. PLTR sat 33%
-// above its $128.47 entry level and fired 27 tactical runs in 14 days,
-// each one declined. These pin "fire on the crossing, re-arm on the way
-// back."
+// A trigger fires every day its condition is true. A declined or expired
+// proposal means "did nothing", so it fires again tomorrow. An
+// edge-triggered variant shipped 2026-08-13 and was reverted — these pin
+// the reverted behavior so it can't creep back.
 
-describe("shouldFire — edge-triggered price levels", () => {
+describe("shouldFire — standing-order re-firing", () => {
   const enterRung: Trigger = {
     id: "enter-1",
     predicate: { kind: "PRICE_ABOVE", level: 128.47 },
     action: "ENTER",
     rationale: "entry",
-    cooldownDays: 0,
+    cooldownDays: 1,
   };
-  const at = (price: number): EvaluationContext => ({
+  const at = (price: number, now: Date): EvaluationContext => ({
     latestQuote: { price, changePct: 0 },
     thesis: { createdAt: new Date("2026-01-01"), status: "WATCHING" },
-    now: new Date("2026-08-12T14:00:00Z"),
+    now,
   });
 
-  it("fires on the first evaluation that matches (no prior side recorded)", () => {
-    expect(shouldFire(enterRung, at(171)).fires).toBe(true);
+  it("re-fires the next day while the condition still holds", () => {
+    const day1 = new Date("2026-08-12T14:00:00Z");
+    const day2 = new Date("2026-08-13T14:00:00Z");
+    expect(shouldFire(enterRung, at(171, day1)).fires).toBe(true);
+
+    // Declined yesterday; still above the level today → fires again.
+    const afterDecline: Trigger = { ...enterRung, lastFiredAt: day1.toISOString() };
+    expect(shouldFire(afterDecline, at(175, day2)).fires).toBe(true);
   });
 
-  it("does NOT re-fire while it stays on the matching side — the PLTR bug", () => {
-    const first = shouldFire(enterRung, at(171));
-    expect(first.fires).toBe(true);
-    expect(first.side).toBe("MATCH");
-
-    const second = shouldFire(enterRung, at(175), first.side);
-    expect(second.fires).toBe(false);
-    expect(second.reason).toBe("latched");
-  });
-
-  it("re-arms after price crosses back, then fires again on the next crossing", () => {
-    const above = shouldFire(enterRung, at(171));
-    expect(above.side).toBe("MATCH");
-
-    const backBelow = shouldFire(enterRung, at(120), above.side);
-    expect(backBelow.fires).toBe(false);
-    expect(backBelow.side).toBe("NO_MATCH");
-
-    const crossesAgain = shouldFire(enterRung, at(130), backBelow.side);
-    expect(crossesAgain.fires).toBe(true);
-  });
-
-  it("still respects cooldown on a genuine crossing", () => {
-    const cooled: Trigger = {
+  it("does not fire twice within the cooldown window", () => {
+    const t = new Date("2026-08-12T14:00:00Z");
+    const fired: Trigger = {
       ...enterRung,
-      cooldownDays: 7,
       lastFiredAt: new Date("2026-08-12T10:00:00Z").toISOString(),
     };
-    expect(shouldFire(cooled, at(171), "NO_MATCH").reason).toBe("cooldown");
+    expect(shouldFire(fired, at(171, t)).reason).toBe("cooldown");
   });
 
-  it("leaves the gain checkpoint latching on purpose", () => {
-    // GAIN_FROM_ENTRY is deliberately NOT edge-triggered: the acting agent
-    // is expected to re-arm it at the next milestone, and the 7d cooldown
-    // is the backstop when it doesn't. Edge-triggering would drop that.
-    const checkpoint: Trigger = {
-      id: "gain-1",
-      predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" },
-      action: "REVIEW",
-      rationale: "checkpoint",
+  it("keeps firing regardless of how long the condition has held", () => {
+    // The PLTR shape: 33% above entry for weeks. Under the ruling this is
+    // a standing order the principal has not withdrawn, so it keeps
+    // asking. Silencing it is the bug the ruling forbids.
+    const long: Trigger = {
+      ...enterRung,
+      lastFiredAt: new Date("2026-07-01T00:00:00Z").toISOString(),
     };
-    const ctx: EvaluationContext = {
-      latestQuote: { price: 120, changePct: 0 },
-      position: { avgCost: 100, peakPrice: 120 },
-      thesis: { createdAt: new Date("2026-01-01"), status: "HOLDING" },
-      now: new Date("2026-08-12T14:00:00Z"),
-    };
-    const r = shouldFire(checkpoint, ctx);
-    expect(r.fires).toBe(true);
-    expect(r.side).toBeUndefined();
-    // Passing a prior side must not latch a non-edge predicate.
-    expect(shouldFire(checkpoint, ctx, "MATCH").fires).toBe(true);
-  });
-
-  it("leaves the trailing stop re-firing while in breach", () => {
-    const trail: Trigger = {
-      id: "trail-1",
-      predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 },
-      action: "EXIT",
-      rationale: "trail",
-      cooldownDays: 0,
-    };
-    const ctx: EvaluationContext = {
-      latestQuote: { price: 90, changePct: 0 },
-      position: { avgCost: 80, peakPrice: 110 },
-      thesis: { createdAt: new Date("2026-01-01"), status: "HOLDING" },
-      now: new Date("2026-08-12T14:00:00Z"),
-    };
-    expect(shouldFire(trail, ctx, "MATCH").fires).toBe(true);
+    expect(shouldFire(long, at(171, new Date("2026-08-12T14:00:00Z"))).fires).toBe(
+      true,
+    );
   });
 });

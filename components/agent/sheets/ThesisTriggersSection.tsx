@@ -301,7 +301,6 @@ function fmtFiredAt(iso?: string): string {
 
 function TriggerPill({
   trigger,
-  thesisId,
   direction,
   editable,
   held,
@@ -310,7 +309,6 @@ function TriggerPill({
   onChanged,
 }: {
   trigger: Trigger;
-  thesisId: string;
   direction: "LONG" | "SHORT" | null;
   editable: boolean;
   held: boolean;
@@ -355,7 +353,6 @@ function TriggerPill({
 
       <TriggerPopoverContent
         trigger={trigger}
-        thesisId={thesisId}
         direction={direction}
         // An inherited rung is never editable HERE — it is edited at the
         // level that owns it, so one edit can't silently mean different
@@ -381,7 +378,6 @@ function TriggerPill({
  */
 function TriggerPopoverContent({
   trigger,
-  thesisId,
   direction,
   editable,
   held,
@@ -390,7 +386,6 @@ function TriggerPopoverContent({
   onChanged,
 }: {
   trigger: Trigger;
-  thesisId: string;
   direction: "LONG" | "SHORT" | null;
   editable: boolean;
   /** Thesis is HOLDING (has an open position) — gates the DIRECT fire-mode control. */
@@ -705,7 +700,6 @@ const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = [
 
 export function TriggerGroups({
   triggers,
-  thesisId,
   direction,
   editable,
   held,
@@ -714,7 +708,6 @@ export function TriggerGroups({
   onChanged,
 }: {
   triggers: Trigger[];
-  thesisId: string;
   direction: "LONG" | "SHORT" | null;
   editable: boolean;
   held: boolean;
@@ -746,7 +739,6 @@ export function TriggerGroups({
               <TriggerPill
                 key={t.id}
                 trigger={t}
-                thesisId={thesisId}
                 direction={direction}
                 editable={editable}
                 held={held}
@@ -1193,7 +1185,6 @@ export function ThesisTriggersSection({
       ) : (
         <TriggerGroups
           triggers={shownTriggers}
-          thesisId={thesisId}
           direction={direction}
           editable={editable}
           held={held}
