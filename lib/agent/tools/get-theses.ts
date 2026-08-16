@@ -31,7 +31,7 @@ import { computeNeedsAction } from "@/lib/agent/needs-action";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { isSystemicRejection } from "@/lib/proposals/maybe-await-approval";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { getLatestPrices } from "@/lib/alpaca";
+import { getBars, getLatestPrices } from "@/lib/alpaca";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import {
@@ -62,6 +62,15 @@ const STATUS_VALUES = [
 ] as const;
 
 const HORIZONS = ["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const;
+
+/**
+ * P1-39: how far back a rejected/expired protective (STOP) close proposal
+ * counts as "the principal recently held this name through its floor."
+ * Post-#513 the exit stream re-surfaces ~daily while a breach persists, so
+ * the window self-refreshes; an old decline with no fresh proposals behind
+ * it ages out. Feeds the informational `heldThroughFloor` row field only.
+ */
+const HELD_THROUGH_WINDOW_DAYS = 7;
 
 const schema = z.object({
   status: z
@@ -464,6 +473,21 @@ export const getTheses = defineTool({
     // user keeps declining" signal, read from the canonical Order ledger. Pairs
     // with the Layer-1 cross-day cooldown gate in maybe-await-approval.ts.
     const unapprovedExitCountByThesisId = new Map<string, number>();
+    // P1-39 (PROPOSAL_FATIGUE.md, principal ruling 2026-08-16): held-through-
+    // floor CONTEXT per HOLDING thesis — recent protective (closeReason=STOP)
+    // close proposals the principal rejected or let expire, plus their most
+    // recent written reject message. Surfaced as an INFORMATIONAL field on
+    // the full row (like unapprovedExitCount) so the agent can enrich its
+    // daily exit-proposal rationale with "Nth day under your floor, recent
+    // low $X, suggested new level $Y if you want the line moved." It does
+    // NOT feed needsAction and it never authorizes the agent to move the
+    // floor — level changes are the principal's manual act (protective
+    // levels ratchet one way: agents may raise, never lower). The recent
+    // low is resolved separately below (needs the ladder-edit scan first).
+    const heldThroughByThesisId = new Map<
+      string,
+      { heldThroughCount: number; rejectMessage: string | null }
+    >();
     const activeTickersForOpenedAt = Array.from(
       new Set(
         theses
@@ -532,9 +556,26 @@ export const getTheses = defineTool({
               status: { in: ["REJECTED", "EXPIRED"] },
               expiresAt: { not: null },
             },
-            select: { positionId: true, rejectionMessage: true },
+            orderBy: { createdAt: "desc" },
+            select: {
+              positionId: true,
+              rejectionMessage: true,
+              closeReason: true,
+              createdAt: true,
+            },
           });
           const countByPositionId = new Map<string, number>();
+          // P1-39: recent protective declines per position — the held-through
+          // signal. Window matches "the principal saw this exit recently and
+          // still holds"; post-#513 the exit stream re-surfaces ~daily, so the
+          // window self-refreshes while the breach persists.
+          const heldThroughCutoff = new Date(
+            Date.now() - HELD_THROUGH_WINDOW_DAYS * 86_400_000,
+          );
+          const heldThroughByPositionId = new Map<
+            string,
+            { heldThroughCount: number; rejectMessage: string | null }
+          >();
           for (const o of unapprovedCloses) {
             // Exclude systemic tombstones (dedup, P1-28 cooldown) — only a real
             // decline (rejection or ignored expiry) counts. Sync w/ the L1 gate.
@@ -543,12 +584,26 @@ export const getTheses = defineTool({
               o.positionId,
               (countByPositionId.get(o.positionId) ?? 0) + 1,
             );
+            // Protective declines only (STOP-tagged): a declined TARGET exit
+            // means "let it run" — a different, benign hold. Rows are newest-
+            // first, so the first message seen is the most recent one.
+            if (o.closeReason === "STOP" && o.createdAt >= heldThroughCutoff) {
+              const prev = heldThroughByPositionId.get(o.positionId);
+              heldThroughByPositionId.set(o.positionId, {
+                heldThroughCount: (prev?.heldThroughCount ?? 0) + 1,
+                rejectMessage: prev?.rejectMessage ?? o.rejectionMessage ?? null,
+              });
+            }
           }
           for (const t of theses) {
             if (t.status !== "HOLDING") continue;
             const posId = positionIdByTicker.get(t.ticker);
             const n = posId ? countByPositionId.get(posId) ?? 0 : 0;
             if (n > 0) unapprovedExitCountByThesisId.set(t.id, n);
+            const heldThrough = posId
+              ? heldThroughByPositionId.get(posId)
+              : undefined;
+            if (heldThrough) heldThroughByThesisId.set(t.id, heldThrough);
           }
         }
       } catch (err) {
@@ -612,6 +667,61 @@ export const getTheses = defineTool({
           err,
         );
       }
+    }
+
+    // ── Recent low per held-through thesis (P1-39) ──────────────────────
+    // The trail-to line for HELD_THROUGH_FLOOR: lowest daily low (LONG; the
+    // recent HIGH for SHORT) since the ladder was last edited — the window
+    // PROPOSAL_FATIGUE.md §7 Q1 names as the starting point. Clamped to
+    // [5, 30] days: the 5-day minimum guarantees at least one trading session
+    // is in range even when the window spans a long weekend or a market
+    // holiday (a 2-day window on the Tuesday after a Monday holiday contains
+    // zero sessions), and the 30-day cap keeps an ancient ladder from
+    // suggesting a months-old low. Only the
+    // held-through candidates are fetched (typically 0-3 tickers); bar-fetch
+    // failure degrades to recentLow=null (the flag still fires, the agent
+    // falls back to fresh data / judgment).
+    const recentLowByThesisId = new Map<string, number>();
+    const heldThroughCandidates = theses.filter(
+      (t) => t.status === "HOLDING" && heldThroughByThesisId.has(t.id),
+    );
+    if (heldThroughCandidates.length > 0) {
+      const nowMs = Date.now();
+      await Promise.all(
+        heldThroughCandidates.map(async (t) => {
+          try {
+            const since = lastLadderEditAtByThesisId.get(t.id);
+            const daysBack = since
+              ? Math.ceil((nowMs - since.getTime()) / 86_400_000)
+              : 30;
+            const clampedDays = Math.min(Math.max(daysBack, 5), 30);
+            const start = new Date(nowMs - clampedDays * 86_400_000)
+              .toISOString()
+              .slice(0, 10);
+            const end = new Date(nowMs).toISOString().slice(0, 10);
+            const bars = await getBars(
+              t.ticker,
+              { start, end },
+              ctx.alpacaCreds,
+            );
+            const isLong = t.direction !== "SHORT";
+            const extremes = bars
+              .map((b) => (isLong ? b.low ?? b.close : b.high ?? b.close))
+              .filter((v): v is number => typeof v === "number" && v > 0);
+            if (extremes.length > 0) {
+              recentLowByThesisId.set(
+                t.id,
+                isLong ? Math.min(...extremes) : Math.max(...extremes),
+              );
+            }
+          } catch (err) {
+            console.warn(
+              `[get_theses] recent-low fetch failed for ${t.ticker}; HELD_THROUGH_FLOOR degrades to recentLow=null:`,
+              err,
+            );
+          }
+        }),
+      );
     }
 
     if (liveTheses.length > 0) {
@@ -877,6 +987,39 @@ export const getTheses = defineTool({
         // proposed this exit and the user declined N×" — don't re-propose
         // unless the thesis materially changed. 0 for non-HOLDING rows.
         unapprovedExitCount: unapprovedExitCountByThesisId.get(t.id) ?? 0,
+        // P1-39 (principal ruling 2026-08-16): held-through-floor CONTEXT —
+        // recent protective (STOP) declines in the last 7d + the principal's
+        // verbatim reject message + the recent low (lowest low since the last
+        // ladder edit; recent HIGH for SHORT). Informational only: use it to
+        // enrich the daily exit-proposal rationale ("3rd day under your $860
+        // floor; recent low $842; suggest $840 if you want the line moved").
+        // NEVER a license to edit the floor — protective levels ratchet one
+        // way (agents may raise, never lower); moving a line down is the
+        // principal's manual act. null when no recent protective declines.
+        heldThroughFloor: (() => {
+          const ht = heldThroughByThesisId.get(t.id);
+          if (!ht) return null;
+          // Only surface while the breach is LIVE — price still on the losing
+          // side of the ladder's tightest protective floor. Once price
+          // recovers above the line, the floor held and the held-through
+          // framing is false; the next breach is a fresh, meaningful ask.
+          // Reuses the resolver's already-computed floor + live price (no
+          // second fetch). Can't prove the breach (no floor rung, or quotes
+          // degraded) → omit rather than assert something unverified.
+          const r = resolvedByThesisId.get(t.id);
+          const floorPrice = r?.ladderHealth?.floor?.price ?? null;
+          const price = r?.currentPrice ?? null;
+          if (floorPrice == null || price == null || price <= 0) return null;
+          const stillBreached =
+            t.direction === "SHORT" ? price >= floorPrice : price <= floorPrice;
+          if (!stillBreached) return null;
+          return {
+            floorPrice,
+            heldThroughCount: ht.heldThroughCount,
+            rejectMessage: ht.rejectMessage,
+            recentLow: recentLowByThesisId.get(t.id) ?? null,
+          };
+        })(),
         // P1-29 (L2): the most-recent unaddressed principal review decision on
         // this thesis — reject (verbatim message), approve-with-edit, or a
         // direct edit — surfaced so the agent reads + honors it. A reject with a

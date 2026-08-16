@@ -141,10 +141,29 @@ stream past the cooldown, ignoring rejections *and* expiries. Deeper: the daily-
 read path to its own pending queue (only `unapprovedExitCount`, a count), so it re-derives the exit every
 run. **CORRECTED FIX (2026-08-13, with the principal):** suppression is the wrong lever — the system must
 NEVER go silent on an exit (a name can collapse the next day; an unwanted repeat is fine, silence is not).
-A suppression PR (#504) was closed. The real fix is two run-side moves: **(1) ✅ SHIPPED (#513):** remove the
-cross-day suppression entirely so every agent-decided exit surfaces (~daily) — this stopped the LIVE silence
-on MU + CYTK; **(2) TODO (Lane 1):** the morning run trails the floor to just under the recent low on a
-held-through breach, so alerts track a live line instead of a stale one. Full diagnosis + acceptance test:
+A suppression PR (#504) was closed.
+
+**⚠️ FINAL RESOLUTION — PRINCIPAL RULING 2026-08-16.** The "agent trails the floor" answer was ALSO
+rejected: an agent moving the principal's line down is silence with extra steps, and it is an
+unauthorized level change on live money. The settled model:
+- **A trigger is a standing order and fires EVERY day its condition is true.** Decline/expiry = "did
+  nothing today" → it fires again tomorrow. Sell-at-$400 alerts daily while under $400, forever.
+- **Protective levels ratchet ONE way.** Agents may RAISE/tighten a floor; they may **never lower,
+  widen, or delete** one. Lowering a line is the principal's manual act.
+- **The principal moves levels in the reject dialog** — already built + verified 2026-08-16
+  (`ProposalActions.tsx` renders an inline editable `ThesisTriggersSection`; the proposal-context
+  route resolves the thesis by `(account, analyst, ticker, status)`, so it works on held names).
+
+So P1-39's fix is two moves: **(1) ✅ SHIPPED (#513):** remove the cross-day suppression entirely so
+every agent-decided exit surfaces (~daily) — this stopped the LIVE silence on MU + CYTK;
+**(2) 🔎 BUILT ([#518](https://github.com/dave-sucks/hindsight/pull/518), reworked to the ruling
+2026-08-16, awaiting principal review — Lane 1):** the daily exit proposal on a held-through name
+carries CONTEXT — `heldThroughFloor: { heldThroughCount, rejectMessage, recentLow }` on the
+`get_theses` row + the prompt's ratchet rule — so the ask reads "3rd day under your $860 floor;
+recent low $842; suggest ~$840 if you'd rather hold" instead of repeating an identical card. No
+needsAction kind, no gate change, no agent-initiated level edits, nothing suppressed.
+Close after merge + one validated run showing an enriched (not identical) daily ask.
+Full diagnosis + acceptance test:
 [`plans/PROPOSAL_FATIGUE.md`](./plans/PROPOSAL_FATIGUE.md). **Subsumes the ex-P2 "hold + retune affordance"
 and "narrow the P1-28 carve-out" items.** Secondary (real but NOT the loop's cause, see the doc): the
 `Order→TradeDecision→Thesis` null-on-held relation bug (P2 below) + the `PROPOSAL_*` audit lossiness (folds
@@ -232,6 +251,7 @@ _(P1-26 + P1-29 closed 2026-06-26 — see [`GAPS_HISTORY.md`](./GAPS_HISTORY.md)
 ### Active
 - **`targetSizePct` below the `minPositionSize` floor → self-rejecting entries (pairs with P1-40).** RARE's thesis carried `targetSizePct = 4%` ≈ $4k on a ~$100k book, under the $5k `minPositionSize` floor — so `place_trade` Guardrail 5b (`positionBand()`, `lib/agent/position-sizing.ts`) would reject the entry by the thesis's own sizing, even on a valid ENTER. Fix: when authoring/refreshing a thesis, clamp `targetSizePct` up to the analyst's floor (or refuse to mint a sub-floor size). Silent contributor to missed entries — the agent never sees "your own size is below the floor."
 - **Discovery-mint executability vet.** *(Sharper half of P1-38, tracked here for the tuning slice.)* Vet each minted `entryPrice` / ENTER level against structure (20d/50d, confirmation) at write time so discovery can't mint a chronically-true-but-unfillable entry. CAPR 7/16 = the case.
+- **SHORT closes are invisible to the exit-ledger reads (`side: "SELL"` filter).** `get_theses` counts declined exit proposals with `side: "SELL"` — but closing a SHORT writes a **BUY** order (`closeSide = direction === "LONG" ? "sell" : "buy"`, `closeTrade.actions.ts:186`). So both `unapprovedExitCount` (pre-existing) and `heldThroughFloor` (#518) stay empty on SHORT holdings: a principal who declines a short's protective-ceiling exit three times gets none of that context on the next run, and the direction-aware recent-high math in the bars block is unreachable. Zero live impact today (all current holdings are LONG) — fix before the first live SHORT. Fix: key the query off `intent ∈ {CLOSE, PARTIAL_CLOSE}` rather than `side`. Found in the #518 review 2026-08-16.
 - **`closeReason` mis-tag assertion (ex-C3).** 7/13 protective closes tagged `closeReason=MANUAL` (only ARQT carried `STOP`) → EWTX's floor breach wrongly P1-28-suppressed. Self-corrected to `STOP` from 7/14 (coincident with #490). The #490 risk-exit carve-out keys off this field. Fix: Layer-1 assertion — a close from a protective/trailing fire must carry STOP/TARGET (refuse/auto-tag on mismatch). Verify tagging holds one more window. Run-review Finding C.
 - **Completion-gate retry churn (ex-C5).** PEAD 7/15 called `complete_run` ×8 + `record_run_summary` ×7 in one 87s run (Secular 7/14 ×7/×7). Runs complete — token tax, not a correctness bug; new since the Spine's audit obligations. Fix: refusal envelope should name the exact unaddressed thesisIds + the open obligation, so one retry suffices. Run-review Finding D.
 - **`Order → TradeDecision → Thesis` is null on every held name (audit-integrity bug).** The relation carries `thesisId` only on the *original open*; every later HOLD/exit decision writes `thesisId: null`, so anything walking that path to a thesis silently finds nothing on exactly the actively-managed names. Surfaced building `list_proposals` (#502) — all 5 live staged exits resolved to no thesis through the relation; had to fall back to `(analyst, ticker)`. **Not the proposal-fatigue cause** (the suppression gate keys on `positionId`, see P1-39 / `PROPOSAL_FATIGUE.md`), but real for audit + any relation-keyed consumer. Fix: populate `thesisId` on every `TradeDecision`, not just the open.

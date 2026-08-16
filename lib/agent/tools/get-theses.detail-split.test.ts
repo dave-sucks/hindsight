@@ -26,16 +26,19 @@ jest.mock("@/lib/prisma", () => ({
 }));
 jest.mock("@/lib/alpaca", () => ({
   getLatestPrices: jest.fn().mockResolvedValue({}),
+  // P1-39: daily bars for the HELD_THROUGH_FLOOR recent-low fetch.
+  getBars: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("@/lib/proposals/pending-entry", () => ({
   getPendingEntryTickers: jest.fn().mockResolvedValue(new Set()),
 }));
 
 import { getTheses } from "./get-theses";
-import { getLatestPrices } from "@/lib/alpaca";
+import { getBars, getLatestPrices } from "@/lib/alpaca";
 import type { ToolContext } from "@/lib/agent/tool-context";
 
 const mockGetLatestPrices = getLatestPrices as jest.Mock;
+const mockGetBars = getBars as jest.Mock;
 
 function makeCtx(runMode?: string): ToolContext {
   return {
@@ -108,6 +111,8 @@ beforeEach(() => {
   mockOrderFindMany.mockResolvedValue([]);
   mockGetLatestPrices.mockReset();
   mockGetLatestPrices.mockResolvedValue({});
+  mockGetBars.mockReset();
+  mockGetBars.mockResolvedValue([]);
 });
 
 describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
@@ -196,6 +201,126 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     expect(res.data.theses[0].ticker).toBe("BUYNOW");
     expect(res.data.theses[0].resolved?.actionability).toBe("ENTER_NOW");
     expect(res.data.quiet_theses).toHaveLength(0);
+  });
+
+  it("held-through-floor CONTEXT rides on the full row; it never becomes a needsAction (P1-39 ruling)", async () => {
+    // HOLDING with a protective floor at $90, price $85 (still breached), and
+    // one genuine declined STOP proposal in the last 7 days. The row is full
+    // because the floor rung is MATCHING (the standing order fires every day
+    // its condition is true) — the held-through data rides along as context
+    // for the proposal rationale, and never authorizes a level edit.
+    mockGetLatestPrices.mockResolvedValue({ HELD: 85 });
+    mockPositionFindMany.mockResolvedValue([
+      {
+        id: "pos_held",
+        symbol: "HELD",
+        openedAt: new Date("2026-08-01"),
+        avgCost: 100,
+        peakPrice: 110,
+      },
+    ]);
+    mockOrderFindMany.mockResolvedValue([
+      {
+        positionId: "pos_held",
+        rejectionMessage: "hold, re-propose if it drops more",
+        closeReason: "STOP",
+        createdAt: new Date(Date.now() - 2 * 86_400_000),
+      },
+    ]);
+    mockGetBars.mockResolvedValue([
+      { close: 86, volume: 1000, low: 84.2, high: 88 },
+      { close: 87, volume: 900, low: 85.1, high: 89 },
+    ]);
+    mockThesisFindMany.mockResolvedValue([
+      thesisRow({
+        id: "t_held",
+        ticker: "HELD",
+        status: "HOLDING",
+        entryPrice: 100,
+        stopLoss: 90,
+        triggers: [
+          {
+            id: "trig-floor",
+            action: "EXIT",
+            predicate: { kind: "PRICE_BELOW", level: 90 },
+            rationale: "protective floor",
+            cooldownDays: 0,
+          },
+        ],
+      }),
+    ]);
+
+    const res = await run(makeCtx("MORNING_PLAN"));
+
+    expect(res.data.quiet_theses).toHaveLength(0);
+    expect(res.data.theses).toHaveLength(1);
+    const row = res.data.theses[0];
+    expect(row.ticker).toBe("HELD");
+    expect(row.snapshot).toBeDefined(); // full weight
+
+    // The standing order still fires — the breach surfaces through the normal
+    // trigger path, every day, exactly as before this PR. Nothing suppressed.
+    expect(row.needsAction?.kind).toBe("TRIGGER_MATCHING_NOW");
+    expect(row.needsAction?.action).toBe("EXIT");
+
+    // The context rides alongside so the proposal can say "1st day under your
+    // $90 floor, recent low $84.20" — informational only.
+    expect(row.heldThroughFloor).toEqual({
+      floorPrice: 90,
+      heldThroughCount: 1,
+      rejectMessage: "hold, re-propose if it drops more",
+      recentLow: 84.2,
+    });
+  });
+
+  it("held-through context is dropped once price recovers above the floor (review finding #1)", async () => {
+    // Same declined-STOP history, but price is back ABOVE the $90 floor. The
+    // line held — asserting "Nth day under your floor" would be false, so the
+    // context must not ride along.
+    mockGetLatestPrices.mockResolvedValue({ HELD: 96 });
+    mockPositionFindMany.mockResolvedValue([
+      {
+        id: "pos_held",
+        symbol: "HELD",
+        openedAt: new Date("2026-08-01"),
+        avgCost: 100,
+        peakPrice: 110,
+      },
+    ]);
+    mockOrderFindMany.mockResolvedValue([
+      {
+        positionId: "pos_held",
+        rejectionMessage: "hold, re-propose if it drops more",
+        closeReason: "STOP",
+        createdAt: new Date(Date.now() - 2 * 86_400_000),
+      },
+    ]);
+    mockThesisFindMany.mockResolvedValue([
+      thesisRow({
+        id: "t_held",
+        ticker: "HELD",
+        status: "HOLDING",
+        entryPrice: 100,
+        stopLoss: 90,
+        nextReviewAt: new Date(Date.now() - 86_400_000), // keeps the row full
+        triggers: [
+          {
+            id: "trig-floor",
+            action: "EXIT",
+            predicate: { kind: "PRICE_BELOW", level: 90 },
+            rationale: "protective floor",
+            cooldownDays: 0,
+          },
+        ],
+      }),
+    ]);
+
+    const res = await run(makeCtx("MORNING_PLAN"));
+
+    expect(res.data.theses).toHaveLength(1);
+    expect(res.data.theses[0].heldThroughFloor).toBeNull();
+    // unapprovedExitCount is all-time and price-independent — still counted.
+    expect(res.data.theses[0].unapprovedExitCount).toBe(1);
   });
 
   it("a live-quote outage fails OPEN to the full book (review finding #3)", async () => {
