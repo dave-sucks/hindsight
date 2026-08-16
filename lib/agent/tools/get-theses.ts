@@ -27,10 +27,7 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
-import {
-  computeNeedsAction,
-  HELD_THROUGH_WINDOW_DAYS,
-} from "@/lib/agent/needs-action";
+import { computeNeedsAction } from "@/lib/agent/needs-action";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { isSystemicRejection } from "@/lib/proposals/maybe-await-approval";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
@@ -65,6 +62,15 @@ const STATUS_VALUES = [
 ] as const;
 
 const HORIZONS = ["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const;
+
+/**
+ * P1-39: how far back a rejected/expired protective (STOP) close proposal
+ * counts as "the principal recently held this name through its floor."
+ * Post-#513 the exit stream re-surfaces ~daily while a breach persists, so
+ * the window self-refreshes; an old decline with no fresh proposals behind
+ * it ages out. Feeds the informational `heldThroughFloor` row field only.
+ */
+const HELD_THROUGH_WINDOW_DAYS = 7;
 
 const schema = z.object({
   status: z
@@ -467,12 +473,17 @@ export const getTheses = defineTool({
     // user keeps declining" signal, read from the canonical Order ledger. Pairs
     // with the Layer-1 cross-day cooldown gate in maybe-await-approval.ts.
     const unapprovedExitCountByThesisId = new Map<string, number>();
-    // P1-39 (PROPOSAL_FATIGUE.md): held-through-floor context per HOLDING
-    // thesis — recent protective (closeReason=STOP) close proposals the
-    // principal rejected or let expire, plus their most recent written
-    // reject message. Feeds the HELD_THROUGH_FLOOR needsAction flag; the
-    // recent low to trail to is resolved separately below (needs the
-    // ladder-edit scan first).
+    // P1-39 (PROPOSAL_FATIGUE.md, principal ruling 2026-08-16): held-through-
+    // floor CONTEXT per HOLDING thesis — recent protective (closeReason=STOP)
+    // close proposals the principal rejected or let expire, plus their most
+    // recent written reject message. Surfaced as an INFORMATIONAL field on
+    // the full row (like unapprovedExitCount) so the agent can enrich its
+    // daily exit-proposal rationale with "Nth day under your floor, recent
+    // low $X, suggested new level $Y if you want the line moved." It does
+    // NOT feed needsAction and it never authorizes the agent to move the
+    // floor — level changes are the principal's manual act (protective
+    // levels ratchet one way: agents may raise, never lower). The recent
+    // low is resolved separately below (needs the ladder-edit scan first).
     const heldThroughByThesisId = new Map<
       string,
       { heldThroughCount: number; rejectMessage: string | null }
@@ -802,17 +813,6 @@ export const getTheses = defineTool({
             latestQuote,
             now,
             hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
-            // P1-39: recent protective declines + the trail-to low. The flag
-            // itself only fires when price is still under the ladder floor.
-            heldThroughFloor: (() => {
-              const ht = heldThroughByThesisId.get(t.id);
-              if (!ht) return null;
-              return {
-                heldThroughCount: ht.heldThroughCount,
-                rejectMessage: ht.rejectMessage,
-                recentLow: recentLowByThesisId.get(t.id) ?? null,
-              };
-            })(),
           }),
         );
       }
@@ -984,6 +984,24 @@ export const getTheses = defineTool({
         // proposed this exit and the user declined N×" — don't re-propose
         // unless the thesis materially changed. 0 for non-HOLDING rows.
         unapprovedExitCount: unapprovedExitCountByThesisId.get(t.id) ?? 0,
+        // P1-39 (principal ruling 2026-08-16): held-through-floor CONTEXT —
+        // recent protective (STOP) declines in the last 7d + the principal's
+        // verbatim reject message + the recent low (lowest low since the last
+        // ladder edit; recent HIGH for SHORT). Informational only: use it to
+        // enrich the daily exit-proposal rationale ("3rd day under your $860
+        // floor; recent low $842; suggest $840 if you want the line moved").
+        // NEVER a license to edit the floor — protective levels ratchet one
+        // way (agents may raise, never lower); moving a line down is the
+        // principal's manual act. null when no recent protective declines.
+        heldThroughFloor: (() => {
+          const ht = heldThroughByThesisId.get(t.id);
+          if (!ht) return null;
+          return {
+            heldThroughCount: ht.heldThroughCount,
+            rejectMessage: ht.rejectMessage,
+            recentLow: recentLowByThesisId.get(t.id) ?? null,
+          };
+        })(),
         // P1-29 (L2): the most-recent unaddressed principal review decision on
         // this thesis — reject (verbatim message), approve-with-edit, or a
         // direct edit — surfaced so the agent reads + honors it. A reject with a

@@ -3,11 +3,9 @@
  * so the daily-run agent doesn't have to cross-reference five different
  * prompt blocks to figure out what needs attention today.
  *
- * Seven kinds. Three are trigger-driven (FIRED / MATCHING_NOW / REVIEW_DUE);
+ * Six kinds. Three are trigger-driven (FIRED / MATCHING_NOW / REVIEW_DUE);
  * PROMOTED is status-driven (any PROMOTED thesis ALWAYS requires resolution
- * this run); HELD_THROUGH_FLOOR is proposal-outcome-driven (the principal
- * declined a protective exit and price is still under the floor — the floor
- * must move); UNPROTECTED_GAIN and RUNNING_WINNER are position-P&L-driven
+ * this run); UNPROTECTED_GAIN and RUNNING_WINNER are position-P&L-driven
  * (a held winner whose floor doesn't reflect its gain, and a held winner
  * that reached its target's decision point with no trigger set to catch it).
  *
@@ -19,21 +17,6 @@
  *                         thesis change_status: WATCHING) / kill (when
  *                         tool gates allow). Highest precedence — fires
  *                         regardless of other trigger state.
- *   HELD_THROUGH_FLOOR  — P1-39 (docs/plans/PROPOSAL_FATIGUE.md): a HOLDING
- *                         whose protective (STOP) exit proposal the principal
- *                         recently rejected or let expire, with the live
- *                         price STILL on the breach side of the tightest
- *                         protective floor rung. The decline is the
- *                         principal's hold signal; the duty it creates is
- *                         "re-draw the floor" (trail it to just under the
- *                         recent low, or honor the reject message), NEVER
- *                         "re-propose the same exit at the same stale line"
- *                         and NEVER silence. Outranks TRIGGER_FIRED because
- *                         the fire on that same floor rung re-proposing the
- *                         same exit IS the fatigue loop — the more specific
- *                         work item is moving the line. Carries the floor,
- *                         the held-through count, the principal's reject
- *                         message (if any), and the recent low to trail to.
  *   TRIGGER_FIRED       — there is a TRIGGER_FIRED ThesisUpdate row on
  *                         this thesis with no UPDATED/REVIEWED/CLOSED/
  *                         INVALIDATED follow-up newer than it. The
@@ -76,13 +59,9 @@
  *                         run.
  *
  * Precedence when multiple match:
- *   PROMOTED_AWAITING_RESOLUTION > HELD_THROUGH_FLOOR > TRIGGER_FIRED >
- *   TRIGGER_MATCHING_NOW > UNPROTECTED_GAIN > RUNNING_WINNER > REVIEW_DUE
- * (HELD_THROUGH_FLOOR outranks the trigger paths deliberately: on a
- * held-through name the floor rung is firing/matching every day — that fire
- * re-proposing the same exit at the same line is exactly the P1-39 loop, so
- * the flag replaces it with the real duty: move the line. An explicit
- * fired/matching trigger — a stop, a target-EXIT — outranks both
+ *   PROMOTED_AWAITING_RESOLUTION > TRIGGER_FIRED > TRIGGER_MATCHING_NOW >
+ *   UNPROTECTED_GAIN > RUNNING_WINNER > REVIEW_DUE
+ * (An explicit fired/matching trigger — a stop, a target-EXIT — outranks both
  * P&L flags: it's more specific, and if the protection itself is firing the
  * fire IS the work item. UNPROTECTED_GAIN outranks RUNNING_WINNER because
  * locking the downside precedes pressing the upside — the two often coincide
@@ -105,16 +84,6 @@ import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
-
-/**
- * P1-39: how far back a rejected/expired protective (STOP) close proposal
- * counts as "the principal recently held this name through its floor."
- * Post-#513 the exit stream re-surfaces ~daily while a breach persists, so
- * the window self-refreshes; an old decline with no fresh proposals behind
- * it ages out. Consumed by get_theses when building the heldThroughFloor
- * input. Tunable.
- */
-export const HELD_THROUGH_WINDOW_DAYS = 7;
 
 export type NeedsActionVerb =
   | "ENTER"
@@ -139,34 +108,6 @@ export type NeedsAction =
       paperRealizedPnl?: number | null;
       paperReviewCount?: number | null;
       promotedAt?: string | null;
-    }
-  | {
-      kind: "HELD_THROUGH_FLOOR";
-      /** Price of the tightest protective floor rung — the stale line. */
-      floorPrice: number;
-      /** Compact floor description, e.g. "price < $86.00". */
-      floorSummary: string;
-      /** Trigger id of the floor rung (the rung the edit should move). */
-      floorTriggerId: string;
-      /**
-       * Recent protective (STOP) close proposals the principal rejected or
-       * let expire while still holding the name.
-       */
-      heldThroughCount: number;
-      /**
-       * The principal's most recent written reject message on one of those
-       * proposals, verbatim. Null when every decline was message-less.
-       * When set, it overrides the recent-low default for where the floor
-       * should move.
-       */
-      rejectMessage: string | null;
-      /**
-       * The trail-to line: lowest daily low since the ladder was last
-       * edited (LONG; for SHORT this is the recent HIGH). Null when bars
-       * couldn't be fetched — the agent falls back to judgment/fresh data.
-       */
-      recentLow: number | null;
-      livePrice: number;
     }
   | {
       kind: "TRIGGER_FIRED";
@@ -359,19 +300,6 @@ export interface NeedsActionInput {
    * complete_run. Non-ENTER triggers and REVIEW_DUE still surface.
    */
   hasPendingEntryProposal?: boolean;
-  /**
-   * P1-39 (PROPOSAL_FATIGUE.md) — held-through-floor context for HOLDING
-   * rows, computed by get_theses from the Order ledger: recent protective
-   * (closeReason=STOP) close proposals the principal rejected or let expire,
-   * plus the recent low to trail the floor to. Null/omitted when there are
-   * no recent declines. The flag only fires when the live price is still on
-   * the breach side of the ladder's tightest protective floor.
-   */
-  heldThroughFloor?: {
-    heldThroughCount: number;
-    rejectMessage: string | null;
-    recentLow: number | null;
-  } | null;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -379,14 +307,8 @@ export interface NeedsActionInput {
 export function computeNeedsAction(
   input: NeedsActionInput,
 ): NeedsAction | null {
-  const {
-    thesis,
-    latestUpdate,
-    latestQuote,
-    now,
-    hasPendingEntryProposal,
-    heldThroughFloor,
-  } = input;
+  const { thesis, latestUpdate, latestQuote, now, hasPendingEntryProposal } =
+    input;
 
   // 0) PROMOTED_AWAITING_RESOLUTION — highest precedence. Any PROMOTED
   //    thesis ALWAYS needs resolution this run regardless of trigger
@@ -404,53 +326,6 @@ export function computeNeedsAction(
       paperReviewCount: thesis.paperReviewCount ?? null,
       promotedAt: thesis.promotedAt ? thesis.promotedAt.toISOString() : null,
     };
-  }
-
-  // 0.5) HELD_THROUGH_FLOOR — P1-39. The principal recently declined (or let
-  //    expire) a protective STOP exit on this holding AND the live price is
-  //    still on the breach side of the ladder's tightest protective floor.
-  //    Deliberately ABOVE the trigger paths: on a held-through name the floor
-  //    rung is firing/matching every single day, and letting TRIGGER_FIRED
-  //    win would route the agent straight back into "close_position at the
-  //    same stale line" — the exact loop this flag exists to break. The duty
-  //    is to MOVE the floor (default: just under the recent low; the
-  //    principal's reject message overrides) or explicitly re-underwrite why
-  //    the line stays. If price recovered above the floor, the line held —
-  //    no flag; a future breach is a fresh, meaningful alert.
-  if (
-    thesis.status === "HOLDING" &&
-    heldThroughFloor &&
-    heldThroughFloor.heldThroughCount > 0 &&
-    latestQuote
-  ) {
-    const ladder = computeLadderHealth({
-      direction: thesis.direction,
-      avgCost: thesis.avgCost,
-      currentPrice: latestQuote.price,
-      peakPrice: thesis.peakPrice ?? null,
-      triggers: thesis.triggers,
-      lastLadderEditAt: null,
-      now,
-    });
-    const floor = ladder?.floor ?? null;
-    if (floor) {
-      const isLong = thesis.direction !== "SHORT";
-      const stillBreached = isLong
-        ? latestQuote.price <= floor.price
-        : latestQuote.price >= floor.price;
-      if (stillBreached) {
-        return {
-          kind: "HELD_THROUGH_FLOOR",
-          floorPrice: floor.price,
-          floorSummary: floor.label,
-          floorTriggerId: floor.triggerId,
-          heldThroughCount: heldThroughFloor.heldThroughCount,
-          rejectMessage: heldThroughFloor.rejectMessage,
-          recentLow: heldThroughFloor.recentLow,
-          livePrice: latestQuote.price,
-        };
-      }
-    }
   }
 
   // 1) TRIGGER_FIRED — most recent update is a fire that hasn't been

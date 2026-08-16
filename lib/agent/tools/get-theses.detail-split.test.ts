@@ -203,10 +203,12 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     expect(res.data.quiet_theses).toHaveLength(0);
   });
 
-  it("a HELD_THROUGH_FLOOR row lands FULL in `theses`, not `quiet_theses` (P1-39)", async () => {
-    // HOLDING with a protective floor at $90, price $85 (still breached),
-    // and one genuine declined STOP proposal in the last 7 days → the
-    // HELD_THROUGH_FLOOR needsAction fires, which makes the row full-detail.
+  it("held-through-floor CONTEXT rides on the full row; it never becomes a needsAction (P1-39 ruling)", async () => {
+    // HOLDING with a protective floor at $90, price $85 (still breached), and
+    // one genuine declined STOP proposal in the last 7 days. The row is full
+    // because the floor rung is MATCHING (the standing order fires every day
+    // its condition is true) — the held-through data rides along as context
+    // for the proposal rationale, and never authorizes a level edit.
     mockGetLatestPrices.mockResolvedValue({ HELD: 85 });
     mockPositionFindMany.mockResolvedValue([
       {
@@ -255,15 +257,18 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     const row = res.data.theses[0];
     expect(row.ticker).toBe("HELD");
     expect(row.snapshot).toBeDefined(); // full weight
-    expect(row.needsAction).toEqual({
-      kind: "HELD_THROUGH_FLOOR",
-      floorPrice: 90,
-      floorSummary: "price < $90.00",
-      floorTriggerId: "trig-floor",
+
+    // The standing order still fires — the breach surfaces through the normal
+    // trigger path, every day, exactly as before this PR. Nothing suppressed.
+    expect(row.needsAction?.kind).toBe("TRIGGER_MATCHING_NOW");
+    expect(row.needsAction?.action).toBe("EXIT");
+
+    // The context rides alongside so the proposal can say "1st day under your
+    // $90 floor, recent low $84.20" — informational only.
+    expect(row.heldThroughFloor).toEqual({
       heldThroughCount: 1,
       rejectMessage: "hold, re-propose if it drops more",
       recentLow: 84.2,
-      livePrice: 85,
     });
   });
 

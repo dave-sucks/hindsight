@@ -98,7 +98,44 @@ it re-derives the exit from scratch. A perfect gate only tombstones the duplicat
 *Order*; the agent keeps generating the *intent*. `list_proposals` (#502) exists
 but is **principal-chat only.**
 
-## 5. The fix — the floor MOVES; alerts never stop (corrected 2026-08-04)
+## 5. The fix — alerts never stop; only the PRINCIPAL moves the line (final, 2026-08-16)
+
+> **⚠️ PRINCIPAL RULING 2026-08-16 — this supersedes §5's earlier "the agent
+> trails the floor" answer below. Read this first; the rest of §5 is kept for
+> the reasoning trail only.**
+>
+> **A trigger is the principal's standing order.** It fires **every day its
+> condition is true** — buy at a price, sell at a price, whatever it says. A
+> decline or an expiry means "I chose to do nothing today," so it fires again
+> tomorrow. If the principal sets sell-at-$400, they get an alert every day it
+> is under $400. Forever, until they act.
+>
+> **Levels move only by human hand, with one exception.** Protective levels
+> **ratchet one way**: an agent may RAISE/tighten a floor (that produces MORE
+> protection and more alerts — the validated Game Plan flow), but may **never
+> LOWER, widen, or delete** one. Moving a line down is the principal's manual
+> act in the reject dialog, which already supports adjusting levels while
+> declining ([`ProposalActions.tsx`](../../components/proposals/ProposalActions.tsx)
+> → inline `ThesisTriggersSection`).
+>
+> **Why the earlier auto-trail answer was wrong:** an agent trailing the floor
+> down is *itself* a form of going silent. If the principal's line is $400 and
+> the agent quietly moves it to $380, the $400 alert stops — silence with extra
+> steps, and a level change on live money that no human authorized. The cure for
+> repeat-fatigue is not the agent redrawing the line; it is a *better proposal*
+> (which day of the breach, the principal's own prior words, a suggested level)
+> plus a reject UI that lets the principal move the line in one click.
+>
+> **What P1-39 ships (final scope):** the daily exit proposal on a held-through
+> name carries context — `heldThroughFloor: { heldThroughCount, rejectMessage,
+> recentLow }` on the `get_theses` row — so the agent's rationale can say "3rd
+> day under your $860 floor; recent low $842; suggest ~$840 if you'd rather keep
+> holding." The gate is untouched, the fires are untouched, **nothing is ever
+> suppressed**, and no agent edits a level down.
+
+<details>
+<summary>Superseded reasoning (2026-08-04 — the auto-trail answer). Kept for the trail.</summary>
+
 
 > **Rejected approach (PR #504, closed):** narrowing the gate so a held-through
 > protective exit goes quiet unless the breach "materially worsened." That is
@@ -136,25 +173,36 @@ Three run-side pieces (no gate change, no suppression, no migration):
 - *Stare, it drops, you forget* → you still get the daily reminder (gate untouched)
   AND the run trails the floor down so it's not the same stale ping. ✅ Never silent.
 
-## 6. Acceptance test
+</details>
 
-Replay MU: floor at $860, held through three mornings (expiries). Under the fix the
-daily alerts keep coming (never silent), and the **morning run trails the floor**
-down toward the recent low each morning it's held through — so within a couple of
-runs the alerts track a live line instead of pinging $860 forever. If the name then
-breaks the new lower floor, that's a fresh, meaningful alert. The 49-proposals /
-22-days pattern ends because the *line moved*, not because anything went quiet. If
-a change reduces alerts by suppression rather than by moving the floor, it's off-plan.
+## 6. Acceptance test (final — matches the 2026-08-16 ruling)
+
+Replay MU: floor at $860, held through three mornings (expiries). Under the shipped
+fix the daily alerts **keep coming at $860, every day it is under $860** — the
+standing order fires as long as its condition is true, and the line does not move
+until the principal moves it. What changes is the *quality* of the ask: each day's
+proposal names which day of the breach it is, quotes the principal's own prior
+reject message, and suggests a level (the recent low) they can apply in one click
+from the reject dialog. **Fail conditions:** any change that reduces alerts by
+suppression, OR any agent-initiated lowering of a protective level. Both are
+off-plan. Raising a floor (tightening) remains allowed and encouraged.
 
 ## 7. Open questions / follow-ons
 
-1. **"Recent low" window** — since the position opened? Trailing N days? Start with
-   "lowest low since the last floor edit" and tune.
-2. **Agent queue visibility (the durable follow-on).** Even with the floor moving,
-   the daily-run/tactical agent still has no read path to its own pending queue
-   (only `unapprovedExitCount`, a count). Extending `list_proposals` (#502) to the
-   daily-run allowlist lets it *see* "already pending, declined 2×" and reason about
-   it directly. Not required for the floor-trail fix, but the natural next layer.
+1. **"Recent low" window** — shipped as "lowest low since the last ladder edit,"
+   clamped to [2, 30] days. Advisory number in the proposal rationale only; tune
+   from run reviews.
+2. **Agent queue visibility (the durable follow-on).** The daily-run/tactical agent
+   still has no read path to its own pending queue (only `unapprovedExitCount`, a
+   count, plus the new `heldThroughFloor` context). Extending `list_proposals`
+   (#502) to the daily-run allowlist lets it *see* "already pending, declined 2×"
+   and write a better proposal. The natural next layer.
+3. **Reject-UI level editing — ALREADY BUILT** (verified 2026-08-16). The reject
+   dialog renders an inline editable `ThesisTriggersSection`
+   ([`ProposalActions.tsx`](../../components/proposals/ProposalActions.tsx)), and the
+   proposal-context route resolves the thesis by `(account, analyst, ticker, status)`
+   — NOT the broken `Order→TradeDecision→Thesis` relation — so it works on held
+   names. This is the mechanism the ruling depends on; don't rebuild it.
 3. **Audit lossiness** (`PROPOSAL_*` 22% coverage, the `fieldChanges: {}` bug) still
    applies — tracked in GAPS P2; fix so `unapprovedExitCount` and the held-through
    count read a complete picture.

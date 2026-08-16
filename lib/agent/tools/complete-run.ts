@@ -653,14 +653,6 @@ async function runCompleteRunPreflight(
         ? "past target"
         : `${Math.round(needsAction.progressToTarget * 100)}% to target`;
       detail = `running winner (+${needsAction.unrealizedGainPct.toFixed(1)}%, ${prog}): press / hold / take`;
-    } else if (needsAction.kind === "HELD_THROUGH_FLOOR") {
-      // Defensive branch, same contract as RUNNING_WINNER/UNPROTECTED_GAIN
-      // below: this preflight does NOT feed heldThroughFloor (or avgCost)
-      // into computeNeedsAction, so HELD_THROUGH_FLOOR cannot fire here at
-      // runtime — it's a get_theses attention flag (P1-39), and the floor
-      // edit it demands writes an UPDATED row that clears the thesis via
-      // addressedThesisIds. Handled for type-completeness.
-      detail = `held through floor $${needsAction.floorPrice.toFixed(2)} (declined ${needsAction.heldThroughCount}×): move the floor or re-underwrite the line`;
     } else if (needsAction.kind === "UNPROTECTED_GAIN") {
       // Defensive branch, same contract as RUNNING_WINNER above: this
       // preflight does NOT feed avgCost/peakPrice into computeNeedsAction,

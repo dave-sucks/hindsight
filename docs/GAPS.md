@@ -141,14 +141,29 @@ stream past the cooldown, ignoring rejections *and* expiries. Deeper: the daily-
 read path to its own pending queue (only `unapprovedExitCount`, a count), so it re-derives the exit every
 run. **CORRECTED FIX (2026-08-13, with the principal):** suppression is the wrong lever — the system must
 NEVER go silent on an exit (a name can collapse the next day; an unwanted repeat is fine, silence is not).
-A suppression PR (#504) was closed. The real fix is two run-side moves: **(1) ✅ SHIPPED (#513):** remove the
-cross-day suppression entirely so every agent-decided exit surfaces (~daily) — this stopped the LIVE silence
-on MU + CYTK; **(2) 🔎 BUILT ([#518](https://github.com/dave-sucks/hindsight/pull/518), 2026-08-13, awaiting
-principal review — Lane 1):** the morning run trails the floor to just under the recent low on a held-through
-breach, so alerts track a live line instead of a stale one. `HELD_THROUGH_FLOOR` needsAction (outranks the
-floor rung's own fire) + Order-ledger read in `get_theses` + the prompt duty (move the floor / honor the
-reject message / re-underwrite — never unchanged). Validated by replaying MU's real ladder + declines.
-Close after merge + one validated manual run + the first live trail cycle. Full diagnosis + acceptance test:
+A suppression PR (#504) was closed.
+
+**⚠️ FINAL RESOLUTION — PRINCIPAL RULING 2026-08-16.** The "agent trails the floor" answer was ALSO
+rejected: an agent moving the principal's line down is silence with extra steps, and it is an
+unauthorized level change on live money. The settled model:
+- **A trigger is a standing order and fires EVERY day its condition is true.** Decline/expiry = "did
+  nothing today" → it fires again tomorrow. Sell-at-$400 alerts daily while under $400, forever.
+- **Protective levels ratchet ONE way.** Agents may RAISE/tighten a floor; they may **never lower,
+  widen, or delete** one. Lowering a line is the principal's manual act.
+- **The principal moves levels in the reject dialog** — already built + verified 2026-08-16
+  (`ProposalActions.tsx` renders an inline editable `ThesisTriggersSection`; the proposal-context
+  route resolves the thesis by `(account, analyst, ticker, status)`, so it works on held names).
+
+So P1-39's fix is two moves: **(1) ✅ SHIPPED (#513):** remove the cross-day suppression entirely so
+every agent-decided exit surfaces (~daily) — this stopped the LIVE silence on MU + CYTK;
+**(2) 🔎 BUILT ([#518](https://github.com/dave-sucks/hindsight/pull/518), reworked to the ruling
+2026-08-16, awaiting principal review — Lane 1):** the daily exit proposal on a held-through name
+carries CONTEXT — `heldThroughFloor: { heldThroughCount, rejectMessage, recentLow }` on the
+`get_theses` row + the prompt's ratchet rule — so the ask reads "3rd day under your $860 floor;
+recent low $842; suggest ~$840 if you'd rather hold" instead of repeating an identical card. No
+needsAction kind, no gate change, no agent-initiated level edits, nothing suppressed.
+Close after merge + one validated run showing an enriched (not identical) daily ask.
+Full diagnosis + acceptance test:
 [`plans/PROPOSAL_FATIGUE.md`](./plans/PROPOSAL_FATIGUE.md). **Subsumes the ex-P2 "hold + retune affordance"
 and "narrow the P1-28 carve-out" items.** Secondary (real but NOT the loop's cause, see the doc): the
 `Order→TradeDecision→Thesis` null-on-held relation bug (P2 below) + the `PROPOSAL_*` audit lossiness (folds
