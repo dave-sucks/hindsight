@@ -174,14 +174,39 @@ into the `fieldChanges: {}` P2 item).
 2026-08-05; the agent validated every condition (price $28.02 above the $27.50 entry, supportive news, Q2
 beat) — wrote it down — and **never called `place_trade`.** No error, no failure, no alert. It was the only
 shot: RARE hasn't traded above $27.50 since ($24.93→$26.86), every review since repeats "still below the
-trigger," and the window closes ~08-16. **Why nothing caught it:** the narration→execution gate
-([`record-run-summary.ts`](../lib/agent/tools/record-run-summary.ts), CLAUDE.md P0-12) only watches
-*close/exit/sell* language — an **ENTER** that fires-validates-vanishes is undetected. **Compounding
+trigger," and the window closes ~08-16. **Why nothing caught it (CORRECTED 2026-08-16 — the original description below was wrong):**
+it is not that no gate watched. `complete_run`'s `unaddressed_theses` preflight
+([`complete-run.ts`](../lib/agent/tools/complete-run.ts)) DOES catch a `needsAction` thesis left
+unresolved — but it accepts a **rationale-only REVIEW `update_thesis`** as resolution. The agent
+wrote "validated, not entering," which satisfied the gate. RARE didn't slip past a gate; it
+*satisfied* one. **Writing about a fired ENTER counts as handling it.** (The narration→execution gate
+in `record-run-summary.ts` indeed only watches close/exit/sell verbs, and its `VERB_RULES` comment
+says buy verbs are "gated upstream by the morning-research trade-execution gap check" — but that
+upstream check only fires when `primary_decision ∈ {ADD, ROTATE}` and `tradesPlaced = 0`, which a
+per-thesis ENTER decline never trips.) **So the fix is NOT adding buy verbs to a regex.** It is: a
+fired ENTER is resolved only by `place_trade` **or a level change** — buy it, move the bar, or stop
+watching. Per the 2026-08-16 standing-order ruling this is a GATE fix only; no agent-side
+auto-retuning of the level. **Compounding
 (see P2 sizing item):** RARE's `targetSizePct = 4%` ≈ $4k < the $5k `minPositionSize` floor, so Guardrail 5b
 may have rejected the entry by its own sizing even if it had tried. Also feeds P1-37 (RARE reviewed 15+ days
-for a name actionable one afternoon). **Fix:** extend the narration→execution gate to the ENTER path — an
-ENTER trigger that validates in a run with no paired `place_trade` (and no documented refusal) is a run
-failure, same as the close-side gap. It'll recur on SRRK/MIRM in September.
+for a name actionable one afternoon). **Fix:** tighten `unaddressed_theses` so a fired ENTER
+requires a trade or an explicit level change, not prose. It'll recur on SRRK/MIRM in September.
+
+### P1-42 — Price levels aren't triggers: stop / target / next-review fire on nothing
+**Status:** open, filed 2026-08-16, **code-traced + probed on live data.** **Spec written:
+[`docs/plans/LEVELS_AS_TRIGGERS.md`](plans/LEVELS_AS_TRIGGERS.md) — read that, not this summary.**
+`Thesis.stopLoss`, `targetPrice` and `nextReviewAt` are columns the agent edits **independently of the
+trigger ladder**, and nothing evaluates them. SNOW (HOLDING, live, composite 9/10) carries
+`stop $256 / target $360 / nextReviewAt Aug 21` and a 9-rung ladder containing **none of those levels** —
+its only EXIT is a 3% trail. Grep confirms no enforcement path for `stopLoss` anywhere: it is written by
+`place_trade`, drawn on the Price Targets card, and fed to the prompts, and never fired on. How it happens:
+the stop was raised above entry to lock a gain (correct behavior) and the matching rung was never written —
+the agent updated the *column*, not the *ladder*. The sync that exists is one-way (editing a stop **pill**
+mirrors onto Thesis + Position via `applyTriggerValueEdit`); `update_thesis` can patch `stop_loss` with no
+trigger change at all. Same family: `maxHoldDays`, and the invisible `RUNNING_WINNER` flag, which should be
+a rung (`UNPROTECTED_GAIN` should NOT — it reads the other rungs, so it's a ladder linter). **Absorbs
+P1-36 and the "flags become rungs" item.** Data-model change on live theses; the backfill would arm floors
+that are currently inert, so it needs the principal before it runs.
 
 ### P1-41 — Live quotes were served from the Next.js Data Cache (stale prices reached trigger evaluation)
 **Status:** **fixed in code 2026-08-14, pending merge + one prod verification.** Branch
