@@ -1,0 +1,36 @@
+-- Sold-name continuity, Half A — the closing agent's belief attestation
+-- (GAPS P1-35 · docs/plans/SOLD_NAME_CONTINUITY.md §1).
+--
+-- Today a position close routes the paired thesis one of two ways
+-- (lib/proposals/thesis-flips.ts): closeReason='TARGET' recycles it to
+-- WATCHING for a re-entry; EVERYTHING else goes terminal RETIRED (SOLD).
+-- Measured on the live book 2026-08-16: of 29 theses retired-as-SOLD since
+-- June 1, **28 went terminal via a non-TARGET close** — exactly one recycled.
+--
+-- The asymmetry is inverted for the risk that matters. A TARGET exit means we
+-- sold into strength (low "did we sell the dip?" risk) and it recycles. A
+-- STOP/trailing exit means we sold into weakness (HIGH "did we sell the dip?"
+-- risk) and it goes dark forever. ARQT (+$845), VRDN (+$445) and XENE (+$966)
+-- were all protective exits on LIVE money where the belief may well have
+-- survived — we exited on PRICE, not on the thesis breaking — and all three
+-- vanished off every radar the moment they filled.
+--
+-- The fix is a per-close attestation from the closing agent: "did the belief
+-- survive this exit?" true → the thesis returns to WATCHING with its triggers
+-- cleared and nextReviewAt=now (the same proven mechanism the TARGET path
+-- already uses), so the next daily run either arms a reclaim trigger or
+-- archives it. false / null → terminal RETIRED, exactly as today.
+--
+-- Why it lives on Order rather than being a plain function argument: on LIVE,
+-- closes are approval-gated. The agent attests when it PROPOSES the close, but
+-- the thesis flip happens later, when the principal approves
+-- (lib/proposals/execute.ts → closeThesisOnApproval). The attestation has to
+-- survive that gap, and Order is the row that already spans it.
+--
+-- NULL is the safe default and means "no attestation" → terminal, i.e. current
+-- behavior. Every existing row and every non-agent close path (the
+-- price-monitor cron, DIRECT-mode trigger fires, manual UI closes, promotion
+-- force-closes) keeps working unchanged with no backfill.
+
+ALTER TABLE "Order"
+    ADD COLUMN IF NOT EXISTS "closeBeliefSurvived" BOOLEAN;

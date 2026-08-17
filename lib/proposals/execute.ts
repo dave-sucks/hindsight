@@ -311,6 +311,11 @@ export async function approveProposal(
       // with the Position.closeReason that reconcile-orders stamps on fill.
       closeReason: order.closeReason ?? "MANUAL",
       rationale: order.rationale,
+      // P1-35: the belief attestation the agent made when it PROPOSED this
+      // close. Approval can land days later, so the Order is what carries the
+      // agent's judgment across the gap — true recycles the thesis to WATCHING
+      // for a reclaim instead of retiring it dead.
+      beliefSurvived: order.closeBeliefSurvived,
     });
   }
 

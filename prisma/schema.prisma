@@ -978,6 +978,15 @@ model Order {
   // no decision row behind it. See lib/inngest/functions/reconcile-orders.ts.
   closeReason       String? // "TARGET" | "STOP" | "TIME" | "MANUAL" (close intents only)
   closeSource       String? // "agent" | "price_monitor" | "user" (close intents only)
+  // Sold-name continuity Half A (GAPS P1-35). The closing agent's attestation
+  // at propose time: did the thesis's BELIEF survive this exit, or did the
+  // exit happen because the belief broke? true → the paired thesis recycles to
+  // WATCHING (triggers cleared, nextReviewAt=now) instead of going terminal, so
+  // a name stopped out on PRICE stays on the radar for a reclaim. false/null →
+  // terminal RETIRED(SOLD), today's behavior. Lives on Order because LIVE
+  // closes are approval-gated: the agent attests when it proposes, the thesis
+  // flip happens when the principal approves. See lib/proposals/thesis-flips.ts.
+  closeBeliefSurvived Boolean?
   alpacaSubmittedAt DateTime? // when we attempted the Alpaca call
   alpacaConfirmedAt DateTime? // when we got a non-error response back
   // Trade-as-Proposal — populated when status='AWAITING_APPROVAL'.
