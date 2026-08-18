@@ -286,7 +286,14 @@ export const morningResearch = inngest.createFunction(
             // last spot still hardcoded; tactical + discovery already used the
             // pattern below. See lib/agent/modes.ts for the gpt-5.5 swap
             // rationale and the Vercel Pro maxDuration:800 upgrade.
-            model: openai(MODES["research-run"].model),
+            // .chat(): Chat Completions instead of the default Responses API.
+            // Measured 2026-08-17 (cache probe, byte-identical harness):
+            // OpenAI's cacheable prefix ends at the system+user head on BOTH
+            // APIs (tools never cache; even a byte-identical request only
+            // matched 58%), but chat canonicalization matches 2.5x more of
+            // that head (8,832 vs 3,584 tokens). Small, free win (~$0.4/day);
+            // the rest of the cache ceiling is server-side — do not chase it.
+            model: openai.chat(MODES["research-run"].model),
             system: systemPrompt,
             prompt: userPrompt,
             tools,
@@ -603,7 +610,7 @@ export const morningResearch = inngest.createFunction(
             const runRetry = async (messages: any[]): Promise<number> => {
               const retry = await generateText({
                 // Same model as the main run — switches with research-run config.
-                model: openai(MODES["research-run"].model),
+                model: openai.chat(MODES["research-run"].model),
                 system: systemPrompt,
                 messages,
                 tools,
@@ -954,7 +961,7 @@ export const morningResearch = inngest.createFunction(
             try {
               const recoveryResp = await generateText({
                 // Same model as the main run.
-                model: openai(MODES["research-run"].model),
+                model: openai.chat(MODES["research-run"].model),
                 system: systemPrompt,
                 prompt:
                   `The prior attempt at your morning run produced zero tool calls before timing out. Start NOW. ` +
