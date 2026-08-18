@@ -18,6 +18,8 @@ import {
 } from "@/lib/agent/triggers/defaults";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { getAccount } from "@/lib/alpaca";
+import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
@@ -895,6 +897,43 @@ export const recordThesis = defineTool({
             },
             sources: [],
           };
+        }
+
+        // ── Sub-floor sizing gate (P1-40 companion — the RARE bug) ─────────
+        // A targetSizePct that works out below the analyst's dollar floor is
+        // a self-rejecting plan: Guardrail 5b refuses the entry by the
+        // thesis's own numbers on the one day the ENTER fires (RARE: 4% ≈
+        // $4k vs a $5k floor — the window closed unfilled; IONS/MIRM carried
+        // the same defect). Catch it at authoring, when it costs a retry, not
+        // at the fire, when it costs the entry. Fail-open on equity-fetch
+        // failure — a data outage must not block thesis writing.
+        if (ctx.minPositionSize != null && ctx.minPositionSize > 0) {
+          try {
+            const account = await getAccount(ctx.alpacaCreds);
+            const equity = Number(account?.equity);
+            const subFloor = subFloorTargetSize({
+              targetSizePct: args.target_size_pct,
+              equity,
+              environment: ctx.runEnvironment ?? "PAPER",
+              minPositionSize: ctx.minPositionSize,
+              maxPositionSize: ctx.maxPositionSize,
+              realMaxPosition: ctx.realMaxPosition,
+            });
+            if (subFloor) {
+              return {
+                summary: `Thesis rejected for ${args.ticker}: target_size_pct ${args.target_size_pct}% is below this analyst's position floor.`,
+                data: {
+                  thesis_id: null,
+                  status: "FAILED" as const,
+                  note:
+                    `target_size_pct ${args.target_size_pct}% ≈ $${Math.round(subFloor.intendedDollars).toLocaleString()} at current equity — below this analyst's $${Math.round(subFloor.floorDollars).toLocaleString()} minimum position (place_trade rejects sub-floor entries, so this plan can never fill; that is exactly how RARE's fired ENTER died unexecuted). ` +
+                    `Retry the same record_thesis call with target_size_pct: ${subFloor.floorPct} or higher — IF conviction supports a full-floor position. ` +
+                    `If it doesn't, this name isn't sizeable for this analyst: record it as direction "PASS" instead of minting an untradeable plan.`,
+                },
+                sources: [],
+              };
+            }
+          } catch { /* fail-open: no equity, no gate */ }
         }
       }
 
