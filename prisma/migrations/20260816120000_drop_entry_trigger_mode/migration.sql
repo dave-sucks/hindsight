@@ -1,0 +1,15 @@
+-- Remove `AgentConfig.entryTriggerMode`.
+--
+-- It was a switch that decided which direction a newly-minted ENTER rung
+-- pointed: `PRICE_ABOVE(entryPrice)` or `PRICE_BELOW(entryPrice)`. A
+-- setting whose entire output is a trigger — a second way to express
+-- something the trigger already expresses, and invisible on the thesis.
+--
+-- The right shape is an ordinary ENTER rung at the account/analyst level.
+-- That needs a predicate comparing price to the thesis's OWN entryPrice,
+-- since a dollar level can't live above the thesis; specced with the rest
+-- of docs/plans/LEVELS_AS_TRIGGERS.md.
+--
+-- Nothing to preserve: no seat was ever set to DIP, so every row carries
+-- the BREAKOUT default and entry rungs keep pointing up exactly as before.
+ALTER TABLE "AgentConfig" DROP COLUMN IF EXISTS "entryTriggerMode";

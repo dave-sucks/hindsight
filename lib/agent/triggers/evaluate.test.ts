@@ -737,7 +737,7 @@ describe("shouldFire", () => {
 
   it("returns reason='match' when predicate true and no cooldown set", () => {
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(baseTrigger, ctx)).toEqual({
+    expect(shouldFire(baseTrigger, ctx)).toMatchObject({
       fires: true,
       reason: "match",
     });
@@ -745,7 +745,7 @@ describe("shouldFire", () => {
 
   it("returns reason='no-match' when predicate false", () => {
     const ctx = makeCtx({ latestQuote: { price: 90, changePct: 0 } });
-    expect(shouldFire(baseTrigger, ctx)).toEqual({
+    expect(shouldFire(baseTrigger, ctx)).toMatchObject({
       fires: false,
       reason: "no-match",
     });
@@ -759,7 +759,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 86_400_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: false,
       reason: "cooldown",
     });
@@ -773,7 +773,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 10 * 86_400_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: true,
       reason: "match",
     });
@@ -788,7 +788,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: false,
       reason: "cooldown",
     });
@@ -805,7 +805,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: true,
       reason: "match",
     });
@@ -832,7 +832,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: false,
       reason: "cooldown",
     });
@@ -846,7 +846,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: false,
       reason: "cooldown",
     });
@@ -862,7 +862,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: false,
       reason: "cooldown",
     });
@@ -879,7 +879,7 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 2 * 86_400_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: true,
       reason: "match",
     });
@@ -896,9 +896,63 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toEqual({
+    expect(shouldFire(trigger, ctx)).toMatchObject({
       fires: true,
       reason: "match",
     });
+  });
+});
+
+// ── Standing-order semantics (principal ruling 2026-08-16) ────────────
+//
+// A trigger fires every day its condition is true. A declined or expired
+// proposal means "did nothing", so it fires again tomorrow. An
+// edge-triggered variant shipped 2026-08-13 and was reverted — these pin
+// the reverted behavior so it can't creep back.
+
+describe("shouldFire — standing-order re-firing", () => {
+  const enterRung: Trigger = {
+    id: "enter-1",
+    predicate: { kind: "PRICE_ABOVE", level: 128.47 },
+    action: "ENTER",
+    rationale: "entry",
+    cooldownDays: 1,
+  };
+  const at = (price: number, now: Date): EvaluationContext => ({
+    latestQuote: { price, changePct: 0 },
+    thesis: { createdAt: new Date("2026-01-01"), status: "WATCHING" },
+    now,
+  });
+
+  it("re-fires the next day while the condition still holds", () => {
+    const day1 = new Date("2026-08-12T14:00:00Z");
+    const day2 = new Date("2026-08-13T14:00:00Z");
+    expect(shouldFire(enterRung, at(171, day1)).fires).toBe(true);
+
+    // Declined yesterday; still above the level today → fires again.
+    const afterDecline: Trigger = { ...enterRung, lastFiredAt: day1.toISOString() };
+    expect(shouldFire(afterDecline, at(175, day2)).fires).toBe(true);
+  });
+
+  it("does not fire twice within the cooldown window", () => {
+    const t = new Date("2026-08-12T14:00:00Z");
+    const fired: Trigger = {
+      ...enterRung,
+      lastFiredAt: new Date("2026-08-12T10:00:00Z").toISOString(),
+    };
+    expect(shouldFire(fired, at(171, t)).reason).toBe("cooldown");
+  });
+
+  it("keeps firing regardless of how long the condition has held", () => {
+    // The PLTR shape: 33% above entry for weeks. Under the ruling this is
+    // a standing order the principal has not withdrawn, so it keeps
+    // asking. Silencing it is the bug the ruling forbids.
+    const long: Trigger = {
+      ...enterRung,
+      lastFiredAt: new Date("2026-07-01T00:00:00Z").toISOString(),
+    };
+    expect(shouldFire(long, at(171, new Date("2026-08-12T14:00:00Z"))).fires).toBe(
+      true,
+    );
   });
 });

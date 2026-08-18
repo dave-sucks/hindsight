@@ -22,14 +22,31 @@ defined moment when it writes.
 | Layer | Sets | When it writes | Nuance? | Status |
 |---|---|---|---|---|
 | **1. Code constants** | The universal minimums: +10% checkpoint, 8% trail, −12% loser review, ±7% scale rungs, RUNNING_WINNER/UNPROTECTED_GAIN thresholds | Deploy time | None — the floor of floors | ✅ live (`defaults.ts`, `winner-signal.ts`, `ladder-health.ts`) |
-| **2. Analyst standing rules** | Per-analyst overrides of layer 1 ("Momentum trails 5%, Compounder trails 12%") | Analyst settings (principal edits) | Strategy-level | ❌ **PR-E (P1-31/32)** — today layer 1 applies identically to every analyst |
+| **1b. Account standing rules** | Account-wide overrides of layer 1, applying to every analyst | `/settings/triggers` (principal edits) | Book-level | ✅ live (2026-08-13) — `Account.triggers` |
+| **2. Analyst standing rules** | Per-analyst overrides of layer 1b ("Momentum trails 5%, Compounder trails 12%") | Analyst config → Triggers tab (principal edits) | Strategy-level | ✅ live (2026-08-13) — `AgentConfig.triggers` |
 | **3. Horizon templates** | The rung *skeleton* per CATALYST/TRADE/TARGET/COMPOUNDER (which rung kinds exist, stop/target shape) | Mint + the `place_trade` WATCHING→HOLDING flip (verified: `place-trade.ts:898-951` regenerates held-side defaults at fill) | Horizon-level | ✅ live |
 | **4. The agent (writer / daily / tactical)** | The **actual levels** — add at the breakout shelf, floor under the swing low, trail width fitted to the name's volatility; plus every maintenance edit | Mint (writer authors) · every review ("re-earns the ladder") · every tactical fire (re-ladder duty) | **Full nuance — this is the analyst brain** | ✅ prompts shipped in PR-C (#483); **behavior unvalidated until the first post-merge run** |
 | **5. The principal** | Anything, anytime | Thesis-sheet trigger UI · **proposal reject dialog** (retune stop/target/%, add rungs while rejecting) · direct level edits | Human | ✅ live (incl. % Gain / % Trail minting from #480) |
 
-Merge semantics: agent-authored rung beats template default per (predicate,
-action) bucket (`mergeTriggers`); principal edits beat everything and are fed
-back to the agent as `principalDirective`.
+Merge semantics: **thesis → analyst → account → code default, most-specific
+wins per (predicate, action) bucket** (`resolveLadder`, `lib/agent/triggers/levels`).
+Within the thesis level, an agent-authored rung still beats the horizon
+template (`mergeTriggers`); principal edits beat everything and are fed back
+to the agent as `principalDirective`.
+
+A rung's LEVEL is which record it is stored on, never a field — deriving it
+means it cannot drift from reality. Two consequences worth knowing:
+
+- **Deleting a thesis rung reveals the inherited rung beneath it.** That is
+  the only "revert to default", and it needs no separate affordance.
+- **Only constant rungs can live above the thesis.** "Trail 6%" means the
+  same on every name; "exit below $64.00" does not. `LEVEL_ELIGIBLE_PREDICATE_KINDS`
+  (`lib/actions/level-triggers`) enforces it server-side.
+
+Because a rung above the thesis is SHARED by every thesis under it, its
+`lastFiredAt` cannot live on the rung — one thesis firing would put every
+sibling into cooldown. Per-thesis fire state for inherited rungs lives in
+`Thesis.triggerState` (`{ [triggerId]: ISO }`) and is overlaid at resolve time.
 
 ## 2. The decision model — what happens when each rung fires
 
@@ -78,7 +95,7 @@ carrying the same `triggerId`; proposals → approve/reject/expire rows +
 | Question | Today | Gap |
 |---|---|---|
 | What rungs does this name carry? | ✅ thesis-sheet pills (+ % editing, fire-mode control) | — |
-| What WILL a new holding get, at what thresholds? | ❌ code-only | **PR-E** settings page (P1-31/32) |
+| What WILL a new holding get, at what thresholds? | ✅ `/settings/triggers` — account rules solid, code defaults dashed and read-only | — |
 | Did a trigger fire? What woke? What did the agent decide? | data ✅ / UI ❌ — requires spelunking thesis history + runs list separately | **P1-33**: per-trigger timeline in the thesis sheet ("fired 7/14 → tactical → pressed: +$2k add, floor 64→71") + fires/decisions/edits in the activity feed (PR8 ship-now slice) |
 | Is my whole book protected right now? | data ✅ (`ladderHealth`) / UI ❌ | **P1-33**: a book-level protection strip (per holding: gain, floor locks, trail?, nearest rung) — the "trust it's working" view |
 | Was I notified? | ✅ proposal email + ntfy push (#479) | fires/warnings notify nothing (fine for REVIEW; consider push on `ladder_warning`) |

@@ -21,7 +21,6 @@ import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { describeTriggerFire } from "@/lib/agent/triggers/format";
 import { MODES } from "@/lib/agent/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
@@ -30,6 +29,10 @@ import {
   protectiveExitCloseReason,
 } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
 import {
@@ -52,12 +55,15 @@ interface FiredPayload {
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-function findTriggerById(triggersJson: unknown, id: string): Trigger | null {
-  const parsed = triggersArraySchema.safeParse(triggersJson);
-  if (!parsed.success) return null;
-  const found = parsed.data.find((t) => t.id === id);
+/**
+ * Find the fired rung in an already-resolved ladder. Takes the resolved
+ * array rather than the raw JSONB column so inherited rungs are findable
+ * — see the call site.
+ */
+function findTriggerById(ladder: Trigger[], id: string): Trigger | null {
+  const found = ladder.find((t) => t.id === id);
   if (!found || typeof found.id !== "string") return null;
-  return found as Trigger;
+  return found;
 }
 
 /**
@@ -138,10 +144,23 @@ export const tacticalRun = inngest.createFunction(
       ) {
         return null;
       }
-      const trigger = findTriggerById(thesis.triggers, fired.triggerId);
-      if (!trigger) return null;
       const analystId = thesis.researchRun.agentConfigId;
       if (!analystId) return null;
+
+      // Look the fired rung up in the RESOLVED ladder, not the stored
+      // column. An inherited rung (analyst / account / code default) is
+      // not in `thesis.triggers` at all, so a raw-column lookup returns
+      // null and this run bails — the fire event would be consumed and
+      // silently do nothing. That is precisely the decorative-rung
+      // failure the cascade exists to prevent, and it would disable an
+      // inherited trail stop without a single error in the logs.
+      const ladder = resolveThesisLadder(
+        thesis,
+        (await loadLevelSources([analystId])).get(analystId),
+        `thesis=${thesis.id}`,
+      );
+      const trigger = findTriggerById(ladder, fired.triggerId);
+      if (!trigger) return null;
 
       const [agentConfig, signal, position] = await Promise.all([
         prisma.agentConfig.findUnique({
@@ -217,8 +236,10 @@ export const tacticalRun = inngest.createFunction(
       // Full ladder for the prompt's CURRENT TRIGGER LADDER section +
       // re-ladder duty: update_thesis `triggers` is wholesale-replace, so
       // the agent needs every rung in view to edit without dropping any.
-      const parsedLadder = triggersArraySchema.safeParse(thesis.triggers);
-      const allTriggers = parsedLadder.success ? parsedLadder.data : [];
+      // Resolved (not the raw column) so inherited rungs are visible —
+      // resending one unchanged is a no-op (dropRedundantInherited), and
+      // changing its value is a deliberate per-thesis override.
+      const allTriggers = ladder;
       return {
         thesis: {
           id: thesis.id,

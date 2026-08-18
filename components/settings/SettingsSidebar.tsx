@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ArrowLeft, User, Users, Plug } from 'lucide-react';
+import { ArrowLeft, User, Users, Zap, Plug } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -18,6 +18,7 @@ import {
 const NAV = [
   { href: '/settings/profile', label: 'Profile', icon: User },
   { href: '/settings/team', label: 'Team', icon: Users },
+  { href: '/settings/triggers', label: 'Triggers', icon: Zap },
   { href: '/settings/connections', label: 'Connections', icon: Plug },
 ];
 

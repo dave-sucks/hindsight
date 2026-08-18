@@ -30,7 +30,10 @@ import { prisma } from "@/lib/prisma";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { isSystemicRejection } from "@/lib/proposals/maybe-await-approval";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 import { getBars, getLatestPrices } from "@/lib/alpaca";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
@@ -330,6 +333,9 @@ export const getTheses = defineTool({
         stopLoss: true,
         targetSizePct: true,
         triggers: true,
+        // Fire bookkeeping for inherited rungs — resolveThesisLadder
+        // overlays it so cooldown reads the same at every level.
+        triggerState: true,
         scalingPlan: true,
         catalystDate: true,
         maxHoldDays: true,
@@ -441,6 +447,27 @@ export const getTheses = defineTool({
         t.status === "HOLDING" ||
         t.status === "WATCHING" ||
         t.status === "PROMOTED",
+    );
+
+    // ── The resolved ladder per thesis (the trigger cascade) ────────────
+    // Every trigger consumer below reads from here rather than parsing
+    // `t.triggers` directly, so the agent reasons about the ladder that
+    // actually fires — its own rungs PLUS what it inherits from the
+    // analyst, the account and the standing code minimums.
+    //
+    // This is load-bearing for ladder health, not just display: a holding
+    // whose floor is inherited rather than stored would otherwise read as
+    // UNPROTECTED_GAIN and the agent would be nagged to fix a ladder that
+    // is already correct. The query is scoped to ctx.analystId, so one
+    // lookup covers every row.
+    const levelSources = ctx.analystId
+      ? (await loadLevelSources([ctx.analystId])).get(ctx.analystId)
+      : undefined;
+    const ladderByThesisId = new Map<string, Trigger[]>(
+      theses.map((t) => [
+        t.id,
+        resolveThesisLadder(t, levelSources, `thesis=${t.id}`) as Trigger[],
+      ]),
     );
     const needsActionByThesisId = new Map<string, NeedsAction | null>();
     // P1-29 (L2): the most-recent unaddressed PRINCIPAL decision per thesis
@@ -772,10 +799,7 @@ export const getTheses = defineTool({
         ? await getPendingEntryTickers(ctx.analystId)
         : new Set<string>();
       for (const t of liveTheses) {
-        const parsed = triggersArraySchema.safeParse(t.triggers);
-        const triggers: Trigger[] = parsed.success
-          ? (parsed.data as Trigger[])
-          : [];
+        const triggers: Trigger[] = ladderByThesisId.get(t.id) ?? [];
         const price = priceByTicker[t.ticker];
         const latestQuote =
           typeof price === "number" && price > 0
@@ -875,8 +899,7 @@ export const getTheses = defineTool({
     const resolverNow = new Date();
     const resolvedByThesisId = new Map<string, ResolvedEnvelope>();
     for (const t of theses) {
-      const parsed = triggersArraySchema.safeParse(t.triggers);
-      const parsedTriggers = (parsed.success ? parsed.data : []) as Trigger[];
+      const parsedTriggers = ladderByThesisId.get(t.id) ?? [];
       const cur = resolverPriceMap[t.ticker];
       resolvedByThesisId.set(
         t.id,
@@ -952,7 +975,9 @@ export const getTheses = defineTool({
       stopLoss: t.stopLoss,
       nextReviewAt: t.nextReviewAt,
       catalystDate: t.catalystDate,
-      triggerCount: Array.isArray(t.triggers) ? (t.triggers as unknown[]).length : 0,
+      // Resolved ladder, not the stored column — a thesis protected
+      // entirely by inherited rungs is not a zero-trigger thesis.
+      triggerCount: (ladderByThesisId.get(t.id) ?? []).length,
       researchAge: classifyResearchAge(
         t.researchUpdatedAt,
         t.horizon as Horizon | null,
@@ -962,9 +987,8 @@ export const getTheses = defineTool({
     }));
 
     const enriched = fullTheses.map((t) => {
-      const triggerCount = Array.isArray(t.triggers)
-        ? (t.triggers as unknown[]).length
-        : 0;
+      // Resolved ladder, not the stored column — see quietRows above.
+      const triggerCount = (ladderByThesisId.get(t.id) ?? []).length;
       return {
         ...t,
         triggerCount,

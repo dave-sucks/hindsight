@@ -1164,10 +1164,15 @@ export const recordThesis = defineTool({
         }
         // Without horizon we can't pick a defaults template — agent's
         // raw triggers are all we have. Cooldown backfill still runs.
+        // source=AGENT on everything the model supplied. Server-owned —
+        // any value the model fabricated is overwritten. The template
+        // rungs merged in below already carry source=DEFAULT.
+        const supplied = ((args.triggers ?? []) as Trigger[]).map((t) => ({
+          ...t,
+          source: "AGENT" as const,
+        }));
         if (!args.horizon) {
-          return applyTriggerCooldownDefaults(
-            (args.triggers ?? []) as Trigger[],
-          );
+          return applyTriggerCooldownDefaults(supplied);
         }
         const defaults = defaultTriggersForHorizon(
           args.horizon as Horizon,
@@ -1181,10 +1186,7 @@ export const recordThesis = defineTool({
           },
           effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
         );
-        const merged = mergeTriggers(
-          defaults,
-          (args.triggers ?? []) as Trigger[],
-        );
+        const merged = mergeTriggers(defaults, supplied);
         return applyTriggerCooldownDefaults(merged);
       })();
 

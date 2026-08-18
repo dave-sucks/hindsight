@@ -191,6 +191,18 @@ export const triggerSchema = z.object({
       // behavior; the UI add-path opts new EXIT stops into DIRECT explicitly.
       "How a fired trigger is acted on: TACTICAL (wake a tactical run, default) or DIRECT (close directly, no agent — EXIT-only, still approval-gated).",
     ),
+  // Server-owned provenance. Deliberately NO .default() — this schema is
+  // also the disk-READ gate (trigger-evaluator, get-theses, thesis-sheet-
+  // state, tactical-run, live-evaluate), so a default would silently
+  // relabel every legacy rung as whatever we picked. Absent stays absent.
+  // The write paths stamp it; the model never supplies it (anything it
+  // fabricates is overwritten server-side).
+  source: z
+    .enum(["DEFAULT", "AGENT", "PRINCIPAL"])
+    .optional()
+    .describe(
+      "Server-owned. Who authored this rung's value: DEFAULT (code template), AGENT, or PRINCIPAL (UI). Do not set — it is stamped server-side and any supplied value is overwritten.",
+    ),
 });
 
 export const triggersArraySchema = z
@@ -201,3 +213,86 @@ export const triggersArraySchema = z
   );
 
 export type TriggerInput = z.infer<typeof triggerSchema>;
+
+// ── Resilient read-path parse ──────────────────────────────────────────
+//
+// `triggersArraySchema` is used at BOTH write time and disk-read time,
+// and array validation is all-or-nothing: one out-of-range field fails
+// the whole array, so every rung on that thesis silently disappears.
+//
+// This is not theoretical. On 2026-08-16, GD / ASML / ETN each carried a
+// TIME_ELAPSED review rung with cooldownDays of 144 / 144 / 292 against
+// the schema's max of 90 — and all 8 / 8 / 6 of their rungs, entry
+// triggers included, were being discarded on every read. No error, no
+// alert. Same silent-failure shape as the id-less bug of 2026-06.
+//
+// The file already warns about exactly this hazard for `.refine()`
+// ("would fail the whole array parse and silently drop ALL triggers on
+// that thesis") — the `.max(90)` on cooldownDays does the same thing and
+// nobody noticed.
+//
+// So the read path parses rung-by-rung and repairs what it can:
+//   • cooldownDays out of range → CLAMPED into [0, 90]. A 292-day
+//     cooldown means "basically never re-fire"; 90 is close enough, and
+//     keeping the rung beats losing it.
+//   • anything else invalid   → that ONE rung is dropped, loudly. The
+//     rest of the ladder survives.
+//
+// The write paths keep using `triggersArraySchema` directly and stay
+// strict — bad input should be refused at the door, not repaired.
+
+const MAX_COOLDOWN_DAYS = 90;
+
+export interface ResilientParseResult {
+  triggers: TriggerInput[];
+  /** Rungs whose cooldown was out of range and got clamped. */
+  clamped: number;
+  /** Rungs that could not be repaired and were dropped. */
+  dropped: number;
+}
+
+export function parseTriggersResilient(raw: unknown): ResilientParseResult {
+  if (!Array.isArray(raw)) {
+    // A non-array (or null) is "no triggers", not corruption.
+    const whole = triggersArraySchema.safeParse(raw ?? []);
+    return {
+      triggers: whole.success ? whole.data : [],
+      clamped: 0,
+      dropped: 0,
+    };
+  }
+
+  const triggers: TriggerInput[] = [];
+  let clamped = 0;
+  let dropped = 0;
+
+  for (const entry of raw) {
+    let candidate = entry;
+    // Repair pass: clamp an out-of-range cooldown before validating.
+    if (
+      candidate &&
+      typeof candidate === "object" &&
+      typeof (candidate as { cooldownDays?: unknown }).cooldownDays === "number"
+    ) {
+      const cd = (candidate as { cooldownDays: number }).cooldownDays;
+      const fixed = Math.min(Math.max(Math.round(cd), 0), MAX_COOLDOWN_DAYS);
+      if (fixed !== cd) {
+        candidate = { ...(candidate as object), cooldownDays: fixed };
+        clamped++;
+      }
+    }
+
+    const parsed = triggerSchema.safeParse(candidate);
+    if (parsed.success) {
+      triggers.push(parsed.data);
+      continue;
+    }
+    dropped++;
+    console.error(
+      "[triggers] dropping one unparseable rung; the rest of the ladder is kept:",
+      parsed.error.issues.slice(0, 2),
+    );
+  }
+
+  return { triggers, clamped, dropped };
+}
