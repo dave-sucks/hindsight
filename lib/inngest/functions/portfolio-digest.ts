@@ -3,7 +3,8 @@
  * account per trading day. See docs/plans/PORTFOLIO_DIGEST.md (Feature A).
  *
  * Runs after market close + after the last tactical settles (8:00 PM ET,
- * Mon-Fri). For each account with activity:
+ * Mon-Fri). For each account with trading activity (see
+ * lib/portfolio/digest-pairs.ts for what qualifies):
  *   1. buildDigestFacts(accountId, date, environment) — the facts blob
  *   2. writeDigestNarrative(facts)       — cheap-model markdown narration
  *   3. upsert a PortfolioDigest row, idempotent on (accountId, environment, date)
@@ -21,6 +22,10 @@ import { etTradingDayDate } from "@/lib/market-hours";
 import type { DigestFacts } from "@/lib/portfolio/digest-facts";
 import { buildDigestFacts } from "@/lib/portfolio/digest-facts-builder";
 import { writeDigestNarrative } from "@/lib/agent/digest-writer";
+import {
+  selectDigestPairs,
+  TRADING_RUN_MODES,
+} from "@/lib/portfolio/digest-pairs";
 
 /** YYYY-MM-DD (ET) for the trading day a Date falls in. */
 function etDateString(d: Date): string {
@@ -46,42 +51,67 @@ export const portfolioDigest = inngest.createFunction(
     // The DB `date` column anchors at ET midnight (same as etTradingDayDate).
     const digestDate = today;
 
-    // Step 1: find (account, environment) PAIRS that had ANY activity today
-    // (runs / opens / closes). PAPER and LIVE share one accountId, so the unit
-    // of work is the pair — each environment with activity gets its own digest.
+    // Step 1: find (account, environment) PAIRS with TRADING activity today.
+    // PAPER and LIVE share one accountId, so the unit of work is the pair.
     // No activity → no digest (don't write empty rows).
+    //
+    // "Activity" is deliberately narrower than "any ResearchRun": non-trading
+    // modes (PRINCIPAL_CHAT, THESIS_WRITER, podcast runs) default
+    // environment=PAPER, so counting them kept writing PAPER digests for an
+    // account whose analysts were all promoted to LIVE. Runs are filtered to
+    // TRADING_RUN_MODES, and a run-only pair still needs its env to actually
+    // be traded (an enabled analyst there, or an OPEN position there).
+    // Position opens/closes today count unconditionally — they ARE trading.
+    // Selection rule + rationale: lib/portfolio/digest-pairs.ts.
     const pairs = await step.run("find-active-pairs", async () => {
       const dayStart = new Date(`${dateStr}T00:00:00-05:00`);
       // Use a generous window; the facts builder does its own precise ET window.
       const since = new Date(dayStart);
       since.setUTCHours(since.getUTCHours() - 6);
 
-      const [runRows, openRows, closeRows] = await Promise.all([
-        prisma.researchRun.findMany({
-          where: { startedAt: { gte: since } },
-          select: { accountId: true, environment: true },
-          distinct: ["accountId", "environment"],
-        }),
-        prisma.position.findMany({
-          where: { openedAt: { gte: since } },
-          select: { accountId: true, environment: true },
-          distinct: ["accountId", "environment"],
-        }),
-        prisma.position.findMany({
-          where: { closedAt: { gte: since } },
-          select: { accountId: true, environment: true },
-          distinct: ["accountId", "environment"],
-        }),
-      ]);
+      const [runRows, openRows, closeRows, configRows, openPosRows] =
+        await Promise.all([
+          prisma.researchRun.findMany({
+            where: {
+              startedAt: { gte: since },
+              mode: { in: [...TRADING_RUN_MODES] },
+            },
+            select: { accountId: true, environment: true },
+            distinct: ["accountId", "environment"],
+          }),
+          prisma.position.findMany({
+            where: { openedAt: { gte: since } },
+            select: { accountId: true, environment: true },
+            distinct: ["accountId", "environment"],
+          }),
+          prisma.position.findMany({
+            where: { closedAt: { gte: since } },
+            select: { accountId: true, environment: true },
+            distinct: ["accountId", "environment"],
+          }),
+          prisma.agentConfig.findMany({
+            where: { enabled: true },
+            select: { accountId: true, tradingEnvironment: true },
+            distinct: ["accountId", "tradingEnvironment"],
+          }),
+          prisma.position.findMany({
+            where: { status: "OPEN" },
+            select: { accountId: true, environment: true },
+            distinct: ["accountId", "environment"],
+          }),
+        ]);
 
-      const seen = new Map<string, { accountId: string; environment: string }>();
-      for (const r of [...runRows, ...openRows, ...closeRows]) {
-        seen.set(`${r.accountId}::${r.environment}`, {
-          accountId: r.accountId,
-          environment: r.environment,
-        });
-      }
-      return [...seen.values()];
+      return selectDigestPairs({
+        tradingRunPairs: runRows,
+        positionActivityPairs: [...openRows, ...closeRows],
+        tradedEnvPairs: [
+          ...configRows.map((c) => ({
+            accountId: c.accountId,
+            environment: c.tradingEnvironment,
+          })),
+          ...openPosRows,
+        ],
+      });
     });
 
     if (pairs.length === 0) {
