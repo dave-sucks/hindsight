@@ -15,7 +15,6 @@ import {
 } from "@/lib/universe/canonical";
 import { normalizeFeeds } from "@/lib/universe/feeds";
 import { getAccountId } from "@/lib/auth/account";
-import { analystSeedFromArchetype } from "@/lib/agent/triggers/seed-account";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -67,8 +66,6 @@ export interface AnalystConfig {
    * cron is independent — intraday reactivity fires every day regardless.
    */
   runDaysOfWeek: number[];
-  /** Entry style — see docs/plans/ENTRY_TRIGGER_SEMANTICS.md. */
-  entryTriggerMode: "BREAKOUT" | "DIP";
   /** Owner email opt-out for this analyst (new trades, fills, approval requests). */
   emailAlerts: boolean;
   createdAt: Date;
@@ -536,8 +533,6 @@ export async function getAnalystDetail(
     dailyLossLimit: config.dailyLossLimit,
     scheduleTime: config.scheduleTime,
     runDaysOfWeek: (config.runDaysOfWeek as number[] | undefined) ?? [1, 2, 3, 4, 5],
-    entryTriggerMode:
-      config.entryTriggerMode === "DIP" ? ("DIP" as const) : ("BREAKOUT" as const),
     emailAlerts: config.emailAlerts,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
@@ -755,12 +750,6 @@ export async function createAnalystFromWizard(
 // ── createAnalystFromBuilder (AI chat builder — richer config) ──────────────
 
 interface BuilderConfig {
-  /**
-   * Strategy archetype this seat was built from. Seeds the entry style
-   * and any analyst-level trigger rules the archetype overrides — derived
-   * server-side from the id rather than trusted as values from the model.
-   */
-  archetypeId?: string;
   name: string;
   analystPrompt: string;
   description?: string;
@@ -932,8 +921,6 @@ export async function createAnalystFromBuilder(
   // ── Transactional creation: analyst + watchlist + monitors ──
   // All intelligence setup is atomic — if monitor creation fails midway,
   // the analyst still gets created but without a partial/broken intelligence setup.
-  const archetypeSeed = analystSeedFromArchetype(data.archetypeId);
-
   const analyst = await prisma.$transaction(async (tx) => {
     // 1. Create the analyst config (core record)
     const newAnalyst = await tx.agentConfig.create({
@@ -943,11 +930,6 @@ export async function createAnalystFromBuilder(
         name,
         description: data.description ?? "",
         enabled: true,
-        // Entry style + any analyst-level rules this archetype overrides.
-        // Derived from the archetype id server-side, not taken as values
-        // from the builder — see lib/agent/triggers/seed-account.
-        entryTriggerMode: archetypeSeed.entryTriggerMode,
-        triggers: archetypeSeed.triggers as unknown as object,
         analystPrompt: prompt,
         markets: ["US_EQUITIES"],
         exchanges: universeExchanges,
@@ -1167,12 +1149,6 @@ type UpdatableField =
   // Per-analyst daily-run days (ISO weekdays 1=Mon..5=Fri). Read by the
   // morning-research cron gate (lib/inngest/functions/morning-research.ts).
   | "runDaysOfWeek"
-  // ── Entry style ──────────────────────────────────────────
-  // "BREAKOUT" (ENTER when price rises through entryPrice) | "DIP"
-  // (ENTER when price falls to it). Decides the direction of the ENTER
-  // rung the WATCHING/PROMOTED templates mint. See
-  // docs/plans/ENTRY_TRIGGER_SEMANTICS.md.
-  | "entryTriggerMode"
   // ── Notifications ────────────────────────────────────────
   // Read at runtime by every email path (daily-run-digest, proposal-pending,
   // place-trade open-email, closeTrade close-email, maybe-await-approval).

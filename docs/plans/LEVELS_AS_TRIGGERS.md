@@ -104,7 +104,8 @@ Concretely:
 | `entryPrice` | the canonical `ENTER` rung — direction per the analyst's entry mode |
 | `nextReviewAt` | a `REVIEW_DATE_HIT` rung (re-instated), or `TIME_ELAPSED` for a cadence |
 | `maxHoldDays` | the `EXIT + TIME_ELAPSED` rung |
-| RUNNING_WINNER | a real `REVIEW` rung at the default/account level |
+| RUNNING_WINNER | a real `REVIEW` rung at the account level |
+| entry *direction* (buy the dip vs buy confirmation) | an ENTER rung at the account/analyst level — needs a predicate comparing price to the thesis's own `entryPrice`, since a dollar level can't live above the thesis. Was briefly built as an `entryTriggerMode` setting and removed 2026-08-16; see `ENTRY_TRIGGER_SEMANTICS.md`. **Do not rebuild it as a setting.** |
 
 The columns stay as a **read model** — the Price Targets card, the chart lines,
 the digest and the prompts all read them, and there is a lot of code doing so.

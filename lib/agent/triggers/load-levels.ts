@@ -13,12 +13,7 @@
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "./schema";
 import { resolveLadder, type ResolvedTrigger } from "./levels";
-import {
-  DEFAULT_ENTRY_TRIGGER_MODE,
-  type EntryTriggerMode,
-  type Horizon,
-  type ThesisState,
-} from "./defaults";
+import type { Horizon, ThesisState } from "./defaults";
 import type { Trigger } from "./types";
 import { unseededAccountFallback } from "./seed-account";
 
@@ -98,23 +93,6 @@ export async function loadLevelSources(
     });
   }
   return out;
-}
-
-/**
- * The owning analyst's entry style, for the WATCHING/PROMOTED templates.
- * Unknown analyst (or an unrecognised stored value) falls back to the app
- * default, so a bad row can never silently flip a seat's entry direction.
- * See docs/plans/ENTRY_TRIGGER_SEMANTICS.md.
- */
-export async function entryTriggerModeForAnalyst(
-  analystId: string | null | undefined,
-): Promise<EntryTriggerMode> {
-  if (!analystId) return DEFAULT_ENTRY_TRIGGER_MODE;
-  const row = await prisma.agentConfig.findUnique({
-    where: { id: analystId },
-    select: { entryTriggerMode: true },
-  });
-  return row?.entryTriggerMode === "DIP" ? "DIP" : DEFAULT_ENTRY_TRIGGER_MODE;
 }
 
 /**

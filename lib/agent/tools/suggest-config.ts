@@ -116,12 +116,6 @@ function normalizeSuggestConfig(input: unknown): unknown {
 }
 
 const rawConfigSchema = z.object({
-  archetypeId: z
-    .string()
-    .optional()
-    .describe(
-      "ID of the strategy archetype this analyst is built from (from read_knowledge_library — e.g. DEEP_VALUE, MOMENTUM_BREAKOUT). Seeds the entry style (buy-the-dip vs buy-confirmation) and any standing trigger rules the archetype overrides. Pass it whenever the config is grounded in an archetype; the server derives the rules from the id, so never supply trigger values yourself.",
-    ),
   name: z.string().describe("Short analyst name (2-4 words). E.g. 'EV Momentum Trader'"),
   analystPrompt: z
     .string()

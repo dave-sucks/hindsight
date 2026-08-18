@@ -130,6 +130,17 @@ discussion but never an entry.
 
 ## Fix 1 — make entry direction an analyst-level default
 
+> **⚠️ SUPERSEDED 2026-08-16 by principal ruling.** This was built as an
+> `AgentConfig.entryTriggerMode` setting (BREAKOUT / DIP) and **removed the
+> same day**: a setting whose entire output is a trigger is a second way to
+> express what the trigger already expresses, and it was invisible on the
+> thesis. Entry direction must be an ordinary ENTER **rung** at the account
+> or analyst level — which requires a predicate comparing price to the
+> thesis's own `entryPrice`, since a dollar level cannot live above the
+> thesis. Folded into [`LEVELS_AS_TRIGGERS.md`](./LEVELS_AS_TRIGGERS.md).
+> Do not rebuild this as a setting. The section below is kept for the
+> diagnosis and the evidence tables, which stand.
+
 Two values, one choice per analyst:
 
 | Mode | LONG predicate | For |
@@ -190,10 +201,13 @@ June.
 
 ## Suggested sequencing
 
-1. **Fix 2** first — it is strategy-neutral, cannot make anything worse, and removes the noise
-   that makes everything else hard to read.
-2. **Fix 1** — the analyst-level mode, shipped with `ENTER_ON_BREAKOUT` as the default and
-   Compounder opted into `ENTER_ON_DIP`.
+1. ~~**Fix 2** first~~ — **REVERSED 2026-08-16.** Built as edge-triggering (fire once on the
+   crossing, re-arm on the way back) and reverted the same week: the principal ruling is that a
+   trigger is a standing order that fires **every day its condition is true**, because a decline
+   means "did nothing." Latching turns a declined standing order into a silent one. Noise belongs
+   to cooldown and to the resolution obligation on a fired rung (P1-40), never to suppressing the
+   condition.
+2. ~~**Fix 1**~~ — see the superseded note above; it becomes a rung, not a mode.
 3. **Fix 3** — needs prompt work plus a gate; scope it separately.
 
 ---
