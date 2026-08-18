@@ -96,7 +96,7 @@ These are the ones where the system quietly does the wrong thing with real money
 
 ## 🟡 TIER 2 — Waste & noise (cost + clutter, not correctness)
 
-- [ ] **ENTER re-fire tax.** ([P1-37](../GAPS.md)) — ⚠️ **needs re-scoping under the 2026-08-16 ruling.** The filed fix ("a declining tactical must retune the rung") is now **illegal** — agents don't move levels. What survives is the real waste: a blocked ENTER spawns a full GPT-5.5 tactical run every 5-min tick (CAPR ~5×, CEG 4× in two days) to reach the same blocked conclusion. Re-scope to **cheap-path the repeat** (the tactical snooze already exists — extend it) and **dispatch the refresh the agent says it needs**, without touching levels. The rung staying armed is now correct behavior, not the bug.
+- [x] **Duplicate buy-checks.** ([P1-37](../GAPS.md)) — ✅ built 2026-08-18 (PR pending): when a stock crosses its buy price and the analyst examines it and declines, the same trigger no longer wakes ANOTHER full AI session within 4 hours (CAPR was checked ~5×, CEG 4× in two days, same answer each time). Machine-cost dedup only — the trigger keeps firing and recording, the principal's alerts are untouched (a declined buy-check never showed him anything), and the daily run still sees the fired trigger next morning. The day-over-day refires end at the source via #525's rule: an agent that declines durably must move the trigger to the level it would actually accept.
 - [ ] **Discovery-mint quality + executability vet.** ([P1-38](../GAPS.md) + P2) — vet minted entry/stop levels against structure so discovery can't mint chronically-true-but-unfillable rungs.
 
 ## 🟢 TIER 3 — Trust & control (so you can SEE and CONFIGURE it)
