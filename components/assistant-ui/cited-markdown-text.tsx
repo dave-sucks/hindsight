@@ -361,7 +361,7 @@ const citedComponents = memoizeMarkdownComponents({
   h2: ({ className, ...props }) => (
     <h2
       className={cn(
-        "aui-md-h2 mt-5 mb-2 scroll-m-20 font-semibold text-[15px] first:mt-0 last:mb-0",
+        "aui-md-h2 mt-5 mb-2 scroll-m-20 font-semibold text-message first:mt-0 last:mb-0",
         className,
       )}
       {...props}
@@ -378,7 +378,7 @@ const citedComponents = memoizeMarkdownComponents({
     return (
       <h3
         className={cn(
-          "aui-md-h3 mt-4 mb-1.5 scroll-m-20 font-semibold text-[15px] first:mt-0 last:mb-0",
+          "aui-md-h3 mt-4 mb-1.5 scroll-m-20 font-semibold text-message first:mt-0 last:mb-0",
           className,
         )}
         {...props}

@@ -165,8 +165,6 @@ export interface AnalystStats {
   bestWin: number | null;
   worstLoss: number | null;
   avgConfidence: number | null;
-  /** Count of theses currently in PROMOTED state — awaiting first-live-run resolution. */
-  promotedCount: number;
 }
 
 export interface AnalystDetail {
@@ -427,9 +425,7 @@ export async function getAnalystDetail(
   // moved into `scoring.composite` (Json `{ ... composite: number }`).
   // Prisma aggregate can't average a Json field; fetch the scoring blobs
   // and average composites client-side. Cheap on a per-analyst scope.
-  // promotedCount feeds the "N promoted" badge on the analyst
-  // detail header.
-  const [allPositions, scoringRows, promotedCount] = await Promise.all([
+  const [allPositions, scoringRows] = await Promise.all([
     prisma.position.findMany({
       where: { accountId, analystId },
       select: { outcome: true, realizedPnl: true },
@@ -437,16 +433,6 @@ export async function getAnalystDetail(
     prisma.thesis.findMany({
       where: { researchRun: { agentConfigId: analystId }, accountId },
       select: { scoring: true },
-    }),
-    // PROMOTED theses awaiting first-live-run resolution. Surfaced in the
-    // analyst detail header so the user can see "this many names need
-    // re-entry decisions on the next live run."
-    prisma.thesis.count({
-      where: {
-        status: "PROMOTED",
-        researchRun: { agentConfigId: analystId },
-        accountId,
-      },
     }),
   ]);
 
@@ -603,7 +589,6 @@ export async function getAnalystDetail(
       bestWin,
       worstLoss,
       avgConfidence,
-      promotedCount,
     },
   };
 }
