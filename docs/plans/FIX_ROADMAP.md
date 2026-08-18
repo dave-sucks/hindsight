@@ -16,15 +16,14 @@
    fine but must be called out.
 4. **Never widen scope mid-lane.** New findings get filed in GAPS, not fixed inline.
 
-## Status snapshot (2026-08-13)
+## Status snapshot (2026-08-17)
 
-- ✅ **GAPS fully documented** on main (P1-30 → P1-40 + P2 backlog).
-- ✅ **#513 merged** — removed the cross-day exit suppression that was going *silent*
-  on live positions (MU, CYTK). Exits surface again (~daily).
-- 🔎 **Lane 1 built** — [#518](https://github.com/dave-sucks/hindsight/pull/518)
-  awaiting principal review (LIVE-money code, never auto-merge).
-- ⏸️ **Everything below is unstarted.** Next up: **Lane 2** (assigned to the
-  triggers session — see the lane note).
+- ✅ **Lane 1 merged** ([#518](https://github.com/dave-sucks/hindsight/pull/518)) — triggers fire daily at the principal's line; ratchet rule; `heldThroughFloor` context.
+- ✅ **Lane 2 merged** ([#523](https://github.com/dave-sucks/hindsight/pull/523)) — a fired ENTER is resolved only by buy / move-the-bar / stop-watching. **Watch the first crons** (see P1-40's status): IONS + MIRM have fired ENTERs *and* sub-floor sizing.
+- ✅ **Trigger cascade merged** ([#511](https://github.com/dave-sucks/hindsight/pull/511)) — account → analyst → thesis levels as data, settings UI, archetype seeding. Closes Tier 3's P1-31/32 **pending the principal's click-through** (both prior P0s there were UI-only, invisible to tests).
+- 🔎 **Lane 4a built** — belief-gated recycle, [#524](https://github.com/dave-sucks/hindsight/pull/524) (needs rebase + principal review; small additive migration).
+- 📄 **Lane 3 spec written** (`LEVELS_AS_TRIGGERS.md`) — needs the principal's read before ANY code; the backfill arms floors that are currently inert.
+- ⚠️ **Post-merge safety PR** (this branch) — re-aligned the daily-run prompt with the #523 gate (the prompt still taught the "transient rejection" path the gate now refuses) + docs. Merge before the next cron.
 
 ## ⚖️ Standing ruling — triggers & levels (2026-08-16, principal)
 
@@ -68,7 +67,7 @@ These are the ones where the system quietly does the wrong thing with real money
     down is silence with extra steps. Don't rebuild that.
   - ℹ️ **Reject-UI level editing was already built** (verified 2026-08-16) — the
     reject dialog renders an inline editable trigger section. Nothing to build.
-- [ ] **Lane 2 — ENTER fires, validates, never buys.** ([P1-40](../GAPS.md)) — **assigned
+- [x] **Lane 2 — ENTER fires, validates, never buys.** ([P1-40](../GAPS.md)) — ✅ **merged in [#523](https://github.com/dave-sucks/hindsight/pull/523)** (2026-08-17). The real mechanism (a rationale-only REVIEW satisfied the completion gate) is fixed: a fired ENTER resolves only via `place_trade`, a level change, or ARCHIVED. Prompt re-aligned in the post-merge safety PR. **Close after one clean cron cycle** — watch IONS/MIRM (fired ENTERs + sub-floor sizing; see the escalated P2 sizing item). Originally: **assigned
   to the triggers session** (it traced the real mechanism: a rationale-only REVIEW
   satisfies the gate). Separate PR, after #518 merges, rebase first. **Gate fix only** —
   no auto-level-changing behavior (the ruling above forbids it).
@@ -88,7 +87,7 @@ These are the ones where the system quietly does the wrong thing with real money
     live money — **principal in the room before any code.**
   - **Done when:** every level on a live thesis fires something, and no level exists in two
     places. Interim guard already shipped in #518's prompt: never lower a rung for shape.
-- [ ] **Lane 4 — Sold-name continuity.** ([P1-35](../GAPS.md) · [`SOLD_NAME_CONTINUITY.md`](./SOLD_NAME_CONTINUITY.md))
+- [ ] **Lane 4 — Sold-name continuity.** ([P1-35](../GAPS.md) · [`SOLD_NAME_CONTINUITY.md`](./SOLD_NAME_CONTINUITY.md)) — **Half A built** ([#524](https://github.com/dave-sucks/hindsight/pull/524), belief-gated recycle; needs rebase + review, small additive migration). **Half B** (same-ticker guard on re-mints, `record-thesis.ts`) unblocked now that #523 merged — build after #524 lands.
   - Protective exits go dark (no recycle) and discovery re-mints sold names blind
     (re-bought XENE at its stop price). Belief-gated recycle + same-ticker guard that
     sees recent RETIRED rows.
@@ -103,7 +102,7 @@ These are the ones where the system quietly does the wrong thing with real money
 ## 🟢 TIER 3 — Trust & control (so you can SEE and CONFIGURE it)
 
 - [ ] **Trigger lifecycle visibility.** ([P1-33](../GAPS.md)) — the chain is in the DB but not on screen; per-trigger timeline + a book-level protection strip. (Depends on the `fieldChanges: {}` audit-diff fix — P2.)
-- [ ] **Account / analyst standing rules + settings UI.** ([P1-31](../GAPS.md) / [P1-32](../GAPS.md)) — the editable global triggers (the safety-net layer under the agent's per-name floors).
+- [x] **Account / analyst standing rules + settings UI.** ([P1-31](../GAPS.md) / [P1-32](../GAPS.md)) — ✅ **merged in [#511](https://github.com/dave-sucks/hindsight/pull/511)** (2026-08-17): the cascade, `/settings/triggers` + analyst Triggers tab, defaults as `Account.triggers` data, archetype seeding. **Close after the principal's click-through** — nobody has seen most of it render.
 
 ## ⚪ TIER 4 — Deferred / housekeeping
 

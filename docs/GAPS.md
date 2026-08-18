@@ -45,7 +45,14 @@ automatic OR manual. Principal wants (2026-07-06):
   gains — reconcile with the daily-%-move decision rather than blindly reverting it.
 
 ### P1-31 — Analyst-level (portfolio-level) standing trigger rules, not just per-thesis
-**Status:** open, filed 2026-07-06 (principal).
+**Status:** 🔎 **SHIPPED in [#511](https://github.com/dave-sucks/hindsight/pull/511) (merged 2026-08-17), pending the principal's click-through.**
+The trigger cascade landed: account → analyst → thesis levels resolved by one resolver feeding the
+UI, the evaluator, tactical-run, `get_theses`, live-evaluate and `complete_run`; code-level defaults
+migrated to `Account.triggers` as data (`triggersSeededAt` distinguishes never-seeded from
+deliberately-emptied; every account backfilled); archetype seeding on analyst creation. Close (with
+P1-32) after the principal's manual click-through — both prior P0s in this area were UI-only and
+invisible to tests. Original filing follows:
+open, filed 2026-07-06 (principal).
 Triggers today are per-thesis. Principal wants **standing rules at the analyst / portfolio level**:
 "do X when ANY of my holdings reaches +X% / drops X% in a day / week / trailing / from high." They
 auto-apply across the whole book so risk + press behavior is configured once, not per name. Pairs
@@ -53,7 +60,8 @@ with the Spine (agent-authored per-thesis ladders in `docs/plans/SCALE_INTO_WINN
 standing rules are the floor; the agent fills in smart per-name levels on top.
 
 ### P1-32 — Surface + customize triggers / rules / thresholds in settings (UI)
-**Status:** open, filed 2026-07-06 (principal).
+**Status:** 🔎 **SHIPPED in [#511](https://github.com/dave-sucks/hindsight/pull/511) (merged 2026-08-17), pending the principal's click-through** — `/settings/triggers` + the analyst Triggers tab, same pills as the thesis sheet, `canEdit` server-computed. Close with P1-31 after the click-through. Original filing follows:
+open, filed 2026-07-06 (principal).
 The trigger ladder, the standing rules (P1-31), and the press/protect thresholds
 (`RUNNING_WINNER_ABS_GAIN_PCT`, the +7%/−7% rungs, stops) are all code-level today. Principal wants
 them **visible and editable in settings / analyst settings** — both to configure the behavior and
@@ -78,7 +86,7 @@ morning-run read-everything was unfocused. Three candidate models framed in
 HELD names + review-time targeted pull). **Do not rebuild the pipeline before that design session.**
 
 ### P1-35 — Sold-name continuity: a sold name loses all thread with its history (REALIZED on the live book)
-**Status:** open, promoted from candidate 2026-07-21. **Live — it has already moved real money.**
+**Status:** **Half A built** — belief-gated recycle in [#524](https://github.com/dave-sucks/hindsight/pull/524) (open, needs rebase onto the #511/#523 merge + principal review; carries a small additive migration `Order.closeBeliefSurvived`). Live measurement in the PR: 28 of 29 SOLD theses since June 1 went terminal via a non-TARGET close. **Half B** (same-ticker guard on re-mints) waits on the #523-touched `record-thesis.ts` landing first — now merged, so it unblocks after #524. Note Half A shrinks Half B: a recycled name is WATCHING, which the existing mint guard already sees. Originally: open, promoted from candidate 2026-07-21. **Live — it has already moved real money.**
 Selling severs a thesis from its own history both ways:
 - **(a) No recycle on protective exits.** A stop/trailing close goes `RETIRED (SOLD)` and is terminal;
   only `closeReason=TARGET` returns to WATCHING. So the "did we sell the dip?" case — the highest-risk
@@ -170,7 +178,16 @@ and "narrow the P1-28 carve-out" items.** Secondary (real but NOT the loop's cau
 into the `fieldChanges: {}` P2 item).
 
 ### P1-40 — ENTER trigger fires, validates, then never buys — silently (the RARE gap)
-**Status:** open, filed 2026-08-13, **code-traced.** Live money, and *invisible*. RARE's ENTER trigger fired
+**Status:** 🔎 **SHIPPED in [#523](https://github.com/dave-sucks/hindsight/pull/523) (merged 2026-08-17), pending first validated cron.**
+The gate: a fired/matching ENTER is resolved only by `place_trade`, a level change
+(`update_thesis` triggers/entry_price), or ARCHIVED — a rationale-only REVIEWED row no longer counts.
+The daily-run prompt was re-aligned to the gate in the post-merge safety PR (the stale "transient
+rejection" path (b) taught exactly what the gate now refuses). **Watch on the first crons:** IONS +
+MIRM (Catalyst Event PM, LIVE) have fired ENTERs and sub-floor `targetSizePct` (see the escalated P2
+sizing item) — one refuse-and-retry is the gate working; repeated refusal on the same name, or a
+good thesis getting ARCHIVED to satisfy the gate, is the bad version. Close after one clean cycle.
+Original filing (with the corrected mechanism) follows:
+open, filed 2026-08-13, **code-traced.** Live money, and *invisible*. RARE's ENTER trigger fired
 2026-08-05; the agent validated every condition (price $28.02 above the $27.50 entry, supportive news, Q2
 beat) — wrote it down — and **never called `place_trade`.** No error, no failure, no alert. It was the only
 shot: RARE hasn't traded above $27.50 since ($24.93→$26.86), every review since repeats "still below the
@@ -243,7 +260,8 @@ fully every tick. Reasoning says volume is ~flat (SWR refetched in the backgroun
 `morning-research` is `concurrency:{limit:1}` so analysts are serial) but **this was not measured in
 prod.** Rule documented in `CLAUDE.md` → recurring bugs.
 
-### P1-42 — Silent vendor decay: FMP is ~dead on the current plan and several agent tools return nothing
+### P1-43 — Silent vendor decay: FMP is ~dead on the current plan and several agent tools return nothing
+*(Renumbered from a duplicate "P1-42" 2026-08-17 — two sessions filed different gaps under the same number; the levels-as-triggers gap keeps P1-42 since the spec + roadmap cite it.)*
 **Status:** open, filed 2026-08-14, **endpoint-audited live.** Found while tracing P1-41. Every FMP
 call the app makes was probed against the real key today:
 
@@ -274,7 +292,7 @@ _(P1-26 + P1-29 closed 2026-06-26 — see [`GAPS_HISTORY.md`](./GAPS_HISTORY.md)
 ## P2 — Backlog
 
 ### Active
-- **`targetSizePct` below the `minPositionSize` floor → self-rejecting entries (pairs with P1-40).** RARE's thesis carried `targetSizePct = 4%` ≈ $4k on a ~$100k book, under the $5k `minPositionSize` floor — so `place_trade` Guardrail 5b (`positionBand()`, `lib/agent/position-sizing.ts`) would reject the entry by the thesis's own sizing, even on a valid ENTER. Fix: when authoring/refreshing a thesis, clamp `targetSizePct` up to the analyst's floor (or refuse to mint a sub-floor size). Silent contributor to missed entries — the agent never sees "your own size is below the floor."
+- **⚠️ ESCALATED `targetSizePct` below the `minPositionSize` floor → self-rejecting entries (pairs with P1-40 — and #523 made it ACTIVE).** RARE's thesis carried `targetSizePct = 4%` ≈ $4k on a ~$100k book, under the $5k `minPositionSize` floor — `place_trade` Guardrail 5b rejects the entry by the thesis's own sizing. **Probed live 2026-08-17: 8 WATCHING theses are sub-floor** (Catalyst Event PM: IONS/MIRM/RARE at 4% vs $5k; Secular Compounder: CRWD/GEV/NTNX/SNPS/TXN at 2.5–5% vs $10k) — and IONS + MIRM have FIRED ENTERs. Pre-#523 this was a silent non-trade; post-#523 the gate *compels* resolution, so a sub-floor thesis pushes the agent toward archiving a good name. Interim mitigation shipped (post-merge safety PR): the prompt teaches "size `notional` at the floor when conviction supports it; a sub-floor `targetSizePct` is a plan defect, not a skip reason." Durable fix still open: authoring-time clamp in `record_thesis`/`update_thesis` — needs an equity-aware design (targetSizePct is % of book; the floor is dollars), don't hardcode a book size. Also principal input wanted: Secular Compounder's $10k floor vs its 2.5–4% theses is a config-level tension only Dave can resolve.
 - **Discovery-mint executability vet.** *(Sharper half of P1-38, tracked here for the tuning slice.)* Vet each minted `entryPrice` / ENTER level against structure (20d/50d, confirmation) at write time so discovery can't mint a chronically-true-but-unfillable entry. CAPR 7/16 = the case.
 - **SHORT closes are invisible to the exit-ledger reads (`side: "SELL"` filter).** `get_theses` counts declined exit proposals with `side: "SELL"` — but closing a SHORT writes a **BUY** order (`closeSide = direction === "LONG" ? "sell" : "buy"`, `closeTrade.actions.ts:186`). So both `unapprovedExitCount` (pre-existing) and `heldThroughFloor` (#518) stay empty on SHORT holdings: a principal who declines a short's protective-ceiling exit three times gets none of that context on the next run, and the direction-aware recent-high math in the bars block is unreachable. Zero live impact today (all current holdings are LONG) — fix before the first live SHORT. Fix: key the query off `intent ∈ {CLOSE, PARTIAL_CLOSE}` rather than `side`. Found in the #518 review 2026-08-16.
 - **`closeReason` mis-tag assertion (ex-C3).** 7/13 protective closes tagged `closeReason=MANUAL` (only ARQT carried `STOP`) → EWTX's floor breach wrongly P1-28-suppressed. Self-corrected to `STOP` from 7/14 (coincident with #490). The #490 risk-exit carve-out keys off this field. Fix: Layer-1 assertion — a close from a protective/trailing fire must carry STOP/TARGET (refuse/auto-tag on mismatch). Verify tagging holds one more window. Run-review Finding C.
