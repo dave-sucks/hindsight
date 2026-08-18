@@ -36,7 +36,7 @@ import {
 } from "@/lib/agent/research-helpers";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 import { describeTriggerFire } from "@/lib/agent/triggers/format";
 import { splitFiresByLevel } from "@/lib/agent/triggers/levels";
@@ -56,14 +56,10 @@ import { isMarketOpen } from "@/lib/market-hours";
  */
 function parseTriggers(raw: unknown, thesisId: string): Trigger[] {
   if (raw == null) return [];
-  const result = triggersArraySchema.safeParse(raw);
-  if (!result.success) {
-    console.warn(
-      `[trigger-evaluator] thesis=${thesisId} triggers JSON failed Zod validation`,
-      result.error.flatten(),
-    );
-    return [];
-  }
+  // Rung-by-rung — a single bad field must not discard a thesis's whole
+  // ladder (that failure hid 22 live rungs across GD/ASML/ETN until
+  // 2026-08-16). See parseTriggersResilient.
+  const result = { success: true as const, data: parseTriggersResilient(raw).triggers };
   // The schema's `id` .default() auto-generates an id for any trigger whose
   // stored JSON lacked one, so post-parse every trigger should have an id.
   // This map is a belt-and-suspenders backstop: if one still doesn't, assign

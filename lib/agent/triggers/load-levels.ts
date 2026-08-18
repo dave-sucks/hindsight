@@ -11,7 +11,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { triggersArraySchema } from "./schema";
+import { parseTriggersResilient } from "./schema";
 import { resolveLadder, type ResolvedTrigger } from "./levels";
 import type { Horizon, ThesisState } from "./defaults";
 import type { Trigger } from "./types";
@@ -33,15 +33,16 @@ const EMPTY_SOURCES: LevelSources = { analyst: [], account: [] };
  */
 export function parseLevelTriggers(raw: unknown, label: string): Trigger[] {
   if (raw == null) return [];
-  const result = triggersArraySchema.safeParse(raw);
-  if (!result.success) {
+  // Rung-by-rung, not all-or-nothing: one bad field used to discard the
+  // entire ladder (GD/ASML/ETN lost 8/8/6 rungs each to a single
+  // out-of-range cooldown). See parseTriggersResilient.
+  const { triggers, clamped, dropped } = parseTriggersResilient(raw);
+  if (clamped > 0 || dropped > 0) {
     console.warn(
-      `[trigger-levels] ${label} triggers JSON failed Zod validation — treating as empty`,
-      result.error.issues.slice(0, 3),
+      `[trigger-levels] ${label}: repaired ${clamped} rung(s) with an out-of-range cooldown, dropped ${dropped} unparseable rung(s); ${triggers.length} kept`,
     );
-    return [];
   }
-  return result.data as Trigger[];
+  return triggers as Trigger[];
 }
 
 /**
