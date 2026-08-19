@@ -62,6 +62,21 @@ export interface CoverageRow {
   costBasis: number | null;
   // ── Passed only (null otherwise) ──
   verdict: CoverageVerdict | null;
+  /**
+   * The unapproved proposal sitting on this ticker, if any. Rides on whatever
+   * row the ticker already has — a CLOSE/TRIM/ADD lands on its held Trades
+   * row, a new buy (OPEN) lands on the Watching row for the same ticker — so
+   * every pending action is skimmable next to that name's 1D/5D/30D move
+   * instead of only in the "Pending approval" rail.
+   */
+  pendingProposal: CoveragePendingProposal | null;
+}
+
+export interface CoveragePendingProposal {
+  orderId: string;
+  intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+  /** Shares THIS proposal moves — the Order's quantity, not the position's. */
+  quantity: number;
 }
 
 export interface CoverageData {
@@ -101,7 +116,7 @@ export async function getCoverageData(
   const recentSince = new Date(Date.now() - RECENT_DAYS * 86_400_000);
 
   // ── DB reads (parallel) ────────────────────────────────────────────────────
-  const [positions, watchingTheses, passedTheses, alpacaCreds] = await Promise.all([
+  const [positions, watchingTheses, passedTheses, alpacaCreds, pendingBuyPositions] = await Promise.all([
     // Open positions + recently-closed (sold) positions — the Trades tab.
     prisma.position.findMany({
       where: {
@@ -123,6 +138,15 @@ export async function getCoverageData(
         openedAt: true,
         closedAt: true,
         analyst: { select: { name: true } },
+        // The proposal awaiting a decision on this holding (close / trim /
+        // add). AWAITING_APPROVAL is NOT 'PENDING' — that one is "sent to
+        // Alpaca, not yet filled".
+        orders: {
+          where: { status: "AWAITING_APPROVAL" },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { id: true, intent: true, quantity: true },
+        },
       },
     }).catch(() => [] as never[]),
     prisma.thesis.findMany({
@@ -151,10 +175,37 @@ export async function getCoverageData(
       },
     }).catch(() => [] as never[]),
     resolveAlpacaCredentials(user.id, environment).then((c) => c ?? undefined).catch(() => undefined),
+    // Unapproved NEW buys. These positions are PENDING_APPROVAL, so they're
+    // deliberately excluded from the trades query above (nothing is held yet)
+    // — their proposal is attached to the ticker's Watching row instead.
+    prisma.position.findMany({
+      where: { accountId, environment, status: "PENDING_APPROVAL" },
+      select: {
+        symbol: true,
+        orders: {
+          where: { status: "AWAITING_APPROVAL" },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { id: true, intent: true, quantity: true },
+        },
+      },
+    }).catch(() => [] as never[]),
   ]);
 
   if (positions.length === 0 && watchingTheses.length === 0 && passedTheses.length === 0) {
     return EMPTY;
+  }
+
+  // symbol → the unapproved buy on it, for decorating Watching rows.
+  const pendingBuyBySymbol = new Map<string, CoveragePendingProposal>();
+  for (const p of pendingBuyPositions) {
+    const o = p.orders[0];
+    if (!o) continue;
+    pendingBuyBySymbol.set(p.symbol, {
+      orderId: o.id,
+      intent: (o.intent ?? "OPEN") as CoveragePendingProposal["intent"],
+      quantity: o.quantity,
+    });
   }
 
   // Resolve a thesis per traded ticker so a trade row opens its thesis sheet
@@ -244,6 +295,13 @@ export async function getCoverageData(
       shares: p.quantity,
       costBasis,
       verdict: null,
+      pendingProposal: p.orders[0]
+        ? {
+            orderId: p.orders[0].id,
+            intent: (p.orders[0].intent ?? "CLOSE") as CoveragePendingProposal["intent"],
+            quantity: p.orders[0].quantity,
+          }
+        : null,
     };
   });
 
@@ -271,6 +329,7 @@ export async function getCoverageData(
       shares: null,
       costBasis: null,
       verdict: null,
+      pendingProposal: pendingBuyBySymbol.get(t.ticker) ?? null,
     };
   });
 
@@ -303,6 +362,7 @@ export async function getCoverageData(
       shares: null,
       costBasis: null,
       verdict: passVerdict(t.direction ?? null, sincePct),
+      pendingProposal: null,
     });
   }
 

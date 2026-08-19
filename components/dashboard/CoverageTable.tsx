@@ -24,6 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { formatCurrency } from "@/lib/format";
+import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
@@ -38,6 +39,9 @@ const FLAT_BAND_PCT = 0.5;
 
 // ── Status dot ───────────────────────────────────────────────────────────────
 function statusDotClass(row: CoverageRow): string {
+  // A pending action outranks the row's own state — amber is the app-wide
+  // "waiting on you" colour, and it's what makes proposals skimmable here.
+  if (row.pendingProposal) return getTradeStatusDisplay("PENDING").dotClass;
   if (row.tradeState === "OPEN") return getTradeStatusDisplay("OPEN").dotClass;
   if (row.tradeState === "CLOSED")
     return getTradeStatusDisplay((row.sinceDollar ?? 0) >= 0 ? "CLOSED_WIN" : "CLOSED_LOSS").dotClass;
@@ -54,9 +58,21 @@ function Pct({ value }: { value: number | null }) {
 }
 
 // ── Name cell ─────────────────────────────────────────────────────────────────
+const PROPOSAL_VERB: Record<string, string> = {
+  OPEN: "Buy",
+  ADD: "Add",
+  CLOSE: "Sell",
+  PARTIAL_CLOSE: "Trim",
+};
+
 function NameCell({ row }: { row: CoverageRow }) {
   let subhead: string;
-  if (row.tradeState != null && row.shares != null && row.costBasis != null) {
+  const pp = row.pendingProposal;
+  if (pp) {
+    // The proposal replaces the usual subhead — what you're being asked to
+    // approve matters more than the cost basis while it's outstanding.
+    subhead = `${PROPOSAL_VERB[pp.intent] ?? "Review"} ${pp.quantity} share${pp.quantity === 1 ? "" : "s"} proposed`;
+  } else if (row.tradeState != null && row.shares != null && row.costBasis != null) {
     subhead = `${row.shares} share${row.shares === 1 ? "" : "s"} · ${formatCurrency(row.costBasis)}`;
   } else if (row.verdict != null && row.anchorPrice != null) {
     subhead = `Passed at $${row.anchorPrice.toFixed(2)}`;
@@ -75,7 +91,14 @@ function NameCell({ row }: { row: CoverageRow }) {
           <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDotClass(row))} />
         </div>
         {subhead && (
-          <span className="text-xs text-muted-foreground tabular-nums truncate">{subhead}</span>
+          <span
+            className={cn(
+              "text-xs tabular-nums truncate",
+              pp ? "text-amber-500" : "text-muted-foreground",
+            )}
+          >
+            {subhead}
+          </span>
         )}
       </div>
     </div>
@@ -100,16 +123,24 @@ function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: Mobil
           ${row.currentPrice.toFixed(2)}
         </span>
       )}
-      {pct == null ? (
-        <span className="text-muted-foreground/40 text-xs">—</span>
-      ) : (
-        <span className="inline-flex items-center gap-1.5 justify-end">
-          {dollar != null && (
-            <PriceChange dollarChange={dollar} percentChange={null} size="sm" arrowFirst />
-          )}
-          <PnlBadge value={pct} format="percent" className="text-xs" />
-        </span>
-      )}
+      <span className="inline-flex items-center gap-1.5 justify-end">
+        {/* Approve / reject inline — the same control as the Pending approval
+            rail and the thesis sheet, so the decision can be made while
+            reading the row's 1D/5D/30D move. */}
+        {row.pendingProposal && (
+          <ProposalActions orderId={row.pendingProposal.orderId} align="end" />
+        )}
+        {pct == null ? (
+          <span className="text-muted-foreground/40 text-xs">—</span>
+        ) : (
+          <>
+            {dollar != null && (
+              <PriceChange dollarChange={dollar} percentChange={null} size="sm" arrowFirst />
+            )}
+            <PnlBadge value={pct} format="percent" className="text-xs" />
+          </>
+        )}
+      </span>
     </div>
   );
 }
@@ -152,7 +183,7 @@ function CoverageTab({
             <TableHead className="hidden md:table-cell w-24 text-right">5D</TableHead>
             <TableHead className="hidden md:table-cell w-24 text-right">30D</TableHead>
             {/* Last column — "Lifetime" label on desktop, toggle on mobile */}
-            <TableHead className="w-48 text-right">
+            <TableHead className="w-64 text-right">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger
