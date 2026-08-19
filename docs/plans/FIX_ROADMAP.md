@@ -87,7 +87,7 @@ These are the ones where the system quietly does the wrong thing with real money
     live money — **principal in the room before any code.**
   - **Done when:** every level on a live thesis fires something, and no level exists in two
     places. Interim guard already shipped in #518's prompt: never lower a rung for shape.
-- [ ] **Lane 4 — Sold-name continuity.** ([P1-35](../GAPS.md) · [`SOLD_NAME_CONTINUITY.md`](./SOLD_NAME_CONTINUITY.md)) — **Half A built** ([#524](https://github.com/dave-sucks/hindsight/pull/524), belief-gated recycle; needs rebase + review, small additive migration). **Half B** (same-ticker guard on re-mints, `record-thesis.ts`) unblocked now that #523 merged — build after #524 lands.
+- [x] **Lane 4 — Sold-name continuity.** ([P1-35](../GAPS.md) · [`SOLD_NAME_CONTINUITY.md`](./SOLD_NAME_CONTINUITY.md)) — ✅ **merged in [#524](https://github.com/dave-sucks/hindsight/pull/524)** (2026-08-18), all three pieces: a stock sold at a stop returns to the watchlist when the analyst says the story survived (28 of 29 sold stocks used to vanish forever); a re-buy within 14 days of a sale must address that sale (the XENE re-buy shape is blocked); and no thesis can be written with a position size below the analyst's minimum (the RARE unfillable-plan bug). Close P1-35 after the first live recycle is observed.
   - Protective exits go dark (no recycle) and discovery re-mints sold names blind
     (re-bought XENE at its stop price). Belief-gated recycle + same-ticker guard that
     sees recent RETIRED rows.
