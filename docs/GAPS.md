@@ -1,3 +1,12 @@
+> # ⚠️ MIGRATED TO LINEAR — 2026-08-18
+> **This file is frozen. Linear is now the canonical tracker.** Every open item below was
+> migrated to a Linear issue (team **Davesucks**, DAV-185 … DAV-197); the two big builds are
+> Linear projects: **Levels Are Triggers** and **Signals Rebuild**. New gaps: file a Linear
+> issue, not an edit here. This copy stays for context links from in-flight sessions and for
+> the historical framing of each item. `FIX_ROADMAP.md` is likewise frozen; its standing-ruling
+> section (triggers fire daily / only Dave lowers levels) remains BINDING and is copied into
+> the Levels Are Triggers project description.
+
 # Hindsight — Gaps
 
 > **What this is:** the live tracker for what's **open** on the live-trading loop. Scoped to what affects real money, real analysts, real runs.

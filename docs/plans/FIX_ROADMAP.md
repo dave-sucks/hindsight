@@ -1,3 +1,9 @@
+> # ⚠️ FROZEN — TRACKING MOVED TO LINEAR (2026-08-18)
+> The roadmap sprint this file drove is complete: Tier 1 lanes 1/2/4 merged, Tier 3 shipped,
+> P1-30 closed. Remaining work now lives in **Linear** (team Davesucks): projects
+> **Levels Are Triggers** + **Signals Rebuild**, issues DAV-185…DAV-197.
+> **The "Standing ruling" section below remains BINDING for all sessions.**
+
 # Fix Roadmap — get out of the hole
 
 > **What this is:** the ordered, checkbox-per-item execution plan on top of
