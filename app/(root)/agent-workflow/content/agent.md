@@ -36,7 +36,6 @@ get_stock_data?provider=finnhub — only on theses that warrant real research, n
 get_earnings_data?provider=finnhub — when earnings are within two weeks
 get_earnings_calendar?provider=finnhub — firm-wide calendar, scope:coverage for your book
 get_market_movers?provider=fmp — today's movers, scope:coverage intersects your positions
-get_options_flow?provider=fmp — when unusual options activity is flagged
 get_sec_filings?provider=sec — when an insider filing or 8-K is flagged
 dispatch_thesis_research — spawns a Thesis Writer to refresh stale or missing research before trading
 wait_for_thesis_refresh — blocks until the refresh child run completes, then returns the updated excerpt

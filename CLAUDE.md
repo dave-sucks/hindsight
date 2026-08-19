@@ -152,9 +152,16 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 ### Data Sources
 - Finnhub: quotes, candles, earnings calendar, company metrics,
   news, recommendations (PRIMARY for all quote data)
-- FMP: market movers (gainers/losers/actives), analyst targets,
-  options chain, economic calendar
-  NOTE: FMP /quote/ endpoint is DEPRECATED (403 on legacy plans).
+- FMP: market movers (gainers/losers/actives), analyst price
+  targets, quote, earnings, financial statements, key metrics,
+  analyst estimates. **All FMP calls go through the ONE client at
+  `lib/market-data/fmp.ts`** — never hand-roll a `fetch` to FMP.
+  DEAD on our plan (verified 2026-08-19, DAV-191): economic calendar
+  (402), options chain / upgrades-downgrades / ratings-grades-historical
+  (404), and the whole `/api/v3` + `/api/v4` namespace (403, retired
+  2025-08-31). **Vendor health is NOT stable** — several of these
+  endpoints were 402 on 2026-08-14 and 200 five days later. Re-probe
+  against the real key before assuming anything is alive or dead.
 - Alpaca: paper trade execution, order fill, position tracking
 - Perplexity Sonar: web search for intelligence pipeline + agent
 - Firecrawl: full-page extraction for artifacts
@@ -245,7 +252,7 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 - /api/stocks/search — Finnhub symbol search
 - /api/inngest — Inngest webhook handler
 
-## Agent Tools — 24 trading tools (lib/agent/tools/)
+## Agent Tools — 23 trading tools (lib/agent/tools/)
 Each tool is defined in its own file using `defineTool()` from
 `lib/agent/define-tool.ts`. The factory wraps execute() in timing/
 logging/try-catch and returns a `ToolResult<T>` envelope with a `ui`
@@ -273,26 +280,29 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 10. get_market_movers — today's gainers / losers / most-actives from FMP;
     `scope:"universe"` fences to watchlist + positions, `scope:"all"` returns
     the full top list. Pull-tool counterpart to the `MARKET_MOVERS_*` feeds.
-11. get_options_flow — put/call ratio, unusual contracts
-12. get_sec_filings — SEC EDGAR filings
+11. get_sec_filings — SEC EDGAR filings
+    NOTE: `get_options_flow` was DELETED 2026-08-19 (DAV-191) — options
+    chains are dead on both vendors (FMP 404, Finnhub 403), so the tool
+    could not return data on any plan we hold. Don't re-add it without a
+    vendor that actually serves the chain.
 
 ### Action Tools
-13. record_thesis — mint a NEW thesis (direction LONG/SHORT/PASS) for net-new coverage or direction flip. PASS lands status=PASSED (institutional memory). Unresearched watchlist seeds (direction=null, status=WATCHING) are minted only by non-agent code paths (UI/builder/editor) — agents can't mint them.
-14. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, or STATUS_CHANGED; change_status accepts INVALIDATED/ARCHIVED/PASS as input aliases → stored as RETIRED+retiredReason or PASSED — the ACTIVE/CLOSED change_status verbs were removed). The single most-used tool — every daily-run REVIEWED entry, every tactical close-out, and every "remove from watchlist" is one of these.
-15. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→HOLDING and writes STATUS_CHANGED audit row.
-16. close_position — close an existing open position fully; flips Thesis HOLDING→RETIRED (retiredReason=SOLD).
-17. manage_position — partial close, scale in/out, move stop, trail stop, adjust target.
-18. record_run_summary — persist run summary + ranked picks + decision rationale; runs the narration-gate verb→tool gate.
-19. complete_run — mark run COMPLETE (only allowed from RUNNING; FAILED status set by the narration-gate sticks).
+12. record_thesis — mint a NEW thesis (direction LONG/SHORT/PASS) for net-new coverage or direction flip. PASS lands status=PASSED (institutional memory). Unresearched watchlist seeds (direction=null, status=WATCHING) are minted only by non-agent code paths (UI/builder/editor) — agents can't mint them.
+13. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, or STATUS_CHANGED; change_status accepts INVALIDATED/ARCHIVED/PASS as input aliases → stored as RETIRED+retiredReason or PASSED — the ACTIVE/CLOSED change_status verbs were removed). The single most-used tool — every daily-run REVIEWED entry, every tactical close-out, and every "remove from watchlist" is one of these.
+14. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→HOLDING and writes STATUS_CHANGED audit row.
+15. close_position — close an existing open position fully; flips Thesis HOLDING→RETIRED (retiredReason=SOLD).
+16. manage_position — partial close, scale in/out, move stop, trail stop, adjust target.
+17. record_run_summary — persist run summary + ranked picks + decision rationale; runs the narration-gate verb→tool gate.
+18. complete_run — mark run COMPLETE (only allowed from RUNNING; FAILED status set by the narration-gate sticks).
 
 NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To add to a watchlist, mint a `Thesis(direction=null, status='WATCHING')`. To remove, call `update_thesis(change_status='ARCHIVED')` (input alias → lands status=RETIRED, retiredReason=DROPPED).
 
 ### Builder/Editor-only Tools
-20. read_knowledge_library — strategy archetypes, source catalog, signal types
-21. ask_question — structured 2-5 quick-reply interview, one call per turn
-22. discover_signals_for_fence — validate a proposed sectors/industries/themes/tickers fence against the past 30d of routed signals
-23. read_analyst_inbox_stats — 30-day routing rollup for THIS analyst (top tickers, dead themes, hot unwatched tickers)
-24. suggest_config — emit the full proposed analyst config as a side-panel diff
+19. read_knowledge_library — strategy archetypes, source catalog, signal types
+20. ask_question — structured 2-5 quick-reply interview, one call per turn
+21. discover_signals_for_fence — validate a proposed sectors/industries/themes/tickers fence against the past 30d of routed signals
+22. read_analyst_inbox_stats — 30-day routing rollup for THIS analyst (top tickers, dead themes, hot unwatched tickers)
+23. suggest_config — emit the full proposed analyst config as a side-panel diff
 
 ## How to Add a New Agent Tool
 

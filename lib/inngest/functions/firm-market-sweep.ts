@@ -15,8 +15,8 @@ import {
   deduplicateSignals,
 } from "@/lib/intelligence/signals"
 import type { SignalType, SignalSentiment, SignalUrgency } from "@/lib/intelligence/types"
+import { fmp } from "@/lib/market-data/fmp"
 
-const FMP_KEY = process.env.FMP_API_KEY!
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!
 
 // Map monitor categories to signal types
@@ -150,31 +150,39 @@ export const firmMarketSweep = inngest.createFunction(
 
       for (const { path, label, sentiment, aggregateType, monitorId } of MOVER_CONFIG) {
         try {
-          // `path` already includes the namespace prefix (/stable/... or /api/v3/...).
-          const url = `https://financialmodelingprep.com${path}?apikey=${FMP_KEY}`
-          const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
-          if (!res.ok) {
-            const body = await res.text().catch(() => "")
-            const msg = `FMP ${path} → HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`
-            console.warn(`[firm-sweep] ${msg}`)
+          // FMP renamed `changesPercentage` to `percentChange` in the /stable
+          // namespace. Accept either so we're robust to further renames.
+          const moversRes = await fmp<
+            Array<{
+              symbol: string
+              name?: string
+              change?: number
+              price?: number
+              changesPercentage?: number
+              percentChange?: number
+              volume?: number
+            }>
+          >(path, { expectNonEmpty: true })
+
+          if (moversRes.error) {
+            const msg = `[firm-sweep] ${label}: ${moversRes.error}`
             errors.push(msg)
             failed++
             continue
           }
 
-          // FMP renamed `changesPercentage` to `percentChange` in the /stable
-          // namespace. Accept either so we're robust to further renames.
-          const data = (await res.json()) as Array<{
-            symbol: string
-            name?: string
-            change?: number
-            price?: number
-            changesPercentage?: number
-            percentChange?: number
-            volume?: number
-          }>
+          const data = moversRes.data ?? []
 
-          if (!Array.isArray(data) || data.length === 0) continue
+          // An empty top-list is never a real market state — treat it as a
+          // vendor failure so the sweep reports it instead of silently
+          // producing zero signals (DAV-191).
+          if (data.length === 0) {
+            const msg = `[firm-sweep] ${label}: FMP returned an empty list — no signals created`
+            console.warn(msg)
+            errors.push(msg)
+            failed++
+            continue
+          }
 
           const top10 = data.slice(0, 10)
           const pctOf = (item: (typeof top10)[number]): number =>

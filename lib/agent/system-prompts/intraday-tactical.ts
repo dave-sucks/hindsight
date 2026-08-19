@@ -449,7 +449,6 @@ TOOLS
     get_earnings_data      — when the trigger involves earnings.
     get_market_context     — only if regime matters for the call.
     get_sec_filings        — when the trigger is FILING.
-    get_options_flow       — when sizing the conviction.
     web_search             — last resort. Budget-limited.
     read_artifact          — full text of the signal source if signal-driven.
     get_theses             — for context on adjacent thesis state.

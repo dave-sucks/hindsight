@@ -15,31 +15,6 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { finnhub, calcRSI } from "@/lib/agent/research-helpers";
 import { getBars } from "@/lib/alpaca";
 
-const FMP_KEY = process.env.FMP_API_KEY!;
-
-interface FmpResult<T> {
-  data: T | null;
-  error?: string;
-}
-
-async function fmp<T>(path: string): Promise<FmpResult<T>> {
-  const base = path.startsWith("/v4/")
-    ? `https://financialmodelingprep.com/api${path}`
-    : `https://financialmodelingprep.com/api/v3${path}`;
-  const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return { data: null, error: `FMP ${res.status} on ${path.split("?")[0]}` };
-    const data = (await res.json()) as T;
-    return { data };
-  } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : "fmp error" };
-  }
-}
-
 interface PeerMetrics {
   ticker: string;
   marketCap: number | null;
