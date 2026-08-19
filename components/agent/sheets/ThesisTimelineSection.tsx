@@ -1,23 +1,29 @@
 "use client";
 
 /**
- * ThesisTimelineSection — durable activity log embedded inside ThesisSheet.
+ * ThesisTimelineSection — the thesis audit log, rendered inside the
+ * ThesisSheet Activity tab (P1-33 slice 1).
  *
- * Lazy-fetches /api/theses/:id/updates when mounted. Renders the timeline
- * newest-first as a vertical rail: small dot per entry connected by a line.
+ * Lazy-fetches /api/theses/:id/updates when mounted. That endpoint merges
+ * ThesisUpdate rows with proposal outcomes read from the Order table (the
+ * source of truth for approve / reject / expire), so the timeline shows in
+ * one place: every trigger fire, which run handled it (link), what the
+ * analyst changed (exact from → to numbers), and the outcome — bought /
+ * sold / declined (with the principal's note) / level moved / expired.
+ *
+ * The pure row logic (outcome chips, from → to lines, ladder diffs) lives
+ * in thesis-timeline-utils.ts so it stays unit-testable without JSX.
  *
  * Per-entry layout:
- *   ●  $35.27 ↑                                        Apr 27, 8:11 AM
- *   │  <heading>
+ *   ●  Apr 27, 8:11 AM                                      $35.27 ↑
+ *   │  [chip] <heading>
+ *   │  <field-change lines: "Target $80 → $95", trigger ladder diffs>
  *   │  <description>
- *   │  Type · View run · N signals
+ *   │  Type · trigger chip · View run · View trade · N signals
  *
  * Arrow on the price compares to the next-older entry's priceAtTime so
  * reading top-down shows the direction the stock has moved between
- * thesis touches. Null prices = no arrow (and shown as —).
- *
- * Skips itself if thesisId isn't supplied (agent-run inline render before
- * persistence).
+ * thesis touches. Null prices = no arrow.
  */
 
 import { useEffect, useState } from "react";
@@ -25,6 +31,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import {
+  outcomeChip,
+  fieldChangeLines,
+  proposalUserMessage,
+  type TimelineUpdate,
+} from "@/components/agent/sheets/thesis-timeline-utils";
 
 // When the sheet opens from a run-detail page (/runs/[id]), entries whose
 // runId matches the URL get the "edited-in-this-run" treatment. Pure URL
@@ -34,25 +47,6 @@ function useCurrentRunId(): string | null {
   if (!pathname) return null;
   const match = pathname.match(/^\/runs\/([^/]+)/);
   return match?.[1] ?? null;
-}
-
-interface ThesisUpdate {
-  id: string;
-  timestamp: string;
-  type: string;
-  summary: string;
-  rationale: string | null;
-  fieldChanges: Record<string, { from: unknown; to: unknown }>;
-  priceAtTime: number | null;
-  positionAtTime: {
-    qty: number;
-    avgCost: number;
-    unrealizedPnL: number | null;
-  } | null;
-  triggerId: string | null;
-  signalIds: string[];
-  runId: string | null;
-  tradeId: string | null;
 }
 
 function fmtUsd(v: number | null | undefined): string | null {
@@ -81,16 +75,16 @@ interface Props {
 }
 
 export function ThesisTimelineSection({ thesisId }: Props) {
-  const [updates, setUpdates] = useState<ThesisUpdate[] | null>(null);
+  const [updates, setUpdates] = useState<TimelineUpdate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const currentRunId = useCurrentRunId();
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/theses/${thesisId}/updates?limit=50`)
+    fetch(`/api/theses/${thesisId}/updates?limit=100`)
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const json = (await r.json()) as { updates: ThesisUpdate[] };
+        const json = (await r.json()) as { updates: TimelineUpdate[] };
         if (!cancelled) setUpdates(json.updates);
       })
       .catch((e) => {
@@ -128,6 +122,13 @@ export function ThesisTimelineSection({ thesisId }: Props) {
             const isLast = idx === updates.length - 1;
             const isCurrentRun =
               currentRunId != null && u.runId === currentRunId;
+            const chip = outcomeChip(u);
+            const changeLines = fieldChangeLines(u);
+            const userNote = proposalUserMessage(u);
+            // The synthesized reject row's rationale IS the user note —
+            // don't render the same text twice.
+            const rationale =
+              u.rationale && u.rationale !== userNote ? u.rationale : null;
 
             return (
               <div key={u.id} className="flex gap-3">
@@ -158,12 +159,8 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                       "rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 -ml-2 mb-1",
                   )}
                 >
-                  {/* Top row: Date (left, xs mono) · Price (right).
-                      Swapped 2026-05-19 — the date reads as the primary
-                      anchor ("when") and price is supporting detail. When
-                      priceAtTime is null (most ThesisUpdate types don't
-                      carry a price) the whole price chunk is hidden, no
-                      "—" placeholder. */}
+                  {/* Top row: Date (left, xs mono) · Price (right). When
+                      priceAtTime is null the whole price chunk is hidden. */}
                   {(() => {
                     const priceStr = fmtUsd(u.priceAtTime);
                     return (
@@ -187,15 +184,41 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                     );
                   })()}
 
-                  {/* Summary (heading) */}
+                  {/* Outcome chip + summary (heading) */}
                   <p className="text-sm font-medium leading-snug">
+                    {chip ? (
+                      <span className="mr-1.5 inline-flex align-middle">
+                        <Badge variant={chip.variant}>{chip.label}</Badge>
+                      </span>
+                    ) : null}
                     {u.summary}
                   </p>
 
+                  {/* Exact from → to lines: levels, composite, ladder diff */}
+                  {changeLines.length > 0 ? (
+                    <div className="space-y-0.5">
+                      {changeLines.map((line, i) => (
+                        <p
+                          key={i}
+                          className="text-xs font-mono tabular-nums text-muted-foreground"
+                        >
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {/* The principal's written note on a declined proposal */}
+                  {userNote ? (
+                    <p className="text-sm text-muted-foreground leading-relaxed border-l-2 border-border pl-2">
+                      “{userNote}”
+                    </p>
+                  ) : null}
+
                   {/* Rationale (description) */}
-                  {u.rationale ? (
+                  {rationale ? (
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      {u.rationale}
+                      {rationale}
                     </p>
                   ) : null}
 

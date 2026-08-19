@@ -182,3 +182,64 @@ export function diffThesisFields(
   }
   return out;
 }
+
+/**
+ * Compact one diff value to a short preview for storage in `fieldChanges`.
+ * The V2 research/narrative JSONB sections can be several KB each — storing
+ * two full copies per UPDATED row would bloat ThesisUpdate without serving
+ * any consumer (the timeline renders "section refreshed", not a research
+ * diff). Values that already fit pass through untouched; only oversized
+ * ones are reduced to a preview string.
+ */
+export function compactDiffValue(v: unknown, maxLen = 160): unknown {
+  if (v == null) return null;
+  if (typeof v === "string") {
+    return v.length > maxLen ? `${v.slice(0, maxLen)}…` : v;
+  }
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    // { text, citations } narrative shape (snapshot).
+    if (typeof o.text === "string") return compactDiffValue(o.text, maxLen);
+    // { bullets: [{ text }...] } shape (bullCase / bearCase / sections).
+    if (Array.isArray(o.bullets)) {
+      const first = o.bullets[0] as { text?: unknown } | undefined;
+      const firstText =
+        typeof first?.text === "string"
+          ? String(compactDiffValue(first.text, 100))
+          : "";
+      const n = o.bullets.length;
+      return `${n} bullet${n === 1 ? "" : "s"}${firstText ? ` — ${firstText}` : ""}`;
+    }
+  }
+  let s: string;
+  try {
+    s = JSON.stringify(v) ?? String(v);
+  } catch {
+    s = String(v);
+  }
+  return s.length > maxLen ? `${s.slice(0, maxLen)}…` : v;
+}
+
+/**
+ * Apply compactDiffValue to the from/to of the named keys, leaving every
+ * other entry untouched. Used by update_thesis on the bulky research and
+ * narrative section keys — scalars (targetPrice, stopLoss, …) and the
+ * trigger arrays keep exact values, because the timeline renders those
+ * from/to numbers directly ("floor 64 → 71").
+ */
+export function compactFieldChanges(
+  fc: ThesisFieldChanges,
+  bulkyKeys: readonly string[],
+): ThesisFieldChanges {
+  const out: ThesisFieldChanges = { ...fc };
+  for (const k of bulkyKeys) {
+    const entry = out[k];
+    if (entry) {
+      out[k] = {
+        from: compactDiffValue(entry.from),
+        to: compactDiffValue(entry.to),
+      };
+    }
+  }
+  return out;
+}

@@ -29,6 +29,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
 import { formatCurrency } from "@/lib/format";
@@ -1392,6 +1393,19 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         />
       ) : null}
 
+      {/* ── Tabs: Thesis (the dossier) | Activity (the audit log) ── */}
+      {/* Identity, price, core belief, and the trade block stay fixed
+          above; everything below splits into the dossier view and the
+          P1-33 activity timeline (trigger fires → runs → outcomes).
+          Same Tabs idiom as AgentChat's Chat|Sources|Theses. */}
+      <Tabs defaultValue={0}>
+        <TabsList>
+          <TabsTrigger value={0}>Thesis</TabsTrigger>
+          <TabsTrigger value={1}>Activity</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={0} className="space-y-5">
+
       {/* ── Price chart (annotated) ───────────────────────────── */}
       {/* Full price line with Entry/Target/Stop lines + "Watching"/"Entry"
           markers, when candles are loaded. The entry/target/stop GAUGE lives
@@ -1601,24 +1615,32 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           The at-a-glance need is covered by the Snapshot prose + Analyst
           Consensus widget. */}
 
-      {/* ── Activity timeline + provenance footer ────────────── */}
-      {/* Renders only when we have a persisted thesis id. Provenance is
-          rendered INSIDE this container (rather than as a sibling) so
-          it visually joins the timeline as one continuous list with
-          consistent dot alignment + tight vertical spacing — not two
-          stacked sections with the outer space-y-5 gap between them. */}
-      {thesis_id ? (
-        <div className="space-y-3">
-          <ThesisTimelineSection thesisId={thesis_id} />
-          {state.sourceKind ? (
-            <ProvenanceFooter
-              sourceKind={state.sourceKind}
-              rationale={state.sourceRationale}
-              signalCount={state.sourceSignalIds.length}
-            />
-          ) : null}
-        </div>
-      ) : null}
+        </TabsContent>
+
+        {/* ── Activity tab: timeline + provenance footer ───────── */}
+        {/* The audit log (P1-33 slice 1): trigger fires, which run handled
+            each, exact level moves, and proposal outcomes read from the
+            Order table. Provenance is rendered INSIDE the same container
+            so it joins the timeline as one continuous list. */}
+        <TabsContent value={1} className="space-y-5">
+          {thesis_id ? (
+            <div className="space-y-3">
+              <ThesisTimelineSection thesisId={thesis_id} />
+              {state.sourceKind ? (
+                <ProvenanceFooter
+                  sourceKind={state.sourceKind}
+                  rationale={state.sourceRationale}
+                  signalCount={state.sourceSignalIds.length}
+                />
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No activity yet — this thesis hasn&apos;t been persisted.
+            </p>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

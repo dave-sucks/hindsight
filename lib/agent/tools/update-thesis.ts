@@ -43,6 +43,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import {
   writeThesisUpdate,
   diffThesisFields,
+  compactFieldChanges,
   type ThesisUpdateType,
 } from "@/lib/agent/thesis-updates";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
@@ -437,6 +438,12 @@ export const updateThesis = defineTool({
         userId: true,
         ticker: true,
         status: true,
+        // Diffed by the fieldChanges builder — a terminal transition writes
+        // retiredReason, and the audit row should carry the from/to.
+        retiredReason: true,
+        // Diffed (compacted) so a degraded research_data-only refresh still
+        // records that the research payload changed.
+        researchData: true,
         // direction + entryPrice are read by the shape gate below — adding
         // them to the select fixes a latent bug where existing.direction
         // and existing.entryPrice came back undefined at runtime.
@@ -1501,11 +1508,21 @@ export const updateThesis = defineTool({
     // UPDATED bucket.
     //
     // A7 from docs/plans/SYSTEM_AUDIT_2026_05_19.md.
+    // PR-9 flat schema: the patch writes `snapshot` / `bullCase` / `bearCase`
+    // (the legacy reasoning_summary / thesis_bullets / risk_flags args are
+    // wrapped into those keys above), so the narrative set must name the keys
+    // that actually land in the patch. `researchUpdatedAt` rides along — it is
+    // auto-stamped whenever any narrative section arrives, and must not make a
+    // narrative-only patch look structural. The stale legacy names here were
+    // half of the empty-diff audit hole (GAPS P2, prerequisite for P1-33):
+    // narrative refreshes stopped collapsing to REVIEWED and instead landed as
+    // UPDATED rows whose diff dropped every key.
     const NARRATIVE_KEYS = new Set([
-      "reasoningSummary",
-      "thesisBullets",
-      "riskFlags",
+      "snapshot",
+      "bullCase",
+      "bearCase",
       "nextReviewAt",
+      "researchUpdatedAt",
     ]);
     const patchKeysList = Object.keys(patch);
     const isNarrativeOnly =
@@ -1572,15 +1589,39 @@ export const updateThesis = defineTool({
 
     // Compute the diff BEFORE applying so the field-changes payload reflects
     // only what actually moved.
+    //
+    // These are the keys the patch above can actually write (PR-9 flat
+    // schema). The pre-PR-9 legacy names (reasoningSummary / thesisBullets /
+    // riskFlags / confidenceScore) sat here long after the patch stopped
+    // writing them, so every narrative/scoring/section change fell through
+    // the diff — 47% of UPDATED rows carried an empty fieldChanges (GAPS P2
+    // audit hole, prerequisite for P1-33). Keep this list in lockstep with
+    // the patch assembly above.
     const diffFields = [
-      "reasoningSummary",
-      "thesisBullets",
-      "riskFlags",
-      "signalTypes",
+      // Narrative (flat schema)
+      "snapshot",
+      "bullCase",
+      "bearCase",
+      // Research sections (V2)
+      "recentCatalysts",
+      "fundamentals",
+      "latestEarnings",
+      "catalystsAndEvents",
+      "analystConsensus",
+      "insiderTechnical",
+      "researchData",
+      // Belief
       "coreBelief",
       "keyAssumptions",
       "invalidationConds",
-      "confidenceScore",
+      // Conviction + scoring
+      "scoring",
+      "conviction",
+      "convictionRationale",
+      "variantView",
+      // Trade plan
+      "direction",
+      "entryPrice",
       "targetPrice",
       "stopLoss",
       "targetSizePct",
@@ -1590,7 +1631,24 @@ export const updateThesis = defineTool({
       "nextReviewAt",
       "triggers",
       "scalingPlan",
+      // Lifecycle
       "status",
+      "retiredReason",
+    ] as const;
+    // Bulky JSONB sections store a short preview instead of two full copies
+    // per row. Scalars and the trigger arrays keep exact from/to — the
+    // Activity timeline renders those numbers ("floor 64 → 71") directly.
+    const BULKY_DIFF_KEYS = [
+      "snapshot",
+      "bullCase",
+      "bearCase",
+      "recentCatalysts",
+      "fundamentals",
+      "latestEarnings",
+      "catalystsAndEvents",
+      "analystConsensus",
+      "insiderTechnical",
+      "researchData",
     ] as const;
     const prevSnapshot = Object.fromEntries(
       diffFields.map((f) => [f, (existing as Record<string, unknown>)[f]]),
@@ -1599,9 +1657,10 @@ export const updateThesis = defineTool({
     for (const [k, v] of Object.entries(patch)) {
       if (k in nextSnapshot) nextSnapshot[k] = v;
     }
-    const fieldChanges = diffThesisFields(prevSnapshot, nextSnapshot, [
-      ...diffFields,
-    ]);
+    const fieldChanges = compactFieldChanges(
+      diffThesisFields(prevSnapshot, nextSnapshot, [...diffFields]),
+      BULKY_DIFF_KEYS,
+    );
 
     // ── Structural-unchanged-reason gate (P0-1) ──────────────────────────
     // Substantive non-belief patches (target_price / stop_loss /
@@ -1626,11 +1685,11 @@ export const updateThesis = defineTool({
     //   - REVIEWED-only updates (empty patch) — handled separately above
     //   - patches that don't touch any quant field — pure rationale
     //     refreshes, narrative cleanups, signal_type re-tags
-    const touchesQuant = !!(
-      fieldChanges.confidenceScore ||
-      fieldChanges.targetPrice ||
-      fieldChanges.stopLoss
-    );
+    // (confidenceScore was dropped in PR-9 — the patch can't write it, so a
+    // check on it here was permanently false. Composite/scoring changes are
+    // deliberately NOT quant-gated: the thesis-writer refreshes scoring on
+    // every pass and gating it would refuse routine refreshes.)
+    const touchesQuant = !!(fieldChanges.targetPrice || fieldChanges.stopLoss);
     const touchesBelief = !!(
       fieldChanges.coreBelief ||
       fieldChanges.keyAssumptions ||
@@ -1757,9 +1816,15 @@ export const updateThesis = defineTool({
         `stop ${fmtNum(fieldChanges.stopLoss.from)} → ${fmtNum(fieldChanges.stopLoss.to)}`,
       );
     }
-    if (fieldChanges.confidenceScore) {
+    if (fieldChanges.scoring) {
+      const from = (fieldChanges.scoring.from as { composite?: number } | null)
+        ?.composite;
+      const to = (fieldChanges.scoring.to as { composite?: number } | null)
+        ?.composite;
       summaryParts.push(
-        `confidence ${fieldChanges.confidenceScore.from} → ${fieldChanges.confidenceScore.to}`,
+        from != null && to != null && from !== to
+          ? `composite ${from} → ${to}`
+          : "scoring updated",
       );
     }
     if (fieldChanges.status) {
@@ -1772,12 +1837,24 @@ export const updateThesis = defineTool({
     }
     if (
       fieldChanges.coreBelief ||
-      fieldChanges.reasoningSummary ||
-      fieldChanges.thesisBullets ||
+      fieldChanges.snapshot ||
+      fieldChanges.bullCase ||
+      fieldChanges.bearCase ||
       fieldChanges.invalidationConds ||
       fieldChanges.keyAssumptions
     ) {
       summaryParts.push("rationale updated");
+    }
+    if (
+      fieldChanges.recentCatalysts ||
+      fieldChanges.fundamentals ||
+      fieldChanges.latestEarnings ||
+      fieldChanges.catalystsAndEvents ||
+      fieldChanges.analystConsensus ||
+      fieldChanges.insiderTechnical ||
+      fieldChanges.researchData
+    ) {
+      summaryParts.push("research refreshed");
     }
     const verb = updateType === "REVIEWED" ? "Reviewed" : "Updated";
     const summary =

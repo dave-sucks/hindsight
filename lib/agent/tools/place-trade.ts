@@ -595,6 +595,9 @@ export const placeTrade = defineTool({
             alpacaOrderId: null,
             idempotencyKey,
             intent: "OPEN",
+            // First-class thesis link (P1-33 Activity tab) — the proposal
+            // audit trail reads from Order, keyed by this.
+            thesisId: args.thesis_id,
             createdAt: placedAt,
           },
         });

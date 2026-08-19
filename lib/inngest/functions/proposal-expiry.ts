@@ -20,6 +20,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { findRelatedThesisId } from "@/lib/proposals/execute";
 
 // Mon-Fri 4 AM-8 PM ET, every 30 min — covers any proposal expiring during
 // the trading day. Off-hours expiries roll over to the next ET open.
@@ -121,35 +122,32 @@ export const proposalExpiry = inngest.createFunction(
         // failures here shouldn't block the expiry flip. The agent reads
         // this on its next run to decide whether to re-propose.
         try {
-          const thesis = await prisma.thesis.findFirst({
-            where: {
-              ticker: order.symbol,
-              researchRun: { agentConfigId: order.position.analystId },
-              status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
-            },
-            orderBy: { createdAt: "desc" },
-            select: { id: true },
-          });
-          if (thesis) {
-            await writeThesisUpdate({
-              thesisId: thesis.id,
-              type: "PROPOSAL_EXPIRED",
-              summary: `${intent} proposal on ${order.symbol} expired without user decision`,
-              rationale: `Proposed ${order.quantity} ${order.symbol} (${intent}) — no approve / reject within the expiry window. ${order.rationale ? `Original rationale: ${order.rationale.slice(0, 240)}` : ""}`.trim(),
-              fieldChanges: {
-                proposal: {
-                  from: { orderId: order.id, status: "AWAITING_APPROVAL" },
-                  to: {
-                    orderId: order.id,
-                    status: "EXPIRED",
-                    intent,
-                    quantity: order.quantity,
-                    expiredAt: now.toISOString(),
-                  },
+          // Shared lookup with approve/reject — live statuses first, then
+          // most-recent of any status. The old inline live-only query
+          // silently skipped the write whenever the thesis had already
+          // retired (same family as the ~78% PROPOSAL_* drop).
+          const thesisId = await findRelatedThesisId(
+            order.position.analystId,
+            order.symbol,
+          );
+          await writeThesisUpdate({
+            thesisId,
+            type: "PROPOSAL_EXPIRED",
+            summary: `${intent} proposal on ${order.symbol} expired without user decision`,
+            rationale: `Proposed ${order.quantity} ${order.symbol} (${intent}) — no approve / reject within the expiry window. ${order.rationale ? `Original rationale: ${order.rationale.slice(0, 240)}` : ""}`.trim(),
+            fieldChanges: {
+              proposal: {
+                from: { orderId: order.id, status: "AWAITING_APPROVAL" },
+                to: {
+                  orderId: order.id,
+                  status: "EXPIRED",
+                  intent,
+                  quantity: order.quantity,
+                  expiredAt: now.toISOString(),
                 },
               },
-            });
-          }
+            },
+          });
         } catch (err) {
           auditFailures++;
           console.warn(

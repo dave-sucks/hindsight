@@ -15,6 +15,7 @@ import { sendEmail } from "@/lib/email";
 import { getEmailRecipients } from "@/lib/emails/recipients";
 import { tradeClosedHtml } from "@/lib/emails/trade-closed";
 import { maybeAwaitApproval } from "@/lib/proposals/maybe-await-approval";
+import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 
@@ -194,6 +195,15 @@ export async function closeOpenPosition(
   const idempotencyKey = randomUUID();
   const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
 
+  // First-class Order→Thesis link (P1-33 Activity tab). Best-effort — a
+  // close must never be blocked by a missing thesis; readers fall back to
+  // (analyst, ticker) on null.
+  const auditThesisId = position.analystId
+    ? await findRelatedThesisId(position.analystId, position.symbol).catch(
+        () => null,
+      )
+    : null;
+
   // 1. DB tx — create PENDING closing Order. Position stays OPEN.
   const order = await prisma.$transaction(async (tx) => {
     const ord = await tx.order.create({
@@ -209,6 +219,7 @@ export async function closeOpenPosition(
         alpacaOrderId: null,
         idempotencyKey,
         intent: "CLOSE",
+        thesisId: auditThesisId,
         // Carry the originating decision so an async / proposal-approved fill
         // (resolved later by reconcile-orders) stamps the REAL reason on
         // Position.closeReason instead of "RECONCILED_FILL". The synchronous

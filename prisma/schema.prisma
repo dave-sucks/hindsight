@@ -1001,6 +1001,13 @@ model Order {
   expiresAt        DateTime? @db.Timestamptz(6)
   rejectionMessage String?
   rationale        String?
+  // First-class link back to the thesis this order acts on (P1-33 Activity
+  // tab). Populated at order-creation time on every write path from
+  // 2026-08-18 on; null on older rows — readers keep the (analyst, ticker)
+  // join fallback for those. Plain column (no relation): the thesis may be
+  // superseded/deleted independently of order history, and every consumer
+  // resolves it defensively.
+  thesisId         String?
   // Relations
   position          Position       @relation(fields: [positionId], references: [id])
   decision          TradeDecision?
@@ -1011,6 +1018,7 @@ model Order {
   @@index([positionId])
   @@index([userId])
   @@index([status, createdAt])
+  @@index([thesisId])
 }
 
 /// Persisted snapshot of an Alpaca↔DB sync invariant check.
