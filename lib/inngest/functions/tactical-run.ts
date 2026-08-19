@@ -339,6 +339,51 @@ export const tacticalRun = inngest.createFunction(
       }
     }
 
+    // ── Suppress duplicate buy-checks on the same trigger (GAPS P1-37) ──────
+    // When a stock crosses its buy price and the analyst examines it and
+    // decides NOT to buy, the trigger stays armed — and every subsequent fire
+    // (5-min evaluator tick, routed signal, a second overlapping trigger)
+    // wakes ANOTHER full GPT-5.5 session that re-reads the same thesis and
+    // reaches the same "no" (CAPR ~5×, CEG 4× over 2026-07-20→21 — ~9 wasted
+    // runs in two days, every one blocked by the same below-bar conviction
+    // score). If a tactical run for THIS SAME trigger already completed
+    // within the snooze window, bail before create-run — zero cost.
+    //
+    // This does NOT touch the standing-order ruling ("a trigger fires every
+    // day its condition is true — never engineer repeats away"). That ruling
+    // protects ALERTS the principal sees. A declined buy-check produced no
+    // proposal and nothing on the principal's screen — this suppresses only
+    // the duplicate MACHINE dispatch. The trigger keeps firing and recording,
+    // the daily run still sees it as fired work the next morning, and a run
+    // that decides TO buy still produces the approval card. A FAILED prior
+    // run does not snooze (a crash deserves a retry); post-#525 an agent that
+    // declines durably is taught to move the trigger to the level it would
+    // actually accept, which ends the refires at the source — this snooze
+    // catches the same-day multi-path duplicates in the meantime.
+    if (trigger.action === "ENTER") {
+      const recentEnterCheck = await step.run("check-recent-enter-run", async () =>
+        prisma.researchRun.findFirst({
+          where: {
+            agentConfigId: agentConfig.id,
+            mode: "INTRADAY_TACTICAL",
+            status: "COMPLETE",
+            createdAt: { gte: new Date(Date.now() - EXIT_RECHECK_SNOOZE_MS) },
+            parameters: { path: ["triggerId"], equals: trigger.id },
+          },
+          select: { id: true, createdAt: true },
+        }),
+      );
+      if (recentEnterCheck) {
+        return {
+          skipped: "enter-already-checked",
+          thesisId: fired.thesisId,
+          triggerId: trigger.id,
+          priorRunId: recentEnterCheck.id,
+          priorRunAt: recentEnterCheck.createdAt,
+        };
+      }
+    }
+
     // Snapshot the analyst's env onto the run.
     const runEnvironment =
       (agentConfig.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
