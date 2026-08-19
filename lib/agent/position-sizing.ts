@@ -125,3 +125,41 @@ export function scaleInCeiling(opts: {
   const { ceiling } = positionBand(opts);
   return (ceiling ?? DEFAULT_POSITION_CAP) * multiple;
 }
+
+// ─── Authoring-time sizing sanity (P1-40 companion — the RARE sizing bug) ────
+
+/**
+ * A thesis whose targetSizePct works out below the analyst's minPositionSize
+ * floor is self-rejecting: place_trade Guardrail 5b will refuse the entry by
+ * the thesis's own numbers, even on a valid fired ENTER. RARE carried 4%
+ * (≈$4k) against a $5k floor — the agent never sees "your own plan is below
+ * the floor" until the one afternoon the entry window is open. Post-#523 this
+ * got worse: the ENTER gate compels resolution, so a sub-floor thesis pushes
+ * the agent toward archiving a good name.
+ *
+ * This helper is the Layer-1 authoring-time check, shared by record_thesis
+ * and update_thesis: given live equity, does the intended size clear the
+ * band's floor? Returns null when fine (or unknowable), or a rejection
+ * payload with the exact numbers the agent needs to fix the call. Pure —
+ * the caller fetches equity and decides fail-open on fetch errors.
+ */
+export function subFloorTargetSize(opts: {
+  targetSizePct: number;
+  equity: number;
+  environment: "PAPER" | "LIVE";
+  minPositionSize?: number;
+  maxPositionSize?: number;
+  realMaxPosition?: number;
+}): { floorDollars: number; floorPct: number; intendedDollars: number } | null {
+  const { targetSizePct, equity } = opts;
+  if (!Number.isFinite(equity) || equity <= 0) return null;
+  if (!Number.isFinite(targetSizePct) || targetSizePct <= 0) return null;
+  const band = positionBand(opts);
+  if (band.floor <= 0) return null;
+  const intendedDollars = (targetSizePct / 100) * equity;
+  if (intendedDollars >= band.floor) return null;
+  // Round the required % UP to one decimal so the suggested value always
+  // clears the floor when the agent retries with it verbatim.
+  const floorPct = Math.ceil((band.floor / equity) * 1000) / 10;
+  return { floorDollars: band.floor, floorPct, intendedDollars };
+}

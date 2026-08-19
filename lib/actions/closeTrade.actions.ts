@@ -166,6 +166,15 @@ export async function closeOpenPosition(
   source: CloseSource = "agent",
   auditReason?: string,
   runId?: string,
+  /**
+   * GAPS P1-35 — the closing agent's attestation that the thesis BELIEF
+   * survived this exit (sold on price, not because the story broke). Stamped
+   * onto the closing Order so it survives the approval gap on LIVE, and passed
+   * straight through on a synchronous fill. Only `close_position` supplies it;
+   * every other caller (price-monitor cron, DIRECT fires, manual UI closes,
+   * promotion force-closes) leaves it undefined → terminal RETIRED, unchanged.
+   */
+  beliefSurvived?: boolean | null,
 ): Promise<CloseOpenPositionOutcome> {
   const position = await prisma.position.findUniqueOrThrow({
     where: { id: positionId },
@@ -207,6 +216,10 @@ export async function closeOpenPosition(
         // belt for every path that doesn't fill within the 5s poll.
         closeReason: reason,
         closeSource: source,
+        // P1-35: the agent's belief attestation rides on the Order so it
+        // survives the approval gate — the flip may happen days after the
+        // agent made the call (lib/proposals/execute.ts reads it back).
+        closeBeliefSurvived: beliefSurvived ?? null,
         createdAt: placedAt,
       },
     });
@@ -509,6 +522,7 @@ export async function closeOpenPosition(
       rationale: flipRationale,
       priceAtTime: closePrice,
       runId,
+      beliefSurvived,
     });
   }
 

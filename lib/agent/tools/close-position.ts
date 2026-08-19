@@ -40,6 +40,15 @@ export const closePosition = defineTool({
         "Notes explaining the close decision. Surfaced as Order.rationale on the approval proposal, so the principal reads this when deciding whether to approve the sell — always supply it." +
           PROPOSAL_RATIONALE_VOICE,
       ),
+    belief_survived: z
+      .boolean()
+      .optional()
+      .describe(
+        "Did the thesis's CORE BELIEF survive this exit? Answer this on every protective exit (reason=STOP). " +
+          "true = you are selling on PRICE while the story is still intact (a trailing give-back, a stop tripped in a broad-market flush, risk trimmed on an unchanged thesis) — the thesis returns to WATCHING with its triggers cleared so the next run can arm a reclaim entry, instead of dying. " +
+          "false = the belief itself broke (invalidation condition tripped, catalyst failed, the bear case confirmed) — the thesis retires permanently. " +
+          "Omit only when you genuinely cannot tell. Getting this right is how a name you stopped out of on noise stays on your radar: today 28 of 29 sold theses went dark forever, including three green protective exits (ARQT +$845, VRDN +$445, XENE +$966). Ignored on reason=TARGET, which always keeps the name on watch.",
+      ),
   }),
   ui: "tool-ui" as const,
   groupId: "Executing",
@@ -152,7 +161,21 @@ export const closePosition = defineTool({
       const agentAuditReason = args.notes
         ? args.notes
         : `${position.direction} position in ${ticker} closed by agent — reason: ${intent}.`;
-      const outcome = await closeOpenPosition(position.id, reason, undefined, "agent", agentAuditReason, ctx.runId);
+      // P1-35: `belief_survived` rides through to the thesis flip (stamped on
+      // the Order first, so it survives the approval gate on LIVE). A
+      // THESIS_INVALIDATED intent is a structural break by definition — never
+      // let an attestation contradict it and resurrect a dead thesis.
+      const beliefSurvived =
+        intent === "THESIS_INVALIDATED" ? false : args.belief_survived;
+      const outcome = await closeOpenPosition(
+        position.id,
+        reason,
+        undefined,
+        "agent",
+        agentAuditReason,
+        ctx.runId,
+        beliefSurvived,
+      );
 
       // Trade-as-Proposal — when the Account requires approval for sells in this environment,
       // closeOpenPosition stages the close as Order(AWAITING_APPROVAL) and
