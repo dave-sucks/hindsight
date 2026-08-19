@@ -8,6 +8,10 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
+import {
+  enforceCloseReason,
+  withCloseAuditNote,
+} from "@/lib/agent/triggers/enforce-close-reason";
 import { prisma } from "@/lib/prisma";
 import { getAccount } from "@/lib/alpaca";
 
@@ -57,29 +61,41 @@ export const closePosition = defineTool({
 
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
-    // ── Protective-exit cooldown exemption (P1-28) ────────────────────────
+    // ── Sale-label enforcement (DAV-192) ──────────────────────────────────
     // When this tactical run was woken by a price-level protective EXIT
     // trigger (trail-from-high, gain-from-entry, stop/target level, daily-%
     // move), tactical-run.ts precomputes the STOP/TARGET tag and threads it in
-    // as ctx.protectiveExitReason. Use it INSTEAD of the model-chosen reason
-    // so the close is tagged as a material risk exit and stays exempt from the
-    // unapproved-exit cooldown — a rejected gain-lock must re-fire when price
-    // re-crosses the level (the ARQT $26.50 re-alert the principal asked for).
-    // We don't trust the LLM to remember the tag: this is deterministic. For
-    // daily runs and judgment EXIT triggers (earnings/signals) the field is
-    // undefined, so a genuinely discretionary MANUAL close keeps its tag and
-    // stays on cooldown — the P1-28 anti-nag protection is preserved.
-    const intent = ctx.protectiveExitReason ?? args.reason;
+    // as ctx.protectiveExitReason. The stored label comes from that tag, NOT
+    // from the model's `reason` arg — a sale that executed because a
+    // protective trigger fired must read as a stop or a target everywhere the
+    // label is consumed (the held-through-floor context in get_theses, the
+    // sold-name recycle rule, the close email, the trade page). We don't trust
+    // the LLM to remember the tag: this is deterministic.
+    //
+    // A mismatch is auto-corrected, never refused — the sale still goes
+    // through, and `enforced.auditNote` records what the agent originally
+    // called it. `enforced.beliefSurvived` keeps THESIS_INVALIDATED honest on
+    // its own axis (see enforce-close-reason.ts). For daily runs and judgment
+    // EXIT triggers (earnings/signals) the field is undefined, so a genuinely
+    // discretionary close keeps its own tag.
+    const enforced = enforceCloseReason({
+      declared: args.reason,
+      protective: ctx.protectiveExitReason,
+      triggerLabel: ctx.protectiveExitTriggerLabel,
+      beliefSurvived: args.belief_survived,
+    });
+    // The model's own words for this exit, for narration + audit strings.
+    const intent = enforced.declared;
     // closeOpenPosition (and Position.closeReason) only store
     // TARGET | STOP | TIME | MANUAL. The two judgment codes collapse to
     // MANUAL — identical to manage_position's full_close mapping, so both
-    // close paths tag the row the same way. Note the P1-28 consequence:
-    // MANUAL is NOT exempt from the unapproved-exit cooldown, so a rejected
-    // THESIS_INVALIDATED close goes on cooldown like any discretionary exit.
-    // That's intended (a broken setup is a judgment call, not a level re-cross);
-    // GAPS P1-39 is where persisting the finer intent gets decided.
-    const reason: "TARGET" | "STOP" | "MANUAL" =
-      intent === "TARGET" || intent === "STOP" ? intent : "MANUAL";
+    // close paths tag the row the same way.
+    const reason: "TARGET" | "STOP" | "MANUAL" = enforced.stored;
+    if (enforced.corrected) {
+      console.info(
+        `[tool] close_position sale-label auto-corrected for ${ticker}: ${enforced.declared} → ${enforced.stored}`,
+      );
+    }
     try {
       // ── PROMOTED guard (P1-21) ─────────────────────────────────────────
       // A PROMOTED thesis was an ACTIVE paper position that the user just
@@ -158,15 +174,22 @@ export const closePosition = defineTool({
       }
 
       const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
-      const agentAuditReason = args.notes
-        ? args.notes
-        : `${position.direction} position in ${ticker} closed by agent — reason: ${intent}.`;
+      // The auto-correction note rides on the rationale, so it lands on
+      // Order.rationale (what the principal reads on the approval card) and on
+      // the close's PositionEvent / ThesisUpdate text.
+      const agentAuditReason = withCloseAuditNote(
+        args.notes
+          ? args.notes
+          : `${position.direction} position in ${ticker} closed by agent — reason: ${intent}.`,
+        enforced,
+      );
       // P1-35: `belief_survived` rides through to the thesis flip (stamped on
       // the Order first, so it survives the approval gate on LIVE). A
       // THESIS_INVALIDATED intent is a structural break by definition — never
-      // let an attestation contradict it and resurrect a dead thesis.
-      const beliefSurvived =
-        intent === "THESIS_INVALIDATED" ? false : args.belief_survived;
+      // let an attestation contradict it and resurrect a dead thesis. The
+      // guard keys off what the agent DECLARED, so a protective correction
+      // can't step over it (DAV-192).
+      const beliefSurvived = enforced.beliefSurvived;
       const outcome = await closeOpenPosition(
         position.id,
         reason,
@@ -257,9 +280,12 @@ export const closePosition = defineTool({
 
       const analystId = ctx.analystId || position.analystId;
       const fillNote = result.fillStatus === "PENDING" ? " (close order pending fill)" : "";
-      const reasoningNote = args.notes
-        ? `Closed ${position.direction} position: ${intent}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`
-        : `Closed ${position.direction} position: ${intent}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`;
+      const reasoningNote = withCloseAuditNote(
+        args.notes
+          ? `Closed ${position.direction} position: ${intent}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`
+          : `Closed ${position.direction} position: ${intent}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`,
+        enforced,
+      );
 
       try {
         await prisma.tradeDecision.create({
@@ -296,6 +322,10 @@ export const closePosition = defineTool({
                 realized_pnl: result.realizedPnl,
                 outcome: result.outcome,
                 reason: reason,
+                // DAV-192: keep the agent's own label next to the stored one
+                // so a corrected sale is legible in the run feed.
+                declared_reason: enforced.declared,
+                label_auto_corrected: enforced.corrected,
                 notes: args.notes ?? null,
               } as object,
             },

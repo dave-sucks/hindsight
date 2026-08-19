@@ -21,7 +21,7 @@ import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
-import { describeTriggerFire } from "@/lib/agent/triggers/format";
+import { describeTriggerFire, predicateSentence } from "@/lib/agent/triggers/format";
 import { MODES } from "@/lib/agent/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import {
@@ -549,6 +549,12 @@ export const tacticalRun = inngest.createFunction(
               thesis.direction,
             ) ?? undefined
           : undefined;
+      // Human phrase for the fired trigger ("Gives back 8% from the high"),
+      // threaded alongside the tag so the close tools can name WHY the label
+      // was corrected in the audit note they write (DAV-192).
+      const protectiveExitTriggerLabel = protectiveExitReason
+        ? predicateSentence((trigger as Trigger).predicate)
+        : undefined;
       const allTools = createResearchTools({
         runId: run.id,
         userId: agentConfig.userId,
@@ -556,6 +562,7 @@ export const tacticalRun = inngest.createFunction(
         analystId: agentConfig.id,
         runMode: "INTRADAY_TACTICAL",
         protectiveExitReason,
+        protectiveExitTriggerLabel,
         watchlist: watchlistSymbols,
         exclusionList: agentConfig.exclusionList ?? [],
         sectors: agentConfig.sectors ?? [],

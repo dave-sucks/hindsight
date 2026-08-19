@@ -120,6 +120,12 @@ interface ToolCtx {
    * cooldown exemption.
    */
   protectiveExitReason?: "STOP" | "TARGET";
+  /**
+   * Human phrase for that protective trigger — see
+   * ToolContext.protectiveExitTriggerLabel. Named in the sale-label
+   * auto-correction audit note.
+   */
+  protectiveExitTriggerLabel?: string;
 }
 
 export function createResearchTools(ctx: ToolCtx) {

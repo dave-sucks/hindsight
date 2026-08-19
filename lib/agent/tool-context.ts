@@ -190,6 +190,15 @@ export interface ToolContext {
    * lib/agent/triggers/types.ts → protectiveExitCloseReason.
    */
   protectiveExitReason?: "STOP" | "TARGET";
+
+  /**
+   * Human phrase for the protective trigger that woke this run, e.g.
+   * "Gives back 8% from the high" (predicateSentence of the fired predicate).
+   * Set alongside protectiveExitReason by tactical-run.ts. Named in the
+   * auto-correction note the close tools write into the audit trail, so a
+   * corrected sale label explains itself without a code read (DAV-192).
+   */
+  protectiveExitTriggerLabel?: string;
 }
 
 /** Create a ToolContext from plain options (adds the groupId method). */

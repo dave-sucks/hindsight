@@ -658,6 +658,7 @@ new, file it there — not here.)
 - lib/agent/triggers/types.ts — predicate union (incl. GAIN_FROM_ENTRY + TRAILING_FROM_HIGH) + isDirectEligiblePredicate + protectiveExitCloseReason
 - lib/agent/triggers/evaluate.ts — pure evaluator (1D daily-move + HOLDING-only gain/trail paths)
 - lib/agent/triggers/defaults.ts — horizon templates + standingProtectionTriggers() (+10%/8%/−12%) + scaleInOn* (±7%) + cooldown defaults
+- lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note); THESIS_INVALIDATED stays distinct via belief_survived
 - lib/inngest/functions/trigger-evaluator.ts — 5-min cron + signal paths
 - lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer
 - lib/actions/thesis-edit.ts — UI add / edit / delete / fire-mode write paths
