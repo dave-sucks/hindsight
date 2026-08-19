@@ -39,6 +39,10 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
+import {
+  protectiveRatchetViolations,
+  describeRatchetViolation,
+} from "@/lib/agent/triggers/ratchet";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import {
   writeThesisUpdate,
@@ -407,10 +411,11 @@ type UpdatePatch = Partial<{
 export const updateThesis = defineTool({
   description:
     "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief). " +
-    "Three hard-reject conditions to know about: " +
+    "Four hard-reject conditions to know about: " +
     "(1) zero-trigger guard — refuses updates on theses with no triggers unless the update adds triggers OR closes the thesis; " +
     "(2) goalpost-moving guard — refuses to raise targetPrice on a WATCHING thesis whose existing entry condition is currently met (price has crossed the old target — your job is to PROMOTE, not move the bar); " +
-    "(3) structural-belief discipline gate — patches that change confidence_score / target_price / stop_loss WITHOUT also touching core_belief / key_assumptions / invalidation_conditions are rejected unless `structural_unchanged_reason` is supplied. Either update the belief to reflect why the trade plan is moving, or state explicitly why the belief is intact.",
+    "(3) structural-belief discipline gate — patches that change confidence_score / target_price / stop_loss WITHOUT also touching core_belief / key_assumptions / invalidation_conditions are rejected unless `structural_unchanged_reason` is supplied. Either update the belief to reflect why the trade plan is moving, or state explicitly why the belief is intact; " +
+    "(4) protective-level ratchet — on a held stock, protective sell levels only move toward MORE protection. Lowering a stop, widening a trailing give-back, deleting a protective sell trigger, or switching one from automatic to judgment-first is rejected. Only the principal moves a safety line down. If you believe a level is wrong, keep it and say so in your rationale with the number you'd suggest.",
   schema: updateSchema,
   ui: "thesis-card" as const,
 
@@ -1478,6 +1483,76 @@ export const updateThesis = defineTool({
         },
         sources: [],
       };
+    }
+
+    // ── Protective-level ratchet gate (DAV-185) ──────────────────────────
+    // The 2026-08-16 standing ruling as code: on a held stock, an analyst
+    // may raise/tighten a protective sell level; it may never lower, widen,
+    // or delete one, or demote it from automatic (DIRECT) to judgment-first.
+    // Prompt-side versions of this rule failed live on 2026-08-18 (MU floor
+    // 948 → 814 while two sell proposals from the 948 breach sat awaiting
+    // approval). The principal's UI paths (thesis sheet, reject dialog —
+    // lib/actions/thesis-edit.ts / level-triggers.ts) don't run this gate;
+    // "thesis is broken, sell" flows don't either (terminal transitions set
+    // patch.status, so effectiveEnterStatus is no longer HOLDING, and the
+    // sell itself is close_position).
+    //
+    // Runs LATE like the ENTER guard: patch.triggers is the final processed
+    // replacement (post dropRedundantInherited), so resending an inherited
+    // rung verbatim stays legal, while deleting a thesis override to let a
+    // weaker inherited value show through is caught.
+    if (effectiveEnterStatus === "HOLDING") {
+      const ratchetProblems: string[] = [];
+      if (patch.triggers !== undefined) {
+        const violations = protectiveRatchetViolations({
+          direction: effectiveEnterDirection,
+          before: Array.isArray(existing.triggers)
+            ? (existing.triggers as unknown as Trigger[])
+            : [],
+          after: (patch.triggers as unknown as Trigger[]) ?? [],
+          inherited: inheritedLadder,
+        });
+        ratchetProblems.push(...violations.map(describeRatchetViolation));
+      }
+      // The stopLoss COLUMN is the same safety line in its scalar form
+      // (P1-42 dual representation) — tactical validation reads it, so a
+      // lowered column misinforms the next protective-fire review even
+      // though the trigger evaluator fires off the rungs.
+      if (patch.stopLoss !== undefined) {
+        const oldStop =
+          existing.stopLoss != null ? Number(existing.stopLoss) : null;
+        const newStop = patch.stopLoss;
+        if (oldStop != null && newStop == null) {
+          ratchetProblems.push(
+            `stop_loss $${oldStop} → cleared — that removes the recorded stop on a stock we own.`,
+          );
+        } else if (oldStop != null && newStop != null) {
+          const isLong = effectiveEnterDirection !== "SHORT";
+          if (isLong ? newStop < oldStop : newStop > oldStop) {
+            ratchetProblems.push(
+              `stop_loss $${oldStop} → $${newStop} — that moves the stop the wrong way on a stock we own.`,
+            );
+          }
+        }
+      }
+      if (ratchetProblems.length > 0) {
+        console.warn(
+          `[update-thesis] thesis=${args.thesis_id} ticker=${existing.ticker} REJECTED — protective-level ratchet: ${ratchetProblems.length} violation(s).`,
+        );
+        return {
+          summary: `Refused update on $${existing.ticker} — protective levels on a held stock only move toward more protection.`,
+          data: {
+            ok: false,
+            error: "protective_level_locked",
+            message:
+              `This update weakens the protection on $${existing.ticker}, a stock we currently own:\n` +
+              ratchetProblems.map((p) => `  • ${p}`).join("\n") +
+              `\n\nProtective levels only move toward MORE protection. Only the principal moves a safety line down, widens it, or removes it — from the thesis sheet or when rejecting a sell proposal. ` +
+              `Resend your update keeping every current protective level (raising/tightening is fine). If you believe a level is wrong, say so in your rationale with the number you'd suggest and why — that reaches the principal with the next proposal.`,
+          },
+          sources: [],
+        };
+      }
     }
 
     // ── Narrative-only patches collapse to REVIEWED ──────────────────────

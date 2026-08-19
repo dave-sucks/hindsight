@@ -34,6 +34,17 @@ Within the thesis level, an agent-authored rung still beats the horizon
 template (`mergeTriggers`); principal edits beat everything and are fed back
 to the agent as `principalDirective`.
 
+**The one-way rule is enforced in code (DAV-185, shipped 2026-08-19).** On a
+held stock, layer 4 (the agent) may only move protective sell levels toward
+MORE protection. `update_thesis` hard-rejects an edit that lowers a stop,
+widens a trailing give-back, deletes a protective sell rung, or demotes one
+from automatic (DIRECT) to judgment-first — including the sneaky form where a
+thesis override is deleted so a weaker inherited value shows through. The
+check runs on the effective ladder (`protectiveRatchetViolations`,
+`lib/agent/triggers/ratchet.ts`); the principal's paths (thesis sheet, reject
+dialog) are exempt. Prompt-only versions of this rule failed live on
+2026-08-18 (the MU 948→814 violation).
+
 A rung's LEVEL is which record it is stored on, never a field — deriving it
 means it cannot drift from reality. Two consequences worth knowing:
 
