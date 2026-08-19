@@ -206,6 +206,12 @@ export const tacticalRun = inngest.createFunction(
             quantity: true,
             avgCost: true,
             openedAt: true,
+            // The price-monitor-maintained watermark (high for LONG, low for
+            // SHORT). Handed to the tactical prompt as the AUTHORITATIVE
+            // reference for TRAILING_FROM_HIGH validation — DAV-186: the HPE
+            // agent re-derived a "peak" from a short chart window and
+            // declined a genuine trail fire.
+            peakPrice: true,
           },
         }),
       ]);
@@ -277,6 +283,8 @@ export const tacticalRun = inngest.createFunction(
               quantity: Number(position.quantity),
               avgCost: Number(position.avgCost),
               daysHeld: daysHeld ?? 0,
+              peakPrice:
+                position.peakPrice != null ? Number(position.peakPrice) : null,
             }
           : null,
       };
