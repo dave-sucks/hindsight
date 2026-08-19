@@ -140,7 +140,7 @@ export async function pullThesisData(
   ] = await Promise.allSettled([
     stockTool.execute({ ticker: T, include_technicals: true }, SUB_TOOL_OPTS),
     financialsTool.execute({ ticker: T }, SUB_TOOL_OPTS),
-    analystCovTool.execute({ ticker: T, window_days: 90 }, SUB_TOOL_OPTS),
+    analystCovTool.execute({ ticker: T }, SUB_TOOL_OPTS),
     insiderTool.execute({ ticker: T, window_days: 90 }, SUB_TOOL_OPTS),
     earningsHistTool.execute({ ticker: T, quarters: 8 }, SUB_TOOL_OPTS),
     // peer_count 3 — see the 2026-05-18 data-block trim note in git history.

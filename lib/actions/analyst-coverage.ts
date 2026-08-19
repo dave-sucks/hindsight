@@ -8,40 +8,7 @@
  * alongside the quote/candles instead of the client making a separate call.
  */
 import { getRecommendationTrends } from "@/lib/actions/finnhub.actions";
-
-const FMP_KEY = process.env.FMP_API_KEY!;
-
-interface FmpResult<T> {
-  data: T | null;
-  error?: string;
-}
-
-async function fmp<T>(path: string): Promise<FmpResult<T>> {
-  const url = `https://financialmodelingprep.com${path}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (!res.ok)
-      return { data: null, error: `FMP ${res.status} on ${path.split("?")[0]}` };
-    const data = (await res.json()) as T;
-    if (
-      data &&
-      typeof data === "object" &&
-      !Array.isArray(data) &&
-      "Error Message" in (data as object)
-    ) {
-      return {
-        data: null,
-        error: `FMP: ${(data as Record<string, string>)["Error Message"]}`,
-      };
-    }
-    return { data };
-  } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : "fmp error" };
-  }
-}
+import { fmp } from "@/lib/market-data/fmp";
 
 interface PriceTargetConsensus {
   symbol?: string;
@@ -51,10 +18,21 @@ interface PriceTargetConsensus {
   targetMedian?: number;
 }
 
+/**
+ * FMP /stable/price-target-summary.
+ *
+ * NOTE: there is no `numberOfAnalysts` field and never was in the /stable
+ * shape — code here used to read `numberOfAnalysts ?? publishers`, and
+ * `publishers` is a JSON-encoded STRING of news outlets ("[\"TheFly\",
+ * \"Benzinga\",...]"), not a count. That string was being handed to the agent
+ * as `numAnalysts` (DAV-191). The real counts are the *Count fields.
+ */
 interface PriceTargetSummary {
   symbol?: string;
-  publishers?: number;
-  numberOfAnalysts?: number;
+  lastMonthCount?: number;
+  lastQuarterCount?: number;
+  lastYearCount?: number;
+  allTimeCount?: number;
 }
 
 export interface AnalystCoverageData {
@@ -83,8 +61,14 @@ export async function getAnalystCoverageData(
   const T = ticker.toUpperCase();
 
   const [consensusRes, summaryRes, finnhubTrends] = await Promise.all([
-    fmp<PriceTargetConsensus[]>(`/stable/price-target-consensus?symbol=${T}`),
-    fmp<PriceTargetSummary[]>(`/stable/price-target-summary?symbol=${T}`),
+    fmp<PriceTargetConsensus[]>(`/stable/price-target-consensus?symbol=${T}`, {
+      expectNonEmpty: true,
+      timeoutMs: 8_000,
+    }),
+    fmp<PriceTargetSummary[]>(`/stable/price-target-summary?symbol=${T}`, {
+      expectNonEmpty: true,
+      timeoutMs: 8_000,
+    }),
     getRecommendationTrends(T).catch(() => null),
   ]);
 
@@ -103,8 +87,13 @@ export async function getAnalystCoverageData(
           average: consensusRow.targetConsensus,
           median: consensusRow.targetMedian ?? null,
           high: consensusRow.targetHigh ?? null,
+          // Targets published in the last quarter — the count that actually
+          // stands behind the current consensus. Falls back to the 1y count
+          // for thinly-covered names.
           numAnalysts:
-            summaryRow?.numberOfAnalysts ?? summaryRow?.publishers ?? null,
+            summaryRow?.lastQuarterCount ||
+            summaryRow?.lastYearCount ||
+            null,
         }
       : null;
 

@@ -92,8 +92,8 @@ interface AnalystCoverageInput {
     bullish: number;
     neutral: number;
     bearish: number;
-    unknown: number;
     totalAnalysts: number;
+    asOf: string | null;
   } | null;
   priceTargets: {
     low: number | null;
@@ -104,17 +104,6 @@ interface AnalystCoverageInput {
     impliedUpsidePct: number | null;
     numAnalysts: number | null;
   } | null;
-  recentActions: {
-    date: string;
-    firm: string;
-    analyst: string | null;
-    action: string | null;
-    ratingFrom: string | null;
-    ratingTo: string;
-    priceTargetFrom: number | null;
-    priceTargetTo: number | null;
-  }[];
-  windowDays: number;
   errors?: string[];
 }
 
@@ -406,7 +395,8 @@ function buildAnalystCoverage(a: AnalystCoverageInput | null): string {
   if (a.consensus) {
     lines.push(
       `Consensus: ${a.consensus.rating} · ${a.consensus.totalAnalysts} analyst(s) tracked ` +
-        `(${a.consensus.bullish} Bullish / ${a.consensus.neutral} Neutral / ${a.consensus.bearish} Bearish${a.consensus.unknown > 0 ? ` / ${a.consensus.unknown} unclassified` : ""})`,
+        `(${a.consensus.bullish} Bullish / ${a.consensus.neutral} Neutral / ${a.consensus.bearish} Bearish)` +
+        `${a.consensus.asOf ? ` · as of ${a.consensus.asOf}` : ""}`,
     );
   }
   if (a.priceTargets?.average != null) {
@@ -417,22 +407,6 @@ function buildAnalystCoverage(a: AnalystCoverageInput | null): string {
     lines.push(
       `Targets: Low $${a.priceTargets.low?.toFixed(2) ?? "—"} · Avg $${a.priceTargets.average.toFixed(2)} · Median $${a.priceTargets.median?.toFixed(2) ?? "—"} · High $${a.priceTargets.high?.toFixed(2) ?? "—"}${upText}`,
     );
-  }
-  if (a.recentActions.length > 0) {
-    lines.push("");
-    lines.push(`Recent actions (last ${a.windowDays}d):`);
-    for (const r of a.recentActions.slice(0, 12)) {
-      const ratingText =
-        r.ratingFrom && r.ratingFrom !== r.ratingTo ? `${r.ratingFrom} → ${r.ratingTo}` : r.ratingTo;
-      const ptText = r.priceTargetTo != null ? ` · PT $${r.priceTargetTo.toFixed(2)}` : "";
-      const analystText = r.analyst ? `${r.firm} (${r.analyst})` : r.firm;
-      lines.push(`  ${r.date} — ${analystText}: ${ratingText}${ptText}${r.action ? ` [${r.action}]` : ""}`);
-    }
-    if (a.recentActions.length > 12) {
-      lines.push(`  … ${a.recentActions.length - 12} more actions in window.`);
-    }
-  } else {
-    lines.push(`(no rating actions in the last ${a.windowDays}d)`);
   }
   if (a.errors && a.errors.length > 0) lines.push(`(partial — ${a.errors.join("; ")})`);
   return lines.join("\n");

@@ -14,37 +14,7 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { finnhub } from "@/lib/agent/research-helpers";
-
-const FMP_KEY = process.env.FMP_API_KEY!;
-
-interface FmpResult<T> {
-  data: T | null;
-  error?: string;
-}
-
-async function fmp<T>(path: string): Promise<FmpResult<T>> {
-  // 2026-05-19 — /api/v3 + /v4 deprecated; route /stable/ paths directly.
-  const base = path.startsWith("/stable/")
-    ? `https://financialmodelingprep.com${path}`
-    : path.startsWith("/v4/")
-      ? `https://financialmodelingprep.com/api${path}`
-      : `https://financialmodelingprep.com/api/v3${path}`;
-  const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return { data: null, error: `FMP ${res.status} on ${path.split("?")[0]}` };
-    const data = (await res.json()) as T;
-    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in (data as object)) {
-      return { data: null, error: `FMP: ${(data as Record<string, string>)["Error Message"]}` };
-    }
-    return { data };
-  } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : "fmp error" };
-  }
-}
+import { fmp } from "@/lib/market-data/fmp";
 
 interface FinnhubEarningsRow {
   period: string;

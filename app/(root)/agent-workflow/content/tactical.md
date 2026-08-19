@@ -21,7 +21,6 @@ get_stock_data?provider=finnhub — fresh quote, technicals, news — required
 get_theses — the firing thesis with its full update history
 get_earnings_data?provider=finnhub — if the trigger is earnings-related
 get_market_context?provider=finnhub — regime check before acting
-get_options_flow?provider=fmp — if the trigger references unusual options activity
 get_sec_filings?provider=sec — if the trigger references an 8-K or insider filing
 read_artifact — full article content behind the firing signal
 web_search?provider=perplexity — only when the firing signal doesn't fully explain the setup

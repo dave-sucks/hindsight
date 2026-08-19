@@ -162,7 +162,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_earnings_data",
       "get_earnings_calendar",
       "get_market_movers",
-      "get_options_flow",
       "get_sec_filings",
       // Write — manage existing book ONLY
       "update_thesis",
@@ -361,7 +360,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_earnings_data",
       "get_market_context",
       "get_sec_filings",
-      "get_options_flow",
       "web_search",
       "read_artifact",
       "get_theses",
@@ -434,7 +432,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_earnings_data",
       "get_earnings_calendar",
       "get_market_movers",
-      "get_options_flow",
       "get_sec_filings",
       "web_search",
       // Grok Live Search over X — handle-attributed posts. SOON-1b in
@@ -723,7 +720,7 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
   • \`discover_signals_for_fence\` — validate a proposed universe fence against past 30d of real routed signals.
 
 **Live market data:**
-  • \`get_market_context\` (SPY/VIX/sectors/macro), \`get_stock_data\` (full per-ticker snapshot), \`get_earnings_data\`, \`get_earnings_calendar\`, \`get_market_movers\`, \`get_options_flow\`, \`get_sec_filings\`.
+  • \`get_market_context\` (SPY/VIX/sectors/macro), \`get_stock_data\` (full per-ticker snapshot), \`get_earnings_data\`, \`get_earnings_calendar\`, \`get_market_movers\`, \`get_sec_filings\`.
   • \`web_search\` — Perplexity Sonar over the open web. Use for consensus / sell-side / neutral wire content.
   • \`twitter_search\` — Grok Live Search over X for handle-attributed posts. Returns author + ticker + archetype (TECHNICAL / FUNDAMENTAL / NARRATIVE / OPTIONS_FLOW / CATALYST_EVENT / MACRO) + claim_excerpt + sentiment + recency. **Use for handle attribution, fintwit early calls, and multi-archetype convergence on a name (the same ticker named by technicians + fundamentalists + narrative traders is a stronger signal than any one alone).** Sharp probes only — one ticker, one handle, or one theme per call. Budget-limited.
 

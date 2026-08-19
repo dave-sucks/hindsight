@@ -11,32 +11,6 @@ import { finnhub, calcSMA } from "@/lib/agent/research-helpers";
 import { getBars } from "@/lib/alpaca";
 import type { MacroEvent } from "@/lib/discovery/types";
 
-const FMP_KEY = process.env.FMP_API_KEY!;
-
-async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
-  // 2026-05-19 — /api/v3 deprecated; route /stable/ paths directly.
-  const base = path.startsWith("/stable/")
-    ? `https://financialmodelingprep.com${path}`
-    : path.startsWith("/v4/")
-      ? `https://financialmodelingprep.com/api${path}`
-      : `https://financialmodelingprep.com/api/v3${path}`;
-  const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return { data: null, error: `FMP ${res.status} for ${path}` };
-    const data = await res.json();
-    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in data) {
-      return { data: null, error: `FMP: ${(data as Record<string, string>)["Error Message"]}` };
-    }
-    return { data };
-  } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : "FMP error" };
-  }
-}
-
 function formatShortDate(iso: string) {
   const d = new Date(iso);
   return `${d.getMonth() + 1}/${d.getDate()}`;
@@ -64,7 +38,7 @@ export const getMarketContext = defineTool({
     const spyBarsStart = new Date(Date.now() - 30 * 86400_000)
       .toISOString()
       .slice(0, 10);
-    const [quoteResults, spyBarsResult, macroCalResult, earningsDensityResult] =
+    const [quoteResults, spyBarsResult, earningsDensityResult] =
       await Promise.all([
         Promise.all(
           allSymbols.map(async (sym) => {
@@ -96,10 +70,6 @@ export const getMarketContext = defineTool({
             };
           }
         })(),
-        // FMP /stable/economic-calendar is restricted on the basic plan;
-        // we attempt the call but expect it to fail gracefully on most
-        // accounts. The downstream code handles `null` → empty macro list.
-        fmp(`/stable/economic-calendar?from=${today}&to=${today}`),
         finnhub(`/calendar/earnings?from=${today}&to=${fiveDaysForward}`, 2),
       ]);
 
@@ -152,21 +122,11 @@ export const getMarketContext = defineTool({
       regime = "RISK_OFF";
     }
 
-    // Macro events today
-    let macroEventsToday: MacroEvent[] = [];
-    try {
-      const macroRaw = macroCalResult.data as { event?: string; country?: string; actual?: number | null; estimate?: number | null; impact?: string }[] | null;
-      if (Array.isArray(macroRaw)) {
-        macroEventsToday = macroRaw
-          .filter((e) => e.country === "US")
-          .map((e) => ({
-            event: e.event ?? "Unknown",
-            actual: e.actual ?? null,
-            estimate: e.estimate ?? null,
-            impact: e.impact === "High" ? "HIGH" as const : e.impact === "Medium" ? "MEDIUM" as const : "LOW" as const,
-          }));
-      }
-    } catch { /* non-fatal */ }
+    // Macro events: DROPPED 2026-08-19 (DAV-191). FMP /stable/economic-calendar
+    // is 402 on our plan and Finnhub /calendar/economic is 403 — no vendor we
+    // pay for serves an economic calendar, so this stays empty rather than
+    // pretending. Re-add here (and restore the source line) if a plan changes.
+    const macroEventsToday: MacroEvent[] = [];
 
     // Earnings density
     let earningsDensity: { count: number; period: string } = { count: 0, period: `${today}–${fiveDaysForward}` };
@@ -218,7 +178,6 @@ export const getMarketContext = defineTool({
         { provider: "Finnhub", title: "CBOE VIX Index", url: "https://finnhub.io/docs/api/quote" },
         { provider: "Finnhub", title: "S&P 500 Sector ETF Performance", url: "https://finnhub.io/docs/api/quote" },
         { provider: "Alpaca", title: "SPY 30-Day Bars (SMA-20 + Regime)", url: "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/" },
-        { provider: "FMP", title: "US Economic Calendar", url: "https://site.financialmodelingprep.com/developer/docs#economic-calendar" },
         { provider: "Finnhub", title: "Earnings Calendar (5-Day Density)", url: "https://finnhub.io/docs/api/earnings-calendar" },
       ],
     };

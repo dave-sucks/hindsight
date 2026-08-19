@@ -210,25 +210,6 @@ export interface EarningsDataData {
   }[];
 }
 
-/** get_options_flow → data */
-export interface OptionsFlowData {
-  available: boolean;
-  putCallRatio: number | null;
-  totalCallVolume: number;
-  totalPutVolume: number;
-  contractsAvailable: number;
-  unusualContracts: {
-    type: string;
-    strike: number;
-    expiration: string;
-    volume: number;
-    openInterest?: number;
-    premium?: number;
-  }[];
-  signal: string;
-  dataSource: string;
-}
-
 /** get_sec_filings → data */
 export interface SecFilingsData {
   filings: { type: string; date: string; description: string }[];

@@ -171,15 +171,15 @@ export function buildDailyRunSystemPromptV2(
 
 When you pull research for a thesis, match the data to the horizon. \`get_stock_data\` is always the baseline (live price, fundamentals, technicals, recent news). On top of that:
 
-- **TRADE** (days-to-weeks momentum / pattern) — \`get_options_flow\` to confirm directional bets and unusual activity. Technical setup is the thesis; intraday volume + RSI confirm or invalidate it. \`get_sec_filings\` rarely relevant unless an 8-K just hit.
+- **TRADE** (days-to-weeks momentum / pattern) — the technical setup IS the thesis; intraday volume + RSI from \`get_stock_data\` confirm or invalidate it. \`get_sec_filings\` rarely relevant unless an 8-K just hit.
 
 - **CATALYST** (built around a dated event) — \`get_earnings_data\` if the event is an earnings print (consensus, recent EPS, beat history). \`get_sec_filings\` for FDA / M&A / litigation catalysts. \`read_artifact\` for the full text behind any signal that mentions the event. The catalyst-side data IS the thesis.
 
-- **TARGET** (open-ended swing) — balanced: technicals (\`get_stock_data\`'s technical block) plus fundamentals plus next earnings date (\`get_earnings_data\`). Pull \`get_options_flow\` only if positioning signal matters to entry timing.
+- **TARGET** (open-ended swing) — balanced: technicals (\`get_stock_data\`'s technical block) plus fundamentals plus next earnings date (\`get_earnings_data\`).
 
-- **COMPOUNDER** (months-to-years secular hold) — \`get_sec_filings\` for fundamental shifts (10-K/10-Q segments, insider Form 4s, guidance changes). \`get_earnings_data\` for the quarterly cadence. \`get_market_context\` for sector/macro regime check. **Don't** pull \`get_options_flow\` on a COMPOUNDER review — short-term flow tells you nothing about a multi-year thesis.
+- **COMPOUNDER** (months-to-years secular hold) — \`get_sec_filings\` for fundamental shifts (10-K/10-Q segments, insider Form 4s, guidance changes). \`get_earnings_data\` for the quarterly cadence. \`get_market_context\` for sector/macro regime check.
 
-If you're reviewing a held position, the position's horizon is on the Live Theses table; match the data pull to it. If you're researching a new trigger fire, use the WATCHING thesis's horizon. Pulling intraday options flow on a COMPOUNDER REVIEW is a tell that you're not reading the thesis — slow down and re-anchor on what the thesis actually is.`,
+If you're reviewing a held position, the position's horizon is on the Live Theses table; match the data pull to it. If you're researching a new trigger fire, use the WATCHING thesis's horizon. Pulling short-horizon intraday data on a COMPOUNDER REVIEW is a tell that you're not reading the thesis — slow down and re-anchor on what the thesis actually is.`,
   );
 
   // ── Your job (the actual workflow) ─────────────────────────────────────

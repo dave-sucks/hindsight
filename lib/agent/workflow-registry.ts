@@ -490,14 +490,6 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     ],
   },
   {
-    name: "get_options_flow",
-    category: "research",
-    summary: "Put/call ratio, unusual contracts, and institutional positioning. Called only when unusual activity flagged.",
-    providers: ["fmp"],
-    agents: ["agent", "tactical"],
-    resources: [{ source: "fmp", title: "Options chain analysis", description: "P/C ratio, unusual volume/OI contracts, premium flags.", type: "api", endpointOrPath: "/options/chain/{ticker}", exampleOutput: "P/C 0.65 (bullish) · 3 unusual contracts", notes: ["Flags vol/OI ≥ 5x or premium ≥ $500K"] }],
-  },
-  {
     name: "get_sec_filings",
     category: "research",
     summary: "Recent SEC filings — 10-K, 10-Q, 8-K, Form 4. Called only when insider filing or material 8-K flagged.",

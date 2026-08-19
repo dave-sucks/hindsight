@@ -170,7 +170,6 @@ function inferLegacyGroupId(toolName: string): string | undefined {
   if (
     toolName === "get_stock_data" ||
     toolName === "get_earnings_data" ||
-    toolName === "get_options_flow" ||
     toolName === "get_sec_filings" ||
     toolName === "get_market_context"
   ) return "Researching";

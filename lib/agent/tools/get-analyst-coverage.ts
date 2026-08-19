@@ -1,49 +1,27 @@
 /**
- * get_analyst_coverage — FMP price targets + rating changes + consensus.
+ * get_analyst_coverage — consensus rating (Finnhub) + price-target range (FMP).
  *
- * Surfaces the firm-by-firm analyst table that backs the thesis
- * 'Analyst Consensus' section: who's BUY/HOLD/SELL, what's the average
- * price target, and what specific rating actions hit in the last ~30 days
- * (firm name + analyst name + target deltas).
+ * Backs the thesis 'Analyst Consensus' section: how the street is positioned
+ * and where the consensus target sits versus the live price.
  *
- * Falls back gracefully on per-endpoint 403s — some FMP tiers gate
- * /grades-historical and /price-target-consensus. Returns partial data with
- * an errors[] array.
+ * 2026-08-19 (DAV-191) — the firm-by-firm rating-action timeline is GONE, and
+ * it was never actually working. It was built on FMP `/stable/grades-historical`
+ * + `/stable/upgrades-downgrades`, both of which return 404 `[]` on our plan,
+ * and the tool derived its `consensus` block *from that same empty timeline* —
+ * so every call in production returned `consensus: null` + `recentActions: []`
+ * while reporting success. No vendor we pay for serves the named-firm/named-
+ * analyst table (Finnhub `/stock/upgrade-downgrade` is 403 too), so rather than
+ * fake it, consensus now comes from Finnhub `/stock/recommendation`, which is
+ * healthy and gives the real buy/hold/sell distribution.
+ *
+ * Price targets stay on FMP — `/stable/price-target-consensus` and
+ * `/stable/price-target-summary` were both verified 200 with live data.
  */
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-
-const FMP_KEY = process.env.FMP_API_KEY!;
-
-interface FmpResult<T> {
-  data: T | null;
-  error?: string;
-}
-
-async function fmp<T>(path: string): Promise<FmpResult<T>> {
-  // 2026-05-19 — /api/v3 + /v4 deprecated; route /stable/ paths directly.
-  const base = path.startsWith("/stable/")
-    ? `https://financialmodelingprep.com${path}`
-    : path.startsWith("/v4/")
-      ? `https://financialmodelingprep.com/api${path}`
-      : `https://financialmodelingprep.com/api/v3${path}`;
-  const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return { data: null, error: `FMP ${res.status} on ${path.split("?")[0]}` };
-    const data = (await res.json()) as T;
-    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in (data as object)) {
-      return { data: null, error: `FMP: ${(data as Record<string, string>)["Error Message"]}` };
-    }
-    return { data };
-  } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : "fmp error" };
-  }
-}
+import { fmp } from "@/lib/market-data/fmp";
+import { finnhub } from "@/lib/agent/research-helpers";
 
 interface PriceTargetConsensus {
   symbol?: string;
@@ -53,37 +31,21 @@ interface PriceTargetConsensus {
   targetMedian?: number;
 }
 
+/**
+ * FMP /stable/price-target-summary.
+ *
+ * NOTE: there is no `numberOfAnalysts` field and never was in the /stable
+ * shape — code here used to read `numberOfAnalysts ?? publishers`, and
+ * `publishers` is a JSON-encoded STRING of news outlets ("[\"TheFly\",
+ * \"Benzinga\",...]"), not a count. That string was being handed to the agent
+ * as `numAnalysts` (DAV-191). The real counts are the *Count fields.
+ */
 interface PriceTargetSummary {
   symbol?: string;
-  publishers?: number;
-  numberOfAnalysts?: number;
-}
-
-interface GradeHistoricalRow {
-  symbol: string;
-  date: string;
-  gradingCompany: string;
-  previousGrade?: string;
-  newGrade: string;
-  action?: string; // "upgrade" / "downgrade" / "hold" / etc.
-}
-
-interface UpgradeDowngradeRow {
-  symbol: string;
-  publishedDate: string;
-  newsURL?: string;
-  newsTitle?: string;
-  newsBaseURL?: string;
-  newsPublisher?: string;
-  analystName?: string;
-  analystCompany?: string;
-  newGrade?: string;
-  previousGrade?: string;
-  gradingCompany?: string;
-  action?: string;
-  priceTarget?: number;
-  adjPriceTarget?: number;
-  priceWhenPosted?: number;
+  lastMonthCount?: number;
+  lastQuarterCount?: number;
+  lastYearCount?: number;
+  allTimeCount?: number;
 }
 
 interface QuoteRow {
@@ -91,74 +53,50 @@ interface QuoteRow {
   price?: number;
 }
 
-function classifyRating(grade?: string | null): "BULL" | "NEUTRAL" | "BEAR" | "UNK" {
-  if (!grade) return "UNK";
-  const g = grade.toLowerCase();
-  if (
-    g.includes("buy") ||
-    g.includes("outperform") ||
-    g.includes("overweight") ||
-    g.includes("positive") ||
-    g.includes("accumulate") ||
-    g.includes("strong")
-  )
-    return "BULL";
-  if (
-    g.includes("sell") ||
-    g.includes("underperform") ||
-    g.includes("underweight") ||
-    g.includes("negative") ||
-    g.includes("reduce")
-  )
-    return "BEAR";
-  if (g.includes("hold") || g.includes("neutral") || g.includes("equal") || g.includes("sector perform")) {
-    return "NEUTRAL";
-  }
-  return "UNK";
+/** Finnhub /stock/recommendation row — one per month, newest first. */
+interface RecommendationRow {
+  symbol?: string;
+  period?: string;
+  strongBuy?: number;
+  buy?: number;
+  hold?: number;
+  sell?: number;
+  strongSell?: number;
 }
 
 export const getAnalystCoverage = defineTool({
   description:
-    "Get analyst coverage for a stock — consensus rating + price target distribution + " +
-    "recent firm-by-firm rating actions (last ~90 days). Backs the thesis 'Analyst Consensus' " +
-    "section. Returns the named-firm + named-analyst table (Morgan Stanley/Andrew Percoco/PT $14 " +
-    "kind of detail) that pure LLM-paraphrased 'consensus is Hold' cannot match.",
+    "Get analyst coverage for a stock — the consensus BUY/HOLD/SELL distribution across " +
+    "covering analysts plus the Low/Avg/Median/High price-target range and implied upside " +
+    "versus the live price. Backs the thesis 'Analyst Consensus' section.",
   schema: z.object({
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
-    window_days: z
-      .number()
-      .int()
-      .positive()
-      .max(180)
-      .optional()
-      .describe("How many days of rating actions to include (default 90)."),
   }),
   ui: "tool-ui" as const,
   groupId: "Researching",
 
   progressLabel: (args) => `Pulling $${args.ticker.toUpperCase()}'s analyst coverage`,
 
-  execute: async ({ ticker, window_days }) => {
+  execute: async ({ ticker }) => {
     const T = ticker.toUpperCase();
-    const days = window_days ?? 90;
 
-    // /stable/grades-historical is premium-tier-gated; /ratings-grades-historical
-    // is the free replacement (returns the same rating-action shape, just
-    // sparser data on free plans). Tools gracefully degrade when either
-    // returns empty.
-    const [consensusRes, summaryRes, gradesRes, updnRes, quoteRes] = await Promise.all([
-      fmp<PriceTargetConsensus[]>(`/stable/price-target-consensus?symbol=${T}`),
-      fmp<PriceTargetSummary[]>(`/stable/price-target-summary?symbol=${T}`),
-      fmp<GradeHistoricalRow[]>(`/stable/ratings-grades-historical?symbol=${T}&limit=40`),
-      fmp<UpgradeDowngradeRow[]>(`/stable/upgrades-downgrades?symbol=${T}`),
-      fmp<QuoteRow[]>(`/stable/quote?symbol=${T}`),
+    const [consensusRes, summaryRes, quoteRes, recsRes] = await Promise.all([
+      fmp<PriceTargetConsensus[]>(`/stable/price-target-consensus?symbol=${T}`, {
+        expectNonEmpty: true,
+      }),
+      fmp<PriceTargetSummary[]>(`/stable/price-target-summary?symbol=${T}`, {
+        expectNonEmpty: true,
+      }),
+      // Live price drives impliedUpsidePct — must bypass the Data Cache.
+      fmp<QuoteRow[]>(`/stable/quote?symbol=${T}`, { liveQuote: true }),
+      finnhub(`/stock/recommendation?symbol=${T}`, 2),
     ]);
 
     const errors: string[] = [];
     if (consensusRes.error) errors.push(`price-target-consensus: ${consensusRes.error}`);
     if (summaryRes.error) errors.push(`price-target-summary: ${summaryRes.error}`);
-    if (gradesRes.error) errors.push(`grades-historical: ${gradesRes.error}`);
-    if (updnRes.error) errors.push(`upgrades-downgrades: ${updnRes.error}`);
+    if (quoteRes.error) errors.push(`quote: ${quoteRes.error}`);
+    if (recsRes.error) errors.push(`recommendation: ${recsRes.error}`);
 
     const consensusRow = consensusRes.data?.[0];
     const summaryRow = summaryRes.data?.[0];
@@ -175,106 +113,61 @@ export const getAnalystCoverage = defineTool({
             currentPrice && consensusRow.targetConsensus
               ? ((consensusRow.targetConsensus - currentPrice) / currentPrice) * 100
               : null,
+          // Targets published in the last quarter — the count that actually
+          // stands behind the current consensus. Falls back to the 1y count
+          // for thinly-covered names.
           numAnalysts:
-            summaryRow?.numberOfAnalysts ?? summaryRow?.publishers ?? null,
+            summaryRow?.lastQuarterCount ||
+            summaryRow?.lastYearCount ||
+            null,
         }
       : null;
 
-    // Combine /grades-historical and /upgrades-downgrades into one timeline.
-    const cutoff = new Date(Date.now() - days * 86400_000);
-    const cutoffISO = cutoff.toISOString().slice(0, 10);
+    // Consensus from Finnhub's most-recent monthly recommendation snapshot.
+    const recRows = Array.isArray(recsRes.data)
+      ? (recsRes.data as RecommendationRow[])
+      : [];
+    const latestRec = recRows
+      .slice()
+      .sort((a, b) => (b.period ?? "").localeCompare(a.period ?? ""))[0];
 
-    type Action = {
-      date: string;
-      firm: string;
-      analyst: string | null;
-      action: string | null;
-      ratingFrom: string | null;
-      ratingTo: string;
-      priceTargetFrom: number | null;
-      priceTargetTo: number | null;
-      source: "grades" | "upgrades";
-    };
+    let consensus: {
+      rating: string;
+      bullish: number;
+      neutral: number;
+      bearish: number;
+      totalAnalysts: number;
+      asOf: string | null;
+    } | null = null;
 
-    const fromGrades: Action[] = (gradesRes.data ?? [])
-      .filter((r) => r.date >= cutoffISO)
-      .map((r) => ({
-        date: r.date,
-        firm: r.gradingCompany ?? "Unknown",
-        analyst: null,
-        action: r.action ?? null,
-        ratingFrom: r.previousGrade ?? null,
-        ratingTo: r.newGrade,
-        priceTargetFrom: null,
-        priceTargetTo: null,
-        source: "grades" as const,
-      }));
-
-    const fromUpdn: Action[] = (updnRes.data ?? [])
-      .filter((r) => (r.publishedDate ?? "").slice(0, 10) >= cutoffISO)
-      .map((r) => ({
-        date: (r.publishedDate ?? "").slice(0, 10),
-        firm: r.gradingCompany ?? r.analystCompany ?? "Unknown",
-        analyst: r.analystName ?? null,
-        action: r.action ?? null,
-        ratingFrom: r.previousGrade ?? null,
-        ratingTo: r.newGrade ?? "Unknown",
-        priceTargetFrom: null,
-        priceTargetTo: r.priceTarget ?? r.adjPriceTarget ?? null,
-        source: "upgrades" as const,
-      }));
-
-    // De-dupe on (date, firm, ratingTo); prefer the row with priceTarget.
-    const byKey = new Map<string, Action>();
-    for (const r of [...fromUpdn, ...fromGrades]) {
-      const key = `${r.date}|${r.firm.toLowerCase()}|${(r.ratingTo ?? "").toLowerCase()}`;
-      const existing = byKey.get(key);
-      if (!existing || (r.priceTargetTo != null && existing.priceTargetTo == null)) {
-        byKey.set(key, r);
+    if (latestRec) {
+      const bullish = (latestRec.strongBuy ?? 0) + (latestRec.buy ?? 0);
+      const neutral = latestRec.hold ?? 0;
+      const bearish = (latestRec.sell ?? 0) + (latestRec.strongSell ?? 0);
+      const totalRated = bullish + neutral + bearish;
+      if (totalRated > 0) {
+        consensus = {
+          rating:
+            bullish > neutral && bullish > bearish
+              ? "BUY"
+              : bearish > neutral && bearish > bullish
+                ? "SELL"
+                : "HOLD",
+          bullish,
+          neutral,
+          bearish,
+          totalAnalysts: totalRated,
+          asOf: latestRec.period ?? null,
+        };
       }
     }
-    const recentActions = Array.from(byKey.values()).sort((a, b) => b.date.localeCompare(a.date));
-
-    // Build consensus from the most-recent action per firm.
-    const latestByFirm = new Map<string, Action>();
-    for (const r of recentActions) {
-      const key = r.firm.toLowerCase();
-      if (!latestByFirm.has(key)) latestByFirm.set(key, r);
-    }
-    let bullish = 0;
-    let neutral = 0;
-    let bearish = 0;
-    let unk = 0;
-    for (const r of latestByFirm.values()) {
-      const c = classifyRating(r.ratingTo);
-      if (c === "BULL") bullish++;
-      else if (c === "BEAR") bearish++;
-      else if (c === "NEUTRAL") neutral++;
-      else unk++;
-    }
-    const totalRated = bullish + neutral + bearish + unk;
-    const consensus =
-      totalRated > 0
-        ? {
-            rating:
-              bullish > neutral && bullish > bearish
-                ? "BUY"
-                : bearish > neutral && bearish > bullish
-                  ? "SELL"
-                  : "HOLD",
-            bullish,
-            neutral,
-            bearish,
-            unknown: unk,
-            totalAnalysts: priceTargets?.numAnalysts ?? totalRated,
-          }
-        : null;
 
     // Build the items[] preview.
     const items: Array<
       | { kind: "generic"; text: string }
       | { kind: "ticker"; ticker: string; tag: string; text: string }
     > = [];
+
     if (consensus) {
       items.push({
         kind: "ticker",
@@ -282,16 +175,17 @@ export const getAnalystCoverage = defineTool({
         tag: consensus.rating,
         text:
           `${consensus.bullish} Bullish · ${consensus.neutral} Neutral · ${consensus.bearish} Bearish` +
-          (consensus.unknown > 0 ? ` · ${consensus.unknown} unclassified` : ""),
+          ` (${consensus.totalAnalysts} analysts${consensus.asOf ? `, as of ${consensus.asOf}` : ""})`,
       });
     } else {
       items.push({
         kind: "ticker",
         ticker: T,
         tag: "no coverage",
-        text: "No analyst rating actions in window.",
+        text: "No analyst recommendation data available.",
       });
     }
+
     if (priceTargets?.average != null) {
       const upText =
         priceTargets.impliedUpsidePct != null
@@ -302,25 +196,7 @@ export const getAnalystCoverage = defineTool({
         text: `Targets — Low $${priceTargets.low?.toFixed(2)} · Avg $${priceTargets.average.toFixed(2)} · High $${priceTargets.high?.toFixed(2)}${upText}`,
       });
     }
-    // Show the most-recent 3-5 actions inline so you can see the firm-by-firm shape.
-    for (const r of recentActions.slice(0, 5)) {
-      const ratingText =
-        r.ratingFrom && r.ratingFrom !== r.ratingTo
-          ? `${r.ratingFrom} → ${r.ratingTo}`
-          : r.ratingTo;
-      const ptText = r.priceTargetTo != null ? ` · PT $${r.priceTargetTo.toFixed(2)}` : "";
-      const analystText = r.analyst ? `${r.firm} (${r.analyst})` : r.firm;
-      items.push({
-        kind: "generic",
-        text: `${r.date} — ${analystText}: ${ratingText}${ptText}`,
-      });
-    }
-    if (recentActions.length > 5) {
-      items.push({
-        kind: "generic",
-        text: `… and ${recentActions.length - 5} more actions in the last ${days}d.`,
-      });
-    }
+
     if (errors.length > 0) {
       items.push({
         kind: "generic",
@@ -331,23 +207,34 @@ export const getAnalystCoverage = defineTool({
     return {
       summary:
         consensus || priceTargets
-          ? `$${T} analyst coverage — ${consensus?.rating ?? "n/a"} consensus, ${recentActions.length} action(s) in ${days}d.`
+          ? `$${T} analyst coverage — ${consensus?.rating ?? "n/a"} consensus${priceTargets?.average != null ? `, avg target $${priceTargets.average.toFixed(2)}` : ""}.`
           : `$${T} analyst coverage — no data (${errors.join("; ") || "empty"}).`,
       data: {
         ticker: T,
         consensus,
         priceTargets,
-        recentActions,
-        windowDays: days,
         errors,
         items,
       },
       sources: [
-        {
-          provider: "FMP",
-          title: `${T} Analyst Coverage`,
-          url: `https://financialmodelingprep.com/financial-summary/${T}`,
-        },
+        ...(consensus
+          ? [
+              {
+                provider: "Finnhub",
+                title: `${T} Recommendation Trends`,
+                url: "https://finnhub.io/docs/api/recommendation-trends",
+              },
+            ]
+          : []),
+        ...(priceTargets
+          ? [
+              {
+                provider: "FMP",
+                title: `${T} Analyst Price Targets`,
+                url: `https://financialmodelingprep.com/financial-summary/${T}`,
+              },
+            ]
+          : []),
       ],
     };
   },
