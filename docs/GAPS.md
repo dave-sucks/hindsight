@@ -21,28 +21,6 @@ _None open._ The 2026-06-04 → 08 post-launch sprint cleared the live-loop bloc
 
 ## P1 — Quality is degraded but the live loop functions
 
-### P1-30 — Gain-protection is thin: a winner can round-trip to a loss with no sell signal
-**Status:** **shipped, pending live validation** (2026-07-12). The Game Plan stack landed:
-[#477](https://github.com/dave-sucks/hindsight/pull/477) `GAIN_FROM_ENTRY` + `TRAILING_FROM_HIGH`
-predicates · [#481](https://github.com/dave-sucks/hindsight/pull/481) ladder-health +
-`UNPROTECTED_GAIN` needsAction · [#480](https://github.com/dave-sucks/hindsight/pull/480) standing
-protection minimums (+10% checkpoint / 8% trail / −12% loser review) in every held template +
-conversion script (executed — all 11 live holdings verified carrying the rungs) ·
-[#483](https://github.com/dave-sucks/hindsight/pull/483) (open) the Spine prompts + warn-gate.
-See `docs/plans/THESIS_GAME_PLAN.md` + `docs/plans/TRIGGER_LIFECYCLE.md` (the authority/visibility
-contract). **Close after #483 merges + one validated run + the first live trail/checkpoint cycle.**
-Original filing follows for context:
-A held winner's only automatic downside trigger is its **fixed entry-stop** (e.g. −8% from entry).
-A name up 20% can give back the entire gain before that stop fires — **nothing trails the gain.**
-Caveat/history: the `TRAILING_STOP` predicate was deliberately removed in [#458](https://github.com/dave-sucks/hindsight/pull/458)
-in favor of the daily `PRICE_MOVE_PCT` move — but a daily % move does NOT protect a slow multi-day
-bleed from the high. So there is currently **no** trail-from-high or trail-from-set-point,
-automatic OR manual. Principal wants (2026-07-06):
-- Analyst-wide protection defaults: REVIEW/EXIT on a **>X% down day** (e.g. 4%), on an **X%
-  give-back from the peak** (e.g. 8% from high), and on **X% trailing from where the trigger was
-  set** (point-in-time trailing).
-- This is bringing back trail-from-high (removed in #458) in a form that protects *cumulative*
-  gains — reconcile with the daily-%-move decision rather than blindly reverting it.
 
 ### P1-31 — Analyst-level (portfolio-level) standing trigger rules, not just per-thesis
 **Status:** 🔎 **SHIPPED in [#511](https://github.com/dave-sucks/hindsight/pull/511) (merged 2026-08-17), pending the principal's click-through.**

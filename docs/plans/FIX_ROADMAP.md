@@ -16,14 +16,18 @@
    fine but must be called out.
 4. **Never widen scope mid-lane.** New findings get filed in GAPS, not fixed inline.
 
-## Status snapshot (2026-08-17)
+## Status snapshot (2026-08-18, end of the merge sprint)
 
-- ✅ **Lane 1 merged** ([#518](https://github.com/dave-sucks/hindsight/pull/518)) — triggers fire daily at the principal's line; ratchet rule; `heldThroughFloor` context.
-- ✅ **Lane 2 merged** ([#523](https://github.com/dave-sucks/hindsight/pull/523)) — a fired ENTER is resolved only by buy / move-the-bar / stop-watching. **Watch the first crons** (see P1-40's status): IONS + MIRM have fired ENTERs *and* sub-floor sizing.
-- ✅ **Trigger cascade merged** ([#511](https://github.com/dave-sucks/hindsight/pull/511)) — account → analyst → thesis levels as data, settings UI, archetype seeding. Closes Tier 3's P1-31/32 **pending the principal's click-through** (both prior P0s there were UI-only, invisible to tests).
-- 🔎 **Lane 4a built** — belief-gated recycle, [#524](https://github.com/dave-sucks/hindsight/pull/524) (needs rebase + principal review; small additive migration).
-- 📄 **Lane 3 spec written** (`LEVELS_AS_TRIGGERS.md`) — needs the principal's read before ANY code; the backfill arms floors that are currently inert.
-- ⚠️ **Post-merge safety PR** (this branch) — re-aligned the daily-run prompt with the #523 gate (the prompt still taught the "transient rejection" path the gate now refuses) + docs. Merge before the next cron.
+- ✅ **MERGED this sprint:** #518 (Lane 1) · #523 (Lane 2) · #511 (trigger cascade, Tier 3) ·
+  #525 (prompt/gate re-alignment) · #524 (Lane 4 + sizing gate) · #529 (duplicate buy-checks).
+- ✅ **P1-30 closed** — gain protection validated live; moved to GAPS_HISTORY.
+- 📄 **Lane 3 is the last Tier-1 item** — spec written (`LEVELS_AS_TRIGGERS.md`), waiting on the
+  principal's read + backfill ruling, then build.
+- 🚚 **Dispatched to parallel sessions (2026-08-18):** thesis history tab (P1-33 + the audit-diff
+  P2s), dead-vendor cleanup (P1-43), sale-label enforcement (closeReason P2). Discovery price-quality
+  vet (P1-38) dispatchable — see its Tier-2 line.
+- 👀 **Validation watch:** first clean cron cycle post-#523/#525 closes P1-40; first live recycle
+  closes P1-35; principal click-through of #511's UI closes P1-31/32.
 
 ## ⚖️ Standing ruling — triggers & levels (2026-08-16, principal)
 
@@ -97,7 +101,7 @@ These are the ones where the system quietly does the wrong thing with real money
 ## 🟡 TIER 2 — Waste & noise (cost + clutter, not correctness)
 
 - [x] **Duplicate buy-checks.** ([P1-37](../GAPS.md)) — ✅ built 2026-08-18 (PR pending): when a stock crosses its buy price and the analyst examines it and declines, the same trigger no longer wakes ANOTHER full AI session within 4 hours (CAPR was checked ~5×, CEG 4× in two days, same answer each time). Machine-cost dedup only — the trigger keeps firing and recording, the principal's alerts are untouched (a declined buy-check never showed him anything), and the daily run still sees the fired trigger next morning. The day-over-day refires end at the source via #525's rule: an agent that declines durably must move the trigger to the level it would actually accept.
-- [ ] **Discovery-mint quality + executability vet.** ([P1-38](../GAPS.md) + P2) — vet minted entry/stop levels against structure so discovery can't mint chronically-true-but-unfillable rungs.
+- [ ] **Discovery-mint quality + price vet.** ([P1-38](../GAPS.md) + P2) — when a new thesis is written, sanity-check its buy price and stop against the actual chart: CAPR's buy price was set ~20% below where the stock trades (fires forever, can never sensibly fill) and MNKD's stop sat inside the stock's normal daily wiggle (guaranteed to sell on noise). NOTE the size half of this shipped in #524 (no thesis can plan a position below the analyst's minimum); the PRICE half is open. Still relevant with the Sunday discovery cron paused — theses are also written via principal chat and research refreshes, which was exactly the XENE path. Dispatchable as its own session.
 
 ## 🟢 TIER 3 — Trust & control (so you can SEE and CONFIGURE it)
 
@@ -107,7 +111,7 @@ These are the ones where the system quietly does the wrong thing with real money
 ## ⚪ TIER 4 — Deferred / housekeeping
 
 - [ ] **Signals/news architecture rethink.** ([P1-34](../GAPS.md)) — its own dedicated design session; do not rebuild the pipeline before it.
-- [ ] **Close P1-30** (gain protection — validated live, ready to move to GAPS_HISTORY).
+- [x] **Close P1-30** — ✅ done 2026-08-18, moved to [`GAPS_HISTORY.md`](../GAPS_HISTORY.md). The gain-protection stack is validated live (+$2,256 banked in the July window) and off the open board.
 - [ ] **P2 backlog** — `closeReason` mis-tag assertion, completion-gate churn, `fieldChanges: {}` + `PROPOSAL_*` audit lossiness, `Order→TradeDecision→Thesis` null relation, docs housekeeping, `/performance` deposit-naive, Alpaca SIP upgrade. See [`GAPS.md`](../GAPS.md) P2.
 
 ---
