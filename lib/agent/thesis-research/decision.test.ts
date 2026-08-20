@@ -377,3 +377,92 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
     expect(v.errors.join(" ")).toContain("EXIT rung");
   });
 });
+
+describe("validateThesisDecision — DAV-204 sub-floor sizing mirror", () => {
+  const sized = {
+    ...mintOpts,
+    equityUSD: 125_000,
+    minPositionSize: 7000,
+    maxPositionSize: 14000,
+    realMaxPosition: 14000,
+    environment: "LIVE" as const,
+  };
+
+  it("rejects a target_size_pct whose dollars fall below the entry floor", () => {
+    // 4% of $125k = $5,000 < $7,000 floor — the 2026-08-19 mint-batch shape.
+    const v = validateThesisDecision(validLong, sized);
+    expect(v.ok).toBe(false);
+    const msg = v.errors.join(" ");
+    expect(msg).toContain("entry floor");
+    expect(msg).toContain("5.6%"); // suggested floorPct (7000/125000, rounded up)
+  });
+
+  it("accepts once the size clears the floor", () => {
+    const v = validateThesisDecision({ ...validLong, target_size_pct: 6.5 }, sized);
+    expect(v.ok).toBe(true);
+  });
+
+  it("skips the mirror when equity is unknown (fail-open)", () => {
+    const v = validateThesisDecision(validLong, { ...sized, equityUSD: null });
+    expect(v.ok).toBe(true);
+  });
+
+  it("skips the mirror when no floor is configured", () => {
+    const v = validateThesisDecision(validLong, { ...sized, minPositionSize: 0 });
+    expect(v.ok).toBe(true);
+  });
+});
+
+describe("validateThesisDecision — P1-35 prior-exit acknowledgment mirror", () => {
+  const soldOpts = {
+    ...mintOpts,
+    priorExit: { exitPrice: 95, daysAgo: 3, closeReason: "STOP" },
+  };
+
+  it("requires the acknowledgment when entry is at/above a ≤14d exit", () => {
+    // validLong entry 100 ≥ exit 95.
+    const v = validateThesisDecision(validLong, soldOpts);
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("prior_exit_acknowledgment");
+  });
+
+  it("accepts with a genuine acknowledgment", () => {
+    const v = validateThesisDecision(
+      {
+        ...validLong,
+        prior_exit_acknowledgment:
+          "Stopped out at $95 on the trail; re-entering only above the reclaimed breakout at $100 — new structure, not a dip re-buy.",
+      },
+      soldOpts,
+    );
+    expect(v.ok).toBe(true);
+  });
+
+  it("no acknowledgment needed below the exit price", () => {
+    const v = validateThesisDecision(
+      { ...validLong, entry_price: 90, target_price: 115, stop_loss: 84 },
+      soldOpts,
+    );
+    expect(v.ok).toBe(true);
+  });
+
+  it("PASS decisions skip the gate (institutional memory is welcome)", () => {
+    const v = validateThesisDecision(
+      { direction: "PASS", rationale: "Sold it three days ago; nothing has changed since the exit.", horizon: "TARGET" },
+      soldOpts,
+    );
+    expect(v.ok).toBe(true);
+  });
+
+  it("refresh mode never requires the ack (gate is mint-only)", () => {
+    const v = validateThesisDecision(validLong, {
+      mode: "refresh",
+      existingStatus: "WATCHING",
+      currentPrice: 101,
+      existingTargetPrice: 130,
+      existingHasTriggers: true,
+      priorExit: { exitPrice: 95, daysAgo: 3, closeReason: "STOP" },
+    });
+    expect(v.ok).toBe(true);
+  });
+});

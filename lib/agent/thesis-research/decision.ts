@@ -18,6 +18,7 @@
 
 import { z } from "zod";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 
 const scoringDimSchema = z.object({
   score: z.number(),
@@ -77,6 +78,12 @@ export const thesisDecisionSchema = z.object({
     .number()
     .optional()
     .describe("% of portfolio at full position (STRONG 4-6, HIGH 3-5, MEDIUM 2-3, LOW 1-2). Required for LONG/SHORT."),
+  prior_exit_acknowledgment: z
+    .string()
+    .optional()
+    .describe(
+      "REQUIRED when this analyst SOLD this ticker within the last 14 days and your entry_price is at/above that exit price (the exit details are in your prompt). One line that genuinely engages with the sale — why this is a new setup, not a re-buy of the dip just sold. Omit when no recent sale applies.",
+    ),
   triggers: z
     .array(z.unknown())
     .optional()
@@ -115,6 +122,29 @@ export interface DecisionValidationOpts {
    * so a refresh on a trigger-less row must supply a full ladder.
    */
   existingHasTriggers?: boolean;
+  /**
+   * DAV-204: live account equity + the analyst's position band, when
+   * known. Mirrors #524's sub-floor gate in-loop: a target_size_pct whose
+   * dollar value can't clear the entry floor is an un-fillable plan (the
+   * RARE failure) and must be repaired before persist. All optional —
+   * missing equity/floor skips the mirror (persist gate also fails open).
+   */
+  equityUSD?: number | null;
+  minPositionSize?: number;
+  maxPositionSize?: number;
+  realMaxPosition?: number;
+  environment?: "PAPER" | "LIVE";
+  /**
+   * P1-35 (#524): set when this analyst sold this ticker within the last
+   * 14 days. record_thesis refuses a mint at/above the exit price without
+   * an explicit acknowledgment — required here so the repair happens
+   * in-loop instead of failing the run at persist.
+   */
+  priorExit?: {
+    exitPrice: number | null;
+    daysAgo: number;
+    closeReason: string | null;
+  } | null;
 }
 
 export interface DecisionValidationResult {
@@ -274,6 +304,44 @@ export function validateThesisDecision(
   }
   if (d.direction === "PASS" && d.triggers !== undefined && (d.triggers as unknown[]).length > 0) {
     errors.push("triggers: a PASS decision cannot carry triggers — omit the field entirely.");
+  }
+
+  // ── DAV-204: sub-floor sizing mirror (#524's persist gate, in-loop) ──
+  if (
+    directional &&
+    d.target_size_pct != null &&
+    opts.minPositionSize != null &&
+    opts.minPositionSize > 0 &&
+    opts.equityUSD != null &&
+    opts.equityUSD > 0
+  ) {
+    const subFloor = subFloorTargetSize({
+      targetSizePct: d.target_size_pct,
+      equity: opts.equityUSD,
+      environment: opts.environment ?? "PAPER",
+      minPositionSize: opts.minPositionSize,
+      maxPositionSize: opts.maxPositionSize,
+      realMaxPosition: opts.realMaxPosition,
+    });
+    if (subFloor) {
+      errors.push(
+        `target_size_pct: ${d.target_size_pct}% ≈ $${Math.round(subFloor.intendedDollars).toLocaleString()} at current equity — below this analyst's $${Math.round(subFloor.floorDollars).toLocaleString()} entry floor, so place_trade would refuse the entry the day it fires (the RARE failure). Use ${subFloor.floorPct}% or higher IF conviction supports a full-floor position; otherwise the honest call is direction PASS, not a small size.`,
+      );
+    }
+  }
+
+  // ── P1-35: recently-sold acknowledgment mirror (#524, in-loop) ───────
+  if (
+    opts.mode === "mint" &&
+    directional &&
+    opts.priorExit?.exitPrice != null &&
+    d.entry_price != null &&
+    d.entry_price >= opts.priorExit.exitPrice &&
+    !(d.prior_exit_acknowledgment && d.prior_exit_acknowledgment.trim().length > 0)
+  ) {
+    errors.push(
+      `prior_exit_acknowledgment: required — this analyst SOLD this ticker ${opts.priorExit.daysAgo} day(s) ago at $${opts.priorExit.exitPrice}${opts.priorExit.closeReason ? ` (${opts.priorExit.closeReason})` : ""}, and your entry_price (${d.entry_price}) is at/above that exit. Supply one line that engages with the sale (why this is a new setup, not a re-buy of the dip just sold), or set entry below the exit price.`,
+    );
   }
 
   // ── Triggers (optional — omission means horizon defaults) ───────────

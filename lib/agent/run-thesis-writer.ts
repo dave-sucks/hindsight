@@ -53,6 +53,8 @@ import {
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { getAccount } from "@/lib/alpaca";
 import {
   pullThesisData,
   type ThesisPullResult,
@@ -140,6 +142,9 @@ interface WriterAnalyst {
   exclusionList: string[];
   minConfidence: number;
   tradingEnvironment: string | null;
+  minPositionSize: unknown;
+  maxPositionSize: unknown;
+  realMaxPosition: unknown;
 }
 
 async function loadWriterAnalyst(analystId: string): Promise<WriterAnalyst | null> {
@@ -157,6 +162,10 @@ async function loadWriterAnalyst(analystId: string): Promise<WriterAnalyst | nul
       exclusionList: true,
       minConfidence: true,
       tradingEnvironment: true,
+      // DAV-204: the writer authors target_size_pct — it must see the money.
+      minPositionSize: true,
+      maxPositionSize: true,
+      realMaxPosition: true,
     },
   });
   return analyst as WriterAnalyst | null;
@@ -230,19 +239,34 @@ async function buildWriterToolCtx(
   } catch {
     /* fence just falls back to universe-only matching */
   }
+  const runEnvironment = (analyst.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
+  // DAV-204: sizing fields + alpaca creds so record_thesis's sub-floor gate
+  // (#524) actually runs on the writer's persist path — without these the
+  // gate silently skipped, and the 2026-08-19 mint batch authored five
+  // sub-floor (un-fillable) plans that needed a manual heal.
+  let alpacaCreds;
+  try {
+    alpacaCreds = (await resolveAlpacaCredentials(analyst.userId, runEnvironment)) ?? undefined;
+  } catch {
+    /* fail-open — the gate itself fails open without creds */
+  }
   const ctx = {
     runId: args.childRunId,
     userId: analyst.userId,
     accountId: analyst.accountId,
     analystId: analyst.id,
     runMode: "THESIS_WRITER",
-    runEnvironment: (analyst.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER",
+    runEnvironment,
     watchlist,
     exclusionList: analyst.exclusionList ?? [],
     sectors: analyst.sectors ?? [],
     industries: analyst.industries ?? [],
     themes: analyst.themes ?? [],
     minConfidence: analyst.minConfidence,
+    minPositionSize: Number(analyst.minPositionSize),
+    maxPositionSize: Number(analyst.maxPositionSize),
+    realMaxPosition: Number(analyst.realMaxPosition),
+    alpacaCreds,
     forceWatchingMint: args.forceWatchingMint === true,
     groupId: (phase: string) => phase,
     calledTickers: new Map([[T, new Set(["get_stock_data"])]]),
@@ -264,6 +288,18 @@ export interface WriterResearchPromptOpts {
   /** ISO YYYY-MM-DD (UTC) — date-awareness block. */
   runDate: string;
   promotionContext?: RunThesisWriterArgs["promotionContext"];
+  /** DAV-204: the analyst's real position band + live equity when known. */
+  sizing?: {
+    floorDollars: number;
+    ceilingDollars: number;
+    equityUSD: number | null;
+  } | null;
+  /** P1-35: this analyst sold this ticker within the last 14 days. */
+  priorExit?: {
+    exitPrice: number | null;
+    daysAgo: number;
+    closeReason: string | null;
+  } | null;
 }
 
 /**
@@ -329,6 +365,29 @@ decision by the orchestrator — you are writing the research and the plan.`;
     view). Triggers are the WHEN; conviction is the WITH WHAT INTENSITY.
   • Most theses need NO custom triggers — omit the field and the
     horizon-default template (entry/stop/review) is applied for you.`;
+
+  // DAV-204 — state the floor as a PERCENT of live equity so "4% feels
+  // right" can't author a plan place_trade will refuse.
+  const sizingBlock =
+    opts.sizing && opts.sizing.floorDollars > 0
+      ? `
+POSITION SIZING — REAL MONEY CONSTRAINTS (this analyst's band)
+  • Per-entry band: $${Math.round(opts.sizing.floorDollars).toLocaleString()} floor to $${Math.round(opts.sizing.ceilingDollars).toLocaleString()} ceiling. place_trade REJECTS entries outside it — a sub-floor target_size_pct is an un-fillable plan (the RARE failure: the ENTER fires and dies on the analyst's own sizing).
+${
+  opts.sizing.equityUSD
+    ? `  • Account equity ≈ $${Math.round(opts.sizing.equityUSD).toLocaleString()} → target_size_pct must be ≥ ${Math.ceil((opts.sizing.floorDollars / opts.sizing.equityUSD) * 1000) / 10}% to clear the floor. submit_thesis validates this.`
+    : `  • Live equity unavailable this run — err toward the tier's upper bound rather than under-sizing.`
+}
+  • If conviction doesn't justify a full-floor position, that is a PASS, not a small size.
+`
+      : "";
+
+  const priorExitBlock = opts.priorExit
+    ? `
+⚠ RECENTLY SOLD — YOU exited this name ${opts.priorExit.daysAgo} day${opts.priorExit.daysAgo === 1 ? "" : "s"} ago${opts.priorExit.exitPrice != null ? ` at $${opts.priorExit.exitPrice}` : ""}${opts.priorExit.closeReason ? ` (${opts.priorExit.closeReason})` : ""}.
+If your entry_price is AT OR ABOVE that exit price, submit_thesis REQUIRES \`prior_exit_acknowledgment\`: one line that genuinely engages with the sale — why this is a NEW setup and not a re-buy of the dip you just sold (e.g. "stopped out at $66.53; re-entering only on a confirmed reclaim of the 20-day — different structure"). Below the exit price no acknowledgment is needed, but underwrite with the sale in view, not from amnesia.
+`
+    : "";
 
   const promotionBlock = opts.promotionContext
     ? `
@@ -446,7 +505,7 @@ every field; the judgment rules:
      conviction honestly against that bar.
 
 ${triggerBlock}
-
+${sizingBlock}${priorExitBlock}
 If submit_thesis returns validation errors, fix EXACTLY the listed fields
 and call it again — do NOT rewrite the research note. When it returns
 accepted, STOP. Do not write anything after acceptance.`;
@@ -613,6 +672,70 @@ export async function writerResearchPhase(
       `(Structured data pulls failed entirely: ${pullOutput.error ?? "unknown"}. Ground your note in web research and say so explicitly in the Snapshot.)`;
     const currentPrice = pullOutput.pull?.currentPrice ?? null;
 
+    // ── DAV-204: money context ──────────────────────────────────────────
+    // The writer authors target_size_pct but never saw equity or the
+    // analyst's position band — it sized by conviction habit (2.5-4%) and
+    // the 2026-08-19 batch minted five sub-floor, un-fillable plans. Fetch
+    // live equity (fail-open) so the prompt can state the floor as a
+    // PERCENT and the validator can mirror #524's sub-floor gate in-loop.
+    const floorDollars = Number(analyst.minPositionSize) || 0;
+    const runEnvironment = (analyst.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
+    let equityUSD: number | null = null;
+    if (floorDollars > 0) {
+      try {
+        const creds =
+          (await resolveAlpacaCredentials(analyst.userId, runEnvironment)) ?? undefined;
+        const eq = Number((await getAccount(creds))?.equity);
+        if (Number.isFinite(eq) && eq > 0) equityUSD = eq;
+      } catch {
+        /* fail-open: no equity → no sizing mirror; persist gate also fails open */
+      }
+    }
+
+    // ── P1-35 (#524): recently-sold context for mints ───────────────────
+    // record_thesis refuses a mint at/above a ≤14-day exit price without an
+    // explicit acknowledge_prior_exit. Surface the exit into the prompt and
+    // require the acknowledgment in-loop so the model engages with the sale
+    // instead of the run dying at persist.
+    let priorExit: {
+      exitPrice: number | null;
+      daysAgo: number;
+      closeReason: string | null;
+    } | null = null;
+    if (args.mode === "mint") {
+      try {
+        const soldSibling = await prisma.thesis.findFirst({
+          where: {
+            ticker: T,
+            status: "RETIRED",
+            retiredReason: "SOLD",
+            closedAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
+            researchRun: { agentConfigId: analyst.id },
+          },
+          orderBy: { closedAt: "desc" },
+          select: { id: true, closedAt: true, closeReason: true },
+        });
+        if (soldSibling?.closedAt) {
+          const closedRow = await prisma.thesisUpdate.findFirst({
+            where: { thesisId: soldSibling.id, type: "CLOSED" },
+            orderBy: { timestamp: "desc" },
+            select: { priceAtTime: true },
+          });
+          const exitPrice =
+            closedRow?.priceAtTime != null && Number.isFinite(Number(closedRow.priceAtTime))
+              ? Number(closedRow.priceAtTime)
+              : null;
+          priorExit = {
+            exitPrice,
+            daysAgo: Math.floor((Date.now() - soldSibling.closedAt.getTime()) / 86_400_000),
+            closeReason: soldSibling.closeReason ?? null,
+          };
+        }
+      } catch {
+        /* non-fatal — persist-side guard still enforces */
+      }
+    }
+
     const systemPrompt = buildWriterResearchPrompt({
       analystName: analyst.name,
       analystPrompt: analyst.analystPrompt,
@@ -623,6 +746,15 @@ export async function writerResearchPhase(
       minConfidence: analyst.minConfidence,
       runDate: new Date().toISOString().slice(0, 10),
       promotionContext: args.promotionContext ?? null,
+      sizing:
+        floorDollars > 0
+          ? {
+              floorDollars,
+              ceilingDollars: Number(analyst.maxPositionSize) || 0,
+              equityUSD,
+            }
+          : null,
+      priorExit,
     });
     const userPrompt = `═══════════════════════════════════════════════════════════════════
 GROUND-TRUTH DATA — use these numbers; do not invent or contradict
@@ -656,6 +788,13 @@ Write the research note now, then call submit_thesis.`;
           // existing row's shape — see decision.ts review-finding-#4 block.
           existingTargetPrice: existingThesis?.targetPrice ?? null,
           existingHasTriggers: existingThesis?.hasTriggers,
+          // DAV-204 sub-floor mirror + P1-35 prior-exit acknowledgment.
+          equityUSD,
+          minPositionSize: floorDollars,
+          maxPositionSize: Number(analyst.maxPositionSize) || undefined,
+          realMaxPosition: Number(analyst.realMaxPosition) || undefined,
+          environment: runEnvironment,
+          priorExit,
         });
         if (!v.ok) {
           console.log(
@@ -1013,6 +1152,9 @@ export async function writerPersistPhase(
           // PASS theses cannot carry triggers (record_thesis gate) — the
           // validator rejects this too; strip defensively.
           triggers: d.direction === "PASS" ? undefined : d.triggers,
+          // P1-35: pass the model's engagement with a recent sale through
+          // to record_thesis's recently-sold gate.
+          acknowledge_prior_exit: d.prior_exit_acknowledgment,
           source_kind: "WEB_SEARCH",
           source_rationale: args.reason.slice(0, 300),
           research_data: pullOutput.pull?.rawDataBlock,
