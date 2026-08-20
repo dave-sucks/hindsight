@@ -163,7 +163,12 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
   const pos = t.position;
 
   if (pos) {
-    const ts: TradeStatus = pos.tradeStatus ?? (pos.avgCost === 0 ? "PENDING" : "OPEN");
+    // PENDING_APPROVAL is a proposal — nothing bought. Without this the
+    // fallback landed on OPEN (a proposal carries a real avgCost), so every
+    // thesis card rendered a blue "Holding" banner for an unapproved trade.
+    const ts: TradeStatus =
+      pos.tradeStatus ??
+      (pos.status === "PENDING_APPROVAL" || pos.avgCost === 0 ? "PENDING" : "OPEN");
     const cfg = getTradeStatusDisplay(ts);
     const qty = pos.quantity ?? null;
     const entry = pos.avgCost;

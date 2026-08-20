@@ -691,7 +691,7 @@ export default async function TradeDetailPage({
               {/* Opened row — a proposal hasn't opened anything yet. */}
               <div className="flex items-center justify-between text-sm border-b border-border pb-1">
                 <span className="text-muted-foreground">{isProposal ? 'Proposed' : 'Opened'}</span>
-                <span className="font-medium tabular-nums text-xs">{fmtDateTime(position.openedAt)}</span>
+                <span className="font-medium tabular-nums">{fmtDateTime(position.openedAt)}</span>
               </div>
 
               {/* Expiry — proposals lapse after 24h, so the deadline belongs
@@ -699,7 +699,7 @@ export default async function TradeDetailPage({
               {isProposal && proposalOrder?.expiresAt && (
                 <div className="flex items-center justify-between text-sm border-b border-border pb-1">
                   <span className="text-muted-foreground">Expires</span>
-                  <span className="font-medium tabular-nums text-xs text-amber-500">
+                  <span className="font-medium tabular-nums text-amber-500">
                     {fmtDateTime(proposalOrder.expiresAt)}
                   </span>
                 </div>
@@ -713,7 +713,7 @@ export default async function TradeDetailPage({
                     <Tooltip>
                       <TooltipTrigger render={
                         <span className={cn(
-                          'font-medium tabular-nums text-xs cursor-default underline decoration-dotted decoration-muted-foreground/40 underline-offset-2',
+                          'font-medium tabular-nums cursor-default underline decoration-dotted decoration-muted-foreground/40 underline-offset-2',
                           (openingBuy.status === 'PENDING' || openingBuy.status === 'AWAITING_APPROVAL') && 'text-amber-500',
                         )}>
                           {openingBuy.filledAt
@@ -746,7 +746,7 @@ export default async function TradeDetailPage({
                     <Tooltip>
                       <TooltipTrigger render={
                         <span className={cn(
-                          'font-medium tabular-nums text-xs cursor-default underline decoration-dotted decoration-muted-foreground/40 underline-offset-2',
+                          'font-medium tabular-nums cursor-default underline decoration-dotted decoration-muted-foreground/40 underline-offset-2',
                           closingSell.status === 'PENDING' && 'text-amber-500',
                         )}>
                           {closingSell.filledAt ? fmtDateTime(closingSell.filledAt) : 'Pending fill'}
