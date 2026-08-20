@@ -84,26 +84,40 @@ Everything on today's board maps into the three systems that own these:
 
 ### The inventory: six ways a thesis gets written today
 
-| Path | Sees live price? | Sees equity/band? | Sees prior orders/theses on the name? | Gates bolted on |
-|---|---|---|---|---|
-| Thesis-writer (V2) | ✅ (data pull) | ✅ *since #540* | ✅ *since #540* | R/R + sub-floor + prior-exit mirrors |
-| Daily run (`record/update_thesis`) | ✅ via tools | ✅ (#524/#525) | partial (`get_theses`) | ~9 gates¹ |
-| Tactical run | ✅ + peak (#533) | ✅ | recent updates only | close-out + ratchet gates |
-| Discovery run | ✅ via tools | ❌ | ❌ | mint caps only |
-| Builder/editor chat | ❌ | ❌ | ❌ | none (research-only tools) |
-| UI (sheet, reject dialog) | n/a (human) | n/a | n/a | exempt by design |
+**The split that matters: the runs Dave watches are the well-fed ones.**
+The daily run — the surface reviewed every day — starts with the portfolio
+check-in INJECTED (Phase 0, before any tool), and its staged prompt FORCES
+the data pulls (signals, book, live snapshots) before any thesis is touched.
+Dave's daily-run transcripts showing exactly that are accurate. The blind
+paths are the ones that run **offstage** — the writer at 4 AM, discovery on
+Sunday — which is precisely why their defects felt like ambushes: bad plans
+are born where nobody is watching, and the well-fed daily run then inherits
+and works around them.
+
+| Path | Watched? | Live price | Equity/band | Portfolio/digest injected | Gates bolted on |
+|---|---|---|---|---|---|
+| Daily run | ✅ daily | ✅ forced pulls | ✅ (#524/#525) | ✅ Phase-0 check-in | ~9 gates¹ |
+| Tactical run | sometimes | ✅ + peak (#533) | ✅ | ✅ digest + thesis context | close-out + ratchet gates |
+| Thesis-writer (V2) | ❌ offstage | ✅ (data pull) | ✅ *since #540* | ❌ | R/R + sub-floor + prior-exit mirrors |
+| Discovery run | ❌ offstage | tools, unforced | ❌ | ❌ | mint caps only |
+| Builder/editor chat | ✅ live | ❌ | ❌ | ❌ | none (research-only tools) |
+| UI (sheet, reject dialog) | human | n/a | n/a | n/a | exempt by design |
 
 ¹ zero-trigger, goalpost, shape, structural-belief, conviction coherence ×2,
 ENTER-shape, ratchet, narrative-collapse — accumulated one incident at a time.
 
 ### The two moves
 
-**Move 1 — one context bundle.** A single builder (one module) assembles the
-same context for every agent write path: live quote + day range, account
-equity + the seat's sizing band, the analyst's existing thesis/order history
-on this ticker, and the resolved trigger ladder. #540 built exactly this for
-the writer; the move is to extract it and feed **all** agent paths from it.
-Discovery is the glaring hole — it mints watchlist names completely blind.
+**Move 1 — one context bundle.** Make every agent start the way the daily
+run already starts. A single builder (one module) assembles the same context
+for every agent invocation: portfolio + digest, live quote + day range,
+account equity + the seat's sizing band, the analyst's existing thesis/order
+history on the name, and the resolved trigger ladder. The daily run's
+Phase-0 injection and #540's writer wiring are the two working instances;
+the move is to extract ONE module and feed **all** paths from it — the
+offstage ones first. Discovery is the glaring hole: it mints watchlist
+names completely blind. Standing law from here: **no agent write path
+ships without the bundle.**
 
 **Move 2 — plan-sanity is a RUN duty, not a mint-time gate.** This is Dave's
 "5 runs and still wrong" fix, and it's arithmetic, not judgment: every run
