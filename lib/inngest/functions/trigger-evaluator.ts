@@ -205,6 +205,13 @@ interface FiringEvent {
   ticker: string;
   action: Trigger["action"];
   predicateKind: TriggerPredicate["kind"];
+  /**
+   * The quote that fired the predicate, when the evaluating path had one
+   * (the price cron always does; signal-driven fires don't fetch quotes).
+   * Consumed by tactical-run to stamp priceAtTime on the TRIGGER_FIRED
+   * audit row — without it those rows have no price in the Activity tab.
+   */
+  firedPrice?: number | null;
 }
 
 /**
@@ -692,6 +699,7 @@ export const triggerEvaluator = inngest.createFunction(
             ticker: thesis.ticker,
             action: t.action,
             predicateKind: t.predicate.kind,
+            firedPrice: latestQuote?.price ?? null,
           });
         }
       }

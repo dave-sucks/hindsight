@@ -15,6 +15,7 @@
 import {
   outcomeChip,
   fieldChangeLines,
+  railDot,
   triggerDiffLines,
 } from "./thesis-timeline-utils";
 
@@ -38,12 +39,31 @@ function row(partial: Record<string, unknown>): any {
   };
 }
 
+// Proposal fieldChanges shape as the updates route synthesizes it.
+function proposalFc(intent: string) {
+  return { proposal: { to: { intent } } };
+}
+
 describe("outcomeChip", () => {
-  it("labels proposal outcomes from the Order-derived rows", () => {
+  it("splits approvals into buy-side (green) and sell-side (red) off the intent", () => {
+    expect(
+      outcomeChip(
+        row({ type: "PROPOSAL_APPROVED", fieldChanges: proposalFc("OPEN") }),
+      ),
+    ).toEqual({ label: "Approved buy", variant: "positive" });
+    expect(
+      outcomeChip(
+        row({ type: "PROPOSAL_APPROVED", fieldChanges: proposalFc("CLOSE") }),
+      ),
+    ).toEqual({ label: "Approved sell", variant: "negative" });
+    // No stored intent (legacy row) → neutral label, never a guess.
     expect(outcomeChip(row({ type: "PROPOSAL_APPROVED" }))).toEqual({
       label: "Approved",
       variant: "default",
     });
+  });
+
+  it("labels the other proposal outcomes", () => {
     expect(outcomeChip(row({ type: "PROPOSAL_REJECTED" }))).toEqual({
       label: "Declined",
       variant: "destructive",
@@ -56,16 +76,19 @@ describe("outcomeChip", () => {
     );
   });
 
-  it("labels buys and sells off the status transition", () => {
+  it("labels buys and sells off the status transition, in money colors", () => {
     expect(
       outcomeChip(
         row({
           type: "STATUS_CHANGED",
           fieldChanges: { status: { from: "WATCHING", to: "HOLDING" } },
         }),
-      )?.label,
-    ).toBe("Bought");
-    expect(outcomeChip(row({ type: "CLOSED" }))?.label).toBe("Sold");
+      ),
+    ).toEqual({ label: "Bought", variant: "positive" });
+    expect(outcomeChip(row({ type: "CLOSED" }))).toEqual({
+      label: "Sold",
+      variant: "negative",
+    });
     expect(
       outcomeChip(
         row({
@@ -75,8 +98,8 @@ describe("outcomeChip", () => {
             retiredReason: { from: null, to: "SOLD" },
           },
         }),
-      )?.label,
-    ).toBe("Sold");
+      ),
+    ).toEqual({ label: "Sold", variant: "negative" });
   });
 
   it("marks level moves and trigger fires; stays quiet on routine reviews", () => {
@@ -88,11 +111,42 @@ describe("outcomeChip", () => {
         }),
       )?.label,
     ).toBe("Level moved");
-    expect(outcomeChip(row({ type: "TRIGGER_FIRED" }))?.label).toBe(
-      "Trigger fired",
-    );
+    expect(outcomeChip(row({ type: "TRIGGER_FIRED" }))).toEqual({
+      label: "Trigger fired",
+      variant: "warning",
+    });
     expect(outcomeChip(row({ type: "REVIEWED" }))).toBeNull();
     expect(outcomeChip(row({ type: "UPDATED" }))).toBeNull();
+  });
+});
+
+describe("railDot", () => {
+  it("greens money-in rows and reds money-out rows, gray otherwise", () => {
+    expect(
+      railDot(
+        row({
+          type: "STATUS_CHANGED",
+          fieldChanges: { status: { from: "WATCHING", to: "HOLDING" } },
+        }),
+      ),
+    ).toBe("buy");
+    expect(
+      railDot(
+        row({ type: "PROPOSAL_APPROVED", fieldChanges: proposalFc("ADD") }),
+      ),
+    ).toBe("buy");
+    expect(railDot(row({ type: "CLOSED" }))).toBe("sell");
+    expect(
+      railDot(
+        row({
+          type: "PROPOSAL_APPROVED",
+          fieldChanges: proposalFc("PARTIAL_CLOSE"),
+        }),
+      ),
+    ).toBe("sell");
+    expect(railDot(row({ type: "TRIGGER_FIRED" }))).toBeNull();
+    expect(railDot(row({ type: "PROPOSAL_REJECTED" }))).toBeNull();
+    expect(railDot(row({ type: "REVIEWED" }))).toBeNull();
   });
 });
 

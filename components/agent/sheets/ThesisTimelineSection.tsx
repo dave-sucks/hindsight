@@ -29,13 +29,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
   outcomeChip,
   fieldChangeLines,
   proposalUserMessage,
+  railDot,
   type TimelineUpdate,
 } from "@/components/agent/sheets/thesis-timeline-utils";
 
@@ -112,17 +112,11 @@ export function ThesisTimelineSection({ thesisId }: Props) {
       ) : (
         <div>
           {updates.map((u, idx) => {
-            // Compare to the next-older entry's price (we render
-            // newest-first, so older = idx + 1).
-            const olderPrice = updates[idx + 1]?.priceAtTime ?? null;
-            const delta =
-              u.priceAtTime != null && olderPrice != null
-                ? u.priceAtTime - olderPrice
-                : null;
             const isLast = idx === updates.length - 1;
             const isCurrentRun =
               currentRunId != null && u.runId === currentRunId;
             const chip = outcomeChip(u);
+            const dot = railDot(u);
             const changeLines = fieldChangeLines(u);
             const userNote = proposalUserMessage(u);
             // The synthesized reject row's rationale IS the user note —
@@ -135,14 +129,19 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                 {/* ── Rail (dot + line) ─────────────────────────────── */}
                 <div className="flex flex-col items-center shrink-0">
                   {/* Tiny dot, vertically aligned with the price line.
-                      Current-run entries get an amber pulsing dot to
-                      mark them out from history. */}
+                      Money-movement rows read at a glance: green = bought,
+                      red = sold (same tokens the gauge/trade block use).
+                      Current-run entries get the amber pulse, which wins. */}
                   <div
                     className={cn(
                       "size-1.5 rounded-full mt-1.5",
                       isCurrentRun
                         ? "bg-amber-500 animate-pulse ring-2 ring-amber-500/30"
-                        : "bg-muted-foreground/50",
+                        : dot === "buy"
+                          ? "bg-positive"
+                          : dot === "sell"
+                            ? "bg-negative"
+                            : "bg-muted-foreground/50",
                     )}
                   />
                   {!isLast ? (
@@ -159,8 +158,12 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                       "rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 -ml-2 mb-1",
                   )}
                 >
-                  {/* Top row: Date (left, xs mono) · Price (right). When
-                      priceAtTime is null the whole price chunk is hidden. */}
+                  {/* Top row: Date (left, xs mono) · Price (right). The
+                      price is the quote at the moment the event was
+                      recorded; hidden when the writing path had none. The
+                      old up/down arrow (delta vs the previous logged event)
+                      is gone — with sparse price coverage it read as random
+                      decoration (principal feedback 2026-08-19). */}
                   {(() => {
                     const priceStr = fmtUsd(u.priceAtTime);
                     return (
@@ -169,15 +172,8 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                           {fmtDateTime(u.timestamp)}
                         </span>
                         {priceStr ? (
-                          <span className="text-sm font-medium tabular-nums flex items-center gap-1">
+                          <span className="text-sm font-medium tabular-nums">
                             {priceStr}
-                            {delta != null && delta !== 0 ? (
-                              delta > 0 ? (
-                                <ArrowUp className="h-3.5 w-3.5 text-emerald-500" />
-                              ) : (
-                                <ArrowDown className="h-3.5 w-3.5 text-red-500" />
-                              )
-                            ) : null}
                           </span>
                         ) : null}
                       </div>

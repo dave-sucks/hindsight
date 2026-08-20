@@ -174,6 +174,7 @@ export async function GET(
       rejectionMessage: true,
       expiresAt: true,
       alpacaConfirmedAt: true,
+      filledPrice: true,
       createdAt: true,
       updatedAt: true,
       positionId: true,
@@ -240,6 +241,9 @@ export async function GET(
         timestamp: o.alpacaConfirmedAt ?? o.updatedAt,
         type: "PROPOSAL_APPROVED",
         summary: `Approved ${intent} on ${o.symbol}${qty}`,
+        // The real Alpaca fill price — the one price stamp on a proposal
+        // row that's actually knowable (reject/expire never traded).
+        priceAtTime: o.filledPrice ?? null,
       });
     }
   }

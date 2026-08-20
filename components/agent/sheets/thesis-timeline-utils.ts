@@ -36,18 +36,44 @@ export interface TimelineUpdate {
 
 export interface OutcomeChip {
   label: string;
-  variant: "default" | "secondary" | "destructive" | "outline";
+  variant:
+    | "default"
+    | "secondary"
+    | "destructive"
+    | "outline"
+    | "positive"
+    | "negative"
+    | "warning";
+}
+
+/** Buy-side vs sell-side of a proposal, off the intent stored with it. */
+function proposalSide(u: TimelineUpdate): "buy" | "sell" | null {
+  const fc = u.fieldChanges as
+    | { proposal?: { to?: { intent?: unknown } } }
+    | null;
+  const intent = fc?.proposal?.to?.intent;
+  if (intent === "OPEN" || intent === "ADD") return "buy";
+  if (intent === "CLOSE" || intent === "PARTIAL_CLOSE") return "sell";
+  return null;
 }
 
 // ── Outcome chip ─────────────────────────────────────────────────────────────
-// One at-a-glance verdict per row. Proposal outcomes, trigger fires, and
-// buy/sell transitions get a chip; routine reviews/updates stay text-only.
+// One at-a-glance verdict per row, in the money-color language the rest of
+// the app uses: green = money deployed (buys), red = money pulled (sells),
+// amber = a trigger demanding attention. Proposal outcomes, trigger fires,
+// and buy/sell transitions get a chip; routine reviews/updates stay
+// text-only.
 
 export function outcomeChip(u: TimelineUpdate): OutcomeChip | null {
   const fc = u.fieldChanges ?? {};
   switch (u.type) {
-    case "PROPOSAL_APPROVED":
+    case "PROPOSAL_APPROVED": {
+      const side = proposalSide(u);
+      if (side === "buy") return { label: "Approved buy", variant: "positive" };
+      if (side === "sell")
+        return { label: "Approved sell", variant: "negative" };
       return { label: "Approved", variant: "default" };
+    }
     case "PROPOSAL_REJECTED":
       return { label: "Declined", variant: "destructive" };
     case "PROPOSAL_EXPIRED":
@@ -55,16 +81,16 @@ export function outcomeChip(u: TimelineUpdate): OutcomeChip | null {
     case "PROPOSAL_PENDING":
       return { label: "Awaiting review", variant: "outline" };
     case "TRIGGER_FIRED":
-      return { label: "Trigger fired", variant: "secondary" };
+      return { label: "Trigger fired", variant: "warning" };
     case "CLOSED":
-      return { label: "Sold", variant: "secondary" };
+      return { label: "Sold", variant: "negative" };
     case "INVALIDATED":
       return { label: "Invalidated", variant: "destructive" };
     case "STATUS_CHANGED": {
       const to = fc.status?.to;
-      if (to === "HOLDING") return { label: "Bought", variant: "default" };
+      if (to === "HOLDING") return { label: "Bought", variant: "positive" };
       if (fc.retiredReason?.to === "SOLD")
-        return { label: "Sold", variant: "secondary" };
+        return { label: "Sold", variant: "negative" };
       if (to === "RETIRED") return { label: "Retired", variant: "outline" };
       return null;
     }
@@ -75,6 +101,23 @@ export function outcomeChip(u: TimelineUpdate): OutcomeChip | null {
     default:
       return null;
   }
+}
+
+/**
+ * Rail-dot emphasis for the row: "buy" (green) when money went in, "sell"
+ * (red) when money came out, null for everything else (gray dot). The
+ * current-run amber pulse in the component overrides all of these.
+ */
+export function railDot(u: TimelineUpdate): "buy" | "sell" | null {
+  const fc = u.fieldChanges ?? {};
+  if (u.type === "CLOSED") return "sell";
+  if (u.type === "STATUS_CHANGED") {
+    if (fc.status?.to === "HOLDING") return "buy";
+    if (fc.retiredReason?.to === "SOLD") return "sell";
+    return null;
+  }
+  if (u.type === "PROPOSAL_APPROVED") return proposalSide(u);
+  return null;
 }
 
 // ── Field-change lines ───────────────────────────────────────────────────────
