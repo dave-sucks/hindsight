@@ -164,6 +164,39 @@ describe("triggerDiffLines", () => {
     expect(triggerDiffLines({ from: [trail8], to: [noisy] })).toEqual([]);
   });
 
+  it("cancels id-churn: a rung re-minted with a fresh id but identical content is not a change (the Aug 12 EME case)", () => {
+    // Agent wholesale-replaced the ladder, minting new ids for every rung.
+    // Content-identical pairs must pair off; only the real change survives.
+    const beatOld = {
+      id: "old-beat",
+      action: "REVIEW",
+      predicate: { kind: "EARNINGS_BEAT", minSurprisePct: 5 },
+    };
+    const beatNew = { ...beatOld, id: "new-beat", rationale: "reworded" };
+    const floorOld = floor64;
+    const floorNew = { ...floor71, id: "fresh-floor-id" };
+    const lines = triggerDiffLines({
+      from: [beatOld, floorOld],
+      to: [beatNew, floorNew],
+    });
+    // The re-minted-but-identical beat rung vanishes; the floor move shows
+    // as an add+remove pair (different content, different ids).
+    expect(lines).toEqual([
+      "+ Price below $71 → exit",
+      "− Price below $64 → exit",
+    ]);
+  });
+
+  it("renders nothing when a fresh-id ladder is content-identical end to end", () => {
+    const reMinted = [
+      { ...floor64, id: "a2" },
+      { ...trail8, id: "b2", rationale: "new words" },
+    ];
+    expect(triggerDiffLines({ from: [floor64, trail8], to: reMinted })).toEqual(
+      [],
+    );
+  });
+
   it("renders nothing for the legacy non-array shapes", () => {
     expect(triggerDiffLines({ from: 11, to: 14 })).toEqual([]);
     expect(

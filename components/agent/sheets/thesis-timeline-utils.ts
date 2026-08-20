@@ -142,12 +142,15 @@ export function triggerDiffLines(entry: FieldChange): string[] {
   if (!from || !to) return [];
   const fromById = new Map(from.filter((t) => t?.id).map((t) => [t.id, t]));
   const toIds = new Set(to.filter((t) => t?.id).map((t) => t.id));
-  const lines: string[] = [];
+
+  const changed: string[] = [];
+  const added: Trigger[] = [];
+  const removed: Trigger[] = [];
   for (const t of to) {
     if (!t?.id) continue;
     const prev = fromById.get(t.id);
     if (!prev) {
-      lines.push(`+ ${describeTriggerBrief(t)}`);
+      added.push(t);
     } else if (
       JSON.stringify(prev.predicate) !== JSON.stringify(t.predicate) ||
       prev.action !== t.action
@@ -155,7 +158,7 @@ export function triggerDiffLines(entry: FieldChange): string[] {
       const before = safePredicateSentence(prev.predicate);
       const after = safePredicateSentence(t.predicate);
       if (before && after) {
-        lines.push(
+        changed.push(
           `${before} → ${after}${
             prev.action !== t.action
               ? ` (${prev.action.toLowerCase()} → ${t.action.toLowerCase()})`
@@ -167,9 +170,39 @@ export function triggerDiffLines(entry: FieldChange): string[] {
     }
   }
   for (const t of from) {
-    if (t?.id && !toIds.has(t.id)) lines.push(`− ${describeTriggerBrief(t)}`);
+    if (t?.id && !toIds.has(t.id)) removed.push(t);
   }
-  return lines;
+
+  // Cancel id-churn. Agents wholesale-replace the ladder and routinely mint
+  // FRESH ids for rungs whose condition + action didn't move, so an id-keyed
+  // diff lists the entire ladder twice ("+ Earnings beat ≥5% → review" and
+  // "− Earnings beat ≥5% → review" — the Aug 12 EME rows). A rung removed
+  // and re-added with identical content is not a change; pair those off and
+  // keep only what actually moved. Rationale/cooldown churn stays invisible
+  // by design.
+  const sig = (t: Trigger) => `${JSON.stringify(t.predicate)}|${t.action}`;
+  const removedBySig = new Map<string, Trigger[]>();
+  for (const t of removed) {
+    const k = sig(t);
+    const bucket = removedBySig.get(k);
+    if (bucket) bucket.push(t);
+    else removedBySig.set(k, [t]);
+  }
+  const realAdded = added.filter((t) => {
+    const bucket = removedBySig.get(sig(t));
+    if (bucket && bucket.length > 0) {
+      bucket.pop();
+      return false;
+    }
+    return true;
+  });
+  const realRemoved = Array.from(removedBySig.values()).flat();
+
+  return [
+    ...realAdded.map((t) => `+ ${describeTriggerBrief(t)}`),
+    ...changed,
+    ...realRemoved.map((t) => `− ${describeTriggerBrief(t)}`),
+  ];
 }
 
 export function fieldChangeLines(u: TimelineUpdate): string[] {
