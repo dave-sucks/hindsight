@@ -171,20 +171,10 @@ export default function TradesPage({
 
   const filtered = useMemo(() => {
     switch (tab) {
-      // PENDING (an unapproved buy proposal) is NOT closed — "not OPEN" is
-      // the wrong test. Filter on the terminal states explicitly, and keep
-      // pending alongside open so it stays reachable from a tab.
       case 'OPEN':
-        return allTrades.filter((t) => t.status === 'OPEN' || t.status === 'PENDING');
+        return allTrades.filter((t) => t.status === 'OPEN');
       case 'CLOSED':
-        return allTrades.filter(
-          (t) =>
-            t.status === 'CLOSED_WIN' ||
-            t.status === 'CLOSED_LOSS' ||
-            t.status === 'CLOSED_EXPIRED' ||
-            t.status === 'CANCELLED' ||
-            t.status === 'REJECTED',
-        );
+        return allTrades.filter((t) => t.status !== 'OPEN');
       case 'WON':
         return allTrades.filter((t) => t.status === 'CLOSED_WIN');
       case 'LOST':
