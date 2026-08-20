@@ -1007,6 +1007,10 @@ export async function getDashboardData(
       // PENDING. (Was: any rejected order pinned this row to "Rejected" forever.)
       let tradeStatus: TradeStatus = "OPEN";
       if (rawPos.status === "CANCELLED") tradeStatus = "CANCELLED";
+      // An unapproved proposal is not a holding — this has to be checked
+      // before the order-level test, since its Order is AWAITING_APPROVAL
+      // rather than PENDING.
+      else if (rawPos.status === "PENDING_APPROVAL") tradeStatus = "PENDING";
       else if (order?.status === "PENDING") tradeStatus = "PENDING";
 
       positionData = {

@@ -210,8 +210,8 @@ const MessageError: FC = () => {
 };
 
 const ReasoningPart: FC = () => {
-  const { text } = useMessagePartReasoning();
-  return <Reasoning>{text}</Reasoning>;
+  const { text, status } = useMessagePartReasoning();
+  return <Reasoning isStreaming={status.type === "running"}>{text}</Reasoning>;
 };
 
 const AssistantMessage: FC = () => {
@@ -232,7 +232,7 @@ const AssistantMessage: FC = () => {
     >
       <div>
         <div className="min-w-0 flex-1">
-          <div className="aui-assistant-message-content wrap-break-word text-foreground leading-relaxed">
+          <div className="aui-assistant-message-content wrap-break-word text-foreground text-message">
             <SourcesProvider sources={sources}>
               <MessagePrimitive.Parts
                 components={{
@@ -309,7 +309,7 @@ const UserMessage: FC = () => {
       <UserMessageAttachments />
 
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-        <div className="aui-user-message-content wrap-break-word rounded-2xl bg-muted px-4 py-2.5 text-foreground">
+        <div className="aui-user-message-content wrap-break-word rounded-2xl bg-muted px-4 py-2.5 text-foreground text-message">
           <MessagePrimitive.Parts />
         </div>
       </div>

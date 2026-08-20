@@ -85,7 +85,7 @@ function EnvDot({ env }: { env: AlpacaEnvironment }) {
       className={cn(
         "inline-block size-2 rounded-full shrink-0",
         env === "LIVE"
-          ? "bg-blue-500 animate-pulse"
+          ? "bg-brand-blue animate-pulse"
           : "bg-muted-foreground/50",
       )}
       aria-hidden

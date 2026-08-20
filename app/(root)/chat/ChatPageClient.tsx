@@ -82,8 +82,10 @@ export function ChatPageClient({
   return (
     <div className="relative flex h-[calc(100dvh-3rem)] flex-col">
       {/* Trigger button — floats top-left so it's reachable without
-          stealing chat real-estate. Opens the Recent Chats Sheet. */}
-      <div className="absolute left-4 top-4 z-10">
+          stealing chat real-estate. Opens the Recent Chats Sheet.
+          Wrapper carries the same px-4 gutter as the app header above so
+          this button lines up with the sidebar toggle. */}
+      <div className="absolute left-0 top-4 z-10 px-4">
         <RecentChatsTrigger
           onClick={() => setIsHistoryOpen(true)}
           count={recentChats.reduce((n, g) => n + g.chats.length, 0)}

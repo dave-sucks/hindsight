@@ -57,6 +57,11 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* Chat message body — 15px sits between text-sm (14) and text-base (16),
+     which is the size the assistant/user message bodies read best at. Named
+     token so callers use `text-message` instead of an arbitrary text-[15px]. */
+  --text-message: 0.9375rem;
+  --text-message--line-height: 1.6;
   --animate-marquee: marquee 30s linear infinite;
 }
 

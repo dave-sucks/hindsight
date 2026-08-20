@@ -121,6 +121,8 @@ export interface AnalystListItem {
   winRate: number | null;
   totalPnl: number;
   openTrades: AnalystOpenTrade[];
+  /** True count of OPEN positions. openTrades is sliced to 3 for display. */
+  openPositionCount: number;
 }
 
 export interface PositionWithThesis {
@@ -163,8 +165,6 @@ export interface AnalystStats {
   bestWin: number | null;
   worstLoss: number | null;
   avgConfidence: number | null;
-  /** Count of theses currently in PROMOTED state — awaiting first-live-run resolution. */
-  promotedCount: number;
 }
 
 export interface AnalystDetail {
@@ -278,8 +278,13 @@ export async function getAnalystList(
       0
     );
 
-    const openTrades: AnalystOpenTrade[] = configPositions
-      .filter((p) => p.status === "OPEN")
+    const openPositions = configPositions.filter((p) => p.status === "OPEN");
+
+    // openTrades is capped for display — openPositionCount is the real total,
+    // so the card badge can't under-report an analyst holding more than 3.
+    const openPositionCount = openPositions.length;
+
+    const openTrades: AnalystOpenTrade[] = openPositions
       .slice(0, 3)
       .map((p) => {
         const livePrice = priceLookup.prices[p.symbol];
@@ -326,6 +331,7 @@ export async function getAnalystList(
       winRate,
       totalPnl,
       openTrades,
+      openPositionCount,
     };
   });
 }
@@ -419,9 +425,7 @@ export async function getAnalystDetail(
   // moved into `scoring.composite` (Json `{ ... composite: number }`).
   // Prisma aggregate can't average a Json field; fetch the scoring blobs
   // and average composites client-side. Cheap on a per-analyst scope.
-  // promotedCount feeds the "N promoted" badge on the analyst
-  // detail header.
-  const [allPositions, scoringRows, promotedCount] = await Promise.all([
+  const [allPositions, scoringRows] = await Promise.all([
     prisma.position.findMany({
       where: { accountId, analystId },
       select: { outcome: true, realizedPnl: true },
@@ -429,16 +433,6 @@ export async function getAnalystDetail(
     prisma.thesis.findMany({
       where: { researchRun: { agentConfigId: analystId }, accountId },
       select: { scoring: true },
-    }),
-    // PROMOTED theses awaiting first-live-run resolution. Surfaced in the
-    // analyst detail header so the user can see "this many names need
-    // re-entry decisions on the next live run."
-    prisma.thesis.count({
-      where: {
-        status: "PROMOTED",
-        researchRun: { agentConfigId: analystId },
-        accountId,
-      },
     }),
   ]);
 
@@ -595,7 +589,6 @@ export async function getAnalystDetail(
       bestWin,
       worstLoss,
       avgConfidence,
-      promotedCount,
     },
   };
 }

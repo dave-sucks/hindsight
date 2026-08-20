@@ -24,6 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { formatCurrency } from "@/lib/format";
+import { proposalSentence } from "@/lib/trade-status";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
@@ -58,12 +59,6 @@ function Pct({ value }: { value: number | null }) {
 }
 
 // ── Name cell ─────────────────────────────────────────────────────────────────
-const PROPOSAL_VERB: Record<string, string> = {
-  OPEN: "Buy",
-  ADD: "Add",
-  CLOSE: "Sell",
-  PARTIAL_CLOSE: "Trim",
-};
 
 function NameCell({ row }: { row: CoverageRow }) {
   let subhead: string;
@@ -71,7 +66,7 @@ function NameCell({ row }: { row: CoverageRow }) {
   if (pp) {
     // The proposal replaces the usual subhead — what you're being asked to
     // approve matters more than the cost basis while it's outstanding.
-    subhead = `${PROPOSAL_VERB[pp.intent] ?? "Review"} ${pp.quantity} share${pp.quantity === 1 ? "" : "s"} proposed`;
+    subhead = proposalSentence(pp.intent, pp.quantity);
   } else if (row.tradeState != null && row.shares != null && row.costBasis != null) {
     subhead = `${row.shares} share${row.shares === 1 ? "" : "s"} · ${formatCurrency(row.costBasis)}`;
   } else if (row.verdict != null && row.anchorPrice != null) {

@@ -50,6 +50,7 @@ export function RecentChatsTrigger({
     <Button
       variant="ghost"
       size="sm"
+      className="-ml-2"
       onClick={onClick}
       aria-label="Open recent chats"
     >

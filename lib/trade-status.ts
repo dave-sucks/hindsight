@@ -21,6 +21,45 @@
 
 import type { TradeStatus } from "@/lib/mock-data/trades";
 
+/**
+ * ── Naming a trade awaiting your decision ──────────────────────────────────
+ * Three independent facts get confused for one another. Keep them apart:
+ *
+ *   STATE   what the row IS. Always `getTradeStatusDisplay(...).label` —
+ *           "Pending", a peer of Holding / Won / Loss (and of the thesis
+ *           vocabulary: Watching / Holding / Passed / Retired). NEVER
+ *           "Pending review", "Pending approval" or "Proposed" — those were
+ *           six labels for one state, which is what this note exists to stop.
+ *
+ *   ACTION  what is being proposed. Always a sentence from
+ *           `buildTradeSentence()` / `proposalSentence()` below:
+ *           "Proposed: Buy 28 shares at $352.79". The verb comes from the
+ *           Order's intent, never from the position.
+ *
+ *   FILL    whether the ORDER reached Alpaca. Detail surfaces only, and it
+ *           never reuses the word "pending": "Not ordered" (nothing sent —
+ *           Order.status AWAITING_APPROVAL) vs "Awaiting fill" (sent,
+ *           unfilled — Order.status PENDING).
+ *
+ * The control is always the "Review" button (ProposalActions).
+ */
+
+const PROPOSAL_VERB: Record<string, string> = {
+  OPEN: "Buy",
+  ADD: "Add",
+  CLOSE: "Sell",
+  PARTIAL_CLOSE: "Trim",
+};
+
+/**
+ * Compact proposal sentence for row subheads — same grammar and verbs as
+ * `buildTradeSentence`, minus the price (rows show it in their own column).
+ */
+export function proposalSentence(intent: string, quantity: number): string {
+  const verb = PROPOSAL_VERB[intent] ?? "Review";
+  return `Proposed: ${verb} ${quantity} share${quantity === 1 ? "" : "s"}`;
+}
+
 export interface TradeStatusDisplay {
   label: string;
   /** Tailwind classes for the dot */

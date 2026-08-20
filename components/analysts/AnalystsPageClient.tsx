@@ -27,7 +27,8 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { PnlBadge } from "@/components/ui/pnl-badge";
-import { TradeRow } from "@/components/ui/trade-row";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TradeRow, TradeRowShell } from "@/components/ui/trade-row";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
 import { BuilderShowcaseTrigger, BuilderShowcaseButton } from "@/components/domain/run-showcase-trigger";
@@ -51,12 +52,34 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
+/** Placeholder rows shown when an analyst holds nothing yet. Matches the
+ *  populated-card row count so every card in the grid is the same height. */
+const EMPTY_ROW_COUNT = 3;
+
+/**
+ * A trade row with the content swapped for skeletons. Composes the SAME
+ * TradeRowShell as the real row, so the slot geometry (logo, ticker, price,
+ * cost basis, P&L badge) can never drift from the live layout.
+ */
+function PlaceholderTradeRow() {
+  return (
+    <TradeRowShell
+      className="pointer-events-none"
+      leading={<Skeleton className="size-8 shrink-0 rounded-md" />}
+      primary={<Skeleton className="h-3.5 w-12" />}
+      trailingTop={<Skeleton className="h-3.5 w-14" />}
+      secondary={<Skeleton className="inline-block h-3 w-28 align-middle" />}
+      trailingBottom={<Skeleton className="h-4 w-12 rounded-md" />}
+    />
+  );
+}
+
 function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete: (id: string) => void }) {
   const router = useRouter();
   const rawPrompt = analyst.description ?? analyst.analystPrompt ?? null;
   const promptText = rawPrompt ? stripMarkdown(rawPrompt) : null;
 
-  const openCount = analyst.openTrades.length;
+  const openCount = analyst.openPositionCount;
   const winRatePct = analyst.winRate != null ? Math.round(analyst.winRate * 100) : null;
 
   return (
@@ -70,11 +93,13 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
           {/* Row 1: badges left · 3-dot right */}
           <div className="flex items-center justify-between gap-2 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-              {openCount > 0 && (
-                <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
-                  {openCount} open
-                </span>
-              )}
+              {/* Always present — an analyst with nothing open still reads as
+                  "no positions" rather than leaving the badge row empty. */}
+              <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
+                {openCount === 0
+                  ? "No Positions"
+                  : `${openCount} ${openCount === 1 ? "Position" : "Positions"}`}
+              </span>
               {winRatePct != null && (
                 <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
                   {winRatePct}% win
@@ -124,7 +149,15 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
       </Link>
 
       {/* ── Active trades ── */}
-      {analyst.openTrades.length > 0 && (
+      {analyst.openTrades.length === 0 ? (
+        // inert + aria-hidden: decorative only — keeps the empty rows out of
+        // the tab order and the a11y tree.
+        <div className="border-t" aria-hidden inert>
+          {Array.from({ length: EMPTY_ROW_COUNT }).map((_, i) => (
+            <PlaceholderTradeRow key={i} />
+          ))}
+        </div>
+      ) : (
         <div className="border-t">
           {analyst.openTrades.map((trade) => (
             <TradeRow
@@ -152,14 +185,18 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
 
 function NewAnalystCard() {
   return (
-    <Link href="/analysts/new">
+    <Link href="/analysts/new" className="block h-full">
       <Card className="h-full border-dashed hover:bg-muted/20 transition-colors cursor-pointer shadow-none py-0">
-        <div className="flex flex-col items-center justify-center gap-2 h-full min-h-[180px] text-muted-foreground p-4">
+        {/* Mirrors the analyst card's own vertical rhythm: a marker where the
+            badge row sits, then name + description pinned to the bottom. */}
+        <div className="flex h-full flex-col justify-between p-3 text-muted-foreground">
           <div className="h-8 w-8 rounded-full border-2 border-dashed border-current flex items-center justify-center">
             <Plus className="h-4 w-4" />
           </div>
-          <p className="text-sm font-medium text-foreground">New Analyst</p>
-          <p className="text-xs text-center">Describe what you want to find</p>
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium text-foreground leading-tight">New Analyst</p>
+            <p className="text-sm leading-relaxed">Describe what you want to find</p>
+          </div>
         </div>
       </Card>
     </Link>
@@ -302,7 +339,10 @@ export default function AnalystsPageClient({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* grid-auto-rows:1fr — every row takes the height of the tallest card,
+          so the New Analyst card (alone on the last row) matches the others
+          instead of collapsing to its own content. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 [grid-auto-rows:1fr]">
         {analysts.map((analyst) => (
           <AnalystCard key={analyst.id} analyst={analyst} onDelete={setDeleteTarget} />
         ))}

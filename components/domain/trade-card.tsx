@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { StockLogo } from "@/components/StockLogo";
 import { BarGauge, priceToRange } from "@/components/ui/bar-gauge";
+import { getTradeStatusDisplay } from "@/lib/trade-status";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,8 @@ const STATUS_CONFIG: Record<
     icon: CheckCircle2,
   },
   PENDING: {
-    label: "Pending",
+    // Canonical word — see the naming note in lib/trade-status.
+    label: getTradeStatusDisplay("PENDING").label,
     dotClass: "bg-amber-500 animate-pulse",
     icon: Clock,
   },

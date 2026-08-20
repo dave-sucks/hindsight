@@ -99,7 +99,14 @@ export async function GET(
       convictionRationale: true,
       variantView: true,
       createdAt: true,
-      researchRun: { select: { agentConfigId: true } },
+      researchRun: {
+        select: {
+          agentConfigId: true,
+          // Name surfaces in the sheet's Trade Structure row — "who owns
+          // this thesis" was previously invisible on the sheet.
+          agentConfig: { select: { name: true } },
+        },
+      },
     },
   });
 
@@ -274,6 +281,7 @@ export async function GET(
     // back to the analyst that owns it ("edit it where it lives").
     analystId: thesis.researchRun?.agentConfigId ?? null,
     position,
+    analystName: thesis.researchRun?.agentConfig?.name ?? null,
     coreBelief: thesis.coreBelief,
     keyAssumptions: thesis.keyAssumptions ?? [],
     invalidationConds: thesis.invalidationConds ?? [],
