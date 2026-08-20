@@ -1,6 +1,7 @@
 import {
   protectiveRatchetViolations,
   describeRatchetViolation,
+  stopMoveWeakensProtection,
 } from "./ratchet";
 import type { Trigger } from "./types";
 
@@ -254,6 +255,41 @@ describe("protectiveRatchetViolations — malformed legacy rungs", () => {
       inherited: [],
     });
     expect(v).toHaveLength(0);
+  });
+});
+
+describe("stopMoveWeakensProtection — the scalar stop one-way rule (DAV-201)", () => {
+  it("flags lowering a LONG stop and clearing any stop", () => {
+    expect(
+      stopMoveWeakensProtection({ direction: "LONG", oldStop: 80, newStop: 76 }),
+    ).toBe(true);
+    expect(
+      stopMoveWeakensProtection({ direction: "LONG", oldStop: 80, newStop: null }),
+    ).toBe(true);
+  });
+
+  it("allows raising a LONG stop and adding a stop where none existed", () => {
+    expect(
+      stopMoveWeakensProtection({ direction: "LONG", oldStop: 76, newStop: 80 }),
+    ).toBe(false);
+    expect(
+      stopMoveWeakensProtection({ direction: "LONG", oldStop: null, newStop: 80 }),
+    ).toBe(false);
+  });
+
+  it("inverts for SHORT (the protective stop sits above)", () => {
+    expect(
+      stopMoveWeakensProtection({ direction: "SHORT", oldStop: 50, newStop: 60 }),
+    ).toBe(true);
+    expect(
+      stopMoveWeakensProtection({ direction: "SHORT", oldStop: 60, newStop: 50 }),
+    ).toBe(false);
+  });
+
+  it("treats an equal stop as not weakening (breakeven no-op stays legal)", () => {
+    expect(
+      stopMoveWeakensProtection({ direction: "LONG", oldStop: 80, newStop: 80 }),
+    ).toBe(false);
   });
 });
 

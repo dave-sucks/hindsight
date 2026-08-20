@@ -157,6 +157,28 @@ export function protectiveRatchetViolations(args: {
   return out;
 }
 
+/**
+ * The one-way rule for a SCALAR stop number on a held stock (DAV-201).
+ * Used by manage_position's stop-writing actions; update_thesis applies the
+ * same rule inline to its stop_loss column (DAV-185). Weakening =
+ * lowering the stop on a LONG, raising it on a SHORT, or clearing it.
+ * Today the position's stop number is display/context only — nothing sells
+ * off it — but the Levels work makes these numbers fire for real, and the
+ * gate must exist before that lands or the MU 2026-08-18 violation returns
+ * through the side door.
+ */
+export function stopMoveWeakensProtection(args: {
+  direction: string | null;
+  oldStop: number | null;
+  newStop: number | null;
+}): boolean {
+  const { direction, oldStop, newStop } = args;
+  if (oldStop == null) return false; // adding protection where none existed
+  if (newStop == null) return true; // clearing the stop = deleting protection
+  const isLong = direction !== "SHORT";
+  return isLong ? newStop < oldStop : newStop > oldStop;
+}
+
 /** Plain-language name for a protective rung, for refusal messages. */
 export function describeProtectiveRung(t: Trigger): string {
   const p = t.predicate;

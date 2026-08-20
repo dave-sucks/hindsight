@@ -16,6 +16,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
 import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
+import { stopMoveWeakensProtection } from "@/lib/agent/triggers/ratchet";
 import {
   enforceCloseReason,
   withCloseAuditNote,
@@ -134,7 +135,7 @@ const schema = z.object({
 
   // update_targets
   new_target_price: z.number().positive().optional().describe("New target price"),
-  new_stop_loss: z.number().positive().optional().describe("New stop loss price"),
+  new_stop_loss: z.number().positive().optional().describe("New stop loss price. On a held stock the stop only moves toward MORE protection (up for LONG, down for SHORT) — a loosening move is rejected; only the principal moves a safety line the other way."),
 
   // full_close reason code
   close_reason: z
@@ -990,6 +991,40 @@ export const managePosition = defineTool({
             };
           }
 
+          // ── Protective-level ratchet (DAV-201, extends DAV-185) ─────────
+          // The stop number on a stock we own only moves toward MORE
+          // protection; lowering it is the principal's manual act. Today
+          // nothing sells off this column (the trigger ladder is what
+          // fires), but the Levels work makes these numbers real — the gate
+          // must exist before that lands, or the MU 2026-08-18 violation
+          // returns through this tool instead of update_thesis. Targets are
+          // not gated (taking profit earlier is not a safety change).
+          if (
+            args.new_stop_loss != null &&
+            stopMoveWeakensProtection({
+              direction: position.direction,
+              oldStop: position.stopLoss != null ? Number(position.stopLoss) : null,
+              newStop: args.new_stop_loss,
+            })
+          ) {
+            const oldStopFmt = Number(position.stopLoss).toFixed(2);
+            console.warn(
+              `[tool] manage_position update_targets REJECTED for ${ticker} — stop ${oldStopFmt} → ${args.new_stop_loss} moves the wrong way (protective-level ratchet).`,
+            );
+            return {
+              summary: `Refused stop change on ${ticker} — protective levels only move toward more protection.`,
+              data: {
+                success: false, ticker, action: args.action, status: "FAILED" as const,
+                message:
+                  `Stop $${oldStopFmt} → $${args.new_stop_loss.toFixed(2)} moves the stop the wrong way on a stock we own. ` +
+                  `Protective levels only move toward MORE protection; only the principal moves a safety line down (thesis sheet or reject dialog). ` +
+                  `Keep the current stop — raising/tightening is fine. If you believe the level is wrong, say so in your rationale with the number you'd suggest.`,
+                tickers: [{ ticker, tag: "Refused", summary: `Stop lowering blocked ($${oldStopFmt} stands)`, actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
+
           const updateData: Record<string, number> = {};
           if (args.new_target_price) updateData.targetPrice = args.new_target_price;
           if (args.new_stop_loss) updateData.stopLoss = args.new_stop_loss;
@@ -1058,6 +1093,35 @@ export const managePosition = defineTool({
         case "move_stop_to_breakeven": {
           const prevStop = position.stopLoss;
           const newStop = position.avgCost;
+
+          // Same ratchet as update_targets (DAV-201): "to breakeven" is a
+          // tightening move only when the stop sits BELOW breakeven. If the
+          // stop is already at or above avg cost, moving it back down to
+          // breakeven loosens live protection — refuse, don't quietly lower.
+          if (
+            stopMoveWeakensProtection({
+              direction: position.direction,
+              oldStop: prevStop != null ? Number(prevStop) : null,
+              newStop: Number(newStop),
+            })
+          ) {
+            const prevFmt = Number(prevStop).toFixed(2);
+            console.warn(
+              `[tool] manage_position move_stop_to_breakeven REJECTED for ${ticker} — stop ${prevFmt} already tighter than breakeven ${Number(newStop).toFixed(2)}.`,
+            );
+            return {
+              summary: `Refused breakeven move on ${ticker} — the stop is already tighter than breakeven.`,
+              data: {
+                success: false, ticker, action: args.action, status: "FAILED" as const,
+                message:
+                  `The stop is already $${prevFmt}, tighter than breakeven ($${Number(newStop).toFixed(2)}). ` +
+                  `Moving it to breakeven would loosen protection on a stock we own, and protective levels only move toward MORE protection. ` +
+                  `The current stop stands; nothing to do.`,
+                tickers: [{ ticker, tag: "Refused", summary: `Stop $${prevFmt} already tighter than breakeven`, actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
 
           await prisma.$transaction(async (tx) => {
             await tx.position.update({
