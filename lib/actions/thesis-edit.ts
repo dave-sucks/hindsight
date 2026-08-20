@@ -48,6 +48,59 @@ export class ThesisEditError extends Error {
   }
 }
 
+/**
+ * Build ONE validated, principal-authored trigger from UI input.
+ *
+ * Shared by the thesis write path (below) and the account/analyst write
+ * path (./level-triggers): both run the same Zod gate, the same DIRECT
+ * fire-mode restriction, the same cooldown discipline and the same
+ * `source` stamp. Only what surrounds this differs — the thesis path
+ * mirrors canonical stop/target onto the Thesis + Position and writes an
+ * audit row; the level path checks predicate eligibility and refuses a
+ * duplicate bucket.
+ *
+ * Extracted 2026-08-16 so the two paths can't drift on validation, which
+ * is the part where drift would be dangerous rather than merely untidy.
+ */
+export function buildPrincipalTrigger(input: {
+  action: TriggerAction;
+  predicate: TriggerPredicate;
+  fireMode?: "TACTICAL" | "DIRECT";
+  rationale?: string;
+  cooldownDays?: number;
+  /** Fallback prose when the caller supplies no rationale. */
+  defaultRationale: string;
+  /**
+   * Whether a DIRECT fire mode is permissible here at all. The thesis
+   * path also requires an open position; the level path has none to
+   * check, so it passes the predicate gate alone.
+   */
+  allowDirect: boolean;
+}): Trigger {
+  let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);
+  if (fireMode === "DIRECT" && !input.allowDirect) fireMode = "TACTICAL";
+
+  const parsed = triggerSchema.safeParse({
+    predicate: input.predicate,
+    action: input.action,
+    rationale: input.rationale?.trim() || input.defaultRationale,
+    ...(input.cooldownDays != null ? { cooldownDays: input.cooldownDays } : {}),
+    fireMode,
+  });
+  if (!parsed.success) {
+    throw new ThesisEditError(
+      "INVALID",
+      `Invalid trigger: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
+    );
+  }
+  // Cooldown discipline (0-on-non-EXIT → per-kind default), then
+  // source=PRINCIPAL — server-owned, never trusted from the request body.
+  return {
+    ...applyTriggerCooldownDefaults([parsed.data as Trigger])[0],
+    source: "PRINCIPAL",
+  };
+}
+
 /** Map a ThesisEditError code → HTTP status. Shared by every trigger route. */
 export function statusForEditError(code: ThesisEditCode): number {
   return code === "NOT_FOUND"
@@ -110,14 +163,32 @@ export async function applyTriggerValueEdit(
   const triggers: Trigger[] = parsed.success ? (parsed.data as Trigger[]) : [];
   const target = triggers.find((t) => t.id === triggerId);
   if (!target) {
-    throw new ThesisEditError("NOT_FOUND", `Trigger ${triggerId} not found on thesis.`);
+    throw new ThesisEditError(
+      "NOT_FOUND",
+      // Most likely cause since the cascade landed: the rung is INHERITED
+      // (analyst / account / code default) and so isn't stored on this
+      // thesis at all. The UI renders those read-only, so this is a
+      // backstop for a stale client — but say why, not just "not found".
+      `Trigger ${triggerId} is not stored on this thesis. Inherited triggers (analyst, account, or app default) are edited at the level that owns them.`,
+    );
   }
   if (!editableTriggerField(target.predicate)) {
     throw new ThesisEditError("INVALID", `Trigger ${triggerId} has no editable value.`);
   }
 
+  // The principal now owns this rung's VALUE, so stamp the source axis to
+  // match (DAV-203: Dave's MU 814→935 edit kept showing source=AGENT in the
+  // popover). Purely informational — nothing gates on source — and the
+  // update_thesis wholesale-replace preserves the stamp on agent resends
+  // ("resending a rung you didn't author doesn't make it yours").
   const nextTriggers = triggers.map((t) =>
-    t.id === triggerId ? { ...t, predicate: withEditedValue(t.predicate, value) } : t,
+    t.id === triggerId
+      ? {
+          ...t,
+          predicate: withEditedValue(t.predicate, value),
+          source: "PRINCIPAL" as const,
+        }
+      : t,
   );
 
   // Is this the canonical price stop / target? If so, mirror onto the thesis
@@ -357,26 +428,13 @@ export async function applyTriggerAdd(
     fireMode = "TACTICAL";
   }
 
-  // Validate the single trigger through the same Zod gate the agent uses —
-  // generates a stable id, normalizes the enum, rejects out-of-range trail %.
-  const candidate = {
-    predicate: input.predicate,
-    action: input.action,
-    rationale:
-      input.rationale?.trim() || addedTriggerRationale(input.action, input.predicate),
-    ...(input.cooldownDays != null ? { cooldownDays: input.cooldownDays } : {}),
-    fireMode,
-  };
-  const parsedOne = triggerSchema.safeParse(candidate);
-  if (!parsedOne.success) {
-    throw new ThesisEditError(
-      "INVALID",
-      `Invalid trigger: ${parsedOne.error.issues.map((i) => i.message).join("; ")}`,
-    );
-  }
-  // Cooldown discipline (0-on-non-EXIT → per-kind default; same as the agent
-  // write path). applyTriggerCooldownDefaults returns a fresh array.
-  const newTrigger = applyTriggerCooldownDefaults([parsedOne.data as Trigger])[0];
+  const newTrigger = buildPrincipalTrigger({
+    ...input,
+    defaultRationale: addedTriggerRationale(input.action, input.predicate),
+    // A DIRECT close needs a position to close and a deterministic
+    // predicate; `fireMode` was already narrowed above.
+    allowDirect: fireMode === "DIRECT",
+  });
 
   // Re-parse the existing array. If it fails to parse, REFUSE — falling back
   // to [] here would persist only the new trigger and silently destroy every
@@ -514,7 +572,14 @@ export async function applyTriggerDelete(
   const triggers: Trigger[] = parsed.success ? (parsed.data as Trigger[]) : [];
   const target = triggers.find((t) => t.id === triggerId);
   if (!target) {
-    throw new ThesisEditError("NOT_FOUND", `Trigger ${triggerId} not found on thesis.`);
+    throw new ThesisEditError(
+      "NOT_FOUND",
+      // Most likely cause since the cascade landed: the rung is INHERITED
+      // (analyst / account / code default) and so isn't stored on this
+      // thesis at all. The UI renders those read-only, so this is a
+      // backstop for a stale client — but say why, not just "not found".
+      `Trigger ${triggerId} is not stored on this thesis. Inherited triggers (analyst, account, or app default) are edited at the level that owns them.`,
+    );
   }
   const nextTriggers = triggers.filter((t) => t.id !== triggerId);
 
@@ -608,7 +673,14 @@ export async function applyTriggerFireModeChange(
   const triggers: Trigger[] = parsed.success ? (parsed.data as Trigger[]) : [];
   const target = triggers.find((t) => t.id === triggerId);
   if (!target) {
-    throw new ThesisEditError("NOT_FOUND", `Trigger ${triggerId} not found on thesis.`);
+    throw new ThesisEditError(
+      "NOT_FOUND",
+      // Most likely cause since the cascade landed: the rung is INHERITED
+      // (analyst / account / code default) and so isn't stored on this
+      // thesis at all. The UI renders those read-only, so this is a
+      // backstop for a stale client — but say why, not just "not found".
+      `Trigger ${triggerId} is not stored on this thesis. Inherited triggers (analyst, account, or app default) are edited at the level that owns them.`,
+    );
   }
   if (
     fireMode === "DIRECT" &&
@@ -623,8 +695,10 @@ export async function applyTriggerFireModeChange(
   }
 
   const prevMode = target.fireMode ?? "TACTICAL";
+  // Stamp source too — the mode is part of the rung's definition, and the
+  // principal just chose it (same DAV-203 fix as the value edit above).
   const nextTriggers = triggers.map((t) =>
-    t.id === triggerId ? { ...t, fireMode } : t,
+    t.id === triggerId ? { ...t, fireMode, source: "PRINCIPAL" as const } : t,
   );
 
   await prisma.thesis.update({

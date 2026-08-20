@@ -14,37 +14,7 @@ import { getBars } from "@/lib/alpaca";
 import type { NewsItem } from "@/lib/agent/tool-types";
 import { checkUniverse } from "@/lib/agent/universe";
 import type { UniverseCheck } from "@/lib/agent/universe";
-
-const FMP_KEY = process.env.FMP_API_KEY!;
-
-// 2026-05-19 — FMP migrated all v3/v4 endpoints to /stable/. The
-// pre-migration paths return `{"Error Message": "Legacy Endpoint..."}`
-// on every call. This helper now routes /stable/ paths directly and
-// keeps the legacy /api/v3 + /v4 paths as a fallback for any caller
-// that hasn't been migrated yet (so the failure mode is "graceful
-// empty data" rather than "broken until migrated").
-async function fmp(path: string): Promise<{ data: unknown; error?: string }> {
-  const base = path.startsWith("/stable/")
-    ? `https://financialmodelingprep.com${path}`
-    : path.startsWith("/v4/")
-      ? `https://financialmodelingprep.com/api${path}`
-      : `https://financialmodelingprep.com/api/v3${path}`;
-  const url = `${base}${path.includes("?") ? "&" : "?"}apikey=${FMP_KEY}`;
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return { data: null, error: `FMP ${res.status}` };
-    const data = await res.json();
-    if (data && typeof data === "object" && !Array.isArray(data) && "Error Message" in data) {
-      return { data: null, error: `FMP: ${(data as Record<string, string>)["Error Message"]}` };
-    }
-    return { data };
-  } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : "FMP error" };
-  }
-}
+import { fmp } from "@/lib/market-data/fmp";
 
 export const getStockData = defineTool({
   description:
@@ -93,7 +63,7 @@ export const getStockData = defineTool({
           2,
         ),
         finnhub(`/stock/recommendation?symbol=${ticker}`, 2),
-        fmp(`/stable/price-target-consensus?symbol=${ticker}`),
+        fmp(`/stable/price-target-consensus?symbol=${ticker}`, { expectNonEmpty: true }),
       ]);
 
     const quote = quoteResult.data as Record<string, number> | null;
@@ -305,7 +275,7 @@ export const getStockData = defineTool({
         { provider: "Finnhub", title: `${ticker} Key Financials`, url: "https://finnhub.io/docs/api/stock-basic-financials" },
         ...(consensusData ? [{ provider: "Finnhub", title: `${ticker} Analyst Consensus`, url: "https://finnhub.io/docs/api/recommendation-trends" }] : []),
         ...(techData ? [{ provider: techProvider, title: `${ticker} 90-Day Price History`, url: "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/" }] : []),
-        ...(targetsData ? [{ provider: "FMP", title: `${ticker} Analyst Price Targets`, url: `https://financialmodelingprep.com/api/v4/price-target-consensus?symbol=${ticker}` }] : []),
+        ...(targetsData ? [{ provider: "FMP", title: `${ticker} Analyst Price Targets`, url: `https://financialmodelingprep.com/financial-summary/${ticker}` }] : []),
       ],
     };
   },

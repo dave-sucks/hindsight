@@ -29,12 +29,22 @@
 import { randomUUID } from "node:crypto";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import { finnhub } from "@/lib/agent/research-helpers";
+import {
+  finnhub,
+  quoteAgeMs,
+  STALE_QUOTE_THRESHOLD_MS,
+} from "@/lib/agent/research-helpers";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 import { describeTriggerFire } from "@/lib/agent/triggers/format";
+import { splitFiresByLevel } from "@/lib/agent/triggers/levels";
+import {
+  loadLevelSources,
+  parseTriggerState,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { isMarketOpen } from "@/lib/market-hours";
 
@@ -46,14 +56,10 @@ import { isMarketOpen } from "@/lib/market-hours";
  */
 function parseTriggers(raw: unknown, thesisId: string): Trigger[] {
   if (raw == null) return [];
-  const result = triggersArraySchema.safeParse(raw);
-  if (!result.success) {
-    console.warn(
-      `[trigger-evaluator] thesis=${thesisId} triggers JSON failed Zod validation`,
-      result.error.flatten(),
-    );
-    return [];
-  }
+  // Rung-by-rung — a single bad field must not discard a thesis's whole
+  // ladder (that failure hid 22 live rungs across GD/ASML/ETN until
+  // 2026-08-16). See parseTriggersResilient.
+  const result = { success: true as const, data: parseTriggersResilient(raw).triggers };
   // The schema's `id` .default() auto-generates an id for any trigger whose
   // stored JSON lacked one, so post-parse every trigger should have an id.
   // This map is a belt-and-suspenders backstop: if one still doesn't, assign
@@ -206,13 +212,13 @@ interface FiringEvent {
  * the updated triggers array with lastFiredAt stamped on the firing ones.
  * Pure read of `now`/`ctx` — no side effects.
  */
-function evaluateThesisTriggers(args: {
+function evaluateThesisTriggers<T extends Trigger>(args: {
   thesisId: string;
-  triggers: Trigger[];
+  triggers: T[];
   ctx: EvaluationContext;
   predicateFilter?: (p: TriggerPredicate) => boolean;
-}): { fires: Trigger[]; updatedTriggers: Trigger[] } {
-  const fires: Trigger[] = [];
+}): { fires: T[]; updatedTriggers: T[] } {
+  const fires: T[] = [];
   const updatedTriggers = args.triggers.map((t) => {
     if (args.predicateFilter && !args.predicateFilter(t.predicate)) return t;
     const result = shouldFire(t, args.ctx);
@@ -227,31 +233,60 @@ function evaluateThesisTriggers(args: {
 }
 
 /**
- * Persist updated triggers JSON for a thesis in a single transaction.
+ * Persist fire bookkeeping for a thesis in a single transaction.
  * Re-reads the row inside the tx so concurrent stamps don't trample each
  * other on non-overlapping triggers (e.g. signal-driven and cron firing
  * on the same thesis at the same time).
+ *
+ * Two destinations, keyed off where the rung LIVES:
+ *   - THESIS-level rungs are stored on this row, so `lastFiredAt` is
+ *     stamped inline on the rung, as it always has been.
+ *   - INHERITED rungs (analyst / account / code default) are shared —
+ *     one analyst rung serves every thesis under that analyst — so their
+ *     fire time goes in this thesis's `triggerState` map instead.
+ *     Stamping them inline is impossible (a code default isn't stored
+ *     anywhere) and stamping the shared row would put every sibling
+ *     thesis into cooldown on a trigger that never fired for them.
  */
 async function stampLastFiredAt(args: {
   thesisId: string;
+  /** Rungs stored on this thesis — stamped inline. */
   firedTriggerIds: string[];
+  /** Rungs inherited from a level above — stamped into `triggerState`. */
+  firedInheritedTriggerIds: string[];
   now: Date;
 }): Promise<void> {
-  if (args.firedTriggerIds.length === 0) return;
+  if (
+    args.firedTriggerIds.length === 0 &&
+    args.firedInheritedTriggerIds.length === 0
+  ) {
+    return;
+  }
+  const stampedAt = args.now.toISOString();
   await prisma.$transaction(async (tx) => {
     const row = await tx.thesis.findUnique({
       where: { id: args.thesisId },
-      select: { triggers: true },
+      select: { triggers: true, triggerState: true },
     });
     if (!row) return;
+
     const current = parseTriggers(row.triggers, args.thesisId);
     const stampSet = new Set(args.firedTriggerIds);
     const next = current.map((t) =>
-      stampSet.has(t.id) ? { ...t, lastFiredAt: args.now.toISOString() } : t,
+      stampSet.has(t.id) ? { ...t, lastFiredAt: stampedAt } : t,
     );
+
+    const state = parseTriggerState(row.triggerState);
+    for (const id of args.firedInheritedTriggerIds) {
+      state[id] = { ...state[id], firedAt: stampedAt };
+    }
+
     await tx.thesis.update({
       where: { id: args.thesisId },
-      data: { triggers: next as unknown as object[] },
+      data: {
+        triggers: next as unknown as object[],
+        triggerState: state as unknown as object,
+      },
     });
   });
 }
@@ -318,7 +353,11 @@ export const triggerEvaluator = inngest.createFunction(
             },
             status: { in: ["HOLDING", "WATCHING"] },
             ticker: { in: signal.tickers },
-            triggers: { not: [] },
+            // No `triggers: { not: [] }` filter — since the cascade landed,
+            // a thesis with an empty own-array can still carry analyst /
+            // account / default rungs. Filtering on the stored column here
+            // would make every inherited rung unfireable on exactly the
+            // theses that have nothing of their own.
           },
           select: {
             id: true,
@@ -326,11 +365,19 @@ export const triggerEvaluator = inngest.createFunction(
             status: true,
             direction: true,
             triggers: true,
+            triggerState: true,
+            horizon: true,
             createdAt: true,
             nextReviewAt: true,
             researchRun: { select: { agentConfigId: true } },
           },
         });
+
+        // ACCOUNT + ANALYST levels for every analyst in this batch, one
+        // query. Resolution happens per thesis below.
+        const levelSources = await loadLevelSources(
+          theses.map((t) => t.researchRun.agentConfigId).filter((id): id is string => !!id),
+        );
 
         // P1-14: for ACTIVE (held) theses, TIME_ELAPSED measures from the
         // paired position's openedAt, not the thesis row's createdAt. Look
@@ -366,7 +413,11 @@ export const triggerEvaluator = inngest.createFunction(
           const analystId = thesis.researchRun.agentConfigId;
           if (!analystId) continue;
 
-          const triggers = parseTriggers(thesis.triggers, thesis.id);
+          const triggers = resolveThesisLadder(
+            thesis,
+            levelSources.get(analystId),
+            `thesis=${thesis.id}`,
+          );
           if (triggers.length === 0) continue;
 
           const posInfo = openedAtByThesisId.get(thesis.id);
@@ -391,7 +442,7 @@ export const triggerEvaluator = inngest.createFunction(
           if (fires.length === 0) continue;
           await stampLastFiredAt({
             thesisId: thesis.id,
-            firedTriggerIds: fires.map((t) => t.id),
+            ...splitFiresByLevel(fires),
             now,
           });
           for (const t of fires) {
@@ -483,7 +534,11 @@ export const triggerEvaluator = inngest.createFunction(
           // See OPENAI_COST_REDUCTION.md.
           researchRun: { agentConfig: { enabled: true } },
           status: { in: ["HOLDING", "WATCHING"] },
-          triggers: { not: [] },
+          // No `triggers: { not: [] }` filter — see the signal path. A
+          // thesis with an empty own-array can still carry analyst /
+          // account / default rungs, and those are exactly the standing
+          // protection minimums we must never skip. The empty-ladder
+          // filter now happens after resolution, below.
         },
         select: {
           id: true,
@@ -491,6 +546,8 @@ export const triggerEvaluator = inngest.createFunction(
           status: true,
           direction: true,
           triggers: true,
+          triggerState: true,
+          horizon: true,
           createdAt: true,
           nextReviewAt: true,
           researchRun: { select: { agentConfigId: true } },
@@ -498,19 +555,59 @@ export const triggerEvaluator = inngest.createFunction(
       });
       if (theses.length === 0) return [] as FiringEvent[];
 
+      // ACCOUNT + ANALYST levels for the batch, one query.
+      const levelSources = await loadLevelSources(
+        theses.map((t) => t.researchRun.agentConfigId).filter((id): id is string => !!id),
+      );
+
+      // Resolve BEFORE picking tickers to quote. Dropping the
+      // `triggers: { not: [] }` DB filter widened the candidate set, and
+      // quoting a thesis whose resolved ladder is empty would spend a
+      // Finnhub call to evaluate nothing — and worse, consume one of the
+      // 200 ticker slots that a thesis with a live stop needs.
+      const candidates = theses
+        .map((thesis) => ({
+          thesis,
+          analystId: thesis.researchRun.agentConfigId,
+          ladder: resolveThesisLadder(
+            thesis,
+            levelSources.get(thesis.researchRun.agentConfigId ?? ""),
+            `thesis=${thesis.id}`,
+          ),
+        }))
+        // No analyst owner ⇒ tactical-run can't dispatch; no rungs ⇒
+        // nothing to evaluate.
+        .filter((c) => c.analystId && c.ladder.length > 0);
+      if (candidates.length === 0) return [] as FiringEvent[];
+
       // P1-14: anchor TIME_ELAPSED to the paired position's openedAt for
       // ACTIVE (held) theses. WATCHING rows stay on createdAt.
-      const openedAtByThesisId = await buildPositionOpenedAtMap(theses);
+      const openedAtByThesisId = await buildPositionOpenedAtMap(
+        candidates.map((c) => c.thesis),
+      );
 
       // Cap unique tickers per tick to bound Finnhub calls. 200 mirrors
       // the signal-router cap. Theses past the cap defer to the next tick.
-      const uniqueTickers = Array.from(new Set(theses.map((t) => t.ticker))).slice(0, 200);
+      const uniqueTickers = Array.from(
+        new Set(candidates.map((c) => c.thesis.ticker)),
+      ).slice(0, 200);
       const quoteResults = await Promise.all(
         uniqueTickers.map(async (ticker) => {
           const r = await finnhub(`/quote?symbol=${ticker}`, 1);
           const q = r.data as Record<string, number> | null;
           if (!q || typeof q.c !== "number" || q.c <= 0) {
             return [ticker, null] as const;
+          }
+          // Observability only — this does NOT suppress firing. A stale price
+          // is fail-unsafe in both directions (act on it and a stop fires at
+          // the wrong level; skip it and the stop doesn't fire at all), so the
+          // evaluator still scores the quote and we make the staleness loud
+          // instead. See the 2026-08-14 stale-quote bug.
+          const age = quoteAgeMs(q);
+          if (age != null && age > STALE_QUOTE_THRESHOLD_MS) {
+            console.warn(
+              `[trigger-evaluator] STALE QUOTE ${ticker}: ${Math.round(age / 60_000)}min old (price ${q.c}) — evaluating anyway`,
+            );
           }
           // Daily % change vs prior close. Prefer Finnhub's `dp`, but fall back
           // to computing it from `pc` (prior close) when `dp` is missing —
@@ -529,14 +626,9 @@ export const triggerEvaluator = inngest.createFunction(
       const quoteByTicker = new Map(quoteResults);
 
       const events: FiringEvent[] = [];
-      for (const thesis of theses) {
-        // Skip theses whose research run isn't tied to an agent config —
-        // tactical-run can't dispatch without an analyst owner.
-        const analystId = thesis.researchRun.agentConfigId;
+      for (const { thesis, analystId, ladder: triggers } of candidates) {
+        // Non-null by the filter above; narrowed for the FiringEvent below.
         if (!analystId) continue;
-
-        const triggers = parseTriggers(thesis.triggers, thesis.id);
-        if (triggers.length === 0) continue;
         const latestQuote = quoteByTicker.get(thesis.ticker) ?? undefined;
 
         const posInfo = openedAtByThesisId.get(thesis.id);
@@ -570,7 +662,7 @@ export const triggerEvaluator = inngest.createFunction(
         if (fires.length === 0) continue;
         await stampLastFiredAt({
           thesisId: thesis.id,
-          firedTriggerIds: fires.map((t) => t.id),
+          ...splitFiresByLevel(fires),
           now,
         });
         for (const t of fires) {
@@ -628,4 +720,5 @@ export const __test__ = {
   parseTriggers,
   evaluateThesisTriggers,
   evaluateTrigger,
+  splitFiresByLevel,
 };

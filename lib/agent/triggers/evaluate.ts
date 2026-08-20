@@ -270,6 +270,19 @@ export function shouldFire(
   const matched = evaluateTrigger(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };
 
+  // NOTE — a trigger is a STANDING ORDER (principal ruling 2026-08-16).
+  // It fires every day its condition holds; an expired or declined
+  // proposal means "did nothing", so it fires again tomorrow. Cooldown is
+  // the only rate limit, deliberately.
+  //
+  // An edge-triggered variant was built here on 2026-08-13 (fire once on
+  // the crossing, re-arm only after price crossed back) to kill PLTR's 27
+  // fires in 14 days. The ruling reverses it: latching turns a declined
+  // standing order into a silent one, which is the failure mode, not the
+  // fix. Noise belongs to cooldown and to the resolution obligation on a
+  // fired rung (a decline must move the level or stop the watch) — never
+  // to suppressing the condition. Don't reintroduce it.
+
   // Read-path defense — see (2) in the docstring above.
   const isInvalidZero =
     trigger.cooldownDays === 0 && trigger.action !== "EXIT";

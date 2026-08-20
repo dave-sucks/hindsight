@@ -25,9 +25,24 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
+import { getAccount } from "@/lib/alpaca";
+import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { applyTriggerCooldownDefaults } from "@/lib/agent/triggers/defaults";
+import {
+  dropRedundantInherited,
+  carryOverDroppedFireState,
+} from "@/lib/agent/triggers/levels";
+import {
+  loadLevelSources,
+  parseTriggerState,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
+import {
+  protectiveRatchetViolations,
+  describeRatchetViolation,
+} from "@/lib/agent/triggers/ratchet";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import {
   writeThesisUpdate,
@@ -377,6 +392,8 @@ type UpdatePatch = Partial<{
   maxHoldDays: number | null;
   nextReviewAt: Date | null;
   triggers: object;
+  /** Fire state for inherited rungs — see the triggers patch block. */
+  triggerState: object;
   scalingPlan: object | null;
   status: string;
   retiredReason: string;
@@ -394,10 +411,11 @@ type UpdatePatch = Partial<{
 export const updateThesis = defineTool({
   description:
     "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief). " +
-    "Three hard-reject conditions to know about: " +
+    "Four hard-reject conditions to know about: " +
     "(1) zero-trigger guard — refuses updates on theses with no triggers unless the update adds triggers OR closes the thesis; " +
     "(2) goalpost-moving guard — refuses to raise targetPrice on a WATCHING thesis whose existing entry condition is currently met (price has crossed the old target — your job is to PROMOTE, not move the bar); " +
-    "(3) structural-belief discipline gate — patches that change confidence_score / target_price / stop_loss WITHOUT also touching core_belief / key_assumptions / invalidation_conditions are rejected unless `structural_unchanged_reason` is supplied. Either update the belief to reflect why the trade plan is moving, or state explicitly why the belief is intact.",
+    "(3) structural-belief discipline gate — patches that change confidence_score / target_price / stop_loss WITHOUT also touching core_belief / key_assumptions / invalidation_conditions are rejected unless `structural_unchanged_reason` is supplied. Either update the belief to reflect why the trade plan is moving, or state explicitly why the belief is intact; " +
+    "(4) protective-level ratchet — on a held stock, protective sell levels only move toward MORE protection. Lowering a stop, widening a trailing give-back, deleting a protective sell trigger, or switching one from automatic to judgment-first is rejected. Only the principal moves a safety line down. If you believe a level is wrong, keep it and say so in your rationale with the number you'd suggest.",
   schema: updateSchema,
   ui: "thesis-card" as const,
 
@@ -458,6 +476,9 @@ export const updateThesis = defineTool({
         maxHoldDays: true,
         nextReviewAt: true,
         triggers: true,
+        // Per-thesis fire state for inherited rungs — read so a rung
+        // dropped as redundant can hand its cooldown stamp over.
+        triggerState: true,
         scalingPlan: true,
       },
     });
@@ -567,7 +588,17 @@ export const updateThesis = defineTool({
           sources: [],
         };
       }
-      if (args.change_status !== "WATCHING") {
+      // ── Resolution requirement — ORCHESTRATORS ONLY ──────────────────────
+      // A THESIS_WRITER reaching this line necessarily has no change_status
+      // (the role gate above already refused any defined value). That is the
+      // legal research-only refresh: content lands on the row, status stays
+      // PROMOTED, and the NEXT orchestrator run resolves it. Before
+      // 2026-08-13 this guard also fired on the writer's status-less call
+      // (undefined !== "WATCHING"), which combined with the role gate to
+      // make EVERY writer refresh on a PROMOTED row structurally impossible
+      // — the CRWD/CEG promotion burn on 2026-08-11. See
+      // docs/plans/AGENT_PERF_COST_FIX.md §1.
+      if (ctx.runMode !== "THESIS_WRITER" && args.change_status !== "WATCHING") {
         const errorMsg = `PROMOTED thesis ${existing.ticker} requires an explicit resolution this run: call place_trade to re-enter live (the trade flips PROMOTED → HOLDING on fill), OR update_thesis(change_status: "WATCHING") to defer. Reasoning-only patches don't count — the thesis stays PROMOTED until you act.`;
         return {
           summary: `PROMOTED thesis needs explicit resolution: ${existing.ticker}`,
@@ -858,14 +889,52 @@ export const updateThesis = defineTool({
     //
     // Exception: status transition to INVALIDATED/CLOSED is the
     // legitimate "give up on this broken thesis" path. Allow that.
+    //
+    // Since the cascade landed, "can this thesis react to anything?" is a
+    // question about the RESOLVED ladder, not the stored column: a thesis
+    // storing zero rungs of its own still inherits its analyst's, its
+    // account's, and the standing code minimums. Counting only the column
+    // would refuse legitimate reviews on exactly the theses that are
+    // protected purely by inherited rungs.
     const isTerminalTransition =
       args.change_status === "INVALIDATED" ||
       args.change_status === "ARCHIVED" ||
       // PASS (seed → PASS) is a terminal flip — clears triggers, sets PASSED.
       args.direction === "PASS";
-    const existingTriggerCount = Array.isArray(existing.triggers)
+
+    // The levels above this thesis, resolved against an EMPTY thesis array
+    // so we see them unmasked by the thesis's own rungs. Used twice: by
+    // the guard just below, and by the wholesale-replace path further down
+    // to keep inherited rungs from being copied onto the row.
+    //
+    // Lazy: update_thesis is the most-called tool in the app and most
+    // calls don't touch triggers at all. Only pay the two level queries
+    // when the answer can actually change something — a trigger replace,
+    // or a stored-count of zero where the guard needs to know whether
+    // inherited rungs are covering the thesis.
+    const storedTriggerCount = Array.isArray(existing.triggers)
       ? (existing.triggers as unknown[]).length
       : 0;
+    const needsLevels = args.triggers !== undefined || storedTriggerCount === 0;
+    let inheritedLadder: Trigger[] = [];
+    if (needsLevels) {
+      const analystId = existing.researchRun?.agentConfigId ?? null;
+      const levelSources = analystId
+        ? (await loadLevelSources([analystId])).get(analystId)
+        : undefined;
+      inheritedLadder = resolveThesisLadder(
+        {
+          triggers: [],
+          triggerState: {},
+          status: existing.status,
+          horizon: args.horizon ?? existing.horizon,
+        },
+        levelSources,
+        `thesis=${args.thesis_id}`,
+      );
+    }
+
+    const existingTriggerCount = storedTriggerCount + inheritedLadder.length;
     const updateAddsTriggers =
       args.triggers !== undefined && args.triggers.length > 0;
     // Unresearched seeds always start with zero triggers — that's expected,
@@ -1114,7 +1183,42 @@ export const updateThesis = defineTool({
         patch.direction = args.direction;
       }
     }
-    if (args.target_size_pct !== undefined)
+    // ── Sub-floor sizing gate (P1-40 companion — same check as record_thesis) ──
+    // A refresh must not lower targetSizePct below the analyst's dollar floor:
+    // the plan becomes self-rejecting at place_trade (RARE's 4% vs $5k floor —
+    // the fired ENTER died unexecuted). Fail-open on equity-fetch failure.
+    if (
+      args.target_size_pct !== undefined &&
+      args.target_size_pct > 0 &&
+      ctx.minPositionSize != null &&
+      ctx.minPositionSize > 0
+    ) {
+      try {
+        const account = await getAccount(ctx.alpacaCreds);
+        const subFloor = subFloorTargetSize({
+          targetSizePct: args.target_size_pct,
+          equity: Number(account?.equity),
+          environment: ctx.runEnvironment ?? "PAPER",
+          minPositionSize: ctx.minPositionSize,
+          maxPositionSize: ctx.maxPositionSize,
+          realMaxPosition: ctx.realMaxPosition,
+        });
+        if (subFloor) {
+          return {
+            summary: `Update rejected for ${existing.ticker}: target_size_pct ${args.target_size_pct}% is below this analyst's position floor.`,
+            data: {
+              ok: false,
+              error: "target_size_below_floor",
+              message:
+                `target_size_pct ${args.target_size_pct}% ≈ $${Math.round(subFloor.intendedDollars).toLocaleString()} at current equity — below this analyst's $${Math.round(subFloor.floorDollars).toLocaleString()} minimum position. place_trade rejects sub-floor entries, so this plan could never fill. ` +
+                `Retry with target_size_pct: ${subFloor.floorPct} or higher if conviction supports a full-floor position; otherwise leave sizing unchanged and reflect the reduced conviction in the tier/rationale instead.`,
+            },
+            sources: [],
+          };
+        }
+      } catch { /* fail-open */ }
+      patch.targetSizePct = args.target_size_pct;
+    } else if (args.target_size_pct !== undefined)
       patch.targetSizePct = args.target_size_pct;
     // Conviction Expression v4 — persist patched conviction fields.
     // Coherence + consistency gates above already ran; values here are
@@ -1204,13 +1308,59 @@ export const updateThesis = defineTool({
           .filter((t) => t.id && t.lastFiredAt)
           .map((t) => [t.id, t.lastFiredAt] as const),
       );
-      const incoming = args.triggers as Trigger[];
+      //   3. Rungs the thesis INHERITS must not be copied onto it. The
+      //      agent now reads the resolved ladder (get_theses), so a
+      //      faithful wholesale-replace resends the analyst / account /
+      //      default rungs too. Storing those would promote them to
+      //      THESIS level and freeze a snapshot of the level above —
+      //      after one review cycle every standing rule would be
+      //      overridden everywhere by a copy of itself. Only a rung whose
+      //      VALUE or fire mode actually differs is kept as an override.
+      //      See dropRedundantInherited in lib/agent/triggers/levels.
+      const incoming = dropRedundantInherited(
+        args.triggers as Trigger[],
+        inheritedLadder,
+      );
+
+      // Dropping a redundant rung must not drop its COOLDOWN. A thesis
+      // that carries a materialized copy of a default (most rows minted
+      // before the cascade do) converges to inheriting it the first time
+      // the agent resends the ladder — and the inherited rung has a
+      // different id, so its `lastFiredAt` would not carry over and a
+      // rung mid-cooldown could immediately re-fire. Same family as the
+      // 2026-06-02 NVDA runaway. Carry the stamp across, into the
+      // per-thesis fire state the inherited rung actually reads.
+      const droppedIds = new Set(
+        (args.triggers as Trigger[])
+          .filter((t) => !incoming.some((k) => k.id === t.id))
+          .map((t) => t.id),
+      );
+      if (droppedIds.size > 0) {
+        patch.triggerState = carryOverDroppedFireState(
+          existingTriggers.filter((t) => droppedIds.has(t.id)),
+          inheritedLadder,
+          parseTriggerState(existing.triggerState),
+        ) as object;
+      }
+
       const preserved = incoming.map((t) => {
         if (t.lastFiredAt != null) return t; // agent provided one — respect it
         const prior = t.id ? lastFiredById.get(t.id) : undefined;
         return prior ? { ...t, lastFiredAt: prior } : t;
       });
-      patch.triggers = applyTriggerCooldownDefaults(preserved) as object;
+      // Agent-authored rungs are stamped AGENT. A rung whose id matches an
+      // existing one keeps whatever source it already had — resending a
+      // rung you didn't author doesn't make it yours.
+      const sourceById = new Map(
+        existingTriggers.filter((t) => t.id).map((t) => [t.id, t.source] as const),
+      );
+      const stamped = preserved.map((t) => {
+        const prior = t.id ? sourceById.get(t.id) : undefined;
+        return prior !== undefined
+          ? { ...t, source: prior }
+          : { ...t, source: "AGENT" as const };
+      });
+      patch.triggers = applyTriggerCooldownDefaults(stamped) as object;
     }
     if (args.scaling_plan !== undefined)
       patch.scalingPlan =
@@ -1333,6 +1483,111 @@ export const updateThesis = defineTool({
         },
         sources: [],
       };
+    }
+
+    // ── Protective-level ratchet gate (DAV-185) ──────────────────────────
+    // The 2026-08-16 standing ruling as code: on a held stock, an analyst
+    // may raise/tighten a protective sell level; it may never lower, widen,
+    // or delete one, or demote it from automatic (DIRECT) to judgment-first.
+    // Prompt-side versions of this rule failed live on 2026-08-18 (MU floor
+    // 948 → 814 while two sell proposals from the 948 breach sat awaiting
+    // approval). The principal's UI paths (thesis sheet, reject dialog —
+    // lib/actions/thesis-edit.ts / level-triggers.ts) don't run this gate;
+    // "thesis is broken, sell" flows don't either (terminal transitions set
+    // patch.status, so effectiveEnterStatus is no longer HOLDING, and the
+    // sell itself is close_position).
+    //
+    // Runs LATE like the ENTER guard: patch.triggers is the final processed
+    // replacement (post dropRedundantInherited), so resending an inherited
+    // rung verbatim stays legal, while deleting a thesis override to let a
+    // weaker inherited value show through is caught.
+    if (effectiveEnterStatus === "HOLDING") {
+      const ratchetProblems: string[] = [];
+      if (patch.triggers !== undefined) {
+        const violations = protectiveRatchetViolations({
+          direction: effectiveEnterDirection,
+          before: Array.isArray(existing.triggers)
+            ? (existing.triggers as unknown as Trigger[])
+            : [],
+          after: (patch.triggers as unknown as Trigger[]) ?? [],
+          inherited: inheritedLadder,
+        });
+        ratchetProblems.push(...violations.map(describeRatchetViolation));
+      }
+      // The stopLoss COLUMN is the same safety line in its scalar form
+      // (P1-42 dual representation) — tactical validation reads it, so a
+      // lowered column misinforms the next protective-fire review even
+      // though the trigger evaluator fires off the rungs.
+      if (patch.stopLoss !== undefined) {
+        const oldStop =
+          existing.stopLoss != null ? Number(existing.stopLoss) : null;
+        const newStop = patch.stopLoss;
+        if (oldStop != null && newStop == null) {
+          ratchetProblems.push(
+            `stop_loss $${oldStop} → cleared — that removes the recorded stop on a stock we own.`,
+          );
+        } else if (oldStop != null && newStop != null) {
+          const isLong = effectiveEnterDirection !== "SHORT";
+          if (isLong ? newStop < oldStop : newStop > oldStop) {
+            ratchetProblems.push(
+              `stop_loss $${oldStop} → $${newStop} — that moves the stop the wrong way on a stock we own.`,
+            );
+          }
+        }
+      }
+      if (ratchetProblems.length > 0) {
+        console.warn(
+          `[update-thesis] thesis=${args.thesis_id} ticker=${existing.ticker} REJECTED — protective-level ratchet: ${ratchetProblems.length} violation(s).`,
+        );
+        return {
+          summary: `Refused update on $${existing.ticker} — protective levels on a held stock only move toward more protection.`,
+          data: {
+            ok: false,
+            error: "protective_level_locked",
+            message:
+              `This update weakens the protection on $${existing.ticker}, a stock we currently own:\n` +
+              ratchetProblems.map((p) => `  • ${p}`).join("\n") +
+              `\n\nProtective levels only move toward MORE protection. Only the principal moves a safety line down, widens it, or removes it — from the thesis sheet or when rejecting a sell proposal. ` +
+              `Resend your update keeping every current protective level (raising/tightening is fine). If you believe a level is wrong, say so in your rationale with the number you'd suggest and why — that reaches the principal with the next proposal.`,
+          },
+          sources: [],
+        };
+      }
+    }
+
+    // ── Review-clock advance on substantive updates (DAV-193) ────────────
+    // The empty-patch path below has bumped nextReviewAt since 2026-05-11 —
+    // but under gpt-5.5 the agent fills narrative fields on nearly every
+    // review, so real reviews take the NON-empty path, which never advanced
+    // the clock. Result: the same thesis re-fires REVIEW_DUE every morning
+    // after being genuinely reviewed (overdue backlog 2 → 9 in a day,
+    // 2026-08-18 run review → DAV-193).
+    //
+    // Rule: a non-terminal update that doesn't set its own review date, on
+    // a thesis whose clock is ALREADY overdue (or unset), restarts the
+    // clock by the horizon cadence. A future-dated nextReviewAt is left
+    // alone — those can be deliberately pinned (pre-catalyst reviews), and
+    // an early touch shouldn't push them. The bump lands through the normal
+    // patch, so fieldChanges records the from → to like any other change.
+    {
+      const isTerminalPatch =
+        patch.status === "RETIRED" || patch.status === "PASSED";
+      const patchIsEmpty = Object.keys(patch).length === 0;
+      if (
+        !patchIsEmpty && // empty patches keep their own bump + REVIEWED return below
+        !isTerminalPatch &&
+        !("nextReviewAt" in patch)
+      ) {
+        const currentNext = (existing as { nextReviewAt: Date | null })
+          .nextReviewAt;
+        if (currentNext == null || currentNext.getTime() <= Date.now()) {
+          const horizon =
+            ((existing as { horizon: string | null }).horizon as Horizon | null) ??
+            "TARGET";
+          const cadenceDays = HORIZON_REVIEW_DAYS[horizon] ?? 7;
+          patch.nextReviewAt = new Date(Date.now() + cadenceDays * 86_400_000);
+        }
+      }
     }
 
     // ── Narrative-only patches collapse to REVIEWED ──────────────────────

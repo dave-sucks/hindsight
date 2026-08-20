@@ -17,8 +17,8 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import { fmp } from "@/lib/market-data/fmp";
 
-const FMP_KEY = process.env.FMP_API_KEY!;
 
 const MOVER_PATHS: Record<"gainers" | "losers" | "active", { path: string; label: string }> = {
   gainers: { path: "/stable/biggest-gainers", label: "Top gainers" },
@@ -70,31 +70,16 @@ export const getMarketMovers = defineTool({
     const scope = args.scope ?? "all";
     const { path, label } = MOVER_PATHS[args.type];
 
-    const url = `https://financialmodelingprep.com${path}?apikey=${FMP_KEY}`;
-    let raw: MoverRow[] = [];
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-      if (!res.ok) {
-        return {
-          summary: `FMP ${label.toLowerCase()} unavailable (HTTP ${res.status}).`,
-          data: {
-            items: [{ kind: "generic" as const, text: `${label} fetch failed (HTTP ${res.status}).` }],
-            type: args.type,
-            scope,
-            count: 0,
-            rows: [] as MoverRow[],
-          },
-          sources: [],
-        };
-      }
-      const json = (await res.json()) as MoverRow[];
-      raw = Array.isArray(json) ? json : [];
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "movers fetch error";
+    // Movers are FMP's one irreplaceable capability — no other vendor we hold
+    // serves them — so an empty list is always unexpected, never "quiet day".
+    // The shared client logs the failure; surface it to the agent too rather
+    // than returning an empty top-list that reads like a calm market.
+    const moversRes = await fmp<MoverRow[]>(path, { expectNonEmpty: true });
+    if (moversRes.error) {
       return {
-        summary: `FMP ${label.toLowerCase()} fetch threw: ${msg}.`,
+        summary: `FMP ${label.toLowerCase()} unavailable — ${moversRes.error}.`,
         data: {
-          items: [{ kind: "generic" as const, text: `${label} unavailable: ${msg}` }],
+          items: [{ kind: "generic" as const, text: `${label} unavailable: ${moversRes.error}` }],
           type: args.type,
           scope,
           count: 0,
@@ -103,6 +88,7 @@ export const getMarketMovers = defineTool({
         sources: [],
       };
     }
+    const raw: MoverRow[] = moversRes.data ?? [];
 
     const pctOf = (m: MoverRow): number => m.percentChange ?? m.changesPercentage ?? 0;
 

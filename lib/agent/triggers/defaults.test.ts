@@ -23,6 +23,7 @@ import {
   standingProtectionTriggers,
   type ThesisShape,
 } from "./defaults";
+import { triggerBucket } from "./bucket";
 import type { Trigger } from "./types";
 
 function base(overrides: Partial<ThesisShape> = {}): ThesisShape {
@@ -403,5 +404,27 @@ describe("defaultTriggersForHorizon — standing protection minimums (Game Plan 
     // The other two buckets are untouched by the agent's rung — defaults fill.
     expect(findGain(merged, "DOWN")).toBeDefined();
     expect(findTrail(merged)).toBeDefined();
+  });
+});
+
+// ── ENTER dedup bucket ────────────────────────────────────────────────
+
+describe("triggerBucket — ENTER on a price level is one bucket", () => {
+  it("treats breakout and dip entry rungs as the same intent", () => {
+    // An ENTER rung on an absolute price is ONE decision — "where I start
+    // this position" — however it's phrased. Without collapsing them, a
+    // thesis could carry two contradictory ENTERs, one of which can never
+    // be right.
+    const shape = { entryPrice: 262, targetPrice: 340, stopLoss: 210, direction: "LONG" as const };
+    const breakout = defaultTriggersForHorizon("COMPOUNDER", shape, "WATCHING").find(
+      (t) => t.action === "ENTER",
+    )!;
+    const dip = {
+      ...breakout,
+      predicate: { kind: "PRICE_BELOW" as const, level: 262 },
+    };
+
+    expect(triggerBucket(breakout)).toBe(triggerBucket(dip));
+    expect(mergeTriggers([dip], [breakout]).filter((t) => t.action === "ENTER")).toHaveLength(1);
   });
 });

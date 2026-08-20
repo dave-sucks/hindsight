@@ -18,6 +18,8 @@ import {
 } from "@/lib/agent/triggers/defaults";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { getAccount } from "@/lib/alpaca";
+import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
@@ -382,6 +384,20 @@ const thesisFields = z.object({
     .optional()
     .describe(
       "DAY-only override. When another analyst already covers this ticker + direction, pass a one-line rationale explaining the day-trade-specific setup (e.g. 'opening-range breakout setup distinct from Tech Momentum's multi-week thesis'). Required to proceed in DAY-only configs; ignored otherwise.",
+    ),
+
+  // ── Recently-sold acknowledgment (P1-35 Half B — the XENE re-buy guard) ──
+  // A mint on a name THIS analyst sold in the last 14 days, priced at or
+  // above the exit price, is the blind re-mint shape: XENE trailed out at
+  // ~$66.53 on 2026-07-16, was re-minted from a blank prompt that night at
+  // entry $67, and re-bought LIVE the next day — the minting writer never
+  // knew the sale happened. The guard surfaces the prior exit and requires
+  // this explicit engagement with it before minting at/above the exit.
+  acknowledge_prior_exit: z
+    .string()
+    .optional()
+    .describe(
+      "Required when re-minting a ticker this analyst SOLD within the last 14 days at an entry_price at or above that exit price. Pass a one-line rationale that engages with the prior exit (e.g. 'sold on the trailing stop at $66.53; re-entering above $70 only on a confirmed reclaim of the 20-day — different setup, not a re-buy of the dip'). The rejection message carries the exit details. Ignored when there is no recent sale.",
     ),
 
   // ── Deep-research artifacts (THESIS_RESEARCH_V2 Phase 1) ───────────────
@@ -882,6 +898,43 @@ export const recordThesis = defineTool({
             sources: [],
           };
         }
+
+        // ── Sub-floor sizing gate (P1-40 companion — the RARE bug) ─────────
+        // A targetSizePct that works out below the analyst's dollar floor is
+        // a self-rejecting plan: Guardrail 5b refuses the entry by the
+        // thesis's own numbers on the one day the ENTER fires (RARE: 4% ≈
+        // $4k vs a $5k floor — the window closed unfilled; IONS/MIRM carried
+        // the same defect). Catch it at authoring, when it costs a retry, not
+        // at the fire, when it costs the entry. Fail-open on equity-fetch
+        // failure — a data outage must not block thesis writing.
+        if (ctx.minPositionSize != null && ctx.minPositionSize > 0) {
+          try {
+            const account = await getAccount(ctx.alpacaCreds);
+            const equity = Number(account?.equity);
+            const subFloor = subFloorTargetSize({
+              targetSizePct: args.target_size_pct,
+              equity,
+              environment: ctx.runEnvironment ?? "PAPER",
+              minPositionSize: ctx.minPositionSize,
+              maxPositionSize: ctx.maxPositionSize,
+              realMaxPosition: ctx.realMaxPosition,
+            });
+            if (subFloor) {
+              return {
+                summary: `Thesis rejected for ${args.ticker}: target_size_pct ${args.target_size_pct}% is below this analyst's position floor.`,
+                data: {
+                  thesis_id: null,
+                  status: "FAILED" as const,
+                  note:
+                    `target_size_pct ${args.target_size_pct}% ≈ $${Math.round(subFloor.intendedDollars).toLocaleString()} at current equity — below this analyst's $${Math.round(subFloor.floorDollars).toLocaleString()} minimum position (place_trade rejects sub-floor entries, so this plan can never fill; that is exactly how RARE's fired ENTER died unexecuted). ` +
+                    `Retry the same record_thesis call with target_size_pct: ${subFloor.floorPct} or higher — IF conviction supports a full-floor position. ` +
+                    `If it doesn't, this name isn't sizeable for this analyst: record it as direction "PASS" instead of minting an untradeable plan.`,
+                },
+                sources: [],
+              };
+            }
+          } catch { /* fail-open: no equity, no gate */ }
+        }
       }
 
       // Compute composite = SUM of the four weighted dimensions (caps:
@@ -1072,7 +1125,7 @@ export const recordThesis = defineTool({
       // theses per run") that GPT-4o doesn't honor — 2026-05-17's run
       // produced 7-8 mints per analyst across 5 analysts (38 new WATCHING
       // theses in one Sunday, against a documented 8/run target). Given
-      // each thesis gets ~60-120s of deep research in V2, 5 is closer to
+      // each thesis gets ~3-4 min of deep research in V2, 5 is closer to
       // a quality bar than 8. Enforce as a Layer-1 reject so the prompt
       // can't override it.
       //
@@ -1164,10 +1217,15 @@ export const recordThesis = defineTool({
         }
         // Without horizon we can't pick a defaults template — agent's
         // raw triggers are all we have. Cooldown backfill still runs.
+        // source=AGENT on everything the model supplied. Server-owned —
+        // any value the model fabricated is overwritten. The template
+        // rungs merged in below already carry source=DEFAULT.
+        const supplied = ((args.triggers ?? []) as Trigger[]).map((t) => ({
+          ...t,
+          source: "AGENT" as const,
+        }));
         if (!args.horizon) {
-          return applyTriggerCooldownDefaults(
-            (args.triggers ?? []) as Trigger[],
-          );
+          return applyTriggerCooldownDefaults(supplied);
         }
         const defaults = defaultTriggersForHorizon(
           args.horizon as Horizon,
@@ -1181,10 +1239,7 @@ export const recordThesis = defineTool({
           },
           effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
         );
-        const merged = mergeTriggers(
-          defaults,
-          (args.triggers ?? []) as Trigger[],
-        );
+        const merged = mergeTriggers(defaults, supplied);
         return applyTriggerCooldownDefaults(merged);
       })();
 
@@ -1433,6 +1488,112 @@ export const recordThesis = defineTool({
             resolvedParentId = existingThesis.id;
           }
         } catch { /* non-fatal */ }
+      }
+
+      // ── Recently-sold guard (P1-35 Half B — SOLD_NAME_CONTINUITY.md §2) ──
+      // The live-thesis guard above is blind to terminal rows, so a name this
+      // analyst JUST sold can be re-minted from a blank prompt with zero
+      // connection to its own history (XENE: trailed out ~$66.53 on 07-16,
+      // re-minted at entry $67 that night, re-bought LIVE the next day —
+      // parentThesisId null, the writer never called get_theses). Four fixes
+      // in one block, all non-fatal on lookup failure:
+      //   1. AUTO-CHAIN — the fresh mint gets parentThesisId = the sold row
+      //      (when the agent didn't chain one), so history stays walkable.
+      //   2. SURFACE — the prior exit (when, why, at what price) rides into
+      //      the tool result so the minting agent underwrites with the sale
+      //      in view, not from amnesia.
+      //   3. GATE — an entry at/above the exit price within 14 days of the
+      //      sale is the buy-back-the-dip-you-just-sold shape; it requires an
+      //      explicit `acknowledge_prior_exit` rationale that engages with
+      //      the exit. Below the exit price, or past the window: no gate,
+      //      just chain + context.
+      //   4. Half A interplay: a belief-intact protective exit now recycles
+      //      to WATCHING and is caught by the live-thesis guard above — so a
+      //      RETIRED(SOLD) row landing here means the belief was judged
+      //      broken (or the close carried no attestation). The context note
+      //      says so: re-underwriting a belief an agent just declared broken
+      //      deserves the extra sentence.
+      // PASS mints skip the gate (no trade intent — institutional memory is
+      // exactly what we want recorded) but still auto-chain.
+      let priorExit: {
+        thesis_id: string;
+        closed_at: string;
+        close_reason: string | null;
+        exit_price: number | null;
+        days_ago: number;
+        close_summary: string | null;
+      } | null = null;
+      if (ctx.analystId) {
+        try {
+          const RECENTLY_SOLD_WINDOW_DAYS = 14;
+          const soldSibling = await prisma.thesis.findFirst({
+            where: {
+              ticker: args.ticker,
+              status: "RETIRED",
+              retiredReason: "SOLD",
+              closedAt: {
+                gte: new Date(Date.now() - RECENTLY_SOLD_WINDOW_DAYS * 86_400_000),
+              },
+              researchRun: { agentConfigId: ctx.analystId },
+            },
+            orderBy: { closedAt: "desc" },
+            select: { id: true, closedAt: true, closeReason: true },
+          });
+          if (soldSibling?.closedAt) {
+            const closedRow = await prisma.thesisUpdate.findFirst({
+              where: { thesisId: soldSibling.id, type: "CLOSED" },
+              orderBy: { timestamp: "desc" },
+              select: { priceAtTime: true, summary: true },
+            });
+            const exitPrice =
+              closedRow?.priceAtTime != null && Number.isFinite(Number(closedRow.priceAtTime))
+                ? Number(closedRow.priceAtTime)
+                : null;
+            priorExit = {
+              thesis_id: soldSibling.id,
+              closed_at: soldSibling.closedAt.toISOString(),
+              close_reason: soldSibling.closeReason ?? null,
+              exit_price: exitPrice,
+              days_ago: Math.floor(
+                (Date.now() - soldSibling.closedAt.getTime()) / 86_400_000,
+              ),
+              close_summary: closedRow?.summary ?? null,
+            };
+            if (!resolvedParentId) resolvedParentId = soldSibling.id;
+
+            const ackMissing =
+              !(args.acknowledge_prior_exit && args.acknowledge_prior_exit.trim().length > 0);
+            if (
+              args.direction !== "PASS" &&
+              exitPrice != null &&
+              args.entry_price != null &&
+              args.entry_price >= exitPrice &&
+              ackMissing
+            ) {
+              const exitLine =
+                `${args.ticker} was SOLD by this analyst ${priorExit.days_ago}d ago ` +
+                `(${soldSibling.closedAt.toISOString().slice(0, 10)}, reason ${soldSibling.closeReason ?? "unknown"}, ` +
+                `exit ~$${exitPrice.toFixed(2)})` +
+                (closedRow?.summary ? ` — "${closedRow.summary.slice(0, 140)}"` : "");
+              return {
+                summary: `Acknowledge the recent exit on ${args.ticker} before re-minting at/above the exit price.`,
+                data: {
+                  thesis_id: null,
+                  status: "ACKNOWLEDGE_PRIOR_EXIT" as const,
+                  ticker: args.ticker,
+                  prior_exit: priorExit,
+                  note:
+                    `NOT a failure — a guard, not a verdict. ${exitLine}. ` +
+                    `Your proposed entry ($${args.entry_price?.toFixed(2)}) is at or above that exit — the classic "re-buy the dip you just sold" shape (this is how XENE was sold at $66.53 and re-bought at $68.84 twenty hours later). ` +
+                    `A RETIRED row here means the exit was NOT judged a belief-intact price stop (those recycle to WATCHING) — the belief was judged broken, or nobody attested. ` +
+                    `If this mint is genuinely a NEW setup, retry the same record_thesis call with acknowledge_prior_exit: "<one line engaging with the exit — what is different now, and why this entry level rather than a confirmed reclaim>". ` +
+                    `Otherwise set the entry as a reclaim level below/at structure, or skip the mint.`,
+                },
+                sources: [],
+              };
+            }
+          }
+        } catch { /* non-fatal — the mint proceeds without the context */ }
       }
 
       // ── Cross-analyst overlap guard (DAY-only) ──────────────────────────
@@ -1795,6 +1956,11 @@ export const recordThesis = defineTool({
           thesis_id: thesis.id,
           status: effectiveStatus,
           ...(provenanceNudge ? { provenance_nudge: provenanceNudge } : {}),
+          // P1-35 Half B: when this ticker was sold by this analyst in the
+          // last 14 days, the exit context rides along (and the new row was
+          // auto-chained to the sold thesis) so the agent's narration and any
+          // follow-up sizing happen with the sale in view — never blind.
+          ...(priorExit ? { prior_exit: priorExit } : {}),
         },
         sources: [],
       };

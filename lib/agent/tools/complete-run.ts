@@ -15,7 +15,10 @@ import { computeNeedsAction } from "@/lib/agent/needs-action";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 import {
   detectNarrationHits,
   findGaps,
@@ -228,17 +231,32 @@ export const completeRun = defineTool({
               researchRun: { agentConfigId: ctx.analystId },
               status: "HOLDING",
             },
-            select: { ticker: true, triggers: true },
+            select: {
+              ticker: true,
+              triggers: true,
+              // Cascade inputs — this gate must judge the RESOLVED ladder.
+              // Reading the stored column alone reports a holding whose
+              // floor is inherited as having "no floor, no trail", so the
+              // warn-gate would nag every run about a ladder that is
+              // already correct — and the agent would "fix" it by
+              // materializing a duplicate.
+              triggerState: true,
+              horizon: true,
+              status: true,
+            },
           });
+          const levelSources = ctx.analystId
+            ? (await loadLevelSources([ctx.analystId])).get(ctx.analystId)
+            : undefined;
           for (const h of holdings) {
-            const parsed = triggersArraySchema.safeParse(h.triggers);
-            if (!parsed.success || parsed.data.length === 0) {
+            const ladder = resolveThesisLadder(h, levelSources, `ticker=${h.ticker}`);
+            if (ladder.length === 0) {
               ladderWarnings.push(
-                `$${h.ticker}: HOLDING with ${parsed.success ? "zero triggers" : "an unparseable trigger array"} — no ladder at all`,
+                `$${h.ticker}: HOLDING with zero triggers — no ladder at all`,
               );
               continue;
             }
-            const hasProtectiveExit = parsed.data.some(
+            const hasProtectiveExit = ladder.some(
               (t) =>
                 t.action === "EXIT" &&
                 ["PRICE_BELOW", "PRICE_ABOVE", "TRAILING_FROM_HIGH", "GAIN_FROM_ENTRY"].includes(
@@ -519,17 +537,40 @@ async function runCompleteRunPreflight(
   })) as ThesisRow[];
   if (theses.length === 0) return null;
 
+  // Two bars, because they are not the same obligation.
+  //
+  //   addressed   — ANY audit row this run except TRIGGER_FIRED. A
+  //                 rationale-only REVIEW counts. Right for "did you look
+  //                 at this holding": looking IS the work.
+  //   substantive — the same, minus REVIEWED. Something actually changed:
+  //                 a patch (UPDATED), a status move, a trade.
+  //
+  // P1-40 (the RARE gap): a fired ENTER used to be satisfied by the weak
+  // bar. The agent validated every condition, wrote "validated, not
+  // entering," and the gate went green. RARE never slipped past a gate —
+  // it SATISFIED one, and the only shot at that entry closed. An ENTER is
+  // the one action whose whole point is ending in a purchase, so writing
+  // about it is not resolving it: buy it, move the bar, or stop watching.
+  const runUpdates = await prisma.thesisUpdate.findMany({
+    where: {
+      runId,
+      thesisId: { in: theses.map((t: ThesisRow) => t.id) },
+      NOT: { type: "TRIGGER_FIRED" },
+    },
+    select: { thesisId: true, type: true },
+  });
   const addressedThesisIds = new Set<string>(
-    (
-      await prisma.thesisUpdate.findMany({
-        where: {
-          runId,
-          thesisId: { in: theses.map((t: ThesisRow) => t.id) },
-          NOT: { type: "TRIGGER_FIRED" },
-        },
-        select: { thesisId: true },
-      })
-    ).map((u: { thesisId: string }) => u.thesisId),
+    runUpdates.map((u: { thesisId: string }) => u.thesisId),
+  );
+  // REVIEWED is what update_thesis writes for a rationale-only or
+  // narrative-only call (see its `isNarrativeOnly` branch). Keying off the
+  // TYPE rather than `fieldChanges` is deliberate: the diff builder is
+  // known to drop changes (GAPS — target/stop/trigger edits landing with
+  // an empty diff), so a fieldChanges-based test would refuse real work.
+  const substantivelyAddressedThesisIds = new Set<string>(
+    runUpdates
+      .filter((u: { type: string }) => u.type !== "REVIEWED")
+      .map((u: { thesisId: string }) => u.thesisId),
   );
 
   const tickerSet = new Set<string>(theses.map((t: ThesisRow) => t.ticker));
@@ -592,7 +633,8 @@ async function runCompleteRunPreflight(
     detail: string;
   }> = [];
   for (const t of theses) {
-    if (addressedThesisIds.has(t.id)) continue;
+    // needsAction is computed BEFORE the addressed check now: which bar
+    // applies depends on what kind of obligation this is.
     const needsAction = computeNeedsAction({
       thesis: {
         id: t.id,
@@ -623,6 +665,18 @@ async function runCompleteRunPreflight(
       hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
     });
     if (needsAction == null) continue;
+
+    // An ENTER obligation — fired or matching-now — needs the strong bar.
+    // Everything else keeps the historic behavior.
+    const isEnterObligation =
+      (needsAction.kind === "TRIGGER_FIRED" ||
+        needsAction.kind === "TRIGGER_MATCHING_NOW") &&
+      needsAction.action === "ENTER";
+    const resolved = isEnterObligation
+      ? substantivelyAddressedThesisIds.has(t.id)
+      : addressedThesisIds.has(t.id);
+    if (resolved) continue;
+
     let detail: string;
     if (needsAction.kind === "PROMOTED_AWAITING_RESOLUTION") {
       const ctxBits: string[] = [];
@@ -700,6 +754,7 @@ async function runCompleteRunPreflight(
       `${totalCount > 1 ? "them" : "it"} in this run. ` +
       `For PROMOTED rows: call place_trade to re-enter live, or update_thesis(change_status: "WATCHING") to defer. ` +
       `For HOLDING/WATCHING rows: call update_thesis with the action result (or change_status="INVALIDATED" if no longer applicable, or rationale-only REVIEW). ` +
+      `For a fired ENTER: a rationale-only REVIEW does NOT resolve it — either place_trade, or change the entry level via update_thesis(triggers/entry_price), or change_status="ARCHIVED" to stop watching. Declining without moving the bar means the same alert fires again tomorrow. ` +
       `Then call complete_run again. Unaddressed: ${summary}`,
   };
 }
@@ -819,3 +874,7 @@ async function checkNarrationExecutionGap(
     return null;
   }
 }
+
+// Re-export for tests that exercise the preflight directly without
+// standing up a full run.
+export const __test__ = { runCompleteRunPreflight };

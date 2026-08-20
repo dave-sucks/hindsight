@@ -25,6 +25,10 @@ import {
   type ResearchAge,
 } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
+import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -682,16 +686,34 @@ export async function buildRunInput(
         timestamp: true,
         summary: true,
         rationale: true,
-        thesis: { select: { ticker: true, triggers: true } },
+        thesis: {
+          select: {
+            ticker: true,
+            triggers: true,
+            // Cascade inputs — a fire from an INHERITED rung has no entry
+            // in `triggers`, so without resolving, every analyst /
+            // account / default fire would degrade to the generic
+            // "a trigger fired" label and the daily run would not know
+            // which rung it was answering.
+            triggerState: true,
+            horizon: true,
+            status: true,
+          },
+        },
       },
     });
 
+    const fireLevelSources = (await loadLevelSources([analystId])).get(analystId);
+
     triggersFiredSinceLastRun = fires.map((f) => {
-      // Pull the trigger's predicate description out of the stored JSON.
-      // Falls back to a generic label if the trigger has been deleted.
-      const triggers = Array.isArray(f.thesis.triggers)
-        ? (f.thesis.triggers as unknown[])
-        : [];
+      // Pull the trigger's predicate description out of the RESOLVED
+      // ladder. Falls back to a generic label if the trigger has been
+      // deleted at whatever level owned it.
+      const triggers = resolveThesisLadder(
+        f.thesis,
+        fireLevelSources,
+        `ticker=${f.thesis.ticker}`,
+      ) as unknown[];
       const t = triggers.find(
         (x): x is { id: string; action: string; predicate: { kind: string } } =>
           typeof x === "object" &&

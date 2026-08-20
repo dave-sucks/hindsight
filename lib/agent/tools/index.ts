@@ -17,7 +17,6 @@ import { getStockData } from "./get-stock-data";
 import { getEarningsData } from "./get-earnings-data";
 import { getEarningsCalendar } from "./get-earnings-calendar";
 import { getMarketMovers } from "./get-market-movers";
-import { getOptionsFlow } from "./get-options-flow";
 import { getSecFilings } from "./get-sec-filings";
 // THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
 // See docs/plans/THESIS_RESEARCH_V2.md §3.
@@ -120,6 +119,12 @@ interface ToolCtx {
    * cooldown exemption.
    */
   protectiveExitReason?: "STOP" | "TARGET";
+  /**
+   * Human phrase for that protective trigger — see
+   * ToolContext.protectiveExitTriggerLabel. Named in the sale-label
+   * auto-correction audit note.
+   */
+  protectiveExitTriggerLabel?: string;
 }
 
 export function createResearchTools(ctx: ToolCtx) {
@@ -148,7 +153,6 @@ export function createResearchTools(ctx: ToolCtx) {
     get_earnings_data: getEarningsData(newCtx),
     get_earnings_calendar: getEarningsCalendar(newCtx),
     get_market_movers: getMarketMovers(newCtx),
-    get_options_flow: getOptionsFlow(newCtx),
     get_sec_filings: getSecFilings(newCtx),
     // THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
     get_financials_deep: getFinancialsDeep(newCtx),
@@ -215,7 +219,6 @@ export { getStockData } from "./get-stock-data";
 export { getEarningsData } from "./get-earnings-data";
 export { getEarningsCalendar } from "./get-earnings-calendar";
 export { getMarketMovers } from "./get-market-movers";
-export { getOptionsFlow } from "./get-options-flow";
 export { getSecFilings } from "./get-sec-filings";
 // THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
 export { getFinancialsDeep } from "./get-financials-deep";

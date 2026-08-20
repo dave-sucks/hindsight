@@ -22,9 +22,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { getAccountId } from "@/lib/auth/account";
-import type { Trigger } from "@/lib/agent/triggers/types";
+import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 
 export async function GET(
   _req: Request,
@@ -64,6 +66,9 @@ export async function GET(
       maxHoldDays: true,
       nextReviewAt: true,
       triggers: true,
+      // Fire bookkeeping for INHERITED rungs — resolveThesisLadder overlays
+      // it so the sheet's "Fired …" line reads the same field at every level.
+      triggerState: true,
       // Structural belief fields (load-bearing — trade-evaluator reads these
       // on close; tactical agent reads them on trigger fire). Surfaced to the
       // sheet so the user can see what the agent actually committed to.
@@ -109,8 +114,22 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const parsed = triggersArraySchema.safeParse(thesis.triggers);
-  const triggers = (parsed.success ? parsed.data : []) as Trigger[];
+  // The ladder actually in force: this thesis's own rungs plus everything
+  // it inherits from its analyst, the account, and the code defaults —
+  // one rung per bucket, most-specific level wins. Each carries `level` +
+  // `inherited` so the sheet can render inherited rungs dotted and
+  // read-only. Same resolver the 5-minute evaluator uses, so what the
+  // sheet draws is what actually fires. See lib/agent/triggers/levels.
+  const levelSources = await loadLevelSources(
+    thesis.researchRun?.agentConfigId ? [thesis.researchRun.agentConfigId] : [],
+  );
+  const triggers = resolveThesisLadder(
+    thesis,
+    thesis.researchRun?.agentConfigId
+      ? levelSources.get(thesis.researchRun.agentConfigId)
+      : undefined,
+    `thesis=${thesis.id}`,
+  );
 
   // Position lookup — the open/pending or (for a retired thesis) closed
   // Position scoped to this analyst on this ticker. Durable metadata only;
@@ -258,6 +277,9 @@ export async function GET(
     maxHoldDays: thesis.maxHoldDays,
     nextReviewAt: thesis.nextReviewAt,
     triggers,
+    // Owning analyst — the trigger section deep-links an ANALYST-level rung
+    // back to the analyst that owns it ("edit it where it lives").
+    analystId: thesis.researchRun?.agentConfigId ?? null,
     position,
     analystName: thesis.researchRun?.agentConfig?.name ?? null,
     coreBelief: thesis.coreBelief,

@@ -16,6 +16,11 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
 import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
+import { stopMoveWeakensProtection } from "@/lib/agent/triggers/ratchet";
+import {
+  enforceCloseReason,
+  withCloseAuditNote,
+} from "@/lib/agent/triggers/enforce-close-reason";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { getAccount, getOrder, getLatestPrice, closePositionPartial, placeMarketOrder } from "@/lib/alpaca";
@@ -130,7 +135,7 @@ const schema = z.object({
 
   // update_targets
   new_target_price: z.number().positive().optional().describe("New target price"),
-  new_stop_loss: z.number().positive().optional().describe("New stop loss price"),
+  new_stop_loss: z.number().positive().optional().describe("New stop loss price. On a held stock the stop only moves toward MORE protection (up for LONG, down for SHORT) — a loosening move is rejected; only the principal moves a safety line the other way."),
 
   // full_close reason code
   close_reason: z
@@ -209,10 +214,28 @@ export const managePosition = defineTool({
       switch (args.action) {
         // ── FULL CLOSE ──────────────────────────────────────────────────────
         case "full_close": {
-          const closeReasonCode =
-            (args.close_reason === "TARGET" || args.close_reason === "STOP" || args.close_reason === "MANUAL")
-              ? args.close_reason
-              : "MANUAL";
+          // ── Sale-label enforcement (DAV-192) ────────────────────────────
+          // full_close is a real sale, identical in effect to close_position,
+          // so it inherits the same rule: when this tactical run was woken by
+          // a protective/price EXIT trigger, the stored label is that
+          // trigger's STOP/TARGET tag rather than the model's `close_reason`.
+          // Without this, a protective fire closed through THIS tool landed as
+          // MANUAL and went invisible to every rule that keys off the label —
+          // the exact dodge DAV-192 closes, and a hole the model could walk
+          // through just by preferring one close tool over the other.
+          // Auto-correct, never refuse; the note lands in the audit trail.
+          const enforced = enforceCloseReason({
+            declared: args.close_reason ?? "MANUAL",
+            protective: ctx.protectiveExitReason,
+            triggerLabel: ctx.protectiveExitTriggerLabel,
+          });
+          const closeReasonCode = enforced.stored;
+          const closeAuditReason = withCloseAuditNote(args.reason, enforced);
+          if (enforced.corrected) {
+            console.info(
+              `[tool] manage_position full_close sale-label auto-corrected for ${ticker}: ${enforced.declared} → ${enforced.stored}`,
+            );
+          }
 
           const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
           const outcome = await closeOpenPosition(
@@ -220,8 +243,14 @@ export const managePosition = defineTool({
             closeReasonCode,
             creds,
             "agent",
-            args.reason,
+            closeAuditReason,
             ctx.runId,
+            // manage_position collects no belief attestation, so this is
+            // undefined on an ordinary close (→ terminal RETIRED, unchanged).
+            // A declared THESIS_INVALIDATED forces `false` so the corrected
+            // STOP label can never route a structurally-broken name back to
+            // the watchlist.
+            enforced.beliefSurvived,
           );
 
           // Trade-as-Proposal — when the Account requires approval for sells in this environment,
@@ -236,7 +265,7 @@ export const managePosition = defineTool({
                 success: true, ticker, action: args.action, status: "PROPOSED" as const,
                 direction: position.direction,
                 entryPrice: position.avgCost,
-                message: `Proposed close of ${position.direction} ${position.quantity} shares of ${ticker} (${args.close_reason ?? "MANUAL"}). Awaiting your approval (expires in 24h).`,
+                message: `Proposed close of ${position.direction} ${position.quantity} shares of ${ticker} (${closeReasonCode}). Awaiting your approval (expires in 24h).`,
                 tickers: [],
                 items: [
                   {
@@ -311,8 +340,12 @@ export const managePosition = defineTool({
                   close_price: result.closePrice,
                   realized_pnl: result.realizedPnl,
                   outcome: result.outcome,
-                  reason: args.close_reason ?? "MANUAL",
-                  audit_reason: args.reason,
+                  reason: closeReasonCode,
+                  // DAV-192: the agent's own label kept alongside the stored
+                  // one so a corrected sale is legible in the run feed.
+                  declared_reason: enforced.declared,
+                  label_auto_corrected: enforced.corrected,
+                  audit_reason: closeAuditReason,
                 } as object,
               },
             });
@@ -958,6 +991,40 @@ export const managePosition = defineTool({
             };
           }
 
+          // ── Protective-level ratchet (DAV-201, extends DAV-185) ─────────
+          // The stop number on a stock we own only moves toward MORE
+          // protection; lowering it is the principal's manual act. Today
+          // nothing sells off this column (the trigger ladder is what
+          // fires), but the Levels work makes these numbers real — the gate
+          // must exist before that lands, or the MU 2026-08-18 violation
+          // returns through this tool instead of update_thesis. Targets are
+          // not gated (taking profit earlier is not a safety change).
+          if (
+            args.new_stop_loss != null &&
+            stopMoveWeakensProtection({
+              direction: position.direction,
+              oldStop: position.stopLoss != null ? Number(position.stopLoss) : null,
+              newStop: args.new_stop_loss,
+            })
+          ) {
+            const oldStopFmt = Number(position.stopLoss).toFixed(2);
+            console.warn(
+              `[tool] manage_position update_targets REJECTED for ${ticker} — stop ${oldStopFmt} → ${args.new_stop_loss} moves the wrong way (protective-level ratchet).`,
+            );
+            return {
+              summary: `Refused stop change on ${ticker} — protective levels only move toward more protection.`,
+              data: {
+                success: false, ticker, action: args.action, status: "FAILED" as const,
+                message:
+                  `Stop $${oldStopFmt} → $${args.new_stop_loss.toFixed(2)} moves the stop the wrong way on a stock we own. ` +
+                  `Protective levels only move toward MORE protection; only the principal moves a safety line down (thesis sheet or reject dialog). ` +
+                  `Keep the current stop — raising/tightening is fine. If you believe the level is wrong, say so in your rationale with the number you'd suggest.`,
+                tickers: [{ ticker, tag: "Refused", summary: `Stop lowering blocked ($${oldStopFmt} stands)`, actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
+
           const updateData: Record<string, number> = {};
           if (args.new_target_price) updateData.targetPrice = args.new_target_price;
           if (args.new_stop_loss) updateData.stopLoss = args.new_stop_loss;
@@ -1026,6 +1093,35 @@ export const managePosition = defineTool({
         case "move_stop_to_breakeven": {
           const prevStop = position.stopLoss;
           const newStop = position.avgCost;
+
+          // Same ratchet as update_targets (DAV-201): "to breakeven" is a
+          // tightening move only when the stop sits BELOW breakeven. If the
+          // stop is already at or above avg cost, moving it back down to
+          // breakeven loosens live protection — refuse, don't quietly lower.
+          if (
+            stopMoveWeakensProtection({
+              direction: position.direction,
+              oldStop: prevStop != null ? Number(prevStop) : null,
+              newStop: Number(newStop),
+            })
+          ) {
+            const prevFmt = Number(prevStop).toFixed(2);
+            console.warn(
+              `[tool] manage_position move_stop_to_breakeven REJECTED for ${ticker} — stop ${prevFmt} already tighter than breakeven ${Number(newStop).toFixed(2)}.`,
+            );
+            return {
+              summary: `Refused breakeven move on ${ticker} — the stop is already tighter than breakeven.`,
+              data: {
+                success: false, ticker, action: args.action, status: "FAILED" as const,
+                message:
+                  `The stop is already $${prevFmt}, tighter than breakeven ($${Number(newStop).toFixed(2)}). ` +
+                  `Moving it to breakeven would loosen protection on a stock we own, and protective levels only move toward MORE protection. ` +
+                  `The current stop stands; nothing to do.`,
+                tickers: [{ ticker, tag: "Refused", summary: `Stop $${prevFmt} already tighter than breakeven`, actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
 
           await prisma.$transaction(async (tx) => {
             await tx.position.update({

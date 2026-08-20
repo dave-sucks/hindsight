@@ -166,6 +166,26 @@ Set per-trigger (`fireMode`, default `TACTICAL`):
   gain-lock give-backs tag STOP — so the P1-28 unapproved-exit cooldown exempts
   them and a rejected protective exit re-fires when price re-crosses (#490).
 
+**A sale from a protective fire always carries the STOP/TARGET label** (DAV-192).
+Both close tools — `close_position` and `manage_position(full_close)` — run the
+model's chosen `reason` through `enforceCloseReason`
+(`lib/agent/triggers/enforce-close-reason.ts`). When the run was woken by a
+protective/price EXIT trigger, the stored `Position.closeReason` /
+`Order.closeReason` is that trigger's STOP/TARGET tag, whatever the model
+called it. The sale is **auto-corrected, never refused** — a mismatch writes a
+plain-English note onto the close's rationale (so it shows on the approval card
+and in the run feed) naming what the agent originally declared. This matters
+because the label is what several rules read: the held-through-floor context in
+`get_theses` counts only `closeReason=STOP` declines, and `shouldRecycleToWatching`
+reads it to decide whether a sold name stays on the re-entry radar. In July,
+protective closes tagged `MANUAL` went invisible to both.
+
+`THESIS_INVALIDATED` stays honest on its own axis rather than competing for the
+label: the stored reason becomes STOP/TARGET, and the invalidation is preserved
+in the audit note **and** by forcing `belief_survived = false` — keyed off what
+the agent *declared*, so a corrected label can never route a structurally-broken
+name back to the watchlist.
+
 **Both modes still go through the approval gate.** `closeOpenPosition` (and the
 agent's `close_position`/`place_trade`) call `maybeAwaitApproval` **before** any
 Alpaca submit. With require-approval-sells ON, a DIRECT exit **proposes** the
@@ -263,6 +283,7 @@ loses the "who set this rung" distinction, so re-authoring is the only record.
 ## Key files
 
 - `lib/agent/triggers/types.ts` — predicate union (incl. `GAIN_FROM_ENTRY` + `TRAILING_FROM_HIGH`) + `Trigger` type + `isDirectEligiblePredicate` / `DIRECT_ELIGIBLE_PREDICATE_KINDS` + `protectiveExitCloseReason`
+- `lib/agent/triggers/enforce-close-reason.ts` — the sale-label rule: a close from a protective fire stores STOP/TARGET, auto-corrected with an audit note (DAV-192)
 - `lib/agent/triggers/schema.ts` — the one Zod gate
 - `lib/agent/triggers/evaluate.ts` — pure evaluator (incl. the 1D daily-move path + the HOLDING-only gain/trail paths)
 - `lib/agent/triggers/defaults.ts` — horizon templates + `standingProtectionTriggers()` (the +10%/8%/−12% minimums) + `scaleInOn*` (±7% rungs) + cooldown defaults

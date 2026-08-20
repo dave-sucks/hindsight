@@ -126,13 +126,19 @@ is mechanical (peak tracked, predicate evaluated with no agent), and DIRECT
    uniform and self-documenting; keep UNPROTECTED_GAIN a linter.
 4. **Timing as a real per-trigger field** (now vs batched) instead of
    hard-wired by action.
-5. **The cascade (PR-E / P1-31/32):** account standing rules → analyst
-   overrides → template → agent-authored → principal. Most-specific wins;
-   `mergeTriggers` already implements the bottom of this — the cascade adds
-   two levels above it, not a rebuild. Defaults stay **visible and
-   overridable** (labeled via provenance), not hard-locked — "the analyst
-   manages with nuance" is the product's soul; a fully-locked rules engine
-   is not the goal.
+5. ~~**The cascade (PR-E / P1-31/32)**~~ — **built 2026-08-13.**
+   `resolveLadder` (`lib/agent/triggers/levels`) resolves thesis → analyst
+   → account → code default, most-specific wins per bucket. A rung's level
+   is *which record it is stored on*, not a field, so it cannot drift.
+   Editable at `/settings/triggers` (account) and the analyst config's
+   Triggers tab; both render the SAME pills as the thesis sheet, with
+   anything inherited drawn dashed and read-only where it isn't owned.
+   Defaults stayed **visible and overridable** rather than hard-locked, as
+   intended — they're now readable on the account page instead of only in
+   code. Load-bearing detail: the resolver feeds the trigger evaluator,
+   tactical-run, `get_theses`, live-evaluate and the `complete_run`
+   warn-gate, not just the UI. A level that doesn't reach the evaluator is
+   a lie told in CSS.
 
 ## 6. Productization sequence (visibility → control)
 
@@ -141,5 +147,5 @@ is mechanical (peak tracked, predicate evaluated with no agent), and DIRECT
    explains itself at the point of use. *(Next build.)*
 3. **Thesis-sheet origin labels** — "front and center on the thesis: this
    reviews at +10% BECAUSE it's a default."
-4. **PR-E** — the cascade goes editable (account/analyst standing rules).
+4. ~~**PR-E**~~ — ✅ the cascade is editable (account/analyst standing rules).
 5. **PR8** — the activity feed shows fires → decisions → outcomes.

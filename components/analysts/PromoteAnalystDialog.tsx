@@ -171,7 +171,7 @@ export function PromoteAnalystDialog({
                 <p className="text-xs text-muted-foreground">
                   A thesis-writer sub-agent is rewriting each thesis with the
                   promotion framing (re-enter / downgrade / invalidate). Each
-                  takes ~60–120s. Click to watch the stream.
+                  takes ~3–4 minutes. Click to watch the stream.
                 </p>
                 <div className="rounded-md border divide-y text-xs">
                   {postPromote.dispatchedRewrites.map((d) => (

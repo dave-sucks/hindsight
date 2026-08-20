@@ -59,6 +59,32 @@ For the chosen analyst, output a single ready-to-use block the operator can work
    it does not make the promotion call. The seat stays paper until it strings together a
    positive stretch.
 
+## After the operator fires the prompts — RAW CAPTURE (do this every session)
+
+The raw scout output is the only evidence that says whether a **prompt** worked, as opposed
+to whether a **dispatch** worked. Without it, a thin session is indistinguishable from an
+empty market. Capture it.
+
+When the operator pastes back Grok / Perplexity output:
+
+1. **File it verbatim** to `docs/discovery/raw/<YYYY-MM-DD>-<ANALYST>-<source>.md`. Pair
+   **each prompt with the output it produced** — that pairing is the whole point. Keep the
+   turns that returned *nothing*; empties are the most diagnostic rows you have.
+2. **Add a row to [`docs/discovery/FUNNEL.md`](../discovery/FUNNEL.md)** — names returned,
+   passed gates, dispatched. (`entered` / `resolved` are filled later by
+   `/review-discovery`.)
+3. **Diagnose the leak** using the stage→layer table in `FUNNEL.md`: few names returned =
+   prompt design; many returned but none pass = sourcing quality; dispatched-but-not-entered
+   = slots/entry timing; entered-but-losing = triage scoring. Say which one it is.
+4. **Write the lesson down** — a prompt-design failure goes to the *Query design rules* in
+   [`DISCOVERY_PLAYBOOK.md`](../DISCOVERY_PLAYBOOK.md); a sourcing/handle lesson goes to
+   [`scout-roster.md`](../discovery/scout-roster.md); an analyst-behavior lesson goes to the
+   per-analyst *Notes & Learnings*.
+5. **Reissue the fixed prompts** in the same session so the operator can re-fire immediately.
+
+Also file the prep block itself to `docs/discovery-prep/<YYYY-MM-DD>-<ANALYST>.md` — the
+prompts must be on record for step 1's pairing to mean anything.
+
 ## Source-of-truth + scope
 
 - Read-only DB. The skip-list query is `Thesis` WATCHING/HOLDING/PROMOTED for the analyst

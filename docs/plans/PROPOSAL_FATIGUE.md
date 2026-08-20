@@ -8,9 +8,14 @@
 > gate** — which changes the fix. Companion to GAPS **P1-39**. Subsumes the ex-P2
 > "hold + retune affordance" and "narrow the P1-28 carve-out" items.
 >
-> **The one thing to get right:** the principal *intentionally* lets some
-> proposals expire — that is a deliberate hold, **not** the bug. The bug is the
-> system re-asking, ignoring that hold.
+> **The one thing to get right (corrected 2026-08-04 with the principal):** the
+> principal *intentionally* lets some proposals expire — that is a deliberate
+> hold, **not** the bug. And the fix is **NOT to suppress alerts** — going quiet
+> on a stop is unacceptable ("what if it collapses to $3.00 next week"). The bug
+> is that **nothing reviews a decline and re-draws the floor**, so the same stale
+> line pings forever. The cure is the floor *moving*, never the system going
+> silent. An earlier suppression-based fix (PR #504) was **closed as the wrong
+> lever** — see §5.
 
 ---
 
@@ -93,36 +98,111 @@ it re-derives the exit from scratch. A perfect gate only tombstones the duplicat
 *Order*; the agent keeps generating the *intent*. `list_proposals` (#502) exists
 but is **principal-chat only.**
 
-## 5. The fix — two layers, designed around the principal's behavior
+## 5. The fix — alerts never stop; only the PRINCIPAL moves the line (final, 2026-08-16)
 
-1. **Gate:** narrow the carve-out from "STOP/TARGET always flows" to **"flows only
-   on a genuine price re-cross."** A protective level held through — by reject *or*
-   expiry — should dampen exactly like a discretionary close, **unless price
-   materially re-crossed the level.** That re-cross case is #490's real intent
-   (re-arm a gain-lock when price crosses back through), *not* "re-ask every day
-   while price sits below." This is the piece that makes the system honor the
-   expiry-as-hold signal for protective exits too.
-2. **Agent:** extend `list_proposals` to the daily-run + tactical allowlist so the
-   agent sees "already pending on MU, declined 2× recently" and doesn't re-propose.
+> **⚠️ PRINCIPAL RULING 2026-08-16 — this supersedes §5's earlier "the agent
+> trails the floor" answer below. Read this first; the rest of §5 is kept for
+> the reasoning trail only.**
+>
+> **A trigger is the principal's standing order.** It fires **every day its
+> condition is true** — buy at a price, sell at a price, whatever it says. A
+> decline or an expiry means "I chose to do nothing today," so it fires again
+> tomorrow. If the principal sets sell-at-$400, they get an alert every day it
+> is under $400. Forever, until they act.
+>
+> **Levels move only by human hand, with one exception.** Protective levels
+> **ratchet one way**: an agent may RAISE/tighten a floor (that produces MORE
+> protection and more alerts — the validated Game Plan flow), but may **never
+> LOWER, widen, or delete** one. Moving a line down is the principal's manual
+> act in the reject dialog, which already supports adjusting levels while
+> declining ([`ProposalActions.tsx`](../../components/proposals/ProposalActions.tsx)
+> → inline `ThesisTriggersSection`).
+>
+> **Why the earlier auto-trail answer was wrong:** an agent trailing the floor
+> down is *itself* a form of going silent. If the principal's line is $400 and
+> the agent quietly moves it to $380, the $400 alert stops — silence with extra
+> steps, and a level change on live money that no human authorized. The cure for
+> repeat-fatigue is not the agent redrawing the line; it is a *better proposal*
+> (which day of the breach, the principal's own prior words, a suggested level)
+> plus a reject UI that lets the principal move the line in one click.
+>
+> **What P1-39 ships (final scope):** the daily exit proposal on a held-through
+> name carries context — `heldThroughFloor: { heldThroughCount, rejectMessage,
+> recentLow }` on the `get_theses` row — so the agent's rationale can say "3rd
+> day under your $860 floor; recent low $842; suggest ~$840 if you'd rather keep
+> holding." The gate is untouched, the fires are untouched, **nothing is ever
+> suppressed**, and no agent edits a level down.
 
-Both are needed: layer 1 stops the mechanical re-fire; layer 2 stops the agent
-re-deriving the intent in the first place.
+<details>
+<summary>Superseded reasoning (2026-08-04 — the auto-trail answer). Kept for the trail.</summary>
 
-## 6. Acceptance test
 
-Replay MU: held through the floor three mornings running (expiries). Under the fix,
-the protective exit **dampens** — no re-ask — until price genuinely re-crosses the
-level or the thesis materially changes; and the daily-run agent, seeing the
-pending/declined history, does not re-derive the exit. MU's 49-proposal / 22-day
-tail collapses to ~one proposal per genuine re-cross. If a change doesn't move
-toward that, it's off-plan.
+> **Rejected approach (PR #504, closed):** narrowing the gate so a held-through
+> protective exit goes quiet unless the breach "materially worsened." That is
+> still *silence* on a stop, and the principal ruled it out hard: the system must
+> never stop alerting on a floor breach — a name can collapse the next day. The
+> gate is **not** where this is fixed.
 
-## 7. Open questions
+The cure is analyst behavior: watch the stop hold, then **re-draw it lower** — so
+the alert stops repeating at a *stale* line and only re-fires on a *new* one. The
+alert channel is left alone; what changes is that a decline now *lands* as a review.
+The principal's three cases (§ below) all reduce to one rule: **a decline (reject
+or expiry) is not "go away" — it's "review this and adjust the plan."**
 
-1. Where does `unapprovedExitCount` read from — `Order` or `ThesisUpdate`? If the
-   latter, it undercounts at 22% coverage, so the agent's own fatigue signal is
-   wrong (fix the fail-soft `PROPOSAL_*` write, or read from `Order`).
-2. What defines "materially re-crossed" — a full cross above then back below? A %
-   beyond the level? Tie it to the level's own predicate.
-3. Sequence: layer 1 (gate) is the cheap high-value fix and can ship first; layer 2
-   (agent queue visibility) is the durable half. Ship 1, measure, then 2.
+Three run-side pieces (no gate change, no suppression, no migration):
+
+1. **Signal — `HELD_THROUGH_FLOOR` needsAction** (`lib/agent/needs-action.ts`):
+   fires on a HOLDING when a protective (STOP) proposal was declined/expired
+   recently AND price is still under the floor. Carries the floor level, the
+   held-through count, the principal's reject message (if any), and the recent low.
+2. **Surface it** (`lib/agent/tools/get-theses.ts`): compute the recent
+   declined/expired protective closes per position (from `Order`) + the recent low,
+   and feed them into the flag so the morning run sees the full picture.
+3. **Duty (prompt)** (`lib/agent/system-prompt.ts`, delicate — validate on a manual
+   run first): for any `HELD_THROUGH_FLOOR` holding the run **must** either
+   **move the floor** — default: to just under the recent low (a normal
+   `update_thesis` trigger edit); the principal's reject message overrides the
+   target — **or** explicitly re-underwrite why the line stays, which itself names
+   the next level. It may **never** leave the floor unchanged.
+
+**What the principal wanted, mapped:**
+- *Floor hits at open, +6% by 9:45* → each genuine re-hit still alerts (gate
+  untouched; #490 re-cross already handles intraday). ✅
+- *Reject: "hold, but re-propose if it drops more"* → the message rides into the
+  next run as the `HELD_THROUGH_FLOOR` context; the run edits the trigger to match. ✅
+- *Stare, it drops, you forget* → you still get the daily reminder (gate untouched)
+  AND the run trails the floor down so it's not the same stale ping. ✅ Never silent.
+
+</details>
+
+## 6. Acceptance test (final — matches the 2026-08-16 ruling)
+
+Replay MU: floor at $860, held through three mornings (expiries). Under the shipped
+fix the daily alerts **keep coming at $860, every day it is under $860** — the
+standing order fires as long as its condition is true, and the line does not move
+until the principal moves it. What changes is the *quality* of the ask: each day's
+proposal names which day of the breach it is, quotes the principal's own prior
+reject message, and suggests a level (the recent low) they can apply in one click
+from the reject dialog. **Fail conditions:** any change that reduces alerts by
+suppression, OR any agent-initiated lowering of a protective level. Both are
+off-plan. Raising a floor (tightening) remains allowed and encouraged.
+
+## 7. Open questions / follow-ons
+
+1. **"Recent low" window** — shipped as "lowest low since the last ladder edit,"
+   clamped to [2, 30] days. Advisory number in the proposal rationale only; tune
+   from run reviews.
+2. **Agent queue visibility (the durable follow-on).** The daily-run/tactical agent
+   still has no read path to its own pending queue (only `unapprovedExitCount`, a
+   count, plus the new `heldThroughFloor` context). Extending `list_proposals`
+   (#502) to the daily-run allowlist lets it *see* "already pending, declined 2×"
+   and write a better proposal. The natural next layer.
+3. **Reject-UI level editing — ALREADY BUILT** (verified 2026-08-16). The reject
+   dialog renders an inline editable `ThesisTriggersSection`
+   ([`ProposalActions.tsx`](../../components/proposals/ProposalActions.tsx)), and the
+   proposal-context route resolves the thesis by `(account, analyst, ticker, status)`
+   — NOT the broken `Order→TradeDecision→Thesis` relation — so it works on held
+   names. This is the mechanism the ruling depends on; don't rebuild it.
+3. **Audit lossiness** (`PROPOSAL_*` 22% coverage, the `fieldChanges: {}` bug) still
+   applies — tracked in GAPS P2; fix so `unapprovedExitCount` and the held-through
+   count read a complete picture.

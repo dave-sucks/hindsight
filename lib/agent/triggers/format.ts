@@ -149,6 +149,54 @@ export function fireModeLabel(
   return "Trigger Tactical Run";
 }
 
+/**
+ * Where a rung lives, in the second person. Shown in the popover of an
+ * inherited (dotted) rung so "why can't I edit this here?" answers itself.
+ *
+ * Deliberately names the SCOPE rather than the mechanism — "every thesis
+ * this analyst covers" beats "AgentConfig.triggers" for the person
+ * deciding whether to change it. The analyst's own name is substituted
+ * when the caller knows it.
+ */
+export function levelScopeLabel(
+  level: "THESIS" | "ANALYST" | "ACCOUNT" | "DEFAULT" | undefined,
+  analystName?: string | null,
+): string {
+  switch (level) {
+    case "ANALYST":
+      return analystName
+        ? `Set on ${analystName} — applies to every thesis it covers`
+        : "Set on this analyst — applies to every thesis it covers";
+    case "ACCOUNT":
+      return "Set account-wide — applies to every analyst";
+    case "DEFAULT":
+      return "Applies automatically to every holding — not configured";
+    case "THESIS":
+    default:
+      return "Set on this thesis";
+  }
+}
+
+/**
+ * Short label for the level chip on an inherited rung's popover.
+ * "Default" reads as the honest answer to "who set this?" — nobody did.
+ */
+export function levelBadgeLabel(
+  level: "THESIS" | "ANALYST" | "ACCOUNT" | "DEFAULT" | undefined,
+): string {
+  switch (level) {
+    case "ANALYST":
+      return "Analyst";
+    case "ACCOUNT":
+      return "Account";
+    case "DEFAULT":
+      return "Automatic";
+    case "THESIS":
+    default:
+      return "This thesis";
+  }
+}
+
 export function actionGroupLabel(action: string): string {
   switch (action) {
     case "ENTER":

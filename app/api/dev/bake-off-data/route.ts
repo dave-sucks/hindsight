@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
   ] = await Promise.allSettled([
     tools.get_stock_data.execute({ ticker, include_technicals: true }, DEV_TOOL_OPTS),
     tools.get_financials_deep.execute({ ticker }, DEV_TOOL_OPTS),
-    tools.get_analyst_coverage.execute({ ticker, window_days: 90 }, DEV_TOOL_OPTS),
+    tools.get_analyst_coverage.execute({ ticker }, DEV_TOOL_OPTS),
     tools.get_insider_activity.execute({ ticker, window_days: 90 }, DEV_TOOL_OPTS),
     tools.get_earnings_history.execute({ ticker, quarters: 8 }, DEV_TOOL_OPTS),
     tools.get_peers_with_metrics.execute({ ticker, peer_count: 5 }, DEV_TOOL_OPTS),

@@ -143,12 +143,57 @@ export async function promoteThesisOnApproval(opts: {
  * (docs/plans/SCALE_INTO_WINNERS.md PR5) instead of terminal RETIRED. Signal =
  * closeReason "TARGET" — the canonical deliberate profit-take (agent/tactical
  * target-exits carry it; the price-monitor cron closes are STOP/trailing).
- * Stops, invalidations, risk exits, and free-text reasons stay RETIRED —
- * conservative v1, erring toward keeping a proven winner on the radar without
- * over-keeping loss/damage exits. Exported for unit testing.
+ * Exported for unit testing.
+ *
+ * NOTE: this is no longer the ONLY road back to WATCHING — see
+ * {@link shouldRecycleToWatching}, which adds the belief-attested protective
+ * exit (GAPS P1-35).
  */
 export function isProfitTakeReentry(closeReason: string): boolean {
   return closeReason.trim().toUpperCase() === "TARGET";
+}
+
+/**
+ * Does this close route the paired thesis back to WATCHING (re-entry radar)
+ * rather than to terminal RETIRED(SOLD)? Two roads back — GAPS P1-35 /
+ * docs/plans/SOLD_NAME_CONTINUITY.md §1:
+ *
+ *   1. **Profit-take** — closeReason "TARGET". Unchanged since PR5.
+ *   2. **Belief-attested protective exit** — the closing agent explicitly
+ *      attested that the thesis's belief SURVIVED the exit (we exited on
+ *      price, not because the story broke). `beliefSurvived === true`.
+ *
+ * Why (2) exists: the old rule was inverted for the risk that actually
+ * matters. A TARGET exit is a sale into strength — low "did we sell the dip?"
+ * risk — and it recycled. A STOP/trailing exit is a sale into weakness — the
+ * HIGHEST "did we sell the dip?" risk — and it went dark forever. Measured on
+ * the live book 2026-08-16: 28 of 29 SOLD theses since June 1 went terminal
+ * via a non-TARGET close. ARQT (+$845), VRDN (+$445), XENE (+$966) all
+ * vanished off every radar on protective exits where the belief may well have
+ * been intact. The Game Plan makes this worse, not better: TRAILING_FROM_HIGH
+ * is *designed* to bank a give-back regardless of whether the thesis holds, so
+ * a growing share of exits are "belief survived, we just protected the gain."
+ *
+ * Deliberately NOT a blunt "recycle every stop" rule: a genuinely broken
+ * thesis should stay dead rather than clog the watchlist. The agent decides
+ * (Layer 3 judgment), this function and the flip below provide the mechanism
+ * (Layer 2). No attestation — the price-monitor cron, DIRECT-mode fires,
+ * manual UI closes, promotion force-closes — degrades to today's terminal
+ * behavior, which is the safe default.
+ *
+ * An INVALIDATED-flavored close can never recycle even if something upstream
+ * attested: "the setup broke structurally" and "the belief survived" are
+ * contradictory, and the close tools collapse THESIS_INVALIDATED into MANUAL
+ * before it reaches here, so we guard on the raw text too.
+ */
+export function shouldRecycleToWatching(
+  closeReason: string,
+  beliefSurvived?: boolean | null,
+): boolean {
+  if (isProfitTakeReentry(closeReason)) return true;
+  if (beliefSurvived !== true) return false;
+  const normalized = closeReason.trim().toUpperCase();
+  return !normalized.includes("INVALID");
 }
 
 /**
@@ -189,6 +234,14 @@ export async function closeThesisForPosition(opts: {
   runId?: string | null;
   /** Distinguishes "approved proposal" vs "direct fill" in the summary. */
   summaryContext?: string;
+  /**
+   * GAPS P1-35 — the closing agent's attestation that the thesis BELIEF
+   * survived this exit (we sold on price, not because the story broke). true
+   * recycles a protective exit back to WATCHING instead of terminal RETIRED.
+   * Undefined/null on every non-agent path (price-monitor cron, DIRECT fires,
+   * manual UI closes) → terminal, i.e. unchanged behavior.
+   */
+  beliefSurvived?: boolean | null;
 }): Promise<void> {
   try {
     const activeThesis = await prisma.thesis.findFirst({
@@ -220,7 +273,15 @@ export async function closeThesisForPosition(opts: {
     // position; nextReviewAt=now flags it so the next run sets a fresh
     // re-entry trigger or archives it. Only profit-takes route here — stops,
     // invalidations, and risk exits stay RETIRED via the branch below.
-    if (isProfitTakeReentry(opts.closeReason)) {
+    if (shouldRecycleToWatching(opts.closeReason, opts.beliefSurvived)) {
+      // Two flavors land here: a profit-take (TARGET), and a protective exit
+      // the closing agent attested the belief survived (P1-35). They get the
+      // same mechanism — triggers cleared (no position, so held-side rungs are
+      // meaningless) and nextReviewAt=now so the next daily run MUST resolve
+      // it: arm a reclaim entry trigger, or archive it. Re-entry always runs
+      // through an ENTER trigger on a reclaim, never an auto-rebuy at the
+      // stop-out price.
+      const isProfitTake = isProfitTakeReentry(opts.closeReason);
       await prisma.thesis.update({
         where: { id: activeThesis.id },
         data: {
@@ -235,12 +296,17 @@ export async function closeThesisForPosition(opts: {
       await writeThesisUpdate({
         thesisId: activeThesis.id,
         type: "CLOSED",
-        summary: `Took profit on ${opts.ticker}${ctxSuffix} — ${opts.closeReason}; kept on watch for re-entry`,
+        summary: isProfitTake
+          ? `Took profit on ${opts.ticker}${ctxSuffix} — ${opts.closeReason}; kept on watch for re-entry`
+          : `Closed ${opts.ticker}${ctxSuffix} — ${opts.closeReason}; belief intact, kept on watch for a reclaim`,
         rationale:
           opts.rationale ??
-          `Profit-take. Position closed; thesis kept WATCHING for a re-entry on a pullback.`,
+          (isProfitTake
+            ? `Profit-take. Position closed; thesis kept WATCHING for a re-entry on a pullback.`
+            : `Protective exit on price — the closing agent attested the belief survived. Thesis kept WATCHING for a reclaim; the next run arms a reclaim trigger or archives it.`),
         fieldChanges: {
           status: { from: activeThesis.status, to: "WATCHING" },
+          ...(isProfitTake ? {} : { beliefSurvived: { from: null, to: true } }),
         },
         runId: opts.runId,
         priceAtTime: opts.priceAtTime ?? null,
@@ -294,6 +360,12 @@ export async function closeThesisOnApproval(opts: {
   closeReason: string;
   rationale: string | null;
   runId?: string | null;
+  /**
+   * P1-35 — read off `Order.closeBeliefSurvived`, the attestation the agent
+   * made when it PROPOSED this close. The approval can land days later, so
+   * the Order row is what carries the agent's judgment across the gap.
+   */
+  beliefSurvived?: boolean | null;
 }): Promise<void> {
   await closeThesisForPosition({
     analystId: opts.analystId,
@@ -304,5 +376,6 @@ export async function closeThesisOnApproval(opts: {
       opts.rationale ?? `Close proposal approved. Reason: ${opts.closeReason}.`,
     runId: opts.runId,
     summaryContext: "on approved proposal",
+    beliefSurvived: opts.beliefSurvived,
   });
 }

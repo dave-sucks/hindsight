@@ -13,6 +13,11 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { cn } from '@/lib/utils';
+import {
+  formatDateLabel,
+  formatDateTimeLabel,
+  formatTimeLabel,
+} from '@/components/stocks/chart-format';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -106,39 +111,17 @@ const REF_LINE = '#71717a';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-// Tolerates both a plain YYYY-MM-DD (daily bars) and a full ISO timestamp
-// (hourly bars, whose `date` carries the hour) — both render as a date label.
-function formatDateLabel(dateStr: string): string {
-  const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-// Hourly tooltip: date + time-of-day in ET (the bar's `date` is a UTC ISO).
-function formatDateTimeLabel(v: string | number): string {
-  return new Date(v).toLocaleString('en-US', {
-    timeZone: 'America/New_York',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
+// Label formatters live in ./chart-format (pure module, unit-tested there).
+// They are total over `unknown` — recharts can hand a formatter the numeric
+// index instead of the category value in transient tooltip frames, which
+// took down the whole trade page on 2026-08-19 ("e.includes is not a
+// function", first 1W click). Never re-inline them with string-only inputs.
 
 // Shift a YYYY-MM-DD by N calendar days (used to pad the Trade window).
 function shiftDay(dateStr: string, days: number): string {
   const d = new Date(dateStr + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
-}
-
-// Intraday candles carry a full ISO timestamp in `date`; label them as ET
-// time-of-day (e.g. "9:35 AM") instead of a calendar date.
-function formatTimeLabel(v: string | number): string {
-  return new Date(v).toLocaleTimeString('en-US', {
-    timeZone: 'America/New_York',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
 }
 
 // A buffered price domain so the line always clears the top and bottom edges —
@@ -487,7 +470,7 @@ export function StockPriceChart({
                 ? formatTimeLabel(l)
                 : isHourly
                   ? formatDateTimeLabel(l)
-                  : formatDateLabel(l as string)
+                  : formatDateLabel(l)
             }
             labelStyle={{ color: 'var(--muted-foreground)' }}
           />

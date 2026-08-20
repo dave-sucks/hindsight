@@ -63,6 +63,14 @@ interface TacticalPromptArgs {
     quantity: number;
     avgCost: number;
     daysHeld: number;
+    /**
+     * Position.peakPrice — the price-monitor-maintained watermark (high for
+     * LONG, low for SHORT) covering the position's whole life. DAV-186:
+     * surfaced so trail-fire validation checks arithmetic against THIS
+     * number instead of re-deriving a "peak" from a short chart window.
+     * Null on legacy callers / rows the monitor hasn't stamped yet.
+     */
+    peakPrice?: number | null;
   } | null;
   recentUpdates: Array<{
     type: string;
@@ -122,8 +130,42 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
 
   const predicateSummary = describePredicate(trigger.predicate);
 
+  // DAV-186: a fell-from-peak fire is validated against the system's tracked
+  // watermark, never a chart-derived high. On 2026-08-18 a genuine HPE trail
+  // fire (real peak $62.70) was declined because the validating agent
+  // computed its own "peak" ($58.09) from a shorter window and concluded
+  // "only down 5%, false alarm." The evaluator only fires this predicate
+  // when Position.peakPrice exists, so a missing peak here means OUR context
+  // lookup failed — not that the fire was wrong.
+  const trailingPeakBlock = (() => {
+    if (trigger.predicate.kind !== "TRAILING_FROM_HIGH") return "";
+    const pct = trigger.predicate.pct;
+    const isShort = thesis.direction === "SHORT";
+    const peak = position?.peakPrice ?? null;
+    const threshold =
+      peak != null ? peak * (isShort ? 1 + pct / 100 : 1 - pct / 100) : null;
+    return `
+  ⚠ THE PEAK IS AUTHORITATIVE — DO NOT RE-DERIVE IT.
+  This trigger measures give-back from the system's tracked ${isShort ? "low" : "high"}${
+    peak != null ? `: $${peak.toFixed(2)}` : ""
+  }, recorded by the hourly price monitor over the position's ENTIRE life.
+  ${
+    threshold != null
+      ? `The fire line is $${threshold.toFixed(2)} (${pct}% ${isShort ? "above the low" : "below the peak"}). Validating this fire means ONE arithmetic check: is the current price ${isShort ? "at or above" : "at or below"} $${threshold.toFixed(2)}?`
+      : `Validating this fire means one arithmetic check against that tracked watermark — if it is missing from this prompt, treat the evaluator's fire as correct rather than reconstructing a peak yourself.`
+  }
+  Any "recent high" you compute from a chart window has shorter memory than
+  the watermark, understates the give-back, and is NOT valid grounds to
+  declare a false alarm. Declining this exit requires new fundamental
+  evidence — not a different peak.`;
+  })();
+
   const positionLine = position
-    ? `qty ${position.quantity}, avgCost $${position.avgCost.toFixed(2)}, ${position.daysHeld} days held — current price + unrealized P&L are NOT in this prompt; pull them via get_stock_data`
+    ? `qty ${position.quantity}, avgCost $${position.avgCost.toFixed(2)}, ${position.daysHeld} days held${
+        position.peakPrice != null
+          ? `, tracked peak $${position.peakPrice.toFixed(2)} (the system's remembered ${thesis.direction === "SHORT" ? "low" : "high"} for this position — authoritative)`
+          : ""
+      } — current price + unrealized P&L are NOT in this prompt; pull them via get_stock_data`
     : "no position (thesis is WATCHING — promotion is on the table)";
 
   const recentLines = recentUpdates.length
@@ -254,7 +296,7 @@ TRIGGER THAT FIRED (id: ${trigger.id})
 ═══════════════════════════════════════════════════════════════════
   predicate: ${predicateSummary}
   declared action: ${trigger.action}
-  rationale you wrote when you set it: "${trigger.rationale}"
+  rationale you wrote when you set it: "${trigger.rationale}"${trailingPeakBlock}
 ${signalSection}
 ═══════════════════════════════════════════════════════════════════
 DECISION FRAMEWORK
@@ -274,6 +316,15 @@ DECISION FRAMEWORK
      EXIT means close_position. ADD means place_trade or manage_position
      (scale up). TRIM means manage_position (partial close). MOVE_STOP
      means manage_position (adjust stop).
+   - **On a protective exit (reason=STOP) you MUST answer \`belief_survived\`.**
+     You are the agent closest to this exit — nobody else can judge it. Did
+     the STORY break, or did you sell on PRICE? A trailing give-back or a
+     stop tripped in a broad-market flush, thesis intact → \`true\`, and the
+     name returns to WATCHING so a later run can arm a reclaim entry. An
+     invalidation condition tripped, the catalyst failed, the bear case
+     confirmed → \`false\`, and it retires for good. Omitting it retires the
+     name by default: that is how 28 of 29 sold theses went dark, including
+     three green protective exits (ARQT +$845, VRDN +$445, XENE +$966).
    - **WATCHING → HOLDING promotion (entry triggers).** When the thesis
      status is WATCHING and the action is ADD, call place_trade for the
      entry. The trade tool owns the WATCHING → HOLDING flip — on immediate
@@ -440,7 +491,6 @@ TOOLS
     get_earnings_data      — when the trigger involves earnings.
     get_market_context     — only if regime matters for the call.
     get_sec_filings        — when the trigger is FILING.
-    get_options_flow       — when sizing the conviction.
     web_search             — last resort. Budget-limited.
     read_artifact          — full text of the signal source if signal-driven.
     get_theses             — for context on adjacent thesis state.

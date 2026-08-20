@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { seedAccountTriggers } from '@/lib/agent/triggers/seed-account'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -71,6 +72,9 @@ export async function GET(request: Request) {
         await prisma.accountMembership.create({
           data: { accountId: account.id, userId: data.user.id, role: "OWNER" },
         })
+        // Standing trigger rules start as DATA on the account, not code
+        // constants — see lib/agent/triggers/seed-account.
+        await seedAccountTriggers(account.id)
       }
 
       return NextResponse.redirect(`${origin}${next}`)

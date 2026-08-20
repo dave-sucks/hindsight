@@ -21,8 +21,7 @@ import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { describeTriggerFire } from "@/lib/agent/triggers/format";
+import { describeTriggerFire, predicateSentence } from "@/lib/agent/triggers/format";
 import { MODES } from "@/lib/agent/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import {
@@ -30,6 +29,10 @@ import {
   protectiveExitCloseReason,
 } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
 import {
@@ -52,12 +55,15 @@ interface FiredPayload {
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-function findTriggerById(triggersJson: unknown, id: string): Trigger | null {
-  const parsed = triggersArraySchema.safeParse(triggersJson);
-  if (!parsed.success) return null;
-  const found = parsed.data.find((t) => t.id === id);
+/**
+ * Find the fired rung in an already-resolved ladder. Takes the resolved
+ * array rather than the raw JSONB column so inherited rungs are findable
+ * — see the call site.
+ */
+function findTriggerById(ladder: Trigger[], id: string): Trigger | null {
+  const found = ladder.find((t) => t.id === id);
   if (!found || typeof found.id !== "string") return null;
-  return found as Trigger;
+  return found;
 }
 
 /**
@@ -138,10 +144,23 @@ export const tacticalRun = inngest.createFunction(
       ) {
         return null;
       }
-      const trigger = findTriggerById(thesis.triggers, fired.triggerId);
-      if (!trigger) return null;
       const analystId = thesis.researchRun.agentConfigId;
       if (!analystId) return null;
+
+      // Look the fired rung up in the RESOLVED ladder, not the stored
+      // column. An inherited rung (analyst / account / code default) is
+      // not in `thesis.triggers` at all, so a raw-column lookup returns
+      // null and this run bails — the fire event would be consumed and
+      // silently do nothing. That is precisely the decorative-rung
+      // failure the cascade exists to prevent, and it would disable an
+      // inherited trail stop without a single error in the logs.
+      const ladder = resolveThesisLadder(
+        thesis,
+        (await loadLevelSources([analystId])).get(analystId),
+        `thesis=${thesis.id}`,
+      );
+      const trigger = findTriggerById(ladder, fired.triggerId);
+      if (!trigger) return null;
 
       const [agentConfig, signal, position] = await Promise.all([
         prisma.agentConfig.findUnique({
@@ -187,6 +206,12 @@ export const tacticalRun = inngest.createFunction(
             quantity: true,
             avgCost: true,
             openedAt: true,
+            // The price-monitor-maintained watermark (high for LONG, low for
+            // SHORT). Handed to the tactical prompt as the AUTHORITATIVE
+            // reference for TRAILING_FROM_HIGH validation — DAV-186: the HPE
+            // agent re-derived a "peak" from a short chart window and
+            // declined a genuine trail fire.
+            peakPrice: true,
           },
         }),
       ]);
@@ -217,8 +242,10 @@ export const tacticalRun = inngest.createFunction(
       // Full ladder for the prompt's CURRENT TRIGGER LADDER section +
       // re-ladder duty: update_thesis `triggers` is wholesale-replace, so
       // the agent needs every rung in view to edit without dropping any.
-      const parsedLadder = triggersArraySchema.safeParse(thesis.triggers);
-      const allTriggers = parsedLadder.success ? parsedLadder.data : [];
+      // Resolved (not the raw column) so inherited rungs are visible —
+      // resending one unchanged is a no-op (dropRedundantInherited), and
+      // changing its value is a deliberate per-thesis override.
+      const allTriggers = ladder;
       return {
         thesis: {
           id: thesis.id,
@@ -256,6 +283,8 @@ export const tacticalRun = inngest.createFunction(
               quantity: Number(position.quantity),
               avgCost: Number(position.avgCost),
               daysHeld: daysHeld ?? 0,
+              peakPrice:
+                position.peakPrice != null ? Number(position.peakPrice) : null,
             }
           : null,
       };
@@ -314,6 +343,51 @@ export const tacticalRun = inngest.createFunction(
           thesisId: fired.thesisId,
           positionId: position.id,
           orderId: queuedClose.id,
+        };
+      }
+    }
+
+    // ── Suppress duplicate buy-checks on the same trigger (GAPS P1-37) ──────
+    // When a stock crosses its buy price and the analyst examines it and
+    // decides NOT to buy, the trigger stays armed — and every subsequent fire
+    // (5-min evaluator tick, routed signal, a second overlapping trigger)
+    // wakes ANOTHER full GPT-5.5 session that re-reads the same thesis and
+    // reaches the same "no" (CAPR ~5×, CEG 4× over 2026-07-20→21 — ~9 wasted
+    // runs in two days, every one blocked by the same below-bar conviction
+    // score). If a tactical run for THIS SAME trigger already completed
+    // within the snooze window, bail before create-run — zero cost.
+    //
+    // This does NOT touch the standing-order ruling ("a trigger fires every
+    // day its condition is true — never engineer repeats away"). That ruling
+    // protects ALERTS the principal sees. A declined buy-check produced no
+    // proposal and nothing on the principal's screen — this suppresses only
+    // the duplicate MACHINE dispatch. The trigger keeps firing and recording,
+    // the daily run still sees it as fired work the next morning, and a run
+    // that decides TO buy still produces the approval card. A FAILED prior
+    // run does not snooze (a crash deserves a retry); post-#525 an agent that
+    // declines durably is taught to move the trigger to the level it would
+    // actually accept, which ends the refires at the source — this snooze
+    // catches the same-day multi-path duplicates in the meantime.
+    if (trigger.action === "ENTER") {
+      const recentEnterCheck = await step.run("check-recent-enter-run", async () =>
+        prisma.researchRun.findFirst({
+          where: {
+            agentConfigId: agentConfig.id,
+            mode: "INTRADAY_TACTICAL",
+            status: "COMPLETE",
+            createdAt: { gte: new Date(Date.now() - EXIT_RECHECK_SNOOZE_MS) },
+            parameters: { path: ["triggerId"], equals: trigger.id },
+          },
+          select: { id: true, createdAt: true },
+        }),
+      );
+      if (recentEnterCheck) {
+        return {
+          skipped: "enter-already-checked",
+          thesisId: fired.thesisId,
+          triggerId: trigger.id,
+          priorRunId: recentEnterCheck.id,
+          priorRunAt: recentEnterCheck.createdAt,
         };
       }
     }
@@ -403,13 +477,31 @@ export const tacticalRun = inngest.createFunction(
           "@/lib/actions/closeTrade.actions"
         );
         const reason = directExitReason(trigger as Trigger, thesis.direction);
+        // DAV-194: on a held-through name, the daily card must be worth
+        // reading — which ask this is, the principal's own reject note, the
+        // recent low with a suggested place for the line. The agent path
+        // gets this via get_theses.heldThroughFloor + the prompt; this
+        // no-agent path appends the same context to the rationale so the
+        // card is never verbatim-identical day over day. Best-effort: a
+        // context failure returns null and never blocks the close.
+        const { heldThroughNoteForPosition } = await import(
+          "@/lib/proposals/held-through-context"
+        );
+        const heldThroughNote = await heldThroughNoteForPosition({
+          positionId: position.id,
+          ticker: thesis.ticker,
+          direction: thesis.direction,
+        });
+        const rationale = heldThroughNote
+          ? `${trigger.rationale} ${heldThroughNote}`
+          : trigger.rationale;
         try {
           const outcome = await closeOpenPosition(
             position.id,
             reason,
             undefined, // creds resolved inside from the position's environment
             "price_monitor", // autonomous → approval-gated; risk-exit carve-out applies
-            trigger.rationale,
+            rationale,
             run.id,
           );
           return { kind: outcome.kind, reason };
@@ -483,6 +575,12 @@ export const tacticalRun = inngest.createFunction(
               thesis.direction,
             ) ?? undefined
           : undefined;
+      // Human phrase for the fired trigger ("Gives back 8% from the high"),
+      // threaded alongside the tag so the close tools can name WHY the label
+      // was corrected in the audit note they write (DAV-192).
+      const protectiveExitTriggerLabel = protectiveExitReason
+        ? predicateSentence((trigger as Trigger).predicate)
+        : undefined;
       const allTools = createResearchTools({
         runId: run.id,
         userId: agentConfig.userId,
@@ -490,6 +588,7 @@ export const tacticalRun = inngest.createFunction(
         analystId: agentConfig.id,
         runMode: "INTRADAY_TACTICAL",
         protectiveExitReason,
+        protectiveExitTriggerLabel,
         watchlist: watchlistSymbols,
         exclusionList: agentConfig.exclusionList ?? [],
         sectors: agentConfig.sectors ?? [],

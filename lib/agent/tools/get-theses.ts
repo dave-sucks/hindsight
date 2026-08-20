@@ -30,8 +30,11 @@ import { prisma } from "@/lib/prisma";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { isSystemicRejection } from "@/lib/proposals/maybe-await-approval";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { getLatestPrices } from "@/lib/alpaca";
+import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from "@/lib/agent/triggers/load-levels";
+import { getBars, getLatestPrices } from "@/lib/alpaca";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import {
@@ -62,6 +65,17 @@ const STATUS_VALUES = [
 ] as const;
 
 const HORIZONS = ["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const;
+
+/**
+ * P1-39: how far back a rejected/expired protective (STOP) close proposal
+ * counts as "the principal recently held this name through its floor."
+ * Post-#513 the exit stream re-surfaces ~daily while a breach persists, so
+ * the window self-refreshes; an old decline with no fresh proposals behind
+ * it ages out. Feeds the informational `heldThroughFloor` row field only.
+ */
+// Single source: lib/proposals/held-through-context.ts — the DIRECT
+// (no-agent) proposal path mirrors this batch computation there (DAV-194).
+import { HELD_THROUGH_WINDOW_DAYS } from "@/lib/proposals/held-through-context";
 
 const schema = z.object({
   status: z
@@ -114,6 +128,12 @@ const schema = z.object({
     .max(50)
     .optional()
     .describe("Max theses to return. Default 25, hard cap 50."),
+  detail: z
+    .enum(["actionable", "book"])
+    .optional()
+    .describe(
+      "Row weight. \"actionable\" returns FULL rows (narrative excerpts, triggers, resolved envelope) only for theses with a non-null needsAction or status=PROMOTED; every quiet row comes back as a one-line index entry in `quiet_theses` (ticker, status, prices, next review, core belief). \"book\" returns full rows for everything. Default: \"actionable\" on the Daily Run's unfiltered read (the trigger system already decided what needs work today — 2026-08-13 cost fix: full-book reads were ~4k tokens/thesis × every step), \"book\" everywhere else and whenever you filter by ticker/id (drill-down is always full).",
+    ),
 });
 
 /** A principal review decision surfaced to the agent (P1-29 — the learning loop). */
@@ -183,7 +203,7 @@ function classifyPrincipalDirective(
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
+    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; quiet rows come back as one-line index entries in `quiet_theses` (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
   schema,
   ui: "thesis-card" as const,
 
@@ -217,6 +237,43 @@ export const getTheses = defineTool({
     );
     const limit = Math.min(args.limit ?? 25, 50);
     const histLimit = Math.min(args.history_limit ?? 5, 50);
+
+    // ── Row weight (2026-08-13 morning-cost fix) ────────────────────────
+    // The trigger-gated daily-run design (THESIS_GAME_PLAN / MORNING_RUN_V2)
+    // says only fired/due theses get reviewed — but this tool was shipping
+    // the FULL book (narrative excerpts + triggers + resolved envelope,
+    // ~4k tokens/thesis) on the morning run's opening read, and that
+    // payload rode in the model's context for every subsequent step.
+    // Measured 2026-08-13: 21 theses → ~91k tokens in one tool result →
+    // ~820k of a 1.03M-token run. Under "actionable" detail, quiet rows
+    // (needsAction=null, non-PROMOTED) collapse to one-line index entries.
+    // Any explicit scope (ticker/id/status/horizon filter, history or
+    // research includes) is a deliberate drill-down and stays full-weight,
+    // as does every non-MORNING_PLAN caller.
+    // A ticker/id-targeted read is ALWAYS a full-detail drill-down, even if
+    // the caller (or a model copying its earlier args) also passes
+    // detail:"actionable" — otherwise the drill-down the prompt recommends
+    // could never reach the full row (review finding #4).
+    const explicitTarget = !!(
+      (args.tickers && args.tickers.length > 0) ||
+      (args.ids && args.ids.length > 0)
+    );
+    const explicitScope =
+      explicitTarget ||
+      !!(
+        (args.status && args.status.length > 0) ||
+        (args.horizon && args.horizon.length > 0) ||
+        args.watching_review_due_only ||
+        args.include_history ||
+        args.include_research
+      );
+    const detailMode: "actionable" | "book" = explicitTarget
+      ? "book"
+      : args.detail ??
+        (ctx.runMode === "MORNING_PLAN" && !explicitScope ? "actionable" : "book");
+    // Set when the live-quote fetch throws — forces full-book detail so a
+    // data outage can't hide actionable rows behind the quiet split.
+    let priceFetchFailed = false;
 
     // Scope by analyst when present (the right thing for normal calls);
     // fall back to userId scope for any builder/editor or system call
@@ -278,6 +335,9 @@ export const getTheses = defineTool({
         stopLoss: true,
         targetSizePct: true,
         triggers: true,
+        // Fire bookkeeping for inherited rungs — resolveThesisLadder
+        // overlays it so cooldown reads the same at every level.
+        triggerState: true,
         scalingPlan: true,
         catalystDate: true,
         maxHoldDays: true,
@@ -390,6 +450,27 @@ export const getTheses = defineTool({
         t.status === "WATCHING" ||
         t.status === "PROMOTED",
     );
+
+    // ── The resolved ladder per thesis (the trigger cascade) ────────────
+    // Every trigger consumer below reads from here rather than parsing
+    // `t.triggers` directly, so the agent reasons about the ladder that
+    // actually fires — its own rungs PLUS what it inherits from the
+    // analyst, the account and the standing code minimums.
+    //
+    // This is load-bearing for ladder health, not just display: a holding
+    // whose floor is inherited rather than stored would otherwise read as
+    // UNPROTECTED_GAIN and the agent would be nagged to fix a ladder that
+    // is already correct. The query is scoped to ctx.analystId, so one
+    // lookup covers every row.
+    const levelSources = ctx.analystId
+      ? (await loadLevelSources([ctx.analystId])).get(ctx.analystId)
+      : undefined;
+    const ladderByThesisId = new Map<string, Trigger[]>(
+      theses.map((t) => [
+        t.id,
+        resolveThesisLadder(t, levelSources, `thesis=${t.id}`) as Trigger[],
+      ]),
+    );
     const needsActionByThesisId = new Map<string, NeedsAction | null>();
     // P1-29 (L2): the most-recent unaddressed PRINCIPAL decision per thesis
     // (reject / approve-with-edit / direct edit), surfaced verbatim so the
@@ -421,6 +502,21 @@ export const getTheses = defineTool({
     // user keeps declining" signal, read from the canonical Order ledger. Pairs
     // with the Layer-1 cross-day cooldown gate in maybe-await-approval.ts.
     const unapprovedExitCountByThesisId = new Map<string, number>();
+    // P1-39 (PROPOSAL_FATIGUE.md, principal ruling 2026-08-16): held-through-
+    // floor CONTEXT per HOLDING thesis — recent protective (closeReason=STOP)
+    // close proposals the principal rejected or let expire, plus their most
+    // recent written reject message. Surfaced as an INFORMATIONAL field on
+    // the full row (like unapprovedExitCount) so the agent can enrich its
+    // daily exit-proposal rationale with "Nth day under your floor, recent
+    // low $X, suggested new level $Y if you want the line moved." It does
+    // NOT feed needsAction and it never authorizes the agent to move the
+    // floor — level changes are the principal's manual act (protective
+    // levels ratchet one way: agents may raise, never lower). The recent
+    // low is resolved separately below (needs the ladder-edit scan first).
+    const heldThroughByThesisId = new Map<
+      string,
+      { heldThroughCount: number; rejectMessage: string | null }
+    >();
     const activeTickersForOpenedAt = Array.from(
       new Set(
         theses
@@ -489,9 +585,26 @@ export const getTheses = defineTool({
               status: { in: ["REJECTED", "EXPIRED"] },
               expiresAt: { not: null },
             },
-            select: { positionId: true, rejectionMessage: true },
+            orderBy: { createdAt: "desc" },
+            select: {
+              positionId: true,
+              rejectionMessage: true,
+              closeReason: true,
+              createdAt: true,
+            },
           });
           const countByPositionId = new Map<string, number>();
+          // P1-39: recent protective declines per position — the held-through
+          // signal. Window matches "the principal saw this exit recently and
+          // still holds"; post-#513 the exit stream re-surfaces ~daily, so the
+          // window self-refreshes while the breach persists.
+          const heldThroughCutoff = new Date(
+            Date.now() - HELD_THROUGH_WINDOW_DAYS * 86_400_000,
+          );
+          const heldThroughByPositionId = new Map<
+            string,
+            { heldThroughCount: number; rejectMessage: string | null }
+          >();
           for (const o of unapprovedCloses) {
             // Exclude systemic tombstones (dedup, P1-28 cooldown) — only a real
             // decline (rejection or ignored expiry) counts. Sync w/ the L1 gate.
@@ -500,12 +613,26 @@ export const getTheses = defineTool({
               o.positionId,
               (countByPositionId.get(o.positionId) ?? 0) + 1,
             );
+            // Protective declines only (STOP-tagged): a declined TARGET exit
+            // means "let it run" — a different, benign hold. Rows are newest-
+            // first, so the first message seen is the most recent one.
+            if (o.closeReason === "STOP" && o.createdAt >= heldThroughCutoff) {
+              const prev = heldThroughByPositionId.get(o.positionId);
+              heldThroughByPositionId.set(o.positionId, {
+                heldThroughCount: (prev?.heldThroughCount ?? 0) + 1,
+                rejectMessage: prev?.rejectMessage ?? o.rejectionMessage ?? null,
+              });
+            }
           }
           for (const t of theses) {
             if (t.status !== "HOLDING") continue;
             const posId = positionIdByTicker.get(t.ticker);
             const n = posId ? countByPositionId.get(posId) ?? 0 : 0;
             if (n > 0) unapprovedExitCountByThesisId.set(t.id, n);
+            const heldThrough = posId
+              ? heldThroughByPositionId.get(posId)
+              : undefined;
+            if (heldThrough) heldThroughByThesisId.set(t.id, heldThrough);
           }
         }
       } catch (err) {
@@ -571,6 +698,61 @@ export const getTheses = defineTool({
       }
     }
 
+    // ── Recent low per held-through thesis (P1-39) ──────────────────────
+    // The trail-to line for HELD_THROUGH_FLOOR: lowest daily low (LONG; the
+    // recent HIGH for SHORT) since the ladder was last edited — the window
+    // PROPOSAL_FATIGUE.md §7 Q1 names as the starting point. Clamped to
+    // [5, 30] days: the 5-day minimum guarantees at least one trading session
+    // is in range even when the window spans a long weekend or a market
+    // holiday (a 2-day window on the Tuesday after a Monday holiday contains
+    // zero sessions), and the 30-day cap keeps an ancient ladder from
+    // suggesting a months-old low. Only the
+    // held-through candidates are fetched (typically 0-3 tickers); bar-fetch
+    // failure degrades to recentLow=null (the flag still fires, the agent
+    // falls back to fresh data / judgment).
+    const recentLowByThesisId = new Map<string, number>();
+    const heldThroughCandidates = theses.filter(
+      (t) => t.status === "HOLDING" && heldThroughByThesisId.has(t.id),
+    );
+    if (heldThroughCandidates.length > 0) {
+      const nowMs = Date.now();
+      await Promise.all(
+        heldThroughCandidates.map(async (t) => {
+          try {
+            const since = lastLadderEditAtByThesisId.get(t.id);
+            const daysBack = since
+              ? Math.ceil((nowMs - since.getTime()) / 86_400_000)
+              : 30;
+            const clampedDays = Math.min(Math.max(daysBack, 5), 30);
+            const start = new Date(nowMs - clampedDays * 86_400_000)
+              .toISOString()
+              .slice(0, 10);
+            const end = new Date(nowMs).toISOString().slice(0, 10);
+            const bars = await getBars(
+              t.ticker,
+              { start, end },
+              ctx.alpacaCreds,
+            );
+            const isLong = t.direction !== "SHORT";
+            const extremes = bars
+              .map((b) => (isLong ? b.low ?? b.close : b.high ?? b.close))
+              .filter((v): v is number => typeof v === "number" && v > 0);
+            if (extremes.length > 0) {
+              recentLowByThesisId.set(
+                t.id,
+                isLong ? Math.min(...extremes) : Math.max(...extremes),
+              );
+            }
+          } catch (err) {
+            console.warn(
+              `[get_theses] recent-low fetch failed for ${t.ticker}; HELD_THROUGH_FLOOR degrades to recentLow=null:`,
+              err,
+            );
+          }
+        }),
+      );
+    }
+
     if (liveTheses.length > 0) {
       // Latest ThesisUpdate per thesis — one batched query.
       const latestUpdates = await prisma.thesisUpdate.findMany({
@@ -601,6 +783,13 @@ export const getTheses = defineTool({
       try {
         priceByTicker = await getLatestPrices(uniqueTickers, ctx.alpacaCreds);
       } catch (err) {
+        // Review finding #3: when quotes are down, every price-dependent
+        // needsAction kind (TRIGGER_MATCHING_NOW / UNPROTECTED_GAIN /
+        // RUNNING_WINNER) degrades to null — under actionable detail that
+        // would silently collapse the whole winner book to quiet index rows
+        // on exactly the mornings data is flaky. Fail OPEN: degraded data
+        // forces full-book detail (see isFullDetail below).
+        priceFetchFailed = true;
         console.warn(
           "[get_theses] live quote fetch failed; matching-now skipped:",
           err,
@@ -612,10 +801,7 @@ export const getTheses = defineTool({
         ? await getPendingEntryTickers(ctx.analystId)
         : new Set<string>();
       for (const t of liveTheses) {
-        const parsed = triggersArraySchema.safeParse(t.triggers);
-        const triggers: Trigger[] = parsed.success
-          ? (parsed.data as Trigger[])
-          : [];
+        const triggers: Trigger[] = ladderByThesisId.get(t.id) ?? [];
         const price = priceByTicker[t.ticker];
         const latestQuote =
           typeof price === "number" && price > 0
@@ -715,8 +901,7 @@ export const getTheses = defineTool({
     const resolverNow = new Date();
     const resolvedByThesisId = new Map<string, ResolvedEnvelope>();
     for (const t of theses) {
-      const parsed = triggersArraySchema.safeParse(t.triggers);
-      const parsedTriggers = (parsed.success ? parsed.data : []) as Trigger[];
+      const parsedTriggers = ladderByThesisId.get(t.id) ?? [];
       const cur = resolverPriceMap[t.ticker];
       resolvedByThesisId.set(
         t.id,
@@ -746,10 +931,66 @@ export const getTheses = defineTool({
       );
     }
 
-    const enriched = theses.map((t) => {
-      const triggerCount = Array.isArray(t.triggers)
-        ? (t.triggers as unknown[]).length
-        : 0;
+    // Actionable-detail split: full rows for work-list theses; one-line
+    // index entries for the quiet rest. "book" mode keeps everything full.
+    // Full-row criteria (review findings #2/#3):
+    //   • needsAction non-null — the trigger system's work list
+    //   • status PROMOTED — must be resolved this run
+    //   • resolved.actionability ENTER_NOW / STALE_PAST_CATALYST /
+    //     PROMOTED_DECIDE_TODAY — actionable shapes that carry NO
+    //     needsAction flag (the writer's "buy at market" shape is a
+    //     WATCHING row with no ENTER trigger and price ≈ entry; hiding it
+    //     would strand an intended entry indefinitely)
+    //   • priceFetchFailed — fail open; degraded data must not hide winners
+    // ACTIVE_HOLD deliberately stays quiet: it's the healthy-holding
+    // default, and its work signals (UNPROTECTED_GAIN / RUNNING_WINNER /
+    // trigger fires) all arrive via needsAction.
+    const ACTIONABLE_RESOLVED = new Set([
+      "ENTER_NOW",
+      "STALE_PAST_CATALYST",
+      "PROMOTED_DECIDE_TODAY",
+    ]);
+    const isFullDetail = (t: (typeof theses)[number]): boolean =>
+      detailMode === "book" ||
+      priceFetchFailed ||
+      t.status === "PROMOTED" ||
+      (needsActionByThesisId.get(t.id) ?? null) !== null ||
+      ACTIONABLE_RESOLVED.has(resolvedByThesisId.get(t.id)?.actionability ?? "");
+
+    const fullTheses = theses.filter((t) => isFullDetail(t));
+    const quietTheses = theses.filter((t) => !isFullDetail(t));
+
+    // Compact index row — the roster line for a thesis nothing fired on.
+    // Enough to reason about exposure and to decide whether to drill down
+    // (get_theses(tickers: ["X"]) returns the full row), nothing more.
+    const quietRows = quietTheses.map((t) => ({
+      id: t.id,
+      ticker: t.ticker,
+      status: t.status,
+      direction: t.direction,
+      horizon: t.horizon,
+      conviction: t.conviction ?? null,
+      composite: getThesisComposite(t),
+      coreBelief: t.coreBelief,
+      entryPrice: t.entryPrice,
+      targetPrice: t.targetPrice,
+      stopLoss: t.stopLoss,
+      nextReviewAt: t.nextReviewAt,
+      catalystDate: t.catalystDate,
+      // Resolved ladder, not the stored column — a thesis protected
+      // entirely by inherited rungs is not a zero-trigger thesis.
+      triggerCount: (ladderByThesisId.get(t.id) ?? []).length,
+      researchAge: classifyResearchAge(
+        t.researchUpdatedAt,
+        t.horizon as Horizon | null,
+      ),
+      resolvedActionability: resolvedByThesisId.get(t.id)?.actionability ?? null,
+      needsAction: null,
+    }));
+
+    const enriched = fullTheses.map((t) => {
+      // Resolved ladder, not the stored column — see quietRows above.
+      const triggerCount = (ladderByThesisId.get(t.id) ?? []).length;
       return {
         ...t,
         triggerCount,
@@ -772,6 +1013,39 @@ export const getTheses = defineTool({
         // proposed this exit and the user declined N×" — don't re-propose
         // unless the thesis materially changed. 0 for non-HOLDING rows.
         unapprovedExitCount: unapprovedExitCountByThesisId.get(t.id) ?? 0,
+        // P1-39 (principal ruling 2026-08-16): held-through-floor CONTEXT —
+        // recent protective (STOP) declines in the last 7d + the principal's
+        // verbatim reject message + the recent low (lowest low since the last
+        // ladder edit; recent HIGH for SHORT). Informational only: use it to
+        // enrich the daily exit-proposal rationale ("3rd day under your $860
+        // floor; recent low $842; suggest $840 if you want the line moved").
+        // NEVER a license to edit the floor — protective levels ratchet one
+        // way (agents may raise, never lower); moving a line down is the
+        // principal's manual act. null when no recent protective declines.
+        heldThroughFloor: (() => {
+          const ht = heldThroughByThesisId.get(t.id);
+          if (!ht) return null;
+          // Only surface while the breach is LIVE — price still on the losing
+          // side of the ladder's tightest protective floor. Once price
+          // recovers above the line, the floor held and the held-through
+          // framing is false; the next breach is a fresh, meaningful ask.
+          // Reuses the resolver's already-computed floor + live price (no
+          // second fetch). Can't prove the breach (no floor rung, or quotes
+          // degraded) → omit rather than assert something unverified.
+          const r = resolvedByThesisId.get(t.id);
+          const floorPrice = r?.ladderHealth?.floor?.price ?? null;
+          const price = r?.currentPrice ?? null;
+          if (floorPrice == null || price == null || price <= 0) return null;
+          const stillBreached =
+            t.direction === "SHORT" ? price >= floorPrice : price <= floorPrice;
+          if (!stillBreached) return null;
+          return {
+            floorPrice,
+            heldThroughCount: ht.heldThroughCount,
+            rejectMessage: ht.rejectMessage,
+            recentLow: recentLowByThesisId.get(t.id) ?? null,
+          };
+        })(),
         // P1-29 (L2): the most-recent unaddressed principal review decision on
         // this thesis — reject (verbatim message), approve-with-edit, or a
         // direct edit — surfaced so the agent reads + honors it. A reject with a
@@ -832,29 +1106,46 @@ export const getTheses = defineTool({
       };
     });
 
-    const activeCount = enriched.filter(
+    const activeCount = theses.filter(
       (t) => t.status === "HOLDING",
     ).length;
-    const watchingCount = enriched.filter(
+    const watchingCount = theses.filter(
       (t) => t.status === "WATCHING",
     ).length;
-    const promotedCount = enriched.filter(
+    const promotedCount = theses.filter(
       (t) => t.status === "PROMOTED",
     ).length;
     const summary =
-      enriched.length === 0
+      theses.length === 0
         ? "No theses match those filters."
-        : `${enriched.length} thes${enriched.length === 1 ? "is" : "es"} (${activeCount} active, ${watchingCount} watching${promotedCount > 0 ? `, ${promotedCount} promoted` : ""}).`;
+        : `${theses.length} thes${theses.length === 1 ? "is" : "es"} (${activeCount} active, ${watchingCount} watching${promotedCount > 0 ? `, ${promotedCount} promoted` : ""})${
+            quietRows.length > 0
+              ? ` — ${enriched.length} actionable in full, ${quietRows.length} quiet as index rows`
+              : ""
+          }.`;
 
     return {
       summary,
       data: {
-        count: enriched.length,
+        count: theses.length,
         active: activeCount,
         watching: watchingCount,
+        // Full rows: the work list (needsAction non-null / PROMOTED), or
+        // the whole book under detail="book".
         theses: enriched,
+        // One-line roster entries for quiet rows (actionable mode only —
+        // empty array under "book"). Drill down on any of them with
+        // get_theses(tickers: ["X"]).
+        quiet_theses: quietRows,
+        ...(quietRows.length > 0
+          ? {
+              note:
+                `${quietRows.length} quiet thes${quietRows.length === 1 ? "is" : "es"} returned as index rows (nothing fired, no review due — the trigger system already evaluated them). ` +
+                `They need no touch this run. To read one in full: get_theses(tickers: ["<TICKER>"]).`,
+            }
+          : {}),
         // ThesisCardData[] for ThesisCardRenderer — drives the
-        // "Read theses" carousel in the chat.
+        // "Read theses" carousel in the chat (full-detail rows only).
         cards,
       },
       sources: [],

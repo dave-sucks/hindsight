@@ -633,8 +633,8 @@ export async function getBars(
   symbol: string,
   options: { start: string; end: string; timeframe?: string; limit?: number; feed?: string },
   creds?: AlpacaCredentials,
-): Promise<{ close: number; volume: number }[]> {
-  const bars: { close: number; volume: number }[] = [];
+): Promise<{ close: number; volume: number; low?: number; high?: number }[]> {
+  const bars: { close: number; volume: number; low?: number; high?: number }[] = [];
 
   // Wrap entire iteration in a timeout since Alpaca SDK async iterators can hang
   const collectBars = async () => {
@@ -647,11 +647,25 @@ export async function getBars(
     });
 
     for await (const bar of barIterator) {
-      const b = bar as { ClosePrice?: number; c?: number; Volume?: number; v?: number };
+      const b = bar as {
+        ClosePrice?: number;
+        c?: number;
+        Volume?: number;
+        v?: number;
+        LowPrice?: number;
+        l?: number;
+        HighPrice?: number;
+        h?: number;
+      };
       const close = b.ClosePrice ?? b.c;
       const volume = b.Volume ?? b.v;
       if (close !== undefined) {
-        bars.push({ close, volume: volume ?? 0 });
+        bars.push({
+          close,
+          volume: volume ?? 0,
+          low: b.LowPrice ?? b.l,
+          high: b.HighPrice ?? b.h,
+        });
       }
     }
     return bars;

@@ -38,6 +38,37 @@ export interface Trigger {
   lastFiredAt?: string;
   /** "TACTICAL" (wake an agent) | "DIRECT" (close directly, no agent). Absent ⇒ TACTICAL. */
   fireMode?: "TACTICAL" | "DIRECT";
+  /**
+   * Which record this rung is stored on — the cascade level. Set by the
+   * server's resolver (lib/agent/triggers/levels), never by the client.
+   *
+   *   THESIS  — stored on this thesis. Editable here. Solid pill.
+   *   ANALYST — an analyst standing rule, shared by all its theses.
+   *   ACCOUNT — an account standing rule, shared by every analyst.
+   *   DEFAULT — a code constant. Read-only everywhere.
+   *
+   * Absent ⇒ treat as THESIS (a payload from before the cascade).
+   */
+  level?: "THESIS" | "ANALYST" | "ACCOUNT" | "DEFAULT";
+  /**
+   * `level !== "THESIS"`. Drives the dotted border and the read-only
+   * popover: an inherited rung is edited at the level that owns it, not
+   * here, so one edit can't silently mean different things on different
+   * theses.
+   */
+  inherited?: boolean;
+  /** Who authored the value — informational, shown in the popover. */
+  source?: "DEFAULT" | "AGENT" | "PRINCIPAL";
+  /**
+   * The rung this one displaced, if any. Makes an override legible: a
+   * dashed border only ever explains levels nothing has overridden, so
+   * without this a `+20% from entry` rung looks identical whether it
+   * replaced the +10% default or was invented from scratch.
+   */
+  overrides?: {
+    level: "THESIS" | "ANALYST" | "ACCOUNT" | "DEFAULT";
+    predicate: TriggerPredicate;
+  };
 }
 
 // Position info from /triggers — quantity + cost basis + days held only.
@@ -107,6 +138,12 @@ export interface ThesisDossier {
   maxHoldDays: number | null;
   nextReviewAt: string | null;
   triggers: Trigger[];
+  /**
+   * The analyst that owns this thesis. Lets the trigger section deep-link
+   * an ANALYST-level rung to the place it can actually be edited. Null for
+   * a thesis whose research run has no analyst.
+   */
+  analystId: string | null;
   position: ThesisStatePosition | null;
   /** Analyst that authored the thesis. Null for manual/legacy runs. */
   analystName: string | null;

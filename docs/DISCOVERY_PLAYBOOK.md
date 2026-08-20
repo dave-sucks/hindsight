@@ -14,16 +14,19 @@
 |---|---|---|---|---|---|---|
 | **PEAD Specialist** | LIVE | TARGET (30-60d) | **$7k → $14k** | 6 | 70 | Clean beat-and-raise prints; 30-60d drift |
 | **Catalyst Event PM** | LIVE | CATALYST (weeks) | **$5k → $8k** | 5 | 70 | Binary dated events (FDA, courts, contracts, M&A, earnings) |
-| **Secular Compounder** | PAPER | COMPOUNDER (years) | **$10k → $15k** | 4 | 78 | Best-in-class operators in secular themes (multi-year holds) |
+| **Secular Compounder** | **LIVE** | COMPOUNDER (years) | **$10k → $15k** (live promo cap $10k) | 4 | 78 | Best-in-class operators in secular themes (multi-year holds) |
 | *4th seat — **open slot*** | — | — | — | — | — | *Deferred, not vacant-by-accident. Must bring **offset idle periods** vs all three above — not another underreaction/lookback style. See `ANALYST_LINEUP.md` (2026-07-27).* |
 
 **Position-size floors are real and enforced in each analyst's prompt** (there is no `minPositionSize`
 config field yet — a fix is in flight). A candidate that only justifies a sub-floor position is a
 **WATCHING thesis, not a dispatch**. Size the conviction you actually have.
 
-**Compounder is deliberately still PAPER.** Graduation bar: **2–3 consecutive proposals at ≥$10k
-across at least 2 different themes** (proves both the sizing rule and the theme-balance rule took).
-Discovery for it should assume it is building toward live, not already there.
+**Compounder went LIVE 2026-08-11** — promoted on operator call, ahead of the old "2–3 in-band
+proposals across 2 themes" graduation bar (CEG was #1 of 3). Promotion closed its 2 paper positions
+and left CEG + CRWD as PROMOTED theses for the first live run to resolve (`place_trade` to re-enter,
+or demote to WATCHING). It runs with a **$10k live promotion cap** — a deliberate throttle, so every
+live entry is exactly $10k until the seat proves out. Discovery for it should now assume real money
+and a **2-slot** book, not a paper sandbox.
 
 Retired: **Momentum Breakout** (disabled 2026-07-27 — PEAD/momentum zero-investment returns correlate
 0.63 and PEAD subsumes momentum, so it duplicated a live seat rather than diversifying it; deliberately
@@ -141,6 +144,90 @@ engage with — saying about [THEME B]? Names + the claim per name.
 - **🏁 Always close the funnel** with one clean extract per name to paste into Hindsight:
   `ticker | scout(s) | convergence | the claim | freshness`.
 
+### Query design rules (added 2026-08-09, learned the hard way)
+
+A Catalyst tech-lane session returned **"no rows qualify"** on every turn. The window wasn't
+empty — the prompts were broken. Four rules came out of it. Apply them to every prompt this
+playbook generates.
+
+**1. Two filters max during retrieval. Everything else after.**
+Date-window AND market-cap AND sector AND "must cite a primary docket" returns an empty set
+every time — and worse, you can't tell whether the world is empty or your query was. Ask
+wide, have the model *label* the attributes, and filter in the Hindsight paste (which
+already hard-gates on cap, date, industry, and size).
+
+**2. Never require the scout to have cited a primary source in-post.**
+Almost nobody tweets EDIS/PTAB paper numbers or 8-K links. Ask for the claim + the date;
+verify the date afterward in Perplexity/EDGAR. Requiring in-post citation deletes the
+entire result set at the retrieval step.
+
+**3. Never scope a summarize turn to the conversation when the thread was thin.**
+`"Do not add names that didn't come up earlier"` is correct after a rich thread and fatal
+after a thin one — the model intersects its own thin output instead of researching. Safer
+close: *"keep every row with an exact date; mark unverified sources 'unverified' rather
+than dropping the row."*
+
+**4. Match the source to the beat, and fish where the fish are.**
+X has a real biotech-catalyst beat (PDUFA handles post daily) — Grok is right for it. X has
+**no ITC/PTAB beat**; nobody live-tweets docket target dates, so docket-shaped catalysts are
+a primary-calendar job (EDGAR full-text, USITC EDIS, PTAB) → Perplexity, not Grok scouts.
+Likewise, in the $1B–$20B tech band, IPR/antitrust is the *rarest* slice (chip patent fights
+and Big Tech antitrust are mega-cap = out of fence). The **abundant** slice is announced
+**M&A** (shareholder-vote dates, HSR expirations, outside dates — PE take-privates land
+squarely in the band) and **index rebalance** adds. Aim the tech lane there.
+
+> **Diagnostic habit:** an empty result is data. Log it in
+> [`discovery/FUNNEL.md`](./discovery/FUNNEL.md) with the prompt that produced it. "Few names
+> returned" and "many returned, none passed the gates" are different failures with different
+> fixes — you can only tell them apart if both are recorded.
+
+### Convergence is TWO metrics, and one of them is a warning (added 2026-08-09)
+
+The Scout Loop's headline rule — *"a name's signal = (# trusted scouts on it) × (their track
+record); 3+ handles = the triple-sourced tier, always lead with those"* — **is not safe to
+apply uniformly.** A Catalyst session made this unmissable: the single highest-convergence
+name in a 38-ticker sweep (seven named independent traders, "very high" convergence, the one
+name flagged as a clear standout) was **TENX — a ~$0.5B unread Phase 3 binary**. Below the
+cap floor, wrong archetype, and precisely the shape the seat's rules exist to exclude.
+
+That is structural, not bad luck. **X convergence measures retail attention, not edge.**
+Attention concentrates on small-cap, high-volatility, *unread* binaries because those are the
+most exciting — not the most tradeable. Split the metric:
+
+| Kind | What it actually measures | How to use it |
+|---|---|---|
+| **Calendar convergence** — N independent *calendar* sources carry the same date | The date is real | ✅ **Verification.** Use it. |
+| **Trader convergence** — N traders are positioned in the name | The trade is crowded | ⚠️ **Caution flag, not confirmation.** |
+
+**Per archetype:**
+- **Catalyst (de-risked drift):** high trader convergence is arguably a *negative*. The seat's
+  winners (XENE, ARQT, VRDN) were boring de-risked drifts; its losers (IONS, MLTX) were
+  coin-flip binaries — the crowded kind. Rank on **event quality + de-risking**, use trader
+  convergence only to ask "why is this still cheap?"
+- **Compounder (thematic):** convergence among *multi-year fundamental holders* is still the
+  right signal — the universe is genuinely unbounded there and the social graph is the map.
+- **PEAD:** convergence on *analyst revisions* (PT raises) is signal; convergence on trader
+  excitement is not.
+
+### Calendar-first vs. Grok-first — which lane is Grok actually good at
+
+Same session, same day, same model: the **wide calendar sweep produced 6 usable names; the
+social orbit/adjacency turn produced 0.** The difference was what Grok was reading — calendars
+versus people.
+
+**For dated-binary archetypes the candidate universe *is a calendar.*** The complete set of
+PDUFAs in a window is enumerable from primary sources; it does not need to be discovered
+socially. Play B (orbit) is for thematic discovery, where the universe is unbounded. Run it on
+Catalyst and it just re-surfaces the loudest names on a list you could already enumerate.
+
+**So Grok's job for Catalyst is narrower than this playbook originally assumed:** not
+discovery, but (a) is the date real, (b) what is the residual risk / trade framing, (c) how
+crowded is it. Get the candidate list from the calendar (pdufa.bio, BiopharmaWatch, FDA.gov).
+
+> This **refines rather than overturns** the 2026-06-05 "lead with Grok, not Perplexity"
+> learning. That finding was correct *against Perplexity's stale recycled catalogs*. The right
+> shape is not Grok-first — it is **calendar-first, Grok-second as the qualitative layer.**
+
 ### Which play per analyst (the gap → play map)
 
 `/review-analysts`'s "Feed to Discovery" section names the gap; this table maps it to a play.
@@ -161,8 +248,12 @@ engage with — saying about [THEME B]? Names + the claim per name.
   **guidance reiterated (not raised)** — the #1 false positive — one-time-item beats, and names that
   already gapped >10% on the print.
 - **Compounder:** best-in-class operator in a secular theme, multi-year durability, conviction-sized.
-  **Theme-balance gate:** the current book is all tech/medtech — candidates in energy transition,
-  defense, GLP-1 and onshoring outrank another AI name at equal quality.
+  Quality is judged **against the candidate's own industry**, never a software screen — see the
+  yardstick note in §3.
+  **Theme-balance gate:** as of 2026-08-12 the book covers AI/software and energy (CEG); **GLP-1,
+  onshoring and demographic aging are empty**. Candidates in the empty themes outrank another AI
+  name at equal quality. AI conviction is expressed through **position size** (AI sizes at the top
+  of the band), not through sourcing more AI candidates.
 
 ---
 
@@ -394,15 +485,29 @@ dispatch. Rest → PASS-record with rationale.
 
 ---
 
-## 3. Secular Compounder (PAPER)
+## 3. Secular Compounder (LIVE — promoted 2026-08-11)
 
 ### Mandate
 
 Buys best-in-class operators with 3-5 year secular tailwinds across AI infrastructure, GLP-1, energy transition, defense reindustrialization, onshoring, and demographic aging — concentrated 10-15% positions in 3-4 names. Holds months to years (COMPOUNDER horizon, quarterly review cadence), tolerating -15% drawdowns when the thesis is intact.
 
+> **⚠️ The yardstick note — read before writing any screen for this seat.**
+> This seat's quality bar is **relative to the candidate's own industry**, never absolute.
+> Until 2026-08-12 this section carried a hard "25%+ revenue growth + 30%+ FCF margin"
+> screen. That is a *software* yardstick: essentially no industrial, E&C, CDMO, medtech
+> or utility compounder clears it, and neither does this seat's own live book (GD, ETN,
+> CEG all fail it). Applied literally it filtered every non-tech candidate out before the
+> operator saw it — which is a large part of why this seat's watchlist ran 9-of-14 AI/semis/
+> software while three of its seven themes sat empty. It was also never in the analyst's
+> `analystPrompt`; it existed only here, and re-injected itself into every prep session.
+> **Judge instead on:** growth and margin trajectory vs. that industry's norms, backlog
+> growth + conversion (industrials/E&C), contracted or binding capacity (CDMO/supply
+> chain), ROIC vs. cost of capital, FCF conversion funding the next cycle, and capital-
+> allocation record. Same strictness — right yardstick.
+
 ### Triggers
 
-- **ENTER:** scaled entry over 3-6 months on weakness; durable moat + verifiable secular tailwind + 25%+ revenue growth + 30%+ FCF margin; minConfidence ≥78
+- **ENTER:** scaled entry over 3-6 months on weakness; durable moat + verifiable secular tailwind + growth and cash generation that are best-in-class **for that name's own industry** (see the yardstick note below); minConfidence ≥78
 - **PASS:** profitless growth dressed as "secular," story stocks without unit economics, mediocre operator in a real theme, cyclical names mislabeled as secular
 - **HOLD:** through earnings noise, intra-quarter volatility, -10% to -15% drawdowns; never trims on price alone
 - **EXIT:** ONLY on invalidation — regulatory break, CFO departure, 2 consecutive guidance cuts, structural demand erosion, broken capital allocation discipline
@@ -448,8 +553,9 @@ exclude technical / options flow noise.
 What are the top 5 best-in-class operators in datacenter power
 infrastructure (utilities + grid + cooling + electrical equipment) with
 3-5 year tailwinds from AI capex acceleration through 2028? Exclude
-pure-play hyperscalers and chip makers. Need 25%+ revenue growth and
-management with proven capital allocation.
+pure-play hyperscalers and chip makers. Rank by backlog growth and
+conversion, ROIC vs cost of capital, margin trajectory, and management
+with proven capital allocation.
 ```
 
 ```
@@ -483,7 +589,9 @@ for the theme gaps in my current watchlist (currently 100% IT/AI):
 [paste Grok / Perplexity / Reddit output]
 
 Triage against my mandate: 3-5 year secular tailwinds, best-in-class
-operator, 25%+ revenue growth, 30%+ FCF margin, durable moat. Want 1-2
+operator, durable moat, and growth + cash generation that are top-decile
+FOR THAT NAME'S OWN INDUSTRY — do not apply software growth/margin
+screens to industrials, CDMOs or medtech. Want 1-2
 names each in GLP-1 supply chain, energy transition, defense reindustriali-
 zation. Skip already-covered: [LIST CURRENT WATCHING TICKERS]. Top 3-5 →
 dispatch. Rest → PASS-record with rationale.
@@ -492,7 +600,47 @@ dispatch. Rest → PASS-record with rationale.
 ### Notes & Learnings
 
 - Current watchlist (as of 2026-06-05) is 100% IT/AI names — pre-rewrite history. Manual discovery needs to populate GLP-1, energy, defense before this analyst can execute its mandate fully.
-- Don't promote to LIVE until the watchlist spans the new themes.
+- ~~Don't promote to LIVE until the watchlist spans the new themes.~~ Superseded — promoted 2026-08-11 on operator call with energy covered (CEG) but GLP-1 / onshoring / aging still empty. The theme-population job is now a **live** priority, not a pre-promotion gate.
+- **2026-08-12 — the fence was silently blocking three of the seven themes.** The seat's `industries` array had no entry that could reach GLP-1 picks-and-shovels (Life Sciences Tools, Health Care Equipment), onshoring (Machinery, Construction & Engineering), or aging/medtech. Only Pharmaceuticals (LLY/NVO) and Electrical Equipment were reachable. **Diagnosis rule learned: when an analyst keeps drifting to one theme, check `industries` against `themes` before blaming the prompt or the sourcing.** Fixed by adding the four industries.
+- **2026-08-12 — GICS industry vs sub-industry strings matter.** The fence carried `Independent Power and Renewable Electricity Producers` (the GICS *industry* name), which appears in **zero** `Signal` rows; the data emits the *sub-industry* `Independent Power Producers & Energy Traders`. A fence value that never matches is invisible dead weight. **Validate any new industry value against `SELECT DISTINCT unnest(industries) FROM "Signal"` before trusting it.**
+- **2026-08-12 — the 25%/30% screen was removed.** See the yardstick note in the Mandate section above. It was never in the `analystPrompt`; it lived only in this doc and re-injected itself into every prep session, filtering out the exact non-tech candidates the seat was being asked to find.
+
+#### 2026-08-12 discovery session — first post-fence-fix run (batched paste, PRINCIPAL_CHAT)
+
+Ran Play A ×2 (GLP-1, onshoring) + Play D (aging) via 10 batched pastes into Principal Chat.
+**Result: 5 dispatched (WST, SYK, ISRG, EME, ABT), 4 PASS-recorded (TMO, STVN, FIX, POWL).**
+
+**What worked**
+- **The fence fix paid off within 10 minutes.** The industries widening landed 03:40; the run
+  started 03:50 and immediately scored TMO/STVN/WST/BDX — and later ISRG/SYK/ABT — as
+  "✅ universe fit" on the newly-added `Life Sciences Tools & Services` and `Health Care
+  Equipment & Supplies`. Aging went from **zero reachable candidates to four in one config edit.**
+- **Batched-paste triage is the right shape.** Running-list-then-score (rather than dispatching
+  per paste) let later pastes demote earlier candidates on evidence — STVN went High→Medium when
+  Perplexity showed 1.6% FCF margin and no named counterparty. That is the process working.
+- **The industry-relative yardstick immediately mattered.** Every dispatched name (WST, SYK, ISRG,
+  EME, ABT, plus PWR/ROK in the queue) would have been filtered by the old 25%/30% software screen.
+
+**What went wrong**
+- **DISPATCH_CAP ignored slot reality.** Cap was 5; the seat had **2** free positions. Five
+  dispatches take the watchlist from 14 → 19 WATCHING against a 4-name book — the bloat problem
+  compounding. **Cap to free slots, not to a constant.**
+- **Two High-priority names fell through the closeout: PWR and ROK.** Both were 🔴 High in the
+  final triage table; neither was dispatched nor PASS-recorded. They exist only in the chat
+  transcript. **Every surviving candidate must terminate in a row — WATCHING or PASSED. "Still in
+  the research queue" is not a terminal state.**
+- **The GLP-1 picks-and-shovels layer is mostly not US-listed.** Bachem, Ypsomed, Gerresheimer,
+  SHL, Divi's, PolyPeptide — the highest-conviction names in the theme are Swiss/German/Indian or
+  private. Bachem's OTC line (`BCHMY`) is too thin for a $10k position. Roughly half the chat
+  turns were spent surfacing names that could never be bought. **Put "US-listed common stock only,
+  sufficient liquidity for a $10-15k position" in the Grok prompt itself for any supply-chain theme.**
+- **Play D transfer across unrelated themes returned nothing** — see the scout roster's aging
+  section. Adjacent domains only.
+- **Thesis-writer fan-out is slow and fragile.** The 5 dispatches spawned 5 `THESIS_WRITER` runs
+  advertised at "~60-120s" that actually took **400-560s+**, and the same night's CRWD writer
+  **FAILED at 774s** — suspiciously close to the 770s abort derived from `maxDuration` 800 in
+  `lib/agent/modes.ts`. A 5-name dispatch is 5 independent model loops. Budget real time for it,
+  and expect losses at the cap. (Under separate investigation.)
 
 ---
 

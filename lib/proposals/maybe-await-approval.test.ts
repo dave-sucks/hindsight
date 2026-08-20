@@ -175,147 +175,80 @@ describe("maybeAwaitApproval — duplicate CLOSE dedup", () => {
 // letting risk-management exits (STOP/TARGET, price_monitor) through and
 // ignoring systemic tombstones.
 // ─────────────────────────────────────────────────────────────────────────────
-describe("maybeAwaitApproval — unapproved-exit cooldown (P1-28)", () => {
-  it("suppresses a discretionary CLOSE the user recently REJECTED", async () => {
+describe("maybeAwaitApproval — NO cross-day exit suppression (P1-39 emergency)", () => {
+  // The P1-28 cross-day cooldown was REMOVED 2026-08-10: it went silent on
+  // positions the agent wanted out of (MU + CYTK, both LIVE), which the principal
+  // ruled unacceptable — an unwanted repeat is fine, silence never is. Every
+  // exit the agent decides on now surfaces; repeat-fatigue is cured later by the
+  // morning run re-drawing the floor, not by suppression. The #379 same-tick
+  // dedup (separate describe above) is untouched.
+
+  it("re-stages a discretionary CLOSE even after a recent REJECTION (never goes silent)", async () => {
     mockOrderFindFirst.mockResolvedValue(null); // no pending twin
-    const expiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // within window
+    const expiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
     mockOrderFindMany.mockResolvedValue([
       { id: "order-rejected", status: "REJECTED", expiresAt, rejectionMessage: "no thanks" },
     ]);
 
     const result = await maybeAwaitApproval(baseArgs());
 
-    expect(result?.state).toBe("suppressed_recent_rejection");
-    if (result?.state !== "suppressed_recent_rejection") throw new Error("unreachable");
-    expect(result.lastUnapprovedOrderId).toBe("order-rejected");
-    expect(result.lastUnapprovedOutcome).toBe("REJECTED");
-    expect(result.unapprovedExitCount).toBe(1);
-
-    expect(mockOrderUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "order-new" },
-        data: expect.objectContaining({
-          status: "REJECTED",
-          rejectionMessage: expect.stringContaining("Suppressed —"),
-        }),
-      }),
-    );
-    expect(mockTransaction).not.toHaveBeenCalled();
-    expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
+    expect(awaiting(result).orderId).toBe("order-new");
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+    expect(mockSendProposalPendingEmail).toHaveBeenCalledWith("order-new");
   });
 
-  it("suppresses when the user IGNORED the prior proposal to EXPIRY (the dominant case)", async () => {
+  it("re-stages after an ignored EXPIRY (the MU/CYTK silence case) — reminds again", async () => {
     mockOrderFindFirst.mockResolvedValue(null);
     const expiresAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000); // expired 2d ago
-    // No explicit rejection — just an expired card. This is the NVDA/IREN shape
-    // the rejection-only design missed entirely.
     mockOrderFindMany.mockResolvedValue([
       { id: "order-expired", status: "EXPIRED", expiresAt, rejectionMessage: null },
     ]);
 
     const result = await maybeAwaitApproval(baseArgs());
 
-    expect(result?.state).toBe("suppressed_recent_rejection");
-    if (result?.state !== "suppressed_recent_rejection") throw new Error("unreachable");
-    expect(result.lastUnapprovedOutcome).toBe("EXPIRED");
-    expect(result.unapprovedExitCount).toBe(1);
-    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(awaiting(result).orderId).toBe("order-new");
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
   });
 
-  it("lets a protective/trail EXIT re-fire on re-cross even after a user REJECTION (ARQT $26.50 case)", async () => {
-    // The principal rejected a trail-from-high gain-lock exit at +21% because
-    // they wanted to keep holding — but explicitly asked to be re-alerted if
-    // price re-crosses the level. tactical-run threads ctx.protectiveExitReason
-    // for that predicate so close_position tags the close STOP (agent source).
-    // A STOP close is a MATERIAL risk event, so it must bypass the P1-28
-    // cooldown and re-stage — NOT be silently suppressed for 5 days like a
-    // discretionary re-pitch would be.
-    mockOrderFindFirst.mockResolvedValue(null); // no pending twin
-    mockOrderFindUnique.mockResolvedValue({ closeReason: "STOP", closeSource: "agent" });
-    const expiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // rejection inside window
+  it("re-stages a MANUAL judgment close after a recent decline (the bug that silenced MU/CYTK)", async () => {
+    // Previously this returned suppressed_recent_rejection and went dark. Now the
+    // agent's judgment exit always reaches the principal.
+    mockOrderFindFirst.mockResolvedValue(null);
+    mockOrderFindUnique.mockResolvedValue({ closeReason: "MANUAL", closeSource: "agent" });
+    const expiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
     mockOrderFindMany.mockResolvedValue([
       { id: "order-rejected", status: "REJECTED", expiresAt, rejectionMessage: "keep holding" },
     ]);
 
     const result = await maybeAwaitApproval(baseArgs());
 
-    // Re-stages a fresh proposal — the re-alert the principal asked for.
     expect(awaiting(result).orderId).toBe("order-new");
-    expect(mockOrderFindMany).not.toHaveBeenCalled(); // short-circuits on risk exit
     expect(mockTransaction).toHaveBeenCalledTimes(1);
     expect(mockSendProposalPendingEmail).toHaveBeenCalledWith("order-new");
   });
 
-  it("STILL suppresses a discretionary MANUAL close after a REJECTION (anti-nag preserved)", async () => {
-    // Counter-case to the protective exemption above: same recent REJECTION,
-    // but a MANUAL close (ctx.protectiveExitReason undefined — a daily-run
-    // rebalance or a judgment EXIT trigger). The P1-28 cooldown MUST still
-    // suppress it; only price-triggered protective exits are exempt.
+  it("never returns suppressed_recent_rejection for any CLOSE", async () => {
     mockOrderFindFirst.mockResolvedValue(null);
-    mockOrderFindUnique.mockResolvedValue({ closeReason: "MANUAL", closeSource: "agent" });
-    const expiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000); // rejection inside window
     mockOrderFindMany.mockResolvedValue([
-      { id: "order-rejected", status: "REJECTED", expiresAt, rejectionMessage: "keep holding" },
+      { id: "r1", status: "REJECTED", expiresAt: new Date(Date.now() - 1000), rejectionMessage: "no" },
+      { id: "e1", status: "EXPIRED", expiresAt: new Date(Date.now() - 1000), rejectionMessage: null },
     ]);
 
     const result = await maybeAwaitApproval(baseArgs());
 
-    expect(result?.state).toBe("suppressed_recent_rejection");
-    expect(mockOrderFindMany).toHaveBeenCalledTimes(1); // did NOT short-circuit
-    expect(mockTransaction).not.toHaveBeenCalled();
-    expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
-  });
-
-  it("lets a STOP close through (risk exit bypasses the cooldown)", async () => {
-    mockOrderFindFirst.mockResolvedValue(null);
-    mockOrderFindUnique.mockResolvedValue({ closeReason: "STOP", closeSource: "agent" });
-    mockOrderFindMany.mockResolvedValue([
-      { id: "order-expired", status: "EXPIRED", expiresAt: new Date(), rejectionMessage: null },
-    ]);
-
-    const result = await maybeAwaitApproval(baseArgs());
-
+    expect(result?.state).not.toBe("suppressed_recent_rejection");
     expect(awaiting(result).orderId).toBe("order-new");
-    expect(mockOrderFindMany).not.toHaveBeenCalled(); // short-circuits on risk exit
-    expect(mockTransaction).toHaveBeenCalledTimes(1);
   });
 
-  it("lets a price_monitor close through (trailing-stop cron bypasses)", async () => {
-    mockOrderFindFirst.mockResolvedValue(null);
-    mockOrderFindUnique.mockResolvedValue({ closeReason: "MANUAL", closeSource: "price_monitor" });
-
-    const result = await maybeAwaitApproval(baseArgs());
-
-    expect(awaiting(result).orderId).toBe("order-new");
-    expect(mockOrderFindMany).not.toHaveBeenCalled();
-    expect(mockTransaction).toHaveBeenCalledTimes(1);
-  });
-
-  it("ignores systemic tombstones — a dedup/suppression row does NOT arm the cooldown", async () => {
-    mockOrderFindFirst.mockResolvedValue(null);
-    mockOrderFindMany.mockResolvedValue([
-      { id: "t1", status: "REJECTED", expiresAt: new Date(), rejectionMessage: "Duplicate close — folded into pending proposal x" },
-      { id: "t2", status: "REJECTED", expiresAt: new Date(), rejectionMessage: "Suppressed — recent unapproved CLOSE cooldown (P1-28)" },
-    ]);
-
-    const result = await maybeAwaitApproval(baseArgs());
-
-    // No real decline in the window → stages normally.
-    expect(awaiting(result).orderId).toBe("order-new");
-    expect(mockTransaction).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not gate PARTIAL_CLOSE — only full CLOSE is on cooldown", async () => {
+  it("still stages a PARTIAL_CLOSE normally", async () => {
     mockOrderFindMany.mockResolvedValue([
       { id: "order-expired", status: "EXPIRED", expiresAt: new Date(), rejectionMessage: null },
     ]);
 
     const result = await maybeAwaitApproval({ ...baseArgs(), intent: "PARTIAL_CLOSE" });
 
-    // Cooldown query never runs for a trim; it stages.
-    expect(mockOrderFindMany).not.toHaveBeenCalled();
     expect(awaiting(result).orderId).toBe("order-new");
-    expect(UNAPPROVED_EXIT_COOLDOWN_DAYS).toBeGreaterThan(0);
+    expect(UNAPPROVED_EXIT_COOLDOWN_DAYS).toBeGreaterThan(0); // const retained, now unused
   });
 });
 

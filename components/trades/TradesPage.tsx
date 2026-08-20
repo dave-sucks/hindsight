@@ -171,10 +171,20 @@ export default function TradesPage({
 
   const filtered = useMemo(() => {
     switch (tab) {
+      // PENDING (an unapproved buy proposal) is NOT closed — "not OPEN" is
+      // the wrong test. Filter on the terminal states explicitly, and keep
+      // pending alongside open so it stays reachable from a tab.
       case 'OPEN':
-        return allTrades.filter((t) => t.status === 'OPEN');
+        return allTrades.filter((t) => t.status === 'OPEN' || t.status === 'PENDING');
       case 'CLOSED':
-        return allTrades.filter((t) => t.status !== 'OPEN');
+        return allTrades.filter(
+          (t) =>
+            t.status === 'CLOSED_WIN' ||
+            t.status === 'CLOSED_LOSS' ||
+            t.status === 'CLOSED_EXPIRED' ||
+            t.status === 'CANCELLED' ||
+            t.status === 'REJECTED',
+        );
       case 'WON':
         return allTrades.filter((t) => t.status === 'CLOSED_WIN');
       case 'LOST':
@@ -310,11 +320,6 @@ export default function TradesPage({
                               </div>
                             </TooltipContent>
                           </Tooltip>
-                          {awaitingApproval && (
-                            <span className="text-[10px] text-amber-500/90 ml-0.5">
-                              Pending review
-                            </span>
-                          )}
                         </div>
                         {trade.analystName && (
                           <p className="text-[10px] text-muted-foreground font-mono leading-tight">
@@ -415,22 +420,26 @@ export default function TradesPage({
                         }
                       />
                       <TooltipContent side="top" className="text-xs tabular-nums">
+                        {/* One legend row per level, each carrying the SAME
+                            marker colour the gauge draws, sorted by price so
+                            the list reads left-to-right like the bar itself.
+                            Current is drawn as an outline: the gauge paints it
+                            `bg-foreground`, and this tooltip's own surface is
+                            bg-foreground — a solid dot was invisible on it. */}
                         <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-negative" />
-                            Stop ${trade.stopPrice.toFixed(2)}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-foreground" />
-                            Current ${trade.currentPrice.toFixed(2)}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-positive" />
-                            Target ${trade.targetPrice.toFixed(2)}
-                          </div>
-                          <div className="pt-1 text-muted-foreground">
-                            Entry ${trade.entryPrice.toFixed(2)}
-                          </div>
+                          {[
+                            { label: 'Stop', value: trade.stopPrice, marker: 'bg-negative' },
+                            { label: 'Entry', value: trade.entryPrice, marker: 'bg-muted-foreground' },
+                            { label: 'Current', value: trade.currentPrice, marker: 'border border-current' },
+                            { label: 'Target', value: trade.targetPrice, marker: 'bg-positive' },
+                          ]
+                            .sort((a, b) => a.value - b.value)
+                            .map((lvl) => (
+                              <div key={lvl.label} className="flex items-center gap-2">
+                                <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', lvl.marker)} />
+                                {lvl.label} ${lvl.value.toFixed(2)}
+                              </div>
+                            ))}
                         </div>
                       </TooltipContent>
                     </Tooltip>

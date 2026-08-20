@@ -46,10 +46,15 @@ function formatArticle(
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const NEXT_PUBLIC_FINNHUB_API_KEY = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '';
 
-async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T> {
+async function fetchJSON<T>(
+  url: string,
+  revalidateSeconds?: number,
+  timeoutMs?: number,
+): Promise<T> {
   const options: RequestInit & { next?: { revalidate?: number } } = revalidateSeconds
     ? { cache: 'force-cache', next: { revalidate: revalidateSeconds } }
     : { cache: 'no-store' };
+  if (timeoutMs) options.signal = AbortSignal.timeout(timeoutMs);
 
   const res = await fetch(url, options);
   if (!res.ok) {
@@ -258,16 +263,59 @@ export async function getStockProfile(symbol: string): Promise<StockProfile | nu
   }
 }
 
+// ── Live-quote cache ────────────────────────────────────────────────────────
+// A quote must NEVER go in the Next.js Data Cache. That cache is
+// stale-while-revalidate AND persists across invocations and deploys on
+// Vercel, so its staleness is bounded by how often a surface is hit, not by
+// the `revalidate` value. `getStockQuote` used `force-cache` + `revalidate:30`
+// and on 2026-08-14 served the *prior session's close* ($337.38 +1.54%) on a
+// sheet opened at 11:38 AM ET while SNOW was live at $329.43 −2.36%.
+//
+// The defect was the STORE, not caching as such. This module-level map is the
+// right shape: per-instance, seconds-long, dropped on cold start — it damps
+// bursts without any way to survive to the next morning. It also collapses
+// concurrent callers for the same symbol (the in-flight map), which matters
+// because `/api/quotes` is polled every 30s by every open tab and the two
+// `Promise.all` fan-outs over `getStockQuote` (lib/alpaca.ts, complete-run.ts)
+// are unthrottled. Keep this TTL in SECONDS. See CLAUDE.md → recurring bugs.
+const QUOTE_TTL_MS = 10_000;
+const QUOTE_TIMEOUT_MS = 8_000;
+const quoteCache = new Map<string, { quote: StockQuote | null; ts: number }>();
+const quoteInFlight = new Map<string, Promise<StockQuote | null>>();
+
 export async function getStockQuote(symbol: string): Promise<StockQuote | null> {
-  try {
-    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
-    if (!token) return null;
-    const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(symbol.toUpperCase())}&token=${token}`;
-    const data = await fetchJSON<StockQuote>(url, 30);
-    return data ?? null;
-  } catch {
-    return null;
-  }
+  const key = symbol.toUpperCase();
+
+  const hit = quoteCache.get(key);
+  if (hit && Date.now() - hit.ts < QUOTE_TTL_MS) return hit.quote;
+
+  // Coalesce concurrent callers for the same symbol onto one request.
+  const pending = quoteInFlight.get(key);
+  if (pending) return pending;
+
+  const task = (async (): Promise<StockQuote | null> => {
+    try {
+      const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+      if (!token) return null;
+      const url = `${FINNHUB_BASE_URL}/quote?symbol=${encodeURIComponent(key)}&token=${token}`;
+      // No revalidateSeconds → `cache: 'no-store'`. The timeout is required,
+      // not cosmetic: callers are coalesced onto this one promise, so a hung
+      // request without it would stall every waiter for that symbol.
+      const data = await fetchJSON<StockQuote>(url, undefined, QUOTE_TIMEOUT_MS);
+      const quote = data ?? null;
+      quoteCache.set(key, { quote, ts: Date.now() });
+      return quote;
+    } catch {
+      // Don't cache failures — the next caller should retry rather than be
+      // pinned to a null for the whole TTL.
+      return null;
+    } finally {
+      quoteInFlight.delete(key);
+    }
+  })();
+
+  quoteInFlight.set(key, task);
+  return task;
 }
 
 export async function getStockMetrics(symbol: string): Promise<Record<string, number> | null> {
@@ -430,97 +478,18 @@ export async function getStockCandlesBatch(
  * behind the sheet chart's "1D" tab. Each candle's `date` carries the FULL ISO
  * (UTC) timestamp (not a YYYY-MM-DD day) so the chart can render time-of-day.
  *
- * Source preference:
- *   1. FMP `/historical-chart/1min` — CONSOLIDATED tape incl. pre/post-market.
- *      This is what makes the 1D line span the whole trading day (pre-market →
- *      now) like a real finance chart, instead of just the regular session.
- *   2. Alpaca IEX (regular hours only) — fallback when FMP is unavailable or the
- *      plan doesn't serve intraday. IEX is thin (~2-3% of volume) and carries
- *      little pre-market, so this degrades to a clean 9:30–close session.
+ * Source: Alpaca IEX (regular hours only). IEX is thin (~2-3% of volume) and
+ * carries little pre-market, so the 1D line is a clean 9:30–close session.
+ *
+ * 2026-08-19 (DAV-191) — this used to try FMP `/api/v3/historical-chart/1min`
+ * first, for the consolidated pre/post-market tape. FMP retired the whole
+ * /api/v3 namespace on 2025-08-31; the call returned 403 in ~83ms on EVERY 30s
+ * poll of the most-polled surface in the app before falling through to here.
+ * Removed. If pre/post-market coverage matters again, the path is Alpaca SIP
+ * (feed=iex → feed=sip), not FMP.
  */
 export async function getIntradayCandles(symbol: string): Promise<StockCandle[]> {
-  const fmp = await getIntradayCandlesFmp(symbol);
-  if (fmp.length >= 2) return fmp;
   return getIntradayCandlesAlpaca(symbol);
-}
-
-/**
- * FMP intraday timestamps are ET wall-clock with no zone ("2026-07-14
- * 07:31:00"). Convert to a real UTC epoch using the ACTUAL ET offset for that
- * instant (DST-safe): treat the string as UTC, format that guess back into ET,
- * and the delta between the two IS the offset.
- */
-function etNaiveToUtcMs(naive: string): number {
-  const asIfUtc = Date.parse(naive.replace(' ', 'T') + 'Z');
-  if (Number.isNaN(asIfUtc)) return NaN;
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  const o: Record<string, string> = {};
-  for (const p of dtf.formatToParts(new Date(asIfUtc))) o[p.type] = p.value;
-  const etAsUtc = Date.UTC(
-    +o.year,
-    +o.month - 1,
-    +o.day,
-    +o.hour % 24,
-    +o.minute,
-    +o.second,
-  );
-  return asIfUtc + (asIfUtc - etAsUtc);
-}
-
-async function getIntradayCandlesFmp(symbol: string): Promise<StockCandle[]> {
-  try {
-    const key = process.env.FMP_API_KEY;
-    if (!key) return [];
-    const to = new Date().toISOString().slice(0, 10);
-    const from = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const url = `https://financialmodelingprep.com/api/v3/historical-chart/1min/${encodeURIComponent(
-      symbol.toUpperCase(),
-    )}?from=${from}&to=${to}&apikey=${key}`;
-
-    const res = await fetch(url, { next: { revalidate: 30 } });
-    if (!res.ok) {
-      // 403 here = plan doesn't serve intraday; caller falls back to Alpaca.
-      console.warn('[getIntradayCandles] FMP error', res.status);
-      return [];
-    }
-
-    const rows = (await res.json()) as
-      | { date: string; open: number; high: number; low: number; close: number; volume: number }[]
-      | { 'Error Message'?: string };
-    if (!Array.isArray(rows) || rows.length === 0) return [];
-
-    // FMP dates are "YYYY-MM-DD HH:MM:SS" (ET). Keep the latest session date's
-    // rows (all hours — pre/RTH/post), normalize ET→UTC ISO, sort ascending
-    // (FMP returns newest-first).
-    const latest = rows.reduce(
-      (max, r) => (r.date.slice(0, 10) > max ? r.date.slice(0, 10) : max),
-      '',
-    );
-    return rows
-      .filter((r) => r.date.slice(0, 10) === latest)
-      .map((r) => ({
-        date: new Date(etNaiveToUtcMs(r.date)).toISOString(),
-        close: r.close,
-        open: r.open,
-        high: r.high,
-        low: r.low,
-        volume: r.volume,
-      }))
-      .filter((c) => !Number.isNaN(Date.parse(c.date)))
-      .sort((a, b) => a.date.localeCompare(b.date));
-  } catch (err) {
-    console.error('[getIntradayCandles] FMP error:', err instanceof Error ? err.message : err);
-    return [];
-  }
 }
 
 async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> {
@@ -541,7 +510,11 @@ async function getIntradayCandlesAlpaca(symbol: string): Promise<StockCandle[]> 
         'APCA-API-KEY-ID': apiKey,
         'APCA-API-SECRET-KEY': apiSecret,
       },
-      next: { revalidate: 30 },
+      // Current-session bars are live price data — no Data Cache. The chart
+      // polls this every 30s, and a 30s `revalidate` meant every poll sat
+      // exactly on the staleness boundary, so the tab rendered one cycle
+      // behind rather than live. Poll rate (and upstream volume) is unchanged.
+      cache: 'no-store',
     });
 
     if (!res.ok) {

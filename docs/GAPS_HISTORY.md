@@ -11,6 +11,21 @@
 
 ---
 
+## Done since 2026-08-18 (gain protection closed — validated live)
+
+### ✅ P1-30 — Gain-protection stack — **CLOSED 2026-08-18** (shipped #477/#480/#481/#483; validated LIVE 2026-07-13→16)
+A held winner could round-trip its entire gain to a loss with no sell signal (IONS: +17%, three
+"no changes" reviews, exited at a loss on the day-one stop). Fixed by the Game Plan stack:
+gain-from-entry + trailing-from-high trigger types (#477), standing protection minimums on every
+held position — +10% checkpoint / 8% trail / −12% loser review (#480, conversion script run, all 11
+live holdings verified), the UNPROTECTED_GAIN morning flag (#481), and the run-completion warn-gate
+(#483). **Live validation PASSED** week of 2026-07-13: +$2,256 banked across ARQT/VRDN/XENE
+protective exits, scale-in adds firing. Follow-on gaps discovered during validation became their own
+items (P1-35 sold-name continuity → closed #524; P1-38 level quality; P1-42 levels-as-triggers).
+Full original filing: git history of GAPS.md.
+
+---
+
 ## Done since 2026-06-22 (cooldown merged + legacy briefing code deleted + digest shipped)
 
 ### ✅ P1-28 — Proposal-fatigue cooldown — **MERGED ([#445](https://github.com/dave-sucks/hindsight/pull/445))**
