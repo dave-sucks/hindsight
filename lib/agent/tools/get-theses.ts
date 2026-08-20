@@ -73,7 +73,9 @@ const HORIZONS = ["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const;
  * the window self-refreshes; an old decline with no fresh proposals behind
  * it ages out. Feeds the informational `heldThroughFloor` row field only.
  */
-const HELD_THROUGH_WINDOW_DAYS = 7;
+// Single source: lib/proposals/held-through-context.ts — the DIRECT
+// (no-agent) proposal path mirrors this batch computation there (DAV-194).
+import { HELD_THROUGH_WINDOW_DAYS } from "@/lib/proposals/held-through-context";
 
 const schema = z.object({
   status: z

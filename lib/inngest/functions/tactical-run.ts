@@ -477,13 +477,31 @@ export const tacticalRun = inngest.createFunction(
           "@/lib/actions/closeTrade.actions"
         );
         const reason = directExitReason(trigger as Trigger, thesis.direction);
+        // DAV-194: on a held-through name, the daily card must be worth
+        // reading — which ask this is, the principal's own reject note, the
+        // recent low with a suggested place for the line. The agent path
+        // gets this via get_theses.heldThroughFloor + the prompt; this
+        // no-agent path appends the same context to the rationale so the
+        // card is never verbatim-identical day over day. Best-effort: a
+        // context failure returns null and never blocks the close.
+        const { heldThroughNoteForPosition } = await import(
+          "@/lib/proposals/held-through-context"
+        );
+        const heldThroughNote = await heldThroughNoteForPosition({
+          positionId: position.id,
+          ticker: thesis.ticker,
+          direction: thesis.direction,
+        });
+        const rationale = heldThroughNote
+          ? `${trigger.rationale} ${heldThroughNote}`
+          : trigger.rationale;
         try {
           const outcome = await closeOpenPosition(
             position.id,
             reason,
             undefined, // creds resolved inside from the position's environment
             "price_monitor", // autonomous → approval-gated; risk-exit carve-out applies
-            trigger.rationale,
+            rationale,
             run.id,
           );
           return { kind: outcome.kind, reason };
