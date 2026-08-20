@@ -49,13 +49,6 @@ function useCurrentRunId(): string | null {
   return match?.[1] ?? null;
 }
 
-function fmtUsd(v: number | null | undefined): string | null {
-  // Returns null when the price is missing so the caller can hide the
-  // chunk entirely instead of rendering a placeholder dash (2026-05-19).
-  if (v == null) return null;
-  return `$${v.toFixed(2)}`;
-}
-
 function fmtDateTime(d: string): string {
   return new Date(d).toLocaleString("en-US", {
     month: "short",
@@ -158,37 +151,24 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                       "rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 -ml-2 mb-1",
                   )}
                 >
-                  {/* Top row: Date (left, xs mono) · Price (right). The
-                      price is the quote at the moment the event was
-                      recorded; hidden when the writing path had none. The
-                      old up/down arrow (delta vs the previous logged event)
-                      is gone — with sparse price coverage it read as random
-                      decoration (principal feedback 2026-08-19). */}
-                  {(() => {
-                    const priceStr = fmtUsd(u.priceAtTime);
-                    return (
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
-                          {fmtDateTime(u.timestamp)}
+                  {/* Header row: [chip +] Title (left) · timestamp (far
+                      right, regular face, light weight) — incident-timeline
+                      layout per principal feedback 2026-08-20. priceAtTime
+                      still rides in the payload; its home in the row is TBD
+                      (deliberately not rendered for now). */}
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-sm font-medium leading-snug min-w-0">
+                      {chip ? (
+                        <span className="mr-1.5 inline-flex align-middle">
+                          <Badge variant={chip.variant}>{chip.label}</Badge>
                         </span>
-                        {priceStr ? (
-                          <span className="text-sm font-medium tabular-nums">
-                            {priceStr}
-                          </span>
-                        ) : null}
-                      </div>
-                    );
-                  })()}
-
-                  {/* Outcome chip + summary (heading) */}
-                  <p className="text-sm font-medium leading-snug">
-                    {chip ? (
-                      <span className="mr-1.5 inline-flex align-middle">
-                        <Badge variant={chip.variant}>{chip.label}</Badge>
-                      </span>
-                    ) : null}
-                    {u.summary}
-                  </p>
+                      ) : null}
+                      {u.summary}
+                    </p>
+                    <span className="text-xs font-light tabular-nums text-muted-foreground shrink-0">
+                      {fmtDateTime(u.timestamp)}
+                    </span>
+                  </div>
 
                   {/* Exact from → to lines: levels, composite, ladder diff */}
                   {changeLines.length > 0 ? (
