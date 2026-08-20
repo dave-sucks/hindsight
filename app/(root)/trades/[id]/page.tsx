@@ -56,6 +56,7 @@ import {
 } from 'lucide-react';
 import { TradeActions } from '@/components/trades/TradeActions';
 import { ProposalActions } from '@/components/proposals/ProposalActions';
+import { getTradeStatusDisplay } from '@/lib/trade-status';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -80,7 +81,8 @@ function getStatusDisplay(
   // bottom and every `!isOpen` gate below rendered the closed-trade UI.
   if (positionStatus === 'PENDING_APPROVAL') {
     return {
-      label: 'Pending',
+      // Word comes from the canonical map — see the naming note in lib/trade-status.
+      label: getTradeStatusDisplay('PENDING').label,
       dotClass: 'bg-amber-500 animate-pulse',
       tooltip: 'The agent proposed this trade. Nothing has been sent to Alpaca — approve it to place the order.',
     };
@@ -88,7 +90,7 @@ function getStatusDisplay(
   if (positionStatus === 'OPEN') {
     if (!hasFilledBuy && hasPendingOrder) {
       return {
-        label: 'Pending fill',
+        label: 'Awaiting fill',
         dotClass: 'bg-amber-500 animate-pulse',
         tooltip: 'Buy order submitted to Alpaca but not yet filled. The position is recorded but not actually held.',
       };
@@ -720,7 +722,7 @@ export default async function TradeDetailPage({
                             ? fmtDateTime(openingBuy.filledAt)
                             : openingBuy.status === 'AWAITING_APPROVAL'
                               ? 'Not ordered'
-                              : 'Pending fill'}
+                              : 'Awaiting fill'}
                         </span>
                       } />
                       <TooltipContent side="left" className="text-xs max-w-xs">
@@ -749,7 +751,7 @@ export default async function TradeDetailPage({
                           'font-medium tabular-nums cursor-default underline decoration-dotted decoration-muted-foreground/40 underline-offset-2',
                           closingSell.status === 'PENDING' && 'text-amber-500',
                         )}>
-                          {closingSell.filledAt ? fmtDateTime(closingSell.filledAt) : 'Pending fill'}
+                          {closingSell.filledAt ? fmtDateTime(closingSell.filledAt) : 'Awaiting fill'}
                         </span>
                       } />
                       <TooltipContent side="left" className="text-xs max-w-xs">

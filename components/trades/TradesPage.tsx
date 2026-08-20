@@ -305,14 +305,14 @@ export default function TradesPage({
                                     'h-1.5 w-1.5 rounded-full shrink-0 cursor-default',
                                     awaitingApproval ? 'bg-amber-500' : cfg.dotClass,
                                   )}
-                                  aria-label={awaitingApproval ? 'Pending review' : cfg.label}
+                                  aria-label={awaitingApproval ? getTradeStatusDisplay('PENDING').label : cfg.label}
                                 />
                               }
                             />
                             <TooltipContent side="top">
                               <div>
                                 <div>
-                                  {awaitingApproval ? 'Pending your approval' : `${cfg.label} · ${timeLabel}`}
+                                  {awaitingApproval ? 'Awaiting your approval' : `${cfg.label} · ${timeLabel}`}
                                 </div>
                                 {shortId && (
                                   <div className="opacity-60 font-mono text-[10px]">Alpaca {shortId}</div>

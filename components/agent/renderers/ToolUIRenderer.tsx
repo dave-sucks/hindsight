@@ -20,6 +20,7 @@
  */
 
 import type { ToolResult, ToolUIItem } from "@/lib/agent/tool-result";
+import { getTradeStatusDisplay } from "@/lib/trade-status";
 import {
   ToolProgress,
   ToolProgressHeader,
@@ -138,7 +139,7 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
               <ToolProgressTickerItem
                 key={i}
                 ticker={it.ticker}
-                tag="Pending Review"
+                tag={getTradeStatusDisplay("PENDING").label}
                 actionIcon={it.action === "BUY" ? "buy" : "sell"}
                 trailing={<ProposalActions orderId={it.orderId} />}
               >

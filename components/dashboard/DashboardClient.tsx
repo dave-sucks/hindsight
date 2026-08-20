@@ -270,7 +270,7 @@ const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; 
   NEAR_TGT: { label: 'Near Target',   dotClass: 'bg-positive',                tooltip: 'Price approaching target' },
   NEAR_STP: { label: 'Near Stop',     dotClass: 'bg-negative',                tooltip: 'Price approaching stop loss' },
   // Trade-as-Proposal — see docs/plans/TRADE_AS_PROPOSAL.md
-  PROPOSED: { label: 'Pending Review', dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
+  PROPOSED: { label: 'Pending',        dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
   REJECTED: { label: 'Rejected',       dotClass: 'bg-muted-foreground/40',    tooltip: 'Proposal rejected — never executed' },
 };
 
@@ -551,7 +551,7 @@ function ProposalsPanel({
   return (
     <div className="mb-3">
       <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1.5 px-1">
-        Pending approval
+        Pending
       </p>
       {/* Plain bordered container — TradeRowShell supplies its own px-3 py-2.5
           padding + border-b dividers, so rows sit flush (matches the coverage

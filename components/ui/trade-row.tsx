@@ -183,7 +183,7 @@ interface TradeRowProps {
   /** Optional close-trade handler. When provided, kebab menu shows "Close trade". */
   onClose?: () => void;
   /**
-   * Trade-as-Proposal — when set, the row renders in "Pending review" state:
+   * Trade-as-Proposal — when set, the row renders in the "Pending" state:
    * status dot turns amber, the P&L slot is replaced with inline
    * [Approve][Reject] buttons calling the existing /api/proposals routes.
    * orderId is the AWAITING_APPROVAL Order's id. intent tells the row which
