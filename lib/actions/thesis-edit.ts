@@ -176,8 +176,19 @@ export async function applyTriggerValueEdit(
     throw new ThesisEditError("INVALID", `Trigger ${triggerId} has no editable value.`);
   }
 
+  // The principal now owns this rung's VALUE, so stamp the source axis to
+  // match (DAV-203: Dave's MU 814→935 edit kept showing source=AGENT in the
+  // popover). Purely informational — nothing gates on source — and the
+  // update_thesis wholesale-replace preserves the stamp on agent resends
+  // ("resending a rung you didn't author doesn't make it yours").
   const nextTriggers = triggers.map((t) =>
-    t.id === triggerId ? { ...t, predicate: withEditedValue(t.predicate, value) } : t,
+    t.id === triggerId
+      ? {
+          ...t,
+          predicate: withEditedValue(t.predicate, value),
+          source: "PRINCIPAL" as const,
+        }
+      : t,
   );
 
   // Is this the canonical price stop / target? If so, mirror onto the thesis
@@ -684,8 +695,10 @@ export async function applyTriggerFireModeChange(
   }
 
   const prevMode = target.fireMode ?? "TACTICAL";
+  // Stamp source too — the mode is part of the rung's definition, and the
+  // principal just chose it (same DAV-203 fix as the value edit above).
   const nextTriggers = triggers.map((t) =>
-    t.id === triggerId ? { ...t, fireMode } : t,
+    t.id === triggerId ? { ...t, fireMode, source: "PRINCIPAL" as const } : t,
   );
 
   await prisma.thesis.update({
