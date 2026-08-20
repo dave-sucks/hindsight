@@ -80,7 +80,7 @@ function getStatusDisplay(
   // bottom and every `!isOpen` gate below rendered the closed-trade UI.
   if (positionStatus === 'PENDING_APPROVAL') {
     return {
-      label: 'Pending approval',
+      label: 'Pending',
       dotClass: 'bg-amber-500 animate-pulse',
       tooltip: 'The agent proposed this trade. Nothing has been sent to Alpaca — approve it to place the order.',
     };
@@ -602,46 +602,6 @@ export default async function TradeDetailPage({
         {/* ════ SIDEBAR ════ */}
         <div className="hidden lg:block space-y-4">
 
-          {/* ── Pending proposal (nothing bought yet) ── */}
-          {isProposal && (
-            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500">
-                  Pending approval
-                </span>
-                {proposalOrder?.expiresAt && (
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    Expires {fmtDateTime(proposalOrder.expiresAt)}
-                  </span>
-                )}
-              </div>
-
-              <p className="text-sm text-muted-foreground">
-                Proposed by the agent. No order has been sent to Alpaca and no
-                shares are held.
-              </p>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
-                  <span className="text-muted-foreground">
-                    {position.direction === 'SHORT' ? 'Short' : 'Buy'} @ {fmtCur(trade.entryPrice)}
-                  </span>
-                  <span className="font-medium tabular-nums">
-                    {proposalOrder?.quantity ?? trade.shares} sh
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Est. cost</span>
-                  <span className="font-medium tabular-nums">{fmtCur(positionCost)}</span>
-                </div>
-              </div>
-
-              {proposalOrder && (
-                <ProposalActions orderId={proposalOrder.id} align="start" />
-              )}
-            </div>
-          )}
-
           {/* ── Post-Sale Result (closed trades only) ── */}
           {isClosed && (
             <div className={cn(
@@ -733,6 +693,17 @@ export default async function TradeDetailPage({
                 <span className="text-muted-foreground">{isProposal ? 'Proposed' : 'Opened'}</span>
                 <span className="font-medium tabular-nums text-xs">{fmtDateTime(position.openedAt)}</span>
               </div>
+
+              {/* Expiry — proposals lapse after 24h, so the deadline belongs
+                  next to the other timestamps. */}
+              {isProposal && proposalOrder?.expiresAt && (
+                <div className="flex items-center justify-between text-sm border-b border-border pb-1">
+                  <span className="text-muted-foreground">Expires</span>
+                  <span className="font-medium tabular-nums text-xs text-amber-500">
+                    {fmtDateTime(proposalOrder.expiresAt)}
+                  </span>
+                </div>
+              )}
 
               {/* Buy filled row */}
               {openingBuy && (

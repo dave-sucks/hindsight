@@ -55,7 +55,7 @@ export function TradeStatement({
 }) {
   return (
     <div className={cn("flex items-center justify-between gap-3", className)}>
-      <div className="flex items-baseline gap-1.5 min-w-0 text-sm">
+      <div className="flex flex-1 items-baseline gap-1.5 min-w-0 text-sm">
         {dot ?? (
           <span className={cn("size-2 rounded-full shrink-0 self-center", dotClass)} />
         )}
@@ -75,15 +75,16 @@ export function TradeStatement({
           </span>
         ) : null}
       </div>
-      {right ??
-        (gain ? (
-          <PriceChange
-            dollarChange={gain.dollar}
-            percentChange={gain.pct}
-            size="sm"
-            className="shrink-0"
-          />
-        ) : null)}
+      {right ? (
+        <div className="flex shrink-0 items-center justify-end">{right}</div>
+      ) : gain ? (
+        <PriceChange
+          dollarChange={gain.dollar}
+          percentChange={gain.pct}
+          size="sm"
+          className="shrink-0"
+        />
+      ) : null}
     </div>
   );
 }
