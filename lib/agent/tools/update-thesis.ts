@@ -1555,6 +1555,41 @@ export const updateThesis = defineTool({
       }
     }
 
+    // ── Review-clock advance on substantive updates (DAV-193) ────────────
+    // The empty-patch path below has bumped nextReviewAt since 2026-05-11 —
+    // but under gpt-5.5 the agent fills narrative fields on nearly every
+    // review, so real reviews take the NON-empty path, which never advanced
+    // the clock. Result: the same thesis re-fires REVIEW_DUE every morning
+    // after being genuinely reviewed (overdue backlog 2 → 9 in a day,
+    // 2026-08-18 run review → DAV-193).
+    //
+    // Rule: a non-terminal update that doesn't set its own review date, on
+    // a thesis whose clock is ALREADY overdue (or unset), restarts the
+    // clock by the horizon cadence. A future-dated nextReviewAt is left
+    // alone — those can be deliberately pinned (pre-catalyst reviews), and
+    // an early touch shouldn't push them. The bump lands through the normal
+    // patch, so fieldChanges records the from → to like any other change.
+    {
+      const isTerminalPatch =
+        patch.status === "RETIRED" || patch.status === "PASSED";
+      const patchIsEmpty = Object.keys(patch).length === 0;
+      if (
+        !patchIsEmpty && // empty patches keep their own bump + REVIEWED return below
+        !isTerminalPatch &&
+        !("nextReviewAt" in patch)
+      ) {
+        const currentNext = (existing as { nextReviewAt: Date | null })
+          .nextReviewAt;
+        if (currentNext == null || currentNext.getTime() <= Date.now()) {
+          const horizon =
+            ((existing as { horizon: string | null }).horizon as Horizon | null) ??
+            "TARGET";
+          const cadenceDays = HORIZON_REVIEW_DAYS[horizon] ?? 7;
+          patch.nextReviewAt = new Date(Date.now() + cadenceDays * 86_400_000);
+        }
+      }
+    }
+
     // ── Narrative-only patches collapse to REVIEWED ──────────────────────
     // A "narrative-only" patch touches only fields the agent can fill on
     // every housekeeping pass without anything structural having changed:
