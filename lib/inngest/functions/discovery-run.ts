@@ -19,6 +19,7 @@ import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildDiscoverySystemPrompt } from "@/lib/agent/system-prompts/discovery";
+import { getMoneyContext } from "@/lib/agent/context-bundle";
 import { MODES } from "@/lib/agent/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 
@@ -202,7 +203,14 @@ export const discoveryRun = inngest.createFunction(
             )
           : allTools;
 
+        // System 1 context bundle (THREE_SYSTEMS.md Move 1): live equity +
+        // band, floor-as-percent — discovery triages candidates for writer
+        // dispatch, and "worth at least a full-floor position?" needs the
+        // real numbers. Fail-open: null degrades the prompt block only.
+        const money = await getMoneyContext(config);
+
         const systemPrompt = buildDiscoverySystemPrompt({
+          money,
           config: {
             name: config.name,
             // FULL analystPrompt — never truncate. This is the analyst's

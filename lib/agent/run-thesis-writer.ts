@@ -54,7 +54,7 @@ import {
 } from "@/lib/agent/thesis-narrative";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { getAccount } from "@/lib/alpaca";
+import { getMoneyContext } from "@/lib/agent/context-bundle";
 import {
   pullThesisData,
   type ThesisPullResult,
@@ -675,22 +675,13 @@ export async function writerResearchPhase(
     // ── DAV-204: money context ──────────────────────────────────────────
     // The writer authors target_size_pct but never saw equity or the
     // analyst's position band — it sized by conviction habit (2.5-4%) and
-    // the 2026-08-19 batch minted five sub-floor, un-fillable plans. Fetch
-    // live equity (fail-open) so the prompt can state the floor as a
-    // PERCENT and the validator can mirror #524's sub-floor gate in-loop.
-    const floorDollars = Number(analyst.minPositionSize) || 0;
+    // the 2026-08-19 batch minted five sub-floor, un-fillable plans.
+    // Sourced from the shared context bundle (System 1, THREE_SYSTEMS.md
+    // Move 1) so the writer, discovery, and future paths quote one reality.
     const runEnvironment = (analyst.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
-    let equityUSD: number | null = null;
-    if (floorDollars > 0) {
-      try {
-        const creds =
-          (await resolveAlpacaCredentials(analyst.userId, runEnvironment)) ?? undefined;
-        const eq = Number((await getAccount(creds))?.equity);
-        if (Number.isFinite(eq) && eq > 0) equityUSD = eq;
-      } catch {
-        /* fail-open: no equity → no sizing mirror; persist gate also fails open */
-      }
-    }
+    const money = await getMoneyContext(analyst);
+    const floorDollars = money.floorDollars;
+    const equityUSD = money.equityUSD;
 
     // ── P1-35 (#524): recently-sold context for mints ───────────────────
     // record_thesis refuses a mint at/above a ≤14-day exit price without an
@@ -750,7 +741,9 @@ export async function writerResearchPhase(
         floorDollars > 0
           ? {
               floorDollars,
-              ceilingDollars: Number(analyst.maxPositionSize) || 0,
+              // positionBand-resolved (LIVE: min(max, promotion cap)) so the
+              // prompt quotes the ceiling place_trade actually enforces.
+              ceilingDollars: money.ceilingDollars ?? (Number(analyst.maxPositionSize) || 0),
               equityUSD,
             }
           : null,
