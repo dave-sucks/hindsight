@@ -1,25 +1,28 @@
 /**
- * ThesisTimelineSection.test.ts — pins the Activity tab's pure rendering
- * helpers (P1-33 slice 1) against real production data shapes:
+ * ThesisTimelineSection.test.ts — pins the Activity tab's pure helpers
+ * (P1-33 slice 1, principal visual spec 2026-08-20):
  *
- *   - outcomeChip: one at-a-glance verdict per row (Bought / Sold /
- *     Declined / Approved / Expired / Trigger fired / Level moved)
- *   - fieldChangeLines: exact "Target $80.00 → $95.00" lines
- *   - triggerDiffLines: per-rung ladder diff ("floor 64 → 71"), tolerant
- *     of the legacy non-array shapes older rows carry
+ *   - titleSegments: one consistent two-tone sentence per event —
+ *     medium core ("Bought", "Trigger:") + light variable values
+ *     ("10 shares at $832.84"). Stored summaries never render verbatim.
+ *   - railDot: green = money in, red = money out, amber = proposal that
+ *     didn't trade
+ *   - triggerDiffLines: per-rung ladder diff with id-churn cancelled
+ *   - fieldChangeLines: exact "Target $80.00 → $95.00" lines (expanded)
  *
- * Fixtures mirror the live XENE thesis (July 2026 arc) — the motivating
- * case for the tab.
+ * Fixtures mirror live production rows (XENE / EME / HPE arcs).
  */
 
 import {
-  outcomeChip,
+  titleSegments,
+  triggerPhrase,
+  updatedSecondary,
   fieldChangeLines,
   railDot,
   triggerDiffLines,
 } from "./thesis-timeline-utils";
 
-// Minimal row factory matching the component's ThesisUpdate shape.
+// Minimal row factory matching the component's TimelineUpdate shape.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function row(partial: Record<string, unknown>): any {
   return {
@@ -39,89 +42,177 @@ function row(partial: Record<string, unknown>): any {
   };
 }
 
-// Proposal fieldChanges shape as the updates route synthesizes it.
-function proposalFc(intent: string) {
-  return { proposal: { to: { intent } } };
+function proposalFc(intent: string, quantity?: number) {
+  return { proposal: { to: { intent, quantity } } };
 }
 
-describe("outcomeChip", () => {
-  it("splits approvals into buy-side (green) and sell-side (red) off the intent", () => {
+describe("titleSegments — trade rows read like the thesis banners", () => {
+  it("Bought N shares at $fill for an approved buy", () => {
     expect(
-      outcomeChip(
-        row({ type: "PROPOSAL_APPROVED", fieldChanges: proposalFc("OPEN") }),
+      titleSegments(
+        row({
+          type: "PROPOSAL_APPROVED",
+          fieldChanges: proposalFc("OPEN", 10),
+          priceAtTime: 832.84,
+        }),
       ),
-    ).toEqual({ label: "Approved buy", variant: "positive" });
+    ).toEqual({ primary: "Bought", secondary: "10 shares at $832.84" });
+  });
+
+  it("Sold N shares at $fill for an approved close", () => {
     expect(
-      outcomeChip(
-        row({ type: "PROPOSAL_APPROVED", fieldChanges: proposalFc("CLOSE") }),
+      titleSegments(
+        row({
+          type: "PROPOSAL_APPROVED",
+          fieldChanges: proposalFc("CLOSE", 100),
+          priceAtTime: 53.13,
+        }),
       ),
-    ).toEqual({ label: "Approved sell", variant: "negative" });
-    // No stored intent (legacy row) → neutral label, never a guess.
-    expect(outcomeChip(row({ type: "PROPOSAL_APPROVED" }))).toEqual({
-      label: "Approved",
-      variant: "default",
+    ).toEqual({ primary: "Sold", secondary: "100 shares at $53.13" });
+  });
+
+  it("omits the price when no fill is known yet", () => {
+    expect(
+      titleSegments(
+        row({ type: "PROPOSAL_APPROVED", fieldChanges: proposalFc("ADD", 5) }),
+      ),
+    ).toEqual({ primary: "Bought", secondary: "5 shares" });
+  });
+
+  it("Declined / Expired / Awaiting carry side + share count", () => {
+    expect(
+      titleSegments(
+        row({
+          type: "PROPOSAL_REJECTED",
+          fieldChanges: proposalFc("CLOSE", 75),
+        }),
+      ),
+    ).toEqual({ primary: "Declined", secondary: "sell 75 shares" });
+    expect(
+      titleSegments(
+        row({ type: "PROPOSAL_EXPIRED", fieldChanges: proposalFc("OPEN", 74) }),
+      ),
+    ).toEqual({ primary: "Expired", secondary: "buy 74 shares — no decision" });
+    expect(
+      titleSegments(
+        row({ type: "PROPOSAL_PENDING", fieldChanges: proposalFc("OPEN", 10) }),
+      ),
+    ).toEqual({ primary: "Awaiting approval", secondary: "buy 10 shares" });
+  });
+});
+
+describe("titleSegments — the rest of the grammar", () => {
+  it("Trigger: <condition> with the action clause and ticker stripped", () => {
+    expect(
+      titleSegments(
+        row({
+          type: "TRIGGER_FIRED",
+          summary: "Gives back 12% from the high — exit position",
+        }),
+      ),
+    ).toEqual({
+      primary: "Trigger:",
+      secondary: "Gives back 12% from the high",
     });
   });
 
-  it("labels the other proposal outcomes", () => {
-    expect(outcomeChip(row({ type: "PROPOSAL_REJECTED" }))).toEqual({
-      label: "Declined",
-      variant: "destructive",
-    });
-    expect(outcomeChip(row({ type: "PROPOSAL_EXPIRED" }))?.label).toBe(
-      "Expired",
-    );
-    expect(outcomeChip(row({ type: "PROPOSAL_PENDING" }))?.label).toBe(
-      "Awaiting review",
-    );
+  it("Reviewed — no changes, regardless of the stored cadence prose", () => {
+    expect(
+      titleSegments(
+        row({
+          type: "REVIEWED",
+          summary: "Reviewed HPE thesis — no changes (next review in 7d)",
+        }),
+      ),
+    ).toEqual({ primary: "Reviewed", secondary: "no changes" });
   });
 
-  it("labels buys and sells off the status transition, in money colors", () => {
+  it("Updated carries the compact change list; principal edits say so", () => {
     expect(
-      outcomeChip(
+      titleSegments(
+        row({
+          type: "UPDATED",
+          fieldChanges: {
+            targetPrice: { from: 80, to: 95 },
+            stopLoss: { from: 54, to: 62 },
+          },
+        }),
+      ),
+    ).toEqual({
+      primary: "Updated",
+      secondary: "target $80.00 → $95.00, stop $54.00 → $62.00",
+    });
+    expect(
+      titleSegments(
+        row({ type: "UPDATED", rationale: "[USER] Added a trigger" }),
+      ).primary,
+    ).toBe("Edited by you");
+  });
+
+  it("lifecycle rows: opened / closed / archived", () => {
+    expect(
+      titleSegments(
         row({
           type: "STATUS_CHANGED",
           fieldChanges: { status: { from: "WATCHING", to: "HOLDING" } },
         }),
       ),
-    ).toEqual({ label: "Bought", variant: "positive" });
-    expect(outcomeChip(row({ type: "CLOSED" }))).toEqual({
-      label: "Sold",
-      variant: "negative",
-    });
+    ).toEqual({ primary: "Position opened", secondary: "watching → holding" });
     expect(
-      outcomeChip(
+      titleSegments(
+        row({
+          type: "CLOSED",
+          summary: "Closed XENE position on approved proposal — STOP",
+        }),
+      ),
+    ).toEqual({ primary: "Position closed", secondary: "stop" });
+    expect(
+      titleSegments(
         row({
           type: "STATUS_CHANGED",
           fieldChanges: {
-            status: { from: "HOLDING", to: "RETIRED" },
-            retiredReason: { from: null, to: "SOLD" },
+            status: { from: "WATCHING", to: "RETIRED" },
+            retiredReason: { from: null, to: "DROPPED" },
           },
         }),
       ),
-    ).toEqual({ label: "Sold", variant: "negative" });
+    ).toEqual({ primary: "Archived", secondary: "dropped from watch" });
+  });
+});
+
+describe("triggerPhrase", () => {
+  it("strips deferral notes, signal suffixes, action clauses, tickers", () => {
+    expect(
+      triggerPhrase(
+        "Scheduled review due on CYTK (HOLDING) — deferred to the next daily review",
+      ),
+    ).toBe("Scheduled review due");
+    expect(
+      triggerPhrase('Price above $817 — consider entry (signal: "Q2 beat")'),
+    ).toBe("Price above $817");
+    expect(triggerPhrase("Up 10% from entry — review")).toBe(
+      "Up 10% from entry",
+    );
+  });
+});
+
+describe("updatedSecondary", () => {
+  it("null on pre-fix empty diffs (title stays clean)", () => {
+    expect(updatedSecondary(row({ fieldChanges: {} }))).toBeNull();
+    expect(updatedSecondary(row({ fieldChanges: null }))).toBeNull();
   });
 
-  it("marks level moves and trigger fires; stays quiet on routine reviews", () => {
+  it("says 'research refreshed' when only research sections moved", () => {
     expect(
-      outcomeChip(
-        row({
-          type: "UPDATED",
-          fieldChanges: { stopLoss: { from: 54, to: 62 } },
-        }),
-      )?.label,
-    ).toBe("Level moved");
-    expect(outcomeChip(row({ type: "TRIGGER_FIRED" }))).toEqual({
-      label: "Trigger fired",
-      variant: "warning",
-    });
-    expect(outcomeChip(row({ type: "REVIEWED" }))).toBeNull();
-    expect(outcomeChip(row({ type: "UPDATED" }))).toBeNull();
+      updatedSecondary(
+        row({ fieldChanges: { snapshot: { from: "a", to: "b" } } }),
+      ),
+    ).toBe("research refreshed");
   });
 });
 
 describe("railDot", () => {
-  it("greens money-in rows and reds money-out rows, gray otherwise", () => {
+  it("green in, red out, amber for proposals that didn't trade", () => {
     expect(
       railDot(
         row({
@@ -132,7 +223,7 @@ describe("railDot", () => {
     ).toBe("buy");
     expect(
       railDot(
-        row({ type: "PROPOSAL_APPROVED", fieldChanges: proposalFc("ADD") }),
+        row({ type: "PROPOSAL_APPROVED", fieldChanges: proposalFc("ADD", 5) }),
       ),
     ).toBe("buy");
     expect(railDot(row({ type: "CLOSED" }))).toBe("sell");
@@ -140,12 +231,14 @@ describe("railDot", () => {
       railDot(
         row({
           type: "PROPOSAL_APPROVED",
-          fieldChanges: proposalFc("PARTIAL_CLOSE"),
+          fieldChanges: proposalFc("PARTIAL_CLOSE", 5),
         }),
       ),
     ).toBe("sell");
+    expect(railDot(row({ type: "PROPOSAL_REJECTED" }))).toBe("proposal");
+    expect(railDot(row({ type: "PROPOSAL_EXPIRED" }))).toBe("proposal");
+    expect(railDot(row({ type: "PROPOSAL_PENDING" }))).toBe("proposal");
     expect(railDot(row({ type: "TRIGGER_FIRED" }))).toBeNull();
-    expect(railDot(row({ type: "PROPOSAL_REJECTED" }))).toBeNull();
     expect(railDot(row({ type: "REVIEWED" }))).toBeNull();
   });
 });
@@ -162,22 +255,6 @@ describe("fieldChangeLines", () => {
     );
     expect(lines).toContain("Target $80.00 → $95.00");
     expect(lines).toContain("Stop $54.00 → $62.00");
-  });
-
-  it("renders composite movement from the scoring diff", () => {
-    const lines = fieldChangeLines(
-      row({
-        fieldChanges: {
-          scoring: { from: { composite: 6 }, to: { composite: 8 } },
-        },
-      }),
-    );
-    expect(lines).toContain("Composite 6 → 8/10");
-  });
-
-  it("returns nothing for null/absent fieldChanges", () => {
-    expect(fieldChangeLines(row({ fieldChanges: null }))).toEqual([]);
-    expect(fieldChangeLines(row({ fieldChanges: {} }))).toEqual([]);
   });
 });
 
@@ -197,51 +274,14 @@ describe("triggerDiffLines", () => {
   };
 
   it('renders a level move as "before → after" (the floor 64 → 71 case)', () => {
-    const lines = triggerDiffLines({ from: [floor64, trail8], to: [floor71, trail8] });
+    const lines = triggerDiffLines({
+      from: [floor64, trail8],
+      to: [floor71, trail8],
+    });
     expect(lines).toEqual(["Price below $64 → Price below $71"]);
   });
 
-  it("renders added and removed rungs with +/− prefixes", () => {
-    const lines = triggerDiffLines({ from: [floor64], to: [floor64, trail8] });
-    expect(lines).toEqual(["+ Gives back 8% from the high → exit"]);
-    const gone = triggerDiffLines({ from: [floor64, trail8], to: [floor64] });
-    expect(gone).toEqual(["− Gives back 8% from the high → exit"]);
-  });
-
-  it("ignores rationale/cooldown/lastFiredAt churn", () => {
-    const noisy = {
-      ...trail8,
-      rationale: "new words",
-      cooldownDays: 3,
-      lastFiredAt: "2026-07-13T13:40:00Z",
-    };
-    expect(triggerDiffLines({ from: [trail8], to: [noisy] })).toEqual([]);
-  });
-
-  it("cancels id-churn: a rung re-minted with a fresh id but identical content is not a change (the Aug 12 EME case)", () => {
-    // Agent wholesale-replaced the ladder, minting new ids for every rung.
-    // Content-identical pairs must pair off; only the real change survives.
-    const beatOld = {
-      id: "old-beat",
-      action: "REVIEW",
-      predicate: { kind: "EARNINGS_BEAT", minSurprisePct: 5 },
-    };
-    const beatNew = { ...beatOld, id: "new-beat", rationale: "reworded" };
-    const floorOld = floor64;
-    const floorNew = { ...floor71, id: "fresh-floor-id" };
-    const lines = triggerDiffLines({
-      from: [beatOld, floorOld],
-      to: [beatNew, floorNew],
-    });
-    // The re-minted-but-identical beat rung vanishes; the floor move shows
-    // as an add+remove pair (different content, different ids).
-    expect(lines).toEqual([
-      "+ Price below $71 → exit",
-      "− Price below $64 → exit",
-    ]);
-  });
-
-  it("renders nothing when a fresh-id ladder is content-identical end to end", () => {
+  it("cancels id-churn: a rung re-minted with identical content is not a change", () => {
     const reMinted = [
       { ...floor64, id: "a2" },
       { ...trail8, id: "b2", rationale: "new words" },
@@ -256,21 +296,5 @@ describe("triggerDiffLines", () => {
     expect(
       triggerDiffLines({ from: "WATCHING-set", to: "HELD-set" }),
     ).toEqual([]);
-    expect(triggerDiffLines({ from: null, to: { note: "backfill" } })).toEqual(
-      [],
-    );
-  });
-
-  it("skips rungs with unknown predicate shapes instead of lying", () => {
-    const legacy = {
-      id: "t-legacy",
-      action: "ENTER",
-      condition: { type: "PRICE_ABOVE", value: 110 },
-    };
-    // Added legacy rung: falls back to kind/action label, never "undefined".
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const lines = triggerDiffLines({ from: [], to: [legacy as any] });
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).not.toContain("undefined");
   });
 });

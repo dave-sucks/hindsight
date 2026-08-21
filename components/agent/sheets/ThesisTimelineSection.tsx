@@ -6,33 +6,29 @@
  *
  * Lazy-fetches /api/theses/:id/updates when mounted. That endpoint merges
  * ThesisUpdate rows with proposal outcomes read from the Order table (the
- * source of truth for approve / reject / expire), so the timeline shows in
- * one place: every trigger fire, which run handled it (link), what the
- * analyst changed (exact from → to numbers), and the outcome — bought /
- * sold / declined (with the principal's note) / level moved / expired.
+ * source of truth for approve / reject / expire).
  *
- * The pure row logic (outcome chips, from → to lines, ladder diffs) lives
- * in thesis-timeline-utils.ts so it stays unit-testable without JSX.
+ * Visual language (principal spec, 2026-08-20 — no badges, no footers):
+ *   ●  Bought 10 shares at $832.84          ↪ Aug 12, 11:50 PM
+ *   │  <subhead: rationale, light @80%, clamped to 2 lines — click expands>
  *
- * Per-entry layout:
- *   ●  Apr 27, 8:11 AM                                      $35.27 ↑
- *   │  [chip] <heading>
- *   │  <field-change lines: "Target $80 → $95", trigger ladder diffs>
- *   │  <description>
- *   │  Type · trigger chip · View run · View trade · N signals
- *
- * Arrow on the price compares to the next-older entry's priceAtTime so
- * reading top-down shows the direction the stock has moved between
- * thesis touches. Null prices = no arrow.
+ *   - Title is one consistent sentence in two tones: the core event
+ *     (medium) + its variable values (light). Grammar lives in
+ *     thesis-timeline-utils.titleSegments — stored summaries are never
+ *     rendered verbatim.
+ *   - Rail dot carries money semantics: green bought, red sold, amber for
+ *     proposals that didn't trade. Amber pulse = this run.
+ *   - Timestamp far right, light; the run link is an arrow icon that
+ *     appears on row hover, left of the timestamp.
+ *   - Reviewed rows show no body until clicked.
  */
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import {
-  outcomeChip,
+  titleSegments,
   fieldChangeLines,
   proposalUserMessage,
   railDot,
@@ -58,9 +54,33 @@ function fmtDateTime(d: string): string {
   });
 }
 
-function typeLabel(t: string): string {
-  // Title-case: "SUPERSEDED" → "Superseded", "TRIGGER_FIRED" → "Trigger fired"
-  return t.charAt(0) + t.slice(1).toLowerCase().replace(/_/g, " ");
+/** The principal's run-link arrow (their SVG, currentColor). */
+function RunArrow() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M13 6H8.5C6.01472 6 4 8.01472 4 10.5C4 12.9853 6.01472 15 8.5 15H20"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17 12C17 12 20 14.2095 20 15C20 15.7906 17 18 17 18"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 interface Props {
@@ -70,6 +90,7 @@ interface Props {
 export function ThesisTimelineSection({ thesisId }: Props) {
   const [updates, setUpdates] = useState<TimelineUpdate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const currentRunId = useCurrentRunId();
 
   useEffect(() => {
@@ -87,6 +108,14 @@ export function ThesisTimelineSection({ thesisId }: Props) {
       cancelled = true;
     };
   }, [thesisId]);
+
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   return (
     <div className="space-y-3">
@@ -108,23 +137,27 @@ export function ThesisTimelineSection({ thesisId }: Props) {
             const isLast = idx === updates.length - 1;
             const isCurrentRun =
               currentRunId != null && u.runId === currentRunId;
-            const chip = outcomeChip(u);
+            const title = titleSegments(u);
             const dot = railDot(u);
-            const changeLines = fieldChangeLines(u);
+            const isOpen = expanded.has(u.id);
             const userNote = proposalUserMessage(u);
             // The synthesized reject row's rationale IS the user note —
             // don't render the same text twice.
             const rationale =
               u.rationale && u.rationale !== userNote ? u.rationale : null;
+            const changeLines = isOpen ? fieldChangeLines(u) : [];
+            // Reviewed rows are pure noise until asked — no body collapsed.
+            const quietWhenCollapsed = u.type === "REVIEWED";
+            const showBody = isOpen || !quietWhenCollapsed;
+            const hasBody =
+              rationale != null || userNote != null || (isOpen && changeLines.length > 0);
 
             return (
-              <div key={u.id} className="flex gap-3">
+              <div key={u.id} className="group/row flex gap-3">
                 {/* ── Rail (dot + line) ─────────────────────────────── */}
                 <div className="flex flex-col items-center shrink-0">
-                  {/* Tiny dot, vertically aligned with the price line.
-                      Money-movement rows read at a glance: green = bought,
-                      red = sold (same tokens the gauge/trade block use).
-                      Current-run entries get the amber pulse, which wins. */}
+                  {/* Money semantics: green bought, red sold, amber for a
+                      proposal that didn't trade. Current-run pulse wins. */}
                   <div
                     className={cn(
                       "size-1.5 rounded-full mt-1.5",
@@ -134,7 +167,9 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                           ? "bg-positive"
                           : dot === "sell"
                             ? "bg-negative"
-                            : "bg-muted-foreground/50",
+                            : dot === "proposal"
+                              ? "bg-amber-500"
+                              : "bg-muted-foreground/40",
                     )}
                   />
                   {!isLast ? (
@@ -151,105 +186,79 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                       "rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 -ml-2 mb-1",
                   )}
                 >
-                  {/* Header row: [chip +] Title (left) · timestamp (far
-                      right, regular face, light weight) — incident-timeline
-                      layout per principal feedback 2026-08-20. priceAtTime
-                      still rides in the payload; its home in the row is TBD
-                      (deliberately not rendered for now). */}
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-sm font-medium leading-snug min-w-0">
-                      {chip ? (
-                        <span className="mr-1.5 inline-flex align-middle">
-                          <Badge variant={chip.variant}>{chip.label}</Badge>
+                  {/* Header row: two-tone title left · [run arrow on
+                      hover] + timestamp far right. */}
+                  <div
+                    className="flex items-baseline justify-between gap-3 cursor-pointer"
+                    onClick={() => toggle(u.id)}
+                  >
+                    <p className="text-sm leading-snug min-w-0 text-foreground">
+                      <span className="font-medium">{title.primary}</span>
+                      {title.secondary ? (
+                        <span className="font-light text-foreground/80">
+                          {" "}
+                          {title.secondary}
                         </span>
                       ) : null}
-                      {u.summary}
                     </p>
-                    <span className="text-xs font-light tabular-nums text-muted-foreground shrink-0">
-                      {fmtDateTime(u.timestamp)}
+                    <span className="flex items-center gap-1.5 shrink-0 text-muted-foreground">
+                      {u.runId ? (
+                        <Link
+                          href={`/runs/${u.runId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="opacity-0 group-hover/row:opacity-100 transition-opacity hover:text-foreground"
+                          title="View run"
+                        >
+                          <RunArrow />
+                        </Link>
+                      ) : null}
+                      <span className="text-xs font-light tabular-nums">
+                        {fmtDateTime(u.timestamp)}
+                      </span>
                     </span>
                   </div>
 
-                  {/* Exact from → to lines: levels, composite, ladder diff */}
-                  {changeLines.length > 0 ? (
-                    <div className="space-y-0.5">
-                      {changeLines.map((line, i) => (
+                  {/* Subhead: light @80%, clamped to 2 lines until clicked.
+                      Reviewed rows render nothing until expanded. */}
+                  {showBody && hasBody ? (
+                    <div
+                      className="cursor-pointer space-y-1"
+                      onClick={() => toggle(u.id)}
+                    >
+                      {isOpen && changeLines.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {changeLines.map((line, i) => (
+                            <p
+                              key={i}
+                              className="text-xs font-light tabular-nums text-foreground/80"
+                            >
+                              {line}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                      {userNote ? (
                         <p
-                          key={i}
-                          className="text-xs font-mono tabular-nums text-muted-foreground"
+                          className={cn(
+                            "text-sm font-light text-foreground/80 leading-relaxed border-l-2 border-border pl-2",
+                            !isOpen && "line-clamp-2",
+                          )}
                         >
-                          {line}
+                          “{userNote}”
                         </p>
-                      ))}
+                      ) : null}
+                      {rationale ? (
+                        <p
+                          className={cn(
+                            "text-sm font-light text-foreground/80 leading-relaxed",
+                            !isOpen && "line-clamp-2",
+                          )}
+                        >
+                          {rationale}
+                        </p>
+                      ) : null}
                     </div>
                   ) : null}
-
-                  {/* The principal's written note on a declined proposal */}
-                  {userNote ? (
-                    <p className="text-sm text-muted-foreground leading-relaxed border-l-2 border-border pl-2">
-                      “{userNote}”
-                    </p>
-                  ) : null}
-
-                  {/* Rationale (description) */}
-                  {rationale ? (
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {rationale}
-                    </p>
-                  ) : null}
-
-                  {/* Footer: Type · TriggerId chip · View run · Signals */}
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                    {isCurrentRun ? (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-amber-600 dark:text-amber-400 font-medium">
-                        <span className="size-1 rounded-full bg-amber-500 animate-pulse" />
-                        in this run
-                      </span>
-                    ) : null}
-                    <span>{typeLabel(u.type)}</span>
-                    {u.type === "TRIGGER_FIRED" && u.triggerId ? (
-                      <>
-                        <span className="opacity-40">·</span>
-                        <span
-                          className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-1.5 py-0.5 font-mono tabular-nums"
-                          title={`triggerId ${u.triggerId}`}
-                        >
-                          trigger {u.triggerId.slice(-6)}
-                        </span>
-                      </>
-                    ) : null}
-                    {u.runId && !isCurrentRun ? (
-                      <>
-                        <span className="opacity-40">·</span>
-                        <Link
-                          href={`/runs/${u.runId}`}
-                          className="hover:text-foreground underline-offset-4 hover:underline"
-                        >
-                          View run
-                        </Link>
-                      </>
-                    ) : null}
-                    {u.tradeId ? (
-                      <>
-                        <span className="opacity-40">·</span>
-                        <Link
-                          href={`/trades/${u.tradeId}`}
-                          className="hover:text-foreground underline-offset-4 hover:underline"
-                        >
-                          View trade
-                        </Link>
-                      </>
-                    ) : null}
-                    {u.signalIds.length > 0 ? (
-                      <>
-                        <span className="opacity-40">·</span>
-                        <span className="tabular-nums">
-                          {u.signalIds.length} signal
-                          {u.signalIds.length === 1 ? "" : "s"}
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
                 </div>
               </div>
             );

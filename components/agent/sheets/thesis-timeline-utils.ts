@@ -1,12 +1,21 @@
 /**
  * thesis-timeline-utils — pure helpers behind the ThesisSheet Activity tab
  * (P1-33 slice 1). No React: kept out of ThesisTimelineSection.tsx so the
- * outcome-chip / field-change / ladder-diff logic is unit-testable.
+ * title-grammar / field-change / ladder-diff logic is unit-testable.
  *
- *   - outcomeChip: one at-a-glance verdict per row (Bought / Sold /
- *     Declined / Approved / Expired / Trigger fired / Level moved)
+ * The visual language (principal spec, 2026-08-20):
+ *   - NO badges. Every row is one consistently-worded title in two tones:
+ *     `primary` (medium weight — the core event) + `secondary` (light
+ *     weight — the variable values). titleSegments() owns that grammar.
+ *   - Colored rail dots carry the money semantics: green = bought,
+ *     red = sold, amber = a proposal that did NOT trade (declined /
+ *     expired / awaiting).
+ *   - Stored `summary` strings are inconsistent legacy prose — the title
+ *     is DERIVED here, never rendered verbatim.
+ *
  *   - fieldChangeLines: exact "Target $80.00 → $95.00" from → to lines
- *   - triggerDiffLines: per-rung ladder diff ("floor 64 → 71"), tolerant
+ *     (expanded view)
+ *   - triggerDiffLines: per-rung ladder diff, id-churn cancelled, tolerant
  *     of the legacy non-array shapes older rows carry
  */
 
@@ -34,81 +43,232 @@ export interface TimelineUpdate {
   tradeId: string | null;
 }
 
-export interface OutcomeChip {
-  label: string;
-  variant:
-    | "default"
-    | "secondary"
-    | "destructive"
-    | "outline"
-    | "positive"
-    | "negative"
-    | "warning";
-}
+// ── Proposal metadata (Order-derived rows) ───────────────────────────────────
 
-/** Buy-side vs sell-side of a proposal, off the intent stored with it. */
-function proposalSide(u: TimelineUpdate): "buy" | "sell" | null {
+function proposalMeta(u: TimelineUpdate): {
+  side: "buy" | "sell" | null;
+  quantity: number | null;
+} {
   const fc = u.fieldChanges as
-    | { proposal?: { to?: { intent?: unknown } } }
+    | { proposal?: { to?: { intent?: unknown; quantity?: unknown } } }
     | null;
-  const intent = fc?.proposal?.to?.intent;
-  if (intent === "OPEN" || intent === "ADD") return "buy";
-  if (intent === "CLOSE" || intent === "PARTIAL_CLOSE") return "sell";
-  return null;
+  const to = fc?.proposal?.to;
+  const intent = to?.intent;
+  const side =
+    intent === "OPEN" || intent === "ADD"
+      ? ("buy" as const)
+      : intent === "CLOSE" || intent === "PARTIAL_CLOSE"
+        ? ("sell" as const)
+        : null;
+  const quantity = typeof to?.quantity === "number" ? to.quantity : null;
+  return { side, quantity };
 }
 
-// ── Outcome chip ─────────────────────────────────────────────────────────────
-// One at-a-glance verdict per row, in the money-color language the rest of
-// the app uses: green = money deployed (buys), red = money pulled (sells),
-// amber = a trigger demanding attention. Proposal outcomes, trigger fires,
-// and buy/sell transitions get a chip; routine reviews/updates stay
-// text-only.
+// ── Title grammar ────────────────────────────────────────────────────────────
+// One consistent sentence shape per event: `primary` names the event (Bought /
+// Sold / Trigger: / Reviewed / Updated…), `secondary` carries its variable
+// values (shares, prices, levels). The renderer sets primary medium,
+// secondary light @80%.
 
-export function outcomeChip(u: TimelineUpdate): OutcomeChip | null {
-  const fc = u.fieldChanges ?? {};
-  switch (u.type) {
-    case "PROPOSAL_APPROVED": {
-      const side = proposalSide(u);
-      if (side === "buy") return { label: "Approved buy", variant: "positive" };
-      if (side === "sell")
-        return { label: "Approved sell", variant: "negative" };
-      return { label: "Approved", variant: "default" };
-    }
-    case "PROPOSAL_REJECTED":
-      return { label: "Declined", variant: "destructive" };
-    case "PROPOSAL_EXPIRED":
-      return { label: "Expired", variant: "outline" };
-    case "PROPOSAL_PENDING":
-      return { label: "Awaiting review", variant: "outline" };
-    case "TRIGGER_FIRED":
-      return { label: "Trigger fired", variant: "warning" };
-    case "CLOSED":
-      return { label: "Sold", variant: "negative" };
-    case "INVALIDATED":
-      return { label: "Invalidated", variant: "destructive" };
-    case "STATUS_CHANGED": {
-      const to = fc.status?.to;
-      if (to === "HOLDING") return { label: "Bought", variant: "positive" };
-      if (fc.retiredReason?.to === "SOLD")
-        return { label: "Sold", variant: "negative" };
-      if (to === "RETIRED") return { label: "Retired", variant: "outline" };
-      return null;
-    }
-    case "UPDATED":
-      if (fc.targetPrice || fc.stopLoss)
-        return { label: "Level moved", variant: "secondary" };
-      return null;
-    default:
-      return null;
-  }
+export interface TitleSegments {
+  primary: string;
+  secondary: string | null;
+}
+
+// Strips " on CYTK", " on $CYTK (HOLDING)" etc. from legacy summaries — the
+// sheet is already scoped to one ticker, so naming it in every row is noise.
+const TICKER_CLAUSE = /\s+on\s+\$?[A-Z][A-Z0-9.\-]{0,6}(\s*\([A-Z]+\))?/;
+
+function stripTicker(s: string): string {
+  return s.replace(TICKER_CLAUSE, "").replace(/\s{2,}/g, " ").trim();
 }
 
 /**
- * Rail-dot emphasis for the row: "buy" (green) when money went in, "sell"
- * (red) when money came out, null for everything else (gray dot). The
- * current-run amber pulse in the component overrides all of these.
+ * "Price above $817 — consider entry (signal: …)" → "Price above $817".
+ * "Scheduled review due on CYTK (HOLDING)" → "Scheduled review due".
+ * The action clause and deferral notes are dropped — the title names the
+ * condition; the expanded rationale carries the rest.
  */
-export function railDot(u: TimelineUpdate): "buy" | "sell" | null {
+export function triggerPhrase(summary: string): string {
+  let s = summary;
+  s = s.replace(/\s*\(signal:[\s\S]*$/, "");
+  s = s.replace(/\s*—\s*deferred to the next daily review\s*$/, "");
+  const dash = s.lastIndexOf(" — ");
+  if (dash > 0) s = s.slice(0, dash);
+  return stripTicker(s).trim();
+}
+
+function fmtQty(quantity: number | null): string | null {
+  if (quantity == null) return null;
+  return `${quantity} share${quantity === 1 ? "" : "s"}`;
+}
+
+function fmtPrice(v: number | null | undefined): string | null {
+  return typeof v === "number" ? `$${v.toFixed(2)}` : null;
+}
+
+function tradeSentence(u: TimelineUpdate): string | null {
+  const { quantity } = proposalMeta(u);
+  const qty = fmtQty(quantity);
+  const fill = fmtPrice(u.priceAtTime);
+  if (!qty) return null;
+  return fill ? `${qty} at ${fill}` : qty;
+}
+
+export function titleSegments(u: TimelineUpdate): TitleSegments {
+  const fc = u.fieldChanges ?? {};
+  switch (u.type) {
+    case "TRIGGER_FIRED":
+      return { primary: "Trigger:", secondary: triggerPhrase(u.summary) };
+
+    case "REVIEWED":
+      return { primary: "Reviewed", secondary: "no changes" };
+
+    case "CREATED":
+      return { primary: "Created", secondary: stripTicker(u.summary) || null };
+
+    case "UPDATED": {
+      // Principal edits from the trigger popover are tagged [USER].
+      const isPrincipal = u.rationale?.startsWith("[USER]") ?? false;
+      return {
+        primary: isPrincipal ? "Edited by you" : "Updated",
+        secondary: updatedSecondary(u),
+      };
+    }
+
+    case "INVALIDATED":
+      return { primary: "Invalidated", secondary: "belief broken" };
+
+    case "SUPERSEDED":
+      return { primary: "Superseded", secondary: "replaced by a newer thesis" };
+
+    case "STATUS_CHANGED": {
+      const to = fc.status?.to;
+      if (to === "HOLDING")
+        return { primary: "Position opened", secondary: "watching → holding" };
+      if (fc.retiredReason?.to === "SOLD")
+        return { primary: "Position closed", secondary: "retired — sold" };
+      if (fc.retiredReason?.to === "DROPPED")
+        return { primary: "Archived", secondary: "dropped from watch" };
+      if (to === "WATCHING")
+        return { primary: "Back to watching", secondary: null };
+      return {
+        primary: "Status changed",
+        secondary:
+          fc.status?.from != null && to != null
+            ? `${String(fc.status.from).toLowerCase()} → ${String(to).toLowerCase()}`
+            : null,
+      };
+    }
+
+    case "CLOSED":
+      return { primary: "Position closed", secondary: closedSecondary(u) };
+
+    case "PROPOSAL_APPROVED": {
+      const { side } = proposalMeta(u);
+      const sentence = tradeSentence(u);
+      if (side === "buy") return { primary: "Bought", secondary: sentence };
+      if (side === "sell") return { primary: "Sold", secondary: sentence };
+      return { primary: "Approved", secondary: sentence };
+    }
+
+    case "PROPOSAL_REJECTED": {
+      const { side, quantity } = proposalMeta(u);
+      const qty = fmtQty(quantity);
+      return {
+        primary: "Declined",
+        secondary: side && qty ? `${side} ${qty}` : (qty ?? null),
+      };
+    }
+
+    case "PROPOSAL_EXPIRED": {
+      const { side, quantity } = proposalMeta(u);
+      const qty = fmtQty(quantity);
+      return {
+        primary: "Expired",
+        secondary:
+          side && qty ? `${side} ${qty} — no decision` : "no decision",
+      };
+    }
+
+    case "PROPOSAL_PENDING": {
+      const { side, quantity } = proposalMeta(u);
+      const qty = fmtQty(quantity);
+      return {
+        primary: "Awaiting approval",
+        secondary: side && qty ? `${side} ${qty}` : (qty ?? null),
+      };
+    }
+
+    default:
+      // Unknown/legacy type — title-case it rather than invent grammar.
+      return {
+        primary:
+          u.type.charAt(0) + u.type.slice(1).toLowerCase().replace(/_/g, " "),
+        secondary: null,
+      };
+  }
+}
+
+/** "Closed XENE position on approved proposal — STOP" → "stop". */
+function closedSecondary(u: TimelineUpdate): string | null {
+  const dash = u.summary.lastIndexOf("— ");
+  if (dash === -1) return null;
+  const tail = u.summary.slice(dash + 2).trim();
+  return tail.length > 0 && tail.length <= 20 ? tail.toLowerCase() : null;
+}
+
+/**
+ * Secondary clause for UPDATED titles: the compact list of what actually
+ * moved — "target $80.00 → $95.00, stop $54.00 → $62.00, triggers".
+ * Null when nothing derivable (pre-fix rows with empty diffs).
+ */
+export function updatedSecondary(u: TimelineUpdate): string | null {
+  const fc = u.fieldChanges;
+  if (!fc || typeof fc !== "object") return null;
+  const parts: string[] = [];
+  for (const { key, label, fmt } of SCALAR_LINES) {
+    const entry = fc[key];
+    if (!entry) continue;
+    parts.push(`${label.toLowerCase()} ${fmt(entry.from)} → ${fmt(entry.to)}`);
+  }
+  const scoring = fc.scoring;
+  if (scoring) {
+    const from = (scoring.from as { composite?: number } | null)?.composite;
+    const to = (scoring.to as { composite?: number } | null)?.composite;
+    if (from != null && to != null && from !== to)
+      parts.push(`composite ${from} → ${to}`);
+  }
+  if (fc.triggers && triggerDiffLines(fc.triggers).length > 0)
+    parts.push("triggers");
+  if (
+    RESEARCH_KEYS.some((k) => fc[k]) &&
+    parts.length === 0 // research alone; otherwise the level moves lead
+  )
+    parts.push("research refreshed");
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
+const RESEARCH_KEYS = [
+  "snapshot",
+  "bullCase",
+  "bearCase",
+  "recentCatalysts",
+  "fundamentals",
+  "latestEarnings",
+  "catalystsAndEvents",
+  "analystConsensus",
+  "insiderTechnical",
+  "researchData",
+] as const;
+
+// ── Rail dot ─────────────────────────────────────────────────────────────────
+// Money semantics at a glance: green in, red out, amber for a proposal that
+// did NOT trade (declined / expired / still waiting). Everything else gray.
+
+export type RailDot = "buy" | "sell" | "proposal" | null;
+
+export function railDot(u: TimelineUpdate): RailDot {
   const fc = u.fieldChanges ?? {};
   if (u.type === "CLOSED") return "sell";
   if (u.type === "STATUS_CHANGED") {
@@ -116,11 +276,17 @@ export function railDot(u: TimelineUpdate): "buy" | "sell" | null {
     if (fc.retiredReason?.to === "SOLD") return "sell";
     return null;
   }
-  if (u.type === "PROPOSAL_APPROVED") return proposalSide(u);
+  if (u.type === "PROPOSAL_APPROVED") return proposalMeta(u).side;
+  if (
+    u.type === "PROPOSAL_REJECTED" ||
+    u.type === "PROPOSAL_EXPIRED" ||
+    u.type === "PROPOSAL_PENDING"
+  )
+    return "proposal";
   return null;
 }
 
-// ── Field-change lines ───────────────────────────────────────────────────────
+// ── Field-change lines (expanded view) ───────────────────────────────────────
 // Exact from → to for the scalar plan fields, plus a per-rung diff of the
 // trigger ladder. This is the "floor 64 → 71" rendering P1-33 asks for.
 
