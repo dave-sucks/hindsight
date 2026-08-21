@@ -628,7 +628,9 @@ export function triggerDiffLines(entry: FieldChange): string[] {
   ];
 }
 
-export function fieldChangeLines(u: TimelineUpdate): string[] {
+/** Scalar plan-field lines only — the trigger-ladder diff is separate
+ * (rendered as rung chips, not text). */
+export function scalarChangeLines(u: TimelineUpdate): string[] {
   const fc = u.fieldChanges;
   if (!fc || typeof fc !== "object") return [];
   const lines: string[] = [];
@@ -644,8 +646,17 @@ export function fieldChangeLines(u: TimelineUpdate): string[] {
     if (from != null && to != null && from !== to)
       lines.push(`Composite ${from} → ${to}/10`);
   }
-  if (fc.triggers) lines.push(...triggerDiffLines(fc.triggers));
   return lines;
+}
+
+/** The ladder diff for a row, [] when it has none. */
+export function ladderChangeLines(u: TimelineUpdate): string[] {
+  const entry = u.fieldChanges?.triggers;
+  return entry ? triggerDiffLines(entry) : [];
+}
+
+export function fieldChangeLines(u: TimelineUpdate): string[] {
+  return [...scalarChangeLines(u), ...ladderChangeLines(u)];
 }
 
 /** The principal's written note on a declined proposal, when present. */

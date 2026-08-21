@@ -31,7 +31,8 @@ import { Button } from "@/components/ui/button";
 import {
   buildTimeline,
   clusterLabel,
-  fieldChangeLines,
+  scalarChangeLines,
+  ladderChangeLines,
   itemPrice,
   itemTimestamp,
   monthLabel,
@@ -164,11 +165,8 @@ function RungChips({ lines }: { lines: string[] }) {
 
 /** Expanded body for one row: diff chips + note + rationale. */
 function ExpandedBody({ row }: { row: TimelineUpdate }) {
-  const lines = fieldChangeLines(row);
-  const rungLines = lines.filter(
-    (l) => l.startsWith("+ ") || l.startsWith("− ") || l.includes(" → Price") || / → .*→/.test(l),
-  );
-  const scalarLines = lines.filter((l) => !rungLines.includes(l));
+  const scalarLines = scalarChangeLines(row);
+  const rungLines = ladderChangeLines(row);
   const userNote = proposalUserMessage(row);
   const rationale =
     row.rationale && row.rationale !== userNote ? row.rationale : null;
