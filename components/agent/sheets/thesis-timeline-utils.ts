@@ -370,22 +370,45 @@ export function buildTimeline(
 ): TimelineItem[] {
   const filtered = rows.filter((r) => rowMatchesFilter(r, filter));
 
+  // Pair each fire with its nearest NEWER non-proposal row when that row
+  // answers it (same triggerId, or same runId). Proposal rows are skipped
+  // during the walk — a tactical that proposes a sell writes Proposed
+  // BETWEEN the fire and its update_thesis close-out, which broke plain
+  // adjacency (the Aug 19 HPE fire rendered unanswered).
+  const consumedFires = new Set<number>();
+  const fireForResponse = new Map<number, number>();
+  for (let j = 0; j < filtered.length; j++) {
+    const fire = filtered[j];
+    if (fire.type !== "TRIGGER_FIRED") continue;
+    for (let k = j - 1; k >= 0; k--) {
+      const cand = filtered[k];
+      if (cand.type.startsWith("PROPOSAL_")) continue; // ride over these
+      if (
+        (cand.type === "UPDATED" || cand.type === "REVIEWED") &&
+        !fireForResponse.has(k) &&
+        ((cand.triggerId != null && cand.triggerId === fire.triggerId) ||
+          (cand.runId != null && cand.runId === fire.runId))
+      ) {
+        fireForResponse.set(k, j);
+        consumedFires.add(j);
+      }
+      break; // nearest non-proposal row decides either way
+    }
+  }
+
   const items: TimelineItem[] = [];
   for (let i = 0; i < filtered.length; i++) {
-    const row = filtered[i];
-    const next = filtered[i + 1]; // older neighbor
-    if (
-      next != null &&
-      next.type === "TRIGGER_FIRED" &&
-      (row.type === "UPDATED" || row.type === "REVIEWED") &&
-      ((row.triggerId != null && row.triggerId === next.triggerId) ||
-        (row.runId != null && row.runId === next.runId))
-    ) {
-      items.push({ kind: "group", fire: next, response: row });
-      i++; // consume the fire
-      continue;
+    if (consumedFires.has(i)) continue; // renders inside its group
+    const fireIdx = fireForResponse.get(i);
+    if (fireIdx != null) {
+      items.push({
+        kind: "group",
+        fire: filtered[fireIdx],
+        response: filtered[i],
+      });
+    } else {
+      items.push({ kind: "event", row: filtered[i] });
     }
-    items.push({ kind: "event", row });
   }
 
   // Fold consecutive IDENTICAL trigger episodes (same condition, same

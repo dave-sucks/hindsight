@@ -290,6 +290,22 @@ describe("buildTimeline", () => {
     expect(items[0].kind).toBe("group");
   });
 
+  it("nests across an interleaved Proposed row (the Aug 19 HPE case)", () => {
+    // Tactical fires → proposes the sell (Proposed lands between) → writes
+    // its close-out update. The fire must still pair with the update.
+    const proposed = row({
+      id: "order:o9:proposed",
+      type: "PROPOSAL_PROPOSED",
+      fieldChanges: proposalFc("CLOSE", 100),
+      timestamp: "2026-08-19T11:16:00Z",
+    });
+    const items = buildTimeline([answer, proposed, fire], "all");
+    expect(items.map((i) => i.kind)).toEqual(["group", "event"]);
+    const g = items[0] as Extract<TimelineItem, { kind: "group" }>;
+    expect(g.fire.id).toBe("f1");
+    expect(g.response.id).toBe("r1");
+  });
+
   it("does not nest across unrelated triggerIds/runs", () => {
     const other = { ...answer, triggerId: "t-other", runId: null };
     const items = buildTimeline([other, fire], "all");

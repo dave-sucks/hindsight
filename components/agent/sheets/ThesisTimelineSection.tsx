@@ -128,6 +128,12 @@ function TwoToneTitle({
   );
 }
 
+/**
+ * Rail dots (principal palette, 2026-08-21): the quiet base is
+ * foreground @15% so money and proposal moments carry all the contrast —
+ * green bought / red sold / amber didn't-trade, and a WHITE slow-pulsing
+ * dot on Proposed (an open ask for the principal's attention).
+ */
 function DotEl({
   dot,
   pulse,
@@ -148,10 +154,10 @@ function DotEl({
               : dot === "proposal"
                 ? "bg-amber-500"
                 : dot === "proposed"
-                  ? "bg-transparent border border-amber-500"
+                  ? "bg-foreground animate-pulse [animation-duration:3s]"
                   : dot === "quiet"
-                    ? "bg-transparent border border-muted-foreground/40"
-                    : "bg-muted-foreground/40",
+                    ? "bg-transparent border border-foreground/15"
+                    : "bg-foreground/15",
       )}
     />
   );
@@ -347,9 +353,7 @@ export function ThesisTimelineSection({ thesisId }: Props) {
             const showMonth =
               idx === 0 ||
               monthLabel(ts) !== monthLabel(itemTimestamp(items[idx - 1]));
-            const lineClass = amberSegments.has(idx)
-              ? "bg-amber-500/50"
-              : "bg-border";
+            const span = amberSegments.has(idx);
 
             return (
               <Fragment key={itemKey(item)}>
@@ -363,21 +367,21 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                     label={clusterLabel(item.items).label}
                     range={clusterLabel(item.items).range}
                     isLast={isLast}
-                    lineClass={lineClass}
+                    span={span}
                     onClick={() => toggle(clusterId(item))}
                   />
                 ) : item.kind === "repeat" ? (
                   <RepeatRow
                     item={item}
                     isLast={isLast}
-                    lineClass={lineClass}
+                    span={span}
                     onClick={() => toggle(repeatId(item))}
                   />
                 ) : item.kind === "group" ? (
                   <GroupRow
                     item={item}
                     isLast={isLast}
-                    lineClass={lineClass}
+                    span={span}
                     pulse={
                       currentRunId != null &&
                       (item.fire.runId === currentRunId ||
@@ -390,7 +394,7 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                   <EventRow
                     row={item.row}
                     isLast={isLast}
-                    lineClass={lineClass}
+                    span={span}
                     pulse={
                       currentRunId != null && item.row.runId === currentRunId
                     }
@@ -423,19 +427,31 @@ function clusterId(item: Extract<TimelineItem, { kind: "cluster" }>): string {
   return `c:${first.kind === "group" ? first.fire.id : (first as { row: TimelineUpdate }).row.id}`;
 }
 
+/**
+ * The vertical connector under a row. Base is a hairline at foreground
+ * @15%; segments inside a proposal's open span (Proposed → decision)
+ * render as a brighter DASHED line so the ask-in-flight reads as one
+ * strung-together episode.
+ */
 function Rail({
   children,
   isLast,
-  lineClass,
+  span,
 }: {
   children: React.ReactNode;
   isLast: boolean;
-  lineClass: string;
+  span: boolean;
 }) {
   return (
     <div className="flex flex-col items-center shrink-0">
       {children}
-      {!isLast ? <div className={cn("w-px flex-1 mt-1", lineClass)} /> : null}
+      {!isLast ? (
+        span ? (
+          <div className="w-0 flex-1 mt-1 border-l border-dashed border-foreground/40" />
+        ) : (
+          <div className="w-px flex-1 mt-1 bg-foreground/15" />
+        )
+      ) : null}
     </div>
   );
 }
@@ -443,14 +459,14 @@ function Rail({
 function EventRow({
   row,
   isLast,
-  lineClass,
+  span,
   pulse,
   open,
   onToggle,
 }: {
   row: TimelineUpdate;
   isLast: boolean;
-  lineClass: string;
+  span: boolean;
   pulse: boolean;
   open: boolean;
   onToggle: () => void;
@@ -458,7 +474,7 @@ function EventRow({
   const showBody = open || VISIBLE_BODY_TYPES.has(row.type);
   return (
     <div className="group/row flex gap-3">
-      <Rail isLast={isLast} lineClass={lineClass}>
+      <Rail isLast={isLast} span={span}>
         <DotEl dot={railDot(row)} pulse={pulse} />
       </Rail>
       <div
@@ -478,21 +494,21 @@ function EventRow({
 function GroupRow({
   item,
   isLast,
-  lineClass,
+  span,
   pulse,
   open,
   onToggle,
 }: {
   item: GroupItem;
   isLast: boolean;
-  lineClass: string;
+  span: boolean;
   pulse: boolean;
   open: boolean;
   onToggle: () => void;
 }) {
   return (
     <div className="group/row flex gap-3">
-      <Rail isLast={isLast} lineClass={lineClass}>
+      <Rail isLast={isLast} span={span}>
         <DotEl dot={null} pulse={pulse} />
       </Rail>
       <div
@@ -515,18 +531,18 @@ function GroupRow({
 function RepeatRow({
   item,
   isLast,
-  lineClass,
+  span,
   onClick,
 }: {
   item: Extract<TimelineItem, { kind: "repeat" }>;
   isLast: boolean;
-  lineClass: string;
+  span: boolean;
   onClick: () => void;
 }) {
   const first = item.episodes[0];
   return (
     <div className="group/row flex gap-3">
-      <Rail isLast={isLast} lineClass={lineClass}>
+      <Rail isLast={isLast} span={span}>
         <DotEl dot={null} pulse={false} />
       </Rail>
       <div
@@ -551,18 +567,18 @@ function QuietRow({
   label,
   range,
   isLast,
-  lineClass,
+  span,
   onClick,
 }: {
   label: string;
   range: string;
   isLast: boolean;
-  lineClass: string;
+  span: boolean;
   onClick: () => void;
 }) {
   return (
     <div className="group/row flex gap-3">
-      <Rail isLast={isLast} lineClass={lineClass}>
+      <Rail isLast={isLast} span={span}>
         <DotEl dot="quiet" pulse={false} />
       </Rail>
       <div
