@@ -208,15 +208,18 @@ export async function GET(
       tradeId: o.positionId,
     };
     coveredOrderIds.add(o.id);
-    if (o.status === "AWAITING_APPROVAL") {
-      synthesized.push({
-        ...base,
-        id: `order:${o.id}:pending`,
-        timestamp: o.createdAt,
-        type: "PROPOSAL_PENDING",
-        summary: `Proposed ${intent} on ${o.symbol}${qty} — awaiting review`,
-      });
-    } else if (o.status === "REJECTED") {
+    // EVERY proposal gets a "Proposed" anchor row at staging time — the
+    // timeline strings a colored connector from it down to its outcome
+    // (Bought / Declined / Expired), so the approval lifecycle reads as
+    // one visually-linked episode rather than disconnected rows.
+    synthesized.push({
+      ...base,
+      id: `order:${o.id}:proposed`,
+      timestamp: o.createdAt,
+      type: "PROPOSAL_PROPOSED",
+      summary: `Proposed ${intent} on ${o.symbol}${qty}`,
+    });
+    if (o.status === "REJECTED") {
       synthesized.push({
         ...base,
         rationale: o.rejectionMessage ?? o.rationale,
@@ -233,7 +236,7 @@ export async function GET(
         type: "PROPOSAL_EXPIRED",
         summary: `${intent} proposal on ${o.symbol} expired without decision`,
       });
-    } else {
+    } else if (o.status !== "AWAITING_APPROVAL") {
       // PENDING / FILLED / CANCELLED after approval — the approve moment.
       synthesized.push({
         ...base,
@@ -246,6 +249,7 @@ export async function GET(
         priceAtTime: o.filledPrice ?? null,
       });
     }
+    // AWAITING_APPROVAL: the proposed row alone IS the current state.
   }
 
   // Dedup: drop ThesisUpdate PROPOSAL_* copies whose order is covered by a

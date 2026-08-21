@@ -64,6 +64,20 @@ function proposalMeta(u: TimelineUpdate): {
   return { side, quantity };
 }
 
+/** Is this Proposed row still sitting in the approval queue? */
+function isAwaiting(u: TimelineUpdate): boolean {
+  const fc = u.fieldChanges as
+    | { proposal?: { to?: { status?: unknown } } }
+    | null;
+  return fc?.proposal?.to?.status === "AWAITING_APPROVAL";
+}
+
+/** The order this row belongs to, when it's an Order-derived proposal row. */
+export function proposalOrderId(u: TimelineUpdate): string | null {
+  const m = u.id.match(/^order:([^:]+):/);
+  return m?.[1] ?? null;
+}
+
 // ── Title grammar ────────────────────────────────────────────────────────────
 // One consistent sentence shape per event: `primary` names the event (Bought /
 // Sold / Trigger: / Reviewed / Updated…), `secondary` carries its variable
@@ -191,12 +205,16 @@ export function titleSegments(u: TimelineUpdate): TitleSegments {
       };
     }
 
-    case "PROPOSAL_PENDING": {
+    case "PROPOSAL_PROPOSED": {
       const { side, quantity } = proposalMeta(u);
       const qty = fmtQty(quantity);
+      const what = side && qty ? `${side} ${qty}` : (qty ?? null);
+      const awaiting = isAwaiting(u);
       return {
-        primary: "Awaiting approval",
-        secondary: side && qty ? `${side} ${qty}` : (qty ?? null),
+        primary: "Proposed",
+        secondary: awaiting
+          ? `${what ?? ""}${what ? " — " : ""}awaiting your review`
+          : what,
       };
     }
 
@@ -264,9 +282,10 @@ const RESEARCH_KEYS = [
 
 // ── Rail dot ─────────────────────────────────────────────────────────────────
 // Money semantics at a glance: green in, red out, amber for a proposal that
-// did NOT trade (declined / expired / still waiting). Everything else gray.
+// did NOT trade (declined / expired), hollow amber for the Proposed anchor.
+// Everything else gray.
 
-export type RailDot = "buy" | "sell" | "proposal" | null;
+export type RailDot = "buy" | "sell" | "proposal" | "proposed" | null;
 
 export function railDot(u: TimelineUpdate): RailDot {
   const fc = u.fieldChanges ?? {};
@@ -277,13 +296,208 @@ export function railDot(u: TimelineUpdate): RailDot {
     return null;
   }
   if (u.type === "PROPOSAL_APPROVED") return proposalMeta(u).side;
-  if (
-    u.type === "PROPOSAL_REJECTED" ||
-    u.type === "PROPOSAL_EXPIRED" ||
-    u.type === "PROPOSAL_PENDING"
-  )
+  if (u.type === "PROPOSAL_PROPOSED") return "proposed";
+  if (u.type === "PROPOSAL_REJECTED" || u.type === "PROPOSAL_EXPIRED")
     return "proposal";
   return null;
+}
+
+// ── Timeline assembly (grouping · clustering · spans) ────────────────────────
+// Pure pipeline the component renders from. Rows arrive newest-first.
+
+export type TimelineItem =
+  | { kind: "event"; row: TimelineUpdate }
+  | { kind: "group"; fire: TimelineUpdate; response: TimelineUpdate }
+  | { kind: "cluster"; items: TimelineItem[] };
+
+export type TimelineFilter = "all" | "money" | "triggers";
+
+function rowMatchesFilter(row: TimelineUpdate, filter: TimelineFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "money")
+    return (
+      row.type.startsWith("PROPOSAL_") ||
+      row.type === "STATUS_CHANGED" ||
+      row.type === "CLOSED"
+    );
+  return row.type === "TRIGGER_FIRED";
+}
+
+/** Housekeeping fire ("Scheduled review due/overdue…"), not a market event. */
+function isHousekeepingFire(row: TimelineUpdate): boolean {
+  return row.type === "TRIGGER_FIRED" && /scheduled review/i.test(row.summary);
+}
+
+/**
+ * An item nobody needs until they ask: a standalone Reviewed-no-changes, a
+ * housekeeping fire, or a housekeeping fire whose nested response was
+ * Reviewed. REAL fires (price/trail/earnings) never count as quiet even
+ * when held — "fired BUT HELD" is exactly the story the timeline exists
+ * to tell.
+ */
+export function isQuietItem(item: TimelineItem): boolean {
+  if (item.kind === "cluster") return true;
+  if (item.kind === "group")
+    return isHousekeepingFire(item.fire) && item.response.type === "REVIEWED";
+  const r = item.row;
+  return r.type === "REVIEWED" || isHousekeepingFire(r);
+}
+
+/**
+ * Assemble the display list: filter → nest fire+response pairs → fold
+ * consecutive quiet items (≥2) into clusters.
+ *
+ * Nesting rule: a TRIGGER_FIRED immediately followed (newer, adjacent) by
+ * the UPDATED/REVIEWED row that answered it — same triggerId, or same
+ * runId. Adjacent-only, so out-of-order interleavings never mis-nest.
+ */
+export function buildTimeline(
+  rows: TimelineUpdate[],
+  filter: TimelineFilter,
+): TimelineItem[] {
+  const filtered = rows.filter((r) => rowMatchesFilter(r, filter));
+
+  const items: TimelineItem[] = [];
+  for (let i = 0; i < filtered.length; i++) {
+    const row = filtered[i];
+    const next = filtered[i + 1]; // older neighbor
+    if (
+      next != null &&
+      next.type === "TRIGGER_FIRED" &&
+      (row.type === "UPDATED" || row.type === "REVIEWED") &&
+      ((row.triggerId != null && row.triggerId === next.triggerId) ||
+        (row.runId != null && row.runId === next.runId))
+    ) {
+      items.push({ kind: "group", fire: next, response: row });
+      i++; // consume the fire
+      continue;
+    }
+    items.push({ kind: "event", row });
+  }
+
+  // Fold runs of quiet items.
+  const out: TimelineItem[] = [];
+  let quietRun: TimelineItem[] = [];
+  const flush = () => {
+    if (quietRun.length >= 2) out.push({ kind: "cluster", items: quietRun });
+    else out.push(...quietRun);
+    quietRun = [];
+  };
+  for (const item of items) {
+    if (item.kind !== "cluster" && isQuietItem(item)) quietRun.push(item);
+    else {
+      flush();
+      out.push(item);
+    }
+  }
+  flush();
+  return out;
+}
+
+/** Newest timestamp an item covers (drives month headers + price arrows). */
+export function itemTimestamp(item: TimelineItem): string {
+  if (item.kind === "event") return item.row.timestamp;
+  if (item.kind === "group") return item.response.timestamp;
+  return itemTimestamp(item.items[0]);
+}
+
+/** The item's price stamp, when any underlying row carries one. */
+export function itemPrice(item: TimelineItem): number | null {
+  if (item.kind === "event") return item.row.priceAtTime;
+  if (item.kind === "group")
+    return item.response.priceAtTime ?? item.fire.priceAtTime;
+  return null;
+}
+
+/**
+ * Rail segments to tint amber: every segment between a Proposed anchor and
+ * its outcome row (same orderId), stringing the approval lifecycle into one
+ * visually-connected episode. Returns indices i where the line UNDER
+ * display item i is part of a span.
+ */
+export function proposalSpanSegments(items: TimelineItem[]): Set<number> {
+  const byOrder = new Map<string, number[]>();
+  items.forEach((item, idx) => {
+    if (item.kind !== "event") return;
+    const oid = proposalOrderId(item.row);
+    if (!oid) return;
+    const arr = byOrder.get(oid);
+    if (arr) arr.push(idx);
+    else byOrder.set(oid, [idx]);
+  });
+  const segments = new Set<number>();
+  for (const idxs of byOrder.values()) {
+    if (idxs.length < 2) continue;
+    const lo = Math.min(...idxs);
+    const hi = Math.max(...idxs);
+    for (let i = lo; i < hi; i++) segments.add(i);
+  }
+  return segments;
+}
+
+/**
+ * Nested-outcome verb for a fire→response group. Consistent, derived:
+ * entry fires that didn't buy are "Passed"; held-side fires that didn't
+ * sell are "Held"; a raised stop is "Raised floor"; terminal is
+ * "Archived".
+ */
+export function responseVerb(
+  fire: TimelineUpdate,
+  response: TimelineUpdate,
+): TitleSegments {
+  const isEntryFire = /consider entry|— enter\b/i.test(fire.summary);
+  const passHold = isEntryFire ? "Passed" : "Held";
+  if (response.type === "REVIEWED")
+    return { primary: passHold, secondary: "no changes" };
+  const fc = response.fieldChanges ?? {};
+  if (fc.status?.to === "RETIRED" || fc.status?.to === "PASSED")
+    return { primary: "Archived", secondary: null };
+  const stop = fc.stopLoss;
+  if (
+    stop &&
+    typeof stop.from === "number" &&
+    typeof stop.to === "number" &&
+    stop.to > stop.from
+  )
+    return { primary: "Raised floor", secondary: updatedSecondary(response) };
+  return {
+    primary: passHold,
+    secondary: updatedSecondary(response) ?? "no action taken",
+  };
+}
+
+/** "5 quiet check-ins" + the date range they cover. */
+export function clusterLabel(items: TimelineItem[]): {
+  label: string;
+  range: string;
+} {
+  const n = items.length;
+  const newest = new Date(itemTimestamp(items[0]));
+  const oldestItem = items[items.length - 1];
+  const oldest = new Date(
+    oldestItem.kind === "group"
+      ? oldestItem.fire.timestamp
+      : itemTimestamp(oldestItem),
+  );
+  const fmt = (d: Date) =>
+    d.toLocaleString("en-US", { month: "short", day: "numeric" });
+  const sameDay = fmt(newest) === fmt(oldest);
+  const sameMonth = newest.getMonth() === oldest.getMonth();
+  const range = sameDay
+    ? fmt(newest)
+    : sameMonth
+      ? `${oldest.toLocaleString("en-US", { month: "short" })} ${oldest.getDate()} – ${newest.getDate()}`
+      : `${fmt(oldest)} – ${fmt(newest)}`;
+  return { label: `${n} quiet check-in${n === 1 ? "" : "s"}`, range };
+}
+
+/** Month header label — "August", with the year when it isn't this year. */
+export function monthLabel(timestamp: string, now = new Date()): string {
+  const d = new Date(timestamp);
+  const month = d.toLocaleString("en-US", { month: "long" });
+  return d.getFullYear() === now.getFullYear()
+    ? month
+    : `${month} ${d.getFullYear()}`;
 }
 
 // ── Field-change lines (expanded view) ───────────────────────────────────────

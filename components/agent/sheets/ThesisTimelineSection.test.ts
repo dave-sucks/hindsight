@@ -20,6 +20,11 @@ import {
   fieldChangeLines,
   railDot,
   triggerDiffLines,
+  buildTimeline,
+  responseVerb,
+  proposalSpanSegments,
+  clusterLabel,
+  type TimelineItem,
 } from "./thesis-timeline-utils";
 
 // Minimal row factory matching the component's TimelineUpdate shape.
@@ -95,9 +100,28 @@ describe("titleSegments — trade rows read like the thesis banners", () => {
     ).toEqual({ primary: "Expired", secondary: "buy 74 shares — no decision" });
     expect(
       titleSegments(
-        row({ type: "PROPOSAL_PENDING", fieldChanges: proposalFc("OPEN", 10) }),
+        row({
+          type: "PROPOSAL_PROPOSED",
+          fieldChanges: {
+            proposal: {
+              to: { intent: "OPEN", quantity: 10, status: "AWAITING_APPROVAL" },
+            },
+          },
+        }),
       ),
-    ).toEqual({ primary: "Awaiting approval", secondary: "buy 10 shares" });
+    ).toEqual({
+      primary: "Proposed",
+      secondary: "buy 10 shares — awaiting your review",
+    });
+    // Decided proposal's anchor row: no "awaiting" clause.
+    expect(
+      titleSegments(
+        row({
+          type: "PROPOSAL_PROPOSED",
+          fieldChanges: proposalFc("CLOSE", 75),
+        }),
+      ),
+    ).toEqual({ primary: "Proposed", secondary: "sell 75 shares" });
   });
 });
 
@@ -237,9 +261,127 @@ describe("railDot", () => {
     ).toBe("sell");
     expect(railDot(row({ type: "PROPOSAL_REJECTED" }))).toBe("proposal");
     expect(railDot(row({ type: "PROPOSAL_EXPIRED" }))).toBe("proposal");
-    expect(railDot(row({ type: "PROPOSAL_PENDING" }))).toBe("proposal");
+    expect(railDot(row({ type: "PROPOSAL_PROPOSED" }))).toBe("proposed");
     expect(railDot(row({ type: "TRIGGER_FIRED" }))).toBeNull();
     expect(railDot(row({ type: "REVIEWED" }))).toBeNull();
+  });
+});
+
+describe("buildTimeline", () => {
+  // Newest-first, like the API returns.
+  const fire = row({
+    id: "f1",
+    type: "TRIGGER_FIRED",
+    triggerId: "t1",
+    summary: "Gives back 12% from the high — exit position",
+    timestamp: "2026-08-18T11:10:00Z",
+  });
+  const answer = row({
+    id: "r1",
+    type: "UPDATED",
+    triggerId: "t1",
+    timestamp: "2026-08-18T11:10:30Z",
+  });
+
+  it("nests an adjacent fire + its response into one group", () => {
+    const items = buildTimeline([answer, fire], "all");
+    expect(items).toHaveLength(1);
+    expect(items[0].kind).toBe("group");
+  });
+
+  it("does not nest across unrelated triggerIds/runs", () => {
+    const other = { ...answer, triggerId: "t-other", runId: null };
+    const items = buildTimeline([other, fire], "all");
+    expect(items.map((i) => i.kind)).toEqual(["event", "event"]);
+  });
+
+  it("folds ≥2 consecutive quiet rows into a cluster; real fires stay visible", () => {
+    const quiet1 = row({
+      id: "q1",
+      type: "REVIEWED",
+      timestamp: "2026-08-17T12:00:00Z",
+    });
+    const quiet2 = row({
+      id: "q2",
+      type: "TRIGGER_FIRED",
+      summary: "Scheduled review due on CYTK (HOLDING)",
+      timestamp: "2026-08-16T12:00:00Z",
+    });
+    const items = buildTimeline([answer, fire, quiet1, quiet2], "all");
+    expect(items.map((i) => i.kind)).toEqual(["group", "cluster"]);
+    const label = clusterLabel(
+      (items[1] as Extract<TimelineItem, { kind: "cluster" }>).items,
+    );
+    expect(label.label).toBe("2 quiet check-ins");
+  });
+
+  it("money filter keeps only proposal/lifecycle rows", () => {
+    const bought = row({
+      id: "b1",
+      type: "PROPOSAL_APPROVED",
+      fieldChanges: proposalFc("OPEN", 10),
+    });
+    const items = buildTimeline([answer, fire, bought], "money");
+    expect(items).toHaveLength(1);
+    expect(items[0].kind).toBe("event");
+  });
+});
+
+describe("responseVerb", () => {
+  const exitFire = row({
+    type: "TRIGGER_FIRED",
+    summary: "Gives back 12% from the high — exit position",
+  });
+  const entryFire = row({
+    type: "TRIGGER_FIRED",
+    summary: "Price above $255 — consider entry",
+  });
+
+  it("Held for an exit fire answered without action", () => {
+    expect(responseVerb(exitFire, row({ type: "REVIEWED" }))).toEqual({
+      primary: "Held",
+      secondary: "no changes",
+    });
+  });
+
+  it("Passed for an entry fire answered without a buy", () => {
+    expect(
+      responseVerb(entryFire, row({ type: "UPDATED", fieldChanges: {} }))
+        .primary,
+    ).toBe("Passed");
+  });
+
+  it("Raised floor when the stop moved up", () => {
+    expect(
+      responseVerb(
+        exitFire,
+        row({
+          type: "UPDATED",
+          fieldChanges: { stopLoss: { from: 54, to: 62 } },
+        }),
+      ).primary,
+    ).toBe("Raised floor");
+  });
+});
+
+describe("proposalSpanSegments", () => {
+  it("tints the rail between a Proposed anchor and its outcome", () => {
+    const bought = row({ id: "order:o1:approved", type: "PROPOSAL_APPROVED" });
+    const between = row({ id: "x", type: "REVIEWED" });
+    const proposed = row({ id: "order:o1:proposed", type: "PROPOSAL_PROPOSED" });
+    const items: TimelineItem[] = [
+      { kind: "event", row: bought },
+      { kind: "event", row: between },
+      { kind: "event", row: proposed },
+    ];
+    expect(proposalSpanSegments(items)).toEqual(new Set([0, 1]));
+  });
+
+  it("no span for a still-awaiting proposal (nothing to connect yet)", () => {
+    const proposed = row({ id: "order:o2:proposed", type: "PROPOSAL_PROPOSED" });
+    expect(
+      proposalSpanSegments([{ kind: "event", row: proposed }]),
+    ).toEqual(new Set());
   });
 });
 
