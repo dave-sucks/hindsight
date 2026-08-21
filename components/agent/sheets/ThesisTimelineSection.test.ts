@@ -25,6 +25,7 @@ import {
   groupTitle,
   proposalSpanSegments,
   clusterLabel,
+  toRow,
   type TimelineItem,
 } from "./thesis-timeline-utils";
 
@@ -290,10 +291,12 @@ describe("buildTimeline", () => {
     expect(items[0].kind).toBe("group");
   });
 
-  it("absorbs an interleaved Proposed row into the episode (the ANET/HPE case)", () => {
+  it("pairs across an interleaved Proposed row, keeping it as its own step", () => {
     // Tactical fires → proposes the sell (Proposed lands between) → writes
-    // its close-out update. The fire pairs with the update AND absorbs the
-    // proposal: one line, "— proposed sell", never "— passed".
+    // its close-out update. The fire pairs with the update and READS the
+    // proposal for its verb ("— proposed sell", never "— passed"), but the
+    // Proposed row stays visible: staging an order is its own moment
+    // (principal, 2026-08-21).
     const proposed = row({
       id: "order:o9:proposed",
       type: "PROPOSAL_PROPOSED",
@@ -301,7 +304,7 @@ describe("buildTimeline", () => {
       timestamp: "2026-08-19T11:16:00Z",
     });
     const items = buildTimeline([answer, proposed, fire], "all");
-    expect(items.map((i) => i.kind)).toEqual(["group"]);
+    expect(items.map((i) => i.kind)).toEqual(["group", "event"]);
     const g = items[0] as Extract<TimelineItem, { kind: "group" }>;
     expect(g.fire.id).toBe("f1");
     expect(g.response.id).toBe("r1");
@@ -312,7 +315,7 @@ describe("buildTimeline", () => {
     ).toBe("— proposed sell");
   });
 
-  it("a proposal-staging episode anchors the span to its outcome", () => {
+  it("strings the dashed span from the Proposed step to its outcome", () => {
     const sold = row({ id: "order:o9:approved", type: "PROPOSAL_APPROVED" });
     const proposed = row({
       id: "order:o9:proposed",
@@ -320,9 +323,10 @@ describe("buildTimeline", () => {
       fieldChanges: proposalFc("CLOSE", 100),
     });
     const items = buildTimeline([sold, answer, proposed, fire], "all");
-    // [Sold event, group-with-proposal]
-    expect(items.map((i) => i.kind)).toEqual(["event", "group"]);
-    expect(proposalSpanSegments(items)).toEqual(new Set([0]));
+    // [Sold event, trigger episode, Proposed event]
+    expect(items.map((i) => i.kind)).toEqual(["event", "group", "event"]);
+    // Segments under rows 0 and 1 connect Sold ← … ← Proposed.
+    expect(proposalSpanSegments(items)).toEqual(new Set([0, 1]));
   });
 
   it("does not nest across unrelated triggerIds/runs", () => {
@@ -535,5 +539,105 @@ describe("triggerDiffLines", () => {
     expect(
       triggerDiffLines({ from: "WATCHING-set", to: "HELD-set" }),
     ).toEqual([]);
+  });
+});
+
+describe("toRow — one shape for every item", () => {
+  it("Bought/Sold show their description without a click (principal ask)", () => {
+    const bought = toRow({
+      kind: "event",
+      row: row({
+        type: "PROPOSAL_APPROVED",
+        fieldChanges: proposalFc("OPEN", 37),
+        priceAtTime: 183.83,
+        rationale: "Entry trigger validated; structure intact.",
+      }),
+    });
+    expect(bought.title).toEqual({
+      primary: "Bought",
+      secondary: "37 shares at $183.83",
+    });
+    expect(bought.showDescription).toBe(true);
+    expect(bought.description).toBe("Entry trigger validated; structure intact.");
+    expect(bought.dot).toBe("buy");
+  });
+
+  it("quiet types keep their prose until asked", () => {
+    const reviewed = toRow({
+      kind: "event",
+      row: row({ type: "REVIEWED", rationale: "Nothing moved." }),
+    });
+    expect(reviewed.showDescription).toBe(false);
+    expect(reviewed.description).toBe("Nothing moved."); // available on click
+  });
+
+  it("never repeats scalar edits below a title that already names them", () => {
+    const updated = toRow({
+      kind: "event",
+      row: row({
+        type: "UPDATED",
+        fieldChanges: { targetSizePct: { from: 4, to: 6.5 } },
+        rationale: "Sizing heal.",
+      }),
+    });
+    expect(updated.title.secondary).toBe("size 4% → 6.5%");
+    expect(updated.chips).toEqual([]); // the duplicate sub-row is gone
+  });
+
+  it("ladder edits become chips, always visible", () => {
+    const withLadder = toRow({
+      kind: "event",
+      row: row({
+        type: "UPDATED",
+        fieldChanges: {
+          triggers: {
+            from: [],
+            to: [
+              {
+                id: "t1",
+                action: "EXIT",
+                predicate: { kind: "PRICE_BELOW", level: 64 },
+              },
+            ],
+          },
+        },
+      }),
+    });
+    expect(withLadder.chips).toEqual(["+ Price below $64 → exit"]);
+  });
+
+  it("the principal's rejection note is quoted; [USER] markers are stripped", () => {
+    const declined = toRow({
+      kind: "event",
+      row: row({
+        type: "PROPOSAL_REJECTED",
+        fieldChanges: {
+          proposal: { to: { intent: "CLOSE", quantity: 75, userMessage: "Holding this one." } },
+        },
+      }),
+    });
+    expect(declined.quoted).toBe(true);
+    expect(declined.description).toBe("Holding this one.");
+
+    const edit = toRow({
+      kind: "event",
+      row: row({ type: "UPDATED", rationale: "[USER] Set the floor at $64." }),
+    });
+    expect(edit.quoted).toBe(false);
+    expect(edit.description).toBe("Set the floor at $64.");
+  });
+
+  it("fold rows carry a range label instead of a timestamp", () => {
+    const cluster = toRow({
+      kind: "cluster",
+      items: [
+        { kind: "event", row: row({ id: "a", type: "REVIEWED", timestamp: "2026-08-14T12:00:00Z" }) },
+        { kind: "event", row: row({ id: "b", type: "REVIEWED", timestamp: "2026-08-13T12:00:00Z" }) },
+      ],
+    });
+    expect(cluster.fold).toBe(true);
+    expect(cluster.timestamp).toBeNull();
+    expect(cluster.rangeLabel).toBe("Aug 13 – 14");
+    expect(cluster.title.secondary).toBe("2 quiet check-ins");
   });
 });

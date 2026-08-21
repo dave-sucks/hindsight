@@ -408,10 +408,10 @@ export function buildTimeline(
       ) {
         fireForResponse.set(k, j);
         consumedRows.add(j);
-        if (crossedProposal != null) {
-          proposalForResponse.set(k, crossedProposal);
-          consumedRows.add(crossedProposal);
-        }
+        // Reference it for the verb only. The Proposed row stays in the
+        // list as its own step: staging an order is a distinct moment
+        // between the fire and the decision (principal, 2026-08-21).
+        if (crossedProposal != null) proposalForResponse.set(k, crossedProposal);
       }
       break; // nearest non-proposal row decides either way
     }
@@ -499,15 +499,8 @@ export function itemTimestamp(item: TimelineItem): string {
 export function proposalSpanSegments(items: TimelineItem[]): Set<number> {
   const byOrder = new Map<string, number[]>();
   items.forEach((item, idx) => {
-    // A trigger episode that absorbed its Proposed row anchors the span.
-    const row =
-      item.kind === "event"
-        ? item.row
-        : item.kind === "group"
-          ? (item.proposal ?? null)
-          : null;
-    if (!row) return;
-    const oid = proposalOrderId(row);
+    if (item.kind !== "event") return;
+    const oid = proposalOrderId(item.row);
     if (!oid) return;
     const arr = byOrder.get(oid);
     if (arr) arr.push(idx);
@@ -801,4 +794,162 @@ export function proposalUserMessage(u: TimelineUpdate): string | null {
     | null;
   const msg = fc?.proposal?.to?.userMessage;
   return typeof msg === "string" && msg.trim().length > 0 ? msg : null;
+}
+
+// ── The row view-model — ONE shape, rendered one way ─────────────────────────
+// Every timeline item (event / trigger episode / ×N repeat / quiet cluster)
+// maps into this before rendering, so the component has no per-type branches
+// left. Variants live here as data, not as JSX conditionals.
+//
+//   dot          which of the six rail marks
+//   title        two-tone sentence (+ optional medium outcome clause)
+//   chips        sub-metadata (ladder rung changes) — ALWAYS visible,
+//                ALWAYS chips. Scalars are never repeated here; they're
+//                already in title.secondary.
+//   description  prose, clamped to 2 lines; `showDescription` decides
+//                whether it's visible before any click, per type.
+//   fold         true for the roll-up rows whose whole surface is a control
+
+export type DotKind =
+  | "buy"
+  | "sell"
+  | "declined"
+  | "open-ask"
+  | "quiet"
+  | "default";
+
+export interface TimelineRow {
+  key: string;
+  dot: DotKind;
+  title: TitleSegments;
+  chips: string[];
+  description: string | null;
+  /** Description is the principal's own words → quote styling. */
+  quoted: boolean;
+  /** Per-type constant: is the description visible before any click? */
+  showDescription: boolean;
+  /** ISO timestamp for normal rows; null when rangeLabel is used. */
+  timestamp: string | null;
+  /** Pre-built span label for fold rows ("Aug 13 – 17"). */
+  rangeLabel: string | null;
+  runId: string | null;
+  /** Order id — drives the dashed proposal span. */
+  orderId: string | null;
+  /** Fold row (quiet cluster / ×N repeat): the row itself is the control. */
+  fold: boolean;
+}
+
+/**
+ * Types whose description earns its place without a click. Everything else
+ * is title-only until asked. One list, no scattered conditions.
+ */
+const DESCRIPTION_VISIBLE = new Set([
+  "CREATED",
+  "UPDATED",
+  "INVALIDATED",
+  "CLOSED",
+  "PROPOSAL_APPROVED", // Bought / Sold — the principal wants the why
+  "PROPOSAL_REJECTED", // the principal's own note
+]);
+
+function dotFor(u: TimelineUpdate): DotKind {
+  switch (railDot(u)) {
+    case "buy":
+      return "buy";
+    case "sell":
+      return "sell";
+    case "proposal":
+      return "declined";
+    case "proposed":
+      return "open-ask";
+    default:
+      return "default";
+  }
+}
+
+/** The prose for a row + whether it's the principal's own words. */
+function describe(u: TimelineUpdate): { text: string | null; quoted: boolean } {
+  const note = proposalUserMessage(u);
+  if (note) return { text: note, quoted: true };
+  const r = u.rationale?.trim();
+  if (!r) return { text: null, quoted: false };
+  // Principal UI edits carry a [USER] marker the title already reflects.
+  return { text: r.replace(/^\[USER\]\s*/, ""), quoted: false };
+}
+
+/** Map any timeline item to the single render shape. */
+export function toRow(item: TimelineItem): TimelineRow {
+  if (item.kind === "event") {
+    const u = item.row;
+    const { text, quoted } = describe(u);
+    return {
+      key: u.id,
+      dot: dotFor(u),
+      title: titleSegments(u),
+      chips: ladderChangeLines(u),
+      description: text,
+      quoted,
+      showDescription: DESCRIPTION_VISIBLE.has(u.type),
+      timestamp: u.timestamp,
+      rangeLabel: null,
+      runId: u.runId,
+      orderId: proposalOrderId(u),
+      fold: false,
+    };
+  }
+
+  if (item.kind === "group") {
+    // The episode's prose is the agent's close-out reasoning; its chips are
+    // whatever the response actually changed.
+    const { text, quoted } = describe(item.response);
+    return {
+      key: `g:${item.fire.id}`,
+      dot: "default",
+      title: groupTitle(item.fire, item.response, item.proposal),
+      chips: ladderChangeLines(item.response),
+      description: text,
+      quoted,
+      showDescription: false, // an episode's title already tells the story
+      timestamp: item.fire.timestamp,
+      rangeLabel: null,
+      runId: item.fire.runId ?? item.response.runId,
+      orderId: null,
+      fold: false,
+    };
+  }
+
+  if (item.kind === "repeat") {
+    const first = item.episodes[0];
+    const title = groupTitle(first.fire, first.response, first.proposal);
+    return {
+      key: `r:${first.fire.id}`,
+      dot: "default",
+      title: { ...title, secondary: `${title.secondary} ×${item.episodes.length}` },
+      chips: [],
+      description: null,
+      quoted: false,
+      showDescription: false,
+      timestamp: null,
+      rangeLabel: repeatRange(item.episodes),
+      runId: null,
+      orderId: null,
+      fold: true,
+    };
+  }
+
+  const { label, range } = clusterLabel(item.items);
+  return {
+    key: `c:${itemTimestamp(item.items[0])}`,
+    dot: "quiet",
+    title: { primary: "", secondary: label },
+    chips: [],
+    description: null,
+    quoted: false,
+    showDescription: false,
+    timestamp: null,
+    rangeLabel: range,
+    runId: null,
+    orderId: null,
+    fold: true,
+  };
 }
