@@ -290,9 +290,10 @@ describe("buildTimeline", () => {
     expect(items[0].kind).toBe("group");
   });
 
-  it("nests across an interleaved Proposed row (the Aug 19 HPE case)", () => {
+  it("absorbs an interleaved Proposed row into the episode (the ANET/HPE case)", () => {
     // Tactical fires → proposes the sell (Proposed lands between) → writes
-    // its close-out update. The fire must still pair with the update.
+    // its close-out update. The fire pairs with the update AND absorbs the
+    // proposal: one line, "— proposed sell", never "— passed".
     const proposed = row({
       id: "order:o9:proposed",
       type: "PROPOSAL_PROPOSED",
@@ -300,10 +301,28 @@ describe("buildTimeline", () => {
       timestamp: "2026-08-19T11:16:00Z",
     });
     const items = buildTimeline([answer, proposed, fire], "all");
-    expect(items.map((i) => i.kind)).toEqual(["group", "event"]);
+    expect(items.map((i) => i.kind)).toEqual(["group"]);
     const g = items[0] as Extract<TimelineItem, { kind: "group" }>;
     expect(g.fire.id).toBe("f1");
     expect(g.response.id).toBe("r1");
+    expect(g.proposal?.id).toBe("order:o9:proposed");
+    expect(outcomePhrase(g.fire, g.response, g.proposal)).toBe("proposed sell");
+    expect(
+      groupTitle(g.fire, g.response, g.proposal).outcome,
+    ).toBe("— proposed sell");
+  });
+
+  it("a proposal-staging episode anchors the span to its outcome", () => {
+    const sold = row({ id: "order:o9:approved", type: "PROPOSAL_APPROVED" });
+    const proposed = row({
+      id: "order:o9:proposed",
+      type: "PROPOSAL_PROPOSED",
+      fieldChanges: proposalFc("CLOSE", 100),
+    });
+    const items = buildTimeline([sold, answer, proposed, fire], "all");
+    // [Sold event, group-with-proposal]
+    expect(items.map((i) => i.kind)).toEqual(["event", "group"]);
+    expect(proposalSpanSegments(items)).toEqual(new Set([0]));
   });
 
   it("does not nest across unrelated triggerIds/runs", () => {

@@ -312,6 +312,9 @@ export type GroupItem = {
   kind: "group";
   fire: TimelineUpdate;
   response: TimelineUpdate;
+  /** The proposal this episode staged, absorbed into the line — the fire's
+   * decision then reads "— proposed buy", never "— passed". */
+  proposal?: TimelineUpdate;
 };
 
 export type TimelineItem =
@@ -375,14 +378,28 @@ export function buildTimeline(
   // during the walk — a tactical that proposes a sell writes Proposed
   // BETWEEN the fire and its update_thesis close-out, which broke plain
   // adjacency (the Aug 19 HPE fire rendered unanswered).
-  const consumedFires = new Set<number>();
+  const consumedRows = new Set<number>();
   const fireForResponse = new Map<number, number>();
+  const proposalForResponse = new Map<number, number>();
   for (let j = 0; j < filtered.length; j++) {
     const fire = filtered[j];
     if (fire.type !== "TRIGGER_FIRED") continue;
+    // Walk newer rows, riding over proposal rows (a tactical that proposes
+    // writes Proposed BETWEEN the fire and its close-out update). The first
+    // Proposed we cross belongs to this episode — absorb it so the line
+    // reads "— proposed buy" instead of the flatly wrong "— passed".
+    let crossedProposal: number | null = null;
     for (let k = j - 1; k >= 0; k--) {
       const cand = filtered[k];
-      if (cand.type.startsWith("PROPOSAL_")) continue; // ride over these
+      if (cand.type.startsWith("PROPOSAL_")) {
+        if (
+          cand.type === "PROPOSAL_PROPOSED" &&
+          crossedProposal == null &&
+          !consumedRows.has(k)
+        )
+          crossedProposal = k;
+        continue;
+      }
       if (
         (cand.type === "UPDATED" || cand.type === "REVIEWED") &&
         !fireForResponse.has(k) &&
@@ -390,7 +407,11 @@ export function buildTimeline(
           (cand.runId != null && cand.runId === fire.runId))
       ) {
         fireForResponse.set(k, j);
-        consumedFires.add(j);
+        consumedRows.add(j);
+        if (crossedProposal != null) {
+          proposalForResponse.set(k, crossedProposal);
+          consumedRows.add(crossedProposal);
+        }
       }
       break; // nearest non-proposal row decides either way
     }
@@ -398,13 +419,15 @@ export function buildTimeline(
 
   const items: TimelineItem[] = [];
   for (let i = 0; i < filtered.length; i++) {
-    if (consumedFires.has(i)) continue; // renders inside its group
+    if (consumedRows.has(i)) continue; // renders inside its group
     const fireIdx = fireForResponse.get(i);
     if (fireIdx != null) {
+      const proposalIdx = proposalForResponse.get(i);
       items.push({
         kind: "group",
         fire: filtered[fireIdx],
         response: filtered[i],
+        ...(proposalIdx != null ? { proposal: filtered[proposalIdx] } : {}),
       });
     } else {
       items.push({ kind: "event", row: filtered[i] });
@@ -416,7 +439,7 @@ export function buildTimeline(
   // (P1-37) and was rendering as a wall of "Trigger: Price above $255 —
   // passed" pairs.
   const sig = (g: GroupItem) =>
-    `${triggerPhrase(g.fire.summary)}|${outcomePhrase(g.fire, g.response)}`;
+    `${triggerPhrase(g.fire.summary)}|${outcomePhrase(g.fire, g.response, g.proposal)}`;
   const deduped: TimelineItem[] = [];
   let run: GroupItem[] = [];
   const flushRun = () => {
@@ -476,8 +499,15 @@ export function itemTimestamp(item: TimelineItem): string {
 export function proposalSpanSegments(items: TimelineItem[]): Set<number> {
   const byOrder = new Map<string, number[]>();
   items.forEach((item, idx) => {
-    if (item.kind !== "event") return;
-    const oid = proposalOrderId(item.row);
+    // A trigger episode that absorbed its Proposed row anchors the span.
+    const row =
+      item.kind === "event"
+        ? item.row
+        : item.kind === "group"
+          ? (item.proposal ?? null)
+          : null;
+    if (!row) return;
+    const oid = proposalOrderId(row);
     if (!oid) return;
     const arr = byOrder.get(oid);
     if (arr) arr.push(idx);
@@ -502,7 +532,24 @@ export function proposalSpanSegments(items: TimelineItem[]): Set<number> {
 export function outcomePhrase(
   fire: TimelineUpdate,
   response: TimelineUpdate,
+  proposal?: TimelineUpdate,
 ): string {
+  // The episode staged a proposal — that IS the decision, and it is never
+  // "passed" (the ANET bug: fire → proposed buy → approved → bought
+  // rendered as "— passed" above the Bought row).
+  if (proposal) {
+    const fc = proposal.fieldChanges as
+      | { proposal?: { to?: { intent?: unknown } } }
+      | null;
+    const intent = fc?.proposal?.to?.intent;
+    const side =
+      intent === "OPEN" || intent === "ADD"
+        ? "buy"
+        : intent === "CLOSE" || intent === "PARTIAL_CLOSE"
+          ? "sell"
+          : "trade";
+    return `proposed ${side}`;
+  }
   const isEntryFire = /consider entry|— enter\b/i.test(fire.summary);
   const passHold = isEntryFire ? "passed" : "held";
   if (response.type === "REVIEWED") return passHold;
@@ -523,16 +570,18 @@ export function outcomePhrase(
 /**
  * One-sentence title for a trigger episode:
  *   Trigger: Price above $255 — passed
+ *   Trigger: Price above $186.45 — proposed buy
  * "Trigger:" and the decision render medium; the condition renders light.
  */
 export function groupTitle(
   fire: TimelineUpdate,
   response: TimelineUpdate,
+  proposal?: TimelineUpdate,
 ): TitleSegments {
   return {
     primary: "Trigger:",
     secondary: triggerPhrase(fire.summary),
-    outcome: `— ${outcomePhrase(fire, response)}`,
+    outcome: `— ${outcomePhrase(fire, response, proposal)}`,
   };
 }
 

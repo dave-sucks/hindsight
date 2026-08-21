@@ -509,14 +509,18 @@ function GroupRow({
   return (
     <div className="group/row flex gap-3">
       <Rail isLast={isLast} span={span}>
-        <DotEl dot={null} pulse={pulse} />
+        {/* An episode that staged a proposal carries the white
+            open-ask dot and anchors the dashed span to its outcome. */}
+        <DotEl dot={item.proposal ? "proposed" : null} pulse={pulse} />
       </Rail>
       <div
         className={cn("flex-1 min-w-0 cursor-pointer", !isLast && "pb-4")}
         onClick={onToggle}
       >
         <div className="flex items-baseline justify-between gap-3">
-          <TwoToneTitle segments={groupTitle(item.fire, item.response)} />
+          <TwoToneTitle
+            segments={groupTitle(item.fire, item.response, item.proposal)}
+          />
           <RightRail
             runId={item.fire.runId ?? item.response.runId}
             label={fmtDateTime(item.fire.timestamp)}
