@@ -21,7 +21,8 @@ import {
   railDot,
   triggerDiffLines,
   buildTimeline,
-  responseVerb,
+  outcomePhrase,
+  groupTitle,
   proposalSpanSegments,
   clusterLabel,
   type TimelineItem,
@@ -315,6 +316,63 @@ describe("buildTimeline", () => {
     expect(label.label).toBe("2 quiet check-ins");
   });
 
+  it("folds consecutive identical episodes into one ×N repeat row (the CEG wall)", () => {
+    // Same ENTER rung re-fires daily, same "passed" outcome each time.
+    const mk = (day: number, trig: string, resp: string) => [
+      row({
+        id: resp,
+        type: "UPDATED",
+        triggerId: "t-enter",
+        fieldChanges: {},
+        timestamp: `2026-08-0${day}T09:45:00Z`,
+      }),
+      row({
+        id: trig,
+        type: "TRIGGER_FIRED",
+        triggerId: "t-enter",
+        summary: "Price above $255 — consider entry",
+        timestamp: `2026-08-0${day}T09:40:00Z`,
+      }),
+    ];
+    const rows = [...mk(7, "f3", "r3"), ...mk(6, "f2", "r2"), ...mk(5, "f1", "r1")];
+    const items = buildTimeline(rows, "all");
+    expect(items).toHaveLength(1);
+    expect(items[0].kind).toBe("repeat");
+    const rep = items[0] as Extract<TimelineItem, { kind: "repeat" }>;
+    expect(rep.episodes).toHaveLength(3);
+  });
+
+  it("does not fold episodes whose decision differs", () => {
+    const fired = (id: string, day: number) =>
+      row({
+        id,
+        type: "TRIGGER_FIRED",
+        triggerId: "t-enter",
+        summary: "Price above $255 — consider entry",
+        timestamp: `2026-08-0${day}T09:40:00Z`,
+      });
+    const rows = [
+      row({
+        id: "r-raise",
+        type: "UPDATED",
+        triggerId: "t-enter",
+        fieldChanges: { stopLoss: { from: 54, to: 62 } },
+        timestamp: "2026-08-07T09:45:00Z",
+      }),
+      fired("f-b", 7),
+      row({
+        id: "r-pass",
+        type: "UPDATED",
+        triggerId: "t-enter",
+        fieldChanges: {},
+        timestamp: "2026-08-06T09:45:00Z",
+      }),
+      fired("f-a", 6),
+    ];
+    const items = buildTimeline(rows, "all");
+    expect(items.map((i) => i.kind)).toEqual(["group", "group"]);
+  });
+
   it("money filter keeps only proposal/lifecycle rows", () => {
     const bought = row({
       id: "b1",
@@ -327,7 +385,7 @@ describe("buildTimeline", () => {
   });
 });
 
-describe("responseVerb", () => {
+describe("trigger episodes — one sentence, fire + decision", () => {
   const exitFire = row({
     type: "TRIGGER_FIRED",
     summary: "Gives back 12% from the high — exit position",
@@ -337,30 +395,34 @@ describe("responseVerb", () => {
     summary: "Price above $255 — consider entry",
   });
 
-  it("Held for an exit fire answered without action", () => {
-    expect(responseVerb(exitFire, row({ type: "REVIEWED" }))).toEqual({
-      primary: "Held",
-      secondary: "no changes",
-    });
+  it("held for an exit fire answered without action", () => {
+    expect(outcomePhrase(exitFire, row({ type: "REVIEWED" }))).toBe("held");
   });
 
-  it("Passed for an entry fire answered without a buy", () => {
+  it("passed for an entry fire answered without a buy", () => {
     expect(
-      responseVerb(entryFire, row({ type: "UPDATED", fieldChanges: {} }))
-        .primary,
-    ).toBe("Passed");
+      outcomePhrase(entryFire, row({ type: "UPDATED", fieldChanges: {} })),
+    ).toBe("passed");
   });
 
-  it("Raised floor when the stop moved up", () => {
+  it("raised floor to $X when the stop moved up", () => {
     expect(
-      responseVerb(
+      outcomePhrase(
         exitFire,
         row({
           type: "UPDATED",
           fieldChanges: { stopLoss: { from: 54, to: 62 } },
         }),
-      ).primary,
-    ).toBe("Raised floor");
+      ),
+    ).toBe("raised floor to $62.00");
+  });
+
+  it("groupTitle composes the full sentence with the decision medium-weight", () => {
+    expect(groupTitle(entryFire, row({ type: "REVIEWED" }))).toEqual({
+      primary: "Trigger:",
+      secondary: "Price above $255",
+      outcome: "— passed",
+    });
   });
 });
 

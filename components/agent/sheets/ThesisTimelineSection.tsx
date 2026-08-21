@@ -9,23 +9,22 @@
  * All row logic is pure and lives in thesis-timeline-utils; this file only
  * renders the assembled TimelineItem list.
  *
- * Visual language (principal spec, 2026-08-20/21):
- *   - Two-tone titles (medium event + light values); NO badges, NO footers.
- *   - Every description is hidden until the row is clicked.
- *   - Fire → outcome nesting: a real trigger fire renders with its answer
- *     indented under it ("Trigger: Gives back 12% … ▸ Held — no changes").
+ * Visual language (principal spec, iterated 2026-08-20/21):
+ *   - Two-tone one-line titles; NO badges, NO footers, NO price stamps.
+ *   - A trigger episode is ONE sentence: fire + decision —
+ *     "Trigger: Price above $255 — passed". Identical consecutive
+ *     episodes fold into a single ×N line (the re-fire wall).
+ *   - Meaningful rows (your declines, updates, creates, closes) show
+ *     their description clamped to 2 lines; everything else shows it
+ *     only on click. Clicking any row toggles the full body.
  *   - Quiet runs (Reviewed-no-changes, housekeeping fires) fold into one
- *     whisper row; click expands in place.
- *   - Proposal lifecycles string together: hollow amber dot on Proposed,
- *     amber rail segments down to the Bought / Declined / Expired outcome.
- *   - Price stamp under the timestamp with a direction arrow vs the
- *     previous priced event. Month headers; All · Money · Triggers filter.
+ *     whisper row; proposal lifecycles string amber from Proposed to
+ *     outcome; month headers; All · Money · Triggers filter.
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,14 +32,15 @@ import {
   clusterLabel,
   scalarChangeLines,
   ladderChangeLines,
-  itemPrice,
+  groupTitle,
   itemTimestamp,
   monthLabel,
   proposalSpanSegments,
   proposalUserMessage,
   railDot,
-  responseVerb,
+  repeatRange,
   titleSegments,
+  type GroupItem,
   type TimelineFilter,
   type TimelineItem,
   type TimelineUpdate,
@@ -65,6 +65,16 @@ function fmtDateTime(d: string): string {
     minute: "2-digit",
   });
 }
+
+/** Rows whose description earns default visibility (clamped to 2 lines).
+ * Everything else is title-only until clicked. */
+const VISIBLE_BODY_TYPES = new Set([
+  "PROPOSAL_REJECTED", // your note
+  "UPDATED", // the analyst changed something — say why
+  "CREATED",
+  "INVALIDATED",
+  "CLOSED",
+]);
 
 /** The principal's run-link arrow (their SVG, currentColor). */
 function RunArrow() {
@@ -95,12 +105,24 @@ function RunArrow() {
   );
 }
 
-function TwoToneTitle({ segments }: { segments: TitleSegments }) {
+function TwoToneTitle({
+  segments,
+  suffix,
+}: {
+  segments: TitleSegments;
+  suffix?: string;
+}) {
   return (
     <p className="text-sm leading-snug min-w-0 text-foreground">
       <span className="font-medium">{segments.primary}</span>
       {segments.secondary ? (
         <span className="font-light text-foreground/80"> {segments.secondary}</span>
+      ) : null}
+      {segments.outcome ? (
+        <span className="font-medium"> {segments.outcome}</span>
+      ) : null}
+      {suffix ? (
+        <span className="font-light text-muted-foreground"> {suffix}</span>
       ) : null}
     </p>
   );
@@ -163,13 +185,15 @@ function RungChips({ lines }: { lines: string[] }) {
   );
 }
 
-/** Expanded body for one row: diff chips + note + rationale. */
-function ExpandedBody({ row }: { row: TimelineUpdate }) {
-  const scalarLines = scalarChangeLines(row);
-  const rungLines = ladderChangeLines(row);
+/** Body for one row. Collapsed: note/rationale clamped to 2 lines.
+ * Expanded: exact diffs + rung chips + the full prose. */
+function Body({ row, open }: { row: TimelineUpdate; open: boolean }) {
   const userNote = proposalUserMessage(row);
   const rationale =
     row.rationale && row.rationale !== userNote ? row.rationale : null;
+  const scalarLines = open ? scalarChangeLines(row) : [];
+  const rungLines = open ? ladderChangeLines(row) : [];
+  if (!userNote && !rationale && scalarLines.length === 0) return null;
   return (
     <div className="space-y-1 pt-0.5">
       {scalarLines.length > 0 ? (
@@ -186,12 +210,22 @@ function ExpandedBody({ row }: { row: TimelineUpdate }) {
       ) : null}
       {rungLines.length > 0 ? <RungChips lines={rungLines} /> : null}
       {userNote ? (
-        <p className="text-sm font-light text-foreground/80 leading-relaxed border-l-2 border-border pl-2">
+        <p
+          className={cn(
+            "text-sm font-light text-foreground/80 leading-relaxed border-l-2 border-border pl-2",
+            !open && "line-clamp-2",
+          )}
+        >
           “{userNote}”
         </p>
       ) : null}
       {rationale ? (
-        <p className="text-sm font-light text-foreground/80 leading-relaxed">
+        <p
+          className={cn(
+            "text-sm font-light text-foreground/80 leading-relaxed",
+            !open && "line-clamp-2",
+          )}
+        >
           {rationale}
         </p>
       ) : null}
@@ -199,48 +233,21 @@ function ExpandedBody({ row }: { row: TimelineUpdate }) {
   );
 }
 
-/** Right side of a header row: hover run-arrow · timestamp · price stamp. */
-function RightRail({
-  runId,
-  timestamp,
-  price,
-  prevPrice,
-}: {
-  runId: string | null;
-  timestamp: string;
-  price: number | null;
-  prevPrice: number | null;
-}) {
-  const delta = price != null && prevPrice != null ? price - prevPrice : null;
+/** Right side of a header row: hover run-arrow · light timestamp. */
+function RightRail({ runId, label }: { runId: string | null; label: string }) {
   return (
-    <span className="flex flex-col items-end shrink-0">
-      <span className="flex items-center gap-1.5 text-muted-foreground">
-        {runId ? (
-          <Link
-            href={`/runs/${runId}`}
-            onClick={(e) => e.stopPropagation()}
-            className="opacity-0 group-hover/row:opacity-100 transition-opacity hover:text-foreground"
-            title="View run"
-          >
-            <RunArrow />
-          </Link>
-        ) : null}
-        <span className="text-xs font-light tabular-nums">
-          {fmtDateTime(timestamp)}
-        </span>
-      </span>
-      {price != null ? (
-        <span className="text-xs font-light tabular-nums text-muted-foreground flex items-center gap-0.5">
-          ${price.toFixed(2)}
-          {delta != null && delta !== 0 ? (
-            delta > 0 ? (
-              <ArrowUp className="h-3 w-3 text-positive" />
-            ) : (
-              <ArrowDown className="h-3 w-3 text-negative" />
-            )
-          ) : null}
-        </span>
+    <span className="flex items-center gap-1.5 shrink-0 text-muted-foreground">
+      {runId ? (
+        <Link
+          href={`/runs/${runId}`}
+          onClick={(e) => e.stopPropagation()}
+          className="opacity-0 group-hover/row:opacity-100 transition-opacity hover:text-foreground"
+          title="View run"
+        >
+          <RunArrow />
+        </Link>
       ) : null}
+      <span className="text-xs font-light tabular-nums">{label}</span>
     </span>
   );
 }
@@ -286,7 +293,8 @@ export function ThesisTimelineSection({ thesisId }: Props) {
       return next;
     });
 
-  // Assemble: filter → nest → cluster; expanded clusters unfold in place.
+  // Assemble: filter → nest → dedupe repeats → cluster quiet; expanded
+  // repeats/clusters unfold in place.
   const items = useMemo(() => {
     if (!updates) return [];
     const built = buildTimeline(updates, filter);
@@ -294,21 +302,14 @@ export function ThesisTimelineSection({ thesisId }: Props) {
     for (const item of built) {
       if (item.kind === "cluster" && expanded.has(clusterId(item)))
         out.push(...item.items);
+      else if (item.kind === "repeat" && expanded.has(repeatId(item)))
+        out.push(...item.episodes);
       else out.push(item);
     }
     return out;
   }, [updates, filter, expanded]);
 
   const amberSegments = useMemo(() => proposalSpanSegments(items), [items]);
-
-  // Previous (older) priced item for each index — drives the arrows.
-  const prevPriceAt = (idx: number): number | null => {
-    for (let i = idx + 1; i < items.length; i++) {
-      const p = itemPrice(items[i]);
-      if (p != null) return p;
-    }
-    return null;
-  };
 
   return (
     <div className="space-y-3">
@@ -344,9 +345,8 @@ export function ThesisTimelineSection({ thesisId }: Props) {
             const isLast = idx === items.length - 1;
             const ts = itemTimestamp(item);
             const showMonth =
-              idx === 0 || monthLabel(ts) !== monthLabel(itemTimestamp(items[idx - 1]));
-            const price = itemPrice(item);
-            const prevPrice = price != null ? prevPriceAt(idx) : null;
+              idx === 0 ||
+              monthLabel(ts) !== monthLabel(itemTimestamp(items[idx - 1]));
             const lineClass = amberSegments.has(idx)
               ? "bg-amber-500/50"
               : "bg-border";
@@ -358,13 +358,20 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                     {monthLabel(ts)}
                   </p>
                 ) : null}
-
                 {item.kind === "cluster" ? (
-                  <ClusterRow
+                  <QuietRow
+                    label={clusterLabel(item.items).label}
+                    range={clusterLabel(item.items).range}
+                    isLast={isLast}
+                    lineClass={lineClass}
+                    onClick={() => toggle(clusterId(item))}
+                  />
+                ) : item.kind === "repeat" ? (
+                  <RepeatRow
                     item={item}
                     isLast={isLast}
                     lineClass={lineClass}
-                    onExpand={() => toggle(clusterId(item))}
+                    onClick={() => toggle(repeatId(item))}
                   />
                 ) : item.kind === "group" ? (
                   <GroupRow
@@ -378,31 +385,17 @@ export function ThesisTimelineSection({ thesisId }: Props) {
                     }
                     open={expanded.has(item.fire.id)}
                     onToggle={() => toggle(item.fire.id)}
-                    right={
-                      <RightRail
-                        runId={item.fire.runId ?? item.response.runId}
-                        timestamp={item.fire.timestamp}
-                        price={price}
-                        prevPrice={prevPrice}
-                      />
-                    }
                   />
                 ) : (
                   <EventRow
                     row={item.row}
                     isLast={isLast}
                     lineClass={lineClass}
-                    pulse={currentRunId != null && item.row.runId === currentRunId}
+                    pulse={
+                      currentRunId != null && item.row.runId === currentRunId
+                    }
                     open={expanded.has(item.row.id)}
                     onToggle={() => toggle(item.row.id)}
-                    right={
-                      <RightRail
-                        runId={item.row.runId}
-                        timestamp={item.row.timestamp}
-                        price={price}
-                        prevPrice={prevPrice}
-                      />
-                    }
                   />
                 )}
               </Fragment>
@@ -417,7 +410,12 @@ export function ThesisTimelineSection({ thesisId }: Props) {
 function itemKey(item: TimelineItem): string {
   if (item.kind === "event") return item.row.id;
   if (item.kind === "group") return `g:${item.fire.id}`;
+  if (item.kind === "repeat") return repeatId(item);
   return clusterId(item);
+}
+
+function repeatId(item: Extract<TimelineItem, { kind: "repeat" }>): string {
+  return `r:${item.episodes[0].fire.id}`;
 }
 
 function clusterId(item: Extract<TimelineItem, { kind: "cluster" }>): string {
@@ -449,7 +447,6 @@ function EventRow({
   pulse,
   open,
   onToggle,
-  right,
 }: {
   row: TimelineUpdate;
   isLast: boolean;
@@ -457,8 +454,8 @@ function EventRow({
   pulse: boolean;
   open: boolean;
   onToggle: () => void;
-  right: React.ReactNode;
 }) {
+  const showBody = open || VISIBLE_BODY_TYPES.has(row.type);
   return (
     <div className="group/row flex gap-3">
       <Rail isLast={isLast} lineClass={lineClass}>
@@ -470,9 +467,9 @@ function EventRow({
       >
         <div className="flex items-baseline justify-between gap-3">
           <TwoToneTitle segments={titleSegments(row)} />
-          {right}
+          <RightRail runId={row.runId} label={fmtDateTime(row.timestamp)} />
         </div>
-        {open ? <ExpandedBody row={row} /> : null}
+        {showBody ? <Body row={row} open={open} /> : null}
       </div>
     </div>
   );
@@ -485,15 +482,13 @@ function GroupRow({
   pulse,
   open,
   onToggle,
-  right,
 }: {
-  item: Extract<TimelineItem, { kind: "group" }>;
+  item: GroupItem;
   isLast: boolean;
   lineClass: string;
   pulse: boolean;
   open: boolean;
   onToggle: () => void;
-  right: React.ReactNode;
 }) {
   return (
     <div className="group/row flex gap-3">
@@ -505,32 +500,66 @@ function GroupRow({
         onClick={onToggle}
       >
         <div className="flex items-baseline justify-between gap-3">
-          <TwoToneTitle segments={titleSegments(item.fire)} />
-          {right}
+          <TwoToneTitle segments={groupTitle(item.fire, item.response)} />
+          <RightRail
+            runId={item.fire.runId ?? item.response.runId}
+            label={fmtDateTime(item.fire.timestamp)}
+          />
         </div>
-        {/* The answer, indented under the fire. Verb is derived and
-            consistent: Passed / Held / Raised floor / Archived. */}
-        <div className="border-l-2 border-border/70 pl-2.5 mt-1 space-y-0.5">
-          <TwoToneTitle segments={responseVerb(item.fire, item.response)} />
-          {open ? <ExpandedBody row={item.response} /> : null}
+        {open ? <Body row={item.response} open /> : null}
+      </div>
+    </div>
+  );
+}
+
+function RepeatRow({
+  item,
+  isLast,
+  lineClass,
+  onClick,
+}: {
+  item: Extract<TimelineItem, { kind: "repeat" }>;
+  isLast: boolean;
+  lineClass: string;
+  onClick: () => void;
+}) {
+  const first = item.episodes[0];
+  return (
+    <div className="group/row flex gap-3">
+      <Rail isLast={isLast} lineClass={lineClass}>
+        <DotEl dot={null} pulse={false} />
+      </Rail>
+      <div
+        className={cn("flex-1 min-w-0 cursor-pointer", !isLast && "pb-4")}
+        onClick={onClick}
+      >
+        <div className="flex items-baseline justify-between gap-3">
+          <TwoToneTitle
+            segments={groupTitle(first.fire, first.response)}
+            suffix={`×${item.episodes.length}`}
+          />
+          <span className="text-xs font-light tabular-nums text-muted-foreground shrink-0">
+            {repeatRange(item.episodes)}
+          </span>
         </div>
       </div>
     </div>
   );
 }
 
-function ClusterRow({
-  item,
+function QuietRow({
+  label,
+  range,
   isLast,
   lineClass,
-  onExpand,
+  onClick,
 }: {
-  item: Extract<TimelineItem, { kind: "cluster" }>;
+  label: string;
+  range: string;
   isLast: boolean;
   lineClass: string;
-  onExpand: () => void;
+  onClick: () => void;
 }) {
-  const { label, range } = clusterLabel(item.items);
   return (
     <div className="group/row flex gap-3">
       <Rail isLast={isLast} lineClass={lineClass}>
@@ -538,7 +567,7 @@ function ClusterRow({
       </Rail>
       <div
         className={cn("flex-1 min-w-0 cursor-pointer", !isLast && "pb-4")}
-        onClick={onExpand}
+        onClick={onClick}
       >
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-sm leading-snug min-w-0 font-light text-muted-foreground">

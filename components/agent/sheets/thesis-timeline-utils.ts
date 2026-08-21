@@ -87,6 +87,9 @@ export function proposalOrderId(u: TimelineUpdate): string | null {
 export interface TitleSegments {
   primary: string;
   secondary: string | null;
+  /** Trailing medium-weight clause — the decision on trigger episodes
+   * ("— passed", "— raised floor to $62.00"). */
+  outcome?: string | null;
 }
 
 // Strips " on CYTK", " on $CYTK (HOLDING)" etc. from legacy summaries — the
@@ -305,9 +308,18 @@ export function railDot(u: TimelineUpdate): RailDot {
 // ── Timeline assembly (grouping · clustering · spans) ────────────────────────
 // Pure pipeline the component renders from. Rows arrive newest-first.
 
+export type GroupItem = {
+  kind: "group";
+  fire: TimelineUpdate;
+  response: TimelineUpdate;
+};
+
 export type TimelineItem =
   | { kind: "event"; row: TimelineUpdate }
-  | { kind: "group"; fire: TimelineUpdate; response: TimelineUpdate }
+  | GroupItem
+  /** ≥2 consecutive identical trigger episodes (same condition, same
+   * decision) folded into one line — the P1-37 re-fire wall. */
+  | { kind: "repeat"; episodes: GroupItem[] }
   | { kind: "cluster"; items: TimelineItem[] };
 
 export type TimelineFilter = "all" | "money" | "triggers";
@@ -337,6 +349,7 @@ function isHousekeepingFire(row: TimelineUpdate): boolean {
  */
 export function isQuietItem(item: TimelineItem): boolean {
   if (item.kind === "cluster") return true;
+  if (item.kind === "repeat") return false;
   if (item.kind === "group")
     return isHousekeepingFire(item.fire) && item.response.type === "REVIEWED";
   const r = item.row;
@@ -375,6 +388,30 @@ export function buildTimeline(
     items.push({ kind: "event", row });
   }
 
+  // Fold consecutive IDENTICAL trigger episodes (same condition, same
+  // decision) into one repeat row — a stuck ENTER rung re-fires every day
+  // (P1-37) and was rendering as a wall of "Trigger: Price above $255 —
+  // passed" pairs.
+  const sig = (g: GroupItem) =>
+    `${triggerPhrase(g.fire.summary)}|${outcomePhrase(g.fire, g.response)}`;
+  const deduped: TimelineItem[] = [];
+  let run: GroupItem[] = [];
+  const flushRun = () => {
+    if (run.length >= 2) deduped.push({ kind: "repeat", episodes: run });
+    else deduped.push(...run);
+    run = [];
+  };
+  for (const item of items) {
+    if (item.kind === "group" && !isQuietItem(item)) {
+      if (run.length > 0 && sig(run[0]) !== sig(item)) flushRun();
+      run.push(item);
+    } else {
+      flushRun();
+      deduped.push(item);
+    }
+  }
+  flushRun();
+
   // Fold runs of quiet items.
   const out: TimelineItem[] = [];
   let quietRun: TimelineItem[] = [];
@@ -383,8 +420,13 @@ export function buildTimeline(
     else out.push(...quietRun);
     quietRun = [];
   };
-  for (const item of items) {
-    if (item.kind !== "cluster" && isQuietItem(item)) quietRun.push(item);
+  for (const item of deduped) {
+    if (
+      item.kind !== "cluster" &&
+      item.kind !== "repeat" &&
+      isQuietItem(item)
+    )
+      quietRun.push(item);
     else {
       flush();
       out.push(item);
@@ -394,19 +436,12 @@ export function buildTimeline(
   return out;
 }
 
-/** Newest timestamp an item covers (drives month headers + price arrows). */
+/** Newest timestamp an item covers (drives month headers). */
 export function itemTimestamp(item: TimelineItem): string {
   if (item.kind === "event") return item.row.timestamp;
   if (item.kind === "group") return item.response.timestamp;
+  if (item.kind === "repeat") return item.episodes[0].response.timestamp;
   return itemTimestamp(item.items[0]);
-}
-
-/** The item's price stamp, when any underlying row carries one. */
-export function itemPrice(item: TimelineItem): number | null {
-  if (item.kind === "event") return item.row.priceAtTime;
-  if (item.kind === "group")
-    return item.response.priceAtTime ?? item.fire.priceAtTime;
-  return null;
 }
 
 /**
@@ -436,22 +471,21 @@ export function proposalSpanSegments(items: TimelineItem[]): Set<number> {
 }
 
 /**
- * Nested-outcome verb for a fire→response group. Consistent, derived:
- * entry fires that didn't buy are "Passed"; held-side fires that didn't
- * sell are "Held"; a raised stop is "Raised floor"; terminal is
- * "Archived".
+ * The decision clause for a trigger episode, lowercase, one phrase:
+ * entry fires that didn't buy are "passed"; held-side fires that didn't
+ * sell are "held"; a raised stop is "raised floor to $X"; terminal is
+ * "archived". Consistent by construction — never the agent's prose.
  */
-export function responseVerb(
+export function outcomePhrase(
   fire: TimelineUpdate,
   response: TimelineUpdate,
-): TitleSegments {
+): string {
   const isEntryFire = /consider entry|— enter\b/i.test(fire.summary);
-  const passHold = isEntryFire ? "Passed" : "Held";
-  if (response.type === "REVIEWED")
-    return { primary: passHold, secondary: "no changes" };
+  const passHold = isEntryFire ? "passed" : "held";
+  if (response.type === "REVIEWED") return passHold;
   const fc = response.fieldChanges ?? {};
   if (fc.status?.to === "RETIRED" || fc.status?.to === "PASSED")
-    return { primary: "Archived", secondary: null };
+    return "archived";
   const stop = fc.stopLoss;
   if (
     stop &&
@@ -459,11 +493,44 @@ export function responseVerb(
     typeof stop.to === "number" &&
     stop.to > stop.from
   )
-    return { primary: "Raised floor", secondary: updatedSecondary(response) };
+    return `raised floor to $${stop.to.toFixed(2)}`;
+  return passHold;
+}
+
+/**
+ * One-sentence title for a trigger episode:
+ *   Trigger: Price above $255 — passed
+ * "Trigger:" and the decision render medium; the condition renders light.
+ */
+export function groupTitle(
+  fire: TimelineUpdate,
+  response: TimelineUpdate,
+): TitleSegments {
   return {
-    primary: passHold,
-    secondary: updatedSecondary(response) ?? "no action taken",
+    primary: "Trigger:",
+    secondary: triggerPhrase(fire.summary),
+    outcome: `— ${outcomePhrase(fire, response)}`,
   };
+}
+
+/** "Aug 13 – 17" / "Jul 29 – Aug 2" / "Aug 13" for a newest+oldest pair. */
+export function dateRangeLabel(newestTs: string, oldestTs: string): string {
+  const newest = new Date(newestTs);
+  const oldest = new Date(oldestTs);
+  const fmt = (d: Date) =>
+    d.toLocaleString("en-US", { month: "short", day: "numeric" });
+  if (fmt(newest) === fmt(oldest)) return fmt(newest);
+  if (newest.getMonth() === oldest.getMonth())
+    return `${oldest.toLocaleString("en-US", { month: "short" })} ${oldest.getDate()} – ${newest.getDate()}`;
+  return `${fmt(oldest)} – ${fmt(newest)}`;
+}
+
+function oldestTimestamp(item: TimelineItem): string {
+  if (item.kind === "event") return item.row.timestamp;
+  if (item.kind === "group") return item.fire.timestamp;
+  if (item.kind === "repeat")
+    return item.episodes[item.episodes.length - 1].fire.timestamp;
+  return oldestTimestamp(item.items[item.items.length - 1]);
 }
 
 /** "5 quiet check-ins" + the date range they cover. */
@@ -472,23 +539,19 @@ export function clusterLabel(items: TimelineItem[]): {
   range: string;
 } {
   const n = items.length;
-  const newest = new Date(itemTimestamp(items[0]));
-  const oldestItem = items[items.length - 1];
-  const oldest = new Date(
-    oldestItem.kind === "group"
-      ? oldestItem.fire.timestamp
-      : itemTimestamp(oldestItem),
+  const range = dateRangeLabel(
+    itemTimestamp(items[0]),
+    oldestTimestamp(items[items.length - 1]),
   );
-  const fmt = (d: Date) =>
-    d.toLocaleString("en-US", { month: "short", day: "numeric" });
-  const sameDay = fmt(newest) === fmt(oldest);
-  const sameMonth = newest.getMonth() === oldest.getMonth();
-  const range = sameDay
-    ? fmt(newest)
-    : sameMonth
-      ? `${oldest.toLocaleString("en-US", { month: "short" })} ${oldest.getDate()} – ${newest.getDate()}`
-      : `${fmt(oldest)} – ${fmt(newest)}`;
   return { label: `${n} quiet check-in${n === 1 ? "" : "s"}`, range };
+}
+
+/** Right-rail label for a repeat row: the span the re-fires covered. */
+export function repeatRange(episodes: GroupItem[]): string {
+  return dateRangeLabel(
+    episodes[0].response.timestamp,
+    episodes[episodes.length - 1].fire.timestamp,
+  );
 }
 
 /** Month header label — "August", with the year when it isn't this year. */
