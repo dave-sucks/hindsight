@@ -99,6 +99,45 @@ describe("computePlanSanity — goalpost drift and incoherent stops", () => {
   });
 });
 
+describe("computePlanSanity — the MNKD shape (stop inside daily noise)", () => {
+  it("flags a stop closer to the entry than the ordinary daily move", () => {
+    // MNKD's real numbers: entry $4.04, stop $4.00 (~1% apart), ~5% range.
+    const flags = computePlanSanity({
+      ...base,
+      entryPrice: 4.04,
+      stopLoss: 4.0,
+      currentPrice: 4.27,
+      dayRangePct: 5.2,
+    });
+    expect(flags.map((f) => f.kind)).toContain("STOP_INSIDE_NOISE");
+    const flag = flags.find((f) => f.kind === "STOP_INSIDE_NOISE")!;
+    expect(flag.text).toContain("$4.00");
+    expect(flag.text).toContain("5.2%");
+  });
+
+  it("does not flag a stop set outside the daily wiggle", () => {
+    const flags = computePlanSanity({
+      ...base,
+      entryPrice: 100,
+      stopLoss: 92, // 8% away
+      currentPrice: 101,
+      dayRangePct: 3,
+    });
+    expect(flags.map((f) => f.kind)).not.toContain("STOP_INSIDE_NOISE");
+  });
+
+  it("skips the noise check silently when range data is unavailable", () => {
+    const flags = computePlanSanity({
+      ...base,
+      entryPrice: 4.04,
+      stopLoss: 4.0,
+      currentPrice: 4.27,
+      dayRangePct: null,
+    });
+    expect(flags.map((f) => f.kind)).not.toContain("STOP_INSIDE_NOISE");
+  });
+});
+
 describe("computePlanSanity — scope guards", () => {
   it("never flags HOLDING rows (ladder + triggers own that surface)", () => {
     expect(

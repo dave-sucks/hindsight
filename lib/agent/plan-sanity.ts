@@ -32,7 +32,11 @@
  */
 
 export type PlanSanityFlag = {
-  kind: "ENTRY_FAR_FROM_PRICE" | "TARGET_ALREADY_PASSED" | "STOP_ALREADY_BREACHED";
+  kind:
+    | "ENTRY_FAR_FROM_PRICE"
+    | "TARGET_ALREADY_PASSED"
+    | "STOP_ALREADY_BREACHED"
+    | "STOP_INSIDE_NOISE";
   /** Plain-language statement of the arithmetic, with the numbers. */
   text: string;
 };
@@ -56,9 +60,22 @@ export function computePlanSanity(args: {
   targetPrice: number | null;
   stopLoss: number | null;
   currentPrice: number | null;
+  /**
+   * The stock's ordinary daily move as a percent of price (wider of today's
+   * and the prior session's range — see getDailyRangePcts). Optional:
+   * absent ⇒ the noise check is skipped, everything else still runs.
+   */
+  dayRangePct?: number | null;
 }): PlanSanityFlag[] {
-  const { status, direction, entryPrice, targetPrice, stopLoss, currentPrice } =
-    args;
+  const {
+    status,
+    direction,
+    entryPrice,
+    targetPrice,
+    stopLoss,
+    currentPrice,
+    dayRangePct,
+  } = args;
   if (status !== "WATCHING") return [];
   if (direction !== "LONG" && direction !== "SHORT") return [];
   if (currentPrice == null || currentPrice <= 0) return [];
@@ -92,6 +109,28 @@ export function computePlanSanity(args: {
         text:
           `The live price ${fmt(currentPrice)} has already ${isLong ? "reached or passed" : "fallen to or through"} the target ${fmt(targetPrice)} — ` +
           `entering now would open at the finish line. Re-underwrite the target against today's tape, or archive the plan.`,
+      });
+    }
+  }
+
+  if (
+    stopLoss != null &&
+    stopLoss > 0 &&
+    entryPrice != null &&
+    entryPrice > 0 &&
+    dayRangePct != null &&
+    dayRangePct > 0
+  ) {
+    // The MNKD case: a stop closer to the entry than the stock's ordinary
+    // daily wiggle stops out on noise, not on thesis failure.
+    const stopDistancePct = (Math.abs(entryPrice - stopLoss) / entryPrice) * 100;
+    if (stopDistancePct < dayRangePct) {
+      flags.push({
+        kind: "STOP_INSIDE_NOISE",
+        text:
+          `The stop ${fmt(stopLoss)} sits ${stopDistancePct.toFixed(1)}% from the buy level ${fmt(entryPrice)}, ` +
+          `but this stock's ordinary daily move is ~${dayRangePct.toFixed(1)}%. Filled today, the plan would likely ` +
+          `stop out on noise rather than thesis failure. Set the stop beneath real structure (below the range, a recent swing low), or rethink the entry.`,
       });
     }
   }

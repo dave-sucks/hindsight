@@ -34,7 +34,7 @@ import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { getBars, getLatestPrices } from "@/lib/alpaca";
+import { getBars, getDailyRangePcts, getLatestPrices } from "@/lib/alpaca";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import {
@@ -898,6 +898,34 @@ export const getTheses = defineTool({
         /* degraded gracefully; envelope renders with currentPrice=null */
       }
     }
+    // Daily ranges for the plan-sanity noise check (DAV-188): one batched
+    // snapshot call, only for WATCHING rows that actually carry a stop +
+    // entry to compare. Fail-open — absence just skips that one check.
+    const rangeTickers = Array.from(
+      new Set(
+        theses
+          .filter(
+            (t) =>
+              t.status === "WATCHING" &&
+              (t.direction === "LONG" || t.direction === "SHORT") &&
+              t.stopLoss != null &&
+              t.entryPrice != null,
+          )
+          .map((t) => t.ticker.toUpperCase()),
+      ),
+    );
+    let dayRangePctByTicker: Record<string, number> = {};
+    if (rangeTickers.length > 0) {
+      try {
+        dayRangePctByTicker = await getDailyRangePcts(
+          rangeTickers,
+          ctx.alpacaCreds,
+        );
+      } catch {
+        /* fail-open — noise check silently skipped */
+      }
+    }
+
     const resolverNow = new Date();
     const resolvedByThesisId = new Map<string, ResolvedEnvelope>();
     for (const t of theses) {
@@ -914,6 +942,7 @@ export const getTheses = defineTool({
             entryPrice: t.entryPrice,
             targetPrice: t.targetPrice ?? null,
             stopLoss: t.stopLoss ?? null,
+            dayRangePct: dayRangePctByTicker[t.ticker.toUpperCase()] ?? null,
             avgCost: avgCostByThesisId.get(t.id) ?? null,
             peakPrice: peakPriceByThesisId.get(t.id) ?? null,
             lastLadderEditAt: lastLadderEditAtByThesisId.get(t.id) ?? null,

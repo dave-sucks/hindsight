@@ -112,6 +112,12 @@ export interface ResolverThesisInput {
   targetPrice?: number | null;
   /** Thesis stop — feeds the plan-sanity stop-already-breached check. */
   stopLoss?: number | null;
+  /**
+   * The stock's ordinary daily move (% of price) — feeds the plan-sanity
+   * stop-inside-noise check. Callers fetch it batched (getDailyRangePcts)
+   * for the rows that need it; absent ⇒ that check is skipped.
+   */
+  dayRangePct?: number | null;
   /** Paired open Position's blended avgCost — feeds P&L for HOLDING rows. */
   avgCost?: number | null;
   /**
@@ -315,6 +321,7 @@ export function buildResolvedEnvelope(args: {
     targetPrice: thesis.targetPrice ?? null,
     stopLoss: thesis.stopLoss ?? null,
     currentPrice,
+    dayRangePct: thesis.dayRangePct ?? null,
   });
 
   return {
