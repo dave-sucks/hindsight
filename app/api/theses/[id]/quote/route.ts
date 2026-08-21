@@ -57,6 +57,10 @@ export async function GET(
       status: true,
       direction: true,
       entryPrice: true,
+      // Plan-sanity inputs (DAV-188) — the sheet envelope carries the same
+      // flags the agent sees.
+      targetPrice: true,
+      stopLoss: true,
       triggers: true,
       // Cascade inputs — the resolved envelope must evaluate the SAME
       // ladder the sheet's pills draw, or "matching now" and ladder health
@@ -165,6 +169,10 @@ export async function GET(
       status: thesis.status,
       direction: thesis.direction,
       entryPrice: thesis.entryPrice,
+      // Feed the plan-sanity flags (DAV-188) so the sheet's envelope
+      // matches what the agent sees for the same thesis.
+      targetPrice: thesis.targetPrice ?? null,
+      stopLoss: thesis.stopLoss ?? null,
       triggers: thesis.triggers,
       catalystDate: thesis.catalystDate,
       createdAt: thesis.createdAt,

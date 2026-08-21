@@ -913,6 +913,7 @@ export const getTheses = defineTool({
             direction: t.direction,
             entryPrice: t.entryPrice,
             targetPrice: t.targetPrice ?? null,
+            stopLoss: t.stopLoss ?? null,
             avgCost: avgCostByThesisId.get(t.id) ?? null,
             peakPrice: peakPriceByThesisId.get(t.id) ?? null,
             lastLadderEditAt: lastLadderEditAtByThesisId.get(t.id) ?? null,
@@ -942,6 +943,10 @@ export const getTheses = defineTool({
     //     WATCHING row with no ENTER trigger and price ≈ entry; hiding it
     //     would strand an intended entry indefinitely)
     //   • priceFetchFailed — fail open; degraded data must not hide winners
+    //   • resolved.planSanity non-empty — the plan contradicts the live
+    //     tape (DAV-188: buy level far from price / target passed / stop
+    //     breached). A flagged-but-quiet row is the exact "wrong through 5
+    //     runs" failure this exists to end; the flag forces the full row.
     // ACTIVE_HOLD deliberately stays quiet: it's the healthy-holding
     // default, and its work signals (UNPROTECTED_GAIN / RUNNING_WINNER /
     // trigger fires) all arrive via needsAction.
@@ -955,7 +960,8 @@ export const getTheses = defineTool({
       priceFetchFailed ||
       t.status === "PROMOTED" ||
       (needsActionByThesisId.get(t.id) ?? null) !== null ||
-      ACTIONABLE_RESOLVED.has(resolvedByThesisId.get(t.id)?.actionability ?? "");
+      ACTIONABLE_RESOLVED.has(resolvedByThesisId.get(t.id)?.actionability ?? "") ||
+      (resolvedByThesisId.get(t.id)?.planSanity?.length ?? 0) > 0;
 
     const fullTheses = theses.filter((t) => isFullDetail(t));
     const quietTheses = theses.filter((t) => !isFullDetail(t));
