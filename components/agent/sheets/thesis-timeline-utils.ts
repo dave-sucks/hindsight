@@ -850,9 +850,15 @@ const DESCRIPTION_VISIBLE = new Set([
   "CREATED",
   "UPDATED",
   "INVALIDATED",
+  // Every transaction shows its reasoning — proposals included
+  // (principal, 2026-08-21). Only triggers, reviews and fold rows stay
+  // title-only until asked.
   "CLOSED",
-  "PROPOSAL_APPROVED", // Bought / Sold — the principal wants the why
-  "PROPOSAL_REJECTED", // the principal's own note
+  "STATUS_CHANGED",
+  "PROPOSAL_PROPOSED",
+  "PROPOSAL_APPROVED",
+  "PROPOSAL_REJECTED",
+  "PROPOSAL_EXPIRED",
 ]);
 
 function dotFor(u: TimelineUpdate): DotKind {
@@ -959,4 +965,43 @@ export function toRow(item: TimelineItem): TimelineRow {
     orderId: null,
     fold: true,
   };
+}
+
+// ── Relative timestamps ──────────────────────────────────────────────────────
+// Back-to-back "Aug 12, 9:45 AM" rows are unreadable when a thesis logs a
+// dozen events a day (principal, 2026-08-21). Precision decays with age:
+// today is relative, the last week keeps a weekday + clock, older rows are
+// just a date.
+
+export function relativeTimestamp(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  const ms = now.getTime() - d.getTime();
+  if (!Number.isFinite(d.getTime())) return "";
+  const mins = Math.floor(ms / 60_000);
+  const time = d.toLocaleString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return `${Math.floor(mins / 60)}h`;
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+
+  const days = Math.floor(ms / 86_400_000);
+  if (days < 7)
+    return `${d.toLocaleString("en-US", { weekday: "short" })} ${time}`;
+
+  return d.getFullYear() === now.getFullYear()
+    ? d.toLocaleString("en-US", { month: "short", day: "numeric" })
+    : d.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
 }

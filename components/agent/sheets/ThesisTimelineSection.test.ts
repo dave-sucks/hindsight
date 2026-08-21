@@ -26,6 +26,7 @@ import {
   proposalSpanSegments,
   clusterLabel,
   toRow,
+  relativeTimestamp,
   type TimelineItem,
 } from "./thesis-timeline-utils";
 
@@ -571,6 +572,22 @@ describe("toRow — one shape for every item", () => {
     expect(reviewed.description).toBe("Nothing moved."); // available on click
   });
 
+  it("every transaction shows its reasoning, proposals included", () => {
+    for (const type of [
+      "PROPOSAL_PROPOSED",
+      "PROPOSAL_APPROVED",
+      "PROPOSAL_REJECTED",
+      "PROPOSAL_EXPIRED",
+      "STATUS_CHANGED",
+      "CLOSED",
+    ]) {
+      expect(
+        toRow({ kind: "event", row: row({ type, rationale: "why" }) })
+          .showDescription,
+      ).toBe(true);
+    }
+  });
+
   it("never repeats scalar edits below a title that already names them", () => {
     const updated = toRow({
       kind: "event",
@@ -639,5 +656,27 @@ describe("toRow — one shape for every item", () => {
     expect(cluster.timestamp).toBeNull();
     expect(cluster.rangeLabel).toBe("Aug 13 – 14");
     expect(cluster.title.secondary).toBe("2 quiet check-ins");
+  });
+});
+
+describe("relativeTimestamp — precision decays with age", () => {
+  const now = new Date("2026-08-21T15:00:00Z");
+  const at = (iso: string) => relativeTimestamp(iso, now);
+
+  it("uses minutes then hours within the same day", () => {
+    expect(at("2026-08-21T14:59:30Z")).toBe("now");
+    expect(at("2026-08-21T14:45:00Z")).toBe("15m");
+    expect(at("2026-08-21T12:00:00Z")).toBe("3h");
+  });
+
+  it("names yesterday, then the weekday, for the last week", () => {
+    expect(at("2026-08-20T12:00:00Z")).toMatch(/^Yesterday /);
+    // 4 days back → weekday + clock, not a bare date.
+    expect(at("2026-08-17T12:00:00Z")).toMatch(/^[A-Z][a-z]{2} /);
+  });
+
+  it("falls back to a bare date past a week, with the year when it differs", () => {
+    expect(at("2026-08-01T12:00:00Z")).toBe("Aug 1");
+    expect(at("2025-11-03T12:00:00Z")).toBe("Nov 3, 2025");
   });
 });

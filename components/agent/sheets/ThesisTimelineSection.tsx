@@ -21,7 +21,7 @@
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronsUpDown } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,7 @@ import {
   itemTimestamp,
   monthLabel,
   proposalSpanSegments,
+  relativeTimestamp,
   toRow,
   type DotKind,
   type TimelineFilter,
@@ -47,21 +48,10 @@ function useCurrentRunId(): string | null {
   return match?.[1] ?? null;
 }
 
-function fmtDateTime(d: string): string {
-  return new Date(d).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 /** The principal's run-link arrow (their SVG, currentColor). */
 function RunArrow() {
   return (
     <svg
-      width="15"
-      height="15"
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -340,31 +330,28 @@ function Row({
                 (row.runId || interactive) && "group-hover/row:opacity-0",
               )}
             >
-              {row.rangeLabel ?? (row.timestamp ? fmtDateTime(row.timestamp) : "")}
+              {row.rangeLabel ?? (row.timestamp ? relativeTimestamp(row.timestamp) : "")}
             </span>
-            <span className="absolute right-0 flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+            <span className="absolute right-0 flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
               {row.runId ? (
-                <Link
-                  href={`/runs/${row.runId}`}
-                  className="text-muted-foreground hover:text-foreground"
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  render={<Link href={`/runs/${row.runId}`} />}
                   title="View run"
                 >
                   <RunArrow />
-                </Link>
+                </Button>
               ) : null}
               {interactive ? (
-                <button
-                  type="button"
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
                   onClick={onToggle}
-                  className="text-muted-foreground hover:text-foreground"
                   title={open ? "Collapse" : "Expand"}
                 >
-                  {open ? (
-                    <ChevronUp className="size-4" />
-                  ) : (
-                    <ChevronDown className="size-4" />
-                  )}
-                </button>
+                  <ChevronsUpDown />
+                </Button>
               ) : null}
             </span>
           </span>
