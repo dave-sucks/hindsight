@@ -750,9 +750,9 @@ export function triggerDiffLines(entry: FieldChange): string[] {
   const realRemoved = Array.from(removedBySig.values()).flat();
 
   return [
-    ...realAdded.map((t) => `+ ${describeTriggerBrief(t)}`),
-    ...changed,
-    ...realRemoved.map((t) => `− ${describeTriggerBrief(t)}`),
+    ...realAdded.map((t) => `Added ${describeTriggerBrief(t)}`),
+    ...changed.map((c) => `Moved ${c}`),
+    ...realRemoved.map((t) => `Removed ${describeTriggerBrief(t)}`),
   ];
 }
 
@@ -820,6 +820,9 @@ export type DotKind =
 
 export interface TimelineRow {
   key: string;
+  /** Underlying ThesisUpdate type ("" for fold rows) — lets the caller
+   * target a specific row (e.g. merging provenance into CREATED). */
+  type: string;
   dot: DotKind;
   title: TitleSegments;
   chips: string[];
@@ -884,6 +887,7 @@ export function toRow(item: TimelineItem): TimelineRow {
     const { text, quoted } = describe(u);
     return {
       key: u.id,
+      type: u.type,
       dot: dotFor(u),
       title: titleSegments(u),
       chips: ladderChangeLines(u),
@@ -904,6 +908,7 @@ export function toRow(item: TimelineItem): TimelineRow {
     const { text, quoted } = describe(item.response);
     return {
       key: `g:${item.fire.id}`,
+      type: "TRIGGER_FIRED",
       dot: "default",
       title: groupTitle(item.fire, item.response, item.proposal),
       chips: ladderChangeLines(item.response),
@@ -923,6 +928,7 @@ export function toRow(item: TimelineItem): TimelineRow {
     const title = groupTitle(first.fire, first.response, first.proposal);
     return {
       key: `r:${first.fire.id}`,
+      type: "TRIGGER_FIRED",
       dot: "default",
       title: { ...title, secondary: `${title.secondary} ×${item.episodes.length}` },
       chips: [],
@@ -940,6 +946,7 @@ export function toRow(item: TimelineItem): TimelineRow {
   const { label, range } = clusterLabel(item.items);
   return {
     key: `c:${itemTimestamp(item.items[0])}`,
+    type: "",
     dot: "quiet",
     title: { primary: "", secondary: label },
     chips: [],

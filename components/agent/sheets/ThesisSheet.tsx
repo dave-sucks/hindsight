@@ -751,61 +751,6 @@ function TradeStructureBlock({
   );
 }
 
-// ── ProvenanceFooter ───────────────────────────────────────────────────
-// Where this thesis came from. Rendered as a junior trailing entry that
-// LINES UP WITH the activity timeline above — same `flex gap-3` outer,
-// same `size-1.5 rounded-full` rail dot, same `flex-1 min-w-0` body.
-// Visually it reads as the last row in the timeline list rather than a
-// floating footer. Matches the structure in ThesisTimelineSection.
-function ProvenanceFooter({
-  sourceKind,
-  rationale,
-  signalCount,
-}: {
-  sourceKind: string;
-  rationale: string | null;
-  signalCount: number;
-}) {
-  const labelByKind: Record<string, string> = {
-    ROUTED_SIGNAL: "Routed signal",
-    WEB_SEARCH: "Web search",
-    WATCHLIST_REVIEW: "Watchlist review",
-    POSITION_REVIEW: "Position review",
-    USER_ADDED: "Manual add",
-    BUILDER_SEED: "Analyst create",
-    EDITOR_SEED: "Editor chat",
-  };
-  const label = labelByKind[sourceKind] ?? sourceKind;
-  // Two-line layout matching the activity timeline entries above:
-  //   • Sourced via Web search                ← text-sm, foreground
-  //     1 signal · Found via read_signals…    ← text-xs, muted
-  // The dot column is the same width as the timeline rail so this row
-  // lines up exactly with the entries above it.
-  const subline = [
-    signalCount > 0
-      ? `${signalCount} signal${signalCount === 1 ? "" : "s"}`
-      : null,
-    rationale ?? null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center shrink-0">
-        <div className="size-1.5 rounded-full bg-muted-foreground/40 mt-1.5" />
-      </div>
-      <div className="flex-1 min-w-0 space-y-0.5">
-        <p className="text-sm leading-snug">Sourced via {label}</p>
-        {subline ? (
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            {subline}
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 // ── TerminalStatusAlert ─────────────────────────────────────────────────
 // Renders a single Alert when the thesis is in a terminal state. Tells
 // the user *why* the thesis ended + when, so the rest of the sheet
@@ -1632,16 +1577,17 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
             so it joins the timeline as one continuous list. */}
         <TabsContent value={1} className="space-y-5">
           {thesis_id ? (
-            <div className="space-y-3">
-              <ThesisTimelineSection thesisId={thesis_id} />
-              {state.sourceKind ? (
-                <ProvenanceFooter
-                  sourceKind={state.sourceKind}
-                  rationale={state.sourceRationale}
-                  signalCount={state.sourceSignalIds.length}
-                />
-              ) : null}
-            </div>
+            <ThesisTimelineSection
+              thesisId={thesis_id}
+              provenance={
+                state.sourceKind
+                  ? {
+                      sourceKind: state.sourceKind,
+                      rationale: state.sourceRationale ?? null,
+                    }
+                  : null
+              }
+            />
           ) : (
             <p className="text-xs text-muted-foreground">
               No activity yet — this thesis hasn&apos;t been persisted.

@@ -521,7 +521,7 @@ describe("triggerDiffLines", () => {
       from: [floor64, trail8],
       to: [floor71, trail8],
     });
-    expect(lines).toEqual(["Price below $64 → Price below $71"]);
+    expect(lines).toEqual(["Moved Price below $64 → Price below $71"]);
   });
 
   it("cancels id-churn: a rung re-minted with identical content is not a change", () => {
@@ -584,7 +584,7 @@ describe("toRow — one shape for every item", () => {
     expect(updated.chips).toEqual([]); // the duplicate sub-row is gone
   });
 
-  it("ladder edits become chips, always visible", () => {
+  it("ladder edits become plain metadata lines, always visible", () => {
     const withLadder = toRow({
       kind: "event",
       row: row({
@@ -603,7 +603,7 @@ describe("toRow — one shape for every item", () => {
         },
       }),
     });
-    expect(withLadder.chips).toEqual(["+ Price below $64 → exit"]);
+    expect(withLadder.chips).toEqual(["Added Price below $64 → exit"]);
   });
 
   it("the principal's rejection note is quoted; [USER] markers are stripped", () => {

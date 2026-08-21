@@ -21,6 +21,7 @@
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -111,30 +112,26 @@ function Dot({ kind, pulse }: { kind: DotKind; pulse: boolean }) {
   );
 }
 
-/** Sub-metadata: ladder rung changes. Always visible, always this shape. */
-function Chips({ lines }: { lines: string[] }) {
+/**
+ * Sub-metadata: ladder rung changes. Plain muted lines — the old
+ * red/green strikethrough chips read as errors, not edits (principal,
+ * 2026-08-21). Capped so a wholesale ladder rewrite can't wall the row.
+ */
+function LadderLines({ lines }: { lines: string[] }) {
+  const shown = lines.slice(0, 3);
+  const rest = lines.length - shown.length;
   return (
-    <div className="flex flex-wrap gap-1 pt-1">
-      {lines.map((line, i) => {
-        const added = line.startsWith("+ ");
-        const removed = line.startsWith("− ");
-        const text = added || removed ? line.slice(2) : line;
-        return (
-          <span
-            key={i}
-            className={cn(
-              "inline-flex items-center rounded-full border px-2 py-px text-[11px] font-light tabular-nums",
-              added
-                ? "border-positive/40 text-positive"
-                : removed
-                  ? "border-negative/40 text-negative line-through"
-                  : "border-foreground/15 text-foreground/70",
-            )}
-          >
-            {text}
-          </span>
-        );
-      })}
+    <div className="pt-0.5">
+      {shown.map((line, i) => (
+        <p key={i} className="text-xs font-light text-muted-foreground">
+          {line}
+        </p>
+      ))}
+      {rest > 0 ? (
+        <p className="text-xs font-light text-muted-foreground">
+          +{rest} more ladder {rest === 1 ? "change" : "changes"}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -145,11 +142,24 @@ const FILTERS: Array<{ value: TimelineFilter; label: string }> = [
   { value: "triggers", label: "Triggers" },
 ];
 
+const SOURCE_LABELS: Record<string, string> = {
+  ROUTED_SIGNAL: "a routed signal",
+  WEB_SEARCH: "web search",
+  WATCHLIST_REVIEW: "a watchlist review",
+  POSITION_REVIEW: "a position review",
+  USER_ADDED: "a manual add",
+  BUILDER_SEED: "analyst setup",
+  EDITOR_SEED: "editor chat",
+};
+
 interface Props {
   thesisId: string;
+  /** Where this thesis came from. Folded into the Created row rather than
+   * rendered as its own differently-styled footer (principal, 2026-08-21). */
+  provenance?: { sourceKind: string; rationale: string | null } | null;
 }
 
-export function ThesisTimelineSection({ thesisId }: Props) {
+export function ThesisTimelineSection({ thesisId, provenance }: Props) {
   const [updates, setUpdates] = useState<TimelineUpdate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<TimelineFilter>("all");
@@ -197,12 +207,21 @@ export function ThesisTimelineSection({ thesisId }: Props) {
         ? label
         : null;
     });
+    const mapped = items.map(toRow).map((r) => {
+      if (r.type !== "CREATED" || !provenance) return r;
+      const via = SOURCE_LABELS[provenance.sourceKind] ?? provenance.sourceKind;
+      const sourced = `Sourced via ${via}.${provenance.rationale ? ` ${provenance.rationale}` : ""}`;
+      return {
+        ...r,
+        description: r.description ? `${r.description} ${sourced}` : sourced,
+      };
+    });
     return {
-      rows: items.map(toRow),
+      rows: mapped,
       spans: proposalSpanSegments(items),
       months: monthAt,
     };
-  }, [updates, filter, open]);
+  }, [updates, filter, open, provenance]);
 
   return (
     <div className="space-y-3">
@@ -296,54 +315,68 @@ function Row({
         <div className="flex items-baseline justify-between gap-3">
           <p
             className={cn(
-              "text-sm leading-snug min-w-0",
+              "text-sm font-normal leading-snug min-w-0",
               row.fold ? "text-muted-foreground" : "text-foreground",
-              interactive &&
-                "cursor-pointer hover:underline underline-offset-4 decoration-foreground/30",
+              interactive && "cursor-pointer",
             )}
             onClick={interactive ? onToggle : undefined}
           >
             {row.title.primary ? (
-              <span className="font-medium">{row.title.primary} </span>
+              <span className="font-semibold">{row.title.primary} </span>
             ) : null}
-            {row.title.secondary ? (
-              <span
-                className={cn(
-                  "font-light",
-                  row.fold ? "text-muted-foreground" : "text-foreground/80",
-                )}
-              >
-                {row.title.secondary}
-              </span>
-            ) : null}
+            {row.title.secondary}
             {row.title.outcome ? (
-              <span className="font-medium"> {row.title.outcome}</span>
+              <span className="font-semibold"> {row.title.outcome}</span>
             ) : null}
           </p>
 
-          <span className="flex items-center gap-1.5 shrink-0 text-muted-foreground">
-            {row.runId ? (
-              <Link
-                href={`/runs/${row.runId}`}
-                className="opacity-0 group-hover/row:opacity-100 transition-opacity hover:text-foreground"
-                title="View run"
-              >
-                <RunArrow />
-              </Link>
-            ) : null}
-            <span className="text-xs font-light tabular-nums">
+          {/* Right rail: the timestamp swaps for actions on row hover —
+              run link + expand/collapse. No underline affordance on the
+              title (principal, 2026-08-21). */}
+          <span className="relative flex items-center shrink-0 h-5">
+            <span
+              className={cn(
+                "text-xs font-light tabular-nums text-muted-foreground transition-opacity",
+                (row.runId || interactive) && "group-hover/row:opacity-0",
+              )}
+            >
               {row.rangeLabel ?? (row.timestamp ? fmtDateTime(row.timestamp) : "")}
+            </span>
+            <span className="absolute right-0 flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+              {row.runId ? (
+                <Link
+                  href={`/runs/${row.runId}`}
+                  className="text-muted-foreground hover:text-foreground"
+                  title="View run"
+                >
+                  <RunArrow />
+                </Link>
+              ) : null}
+              {interactive ? (
+                <button
+                  type="button"
+                  onClick={onToggle}
+                  className="text-muted-foreground hover:text-foreground"
+                  title={open ? "Collapse" : "Expand"}
+                >
+                  {open ? (
+                    <ChevronUp className="size-4" />
+                  ) : (
+                    <ChevronDown className="size-4" />
+                  )}
+                </button>
+              ) : null}
             </span>
           </span>
         </div>
 
-        {row.chips.length > 0 ? <Chips lines={row.chips} /> : null}
+        {row.chips.length > 0 ? <LadderLines lines={row.chips} /> : null}
 
         {showDescription ? (
           <p
             className={cn(
-              "text-sm font-light text-foreground/80 leading-relaxed cursor-pointer pt-0.5",
-              row.quoted && "border-l-2 border-foreground/15 pl-2",
+              "text-sm font-light text-muted-foreground leading-relaxed cursor-pointer pt-0.5",
+              row.quoted && "border-l-2 border-border pl-2",
               !open && "line-clamp-2",
             )}
             onClick={onToggle}
