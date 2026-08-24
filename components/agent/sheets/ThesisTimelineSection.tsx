@@ -195,10 +195,12 @@ export function ThesisTimelineSection({ thesisId, provenance }: Props) {
     if (!updates) return { rows: [], spans: new Set<number>(), months: [] as (string | null)[] };
     const built = buildTimeline(updates, filter);
     const items = built.flatMap((item) => {
+      // Keep the fold row itself when expanded — it is the only control
+      // that can collapse the group again.
       if (item.kind === "cluster" && open.has(`c:${itemTimestamp(item.items[0])}`))
-        return item.items;
+        return [item, ...item.items];
       if (item.kind === "repeat" && open.has(`r:${item.episodes[0].fire.id}`))
-        return item.episodes;
+        return [item, ...item.episodes];
       return [item];
     });
     const monthAt = items.map((item, i) => {
