@@ -132,7 +132,7 @@ const schema = z.object({
     .enum(["actionable", "book"])
     .optional()
     .describe(
-      "Row weight. \"actionable\" returns FULL rows (narrative excerpts, triggers, resolved envelope) only for theses with a non-null needsAction or status=PROMOTED; every quiet row comes back as a one-line index entry in `quiet_theses` (ticker, status, prices, next review, core belief). \"book\" returns full rows for everything. Default: \"actionable\" on the Daily Run's unfiltered read (the trigger system already decided what needs work today — 2026-08-13 cost fix: full-book reads were ~4k tokens/thesis × every step), \"book\" everywhere else and whenever you filter by ticker/id (drill-down is always full).",
+      "Row weight. \"actionable\" returns FULL rows (narrative excerpts, triggers, resolved envelope) only for theses with a non-null needsAction or status=PROMOTED; every quiet row comes back as a one-line index entry in `quiet_theses` (ticker, status, the plan levels WITH the live price beside them, next review, core belief). \"book\" returns full rows for everything. Default: \"actionable\" on the Daily Run's unfiltered read (the trigger system already decided what needs work today — 2026-08-13 cost fix: full-book reads were ~4k tokens/thesis × every step), \"book\" everywhere else and whenever you filter by ticker/id (drill-down is always full).",
     ),
 });
 
@@ -203,7 +203,7 @@ function classifyPrincipalDirective(
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; quiet rows come back as one-line index entries in `quiet_theses` (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
+    "Read this analyst's durable thesis library. Default returns HOLDING + WATCHING + PROMOTED theses (the live coverage book) with snapshot + bullCase + bearCase deep-research excerpts and a `researchAge` annotation (freshness: \"fresh\" | \"stale\" | \"missing\" + daysOld). On the Daily Run's unfiltered read, rows arrive at two weights: theses with work to do (non-null needsAction, or PROMOTED) come back FULL in `theses`; quiet rows come back as one-line index entries in `quiet_theses` — each carrying the live price next to its entry/target/stop, so a plan the price has left behind is visible at a glance (drill down on any of them with tickers:[\"X\"] for the full row). Filter by ticker/id/status/horizon as needed. Set include_history=true to get the recent activity log per thesis — use this in tactical mode (one ticker, full history) and during housekeeping (walk every thesis). Set include_research=true to also pull the lower-priority sections (recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical, researchData).",
   schema,
   ui: "thesis-card" as const,
 
@@ -1010,6 +1010,13 @@ export const getTheses = defineTool({
       entryPrice: t.entryPrice,
       targetPrice: t.targetPrice,
       stopLoss: t.stopLoss,
+      // The live price belongs NEXT TO the plan numbers, even on a quiet
+      // row. Without it the roster line reads "buy at $262 · waiting for
+      // trigger" on a stock trading at $184 — plan numbers with nothing to
+      // judge them against, which is how KLAC/SNPS/NTNX sat mis-priced for
+      // months (2026-08-23 audit). One number per row; the resolver already
+      // fetched it, so this costs a fetch of nothing.
+      currentPrice: resolvedByThesisId.get(t.id)?.currentPrice ?? null,
       nextReviewAt: t.nextReviewAt,
       catalystDate: t.catalystDate,
       // Resolved ladder, not the stored column — a thesis protected
