@@ -54,7 +54,11 @@ import {
 } from "@/lib/agent/thesis-narrative";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { getMoneyContext } from "@/lib/agent/context-bundle";
+import {
+  getMoneyContext,
+  getNameHistory,
+  formatNameHistoryBlock,
+} from "@/lib/agent/context-bundle";
 import {
   pullThesisData,
   type ThesisPullResult,
@@ -294,6 +298,12 @@ export interface WriterResearchPromptOpts {
     ceilingDollars: number;
     equityUSD: number | null;
   } | null;
+  /**
+   * Rendered "your own history on this name" block from the context bundle
+   * (prior PASS/SOLD verdicts with the analyst's own words). Empty string
+   * when this analyst has no past on the ticker.
+   */
+  nameHistoryBlock?: string;
   /** P1-35: this analyst sold this ticker within the last 14 days. */
   priorExit?: {
     exitPrice: number | null;
@@ -505,7 +515,7 @@ every field; the judgment rules:
      conviction honestly against that bar.
 
 ${triggerBlock}
-${sizingBlock}${priorExitBlock}
+${sizingBlock}${priorExitBlock}${opts.nameHistoryBlock ? `\n${opts.nameHistoryBlock}\n` : ""}
 If submit_thesis returns validation errors, fix EXACTLY the listed fields
 and call it again — do NOT rewrite the research note. When it returns
 accepted, STOP. Do not write anything after acceptance.`;
@@ -683,49 +693,19 @@ export async function writerResearchPhase(
     const floorDollars = money.floorDollars;
     const equityUSD = money.equityUSD;
 
-    // ── P1-35 (#524): recently-sold context for mints ───────────────────
-    // record_thesis refuses a mint at/above a ≤14-day exit price without an
-    // explicit acknowledge_prior_exit. Surface the exit into the prompt and
-    // require the acknowledgment in-loop so the model engages with the sale
-    // instead of the run dying at persist.
-    let priorExit: {
-      exitPrice: number | null;
-      daysAgo: number;
-      closeReason: string | null;
-    } | null = null;
-    if (args.mode === "mint") {
-      try {
-        const soldSibling = await prisma.thesis.findFirst({
-          where: {
-            ticker: T,
-            status: "RETIRED",
-            retiredReason: "SOLD",
-            closedAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
-            researchRun: { agentConfigId: analyst.id },
-          },
-          orderBy: { closedAt: "desc" },
-          select: { id: true, closedAt: true, closeReason: true },
-        });
-        if (soldSibling?.closedAt) {
-          const closedRow = await prisma.thesisUpdate.findFirst({
-            where: { thesisId: soldSibling.id, type: "CLOSED" },
-            orderBy: { timestamp: "desc" },
-            select: { priceAtTime: true },
-          });
-          const exitPrice =
-            closedRow?.priceAtTime != null && Number.isFinite(Number(closedRow.priceAtTime))
-              ? Number(closedRow.priceAtTime)
-              : null;
-          priorExit = {
-            exitPrice,
-            daysAgo: Math.floor((Date.now() - soldSibling.closedAt.getTime()) / 86_400_000),
-            closeReason: soldSibling.closeReason ?? null,
-          };
-        }
-      } catch {
-        /* non-fatal — persist-side guard still enforces */
-      }
-    }
+    // ── Name history (System 1 bundle slice) ────────────────────────────
+    // "Have we been here before?" — sourced from the shared bundle so the
+    // writer, discovery and future paths read one shape. Supersedes the
+    // inline ≤14d sale lookup: same lastExit (which still drives #524's
+    // acknowledgment gate) plus prior PASS/SOLD verdicts with the analyst's
+    // own words, so a refresh can't re-underwrite a name it rejected
+    // without engaging with why.
+    const nameHistory = await getNameHistory({
+      analystId: analyst.id,
+      ticker: T,
+    });
+    const priorExit = args.mode === "mint" ? nameHistory.lastExit : null;
+    const nameHistoryBlock = formatNameHistoryBlock(nameHistory);
 
     const systemPrompt = buildWriterResearchPrompt({
       analystName: analyst.name,
@@ -737,6 +717,7 @@ export async function writerResearchPhase(
       minConfidence: analyst.minConfidence,
       runDate: new Date().toISOString().slice(0, 10),
       promotionContext: args.promotionContext ?? null,
+      nameHistoryBlock,
       sizing:
         floorDollars > 0
           ? {

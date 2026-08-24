@@ -19,7 +19,10 @@ import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildDiscoverySystemPrompt } from "@/lib/agent/system-prompts/discovery";
-import { getMoneyContext } from "@/lib/agent/context-bundle";
+import {
+  getMoneyContext,
+  getRecentVerdictRoster,
+} from "@/lib/agent/context-bundle";
 import { MODES } from "@/lib/agent/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 
@@ -208,9 +211,15 @@ export const discoveryRun = inngest.createFunction(
         // dispatch, and "worth at least a full-floor position?" needs the
         // real numbers. Fail-open: null degrades the prompt block only.
         const money = await getMoneyContext(config);
+        // Names this analyst already judged — so discovery doesn't spend a
+        // writer dispatch re-deciding a name it rejected weeks ago.
+        const recentVerdicts = await getRecentVerdictRoster({
+          analystId: config.id,
+        });
 
         const systemPrompt = buildDiscoverySystemPrompt({
           money,
+          recentVerdicts,
           config: {
             name: config.name,
             // FULL analystPrompt — never truncate. This is the analyst's

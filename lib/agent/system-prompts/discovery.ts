@@ -63,6 +63,18 @@ export interface DiscoveryPromptArgs {
    * Optional/fail-open: null renders the block's degraded form.
    */
   money?: import("@/lib/agent/context-bundle").MoneyContext | null;
+  /**
+   * Names THIS analyst already judged recently (context bundle, System 1).
+   * Discovery picks candidates mid-run, so it can't prefetch per-ticker
+   * history — this compact roster is what keeps it from blindly re-picking
+   * a name it rejected weeks ago. Verified need: 9 live plans sit on names
+   * their own analyst had passed on or sold (2026-08-23 audit).
+   */
+  recentVerdicts?: Array<{
+    ticker: string;
+    verdict: "PASSED" | "SOLD";
+    daysAgo: number;
+  }>;
 }
 
 export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
@@ -161,7 +173,13 @@ YOUR CONFIG — what bounds your work this run
   Max open slots:    ${maxOpenPos}
   Signal types you trade: ${signalTypes}
   Subscribed feeds:  ${feedsList}
-  Existing watchlist (curated by you): ${watchlist}
+  Existing watchlist (curated by you): ${watchlist}${
+    args.recentVerdicts?.length
+      ? `
+  Recently judged by you (do NOT re-pick blindly — if one resurfaces, say what changed since):
+    ${args.recentVerdicts.map((v) => `$${v.ticker} ${v.verdict === "PASSED" ? "passed" : "sold"} ${v.daysAgo}d ago`).join(" · ")}`
+      : ""
+  }
 
 Your **direction bias** constrains every dispatch. If you're LONG only,
 don't dispatch a thesis-writer on a setup that only makes sense as a

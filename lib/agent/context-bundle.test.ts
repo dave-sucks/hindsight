@@ -10,7 +10,12 @@ jest.mock("@/lib/actions/api-keys.actions", () => ({
 }));
 jest.mock("@/lib/alpaca", () => ({ getAccount: jest.fn() }));
 
-import { floorPctOf, formatMoneyContextBlock } from "./context-bundle";
+import {
+  floorPctOf,
+  formatMoneyContextBlock,
+  formatNameHistoryBlock,
+  isHousekeepingClose,
+} from "./context-bundle";
 
 describe("floorPctOf", () => {
   it("rounds UP to one decimal — the percent that clears the floor", () => {
@@ -73,5 +78,83 @@ describe("formatMoneyContextBlock", () => {
     });
     expect(block).toContain("ceiling: $5,000");
     expect(block).toContain("no floor configured");
+  });
+});
+
+describe("formatNameHistoryBlock", () => {
+  const base = { ticker: "PLTR", lastExit: null, priorVerdicts: [], timesHeld: 0 };
+
+  it("is empty when the analyst has no past on the name", () => {
+    expect(formatNameHistoryBlock(base)).toBe("");
+  });
+
+  it("leads with the sale, with price and reason", () => {
+    const block = formatNameHistoryBlock({
+      ...base,
+      lastExit: { exitPrice: 66.53, daysAgo: 3, closeReason: "STOP" },
+      timesHeld: 1,
+    });
+    expect(block).toContain("SOLD it 3 days ago at $66.53");
+    expect(block).toContain("STOP");
+    expect(block).toContain("what is DIFFERENT now");
+  });
+
+  it("lists prior passes with the analyst's own words", () => {
+    const block = formatNameHistoryBlock({
+      ...base,
+      priorVerdicts: [
+        { verdict: "PASSED", daysAgo: 21, reason: "valuation ahead of fundamentals" },
+      ],
+    });
+    expect(block).toContain("PASSED 21d ago");
+    expect(block).toContain("valuation ahead of fundamentals");
+  });
+
+  it("does not print the same sale twice (lastExit + verdict list)", () => {
+    const block = formatNameHistoryBlock({
+      ...base,
+      lastExit: { exitPrice: 100, daysAgo: 5, closeReason: "STOP" },
+      priorVerdicts: [
+        { verdict: "SOLD", daysAgo: 5, reason: "stopped out" },
+        { verdict: "PASSED", daysAgo: 40, reason: "too early" },
+      ],
+      timesHeld: 1,
+    });
+    expect(block.match(/5d ago|5 days ago/g)?.length).toBe(1);
+    expect(block).toContain("PASSED 40d ago");
+  });
+
+  it("uses singular day wording for a one-day-old exit", () => {
+    const block = formatNameHistoryBlock({
+      ...base,
+      lastExit: { exitPrice: null, daysAgo: 1, closeReason: null },
+    });
+    expect(block).toContain("1 day ago");
+    expect(block).not.toContain("1 days ago");
+  });
+});
+
+
+describe("isHousekeepingClose — bulk repairs are not trading decisions", () => {
+  it("catches the two live-book cleanup markers (99 of ~140 SOLD rows)", () => {
+    expect(
+      isHousekeepingClose("orphan-cleanup-2026-05-06: not held, not on watchlist"),
+    ).toBe(true);
+    expect(
+      isHousekeepingClose("cleanup-2026-05-07: PASS-decorative or LONG/SHORT-without"),
+    ).toBe(true);
+  });
+
+  it("leaves real exits alone", () => {
+    expect(isHousekeepingClose("STOP")).toBe(false);
+    expect(isHousekeepingClose("MANUAL — Closing ahead of NVIDIA earnings.")).toBe(false);
+    expect(isHousekeepingClose(null)).toBe(false);
+    expect(isHousekeepingClose("")).toBe(false);
+  });
+
+  it("does not match a real reason that merely mentions cleanup", () => {
+    expect(
+      isHousekeepingClose("Selling into the balance-sheet cleanup announced today"),
+    ).toBe(false);
   });
 });
