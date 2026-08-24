@@ -72,7 +72,7 @@ export interface DiscoveryPromptArgs {
    */
   recentVerdicts?: Array<{
     ticker: string;
-    verdict: "PASSED" | "SOLD";
+    verdict: "PASSED" | "SOLD" | "INVALIDATED" | "DROPPED";
     daysAgo: number;
   }>;
 }
@@ -177,7 +177,15 @@ YOUR CONFIG — what bounds your work this run
     args.recentVerdicts?.length
       ? `
   Recently judged by you (do NOT re-pick blindly — if one resurfaces, say what changed since):
-    ${args.recentVerdicts.map((v) => `$${v.ticker} ${v.verdict === "PASSED" ? "passed" : "sold"} ${v.daysAgo}d ago`).join(" · ")}`
+    ${args.recentVerdicts.map((v) => `$${v.ticker} ${
+        v.verdict === "PASSED"
+          ? "passed"
+          : v.verdict === "SOLD"
+            ? "sold"
+            : v.verdict === "INVALIDATED"
+              ? "thesis killed"
+              : "stopped watching"
+      } ${v.daysAgo}d ago`).join(" · ")}`
       : ""
   }
 

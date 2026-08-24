@@ -158,3 +158,20 @@ describe("isHousekeepingClose — bulk repairs are not trading decisions", () =>
     ).toBe(false);
   });
 });
+
+describe("formatNameHistoryBlock — all four verdict kinds", () => {
+  const base = { ticker: "KLAC", lastExit: null, priorVerdicts: [], timesHeld: 0 };
+
+  it("distinguishes a killed thesis from a dropped watch", () => {
+    const block = formatNameHistoryBlock({
+      ...base,
+      priorVerdicts: [
+        { verdict: "INVALIDATED", daysAgo: 30, reason: "bear case confirmed" },
+        { verdict: "DROPPED", daysAgo: 2, reason: "stale plan, never re-anchored" },
+      ],
+    });
+    expect(block).toContain("killed the thesis");
+    expect(block).toContain("stopped watching it 2d ago");
+    expect(block).toContain("stale plan, never re-anchored");
+  });
+});

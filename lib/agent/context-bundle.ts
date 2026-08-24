@@ -150,8 +150,17 @@ export interface PriorExit {
 }
 
 export interface PriorVerdict {
-  /** "PASSED" (researched and declined) or "SOLD". */
-  verdict: "PASSED" | "SOLD";
+  /**
+   * What the analyst concluded last time:
+   *   PASSED      — researched it and declined (reason = the FLIP CRITERIA)
+   *   SOLD        — owned it and exited
+   *   INVALIDATED — the belief broke
+   *   DROPPED     — stopped watching it
+   * REPLACED is deliberately absent: a thesis superseded by a rewrite on the
+   * same name is not a judgment about the stock (245 such rows on the live
+   * book would drown the real verdicts).
+   */
+  verdict: "PASSED" | "SOLD" | "INVALIDATED" | "DROPPED";
   daysAgo: number;
   /** The analyst's own words at the time, trimmed. */
   reason: string | null;
@@ -186,6 +195,24 @@ export function isHousekeepingClose(reason: string | null): boolean {
 }
 
 /**
+ * Which real judgment (if any) a terminal row represents. Housekeeping
+ * closes and REPLACED rewrites are not judgments.
+ */
+function classifyVerdict(r: {
+  status: string;
+  retiredReason: string | null;
+  closeReason: string | null;
+}): PriorVerdict["verdict"] | null {
+  if (r.status === "PASSED") return "PASSED";
+  if (r.status !== "RETIRED") return null;
+  if (isHousekeepingClose(r.closeReason)) return null;
+  if (r.retiredReason === "SOLD") return "SOLD";
+  if (r.retiredReason === "INVALIDATED") return "INVALIDATED";
+  if (r.retiredReason === "DROPPED") return "DROPPED";
+  return null; // REPLACED and anything unknown
+}
+
+/**
  * One name's history for one analyst. Fail-open: any error yields an empty
  * history (no lastExit, no verdicts) — context must never kill a run, and
  * the persist-side gates still enforce independently.
@@ -213,6 +240,7 @@ export async function getNameHistory(args: {
         ticker,
         researchRun: { agentConfigId: analystId },
         status: { in: ["PASSED", "RETIRED"] },
+        retiredReason: { not: "REPLACED" },
         createdAt: { gte: new Date(Date.now() - windowDays * 86_400_000) },
       },
       orderBy: { createdAt: "desc" },
@@ -259,19 +287,13 @@ export async function getNameHistory(args: {
     }
 
     const priorVerdicts: PriorVerdict[] = rows
-      .filter(
-        (r) =>
-          r.status === "PASSED" ||
-          (r.status === "RETIRED" &&
-            r.retiredReason === "SOLD" &&
-            !isHousekeepingClose(r.closeReason)),
-      )
+      .filter((r) => classifyVerdict(r) !== null)
       .slice(0, limit)
       .map((r) => ({
-        verdict: r.status === "PASSED" ? ("PASSED" as const) : ("SOLD" as const),
+        verdict: classifyVerdict(r)!,
         daysAgo: daysSince(r.closedAt ?? r.createdAt),
         // PASS → the flip criteria (what would change the answer).
-        // SOLD → why it was sold.
+        // Everything else → why it ended.
         reason:
           (r.status === "PASSED"
             ? (r.invalidationConds?.[0] ?? r.invalidReason)
@@ -304,9 +326,16 @@ export function formatNameHistoryBlock(h: NameHistory): string {
   }
   for (const v of h.priorVerdicts) {
     if (v.verdict === "SOLD" && h.lastExit?.daysAgo === v.daysAgo) continue;
+    const verb =
+      v.verdict === "PASSED"
+        ? "You researched it and PASSED"
+        : v.verdict === "SOLD"
+          ? "You sold it"
+          : v.verdict === "INVALIDATED"
+            ? "You killed the thesis (belief broke)"
+            : "You stopped watching it";
     lines.push(
-      `  • ${v.verdict === "PASSED" ? "You researched it and PASSED" : "You sold it"} ${v.daysAgo}d ago` +
-        `${v.reason ? ` — "${v.reason}"` : ""}.`,
+      `  • ${verb} ${v.daysAgo}d ago${v.reason ? ` — "${v.reason}"` : ""}.`,
     );
   }
   lines.push(
@@ -325,7 +354,9 @@ export async function getRecentVerdictRoster(args: {
   analystId: string;
   windowDays?: number;
   limit?: number;
-}): Promise<Array<{ ticker: string; verdict: "PASSED" | "SOLD"; daysAgo: number }>> {
+}): Promise<
+  Array<{ ticker: string; verdict: PriorVerdict["verdict"]; daysAgo: number }>
+> {
   const { analystId, windowDays = 60, limit = 25 } = args;
   try {
     const rows = await prisma.thesis.findMany({
@@ -347,21 +378,18 @@ export async function getRecentVerdictRoster(args: {
     const seen = new Set<string>();
     const out: Array<{
       ticker: string;
-      verdict: "PASSED" | "SOLD";
+      verdict: PriorVerdict["verdict"];
       daysAgo: number;
     }> = [];
     for (const r of rows) {
-      const isSold =
-        r.status === "RETIRED" &&
-        r.retiredReason === "SOLD" &&
-        !isHousekeepingClose(r.closeReason);
-      if (r.status !== "PASSED" && !isSold) continue;
+      const verdict = classifyVerdict(r);
+      if (verdict === null) continue;
       const t = r.ticker.toUpperCase();
       if (seen.has(t)) continue; // newest verdict per ticker wins
       seen.add(t);
       out.push({
         ticker: t,
-        verdict: isSold ? "SOLD" : "PASSED",
+        verdict,
         daysAgo: daysSince(r.closedAt ?? r.createdAt),
       });
       if (out.length >= limit) break;
