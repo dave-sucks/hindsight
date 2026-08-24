@@ -41,10 +41,10 @@ For the chosen analyst, output a single ready-to-use block the operator can work
    (Catalyst/PEAD = 2×/week; Compounder = monthly), and whether there's a skip-list (names
    already held/watching — pull from `Thesis` WATCHING/HOLDING/PROMOTED so you don't re-source).
    **Also check free slots before sourcing** — an analyst at its `maxOpenPositions` can't act on
-   anything you find **Read the live count, never a number written in a doc** — this line has
-   been wrong before. As of 2026-08-24: Catalyst 2 open / 5 max (**3 free**),
-   Compounder 3 open / 4 max (**1 free**, against 12 WATCHING), PEAD 3 open / 6
-   max (3 free).
+   anything you find. **Read the live count from `AgentConfig` + `Position`, never a number
+   written in a doc** — this line has been wrong before and it suppressed sourcing for the seat
+   that most needed it. For reference only, as of 2026-08-24: Catalyst 2 open / 5 max (3 free),
+   Compounder 3 open / 4 max (1 free, against 12 WATCHING), PEAD 3 open / 6 max (3 free).
 2. **The play** — name it (A/B/C/D) per the gap→play map, and say why.
 3. **Grok prompts** — 2–4 variants, copy-pasteable, lead with the operator's preferred mandate
    style. Each is a full prompt, not a fragment. Bake in the per-archetype triage filters
