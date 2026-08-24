@@ -335,7 +335,13 @@ function rowMatchesFilter(row: TimelineUpdate, filter: TimelineFilter): boolean 
       row.type === "STATUS_CHANGED" ||
       row.type === "CLOSED"
     );
-  return row.type === "TRIGGER_FIRED";
+  return (
+    row.type === "TRIGGER_FIRED" ||
+    // Keep the response rows too, so fire→decision episodes survive the
+    // filter instead of collapsing to bare conditions.
+    (row.triggerId != null &&
+      (row.type === "UPDATED" || row.type === "REVIEWED"))
+  );
 }
 
 /** Housekeeping fire ("Scheduled review due/overdue…"), not a market event. */
@@ -839,6 +845,9 @@ export interface TimelineRow {
   dot: DotKind;
   title: TitleSegments;
   chips: LadderChange[];
+  /** Quote at the moment of the event. Null when unknown, and null on
+   * trade rows whose title already carries the fill price. */
+  price: number | null;
   description: string | null;
   /** Description is the principal's own words → quote styling. */
   quoted: boolean;
@@ -910,6 +919,8 @@ export function toRow(item: TimelineItem): TimelineRow {
       dot: dotFor(u),
       title: titleSegments(u),
       chips: ladderChangeLines(u),
+      // A Bought/Sold title already reads "… at $832.84" — don't repeat it.
+      price: u.type === "PROPOSAL_APPROVED" ? null : u.priceAtTime,
       description: text,
       quoted,
       showDescription: DESCRIPTION_VISIBLE.has(u.type),
@@ -931,6 +942,7 @@ export function toRow(item: TimelineItem): TimelineRow {
       dot: "default",
       title: groupTitle(item.fire, item.response, item.proposal),
       chips: ladderChangeLines(item.response),
+      price: item.fire.priceAtTime ?? item.response.priceAtTime,
       description: text,
       quoted,
       showDescription: false, // an episode's title already tells the story
@@ -951,6 +963,7 @@ export function toRow(item: TimelineItem): TimelineRow {
       dot: "default",
       title: { ...title, secondary: `${title.secondary} ×${item.episodes.length}` },
       chips: [],
+      price: null,
       description: null,
       quoted: false,
       showDescription: false,
@@ -969,6 +982,7 @@ export function toRow(item: TimelineItem): TimelineRow {
     dot: "quiet",
     title: { primary: "", secondary: label },
     chips: [],
+    price: null,
     description: null,
     quoted: false,
     showDescription: false,

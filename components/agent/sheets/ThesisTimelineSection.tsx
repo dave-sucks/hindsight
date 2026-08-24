@@ -225,10 +225,7 @@ export function ThesisTimelineSection({ thesisId, provenance }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-          Activity
-        </p>
+      <div className="flex items-center justify-end gap-2">
         <span className="flex gap-1">
           {FILTERS.map((f) => (
             <Button
@@ -312,7 +309,7 @@ function Row({
       </div>
 
       <div className={cn("flex-1 min-w-0", !isLast && "pb-4")}>
-        <div className="flex items-baseline justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0.5 sm:gap-3">
           <p
             className={cn(
               "text-sm font-normal leading-snug min-w-0",
@@ -333,14 +330,21 @@ function Row({
           {/* Right rail: the timestamp swaps for actions on row hover —
               run link + expand/collapse. No underline affordance on the
               title (principal, 2026-08-21). */}
-          <span className="relative flex items-center shrink-0 h-5">
+          <span className="relative flex items-center shrink-0 h-5 gap-2">
             <span
               className={cn(
-                "text-xs font-light tabular-nums text-muted-foreground transition-opacity",
+                "flex items-center gap-2 transition-opacity",
                 (row.runId || interactive) && "group-hover/row:opacity-0",
               )}
             >
-              {row.rangeLabel ?? (row.timestamp ? relativeTimestamp(row.timestamp) : "")}
+              {row.price != null ? (
+                <span className="text-xs font-medium tabular-nums text-muted-foreground">
+                  ${row.price.toFixed(2)}
+                </span>
+              ) : null}
+              <span className="text-xs font-light tabular-nums text-muted-foreground">
+                {row.rangeLabel ?? (row.timestamp ? relativeTimestamp(row.timestamp) : "")}
+              </span>
             </span>
             <span className="absolute right-0 flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
               {row.runId ? (

@@ -684,3 +684,47 @@ describe("relativeTimestamp — precision decays with age", () => {
     expect(at("2025-11-03T12:00:00Z")).toBe("Nov 3, 2025");
   });
 });
+
+describe("price on the row model", () => {
+  it("carries the quote, except on trade rows whose title already shows it", () => {
+    expect(
+      toRow({
+        kind: "event",
+        row: row({ type: "TRIGGER_FIRED", priceAtTime: 186.45 }),
+      }).price,
+    ).toBe(186.45);
+    // "Bought 37 shares at $183.83" — no second copy on the right.
+    expect(
+      toRow({
+        kind: "event",
+        row: row({
+          type: "PROPOSAL_APPROVED",
+          fieldChanges: proposalFc("OPEN", 37),
+          priceAtTime: 183.83,
+        }),
+      }).price,
+    ).toBeNull();
+  });
+});
+
+describe("triggers filter keeps episodes intact", () => {
+  it("retains the response rows so decisions survive the filter", () => {
+    const fire = row({
+      id: "f1",
+      type: "TRIGGER_FIRED",
+      triggerId: "t1",
+      summary: "Price above $255 — consider entry",
+      timestamp: "2026-08-18T11:10:00Z",
+    });
+    const answer = row({
+      id: "r1",
+      type: "UPDATED",
+      triggerId: "t1",
+      fieldChanges: {},
+      timestamp: "2026-08-18T11:10:30Z",
+    });
+    const unrelated = row({ id: "x", type: "REVIEWED", triggerId: null });
+    const items = buildTimeline([answer, fire, unrelated], "triggers");
+    expect(items.map((i) => i.kind)).toEqual(["group"]);
+  });
+});
