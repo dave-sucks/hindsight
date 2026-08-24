@@ -673,3 +673,82 @@ export async function getBars(
 
   return withTimeout(collectBars(), `getBars(${symbol})`);
 }
+
+/**
+ * Batched daily-range lookup for the plan-sanity noise check (DAV-188).
+ *
+ * One REST call to /v2/stocks/snapshots for the whole symbol list; per
+ * symbol, the range proxy is the WIDER of today's bar and the previous
+ * session's bar (today's bar is partial in the morning — exactly when the
+ * daily run reads it), expressed as a percent of the latest close.
+ *
+ * The proxy answers one question: "is this plan's stop closer to its entry
+ * than the stock's ordinary daily wiggle?" (the MNKD case: $4.04 entry,
+ * $4.00 stop, ~5% daily range — guaranteed to stop out on noise). It is
+ * deliberately a single-session measure, not ATR — a linter input, not a
+ * trading signal.
+ *
+ * Fail-open: any error or missing bar simply omits the symbol; callers
+ * treat absence as "no noise check possible."
+ */
+export async function getDailyRangePcts(
+  symbols: string[],
+  creds?: AlpacaCredentials,
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  if (symbols.length === 0) return out;
+  const keyId = creds?.keyId || process.env.ALPACA_API_KEY;
+  const secretKey = creds?.secretKey || process.env.ALPACA_API_SECRET;
+  if (!keyId || !secretKey) return out;
+
+  try {
+    const url = `https://data.alpaca.markets/v2/stocks/snapshots?symbols=${encodeURIComponent(symbols.join(","))}&feed=iex`;
+    const res = await withTimeout(
+      fetch(url, {
+        headers: {
+          "APCA-API-KEY-ID": keyId,
+          "APCA-API-SECRET-KEY": secretKey,
+        },
+        // Intraday-fresh input to a live check — never the Data Cache
+        // (CLAUDE.md recurring-bugs rule).
+        cache: "no-store",
+      }).then(async (res) => {
+        if (!res.ok) {
+          throw new Error(`Alpaca snapshots ${res.status}`);
+        }
+        return res.json() as Promise<
+          Record<
+            string,
+            {
+              dailyBar?: { h?: number; l?: number; c?: number };
+              prevDailyBar?: { h?: number; l?: number; c?: number };
+              latestTrade?: { p?: number };
+            }
+          >
+        >;
+      }),
+      `getDailyRangePcts(${symbols.length} symbols)`,
+    );
+
+    for (const [symbol, snap] of Object.entries(res ?? {})) {
+      const price =
+        snap?.latestTrade?.p ?? snap?.dailyBar?.c ?? snap?.prevDailyBar?.c;
+      if (typeof price !== "number" || price <= 0) continue;
+      const ranges = [snap?.dailyBar, snap?.prevDailyBar]
+        .map((b) =>
+          b && typeof b.h === "number" && typeof b.l === "number" && b.h >= b.l
+            ? b.h - b.l
+            : null,
+        )
+        .filter((r): r is number => r != null && r > 0);
+      if (ranges.length === 0) continue;
+      out[symbol.toUpperCase()] = (Math.max(...ranges) / price) * 100;
+    }
+  } catch (err) {
+    console.warn(
+      `[getDailyRangePcts] snapshot lookup failed (${symbols.length} symbols):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+  return out;
+}

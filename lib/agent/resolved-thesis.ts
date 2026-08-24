@@ -24,6 +24,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { computeWinnerSignal } from "@/lib/agent/winner-signal";
 import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
+import { computePlanSanity, type PlanSanityFlag } from "@/lib/agent/plan-sanity";
 
 // ── Public types ──────────────────────────────────────────────────────
 
@@ -72,6 +73,17 @@ export interface ResolvedEnvelope {
    */
   ladderHealth: LadderHealth | null;
 
+  /**
+   * Plan-sanity flags (System 1 Move 2, DAV-188): the arithmetic that says
+   * a WATCHING plan contradicts the live tape — buy level far from the
+   * price, target already passed, stop already breached. Plain-language,
+   * recomputed against the live quote on every read. Null when clean (or
+   * not applicable) so quiet rows cost no tokens. A non-empty value
+   * promotes the row into the daily run's FULL work list — a flag the
+   * agent never reads is decoration. See lib/agent/plan-sanity.ts.
+   */
+  planSanity: PlanSanityFlag[] | null;
+
   triggerState: TriggerState;
   /** Human-readable for the agent + UI: e.g. "PRICE_ABOVE 92.5 (cur 90.30, -2.4%)". */
   triggerDetail: string | null;
@@ -98,6 +110,14 @@ export interface ResolverThesisInput {
   entryPrice: number | null;
   /** Thesis target price — feeds progress-to-target for HOLDING rows. */
   targetPrice?: number | null;
+  /** Thesis stop — feeds the plan-sanity stop-already-breached check. */
+  stopLoss?: number | null;
+  /**
+   * The stock's ordinary daily move (% of price) — feeds the plan-sanity
+   * stop-inside-noise check. Callers fetch it batched (getDailyRangePcts)
+   * for the rows that need it; absent ⇒ that check is skipped.
+   */
+  dayRangePct?: number | null;
   /** Paired open Position's blended avgCost — feeds P&L for HOLDING rows. */
   avgCost?: number | null;
   /**
@@ -294,12 +314,23 @@ export function buildResolvedEnvelope(args: {
         })
       : null;
 
+  const planSanityFlags = computePlanSanity({
+    status: thesis.status,
+    direction: thesis.direction,
+    entryPrice: thesis.entryPrice,
+    targetPrice: thesis.targetPrice ?? null,
+    stopLoss: thesis.stopLoss ?? null,
+    currentPrice,
+    dayRangePct: thesis.dayRangePct ?? null,
+  });
+
   return {
     currentPrice,
     entryQualityScore,
     unrealizedGainPct: winner?.unrealizedGainPct ?? null,
     progressToTarget: winner?.progressToTarget ?? null,
     ladderHealth,
+    planSanity: planSanityFlags.length > 0 ? planSanityFlags : null,
     triggerState,
     triggerDetail,
     actionability,
