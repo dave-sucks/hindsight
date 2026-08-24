@@ -322,36 +322,41 @@ export async function approveProposal(
   // 4. Audit row + RunEvent for the approval event. The Position lifecycle
   //    events (OPENED/CLOSED with PnL/etc.) get written by reconcile-orders
   //    when the fill lands — we don't pre-empt them here.
-  void (async () => {
-    try {
-      await writeThesisUpdate({
-        thesisId: await findRelatedThesisId(order.position.analystId, order.position.symbol),
-        type: "PROPOSAL_APPROVED",
-        summary: `Approved ${intent} on ${order.symbol}${qtyEdited ? ` (edited ${order.quantity}→${effectiveQty} sh)` : ""} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
-        rationale: `User approved the ${intent} proposal${qtyEdited ? `, resizing ${order.quantity}→${effectiveQty} shares` : ""}. Alpaca order id ${alpacaOrderId}.`,
-        fieldChanges: {
-          proposal: {
-            from: { orderId, status: "AWAITING_APPROVAL", quantity: order.quantity },
-            to: {
-              orderId,
-              status: "APPROVED",
-              intent,
-              quantity: effectiveQty,
-              ...(qtyEdited ? { proposedQuantity: order.quantity, edited: true } : {}),
-              approvedAt: promotedAt.toISOString(),
-              approvedBy: actorUserId,
-              alpacaOrderId,
-            },
+  //
+  //    AWAITED, deliberately. This used to be a fire-and-forget
+  //    `void (async () => …)()` — on Vercel the function freezes the moment
+  //    the response returns, so the write usually never ran: only 39 of ~132
+  //    approvals ever landed a PROPOSAL_APPROVED row (GAPS P2 audit hole,
+  //    prerequisite for P1-33). Still non-fatal — the approval itself already
+  //    executed; a failed audit write logs loudly and the response stays ok.
+  try {
+    await writeThesisUpdate({
+      thesisId: await findRelatedThesisId(order.position.analystId, order.position.symbol),
+      type: "PROPOSAL_APPROVED",
+      summary: `Approved ${intent} on ${order.symbol}${qtyEdited ? ` (edited ${order.quantity}→${effectiveQty} sh)` : ""} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
+      rationale: `User approved the ${intent} proposal${qtyEdited ? `, resizing ${order.quantity}→${effectiveQty} shares` : ""}. Alpaca order id ${alpacaOrderId}.`,
+      fieldChanges: {
+        proposal: {
+          from: { orderId, status: "AWAITING_APPROVAL", quantity: order.quantity },
+          to: {
+            orderId,
+            status: "APPROVED",
+            intent,
+            quantity: effectiveQty,
+            ...(qtyEdited ? { proposedQuantity: order.quantity, edited: true } : {}),
+            approvedAt: promotedAt.toISOString(),
+            approvedBy: actorUserId,
+            alpacaOrderId,
           },
         },
-      });
-    } catch (err) {
-      console.warn(
-        `[approveProposal] ThesisUpdate(PROPOSAL_APPROVED) write failed for order ${orderId}:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
-  })();
+      },
+    });
+  } catch (err) {
+    console.error(
+      `[approveProposal] ThesisUpdate(PROPOSAL_APPROVED) write failed for order ${orderId}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
 
   return {
     ok: true,
@@ -432,53 +437,57 @@ export async function rejectProposal(
   // — the rationale text below is the durable signal it sees on its next
   // run. Verbatim user wording is preserved; structural metadata lives in
   // fieldChanges.
-  void (async () => {
-    try {
-      const thesisId = await findRelatedThesisId(
-        order.position.analystId,
-        order.position.symbol,
-      );
-      // P1-29: a reject WITH a written comment flags the thesis for review via
-      // the existing nextReviewAt mechanism, so the next daily run surfaces it
-      // as needsAction=REVIEW_DUE and reads the note through
-      // get_theses.principalDirective. The agent responds with judgment — no
-      // forcing needsAction kind. A no-comment reject doesn't flag a review;
-      // the cross-day cooldown already suppresses re-proposal.
-      if (trimmedMessage) {
-        await prisma.thesis.update({
-          where: { id: thesisId },
-          data: { nextReviewAt: rejectedAt },
-        });
-      }
-      await writeThesisUpdate({
-        thesisId,
-        type: "PROPOSAL_REJECTED",
-        summary: `Rejected ${intent} proposal on ${order.symbol}${trimmedMessage ? ` — "${trimmedMessage.slice(0, 80)}"` : ""}`,
-        rationale:
-          trimmedMessage ??
-          `[REJECTED:USER] User rejected the ${intent} proposal without a written reason. Treat this as a soft no; re-proposal is allowed if the setup materially changes.`,
-        fieldChanges: {
-          proposal: {
-            from: { orderId, status: "AWAITING_APPROVAL" },
-            to: {
-              orderId,
-              status: "REJECTED",
-              intent,
-              quantity: order.quantity,
-              rejectedAt: rejectedAt.toISOString(),
-              rejectedBy: actorUserId,
-              userMessage: trimmedMessage,
-            },
+  //
+  // AWAITED, deliberately — the old fire-and-forget IIFE was killed by the
+  // Vercel freeze on ~78% of rejects (22 PROPOSAL_REJECTED rows vs 101
+  // rejected orders), which also silently dropped the P1-29 reject-with-note
+  // review flag below. Non-fatal: the reject itself already landed in the tx
+  // above; an audit failure logs loudly and the response stays ok.
+  try {
+    const thesisId = await findRelatedThesisId(
+      order.position.analystId,
+      order.position.symbol,
+    );
+    // P1-29: a reject WITH a written comment flags the thesis for review via
+    // the existing nextReviewAt mechanism, so the next daily run surfaces it
+    // as needsAction=REVIEW_DUE and reads the note through
+    // get_theses.principalDirective. The agent responds with judgment — no
+    // forcing needsAction kind. A no-comment reject doesn't flag a review;
+    // the cross-day cooldown already suppresses re-proposal.
+    if (trimmedMessage) {
+      await prisma.thesis.update({
+        where: { id: thesisId },
+        data: { nextReviewAt: rejectedAt },
+      });
+    }
+    await writeThesisUpdate({
+      thesisId,
+      type: "PROPOSAL_REJECTED",
+      summary: `Rejected ${intent} proposal on ${order.symbol}${trimmedMessage ? ` — "${trimmedMessage.slice(0, 80)}"` : ""}`,
+      rationale:
+        trimmedMessage ??
+        `[REJECTED:USER] User rejected the ${intent} proposal without a written reason. Treat this as a soft no; re-proposal is allowed if the setup materially changes.`,
+      fieldChanges: {
+        proposal: {
+          from: { orderId, status: "AWAITING_APPROVAL" },
+          to: {
+            orderId,
+            status: "REJECTED",
+            intent,
+            quantity: order.quantity,
+            rejectedAt: rejectedAt.toISOString(),
+            rejectedBy: actorUserId,
+            userMessage: trimmedMessage,
           },
         },
-      });
-    } catch (err) {
-      console.warn(
-        `[rejectProposal] ThesisUpdate(PROPOSAL_REJECTED) write failed for order ${orderId}:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
-  })();
+      },
+    });
+  } catch (err) {
+    console.error(
+      `[rejectProposal] ThesisUpdate(PROPOSAL_REJECTED) write failed for order ${orderId}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
 
   return {
     ok: true,
@@ -490,19 +499,26 @@ export async function rejectProposal(
 
 /**
  * Resolve the most recent thesis row associated with this (analyst, ticker)
- * pair. Used to attach PROPOSAL_APPROVED / PROPOSAL_REJECTED audit rows
- * to the right thesis so the agent's get_theses(include_history) sees them.
+ * pair. Used to attach PROPOSAL_APPROVED / PROPOSAL_REJECTED / EXPIRED audit
+ * rows to the right thesis so the agent's get_theses(include_history) and the
+ * thesis sheet's Activity tab see them.
  *
- * Falls back to throwing if no thesis exists — the proposal could not
- * have been created without one (place_trade requires thesis_id; the
- * other proposal paths come from manage_position on an existing position
- * whose Position.analystId we trust).
+ * Two-step lookup: live statuses first, then the most recent thesis of ANY
+ * status. The fallback is load-bearing for CLOSE approvals — the approval
+ * flips the thesis to RETIRED *before* this audit write, so a live-only
+ * lookup throws on exactly the sells (that throw, combined with the old
+ * fire-and-forget swallow, was half the ~78% PROPOSAL_* drop rate).
+ *
+ * Still throws when NO thesis exists at all — a proposal can't be created
+ * without one (place_trade requires thesis_id; the other proposal paths come
+ * from manage_position on an existing position whose Position.analystId we
+ * trust).
  */
-async function findRelatedThesisId(
+export async function findRelatedThesisId(
   analystId: string,
   ticker: string,
 ): Promise<string> {
-  const thesis = await prisma.thesis.findFirst({
+  const live = await prisma.thesis.findFirst({
     where: {
       ticker,
       researchRun: { agentConfigId: analystId },
@@ -511,10 +527,20 @@ async function findRelatedThesisId(
     orderBy: { createdAt: "desc" },
     select: { id: true },
   });
-  if (!thesis) {
+  if (live) return live.id;
+
+  const any = await prisma.thesis.findFirst({
+    where: {
+      ticker,
+      researchRun: { agentConfigId: analystId },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  if (!any) {
     throw new Error(
-      `No live thesis found for analyst=${analystId} ticker=${ticker} — cannot attach proposal audit row`,
+      `No thesis found for analyst=${analystId} ticker=${ticker} — cannot attach proposal audit row`,
     );
   }
-  return thesis.id;
+  return any.id;
 }

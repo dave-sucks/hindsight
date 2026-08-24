@@ -595,6 +595,9 @@ export const placeTrade = defineTool({
             alpacaOrderId: null,
             idempotencyKey,
             intent: "OPEN",
+            // First-class thesis link (P1-33 Activity tab) — the proposal
+            // audit trail reads from Order, keyed by this.
+            thesisId: args.thesis_id,
             createdAt: placedAt,
           },
         });
@@ -1021,7 +1024,7 @@ export const placeTrade = defineTool({
               thesisId: watchingThesis.id,
               type: "STATUS_CHANGED",
               summary: `Promoted ${ticker} ${watchingThesis.direction} WATCHING → HOLDING on place_trade`,
-              rationale: `Position opened (id ${position.id}). Watchlist row archived; live position now active. Triggers regenerated for HELD-side ${horizon ?? "(no-horizon)"} template.`,
+              rationale: `Entry filled — the watchlist row is now a live position, and its trigger ladder was regenerated for the held-side ${horizon ?? "default"} plan.`,
               fieldChanges: {
                 status: { from: "WATCHING", to: "HOLDING" },
                 triggers: { from: "WATCHING-set", to: "HELD-set" },

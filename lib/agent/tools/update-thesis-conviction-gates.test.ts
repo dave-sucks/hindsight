@@ -38,6 +38,7 @@ jest.mock("@/lib/actions/finnhub.actions", () => ({
 jest.mock("@/lib/agent/thesis-updates", () => ({
   writeThesisUpdate: mockWriteThesisUpdate,
   diffThesisFields: jest.fn().mockReturnValue({}),
+  compactFieldChanges: jest.fn((fc: unknown) => fc),
 }));
 
 import { updateThesis } from "./update-thesis";

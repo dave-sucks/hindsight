@@ -29,6 +29,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
 import { formatCurrency } from "@/lib/format";
@@ -449,7 +450,25 @@ function TradeBlock({
       {note ? (
         <p className="text-sm text-muted-foreground leading-relaxed">{note}</p>
       ) : null}
-      {meta ? <p className="text-xs text-muted-foreground">{meta}</p> : null}
+      {/* Meta line doubles as the path to the trade detail page — the old
+          standalone "View trade →" under the sheet header is gone (principal
+          feedback: the banner already exists exactly when a trade exists). */}
+      {meta || position.id ? (
+        <p className="text-xs text-muted-foreground">
+          {meta}
+          {position.id ? (
+            <>
+              {meta ? " · " : null}
+              <Link
+                href={`/trades/${position.id}`}
+                className="hover:text-foreground hover:underline underline-offset-2"
+              >
+                View trade →
+              </Link>
+            </>
+          ) : null}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -738,61 +757,6 @@ function TradeStructureBlock({
             )}
           </span>
         ))}
-      </div>
-    </div>
-  );
-}
-
-// ── ProvenanceFooter ───────────────────────────────────────────────────
-// Where this thesis came from. Rendered as a junior trailing entry that
-// LINES UP WITH the activity timeline above — same `flex gap-3` outer,
-// same `size-1.5 rounded-full` rail dot, same `flex-1 min-w-0` body.
-// Visually it reads as the last row in the timeline list rather than a
-// floating footer. Matches the structure in ThesisTimelineSection.
-function ProvenanceFooter({
-  sourceKind,
-  rationale,
-  signalCount,
-}: {
-  sourceKind: string;
-  rationale: string | null;
-  signalCount: number;
-}) {
-  const labelByKind: Record<string, string> = {
-    ROUTED_SIGNAL: "Routed signal",
-    WEB_SEARCH: "Web search",
-    WATCHLIST_REVIEW: "Watchlist review",
-    POSITION_REVIEW: "Position review",
-    USER_ADDED: "Manual add",
-    BUILDER_SEED: "Analyst create",
-    EDITOR_SEED: "Editor chat",
-  };
-  const label = labelByKind[sourceKind] ?? sourceKind;
-  // Two-line layout matching the activity timeline entries above:
-  //   • Sourced via Web search                ← text-sm, foreground
-  //     1 signal · Found via read_signals…    ← text-xs, muted
-  // The dot column is the same width as the timeline rail so this row
-  // lines up exactly with the entries above it.
-  const subline = [
-    signalCount > 0
-      ? `${signalCount} signal${signalCount === 1 ? "" : "s"}`
-      : null,
-    rationale ?? null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center shrink-0">
-        <div className="size-1.5 rounded-full bg-muted-foreground/40 mt-1.5" />
-      </div>
-      <div className="flex-1 min-w-0 space-y-0.5">
-        <p className="text-sm leading-snug">Sourced via {label}</p>
-        {subline ? (
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            {subline}
-          </p>
-        ) : null}
       </div>
     </div>
   );
@@ -1324,9 +1288,9 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       {/* ── Stock identity + live price ──────────────────────── */}
       {/* StockIdentityHeader is the SAME component the trade detail page uses,
           so the two surfaces read identically. Name + logo link to
-          /stocks/[ticker] (the broad view); a "View trade →" link below adds
-          the direct path to the trade when a position exists. The Review
-          control for a pending proposal lives inside the trade block below. */}
+          /stocks/[ticker] (the broad view); the path to the trade detail page
+          lives in the trade block's meta line inside the Thesis tab. The
+          Review control for a pending proposal lives inside the trade block. */}
       <div className="space-y-2">
         <StockIdentityHeader
           ticker={ticker}
@@ -1364,23 +1328,25 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
             )}
           </div>
         ) : null}
-        {/* The stock identity links to /stocks/[ticker] (the broad view); when
-            this thesis has an actual position, offer the direct path to the
-            trade detail page too — a thesis doesn't always have a trade. */}
-        {position?.id && (
-          <Link
-            href={`/trades/${position.id}`}
-            className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
-          >
-            View trade →
-          </Link>
-        )}
       </div>
+
+      {/* ── Tabs: Thesis (the dossier) | Activity (the audit log) ── */}
+      {/* Only identity + live price stay fixed above (principal feedback
+          2026-08-19); the belief, trade block, and everything else split
+          into the dossier view and the P1-33 activity timeline (trigger
+          fires → runs → outcomes). Same Tabs idiom as AgentChat. */}
+      <Tabs defaultValue={0}>
+        <TabsList>
+          <TabsTrigger value={0}>Thesis</TabsTrigger>
+          <TabsTrigger value={1}>Activity</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={0} className="space-y-5">
 
       {/* ── Core Belief headline ─────────────────────────────── */}
       {/* The ONE durable claim — a falsifiable prediction (≤30 words) the
           trade evaluator grades on close. Large + normal weight so it
-          reads as the load-bearing claim, and it leads the body: main
+          reads as the load-bearing claim, and it leads the tab body: main
           summary first, then the trade row, then the chart. */}
       {state.coreBelief ? (
         <p className="text-xl font-normal leading-relaxed">
@@ -1393,7 +1359,8 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           held → "Bought N @ $X, now $Y" + P&L; pending buy → "Proposed:
           buy N @ $X"; held + pending sell/add/trim → the holding line PLUS
           the proposed action + rationale + Review dropdown, all in one
-          grouped block. See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
+          grouped block. Its meta line carries the "View trade →" link.
+          See docs/plans/TRADE_AS_PROPOSAL.md §6. */}
       {position ? (
         <TradeBlock
           position={position}
@@ -1612,24 +1579,33 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           The at-a-glance need is covered by the Snapshot prose + Analyst
           Consensus widget. */}
 
-      {/* ── Activity timeline + provenance footer ────────────── */}
-      {/* Renders only when we have a persisted thesis id. Provenance is
-          rendered INSIDE this container (rather than as a sibling) so
-          it visually joins the timeline as one continuous list with
-          consistent dot alignment + tight vertical spacing — not two
-          stacked sections with the outer space-y-5 gap between them. */}
-      {thesis_id ? (
-        <div className="space-y-3">
-          <ThesisTimelineSection thesisId={thesis_id} />
-          {state.sourceKind ? (
-            <ProvenanceFooter
-              sourceKind={state.sourceKind}
-              rationale={state.sourceRationale}
-              signalCount={state.sourceSignalIds.length}
+        </TabsContent>
+
+        {/* ── Activity tab: timeline + provenance footer ───────── */}
+        {/* The audit log (P1-33 slice 1): trigger fires, which run handled
+            each, exact level moves, and proposal outcomes read from the
+            Order table. Provenance is rendered INSIDE the same container
+            so it joins the timeline as one continuous list. */}
+        <TabsContent value={1} className="space-y-5">
+          {thesis_id ? (
+            <ThesisTimelineSection
+              thesisId={thesis_id}
+              provenance={
+                state.sourceKind
+                  ? {
+                      sourceKind: state.sourceKind,
+                      rationale: state.sourceRationale ?? null,
+                    }
+                  : null
+              }
             />
-          ) : null}
-        </div>
-      ) : null}
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No activity yet — this thesis hasn&apos;t been persisted.
+            </p>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

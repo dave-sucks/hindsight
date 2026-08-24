@@ -51,6 +51,8 @@ interface FiredPayload {
   ticker: string;
   action: Trigger["action"];
   predicateKind: string;
+  /** Quote that fired the predicate (price-cron fires only; see evaluator). */
+  firedPrice?: number | null;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -447,6 +449,9 @@ export const tacticalRun = inngest.createFunction(
           triggerId: trigger.id,
           signalIds: signal ? [signal.id] : [],
           runId: run.id,
+          // The quote that fired the predicate — rides in on the event so
+          // the Activity tab's price stamps aren't cron-fires-only.
+          priceAtTime: fired.firedPrice ?? null,
         },
       });
     });

@@ -31,6 +31,7 @@ import {
   maybeAwaitApproval,
   awaitingApprovalEnvelope,
 } from "@/lib/proposals/maybe-await-approval";
+import { findRelatedThesisId } from "@/lib/proposals/execute";
 import {
   scaleInCeiling,
   SCALE_IN_CEILING_MULTIPLE,
@@ -209,6 +210,14 @@ export const managePosition = defineTool({
       ctx.alpacaCreds ??
       (await resolveAlpacaCredentials(ctx.userId, runEnvironment)) ??
       undefined;
+
+    // First-class Order→Thesis link (P1-33 Activity tab) stamped on every
+    // order this tool creates. Best-effort: a position without a resolvable
+    // thesis still trades — readers fall back to (analyst, ticker) on null.
+    const auditThesisId =
+      analystId != null
+        ? await findRelatedThesisId(analystId, ticker).catch(() => null)
+        : null;
 
     try {
       switch (args.action) {
@@ -413,6 +422,7 @@ export const managePosition = defineTool({
               alpacaOrderId: null,
               idempotencyKey,
               intent: "PARTIAL_CLOSE",
+              thesisId: auditThesisId,
               createdAt: placedAt,
             },
           });
@@ -750,6 +760,7 @@ export const managePosition = defineTool({
               alpacaOrderId: null,
               idempotencyKey,
               intent: "ADD",
+              thesisId: auditThesisId,
               createdAt: placedAt,
             },
           });

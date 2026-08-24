@@ -1,34 +1,48 @@
 "use client";
 
 /**
- * ThesisTimelineSection — durable activity log embedded inside ThesisSheet.
+ * ThesisTimelineSection — the thesis audit log, rendered inside the
+ * ThesisSheet Activity tab (P1-33 slice 1).
  *
- * Lazy-fetches /api/theses/:id/updates when mounted. Renders the timeline
- * newest-first as a vertical rail: small dot per entry connected by a line.
+ * Lazy-fetches /api/theses/:id/updates; that endpoint merges ThesisUpdate
+ * rows with proposal lifecycles read from the Order table. Everything
+ * decision-shaped is pure and lives in thesis-timeline-utils: buildTimeline
+ * assembles the list, toRow() maps every item into ONE shape, and this file
+ * renders that shape a single way. No per-type branches here.
  *
- * Per-entry layout:
- *   ●  $35.27 ↑                                        Apr 27, 8:11 AM
- *   │  <heading>
- *   │  <description>
- *   │  Type · View run · N signals
- *
- * Arrow on the price compares to the next-older entry's priceAtTime so
- * reading top-down shows the direction the stock has moved between
- * thesis touches. Null prices = no arrow (and shown as —).
- *
- * Skips itself if thesisId isn't supplied (agent-run inline render before
- * persistence).
+ * The contract (principal spec, 2026-08-21):
+ *   - Rows are text, not links. Clickable: the run arrow, and the title /
+ *     description of a row that has prose (toggles clamp ↔ full). Fold rows
+ *     (quiet clusters, ×N repeats) are controls in full.
+ *   - Description is always max 2 lines until expanded; whether it shows
+ *     before a click is a per-type constant (DESCRIPTION_VISIBLE).
+ *   - Sub-metadata (ladder rung changes) is always visible, always chips.
+ *     Scalar edits live in the title and are never repeated below it.
  */
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { ChevronsUpDown, Plus, RefreshCw, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  buildTimeline,
+  itemTimestamp,
+  monthLabel,
+  proposalSpanSegments,
+  relativeTimestamp,
+  toRow,
+  type LadderChange,
+  type DotKind,
+  type TimelineFilter,
+  type TimelineRow,
+  type TimelineUpdate,
+} from "@/components/agent/sheets/thesis-timeline-utils";
 
 // When the sheet opens from a run-detail page (/runs/[id]), entries whose
-// runId matches the URL get the "edited-in-this-run" treatment. Pure URL
-// detection — no prop plumbing required from callers.
+// runId matches the URL get the "edited-in-this-run" treatment.
 function useCurrentRunId(): string | null {
   const pathname = usePathname();
   if (!pathname) return null;
@@ -36,61 +50,128 @@ function useCurrentRunId(): string | null {
   return match?.[1] ?? null;
 }
 
-interface ThesisUpdate {
-  id: string;
-  timestamp: string;
-  type: string;
-  summary: string;
-  rationale: string | null;
-  fieldChanges: Record<string, { from: unknown; to: unknown }>;
-  priceAtTime: number | null;
-  positionAtTime: {
-    qty: number;
-    avgCost: number;
-    unrealizedPnL: number | null;
-  } | null;
-  triggerId: string | null;
-  signalIds: string[];
-  runId: string | null;
-  tradeId: string | null;
+/** The principal's run-link arrow (their SVG, currentColor). */
+function RunArrow() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M13 6H8.5C6.01472 6 4 8.01472 4 10.5C4 12.9853 6.01472 15 8.5 15H20"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17 12C17 12 20 14.2095 20 15C20 15.7906 17 18 17 18"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
-function fmtUsd(v: number | null | undefined): string | null {
-  // Returns null when the price is missing so the caller can hide the
-  // chunk entirely instead of rendering a placeholder dash (2026-05-19).
-  if (v == null) return null;
-  return `$${v.toFixed(2)}`;
+/**
+ * Rail dot. Quiet base sits at foreground/15 so the money and open-ask
+ * marks carry all the contrast.
+ */
+function Dot({ kind, pulse }: { kind: DotKind; pulse: boolean }) {
+  return (
+    <div
+      className={cn(
+        "size-1.5 rounded-full mt-1.5 shrink-0",
+        pulse
+          ? "bg-amber-500 animate-pulse ring-2 ring-amber-500/30"
+          : kind === "buy"
+            ? "bg-positive"
+            : kind === "sell"
+              ? "bg-negative"
+              : kind === "declined"
+                ? "bg-amber-500"
+                : kind === "open-ask"
+                  ? "bg-foreground animate-pulse [animation-duration:3s]"
+                  : kind === "quiet"
+                    ? "bg-transparent border border-foreground/15"
+                    : "bg-foreground/15",
+      )}
+    />
+  );
 }
 
-function fmtDateTime(d: string): string {
-  return new Date(d).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+/**
+ * Sub-metadata: ladder rung changes as solid muted badges — the shared
+ * Badge in its `muted` variant with squared corners, matching the
+ * thesis trigger chips. Icon carries the kind: + added, × removed,
+ * ↻ edited. Capped so a wholesale ladder rewrite can't wall the row.
+ */
+function LadderBadges({ changes }: { changes: LadderChange[] }) {
+  const shown = changes.slice(0, 4);
+  const rest = changes.length - shown.length;
+  return (
+    <div className="flex flex-wrap items-center gap-1 pt-1">
+      {shown.map((c, i) => (
+        <Badge key={i} variant="muted" shape="rounded">
+          {c.kind === "add" ? (
+            <Plus />
+          ) : c.kind === "remove" ? (
+            <X />
+          ) : (
+            <RefreshCw />
+          )}
+          {c.text}
+        </Badge>
+      ))}
+      {rest > 0 ? (
+        <Badge variant="muted" shape="rounded">
+          +{rest} more
+        </Badge>
+      ) : null}
+    </div>
+  );
 }
 
-function typeLabel(t: string): string {
-  // Title-case: "SUPERSEDED" → "Superseded", "TRIGGER_FIRED" → "Trigger fired"
-  return t.charAt(0) + t.slice(1).toLowerCase().replace(/_/g, " ");
-}
+const FILTERS: Array<{ value: TimelineFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "money", label: "Money" },
+  { value: "triggers", label: "Triggers" },
+];
+
+const SOURCE_LABELS: Record<string, string> = {
+  ROUTED_SIGNAL: "a routed signal",
+  WEB_SEARCH: "web search",
+  WATCHLIST_REVIEW: "a watchlist review",
+  POSITION_REVIEW: "a position review",
+  USER_ADDED: "a manual add",
+  BUILDER_SEED: "analyst setup",
+  EDITOR_SEED: "editor chat",
+};
 
 interface Props {
   thesisId: string;
+  /** Where this thesis came from. Folded into the Created row rather than
+   * rendered as its own differently-styled footer (principal, 2026-08-21). */
+  provenance?: { sourceKind: string; rationale: string | null } | null;
 }
 
-export function ThesisTimelineSection({ thesisId }: Props) {
-  const [updates, setUpdates] = useState<ThesisUpdate[] | null>(null);
+export function ThesisTimelineSection({ thesisId, provenance }: Props) {
+  const [updates, setUpdates] = useState<TimelineUpdate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<TimelineFilter>("all");
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const currentRunId = useCurrentRunId();
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/theses/${thesisId}/updates?limit=50`)
+    fetch(`/api/theses/${thesisId}/updates?limit=100`)
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const json = (await r.json()) as { updates: ThesisUpdate[] };
+        const json = (await r.json()) as { updates: TimelineUpdate[] };
         if (!cancelled) setUpdates(json.updates);
       })
       .catch((e) => {
@@ -101,11 +182,65 @@ export function ThesisTimelineSection({ thesisId }: Props) {
     };
   }, [thesisId]);
 
+  const toggle = (key: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  // Assemble → unfold anything the principal opened → map to row shapes.
+  const { rows, spans, months } = useMemo(() => {
+    if (!updates) return { rows: [], spans: new Set<number>(), months: [] as (string | null)[] };
+    const built = buildTimeline(updates, filter);
+    const items = built.flatMap((item) => {
+      // Keep the fold row itself when expanded — it is the only control
+      // that can collapse the group again.
+      if (item.kind === "cluster" && open.has(`c:${itemTimestamp(item.items[0])}`))
+        return [item, ...item.items];
+      if (item.kind === "repeat" && open.has(`r:${item.episodes[0].fire.id}`))
+        return [item, ...item.episodes];
+      return [item];
+    });
+    const monthAt = items.map((item, i) => {
+      const label = monthLabel(itemTimestamp(item));
+      return i === 0 || label !== monthLabel(itemTimestamp(items[i - 1]))
+        ? label
+        : null;
+    });
+    const mapped = items.map(toRow).map((r) => {
+      if (r.type !== "CREATED" || !provenance) return r;
+      const via = SOURCE_LABELS[provenance.sourceKind] ?? provenance.sourceKind;
+      const sourced = `Sourced via ${via}.${provenance.rationale ? ` ${provenance.rationale}` : ""}`;
+      return {
+        ...r,
+        description: r.description ? `${r.description} ${sourced}` : sourced,
+      };
+    });
+    return {
+      rows: mapped,
+      spans: proposalSpanSegments(items),
+      months: monthAt,
+    };
+  }, [updates, filter, open, provenance]);
+
   return (
     <div className="space-y-3">
-      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-        Activity
-      </p>
+      <div className="flex items-center justify-end gap-2">
+        <span className="flex gap-1">
+          {FILTERS.map((f) => (
+            <Button
+              key={f.value}
+              size="xs"
+              variant={filter === f.value ? "secondary" : "ghost"}
+              onClick={() => setFilter(f.value)}
+            >
+              {f.label}
+            </Button>
+          ))}
+        </span>
+      </div>
 
       {error ? (
         <p className="text-xs text-muted-foreground">
@@ -113,150 +248,146 @@ export function ThesisTimelineSection({ thesisId }: Props) {
         </p>
       ) : updates == null ? (
         <p className="text-xs text-muted-foreground">Loading…</p>
-      ) : updates.length === 0 ? (
+      ) : rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">No activity yet.</p>
       ) : (
         <div>
-          {updates.map((u, idx) => {
-            // Compare to the next-older entry's price (we render
-            // newest-first, so older = idx + 1).
-            const olderPrice = updates[idx + 1]?.priceAtTime ?? null;
-            const delta =
-              u.priceAtTime != null && olderPrice != null
-                ? u.priceAtTime - olderPrice
-                : null;
-            const isLast = idx === updates.length - 1;
-            const isCurrentRun =
-              currentRunId != null && u.runId === currentRunId;
-
-            return (
-              <div key={u.id} className="flex gap-3">
-                {/* ── Rail (dot + line) ─────────────────────────────── */}
-                <div className="flex flex-col items-center shrink-0">
-                  {/* Tiny dot, vertically aligned with the price line.
-                      Current-run entries get an amber pulsing dot to
-                      mark them out from history. */}
-                  <div
-                    className={cn(
-                      "size-1.5 rounded-full mt-1.5",
-                      isCurrentRun
-                        ? "bg-amber-500 animate-pulse ring-2 ring-amber-500/30"
-                        : "bg-muted-foreground/50",
-                    )}
-                  />
-                  {!isLast ? (
-                    <div className="w-px flex-1 bg-border mt-1" />
-                  ) : null}
-                </div>
-
-                {/* ── Body ──────────────────────────────────────────── */}
-                <div
-                  className={cn(
-                    "flex-1 min-w-0 space-y-1",
-                    !isLast && "pb-4",
-                    isCurrentRun &&
-                      "rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 -ml-2 mb-1",
-                  )}
-                >
-                  {/* Top row: Date (left, xs mono) · Price (right).
-                      Swapped 2026-05-19 — the date reads as the primary
-                      anchor ("when") and price is supporting detail. When
-                      priceAtTime is null (most ThesisUpdate types don't
-                      carry a price) the whole price chunk is hidden, no
-                      "—" placeholder. */}
-                  {(() => {
-                    const priceStr = fmtUsd(u.priceAtTime);
-                    return (
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
-                          {fmtDateTime(u.timestamp)}
-                        </span>
-                        {priceStr ? (
-                          <span className="text-sm font-medium tabular-nums flex items-center gap-1">
-                            {priceStr}
-                            {delta != null && delta !== 0 ? (
-                              delta > 0 ? (
-                                <ArrowUp className="h-3.5 w-3.5 text-emerald-500" />
-                              ) : (
-                                <ArrowDown className="h-3.5 w-3.5 text-red-500" />
-                              )
-                            ) : null}
-                          </span>
-                        ) : null}
-                      </div>
-                    );
-                  })()}
-
-                  {/* Summary (heading) */}
-                  <p className="text-sm font-medium leading-snug">
-                    {u.summary}
-                  </p>
-
-                  {/* Rationale (description) */}
-                  {u.rationale ? (
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {u.rationale}
-                    </p>
-                  ) : null}
-
-                  {/* Footer: Type · TriggerId chip · View run · Signals */}
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                    {isCurrentRun ? (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-amber-600 dark:text-amber-400 font-medium">
-                        <span className="size-1 rounded-full bg-amber-500 animate-pulse" />
-                        in this run
-                      </span>
-                    ) : null}
-                    <span>{typeLabel(u.type)}</span>
-                    {u.type === "TRIGGER_FIRED" && u.triggerId ? (
-                      <>
-                        <span className="opacity-40">·</span>
-                        <span
-                          className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-1.5 py-0.5 font-mono tabular-nums"
-                          title={`triggerId ${u.triggerId}`}
-                        >
-                          trigger {u.triggerId.slice(-6)}
-                        </span>
-                      </>
-                    ) : null}
-                    {u.runId && !isCurrentRun ? (
-                      <>
-                        <span className="opacity-40">·</span>
-                        <Link
-                          href={`/runs/${u.runId}`}
-                          className="hover:text-foreground underline-offset-4 hover:underline"
-                        >
-                          View run
-                        </Link>
-                      </>
-                    ) : null}
-                    {u.tradeId ? (
-                      <>
-                        <span className="opacity-40">·</span>
-                        <Link
-                          href={`/trades/${u.tradeId}`}
-                          className="hover:text-foreground underline-offset-4 hover:underline"
-                        >
-                          View trade
-                        </Link>
-                      </>
-                    ) : null}
-                    {u.signalIds.length > 0 ? (
-                      <>
-                        <span className="opacity-40">·</span>
-                        <span className="tabular-nums">
-                          {u.signalIds.length} signal
-                          {u.signalIds.length === 1 ? "" : "s"}
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {rows.map((row, idx) => (
+            <Fragment key={row.key}>
+              {months[idx] ? (
+                <p className="text-xs font-light text-muted-foreground pb-2 pl-[19px]">
+                  {months[idx]}
+                </p>
+              ) : null}
+              <Row
+                row={row}
+                isLast={idx === rows.length - 1}
+                span={spans.has(idx)}
+                pulse={currentRunId != null && row.runId === currentRunId}
+                open={open.has(row.key)}
+                onToggle={() => toggle(row.key)}
+              />
+            </Fragment>
+          ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function Row({
+  row,
+  isLast,
+  span,
+  pulse,
+  open,
+  onToggle,
+}: {
+  row: TimelineRow;
+  isLast: boolean;
+  span: boolean;
+  pulse: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  // A row is interactive when it has something more to show: prose to
+  // expand, or a fold to unpack. Everything else is plain text.
+  const interactive = row.fold || row.description != null;
+  const showDescription = row.description != null && (open || row.showDescription);
+
+  return (
+    <div className="group/row flex gap-3">
+      {/* Rail: dot + connector. Segments inside an open proposal span
+          render brighter and dashed. */}
+      <div className="flex flex-col items-center shrink-0">
+        <Dot kind={row.dot} pulse={pulse} />
+        {!isLast ? (
+          span ? (
+            <div className="w-0 flex-1 mt-1 border-l border-dashed border-foreground/40" />
+          ) : (
+            <div className="w-px flex-1 mt-1 bg-foreground/15" />
+          )
+        ) : null}
+      </div>
+
+      <div className={cn("flex-1 min-w-0", !isLast && "pb-4")}>
+        <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0.5 sm:gap-3">
+          <p
+            className={cn(
+              "text-sm font-normal leading-snug min-w-0",
+              row.fold ? "text-muted-foreground" : "text-foreground",
+              interactive && "cursor-pointer",
+            )}
+            onClick={interactive ? onToggle : undefined}
+          >
+            {row.title.primary ? (
+              <span className="font-semibold">{row.title.primary} </span>
+            ) : null}
+            {row.title.secondary}
+            {row.title.outcome ? (
+              <span className="font-semibold"> {row.title.outcome}</span>
+            ) : null}
+          </p>
+
+          {/* Right rail: the timestamp swaps for actions on row hover —
+              run link + expand/collapse. No underline affordance on the
+              title (principal, 2026-08-21). */}
+          <span className="relative flex items-center shrink-0 h-5 gap-2">
+            <span
+              className={cn(
+                "flex items-center gap-2 transition-opacity",
+                (row.runId || interactive) && "group-hover/row:opacity-0",
+              )}
+            >
+              {row.price != null ? (
+                <span className="text-xs font-medium tabular-nums text-muted-foreground">
+                  ${row.price.toFixed(2)}
+                </span>
+              ) : null}
+              <span className="text-xs font-light tabular-nums text-muted-foreground">
+                {row.rangeLabel ?? (row.timestamp ? relativeTimestamp(row.timestamp) : "")}
+              </span>
+            </span>
+            <span className="absolute right-0 flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+              {row.runId ? (
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  render={<Link href={`/runs/${row.runId}`} />}
+                  title="View run"
+                >
+                  <RunArrow />
+                </Button>
+              ) : null}
+              {interactive ? (
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  onClick={onToggle}
+                  title={open ? "Collapse" : "Expand"}
+                >
+                  <ChevronsUpDown />
+                </Button>
+              ) : null}
+            </span>
+          </span>
+        </div>
+
+        {row.chips.length > 0 ? <LadderBadges changes={row.chips} /> : null}
+
+        {showDescription ? (
+          <p
+            className={cn(
+              "text-sm font-light text-muted-foreground leading-relaxed cursor-pointer pt-0.5",
+              row.quoted && "border-l-2 border-border pl-2",
+              !open && "line-clamp-2",
+            )}
+            onClick={onToggle}
+          >
+            {row.quoted ? `“${row.description}”` : row.description}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
