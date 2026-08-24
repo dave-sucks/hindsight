@@ -106,7 +106,7 @@ function Dot({ kind, pulse }: { kind: DotKind; pulse: boolean }) {
 
 /**
  * Sub-metadata: ladder rung changes as solid muted badges — the shared
- * Badge in its `secondary` variant with squared corners, matching the
+ * Badge in its `muted` variant with squared corners, matching the
  * thesis trigger chips. Icon carries the kind: + added, × removed,
  * ↻ edited. Capped so a wholesale ladder rewrite can't wall the row.
  */
@@ -116,7 +116,7 @@ function LadderBadges({ changes }: { changes: LadderChange[] }) {
   return (
     <div className="flex flex-wrap items-center gap-1 pt-1">
       {shown.map((c, i) => (
-        <Badge key={i} variant="secondary" shape="rounded">
+        <Badge key={i} variant="muted" shape="rounded">
           {c.kind === "add" ? (
             <Plus />
           ) : c.kind === "remove" ? (
@@ -128,7 +128,7 @@ function LadderBadges({ changes }: { changes: LadderChange[] }) {
         </Badge>
       ))}
       {rest > 0 ? (
-        <Badge variant="secondary" shape="rounded">
+        <Badge variant="muted" shape="rounded">
           +{rest} more
         </Badge>
       ) : null}

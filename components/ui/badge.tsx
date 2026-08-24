@@ -25,6 +25,10 @@ const badgeVariants = cva(
           "bg-negative/10 text-negative border-transparent",
         warning:
           "bg-amber-500/10 text-amber-500 border-transparent",
+        // Solid muted fill with muted text — for metadata chips that should
+        // sit quietly beside body copy rather than assert like `secondary`
+        // (whose foreground is near-white).
+        muted: "bg-muted text-muted-foreground border-transparent",
       },
       shape: {
         pill: "rounded-4xl",
