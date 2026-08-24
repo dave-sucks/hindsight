@@ -127,7 +127,11 @@ function RowMenu({ items }: { items: RowMenuItem[] }) {
         <DropdownMenuTrigger
           render={
             <Button
-              variant="outline"
+              /* secondary, not outline: the button sits ON TOP of the row's
+                 logo, and outline's dark-mode fill is translucent
+                 (dark:bg-input/30) so the logo showed straight through it and
+                 the kebab was invisible. secondary is opaque. */
+              variant="secondary"
               size="icon"
               className="rounded-md"
               aria-label="Row actions"
