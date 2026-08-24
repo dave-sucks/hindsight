@@ -49,6 +49,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import CoverageTable from '@/components/dashboard/CoverageTable';
+import PinnedPanel from '@/components/dashboard/PinnedPanel';
 import type { CoverageData } from '@/lib/actions/coverage.actions';
 import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
@@ -448,10 +449,12 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   );
 }
 
-function HomeBottomSection({ activity, loading, coverage }: {
+function HomeBottomSection({ activity, loading, coverage, pinned }: {
   activity: ActivityFeedItem[];
   loading: boolean;
   coverage?: CoverageData;
+  /** Pinned tickers — drives the pin toggle state on each coverage row. */
+  pinned?: string[];
 }) {
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
 
@@ -475,7 +478,7 @@ function HomeBottomSection({ activity, loading, coverage }: {
       {/* Portfolio — Coverage table */}
       <div>
         {coverage ? (
-          <CoverageTable data={coverage} />
+          <CoverageTable data={coverage} pinned={pinned ?? []} />
         ) : (
           <Card className="shadow-none">
             <CardContent className="py-8 flex justify-center">
@@ -720,9 +723,16 @@ interface DashboardClientProps {
    * the tables.
    */
   coverage?: CoverageData;
+  /**
+   * Tickers pinned to the right rail. The pin stores only the ticker — each
+   * row's content is resolved against `coverage` at render time, so a pinned
+   * name re-reads itself as you buy, trim, or sell it. Empty list hides the
+   * panel.
+   */
+  pinned?: string[];
 }
 
-export default function DashboardClient({ data, userId, digest, coverage }: DashboardClientProps) {
+export default function DashboardClient({ data, userId, digest, coverage, pinned }: DashboardClientProps) {
   const [range, setRange] = useState<Range>('1M');
   const [chartView, setChartView] = useState<ChartView>('portfolio');
   const [displayMode, setDisplayMode] = useState<DisplayMode>('dollar');
@@ -1314,6 +1324,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
               and reviewable on a phone. Renders nothing when empty. */}
           <div className="lg:hidden">
             <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
+            <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
           </div>
 
           {/* Portfolio + Activity stacked section */}
@@ -1321,6 +1332,7 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
             activity={data?.activityFeed ?? []}
             loading={loading}
             coverage={coverage}
+            pinned={pinned}
           />
           </div>
 
@@ -1355,6 +1367,10 @@ export default function DashboardClient({ data, userId, digest, coverage }: Dash
             {/* Pending proposals sit above the digest — they're the most
                 time-sensitive thing on the page. Renders nothing when empty. */}
             <ProposalsPanel proposals={pendingTrades} flashIds={flashIds} />
+            {/* Pinned shortlist — the hand-picked names you want in view
+                regardless of what the agents proposed today. Below proposals
+                (those are time-sensitive), above the digest. */}
+            <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
             <DigestPreviewCard digest={digest} />
           </div>
 

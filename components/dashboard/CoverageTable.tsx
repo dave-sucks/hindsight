@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StockLogo } from "@/components/StockLogo";
@@ -28,6 +28,7 @@ import { proposalSentence } from "@/lib/trade-status";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
+import { PinButton } from "@/components/stocks/PinButton";
 import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
 
 // ─── Coverage Table (Feature B — docs/plans/PORTFOLIO_DIGEST.md) ──────────────
@@ -39,7 +40,7 @@ type MobileView = "lifetime" | "1d";
 const FLAT_BAND_PCT = 0.5;
 
 // ── Status dot ───────────────────────────────────────────────────────────────
-function statusDotClass(row: CoverageRow): string {
+export function statusDotClass(row: CoverageRow): string {
   // A pending action outranks the row's own state — amber is the app-wide
   // "waiting on you" colour, and it's what makes proposals skimmable here.
   if (row.pendingProposal) return getTradeStatusDisplay("PENDING").dotClass;
@@ -60,7 +61,7 @@ function Pct({ value }: { value: number | null }) {
 
 // ── Name cell ─────────────────────────────────────────────────────────────────
 
-function NameCell({ row }: { row: CoverageRow }) {
+function NameCell({ row, isPinned }: { row: CoverageRow; isPinned: boolean }) {
   let subhead: string;
   const pp = row.pendingProposal;
   if (pp) {
@@ -84,6 +85,16 @@ function NameCell({ row }: { row: CoverageRow }) {
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-medium">{row.ticker}</span>
           <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDotClass(row))} />
+          {/* Pin toggle. Always visible once pinned (it's state, not just an
+              action); hover-only otherwise so the table stays quiet. */}
+          <span
+            className={cn(
+              "shrink-0 transition-opacity",
+              isPinned ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus-within:opacity-100",
+            )}
+          >
+            <PinButton ticker={row.ticker} pinned={isPinned} />
+          </span>
         </div>
         {subhead && (
           <span
@@ -146,11 +157,14 @@ function CoverageTab({
   tab,
   emptyLabel,
   onRowClick,
+  pinnedSet,
 }: {
   rows: CoverageRow[];
   tab: Tab;
   emptyLabel: string;
   onRowClick: (row: CoverageRow) => void;
+  /** Tickers currently on the dashboard's Pinned rail. */
+  pinnedSet: Set<string>;
 }) {
   const [mobileView, setMobileView] = useState<MobileView>("lifetime");
 
@@ -217,11 +231,11 @@ function CoverageTab({
           {rows.map((row) => (
             <TableRow
               key={row.key}
-              className="cursor-pointer"
+              className="cursor-pointer group/row"
               onClick={() => onRowClick(row)}
             >
               <TableCell>
-                <NameCell row={row} />
+                <NameCell row={row} isPinned={pinnedSet.has(row.ticker)} />
               </TableCell>
               <TableCell className="hidden md:table-cell text-right text-sm tabular-nums font-light">
                 {row.currentPrice != null ? `$${row.currentPrice.toFixed(2)}` : "—"}
@@ -260,7 +274,7 @@ function CoverageTab({
 }
 
 /** Minimal ThesisCardData to seed the sheet — it fetches the rest by id. */
-function seedFor(row: CoverageRow): ThesisCardData {
+export function seedFor(row: CoverageRow): ThesisCardData {
   const status: ThesisCardData["status"] =
     row.tradeState === "OPEN"
       ? "HOLDING"
@@ -284,8 +298,16 @@ const COVERAGE_TABS: { key: Tab; label: string }[] = [
   { key: "passed", label: "Passed" },
 ];
 
-export default function CoverageTable({ data }: { data: CoverageData }) {
+export default function CoverageTable({
+  data,
+  pinned = [],
+}: {
+  data: CoverageData;
+  /** Tickers on the dashboard's Pinned rail — drives each row's pin toggle. */
+  pinned?: string[];
+}) {
   const router = useRouter();
+  const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
   const [activeTab, setActiveTab] = useState<Tab>("trades");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [seed, setSeed] = useState<ThesisCardData | null>(null);
@@ -329,6 +351,7 @@ export default function CoverageTable({ data }: { data: CoverageData }) {
         tab={activeTab}
         emptyLabel={EMPTY_LABELS[activeTab]}
         onRowClick={handleRowClick}
+        pinnedSet={pinnedSet}
       />
 
       {seed && (
