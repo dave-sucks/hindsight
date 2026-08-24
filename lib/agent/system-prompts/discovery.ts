@@ -55,6 +55,14 @@ export interface DiscoveryPromptArgs {
    */
   analystId: string;
   existingTickers: string[]; // every ticker the analyst already covers (active + watching)
+  /**
+   * System 1 context bundle (THREE_SYSTEMS.md Move 1): live equity + the
+   * seat's band, with the floor as a percent of the real book. Discovery
+   * dispatches the writer that authors sized plans — a candidate that
+   * can't justify at least a full-floor position isn't worth a dispatch.
+   * Optional/fail-open: null renders the block's degraded form.
+   */
+  money?: import("@/lib/agent/context-bundle").MoneyContext | null;
 }
 
 export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
@@ -144,7 +152,12 @@ YOUR CONFIG — what bounds your work this run
   Direction bias:    ${directionLabel}
   Hold style(s):     ${holdDurations}
   Min confidence:    ${minConf}%
-  Position size: ${minPosSize > 0 ? `$${minPosSize.toLocaleString()}\u2013$${maxPosSize.toLocaleString()} per entry (both ends enforced)` : `max $${maxPosSize.toLocaleString()}`}
+  Position size: ${minPosSize > 0 ? `$${minPosSize.toLocaleString()}\u2013$${maxPosSize.toLocaleString()} per entry (both ends enforced)` : `max $${maxPosSize.toLocaleString()}`}${
+    args.money?.equityUSD != null
+      ? `
+  Account equity \u2248 $${Math.round(args.money.equityUSD).toLocaleString()}${args.money.floorPct != null ? ` \u2014 the entry floor is ${args.money.floorPct}% of the book. A candidate you wouldn't commit at least that much to is a PASS or a skip, not a dispatch; every dispatched thesis-writer will size against this same reality.` : ""}`
+      : ""
+  }
   Max open slots:    ${maxOpenPos}
   Signal types you trade: ${signalTypes}
   Subscribed feeds:  ${feedsList}
