@@ -21,10 +21,11 @@
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronsUpDown } from "lucide-react";
+import { ChevronsUpDown, Plus, RefreshCw, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   buildTimeline,
@@ -33,6 +34,7 @@ import {
   proposalSpanSegments,
   relativeTimestamp,
   toRow,
+  type LadderChange,
   type DotKind,
   type TimelineFilter,
   type TimelineRow,
@@ -103,24 +105,32 @@ function Dot({ kind, pulse }: { kind: DotKind; pulse: boolean }) {
 }
 
 /**
- * Sub-metadata: ladder rung changes. Plain muted lines — the old
- * red/green strikethrough chips read as errors, not edits (principal,
- * 2026-08-21). Capped so a wholesale ladder rewrite can't wall the row.
+ * Sub-metadata: ladder rung changes as solid muted badges — the shared
+ * Badge in its `secondary` variant with squared corners, matching the
+ * thesis trigger chips. Icon carries the kind: + added, × removed,
+ * ↻ edited. Capped so a wholesale ladder rewrite can't wall the row.
  */
-function LadderLines({ lines }: { lines: string[] }) {
-  const shown = lines.slice(0, 3);
-  const rest = lines.length - shown.length;
+function LadderBadges({ changes }: { changes: LadderChange[] }) {
+  const shown = changes.slice(0, 4);
+  const rest = changes.length - shown.length;
   return (
-    <div className="pt-0.5">
-      {shown.map((line, i) => (
-        <p key={i} className="text-xs font-light text-muted-foreground">
-          {line}
-        </p>
+    <div className="flex flex-wrap items-center gap-1 pt-1">
+      {shown.map((c, i) => (
+        <Badge key={i} variant="secondary" shape="rounded">
+          {c.kind === "add" ? (
+            <Plus />
+          ) : c.kind === "remove" ? (
+            <X />
+          ) : (
+            <RefreshCw />
+          )}
+          {c.text}
+        </Badge>
       ))}
       {rest > 0 ? (
-        <p className="text-xs font-light text-muted-foreground">
-          +{rest} more ladder {rest === 1 ? "change" : "changes"}
-        </p>
+        <Badge variant="secondary" shape="rounded">
+          +{rest} more
+        </Badge>
       ) : null}
     </div>
   );
@@ -357,7 +367,7 @@ function Row({
           </span>
         </div>
 
-        {row.chips.length > 0 ? <LadderLines lines={row.chips} /> : null}
+        {row.chips.length > 0 ? <LadderBadges changes={row.chips} /> : null}
 
         {showDescription ? (
           <p

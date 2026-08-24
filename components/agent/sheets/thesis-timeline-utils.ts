@@ -687,14 +687,19 @@ function describeTriggerBrief(t: Trigger): string {
  * Older rows store non-array shapes here (counts, notes) — those render
  * nothing rather than guessing.
  */
-export function triggerDiffLines(entry: FieldChange): string[] {
+export type LadderChange = {
+  kind: "add" | "remove" | "edit";
+  text: string;
+};
+
+export function triggerDiffLines(entry: FieldChange): LadderChange[] {
   const from = Array.isArray(entry.from) ? (entry.from as Trigger[]) : null;
   const to = Array.isArray(entry.to) ? (entry.to as Trigger[]) : null;
   if (!from || !to) return [];
   const fromById = new Map(from.filter((t) => t?.id).map((t) => [t.id, t]));
   const toIds = new Set(to.filter((t) => t?.id).map((t) => t.id));
 
-  const changed: string[] = [];
+  const changed: LadderChange[] = [];
   const added: Trigger[] = [];
   const removed: Trigger[] = [];
   for (const t of to) {
@@ -709,13 +714,14 @@ export function triggerDiffLines(entry: FieldChange): string[] {
       const before = safePredicateSentence(prev.predicate);
       const after = safePredicateSentence(t.predicate);
       if (before && after) {
-        changed.push(
-          `${before} → ${after}${
+        changed.push({
+          kind: "edit",
+          text: `${before} → ${after}${
             prev.action !== t.action
               ? ` (${prev.action.toLowerCase()} → ${t.action.toLowerCase()})`
               : ""
           }`,
-        );
+        });
       }
       // Unknown predicate shape on either side — skip rather than lie.
     }
@@ -750,9 +756,13 @@ export function triggerDiffLines(entry: FieldChange): string[] {
   const realRemoved = Array.from(removedBySig.values()).flat();
 
   return [
-    ...realAdded.map((t) => `Added ${describeTriggerBrief(t)}`),
-    ...changed.map((c) => `Moved ${c}`),
-    ...realRemoved.map((t) => `Removed ${describeTriggerBrief(t)}`),
+    ...realAdded.map(
+      (t) => ({ kind: "add", text: describeTriggerBrief(t) }) as LadderChange,
+    ),
+    ...changed,
+    ...realRemoved.map(
+      (t) => ({ kind: "remove", text: describeTriggerBrief(t) }) as LadderChange,
+    ),
   ];
 }
 
@@ -778,13 +788,16 @@ export function scalarChangeLines(u: TimelineUpdate): string[] {
 }
 
 /** The ladder diff for a row, [] when it has none. */
-export function ladderChangeLines(u: TimelineUpdate): string[] {
+export function ladderChangeLines(u: TimelineUpdate): LadderChange[] {
   const entry = u.fieldChanges?.triggers;
   return entry ? triggerDiffLines(entry) : [];
 }
 
 export function fieldChangeLines(u: TimelineUpdate): string[] {
-  return [...scalarChangeLines(u), ...ladderChangeLines(u)];
+  return [
+    ...scalarChangeLines(u),
+    ...ladderChangeLines(u).map((c) => c.text),
+  ];
 }
 
 /** The principal's written note on a declined proposal, when present. */
@@ -825,7 +838,7 @@ export interface TimelineRow {
   type: string;
   dot: DotKind;
   title: TitleSegments;
-  chips: string[];
+  chips: LadderChange[];
   description: string | null;
   /** Description is the principal's own words → quote styling. */
   quoted: boolean;
