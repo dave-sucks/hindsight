@@ -1,11 +1,11 @@
 "use client";
 
 import { useTransition } from "react";
-import { Pin } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { PinIcon } from "@/components/ui/pin-icon";
 import { usePinned } from "@/hooks/usePinned";
 
 // ─── PinButton ───────────────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ export function PinButton({
           />
         }
       >
-        <Pin className={pinned ? "fill-current" : undefined} />
+        <PinIcon filled={pinned} />
       </TooltipTrigger>
       <TooltipContent side="bottom">{label}</TooltipContent>
     </Tooltip>
