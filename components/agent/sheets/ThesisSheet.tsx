@@ -32,6 +32,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
+import { PinButton } from "@/components/stocks/PinButton";
 import { formatCurrency } from "@/lib/format";
 import { TickBar, type Tick } from "@/components/ui/gauge";
 import {
@@ -1303,6 +1304,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
               <ConvictionBadge conviction={conviction} rationale={convictionRationale} />
             </>
           }
+          actions={<PinButton ticker={ticker} />}
         />
         {/* Live current price + day's change. Comes from the separate
             /quote endpoint (slow — Finnhub call) so this block usually

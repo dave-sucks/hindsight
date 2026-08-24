@@ -10,6 +10,7 @@ import { StockThesesList } from "@/components/stocks/StockThesesList";
 import type { ThesisRowData } from "@/components/ui/thesis-row";
 import { ViewAllThesesLink } from "@/components/stocks/ViewAllThesesLink";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
+import { PinButton } from "@/components/stocks/PinButton";
 import {
   thesisSheetStateSelect,
 } from "@/lib/agent/thesis-sheet-state";
@@ -213,14 +214,19 @@ export default async function StockDetailPage({ params }: Props) {
       {/* ── Header — the SAME StockIdentityHeader the trade page + thesis
           sheet render (identical sizes, normalized exchange). href={null}:
           we're already on the stock page. */}
-      <div className="flex items-start justify-between gap-4 mb-6">
+      <div className="mb-6">
         <StockIdentityHeader
           ticker={upperSymbol}
           displayName={identity.companyName}
           exchange={identity.exchange}
           href={null}
+          actions={
+            <>
+              <PinButton ticker={upperSymbol} />
+              <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
+            </>
+          }
         />
-        <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
       </div>
 
       {/* ── 2-col grid ─────────────────────────────────────────────────── */}

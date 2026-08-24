@@ -1367,3 +1367,26 @@ model Episode {
   @@index([userId])
   @@index([accountId])
 }
+
+// ─── PINNED TICKERS ────────────────────────────────────────────────────────
+// The dashboard right rail's "Pinned" panel. A pin is an ATTENTION marker and
+// attention outlives every episode attached to a name: the thesis retires, the
+// position closes, but you still want NVDA in front of you. So the pin hangs
+// on the only entity with a long enough lifetime — the ticker itself.
+//
+// Nothing here duplicates state. The row's content (held / watching / passed /
+// uncovered) is RESOLVED at render time from the coverage data that already
+// drives the table below the chart. This table stores exactly one fact: "keep
+// this name where I can see it."
+model PinnedTicker {
+  id        String   @id @default(cuid())
+  accountId String // scope: the Account this pin belongs to
+  ticker    String // uppercase symbol
+  /// Manual ordering slot. Lower sorts first; ties break on createdAt.
+  /// Reserved for drag-to-reorder — every pin is written with 0 today.
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, ticker])
+  @@index([accountId, sortOrder])
+}

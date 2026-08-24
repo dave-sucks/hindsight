@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { StockIdentityHeader } from '@/components/domain/stock-identity-header';
+import { PinButton } from '@/components/stocks/PinButton';
 import { PnlBadge } from '@/components/ui/pnl-badge';
 import { PriceChange } from '@/components/ui/price-change';
 import { buildTradeSentence } from '@/lib/trade-statement';
@@ -271,7 +272,7 @@ export default async function TradeDetailPage({
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 mb-6">
+      <div className="mb-6">
         <StockIdentityHeader
           ticker={trade.ticker}
           displayName={companyName ?? trade.ticker}
@@ -291,8 +292,13 @@ export default async function TradeDetailPage({
               </Tooltip>
             </TooltipProvider>
           }
+          actions={
+            <>
+              <PinButton ticker={trade.ticker} />
+              <TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} runId={runId} />
+            </>
+          }
         />
-        <TradeActions tradeId={trade.id} ticker={trade.ticker} isOpen={isOpen} runId={runId} />
       </div>
 
       {/* ── 2-col grid ─────────────────────────────────────────────────── */}

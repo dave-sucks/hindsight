@@ -5,6 +5,7 @@ import { getCoverageData } from "@/lib/actions/coverage.actions";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { getLatestDigest } from "@/lib/actions/digest.actions";
+import { getPinnedTickers } from "@/lib/actions/pins.actions";
 
 const EMPTY_DASHBOARD: DashboardData = {
   openTrades: [], pendingTrades: [], closedTrades: [], activityFeed: [],
@@ -38,12 +39,14 @@ const EMPTY_DASHBOARD: DashboardData = {
 export default async function Home() {
   const environment = await getCurrentEnvironment();
 
-  const [data, digest, coverage, supabase] = await Promise.all([
+  const [data, digest, coverage, pinned, supabase] = await Promise.all([
     getDashboardData(environment).catch(() => EMPTY_DASHBOARD),
     getLatestDigest(environment).catch(() => null),
     // Coverage Table (Feature B). Read-only, additive — failure degrades to
     // empty groups so the rest of the dashboard is unaffected.
     getCoverageData(environment).catch(() => ({ trades: [], watching: [], passed: [] })),
+    // Pinned rail. Read-only and additive — a failure just hides the panel.
+    getPinnedTickers().catch(() => [] as string[]),
     createClient(),
   ]);
   const {
@@ -56,6 +59,7 @@ export default async function Home() {
       userId={user?.id}
       digest={digest}
       coverage={coverage}
+      pinned={pinned}
     />
   );
 }
