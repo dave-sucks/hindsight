@@ -8,7 +8,6 @@
  *   - railDot: green = money in, red = money out, amber = proposal that
  *     didn't trade
  *   - triggerDiffLines: per-rung ladder diff with id-churn cancelled
- *   - fieldChangeLines: exact "Target $80.00 → $95.00" lines (expanded)
  *
  * Fixtures mirror live production rows (XENE / EME / HPE arcs).
  */
@@ -17,7 +16,6 @@ import {
   titleSegments,
   triggerPhrase,
   updatedSecondary,
-  fieldChangeLines,
   railDot,
   triggerDiffLines,
   buildTimeline,
@@ -484,21 +482,6 @@ describe("proposalSpanSegments", () => {
     expect(
       proposalSpanSegments([{ kind: "event", row: proposed }]),
     ).toEqual(new Set());
-  });
-});
-
-describe("fieldChangeLines", () => {
-  it("renders exact from → to for plan scalars (the XENE 80→95 case)", () => {
-    const lines = fieldChangeLines(
-      row({
-        fieldChanges: {
-          targetPrice: { from: 80, to: 95 },
-          stopLoss: { from: 54, to: 62 },
-        },
-      }),
-    );
-    expect(lines).toContain("Target $80.00 → $95.00");
-    expect(lines).toContain("Stop $54.00 → $62.00");
   });
 });
 

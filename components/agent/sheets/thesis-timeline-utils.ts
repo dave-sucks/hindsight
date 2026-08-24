@@ -13,8 +13,6 @@
  *   - Stored `summary` strings are inconsistent legacy prose — the title
  *     is DERIVED here, never rendered verbatim.
  *
- *   - fieldChangeLines: exact "Target $80.00 → $95.00" from → to lines
- *     (expanded view)
  *   - triggerDiffLines: per-rung ladder diff, id-churn cancelled, tolerant
  *     of the legacy non-array shapes older rows carry
  */
@@ -772,39 +770,12 @@ export function triggerDiffLines(entry: FieldChange): LadderChange[] {
   ];
 }
 
-/** Scalar plan-field lines only — the trigger-ladder diff is separate
- * (rendered as rung chips, not text). */
-export function scalarChangeLines(u: TimelineUpdate): string[] {
-  const fc = u.fieldChanges;
-  if (!fc || typeof fc !== "object") return [];
-  const lines: string[] = [];
-  for (const { key, label, fmt } of SCALAR_LINES) {
-    const entry = fc[key];
-    if (!entry) continue;
-    lines.push(`${label} ${fmt(entry.from)} → ${fmt(entry.to)}`);
-  }
-  const scoring = fc.scoring;
-  if (scoring) {
-    const from = (scoring.from as { composite?: number } | null)?.composite;
-    const to = (scoring.to as { composite?: number } | null)?.composite;
-    if (from != null && to != null && from !== to)
-      lines.push(`Composite ${from} → ${to}/10`);
-  }
-  return lines;
-}
-
 /** The ladder diff for a row, [] when it has none. */
 export function ladderChangeLines(u: TimelineUpdate): LadderChange[] {
   const entry = u.fieldChanges?.triggers;
   return entry ? triggerDiffLines(entry) : [];
 }
 
-export function fieldChangeLines(u: TimelineUpdate): string[] {
-  return [
-    ...scalarChangeLines(u),
-    ...ladderChangeLines(u).map((c) => c.text),
-  ];
-}
 
 /** The principal's written note on a declined proposal, when present. */
 export function proposalUserMessage(u: TimelineUpdate): string | null {
