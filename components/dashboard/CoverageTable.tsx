@@ -40,7 +40,7 @@ type MobileView = "lifetime" | "1d";
 const FLAT_BAND_PCT = 0.5;
 
 // ── Status dot ───────────────────────────────────────────────────────────────
-export function statusDotClass(row: CoverageRow): string {
+function statusDotClass(row: CoverageRow): string {
   // A pending action outranks the row's own state — amber is the app-wide
   // "waiting on you" colour, and it's what makes proposals skimmable here.
   if (row.pendingProposal) return getTradeStatusDisplay("PENDING").dotClass;
@@ -274,7 +274,7 @@ function CoverageTab({
 }
 
 /** Minimal ThesisCardData to seed the sheet — it fetches the rest by id. */
-export function seedFor(row: CoverageRow): ThesisCardData {
+function seedFor(row: CoverageRow): ThesisCardData {
   const status: ThesisCardData["status"] =
     row.tradeState === "OPEN"
       ? "HOLDING"

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pin, PinOff } from "lucide-react";
+import { Pin } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,8 @@ export function PinButton({
     });
   };
 
-  const Icon = isPinned ? PinOff : Pin;
+  // One icon in two states, not two icons — a struck-through PinOff reads as
+  // a broken glyph at this size. Pinned is the filled/solid treatment.
   const label = isPinned ? `Unpin ${ticker}` : `Pin ${ticker}`;
 
   return (
@@ -57,7 +58,7 @@ export function PinButton({
           <Button variant="ghost" size={size} aria-label={label} onClick={toggle} />
         }
       >
-        <Icon />
+        <Pin className={isPinned ? "fill-current" : undefined} />
       </TooltipTrigger>
       <TooltipContent side="top">{label}</TooltipContent>
     </Tooltip>

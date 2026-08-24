@@ -11,9 +11,6 @@ import type { ThesisRowData } from "@/components/ui/thesis-row";
 import { ViewAllThesesLink } from "@/components/stocks/ViewAllThesesLink";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { PinButton } from "@/components/stocks/PinButton";
-import { StockLogo } from "@/components/StockLogo";
-import { TradeRowShell } from "@/components/ui/trade-row";
-import { PnlBadge } from "@/components/ui/pnl-badge";
 import {
   thesisSheetStateSelect,
 } from "@/lib/agent/thesis-sheet-state";
@@ -39,7 +36,7 @@ import { isTickerPinned } from "@/lib/actions/pins.actions";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
-import { cn, pnlColor } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
 import {
   ExternalLink,
@@ -155,7 +152,6 @@ export default async function StockDetailPage({ params }: Props) {
             realizedPnl: true,
             quantity: true,
             openedAt: true,
-            closedAt: true,
           },
         })
       : Promise.resolve([]),
@@ -214,67 +210,6 @@ export default async function StockDetailPage({ params }: Props) {
     ? metrics["marketCapitalization"] * 1_000_000
     : null;
 
-  // ── Your position in this name ─────────────────────────────────────────────
-  // A stock page that can't tell you whether you own the thing is the reason
-  // pinning a *trade* felt necessary in the first place. Resolve the ticker's
-  // positions once here: the header states the current holding, and the Trades
-  // tab carries the full current + historical list.
-  //
-  // PENDING_APPROVAL and CANCELLED rows are left out — an unapproved proposal
-  // isn't a trade yet, and it already has a home on the dashboard rail.
-  type StockTradeRow = {
-    id: string;
-    isOpen: boolean;
-    shares: number;
-    avgCost: number;
-    /** Live price for an open position, close price for a closed one. */
-    exitPrice: number | null;
-    costBasis: number;
-    pnl: number | null;
-    pnlPct: number | null;
-    dateLabel: string;
-  };
-
-  const stockTrades: StockTradeRow[] = tickerTrades
-    .filter((t) => t.status === "OPEN" || t.status === "CLOSED")
-    .map((t) => {
-      const isOpen = t.status === "OPEN";
-      const exitPrice = isOpen ? price : t.closePrice ?? null;
-      const costBasis = t.avgCost * t.quantity;
-      const sign = t.direction === "SHORT" ? -1 : 1;
-      // Closed positions carry a stored realizedPnl (fees, partial fills and
-      // all) — always prefer it over re-deriving from prices.
-      const pnl =
-        !isOpen && t.realizedPnl != null
-          ? t.realizedPnl
-          : exitPrice != null
-            ? (exitPrice - t.avgCost) * t.quantity * sign
-            : null;
-      const anchorDate = isOpen ? t.openedAt : t.closedAt ?? t.openedAt;
-      return {
-        id: t.id,
-        isOpen,
-        shares: t.quantity,
-        avgCost: t.avgCost,
-        exitPrice,
-        costBasis,
-        pnl,
-        pnlPct: pnl != null && costBasis !== 0 ? (pnl / costBasis) * 100 : null,
-        dateLabel: new Intl.DateTimeFormat("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }).format(anchorDate),
-      };
-    });
-
-  const openStockTrades = stockTrades.filter((t) => t.isOpen);
-  const heldShares = openStockTrades.reduce((sum, t) => sum + t.shares, 0);
-  const heldCostBasis = openStockTrades.reduce((sum, t) => sum + t.costBasis, 0);
-  const heldPnl = openStockTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
-  const heldPnlPct = heldCostBasis !== 0 ? (heldPnl / heldCostBasis) * 100 : null;
-  const isHolding = openStockTrades.length > 0;
-
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
@@ -288,28 +223,8 @@ export default async function StockDetailPage({ params }: Props) {
           exchange={identity.exchange}
           href={null}
         />
-        <div className="flex items-center gap-3">
-          {/* Holding state, visible from every tab — the stock-level answer to
-              "do I own this, and how is it doing overall?". */}
-          {isHolding && (
-            <div className="hidden sm:flex flex-col items-end gap-0.5">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Holding
-              </span>
-              <span className="text-sm tabular-nums">
-                {heldShares} share{heldShares === 1 ? "" : "s"}
-                <span className={cn("ml-2", pnlColor(heldPnl))}>
-                  {heldPnl >= 0 ? "+" : "−"}{fmtCur(Math.abs(heldPnl))}
-                  {heldPnlPct != null && ` (${heldPnlPct >= 0 ? "+" : ""}${heldPnlPct.toFixed(1)}%)`}
-                </span>
-              </span>
-            </div>
-          )}
-          <div className="flex items-center gap-0.5">
-            <PinButton ticker={upperSymbol} pinned={isPinned} />
-            <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
-          </div>
-        </div>
+        <PinButton ticker={upperSymbol} pinned={isPinned} />
+        <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
       </div>
 
       {/* ── 2-col grid ─────────────────────────────────────────────────── */}
@@ -322,7 +237,6 @@ export default async function StockDetailPage({ params }: Props) {
               <TabsTrigger value="financials">Financials</TabsTrigger>
               <TabsTrigger value="news">News</TabsTrigger>
               <TabsTrigger value="theses">Theses</TabsTrigger>
-              <TabsTrigger value="trades">Trades</TabsTrigger>
             </TabsList>
 
             {/* ── OVERVIEW ─────────────────────────────────────────── */}
@@ -478,69 +392,6 @@ export default async function StockDetailPage({ params }: Props) {
                   runId: t.researchRunId,
                 };
               })} />
-            </TabsContent>
-
-            {/* ── TRADES ───────────────────────────────────────────── */}
-            {/* Current + historical positions in this name, newest first, on
-                the same row shell every trade list in the app uses. This is
-                the "how has my money actually done on this ticker" view the
-                stock page was missing. */}
-            <TabsContent value="trades" className="mt-4 max-w-3xl">
-              {stockTrades.length === 0 ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">
-                  No trades on {upperSymbol} yet.
-                </div>
-              ) : (
-                <div className="rounded-lg border overflow-hidden bg-card">
-                  {stockTrades.map((t) => (
-                    <TradeRowShell
-                      key={t.id}
-                      href={`/trades/${t.id}`}
-                      leading={<StockLogo ticker={upperSymbol} size="md" className="rounded-md" />}
-                      primary={
-                        <>
-                          <span className="text-sm font-medium">{upperSymbol}</span>
-                          <span
-                            className={cn(
-                              "h-1.5 w-1.5 rounded-full shrink-0",
-                              t.isOpen
-                                ? "bg-sky-500"
-                                : (t.pnl ?? 0) >= 0
-                                  ? "bg-positive"
-                                  : "bg-negative",
-                            )}
-                          />
-                        </>
-                      }
-                      trailingTop={
-                        <span className="text-sm tabular-nums font-light">
-                          {t.exitPrice != null ? fmtCur(t.exitPrice) : "—"}
-                        </span>
-                      }
-                      secondary={
-                        <>
-                          {fmtCur(t.costBasis)} — {t.shares} share{t.shares === 1 ? "" : "s"} ·{" "}
-                          {t.isOpen ? "opened" : "sold"} {t.dateLabel}
-                        </>
-                      }
-                      trailingBottom={
-                        t.pnl != null ? (
-                          <>
-                            <span className={cn("text-sm tabular-nums", pnlColor(t.pnl))}>
-                              {t.pnl >= 0 ? "+" : "−"}{fmtCur(Math.abs(t.pnl))}
-                            </span>
-                            {t.pnlPct != null && (
-                              <PnlBadge value={t.pnlPct} format="percent" className="text-xs" />
-                            )}
-                          </>
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground/50">—</span>
-                        )
-                      }
-                    />
-                  ))}
-                </div>
-              )}
             </TabsContent>
 
           </Tabs>

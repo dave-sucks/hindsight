@@ -199,6 +199,12 @@ interface TradeRowProps {
   thesisId?: string;
   /** Thesis direction — needed as the sheet's seed prop when thesisId is set. */
   direction?: "LONG" | "SHORT";
+  /**
+   * Extra kebab entries appended after the row's own actions — e.g. "Unpin"
+   * on the dashboard's pinned rail. Here so surfaces with their own row
+   * action reuse THIS row instead of composing TradeRowShell by hand.
+   */
+  extraMenuItems?: RowMenuItem[];
 }
 
 /** The verb the row leads with when a proposal is awaiting approval. */
@@ -246,6 +252,7 @@ export function TradeRow({
   pendingProposal,
   thesisId,
   direction,
+  extraMenuItems,
 }: TradeRowProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const dateStr = openedAt ? fmtShort(openedAt) : null;
@@ -270,10 +277,13 @@ export function TradeRow({
   const shortId = shortAlpacaId(alpacaOrderId);
   const priceSourceLabel = isOpen ? fmtPriceSource(priceSource, priceUpdatedAt) : null;
 
-  const menuItems: RowMenuItem[] | undefined =
+  const ownMenuItems: RowMenuItem[] =
     onClose && isOpen && !isAwaitingApproval
       ? [{ label: "Close trade", onSelect: onClose, destructive: true }]
-      : undefined;
+      : [];
+  const allMenuItems = [...(extraMenuItems ?? []), ...ownMenuItems];
+  const menuItems: RowMenuItem[] | undefined =
+    allMenuItems.length > 0 ? allMenuItems : undefined;
 
   return (
     <>
@@ -407,6 +417,8 @@ interface WatchlistRowProps {
   className?: string;
   /** When present, clicking the row opens ThesisSheet instead of navigating to /stocks/:ticker. */
   thesisId?: string;
+  /** Extra kebab entries appended before "Remove" — see TradeRow.extraMenuItems. */
+  extraMenuItems?: RowMenuItem[];
 }
 
 export function WatchlistRow({
@@ -416,6 +428,7 @@ export function WatchlistRow({
   onRemove,
   className,
   thesisId,
+  extraMenuItems,
 }: WatchlistRowProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   // The day's % change — from the SAME shared quote source every other
@@ -426,6 +439,10 @@ export function WatchlistRow({
   // P1-24 B4 dual-read: explicit null (new seed) or legacy 'PENDING' →
   // "Awaiting review". LONG/SHORT surface their lean. undefined (no thesis
   // context) keeps the generic "Watching".
+  const menuItems: RowMenuItem[] = [
+    ...(extraMenuItems ?? []),
+    ...(onRemove ? [{ label: "Remove", onSelect: onRemove, destructive: true }] : []),
+  ];
   const secondary =
     direction === "LONG"
       ? "Watching — long"
@@ -453,11 +470,7 @@ export function WatchlistRow({
           <PnlBadge value={dayChangePct} format="percent" className="text-xs" />
         ) : undefined
       }
-      menuItems={
-        onRemove
-          ? [{ label: "Remove", onSelect: onRemove, destructive: true }]
-          : undefined
-      }
+      menuItems={menuItems.length > 0 ? menuItems : undefined}
     />
     {thesisId && (
       <ThesisSheet
