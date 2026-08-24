@@ -1,13 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { useMemo } from "react";
 
 import { TradeRow, WatchlistRow } from "@/components/ui/trade-row";
-import { setPinnedTicker } from "@/lib/actions/pins.actions";
 import type { CoverageData, CoverageRow } from "@/lib/actions/coverage.actions";
 import { useTickerQuote, usePrefetchTickers } from "@/hooks/useTickerQuote";
+import { usePinnedList } from "@/hooks/usePinned";
 
 // ─── PinnedPanel — the hand-picked shortlist on the dashboard right rail ─────
 //
@@ -64,22 +62,9 @@ function tradeStatus(row: CoverageRow): string {
 // A pinned name with no thesis and no position has no coverage row, so there's
 // no server-resolved price to hand WatchlistRow. Pull it from the shared quote
 // cache instead — its own component so the hook isn't called in a loop body.
-function UncoveredPinnedRow({
-  ticker,
-  unpin,
-}: {
-  ticker: string;
-  unpin: { label: string; onSelect: () => void; destructive?: boolean }[];
-}) {
+function UncoveredPinnedRow({ ticker }: { ticker: string }) {
   const quote = useTickerQuote(ticker);
-  return (
-    <WatchlistRow
-      ticker={ticker}
-      currentPrice={quote?.price}
-      direction={undefined}
-      extraMenuItems={unpin}
-    />
-  );
+  return <WatchlistRow ticker={ticker} currentPrice={quote?.price} direction={undefined} />;
 }
 
 // ── Panel ────────────────────────────────────────────────────────────────────
@@ -91,35 +76,17 @@ export default function PinnedPanel({
   pinned,
   coverage,
 }: {
+  /** Server-rendered pin list — the first paint, before the client cache loads. */
   pinned: string[];
   coverage?: CoverageData;
 }) {
-  const router = useRouter();
-  const [, startTransition] = useTransition();
-  // Optimistic removals — the row disappears on click, the server action and
-  // the router refresh catch up behind it.
-  const [removed, setRemoved] = useState<Set<string>>(new Set());
-
-  const visible = useMemo(() => pinned.filter((t) => !removed.has(t)), [pinned, removed]);
+  // Live list from the shared pin cache, so unpinning from ANY row's kebab —
+  // here, the trades page, a thesis sheet — drops the row from this rail
+  // immediately. Falls back to the server list until that cache first loads.
+  const live = usePinnedList();
+  const visible = live ?? pinned;
   const entries = useMemo(() => resolvePinnedRows(visible, coverage), [visible, coverage]);
   usePrefetchTickers(visible);
-
-  const handleUnpin = (ticker: string) => {
-    setRemoved((prev) => new Set(prev).add(ticker));
-    startTransition(async () => {
-      const res = await setPinnedTicker(ticker, false);
-      if (!res.ok) {
-        setRemoved((prev) => {
-          const next = new Set(prev);
-          next.delete(ticker);
-          return next;
-        });
-        toast.error(res.error ?? `Couldn't unpin ${ticker}`);
-        return;
-      }
-      router.refresh();
-    });
-  };
 
   if (visible.length === 0) return null;
 
@@ -130,10 +97,8 @@ export default function PinnedPanel({
       </p>
       <div className="rounded-lg border overflow-hidden bg-card">
         {entries.map(({ ticker, row }) => {
-          const unpin = [
-            { label: "Unpin", onSelect: () => handleUnpin(ticker), destructive: true },
-          ];
-          const direction = row?.direction === "LONG" || row?.direction === "SHORT" ? row.direction : null;
+          const direction =
+            row?.direction === "LONG" || row?.direction === "SHORT" ? row.direction : null;
 
           // Held or recently sold — the trade row, exactly as the trades list
           // and the proposals rail render it.
@@ -152,7 +117,6 @@ export default function PinnedPanel({
                 openedAt={row.anchorAt}
                 thesisId={row.thesisId ?? undefined}
                 direction={direction ?? undefined}
-                extraMenuItems={unpin}
               />
             );
           }
@@ -167,12 +131,11 @@ export default function PinnedPanel({
                 currentPrice={row.currentPrice ?? undefined}
                 direction={direction}
                 thesisId={row.thesisId ?? undefined}
-                extraMenuItems={unpin}
               />
             );
           }
 
-          return <UncoveredPinnedRow key={ticker} ticker={ticker} unpin={unpin} />;
+          return <UncoveredPinnedRow key={ticker} ticker={ticker} />;
         })}
       </div>
     </div>

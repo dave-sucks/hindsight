@@ -449,12 +449,10 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
   );
 }
 
-function HomeBottomSection({ activity, loading, coverage, pinned }: {
+function HomeBottomSection({ activity, loading, coverage }: {
   activity: ActivityFeedItem[];
   loading: boolean;
   coverage?: CoverageData;
-  /** Pinned tickers — drives the pin toggle state on each coverage row. */
-  pinned?: string[];
 }) {
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
 
@@ -478,7 +476,7 @@ function HomeBottomSection({ activity, loading, coverage, pinned }: {
       {/* Portfolio — Coverage table */}
       <div>
         {coverage ? (
-          <CoverageTable data={coverage} pinned={pinned ?? []} />
+          <CoverageTable data={coverage} />
         ) : (
           <Card className="shadow-none">
             <CardContent className="py-8 flex justify-center">
@@ -1332,7 +1330,6 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
             activity={data?.activityFeed ?? []}
             loading={loading}
             coverage={coverage}
-            pinned={pinned}
           />
           </div>
 

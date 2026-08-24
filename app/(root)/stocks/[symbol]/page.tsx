@@ -32,7 +32,6 @@ import { getStockInfo } from "@/lib/actions/stock-info";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
 import { PriceChange } from "@/components/ui/price-change";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
-import { isTickerPinned } from "@/lib/actions/pins.actions";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
@@ -125,7 +124,7 @@ export default async function StockDetailPage({ params }: Props) {
   const accountId = user ? await getAccountId(user.id) : null;
 
   // Fetch everything in parallel
-  const [identity, profile, quote, metrics, candles, coverage, tickerTrades, tickerTheses, watchlistStatus, isPinned] = await Promise.all([
+  const [identity, profile, quote, metrics, candles, coverage, tickerTrades, tickerTheses, watchlistStatus] = await Promise.all([
     // Header identity from the StockInfo cache — same name + normalized
     // exchange the trade page + thesis sheet show. profile stays for the
     // Company Info card (industry / IPO / weburl).
@@ -173,7 +172,6 @@ export default async function StockDetailPage({ params }: Props) {
         })
       : Promise.resolve([]),
     accountId ? getWatchlistStatusForSymbol(upperSymbol) : Promise.resolve([]),
-    accountId ? isTickerPinned(upperSymbol).catch(() => false) : Promise.resolve(false),
   ]);
 
   // Format helpers
@@ -216,15 +214,19 @@ export default async function StockDetailPage({ params }: Props) {
       {/* ── Header — the SAME StockIdentityHeader the trade page + thesis
           sheet render (identical sizes, normalized exchange). href={null}:
           we're already on the stock page. */}
-      <div className="flex items-start justify-between gap-4 mb-6">
+      <div className="mb-6">
         <StockIdentityHeader
           ticker={upperSymbol}
           displayName={identity.companyName}
           exchange={identity.exchange}
           href={null}
+          actions={
+            <>
+              <PinButton ticker={upperSymbol} />
+              <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
+            </>
+          }
         />
-        <PinButton ticker={upperSymbol} pinned={isPinned} />
-        <WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />
       </div>
 
       {/* ── 2-col grid ─────────────────────────────────────────────────── */}

@@ -1,66 +1,57 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useTransition } from "react";
 import { Pin } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { setPinnedTicker } from "@/lib/actions/pins.actions";
+import { usePinned } from "@/hooks/usePinned";
 
 // ─── PinButton ───────────────────────────────────────────────────────────────
-// The one pin affordance. Toggles a ticker on/off the dashboard's Pinned rail
-// from wherever a name appears — the stock page header, the coverage table.
-// Optimistic: the icon flips immediately and reverts if the write is refused
-// (not signed in, or the pin cap is full).
+// The header-level pin affordance, for the icon-button strip on the stock /
+// trade / thesis surfaces. (Rows get pinning through their own kebab — see
+// usePinMenuItem in components/ui/trade-row.)
+//
+// One icon, two states, nothing else: filled = pinned, outline = not pinned.
+// Clicking flips it. State comes from the shared pin cache, so this button and
+// every row menu showing the same ticker flip together.
 
 export function PinButton({
   ticker,
-  pinned,
   size = "icon-sm",
 }: {
   ticker: string;
-  pinned: boolean;
   /** Matches the Button size the host surface uses. */
   size?: "icon-sm" | "icon";
 }) {
-  const router = useRouter();
-  const [isPinned, setIsPinned] = useState(pinned);
+  const { pinned, toggle } = usePinned(ticker);
   const [, startTransition] = useTransition();
-
-  const toggle = (e: React.MouseEvent) => {
-    // Coverage-table rows are clickable — a pin click must not also open the
-    // thesis sheet behind it.
-    e.preventDefault();
-    e.stopPropagation();
-    const next = !isPinned;
-    setIsPinned(next);
-    startTransition(async () => {
-      const res = await setPinnedTicker(ticker, next);
-      if (!res.ok) {
-        setIsPinned(!next);
-        toast.error(res.error ?? `Couldn't ${next ? "pin" : "unpin"} ${ticker}`);
-        return;
-      }
-      router.refresh();
-    });
-  };
-
-  // One icon in two states, not two icons — a struck-through PinOff reads as
-  // a broken glyph at this size. Pinned is the filled/solid treatment.
-  const label = isPinned ? `Unpin ${ticker}` : `Pin ${ticker}`;
+  const label = pinned ? `Unpin ${ticker}` : `Pin ${ticker}`;
 
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <Button variant="ghost" size={size} aria-label={label} onClick={toggle} />
+          <Button
+            variant="ghost"
+            size={size}
+            aria-label={label}
+            aria-pressed={pinned}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              startTransition(async () => {
+                const res = await toggle();
+                if (!res.ok) toast.error(res.error ?? `Couldn't ${pinned ? "unpin" : "pin"} ${ticker}`);
+              });
+            }}
+          />
         }
       >
-        <Pin className={isPinned ? "fill-current" : undefined} />
+        <Pin className={pinned ? "fill-current" : undefined} />
       </TooltipTrigger>
-      <TooltipContent side="top">{label}</TooltipContent>
+      <TooltipContent side="bottom">{label}</TooltipContent>
     </Tooltip>
   );
 }

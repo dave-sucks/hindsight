@@ -26,6 +26,13 @@ interface StockIdentityHeaderProps {
   /** Rendered inline to the right of the name (StatusPill, ConvictionBadge, …). */
   badges?: ReactNode;
   /**
+   * Icon-button strip on the far right of the whole header — pin, bookmark,
+   * per-surface menus. A slot rather than per-page siblings so the trade page,
+   * the stock page and the thesis sheet all put their buttons in the same
+   * place at the same size instead of each arranging its own right edge.
+   */
+  actions?: ReactNode;
+  /**
    * Where the logo + name link. Defaults to the stock page `/stocks/[ticker]`.
    * Pass `null` to render the identity unlinked.
    */
@@ -38,6 +45,7 @@ export function StockIdentityHeader({
   displayName,
   exchange,
   badges,
+  actions,
   href,
   className,
 }: StockIdentityHeaderProps) {
@@ -75,6 +83,9 @@ export function StockIdentityHeader({
           {exchange ? ` · ${exchange}` : ""}
         </p>
       </div>
+      {actions ? (
+        <div className="flex items-center gap-0.5 shrink-0">{actions}</div>
+      ) : null}
     </div>
   );
 }

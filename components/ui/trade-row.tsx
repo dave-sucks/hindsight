@@ -20,6 +20,8 @@ import { getTradeStatusDisplay, shortAlpacaId } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { useTickerQuote } from "@/hooks/useTickerQuote";
+import { usePinned } from "@/hooks/usePinned";
+import { toast } from "sonner";
 
 // ── Row menu item ────────────────────────────────────────────────────────────
 // Every trade-shaped row gets the same kebab menu on the right edge. Each
@@ -164,6 +166,25 @@ function RowMenu({ items }: { items: RowMenuItem[] }) {
   );
 }
 
+// ── Pin / Unpin ──────────────────────────────────────────────────────────────
+// Every trade-shaped row carries this entry. The row is the one place a stock
+// is always reachable in this app, so it's the one place the pin affordance
+// has to live — no surface has to opt in, and none has to pass pin state down.
+
+function usePinMenuItem(ticker: string): RowMenuItem {
+  const { pinned, toggle } = usePinned(ticker);
+  return {
+    label: pinned ? "Unpin" : "Pin",
+    onSelect: () => {
+      void toggle().then((res) => {
+        if (!res.ok) {
+          toast.error(res.error ?? `Couldn't ${pinned ? "unpin" : "pin"} ${ticker}`);
+        }
+      });
+    },
+  };
+}
+
 // ── TradeRow (existing API, now built on shell) ──────────────────────────────
 
 interface TradeRowProps {
@@ -203,12 +224,6 @@ interface TradeRowProps {
   thesisId?: string;
   /** Thesis direction — needed as the sheet's seed prop when thesisId is set. */
   direction?: "LONG" | "SHORT";
-  /**
-   * Extra kebab entries appended after the row's own actions — e.g. "Unpin"
-   * on the dashboard's pinned rail. Here so surfaces with their own row
-   * action reuse THIS row instead of composing TradeRowShell by hand.
-   */
-  extraMenuItems?: RowMenuItem[];
 }
 
 /** The verb the row leads with when a proposal is awaiting approval. */
@@ -256,9 +271,9 @@ export function TradeRow({
   pendingProposal,
   thesisId,
   direction,
-  extraMenuItems,
 }: TradeRowProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const pinMenuItem = usePinMenuItem(ticker);
   const dateStr = openedAt ? fmtShort(openedAt) : null;
   const isPending = status === "PENDING";
   const isAwaitingApproval = pendingProposal != null;
@@ -281,13 +296,16 @@ export function TradeRow({
   const shortId = shortAlpacaId(alpacaOrderId);
   const priceSourceLabel = isOpen ? fmtPriceSource(priceSource, priceUpdatedAt) : null;
 
-  const ownMenuItems: RowMenuItem[] =
-    onClose && isOpen && !isAwaitingApproval
+  // Pin/unpin is on EVERY trade-shaped row, app-wide — the row is the one
+  // place a stock is always reachable, so it's the one place the affordance
+  // has to live. State comes from the shared pin cache, not from props, so no
+  // call site has to plumb it.
+  const menuItems: RowMenuItem[] = [
+    pinMenuItem,
+    ...(onClose && isOpen && !isAwaitingApproval
       ? [{ label: "Close trade", onSelect: onClose, destructive: true }]
-      : [];
-  const allMenuItems = [...(extraMenuItems ?? []), ...ownMenuItems];
-  const menuItems: RowMenuItem[] | undefined =
-    allMenuItems.length > 0 ? allMenuItems : undefined;
+      : []),
+  ];
 
   return (
     <>
@@ -421,8 +439,6 @@ interface WatchlistRowProps {
   className?: string;
   /** When present, clicking the row opens ThesisSheet instead of navigating to /stocks/:ticker. */
   thesisId?: string;
-  /** Extra kebab entries appended before "Remove" — see TradeRow.extraMenuItems. */
-  extraMenuItems?: RowMenuItem[];
 }
 
 export function WatchlistRow({
@@ -432,9 +448,9 @@ export function WatchlistRow({
   onRemove,
   className,
   thesisId,
-  extraMenuItems,
 }: WatchlistRowProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const pinMenuItem = usePinMenuItem(ticker);
   // The day's % change — from the SAME shared quote source every other
   // price/day-change surface uses (ticker chips, thesis cards): /api/quotes via
   // the useTickerQuote cache. A watched name isn't held, so the row shows the
@@ -444,7 +460,7 @@ export function WatchlistRow({
   // "Awaiting review". LONG/SHORT surface their lean. undefined (no thesis
   // context) keeps the generic "Watching".
   const menuItems: RowMenuItem[] = [
-    ...(extraMenuItems ?? []),
+    pinMenuItem,
     ...(onRemove ? [{ label: "Remove", onSelect: onRemove, destructive: true }] : []),
   ];
   const secondary =
