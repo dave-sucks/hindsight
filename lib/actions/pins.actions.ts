@@ -20,7 +20,7 @@ import { getAccountId } from "@/lib/auth/account";
 //
 // Consequence: this module stores nothing but the pin. What a pinned row SAYS
 // (held / watching / passed / uncovered) is resolved at render time from
-// coverage data — see `resolvePinnedRows` in components/dashboard/PinnedPanel.
+// coverage data — see the resolver in components/dashboard/PinnedPanel.
 
 /** Ceiling on pins. The rail is a shortlist, not a second portfolio view.
  *  Not exported — a "use server" module may only export async functions. */
@@ -46,18 +46,6 @@ export async function getPinnedTickers(): Promise<string[]> {
     select: { ticker: true },
   });
   return rows.map((r) => r.ticker);
-}
-
-/** Whether one ticker is pinned — for the stock page's toggle. */
-export async function isTickerPinned(ticker: string): Promise<boolean> {
-  const accountId = await currentAccountId();
-  if (!accountId) return false;
-
-  const row = await prisma.pinnedTicker.findUnique({
-    where: { accountId_ticker: { accountId, ticker: ticker.toUpperCase() } },
-    select: { id: true },
-  });
-  return row != null;
 }
 
 export interface SetPinnedResult {

@@ -490,7 +490,7 @@ export function WatchlistRow({
           <PnlBadge value={dayChangePct} format="percent" className="text-xs" />
         ) : undefined
       }
-      menuItems={menuItems.length > 0 ? menuItems : undefined}
+      menuItems={menuItems}
     />
     {thesisId && (
       <ThesisSheet

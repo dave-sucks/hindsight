@@ -31,7 +31,7 @@ interface PinnedEntry {
  * PASSED thesis from before you bought). Priority runs most-committed first:
  * open position → watch → closed trade → pass.
  */
-export function resolvePinnedRows(
+function resolvePinnedRows(
   pinned: string[],
   coverage: CoverageData | undefined,
 ): PinnedEntry[] {

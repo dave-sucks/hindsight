@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { setPinnedTicker } from "@/lib/actions/pins.actions";
 
 /**
@@ -8,43 +8,58 @@ import { setPinnedTicker } from "@/lib/actions/pins.actions";
  * affordance — the kebab item on every trade row, the header button on the
  * stock / trade / thesis surfaces.
  *
- * Rows are rendered in long lists all over the app, so pin state can't be a
- * prop threaded through every call site. Same pattern as useTickerQuote: a
+ * Rows render in long lists all over the app, so pin state can't be a prop
+ * threaded through every call site. Same pattern as useTickerQuote: a
  * module-level cache, one in-flight fetch, subscribers notified on change.
+ *
+ * `null` means "not loaded yet" and is deliberately distinct from an empty
+ * set ("loaded, nothing pinned") — the dashboard rail shows its
+ * server-rendered list until the client cache actually lands, and it can only
+ * tell those apart if not-loaded has its own value.
  */
 
 let cache: Set<string> | null = null;
-let inFlight: Promise<Set<string>> | null = null;
+let inFlight: Promise<void> | null = null;
 const subscribers = new Set<(pinned: Set<string>) => void>();
 
 function publish() {
-  const snapshot = new Set(cache ?? []);
+  if (!cache) return;
+  const snapshot = new Set(cache);
   for (const fn of subscribers) fn(snapshot);
 }
 
-async function load(): Promise<Set<string>> {
-  if (cache) return cache;
-  if (inFlight) return inFlight;
+function load(): void {
+  if (cache || inFlight) return;
   inFlight = (async () => {
     try {
       const res = await fetch("/api/pins");
-      const json = res.ok ? await res.json() : { tickers: [] };
+      if (!res.ok) return; // leave the cache unset so the next mount retries
+      const json = await res.json();
       cache = new Set<string>(json.tickers ?? []);
+      publish();
     } catch {
-      cache = new Set<string>();
+      // Network blip: deliberately do NOT cache an empty set. Poisoning the
+      // cache here would silently drop every pin for the rest of the session
+      // with no way to recover short of a reload.
     } finally {
       inFlight = null;
     }
-    publish();
-    return cache!;
   })();
-  return inFlight;
 }
 
-/** Drop the cache so the next subscriber refetches (after a server mutation). */
-export function invalidatePinned() {
-  cache = null;
-  void load();
+/** Subscribe to the shared cache. Returns null until the first load lands. */
+function usePinnedSet(): Set<string> | null {
+  const [pinnedSet, setPinnedSet] = useState<Set<string> | null>(() =>
+    cache ? new Set(cache) : null,
+  );
+  useEffect(() => {
+    subscribers.add(setPinnedSet);
+    load();
+    return () => {
+      subscribers.delete(setPinnedSet);
+    };
+  }, []);
+  return pinnedSet;
 }
 
 /**
@@ -56,49 +71,30 @@ export function usePinned(ticker: string | undefined): {
   toggle: () => Promise<{ ok: boolean; pinned: boolean; error?: string }>;
 } {
   const symbol = ticker?.toUpperCase();
-  const [pinnedSet, setPinnedSet] = useState<Set<string>>(() => new Set(cache ?? []));
-
-  useEffect(() => {
-    subscribers.add(setPinnedSet);
-    void load();
-    return () => {
-      subscribers.delete(setPinnedSet);
-    };
-  }, []);
-
-  const pinned = symbol != null && pinnedSet.has(symbol);
+  const pinnedSet = usePinnedSet();
+  const pinned = symbol != null && (pinnedSet?.has(symbol) ?? false);
 
   const toggle = useCallback(async () => {
     if (!symbol) return { ok: false, pinned: false, error: "Missing ticker" };
     const next = !(cache?.has(symbol) ?? false);
-    // Optimistic local write, published to every subscribed row at once.
-    cache = new Set(cache ?? []);
-    if (next) cache.add(symbol);
-    else cache.delete(symbol);
-    publish();
+    const apply = (add: boolean) => {
+      cache = new Set(cache ?? []);
+      if (add) cache.add(symbol);
+      else cache.delete(symbol);
+      publish();
+    };
+    apply(next);
 
     const res = await setPinnedTicker(symbol, next);
-    if (!res.ok) {
-      cache = new Set(cache ?? []);
-      if (next) cache.delete(symbol);
-      else cache.add(symbol);
-      publish();
-    }
+    if (!res.ok) apply(!next);
     return res;
   }, [symbol]);
 
   return { pinned, toggle };
 }
 
-/** The full pinned list, in server order. Used by the dashboard rail. */
+/** The full pinned list. Null until the cache loads — see the note above. */
 export function usePinnedList(): string[] | null {
-  const [, setPinnedSet] = useState<Set<string>>(() => new Set(cache ?? []));
-  useEffect(() => {
-    subscribers.add(setPinnedSet);
-    void load();
-    return () => {
-      subscribers.delete(setPinnedSet);
-    };
-  }, []);
-  return cache ? [...cache] : null;
+  const pinnedSet = usePinnedSet();
+  return useMemo(() => (pinnedSet ? [...pinnedSet] : null), [pinnedSet]);
 }
