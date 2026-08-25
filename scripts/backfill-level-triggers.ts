@@ -18,8 +18,16 @@
  *
  * ## What this actually changes, measured 2026-08-25
  *
- *   HOLDING (8):  0 floors to arm, 5 targets   <- no new sell on a live position
- *   WATCHING (19): 19 floors, 19 targets       <- no money involved
+ *   24 theses, 43 mints:
+ *     19 watchlist floors + 19 watchlist targets  <- no money on any of them
+ *      0 watchlist buy levels (all 19 already have one)
+ *      0 held floors        <- no new sell on any live position
+ *      5 held targets, as REVIEW
+ *
+ *   Plus 1 stale-level move: MU's Target slot is held by a $934 review the
+ *   agent wrote on 8/18 when the floor was $814. The column says $1,100.
+ *   Moving it also clears the 935/934 straddle, since nothing sits at $934
+ *   afterwards.
  *
  * The held book's floors are already armed and are not touched. The 5 held
  * targets mint as REVIEW, so the worst case is a thesis surfacing for a
@@ -72,15 +80,49 @@ async function main() {
     );
     const inherited = resolvedLadder.filter((r) => r.inherited);
 
-    // Only fill EMPTY slots. Passing `undefined` leaves a slot untouched.
     const before = applyLevelArgs({
       stored, inherited, levels: {}, direction: t.direction,
       status: t.status, mintId: () => randomUUID(),
     }).columns;
 
+    // A slot needs the column armed when nothing occupies it — or when what
+    // DOES occupy it sits at a different price and wasn't put there by hand.
+    //
+    // The empty case is the bulk of it. The mismatch case exists because of
+    // MU: its Target slot is filled by a $934 review the agent wrote on 8/18
+    // as an "it recovered, look again" checkpoint, while the column says
+    // $1,100. Treating that as coverage is circular — it excludes the row on
+    // the strength of the very trigger that is wrong. The card would read
+    // "Target $934" on a stock trading near $926.
+    //
+    // A PRINCIPAL-sourced trigger always wins over the column: a level set by
+    // hand is intent, a column is a stale cache, and this script must never
+    // move a number someone chose.
+    const occupantSource = (slot: "FLOOR" | "TARGET") =>
+      stored.find(
+        (x) =>
+          (x.predicate.kind === "PRICE_BELOW" || x.predicate.kind === "PRICE_ABOVE") &&
+          (slot === "FLOOR"
+            ? x.action === "EXIT" && x.predicate.kind === (t.direction === "SHORT" ? "PRICE_ABOVE" : "PRICE_BELOW")
+            : (x.action === "EXIT" || x.action === "REVIEW") &&
+              x.predicate.kind === (t.direction === "SHORT" ? "PRICE_BELOW" : "PRICE_ABOVE")),
+      )?.source;
+
+    const needs = (
+      slot: "FLOOR" | "TARGET",
+      derived: number | null,
+      column: number | null,
+    ): number | undefined => {
+      if (column == null) return undefined;
+      if (derived == null) return column; // empty slot
+      if (Math.abs(derived - column) < 0.005) return undefined; // already right
+      if (occupantSource(slot) === "PRINCIPAL") return undefined; // hands off
+      return column; // stale occupant — move it to the intended level
+    };
+
     const levels = {
-      floor: before.stopLoss == null && t.stopLoss != null ? t.stopLoss : undefined,
-      target: before.targetPrice == null && t.targetPrice != null ? t.targetPrice : undefined,
+      floor: needs("FLOOR", before.stopLoss, t.stopLoss),
+      target: needs("TARGET", before.targetPrice, t.targetPrice),
       entry:
         t.status === "WATCHING" && before.entryPrice == null && t.entryPrice != null
           ? t.entryPrice
@@ -91,7 +133,15 @@ async function main() {
 
     changed++;
     const plan = mints
-      .map(([slot, v]) => `${slot === "floor" ? "sell below" : slot === "target" ? "review above" : "buy at"} $${v}`)
+      .map(([slot, v]) => {
+        const verb = slot === "floor" ? "sell below" : slot === "target" ? "review above" : "buy at";
+        const occupied =
+          slot === "floor" ? before.stopLoss != null : slot === "target" ? before.targetPrice != null : false;
+        const from = slot === "floor" ? before.stopLoss : before.targetPrice;
+        // Say when a level MOVES rather than appears — that is a different
+        // kind of change and it should not read the same in the log.
+        return occupied ? `${verb} $${from} -> $${v} (stale)` : `${verb} $${v}`;
+      })
       .join(", ");
     console.log(`${APPLY ? "ARM " : "plan"}  ${t.status.padEnd(8)} ${t.ticker.padEnd(6)} ${plan}`);
     if (!APPLY) continue;
