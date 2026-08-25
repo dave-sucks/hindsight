@@ -9,15 +9,8 @@
 
 import {
   applyLevelArgs,
-  columnsBackedByTriggers,
   levelLabelState,
   canonicalLevels,
-  derivedColumns,
-  levelSide,
-  predicatePrice,
-  predicateForSlot,
-  defaultActionForSlot,
-  setLevel,
 } from "./price-levels";
 import { resolveLadder } from "./levels";
 import type { ResolvedTrigger } from "./levels";
@@ -76,7 +69,6 @@ describe("floor vs target", () => {
     const levels = canonicalLevels({
       triggers: [resolved(trig(below(500), "EXIT", { id: "f" }))],
       direction: "LONG",
-      currentPrice: 420,
     });
     expect(levels.floor?.triggerId).toBe("f");
     expect(levels.target).toBeNull();
@@ -149,12 +141,9 @@ describe("duplicate levels on one side", () => {
         resolved(trig(above(1150), "EXIT", { id: "dest" })),
       ],
       direction: "LONG",
-      currentPrice: 762,
     });
     expect(levels.target?.triggerId).toBe("dest");
     expect(levels.all).toHaveLength(2);
-    // What happens next is the nearer one — that's the highlight.
-    expect(levels.next.above?.triggerId).toBe("first");
   });
 });
 
@@ -162,12 +151,18 @@ describe("duplicate levels on one side", () => {
 
 describe("projected levels", () => {
   it("places a trailing give-back at the price it currently sits at", () => {
-    expect(
-      predicatePrice(
-        { kind: "TRAILING_FROM_HIGH", pct: 8 },
-        { direction: "LONG", peakPrice: 900 },
-      ),
-    ).toBeCloseTo(828);
+    const levels = canonicalLevels({
+      triggers: [
+        resolved(
+          trig({ kind: "TRAILING_FROM_HIGH", pct: 8 }, "EXIT", { id: "trail" }),
+        ),
+      ],
+      direction: "LONG",
+      status: "HOLDING",
+      avgCost: 700,
+      peakPrice: 900,
+    });
+    expect(levels.floor?.price).toBeCloseTo(828);
   });
 
   it("lets a trail beat a lower typed stop as the effective floor", () => {
@@ -217,8 +212,9 @@ describe("projected levels", () => {
       avgCost: 700,
       peakPrice: 900,
     };
-    expect(canonicalLevels(input).floor?.projected).toBe(true);
-    expect(derivedColumns(input).stopLoss).toBe(680);
+    const out = canonicalLevels(input);
+    expect(out.floor?.projected).toBe(true);
+    expect(out.columns.stopLoss).toBe(680);
   });
 });
 
@@ -248,31 +244,44 @@ describe("entry", () => {
 // ── Writing a level back ───────────────────────────────────────────────
 
 describe("setLevel", () => {
+  const mint = (
+    slot: "ENTRY" | "FLOOR" | "TARGET",
+    price: number,
+    direction: string,
+    stored: Trigger[] = [],
+  ) =>
+    applyLevelArgs({
+      stored,
+      levels: { [slot.toLowerCase()]: price },
+      direction,
+      status: "WATCHING",
+      mintId: () => "new",
+    }).triggers;
+
   it("mints the right predicate per slot and direction", () => {
-    expect(predicateForSlot("FLOOR", 100, "LONG")).toEqual(below(100));
-    expect(predicateForSlot("FLOOR", 100, "SHORT")).toEqual(above(100));
-    expect(predicateForSlot("TARGET", 500, "LONG")).toEqual(above(500));
-    expect(predicateForSlot("ENTRY", 47, "SHORT")).toEqual(below(47));
+    expect(mint("FLOOR", 100, "LONG")[0].predicate).toEqual(below(100));
+    expect(mint("FLOOR", 100, "SHORT")[0].predicate).toEqual(above(100));
+    expect(mint("TARGET", 500, "LONG")[0].predicate).toEqual(above(500));
+    expect(mint("ENTRY", 47, "SHORT")[0].predicate).toEqual(below(47));
   });
 
   it("defaults a target to REVIEW, not EXIT", () => {
     // Ruling 2026-08-24: a target wakes a decision, it does not auto-sell.
-    expect(defaultActionForSlot("TARGET")).toBe("REVIEW");
-    expect(defaultActionForSlot("FLOOR")).toBe("EXIT");
+    expect(mint("TARGET", 500, "LONG")[0].action).toBe("REVIEW");
+    expect(mint("FLOOR", 100, "LONG")[0].action).toBe("EXIT");
   });
 
   it("edits in place so the trigger keeps its id and cooldown history", () => {
     const stored = [
       trig(below(680), "EXIT", { id: "keep", lastFiredAt: "2026-08-01T00:00:00Z" }),
     ];
-    const out = setLevel({
-      slot: "FLOOR",
-      price: 720,
-      direction: "LONG",
+    const out = applyLevelArgs({
       stored,
+      levels: { floor: 720 },
+      direction: "LONG",
+      status: "WATCHING",
       mintId: () => "new",
     });
-    expect(out.edited).toBe(true);
     expect(out.triggers).toHaveLength(1);
     expect(out.triggers[0].id).toBe("keep");
     expect(out.triggers[0].lastFiredAt).toBe("2026-08-01T00:00:00Z");
@@ -280,15 +289,14 @@ describe("setLevel", () => {
   });
 
   it("adds a trigger when the slot is empty", () => {
-    const out = setLevel({
-      slot: "TARGET",
-      price: 1150,
-      direction: "LONG",
+    const out = applyLevelArgs({
       stored: [],
-      mintId: () => "new",
+      levels: { target: 1150 },
+      direction: "LONG",
+      status: "WATCHING",
       source: "PRINCIPAL",
+      mintId: () => "new",
     });
-    expect(out.edited).toBe(false);
     expect(out.triggers[0]).toMatchObject({
       id: "new",
       action: "REVIEW",
@@ -302,11 +310,11 @@ describe("setLevel", () => {
       trig(below(100), "EXIT", { id: "stale" }),
       trig(below(500), "EXIT", { id: "live" }),
     ];
-    const out = setLevel({
-      slot: "FLOOR",
-      price: 520,
-      direction: "LONG",
+    const out = applyLevelArgs({
       stored,
+      levels: { floor: 520 },
+      direction: "LONG",
+      status: "WATCHING",
       mintId: () => "new",
     });
     expect(out.triggers).toHaveLength(1);
@@ -319,21 +327,18 @@ describe("setLevel", () => {
       trig(above(47), "ENTER", { id: "e" }),
       trig(below(40), "EXIT", { id: "f" }),
     ];
-    const out = setLevel({
-      slot: "ENTRY",
-      price: null,
-      direction: "LONG",
+    const out = applyLevelArgs({
       stored,
+      levels: { entry: null },
+      direction: "LONG",
+      status: "WATCHING",
       mintId: () => "new",
     });
     expect(out.triggers.map((t) => t.id)).toEqual(["f"]);
   });
 
   it("leaves an inherited trigger alone and writes a thesis-level override", () => {
-    const out = setLevel({
-      slot: "FLOOR",
-      price: 700,
-      direction: "LONG",
+    const out = applyLevelArgs({
       stored: [],
       inherited: [
         resolved(trig(below(600), "EXIT", { id: "acct" }), {
@@ -341,6 +346,9 @@ describe("setLevel", () => {
           inherited: true,
         }),
       ],
+      levels: { floor: 700 },
+      direction: "LONG",
+      status: "WATCHING",
       mintId: () => "new",
     });
     expect(out.triggers).toHaveLength(1);
@@ -554,37 +562,3 @@ describe("applyLevelArgs", () => {
   });
 });
 
-describe("columnsBackedByTriggers", () => {
-  it("passes when the columns match the triggers", () => {
-    expect(
-      columnsBackedByTriggers({
-        triggers: [trig(below(680), "EXIT", { id: "f" })],
-        columns: { entryPrice: null, targetPrice: null, stopLoss: 680 },
-        direction: "LONG",
-      }),
-    ).toEqual([]);
-  });
-
-  it("catches a stop with nothing behind it", () => {
-    const problems = columnsBackedByTriggers({
-      triggers: [],
-      columns: { entryPrice: null, targetPrice: null, stopLoss: 256 },
-      direction: "LONG",
-    });
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain("$256.00");
-    expect(problems[0]).toContain("decoration");
-  });
-
-  it("catches a column that disagrees with the trigger — the exact drift", () => {
-    // A row whose column says 730 while the floor that fires is at 948.
-    const problems = columnsBackedByTriggers({
-      triggers: [trig(below(948), "EXIT", { id: "f" })],
-      columns: { entryPrice: null, targetPrice: null, stopLoss: 730 },
-      direction: "LONG",
-    });
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain("$730.00");
-    expect(problems[0]).toContain("$948.00");
-  });
-});

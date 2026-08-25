@@ -46,10 +46,7 @@ import {
 } from "@/lib/agent/triggers/ratchet";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
-import {
-  applyLevelArgs,
-  columnsBackedByTriggers,
-} from "@/lib/agent/triggers/price-levels";
+import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
 import {
   writeThesisUpdate,
   diffThesisFields,

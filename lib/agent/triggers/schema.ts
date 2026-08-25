@@ -31,12 +31,7 @@ const urgencyEnum = z.enum(["LOW", "MEDIUM", "HIGH", "BREAKING"]);
 type PredicateShape =
   | { kind: "PRICE_ABOVE"; level: number }
   | { kind: "PRICE_BELOW"; level: number }
-  | {
-      kind: "PRICE_MOVE_PCT";
-      pct: number;
-      direction: "UP" | "DOWN";
-      window: "1D" | "5D" | "30D";
-    }
+  | { kind: "PRICE_MOVE_PCT"; pct: number; direction: "UP" | "DOWN"; window: "1D" }
   | { kind: "GAIN_FROM_ENTRY"; pct: number; direction: "UP" | "DOWN" }
   | { kind: "TRAILING_FROM_HIGH"; pct: number }
   | { kind: "VS_SMA"; period: 50 | 200; direction: "ABOVE" | "BELOW" }
@@ -64,7 +59,7 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
       kind: z.literal("PRICE_MOVE_PCT"),
       pct: z.number().positive(),
       direction: z.enum(["UP", "DOWN"]),
-      window: z.enum(["1D", "5D", "30D"]),
+      window: z.literal("1D"),
     }),
     z.object({
       kind: z.literal("GAIN_FROM_ENTRY"),

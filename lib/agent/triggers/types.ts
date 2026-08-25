@@ -55,12 +55,14 @@ export type TriggerPredicate =
   // ── Price-based — periodic worker against latest quote ────────────────
   | { kind: "PRICE_ABOVE"; level: number }
   | { kind: "PRICE_BELOW"; level: number }
-  | {
-      kind: "PRICE_MOVE_PCT";
-      pct: number;
-      direction: "UP" | "DOWN";
-      window: "1D" | "5D" | "30D";
-    }
+  // The daily move — "the stock is up/down X% today", off the quote's own
+  // change vs prior close. 5D and 30D windows were removed 2026-08-25: they
+  // needed a close series the 5-minute evaluator never had, so they silently
+  // evaluated false for their entire existence. Four theses carried one. A
+  // predicate that cannot fire is worse than no predicate, because the ladder
+  // says it is covered. Multi-day moves belong on the daily run, which reads
+  // the numbers directly off the row.
+  | { kind: "PRICE_MOVE_PCT"; pct: number; direction: "UP" | "DOWN"; window: "1D" }
   // Cumulative % vs the open position's avgCost (LONG: (price−avg)/avg;
   // SHORT inverted). UP = gain milestone ("we're up 10%" → checkpoint
   // re-underwrite); DOWN = drawdown-from-entry ("down 12%" → loser

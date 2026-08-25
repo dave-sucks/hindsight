@@ -1,54 +1,35 @@
 /**
- * Price levels, read off the trigger list — the single place that answers
- * "what is this thesis's entry / floor / target?"
+ * Price levels, read off the trigger list.
  *
- * > Design: docs/plans/LEVELS_AS_TRIGGERS.md (L1). Read the "Price Targets"
- * > section before changing anything here — this module IS that contract.
+ * > Design: docs/plans/LEVELS_AS_TRIGGERS.md
  *
- * ## There is no stop, target, or entry price
+ * There is no stop, target, or entry price. There is a **price level, a side,
+ * and an action** — "sell if it drops to $256" is a downside level with EXIT,
+ * "buy at $47" is a level with ENTER. `Thesis.stopLoss` / `targetPrice` /
+ * `entryPrice` are the pre-trigger app still sitting in the database; they
+ * become a cache computed here and are never authored directly.
  *
- * There is a **price level, a side, and an action**. "Sell if it drops to
- * $256" is a downside level with EXIT. "Buy at $47" is a level with ENTER.
- * "$60 — probably take profit, maybe raise the target" is an upside level
- * with REVIEW. `Thesis.stopLoss` / `targetPrice` / `entryPrice` are the
- * pre-trigger app still sitting in the database; they become a cache
- * computed here and are never authored directly.
+ * Four things leave this file:
  *
- * ## Floor vs target is the SIDE, never the magnitude
+ *   canonicalLevels  read  — what the card, the chart and the columns show
+ *   applyLevelArgs   write — a level change, as a trigger change
+ *   levelLabelState  read  — what the card says for one slot
+ *   isPlanLevel      read  — which triggers demotion removes
  *
- * A trigger can't say "exit at 100" — every price predicate carries a
- * direction (`PRICE_BELOW` / `PRICE_ABOVE`). So:
+ * Floor vs target is the SIDE, never the magnitude. A trigger can't say
+ * "exit at 100" — every price predicate carries a direction:
  *
  *              floor (protective)      target (opportunity)
  *   LONG       EXIT + below            EXIT|REVIEW + above
  *   SHORT      EXIT + above            EXIT|REVIEW + below
  *
- * Two EXITs at $100 and $500 on a long are not "the low one is the stop" —
- * one is `below $100` and the other is `above $500`, and the trigger says
- * which is which. A floor ABOVE the current price is legal and just means
- * we're about to be stopped out.
+ * A floor ABOVE the current price is legal; it means we're about to be
+ * stopped out.
  *
- * ## Why the effective floor is not always the hard stop
- *
- * SNOW showed "$256" on the card while its only real exit was a 3% trail
- * off the high. A trail IS a floor — it just moves. When a peak and entry
- * cost are supplied, position-scoped predicates are projected into the
- * price they currently sit at, so the card can show where we actually get
- * out rather than the highest number someone typed.
- *
- * The CACHED COLUMNS deliberately do NOT include that projection — see
- * `derivedColumns`. A projected trail moves with the peak, and
- * `Thesis.stopLoss` feeds prompts and the protective ratchet, which want a
- * stable number that means "the hard floor someone set."
- *
- * Pure module — no DB, no clock, no fetches.
+ * Pure — no DB, no clock, no fetches.
  */
 
-import type {
-  Trigger,
-  TriggerAction,
-  TriggerPredicate,
-} from "./types";
+import type { Trigger, TriggerAction, TriggerPredicate } from "./types";
 import type { ResolvedTrigger, TriggerLevel } from "./levels";
 
 // ── Shape ──────────────────────────────────────────────────────────────
@@ -56,55 +37,45 @@ import type { ResolvedTrigger, TriggerLevel } from "./levels";
 /** The three slots the Price Targets card renders. */
 export type LevelSlot = "ENTRY" | "FLOOR" | "TARGET";
 
-/**
- * Which way a level sits relative to the position's direction. UPSIDE is
- * where the trade makes money; DOWNSIDE is where it loses. Both are
- * direction-aware, so a SHORT's UPSIDE is a falling price.
- */
-export type LevelSide = "UPSIDE" | "DOWNSIDE";
-
 export interface PriceLevel {
-  /** The card slot this fills, or null for an extra level (chart only). */
   slot: LevelSlot | null;
-  /** The price this level sits at, in dollars. */
+  /** Where this level sits, in dollars. */
   price: number;
-  side: LevelSide;
+  /** UPSIDE is where the trade makes money — direction-aware. */
+  side: "UPSIDE" | "DOWNSIDE";
   action: TriggerAction;
   triggerId: string;
-  /** Where the trigger is stored — THESIS beats ANALYST beats ACCOUNT. */
   storedAt: TriggerLevel;
-  /** True when it comes from a level above this thesis (renders read-only). */
   inherited: boolean;
   /**
-   * True when `price` was computed from a moving predicate (a trail off the
-   * peak, a gain off entry cost) rather than typed as an absolute level.
-   * Drives a distinct chart line — it moves, and it isn't in the cache.
+   * The price moves: computed from a trail off the high or a gain off entry
+   * cost rather than typed as a level. Drives a distinct chart line, and is
+   * kept out of the cached columns.
    */
   projected: boolean;
   predicateKind: TriggerPredicate["kind"];
 }
 
 export interface CanonicalLevels {
-  /** Where we'd buy (WATCHING) or what we paid (HOLDING). */
+  /** Where we would buy (watching) or what we paid (held). */
   entry: PriceLevel | null;
-  /** The protective level that fires first — including a moving trail. */
+  /** The protective level that fires FIRST — may be a moving trail. */
   floor: PriceLevel | null;
-  /** The furthest opportunity level — the destination the rail runs to. */
+  /** The furthest opportunity level — the destination. */
   target: PriceLevel | null;
   /** Every price level, ascending. The chart draws all of these. */
   all: PriceLevel[];
   /**
-   * The level nearest the current price on each side — what happens next
-   * if it keeps moving. Null when no current price was supplied.
+   * The cached column values. Absolute levels only: a trail moves with the
+   * high, and `stopLoss` feeds prompts and the protective ratchet, which want
+   * the stable typed number. The card shows the moving one; the cache stores
+   * the typed one.
    */
-  next: { above: PriceLevel | null; below: PriceLevel | null };
-}
-
-/** The cached column values, computed from absolute price triggers only. */
-export interface DerivedColumns {
-  entryPrice: number | null;
-  targetPrice: number | null;
-  stopLoss: number | null;
+  columns: {
+    entryPrice: number | null;
+    targetPrice: number | null;
+    stopLoss: number | null;
+  };
 }
 
 export interface LevelInputs {
@@ -113,144 +84,62 @@ export interface LevelInputs {
   direction: string | null;
   /** HOLDING flips entry from "the plan" to "what we paid". */
   status?: string | null;
-  /** Position entry cost. Required to place entry on a held thesis. */
   avgCost?: number | null;
-  /** Position high-water mark, for projecting a trail into a price. */
+  /** Position high-water mark, for placing a trail at a real price. */
   peakPrice?: number | null;
-  /** Live price, for the `next` above/below split. */
-  currentPrice?: number | null;
 }
 
-// ── Reading levels off triggers ────────────────────────────────────────
-
-const ABSOLUTE_PRICE_KINDS = new Set<TriggerPredicate["kind"]>([
-  "PRICE_ABOVE",
-  "PRICE_BELOW",
-]);
-
-/** Kinds that describe a price indirectly and need position state to place. */
-const PROJECTED_PRICE_KINDS = new Set<TriggerPredicate["kind"]>([
+const ABSOLUTE = new Set<TriggerPredicate["kind"]>(["PRICE_ABOVE", "PRICE_BELOW"]);
+const PROJECTED = new Set<TriggerPredicate["kind"]>([
   "TRAILING_FROM_HIGH",
   "GAIN_FROM_ENTRY",
 ]);
 
-function isLongDirection(direction: string | null | undefined): boolean {
-  return direction !== "SHORT";
-}
+const isLong = (d: string | null | undefined) => d !== "SHORT";
 
-/**
- * Which side of the trade a price predicate sits on, direction-aware.
- * Returns null for anything that isn't a price level.
- */
-export function levelSide(
-  predicate: TriggerPredicate,
-  direction: string | null,
-): LevelSide | null {
-  const isLong = isLongDirection(direction);
-  switch (predicate.kind) {
-    case "PRICE_ABOVE":
-      return isLong ? "UPSIDE" : "DOWNSIDE";
-    case "PRICE_BELOW":
-      return isLong ? "DOWNSIDE" : "UPSIDE";
-    // A trail off the high is always a give-back — the losing side.
-    case "TRAILING_FROM_HIGH":
-      return "DOWNSIDE";
-    case "GAIN_FROM_ENTRY":
-      return predicate.direction === "UP" ? "UPSIDE" : "DOWNSIDE";
-    default:
-      return null;
-  }
-}
-
-/**
- * The dollar price a predicate currently sits at, or null when it isn't a
- * price level or we lack the position state to place it.
- *
- * Absolute kinds read their own level. Projected kinds are computed from
- * the position: a trail sits at `peak × (1 − pct)` on a long, a gain
- * milestone at `avgCost × (1 + pct)`.
- */
-export function predicatePrice(
-  predicate: TriggerPredicate,
-  ctx: { direction: string | null; avgCost?: number | null; peakPrice?: number | null },
-): number | null {
-  const isLong = isLongDirection(ctx.direction);
-  switch (predicate.kind) {
-    case "PRICE_ABOVE":
-    case "PRICE_BELOW":
-      return predicate.level;
-    case "TRAILING_FROM_HIGH": {
-      const peak = ctx.peakPrice;
-      if (peak == null || peak <= 0) return null;
-      return isLong
-        ? peak * (1 - predicate.pct / 100)
-        : peak * (1 + predicate.pct / 100);
-    }
-    case "GAIN_FROM_ENTRY": {
-      const avg = ctx.avgCost;
-      if (avg == null || avg <= 0) return null;
-      // UP = a gain milestone, DOWN = a drawdown. On a SHORT a gain is a
-      // falling price, so both signs invert.
-      const up = predicate.direction === "UP";
-      const favourable = isLong ? up : !up;
-      const magnitude = predicate.pct / 100;
-      return favourable ? avg * (1 + magnitude) : avg * (1 - magnitude);
-    }
-    default:
-      return null;
-  }
-}
+// ── Read ───────────────────────────────────────────────────────────────
 
 /**
  * Read the canonical levels off a resolved trigger list.
  *
- * Slot assignment, all direction-aware:
- *   ENTRY  — the ENTER trigger. On a HOLDING thesis this is superseded by
- *            the actual fill price: once you own it, entry is a fact, not
- *            a plan, and showing yesterday's plan is how KLAC-shaped rows
- *            display a buy level nobody is waiting for any more.
- *   FLOOR  — the protective EXIT that fires FIRST. Among several, the
- *            tightest wins (highest on a long), because that's the one you
- *            actually hit. A projected trail competes on equal terms.
- *   TARGET — the FURTHEST opportunity level (EXIT or REVIEW). That's the
- *            destination the card's rail runs to; intermediate levels stay
- *            in `all` as chart ticks so tiered trims render properly.
+ *   ENTRY  — the ENTER trigger; on a held thesis the actual fill instead.
+ *            Once you own it, entry is a fact, not a plan.
+ *   FLOOR  — the protective EXIT that fires FIRST. Among several the tightest
+ *            wins, because that is the one you hit. A trail competes on equal
+ *            terms: SNOW showed "$256" while its only real exit was a
+ *            give-back off the high.
+ *   TARGET — the FURTHEST opportunity level. Intermediate levels stay in
+ *            `all` so tiered trims render as their own chart lines.
  */
 export function canonicalLevels(input: LevelInputs): CanonicalLevels {
-  const { triggers, direction, status, avgCost, peakPrice, currentPrice } = input;
-  const isLong = isLongDirection(direction);
-  const held = status === "HOLDING";
+  const { triggers, direction, status, avgCost, peakPrice } = input;
+  const long = isLong(direction);
 
   const all: PriceLevel[] = [];
   for (const t of triggers) {
     const kind = t.predicate.kind;
-    const isAbsolute = ABSOLUTE_PRICE_KINDS.has(kind);
-    if (!isAbsolute && !PROJECTED_PRICE_KINDS.has(kind)) continue;
-
+    const absolute = ABSOLUTE.has(kind);
+    if (!absolute && !PROJECTED.has(kind)) continue;
     const side = levelSide(t.predicate, direction);
     if (side == null) continue;
     const price = predicatePrice(t.predicate, { direction, avgCost, peakPrice });
-    // A projected level with no position state can't be placed on a chart.
-    // Dropping it is correct: it is genuinely not at a price right now.
+    // A projected level with no position state genuinely is not at a price.
     if (price == null || !Number.isFinite(price) || price <= 0) continue;
-
     all.push({
-      slot: null, // assigned below
+      slot: null,
       price,
       side,
       action: t.action,
       triggerId: t.id,
       storedAt: t.level,
       inherited: t.inherited,
-      projected: !isAbsolute,
+      projected: !absolute,
       predicateKind: kind,
     });
   }
-
   all.sort((a, b) => a.price - b.price);
 
-  // ── ENTRY ────────────────────────────────────────────────────────────
-  // On a held thesis the fill price wins outright — see the docstring.
+  const held = status === "HOLDING";
   let entry: PriceLevel | null = null;
   if (held && avgCost != null && avgCost > 0) {
     entry = {
@@ -265,332 +154,185 @@ export function canonicalLevels(input: LevelInputs): CanonicalLevels {
       predicateKind: "PRICE_ABOVE",
     };
   } else {
-    const enters = all.filter((l) => l.action === "ENTER");
-    // The cascade collapses above/below ENTER into one bucket, so there is
-    // normally exactly one. If a legacy row carries several, take the one
-    // nearest today's price — the level actually being waited on.
-    entry = pickNearest(enters, currentPrice) ?? enters[0] ?? null;
-    if (entry) entry = { ...entry, slot: "ENTRY" };
+    const e = all.find((l) => l.action === "ENTER");
+    entry = e ? { ...e, slot: "ENTRY" } : null;
   }
 
-  // ── FLOOR ────────────────────────────────────────────────────────────
-  // Protective EXITs on the losing side. The tightest is the one that
-  // fires first, so it is the real floor regardless of what else is set.
   const floors = all.filter((l) => l.side === "DOWNSIDE" && l.action === "EXIT");
-  let floor = tightestFloor(floors, isLong);
-  if (floor) floor = { ...floor, slot: "FLOOR" };
-
-  // ── TARGET ───────────────────────────────────────────────────────────
-  // Opportunity-side levels that represent a decision: sell here, or
-  // reconsider here. ADD/TRIM levels are real chart lines but they aren't
-  // the destination, so they don't claim the slot.
-  const targets = all.filter(
-    (l) =>
-      l.side === "UPSIDE" &&
-      (l.action === "EXIT" || l.action === "REVIEW") &&
-      // A gain milestone off entry is a checkpoint, not a price target —
-      // it belongs on the chart, not in the headline slot.
-      !l.projected,
+  const floor = firstToFire(floors, long);
+  const target = furthest(
+    all.filter(
+      (l) =>
+        l.side === "UPSIDE" &&
+        (l.action === "EXIT" || l.action === "REVIEW") &&
+        // A gain milestone off entry is a checkpoint, not a destination.
+        !l.projected,
+    ),
+    long,
   );
-  let target = furthestTarget(targets, isLong);
-  if (target) target = { ...target, slot: "TARGET" };
 
-  // Stamp the slots back onto `all` so a single pass can render both.
   const slotById = new Map<string, LevelSlot>();
   if (entry?.triggerId) slotById.set(entry.triggerId, "ENTRY");
-  if (floor?.triggerId) slotById.set(floor.triggerId, "FLOOR");
-  if (target?.triggerId) slotById.set(target.triggerId, "TARGET");
-  const allWithSlots = all.map((l) => ({
-    ...l,
-    slot: slotById.get(l.triggerId) ?? null,
-  }));
+  if (floor) slotById.set(floor.triggerId, "FLOOR");
+  if (target) slotById.set(target.triggerId, "TARGET");
 
   return {
     entry,
-    floor,
-    target,
-    all: allWithSlots,
-    next: {
-      above: nearestOnSide(allWithSlots, currentPrice, "above"),
-      below: nearestOnSide(allWithSlots, currentPrice, "below"),
+    floor: floor ? { ...floor, slot: "FLOOR" } : null,
+    target: target ? { ...target, slot: "TARGET" } : null,
+    all: all.map((l) => ({ ...l, slot: slotById.get(l.triggerId) ?? null })),
+    columns: {
+      entryPrice: entry?.price ?? null,
+      targetPrice: target?.price ?? null,
+      // Typed floors only — see CanonicalLevels.columns.
+      stopLoss:
+        firstToFire(floors.filter((l) => !l.projected), long)?.price ?? null,
     },
   };
 }
 
+// ── Write ──────────────────────────────────────────────────────────────
+
 /**
- * The cached column values.
+ * Apply level changes by writing TRIGGERS, then recompute the columns from
+ * the result. The single write path behind `stop_loss` / `target_price` /
+ * `entry_price` on every tool.
  *
- * Absolute price triggers ONLY — a projected trail moves with the peak, and
- * these columns feed prompts and the protective ratchet, which want "the
- * hard floor someone set" to be a stable number. The card shows the moving
- * one; the cache stores the typed one.
+ * Two properties this exists for:
  *
- * `entryPrice` follows the same rule as the card: the fill price once held,
- * the ENTER trigger while watching.
+ *  1. A level change IS a trigger change. SNOW happened because the agent
+ *     raised `stop_loss` to $256 and no trigger was written.
+ *  2. A wholesale trigger replace cannot leave a stale column: the columns
+ *     are recomputed from the FINAL list, so resending a ladder without the
+ *     floor nulls `stopLoss` too. Whether that drop is ALLOWED is the ratchet
+ *     gate's job — run it on this output.
+ *
+ * `undefined` leaves a slot alone; `null` clears it.
  */
-export function derivedColumns(input: LevelInputs): DerivedColumns {
-  // Re-read with the projection inputs withheld so nothing moving can leak
-  // into the cache, whatever the caller passed.
-  const levels = canonicalLevels({
-    ...input,
-    peakPrice: null,
-    avgCost: input.status === "HOLDING" ? input.avgCost : null,
-  });
+export function applyLevelArgs(args: {
+  /** Thesis-stored triggers, post wholesale-replace if one happened. */
+  stored: Trigger[];
+  /** The resolved analyst/account levels above this thesis. */
+  inherited?: ResolvedTrigger[];
+  levels: { entry?: number | null; target?: number | null; floor?: number | null };
+  direction: string | null;
+  status?: string | null;
+  avgCost?: number | null;
+  source?: Trigger["source"];
+  mintId: () => string;
+}): { triggers: Trigger[]; columns: CanonicalLevels["columns"] } {
+  const { stored, inherited, levels, direction, status, avgCost, source, mintId } =
+    args;
+  let triggers = stored;
+
+  for (const [slot, price] of [
+    ["ENTRY", levels.entry],
+    ["FLOOR", levels.floor],
+    ["TARGET", levels.target],
+  ] as Array<[LevelSlot, number | null | undefined]>) {
+    if (price === undefined) continue;
+    // On a held thesis `entryPrice` is the fill, not a plan. Minting a buy
+    // trigger for it re-arms a purchase on a name we already own — the
+    // 2026-05-19 bug where 35 of 36 ENTER tacticals fired on held tickers.
+    if (slot === "ENTRY" && status === "HOLDING") continue;
+    triggers = setLevel(slot, price, direction, triggers, mintId, source);
+  }
+
   return {
-    entryPrice: levels.entry?.price ?? null,
-    targetPrice: levels.target?.price ?? null,
-    stopLoss: levels.floor && !levels.floor.projected ? levels.floor.price : null,
+    triggers,
+    columns: canonicalLevels({
+      triggers: [
+        ...triggers.map((t) => ({
+          ...t,
+          level: "THESIS" as const,
+          inherited: false,
+        })),
+        ...(inherited ?? []),
+      ],
+      direction,
+      status,
+      avgCost,
+    }).columns,
   };
 }
 
-// ── Writing a level back as a trigger ──────────────────────────────────
-
 /**
- * The predicate that expresses "this slot, at this price", for this
- * direction. The inverse of `levelSide`.
- *
- * ENTRY is direction-only: a long enters on a break UP through the level, a
- * short on a break DOWN. (Buy-the-dip is a legitimate want and is NOT
- * handled by flipping this — it's an ENTER trigger at the account or
- * analyst level. See docs/plans/ENTRY_TRIGGER_SEMANTICS.md; do not rebuild
- * it as a setting, that was removed 2026-08-16.)
+ * Set or clear one slot. Editing an existing trigger in the slot is preferred
+ * over adding, so it keeps its id and with it its cooldown history and
+ * `source` stamp. A duplicate behind it is dropped — a second trigger in the
+ * same slot is the hazard where the level you set is not the level that fires.
  */
-export function predicateForSlot(
+function setLevel(
   slot: LevelSlot,
-  price: number,
+  price: number | null,
   direction: string | null,
-): Extract<TriggerPredicate, { kind: "PRICE_ABOVE" | "PRICE_BELOW" }> {
-  const isLong = isLongDirection(direction);
-  const above = { kind: "PRICE_ABOVE" as const, level: price };
-  const below = { kind: "PRICE_BELOW" as const, level: price };
-  switch (slot) {
-    case "ENTRY":
-      return isLong ? above : below;
-    case "FLOOR":
-      return isLong ? below : above;
-    case "TARGET":
-      return isLong ? above : below;
-  }
-}
-
-/**
- * The default action for a slot.
- *
- * TARGET is REVIEW, not EXIT (principal ruling 2026-08-24). A floor is
- * protective and should act on its own; a target is an opportunity and
- * should wake a decision. Auto-selling at the target re-introduces the
- * capped-winner problem the trigger ladder exists to fix, and the trailing
- * give-back already protects the downside while the decision waits. An
- * explicit `EXIT + above` remains authorable per name — this only decides
- * what gets minted by default.
- */
-export function defaultActionForSlot(slot: LevelSlot): TriggerAction {
-  switch (slot) {
-    case "ENTRY":
-      return "ENTER";
-    case "FLOOR":
-      return "EXIT";
-    case "TARGET":
-      return "REVIEW";
-  }
-}
-
-/** Prose for a minted level, in product language — no jargon. */
-export function rationaleForSlot(
-  slot: LevelSlot,
-  price: number,
-  direction: string | null,
-): string {
-  const isLong = isLongDirection(direction);
-  const p = `$${price.toFixed(2)}`;
-  switch (slot) {
-    case "ENTRY":
-      return isLong
-        ? `Buy level — start the position when the price breaks above ${p}.`
-        : `Short entry — start the position when the price breaks below ${p}.`;
-    case "FLOOR":
-      return isLong
-        ? `Floor — sell if the price drops to ${p}. Below this the plan is wrong.`
-        : `Floor — cover if the price rises to ${p}. Above this the plan is wrong.`;
-    case "TARGET":
-      return `Target ${p} — the move we're playing for. Decide here: take it, trim it, or raise the target.`;
-  }
-}
-
-export interface SetLevelResult {
-  /** The trigger list to store, with the level applied. */
-  triggers: Trigger[];
-  /** True when an existing trigger's price was changed rather than added. */
-  edited: boolean;
-}
-
-/**
- * Apply a level change to a THESIS-stored trigger list.
- *
- * Editing the price of an existing trigger in the slot is preferred over
- * adding one, so the trigger keeps its id — and with it its cooldown
- * history and `source` stamp. Passing `price: null` removes the slot's
- * trigger, which is how a plan gets set down (see L5 / DAV-209).
- *
- * `inherited` is the resolved ladder from the levels ABOVE this thesis. A
- * slot whose only trigger is inherited gets a new thesis-level trigger that
- * overrides it — we never mutate a shared trigger from here.
- */
-export function setLevel(args: {
-  slot: LevelSlot;
-  price: number | null;
-  direction: string | null;
-  stored: Trigger[];
-  inherited?: ResolvedTrigger[];
-  /** Stamped on a newly-minted trigger. */
-  source?: Trigger["source"];
-  /** Supplies the id for a newly-minted trigger (kept injectable for tests). */
-  mintId: () => string;
-  rationale?: string;
-}): SetLevelResult {
-  const { slot, price, direction, stored, source, mintId } = args;
-  const action = defaultActionForSlot(slot);
+  stored: Trigger[],
+  mintId: () => string,
+  source?: Trigger["source"],
+): Trigger[] {
   const side = slot === "FLOOR" ? "DOWNSIDE" : "UPSIDE";
-
   const occupies = (t: Trigger): boolean => {
-    if (!ABSOLUTE_PRICE_KINDS.has(t.predicate.kind)) return false;
+    if (!ABSOLUTE.has(t.predicate.kind)) return false;
     if (slot === "ENTRY") return t.action === "ENTER";
-    if (levelSide(t.predicate, direction) !== side) return false;
     if (t.action === "ENTER") return false;
+    if (levelSide(t.predicate, direction) !== side) return false;
     return slot === "FLOOR"
       ? t.action === "EXIT"
       : t.action === "EXIT" || t.action === "REVIEW";
   };
 
+  if (price == null) return stored.filter((t) => !occupies(t));
+
   const matches = stored.filter(occupies);
-
-  if (price == null) {
-    return { triggers: stored.filter((t) => !occupies(t)), edited: matches.length > 0 };
-  }
-
   if (matches.length > 0) {
-    // Edit the one the slot resolves to, and drop any duplicate behind it —
-    // a second trigger in the same slot is the KLAC-shaped hazard where the
-    // level you set isn't the level that fires.
-    const keep = slot === "FLOOR"
-      ? tightestOf(matches, direction)
-      : slot === "TARGET"
-        ? furthestOf(matches, direction)
-        : matches[0];
-    return {
-      triggers: stored
-        .filter((t) => !occupies(t) || t.id === keep.id)
-        .map((t) =>
-          t.id === keep.id
-            ? { ...t, predicate: predicateForSlot(slot, price, direction) }
-            : t,
-        ),
-      edited: true,
-    };
+    const long = isLong(direction);
+    // Floor: keep the tightest. Target: keep the furthest. Same comparison
+    // either way — the level deepest in that slot's direction.
+    const keep =
+      slot === "ENTRY"
+        ? matches[0]
+        : matches.reduce((best, t) => {
+            const a = priceOf(t);
+            const b = priceOf(best);
+            if (a == null || b == null) return best;
+            return (long ? a > b : a < b) ? t : best;
+          });
+    return stored
+      .filter((t) => !occupies(t) || t.id === keep.id)
+      .map((t) =>
+        t.id === keep.id
+          ? { ...t, predicate: predicateFor(slot, price, direction) }
+          : t,
+      );
   }
 
-  return {
-    triggers: [
-      ...stored,
-      {
-        id: mintId(),
-        predicate: predicateForSlot(slot, price, direction),
-        action,
-        rationale: args.rationale ?? rationaleForSlot(slot, price, direction),
-        ...(source ? { source } : {}),
-      },
-    ],
-    edited: false,
-  };
-}
-
-// ── Internals ──────────────────────────────────────────────────────────
-
-/**
- * The floor that fires first. On a long, floors sit below the price and the
- * HIGHEST is hit first; on a short they sit above and the LOWEST is.
- */
-function tightestFloor(levels: PriceLevel[], isLong: boolean): PriceLevel | null {
-  if (levels.length === 0) return null;
-  return levels.reduce((best, l) =>
-    (isLong ? l.price > best.price : l.price < best.price) ? l : best,
-  );
-}
-
-/** The destination — furthest in the winning direction. */
-function furthestTarget(levels: PriceLevel[], isLong: boolean): PriceLevel | null {
-  if (levels.length === 0) return null;
-  return levels.reduce((best, l) =>
-    (isLong ? l.price > best.price : l.price < best.price) ? l : best,
-  );
-}
-
-function tightestOf(triggers: Trigger[], direction: string | null): Trigger {
-  const isLong = isLongDirection(direction);
-  return triggers.reduce((best, t) => {
-    const a = priceOf(t);
-    const b = priceOf(best);
-    if (a == null) return best;
-    if (b == null) return t;
-    return (isLong ? a > b : a < b) ? t : best;
-  });
-}
-
-function furthestOf(triggers: Trigger[], direction: string | null): Trigger {
-  const isLong = isLongDirection(direction);
-  return triggers.reduce((best, t) => {
-    const a = priceOf(t);
-    const b = priceOf(best);
-    if (a == null) return best;
-    if (b == null) return t;
-    return (isLong ? a > b : a < b) ? t : best;
-  });
-}
-
-function priceOf(t: Trigger): number | null {
-  return t.predicate.kind === "PRICE_ABOVE" || t.predicate.kind === "PRICE_BELOW"
-    ? t.predicate.level
-    : null;
-}
-
-function pickNearest(levels: PriceLevel[], price: number | null | undefined) {
-  if (levels.length === 0 || price == null) return null;
-  return levels.reduce((best, l) =>
-    Math.abs(l.price - price) < Math.abs(best.price - price) ? l : best,
-  );
-}
-
-function nearestOnSide(
-  levels: PriceLevel[],
-  price: number | null | undefined,
-  side: "above" | "below",
-): PriceLevel | null {
-  if (price == null) return null;
-  const candidates = levels.filter((l) =>
-    side === "above" ? l.price > price : l.price < price,
-  );
-  if (candidates.length === 0) return null;
-  return candidates.reduce((best, l) =>
-    Math.abs(l.price - price) < Math.abs(best.price - price) ? l : best,
-  );
+  return [
+    ...stored,
+    {
+      id: mintId(),
+      predicate: predicateFor(slot, price, direction),
+      // A target is REVIEW, not EXIT (ruling 2026-08-24): a floor is
+      // protective and acts on its own; a target is an opportunity and wakes
+      // a decision. Auto-selling at the target re-creates the capped-winner
+      // problem the ladder exists to fix, and the trail already protects the
+      // downside while the decision waits.
+      action: slot === "ENTRY" ? "ENTER" : slot === "FLOOR" ? "EXIT" : "REVIEW",
+      rationale: rationaleFor(slot, price, direction),
+      ...(source ? { source } : {}),
+    },
+  ];
 }
 
 // ── Display ────────────────────────────────────────────────────────────
 
 /**
- * What the Price Targets card should say for one slot.
- *
- * Three states, and the third is the point of the whole project: a cached
- * column with no trigger behind it is decoration, and rendering it as plain
- * "Stop $256" is the lie SNOW told on a live position for months. Pure so it
- * can be tested without a DOM.
+ * What the card says for one slot. Three states, and the third is the point:
+ * a cached column with no trigger behind it is decoration, and rendering it
+ * as plain "Stop $256" is the lie SNOW told on a live position for months.
  */
 export type LevelLabelState =
-  /** A level that fires. `moving` = it's a trail, so the price drifts. */
   | { kind: "live"; price: number; moving: boolean }
-  /** A stored number nothing enforces — show it struck through. */
   | { kind: "decorative"; price: number }
-  /** No level at all. */
   | { kind: "none" };
 
 export function levelLabelState(
@@ -602,192 +344,134 @@ export function levelLabelState(
   return { kind: "none" };
 }
 
-// ── Derive-on-write ────────────────────────────────────────────────────
-
-/** The level arguments a tool accepts, in slot terms. `null` clears. */
-export interface LevelArgs {
-  entry?: number | null;
-  target?: number | null;
-  floor?: number | null;
-}
-
-export interface AppliedLevels {
-  /** The trigger list to store. */
-  triggers: Trigger[];
-  /** The cached columns, recomputed from those triggers. */
-  columns: DerivedColumns;
-  /** Which slots this call actually changed. */
-  changed: LevelSlot[];
-}
-
-/**
- * Apply level arguments by writing TRIGGERS, then recompute the columns from
- * the result. The single write path behind `stop_loss` / `target_price` /
- * `entry_price` on every tool.
- *
- * Two properties this exists to guarantee:
- *
- *  1. **A level change is a trigger change.** SNOW happened because the agent
- *     raised `stop_loss` to $256 and no trigger was written — the column and
- *     the ladder are two stores of one idea and they drifted. Here the column
- *     cannot move without the trigger moving.
- *
- *  2. **A wholesale trigger replace can't silently drop a level.** The columns
- *     are recomputed from the FINAL trigger list, so if the agent resends its
- *     triggers without the floor, `stopLoss` goes null too rather than
- *     lingering as a number nothing enforces. (Whether it's *allowed* to drop
- *     that floor is the ratchet gate's job, not this function's — run the
- *     ratchet on the output.)
- *
- * Order matters: explicit level args are applied ON TOP of any wholesale
- * replace, so `update_thesis({ triggers: [...], stop_loss: 720 })` ends with
- * the floor at 720.
- */
-export function applyLevelArgs(args: {
-  /** Thesis-stored triggers, post wholesale-replace if one happened. */
-  stored: Trigger[];
-  /** The resolved analyst/account levels above this thesis. */
-  inherited?: ResolvedTrigger[];
-  levels: LevelArgs;
-  direction: string | null;
-  status?: string | null;
-  /** Position entry cost — makes `entryPrice` the fill on a held thesis. */
-  avgCost?: number | null;
-  source?: Trigger["source"];
-  mintId: () => string;
-}): AppliedLevels {
-  const { stored, inherited, levels, direction, status, avgCost, source, mintId } =
-    args;
-  let triggers = stored;
-  const changed: LevelSlot[] = [];
-
-  const slots: Array<[LevelSlot, number | null | undefined]> = [
-    ["ENTRY", levels.entry],
-    ["FLOOR", levels.floor],
-    ["TARGET", levels.target],
-  ];
-  for (const [slot, price] of slots) {
-    if (price === undefined) continue; // not supplied — leave the slot alone
-    // On a held thesis `entryPrice` is the fill, not a plan. Writing an ENTER
-    // trigger for it would re-arm a buy on a name we already own — the
-    // 2026-05-19 "35 of 36 ENTER tacticals fired on already-held tickers"
-    // bug. Accept the argument, skip the trigger; the column still derives
-    // from avgCost.
-    if (slot === "ENTRY" && status === "HOLDING") continue;
-    const before = triggers;
-    triggers = setLevel({
-      slot,
-      price,
-      direction,
-      stored: triggers,
-      inherited,
-      source,
-      mintId,
-    }).triggers;
-    if (before !== triggers) changed.push(slot);
-  }
-
-  // Recompute from the FINAL list, resolved over what it inherits — a thesis
-  // protected only by an account floor still has a floor, and the column
-  // should say so.
-  const resolvedForColumns: ResolvedTrigger[] = [
-    ...triggers.map((t) => ({ ...t, level: "THESIS" as const, inherited: false })),
-    ...(inherited ?? []),
-  ];
-  return {
-    triggers,
-    columns: derivedColumns({
-      triggers: resolvedForColumns,
-      direction,
-      status,
-      avgCost,
-    }),
-    changed,
-  };
-}
-
-/**
- * Layer-1 assertion: refuse a write whose cached columns disagree with the
- * triggers that would be stored alongside them.
- *
- * Nothing legitimate produces a disagreement once every tool goes through
- * `applyLevelArgs` — which is the point. This catches the write path someone
- * adds later that sets `stopLoss` directly, before it reaches production and
- * quietly re-creates SNOW. Returns the problems in product language, empty
- * when the write is consistent.
- */
-export function columnsBackedByTriggers(args: {
-  triggers: Trigger[];
-  inherited?: ResolvedTrigger[];
-  columns: DerivedColumns;
-  direction: string | null;
-  status?: string | null;
-  avgCost?: number | null;
-}): string[] {
-  const expected = derivedColumns({
-    triggers: [
-      ...args.triggers.map((t) => ({
-        ...t,
-        level: "THESIS" as const,
-        inherited: false,
-      })),
-      ...(args.inherited ?? []),
-    ],
-    direction: args.direction,
-    status: args.status,
-    avgCost: args.avgCost,
-  });
-  const out: string[] = [];
-  const check = (
-    name: string,
-    got: number | null,
-    want: number | null,
-    what: string,
-  ) => {
-    // Float tolerance: these round-trip through Prisma Float columns.
-    const same =
-      got == null && want == null
-        ? true
-        : got != null && want != null && Math.abs(got - want) < 0.005;
-    if (same) return;
-    out.push(
-      want == null
-        ? `${name} is set to ${fmt(got)} but no ${what} exists — that number would be decoration.`
-        : `${name} is set to ${fmt(got)} but the ${what} is at ${fmt(want)}.`,
-    );
-  };
-  check("The stop", args.columns.stopLoss, expected.stopLoss, "sell-below level");
-  check("The target", args.columns.targetPrice, expected.targetPrice, "upside level");
-  check("The entry", args.columns.entryPrice, expected.entryPrice, "buy level");
-  return out;
-}
-
-function fmt(n: number | null): string {
-  return n == null ? "nothing" : `$${n.toFixed(2)}`;
-}
-
 // ── Demotion ───────────────────────────────────────────────────────────
-
-/** Actions whose price levels constitute "the priced plan". */
-const PLAN_ACTIONS = new Set(["ENTER", "EXIT", "REVIEW"]);
 
 /**
  * Is this trigger part of the priced plan — the buy level, the floor, or the
- * target?
+ * target? Those are what demotion removes.
  *
  * Only absolute price levels qualify. A review cadence, an earnings trigger
- * or a percentage move is not a price plan and survives demotion: the whole
- * point is that the item keeps being watched.
- *
- * An upside REVIEW is the target and goes; a DOWNSIDE review ("price dropped
- * to support — better entry, or thesis weakening?") is a watching instruction
- * rather than a plan level, so it stays.
+ * or a percentage move is not a plan level and survives: the whole point is
+ * that the item keeps being watched. A DOWNSIDE review ("price dropped to
+ * support — better entry, or thesis weakening?") is a watching instruction
+ * rather than a plan level, so it stays too.
  */
 export function isPlanLevel(t: Trigger, direction: string | null): boolean {
-  const kind = t.predicate.kind;
-  if (kind !== "PRICE_ABOVE" && kind !== "PRICE_BELOW") return false;
-  if (!PLAN_ACTIONS.has(t.action)) return false;
+  if (!ABSOLUTE.has(t.predicate.kind)) return false;
   if (t.action === "ENTER" || t.action === "EXIT") return true;
+  if (t.action !== "REVIEW") return false;
   return levelSide(t.predicate, direction) === "UPSIDE";
 }
 
+// ── Internals ──────────────────────────────────────────────────────────
+
+/** Which side of the trade a price predicate sits on. Null if not a level. */
+function levelSide(
+  p: TriggerPredicate,
+  direction: string | null,
+): "UPSIDE" | "DOWNSIDE" | null {
+  const long = isLong(direction);
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+      return long ? "UPSIDE" : "DOWNSIDE";
+    case "PRICE_BELOW":
+      return long ? "DOWNSIDE" : "UPSIDE";
+    case "TRAILING_FROM_HIGH":
+      return "DOWNSIDE"; // a give-back is always the losing side
+    case "GAIN_FROM_ENTRY":
+      return p.direction === "UP" ? "UPSIDE" : "DOWNSIDE";
+    default:
+      return null;
+  }
+}
+
+/** The dollar price a predicate currently sits at, or null. */
+function predicatePrice(
+  p: TriggerPredicate,
+  ctx: {
+    direction: string | null;
+    avgCost?: number | null;
+    peakPrice?: number | null;
+  },
+): number | null {
+  const long = isLong(ctx.direction);
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+    case "PRICE_BELOW":
+      return p.level;
+    case "TRAILING_FROM_HIGH": {
+      const peak = ctx.peakPrice;
+      if (peak == null || peak <= 0) return null;
+      return long ? peak * (1 - p.pct / 100) : peak * (1 + p.pct / 100);
+    }
+    case "GAIN_FROM_ENTRY": {
+      const avg = ctx.avgCost;
+      if (avg == null || avg <= 0) return null;
+      const up = p.direction === "UP";
+      const favourable = long ? up : !up;
+      return favourable ? avg * (1 + p.pct / 100) : avg * (1 - p.pct / 100);
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * ENTRY is direction-only: a long enters on a break UP, a short on a break
+ * DOWN. Buy-the-dip is a legitimate want and is NOT this — it is an ENTER
+ * trigger at the account or analyst level. See ENTRY_TRIGGER_SEMANTICS.md;
+ * do not rebuild it as a setting, that was removed 2026-08-16.
+ */
+function predicateFor(
+  slot: LevelSlot,
+  price: number,
+  direction: string | null,
+): Extract<TriggerPredicate, { kind: "PRICE_ABOVE" | "PRICE_BELOW" }> {
+  const long = isLong(direction);
+  const wantsAbove = slot === "FLOOR" ? !long : long;
+  return wantsAbove
+    ? { kind: "PRICE_ABOVE", level: price }
+    : { kind: "PRICE_BELOW", level: price };
+}
+
+function rationaleFor(
+  slot: LevelSlot,
+  price: number,
+  direction: string | null,
+): string {
+  const long = isLong(direction);
+  const p = `$${price.toFixed(2)}`;
+  if (slot === "ENTRY") {
+    return long
+      ? `Buy level — start the position when the price breaks above ${p}.`
+      : `Short entry — start the position when the price breaks below ${p}.`;
+  }
+  if (slot === "FLOOR") {
+    return long
+      ? `Floor — sell if the price drops to ${p}. Below this the plan is wrong.`
+      : `Floor — cover if the price rises to ${p}. Above this the plan is wrong.`;
+  }
+  return `Target ${p} — decide here: take it, trim it, or raise the target.`;
+}
+
+/** The floor you hit first: highest on a long, lowest on a short. */
+function firstToFire(levels: PriceLevel[], long: boolean): PriceLevel | null {
+  if (levels.length === 0) return null;
+  return levels.reduce((best, l) =>
+    (long ? l.price > best.price : l.price < best.price) ? l : best,
+  );
+}
+
+/** The destination: furthest in the winning direction. */
+function furthest(levels: PriceLevel[], long: boolean): PriceLevel | null {
+  if (levels.length === 0) return null;
+  return levels.reduce((best, l) =>
+    (long ? l.price > best.price : l.price < best.price) ? l : best,
+  );
+}
+
+function priceOf(t: Trigger): number | null {
+  return t.predicate.kind === "PRICE_ABOVE" || t.predicate.kind === "PRICE_BELOW"
+    ? t.predicate.level
+    : null;
+}
