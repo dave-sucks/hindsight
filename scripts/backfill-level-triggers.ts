@@ -143,6 +143,8 @@ async function main() {
       // alongside would give three watchlist names two contradictory ways in.
       // An analyst who chose "buy on the beat" did not ask for "also buy at
       // $340".
+      // A buy level is only missing when there is NO way in at all — and
+      // even then only the TRIGGER is minted; the column above is left alone.
       entry:
         t.status === "WATCHING" &&
         t.entryPrice != null &&
@@ -174,15 +176,33 @@ async function main() {
 
     const applied = applyLevelArgs({
       stored, inherited, levels, direction: t.direction, status: t.status,
-      source: "PRINCIPAL", mintId: () => randomUUID(),
+      // DEFAULT, not PRINCIPAL. PRINCIPAL means "the principal chose this
+      // number": it tells the agent to honour the level and not re-propose
+      // against it, and it exempts the level from the protective ratchet.
+      // The first run signed 43 machine-generated levels with a name that
+      // did not author them. Re-stamped in the database by hand.
+      source: "DEFAULT", mintId: () => randomUUID(),
     });
     await prisma.thesis.update({
       where: { id: t.id },
       data: {
         triggers: [...applied.triggers, ...unreadable] as unknown as object[],
-        entryPrice: applied.columns.entryPrice,
         targetPrice: applied.columns.targetPrice,
         stopLoss: applied.columns.stopLoss,
+        // entryPrice is NEVER written here. It is what you paid, or your
+        // target buy price — authored intent either way. The first run
+        // rewrote it from whatever the buy TRIGGER said, which changed four
+        // of them (ABT 96->98, ETN 391.39->380, MSFT 418.57->520, NOW
+        // 110->130) and NULLED three more (GD, GEV, VST) whose buy trigger
+        // isn't a price at all but an earnings beat, a moving-average
+        // reclaim, and a composite.
+        //
+        // MSFT is the one that shows why it matters: its stored plan was buy
+        // $418.57 / target $500, perfectly coherent. Taking the trigger's
+        // $520 manufactured a target BELOW the buy level — a broken plan
+        // that neither store held before the backfill touched it, and that
+        // would then have cleared itself on the first tick. All seven
+        // restored by hand.
       },
       // Return the id only. Prisma otherwise SELECTs every column back, and
       // this branch's client knows about columns (lastReviewedAt) that
