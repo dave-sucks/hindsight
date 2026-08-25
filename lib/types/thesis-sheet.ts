@@ -81,6 +81,8 @@ export interface ThesisStatePosition {
   id?: string;
   quantity: number;
   avgCost: number;
+  /** High-water mark (low-water on a short) — places a trailing floor. */
+  peakPrice?: number | null;
   openedAt: string;
   daysHeld: number;
   closed?: boolean;
@@ -130,9 +132,20 @@ export interface ThesisDossier {
   // "DROPPED"|"REPLACED"|null. Drives the terminal-status banner.
   retiredReason: string | null;
   horizon: string | null;
+  /**
+   * Cached level columns. A CACHE, not the source — read `levels` for what
+   * actually fires. Until the L6 backfill runs these can still name a price
+   * no trigger enforces (the SNOW failure). See LEVELS_AS_TRIGGERS.md.
+   */
   entryPrice: number | null;
   targetPrice: number | null;
   stopLoss: number | null;
+  /**
+   * The levels in force, read off the resolved trigger list by
+   * `canonicalLevels` (lib/agent/triggers/price-levels). This is what the
+   * Price Targets card and the chart render.
+   */
+  levels: ThesisStateLevels | null;
   targetSizePct: number | null;
   catalystDate: string | null;
   maxHoldDays: number | null;
@@ -291,3 +304,29 @@ export interface ThesisResearchSections {
   [extra: string]: ResearchTextSection | ResearchBulletSection | undefined;
 }
 
+
+/**
+ * One price level read off the trigger list — the serialized `PriceLevel`
+ * from lib/agent/triggers/price-levels.
+ */
+export interface ThesisStateLevel {
+  slot: "ENTRY" | "FLOOR" | "TARGET" | null;
+  price: number;
+  side: "UPSIDE" | "DOWNSIDE";
+  action: string;
+  triggerId: string;
+  storedAt: string;
+  inherited: boolean;
+  /** True when the price moves (a trail off the high, a gain off entry). */
+  projected: boolean;
+  predicateKind: string;
+}
+
+/** The canonical levels plus every price level, for the chart. */
+export interface ThesisStateLevels {
+  entry: ThesisStateLevel | null;
+  floor: ThesisStateLevel | null;
+  target: ThesisStateLevel | null;
+  all: ThesisStateLevel[];
+  next: { above: ThesisStateLevel | null; below: ThesisStateLevel | null };
+}

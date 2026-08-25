@@ -1237,11 +1237,23 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     state.direction === "LONG" || state.direction === "SHORT"
       ? state.direction
       : null;
-  const entryPrice = state.entryPrice;
+  // `state.levels` is what fires; entryPrice/targetPrice/stopLoss are the
+  // cache and are passed only so the card can flag a number no trigger backs.
+  // See docs/plans/LEVELS_AS_TRIGGERS.md.
+  const entryPrice = state.levels?.entry?.price ?? state.entryPrice;
   const targetPrice = state.targetPrice;
   const stopLoss = state.stopLoss;
+  const floorLevel = state.levels?.floor ?? null;
+  const targetLevel = state.levels?.target ?? null;
+  // Show the block when there is either a live level or a stored number worth
+  // flagging — a decorative stop is exactly what the reader needs to see.
   const showLevels =
-    !isPass && entryPrice != null && (targetPrice != null || stopLoss != null);
+    !isPass &&
+    entryPrice != null &&
+    (targetLevel != null ||
+      floorLevel != null ||
+      targetPrice != null ||
+      stopLoss != null);
   // Identity ships in the payload (StockInfo cache via quote); the bare ticker
   // is the degenerate case when the identity lookup itself failed.
   const displayName = quote?.companyName ?? ticker;
@@ -1386,6 +1398,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           direction={direction === "SHORT" ? "SHORT" : "LONG"}
           entryPrice={entryPrice}
           avgCost={position?.avgCost ?? null}
+          levels={state.levels ?? null}
           targetPrice={targetPrice}
           stopLoss={stopLoss}
           current={quote?.currentPrice ?? null}
@@ -1440,8 +1453,10 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       {showLevels && entryPrice != null ? (
         <PriceTargetsBlock
           entry={entryPrice}
-          target={targetPrice}
-          stop={stopLoss}
+          target={targetLevel}
+          stop={floorLevel}
+          storedTarget={targetPrice}
+          storedStop={stopLoss}
           current={quote?.currentPrice ?? null}
           direction={direction === "SHORT" ? "SHORT" : "LONG"}
         />

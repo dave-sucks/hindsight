@@ -28,6 +28,11 @@ import {
   thesisSheetStateSelect,
 } from '@/lib/agent/thesis-sheet-state';
 import {
+  loadLevelSources,
+  resolveThesisLadder,
+} from '@/lib/agent/triggers/load-levels';
+import { canonicalLevels } from '@/lib/agent/triggers/price-levels';
+import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
   getThesisComposite,
@@ -243,16 +248,57 @@ export default async function TradeDetailPage({
     : null;
 
   const status = getStatusDisplay(position.status, position.outcome ?? null, hasPendingOrder, hasFilledBuy);
-  const targetPrice = position.targetPrice ?? position.avgCost * 1.1;
-  const stopPrice = position.stopLoss ?? position.avgCost * 0.9;
+  // The levels in force, read off the thesis's resolved trigger list. This
+  // used to be `position.targetPrice ?? avgCost * 1.1` / `* 0.9` — a made-up
+  // ±10% band rendered as though it were the plan whenever the columns were
+  // null, which is most of the time. A level shown here now fires.
+  // See docs/plans/LEVELS_AS_TRIGGERS.md.
+  const levelSources = position.analystId
+    ? (await loadLevelSources([position.analystId])).get(position.analystId)
+    : undefined;
+  const thesisLevels = position.decisions[0]?.thesis
+    ? canonicalLevels({
+        triggers: resolveThesisLadder(
+          position.decisions[0].thesis,
+          levelSources,
+          `thesis=${position.decisions[0].thesis.id}`,
+        ),
+        direction: position.direction,
+        status: position.decisions[0].thesis.status,
+        avgCost: Number(position.avgCost),
+        peakPrice:
+          position.peakPrice != null ? Number(position.peakPrice) : null,
+      })
+    : null;
+  const targetLevel = thesisLevels?.target ?? null;
+  const floorLevel = thesisLevels?.floor ?? null;
+  const targetPrice = targetLevel?.price ?? null;
+  const stopPrice = floorLevel?.price ?? null;
 
-  const totalMove = Math.abs(
-    position.direction === 'LONG' ? targetPrice - position.avgCost : position.avgCost - targetPrice
-  );
-  const riskMove = Math.abs(
-    position.direction === 'LONG' ? position.avgCost - stopPrice : stopPrice - position.avgCost
-  );
-  const riskReward = riskMove > 0 ? totalMove / riskMove : 0;
+  // R:R needs BOTH a target and a floor. It used to always produce a number
+  // because both sides fell back to a fabricated ±10% band, so a position
+  // with no plan at all still displayed a confident "2.00:1". Null now, and
+  // the row renders "—" — no plan, no ratio.
+  const totalMove =
+    targetPrice != null
+      ? Math.abs(
+          position.direction === 'LONG'
+            ? targetPrice - position.avgCost
+            : position.avgCost - targetPrice,
+        )
+      : null;
+  const riskMove =
+    stopPrice != null
+      ? Math.abs(
+          position.direction === 'LONG'
+            ? position.avgCost - stopPrice
+            : stopPrice - position.avgCost,
+        )
+      : null;
+  const riskReward =
+    totalMove != null && riskMove != null && riskMove > 0
+      ? totalMove / riskMove
+      : null;
 
   const analystName = position.analyst?.name ?? null;
   const analystIdVal = position.analyst?.id ?? null;
@@ -674,7 +720,10 @@ export default async function TradeDetailPage({
                     ? [{ label: 'Composite', value: `${composite}/10` }]
                     : [];
                 })(),
-                { label: 'R:R Ratio', value: `${riskReward.toFixed(2)}:1` },
+                {
+                  label: 'R:R Ratio',
+                  value: riskReward != null ? `${riskReward.toFixed(2)}:1` : '—',
+                },
               ] as Array<{ label: string; value: string }>).map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between text-sm border-b border-border pb-1">
                   <span className="text-muted-foreground">{label}</span>
@@ -815,8 +864,10 @@ export default async function TradeDetailPage({
           {/* Price Targets — standalone, identical to the thesis sheet */}
           <PriceTargetsBlock
             entry={trade.entryPrice}
-            target={targetPrice}
-            stop={stopPrice}
+            target={targetLevel}
+            stop={floorLevel}
+            storedTarget={position.decisions[0]?.thesis?.targetPrice ?? null}
+            storedStop={position.decisions[0]?.thesis?.stopLoss ?? null}
             current={currentPrice}
             direction={position.direction === 'SHORT' ? 'SHORT' : 'LONG'}
           />

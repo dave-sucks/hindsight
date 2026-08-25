@@ -574,3 +574,30 @@ function nearestOnSide(
     Math.abs(l.price - price) < Math.abs(best.price - price) ? l : best,
   );
 }
+
+// ── Display ────────────────────────────────────────────────────────────
+
+/**
+ * What the Price Targets card should say for one slot.
+ *
+ * Three states, and the third is the point of the whole project: a cached
+ * column with no trigger behind it is decoration, and rendering it as plain
+ * "Stop $256" is the lie SNOW told on a live position for months. Pure so it
+ * can be tested without a DOM.
+ */
+export type LevelLabelState =
+  /** A level that fires. `moving` = it's a trail, so the price drifts. */
+  | { kind: "live"; price: number; moving: boolean }
+  /** A stored number nothing enforces — show it struck through. */
+  | { kind: "decorative"; price: number }
+  /** No level at all. */
+  | { kind: "none" };
+
+export function levelLabelState(
+  level: { price: number; projected: boolean } | null | undefined,
+  storedColumn: number | null | undefined,
+): LevelLabelState {
+  if (level) return { kind: "live", price: level.price, moving: level.projected };
+  if (storedColumn != null) return { kind: "decorative", price: storedColumn };
+  return { kind: "none" };
+}

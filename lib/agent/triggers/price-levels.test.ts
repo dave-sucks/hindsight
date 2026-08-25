@@ -8,6 +8,7 @@
  */
 
 import {
+  levelLabelState,
   canonicalLevels,
   derivedColumns,
   levelSide,
@@ -396,5 +397,82 @@ describe("resolveLadder tie-break", () => {
       direction: "LONG",
     });
     expect(out.map((t) => t.id)).toEqual(["a", "b"]);
+  });
+});
+
+// ── What the card says ─────────────────────────────────────────────────
+
+describe("levelLabelState", () => {
+  it("shows a live level plainly", () => {
+    expect(levelLabelState({ price: 680, projected: false }, 680)).toEqual({
+      kind: "live",
+      price: 680,
+      moving: false,
+    });
+  });
+
+  it("marks a trail as moving so the number doesn't read as typed", () => {
+    expect(levelLabelState({ price: 828, projected: true }, null)).toEqual({
+      kind: "live",
+      price: 828,
+      moving: true,
+    });
+  });
+
+  it("calls out a stored number no trigger enforces", () => {
+    // SNOW: the card said "Stop $256" on a live position for months and
+    // nothing anywhere would have sold at $256.
+    expect(levelLabelState(null, 256)).toEqual({ kind: "decorative", price: 256 });
+  });
+
+  it("says nothing when there is nothing", () => {
+    expect(levelLabelState(null, null)).toEqual({ kind: "none" });
+  });
+});
+
+describe("the SNOW row, end to end", () => {
+  // The motivating failure from LEVELS_AS_TRIGGERS.md: stopLoss=256 in the
+  // column, no matching EXIT trigger, and the only real exit a 3% give-back.
+  const SNOW = {
+    triggers: [
+      resolved(trig(below(320), "REVIEW", { id: "warn" })),
+      resolved(trig(above(340), "REVIEW", { id: "chk" })),
+      resolved(
+        trig({ kind: "TRAILING_FROM_HIGH", pct: 3 }, "EXIT", { id: "trail" }),
+      ),
+    ],
+    direction: "LONG",
+    status: "HOLDING",
+    avgCost: 245.67,
+    peakPrice: 360,
+  };
+
+  it("reports the trail as the floor, because it is", () => {
+    const levels = canonicalLevels(SNOW);
+    expect(levels.floor?.triggerId).toBe("trail");
+    expect(levels.floor?.price).toBeCloseTo(349.2);
+  });
+
+  it("flags the $256 column as unenforced instead of rendering it as a stop", () => {
+    const levels = canonicalLevels({ ...SNOW, peakPrice: null });
+    // With no peak the trail can't be placed, so there is no floor at all —
+    // and the column's $256 must not quietly stand in for one.
+    expect(levels.floor).toBeNull();
+    expect(levelLabelState(levels.floor, 256)).toEqual({
+      kind: "decorative",
+      price: 256,
+    });
+  });
+
+  it("does not invent a target from the $360 column", () => {
+    const levels = canonicalLevels(SNOW);
+    // $340 is a REVIEW checkpoint and IS a real upside level; $360 is not
+    // backed by anything, so the destination is $340, not $360.
+    expect(levels.target?.price).toBe(340);
+    expect(levelLabelState(levels.target, 360)).toEqual({
+      kind: "live",
+      price: 340,
+      moving: false,
+    });
   });
 });

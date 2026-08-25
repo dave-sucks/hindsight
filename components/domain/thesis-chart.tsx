@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { StockPriceChart } from '@/components/stocks/StockPriceChart';
 import { PriceTargetsBlock } from '@/components/domain/price-targets-block';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
+import type { ThesisStateLevels } from '@/lib/types/thesis-sheet';
+import type { CardLevel } from '@/components/domain/price-targets-block';
 
 // Reference-line / marker colors. Hardcoded hex (not CSS vars) because the
 // chart renders to SVG and our theme vars are oklch(), which SVG stroke/fill
@@ -22,8 +24,20 @@ type ThesisChartProps = {
   entryPrice: number | null;
   /** Actual fill (Position.avgCost) — wins over entryPrice when present. */
   avgCost?: number | null;
+  /**
+   * Cached level columns. A fallback only — pass `levels` where you have it.
+   * These can name a price no trigger enforces (the SNOW failure).
+   */
   targetPrice: number | null;
   stopLoss: number | null;
+  /**
+   * The levels actually in force, from `canonicalLevels`. When supplied the
+   * chart draws EVERY price level as its own labelled line — tiered trims,
+   * a warning review below the floor, a trail sitting at the price it
+   * currently occupies — instead of three numbers, two of which historically
+   * fired nothing. Falls back to the scalar columns when absent.
+   */
+  levels?: ThesisStateLevels | null;
   /** Live current price (drives the gauge fallback + day color). */
   current: number | null;
   /** Thesis.createdAt — "started watching" vertical marker (full only). */
@@ -54,6 +68,22 @@ type ThesisChartProps = {
  * the PriceTargetsBlock gauge when there's no candle data, and renders nothing
  * when there's neither a chart nor any price levels to show.
  */
+/** Plain-language name for a non-canonical level's line. */
+function actionLineLabel(action: string): string {
+  switch (action) {
+    case 'EXIT':
+      return 'Sell';
+    case 'ENTER':
+      return 'Buy';
+    case 'ADD':
+      return 'Add';
+    case 'TRIM':
+      return 'Trim';
+    default:
+      return 'Review';
+  }
+}
+
 export function ThesisChart({
   ticker,
   candles,
@@ -62,6 +92,7 @@ export function ThesisChart({
   avgCost,
   targetPrice,
   stopLoss,
+  levels,
   current,
   addedAt,
   enteredAt,
@@ -71,7 +102,22 @@ export function ThesisChart({
 }: ThesisChartProps) {
   const entry = avgCost ?? entryPrice; // actual fill wins over planned
   const dir: 'LONG' | 'SHORT' = direction === 'SHORT' ? 'SHORT' : 'LONG';
-  const hasLevels = entry != null && (targetPrice != null || stopLoss != null);
+
+  // Prefer the resolved levels; fall back to the cached columns for callers
+  // that don't have them yet. `asCardLevel` marks a column-sourced number as
+  // un-projected, which is right — a typed column never moves.
+  const asCardLevel = (p: number | null, kind: string): CardLevel | null =>
+    p == null ? null : { price: p, projected: false, predicateKind: kind };
+  const floorLevel: CardLevel | null =
+    levels !== undefined
+      ? levels?.floor ?? null
+      : asCardLevel(stopLoss, dir === 'LONG' ? 'PRICE_BELOW' : 'PRICE_ABOVE');
+  const targetLevel: CardLevel | null =
+    levels !== undefined
+      ? levels?.target ?? null
+      : asCardLevel(targetPrice, dir === 'LONG' ? 'PRICE_ABOVE' : 'PRICE_BELOW');
+  const hasLevels =
+    entry != null && (targetLevel != null || floorLevel != null);
 
   // Intraday "1D" tab — full variant only. Lazily fetch 5-min bars for the
   // current session the moment the user selects 1D, then re-poll every 30s
@@ -144,18 +190,51 @@ export function ThesisChart({
     return (
       <PriceTargetsBlock
         entry={entry}
-        target={targetPrice}
-        stop={stopLoss}
+        target={targetLevel}
+        stop={floorLevel}
+        storedTarget={targetPrice}
+        storedStop={stopLoss}
         current={current}
         direction={dir}
       />
     );
   }
 
+  // One line per level that actually fires. Colour is the SIDE of the trade
+  // (upside green, downside red), which stays correct on a short where a
+  // falling price is the winning direction. The canonical three keep their
+  // familiar names; extra levels are labelled by what they do, so a tiered
+  // trim reads "Trim" rather than being collapsed into "Target".
+  const levelLines =
+    levels?.all.map((l) => ({
+      price: l.price,
+      color: l.action === 'ENTER' ? ENTRY : l.side === 'UPSIDE' ? TARGET : STOP,
+      label:
+        l.slot === 'FLOOR'
+          ? l.projected
+            ? 'Stop (trailing)'
+            : 'Stop'
+          : l.slot === 'TARGET'
+            ? 'Target'
+            : l.slot === 'ENTRY'
+              ? 'Entry'
+              : actionLineLabel(l.action),
+      dashed: true,
+    })) ?? [
+      targetPrice != null
+        ? { price: targetPrice, color: TARGET, label: 'Target', dashed: true }
+        : null,
+      stopLoss != null
+        ? { price: stopLoss, color: STOP, label: 'Stop', dashed: true }
+        : null,
+    ].filter((l): l is NonNullable<typeof l> => l !== null);
+
   const referenceLines = [
+    // The entry line comes from the fill when held, so it is drawn here
+    // rather than from `levels` (which reports the same number for a held
+    // thesis but nothing for a watch item that hasn't set one).
     entry != null ? { price: entry, color: ENTRY, label: 'Entry', dashed: true } : null,
-    targetPrice != null ? { price: targetPrice, color: TARGET, label: 'Target', dashed: true } : null,
-    stopLoss != null ? { price: stopLoss, color: STOP, label: 'Stop', dashed: true } : null,
+    ...levelLines.filter((l) => l.label !== 'Entry'),
   ].filter((l): l is NonNullable<typeof l> => l !== null);
 
   // Vertical markers on BOTH variants — StockPriceChart drops any marker whose
