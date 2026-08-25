@@ -70,7 +70,20 @@ async function main() {
 
   let changed = 0;
   for (const t of theses) {
+    // Rungs this build can no longer PARSE are carried through verbatim.
+    // A backfill must never be the thing that deletes a trigger: the parser
+    // drops what it can't read (correctly — one bad rung must not take down a
+    // ladder), but writing the parsed list back makes that drop permanent.
+    // Right now that would silently delete two live PRICE_MOVE_PCT rungs on
+    // MU, casualties of removing the 5D window. They never fired and are
+    // being cleaned up deliberately elsewhere; they do not die here.
+    const rawArr: unknown[] = Array.isArray(t.triggers) ? t.triggers : [];
     const stored = parseTriggersResilient(t.triggers).triggers as Trigger[];
+    const keptIds = new Set(stored.map((x) => x.id));
+    const unreadable = rawArr.filter(
+      (x) =>
+        x && typeof x === "object" && !keptIds.has((x as { id?: string }).id ?? ""),
+    );
     // Resolve so an inherited floor counts as already-armed — we must not
     // stamp a thesis-level copy of a rule that lives on the account.
     const resolvedLadder = resolveThesisLadder(
@@ -123,8 +136,18 @@ async function main() {
     const levels = {
       floor: needs("FLOOR", before.stopLoss, t.stopLoss),
       target: needs("TARGET", before.targetPrice, t.targetPrice),
+      // A buy level is only missing when there is NO way in at all. GD, GEV
+      // and VST each carry a deliberate non-price entry — an AND composite,
+      // an earnings beat, a moving-average reclaim. `before.entryPrice` is
+      // null for those because the card needs a PRICE, but minting one
+      // alongside would give three watchlist names two contradictory ways in.
+      // An analyst who chose "buy on the beat" did not ask for "also buy at
+      // $340".
       entry:
-        t.status === "WATCHING" && before.entryPrice == null && t.entryPrice != null
+        t.status === "WATCHING" &&
+        t.entryPrice != null &&
+        !stored.some((x) => x.action === "ENTER") &&
+        !inherited.some((x) => x.action === "ENTER")
           ? t.entryPrice
           : undefined,
     };
@@ -143,7 +166,10 @@ async function main() {
         return occupied ? `${verb} $${from} -> $${v} (stale)` : `${verb} $${v}`;
       })
       .join(", ");
-    console.log(`${APPLY ? "ARM " : "plan"}  ${t.status.padEnd(8)} ${t.ticker.padEnd(6)} ${plan}`);
+    console.log(
+      `${APPLY ? "ARM " : "plan"}  ${t.status.padEnd(8)} ${t.ticker.padEnd(6)} ${plan}` +
+        (unreadable.length ? `  [carrying ${unreadable.length} unreadable rung(s) through untouched]` : ""),
+    );
     if (!APPLY) continue;
 
     const applied = applyLevelArgs({
@@ -153,11 +179,16 @@ async function main() {
     await prisma.thesis.update({
       where: { id: t.id },
       data: {
-        triggers: applied.triggers as unknown as object[],
+        triggers: [...applied.triggers, ...unreadable] as unknown as object[],
         entryPrice: applied.columns.entryPrice,
         targetPrice: applied.columns.targetPrice,
         stopLoss: applied.columns.stopLoss,
       },
+      // Return the id only. Prisma otherwise SELECTs every column back, and
+      // this branch's client knows about columns (lastReviewedAt) that
+      // production will not have until the L7 migration deploys — the update
+      // itself is fine, reading the row back is not.
+      select: { id: true },
     });
     // Visible in the activity log — a level that starts firing today should
     // not do so silently.
