@@ -8,6 +8,8 @@
  */
 
 import {
+  applyLevelArgs,
+  columnsBackedByTriggers,
   levelLabelState,
   canonicalLevels,
   derivedColumns,
@@ -474,5 +476,115 @@ describe("the SNOW row, end to end", () => {
       price: 340,
       moving: false,
     });
+  });
+});
+
+// ── Derive-on-write (L3) ───────────────────────────────────────────────
+
+describe("applyLevelArgs", () => {
+  const base = {
+    direction: "LONG" as const,
+    status: "WATCHING" as const,
+    mintId: () => "new",
+  };
+
+  it("writes a trigger for the level, not just the column", () => {
+    // The SNOW mechanism: raising the stop used to move a column and leave
+    // the ladder untouched, so nothing would ever have sold at that price.
+    const out = applyLevelArgs({ ...base, stored: [], levels: { floor: 256 } });
+    expect(out.triggers).toHaveLength(1);
+    expect(out.triggers[0]).toMatchObject({
+      action: "EXIT",
+      predicate: below(256),
+    });
+    expect(out.columns.stopLoss).toBe(256);
+  });
+
+  it("recomputes the columns from a resent ladder that dropped the floor", () => {
+    // Wholesale replace without the floor: the column must go with it rather
+    // than lingering as a number nothing enforces. (Whether the agent is
+    // ALLOWED to drop it is the ratchet's job, not this function's.)
+    const out = applyLevelArgs({
+      ...base,
+      stored: [trig(above(1150), "REVIEW", { id: "t" })],
+      levels: {},
+    });
+    expect(out.columns.stopLoss).toBeNull();
+    expect(out.columns.targetPrice).toBe(1150);
+  });
+
+  it("lets an explicit level win over a resent ladder", () => {
+    const out = applyLevelArgs({
+      ...base,
+      stored: [trig(below(600), "EXIT", { id: "f" })],
+      levels: { floor: 720 },
+    });
+    expect(out.columns.stopLoss).toBe(720);
+    expect(out.triggers).toHaveLength(1);
+    expect(out.triggers[0].id).toBe("f"); // edited, keeps its history
+  });
+
+  it("counts an inherited floor as real protection", () => {
+    const out = applyLevelArgs({
+      ...base,
+      stored: [],
+      inherited: [
+        resolved(trig(below(600), "EXIT", { id: "acct" }), {
+          level: "ACCOUNT",
+          inherited: true,
+        }),
+      ],
+      levels: {},
+    });
+    expect(out.triggers).toHaveLength(0);
+    expect(out.columns.stopLoss).toBe(600);
+  });
+
+  it("refuses to re-arm a buy trigger on a stock we already own", () => {
+    // 2026-05-19: 35 of 36 ENTER tacticals fired on already-held tickers.
+    const out = applyLevelArgs({
+      ...base,
+      status: "HOLDING",
+      stored: [],
+      levels: { entry: 817 },
+      avgCost: 832.84,
+    });
+    expect(out.triggers).toHaveLength(0);
+    expect(out.columns.entryPrice).toBe(832.84); // the fill, not the plan
+  });
+});
+
+describe("columnsBackedByTriggers", () => {
+  it("passes when the columns match the triggers", () => {
+    expect(
+      columnsBackedByTriggers({
+        triggers: [trig(below(680), "EXIT", { id: "f" })],
+        columns: { entryPrice: null, targetPrice: null, stopLoss: 680 },
+        direction: "LONG",
+      }),
+    ).toEqual([]);
+  });
+
+  it("catches a stop with nothing behind it", () => {
+    const problems = columnsBackedByTriggers({
+      triggers: [],
+      columns: { entryPrice: null, targetPrice: null, stopLoss: 256 },
+      direction: "LONG",
+    });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("$256.00");
+    expect(problems[0]).toContain("decoration");
+  });
+
+  it("catches a column that disagrees with the trigger — the exact drift", () => {
+    // A row whose column says 730 while the floor that fires is at 948.
+    const problems = columnsBackedByTriggers({
+      triggers: [trig(below(948), "EXIT", { id: "f" })],
+      columns: { entryPrice: null, targetPrice: null, stopLoss: 730 },
+      direction: "LONG",
+    });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("$730.00");
+    expect(problems[0]).toContain("$948.00");
   });
 });

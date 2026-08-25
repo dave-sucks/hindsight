@@ -56,13 +56,23 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
   } as ToolContext;
 }
 
-const FLOOR_948 = {
-  id: "trig_floor",
-  predicate: { kind: "PRICE_BELOW", level: 948 },
-  action: "EXIT",
-  rationale: "Hard floor.",
-  fireMode: "DIRECT",
-};
+const FLOOR_948 = floorAt(948);
+
+/**
+ * The protective floor, as a trigger. Since L3 the `stopLoss` COLUMN is
+ * derived from this, so a fixture must set both together or it encodes the
+ * very drift the project removes — a column saying one thing and the trigger
+ * that actually fires saying another.
+ */
+function floorAt(level: number) {
+  return {
+    id: "trig_floor",
+    predicate: { kind: "PRICE_BELOW", level },
+    action: "EXIT",
+    rationale: "Hard floor.",
+    fireMode: "DIRECT",
+  };
+}
 
 /** A held (HOLDING) LONG row carrying the protective floor. */
 function makeHeldRow(overrides: Record<string, unknown> = {}) {
@@ -211,7 +221,12 @@ describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
   it("allows raising the stop_loss column (the legal direction)", async () => {
     // 730 → 814, the legal half of the actual MU edit (shape gate caps a
     // LONG stop below entry, so a raise stays under entryPrice 895.94).
-    mockThesisFindUnique.mockResolvedValueOnce(makeHeldRow({ stopLoss: 730 }));
+    // The floor TRIGGER starts at 730 too: since L3 `stop_loss` writes the
+    // trigger, so a fixture whose column and trigger disagree isn't testing a
+    // raise at all — it's testing a drop from whatever the trigger says.
+    mockThesisFindUnique.mockResolvedValueOnce(
+      makeHeldRow({ stopLoss: 730, triggers: [floorAt(730)] }),
+    );
     const result = await makeTool().execute({
       thesis_id: "thesis_held_1",
       rationale: "Tightening the stop after the gain.",

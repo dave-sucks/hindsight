@@ -22,6 +22,7 @@
  *   This keeps the schema simple and avoids "ghost trigger" bugs.
  */
 
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
@@ -44,6 +45,11 @@ import {
   describeRatchetViolation,
 } from "@/lib/agent/triggers/ratchet";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
+import {
+  applyLevelArgs,
+  columnsBackedByTriggers,
+} from "@/lib/agent/triggers/price-levels";
 import {
   writeThesisUpdate,
   diffThesisFields,
@@ -923,7 +929,7 @@ export const updateThesis = defineTool({
       ? (existing.triggers as unknown[]).length
       : 0;
     const needsLevels = args.triggers !== undefined || storedTriggerCount === 0;
-    let inheritedLadder: Trigger[] = [];
+    let inheritedLadder: ResolvedTrigger[] = [];
     if (needsLevels) {
       const analystId = existing.researchRun?.agentConfigId ?? null;
       const levelSources = analystId
@@ -1161,9 +1167,11 @@ export const updateThesis = defineTool({
       const c = (merged.catalystFreshness as { score?: number } | undefined)?.score ?? 0;
       patch.scoring = { ...merged, composite: t + r + e + c };
     }
-    if (args.target_price !== undefined) patch.targetPrice = args.target_price;
-    if (args.stop_loss !== undefined) patch.stopLoss = args.stop_loss;
-    if (args.entry_price !== undefined) patch.entryPrice = args.entry_price;
+    // target_price / stop_loss / entry_price are NOT written here any more.
+    // A level change is a TRIGGER change; the columns are recomputed from the
+    // resulting trigger list further down (search "derive-on-write"). Writing
+    // the column directly is how SNOW ended up showing a $256 stop that
+    // nothing would ever have sold at. See docs/plans/LEVELS_AS_TRIGGERS.md.
     // PENDING-promotion direction flip (guarded above so this only runs on
     // legal transitions). A PASS (incl. PENDING → PASS) flips status to
     // PASSED and clears triggers; PENDING → LONG/SHORT stays WATCHING with
@@ -1368,6 +1376,62 @@ export const updateThesis = defineTool({
           : { ...t, source: "AGENT" as const };
       });
       patch.triggers = applyTriggerCooldownDefaults(stamped) as object;
+    }
+
+    // ── Derive-on-write: levels are triggers (DAV-195 L3) ────────────────
+    // Runs AFTER the wholesale replace so an explicit level argument lands on
+    // top of a resent trigger list — update_thesis({triggers:[...],
+    // stop_loss:720}) ends with the floor at 720.
+    //
+    // Two things happen here, and the second runs even when the caller passed
+    // no level argument at all:
+    //   1. each supplied level is written as a TRIGGER, and
+    //   2. the cached columns are recomputed from the FINAL trigger list.
+    // (2) is what closes the wholesale-replace hole: resend a ladder without
+    // the floor and `stopLoss` goes null with it, instead of lingering as a
+    // number nothing enforces. Whether dropping it is ALLOWED is the ratchet
+    // gate's business, and that runs below on this output.
+    const touchesLevels =
+      args.entry_price !== undefined ||
+      args.target_price !== undefined ||
+      args.stop_loss !== undefined;
+    if (touchesLevels || patch.triggers !== undefined) {
+      const baseTriggers: Trigger[] =
+        patch.triggers !== undefined
+          ? ((patch.triggers as unknown as Trigger[]) ?? [])
+          : Array.isArray(existing.triggers)
+            ? (existing.triggers as unknown as Trigger[])
+            : [];
+      const levelDirection = ("direction" in patch
+        ? patch.direction
+        : existing.direction) as string | null;
+      const levelStatus = (patch.status ?? existing.status) as string | null;
+      const applied = applyLevelArgs({
+        stored: baseTriggers,
+        inherited: inheritedLadder,
+        levels: {
+          entry: args.entry_price,
+          target: args.target_price,
+          floor: args.stop_loss,
+        },
+        direction: levelDirection,
+        status: levelStatus,
+        source: "AGENT",
+        mintId: () => randomUUID(),
+      });
+      patch.triggers = applyTriggerCooldownDefaults(
+        applied.triggers,
+      ) as unknown as object;
+      patch.targetPrice = applied.columns.targetPrice;
+      patch.stopLoss = applied.columns.stopLoss;
+      // entryPrice on a HELD thesis is a historical fact — what the fill
+      // actually cost, written once by place_trade. It is not a plan and
+      // nothing here may recompute it (doing so would null it out on every
+      // review, since the buy trigger is deliberately gone once we own the
+      // name). On a watch row it derives from the buy level like the others.
+      if (levelStatus !== "HOLDING") {
+        patch.entryPrice = applied.columns.entryPrice;
+      }
     }
     if (args.scaling_plan !== undefined)
       patch.scalingPlan =

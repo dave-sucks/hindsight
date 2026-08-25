@@ -601,3 +601,167 @@ export function levelLabelState(
   if (storedColumn != null) return { kind: "decorative", price: storedColumn };
   return { kind: "none" };
 }
+
+// ── Derive-on-write ────────────────────────────────────────────────────
+
+/** The level arguments a tool accepts, in slot terms. `null` clears. */
+export interface LevelArgs {
+  entry?: number | null;
+  target?: number | null;
+  floor?: number | null;
+}
+
+export interface AppliedLevels {
+  /** The trigger list to store. */
+  triggers: Trigger[];
+  /** The cached columns, recomputed from those triggers. */
+  columns: DerivedColumns;
+  /** Which slots this call actually changed. */
+  changed: LevelSlot[];
+}
+
+/**
+ * Apply level arguments by writing TRIGGERS, then recompute the columns from
+ * the result. The single write path behind `stop_loss` / `target_price` /
+ * `entry_price` on every tool.
+ *
+ * Two properties this exists to guarantee:
+ *
+ *  1. **A level change is a trigger change.** SNOW happened because the agent
+ *     raised `stop_loss` to $256 and no trigger was written — the column and
+ *     the ladder are two stores of one idea and they drifted. Here the column
+ *     cannot move without the trigger moving.
+ *
+ *  2. **A wholesale trigger replace can't silently drop a level.** The columns
+ *     are recomputed from the FINAL trigger list, so if the agent resends its
+ *     triggers without the floor, `stopLoss` goes null too rather than
+ *     lingering as a number nothing enforces. (Whether it's *allowed* to drop
+ *     that floor is the ratchet gate's job, not this function's — run the
+ *     ratchet on the output.)
+ *
+ * Order matters: explicit level args are applied ON TOP of any wholesale
+ * replace, so `update_thesis({ triggers: [...], stop_loss: 720 })` ends with
+ * the floor at 720.
+ */
+export function applyLevelArgs(args: {
+  /** Thesis-stored triggers, post wholesale-replace if one happened. */
+  stored: Trigger[];
+  /** The resolved analyst/account levels above this thesis. */
+  inherited?: ResolvedTrigger[];
+  levels: LevelArgs;
+  direction: string | null;
+  status?: string | null;
+  /** Position entry cost — makes `entryPrice` the fill on a held thesis. */
+  avgCost?: number | null;
+  source?: Trigger["source"];
+  mintId: () => string;
+}): AppliedLevels {
+  const { stored, inherited, levels, direction, status, avgCost, source, mintId } =
+    args;
+  let triggers = stored;
+  const changed: LevelSlot[] = [];
+
+  const slots: Array<[LevelSlot, number | null | undefined]> = [
+    ["ENTRY", levels.entry],
+    ["FLOOR", levels.floor],
+    ["TARGET", levels.target],
+  ];
+  for (const [slot, price] of slots) {
+    if (price === undefined) continue; // not supplied — leave the slot alone
+    // On a held thesis `entryPrice` is the fill, not a plan. Writing an ENTER
+    // trigger for it would re-arm a buy on a name we already own — the
+    // 2026-05-19 "35 of 36 ENTER tacticals fired on already-held tickers"
+    // bug. Accept the argument, skip the trigger; the column still derives
+    // from avgCost.
+    if (slot === "ENTRY" && status === "HOLDING") continue;
+    const before = triggers;
+    triggers = setLevel({
+      slot,
+      price,
+      direction,
+      stored: triggers,
+      inherited,
+      source,
+      mintId,
+    }).triggers;
+    if (before !== triggers) changed.push(slot);
+  }
+
+  // Recompute from the FINAL list, resolved over what it inherits — a thesis
+  // protected only by an account floor still has a floor, and the column
+  // should say so.
+  const resolvedForColumns: ResolvedTrigger[] = [
+    ...triggers.map((t) => ({ ...t, level: "THESIS" as const, inherited: false })),
+    ...(inherited ?? []),
+  ];
+  return {
+    triggers,
+    columns: derivedColumns({
+      triggers: resolvedForColumns,
+      direction,
+      status,
+      avgCost,
+    }),
+    changed,
+  };
+}
+
+/**
+ * Layer-1 assertion: refuse a write whose cached columns disagree with the
+ * triggers that would be stored alongside them.
+ *
+ * Nothing legitimate produces a disagreement once every tool goes through
+ * `applyLevelArgs` — which is the point. This catches the write path someone
+ * adds later that sets `stopLoss` directly, before it reaches production and
+ * quietly re-creates SNOW. Returns the problems in product language, empty
+ * when the write is consistent.
+ */
+export function columnsBackedByTriggers(args: {
+  triggers: Trigger[];
+  inherited?: ResolvedTrigger[];
+  columns: DerivedColumns;
+  direction: string | null;
+  status?: string | null;
+  avgCost?: number | null;
+}): string[] {
+  const expected = derivedColumns({
+    triggers: [
+      ...args.triggers.map((t) => ({
+        ...t,
+        level: "THESIS" as const,
+        inherited: false,
+      })),
+      ...(args.inherited ?? []),
+    ],
+    direction: args.direction,
+    status: args.status,
+    avgCost: args.avgCost,
+  });
+  const out: string[] = [];
+  const check = (
+    name: string,
+    got: number | null,
+    want: number | null,
+    what: string,
+  ) => {
+    // Float tolerance: these round-trip through Prisma Float columns.
+    const same =
+      got == null && want == null
+        ? true
+        : got != null && want != null && Math.abs(got - want) < 0.005;
+    if (same) return;
+    out.push(
+      want == null
+        ? `${name} is set to ${fmt(got)} but no ${what} exists — that number would be decoration.`
+        : `${name} is set to ${fmt(got)} but the ${what} is at ${fmt(want)}.`,
+    );
+  };
+  check("The stop", args.columns.stopLoss, expected.stopLoss, "sell-below level");
+  check("The target", args.columns.targetPrice, expected.targetPrice, "upside level");
+  check("The entry", args.columns.entryPrice, expected.entryPrice, "buy level");
+  return out;
+}
+
+function fmt(n: number | null): string {
+  return n == null ? "nothing" : `$${n.toFixed(2)}`;
+}
