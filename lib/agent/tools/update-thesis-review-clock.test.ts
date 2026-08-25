@@ -30,6 +30,12 @@ jest.mock("@/lib/actions/finnhub.actions", () => ({
 jest.mock("@/lib/agent/thesis-updates", () => ({
   writeThesisUpdate: mockWriteThesisUpdate,
   diffThesisFields: jest.fn().mockReturnValue({}),
+  // Real function, not a stub: the tool calls it on the WRITE path, so
+  // omitting it made every "the legal edit still goes through" case die
+  // at the update with "not a function" while the refusal cases — which
+  // return before reaching it — all passed. The gate looked green from
+  // one side only.
+  compactFieldChanges: (fc: unknown) => fc,
 }));
 jest.mock("@/lib/agent/triggers/load-levels", () => ({
   loadLevelSources: jest.fn().mockResolvedValue(new Map()),
