@@ -40,6 +40,7 @@
  */
 
 import { triggerBucket } from "./bucket";
+import { protectiveExitCloseReason } from "./types";
 import type { Trigger } from "./types";
 
 /** Where a resolved rung is stored — most-specific first. */
@@ -143,10 +144,90 @@ export interface LadderLevels {
    * fire. Omit ⇒ no gating (settings surfaces, which have no thesis).
    */
   state?: "HELD" | "WATCHING" | "PROMOTED";
+  /**
+   * "LONG" | "SHORT" | null. Only used to decide which of two triggers in
+   * the same bucket is the tighter protection — see
+   * `protectiveTightestFirst`. Absent behaves as LONG, the overwhelming
+   * default, and on a thesis with no duplicate buckets it changes nothing.
+   */
+  direction?: string | null;
 }
 
 /** Predicates that measure off an open position and are inert without one. */
 const POSITION_SCOPED_KINDS = new Set(["GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH"]);
+
+/**
+ * Order the triggers WITHIN one level so that, when two of them land in the
+ * same bucket, the tightest protective one is the one the claim loop keeps.
+ *
+ * The hazard this closes: two floors on one thesis — "sell below $500" and a
+ * stale "sell below $100" — are the same bucket, so exactly one survives
+ * resolution, and until now that was whichever happened to come first in the
+ * array. Half the time the live floor is the weaker one, and nothing on
+ * screen says so. That is the SNOW failure with two numbers instead of one.
+ *
+ * Only STOP-classified EXITs are reordered (`protectiveExitCloseReason` —
+ * the same classifier the ratchet gate uses, so "protective" means one thing
+ * in both places). Everything else keeps array order, because for a target
+ * or a review there is no safe direction to prefer and reordering would
+ * change behaviour for no reason.
+ *
+ * Stable: equal-priority triggers keep their relative order.
+ */
+function protectiveTightestFirst(
+  triggers: Trigger[],
+  direction: string | null | undefined,
+): Trigger[] {
+  const isLong = direction !== "SHORT";
+  const rank = (t: Trigger): number | null => {
+    if (t.action !== "EXIT") return null;
+    if (protectiveExitCloseReason(t.predicate, direction ?? null) !== "STOP") {
+      return null;
+    }
+    switch (t.predicate.kind) {
+      // A higher floor on a long (lower ceiling on a short) is hit sooner.
+      case "PRICE_BELOW":
+        return isLong ? -t.predicate.level : t.predicate.level;
+      case "PRICE_ABOVE":
+        return isLong ? t.predicate.level : -t.predicate.level;
+      // A smaller give-back / drawdown fires sooner.
+      case "TRAILING_FROM_HIGH":
+      case "GAIN_FROM_ENTRY":
+      case "PRICE_MOVE_PCT":
+        return t.predicate.pct;
+      default:
+        return null;
+    }
+  };
+
+  // Reorder WITHIN each bucket only, and leave the buckets themselves in
+  // first-appearance order. A global sort would be wrong twice over: it
+  // can't produce a valid comparator across ranked and unranked triggers,
+  // and it would shuffle unrelated triggers for no reason.
+  const groups = new Map<string, Trigger[]>();
+  for (const t of triggers) {
+    const bucket = triggerBucket(t);
+    const g = groups.get(bucket);
+    if (g) g.push(t);
+    else groups.set(bucket, [t]);
+  }
+  const out: Trigger[] = [];
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      out.push(group[0]);
+      continue;
+    }
+    out.push(
+      ...group
+        .map((t, i) => ({ t, i, r: rank(t) }))
+        .sort((a, b) =>
+          a.r != null && b.r != null && a.r !== b.r ? a.r - b.r : a.i - b.i,
+        )
+        .map((x) => x.t),
+    );
+  }
+  return out;
+}
 
 /**
  * Resolve the levels into the one ladder that is actually in force.
@@ -210,11 +291,12 @@ function samePredicateValue(a: Trigger["predicate"], b: Trigger["predicate"]): b
 }
 
 export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
+  const order = (ts: Trigger[]) => protectiveTightestFirst(ts, input.direction);
   const byLevel: Record<TriggerLevel, Trigger[]> = {
-    THESIS: input.thesis ?? [],
-    ANALYST: input.analyst ?? [],
-    ACCOUNT: input.account ?? [],
-    DEFAULT: input.defaults ?? [],
+    THESIS: order(input.thesis ?? []),
+    ANALYST: order(input.analyst ?? []),
+    ACCOUNT: order(input.account ?? []),
+    DEFAULT: order(input.defaults ?? []),
   };
 
   const claimed = new Set<string>();
