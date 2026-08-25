@@ -107,7 +107,21 @@ export type TriggerPredicate =
 
   // ── Time-based — housekeeping or periodic worker ──────────────────────
   | { kind: "TIME_ELAPSED"; days: number }
-  | { kind: "REVIEW_DATE_HIT" }
+  // "Look at this again every N days", counted from when it was last
+  // ACTUALLY reviewed (Thesis.lastReviewedAt). Replaced REVIEW_DATE_HIT on
+  // 2026-08-25, which read a date column the agent set by hand — two stores
+  // of one idea, and the column was the one nothing fired on.
+  //
+  // Cascades like every other trigger: the account says every 7 days, an
+  // analyst can say every day, one thesis can say every 3. That is the whole
+  // review system; there is no separate review-date concept any more.
+  //
+  // A DECLINE IS NOT A REVIEW. Declining a sell proposal leaves the market
+  // condition true, so that fires again — standing order, unchanged. This is
+  // a clock about US, and the daily run looking at the thesis satisfies it
+  // even if it concludes nothing changed. If the run skips it or crashes,
+  // nothing is stamped and it stays due.
+  | { kind: "REVIEW_CADENCE"; days: number }
 
   // ── Composition ───────────────────────────────────────────────────────
   | { kind: "AND"; predicates: TriggerPredicate[] }

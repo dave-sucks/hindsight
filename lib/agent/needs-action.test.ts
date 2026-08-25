@@ -39,6 +39,8 @@ const SIGNAL_EARNINGS: Trigger = {
   cooldownDays: 7,
 };
 
+const now = new Date("2026-05-10T12:00:00Z");
+
 const baseThesis = {
   id: "thesis-1",
   // Committed direction by default — the production caller always passes the
@@ -49,9 +51,25 @@ const baseThesis = {
   direction: "LONG" as string | null,
   createdAt: new Date("2026-04-01T00:00:00Z"),
   nextReviewAt: null as Date | null,
+  lastReviewedAt: null as Date | null,
 };
 
-const now = new Date("2026-05-10T12:00:00Z");
+/**
+ * "Review every 7 days" — the account's standing cadence. Since DAV-195 L7
+ * this trigger IS the review clock; the `nextReviewAt` column is a derived
+ * display value and nothing reads it to decide anything.
+ */
+const CADENCE_7D: Trigger = {
+  id: "trig-cadence",
+  predicate: { kind: "REVIEW_CADENCE", days: 7 },
+  action: "REVIEW",
+  rationale: "Look at this every 7 days.",
+  cooldownDays: 7,
+};
+
+/** A thesis last looked at `days` ago. */
+const lookedAt = (days: number) =>
+  new Date(now.getTime() - days * 86_400_000);
 
 describe("computeNeedsAction — PROMOTED_AWAITING_RESOLUTION (top precedence)", () => {
   it("returns PROMOTED_AWAITING_RESOLUTION when status is PROMOTED, regardless of trigger state", () => {
@@ -284,12 +302,12 @@ describe("computeNeedsAction — TRIGGER_MATCHING_NOW", () => {
 });
 
 describe("computeNeedsAction — REVIEW_DUE", () => {
-  it("returns REVIEW_DUE when nextReviewAt is in the past", () => {
+  it("returns REVIEW_DUE once the cadence has elapsed", () => {
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
-        triggers: [],
-        nextReviewAt: new Date("2026-05-06T00:00:00Z"),
+        triggers: [CADENCE_7D],
+        lastReviewedAt: lookedAt(11),
       },
       latestUpdate: null,
       latestQuote: null,
@@ -308,8 +326,8 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
       thesis: {
         ...baseThesis,
         direction: null,
-        triggers: [],
-        nextReviewAt: new Date("2026-05-06T00:00:00Z"),
+        triggers: [CADENCE_7D],
+        lastReviewedAt: lookedAt(11),
       },
       latestUpdate: null,
       latestQuote: null,
@@ -327,8 +345,8 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
       thesis: {
         ...baseThesis,
         direction: null,
-        triggers: [],
-        nextReviewAt: new Date("2026-05-06T00:00:00Z"),
+        triggers: [CADENCE_7D],
+        lastReviewedAt: lookedAt(11),
       },
       latestUpdate: null,
       latestQuote: null,
@@ -346,8 +364,8 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
       thesis: {
         ...baseThesis,
         direction: "LONG",
-        triggers: [],
-        nextReviewAt: new Date("2026-05-06T00:00:00Z"),
+        triggers: [CADENCE_7D],
+        lastReviewedAt: lookedAt(11),
       },
       latestUpdate: null,
       latestQuote: null,
@@ -356,13 +374,13 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
     expect(result).toEqual({ kind: "REVIEW_DUE", daysOverdue: 4 });
   });
 
-  it("returns null when nextReviewAt is beyond the 24h look-ahead", () => {
+  it("returns null while still inside the cadence window", () => {
     // now = 2026-05-10T12:00Z; nextReviewAt = 2026-05-20T00:00 (10d future)
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
-        triggers: [],
-        nextReviewAt: new Date("2026-05-20T00:00:00Z"),
+        triggers: [CADENCE_7D],
+        lastReviewedAt: lookedAt(1),
       },
       latestUpdate: null,
       latestQuote: null,
@@ -371,7 +389,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null when nextReviewAt is null and no triggers fire", () => {
+  it("returns null when no cadence is set and no triggers fire", () => {
     const result = computeNeedsAction({
       thesis: { ...baseThesis, triggers: [] },
       latestUpdate: null,
@@ -387,13 +405,13 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   // window was added, this returned null and the trigger evaluator's
   // REVIEW_DATE_HIT cron picked it up 90 min later in a redundant
   // tactical run.
-  it("returns REVIEW_DUE when nextReviewAt is later TODAY (within 24h look-ahead)", () => {
+  it("returns REVIEW_DUE when the review comes due later TODAY", () => {
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
-        triggers: [],
         // now = 12:00 UTC; this is 13:30 UTC same day (90 min ahead)
-        nextReviewAt: new Date("2026-05-10T13:30:00Z"),
+        triggers: [CADENCE_7D],
+        lastReviewedAt: lookedAt(6.94),
       },
       latestUpdate: null,
       latestQuote: null,
@@ -402,13 +420,13 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
     expect(result).toEqual({ kind: "REVIEW_DUE", daysOverdue: 0 });
   });
 
-  it("returns REVIEW_DUE with daysOverdue: 0 when nextReviewAt is within 24h ahead", () => {
+  it("returns daysOverdue: 0 when the review is due within 24h", () => {
     // now = 12:00 UTC; nextReviewAt = +23h
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
-        triggers: [],
-        nextReviewAt: new Date(now.getTime() + 23 * 60 * 60 * 1000),
+        triggers: [CADENCE_7D],
+        lastReviewedAt: new Date(now.getTime() - 6 * 86_400_000 - 3_600_000),
       },
       latestUpdate: null,
       latestQuote: null,
@@ -417,12 +435,12 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
     expect(result).toEqual({ kind: "REVIEW_DUE", daysOverdue: 0 });
   });
 
-  it("returns null when nextReviewAt is just past the 24h look-ahead (+25h)", () => {
+  it("returns null when the review is just past the 24h look-ahead", () => {
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
-        triggers: [],
-        nextReviewAt: new Date(now.getTime() + 25 * 60 * 60 * 1000),
+        triggers: [CADENCE_7D],
+        lastReviewedAt: new Date(now.getTime() - 5 * 86_400_000 - 23 * 3_600_000),
       },
       latestUpdate: null,
       latestQuote: null,
@@ -437,8 +455,8 @@ describe("computeNeedsAction — precedence (FIRED > MATCHING_NOW > REVIEW_DUE)"
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
-        triggers: [EXIT_LONG, REVIEW_HYGIENE],
-        nextReviewAt: new Date("2026-05-06T00:00:00Z"),
+        triggers: [CADENCE_7D],
+        lastReviewedAt: lookedAt(11),
       },
       latestUpdate: {
         type: "TRIGGER_FIRED",
@@ -452,11 +470,13 @@ describe("computeNeedsAction — precedence (FIRED > MATCHING_NOW > REVIEW_DUE)"
   });
 
   it("MATCHING_NOW beats REVIEW_DUE", () => {
+    // Both are live: the price trigger matches AND the review is 4 days
+    // overdue. The specific thing that happened outranks the routine look.
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
-        triggers: [ENTER_LONG],
-        nextReviewAt: new Date("2026-05-06T00:00:00Z"),
+        triggers: [ENTER_LONG, CADENCE_7D],
+        lastReviewedAt: lookedAt(11),
       },
       latestUpdate: null,
       latestQuote: { price: 105, changePct: 0 },

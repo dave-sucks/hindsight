@@ -251,7 +251,7 @@ describe("validateThesisDecision — trigger action-set by position state", () =
         triggers: [
           exitTrigger,
           {
-            predicate: { kind: "REVIEW_DATE_HIT" },
+            predicate: { kind: "REVIEW_CADENCE", days: 7 },
             action: "REVIEW",
             rationale: "scheduled hygiene",
           },
@@ -343,7 +343,7 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
 
   it("enter-guard mirror: WATCHING refresh with a REVIEW-only ladder is rejected...", () => {
     const reviewOnly = [
-      { predicate: { kind: "REVIEW_DATE_HIT" }, action: "REVIEW", rationale: "hygiene" },
+      { predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", rationale: "hygiene" },
     ];
     const v = validateThesisDecision(
       { ...validLong, triggers: reviewOnly },
@@ -355,7 +355,7 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
 
   it("...unless entry equals the live price (buy-at-market carve-out)", () => {
     const reviewOnly = [
-      { predicate: { kind: "REVIEW_DATE_HIT" }, action: "REVIEW", rationale: "hygiene" },
+      { predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", rationale: "hygiene" },
     ];
     const v = validateThesisDecision(
       { ...validLong, triggers: reviewOnly },
@@ -367,7 +367,7 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
   it("enter-guard mirror: HOLDING refresh ladder must carry an EXIT rung", () => {
     const noExit = [
       { predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" }, action: "ADD", rationale: "press" },
-      { predicate: { kind: "REVIEW_DATE_HIT" }, action: "REVIEW", rationale: "hygiene" },
+      { predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", rationale: "hygiene" },
     ];
     const v = validateThesisDecision(
       { ...validLong, triggers: noExit },

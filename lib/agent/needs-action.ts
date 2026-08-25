@@ -165,7 +165,10 @@ const PRICE_OR_TIME_KINDS = new Set([
   "VS_SMA",
   "RSI",
   "TIME_ELAPSED",
-  "REVIEW_DATE_HIT",
+  // REVIEW_CADENCE is deliberately NOT here: it has its own needsAction
+  // kind (REVIEW_DUE) with a 24h look-ahead the generic loop can't express,
+  // and routing it through TRIGGER_MATCHING_NOW would relabel every routine
+  // review as an urgent trigger fire.
 ]);
 
 function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
@@ -196,8 +199,8 @@ export function describePredicate(p: TriggerPredicate): string {
       return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
     case "TIME_ELAPSED":
       return `${p.days}d elapsed since thesis creation`;
-    case "REVIEW_DATE_HIT":
-      return "scheduled review date reached";
+    case "REVIEW_CADENCE":
+      return `due for review (every ${p.days}d)`;
     case "SIGNAL_TYPE":
       return `${p.signalType} signal${p.sentiment ? ` (${p.sentiment.toLowerCase()})` : ""}`;
     case "EARNINGS_BEAT":
@@ -239,6 +242,8 @@ export interface NeedsActionInput {
     triggers: Trigger[];
     createdAt: Date;
     nextReviewAt: Date | null;
+    /** When an analyst last actually looked. Drives the review cadence. */
+    lastReviewedAt?: Date | null;
     /**
      * P1-14 — paired open Position's openedAt, for ACTIVE rows only. Lets
      * the TRIGGER_MATCHING_NOW evaluation anchor TIME_ELAPSED to when the
@@ -351,7 +356,7 @@ export function computeNeedsAction(
       latestQuote: latestQuote ?? undefined,
       thesis: {
         createdAt: thesis.createdAt,
-        nextReviewAt: thesis.nextReviewAt,
+        lastReviewedAt: thesis.lastReviewedAt ?? null,
         // P1-14: ACTIVE rows anchor TIME_ELAPSED to the position open time.
         status: thesis.status,
         positionOpenedAt: thesis.positionOpenedAt ?? null,
@@ -434,27 +439,34 @@ export function computeNeedsAction(
   //    null or legacy 'PENDING') carry nextReviewAt = createdAt so they
   //    surface as REVIEW_DUE on the next daily run with the pendingFirstReview
   //    discriminator.
+  // The cadence trigger on the resolved ladder is the authority — "review
+  // every N days", counted from the last actual review. It used to be a date
+  // column the agent set by hand, which was a second store of the same idea
+  // and the one nothing fired on.
+  //
+  // The 24h look-ahead is load-bearing and is why this doesn't just go
+  // through the generic trigger loop: the morning run fires once at 08:00,
+  // so a review coming due later today has to be caught now or it waits a
+  // whole day.
   const REVIEW_DUE_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
-  if (
-    thesis.nextReviewAt &&
-    thesis.nextReviewAt.getTime() <= now.getTime() + REVIEW_DUE_LOOKAHEAD_MS
-  ) {
-    // Clamp negative (i.e. "due later today, not yet overdue") to 0 so
-    // the UI / prompt renders "due today" rather than "-1 days overdue".
-    const daysOverdue = Math.max(
-      0,
-      Math.floor(
-        (now.getTime() - thesis.nextReviewAt.getTime()) / 86_400_000,
-      ),
-    );
-    const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue };
-    // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy). Either
-    // way it has no committed view yet → flag pendingFirstReview so the
-    // prompt routes it to the "commit a direction" path.
-    if (isUnresearchedSeed(thesis.direction)) {
-      result.pendingFirstReview = true;
+  const cadence = thesis.triggers.find(
+    (t) => t.predicate.kind === "REVIEW_CADENCE",
+  );
+  if (cadence?.predicate.kind === "REVIEW_CADENCE") {
+    const lastLooked = thesis.lastReviewedAt ?? thesis.createdAt;
+    const dueAt = lastLooked.getTime() + cadence.predicate.days * 86_400_000;
+    if (dueAt <= now.getTime() + REVIEW_DUE_LOOKAHEAD_MS) {
+      // Clamp negative ("due later today") to 0 so the UI reads "due today"
+      // rather than "-1 days overdue".
+      const daysOverdue = Math.max(
+        0,
+        Math.floor((now.getTime() - dueAt) / 86_400_000),
+      );
+      const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue };
+      // A seed has no committed view yet — route it to "commit a direction".
+      if (isUnresearchedSeed(thesis.direction)) result.pendingFirstReview = true;
+      return result;
     }
-    return result;
   }
 
   // Nothing to act on. Yesterday's thesis stands.

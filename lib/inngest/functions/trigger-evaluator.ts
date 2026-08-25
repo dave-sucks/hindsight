@@ -91,7 +91,7 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
     case "VS_SMA":
     case "RSI":
     case "TIME_ELAPSED":
-    case "REVIEW_DATE_HIT":
+    case "REVIEW_CADENCE":
       return true;
     case "AND":
     case "OR":
@@ -378,6 +378,7 @@ export const triggerEvaluator = inngest.createFunction(
             horizon: true,
             createdAt: true,
             nextReviewAt: true,
+            lastReviewedAt: true,
             researchRun: { select: { agentConfigId: true } },
           },
         });
@@ -434,7 +435,7 @@ export const triggerEvaluator = inngest.createFunction(
             signal: ctxSignal,
             thesis: {
               createdAt: thesis.createdAt,
-              nextReviewAt: thesis.nextReviewAt,
+              lastReviewedAt: thesis.lastReviewedAt ?? null,
               status: thesis.status,
               positionOpenedAt: posInfo?.openedAt ?? null,
             },
@@ -574,6 +575,7 @@ export const triggerEvaluator = inngest.createFunction(
           horizon: true,
           createdAt: true,
           nextReviewAt: true,
+          lastReviewedAt: true,
           researchRun: { select: { agentConfigId: true } },
         },
       });
@@ -668,7 +670,7 @@ export const triggerEvaluator = inngest.createFunction(
             : null,
           thesis: {
             createdAt: thesis.createdAt,
-            nextReviewAt: thesis.nextReviewAt,
+            lastReviewedAt: thesis.lastReviewedAt ?? null,
             status: thesis.status,
             direction: thesis.direction,
             positionOpenedAt: posInfo?.openedAt ?? null,

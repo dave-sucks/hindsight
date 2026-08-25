@@ -255,6 +255,44 @@ export const DEFAULT_LADDER_IDS = {
  * template does: short-horizon momentum trades exit on weakness, they
  * don't average into a dip.
  */
+/**
+ * "Look at this again every N days", counted from the last actual review.
+ *
+ * Replaces the review-date column and `HORIZON_REVIEW_DAYS`. The account
+ * carries the 7-day rule; a horizon that needs a tighter one overrides it
+ * through the ordinary cascade, and a thesis can override that in turn.
+ */
+export function reviewCadenceTrigger(days: number): Trigger {
+  return {
+    id: createId(),
+    predicate: { kind: "REVIEW_CADENCE", days },
+    action: "REVIEW",
+    rationale:
+      days === 1
+        ? `Look at this every day.`
+        : `Look at this every ${days} days, counting from the last real review.`,
+    cooldownDays: days,
+  };
+}
+
+/** Days between reviews by horizon. Was HORIZON_REVIEW_DAYS. */
+export const CADENCE_DAYS_BY_HORIZON: Record<Horizon, number> = {
+  CATALYST: 1,
+  TRADE: 1,
+  TARGET: 7,
+  COMPOUNDER: 30,
+};
+
+/** The cadence in force on a resolved ladder; null when nothing sets one. */
+export function resolvedCadenceDays(
+  triggers: Array<{ predicate: TriggerPredicate }>,
+): number | null {
+  for (const t of triggers) {
+    if (t.predicate.kind === "REVIEW_CADENCE") return t.predicate.days;
+  }
+  return null;
+}
+
 export function inheritableDefaultLadder(
   horizon: Horizon,
   state: ThesisState = "HELD",
@@ -285,6 +323,7 @@ export function inheritableDefaultLadder(
 
 function compounderDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.COMPOUNDER));
 
   if (thesis.stopLoss != null) {
     out.push({
@@ -354,6 +393,7 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
 
 function targetDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TARGET));
   if (thesis.stopLoss != null) {
     out.push({
       id: createId(),
@@ -403,6 +443,7 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
 
 function tradeDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TRADE));
   if (thesis.stopLoss != null) {
     out.push({
       id: createId(),
@@ -439,6 +480,7 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
 
 function catalystDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.CATALYST));
   if (thesis.stopLoss != null) {
     out.push({
       id: createId(),
@@ -594,6 +636,7 @@ function watchingEntryTrigger(
 
 function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.CATALYST));
   const direction = thesis.direction ?? "LONG";
 
   // ── Setup-aware default ENTER trigger for CATALYST ────────────────────
@@ -711,6 +754,7 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
 
 function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TRADE));
   const direction = thesis.direction ?? "LONG";
 
   // TRADE-horizon entries are tight by design — the agent set a specific
@@ -751,6 +795,7 @@ function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
 
 function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TARGET));
   const direction = thesis.direction ?? "LONG";
 
   const entry = watchingEntryTrigger(thesis, direction, 1);
@@ -804,6 +849,7 @@ function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
 
 function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.COMPOUNDER));
   const direction = thesis.direction ?? "LONG";
 
   // COMPOUNDER entry requires patience — short-term spikes through the
@@ -986,7 +1032,7 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
       // cooldown ~80% of the window so they don't re-fire every tick once
       // elapsed but allow re-firing if the agent's window is short.
       return Math.max(1, Math.round(p.days * 0.8));
-    case "REVIEW_DATE_HIT":
+    case "REVIEW_CADENCE":
       return 7;
     case "AND":
     case "OR":

@@ -70,7 +70,7 @@ function describePredicate(p: TriggerPredicate): string {
       return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
     case "TIME_ELAPSED":
       return `${p.days}d elapsed since thesis creation`;
-    case "REVIEW_DATE_HIT":
+    case "REVIEW_CADENCE":
       return "review date hit";
     case "AND":
       return `(${p.predicates.map(describePredicate).join(" AND ")})`;
@@ -120,6 +120,7 @@ export async function evaluateLiveTriggerMatches({
       horizon: true,
       createdAt: true,
       nextReviewAt: true,
+      lastReviewedAt: true,
     },
   });
 
@@ -222,7 +223,7 @@ export async function evaluateLiveTriggerMatches({
           : null,
         thesis: {
           createdAt: thesis.createdAt,
-          nextReviewAt: thesis.nextReviewAt,
+          lastReviewedAt: thesis.lastReviewedAt ?? null,
           // P1-14: held rows anchor TIME_ELAPSED to the position open time.
           status: thesis.status,
           direction: thesis.direction,

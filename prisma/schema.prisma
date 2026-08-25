@@ -303,7 +303,15 @@ model Thesis {
 
   catalystDate DateTime? // CATALYST horizon only
   maxHoldDays  Int? // TRADE horizon only
-  nextReviewAt DateTime? // When housekeeping should re-look
+  /// When the analyst last actually looked at this thesis — stamped by any
+  /// run that writes a REVIEWED / UPDATED row for it. A FACT, not a plan.
+  /// The review cadence trigger counts from here.
+  lastReviewedAt DateTime?
+  /// DERIVED display cache: lastReviewedAt + the resolved cadence. Nobody
+  /// authors this. The cadence lives on the trigger list like every other
+  /// level; this column exists because ~15 surfaces render it. See
+  /// docs/plans/LEVELS_AS_TRIGGERS.md.
+  nextReviewAt DateTime?
 
   closedAt    DateTime? // Mirrors invalidatedAt for CLOSED state
   closeReason String?

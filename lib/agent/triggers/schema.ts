@@ -47,7 +47,7 @@ type PredicateShape =
   | { kind: "GUIDANCE_CHANGE"; direction: "UP" | "DOWN" }
   | { kind: "FILING"; formType: "10-K" | "10-Q" | "8-K" | "FORM_4" }
   | { kind: "TIME_ELAPSED"; days: number }
-  | { kind: "REVIEW_DATE_HIT" }
+  | { kind: "REVIEW_CADENCE"; days: number }
   | { kind: "AND"; predicates: PredicateShape[] }
   | { kind: "OR"; predicates: PredicateShape[] };
 
@@ -108,7 +108,10 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
       kind: z.literal("TIME_ELAPSED"),
       days: z.number().int().positive(),
     }),
-    z.object({ kind: z.literal("REVIEW_DATE_HIT") }),
+    z.object({
+      kind: z.literal("REVIEW_CADENCE"),
+      days: z.number().int().positive().max(365),
+    }),
     z.object({
       kind: z.literal("AND"),
       predicates: z.array(triggerPredicateSchema).min(1).max(8),
@@ -174,7 +177,7 @@ export const triggerSchema = z.object({
       // including the legitimate EXIT stops sitting next to the bad
       // REVIEW. That's the same silent-failure shape PR #371 just fixed
       // for the id-less bug; don't re-introduce it.
-      "Don't re-fire this trigger more than once per N days. OMIT to use the per-predicate-kind default (EARNINGS_*: 7, FILING/SIGNAL_TYPE/PRICE_*: 1, TIME_ELAPSED: ~80% of window, REVIEW_DATE_HIT: 7) — that's the right answer in almost every case. The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT.",
+      "Don't re-fire this trigger more than once per N days. OMIT to use the per-predicate-kind default (EARNINGS_*: 7, FILING/SIGNAL_TYPE/PRICE_*: 1, TIME_ELAPSED: ~80% of window, REVIEW_CADENCE: matches the cadence) — that's the right answer in almost every case. The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT.",
     ),
   lastFiredAt: z.string().datetime().optional(),
   fireMode: z
