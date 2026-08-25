@@ -1,20 +1,24 @@
-# Levels as triggers — entry, target, stop and review are not rungs, and should be
+# Levels as triggers — entry, target, stop and review aren't triggers, and should be
 
-> **For:** the session that makes price levels and review cadence first-class
-> triggers. **Status:** spec only — no code. **Data-model change on live
-> theses with real money; needs the principal in the room before any of it.**
-> Diagnosed 2026-08-16 from production data.
+> **Linear:** DAV-195 (umbrella), project "Levels Are Triggers".
+> **Status:** diagnosed 2026-08-16 from production data; design resolved with
+> the principal 2026-08-24. Everything below the diagnosis is decided.
+> **Data-model change on live positions with real money** — step L6 arms
+> floors that are inert today and does not run without the principal's
+> sign-off on the exact list.
 > **Self-contained** — you don't need the conversation that produced it.
 >
-> Absorbs GAPS **P1-36** and the "flags become rungs" item (RUNNING_WINNER,
+> Absorbs GAPS **P1-36** and the "flags become triggers" item (RUNNING_WINNER,
 > next review, max hold) from the trigger-levels session.
+> **Downstream:** DAV-209 (`WATCHLIST_STATES.md`, project *Thesis Lifecycle*)
+> is blocked by this. See the handoff section at the bottom.
 
 ---
 
 ## One-line summary
 
 `Thesis.entryPrice`, `targetPrice`, `stopLoss` and `nextReviewAt` are **columns
-the agent edits independently of the trigger ladder.** They render as levels the
+the agent edits independently of the trigger list.** They render as levels the
 system appears to be watching. Nothing fires on them.
 
 ---
@@ -26,7 +30,7 @@ A HOLDING thesis, live book, composite 9/10:
 ```
 entry $245.67   target $360   stop $256   nextReviewAt Aug 21
 
-resolved ladder (9 rungs):
+resolved trigger list (9 triggers):
   Review if 55 days elapsed
   Review if Bearish news ≥high urgency
   Review if Price below $320
@@ -37,10 +41,10 @@ resolved ladder (9 rungs):
   Add    if Price up 7% over 1D        (account)
   Add    if Price down 7% over 1D      (account)
 
-price levels present in the ladder: [320, 340]
+price levels present in the list: [320, 340]
 stop $256 has a trigger?      NO
 target $360 has a trigger?    NO
-REVIEW_DATE_HIT rung present? NO
+REVIEW_DATE_HIT trigger present? NO
 ```
 
 **The stop is decoration.** Grep confirms no enforcement path anywhere:
@@ -51,7 +55,7 @@ floor at all while showing "$256" on screen.
 
 How it got here: the stop was raised to $256 (above the $245.67 entry — a
 gain-locking move, exactly the behavior the Game Plan wants) and the matching
-rung was never written. The agent updated the *column* and not the *ladder*.
+trigger was never written. The agent updated the *column* and not the *trigger list*.
 
 ---
 
@@ -61,11 +65,11 @@ Three separate stores of the same idea:
 
 | Idea | Stored as | Fires? |
 |---|---|---|
-| "exit at $256" | `Thesis.stopLoss` | ❌ only if a matching `PRICE_BELOW` EXIT rung also exists |
+| "exit at $256" | `Thesis.stopLoss` | ❌ only if a matching `PRICE_BELOW` EXIT trigger also exists |
 | "take profit at $360" | `Thesis.targetPrice` | ❌ same |
-| "buy at $245.67" | `Thesis.entryPrice` | ⚠️ via the WATCHING template's ENTER rung, minted once |
+| "buy at $245.67" | `Thesis.entryPrice` | ⚠️ via the WATCHING template's ENTER trigger, minted once |
 | "look again on Aug 21" | `Thesis.nextReviewAt` | ⚠️ read directly by the daily run; `REVIEW_DATE_HIT` was removed from the templates 2026-05-20 |
-| "exit after N days" | `Thesis.maxHoldDays` | ⚠️ via a `TIME_ELAPSED` rung, minted once |
+| "exit after N days" | `Thesis.maxHoldDays` | ⚠️ via a `TIME_ELAPSED` trigger, minted once |
 
 The sync that exists is **one-way and partial**: editing a stop *pill* mirrors
 onto `Thesis.stopLoss` + the open `Position` (`applyTriggerValueEdit`,
@@ -73,109 +77,177 @@ onto `Thesis.stopLoss` + the open `Position` (`applyTriggerValueEdit`,
 can patch `stop_loss` without touching `triggers` at all — which is how SNOW
 happened.
 
-Related invisible-flag cases in the same family (fold in here rather than
-tracking separately):
-
-- **RUNNING_WINNER** — a pure position predicate (`progress ≥ 0.75 OR gain ≥
-  12% → REVIEW`) computed per morning read, invisible on the thesis. Should be
-  a rung. (`lib/agent/winner-signal.ts`)
-- **UNPROTECTED_GAIN** — **stays computed, not a rung.** Its condition reads
-  *the other rungs*; it is a linter on the ladder, not a rung in it. Render it
-  visually distinct. (`lib/agent/ladder-health.ts`)
+RUNNING_WINNER and UNPROTECTED_GAIN belong to the same family and are
+resolved in the verdict table below rather than tracked separately.
 
 ---
 
-## Target model
+## The model
 
-**One store. A level exists because a rung says so.**
+A thesis holds soft opinion. A trigger says **if X happens, do Y** — buy,
+sell, add, trim, or wake me up to reconsider. The agent acts when one fires.
 
-```
-Thesis.triggers  ←  the only home for "at what price / when"
-Thesis.stopLoss / targetPrice / entryPrice / nextReviewAt / maxHoldDays
-                 ←  DERIVED for display + prompt context, never authored directly
-```
+There is no such thing as a stop, a target, or an entry price. There is a
+**price level, a side, and an action**:
 
-Concretely:
+- "sell if it drops to $256" — price level, downside, EXIT
+- "buy at $47" — price level, ENTER
+- "$60 — probably take profit, maybe raise the target" — price level, upside, REVIEW
 
-| Today's column | Becomes |
-|---|---|
-| `stopLoss` | the canonical `EXIT + PRICE_BELOW` rung (LONG; mirrored for SHORT) |
-| `targetPrice` | the canonical `(REVIEW\|EXIT) + PRICE_ABOVE` rung |
-| `entryPrice` | the canonical `ENTER` rung — direction per the analyst's entry mode |
-| `nextReviewAt` | a `REVIEW_DATE_HIT` rung (re-instated), or `TIME_ELAPSED` for a cadence |
-| `maxHoldDays` | the `EXIT + TIME_ELAPSED` rung |
-| RUNNING_WINNER | a real `REVIEW` rung at the account level |
-| entry *direction* (buy the dip vs buy confirmation) | an ENTER rung at the account/analyst level — needs a predicate comparing price to the thesis's own `entryPrice`, since a dollar level can't live above the thesis. Was briefly built as an `entryTriggerMode` setting and removed 2026-08-16; see `ENTRY_TRIGGER_SEMANTICS.md`. **Do not rebuild it as a setting.** |
-
-The columns stay as a **read model** — the Price Targets card, the chart lines,
-the digest and the prompts all read them, and there is a lot of code doing so.
-Deriving them on write is far cheaper than chasing every reader.
-
-### What this unlocks
-
-- "Review this analyst's names every day" becomes an **analyst-level rung**,
-  which the cascade already supports (`lib/agent/triggers/levels.ts`). Today
-  review cadence is a per-thesis date with no level above it.
-- A raised stop can't silently fail to arm — raising it *is* editing the rung.
-- The thesis sheet stops lying: every level on screen is something that fires.
+`Thesis.stopLoss` / `targetPrice` / `entryPrice` are the pre-trigger app still
+sitting in the database. Every bug in this area is the app trying to keep two
+stories straight.
 
 ---
 
-## Sequencing
+## The eight things, and what happens to each
 
-1. **Derive-on-write.** `update_thesis` / `place_trade` / `manage_position`
-   stop accepting a bare `stop_loss` etc.; a level change writes the rung and
-   the column is recomputed from the ladder in the same transaction. Add a
-   Layer-1 assertion: a thesis with a `stopLoss` and no matching EXIT rung is
-   refused at write.
-2. **Backfill.** Every HOLDING/WATCHING thesis whose columns have no matching
-   rung gets one minted from the column. **SNOW-shaped rows are the majority
-   case — expect this to arm floors that are currently inert, which changes
-   live behavior on the next cron tick. Principal must approve the list before
-   it runs.**
-3. **`nextReviewAt` → rung**, re-instating `REVIEW_DATE_HIT`. Note the 2026-05-20
-   removal reason: auto-attaching it made the 5-min cron spawn a TACTICAL run
-   on every overdue WATCHING thesis (28 of 35 tactical runs on 2026-05-18, zero
-   state changes). Re-instate it as **REVIEW-batched to the daily run only** —
-   never a tactical spawn.
-4. **RUNNING_WINNER → rung.** Straightforward once 1–3 are in.
+| # | Thing | Verdict |
+|---|---|---|
+| 1 | `Thesis.triggers` | **The system.** Everything else becomes a read of it |
+| 2 | `Thesis.stopLoss` / `targetPrice` / `entryPrice` | **Computed cache.** One function owns them; nothing else may write them; a write that leaves them disagreeing with the triggers is refused |
+| 3 | `Position.stopLoss` / `targetPrice` | **Dropped.** Written in 3 places, read by one line of the digest email. The price monitor stopped reading them when exits moved to triggers |
+| 4 | `Thesis.nextReviewAt` + `horizon-policy.ts` | **Both die as authored things.** A review date is a trigger: *review every N days*, counted from the last actual review. Cascades like everything else. `nextReviewAt` survives only as a computed display number |
+| 5 | `Thesis.maxHoldDays` | **Dropped, column and all.** It minted one "review after N days" trigger at birth and was never read again. If an analyst wants that, it authors the trigger |
+| 6 | `winner-signal.ts` / RUNNING_WINNER | **Deleted, not converted.** The account already carries *review if up 10% from entry*, which fires first in every realistic case. Replaced by putting the gain number on the roster row so the agent can see movement itself |
+| 7 | `ladder-health.ts` / UNPROTECTED_GAIN | **Kept.** Not a level — a check *on* the triggers ("you're up 22%, your floor locks in 4%"). Different job. Render it visually distinct |
+| 8 | `Thesis.revalidationTriggers` | **Dropped.** The first attempt at triggers, from before the real one. Zero readers outside generated Prisma |
 
----
+### On the calculated flags
 
-## Don't break
+The *purpose* was right: a stock up 200% on day 2 of a 30-day review cycle must
+not be invisible. The *implementation* was a hardcoded morning calculation per
+scenario. That's now covered by two things that already exist:
 
-- **The one-way mirror already in `applyTriggerValueEdit`** keeps Thesis +
-  Position in sync when a pill is edited. Under derive-on-write it becomes the
-  *only* path, not a special case — but `Position.stopLoss` / `targetPrice` are
-  read by the price monitor and must keep being written.
-- **`closeReason` STOP/TARGET tagging** (`protectiveExitCloseReason`) keys off
-  predicate kind. Minting new canonical rungs must preserve the mapping or the
-  P1-28 cooldown exemption mis-fires.
-- **`update_thesis.triggers` is wholesale-replace.** A derived column recomputed
-  from a replaced array must not lose a level the agent didn't resend. Pair with
-  `dropRedundantInherited` semantics already in `lib/agent/triggers/levels.ts`.
-- **The standing-order ruling (2026-08-16).** A trigger fires every day its
-  condition holds; a decline means "did nothing." Agents may RAISE/tighten a
-  level, never LOWER or loosen one — lowering is the principal's manual act in
-  the reject UI. Nothing in this rework may introduce agent-side auto-retuning.
-- **Read the CLAUDE.md "RECURRING BUGS" section and `docs/PRINCIPLES.md`**
-  before moving any rule between layers.
+- **Account-level triggers** — "if anything is up X%, flag it" is one rule at
+  the account, inherited by every thesis. This is the general answer, and it
+  replaces the per-scenario flags.
+- **The roster row the agent reads** already carries the live price next to the
+  plan numbers. Adding gain % and 5-day move makes "something crazy happened
+  here" visible without any flag at all.
+
+The agent is supposed to decide what's interesting. It needs good numbers in
+front of it, not a growing list of pre-computed opinions.
 
 ---
 
-## Verification queries
+## Price Targets — how it keeps working
 
-```sql
--- SELECT ONLY. Theses whose stop has no matching EXIT rung.
-select t.ticker, t."stopLoss", t.status,
-       jsonb_path_query_array(t.triggers, '$[*].predicate.kind') as kinds
-from "Thesis" t
-where t.status in ('HOLDING','WATCHING')
-  and t."stopLoss" is not null
-  and not exists (
-    select 1 from jsonb_array_elements(t.triggers) r
-    where r->>'action' = 'EXIT'
-      and r->'predicate'->>'kind' in ('PRICE_BELOW','PRICE_ABOVE')
-      and (r->'predicate'->>'level')::numeric = t."stopLoss"
-  );
-```
+This is a real product surface (the card, the chart lines, the roster row) and
+it does not lose anything. It stops reading columns and starts reading triggers.
+
+### The canonical levels
+
+Derived from the **resolved** trigger list (account → analyst → thesis, most
+specific wins). Shown for LONG; inverted for SHORT.
+
+| Card slot | Read from | Notes |
+|---|---|---|
+| **Entry** | the `ENTER` trigger's price | While WATCHING this is the plan. Once HOLDING it's what we actually paid (position avg cost) — a fact, not a plan |
+| **Floor** | `EXIT` + price-below | The sell-at that protects. This is the one the protective ratchet guards |
+| **Target** | `EXIT` or `REVIEW` + price-above | EXIT = sell here. REVIEW = reconsider here (raise the target, trim, or hold) |
+
+**Why exactly one per slot is guaranteed:** the trigger system already keeps
+one trigger per (condition-shape, action) pair, and ENTER collapses
+above/below into a single pair. After resolution there is at most one Entry,
+one Floor, one Target-EXIT and one Target-REVIEW. If both target kinds exist,
+the card's Target slot shows the further one (the destination) and the chart
+draws both.
+
+Levels beyond the canonical set — a warning REVIEW below the floor, a second
+trim level — draw as extra chart lines and don't take a card slot.
+
+### The chart
+
+Draws **every** price-level trigger as a line labelled with what it does.
+That's strictly better than today, which draws three numbers, two of which
+currently fire nothing.
+
+### Editing
+
+A set/edit control on the card (and on the stock chart) writes the trigger, not
+a column. This is a new entry point onto the write path the trigger popover
+already uses — `applyTriggerValueEdit` for changing one, `applyTriggerAdd` for
+minting one that doesn't exist yet. No new mechanism.
+
+### Why the columns stay as a cache
+
+~15 readers — digest email, prompts, roster rows, trade page, chart,
+plan-sanity, ladder-health. Making each of them resolve the full cascade means
+two extra queries in places that today read one number. So the columns stay,
+with a hard invariant: **one function computes them, nothing else writes them,
+and a write that leaves them disagreeing with the triggers is refused.** That
+makes them a cache rather than a second source of truth. Deleting them
+entirely is a mechanical follow-up if we want it later.
+
+---
+
+## Tickets, in order
+
+| # | Ticket | What | Rough delta |
+|---|---|---|---|
+| **L1** | Level ⇄ trigger core | One pure module: resolved triggers → {entry, floor, target}, and the inverse (set a level → the trigger that expresses it). Tests. No callers yet | +250 |
+| **L2** | Price Targets reads triggers | Card, chart lines, roster row, and the set/edit control. The visible product win; independent of the write-path work | +150 / −80 |
+| **L3** | Derive-on-write | `update_thesis` / `record_thesis` / `place_trade` / `manage_position` stop writing level columns. A level change writes the trigger and recomputes the cache in the same transaction. Layer-1 assertion refuses a disagreeing write | +200 / −250 |
+| **L4** | Floors and targets actually fire | Canonical floor is EXIT, canonical target is REVIEW. Also: multi-day price-move triggers (5D/30D) currently never fire on the cron because it doesn't fetch candles — same decorative-trigger bug, fixed here | +120 |
+| **L5** | What a level does when we don't own the stock | L4 creates this problem: once floors fire, a breached floor on a watch item fires EXIT with no position to sell (KLAC). New `DEMOTE` action, chosen at fire time from the thesis's state — a floor hit means the plan broke, a target hit means the move happened without us; both clear the priced plan and keep watching. **Not** DAV-209's demotion — see the handoff below | +150 |
+| **L6** | ⛔ **BACKFILL — STOP, needs the principal** | Mint triggers from the stop/target numbers already on live positions. This arms floors that are inert today and changes behaviour on the next 5-minute tick. The exact list gets approved before it runs | — |
+| **L7** | Reviews become a cadence trigger | Delete `REVIEW_DATE_HIT`, the `next_review_at` argument, both auto-bump blocks in `update_thesis`, and `horizon-policy`'s cadence math (becomes four numbers on the account). `nextReviewAt` becomes cache | +150 / −350 |
+| **L8** | Delete the duplicates | RUNNING_WINNER + `winner-signal.ts` + its tests; the `maxHoldDays`, `Position.stopLoss`/`targetPrice`, and `revalidationTriggers` columns; `scripts/dedupe-review-date-hit-triggers.ts`. Add gain % and 5-day move to the roster row | +60 / −600 |
+
+**Linear:** none of L1–L8 exist as issues yet. DAV-195 is the umbrella for
+all of them; DAV-200 (labels on partial sales) is the only other open issue in
+the project and is unaffected. DAV-193 / DAV-201 / DAV-203 are Done and their
+behaviour is preserved — L3's ratchet assertion and L7's review-clock work must
+not regress them.
+
+**Order:** L1 → (L2 ∥ L3) → L4 → L5 → **L6 stop** → L7 → L8.
+
+L4 before L6 because the backfill is what arms these on existing rows — the
+firing code has to exist first. L8 last because RUNNING_WINNER can't be deleted
+until targets actually fire.
+
+Net across the whole project: roughly **−700 lines**.
+
+---
+
+## Rules that don't move
+
+- **A trigger is a standing order** (ruling 2026-08-16). It fires every day its
+  condition holds; a decline means "did nothing." Agents may tighten a
+  protective level, never loosen or remove one. No agent-side auto-retuning.
+- **Sale labelling** keys off the condition kind (`protectiveExitCloseReason`).
+  New canonical levels must preserve the mapping or the cooldown exemption
+  misfires.
+- **`update_thesis.triggers` replaces the whole list.** A cache recomputed from
+  a replaced list must not lose a level the agent didn't resend — pairs with
+  `dropRedundantInherited`.
+- **Don't rebuild entry direction (buy-the-dip vs buy-confirmation) as a
+  setting.** Removed 2026-08-16, see `ENTRY_TRIGGER_SEMANTICS.md`. It's an
+  account/analyst-level ENTER trigger.
+- **Correction to the parent spec:** it lists `Position.stopLoss`/`targetPrice`
+  under "Don't break — read by the price monitor." That is out of date. The
+  price monitor only tracks the running high-water mark now; those columns are
+  read by one line of the digest email. They're being dropped.
+
+---
+
+## What the watchlist work needs from this (DAV-209)
+
+- **There are two demotions and they share a verb, not a trigger.** DAV-209
+  defines demotion as *"null out entry/stop/target, keep the item and its
+  triggers — a field write, not a status change."* That's a person or an agent
+  setting a watch down on demand, and it stays yours. L5 is the **automatic**
+  one: what the system does when a floor or target fires on something we don't
+  own. Both end in the same place — the ENTER/EXIT triggers go and the cached
+  columns recompute to null — so L5 ships the shared write and DAV-209 calls
+  it. Under this model your "null out entry/stop/target" *is* "remove the
+  ENTER and EXIT triggers"; don't write the columns directly.
+- **"Active watch" is derived, not a field.** An item is actively watched iff
+  it carries an ENTER trigger with a price. Don't add a status column for it.
+- **A large soft-watch pool is safe.** Review cadence is a trigger whose action
+  is REVIEW, and REVIEW triggers never spawn a tactical run — they log and the
+  next daily run picks them up in batch. That is what makes the May 2026
+  tactical-run explosion structurally impossible rather than policy-prevented,
+  and it cannot be relaxed.
+- **Never write a level column.** Write the trigger; the column recomputes.
