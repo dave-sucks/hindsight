@@ -147,12 +147,25 @@ specific wins). Shown for LONG; inverted for SHORT.
 | **Floor** | `EXIT` + price-below | The sell-at that protects. This is the one the protective ratchet guards |
 | **Target** | `EXIT` or `REVIEW` + price-above | EXIT = sell here. REVIEW = reconsider here (raise the target, trim, or hold) |
 
-**Why exactly one per slot is guaranteed:** the trigger system already keeps
-one trigger per (condition-shape, action) pair, and ENTER collapses
-above/below into a single pair. After resolution there is at most one Entry,
-one Floor, one Target-EXIT and one Target-REVIEW. If both target kinds exist,
-the card's Target slot shows the further one (the destination) and the chart
-draws both.
+**There is NOT one candidate per slot, and the Floor slot is where that
+bites.** An earlier draft of this doc claimed the cascade guarantees it —
+one trigger per (condition-shape, action) pair — which is true and
+insufficient. A hard stop (`PRICE_BELOW`) and a trailing give-back
+(`TRAILING_FROM_HIGH`) are *different* shapes, so both survive resolution and
+both are floors. That is not an edge case: 5 of 8 held positions carry both
+today, and after L6 all 8 will. EME right now has an inherited 8% trail at
+$794.76 and a hand-set stop at $753, both breached.
+
+**The rule: the slot shows the level that fires FIRST** — the highest floor on
+a long, the lowest on a short — because that is the one that actually binds.
+Everything else is drawn as its own chart line. Same rule on the target side,
+inverted: the slot shows the *furthest* level, because a target is a
+destination rather than a constraint, and the nearer ones are the tiers on
+the way.
+
+A trail is placed at the price it currently occupies (`peak × (1 − pct)`), so
+it competes on equal terms and is labelled `trailing` to say the number
+moves.
 
 Levels beyond the canonical set — a warning REVIEW below the floor, a second
 trim level — draw as extra chart lines and don't take a card slot.
@@ -188,7 +201,7 @@ entirely is a mechanical follow-up if we want it later.
 |---|---|---|---|
 | **L1** | Level ⇄ trigger core | One pure module: resolved triggers → {entry, floor, target}, and the inverse (set a level → the trigger that expresses it). Tests. No callers yet | +250 |
 | **L2** | Price Targets reads triggers | Card, chart lines, roster row, and the set/edit control. The visible product win; independent of the write-path work | +150 / −80 |
-| **L3** | Derive-on-write | `update_thesis` / `record_thesis` / `place_trade` / `manage_position` stop writing level columns. A level change writes the trigger and recomputes the cache in the same transaction. Layer-1 assertion refuses a disagreeing write | +200 / −250 |
+| **L3** | Derive-on-write | `update_thesis` / `record_thesis` ✅ done. Remaining: `place_trade` and `manage_position`. **The reference shape is what `applyTriggerValueEdit` already does** — trigger + Thesis cache + Position cache + PositionEvent + `ThesisUpdate`, one transaction, `source` stamped. See the EME 16:02 row for a worked example; match it rather than re-deriving it | +200 / −250 |
 | **L4** | Floors and targets actually fire | Canonical floor is EXIT, canonical target is REVIEW. Also: multi-day price-move triggers (5D/30D) currently never fire on the cron because it doesn't fetch candles — same decorative-trigger bug, fixed here | +120 |
 | **L5** | What a level does when we don't own the stock | L4 creates this problem: once floors fire, a breached floor on a watch item fires EXIT with no position to sell (KLAC). New `DEMOTE` action, chosen at fire time from the thesis's state — a floor hit means the plan broke, a target hit means the move happened without us; both clear the priced plan and keep watching. **Not** DAV-209's demotion — see the handoff below | +150 |
 | **L6** | ⛔ **BACKFILL — STOP, needs the principal** | Turn the stop/target numbers already written on theses into real triggers. **Targets are minted as REVIEW, never EXIT** — the same rule every other write follows (ruling 2026-08-24), so a target reached wakes a decision on the next daily run instead of auto-selling at a number typed weeks ago. Floors are minted as EXIT. The exact list gets approved before it runs | — |

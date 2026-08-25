@@ -680,3 +680,44 @@ describe("a floor raised past an upside level", () => {
     expect(levels.contradiction).toEqual({ floor: 100, upside: 105 });
   });
 });
+
+describe("two protective floors of different kinds", () => {
+  // 5 of 8 held positions carry both a hard stop and a trail today; after the
+  // backfill all 8 will. They are different predicate shapes, so the cascade
+  // keeps BOTH — the slot has to choose, and the choice is the one that binds.
+  const trail = (pct: number, id: string) =>
+    resolved(trig({ kind: "TRAILING_FROM_HIGH", pct }, "EXIT", { id }), {
+      level: "ACCOUNT",
+      inherited: true,
+    });
+
+  it("gives the slot to whichever binds first, hard stop or trail", () => {
+    const held = { direction: "LONG", status: "HOLDING", avgCost: 800, peakPrice: 900 };
+    // Trail at 828 is above the hard stop at 700 — the trail binds.
+    expect(
+      canonicalLevels({
+        ...held,
+        triggers: [resolved(trig(below(700), "EXIT", { id: "hard" })), trail(8, "trail")],
+      }).floor?.triggerId,
+    ).toBe("trail");
+    // Raise the hard stop above the trail and it takes over.
+    expect(
+      canonicalLevels({
+        ...held,
+        triggers: [resolved(trig(below(850), "EXIT", { id: "hard" })), trail(8, "trail")],
+      }).floor?.triggerId,
+    ).toBe("hard");
+  });
+
+  it("keeps the loser as its own chart line rather than hiding it", () => {
+    const levels = canonicalLevels({
+      direction: "LONG",
+      status: "HOLDING",
+      avgCost: 800,
+      peakPrice: 900,
+      triggers: [resolved(trig(below(700), "EXIT", { id: "hard" })), trail(8, "trail")],
+    });
+    expect(levels.all.map((l) => l.triggerId)).toEqual(["hard", "trail"]);
+    expect(levels.all.filter((l) => l.side === "DOWNSIDE")).toHaveLength(2);
+  });
+});
