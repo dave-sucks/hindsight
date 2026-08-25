@@ -21,6 +21,8 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { getAccount } from "@/lib/alpaca";
 import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
+import { randomUUID } from "node:crypto";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 import {
@@ -1209,7 +1211,7 @@ export const recordThesis = defineTool({
       // WATCHING/LONG-or-SHORT theses with no ENTER actions — matches the
       // upstream guard in manage_watchlist.ts and closes the last creation
       // hole for inert watching theses.
-      const mergedTriggers: Trigger[] = (() => {
+      let mergedTriggers: Trigger[] = (() => {
         // PASS theses are terminal — no triggers. Future re-encounter
         // mints a fresh directional thesis via parent_thesis_id.
         if (args.direction === "PASS") {
@@ -1242,6 +1244,33 @@ export const recordThesis = defineTool({
         const merged = mergeTriggers(defaults, supplied);
         return applyTriggerCooldownDefaults(merged);
       })();
+
+      // ── Derive-on-write: levels are triggers (DAV-195 L3) ───────────
+      // The horizon templates only mint a floor for SOME shapes — of the
+      // four WATCHING templates exactly one reads stopLoss, and it mints a
+      // REVIEW ("better entry, or thesis weakening?"), not a sell level. So
+      // a watch item's stop has never been armed as anything: 19 of 19
+      // watchlist rows in the book carry a stop that fires nothing (the KLAC
+      // shape). This makes every supplied level produce its trigger,
+      // whatever the horizon, and recomputes the columns from the result.
+      //
+      // Safe to arm a watchlist floor only because L5 landed first: a floor
+      // breach on something we don't own resolves to DEMOTE, not a sell
+      // proposal on a position that doesn't exist.
+      const levelled = applyLevelArgs({
+        stored: mergedTriggers as Trigger[],
+        levels: {
+          entry: args.entry_price ?? null,
+          target: args.target_price ?? null,
+          floor: args.stop_loss ?? null,
+        },
+        direction: args.direction === "PASS" ? null : args.direction,
+        status: effectiveStatusForTriggers,
+        source: "AGENT",
+        mintId: () => randomUUID(),
+      });
+      mergedTriggers = applyTriggerCooldownDefaults(levelled.triggers);
+      const derivedLevelColumns = levelled.columns;
 
       // ── ENTER-trigger guard (shared with update_thesis) ─────────────
       // A WATCHING/LONG or WATCHING/SHORT thesis without an ENTER trigger
@@ -1332,9 +1361,12 @@ export const recordThesis = defineTool({
         accountId: ctx.accountId,
         ticker: args.ticker,
         direction: directionToStore,
-        entryPrice: args.entry_price ?? null,
-        targetPrice: args.target_price ?? null,
-        stopLoss: args.stop_loss ?? null,
+        // Derived from the trigger list, not taken from the args — see the
+        // derive-on-write block above. A level on a thesis is whatever the
+        // triggers say it is.
+        entryPrice: derivedLevelColumns.entryPrice,
+        targetPrice: derivedLevelColumns.targetPrice,
+        stopLoss: derivedLevelColumns.stopLoss,
         // Legacy holdDuration column — derived from horizon. The arg was
         // dropped from the zod schema in PR-4 (was a token waste, agents
         // routinely confused it with `horizon`). Column drops in PR-5.
