@@ -58,7 +58,6 @@ async function main() {
       entryPrice: true,
       targetPrice: true,
       stopLoss: true,
-      maxHoldDays: true,
       catalystDate: true,
       triggers: true,
       researchRun: {
@@ -101,7 +100,6 @@ async function main() {
             entryPrice: t.entryPrice != null ? Number(t.entryPrice) : null,
             targetPrice: t.targetPrice != null ? Number(t.targetPrice) : null,
             stopLoss: t.stopLoss != null ? Number(t.stopLoss) : null,
-            maxHoldDays: t.maxHoldDays ?? null,
             catalystDate: t.catalystDate ?? null,
             direction: t.direction as "LONG" | "SHORT",
           },

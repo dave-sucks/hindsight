@@ -198,13 +198,16 @@ describe("validateThesisDecision — horizon conditionals", () => {
     expect(v.errors.join(" ")).toContain("catalyst_date");
   });
 
-  it("TRADE requires max_hold_days", () => {
+  it("no longer requires max_hold_days on a TRADE", () => {
+    // The column is gone (DAV-195 L8). "This has been open long enough" is a
+    // TIME_ELAPSED review trigger the TRADE template mints — on the ladder,
+    // where it can be seen and edited, instead of a field that fed a
+    // template once at mint and then drifted from it.
     const v = validateThesisDecision(
       { ...validLong, horizon: "TRADE", max_hold_days: undefined },
       mintOpts,
     );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("max_hold_days");
+    expect(v.ok).toBe(true);
   });
 
   it("rejects an unparseable catalyst_date", () => {

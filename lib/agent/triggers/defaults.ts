@@ -53,7 +53,6 @@ export interface ThesisShape {
   entryPrice?: number | null;
   targetPrice?: number | null;
   stopLoss?: number | null;
-  maxHoldDays?: number | null;
   catalystDate?: Date | null;
   /** Direction colors entry-trigger semantics for watching theses. */
   direction?: ThesisDirection | null;
@@ -141,6 +140,9 @@ function scaleInOnPullbackTrigger(): Trigger {
 // The three constants are PRINCIPAL-TUNABLE: change the number here and
 // every future mint picks it up. Existing theses keep the value they were
 // minted with (editable per-thesis in the trigger popover).
+
+/** How long a TRADE-horizon position runs before it must be re-examined. */
+const TRADE_MAX_HOLD_DAYS = 14;
 
 /** Gain milestone: up X% from entry → checkpoint re-underwrite (REVIEW). */
 const PROTECT_CHECKPOINT_GAIN_PCT = 10;
@@ -462,12 +464,16 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
       cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
-  const maxDays = thesis.maxHoldDays ?? 14;
+  // "This has been open long enough — look at it." Was Thesis.maxHoldDays, a
+  // column that produced exactly this trigger once at mint and was never read
+  // again, then drifted from it. It is a plain TIME_ELAPSED review now, on
+  // the ladder where it can be seen and edited like anything else.
+  const maxDays = TRADE_MAX_HOLD_DAYS;
   out.push({
     id: createId(),
     predicate: { kind: "TIME_ELAPSED", days: maxDays },
     action: "REVIEW",
-    rationale: `Max hold ${maxDays} days reached — TRADE horizons must close out by this point.`,
+    rationale: `Open ${maxDays} days — a TRADE should have resolved by now. Close it or re-underwrite it.`,
     // cooldownDays intentionally unset — falls back to the per-kind default
     // (~80% of `days`) which is the right shape: TIME_ELAPSED stays true
     // forever once the window is reached, so without ANY cooldown it would

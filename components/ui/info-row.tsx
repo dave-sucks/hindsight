@@ -17,7 +17,7 @@ import {
  * Usage (tooltip):     <InfoRow label="Min Confidence" value="70%"
  *                                tooltip="Lowest thesis confidence that can place a trade." />
  * Usage (description): <InfoRow label="Horizon" value="TRADE"
- *                                description="Bounded short-term trade. Exit on stop, target, or maxHoldDays." />
+ *                                description="Bounded short-term trade. Exit on the stop, the target, or time." />
  *
  * Label: `font-light text-foreground` (lighter weight, same color as value).
  * Value: `font-medium text-foreground` — slightly heavier so the value

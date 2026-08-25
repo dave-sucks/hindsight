@@ -339,15 +339,6 @@ const thesisFields = z.object({
     .describe(
       "ISO timestamp. REQUIRED when horizon=CATALYST — when the dated event lands (earnings date, FDA decision, M&A close, court ruling). Drives the trigger template (filings + earnings REVIEW around the date) and the 30d-past-event exit policy. If you don't know the date, this isn't a CATALYST thesis — use TRADE (with max_hold_days) or TARGET (open-ended).",
     ),
-  max_hold_days: z
-    .number()
-    .int()
-    .positive()
-    .max(365)
-    .optional()
-    .describe(
-      "REQUIRED when horizon=TRADE — declares the time-exit window for this short-term setup. Typical values: 5-7 for tight intraday/breakout, 10-14 for swing patterns. The TIME_ELAPSED trigger fires a REVIEW at this many days. There is NO silent default — set it explicitly or pick TARGET if you want open-ended.",
-    ),
   next_review_at: z
     .string()
     .datetime()
@@ -803,24 +794,6 @@ export const recordThesis = defineTool({
           sources: [],
         };
       }
-      if (isDirectional && args.horizon === "TRADE" && args.max_hold_days == null) {
-        console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — TRADE horizon without explicit max_hold_days.`,
-        );
-        return {
-          summary: `Thesis rejected for ${args.ticker}: TRADE requires explicit max_hold_days.`,
-          data: {
-            thesis_id: null,
-            status: "FAILED" as const,
-            note:
-              `TRADE horizon means a bounded short-term setup (days-to-weeks) with a hard time exit. ` +
-              `Pass max_hold_days explicitly — typical values are 5-7 for tight intraday/breakout setups, 10-14 for swing patterns. ` +
-              `The TIME_ELAPSED trigger will fire a REVIEW at this many days; without it set, the thesis silently auto-extends past its intended window. ` +
-              `If you want open-ended (no time exit), use TARGET instead.`,
-          },
-          sources: [],
-        };
-      }
 
       // ── Conviction Expression v4 — field-presence gates (§3) ──────────
       // Directional theses (LONG/SHORT) require conviction + rationale +
@@ -1235,7 +1208,6 @@ export const recordThesis = defineTool({
             entryPrice: args.entry_price ?? null,
             targetPrice: args.target_price ?? null,
             stopLoss: args.stop_loss ?? null,
-            maxHoldDays: args.max_hold_days ?? null,
             catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
             direction: args.direction,
           },
@@ -1406,8 +1378,6 @@ export const recordThesis = defineTool({
         // DB. See the build block above for the templating rules.
         triggers: mergedTriggers as object[],
         catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
-        maxHoldDays:
-          args.max_hold_days ?? (args.horizon === "TRADE" ? 14 : null),
         nextReviewAt,
         // ── Deep-research artifacts (V2 flat schema, PR-9) ────────────────
         // researchData is the raw markdown data block; the 9 columns below
@@ -1767,7 +1737,6 @@ export const recordThesis = defineTool({
             scalingPlan: _scaling,
             triggers: _triggers,
             catalystDate: _cdate,
-            maxHoldDays: _maxhold,
             nextReviewAt: _review,
             // THESIS_RESEARCH_V2 Phase 1 + PR-9 flat schema — strip every
             // V2-era research column if Prisma client predates them.
@@ -1795,7 +1764,6 @@ export const recordThesis = defineTool({
           void _scaling;
           void _triggers;
           void _cdate;
-          void _maxhold;
           void _review;
           void _rdata;
           void _rupdated;

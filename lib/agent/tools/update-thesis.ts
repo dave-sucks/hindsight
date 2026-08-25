@@ -258,7 +258,6 @@ const updateSchema = z.object({
       "Promote or demote when the trade structure has actually changed. Examples: a TRADE that's compounding past its 14d window because the thesis got bigger → upgrade to TARGET (and extend maxHoldDays + push nextReviewAt to the new cadence). A COMPOUNDER whose moat eroded but isn't dead → downgrade to TARGET with a tighter exit. A CATALYST that printed and is now a position trade on residual momentum → upgrade to TARGET. When you change horizon you MUST also update maxHoldDays and nextReviewAt to the new horizon's defaults (TRADE 14d / TARGET 90d / COMPOUNDER 365d) — leaving the old cadence in place produces a thesis whose exit policy doesn't match its label, which is worse than not promoting at all. Only spawn a fresh record_thesis when direction or core belief flips, not when the time horizon evolves.",
     ),
   catalyst_date: z.string().datetime().nullable().optional(),
-  max_hold_days: z.number().int().positive().max(365).nullable().optional(),
   triggers: triggersArraySchema
     .optional()
     .describe(
@@ -383,7 +382,6 @@ type UpdatePatch = Partial<{
   variantView: string | null;
   horizon: string | null;
   catalystDate: Date | null;
-  maxHoldDays: number | null;
   nextReviewAt: Date | null;
   lastReviewedAt: Date | null;
   triggers: object;
@@ -474,7 +472,6 @@ export const updateThesis = defineTool({
         variantView: true,
         horizon: true,
         catalystDate: true,
-        maxHoldDays: true,
         nextReviewAt: true,
         triggers: true,
         // Per-thesis fire state for inherited rungs — read so a rung
@@ -1236,7 +1233,6 @@ export const updateThesis = defineTool({
     if (args.horizon !== undefined) patch.horizon = args.horizon;
     if (args.catalyst_date !== undefined)
       patch.catalystDate = args.catalyst_date ? new Date(args.catalyst_date) : null;
-    if (args.max_hold_days !== undefined) patch.maxHoldDays = args.max_hold_days;
     // next_review_at is gone (DAV-195 L7). Review cadence is a trigger:
     // "review every N days", counted from the last actual review, cascading
     // account -> analyst -> thesis like every other level. An agent that
@@ -1739,7 +1735,6 @@ export const updateThesis = defineTool({
       "targetSizePct",
       "horizon",
       "catalystDate",
-      "maxHoldDays",
       "nextReviewAt",
       "triggers",
       "scalingPlan",
