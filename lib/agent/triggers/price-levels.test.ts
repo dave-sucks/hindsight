@@ -721,3 +721,44 @@ describe("two protective floors of different kinds", () => {
     expect(levels.all.filter((l) => l.side === "DOWNSIDE")).toHaveLength(2);
   });
 });
+
+// ── A thesis inherits the review cadence from the account ──────────────
+
+describe("review cadence reaches a thesis that has none of its own", () => {
+  // This is the mechanism that would have silently stopped every review:
+  // the clock lives on a trigger, most theses carry no trigger of their own,
+  // and they only get one by inheriting it. If the account has no cadence,
+  // nothing anywhere does, and the daily run goes quiet with no error.
+  const cadence = (days: number, id: string) =>
+    trig({ kind: "REVIEW_CADENCE", days }, "REVIEW", { id });
+
+  it("resolves the account's cadence onto a bare thesis", () => {
+    const ladder = resolveLadder({
+      thesis: [],
+      account: [cadence(7, "acct")],
+      direction: "LONG",
+    });
+    const found = ladder.find((t) => t.predicate.kind === "REVIEW_CADENCE");
+    expect(found?.id).toBe("acct");
+    expect(found?.inherited).toBe(true);
+  });
+
+  it("lets one thesis review more often than the account rule", () => {
+    const ladder = resolveLadder({
+      thesis: [cadence(3, "mine")],
+      account: [cadence(7, "acct")],
+      direction: "LONG",
+    });
+    const found = ladder.filter((t) => t.predicate.kind === "REVIEW_CADENCE");
+    expect(found).toHaveLength(1);
+    expect(found[0].id).toBe("mine");
+    expect(found[0].overrides?.level).toBe("ACCOUNT");
+  });
+
+  it("leaves a thesis with NO cadence at any level — the failure to catch", () => {
+    // Exactly the production state before the migration: 0 accounts,
+    // 0 analysts and 0 theses carrying one. Nothing errors; reviews just stop.
+    const ladder = resolveLadder({ thesis: [], account: [], direction: "LONG" });
+    expect(ladder.find((t) => t.predicate.kind === "REVIEW_CADENCE")).toBeUndefined();
+  });
+});
