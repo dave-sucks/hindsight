@@ -765,3 +765,29 @@ export function columnsBackedByTriggers(args: {
 function fmt(n: number | null): string {
   return n == null ? "nothing" : `$${n.toFixed(2)}`;
 }
+
+// ── Demotion ───────────────────────────────────────────────────────────
+
+/** Actions whose price levels constitute "the priced plan". */
+const PLAN_ACTIONS = new Set(["ENTER", "EXIT", "REVIEW"]);
+
+/**
+ * Is this trigger part of the priced plan — the buy level, the floor, or the
+ * target?
+ *
+ * Only absolute price levels qualify. A review cadence, an earnings trigger
+ * or a percentage move is not a price plan and survives demotion: the whole
+ * point is that the item keeps being watched.
+ *
+ * An upside REVIEW is the target and goes; a DOWNSIDE review ("price dropped
+ * to support — better entry, or thesis weakening?") is a watching instruction
+ * rather than a plan level, so it stays.
+ */
+export function isPlanLevel(t: Trigger, direction: string | null): boolean {
+  const kind = t.predicate.kind;
+  if (kind !== "PRICE_ABOVE" && kind !== "PRICE_BELOW") return false;
+  if (!PLAN_ACTIONS.has(t.action)) return false;
+  if (t.action === "ENTER" || t.action === "EXIT") return true;
+  return levelSide(t.predicate, direction) === "UPSIDE";
+}
+
