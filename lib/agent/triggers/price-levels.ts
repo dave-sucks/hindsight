@@ -326,20 +326,41 @@ function setLevel(
 // ── Display ────────────────────────────────────────────────────────────
 
 /**
- * What the card says for one slot. Three states, and the third is the point:
- * a cached column with no trigger behind it is decoration, and rendering it
- * as plain "Stop $256" is the lie SNOW told on a live position for months.
+ * What the card says for one slot.
+ *
+ * Three states. The third is the headline point — a cached column with no
+ * trigger behind it is decoration, and rendering it as plain "Stop $256" is
+ * the lie SNOW told on a live position for months.
+ *
+ * `does` is the quieter half of the same idea. A floor is always a sell, but
+ * a target may be a sell OR a review, and the card used to render both as
+ * "Target $1150". That tells you the level is real without telling you what
+ * reaching it does — a smaller version of the same problem. So the label
+ * carries the verb.
  */
 export type LevelLabelState =
-  | { kind: "live"; price: number; moving: boolean }
+  | { kind: "live"; price: number; moving: boolean; does: "sells" | "asks" }
   | { kind: "decorative"; price: number }
   | { kind: "none" };
 
 export function levelLabelState(
-  level: { price: number; projected: boolean } | null | undefined,
+  level:
+    | { price: number; projected: boolean; action?: string }
+    | null
+    | undefined,
   storedColumn: number | null | undefined,
 ): LevelLabelState {
-  if (level) return { kind: "live", price: level.price, moving: level.projected };
+  if (level) {
+    return {
+      kind: "live",
+      price: level.price,
+      moving: level.projected,
+      // Anything that isn't an outright sell wakes a decision instead —
+      // REVIEW batches to the next morning run, TRIM/ADD propose a size
+      // change. From the card's point of view they all ask rather than act.
+      does: level.action === "EXIT" ? "sells" : "asks",
+    };
+  }
   if (storedColumn != null) return { kind: "decorative", price: storedColumn };
   return { kind: "none" };
 }

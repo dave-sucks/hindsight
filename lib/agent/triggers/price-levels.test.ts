@@ -413,20 +413,31 @@ describe("resolveLadder tie-break", () => {
 // ── What the card says ─────────────────────────────────────────────────
 
 describe("levelLabelState", () => {
-  it("shows a live level plainly", () => {
-    expect(levelLabelState({ price: 680, projected: false }, 680)).toEqual({
-      kind: "live",
-      price: 680,
-      moving: false,
-    });
+  it("shows a live level, and says what reaching it does", () => {
+    expect(
+      levelLabelState({ price: 680, projected: false, action: "EXIT" }, 680),
+    ).toEqual({ kind: "live", price: 680, moving: false, does: "sells" });
+  });
+
+  it("distinguishes a target that sells from one that asks first", () => {
+    // Both are real levels at the same price. Rendering them identically
+    // tells you the level exists without telling you what it promises.
+    const sells = levelLabelState(
+      { price: 1150, projected: false, action: "EXIT" },
+      1150,
+    );
+    const asks = levelLabelState(
+      { price: 1150, projected: false, action: "REVIEW" },
+      1150,
+    );
+    expect(sells).toMatchObject({ kind: "live", does: "sells" });
+    expect(asks).toMatchObject({ kind: "live", does: "asks" });
   });
 
   it("marks a trail as moving so the number doesn't read as typed", () => {
-    expect(levelLabelState({ price: 828, projected: true }, null)).toEqual({
-      kind: "live",
-      price: 828,
-      moving: true,
-    });
+    expect(
+      levelLabelState({ price: 828, projected: true, action: "EXIT" }, null),
+    ).toEqual({ kind: "live", price: 828, moving: true, does: "sells" });
   });
 
   it("calls out a stored number no trigger enforces", () => {
@@ -479,10 +490,9 @@ describe("the SNOW row, end to end", () => {
     // $340 is a REVIEW checkpoint and IS a real upside level; $360 is not
     // backed by anything, so the destination is $340, not $360.
     expect(levels.target?.price).toBe(340);
-    expect(levelLabelState(levels.target, 360)).toEqual({
+    expect(levelLabelState(levels.target, 360)).toMatchObject({
       kind: "live",
       price: 340,
-      moving: false,
     });
   });
 });

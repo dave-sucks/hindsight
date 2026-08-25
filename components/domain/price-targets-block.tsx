@@ -10,6 +10,8 @@ export interface CardLevel {
   price: number;
   /** True when the price moves (a trail off the high, a gain off entry). */
   projected: boolean;
+  /** What reaching it does. A floor always sells; a target may sell or ask. */
+  action?: string;
   predicateKind: string;
 }
 
@@ -151,10 +153,13 @@ function LevelLabel({
     return (
       <span>
         {name} ${state.price.toFixed(2)}
-        {state.moving ? (
-          // A trail moves with the high — say so, or the number looks typed.
-          <span className="ml-1 text-muted-foreground/70">trailing</span>
-        ) : null}
+        <span className="ml-1 text-muted-foreground/70">
+          {/* A trail moves with the high — say so, or the number looks typed.
+              And say what reaching it DOES: a level that sells and a level
+              that asks you first are not the same promise. */}
+          {state.moving ? "trailing · " : ""}
+          {state.does}
+        </span>
       </span>
     );
   }
