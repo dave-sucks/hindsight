@@ -26,6 +26,7 @@ import {
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import {
   positionBand,
   DEFAULT_POSITION_CAP,
@@ -1010,11 +1011,31 @@ export const placeTrade = defineTool({
             nextTriggers = existing.filter((t) => t.action !== "ENTER");
           }
 
+          // Recompute the displayed levels from the triggers we just wrote
+          // (DAV-195 L3). Without this the buy regenerates the held-side
+          // ladder from the trade arguments while the columns keep their
+          // watching-era values — so the sheet shows the price you PLANNED to
+          // sell at while a different one is armed. That is the SNOW drift,
+          // reintroduced on every fill.
+          const heldLevels = canonicalLevels({
+            triggers: (nextTriggers ?? []).map((x) => ({
+              ...x,
+              level: "THESIS" as const,
+              inherited: false,
+            })),
+            direction: watchingThesis.direction,
+            status: "HOLDING",
+            avgCost: fillPrice,
+          });
           await prisma.thesis.update({
             where: { id: watchingThesis.id },
             data: {
               status: "HOLDING",
               triggers: (nextTriggers ?? []) as unknown as object,
+              // entryPrice becomes a FACT here — what the fill actually cost.
+              entryPrice: fillPrice,
+              targetPrice: heldLevels.columns.targetPrice,
+              stopLoss: heldLevels.columns.stopLoss,
             },
           });
           await prisma.thesisUpdate.create({
