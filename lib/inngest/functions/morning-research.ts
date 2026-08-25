@@ -442,7 +442,7 @@ export const morningResearch = inngest.createFunction(
           //
           // The actionable set mirrors what get_theses surfaces as
           // needsAction, approximated from runInput (price-dependent kinds
-          // like UNPROTECTED_GAIN / RUNNING_WINNER can't be recomputed here
+          // like UNPROTECTED_GAIN can't be recomputed here
           // cheaply — undercounting is fine for a gross-under-coverage
           // safety net):
           //   • triggers fired since last run + matching right now

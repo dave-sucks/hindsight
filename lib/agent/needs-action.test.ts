@@ -512,7 +512,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     status: "HOLDING",
     triggers: [ionsExit],
     avgCost: 73.83,
-    targetPrice: null as number | null, // no target → RUNNING_WINNER can't mask
+    targetPrice: null as number | null,
   };
 
   it("flags a +17% holding whose floor locks −12% (the IONS shape)", () => {
@@ -592,8 +592,8 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     expect(result?.kind).toBe("TRIGGER_MATCHING_NOW");
   });
 
-  it("UNPROTECTED_GAIN outranks RUNNING_WINNER when both fire (floor-first)", () => {
-    // avgCost 100, target 120, price 118: RUNNING_WINNER fires (progress 0.9,
+  it("UNPROTECTED_GAIN fires on a big unprotected winner", () => {
+    // avgCost 100, target 120, price 118: a big winner (progress 0.9,
     // +18%) — but there's no floor, so UNPROTECTED_GAIN must win.
     const result = computeNeedsAction({
       thesis: {
@@ -610,7 +610,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     expect(result?.kind).toBe("UNPROTECTED_GAIN");
   });
 
-  it("a protected winner falls through to RUNNING_WINNER (press/hold/take)", () => {
+  it("a protected winner raises no unprotected-gain flag", () => {
     // Same winner, but a tight floor locks +14 (gap 4 < 6): the unprotected
     // flag self-clears and the press decision surfaces.
     const tightFloor: Trigger = {
@@ -632,7 +632,12 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
       latestQuote: { price: 118, changePct: 0 },
       now,
     });
-    expect(result?.kind).toBe("RUNNING_WINNER");
+    // Falls through to no flag at all. It used to fall through to
+    // RUNNING_WINNER, which was deleted (DAV-195 L8) — the account's "review
+    // if up 10% from entry" trigger fires on this position first anyway, and
+    // the row carries its own gain % for the agent to read. What matters
+    // here is unchanged: a PROTECTED winner does not raise UNPROTECTED_GAIN.
+    expect(result?.kind).not.toBe("UNPROTECTED_GAIN");
   });
 
   it("UNPROTECTED_GAIN outranks a due review", () => {
@@ -677,7 +682,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     ).toBeNull();
   });
 
-  it("counts a trail as protection via peakPrice: tight trail → no flag", () => {
+  it("counts a trail as protection via peakPrice: tight trail raises no flag", () => {
     const trail: Trigger = {
       id: "trig-trail",
       predicate: { kind: "TRAILING_FROM_HIGH", pct: 5 },
@@ -686,7 +691,7 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
       cooldownDays: 0,
     };
     // peak 120, trail 5% → floor 114 locks +14; +18% gain → gap 4 → protected
-    // (falls through to RUNNING_WINNER since target progress qualifies).
+    // (no flag — the gain is protected).
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
@@ -700,100 +705,12 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
       latestQuote: { price: 118, changePct: 0 },
       now,
     });
-    expect(result?.kind).toBe("RUNNING_WINNER");
+    // Falls through to no flag at all. It used to fall through to
+    // RUNNING_WINNER, which was deleted (DAV-195 L8) — the account's "review
+    // if up 10% from entry" trigger fires on this position first anyway, and
+    // the row carries its own gain % for the agent to read. What matters
+    // here is unchanged: a PROTECTED winner does not raise UNPROTECTED_GAIN.
+    expect(result?.kind).not.toBe("UNPROTECTED_GAIN");
   });
 });
 
-describe("computeNeedsAction — RUNNING_WINNER (SCALE_INTO_WINNERS.md PR3)", () => {
-  // Since Game Plan PR-B, an unprotected winner surfaces as UNPROTECTED_GAIN
-  // first (floor-first precedence) — so these fixtures carry a tight
-  // protective floor (gap < 6pts at their quoted price) to exercise the
-  // RUNNING_WINNER path specifically.
-  const tightFloor = (level: number): Trigger => ({
-    id: "trig-tight-floor",
-    predicate: { kind: "PRICE_BELOW", level },
-    action: "EXIT",
-    rationale: "ratcheted floor",
-    cooldownDays: 0,
-  });
-  const heldWinner = {
-    ...baseThesis,
-    status: "HOLDING",
-    triggers: [] as Trigger[],
-    avgCost: 100,
-    targetPrice: 200,
-  };
-
-  it("flags a protected held winner at ≥75% progress with no trigger catching it", () => {
-    const result = computeNeedsAction({
-      thesis: { ...heldWinner, triggers: [tightFloor(175)] }, // locks +75 vs +80 gain
-      latestUpdate: null,
-      latestQuote: { price: 180, changePct: 0 }, // 80% of the way to target, +80%
-      now,
-    });
-    expect(result?.kind).toBe("RUNNING_WINNER");
-    if (result?.kind === "RUNNING_WINNER") {
-      expect(result.unrealizedGainPct).toBeCloseTo(80);
-      expect(result.progressToTarget).toBeCloseTo(0.8);
-      expect(result.pastTarget).toBe(false);
-    }
-  });
-
-  it("does NOT flag a protected held position below BOTH thresholds (mid-progress, modest gain)", () => {
-    const result = computeNeedsAction({
-      thesis: { ...heldWinner, triggers: [tightFloor(105)] }, // locks +5 vs +10 gain
-      latestUpdate: null,
-      latestQuote: { price: 110, changePct: 0 }, // 10% of the way, +10% gain — under 0.75 AND under the 12% floor
-      now,
-    });
-    expect(result).toBeNull();
-  });
-
-  it("a fired EXIT trigger outranks RUNNING_WINNER", () => {
-    const result = computeNeedsAction({
-      thesis: { ...heldWinner, triggers: [EXIT_LONG] },
-      latestUpdate: {
-        type: "TRIGGER_FIRED",
-        triggerId: "trig-exit",
-        timestamp: new Date("2026-05-09T00:00:00Z"),
-      },
-      latestQuote: { price: 180, changePct: 0 },
-      now,
-    });
-    expect(result?.kind).toBe("TRIGGER_FIRED");
-  });
-
-  it("RUNNING_WINNER outranks a due review", () => {
-    const result = computeNeedsAction({
-      thesis: {
-        ...heldWinner,
-        triggers: [tightFloor(185)], // locks +85 vs +90 gain — protected
-        nextReviewAt: new Date("2026-05-01T00:00:00Z"), // overdue
-      },
-      latestUpdate: null,
-      latestQuote: { price: 190, changePct: 0 },
-      now,
-    });
-    expect(result?.kind).toBe("RUNNING_WINNER");
-  });
-
-  it("does NOT flag a non-held (WATCHING) row", () => {
-    const result = computeNeedsAction({
-      thesis: { ...heldWinner, status: "WATCHING" },
-      latestUpdate: null,
-      latestQuote: { price: 190, changePct: 0 },
-      now,
-    });
-    expect(result).toBeNull();
-  });
-
-  it("does NOT flag when avgCost/target are absent (graceful degradation)", () => {
-    const result = computeNeedsAction({
-      thesis: { ...heldWinner, avgCost: null, targetPrice: null },
-      latestUpdate: null,
-      latestQuote: { price: 180, changePct: 0 },
-      now,
-    });
-    expect(result).toBeNull();
-  });
-});

@@ -36,7 +36,7 @@
  *                         day-one floor at −12% is flagged every single
  *                         morning until the floor is raised. See
  *                         docs/plans/THESIS_GAME_PLAN.md + ladder-health.ts.
- *   RUNNING_WINNER      — a HOLDING that has reached ≥75% of the way from its
+ *   (RUNNING_WINNER was removed 2026-08-25 — the account trigger fires first.
  *                         entry (avgCost) to its target (or blown past it),
  *                         up ≥8%, with no fired/matching trigger already
  *                         catching it. The backstop for the "agent ignores
@@ -79,7 +79,6 @@
 
 import { shouldFire } from "@/lib/agent/triggers/evaluate";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
-import { computeWinnerSignal } from "@/lib/agent/winner-signal";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 
@@ -138,15 +137,6 @@ export type NeedsAction =
       hasTrail: boolean;
       /** Compact description of the tightest floor, e.g. "price < $65.00". */
       floorSummary: string | null;
-    }
-  | {
-      kind: "RUNNING_WINNER";
-      /** Unrealized gain %, direction-aware. */
-      unrealizedGainPct: number;
-      /** Fraction of entry→target distance covered (≥1 = past target). */
-      progressToTarget: number;
-      /** True when price has reached or exceeded the target. */
-      pastTarget: boolean;
     }
   | {
       kind: "REVIEW_DUE";
@@ -415,29 +405,19 @@ export function computeNeedsAction(
     }
   }
 
-  // 4) RUNNING_WINNER — a held position at/near its target's decision point
-  //    with no fired/matching trigger already catching it. Backstop for the
-  //    "agent ignores winners" gap (SCALE_INTO_WINNERS.md PR3): an un-laddered
-  //    winner would otherwise fall through to null and be skipped by the
-  //    morning run. Only for HOLDING rows; needs the position avgCost + the
-  //    thesis target from the caller. Ranks below explicit trigger fires (a
-  //    stop or target-EXIT is more specific) but above a routine review.
-  if (thesis.status === "HOLDING") {
-    const winner = computeWinnerSignal({
-      direction: thesis.direction,
-      avgCost: thesis.avgCost,
-      targetPrice: thesis.targetPrice,
-      currentPrice: latestQuote?.price ?? null,
-    });
-    if (winner?.isRunningWinner && winner.progressToTarget != null) {
-      return {
-        kind: "RUNNING_WINNER",
-        unrealizedGainPct: winner.unrealizedGainPct,
-        progressToTarget: winner.progressToTarget,
-        pastTarget: winner.pastTarget,
-      };
-    }
-  }
+  // RUNNING_WINNER was here, and is deleted (DAV-195 L8).
+  //
+  // It flagged a held position at >=75% of the way to target, or up >=12%.
+  // The account already carries "review if up 10% from entry", which fires
+  // FIRST in every realistic case: at a +30% target, 75% progress is +22.5%,
+  // long past the 10% checkpoint. The only window where the flag fired and
+  // the trigger did not was a target under ~13% total — which is exactly what
+  // its own MIN_GAIN floor was added to suppress. It was a trigger
+  // re-implemented as a morning calculation, permanently second.
+  //
+  // What replaced it is not another flag: resolved.unrealizedGainPct and
+  // resolved.progressToTarget sit on every held row the agent reads, so a
+  // stock up 212% is visible without anything pre-deciding that it matters.
 
   // 5) REVIEW_DUE — agent-set cadence (nextReviewAt) elapsed OR coming
   //    due within the next 24h. The 24h look-ahead is load-bearing: the

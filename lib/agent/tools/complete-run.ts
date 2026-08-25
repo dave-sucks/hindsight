@@ -697,19 +697,9 @@ async function runCompleteRunPreflight(
       detail = `trigger fired: ${needsAction.action} (${needsAction.summary})`;
     } else if (needsAction.kind === "TRIGGER_MATCHING_NOW") {
       detail = `predicate matching now: ${needsAction.action} (${needsAction.predicateSummary}${needsAction.livePrice != null ? ` @ $${needsAction.livePrice.toFixed(2)}` : ""})`;
-    } else if (needsAction.kind === "RUNNING_WINNER") {
-      // Defensive branch. This preflight intentionally does NOT feed
-      // avgCost/targetPrice into computeNeedsAction, so RUNNING_WINNER does
-      // not fire here at runtime — it's a get_theses attention nudge, not a
-      // complete_run hard gate in this PR (SCALE_INTO_WINNERS.md PR3;
-      // enforcement is a deliberate follow-up). Handled for type-completeness.
-      const prog = needsAction.pastTarget
-        ? "past target"
-        : `${Math.round(needsAction.progressToTarget * 100)}% to target`;
-      detail = `running winner (+${needsAction.unrealizedGainPct.toFixed(1)}%, ${prog}): press / hold / take`;
     } else if (needsAction.kind === "UNPROTECTED_GAIN") {
-      // Defensive branch, same contract as RUNNING_WINNER above: this
-      // preflight does NOT feed avgCost/peakPrice into computeNeedsAction,
+      // Defensive branch: this preflight does NOT feed avgCost/peakPrice
+      // into computeNeedsAction,
       // so UNPROTECTED_GAIN cannot fire here at runtime — it's a get_theses
       // attention flag; enforcement as a run-close gate is PR-C (warn-mode
       // first, per THESIS_GAME_PLAN.md). Handled for type-completeness.
