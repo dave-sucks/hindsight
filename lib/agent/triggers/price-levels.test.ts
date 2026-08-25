@@ -572,3 +572,111 @@ describe("applyLevelArgs", () => {
   });
 });
 
+
+// ── An inherited trail outranks a hand-set floor ───────────────────────
+
+describe("the EME case: a reject-UI floor under an inherited trail", () => {
+  // EME carries no trail of its own. The 8% give-back lives on
+  // Account.triggers and reaches it through the cascade, which is why every
+  // sell proposal since 8/20 cites $794.76 = 863.87 x 0.92.
+  //
+  // The hazard: setting an EXIT at $753 in the reject dialog looks like it
+  // lowers the floor, but the trail still fires higher. If the card showed
+  // "$753" it would be a NEW way for it to lie, inside the work that exists
+  // to stop it lying.
+  const accountTrail = resolved(
+    trig({ kind: "TRAILING_FROM_HIGH", pct: 8 }, "EXIT", { id: "acct-trail" }),
+    { level: "ACCOUNT", inherited: true },
+  );
+  const eme = {
+    direction: "LONG",
+    status: "HOLDING",
+    avgCost: 832.84,
+    peakPrice: 863.87,
+  };
+
+  it("shows the inherited trail, not the lower hand-set floor", () => {
+    const levels = canonicalLevels({
+      ...eme,
+      triggers: [resolved(trig(below(753), "EXIT", { id: "principal" })), accountTrail],
+    });
+    expect(levels.floor?.triggerId).toBe("acct-trail");
+    expect(levels.floor?.price).toBeCloseTo(794.76, 1);
+    expect(levels.floor?.inherited).toBe(true);
+  });
+
+  it("still draws the hand-set floor as its own chart line", () => {
+    // Both are real and both can fire; the card names the one that fires
+    // FIRST, the chart shows the whole picture.
+    const levels = canonicalLevels({
+      ...eme,
+      triggers: [resolved(trig(below(753), "EXIT", { id: "principal" })), accountTrail],
+    });
+    expect(levels.all.map((l) => l.triggerId)).toEqual(["principal", "acct-trail"]);
+  });
+
+  it("hands the hand-set number to the cached column, and only that", () => {
+    // The column is the TYPED floor: stable, ratchet-comparable, and what a
+    // person actually wrote. The moving one belongs on the card.
+    const levels = canonicalLevels({
+      ...eme,
+      triggers: [resolved(trig(below(753), "EXIT", { id: "principal" })), accountTrail],
+    });
+    expect(levels.columns.stopLoss).toBe(753);
+  });
+
+  it("lets a hand-set floor ABOVE the trail win, as it should", () => {
+    const levels = canonicalLevels({
+      ...eme,
+      triggers: [resolved(trig(below(820), "EXIT", { id: "principal" })), accountTrail],
+    });
+    expect(levels.floor?.triggerId).toBe("principal");
+    expect(levels.floor?.price).toBe(820);
+  });
+});
+
+describe("a floor raised past an upside level", () => {
+  it("flags MU's straddle", () => {
+    // EXIT below $935 and REVIEW above $934: a $1 gap covering the whole
+    // number line, so something fires on every tick. Created 8/19 by raising
+    // the floor 814 -> 935 past a review the agent had set at 934 on 8/18,
+    // when it was a sensible "it recovered" checkpoint.
+    const levels = canonicalLevels({
+      triggers: [
+        resolved(trig(below(935), "EXIT", { id: "floor" })),
+        resolved(trig(above(934), "REVIEW", { id: "spent-checkpoint" })),
+        resolved(trig(above(1150), "TRIM", { id: "trim" })),
+      ],
+      direction: "LONG",
+      status: "HOLDING",
+      avgCost: 885.46,
+    });
+    expect(levels.contradiction).toEqual({ floor: 935, upside: 934 });
+  });
+
+  it("says nothing about a well-ordered plan", () => {
+    const levels = canonicalLevels({
+      triggers: [
+        resolved(trig(below(680), "EXIT", { id: "floor" })),
+        resolved(trig(above(1150), "REVIEW", { id: "target" })),
+      ],
+      direction: "LONG",
+      status: "HOLDING",
+      avgCost: 817,
+    });
+    expect(levels.contradiction).toBeNull();
+  });
+
+  it("inverts on a short", () => {
+    const levels = canonicalLevels({
+      triggers: [
+        resolved(trig(above(100), "EXIT", { id: "floor" })),
+        resolved(trig(below(105), "REVIEW", { id: "target" })),
+      ],
+      direction: "SHORT",
+      status: "HOLDING",
+      avgCost: 120,
+    });
+    expect(levels.contradiction).toEqual({ floor: 100, upside: 105 });
+  });
+});
