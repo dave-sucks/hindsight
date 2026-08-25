@@ -264,13 +264,6 @@ model Thesis {
   sourceKind      String? // "ROUTED_SIGNAL" | "WEB_SEARCH" | "WATCHLIST_REVIEW" | "POSITION_REVIEW" | "USER_ADDED" | "BUILDER_SEED" | "EDITOR_SEED"
   sourceRationale String?
 
-  // Phase 1 — what should fire an intraday tactical re-evaluation of this
-  // thesis. Shape: { events: ["EARNINGS_BEAT","GUIDANCE_CUT"],
-  // priceTriggers: { stop: 145, target: 180 }, watchedTickers: ["NVDA"] }.
-  // Kept for backwards-compat; superseded by the structured `triggers`
-  // column below. Will be removed once all consumers migrate.
-  revalidationTriggers Json?
-
   // ── Thesis Durable State (PR 1) ──────────────────────────────────────
   // Promotes Thesis from a one-shot trade rationale to a durable coverage
   // object. See migration 20260426000000_thesis_durable_state for the full
