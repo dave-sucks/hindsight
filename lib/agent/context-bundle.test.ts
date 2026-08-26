@@ -75,3 +75,121 @@ describe("formatMoneyContextBlock", () => {
     expect(block).toContain("no floor configured");
   });
 });
+
+// ── The book ─────────────────────────────────────────────────────────────
+
+import {
+  returnPctOf,
+  formatBookContextBlock,
+  type BookContext,
+} from "./context-bundle";
+
+const emptyBook: BookContext = {
+  openPositions: [],
+  watching: [],
+  pastHolds: [],
+  loaded: true,
+};
+
+describe("returnPctOf", () => {
+  it("is direction-aware — a short that fell is a gain", () => {
+    expect(
+      returnPctOf({ direction: "SHORT", avgCost: 100, closePrice: 90 }),
+    ).toBe(10);
+    expect(
+      returnPctOf({ direction: "SHORT", avgCost: 91.325, closePrice: 96.16 }),
+    ).toBe(-5.3);
+  });
+
+  it("reports a long correctly", () => {
+    expect(
+      returnPctOf({ direction: "LONG", avgCost: 53.36, closePrice: 66.2423 }),
+    ).toBe(24.1);
+  });
+
+  it("returns null on missing or nonsense inputs", () => {
+    expect(returnPctOf({ direction: "LONG", avgCost: 0, closePrice: 10 })).toBeNull();
+    expect(returnPctOf({ direction: "LONG", avgCost: 10, closePrice: null })).toBeNull();
+  });
+});
+
+describe("formatBookContextBlock", () => {
+  it("names held and watched tickers as the ONLY exclusions", () => {
+    const out = formatBookContextBlock({
+      ...emptyBook,
+      openPositions: [
+        {
+          symbol: "SRRK",
+          quantity: 93,
+          avgCost: 53.895,
+          notionalUSD: 5012,
+          openedAt: new Date("2026-08-13"),
+        },
+      ],
+      watching: [
+        {
+          ticker: "IONS",
+          status: "WATCHING",
+          catalystDate: new Date("2026-09-22"),
+          conviction: "HIGH",
+        },
+        {
+          ticker: "SRRK",
+          status: "HOLDING",
+          catalystDate: new Date("2026-09-30"),
+          conviction: "HIGH",
+        },
+      ],
+    });
+    expect(out).toContain("$SRRK 93 sh");
+    expect(out).toContain("$IONS WATCHING, catalyst 2026-09-22");
+    // A held name must not be labelled as a watch.
+    expect(out).toContain("$SRRK HOLDING");
+    expect(out).not.toContain("Watching (");
+    expect(out).toContain("ONLY names off-limits");
+  });
+
+  it("presents past holds as candidates, with OUR P&L attached", () => {
+    const out = formatBookContextBlock({
+      ...emptyBook,
+      pastHolds: [
+        {
+          symbol: "XENE",
+          realizedPnlUSD: 966,
+          returnPct: 24.1,
+          outcome: "WIN",
+          closeReason: "STOP",
+          closedAt: new Date("2026-07-16"),
+          beliefSurvived: true,
+        },
+        {
+          symbol: "MNKD",
+          realizedPnlUSD: -345,
+          returnPct: -6.8,
+          outcome: "LOSS",
+          closeReason: "STOP",
+          closedAt: new Date("2026-08-04"),
+          beliefSurvived: null,
+        },
+      ],
+    });
+    // The framing is the fix — a bare table is what failed on 08-25.
+    expect(out).toContain("candidates, not exclusions");
+    expect(out).toContain("does NOT disqualify");
+    expect(out).toContain("+$966");
+    expect(out).toContain("−$345");
+    expect(out).toContain("sold on price — the reasoning still held");
+    // The scoreboard rule has to be in words, not implied by the numbers.
+    expect(out).toMatch(/approved while the trade loses money/i);
+  });
+
+  it("says so plainly when the seat genuinely holds nothing", () => {
+    expect(formatBookContextBlock(emptyBook)).toContain("Holding now: nothing.");
+  });
+
+  it("renders NOTHING when the book could not be read — unread is not empty", () => {
+    // A DB outage must not tell an agent holding two live positions that it
+    // holds none. Found by probing the real book against a dead connection.
+    expect(formatBookContextBlock({ ...emptyBook, loaded: false })).toBe("");
+  });
+});

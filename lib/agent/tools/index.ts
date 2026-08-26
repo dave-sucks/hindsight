@@ -127,12 +127,36 @@ interface ToolCtx {
   protectiveExitTriggerLabel?: string;
 }
 
-export function createResearchTools(ctx: ToolCtx) {
+export function createResearchTools(
+  ctx: ToolCtx,
+  opts?: {
+    /**
+     * Tickers already researched EARLIER IN THIS CONVERSATION, recovered
+     * from the run's persisted messages.
+     *
+     * The tracker below is rebuilt on every createResearchTools call, i.e.
+     * once per HTTP request. A cron run is one request, so the gate worked.
+     * A chat is one request PER TURN — so on 2026-08-25 a Catalyst session
+     * that had already researched 13 tickers in turn 1 came back in turn 2
+     * with an empty map, had every record_thesis rejected as "not
+     * researched", re-ran all 13 get_stock_data calls, retried, and wrote
+     * the whole batch a second time. Seeding closes that hole by supplying
+     * the missing input rather than by loosening the gate.
+     */
+    researchedTickers?: string[];
+  },
+) {
   // In-run tool-call tracker — shared across all tool instances in this
   // run. get_stock_data populates TICKER → {"get_stock_data", ...};
   // record_thesis gates against this to enforce "researched before thesis."
-  // Lives for the duration of a single run (one createResearchTools call).
+  // Seeded from prior turns of the same run when the caller supplies them.
   const calledTickers = new Map<string, Set<string>>();
+  for (const t of opts?.researchedTickers ?? []) {
+    const key = t.toUpperCase();
+    const existing = calledTickers.get(key) ?? new Set<string>();
+    existing.add("get_stock_data");
+    calledTickers.set(key, existing);
+  }
   // In-run signal tracker — read_signals populates TICKER → {signalId, ...}
   // for every ticker on every routed signal it returned. record_thesis reads
   // it to soft-nudge the agent toward ROUTED_SIGNAL provenance when the
