@@ -1,5 +1,8 @@
 # Levels as triggers — entry, target, stop and review aren't triggers, and should be
 
+> **Daily check after this ships: `docs/prompts/CHECK_LEVELS_DAILY.md`.**
+> Run it after the morning runs until it comes back clean twice.
+>
 > **Status 2026-08-25: L1–L6 shipped, L7–L8 mostly shipped.** The backfill
 > has RUN — every level column on a live or watched thesis now fires. See
 > "Where this stands" at the bottom.
@@ -301,3 +304,58 @@ the deletions stacked on it.
 correctly every day since 8/18 — the proposals EXPIRED or were REJECTED.
 Armed levels work. This project fixed decoration. The live-money leak is
 approval-side (**DAV-213**) and nobody is on it.
+
+
+---
+
+## Plain-language glossary
+
+Written because the build used invented words in conversation and nobody
+should have to decode them later. The product words are: **stocks,
+watchlist, holdings, theses, triggers, analysts, runs, buy price, floor,
+target.**
+
+| What was said | What it means |
+|---|---|
+| DEMOTE | **Take the plan off a watchlist stock.** Remove its buy price, floor and target; keep the stock on the list; flag it for tomorrow's run to re-price or drop |
+| armed | The price **does something** now. Before, it was text on a screen |
+| the first tick | The next time prices are checked — every 5 minutes while the market is open |
+| cadence | **How often a thesis gets reviewed** |
+| the backfill | Turning the prices already written on your theses into real triggers. It invented no numbers |
+| projected level | A floor that **moves** — the 8% give-back rule sits 8% under the stock's high, so its price changes as the stock rises |
+| the ladder / a rung | The thesis's trigger list, and one trigger in it |
+
+### The whole thing in six lines
+
+- A **floor** on a stock you hold → puts a sell in your approval queue.
+- A **target** on a stock you hold → flags it; tomorrow's run decides. Never auto-sells.
+- A **floor or target** on a watchlist stock → takes the plan off it, keeps watching.
+- A **buy price** on a watchlist stock → proposes the buy.
+- **Review timing** is a trigger now: *review every N days*, from the last real review.
+- Every number on the Price Targets card is one of the above. Nothing on it is decoration.
+
+---
+
+## Post-merge, in order
+
+1. **Confirm the deploy actually ran.** Merging is not deploying, and this is
+   the only failure with no error message: if the deploy is dropped, the
+   review timing never seeds and the morning runs quietly review nothing.
+   `CHECK_LEVELS_DAILY.md` check 1 is the two commands.
+2. **Run the daily check after tomorrow's runs**, then daily until clean twice.
+3. Expect a handful of watchlist plans to come off on day one. That is the
+   KLAC/NTNX backlog clearing.
+
+## Follow-ups, none blocking
+
+- Review triggers carry `fireMode: "TACTICAL"` but never wake an agent — the
+  evaluator defers every review to the morning run before it could. Inert but
+  misleading; someone will read it and conclude the wrong thing.
+- Drop `Position.stopLoss` / `targetPrice` after repointing `run-input.ts`,
+  `get_portfolio_context` and `list_positions_all` at the thesis value.
+- A thesis promoted between horizons keeps the review timing it was minted
+  with.
+- **Before DAV-196 (Signals):** a `BREAKING`-urgency signal review still wakes
+  an agent immediately, bypassing the batch-to-morning rule. Dormant while
+  routing is paused; with DAV-209's larger watchlist it is the one path where
+  the May 2026 agent-run explosion could return.
