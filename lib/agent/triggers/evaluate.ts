@@ -72,7 +72,12 @@ export interface EvaluationContext {
   /** Thesis fields needed by time-based predicates. */
   thesis: {
     createdAt: Date;
-    nextReviewAt?: Date | null;
+    /**
+     * When an analyst last actually looked at this thesis. Drives
+     * REVIEW_CADENCE. Absent falls back to createdAt, which makes a
+     * never-reviewed thesis due immediately.
+     */
+    lastReviewedAt?: Date | null;
     /**
      * "LONG" | "SHORT" | null — orients GAIN_FROM_ENTRY and
      * TRAILING_FROM_HIGH (a SHORT's gain is a price DROP; its peak is the
@@ -221,11 +226,13 @@ export function evaluateTrigger(
       return elapsedDays >= predicate.days;
     }
 
-    case "REVIEW_DATE_HIT":
-      return (
-        ctx.thesis.nextReviewAt != null &&
-        ctx.now.getTime() >= ctx.thesis.nextReviewAt.getTime()
-      );
+    case "REVIEW_CADENCE": {
+      // Counted from the last actual review. A thesis nobody has looked at
+      // yet is due immediately — that is correct for a fresh watch item and
+      // is how an unresearched seed asks for its first read.
+      const last = ctx.thesis.lastReviewedAt ?? ctx.thesis.createdAt;
+      return (ctx.now.getTime() - last.getTime()) / 86_400_000 >= predicate.days;
+    }
 
     // ── Composition ───────────────────────────────────────────────────
     case "AND":

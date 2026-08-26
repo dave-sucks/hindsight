@@ -184,12 +184,10 @@ export function validateThesisDecision(
   if (d.catalyst_date && Number.isNaN(Date.parse(d.catalyst_date))) {
     errors.push(`catalyst_date: "${d.catalyst_date}" is not a parseable date — use ISO YYYY-MM-DD.`);
   }
-  if (d.horizon === "TRADE" && (d.max_hold_days == null || d.max_hold_days <= 0)) {
-    errors.push("max_hold_days: required when horizon=TRADE (5-7 tight breakout, 10-14 swing).");
-  }
-  if (d.max_hold_days != null && (d.max_hold_days < 1 || d.max_hold_days > 365 || !Number.isInteger(d.max_hold_days))) {
-    errors.push("max_hold_days: must be an integer between 1 and 365.");
-  }
+  // max_hold_days is gone (DAV-195 L8). "This has been open long enough"
+  // is a TIME_ELAPSED review trigger on the ladder, minted per horizon —
+  // visible and editable, unlike a column that fed a template once at mint
+  // and then drifted from it.
 
   let riskReward: number | undefined;
 

@@ -628,7 +628,7 @@ function fmtRelativeDate(iso: string): string {
 const HORIZON_TOOLTIP: Record<string, string> = {
   CATALYST: "Exit on the catalyst event (good or bad), or 30 days past the catalyst date.",
   TARGET: "Open-ended hold. Exit only at target, stop, or thesis invalidation.",
-  TRADE: "Bounded short-term trade. Exit on stop, target, or maxHoldDays reached.",
+  TRADE: "Bounded short-term trade. Exit on the stop, the target, or when it has been open long enough.",
   COMPOUNDER: "Multi-year hold. Exits only when invalidation triggers fire — never auto-exits on time.",
 };
 
@@ -638,7 +638,6 @@ function TradeStructureBlock({
   state: {
     horizon: string | null;
     nextReviewAt: string | null;
-    maxHoldDays: number | null;
     targetSizePct: number | null;
     analystName: string | null;
     resolved?: ResolvedEnvelope | null;
@@ -647,7 +646,6 @@ function TradeStructureBlock({
   const hasAnalyst = state.analystName != null;
   const hasHorizon = state.horizon != null;
   const hasNextReview = state.nextReviewAt != null;
-  const showMaxHold = state.horizon === "TRADE" && state.maxHoldDays != null;
   const hasSize = state.targetSizePct != null;
   // Conviction Expression v4 — actionability rollup. Lives in Trade
   // Structure (not as a top-of-sheet badge per principal feedback) —
@@ -655,7 +653,7 @@ function TradeStructureBlock({
   const hasStatus =
     state.resolved != null && state.resolved.actionability !== "DEAD";
 
-  if (!hasHorizon && !hasNextReview && !showMaxHold && !hasSize && !hasStatus && !hasAnalyst)
+  if (!hasHorizon && !hasNextReview && !hasSize && !hasStatus && !hasAnalyst)
     return null;
 
   const cells: { label: string; value: React.ReactNode; tooltip?: string }[] = [];
@@ -714,12 +712,9 @@ function TradeStructureBlock({
       tooltip: new Date(state.nextReviewAt!).toLocaleString(),
     });
   }
-  if (showMaxHold) {
-    cells.push({
-      label: "Max hold",
-      value: `${state.maxHoldDays} days`,
-    });
-  }
+  // "Max hold" is a trigger now, not a field — it renders in the trigger
+  // list as "Open 14 days — a TRADE should have resolved by now." See
+  // docs/plans/LEVELS_AS_TRIGGERS.md (L8).
   if (hasSize) {
     cells.push({
       label: "Target size",

@@ -68,22 +68,6 @@ type ThesisChartProps = {
  * the PriceTargetsBlock gauge when there's no candle data, and renders nothing
  * when there's neither a chart nor any price levels to show.
  */
-/** Plain-language name for a non-canonical level's line. */
-function actionLineLabel(action: string): string {
-  switch (action) {
-    case 'EXIT':
-      return 'Sell';
-    case 'ENTER':
-      return 'Buy';
-    case 'ADD':
-      return 'Add';
-    case 'TRIM':
-      return 'Trim';
-    default:
-      return 'Review';
-  }
-}
-
 export function ThesisChart({
   ticker,
   candles,
@@ -200,41 +184,31 @@ export function ThesisChart({
     );
   }
 
-  // One line per level that actually fires. Colour is the SIDE of the trade
-  // (upside green, downside red), which stays correct on a short where a
-  // falling price is the winning direction. The canonical three keep their
-  // familiar names; extra levels are labelled by what they do, so a tiered
-  // trim reads "Trim" rather than being collapsed into "Target".
-  const levelLines =
-    levels?.all.map((l) => ({
-      price: l.price,
-      color: l.action === 'ENTER' ? ENTRY : l.side === 'UPSIDE' ? TARGET : STOP,
-      label:
-        l.slot === 'FLOOR'
-          ? l.projected
-            ? 'Stop (trailing)'
-            : 'Stop'
-          : l.slot === 'TARGET'
-            ? 'Target'
-            : l.slot === 'ENTRY'
-              ? 'Entry'
-              : actionLineLabel(l.action),
-      dashed: true,
-    })) ?? [
-      targetPrice != null
-        ? { price: targetPrice, color: TARGET, label: 'Target', dashed: true }
-        : null,
-      stopLoss != null
-        ? { price: stopLoss, color: STOP, label: 'Stop', dashed: true }
-        : null,
-    ].filter((l): l is NonNullable<typeof l> => l !== null);
-
+  // THREE lines: entry, the floor, the target. The same three the Price
+  // Targets card shows, so the card and the chart cannot disagree.
+  //
+  // An earlier version drew EVERY price level, which on a held name meant
+  // five: the hard floor, the trailing floor, the target, and the 10%-gain
+  // and 12%-drawdown account rules projected into prices. All of them real,
+  // all of them fire — and unreadable. A percentage rule is not a line on a
+  // chart; it belongs in the trigger list.
+  //
+  // What DID survive from that attempt is the number itself: the floor drawn
+  // here is the one that binds, so on EME it is the 8% trail at $794.76
+  // rather than the $753 someone typed underneath it.
   const referenceLines = [
-    // The entry line comes from the fill when held, so it is drawn here
-    // rather than from `levels` (which reports the same number for a held
-    // thesis but nothing for a watch item that hasn't set one).
     entry != null ? { price: entry, color: ENTRY, label: 'Entry', dashed: true } : null,
-    ...levelLines.filter((l) => l.label !== 'Entry'),
+    targetLevel != null
+      ? { price: targetLevel.price, color: TARGET, label: 'Target', dashed: true }
+      : null,
+    floorLevel != null
+      ? {
+          price: floorLevel.price,
+          color: STOP,
+          label: floorLevel.projected ? 'Stop (trailing)' : 'Stop',
+          dashed: true,
+        }
+      : null,
   ].filter((l): l is NonNullable<typeof l> => l !== null);
 
   // Vertical markers on BOTH variants — StockPriceChart drops any marker whose

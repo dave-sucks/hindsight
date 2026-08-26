@@ -150,16 +150,14 @@ function LevelLabel({
 }) {
   const state = levelLabelState(level, stored);
   if (state.kind === "live") {
+    // Just the number. An earlier version appended what the level DOES
+    // ("trailing · sells", "asks") — accurate and useless. This card exists
+    // to show four prices and how close the stock is to them; a glossary
+    // stapled to the ends is not that. What a level does belongs in the
+    // trigger list, where you can also change it.
     return (
       <span>
         {name} ${state.price.toFixed(2)}
-        <span className="ml-1 text-muted-foreground/70">
-          {/* A trail moves with the high — say so, or the number looks typed.
-              And say what reaching it DOES: a level that sells and a level
-              that asks you first are not the same promise. */}
-          {state.moving ? "trailing · " : ""}
-          {state.does}
-        </span>
       </span>
     );
   }

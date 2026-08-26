@@ -148,7 +148,6 @@ export interface ThesisDossier {
   levels: ThesisStateLevels | null;
   targetSizePct: number | null;
   catalystDate: string | null;
-  maxHoldDays: number | null;
   nextReviewAt: string | null;
   triggers: Trigger[];
   /**

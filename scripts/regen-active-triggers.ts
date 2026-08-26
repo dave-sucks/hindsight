@@ -74,7 +74,6 @@ type Target = {
   entryPrice: number | null;
   targetPrice: number | null;
   stopLoss: number | null;
-  maxHoldDays: number | null;
   catalystDate: Date | null;
   existingTriggers: Trigger[];
   analystName: string;
@@ -126,7 +125,6 @@ async function loadTargets(flags: Flags): Promise<Target[]> {
       entryPrice: true,
       targetPrice: true,
       stopLoss: true,
-      maxHoldDays: true,
       catalystDate: true,
       triggers: true,
       researchRun: {
@@ -155,7 +153,6 @@ async function loadTargets(flags: Flags): Promise<Target[]> {
       entryPrice: t.entryPrice != null ? Number(t.entryPrice) : null,
       targetPrice: t.targetPrice != null ? Number(t.targetPrice) : null,
       stopLoss: t.stopLoss != null ? Number(t.stopLoss) : null,
-      maxHoldDays: t.maxHoldDays ?? null,
       catalystDate: t.catalystDate,
       existingTriggers,
       analystName,
@@ -172,7 +169,6 @@ function buildHeldTriggers(target: Target): Trigger[] | null {
       entryPrice: target.entryPrice,
       targetPrice: target.targetPrice,
       stopLoss: target.stopLoss,
-      maxHoldDays: target.maxHoldDays,
       catalystDate: target.catalystDate,
       direction: target.direction,
     },

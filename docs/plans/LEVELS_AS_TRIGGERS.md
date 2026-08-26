@@ -1,5 +1,12 @@
 # Levels as triggers — entry, target, stop and review aren't triggers, and should be
 
+> **Daily check after this ships: `docs/prompts/CHECK_LEVELS_DAILY.md`.**
+> Run it after the morning runs until it comes back clean twice.
+>
+> **Status 2026-08-25: L1–L6 shipped, L7–L8 mostly shipped.** The backfill
+> has RUN — every level column on a live or watched thesis now fires. See
+> "Where this stands" at the bottom.
+>
 > **Linear:** DAV-195 (umbrella), project "Levels Are Triggers".
 > **Status:** diagnosed 2026-08-16 from production data; design resolved with
 > the principal 2026-08-24. Everything below the diagnosis is decided.
@@ -147,12 +154,25 @@ specific wins). Shown for LONG; inverted for SHORT.
 | **Floor** | `EXIT` + price-below | The sell-at that protects. This is the one the protective ratchet guards |
 | **Target** | `EXIT` or `REVIEW` + price-above | EXIT = sell here. REVIEW = reconsider here (raise the target, trim, or hold) |
 
-**Why exactly one per slot is guaranteed:** the trigger system already keeps
-one trigger per (condition-shape, action) pair, and ENTER collapses
-above/below into a single pair. After resolution there is at most one Entry,
-one Floor, one Target-EXIT and one Target-REVIEW. If both target kinds exist,
-the card's Target slot shows the further one (the destination) and the chart
-draws both.
+**There is NOT one candidate per slot, and the Floor slot is where that
+bites.** An earlier draft of this doc claimed the cascade guarantees it —
+one trigger per (condition-shape, action) pair — which is true and
+insufficient. A hard stop (`PRICE_BELOW`) and a trailing give-back
+(`TRAILING_FROM_HIGH`) are *different* shapes, so both survive resolution and
+both are floors. That is not an edge case: 5 of 8 held positions carry both
+today, and after L6 all 8 will. EME right now has an inherited 8% trail at
+$794.76 and a hand-set stop at $753, both breached.
+
+**The rule: the slot shows the level that fires FIRST** — the highest floor on
+a long, the lowest on a short — because that is the one that actually binds.
+Everything else is drawn as its own chart line. Same rule on the target side,
+inverted: the slot shows the *furthest* level, because a target is a
+destination rather than a constraint, and the nearer ones are the tiers on
+the way.
+
+A trail is placed at the price it currently occupies (`peak × (1 − pct)`), so
+it competes on equal terms and is labelled `trailing` to say the number
+moves.
 
 Levels beyond the canonical set — a warning REVIEW below the floor, a second
 trim level — draw as extra chart lines and don't take a card slot.
@@ -186,14 +206,14 @@ entirely is a mechanical follow-up if we want it later.
 
 | # | Ticket | What | Rough delta |
 |---|---|---|---|
-| **L1** | Level ⇄ trigger core | One pure module: resolved triggers → {entry, floor, target}, and the inverse (set a level → the trigger that expresses it). Tests. No callers yet | +250 |
-| **L2** | Price Targets reads triggers | Card, chart lines, roster row, and the set/edit control. The visible product win; independent of the write-path work | +150 / −80 |
-| **L3** | Derive-on-write | `update_thesis` / `record_thesis` / `place_trade` / `manage_position` stop writing level columns. A level change writes the trigger and recomputes the cache in the same transaction. Layer-1 assertion refuses a disagreeing write | +200 / −250 |
-| **L4** | Floors and targets actually fire | Canonical floor is EXIT, canonical target is REVIEW. Also: multi-day price-move triggers (5D/30D) currently never fire on the cron because it doesn't fetch candles — same decorative-trigger bug, fixed here | +120 |
-| **L5** | What a level does when we don't own the stock | L4 creates this problem: once floors fire, a breached floor on a watch item fires EXIT with no position to sell (KLAC). New `DEMOTE` action, chosen at fire time from the thesis's state — a floor hit means the plan broke, a target hit means the move happened without us; both clear the priced plan and keep watching. **Not** DAV-209's demotion — see the handoff below | +150 |
-| **L6** | ⛔ **BACKFILL — STOP, needs the principal** | Turn the stop/target numbers already written on theses into real triggers. **Targets are minted as REVIEW, never EXIT** — the same rule every other write follows (ruling 2026-08-24), so a target reached wakes a decision on the next daily run instead of auto-selling at a number typed weeks ago. Floors are minted as EXIT. The exact list gets approved before it runs | — |
-| **L7** | Reviews become a cadence trigger | Delete `REVIEW_DATE_HIT`, the `next_review_at` argument, both auto-bump blocks in `update_thesis`, and `horizon-policy`'s cadence math (becomes four numbers on the account). `nextReviewAt` becomes cache | +150 / −350 |
-| **L8** | Delete the duplicates | RUNNING_WINNER + `winner-signal.ts` + its tests; the `maxHoldDays`, `Position.stopLoss`/`targetPrice`, and `revalidationTriggers` columns; `scripts/dedupe-review-date-hit-triggers.ts`. Add gain % and 5-day move to the roster row | +60 / −600 |
+| ~~L1~~ | Level ⇄ trigger core | ✅ `price-levels.ts`. Also fixed a live hazard: two floors in one bucket resolved by array order, so half the time the weaker one fired | done |
+| ~~L2~~ | Price Targets reads triggers | ✅ Card says what each level DOES; chart draws every level. Killed the trade page's fabricated ±10% band | done |
+| **L3** | Derive-on-write | ✅ `update_thesis`, `record_thesis`. ⬜ `place_trade`, `manage_position` — **the reference shape is what `applyTriggerValueEdit` already does**: trigger + Thesis cache + Position cache + PositionEvent + audit row + source stamp, one transaction | partial |
+| ~~L4~~ | Floors and targets actually fire | ✅ by L3 + L6. The 5D/30D windows were DELETED rather than built — they never had a price series and evaluated false for their whole existence | done |
+| ~~L5~~ | DEMOTE | ✅ Had to land BEFORE L3's watchlist floors, or 19 names would each spawn an agent run asking to sell something never bought | done |
+| ~~L6~~ | Backfill | ✅ **RAN 2026-08-25.** 44 mints / 25 theses / 25 audit rows. 0 unarmed floors, 0 unarmed targets, 0 new sells on live positions. Idempotent | done | — |
+| ~~L7~~ | Reviews are one cadence trigger | ✅ Deleted `REVIEW_DATE_HIT`, the `next_review_at` arg, BOTH auto-bump blocks, three dead horizon-policy exports, the dedupe script | done |
+| **L8** | Delete the duplicates | ✅ RUNNING_WINNER (−432), `maxHoldDays`, `revalidationTriggers`. ⬜ `Position.stopLoss`/`targetPrice` — **five readers, not one**; three are agent-facing (`run-input`, `get_portfolio_context`, `list_positions_all`) so they need repointing, not deleting | partial |
 
 **Linear:** none of L1–L8 exist as issues yet. DAV-195 is the umbrella for
 all of them; DAV-200 (labels on partial sales) is the only other open issue in
@@ -251,3 +271,91 @@ Net across the whole project: roughly **−700 lines**.
   tactical-run explosion structurally impossible rather than policy-prevented,
   and it cannot be relaxed.
 - **Never write a level column.** Write the trigger; the column recomputes.
+
+
+---
+
+## Where this stands (2026-08-25)
+
+**Shipped:** L1, L2, L4, L5, L6, L7, and most of L8. Two PRs — the build, and
+the deletions stacked on it.
+
+**Left:**
+
+1. `place_trade` and `manage_position` onto the shared write path. Match
+   `applyTriggerValueEdit`; don't re-derive the shape.
+2. Drop `Position.stopLoss` / `targetPrice`, after repointing the three
+   agent-facing readers at the trigger-derived value.
+
+**Two things to know before touching this again:**
+
+- **A backfill must never delete.** Removing the 5D window left four stored
+  rungs unparseable. The parser drops what it can't read — correct — but a
+  script that writes the parsed list back makes that permanent. Two of the
+  four were on a live position. `scripts/backfill-level-triggers.ts` now
+  carries unreadable rungs through verbatim; copy that if you write another.
+- **A branch's Prisma client can be ahead of production.** The first backfill
+  attempt died on its first write because `update()` selects the whole row
+  back and this branch knows `lastReviewedAt`, which production won't have
+  until the L7 migration deploys. Nothing was written. Any script on these
+  branches that writes to production has the same hazard until #554 merges.
+
+**Not in this project, and where the money actually is:** EME and MU fired
+correctly every day since 8/18 — the proposals EXPIRED or were REJECTED.
+Armed levels work. This project fixed decoration. The live-money leak is
+approval-side (**DAV-213**) and nobody is on it.
+
+
+---
+
+## Plain-language glossary
+
+Written because the build used invented words in conversation and nobody
+should have to decode them later. The product words are: **stocks,
+watchlist, holdings, theses, triggers, analysts, runs, buy price, floor,
+target.**
+
+| What was said | What it means |
+|---|---|
+| DEMOTE | **Take the plan off a watchlist stock.** Remove its buy price, floor and target; keep the stock on the list; flag it for tomorrow's run to re-price or drop |
+| armed | The price **does something** now. Before, it was text on a screen |
+| the first tick | The next time prices are checked — every 5 minutes while the market is open |
+| cadence | **How often a thesis gets reviewed** |
+| the backfill | Turning the prices already written on your theses into real triggers. It invented no numbers |
+| projected level | A floor that **moves** — the 8% give-back rule sits 8% under the stock's high, so its price changes as the stock rises |
+| the ladder / a rung | The thesis's trigger list, and one trigger in it |
+
+### The whole thing in six lines
+
+- A **floor** on a stock you hold → puts a sell in your approval queue.
+- A **target** on a stock you hold → flags it; tomorrow's run decides. Never auto-sells.
+- A **floor or target** on a watchlist stock → takes the plan off it, keeps watching.
+- A **buy price** on a watchlist stock → proposes the buy.
+- **Review timing** is a trigger now: *review every N days*, from the last real review.
+- Every number on the Price Targets card is one of the above. Nothing on it is decoration.
+
+---
+
+## Post-merge, in order
+
+1. **Confirm the deploy actually ran.** Merging is not deploying, and this is
+   the only failure with no error message: if the deploy is dropped, the
+   review timing never seeds and the morning runs quietly review nothing.
+   `CHECK_LEVELS_DAILY.md` check 1 is the two commands.
+2. **Run the daily check after tomorrow's runs**, then daily until clean twice.
+3. Expect a handful of watchlist plans to come off on day one. That is the
+   KLAC/NTNX backlog clearing.
+
+## Follow-ups, none blocking
+
+- Review triggers carry `fireMode: "TACTICAL"` but never wake an agent — the
+  evaluator defers every review to the morning run before it could. Inert but
+  misleading; someone will read it and conclude the wrong thing.
+- Drop `Position.stopLoss` / `targetPrice` after repointing `run-input.ts`,
+  `get_portfolio_context` and `list_positions_all` at the thesis value.
+- A thesis promoted between horizons keeps the review timing it was minted
+  with.
+- **Before DAV-196 (Signals):** a `BREAKING`-urgency signal review still wakes
+  an agent immediately, bypassing the batch-to-morning rule. Dormant while
+  routing is paused; with DAV-209's larger watchlist it is the one path where
+  the May 2026 agent-run explosion could return.

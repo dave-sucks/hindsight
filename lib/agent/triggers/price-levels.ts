@@ -76,6 +76,21 @@ export interface CanonicalLevels {
     targetPrice: number | null;
     stopLoss: number | null;
   };
+  /**
+   * The floor sits at or above an upside level, so one of the two fires on
+   * essentially every tick regardless of price.
+   *
+   * MU, live: EXIT below $935 and REVIEW above $934 — a $1 gap covering the
+   * whole number line. Neither was written wrong. The agent set the review at
+   * $934 on 8/18 when the floor was $814, then the floor was raised to $935
+   * on 8/19 and crossed it. Nothing notices a raise passing another level, so
+   * MU has generated a daily sell proposal ever since.
+   *
+   * Reported, not blocked: raising a floor is always legal (the ratchet only
+   * cares about weakening), and the fix is to retire the spent checkpoint,
+   * which is a judgment call.
+   */
+  contradiction: { floor: number; upside: number } | null;
 }
 
 export interface LevelInputs {
@@ -181,6 +196,7 @@ export function canonicalLevels(input: LevelInputs): CanonicalLevels {
     floor: floor ? { ...floor, slot: "FLOOR" } : null,
     target: target ? { ...target, slot: "TARGET" } : null,
     all: all.map((l) => ({ ...l, slot: slotById.get(l.triggerId) ?? null })),
+    contradiction: contradictionBetween(floor, all, long),
     columns: {
       entryPrice: entry?.price ?? null,
       targetPrice: target?.price ?? null,
@@ -473,6 +489,24 @@ function rationaleFor(
       : `Floor — cover if the price rises to ${p}. Above this the plan is wrong.`;
   }
   return `Target ${p} — decide here: take it, trim it, or raise the target.`;
+}
+
+/**
+ * A floor that has been raised past an upside level. Returns the pair when
+ * the two overlap so that something fires no matter where price sits.
+ */
+function contradictionBetween(
+  floor: PriceLevel | null,
+  all: PriceLevel[],
+  long: boolean,
+): { floor: number; upside: number } | null {
+  if (!floor) return null;
+  for (const l of all) {
+    if (l.side !== "UPSIDE" || l.triggerId === floor.triggerId) continue;
+    const overlaps = long ? floor.price >= l.price : floor.price <= l.price;
+    if (overlaps) return { floor: floor.price, upside: l.price };
+  }
+  return null;
 }
 
 /** The floor you hit first: highest on a long, lowest on a short. */

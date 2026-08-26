@@ -43,7 +43,6 @@ async function main() {
       entryPrice: true,
       targetPrice: true,
       stopLoss: true,
-      maxHoldDays: true,
       catalystDate: true,
       triggers: true,
     },
@@ -79,7 +78,6 @@ async function main() {
         entryPrice: t.entryPrice,
         targetPrice: t.targetPrice,
         stopLoss: t.stopLoss,
-        maxHoldDays: t.maxHoldDays,
         catalystDate: t.catalystDate,
       });
 

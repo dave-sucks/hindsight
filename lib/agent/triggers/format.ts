@@ -65,8 +65,8 @@ export function predicateSentence(p: TriggerPredicate): string {
       return `${p.formType} filed`;
     case "TIME_ELAPSED":
       return `${p.days} days elapsed`;
-    case "REVIEW_DATE_HIT":
-      return "Review date hit";
+    case "REVIEW_CADENCE":
+      return `Every ${p.days} days since the last review`;
     case "AND":
       return `All of ${p.predicates.length} conditions`;
     case "OR":
