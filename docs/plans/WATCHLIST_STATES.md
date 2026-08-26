@@ -10,6 +10,12 @@
 > The principal's one-line ruling, verbatim in spirit: *"What requires AI
 > review boils down to: does it have a review cadence trigger or not. That's
 > the feature for a watchlist item that gets managed."*
+>
+> **v2.1 correction (same day):** soft watches have **never existed** — every
+> watch item has always been reviewed, and the cadence seed faithfully carried
+> that sole mode forward. W1 is a new capability, not a regression fix. Added:
+> §5 review dispositions (agent-decided demotion), per the principal's
+> "a thesis is a home for triggers" ruling.
 
 ---
 
@@ -21,7 +27,20 @@
 4. **Anything can be awoken** when a trigger hits.
 5. Built on the **existing trigger infra** — no second system to maintain.
 
-## 2. The two axes
+## 2. The model: a thesis is a home for triggers
+
+The principal's articulation, and the load-bearing idea: a thesis is where a
+stock's triggers live. Buy here. Sell here. This news would ignite it. This is
+when I'd know it isn't interesting. This is enough to stop watching — unless
+it jumps 8% in a day. Review this weekly now. **Every state a stock can be in
+— including all the in-between ones — is a trigger configuration**, and
+therefore every review outcome is a trigger edit.
+
+Product naming that falls out of this: the per-item feature is effectively
+**"Agent mode: on/off"** — on = has a review cadence (the AI manages it),
+off = watched, wakes on events only.
+
+## The two axes
 
 Every watchlist question separates into two independent axes, both already
 expressible as triggers after the Levels merge:
@@ -75,20 +94,54 @@ expressible as triggers after the Levels merge:
 | **Buy** | existing place_trade path; WATCHING→HOLDING; entry becomes fact | approval-gated |
 | **Archive** | RETIRED + retiredReason; triggers stop being evaluated | user or agent |
 
-## 5. The holes (= the build list, in order)
+## 5. Review dispositions — every review ends in one
+
+A review (cadence fire, wake fire, or the daily batch) must conclude with an
+explicit disposition. Each is a trigger edit; none is a new tool — the agent
+already holds wholesale-replace on `update_thesis.triggers`. This is a run
+duty (Layer 3), not a gate.
+
+| Disposition | Trigger edit | Example verdict |
+|---|---|---|
+| **Keep** | none — REVIEWED, clock advances | "nothing changed" |
+| **Re-price** | edit ENTER/EXIT plan triggers | "plan's stale, new entry $180" |
+| **Re-clock** | edit/add `REVIEW_CADENCE` | "this just got interesting — weekly now" |
+| **Demote** | remove cadence and/or plan; must leave ≥1 wake (invariant 1) | "stop reviewing; wake me if +8%/1D" |
+| **Archive** | status → RETIRED (existing ARCHIVED alias) | "not worth watching at all" |
+
+**Three entry points to demotion, one shared write** (remove the triggers,
+columns recompute):
+1. **Fired** — floor/target breaks unheld → `DEMOTE` (shipped, Levels L5).
+2. **Manual** — delete triggers in the popover (works today).
+3. **Agent verdict** — a review concludes the item no longer deserves a clock
+   (**the missing one** — W3 below).
+
+**Boundary rule:** demotion is **WATCHING-only**. On HOLDING the standing
+ruling is untouched — protective triggers tighten, never loosen or vanish.
+No position: the agent may set it down. Position: never.
+
+**Wake-menu honesty:** price levels, price moves, earnings/filings, and time
+all work today. `SIGNAL_TYPE` (news) wakes exist in schema but signal routing
+is paused (P1-34) — "the news that would ignite it" arms when Signals
+returns, and the soft pool is that rebuild's best customer.
+
+**Footgun to respect:** `update_thesis.triggers` is wholesale-replace — a
+disposition that edits one trigger must resend the rest. Same gotcha as ever.
+
+## 6. The holes (= the build list, in order)
 
 | # | Hole | Fix | Size |
 |---|---|---|---|
-| **W1** | **Soft tier unrepresentable.** The cadence seed put a 7d floor on the account (inherited by everything) and explicit per-horizon cadences on all HOLDING **and WATCHING** theses. Everything is currently "managed" | Resolver rule: WATCHING doesn't inherit `REVIEW_CADENCE` (invariant 3). Zero behavior change today — existing watches already carry explicit cadences from the seed | S |
+| **W1** | **The soft tier has never existed.** Every watch item has always been reviewed; the cadence seed carried that sole mode forward (account 7d floor inherited by everything + explicit cadences on all WATCHING). "No cadence" currently means nothing | Resolver rule: WATCHING doesn't inherit `REVIEW_CADENCE` (invariant 3) — makes the absence of a cadence meaningful for the first time. Zero behavior change on current data | S |
 | **W2** | **Agents can't mint a bare watch.** `record_thesis` requires LONG/SHORT/PASS + full belief gate; PASS+WATCHING rejected at ~line 1169 | Unpriced mint path: direction nullable, belief gate applies only when a plan is being written, PASS+WATCHING rejection removed. **Coordinate with the PASS dedup guard** (other session, post-08-25 incident) — key it so PASS→soft-watch conversion doesn't collide | M |
-| **W3** | **No elevation flow.** | "Research" button on a watch row → thesis-writer dispatch (existing machinery). Prep for the add-flow auto-context (facts-only triage on add) | M |
+| **W3** | **No elevation flow, and reviews can't conclude demotion.** A review today can end "keep" or "archive" — none of the in-between states | Both directions as review dispositions (§5): "Research" button → thesis-writer dispatch (existing machinery), and the disposition duty in the daily-run/tactical prompts so the agent can demote/re-clock. Layer 3 + the existing triggers write; WATCHING-only boundary rule | M |
 | **W4** | **Cap counts mints, not attention.** `DISPATCH_CAP=5` throttles idea flow (DAV-211) while the scarce thing is review slots | Cap = max items per analyst with a resolved cadence. Soft watches uncapped. Overflow from discovery = soft watch with a wake, not a terminal PASS | S |
 | **W5** | **List UI shows labels, not content.** | Row = ticker · one-line reason · plan line (if priced) · next wake. Empty context visible as empty — no computed "depth" badge | M |
 | **W6** | **PASS reason codes** (DAV-215) | Ships independently, any time. The 08-25 incident's 20 reason-less PASS rows are the exhibit | S |
 
 Order: **W1 → W2 → (W3 ∥ W4) → W5.** W6 whenever.
 
-## 6. Already exists — do not rebuild
+## 7. Already exists — do not rebuild
 
 - `DEMOTE` action + firing floors/targets on watch items (Levels L5).
 - REVIEW-batching: REVIEW fires never spawn tacticals; they write
@@ -102,7 +155,7 @@ Order: **W1 → W2 → (W3 ∥ W4) → W5.** W6 whenever.
 - A human-alert channel later hangs off the existing `TRIGGER_FIRED` event;
   nothing here blocks or requires it.
 
-## 7. Open decisions (parked, not blocking)
+## 8. Open decisions (parked, not blocking)
 
 - **Watch-without-analyst.** Triggers evaluate per analyst; an unassigned item
   is inert. If wanted: an "inbox" that nudges toward assignment, with
