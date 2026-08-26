@@ -15,6 +15,19 @@ Automated weekly discovery (Signals + Briefings) was killed — it was noise. Di
 triages + dispatches. You are the scout-prompt author; the operator is the trigger; the app is
 the closer. Grok's real unit is **people, not stocks** — see the Scout Loop.
 
+## ⚠️ THE MODE IS LOAD-BEARING (learned 2026-08-25, expensively)
+
+The paste goes into **Discovery mode on `/analysts/[id]` → Run Discovery** and NOWHERE else.
+Principal chat accepts the identical paste and silently runs it **blind**: the money-context
+bundle (#544, `getMoneyContext`) is wired into `discovery-run.ts` and `run-thesis-writer.ts`
+only. A triage run in chat never sees the book, past outcomes, or the watchlist — on
+2026-08-25 a Catalyst paste run in principal chat produced 20 PASS rows (7 duplicates),
+graded names by the scout's approval-rate scoreboard instead of our P&L, and never called
+`get_theses` or `get_portfolio_context` once.
+
+**Your deliverable must say this, in the paste block itself, every time:** "Run this in
+Discovery mode on /analysts/[id]. Do not run it in chat — chat triage is blind to the book."
+
 ## Before you start
 
 Read these in order:
@@ -57,6 +70,16 @@ For the chosen analyst, output a single ready-to-use block the operator can work
 6. **The Hindsight Discovery paste** — the triage instruction the operator appends under the
    pasted Grok+Perplexity output: archetype triage filters, `DISPATCH_CAP=5`, skip-list,
    "dispatch the N best as WATCHING; PASS-record the rest with rationale," LONG only.
+   Three hard rules for this block (each learned from the 2026-08-25 Catalyst run):
+   - **Skip-list = names currently HOLDING or WATCHING only.** Never write history claims
+     into the paste ("previously PASSED — only revisit if something material changed" reads
+     as a blanket ban and overrides the recycle path). The mode supplies history; the paste
+     supplies candidates.
+   - **Scoreboard rule, stated verbatim in the paste:** "For any candidate we have traded
+     before, weigh OUR realized P&L on the name, not the scout's outcome record. Approval
+     rate is not our scoreboard — MNKD's drug was approved and the position lost $345;
+     IONS counts as a scout 'win' and cost us $752."
+   - **Repeat the mode warning** from the section above, inside the paste.
 7. **Standing reminder** — for paper seats: discovery makes the *test fair* (good candidates in);
    it does not make the promotion call. The seat stays paper until it strings together a
    positive stretch.
