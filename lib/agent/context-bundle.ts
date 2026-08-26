@@ -413,6 +413,10 @@ export function formatBookContextBlock(b: BookContext): string {
       "  • A name sold on price while the reasoning held is the strongest re-entry",
       "    candidate of all. Treat it as a lead, not as history.",
       "  • A losing name is not banned either — say what is different this time, then judge it.",
+      "  • The FULL prior thesis for any name above still exists — what we believed, the",
+      "    conviction, the levels, why it was retired. Pull it with",
+      "    get_theses(tickers: [\"TICKER\"], status: [\"RETIRED\", \"PASSED\"]) before you judge a",
+      "    name we have already traded. You are not starting from scratch on these.",
     );
   }
 

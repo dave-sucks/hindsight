@@ -181,6 +181,9 @@ describe("formatBookContextBlock", () => {
     expect(out).toContain("sold on price — the reasoning still held");
     // The scoreboard rule has to be in words, not implied by the numbers.
     expect(out).toMatch(/approved while the trade loses money/i);
+    // The prior thesis is still in the database — point at it rather than
+    // letting the agent re-underwrite a name we already researched.
+    expect(out).toContain('status: ["RETIRED", "PASSED"]');
   });
 
   it("says so plainly when the seat genuinely holds nothing", () => {
