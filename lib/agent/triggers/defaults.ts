@@ -640,6 +640,51 @@ function watchingEntryTrigger(
 // REVIEW_DATE_HIT predicate stays in types/evaluator for back-compat with
 // existing rows; new theses no longer get it.
 
+
+/**
+ * The floor and the target, for a thesis we don't own yet.
+ *
+ * Every WATCHING template was missing these. Only one of the four read
+ * `stopLoss` at all, and it minted a REVIEW ("better entry, or thesis
+ * weakening?") rather than a sell level — so a watch item's floor and target
+ * were written on the thesis and enforced by nothing. That is why all 19
+ * watchlist rows in the book carried a stop that fired nothing, and it is
+ * KLAC: buy $262, floor $225, price $184, breached in June, nothing happened.
+ *
+ * Safe to arm on an un-held thesis only because `effectiveTriggerAction`
+ * resolves both to DEMOTE when they fire — set the plan down, keep watching.
+ * A sell on something we never bought is meaningless; before that verb
+ * existed, writing these would have spawned an agent run per name.
+ */
+function watchingPlanLevels(
+  thesis: ThesisShape,
+  direction: ThesisDirection,
+): Trigger[] {
+  const out: Trigger[] = [];
+  const long = direction !== "SHORT";
+  if (thesis.stopLoss != null) {
+    out.push({
+      id: createId(),
+      predicate: long
+        ? { kind: "PRICE_BELOW", level: thesis.stopLoss }
+        : { kind: "PRICE_ABOVE", level: thesis.stopLoss },
+      action: "EXIT",
+      rationale: `Floor $${thesis.stopLoss} — below this the setup is wrong, so the plan comes off rather than waiting to be bought.`,
+    });
+  }
+  if (thesis.targetPrice != null) {
+    out.push({
+      id: createId(),
+      predicate: long
+        ? { kind: "PRICE_ABOVE", level: thesis.targetPrice }
+        : { kind: "PRICE_BELOW", level: thesis.targetPrice },
+      action: "REVIEW",
+      rationale: `Target $${thesis.targetPrice} reached before we bought — the move happened without us, so the entry is stale.`,
+    });
+  }
+  return out;
+}
+
 function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
   out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.CATALYST));
@@ -755,6 +800,7 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
     cooldownDays: 12,
   });
 
+  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
   return out;
 }
 
@@ -796,6 +842,7 @@ function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
     },
   );
 
+  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
   return out;
 }
 
@@ -850,6 +897,7 @@ function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
     },
   );
 
+  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
   return out;
 }
 
@@ -905,6 +953,7 @@ function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
     },
   );
 
+  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
   return out;
 }
 
