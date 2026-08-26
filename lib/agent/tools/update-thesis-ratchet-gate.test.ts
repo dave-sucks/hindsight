@@ -40,6 +40,12 @@ jest.mock("@/lib/agent/thesis-updates", () => ({
 jest.mock("@/lib/agent/triggers/load-levels", () => ({
   loadLevelSources: jest.fn().mockResolvedValue(new Map()),
   resolveThesisLadder: jest.fn().mockReturnValue([]),
+  // Real signature, tiny stub — the W2 plan⇒cadence stamp calls it on the
+  // trigger-replace path this suite exercises.
+  horizonFor: (h: string | null) =>
+    h === "CATALYST" || h === "TRADE" || h === "COMPOUNDER" || h === "TARGET"
+      ? h
+      : "TARGET",
 }));
 
 import { updateThesis } from "./update-thesis";

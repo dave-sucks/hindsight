@@ -29,12 +29,17 @@ import { prisma } from "@/lib/prisma";
 import { getAccount } from "@/lib/alpaca";
 import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { applyTriggerCooldownDefaults } from "@/lib/agent/triggers/defaults";
+import {
+  applyTriggerCooldownDefaults,
+  reviewCadenceTrigger,
+  CADENCE_DAYS_BY_HORIZON,
+} from "@/lib/agent/triggers/defaults";
 import {
   dropRedundantInherited,
   carryOverDroppedFireState,
 } from "@/lib/agent/triggers/levels";
 import {
+  horizonFor,
   loadLevelSources,
   parseTriggerState,
   resolveThesisLadder,
@@ -710,7 +715,25 @@ export const updateThesis = defineTool({
     //
     // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy) — the
     // isUnresearchedSeed helper catches both during the dual-read window.
-    if (isUnresearchedSeed(existing.direction) && !args.direction) {
+    //
+    // W2 (DAV-209): direction-null now ALSO means a soft watch — "looked,
+    // declined to trade, keeping a wake on it." A soft watch is a finished
+    // decision, not an unresearched seed, and its wake triggers must stay
+    // editable without forcing a direction commitment. The derived
+    // discriminator: a soft watch always carries ≥1 AGENT-authored trigger
+    // (the mint gate enforces the wake invariant); a seed carries none
+    // (zero triggers, or only the DEFAULT-source seed cadence).
+    const existingRowTriggers: Trigger[] = Array.isArray(existing.triggers)
+      ? (existing.triggers as unknown as Trigger[])
+      : [];
+    const isSoftWatchRow =
+      isUnresearchedSeed(existing.direction) &&
+      existingRowTriggers.some((t) => t.source === "AGENT");
+    if (
+      isUnresearchedSeed(existing.direction) &&
+      !isSoftWatchRow &&
+      !args.direction
+    ) {
       return {
         summary: `Thesis ${args.thesis_id} is an unresearched seed — update_thesis must include direction.`,
         data: {
@@ -1335,7 +1358,38 @@ export const updateThesis = defineTool({
           ? { ...t, source: prior }
           : { ...t, source: "AGENT" as const };
       });
-      patch.triggers = applyTriggerCooldownDefaults(stamped) as object;
+      let finalTriggers = applyTriggerCooldownDefaults(stamped);
+
+      // ── Plan ⇒ cadence on the update path (W2, DAV-209 invariant 2) ──
+      // WATCHING no longer inherits the account's review cadence (W1), so
+      // a wholesale replace that omits the cadence rung would silently
+      // take a committed watch off the review clock — "reviews stop, no
+      // error." Mirror of record_thesis's mint stamp: a directional
+      // WATCHING thesis always leaves this tool with a clock. Direction-
+      // null rows (seeds, soft watches) are exempt — a soft watch being
+      // cadence-free is the point, and seeds carry their own seed clock.
+      // Terminal transitions (change_status) skip: the row is leaving the
+      // watchlist anyway.
+      const finalDirection = args.direction ?? existing.direction;
+      if (
+        existing.status === "WATCHING" &&
+        !args.change_status &&
+        (finalDirection === "LONG" || finalDirection === "SHORT") &&
+        !finalTriggers.some((t) => t.predicate.kind === "REVIEW_CADENCE")
+      ) {
+        finalTriggers = [
+          ...finalTriggers,
+          {
+            ...reviewCadenceTrigger(
+              CADENCE_DAYS_BY_HORIZON[
+                horizonFor(args.horizon ?? existing.horizon ?? null)
+              ],
+            ),
+            source: "DEFAULT" as const,
+          },
+        ];
+      }
+      patch.triggers = finalTriggers as object;
     }
 
     // ── Derive-on-write: levels are triggers (DAV-195 L3) ────────────────

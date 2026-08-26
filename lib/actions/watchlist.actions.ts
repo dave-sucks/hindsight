@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { getAccountId } from "@/lib/auth/account";
 import { getOrCreateManualRun } from "@/lib/agent/manual-run-anchor";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -356,8 +357,17 @@ export async function addWatchlistItem(
       modelUsed: "manual",
       sourceKind,
       sourceRationale: reason || "Manual watchlist add",
-      // Surface as REVIEW_DUE on the next daily run via the existing
-      // needsAction pipeline. No special TIME_ELAPSED day=0 trigger.
+      // The seed's clock (W1, DAV-216): WATCHING no longer inherits the
+      // account review cadence, so a seed with no trigger of its own
+      // would be invisible forever. days=7 matches the account floor the
+      // seed rode before the change. NOTE the original "surface on the
+      // NEXT daily run" intent (the nextReviewAt: now below) has been
+      // dead since L7 made nextReviewAt a display cache — first research
+      // lands within ~a week, not next morning. Restoring next-morning
+      // surfacing is a W3 (dispositions) item, not a trigger value.
+      triggers: [
+        { ...reviewCadenceTrigger(7), source: "DEFAULT" },
+      ] as object[],
       nextReviewAt: now,
     },
   });
