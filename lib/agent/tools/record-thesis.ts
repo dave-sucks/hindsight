@@ -14,8 +14,11 @@ import {
   defaultTriggersForHorizon,
   mergeTriggers,
   applyTriggerCooldownDefaults,
+  reviewCadenceTrigger,
+  CADENCE_DAYS_BY_HORIZON,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
+import { horizonFor } from "@/lib/agent/triggers/load-levels";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { getAccount } from "@/lib/alpaca";
@@ -1243,6 +1246,29 @@ export const recordThesis = defineTool({
       });
       mergedTriggers = applyTriggerCooldownDefaults(levelled.triggers);
       const derivedLevelColumns = levelled.columns;
+
+      // ── Cadence opt-in stamp (W1, DAV-216) ──────────────────────────
+      // WATCHING theses no longer inherit the account's review cadence
+      // (resolveLadder gates it — a watch item is reviewed iff it carries
+      // its own clock). Every mint through THIS path is a priced plan
+      // (the unpriced soft-watch path is W2), and a plan must always be
+      // watched — so stamp the horizon's cadence unless the agent
+      // supplied one. Without this, every new discovery dispatch would be
+      // born silently unreviewed the moment the resolver gate landed.
+      if (
+        args.direction !== "PASS" &&
+        !mergedTriggers.some((t) => t.predicate.kind === "REVIEW_CADENCE")
+      ) {
+        mergedTriggers = [
+          ...mergedTriggers,
+          {
+            ...reviewCadenceTrigger(
+              CADENCE_DAYS_BY_HORIZON[horizonFor(args.horizon ?? null)],
+            ),
+            source: "DEFAULT" as const,
+          },
+        ];
+      }
 
       // ── ENTER-trigger guard (shared with update_thesis) ─────────────
       // A WATCHING/LONG or WATCHING/SHORT thesis without an ENTER trigger

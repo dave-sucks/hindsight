@@ -307,9 +307,39 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
 
   const dropPositionScoped = input.state != null && input.state !== "HELD";
 
+  // W1 (DAV-216): review cadence is OPT-IN for watch items. A WATCHING
+  // thesis is reviewed iff it carries its own cadence rung — it does not
+  // inherit the analyst/account clock. This is what makes a "soft watch"
+  // (wakes on events, costs no review attention) representable at all;
+  // before this gate the account's 7d floor put every watch item on a
+  // clock the moment it was minted (docs/plans/WATCHLIST_STATES.md §3).
+  //
+  // Scope, deliberately narrow:
+  //   - WATCHING only. HELD always inherits — a position must never
+  //     silently drop off the review clock. PROMOTED keeps inheriting
+  //     too: it is awaiting a decide-today and going quiet would bury it.
+  //   - Inherited levels only. A thesis-level cadence rung is the opt-in
+  //     and always survives.
+  //   - `state` is only passed by thesis-scoped callers, so the settings
+  //     pages (no thesis in scope) still render account/analyst cadence
+  //     rules normally.
+  //
+  // Downstream this also keeps `dropRedundantInherited` honest: on a
+  // WATCHING thesis the inherited ladder contains no cadence, so an agent
+  // deliberately opting in with days=7 is a real rung, not "redundant
+  // with the account" — the opt-in cannot be silently swallowed.
+  const dropInheritedCadence = input.state === "WATCHING";
+
   for (const level of LEVEL_PRECEDENCE) {
     for (const t of byLevel[level]) {
       if (dropPositionScoped && POSITION_SCOPED_KINDS.has(t.predicate.kind)) {
+        continue;
+      }
+      if (
+        dropInheritedCadence &&
+        t.predicate.kind === "REVIEW_CADENCE" &&
+        level !== "THESIS"
+      ) {
         continue;
       }
       const bucket = triggerBucket(t);

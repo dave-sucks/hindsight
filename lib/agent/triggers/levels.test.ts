@@ -436,3 +436,89 @@ describe("carryOverDroppedFireState", () => {
     expect(JSON.stringify(state)).toBe(snapshot);
   });
 });
+
+describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
+  const cadence = (days: number, id?: string) =>
+    rung({ id, predicate: { kind: "REVIEW_CADENCE", days }, action: "REVIEW" });
+
+  it("drops inherited REVIEW_CADENCE on a WATCHING thesis (all levels)", () => {
+    const resolved = resolveLadder({
+      thesis: [],
+      analyst: [cadence(1, "analyst-cadence")],
+      account: [cadence(7, "account-cadence")],
+      defaults: [cadence(14, "default-cadence")],
+      state: "WATCHING",
+    });
+    expect(resolved.filter((t) => t.predicate.kind === "REVIEW_CADENCE")).toEqual([]);
+  });
+
+  it("keeps a thesis-level cadence on WATCHING — the opt-in survives, unannotated", () => {
+    const resolved = resolveLadder({
+      thesis: [cadence(30, "own-cadence")],
+      account: [cadence(7, "account-cadence")],
+      state: "WATCHING",
+    });
+    const kept = resolved.filter((t) => t.predicate.kind === "REVIEW_CADENCE");
+    expect(kept).toHaveLength(1);
+    expect(kept[0].id).toBe("own-cadence");
+    expect(kept[0].level).toBe("THESIS");
+    // The account rung was gated out before the claim loop, so the opt-in
+    // is not annotated as "overriding" a rule that doesn't apply here.
+    expect(kept[0].overrides).toBeUndefined();
+  });
+
+  it("HELD keeps inheriting the account cadence — positions never drop off the clock", () => {
+    const resolved = resolveLadder({
+      thesis: [],
+      account: [cadence(7, "account-cadence")],
+      state: "HELD",
+    });
+    const kept = resolved.filter((t) => t.predicate.kind === "REVIEW_CADENCE");
+    expect(kept).toHaveLength(1);
+    expect(kept[0].level).toBe("ACCOUNT");
+  });
+
+  it("PROMOTED keeps inheriting — a decide-today must not go quiet", () => {
+    const resolved = resolveLadder({
+      thesis: [],
+      account: [cadence(7, "account-cadence")],
+      state: "PROMOTED",
+    });
+    expect(
+      resolved.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+    ).toHaveLength(1);
+  });
+
+  it("state omitted (settings surfaces) renders account cadence normally", () => {
+    const resolved = resolveLadder({
+      thesis: [],
+      account: [cadence(7, "account-cadence")],
+      viewLevel: "ACCOUNT",
+    });
+    expect(
+      resolved.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+    ).toHaveLength(1);
+  });
+
+  it("a deliberate opt-in matching the account value is not 'redundant' on WATCHING", () => {
+    // inherited ladder as update_thesis builds it: resolved with the real state
+    const inherited = resolveLadder({
+      thesis: [],
+      account: [cadence(7, "account-cadence")],
+      state: "WATCHING",
+    });
+    // Agent opts a watch item into the same 7d clock the account uses.
+    const kept = dropRedundantInherited([cadence(7, "opt-in")], inherited);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].id).toBe("opt-in");
+  });
+
+  it("on HELD the same rung IS redundant and converges to inheritance", () => {
+    const inherited = resolveLadder({
+      thesis: [],
+      account: [cadence(7, "account-cadence")],
+      state: "HELD",
+    });
+    expect(dropRedundantInherited([cadence(7, "copy")], inherited)).toEqual([]);
+  });
+});
