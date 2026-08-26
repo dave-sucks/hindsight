@@ -1,38 +1,76 @@
 import { Card } from "@/components/ui/card";
 import { PriceGauge } from "@/components/ui/gauge";
+import { levelLabelState } from "@/lib/agent/triggers/price-levels";
 
+/**
+ * A price level read off the thesis's trigger list — the serialized shape of
+ * `PriceLevel` from lib/agent/triggers/price-levels.
+ */
+export interface CardLevel {
+  price: number;
+  /** True when the price moves (a trail off the high, a gain off entry). */
+  projected: boolean;
+  /** What reaching it does. A floor always sells; a target may sell or ask. */
+  action?: string;
+  predicateKind: string;
+}
+
+/**
+ * Price Targets — the levels that actually fire.
+ *
+ * Reads the resolved trigger list, not `Thesis.entryPrice/targetPrice/
+ * stopLoss`. Those columns are a cache, and until the L6 backfill runs they
+ * can still name a price nothing enforces — SNOW showed "$256" on a live
+ * position whose only real exit was a give-back off the high. When a column
+ * has no trigger behind it, the number is shown struck through and labelled
+ * so the card stops asserting protection that doesn't exist.
+ *
+ * See docs/plans/LEVELS_AS_TRIGGERS.md.
+ */
 export function PriceTargetsBlock({
   entry,
   target,
   stop,
+  storedTarget,
+  storedStop,
   current,
   direction,
 }: {
+  /** Entry: the ENTER trigger while watching, the fill price once held. */
   entry: number;
-  target: number | null;
-  stop: number | null;
+  /** The furthest opportunity level, or null when none is set. */
+  target: CardLevel | null;
+  /** The protective level that fires FIRST — may be a moving trail. */
+  stop: CardLevel | null;
+  /**
+   * The cached column values. Only used to detect the gap: a number here
+   * with nothing in `target` / `stop` means the level is decoration.
+   */
+  storedTarget?: number | null;
+  storedStop?: number | null;
   /** Live current price from /quote. Null while in-flight or on failure. */
   current: number | null;
   /** Drives P&L tinting on the gauge. */
   direction: "LONG" | "SHORT";
 }) {
-  // 2026-05-31: Per P1-3 fix (PRICE_LEVEL_SEMANTICS plan), the gauge now
-  // consistently shows 4 markers — Stop / Entry / Current / Target —
+  // 2026-05-31: the gauge shows 4 markers — Stop / Entry / Current / Target —
   // regardless of status. Same labels, same field meanings, every state.
-  // Entry = where you'd buy (WATCHING) or where you bought (ACTIVE, set
-  // by place_trade fill). Target = where you'd take profit. Stop = where
-  // the thesis breaks. No status-conditional labeling.
+  // 2026-08-25: the numbers now come from the triggers rather than the
+  // columns, so a marker on this bar is something that fires.
+  const stopPrice = stop?.price ?? null;
+  const targetPrice = target?.price ?? null;
+
   const lo = Math.min(
-    stop ?? Number.POSITIVE_INFINITY,
+    stopPrice ?? Number.POSITIVE_INFINITY,
     entry,
     current ?? Number.POSITIVE_INFINITY,
-    target ?? Number.POSITIVE_INFINITY,
+    targetPrice ?? Number.POSITIVE_INFINITY,
   );
   const hi = Math.max(
-    stop ?? Number.NEGATIVE_INFINITY,
+    stopPrice ?? Number.NEGATIVE_INFINITY,
     entry,
     current ?? Number.NEGATIVE_INFINITY,
-    target ?? Number.NEGATIVE_INFINITY,
+    targetPrice ?? Number.NEGATIVE_INFINITY,
   );
   const safeLo = Number.isFinite(lo) ? lo : entry * 0.95;
   const safeHi = Number.isFinite(hi) ? hi : entry * 1.05;
@@ -81,17 +119,57 @@ export function PriceTargetsBlock({
 
         <PriceGauge
           entry={entry}
-          target={target}
-          stop={stop}
+          target={targetPrice}
+          stop={stopPrice}
           current={current}
           direction={direction}
         />
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{stop != null ? `Stop $${stop.toFixed(2)}` : "Stop —"}</span>
-          <span>{target != null ? `Target $${target.toFixed(2)}` : "Target —"}</span>
+          <LevelLabel name="Stop" level={stop} stored={storedStop} />
+          <LevelLabel name="Target" level={target} stored={storedTarget} />
         </div>
       </div>
     </Card>
   );
+}
+
+/**
+ * One end-label. Three states, and the third is the point of this whole
+ * project: a stored number with no trigger behind it is decoration, and
+ * saying "Stop $256" for it is the lie SNOW told for months.
+ */
+function LevelLabel({
+  name,
+  level,
+  stored,
+}: {
+  name: string;
+  level: CardLevel | null;
+  stored?: number | null;
+}) {
+  const state = levelLabelState(level, stored);
+  if (state.kind === "live") {
+    return (
+      <span>
+        {name} ${state.price.toFixed(2)}
+        <span className="ml-1 text-muted-foreground/70">
+          {/* A trail moves with the high — say so, or the number looks typed.
+              And say what reaching it DOES: a level that sells and a level
+              that asks you first are not the same promise. */}
+          {state.moving ? "trailing · " : ""}
+          {state.does}
+        </span>
+      </span>
+    );
+  }
+  if (state.kind === "decorative") {
+    return (
+      <span className="text-muted-foreground/70">
+        {name} <span className="line-through">${state.price.toFixed(2)}</span>
+        <span className="ml-1">not enforced</span>
+      </span>
+    );
+  }
+  return <span>{name} —</span>;
 }

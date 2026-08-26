@@ -74,65 +74,11 @@ describe("evaluateTrigger", () => {
       close: 100 + i,
     }));
 
-    it("fires on a 5D up move >= pct", () => {
-      // 5 days back close ≈ 100 + (29-5) = 124 → current 129 (latestQuote)
-      // Actually with our synthetic data: closes index 24 (5 days ago) = 124
-      // We pretend latestQuote is 130 so move = (130 - 124) / 124 ≈ 4.8%
-      const predicate: TriggerPredicate = {
-        kind: "PRICE_MOVE_PCT",
-        pct: 4,
-        direction: "UP",
-        window: "5D",
-      };
-      const ctx = makeCtx({
-        recentPrices,
-        latestQuote: { price: 130, changePct: 0 },
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
-    });
-
-    it("does not fire when window history missing (recentPrices empty)", () => {
-      const predicate: TriggerPredicate = {
-        kind: "PRICE_MOVE_PCT",
-        pct: 4,
-        direction: "UP",
-        window: "5D",
-      };
-      const ctx = makeCtx({
-        recentPrices: [],
-        latestQuote: { price: 130, changePct: 0 },
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
-    });
-
-    it("fires on a DOWN move when current is far below past close", () => {
-      const predicate: TriggerPredicate = {
-        kind: "PRICE_MOVE_PCT",
-        pct: 10,
-        direction: "DOWN",
-        window: "5D",
-      };
-      // 5 days back close = 124; latestQuote 100 → -19% move
-      const ctx = makeCtx({
-        recentPrices,
-        latestQuote: { price: 100, changePct: 0 },
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
-    });
-
-    it("does not fire when move is below threshold", () => {
-      const predicate: TriggerPredicate = {
-        kind: "PRICE_MOVE_PCT",
-        pct: 50,
-        direction: "UP",
-        window: "5D",
-      };
-      const ctx = makeCtx({
-        recentPrices,
-        latestQuote: { price: 130, changePct: 0 },
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
-    });
+    // The 5D window tests that lived here are gone with the window itself
+    // (2026-08-25). They passed by hand-feeding `recentPrices`, which no
+    // production caller ever supplied — so the predicate was green in CI and
+    // dead in the app for its entire existence. Only 1D remains, and it is
+    // the path the cron actually exercises.
 
     // ── Daily move (the "Movement Amount" alert) — window 1D uses the quote's
     //    own daily % change (changePct), so it fires on the cron with no

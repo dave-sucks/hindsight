@@ -27,6 +27,7 @@ import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
+import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 
 export async function GET(
   _req: Request,
@@ -143,6 +144,8 @@ export async function GET(
     rationale: string | null;
   };
   type PositionInfo = {
+    /** High-water mark (low-water on a short) — places a trailing floor. */
+    peakPrice?: number | null;
     id: string;
     quantity: number;
     avgCost: number;
@@ -177,6 +180,7 @@ export async function GET(
         id: true,
         quantity: true,
         avgCost: true,
+        peakPrice: true,
         openedAt: true,
         closedAt: true,
         closePrice: true,
@@ -207,6 +211,7 @@ export async function GET(
         id: pos.id,
         quantity: Number(pos.quantity),
         avgCost: Number(pos.avgCost),
+        peakPrice: pos.peakPrice != null ? Number(pos.peakPrice) : null,
         openedAt: pos.openedAt.toISOString(),
         daysHeld,
         closed: isClosed,
@@ -271,6 +276,17 @@ export async function GET(
     entryPrice: thesis.entryPrice,
     targetPrice: thesis.targetPrice,
     stopLoss: thesis.stopLoss,
+    // The levels actually in force, read off the resolved trigger list —
+    // the columns above are a cache and, until the L6 backfill runs, can
+    // still name a price nothing enforces. The card renders THIS and flags
+    // any column with no trigger behind it. See LEVELS_AS_TRIGGERS.md.
+    levels: canonicalLevels({
+      triggers,
+      direction: thesis.direction,
+      status: thesis.status,
+      avgCost: position?.avgCost ?? null,
+      peakPrice: position?.peakPrice ?? null,
+    }),
     targetSizePct: thesis.targetSizePct,
     scalingPlan: thesis.scalingPlan,
     catalystDate: thesis.catalystDate,

@@ -53,9 +53,6 @@ export interface EvaluationContext {
   /** Latest quote — present on cron and daily-inline paths. */
   latestQuote?: { price: number; changePct: number };
 
-  /** Recent closes for windowed PRICE_MOVE_PCT. Sorted ascending by date. */
-  recentPrices?: Array<{ date: Date; close: number }>;
-
   /** SMA precomputed by the caller; we don't fetch candles here. */
   sma?: { 50?: number; 200?: number };
 
@@ -331,57 +328,17 @@ function evaluateSignalType(
   return true;
 }
 
-const WINDOW_DAYS: Record<"1D" | "5D" | "30D", number> = {
-  "1D": 1,
-  "5D": 5,
-  "30D": 30,
-};
-
 function evaluatePriceMovePct(
   predicate: Extract<TriggerPredicate, { kind: "PRICE_MOVE_PCT" }>,
   ctx: EvaluationContext,
 ): boolean {
-  // ── Daily move (the "Movement Amount" alert) ──────────────────────────
-  // For the 1D window, use the quote's own daily % change vs the prior close
-  // (Finnhub `dp`, carried on latestQuote.changePct). This is the standard
-  // "stock is up/down X% today" number every app shows, and it lets the
-  // trigger-evaluator CRON path fire daily-move triggers with no candle
-  // history — the cron already fetches it. UP fires at ≥ +pct, DOWN at ≤ -pct.
-  if (predicate.window === "1D" && ctx.latestQuote != null) {
-    const dailyPct = ctx.latestQuote.changePct;
-    if (typeof dailyPct === "number") {
-      return predicate.direction === "UP"
-        ? dailyPct >= predicate.pct
-        : dailyPct <= -predicate.pct;
-    }
-  }
-
-  // ── Multi-day windows (5D / 30D) ──────────────────────────────────────
-  // Need a recent-closes series to compute the move; the cron doesn't load
-  // candles, so these still evaluate via the daily-run inline / live paths
-  // that supply recentPrices.
-  if (ctx.recentPrices == null || ctx.recentPrices.length === 0) return false;
-  if (ctx.latestQuote == null) return false;
-
-  const windowDays = WINDOW_DAYS[predicate.window];
-  const cutoff = new Date(ctx.now.getTime() - windowDays * 86_400_000);
-
-  // Find the most recent close at-or-before the cutoff.
-  // recentPrices is sorted ascending; walk from the end backward.
-  let pastClose: number | undefined;
-  for (let i = ctx.recentPrices.length - 1; i >= 0; i--) {
-    if (ctx.recentPrices[i].date.getTime() <= cutoff.getTime()) {
-      pastClose = ctx.recentPrices[i].close;
-      break;
-    }
-  }
-
-  if (pastClose == null || pastClose === 0) return false;
-
-  const currentPrice = ctx.latestQuote.price;
-  const pctChange = ((currentPrice - pastClose) / pastClose) * 100;
-
+  // The daily move, off the quote's own change vs prior close (Finnhub `dp`,
+  // carried on latestQuote.changePct). This is the number every app shows,
+  // and it needs no candle history — which is why it is the only window that
+  // survives. See the PRICE_MOVE_PCT note in ./types.
+  const dailyPct = ctx.latestQuote?.changePct;
+  if (typeof dailyPct !== "number") return false;
   return predicate.direction === "UP"
-    ? pctChange >= predicate.pct
-    : pctChange <= -predicate.pct;
+    ? dailyPct >= predicate.pct
+    : dailyPct <= -predicate.pct;
 }

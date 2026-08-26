@@ -123,6 +123,12 @@ export interface ThesisLadderRow {
   triggerState?: unknown;
   status: string | null;
   horizon: string | null;
+  /**
+   * Optional. Decides which of two same-bucket protective triggers is the
+   * tighter one (`protectiveTightestFirst` in ./levels). Callers that
+   * already select `direction` should pass it; absent behaves as LONG.
+   */
+  direction?: string | null;
 }
 
 /**
@@ -149,6 +155,7 @@ export function resolveThesisLadder(
     // ANY level.
     defaults: [],
     state: thesisStateFor(thesis.status),
+    direction: thesis.direction ?? null,
     // resolveLadder only wants the cooldown stamp; `side` is the
     // evaluator's business.
     triggerState: Object.fromEntries(

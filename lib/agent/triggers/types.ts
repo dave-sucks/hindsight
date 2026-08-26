@@ -55,12 +55,14 @@ export type TriggerPredicate =
   // ── Price-based — periodic worker against latest quote ────────────────
   | { kind: "PRICE_ABOVE"; level: number }
   | { kind: "PRICE_BELOW"; level: number }
-  | {
-      kind: "PRICE_MOVE_PCT";
-      pct: number;
-      direction: "UP" | "DOWN";
-      window: "1D" | "5D" | "30D";
-    }
+  // The daily move — "the stock is up/down X% today", off the quote's own
+  // change vs prior close. 5D and 30D windows were removed 2026-08-25: they
+  // needed a close series the 5-minute evaluator never had, so they silently
+  // evaluated false for their entire existence. Four theses carried one. A
+  // predicate that cannot fire is worse than no predicate, because the ladder
+  // says it is covered. Multi-day moves belong on the daily run, which reads
+  // the numbers directly off the row.
+  | { kind: "PRICE_MOVE_PCT"; pct: number; direction: "UP" | "DOWN"; window: "1D" }
   // Cumulative % vs the open position's avgCost (LONG: (price−avg)/avg;
   // SHORT inverted). UP = gain milestone ("we're up 10%" → checkpoint
   // re-underwrite); DOWN = drawdown-from-entry ("down 12%" → loser
@@ -128,7 +130,27 @@ export type TriggerPredicate =
  * only carry REVIEW triggers, which is too vague — REVIEW IF earnings
  * beat is housekeeping; ENTER IF price > $268 is the actionable signal.
  */
-export type TriggerAction = "REVIEW" | "EXIT" | "ENTER" | "ADD" | "TRIM" | "MOVE_STOP";
+export type TriggerAction =
+  | "REVIEW"
+  | "EXIT"
+  | "ENTER"
+  | "ADD"
+  | "TRIM"
+  | "MOVE_STOP"
+  /**
+   * Set the plan down: drop the buy / floor / target levels, keep watching.
+   *
+   * Never authored — it is CHOSEN AT FIRE TIME by `effectiveTriggerAction`
+   * when a price level fires on a thesis we don't own. Storing it on the
+   * trigger would mean every status change (buy, promote, opt-out) had to
+   * rewrite trigger actions to stay correct, and the first path that forgot
+   * would leave a "sell" armed on a watch item or a "demote" armed on a
+   * live position.
+   *
+   * See docs/plans/LEVELS_AS_TRIGGERS.md (L5). DAV-209 calls the same write
+   * for the on-demand version.
+   */
+  | "DEMOTE";
 
 export type Trigger = {
   /** Stable cuid — same id across thesis updates so cooldown can be tracked. */
@@ -253,4 +275,51 @@ export function protectiveExitCloseReason(
     default:
       return "STOP";
   }
+}
+
+/**
+ * What a trigger actually means for a thesis in this state.
+ *
+ * A price level is written once and outlives the thesis's state changes, so
+ * the same level has to mean different things depending on whether we own the
+ * stock:
+ *
+ *                       HOLDING            WATCHING / PROMOTED
+ *   floor breached      EXIT (sell)        DEMOTE — the plan's premise broke
+ *   target reached      REVIEW (decide)    DEMOTE — it happened without us
+ *   buy level hit       (no buy armed)     ENTER
+ *
+ * Real cases: KLAC (buy $262, floor $225, price $184 — floor breached in
+ * June and nothing happened) and NTNX (buy $47.12, target $60.87, price
+ * $67.64 — sailed past the target, never bought). Both should have set the
+ * plan down; neither could, because "sell" is meaningless with nothing to
+ * sell and there was no other verb.
+ *
+ * Deriving this instead of storing it is what keeps a promotion or an opt-out
+ * from having to rewrite the ladder. Pure.
+ */
+export function effectiveTriggerAction(
+  trigger: { action: TriggerAction; predicate: TriggerPredicate },
+  state: { status?: string | null; direction?: string | null },
+): TriggerAction {
+  if (state.status === "HOLDING") return trigger.action;
+
+  const kind = trigger.predicate.kind;
+  const isPriceLevel = kind === "PRICE_ABOVE" || kind === "PRICE_BELOW";
+
+  // A sell on something we don't own can only mean the plan is wrong. This
+  // covers judgment exits (earnings, signals) too — on an un-held thesis
+  // those say the same thing.
+  if (trigger.action === "EXIT") return "DEMOTE";
+
+  // An upside price level reached before we bought: the move happened
+  // without us, so the priced plan is stale. Housekeeping REVIEWs (earnings,
+  // review cadence, news) are untouched — they still just want a look.
+  if (trigger.action === "REVIEW" && isPriceLevel) {
+    const isLong = state.direction !== "SHORT";
+    const favourable = isLong ? kind === "PRICE_ABOVE" : kind === "PRICE_BELOW";
+    if (favourable) return "DEMOTE";
+  }
+
+  return trigger.action;
 }

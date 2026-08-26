@@ -37,7 +37,9 @@ import {
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
+import { effectiveTriggerAction } from "@/lib/agent/triggers/types";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+import { demoteThesisPlan } from "@/lib/agent/triggers/demote";
 import { describeTriggerFire } from "@/lib/agent/triggers/format";
 import { splitFiresByLevel } from "@/lib/agent/triggers/levels";
 import {
@@ -465,8 +467,23 @@ export const triggerEvaluator = inngest.createFunction(
             // matches by morning would be silently dropped. BREAKING-urgency
             // reviews still spawn (a real catalyst can't wait for tomorrow);
             // ENTER/EXIT always spawn. See OPENAI_COST_REDUCTION.md #2.
+            const action = effectiveTriggerAction(t, {
+              status: thesis.status,
+              direction: thesis.direction,
+            });
+            if (action === "DEMOTE") {
+              await demoteThesisPlan({
+                thesisId: thesis.id,
+                reason:
+                  t.action === "EXIT"
+                    ? `the floor broke before we ever bought it, so the plan's premise is gone.`
+                    : `it reached the target without us, so the entry is stale.`,
+                triggerId: t.id,
+              });
+              continue;
+            }
             const deferToDaily =
-              t.action === "REVIEW" && ctxSignal.urgency !== "BREAKING";
+              action === "REVIEW" && ctxSignal.urgency !== "BREAKING";
             if (deferToDaily) {
               await writeThesisUpdate({
                 thesisId: thesis.id,
@@ -485,7 +502,7 @@ export const triggerEvaluator = inngest.createFunction(
               signalId: signal.id,
               analystId,
               ticker: thesis.ticker,
-              action: t.action,
+              action,
               predicateKind: t.predicate.kind,
             });
           }
@@ -673,13 +690,41 @@ export const triggerEvaluator = inngest.createFunction(
           now,
         });
         for (const t of fires) {
+          // What this trigger MEANS for a thesis in this state. A floor or a
+          // target firing on something we don't own can't be a sell or a
+          // take-profit — it says the priced plan is stale. Resolved here
+          // rather than stored, so a buy or an opt-out never has to rewrite
+          // trigger actions. See effectiveTriggerAction + DAV-195 L5.
+          const action = effectiveTriggerAction(t, {
+            status: thesis.status,
+            direction: thesis.direction,
+          });
+
+          // DEMOTE is deterministic and costs nothing to be wrong about — no
+          // money moves — so it runs inline. Never a tactical spawn: arming
+          // watchlist floors is what would otherwise reproduce the 2026-05-18
+          // explosion (28 of 35 tactical runs, zero state changes), and there
+          // are 19 watchlist rows carrying a floor.
+          if (action === "DEMOTE") {
+            await demoteThesisPlan({
+              thesisId: thesis.id,
+              reason:
+                t.action === "EXIT"
+                  ? `the floor broke before we ever bought it, so the plan's premise is gone.`
+                  : `it reached the target without us, so the entry is stale.`,
+              triggerId: t.id,
+              priceAtTime: latestQuote?.price ?? null,
+            });
+            continue;
+          }
+
           // REVIEW-batching (see the signal path for the full rationale).
           // Cron-path REVIEWs carry no signal/urgency, so every REVIEW defers
           // to the daily run: write the TRIGGER_FIRED audit row (stamped with
           // the price that fired it) and skip the tactical spawn. The daily
           // run picks it up via needsAction=TRIGGER_FIRED. ENTER/EXIT/stop
           // triggers still spawn a tactical. See OPENAI_COST_REDUCTION.md #2.
-          if (t.action === "REVIEW") {
+          if (action === "REVIEW") {
             await writeThesisUpdate({
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",
@@ -697,7 +742,7 @@ export const triggerEvaluator = inngest.createFunction(
             triggerId: t.id,
             analystId,
             ticker: thesis.ticker,
-            action: t.action,
+            action,
             predicateKind: t.predicate.kind,
             firedPrice: latestQuote?.price ?? null,
           });

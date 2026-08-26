@@ -169,35 +169,28 @@ export function validateEnterTriggerRequired(
   // ── WATCHING-side checks ───────────────────────────────────────────────
   if (args.status !== "WATCHING") return { ok: true };
 
-  // HELD-action guard — reject EXIT/TRIM/ADD/MOVE_STOP on WATCHING.
-  // Checked BEFORE the ENTER-presence guard so the error message points
-  // at the bigger structural problem first (a WATCHING thesis with EXIT
-  // triggers is almost certainly the agent applying the HELD template
-  // wholesale, which the ENTER-presence message doesn't surface).
-  const heldOffenders = args.triggers.filter((t) =>
-    (HELD_ONLY_ACTIONS as readonly string[]).includes(t.action),
-  );
-  if (heldOffenders.length > 0) {
-    const offenderKinds = Array.from(
-      new Set(heldOffenders.map((t) => t.action as HeldOnlyAction)),
-    ).join(", ");
-    return {
-      ok: false,
-      reason: "held-actions-on-watching",
-      note:
-        `Your triggers[] array contains ${heldOffenders.length} HELD-only action(s) ` +
-        `(${offenderKinds}) on a WATCHING thesis. WATCHING means we don't own ` +
-        `the position yet — EXIT/TRIM/ADD/MOVE_STOP can only fire when an ` +
-        `Alpaca position is open (ACTIVE status). The trigger evaluator will ` +
-        `spawn orphan tactical runs that fail cleanly ("no position to close") ` +
-        `but generate noisy production logs. ` +
-        `\n\nFix: remove the ${offenderKinds} trigger(s) from your triggers[] array. ` +
-        `If you want to express "remove this name from the watchlist if X happens," ` +
-        `use update_thesis(change_status: "INVALIDATED" | "ARCHIVED") at the ` +
-        `moment X happens, not a pre-positioned EXIT trigger. If you want ` +
-        `"re-evaluate this entry decision if X happens," use action: "REVIEW".`,
-    };
-  }
+  // The HELD-action guard that used to sit here is GONE (DAV-195 L5).
+  //
+  // It refused EXIT/TRIM/ADD/MOVE_STOP on a WATCHING thesis, and its own
+  // reason said why: "the trigger evaluator will spawn orphan tactical runs
+  // that fail cleanly ('no position to close')". That was true — the system
+  // had no verb for a price level firing on something we don't own, so the
+  // only safe move was to forbid writing one.
+  //
+  // It also forbade the correct behaviour. A floor on a watch item is the
+  // price at which the plan is wrong, and refusing to store it is why 19 of
+  // 19 watchlist rows carry a stop that fires nothing (the KLAC shape: buy
+  // $262, floor $225, price $184, breached in June, nothing happened).
+  //
+  // `effectiveTriggerAction` now resolves an EXIT on a non-held thesis to
+  // DEMOTE — set the plan down, keep watching — inline, with no tactical
+  // spawn. The orphan run the gate was protecting against cannot occur, so
+  // the gate is deleted rather than relaxed. Per DAV-210: the missing thing
+  // was a verb, not another rule.
+  //
+  // TRIM/ADD/MOVE_STOP on a watch item stay meaningless, but they are inert
+  // rather than harmful (position-scoped, they evaluate false), and the
+  // shape gate below still requires a real ENTER.
 
   // ENTER-presence guard.
   const hasEnter = args.triggers.some((t) => t.action === "ENTER");
