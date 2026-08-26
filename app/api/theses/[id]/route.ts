@@ -64,7 +64,6 @@ export async function GET(
       targetSizePct: true,
       scalingPlan: true,
       catalystDate: true,
-      maxHoldDays: true,
       nextReviewAt: true,
       triggers: true,
       // Fire bookkeeping for INHERITED rungs — resolveThesisLadder overlays
@@ -290,7 +289,6 @@ export async function GET(
     targetSizePct: thesis.targetSizePct,
     scalingPlan: thesis.scalingPlan,
     catalystDate: thesis.catalystDate,
-    maxHoldDays: thesis.maxHoldDays,
     nextReviewAt: thesis.nextReviewAt,
     triggers,
     // Owning analyst — the trigger section deep-links an ANALYST-level rung

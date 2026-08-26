@@ -91,7 +91,7 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
     case "VS_SMA":
     case "RSI":
     case "TIME_ELAPSED":
-    case "REVIEW_DATE_HIT":
+    case "REVIEW_CADENCE":
       return true;
     case "AND":
     case "OR":
@@ -378,6 +378,7 @@ export const triggerEvaluator = inngest.createFunction(
             horizon: true,
             createdAt: true,
             nextReviewAt: true,
+            lastReviewedAt: true,
             researchRun: { select: { agentConfigId: true } },
           },
         });
@@ -434,7 +435,7 @@ export const triggerEvaluator = inngest.createFunction(
             signal: ctxSignal,
             thesis: {
               createdAt: thesis.createdAt,
-              nextReviewAt: thesis.nextReviewAt,
+              lastReviewedAt: thesis.lastReviewedAt ?? null,
               status: thesis.status,
               positionOpenedAt: posInfo?.openedAt ?? null,
             },
@@ -472,7 +473,7 @@ export const triggerEvaluator = inngest.createFunction(
               direction: thesis.direction,
             });
             if (action === "DEMOTE") {
-              await demoteThesisPlan({
+              const outcome = await demoteThesisPlan({
                 thesisId: thesis.id,
                 reason:
                   t.action === "EXIT"
@@ -480,6 +481,20 @@ export const triggerEvaluator = inngest.createFunction(
                     : `it reached the target without us, so the entry is stale.`,
                 triggerId: t.id,
               });
+              // See the cron path: a refused demotion must not swallow the fire.
+              if (!outcome.demoted) {
+                await writeThesisUpdate({
+                  thesisId: thesis.id,
+                  type: "TRIGGER_FIRED",
+                  summary: `${describeTriggerFire(t)} — deferred to the next daily review`,
+                  rationale:
+                    `${t.rationale} There was no priced plan left to set down, ` +
+                    `so this is a look rather than a change.`,
+                  triggerId: t.id,
+                  signalIds: [signal.id],
+                  runId: null,
+                });
+              }
               continue;
             }
             const deferToDaily =
@@ -574,6 +589,7 @@ export const triggerEvaluator = inngest.createFunction(
           horizon: true,
           createdAt: true,
           nextReviewAt: true,
+          lastReviewedAt: true,
           researchRun: { select: { agentConfigId: true } },
         },
       });
@@ -668,7 +684,7 @@ export const triggerEvaluator = inngest.createFunction(
             : null,
           thesis: {
             createdAt: thesis.createdAt,
-            nextReviewAt: thesis.nextReviewAt,
+            lastReviewedAt: thesis.lastReviewedAt ?? null,
             status: thesis.status,
             direction: thesis.direction,
             positionOpenedAt: posInfo?.openedAt ?? null,
@@ -706,7 +722,7 @@ export const triggerEvaluator = inngest.createFunction(
           // explosion (28 of 35 tactical runs, zero state changes), and there
           // are 19 watchlist rows carrying a floor.
           if (action === "DEMOTE") {
-            await demoteThesisPlan({
+            const outcome = await demoteThesisPlan({
               thesisId: thesis.id,
               reason:
                 t.action === "EXIT"
@@ -715,6 +731,25 @@ export const triggerEvaluator = inngest.createFunction(
               triggerId: t.id,
               priceAtTime: latestQuote?.price ?? null,
             });
+            // Demotion refuses on anything that isn't WATCHING (a PROMOTED
+            // row, say) and on a thesis with no priced plan left to remove.
+            // Both are legitimate, and `continue` on its own would swallow
+            // the fire — the silent-fire failure this project exists to end,
+            // reintroduced by me. Fall through to the daily run instead.
+            if (!outcome.demoted) {
+              await writeThesisUpdate({
+                thesisId: thesis.id,
+                type: "TRIGGER_FIRED",
+                summary: `${describeTriggerFire(t)} — deferred to the next daily review`,
+                rationale:
+                  `${t.rationale} There was no priced plan left to set down, ` +
+                  `so this is a look rather than a change.`,
+                triggerId: t.id,
+                signalIds: [],
+                runId: null,
+                priceAtTime: latestQuote?.price ?? null,
+              });
+            }
             continue;
           }
 

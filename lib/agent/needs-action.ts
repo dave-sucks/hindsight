@@ -36,7 +36,7 @@
  *                         day-one floor at −12% is flagged every single
  *                         morning until the floor is raised. See
  *                         docs/plans/THESIS_GAME_PLAN.md + ladder-health.ts.
- *   RUNNING_WINNER      — a HOLDING that has reached ≥75% of the way from its
+ *   (RUNNING_WINNER was removed 2026-08-25 — the account trigger fires first.
  *                         entry (avgCost) to its target (or blown past it),
  *                         up ≥8%, with no fired/matching trigger already
  *                         catching it. The backstop for the "agent ignores
@@ -79,7 +79,6 @@
 
 import { shouldFire } from "@/lib/agent/triggers/evaluate";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
-import { computeWinnerSignal } from "@/lib/agent/winner-signal";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 
@@ -140,15 +139,6 @@ export type NeedsAction =
       floorSummary: string | null;
     }
   | {
-      kind: "RUNNING_WINNER";
-      /** Unrealized gain %, direction-aware. */
-      unrealizedGainPct: number;
-      /** Fraction of entry→target distance covered (≥1 = past target). */
-      progressToTarget: number;
-      /** True when price has reached or exceeded the target. */
-      pastTarget: boolean;
-    }
-  | {
       kind: "REVIEW_DUE";
       daysOverdue: number;
       /**
@@ -175,7 +165,10 @@ const PRICE_OR_TIME_KINDS = new Set([
   "VS_SMA",
   "RSI",
   "TIME_ELAPSED",
-  "REVIEW_DATE_HIT",
+  // REVIEW_CADENCE is deliberately NOT here: it has its own needsAction
+  // kind (REVIEW_DUE) with a 24h look-ahead the generic loop can't express,
+  // and routing it through TRIGGER_MATCHING_NOW would relabel every routine
+  // review as an urgent trigger fire.
 ]);
 
 function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
@@ -206,8 +199,8 @@ export function describePredicate(p: TriggerPredicate): string {
       return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
     case "TIME_ELAPSED":
       return `${p.days}d elapsed since thesis creation`;
-    case "REVIEW_DATE_HIT":
-      return "scheduled review date reached";
+    case "REVIEW_CADENCE":
+      return `due for review (every ${p.days}d)`;
     case "SIGNAL_TYPE":
       return `${p.signalType} signal${p.sentiment ? ` (${p.sentiment.toLowerCase()})` : ""}`;
     case "EARNINGS_BEAT":
@@ -249,6 +242,8 @@ export interface NeedsActionInput {
     triggers: Trigger[];
     createdAt: Date;
     nextReviewAt: Date | null;
+    /** When an analyst last actually looked. Drives the review cadence. */
+    lastReviewedAt?: Date | null;
     /**
      * P1-14 — paired open Position's openedAt, for ACTIVE rows only. Lets
      * the TRIGGER_MATCHING_NOW evaluation anchor TIME_ELAPSED to when the
@@ -361,7 +356,7 @@ export function computeNeedsAction(
       latestQuote: latestQuote ?? undefined,
       thesis: {
         createdAt: thesis.createdAt,
-        nextReviewAt: thesis.nextReviewAt,
+        lastReviewedAt: thesis.lastReviewedAt ?? null,
         // P1-14: ACTIVE rows anchor TIME_ELAPSED to the position open time.
         status: thesis.status,
         positionOpenedAt: thesis.positionOpenedAt ?? null,
@@ -415,29 +410,19 @@ export function computeNeedsAction(
     }
   }
 
-  // 4) RUNNING_WINNER — a held position at/near its target's decision point
-  //    with no fired/matching trigger already catching it. Backstop for the
-  //    "agent ignores winners" gap (SCALE_INTO_WINNERS.md PR3): an un-laddered
-  //    winner would otherwise fall through to null and be skipped by the
-  //    morning run. Only for HOLDING rows; needs the position avgCost + the
-  //    thesis target from the caller. Ranks below explicit trigger fires (a
-  //    stop or target-EXIT is more specific) but above a routine review.
-  if (thesis.status === "HOLDING") {
-    const winner = computeWinnerSignal({
-      direction: thesis.direction,
-      avgCost: thesis.avgCost,
-      targetPrice: thesis.targetPrice,
-      currentPrice: latestQuote?.price ?? null,
-    });
-    if (winner?.isRunningWinner && winner.progressToTarget != null) {
-      return {
-        kind: "RUNNING_WINNER",
-        unrealizedGainPct: winner.unrealizedGainPct,
-        progressToTarget: winner.progressToTarget,
-        pastTarget: winner.pastTarget,
-      };
-    }
-  }
+  // RUNNING_WINNER was here, and is deleted (DAV-195 L8).
+  //
+  // It flagged a held position at >=75% of the way to target, or up >=12%.
+  // The account already carries "review if up 10% from entry", which fires
+  // FIRST in every realistic case: at a +30% target, 75% progress is +22.5%,
+  // long past the 10% checkpoint. The only window where the flag fired and
+  // the trigger did not was a target under ~13% total — which is exactly what
+  // its own MIN_GAIN floor was added to suppress. It was a trigger
+  // re-implemented as a morning calculation, permanently second.
+  //
+  // What replaced it is not another flag: resolved.unrealizedGainPct and
+  // resolved.progressToTarget sit on every held row the agent reads, so a
+  // stock up 212% is visible without anything pre-deciding that it matters.
 
   // 5) REVIEW_DUE — agent-set cadence (nextReviewAt) elapsed OR coming
   //    due within the next 24h. The 24h look-ahead is load-bearing: the
@@ -454,27 +439,34 @@ export function computeNeedsAction(
   //    null or legacy 'PENDING') carry nextReviewAt = createdAt so they
   //    surface as REVIEW_DUE on the next daily run with the pendingFirstReview
   //    discriminator.
+  // The cadence trigger on the resolved ladder is the authority — "review
+  // every N days", counted from the last actual review. It used to be a date
+  // column the agent set by hand, which was a second store of the same idea
+  // and the one nothing fired on.
+  //
+  // The 24h look-ahead is load-bearing and is why this doesn't just go
+  // through the generic trigger loop: the morning run fires once at 08:00,
+  // so a review coming due later today has to be caught now or it waits a
+  // whole day.
   const REVIEW_DUE_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
-  if (
-    thesis.nextReviewAt &&
-    thesis.nextReviewAt.getTime() <= now.getTime() + REVIEW_DUE_LOOKAHEAD_MS
-  ) {
-    // Clamp negative (i.e. "due later today, not yet overdue") to 0 so
-    // the UI / prompt renders "due today" rather than "-1 days overdue".
-    const daysOverdue = Math.max(
-      0,
-      Math.floor(
-        (now.getTime() - thesis.nextReviewAt.getTime()) / 86_400_000,
-      ),
-    );
-    const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue };
-    // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy). Either
-    // way it has no committed view yet → flag pendingFirstReview so the
-    // prompt routes it to the "commit a direction" path.
-    if (isUnresearchedSeed(thesis.direction)) {
-      result.pendingFirstReview = true;
+  const cadence = thesis.triggers.find(
+    (t) => t.predicate.kind === "REVIEW_CADENCE",
+  );
+  if (cadence?.predicate.kind === "REVIEW_CADENCE") {
+    const lastLooked = thesis.lastReviewedAt ?? thesis.createdAt;
+    const dueAt = lastLooked.getTime() + cadence.predicate.days * 86_400_000;
+    if (dueAt <= now.getTime() + REVIEW_DUE_LOOKAHEAD_MS) {
+      // Clamp negative ("due later today") to 0 so the UI reads "due today"
+      // rather than "-1 days overdue".
+      const daysOverdue = Math.max(
+        0,
+        Math.floor((now.getTime() - dueAt) / 86_400_000),
+      );
+      const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue };
+      // A seed has no committed view yet — route it to "commit a direction".
+      if (isUnresearchedSeed(thesis.direction)) result.pendingFirstReview = true;
+      return result;
     }
-    return result;
   }
 
   // Nothing to act on. Yesterday's thesis stands.

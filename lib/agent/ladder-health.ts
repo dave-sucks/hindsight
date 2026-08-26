@@ -20,8 +20,7 @@
  *
  * Shared by needs-action.ts (the UNPROTECTED_GAIN attention flag) and
  * resolved-thesis.ts (surfacing the block on every HOLDING row in
- * get_theses), exactly the way winner-signal.ts is shared for
- * RUNNING_WINNER. No I/O — pure + unit-tested.
+ * get_theses). No I/O — pure + unit-tested.
  *
  * What counts as PROTECTION (a floor):
  *   An EXIT-action rung that deterministically fires on the losing side of
@@ -45,17 +44,17 @@
  *
  * SHORT positions are fully handled: gain math inverts (avgCost vs price),
  * the protective side flips (PRICE_ABOVE), and the trail uses the low-water
- * mark — mirroring lib/agent/triggers/evaluate.ts and winner-signal.ts.
+ * mark — mirroring lib/agent/triggers/evaluate.ts.
  */
 
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 
-// ─── Tunable constants (mirrors RUNNING_WINNER_* in winner-signal.ts) ────────
+// ─── Tunable constants ───────────────────────────────────────────────────────
 
 /**
  * Minimum unrealized gain before the UNPROTECTED_GAIN flag can fire. Below
  * this, an entry-side stop below entry is normal risk management, not an
- * unprotected winner. 8 matches RUNNING_WINNER_MIN_GAIN_PCT — the same "this
+ * unprotected winner. 8 was the old RUNNING_WINNER floor — the same "this
  * is a winner worth acting on" floor. Tunable; calibrate from run reviews.
  */
 export const UNPROTECTED_GAIN_MIN_GAIN_PCT = 8;

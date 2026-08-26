@@ -54,7 +54,7 @@ export function predicateKey(p: TriggerPredicate): string {
       return `${p.kind}:${p.formType}`;
     case "TIME_ELAPSED":
       return p.kind;
-    case "REVIEW_DATE_HIT":
+    case "REVIEW_CADENCE":
       return p.kind;
     case "AND":
     case "OR":

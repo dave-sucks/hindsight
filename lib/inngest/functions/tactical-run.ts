@@ -16,6 +16,7 @@
 
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
+import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { generateText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -339,6 +340,27 @@ export const tacticalRun = inngest.createFunction(
         }),
       );
       if (queuedClose) {
+        // Folding into the queued proposal suppresses the DISPATCH, never the
+        // record. The condition is still true — that is the whole content of
+        // the standing-order ruling — and a fire that leaves no trace is the
+        // exact failure this project exists to end. Without this the activity
+        // log shows one proposal on 8/20 and silence through 8/24 while the
+        // floor was breached every single day.
+        await step.run("record-folded-fire", async () =>
+          writeThesisUpdate({
+            thesisId: fired.thesisId,
+            type: "TRIGGER_FIRED",
+            summary: `${describeTriggerFire(trigger)} — folded into the ${queuedClose.status === "AWAITING_APPROVAL" ? "sell awaiting your approval" : "sell already submitted"}`,
+            rationale:
+              `The condition is still true, so it fired again. No second ` +
+              `proposal was raised because one is already open on this ` +
+              `position — acting on that one is what resolves this.`,
+            triggerId: trigger.id,
+            signalIds: [],
+            runId: null,
+            priceAtTime: fired.firedPrice ?? null,
+          }),
+        );
         return {
           skipped: "close-already-queued",
           reason: queuedClose.status,

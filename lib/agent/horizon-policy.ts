@@ -60,48 +60,6 @@ export const WATCHING_FIRST_REVIEW_DAYS: Record<Horizon, number> = {
 };
 
 /**
- * Human-readable review cadence labels surfaced in the daily-run prompt's
- * Live Theses table. Tells the agent how often a thesis of this kind is
- * normally walked — so a COMPOUNDER getting hammered today doesn't get
- * panic-reviewed at the same intensity as a TRADE near its stop.
- */
-export const HORIZON_REVIEW_CADENCE: Record<Horizon, string> = {
-  CATALYST: "Daily — catalyst proximity",
-  TRADE: "Daily — tight window",
-  TARGET: "Weekly — let it breathe",
-  COMPOUNDER: "Quarterly — fundamental shifts only",
-};
-
-/**
- * Human-readable exit-policy summary surfaced in the daily-run prompt
- * per thesis. The single most-load-bearing horizon-aware behavior:
- * the agent has to know what kind of trade this is to decide whether
- * a -3% move is a stop-tightening situation (TRADE) or noise (COMPOUNDER).
- */
-export const HORIZON_EXIT_POLICY: Record<Horizon, string> = {
-  CATALYST:
-    "Hold through event. Exit at event resolution OR 30d past catalystDate. Inter-event price drift is noise.",
-  TRADE:
-    "Stop, target, or maxHoldDays — whichever fires first. Hard exits, no extensions.",
-  TARGET:
-    "Stop, target, or thesis invalidation. No time stop. Tolerate intra-month noise; the target is the thesis.",
-  COMPOUNDER:
-    "Broken thesis only. Ignore intra-quarter price moves under ~5%; only fundamental shifts (earnings, guidance, regulatory) warrant action.",
-};
-
-/**
- * Compact one-liner combining cadence + exit policy. Used in the Live
- * Theses table where space is tight and we want one row of guidance per
- * thesis without taking three lines.
- */
-export function horizonHint(horizon: Horizon | null | undefined): string {
-  if (!horizon) return "";
-  const cadence = HORIZON_REVIEW_CADENCE[horizon];
-  const policy = HORIZON_EXIT_POLICY[horizon];
-  return `${cadence}. ${policy}`;
-}
-
-/**
  * Derive the legacy hold-duration label from a horizon. Used by UI surfaces
  * that still render "Hold duration: SWING" while the `holdDuration` column
  * is being deprecated (THESIS_CLEANUP PR-2). Mapping matches the existing

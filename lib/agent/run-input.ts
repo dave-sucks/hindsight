@@ -109,7 +109,6 @@ export interface RunInput {
     coreBelief: string | null;
     nextReviewAt: string | null;
     catalystDate: string | null;
-    maxHoldDays: number | null;
     // PROMOTED-only context — null on non-PROMOTED rows.
     promotedAt: string | null;
     paperTenureDays: number | null;
@@ -395,7 +394,7 @@ export async function buildRunInput(
     entryPrice: number | null; targetPrice: number | null;
     stopLoss: number | null; createdAt: Date; researchRunId: string; status: string;
     horizon: string | null; coreBelief: string | null; nextReviewAt: Date | null;
-    catalystDate: Date | null; maxHoldDays: number | null;
+    catalystDate: Date | null;
     promotedAt: Date | null; paperTenureDays: number | null;
     paperRealizedPnl: number | null; paperReviewCount: number | null;
     researchUpdatedAt: Date | null;
@@ -426,7 +425,7 @@ export async function buildRunInput(
           // prompt render "review due in N days" / "catalyst in N days"
           // without a get_theses round-trip.
           horizon: true, coreBelief: true, nextReviewAt: true,
-          catalystDate: true, maxHoldDays: true,
+          catalystDate: true,
           // PROMOTED context — used by Stage 2's PROMOTED block to render
           // the conviction picture (tenure, P&L, review count) inline.
           promotedAt: true, paperTenureDays: true,
@@ -852,7 +851,6 @@ export async function buildRunInput(
         coreBelief: t.coreBelief,
         nextReviewAt: t.nextReviewAt ? t.nextReviewAt.toISOString() : null,
         catalystDate: t.catalystDate ? t.catalystDate.toISOString() : null,
-        maxHoldDays: t.maxHoldDays,
         // PROMOTED context — null on non-PROMOTED rows.
         promotedAt: t.promotedAt ? t.promotedAt.toISOString() : null,
         paperTenureDays: t.paperTenureDays,

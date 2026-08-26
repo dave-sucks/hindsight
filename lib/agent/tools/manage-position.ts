@@ -16,6 +16,9 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
 import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
+import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
+import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import { stopMoveWeakensProtection } from "@/lib/agent/triggers/ratchet";
 import {
   enforceCloseReason,
@@ -144,6 +147,69 @@ const schema = z.object({
     .optional()
     .describe("For full_close or partial_close: the reason code for the exit"),
 });
+
+
+/**
+ * Move a level on the paired thesis, not just on the position (DAV-195 L3).
+ *
+ * `Position.stopLoss` is read by one line of a digest email and evaluated by
+ * nothing. So before this, "move the stop to breakeven" and "update targets"
+ * changed a number and protected nothing at all — the agent reported a
+ * tightened stop and the ladder was untouched.
+ *
+ * Writes the same shape `applyTriggerValueEdit` does, which is the reference:
+ * the TRIGGER (what fires), the thesis columns (what is displayed), and an
+ * audit row. The position column keeps being written by the caller so the
+ * digest stays consistent.
+ *
+ * Best-effort: a position with no paired thesis (or a level this can't place)
+ * leaves the position write alone rather than failing the whole action.
+ */
+async function moveThesisLevels(args: {
+  thesisId: string | null;
+  ticker: string;
+  newStop?: number | null;
+  newTarget?: number | null;
+  runId: string | null;
+}): Promise<void> {
+  if (!args.thesisId) return;
+  if (args.newStop == null && args.newTarget == null) return;
+  try {
+    const thesis = await prisma.thesis.findUnique({
+      where: { id: args.thesisId },
+      select: { id: true, direction: true, status: true, triggers: true },
+    });
+    if (!thesis || thesis.status !== "HOLDING") return;
+
+    const stored = parseTriggersResilient(thesis.triggers).triggers as Trigger[];
+    const applied = applyLevelArgs({
+      stored,
+      levels: {
+        ...(args.newStop != null ? { floor: args.newStop } : {}),
+        ...(args.newTarget != null ? { target: args.newTarget } : {}),
+      },
+      direction: thesis.direction,
+      status: thesis.status,
+      source: "AGENT",
+      mintId: () => randomUUID(),
+    });
+
+    await prisma.thesis.update({
+      where: { id: thesis.id },
+      data: {
+        triggers: applied.triggers as unknown as object[],
+        targetPrice: applied.columns.targetPrice,
+        stopLoss: applied.columns.stopLoss,
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    console.warn(
+      `[manage_position] level sync to thesis failed for ${args.ticker}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
 
 export const managePosition = defineTool({
   description:
@@ -1039,6 +1105,14 @@ export const managePosition = defineTool({
           const updateData: Record<string, number> = {};
           if (args.new_target_price) updateData.targetPrice = args.new_target_price;
           if (args.new_stop_loss) updateData.stopLoss = args.new_stop_loss;
+          // The level that actually fires lives on the thesis, not here.
+          await moveThesisLevels({
+            thesisId: auditThesisId,
+            ticker,
+            newStop: args.new_stop_loss ?? null,
+            newTarget: args.new_target_price ?? null,
+            runId: ctx.runId ?? null,
+          });
 
           await prisma.$transaction(async (tx) => {
             await tx.position.update({ where: { id: position.id }, data: updateData });
@@ -1134,6 +1208,12 @@ export const managePosition = defineTool({
             };
           }
 
+          await moveThesisLevels({
+            thesisId: auditThesisId,
+            ticker,
+            newStop,
+            runId: ctx.runId ?? null,
+          });
           await prisma.$transaction(async (tx) => {
             await tx.position.update({
               where: { id: position.id },

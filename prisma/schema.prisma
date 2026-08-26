@@ -264,13 +264,6 @@ model Thesis {
   sourceKind      String? // "ROUTED_SIGNAL" | "WEB_SEARCH" | "WATCHLIST_REVIEW" | "POSITION_REVIEW" | "USER_ADDED" | "BUILDER_SEED" | "EDITOR_SEED"
   sourceRationale String?
 
-  // Phase 1 — what should fire an intraday tactical re-evaluation of this
-  // thesis. Shape: { events: ["EARNINGS_BEAT","GUIDANCE_CUT"],
-  // priceTriggers: { stop: 145, target: 180 }, watchedTickers: ["NVDA"] }.
-  // Kept for backwards-compat; superseded by the structured `triggers`
-  // column below. Will be removed once all consumers migrate.
-  revalidationTriggers Json?
-
   // ── Thesis Durable State (PR 1) ──────────────────────────────────────
   // Promotes Thesis from a one-shot trade rationale to a durable coverage
   // object. See migration 20260426000000_thesis_durable_state for the full
@@ -309,8 +302,15 @@ model Thesis {
   triggerState Json @default("{}")
 
   catalystDate DateTime? // CATALYST horizon only
-  maxHoldDays  Int? // TRADE horizon only
-  nextReviewAt DateTime? // When housekeeping should re-look
+  /// When the analyst last actually looked at this thesis — stamped by any
+  /// run that writes a REVIEWED / UPDATED row for it. A FACT, not a plan.
+  /// The review cadence trigger counts from here.
+  lastReviewedAt DateTime?
+  /// DERIVED display cache: lastReviewedAt + the resolved cadence. Nobody
+  /// authors this. The cadence lives on the trigger list like every other
+  /// level; this column exists because ~15 surfaces render it. See
+  /// docs/plans/LEVELS_AS_TRIGGERS.md.
+  nextReviewAt DateTime?
 
   closedAt    DateTime? // Mirrors invalidatedAt for CLOSED state
   closeReason String?

@@ -572,3 +572,193 @@ describe("applyLevelArgs", () => {
   });
 });
 
+
+// ── An inherited trail outranks a hand-set floor ───────────────────────
+
+describe("the EME case: a reject-UI floor under an inherited trail", () => {
+  // EME carries no trail of its own. The 8% give-back lives on
+  // Account.triggers and reaches it through the cascade, which is why every
+  // sell proposal since 8/20 cites $794.76 = 863.87 x 0.92.
+  //
+  // The hazard: setting an EXIT at $753 in the reject dialog looks like it
+  // lowers the floor, but the trail still fires higher. If the card showed
+  // "$753" it would be a NEW way for it to lie, inside the work that exists
+  // to stop it lying.
+  const accountTrail = resolved(
+    trig({ kind: "TRAILING_FROM_HIGH", pct: 8 }, "EXIT", { id: "acct-trail" }),
+    { level: "ACCOUNT", inherited: true },
+  );
+  const eme = {
+    direction: "LONG",
+    status: "HOLDING",
+    avgCost: 832.84,
+    peakPrice: 863.87,
+  };
+
+  it("shows the inherited trail, not the lower hand-set floor", () => {
+    const levels = canonicalLevels({
+      ...eme,
+      triggers: [resolved(trig(below(753), "EXIT", { id: "principal" })), accountTrail],
+    });
+    expect(levels.floor?.triggerId).toBe("acct-trail");
+    expect(levels.floor?.price).toBeCloseTo(794.76, 1);
+    expect(levels.floor?.inherited).toBe(true);
+  });
+
+  it("still draws the hand-set floor as its own chart line", () => {
+    // Both are real and both can fire; the card names the one that fires
+    // FIRST, the chart shows the whole picture.
+    const levels = canonicalLevels({
+      ...eme,
+      triggers: [resolved(trig(below(753), "EXIT", { id: "principal" })), accountTrail],
+    });
+    expect(levels.all.map((l) => l.triggerId)).toEqual(["principal", "acct-trail"]);
+  });
+
+  it("hands the hand-set number to the cached column, and only that", () => {
+    // The column is the TYPED floor: stable, ratchet-comparable, and what a
+    // person actually wrote. The moving one belongs on the card.
+    const levels = canonicalLevels({
+      ...eme,
+      triggers: [resolved(trig(below(753), "EXIT", { id: "principal" })), accountTrail],
+    });
+    expect(levels.columns.stopLoss).toBe(753);
+  });
+
+  it("lets a hand-set floor ABOVE the trail win, as it should", () => {
+    const levels = canonicalLevels({
+      ...eme,
+      triggers: [resolved(trig(below(820), "EXIT", { id: "principal" })), accountTrail],
+    });
+    expect(levels.floor?.triggerId).toBe("principal");
+    expect(levels.floor?.price).toBe(820);
+  });
+});
+
+describe("a floor raised past an upside level", () => {
+  it("flags MU's straddle", () => {
+    // EXIT below $935 and REVIEW above $934: a $1 gap covering the whole
+    // number line, so something fires on every tick. Created 8/19 by raising
+    // the floor 814 -> 935 past a review the agent had set at 934 on 8/18,
+    // when it was a sensible "it recovered" checkpoint.
+    const levels = canonicalLevels({
+      triggers: [
+        resolved(trig(below(935), "EXIT", { id: "floor" })),
+        resolved(trig(above(934), "REVIEW", { id: "spent-checkpoint" })),
+        resolved(trig(above(1150), "TRIM", { id: "trim" })),
+      ],
+      direction: "LONG",
+      status: "HOLDING",
+      avgCost: 885.46,
+    });
+    expect(levels.contradiction).toEqual({ floor: 935, upside: 934 });
+  });
+
+  it("says nothing about a well-ordered plan", () => {
+    const levels = canonicalLevels({
+      triggers: [
+        resolved(trig(below(680), "EXIT", { id: "floor" })),
+        resolved(trig(above(1150), "REVIEW", { id: "target" })),
+      ],
+      direction: "LONG",
+      status: "HOLDING",
+      avgCost: 817,
+    });
+    expect(levels.contradiction).toBeNull();
+  });
+
+  it("inverts on a short", () => {
+    const levels = canonicalLevels({
+      triggers: [
+        resolved(trig(above(100), "EXIT", { id: "floor" })),
+        resolved(trig(below(105), "REVIEW", { id: "target" })),
+      ],
+      direction: "SHORT",
+      status: "HOLDING",
+      avgCost: 120,
+    });
+    expect(levels.contradiction).toEqual({ floor: 100, upside: 105 });
+  });
+});
+
+describe("two protective floors of different kinds", () => {
+  // 5 of 8 held positions carry both a hard stop and a trail today; after the
+  // backfill all 8 will. They are different predicate shapes, so the cascade
+  // keeps BOTH — the slot has to choose, and the choice is the one that binds.
+  const trail = (pct: number, id: string) =>
+    resolved(trig({ kind: "TRAILING_FROM_HIGH", pct }, "EXIT", { id }), {
+      level: "ACCOUNT",
+      inherited: true,
+    });
+
+  it("gives the slot to whichever binds first, hard stop or trail", () => {
+    const held = { direction: "LONG", status: "HOLDING", avgCost: 800, peakPrice: 900 };
+    // Trail at 828 is above the hard stop at 700 — the trail binds.
+    expect(
+      canonicalLevels({
+        ...held,
+        triggers: [resolved(trig(below(700), "EXIT", { id: "hard" })), trail(8, "trail")],
+      }).floor?.triggerId,
+    ).toBe("trail");
+    // Raise the hard stop above the trail and it takes over.
+    expect(
+      canonicalLevels({
+        ...held,
+        triggers: [resolved(trig(below(850), "EXIT", { id: "hard" })), trail(8, "trail")],
+      }).floor?.triggerId,
+    ).toBe("hard");
+  });
+
+  it("keeps the loser as its own chart line rather than hiding it", () => {
+    const levels = canonicalLevels({
+      direction: "LONG",
+      status: "HOLDING",
+      avgCost: 800,
+      peakPrice: 900,
+      triggers: [resolved(trig(below(700), "EXIT", { id: "hard" })), trail(8, "trail")],
+    });
+    expect(levels.all.map((l) => l.triggerId)).toEqual(["hard", "trail"]);
+    expect(levels.all.filter((l) => l.side === "DOWNSIDE")).toHaveLength(2);
+  });
+});
+
+// ── A thesis inherits the review cadence from the account ──────────────
+
+describe("review cadence reaches a thesis that has none of its own", () => {
+  // This is the mechanism that would have silently stopped every review:
+  // the clock lives on a trigger, most theses carry no trigger of their own,
+  // and they only get one by inheriting it. If the account has no cadence,
+  // nothing anywhere does, and the daily run goes quiet with no error.
+  const cadence = (days: number, id: string) =>
+    trig({ kind: "REVIEW_CADENCE", days }, "REVIEW", { id });
+
+  it("resolves the account's cadence onto a bare thesis", () => {
+    const ladder = resolveLadder({
+      thesis: [],
+      account: [cadence(7, "acct")],
+      direction: "LONG",
+    });
+    const found = ladder.find((t) => t.predicate.kind === "REVIEW_CADENCE");
+    expect(found?.id).toBe("acct");
+    expect(found?.inherited).toBe(true);
+  });
+
+  it("lets one thesis review more often than the account rule", () => {
+    const ladder = resolveLadder({
+      thesis: [cadence(3, "mine")],
+      account: [cadence(7, "acct")],
+      direction: "LONG",
+    });
+    const found = ladder.filter((t) => t.predicate.kind === "REVIEW_CADENCE");
+    expect(found).toHaveLength(1);
+    expect(found[0].id).toBe("mine");
+    expect(found[0].overrides?.level).toBe("ACCOUNT");
+  });
+
+  it("leaves a thesis with NO cadence at any level — the failure to catch", () => {
+    // Exactly the production state before the migration: 0 accounts,
+    // 0 analysts and 0 theses carrying one. Nothing errors; reviews just stop.
+    const ladder = resolveLadder({ thesis: [], account: [], direction: "LONG" });
+    expect(ladder.find((t) => t.predicate.kind === "REVIEW_CADENCE")).toBeUndefined();
+  });
+});
