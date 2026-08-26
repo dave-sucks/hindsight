@@ -18,7 +18,6 @@ import { tacticalRun } from "@/lib/inngest/functions/tactical-run";
 import { discoveryRun } from "@/lib/inngest/functions/discovery-run";
 import { backfillSignalFingerprint } from "@/lib/inngest/functions/backfill-signal-fingerprint";
 import { pipelineCleanup } from "@/lib/inngest/functions/pipeline-cleanup";
-import { housekeepingOverdueTheses } from "@/lib/inngest/functions/housekeeping-overdue-theses";
 import { episodeTts } from "@/lib/inngest/functions/episode-tts";
 import { podcastSegmentRun } from "@/lib/inngest/functions/podcast-segment-run";
 // THESIS_RESEARCH_V2 Phase 1 — sub-agent dispatched by Principal Chat
@@ -104,11 +103,6 @@ export const { GET, POST, PUT } = serve({
     backfillSignalFingerprint,
     // Phase 3 — daily pruning at 11 PM ET (route archive + signal soft-delete)
     pipelineCleanup,
-    // Hourly safety net (US market hours): writes a synthetic
-    // TRIGGER_FIRED row for every ACTIVE/WATCHING thesis whose
-    // nextReviewAt is in the past, with a 24h per-thesis cooldown.
-    // Surfaces in the next Daily Run via triggersFiredSinceLastRun.
-    housekeepingOverdueTheses,
     // Podcast Phase 2 — ElevenLabs TTS audio generation
     episodeTts,
     // Podcast — server-side segment run (used by "Run all")
