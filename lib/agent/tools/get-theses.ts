@@ -340,7 +340,6 @@ export const getTheses = defineTool({
         triggerState: true,
         scalingPlan: true,
         catalystDate: true,
-        maxHoldDays: true,
         nextReviewAt: true,
         sourceSignalIds: true,
         sourceKind: true,

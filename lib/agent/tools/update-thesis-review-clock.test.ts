@@ -1,11 +1,17 @@
 /**
- * update-thesis-review-clock.test.ts — DAV-193: a substantive update on an
- * OVERDUE thesis restarts the review clock.
+ * update-thesis-review-clock.test.ts — reviewing a thesis records that we
+ * looked at it.
  *
- * The empty-patch path has bumped nextReviewAt since 2026-05-11, but real
- * reviews under gpt-5.5 carry narrative fields and take the non-empty path,
- * which never advanced the clock — so reviewed theses re-fired REVIEW_DUE
- * every morning (overdue backlog 2 → 9, 2026-08-18 run review).
+ * DAV-193's subject, after DAV-195 L7 relocated the mechanism. The bug was
+ * that real reviews under gpt-5.5 carry narrative fields and took a path
+ * that never advanced the clock, so reviewed theses re-fired every morning
+ * (overdue backlog 2 → 9, 2026-08-18 run review). The fix then was a
+ * conditional bump of `nextReviewAt` computed from the horizon cadence, in
+ * two places that disagreed.
+ *
+ * Now the clock counts from when we last LOOKED, so there is nothing to
+ * compute: `lastReviewedAt` is stamped and the cadence trigger does the
+ * arithmetic. Same bug stays fixed, one write instead of two.
  */
 
 const mockThesisFindUnique = jest.fn();
@@ -118,14 +124,16 @@ function updatedData(): Record<string, unknown> {
   return mockThesisUpdate.mock.calls[0][0].data as Record<string, unknown>;
 }
 
-describe("update_thesis — review-clock advance (DAV-193)", () => {
+describe("update_thesis — recording that we looked", () => {
   beforeEach(() => {
     mockThesisFindUnique.mockReset();
     mockThesisUpdate.mockReset();
     mockThesisUpdate.mockResolvedValue(makeRow());
   });
 
-  it("restarts an overdue clock on a substantive (non-empty) update", async () => {
+  it("stamps the review on a substantive (non-empty) update", async () => {
+    // The DAV-193 bug: this path is what a real gpt-5.5 review takes, and it
+    // used to leave the clock untouched.
     mockThesisFindUnique.mockResolvedValueOnce(makeRow({ nextReviewAt: OVERDUE }));
     const result = await makeTool().execute({
       thesis_id: "thesis_clock_1",
@@ -135,49 +143,38 @@ describe("update_thesis — review-clock advance (DAV-193)", () => {
 
     expect(result.data.ok).not.toBe(false);
     const data = updatedData();
-    expect(data.nextReviewAt).toBeInstanceOf(Date);
-    expect((data.nextReviewAt as Date).getTime()).toBeGreaterThan(Date.now());
+    expect(data.lastReviewedAt).toBeInstanceOf(Date);
   });
 
-  it("also restarts a clock that was never set", async () => {
-    mockThesisFindUnique.mockResolvedValueOnce(makeRow({ nextReviewAt: null }));
+  it("stamps a thesis nobody had looked at before", async () => {
+    mockThesisFindUnique.mockResolvedValueOnce(makeRow({ lastReviewedAt: null }));
     await makeTool().execute({
       thesis_id: "thesis_clock_1",
-      rationale: "Belief refresh; clock was never armed on this row.",
+      rationale: "First look at this row.",
       core_belief: "Refreshed belief.",
     });
 
-    const data = updatedData();
-    expect(data.nextReviewAt).toBeInstanceOf(Date);
+    expect(updatedData().lastReviewedAt).toBeInstanceOf(Date);
   });
 
-  it("leaves a FUTURE-dated clock alone (pinned pre-catalyst reviews survive)", async () => {
+  it("stamps every review, not only overdue ones", async () => {
+    // The old code skipped a thesis whose clock was future-dated, to protect
+    // a hand-pinned pre-catalyst review. There is no hand-pinned date any
+    // more: looking at a thesis restarts its cadence, full stop. "Look again
+    // right before earnings" is a catalyst trigger, not a review date — that
+    // is what catalystDate and the earnings predicates are for.
     mockThesisFindUnique.mockResolvedValueOnce(makeRow({ nextReviewAt: FUTURE }));
     await makeTool().execute({
       thesis_id: "thesis_clock_1",
-      rationale: "Early touch — the scheduled review is still days out.",
+      rationale: "Early touch — reviewed ahead of the cadence.",
       core_belief: "Refreshed belief.",
     });
 
-    const data = updatedData();
-    expect(data.nextReviewAt).toBeUndefined();
+    expect(updatedData().lastReviewedAt).toBeInstanceOf(Date);
   });
 
-  it("never overrides an explicitly supplied review date", async () => {
-    mockThesisFindUnique.mockResolvedValueOnce(makeRow({ nextReviewAt: OVERDUE }));
-    const explicit = new Date(Date.now() + 30 * 86_400_000).toISOString();
-    await makeTool().execute({
-      thesis_id: "thesis_clock_1",
-      rationale: "Pushing the review out deliberately after the print.",
-      core_belief: "Refreshed belief.",
-      next_review_at: explicit,
-    });
-
-    const data = updatedData();
-    expect((data.nextReviewAt as Date).toISOString()).toBe(explicit);
-  });
-
-  it("does not arm a clock on a terminal transition", async () => {
+  it("does not stamp a terminal transition", async () => {
+    // Killing a thesis is not reviewing it, and a retired row has no cadence.
     mockThesisFindUnique.mockResolvedValueOnce(makeRow({ nextReviewAt: OVERDUE }));
     await makeTool().execute({
       thesis_id: "thesis_clock_1",
@@ -185,7 +182,6 @@ describe("update_thesis — review-clock advance (DAV-193)", () => {
       change_status: "INVALIDATED",
     });
 
-    const data = updatedData();
-    expect(data.nextReviewAt).toBeUndefined();
+    expect(updatedData().lastReviewedAt).toBeUndefined();
   });
 });

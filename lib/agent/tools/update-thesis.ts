@@ -58,7 +58,6 @@ import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import {
-  HORIZON_REVIEW_DAYS,
   holdDurationFromHorizon,
   type Horizon,
 } from "@/lib/agent/horizon-policy";
@@ -259,16 +258,6 @@ const updateSchema = z.object({
       "Promote or demote when the trade structure has actually changed. Examples: a TRADE that's compounding past its 14d window because the thesis got bigger → upgrade to TARGET (and extend maxHoldDays + push nextReviewAt to the new cadence). A COMPOUNDER whose moat eroded but isn't dead → downgrade to TARGET with a tighter exit. A CATALYST that printed and is now a position trade on residual momentum → upgrade to TARGET. When you change horizon you MUST also update maxHoldDays and nextReviewAt to the new horizon's defaults (TRADE 14d / TARGET 90d / COMPOUNDER 365d) — leaving the old cadence in place produces a thesis whose exit policy doesn't match its label, which is worse than not promoting at all. Only spawn a fresh record_thesis when direction or core belief flips, not when the time horizon evolves.",
     ),
   catalyst_date: z.string().datetime().nullable().optional(),
-  max_hold_days: z.number().int().positive().max(365).nullable().optional(),
-  next_review_at: z
-    .string()
-    .datetime()
-    .nullable()
-    .optional()
-    .describe(
-      "When housekeeping should re-look at this thesis. Pass an ISO timestamp; pass null to clear (no scheduled review).",
-    ),
-
   triggers: triggersArraySchema
     .optional()
     .describe(
@@ -393,8 +382,8 @@ type UpdatePatch = Partial<{
   variantView: string | null;
   horizon: string | null;
   catalystDate: Date | null;
-  maxHoldDays: number | null;
   nextReviewAt: Date | null;
+  lastReviewedAt: Date | null;
   triggers: object;
   /** Fire state for inherited rungs — see the triggers patch block. */
   triggerState: object;
@@ -483,7 +472,6 @@ export const updateThesis = defineTool({
         variantView: true,
         horizon: true,
         catalystDate: true,
-        maxHoldDays: true,
         nextReviewAt: true,
         triggers: true,
         // Per-thesis fire state for inherited rungs — read so a rung
@@ -1245,36 +1233,11 @@ export const updateThesis = defineTool({
     if (args.horizon !== undefined) patch.horizon = args.horizon;
     if (args.catalyst_date !== undefined)
       patch.catalystDate = args.catalyst_date ? new Date(args.catalyst_date) : null;
-    if (args.max_hold_days !== undefined) patch.maxHoldDays = args.max_hold_days;
-    if (args.next_review_at !== undefined) {
-      // Same year-confusion guard as record_thesis (see HPQ E2E
-      // 2026-05-24 follow-up #1). Reject a non-null past/near-future
-      // date and leave nextReviewAt unchanged in that case so the
-      // existing cadence survives. Null (explicit "no review") still
-      // passes through — that's a legitimate terminal-status path.
-      if (args.next_review_at === null) {
-        patch.nextReviewAt = null;
-      } else {
-        const MIN_FUTURE_HOURS = 6;
-        const parsed = new Date(args.next_review_at);
-        const minAcceptableMs = Date.now() + MIN_FUTURE_HOURS * 60 * 60 * 1000;
-        if (
-          Number.isFinite(parsed.getTime()) &&
-          parsed.getTime() >= minAcceptableMs
-        ) {
-          patch.nextReviewAt = parsed;
-        } else {
-          console.warn(
-            `[update-thesis] thesis=${args.thesis_id} — rejecting agent-provided ` +
-              `next_review_at="${args.next_review_at}" (resolves to ${parsed.toISOString()}, ` +
-              `in the past or < ${MIN_FUTURE_HOURS}h from now). Leaving existing nextReviewAt unchanged. ` +
-              `Likely a model year-confusion bug.`,
-          );
-          // Intentionally do NOT add to patch — existing nextReviewAt
-          // survives the update.
-        }
-      }
-    }
+    // next_review_at is gone (DAV-195 L7). Review cadence is a trigger:
+    // "review every N days", counted from the last actual review, cascading
+    // account -> analyst -> thesis like every other level. An agent that
+    // wants this name looked at more often edits that trigger; it does not
+    // type a date. nextReviewAt is a derived display value now.
     // THESIS_RESEARCH_V2 refresh-path research persistence. PR-9: the
     // `research_sections` blob is gone — parsed sections land on the 9
     // first-class JSONB columns above (which also stamp researchUpdatedAt
@@ -1623,39 +1586,24 @@ export const updateThesis = defineTool({
       }
     }
 
-    // ── Review-clock advance on substantive updates (DAV-193) ────────────
-    // The empty-patch path below has bumped nextReviewAt since 2026-05-11 —
-    // but under gpt-5.5 the agent fills narrative fields on nearly every
-    // review, so real reviews take the NON-empty path, which never advanced
-    // the clock. Result: the same thesis re-fires REVIEW_DUE every morning
-    // after being genuinely reviewed (overdue backlog 2 → 9 in a day,
-    // 2026-08-18 run review → DAV-193).
+    // ── Stamp when we looked (DAV-193, relocated by DAV-195 L7) ─────────
+    // DAV-193 shipped a conditional bump here: a non-terminal update on an
+    // already-overdue thesis pushed nextReviewAt forward by the horizon
+    // cadence. It fixed same-morning re-fires, and it needed three inputs
+    // (the current date, the horizon, the cadence table) to decide a date
+    // that a second block below decided differently.
     //
-    // Rule: a non-terminal update that doesn't set its own review date, on
-    // a thesis whose clock is ALREADY overdue (or unset), restarts the
-    // clock by the horizon cadence. A future-dated nextReviewAt is left
-    // alone — those can be deliberately pinned (pre-catalyst reviews), and
-    // an early touch shouldn't push them. The bump lands through the normal
-    // patch, so fieldChanges records the from → to like any other change.
-    {
-      const isTerminalPatch =
-        patch.status === "RETIRED" || patch.status === "PASSED";
-      const patchIsEmpty = Object.keys(patch).length === 0;
-      if (
-        !patchIsEmpty && // empty patches keep their own bump + REVIEWED return below
-        !isTerminalPatch &&
-        !("nextReviewAt" in patch)
-      ) {
-        const currentNext = (existing as { nextReviewAt: Date | null })
-          .nextReviewAt;
-        if (currentNext == null || currentNext.getTime() <= Date.now()) {
-          const horizon =
-            ((existing as { horizon: string | null }).horizon as Horizon | null) ??
-            "TARGET";
-          const cadenceDays = HORIZON_REVIEW_DAYS[horizon] ?? 7;
-          patch.nextReviewAt = new Date(Date.now() + cadenceDays * 86_400_000);
-        }
-      }
+    // The clock now counts from when we last LOOKED, so there is nothing to
+    // compute: record the fact and let the cadence trigger do the arithmetic.
+    // nextReviewAt becomes a derived display value.
+    //
+    // A decline is not a review and never reaches here — declining a sell
+    // proposal leaves the market condition true, so that trigger fires again
+    // tomorrow, unchanged. This is the other thing: the analyst looked, even
+    // if it concluded nothing changed. If a run skips the thesis or crashes,
+    // nothing is stamped and it stays due.
+    if (patch.status !== "RETIRED" && patch.status !== "PASSED") {
+      patch.lastReviewedAt = new Date();
     }
 
     // ── Narrative-only patches collapse to REVIEWED ──────────────────────
@@ -1709,24 +1657,16 @@ export const updateThesis = defineTool({
     // decides it's still right — we want a paper trail of "agent looked
     // here on this date" without polluting the diff log.
     //
-    // Auto-bump nextReviewAt forward by the horizon's default cadence.
-    // Without this, REVIEWED-only updates write the audit row but leave
-    // the review clock stuck — the same thesis surfaces as needsAction
-    // == REVIEW_DUE on every subsequent run forever. Bug observed
-    // 2026-05-11: theses with nextReviewAt = 2026-05-02 still showing
-    // "Review 9d overdue" the day after the agent reviewed them.
+    // A REVIEWED-only touch stamps the same clock as any other review —
+    // looking IS the event, whether or not anything changed. The horizon
+    // cadence lookup that used to live here is gone with the second copy of
+    // the review clock; the cadence is a trigger now and it reads this stamp.
     const patchKeyCount = Object.keys(patch).length;
     if (patchKeyCount === 0) {
-      const horizon =
-        ((existing as { horizon: string | null }).horizon as Horizon | null) ??
-        "TARGET";
-      const cadenceDays = HORIZON_REVIEW_DAYS[horizon] ?? 7;
-      const newNextReviewAt = new Date(
-        Date.now() + cadenceDays * 86_400_000,
-      );
+      const reviewedAt = new Date();
       await prisma.thesis.update({
         where: { id: existing.id },
-        data: { nextReviewAt: newNextReviewAt },
+        data: { lastReviewedAt: reviewedAt },
       });
 
       // Awaited (was void). Both the morning-research coverage gate and
@@ -1736,7 +1676,7 @@ export const updateThesis = defineTool({
       await writeThesisUpdate({
         thesisId: existing.id,
         type: "REVIEWED",
-        summary: `Reviewed ${existing.ticker} thesis — no changes (next review in ${cadenceDays}d)`,
+        summary: `Reviewed ${existing.ticker} thesis — no changes`,
         rationale: args.rationale,
         runId: ctx.runId,
         signalIds: args.signal_ids,
@@ -1744,15 +1684,12 @@ export const updateThesis = defineTool({
         priceAtTime: resolvedPriceAtTime,
       });
       return {
-        summary: `Reviewed ${existing.ticker} thesis: no changes (next review in ${cadenceDays}d).`,
+        summary: `Reviewed ${existing.ticker} thesis: no changes.`,
         data: {
           ok: true,
           thesis_id: existing.id,
           type: "REVIEWED" as const,
-          card: thesisToCardData({
-            ...existing,
-            nextReviewAt: newNextReviewAt,
-          }),
+          card: thesisToCardData({ ...existing, lastReviewedAt: reviewedAt }),
         },
         sources: [],
       };
@@ -1798,7 +1735,6 @@ export const updateThesis = defineTool({
       "targetSizePct",
       "horizon",
       "catalystDate",
-      "maxHoldDays",
       "nextReviewAt",
       "triggers",
       "scalingPlan",

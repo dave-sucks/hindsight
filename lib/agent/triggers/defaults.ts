@@ -53,7 +53,6 @@ export interface ThesisShape {
   entryPrice?: number | null;
   targetPrice?: number | null;
   stopLoss?: number | null;
-  maxHoldDays?: number | null;
   catalystDate?: Date | null;
   /** Direction colors entry-trigger semantics for watching theses. */
   direction?: ThesisDirection | null;
@@ -141,6 +140,9 @@ function scaleInOnPullbackTrigger(): Trigger {
 // The three constants are PRINCIPAL-TUNABLE: change the number here and
 // every future mint picks it up. Existing theses keep the value they were
 // minted with (editable per-thesis in the trigger popover).
+
+/** How long a TRADE-horizon position runs before it must be re-examined. */
+const TRADE_MAX_HOLD_DAYS = 14;
 
 /** Gain milestone: up X% from entry → checkpoint re-underwrite (REVIEW). */
 const PROTECT_CHECKPOINT_GAIN_PCT = 10;
@@ -255,6 +257,44 @@ export const DEFAULT_LADDER_IDS = {
  * template does: short-horizon momentum trades exit on weakness, they
  * don't average into a dip.
  */
+/**
+ * "Look at this again every N days", counted from the last actual review.
+ *
+ * Replaces the review-date column and `HORIZON_REVIEW_DAYS`. The account
+ * carries the 7-day rule; a horizon that needs a tighter one overrides it
+ * through the ordinary cascade, and a thesis can override that in turn.
+ */
+export function reviewCadenceTrigger(days: number): Trigger {
+  return {
+    id: createId(),
+    predicate: { kind: "REVIEW_CADENCE", days },
+    action: "REVIEW",
+    rationale:
+      days === 1
+        ? `Look at this every day.`
+        : `Look at this every ${days} days, counting from the last real review.`,
+    cooldownDays: days,
+  };
+}
+
+/** Days between reviews by horizon. Was HORIZON_REVIEW_DAYS. */
+export const CADENCE_DAYS_BY_HORIZON: Record<Horizon, number> = {
+  CATALYST: 1,
+  TRADE: 1,
+  TARGET: 7,
+  COMPOUNDER: 30,
+};
+
+/** The cadence in force on a resolved ladder; null when nothing sets one. */
+export function resolvedCadenceDays(
+  triggers: Array<{ predicate: TriggerPredicate }>,
+): number | null {
+  for (const t of triggers) {
+    if (t.predicate.kind === "REVIEW_CADENCE") return t.predicate.days;
+  }
+  return null;
+}
+
 export function inheritableDefaultLadder(
   horizon: Horizon,
   state: ThesisState = "HELD",
@@ -285,6 +325,7 @@ export function inheritableDefaultLadder(
 
 function compounderDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.COMPOUNDER));
 
   if (thesis.stopLoss != null) {
     out.push({
@@ -354,6 +395,7 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
 
 function targetDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TARGET));
   if (thesis.stopLoss != null) {
     out.push({
       id: createId(),
@@ -403,6 +445,7 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
 
 function tradeDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TRADE));
   if (thesis.stopLoss != null) {
     out.push({
       id: createId(),
@@ -421,12 +464,16 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
       cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
-  const maxDays = thesis.maxHoldDays ?? 14;
+  // "This has been open long enough — look at it." Was Thesis.maxHoldDays, a
+  // column that produced exactly this trigger once at mint and was never read
+  // again, then drifted from it. It is a plain TIME_ELAPSED review now, on
+  // the ladder where it can be seen and edited like anything else.
+  const maxDays = TRADE_MAX_HOLD_DAYS;
   out.push({
     id: createId(),
     predicate: { kind: "TIME_ELAPSED", days: maxDays },
     action: "REVIEW",
-    rationale: `Max hold ${maxDays} days reached — TRADE horizons must close out by this point.`,
+    rationale: `Open ${maxDays} days — a TRADE should have resolved by now. Close it or re-underwrite it.`,
     // cooldownDays intentionally unset — falls back to the per-kind default
     // (~80% of `days`) which is the right shape: TIME_ELAPSED stays true
     // forever once the window is reached, so without ANY cooldown it would
@@ -439,6 +486,7 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
 
 function catalystDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.CATALYST));
   if (thesis.stopLoss != null) {
     out.push({
       id: createId(),
@@ -592,8 +640,54 @@ function watchingEntryTrigger(
 // REVIEW_DATE_HIT predicate stays in types/evaluator for back-compat with
 // existing rows; new theses no longer get it.
 
+
+/**
+ * The floor and the target, for a thesis we don't own yet.
+ *
+ * Every WATCHING template was missing these. Only one of the four read
+ * `stopLoss` at all, and it minted a REVIEW ("better entry, or thesis
+ * weakening?") rather than a sell level — so a watch item's floor and target
+ * were written on the thesis and enforced by nothing. That is why all 19
+ * watchlist rows in the book carried a stop that fired nothing, and it is
+ * KLAC: buy $262, floor $225, price $184, breached in June, nothing happened.
+ *
+ * Safe to arm on an un-held thesis only because `effectiveTriggerAction`
+ * resolves both to DEMOTE when they fire — set the plan down, keep watching.
+ * A sell on something we never bought is meaningless; before that verb
+ * existed, writing these would have spawned an agent run per name.
+ */
+function watchingPlanLevels(
+  thesis: ThesisShape,
+  direction: ThesisDirection,
+): Trigger[] {
+  const out: Trigger[] = [];
+  const long = direction !== "SHORT";
+  if (thesis.stopLoss != null) {
+    out.push({
+      id: createId(),
+      predicate: long
+        ? { kind: "PRICE_BELOW", level: thesis.stopLoss }
+        : { kind: "PRICE_ABOVE", level: thesis.stopLoss },
+      action: "EXIT",
+      rationale: `Floor $${thesis.stopLoss} — below this the setup is wrong, so the plan comes off rather than waiting to be bought.`,
+    });
+  }
+  if (thesis.targetPrice != null) {
+    out.push({
+      id: createId(),
+      predicate: long
+        ? { kind: "PRICE_ABOVE", level: thesis.targetPrice }
+        : { kind: "PRICE_BELOW", level: thesis.targetPrice },
+      action: "REVIEW",
+      rationale: `Target $${thesis.targetPrice} reached before we bought — the move happened without us, so the entry is stale.`,
+    });
+  }
+  return out;
+}
+
 function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.CATALYST));
   const direction = thesis.direction ?? "LONG";
 
   // ── Setup-aware default ENTER trigger for CATALYST ────────────────────
@@ -706,11 +800,13 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
     cooldownDays: 12,
   });
 
+  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
   return out;
 }
 
 function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TRADE));
   const direction = thesis.direction ?? "LONG";
 
   // TRADE-horizon entries are tight by design — the agent set a specific
@@ -746,11 +842,13 @@ function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
     },
   );
 
+  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
   return out;
 }
 
 function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TARGET));
   const direction = thesis.direction ?? "LONG";
 
   const entry = watchingEntryTrigger(thesis, direction, 1);
@@ -799,11 +897,13 @@ function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
     },
   );
 
+  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
   return out;
 }
 
 function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
+  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.COMPOUNDER));
   const direction = thesis.direction ?? "LONG";
 
   // COMPOUNDER entry requires patience — short-term spikes through the
@@ -853,6 +953,7 @@ function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
     },
   );
 
+  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
   return out;
 }
 
@@ -986,7 +1087,7 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
       // cooldown ~80% of the window so they don't re-fire every tick once
       // elapsed but allow re-firing if the agent's window is short.
       return Math.max(1, Math.round(p.days * 0.8));
-    case "REVIEW_DATE_HIT":
+    case "REVIEW_CADENCE":
       return 7;
     case "AND":
     case "OR":

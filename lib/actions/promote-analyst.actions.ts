@@ -398,7 +398,6 @@ async function transitionThesisToPromoted(input: {
     entryPrice: true,
     targetPrice: true,
     stopLoss: true,
-    maxHoldDays: true,
     catalystDate: true,
   };
   const thesis = input.thesisId
@@ -464,7 +463,6 @@ async function transitionThesisToPromoted(input: {
         entryPrice: thesis.entryPrice != null ? Number(thesis.entryPrice) : null,
         targetPrice: thesis.targetPrice != null ? Number(thesis.targetPrice) : null,
         stopLoss: thesis.stopLoss != null ? Number(thesis.stopLoss) : null,
-        maxHoldDays: thesis.maxHoldDays ?? null,
         catalystDate: thesis.catalystDate ?? null,
         direction: thesis.direction as "LONG" | "SHORT",
       },

@@ -22,7 +22,6 @@
 
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
-import { computeWinnerSignal } from "@/lib/agent/winner-signal";
 import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
 import { computePlanSanity, type PlanSanityFlag } from "@/lib/agent/plan-sanity";
 
@@ -282,19 +281,15 @@ export function buildResolvedEnvelope(args: {
     actionability = "WAIT_FOR_TRIGGER";
   }
 
-  // ── Running-winner P&L (HOLDING rows only) ────────────────────────
-  // Surfaces gain% + progress-to-target inline so the agent doesn't have to
-  // join get_portfolio_context by ticker. Same math the RUNNING_WINNER
-  // needsAction flag keys off (winner-signal.ts). Non-held rows → null.
-  const winner =
-    thesis.status === "HOLDING"
-      ? computeWinnerSignal({
-          direction: thesis.direction,
-          avgCost: thesis.avgCost,
-          targetPrice: thesis.targetPrice,
-          currentPrice,
-        })
-      : null;
+  // ── P&L on a held row ─────────────────────────────────────────────
+  // Gain% and how far along to the target, inline, so the agent doesn't have
+  // to join get_portfolio_context by ticker. These two numbers are all that
+  // survived winner-signal.ts, which was deleted with the RUNNING_WINNER
+  // flag: the flag re-implemented as a morning calculation what the account's
+  // "review if up 10% from entry" trigger already does, and fires first in
+  // every realistic case. The NUMBERS are still worth showing — an agent that
+  // can see "+212%" on a row does not need a flag to find it interesting.
+  const winner = holdingPnl(thesis, currentPrice);
 
   // ── Ladder health (HOLDING rows only — Game Plan PR-B) ────────────
   // Same shared-pure-module pattern as the winner signal above: the
@@ -327,8 +322,8 @@ export function buildResolvedEnvelope(args: {
   return {
     currentPrice,
     entryQualityScore,
-    unrealizedGainPct: winner?.unrealizedGainPct ?? null,
-    progressToTarget: winner?.progressToTarget ?? null,
+    unrealizedGainPct: winner.unrealizedGainPct,
+    progressToTarget: winner.progressToTarget,
     ladderHealth,
     planSanity: planSanityFlags.length > 0 ? planSanityFlags : null,
     triggerState,
@@ -405,4 +400,37 @@ export function buildSupersessionMap(
     }
   }
   return byTicker;
+}
+
+/**
+ * Gain % and progress-to-target for a held row. Both null when the inputs
+ * can't support the math (not held, no fill price, no live quote).
+ *
+ * `progressToTarget` is the fraction of the entry→target distance covered:
+ * 0 at entry, 1 at target, >1 past it. Null when the target sits on the wrong
+ * side of entry, because the distance is then meaningless rather than zero.
+ */
+function holdingPnl(
+  thesis: { status: string | null; direction: string | null; avgCost?: number | null; targetPrice?: number | null },
+  currentPrice: number | null,
+): { unrealizedGainPct: number | null; progressToTarget: number | null } {
+  const none = { unrealizedGainPct: null, progressToTarget: null };
+  const { avgCost, targetPrice } = thesis;
+  if (thesis.status !== "HOLDING") return none;
+  if (avgCost == null || avgCost <= 0) return none;
+  if (currentPrice == null || currentPrice <= 0) return none;
+
+  const short = thesis.direction === "SHORT";
+  const gained = short ? avgCost - currentPrice : currentPrice - avgCost;
+  const distance =
+    targetPrice != null && targetPrice > 0
+      ? short
+        ? avgCost - targetPrice
+        : targetPrice - avgCost
+      : null;
+
+  return {
+    unrealizedGainPct: (gained / avgCost) * 100,
+    progressToTarget: distance != null && distance > 0 ? gained / distance : null,
+  };
 }

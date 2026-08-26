@@ -14,7 +14,7 @@ const THESIS_CREATED = new Date("2026-04-01T00:00:00Z"); // 28 days before NOW
 
 function makeCtx(partial: Partial<EvaluationContext> = {}): EvaluationContext {
   return {
-    thesis: { createdAt: THESIS_CREATED, nextReviewAt: null },
+    thesis: { createdAt: THESIS_CREATED, lastReviewedAt: null },
     now: NOW,
     ...partial,
   };
@@ -180,7 +180,7 @@ describe("evaluateTrigger", () => {
         position: { avgCost: 100, peakPrice: 84 },
         thesis: {
           createdAt: THESIS_CREATED,
-          nextReviewAt: null,
+          lastReviewedAt: null,
           direction: "SHORT",
         },
       });
@@ -194,7 +194,7 @@ describe("evaluateTrigger", () => {
         position: { avgCost: 100, peakPrice: 98 },
         thesis: {
           createdAt: THESIS_CREATED,
-          nextReviewAt: null,
+          lastReviewedAt: null,
           direction: "SHORT",
         },
       });
@@ -257,7 +257,7 @@ describe("evaluateTrigger", () => {
           position: { avgCost: 100, peakPrice: 80 },
           thesis: {
             createdAt: THESIS_CREATED,
-            nextReviewAt: null,
+            lastReviewedAt: null,
             direction: "SHORT",
           },
         });
@@ -516,7 +516,7 @@ describe("evaluateTrigger", () => {
       const ctx = makeCtx({
         thesis: {
           createdAt: THESIS_CREATED, // 28d old
-          nextReviewAt: null,
+          lastReviewedAt: null,
           status: "HOLDING",
           positionOpenedAt: POSITION_OPENED, // 2d old
         },
@@ -530,7 +530,7 @@ describe("evaluateTrigger", () => {
       const ctx = makeCtx({
         thesis: {
           createdAt: THESIS_CREATED,
-          nextReviewAt: null,
+          lastReviewedAt: null,
           status: "HOLDING",
           positionOpenedAt: POSITION_OPENED, // 2d ago
         },
@@ -546,7 +546,7 @@ describe("evaluateTrigger", () => {
       const ctx = makeCtx({
         thesis: {
           createdAt: THESIS_CREATED, // 28d old
-          nextReviewAt: null,
+          lastReviewedAt: null,
           status: "WATCHING",
           positionOpenedAt: POSITION_OPENED, // ignored on WATCHING
         },
@@ -562,7 +562,7 @@ describe("evaluateTrigger", () => {
       const ctx = makeCtx({
         thesis: {
           createdAt: THESIS_CREATED, // 28d old → fires off createdAt
-          nextReviewAt: null,
+          lastReviewedAt: null,
           status: "HOLDING",
           positionOpenedAt: null,
         },
@@ -571,32 +571,60 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("REVIEW_DATE_HIT", () => {
-    it("fires when nextReviewAt is at-or-before now", () => {
-      const predicate: TriggerPredicate = { kind: "REVIEW_DATE_HIT" };
+  describe("REVIEW_CADENCE", () => {
+    // Counted from the last ACTUAL review, not from a date someone typed.
+    // The old REVIEW_DATE_HIT read Thesis.nextReviewAt, which was a second
+    // store of the same idea and the one nothing fired on.
+    const cadence: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 7 };
+
+    it("fires once the cadence has elapsed since the last review", () => {
       const ctx = makeCtx({
         thesis: {
           createdAt: THESIS_CREATED,
-          nextReviewAt: new Date(NOW.getTime() - 60_000),
+          lastReviewedAt: new Date(NOW.getTime() - 8 * 86_400_000),
         },
       });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
+      expect(evaluateTrigger(cadence, ctx)).toBe(true);
     });
 
-    it("does not fire when nextReviewAt is null", () => {
-      const predicate: TriggerPredicate = { kind: "REVIEW_DATE_HIT" };
-      expect(evaluateTrigger(predicate, makeCtx())).toBe(false);
-    });
-
-    it("does not fire when nextReviewAt is in the future", () => {
-      const predicate: TriggerPredicate = { kind: "REVIEW_DATE_HIT" };
+    it("does not fire inside the window", () => {
       const ctx = makeCtx({
         thesis: {
           createdAt: THESIS_CREATED,
-          nextReviewAt: new Date(NOW.getTime() + 60_000),
+          lastReviewedAt: new Date(NOW.getTime() - 2 * 86_400_000),
         },
       });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
+      expect(evaluateTrigger(cadence, ctx)).toBe(false);
+    });
+
+    it("treats a never-reviewed thesis as due, counting from creation", () => {
+      // How an unresearched watch item asks for its first read — no special
+      // case, no seeded date, just an empty clock.
+      const ctx = makeCtx({
+        thesis: { createdAt: new Date(NOW.getTime() - 30 * 86_400_000) },
+      });
+      expect(evaluateTrigger(cadence, ctx)).toBe(true);
+    });
+
+    it("restarts the clock when a review happens", () => {
+      // A decline is NOT a review and does not reach here; the daily run
+      // looking at the thesis is, even if it concludes nothing changed.
+      const justReviewed = makeCtx({
+        thesis: { createdAt: THESIS_CREATED, lastReviewedAt: NOW },
+      });
+      expect(evaluateTrigger(cadence, justReviewed)).toBe(false);
+    });
+
+    it("honours a tighter cadence from a level above", () => {
+      const daily: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 1 };
+      const ctx = makeCtx({
+        thesis: {
+          createdAt: THESIS_CREATED,
+          lastReviewedAt: new Date(NOW.getTime() - 2 * 86_400_000),
+        },
+      });
+      expect(evaluateTrigger(daily, ctx)).toBe(true);
+      expect(evaluateTrigger(cadence, ctx)).toBe(false);
     });
   });
 

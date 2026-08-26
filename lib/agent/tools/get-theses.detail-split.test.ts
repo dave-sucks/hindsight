@@ -307,7 +307,10 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
         status: "HOLDING",
         entryPrice: 100,
         stopLoss: 90,
-        nextReviewAt: new Date(Date.now() - 86_400_000), // keeps the row full
+        // An overdue review is what keeps this row FULL. Since DAV-195 L7
+        // that means "last looked at longer ago than the cadence", not a
+        // date column.
+        lastReviewedAt: new Date(Date.now() - 30 * 86_400_000),
         triggers: [
           {
             id: "trig-floor",
@@ -315,6 +318,13 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
             predicate: { kind: "PRICE_BELOW", level: 90 },
             rationale: "protective floor",
             cooldownDays: 0,
+          },
+          {
+            id: "trig-cadence",
+            action: "REVIEW",
+            predicate: { kind: "REVIEW_CADENCE", days: 7 },
+            rationale: "weekly look",
+            cooldownDays: 7,
           },
         ],
       }),

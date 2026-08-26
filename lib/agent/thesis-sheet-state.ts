@@ -26,7 +26,6 @@ export const thesisSheetStateSelect = {
   stopLoss: true,
   targetSizePct: true,
   catalystDate: true,
-  maxHoldDays: true,
   nextReviewAt: true,
   triggers: true,
   coreBelief: true,

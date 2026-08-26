@@ -21,7 +21,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { inheritableDefaultLadder } from "./defaults";
+import { inheritableDefaultLadder, reviewCadenceTrigger } from "./defaults";
 import type { Trigger } from "./types";
 
 /**
@@ -34,7 +34,14 @@ import type { Trigger } from "./types";
  * not an account-wide rule).
  */
 export function accountSeedTriggers(): Trigger[] {
-  return inheritableDefaultLadder("TARGET", "HELD").map((t) => ({
+  return [
+    // Review cadence is a standing account rule now, not a date column on
+    // every thesis. 7 days is the TARGET-horizon default the old
+    // HORIZON_REVIEW_DAYS table used; a CATALYST or TRADE thesis overrides
+    // it with a tighter one through the ordinary cascade.
+    reviewCadenceTrigger(7),
+    ...inheritableDefaultLadder("TARGET", "HELD"),
+  ].map((t) => ({
     ...t,
     // Fresh ids: these are real stored rows now, not the synthetic
     // `default:*` handles the old runtime layer used for fire-state keying.

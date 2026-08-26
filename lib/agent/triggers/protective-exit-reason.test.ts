@@ -68,7 +68,7 @@ describe("protectiveExitCloseReason — protective/price EXIT → STOP/TARGET ta
       { kind: "EARNINGS_MISS" },
       { kind: "RSI", threshold: 70, direction: "ABOVE" },
       { kind: "TIME_ELAPSED", days: 30 },
-      { kind: "REVIEW_DATE_HIT" },
+      { kind: "REVIEW_CADENCE", days: 7 },
     ];
     for (const p of judgment) {
       expect(protectiveExitCloseReason(p, "LONG")).toBeNull();
