@@ -33,6 +33,7 @@ import { applyTriggerCooldownDefaults } from "@/lib/agent/triggers/defaults";
 import {
   dropRedundantInherited,
   carryOverDroppedFireState,
+  adoptStoredTriggerIdentity,
 } from "@/lib/agent/triggers/levels";
 import {
   loadLevelSources,
@@ -1318,7 +1319,18 @@ export const updateThesis = defineTool({
         ) as object;
       }
 
-      const preserved = incoming.map((t) => {
+      // The agent resends the ladder WITHOUT ids and the schema mints a
+      // fresh uuid per id-less rung — so before any id-keyed carry-over can
+      // work, an unchanged rung must get its stored id back. Without this
+      // the resend wipes the firing memory despite the map above (ABT
+      // 2026-08-26: ENTER fired, the tactical run resent the ladder, the
+      // fresh id dropped `lastFiredAt`, and the next 5-minute tick re-fired
+      // it — four tactical runs in 15 minutes on one unchanged trigger).
+      // It also keeps `source` honest below: resending a principal-authored
+      // floor verbatim must not re-stamp it AGENT.
+      const readopted = adoptStoredTriggerIdentity(incoming, existingTriggers);
+
+      const preserved = readopted.map((t) => {
         if (t.lastFiredAt != null) return t; // agent provided one — respect it
         const prior = t.id ? lastFiredById.get(t.id) : undefined;
         return prior ? { ...t, lastFiredAt: prior } : t;

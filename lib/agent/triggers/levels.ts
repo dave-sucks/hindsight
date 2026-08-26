@@ -271,23 +271,84 @@ export function dropRedundantInherited(
 }
 
 /**
+ * Canonical JSON of a predicate — object keys sorted recursively, so two
+ * predicates that say the same thing serialize identically regardless of
+ * the key order the author happened to use.
+ */
+const normPredicate = (p: unknown): string =>
+  JSON.stringify(p, (_k, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.entries(v as Record<string, unknown>).sort(([x], [y]) =>
+            x.localeCompare(y),
+          ),
+        )
+      : v,
+  );
+
+/**
  * Structural equality over predicates. `triggerBucket` already matched
  * the KIND and the discriminating fields, so this is really asking "same
  * numbers?" — JSON comparison over sorted keys is sufficient and stays
  * correct as new predicate kinds are added.
  */
 function samePredicateValue(a: Trigger["predicate"], b: Trigger["predicate"]): boolean {
-  const norm = (p: unknown): string =>
-    JSON.stringify(p, (_k, v: unknown) =>
-      v && typeof v === "object" && !Array.isArray(v)
-        ? Object.fromEntries(
-            Object.entries(v as Record<string, unknown>).sort(([x], [y]) =>
-              x.localeCompare(y),
-            ),
-          )
-        : v,
-    );
-  return norm(a) === norm(b);
+  return normPredicate(a) === normPredicate(b);
+}
+
+/**
+ * Re-adopt stored trigger ids for a wholesale-replace payload.
+ *
+ * The agent resends trigger ladders WITHOUT ids and the schema mints a
+ * fresh uuid for every id-less rung, so an UNCHANGED rung comes back as a
+ * stranger. Everything keyed by id then breaks at once: `lastFiredAt`
+ * doesn't carry over (the rung re-fires on the next evaluator tick — ABT
+ * 2026-08-26, four tactical runs in 15 minutes on one unchanged ENTER),
+ * `source` doesn't carry over (a principal-authored floor gets re-stamped
+ * AGENT), and the per-thesis fire-state map orphans its entries.
+ *
+ * The rule: an incoming rung that does not name an existing id, but whose
+ * CONTENT — action, predicate kind and exact values — matches a stored rung
+ * nothing else in the payload claims, IS that rung and takes its id. A rung
+ * whose values changed matches nothing and keeps its fresh identity: a
+ * moved level is a new decision and may legitimately fire.
+ *
+ * Pure. Returns a fresh array; order and everything but `id` untouched.
+ */
+export function adoptStoredTriggerIdentity(
+  incoming: Trigger[],
+  existing: Trigger[],
+): Trigger[] {
+  if (existing.length === 0 || incoming.length === 0) return incoming;
+
+  const existingIds = new Set(
+    existing.map((t) => t.id).filter((id): id is string => Boolean(id)),
+  );
+  // Stored rungs the payload doesn't already claim by id, grouped by
+  // content. A queue per key so two identical incoming rungs can't both
+  // adopt the same stored id.
+  const claimed = new Set(
+    incoming
+      .map((t) => t.id)
+      .filter((id): id is string => Boolean(id) && existingIds.has(id as string)),
+  );
+  const adoptable = new Map<string, Trigger[]>();
+  for (const t of existing) {
+    if (!t.id || claimed.has(t.id)) continue;
+    const key = `${triggerBucket(t)}|${normPredicate(t.predicate)}`;
+    const queue = adoptable.get(key);
+    if (queue) queue.push(t);
+    else adoptable.set(key, [t]);
+  }
+  if (adoptable.size === 0) return incoming;
+
+  return incoming.map((t) => {
+    if (t.id && existingIds.has(t.id)) return t; // an edit-in-place — keep it
+    const match = adoptable
+      .get(`${triggerBucket(t)}|${normPredicate(t.predicate)}`)
+      ?.shift();
+    return match?.id ? { ...t, id: match.id } : t;
+  });
 }
 
 export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
