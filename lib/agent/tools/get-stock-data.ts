@@ -15,7 +15,11 @@ import type { NewsItem } from "@/lib/agent/tool-types";
 import { checkUniverse } from "@/lib/agent/universe";
 import type { UniverseCheck } from "@/lib/agent/universe";
 import { fmp } from "@/lib/market-data/fmp";
-import { getTickerHistory, formatTickerHistory } from "@/lib/agent/context-bundle";
+import {
+  getTickerHistory,
+  formatTickerHistory,
+  formatTickerHistoryShort,
+} from "@/lib/agent/context-bundle";
 
 export const getStockData = defineTool({
   description:
@@ -73,6 +77,10 @@ export const getStockData = defineTool({
       : null;
     const priorCoverageNote = priorCoverage
       ? formatTickerHistory(priorCoverage)
+      : null;
+    // The chat row gets a one-liner; the full paragraph goes to the model.
+    const priorCoverageChip = priorCoverage
+      ? formatTickerHistoryShort(priorCoverage)
       : null;
 
     // Candle data comes from Alpaca only (with `feed: "iex"`). Finnhub
@@ -304,9 +312,9 @@ export const getStockData = defineTool({
         tickers: [
           {
             ticker,
-            tag: priorCoverageNote ? "Prior coverage" : "Research",
-            summary: priorCoverageNote
-              ? `${priorCoverageNote} ${tickerSummaryParts.join(". ")}`
+            tag: priorCoverageChip ? "Prior coverage" : "Research",
+            summary: priorCoverageChip
+              ? `${priorCoverageChip} ${tickerSummaryParts.join(". ")}`
               : tickerSummaryParts.join(". "),
           },
         ],

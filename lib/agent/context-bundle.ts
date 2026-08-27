@@ -250,6 +250,7 @@ export async function getBookContext(args: {
           closeReason: { notIn: ["RECONCILE_DUPLICATE", "PROMOTED"] },
         },
         select: {
+          id: true,
           symbol: true,
           direction: true,
           avgCost: true,
@@ -267,21 +268,30 @@ export async function getBookContext(args: {
     // Close orders carry #524's belief attestation; the Position row does
     // not. Join them up so "we sold on price, the story held" survives into
     // the prompt — that distinction is the whole point of a recycle path.
-    const beliefBySymbol = new Map<string, boolean>();
+    // Matched on positionId, NOT symbol. A symbol match had two faults: it
+    // carried no user/account filter at all (any tenant's CLOSE order on
+    // the same ticker would match), and with one row per symbol it applied
+    // one attestation to every trade of that name — so XENE's two round
+    // trips, a win and a loss, would have shared a single belief flag.
+    const beliefByPositionId = new Map<string, boolean>();
     try {
       const closeOrders = await prisma.order.findMany({
         where: {
-          symbol: { in: closed.map((c) => c.symbol) },
+          positionId: { in: closed.map((c) => c.id) },
           intent: "CLOSE",
           status: "FILLED",
           closeBeliefSurvived: { not: null },
         },
-        select: { symbol: true, closeBeliefSurvived: true, filledAt: true },
+        select: { positionId: true, closeBeliefSurvived: true, filledAt: true },
         orderBy: { filledAt: "desc" },
       });
       for (const o of closeOrders) {
-        if (!beliefBySymbol.has(o.symbol) && o.closeBeliefSurvived != null) {
-          beliefBySymbol.set(o.symbol, o.closeBeliefSurvived);
+        if (
+          o.positionId &&
+          !beliefByPositionId.has(o.positionId) &&
+          o.closeBeliefSurvived != null
+        ) {
+          beliefByPositionId.set(o.positionId, o.closeBeliefSurvived);
         }
       }
     } catch {
@@ -310,7 +320,7 @@ export async function getBookContext(args: {
         outcome: c.outcome,
         closeReason: c.closeReason,
         closedAt: c.closedAt,
-        beliefSurvived: beliefBySymbol.get(c.symbol) ?? null,
+        beliefSurvived: beliefByPositionId.get(c.id) ?? null,
       })),
     };
   } catch (err) {
@@ -505,7 +515,8 @@ export async function getTickerHistory(args: {
 
   try {
     const { prisma } = await import("@/lib/prisma");
-    const [thesis, closed, open, otherTheses, names] = await Promise.all([
+    const [thesis, ownClosed, otherClosed, open, otherTheses, names] =
+      await Promise.all([
       prisma.thesis.findFirst({
         where: { ticker, researchRun: { agentConfigId: args.analystId } },
         orderBy: { createdAt: "desc" },
@@ -520,17 +531,21 @@ export async function getTickerHistory(args: {
           researchUpdatedAt: true,
         },
       }),
+      // THIS seat's own trades, fetched separately and unconditionally.
+      // Fetching the account's trades in one capped query and splitting
+      // afterwards loses our own rows on a heavily-traded name: MU already
+      // has 10 closes across 5 seats, so a busier desk's recent activity
+      // could push this seat's own history out of the window — and that is
+      // the single most important line in the block.
       prisma.position.findMany({
         where: {
-          ...(args.accountId
-            ? { accountId: args.accountId }
-            : { analystId: args.analystId }),
+          analystId: args.analystId,
           symbol: ticker,
           status: "CLOSED",
           closeReason: { notIn: ["RECONCILE_DUPLICATE", "PROMOTED"] },
         },
         orderBy: { closedAt: "desc" },
-        take: 12,
+        take: 5,
         select: {
           direction: true,
           avgCost: true,
@@ -543,6 +558,31 @@ export async function getTickerHistory(args: {
           analystId: true,
         },
       }),
+      // Other seats on the same account, separately capped.
+      args.accountId
+        ? prisma.position.findMany({
+            where: {
+              accountId: args.accountId,
+              analystId: { not: args.analystId },
+              symbol: ticker,
+              status: "CLOSED",
+              closeReason: { notIn: ["RECONCILE_DUPLICATE", "PROMOTED"] },
+            },
+            orderBy: { closedAt: "desc" },
+            take: 5,
+            select: {
+              direction: true,
+              avgCost: true,
+              closePrice: true,
+              realizedPnl: true,
+              outcome: true,
+              closeReason: true,
+              openedAt: true,
+              closedAt: true,
+              analystId: true,
+            },
+          })
+        : Promise.resolve([]),
       prisma.position.findFirst({
         where: { analystId: args.analystId, symbol: ticker, status: "OPEN" },
         select: { quantity: true, avgCost: true, openedAt: true },
@@ -572,7 +612,7 @@ export async function getTickerHistory(args: {
     ]);
 
     const nameById = new Map(names.map((n) => [n.id, n.name]));
-    const toTrade = (c: (typeof closed)[number]): TickerTrade => ({
+    const toTrade = (c: (typeof ownClosed)[number]): TickerTrade => ({
       analystName:
         c.analystId === args.analystId
           ? null
@@ -603,14 +643,8 @@ export async function getTickerHistory(args: {
             researchUpdatedAt: thesis.researchUpdatedAt,
           }
         : null,
-      trades: closed
-        .filter((c) => c.analystId === args.analystId)
-        .slice(0, 5)
-        .map(toTrade),
-      otherSeatTrades: closed
-        .filter((c) => c.analystId !== args.analystId)
-        .slice(0, 5)
-        .map(toTrade),
+      trades: ownClosed.map(toTrade),
+      otherSeatTrades: otherClosed.map(toTrade),
       otherSeatCoverage: [
         ...new Set(
           otherTheses.map((t) => {
@@ -757,4 +791,45 @@ export function formatTickerHistory(h: TickerHistory): string | null {
   }
 
   return parts.join(" ");
+}
+
+/**
+ * Pure: prior coverage as ONE short line, for the tool row the user sees.
+ *
+ * The full paragraph belongs in the model-facing summary; rendering it in
+ * the chat's ticker chip would produce a wall of prose where a one-line
+ * status belongs.
+ */
+export function formatTickerHistoryShort(h: TickerHistory): string | null {
+  if (!h.loaded) return null;
+  const bits: string[] = [];
+
+  if (h.openPosition) bits.push("held now");
+
+  if (h.trades.length) {
+    const net = h.trades.reduce((sum, t) => sum + (t.realizedPnlUSD ?? 0), 0);
+    bits.push(
+      `${h.trades.length} prior trade${h.trades.length === 1 ? "" : "s"} ${fmtUSD(net)} net`,
+    );
+  }
+
+  if (h.otherSeatTrades.length) {
+    bits.push(
+      h.otherSeatTrades.length === 1
+        ? "1 on another desk"
+        : `${h.otherSeatTrades.length} on other desks`,
+    );
+  }
+
+  if (h.thesis && !h.openPosition) {
+    bits.push(
+      `last thesis ${
+        h.thesis.status === "RETIRED" && h.thesis.retiredReason
+          ? `RETIRED (${h.thesis.retiredReason})`
+          : h.thesis.status
+      }`,
+    );
+  }
+
+  return bits.length ? `Prior coverage: ${bits.join(", ")}.` : null;
 }

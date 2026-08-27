@@ -201,6 +201,7 @@ describe("formatBookContextBlock", () => {
 
 import {
   formatTickerHistory,
+  formatTickerHistoryShort,
   heldDaysOf,
   type TickerHistory,
 } from "./context-bundle";
@@ -347,5 +348,30 @@ describe("formatTickerHistory", () => {
       openPosition: { quantity: 93, avgCost: 53.895, openedAt: new Date("2026-08-13") },
     })!;
     expect(out).toContain("WE HOLD IT NOW: 93 sh @ $53.90 since 2026-08-13");
+  });
+});
+
+describe("formatTickerHistoryShort", () => {
+  it("is one line for the chat row, not the full paragraph", () => {
+    const out = formatTickerHistoryShort({
+      ...noHistory,
+      ticker: "XENE",
+      trades: [
+        { analystName: null, openedAt: null, closedAt: null, heldDays: null, entryPrice: null, exitPrice: null, realizedPnlUSD: 966, returnPct: 24.1, outcome: "WIN", closeReason: "STOP" },
+        { analystName: null, openedAt: null, closedAt: null, heldDays: null, entryPrice: null, exitPrice: null, realizedPnlUSD: -586, returnPct: -8.5, outcome: "LOSS", closeReason: "MANUAL" },
+      ],
+      otherSeatTrades: [
+        { analystName: "PEAD Specialist", openedAt: null, closedAt: null, heldDays: null, entryPrice: null, exitPrice: null, realizedPnlUSD: 74, returnPct: 9.7, outcome: "WIN", closeReason: "TARGET" },
+      ],
+      thesis: { id: "t", status: "RETIRED", direction: "LONG", conviction: "HIGH", coreBelief: "…", retiredReason: "SOLD", catalystDate: null, researchUpdatedAt: null },
+    });
+    expect(out).toBe(
+      "Prior coverage: 2 prior trades +$380 net, 1 on another desk, last thesis RETIRED (SOLD).",
+    );
+    expect(out!.length).toBeLessThan(120);
+  });
+
+  it("returns null for a name with no history", () => {
+    expect(formatTickerHistoryShort(noHistory)).toBeNull();
   });
 });
