@@ -440,6 +440,8 @@ export function formatBookContextBlock(b: BookContext): string {
  * ──────────────────────────────────────────────────────────────────────── */
 
 export interface TickerTrade {
+  /** Which seat took this trade. Null when it was this seat's own. */
+  analystName: string | null;
   openedAt: Date | null;
   closedAt: Date | null;
   /** Calendar days held, when both ends are known. */
@@ -465,16 +467,29 @@ export interface TickerHistory {
     catalystDate: Date | null;
     researchUpdatedAt: Date | null;
   } | null;
-  /** Closed positions on this ticker, most recent first. */
+  /** THIS seat's closed positions on the ticker, most recent first. */
   trades: TickerTrade[];
-  /** Open position on this ticker right now, if any. */
+  /**
+   * Closed positions taken by OTHER seats on the same account.
+   *
+   * Account-wide by principal's call (2026-08-27): a name is a name. If
+   * another desk lost money on it we want to know before we buy it — AKAM
+   * cost Catalyst $396 and Momentum $675 independently, and neither run
+   * could see the other's result.
+   */
+  otherSeatTrades: TickerTrade[];
+  /** Open position on this ticker right now, this seat. */
   openPosition: { quantity: number; avgCost: number; openedAt: Date | null } | null;
+  /** Other seats holding or covering it right now: "Name (HOLDING)". */
+  otherSeatCoverage: string[];
   /** False when the lookup failed — unread is not "no history". */
   loaded: boolean;
 }
 
 export async function getTickerHistory(args: {
   analystId: string;
+  /** Account scope. Omit to fall back to this seat only. */
+  accountId?: string | null;
   ticker: string;
 }): Promise<TickerHistory> {
   const ticker = args.ticker.toUpperCase();
@@ -482,13 +497,15 @@ export async function getTickerHistory(args: {
     ticker,
     thesis: null,
     trades: [],
+    otherSeatTrades: [],
     openPosition: null,
+    otherSeatCoverage: [],
     loaded: false,
   };
 
   try {
     const { prisma } = await import("@/lib/prisma");
-    const [thesis, closed, open] = await Promise.all([
+    const [thesis, closed, open, otherTheses, names] = await Promise.all([
       prisma.thesis.findFirst({
         where: { ticker, researchRun: { agentConfigId: args.analystId } },
         orderBy: { createdAt: "desc" },
@@ -505,13 +522,15 @@ export async function getTickerHistory(args: {
       }),
       prisma.position.findMany({
         where: {
-          analystId: args.analystId,
+          ...(args.accountId
+            ? { accountId: args.accountId }
+            : { analystId: args.analystId }),
           symbol: ticker,
           status: "CLOSED",
           closeReason: { notIn: ["RECONCILE_DUPLICATE", "PROMOTED"] },
         },
         orderBy: { closedAt: "desc" },
-        take: 5,
+        take: 12,
         select: {
           direction: true,
           avgCost: true,
@@ -521,13 +540,53 @@ export async function getTickerHistory(args: {
           closeReason: true,
           openedAt: true,
           closedAt: true,
+          analystId: true,
         },
       }),
       prisma.position.findFirst({
         where: { analystId: args.analystId, symbol: ticker, status: "OPEN" },
         select: { quantity: true, avgCost: true, openedAt: true },
       }),
+      args.accountId
+        ? prisma.thesis.findMany({
+            where: {
+              ticker,
+              status: { in: ["WATCHING", "HOLDING", "PROMOTED"] },
+              researchRun: {
+                agentConfig: {
+                  accountId: args.accountId,
+                  id: { not: args.analystId },
+                },
+              },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { status: true, researchRun: { select: { agentConfigId: true } } },
+          })
+        : Promise.resolve([]),
+      args.accountId
+        ? prisma.agentConfig.findMany({
+            where: { accountId: args.accountId },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([]),
     ]);
+
+    const nameById = new Map(names.map((n) => [n.id, n.name]));
+    const toTrade = (c: (typeof closed)[number]): TickerTrade => ({
+      analystName:
+        c.analystId === args.analystId
+          ? null
+          : (nameById.get(c.analystId) ?? "another seat"),
+      openedAt: c.openedAt,
+      closedAt: c.closedAt,
+      heldDays: heldDaysOf(c.openedAt, c.closedAt),
+      entryPrice: c.avgCost,
+      exitPrice: c.closePrice,
+      realizedPnlUSD: c.realizedPnl,
+      returnPct: returnPctOf(c),
+      outcome: c.outcome,
+      closeReason: c.closeReason,
+    });
 
     return {
       ticker,
@@ -544,17 +603,23 @@ export async function getTickerHistory(args: {
             researchUpdatedAt: thesis.researchUpdatedAt,
           }
         : null,
-      trades: closed.map((c) => ({
-        openedAt: c.openedAt,
-        closedAt: c.closedAt,
-        heldDays: heldDaysOf(c.openedAt, c.closedAt),
-        entryPrice: c.avgCost,
-        exitPrice: c.closePrice,
-        realizedPnlUSD: c.realizedPnl,
-        returnPct: returnPctOf(c),
-        outcome: c.outcome,
-        closeReason: c.closeReason,
-      })),
+      trades: closed
+        .filter((c) => c.analystId === args.analystId)
+        .slice(0, 5)
+        .map(toTrade),
+      otherSeatTrades: closed
+        .filter((c) => c.analystId !== args.analystId)
+        .slice(0, 5)
+        .map(toTrade),
+      otherSeatCoverage: [
+        ...new Set(
+          otherTheses.map((t) => {
+            const id = t.researchRun.agentConfigId;
+            const who = (id && nameById.get(id)) || "another seat";
+            return `${who} (${String(t.status)})`;
+          }),
+        ),
+      ],
       openPosition: open
         ? {
             quantity: open.quantity,
@@ -594,7 +659,15 @@ export function heldDaysOf(
  */
 export function formatTickerHistory(h: TickerHistory): string | null {
   if (!h.loaded) return null;
-  if (!h.thesis && !h.trades.length && !h.openPosition) return null;
+  if (
+    !h.thesis &&
+    !h.trades.length &&
+    !h.openPosition &&
+    !h.otherSeatTrades.length &&
+    !h.otherSeatCoverage.length
+  ) {
+    return null;
+  }
 
   const parts: string[] = [];
 
@@ -647,11 +720,41 @@ export function formatTickerHistory(h: TickerHistory): string | null {
     );
   }
 
-  parts.push(
-    h.trades.length || h.openPosition
-      ? "Judge this name on what the position actually made or lost us above — not on whether the event resolved well in the world, and not on anyone's public record. If the setup is genuinely new, say what changed since last time."
-      : "We researched this name before without trading it. Say what is different now before reaching the same conclusion or a different one.",
-  );
+  if (h.otherSeatCoverage.length) {
+    parts.push(
+      `ANOTHER SEAT ON THIS ACCOUNT COVERS IT: ${h.otherSeatCoverage.join(", ")}.`,
+    );
+  }
+
+  if (h.otherSeatTrades.length) {
+    parts.push(
+      `OTHER SEATS HAVE TRADED IT: ${h.otherSeatTrades
+        .map(
+          (t) =>
+            `${t.analystName} ${fmtDate(t.closedAt)} ${
+              t.realizedPnlUSD != null ? fmtUSD(t.realizedPnlUSD) : "P&L unknown"
+            }${t.returnPct != null ? ` (${t.returnPct > 0 ? "+" : ""}${t.returnPct}%)` : ""}`,
+        )
+        .join("; ")}. Different mandate, so this is evidence rather than a verdict — but a name that has lost money on more than one desk deserves a harder look at why.`,
+    );
+  }
+
+  // Closing instruction depends on WHOSE history this is. Saying "we
+  // researched it without trading it" directly after listing five trades
+  // by other desks reads as a contradiction.
+  if (h.trades.length || h.openPosition) {
+    parts.push(
+      "Judge this name on what the position actually made or lost us above — not on whether the event resolved well in the world, and not on anyone's public record. If the setup is genuinely new, say what changed since last time.",
+    );
+  } else if (h.otherSeatTrades.length) {
+    parts.push(
+      "This seat has never traded it; other desks have. Read their results above, then say what your mandate sees that theirs did not — or what has changed since.",
+    );
+  } else {
+    parts.push(
+      "We researched this name before without trading it. Say what is different now before reaching the same conclusion or a different one.",
+    );
+  }
 
   return parts.join(" ");
 }

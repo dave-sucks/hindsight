@@ -209,7 +209,9 @@ const noHistory: TickerHistory = {
   ticker: "AGIO",
   thesis: null,
   trades: [],
+  otherSeatTrades: [],
   openPosition: null,
+  otherSeatCoverage: [],
   loaded: true,
 };
 
@@ -238,6 +240,7 @@ describe("formatTickerHistory", () => {
       ticker: "XENE",
       trades: [
         {
+          analystName: null,
           openedAt: new Date("2026-07-17"),
           closedAt: new Date("2026-08-10"),
           heldDays: 24,
@@ -249,6 +252,7 @@ describe("formatTickerHistory", () => {
           closeReason: "MANUAL",
         },
         {
+          analystName: null,
           openedAt: new Date("2026-06-17"),
           closedAt: new Date("2026-07-16"),
           heldDays: 29,
@@ -302,6 +306,38 @@ describe("formatTickerHistory", () => {
     })!;
     expect(out).toContain("LAST THESIS (th_2): PASSED");
     expect(out).toContain("researched this name before without trading it");
+  });
+
+  it("surfaces other seats on the account — a name is a name", () => {
+    // AKAM cost Catalyst $396 and Momentum $675 independently, and neither
+    // run could see the other's result.
+    const out = formatTickerHistory({
+      ...noHistory,
+      ticker: "AKAM",
+      otherSeatTrades: [
+        {
+          analystName: "Momentum Breakout",
+          openedAt: new Date("2026-04-06"),
+          closedAt: new Date("2026-04-09"),
+          heldDays: 3,
+          entryPrice: 117.89,
+          exitPrice: 109.86,
+          realizedPnlUSD: -675,
+          returnPct: -6.8,
+          outcome: "LOSS",
+          closeReason: "STOP",
+        },
+      ],
+      otherSeatCoverage: ["Secular Compounder (HOLDING)"],
+    })!;
+    expect(out).toContain("OTHER SEATS HAVE TRADED IT: Momentum Breakout 2026-04-09 −$675");
+    expect(out).toContain("ANOTHER SEAT ON THIS ACCOUNT COVERS IT: Secular Compounder (HOLDING)");
+    // Another desk's mandate differs — evidence, not a verdict.
+    expect(out).toContain("evidence rather than a verdict");
+    // Must not claim "we researched it without trading it" when other desks
+    // demonstrably traded it — that reads as a contradiction.
+    expect(out).not.toContain("without trading it");
+    expect(out).toContain("This seat has never traded it; other desks have");
   });
 
   it("says plainly when we hold it right now", () => {

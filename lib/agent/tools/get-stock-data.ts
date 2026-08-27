@@ -59,8 +59,17 @@ export const getStockData = defineTool({
     // Covers what the book-level block cannot: names we researched and
     // declined, or watched and dropped, without ever trading them.
     // Fail-open — history is context, never a reason a data pull dies.
+    // Account-wide, not seat-only (principal's call, 2026-08-27): a name is
+    // a name. AKAM lost $396 on Catalyst and $675 on Momentum independently
+    // and neither run could see the other's result. Other seats' trades are
+    // labelled with the seat so a different mandate reads as evidence
+    // rather than a verdict.
     const priorCoverage = ctx.analystId
-      ? await getTickerHistory({ analystId: ctx.analystId, ticker })
+      ? await getTickerHistory({
+          analystId: ctx.analystId,
+          accountId: ctx.accountId,
+          ticker,
+        })
       : null;
     const priorCoverageNote = priorCoverage
       ? formatTickerHistory(priorCoverage)
