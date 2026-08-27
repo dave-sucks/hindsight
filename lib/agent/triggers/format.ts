@@ -37,7 +37,10 @@ export function predicateSentence(p: TriggerPredicate): string {
         ? `Up ${p.pct}% from entry`
         : `Down ${p.pct}% from entry`;
     case "TRAILING_FROM_HIGH":
-      return `Gives back ${p.pct}% from the high`;
+      // Same vocabulary as the trigger editor ("Trailing from high") — the
+      // feed once said "Gives back X% from the high" and read as a trigger
+      // type that doesn't exist in the builder.
+      return `Trailing ${p.pct}% from high`;
     case "VS_SMA":
       return `Price ${p.direction.toLowerCase()} ${p.period}-day SMA`;
     case "RSI":

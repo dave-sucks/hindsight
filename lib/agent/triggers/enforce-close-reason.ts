@@ -62,7 +62,7 @@ export interface EnforceCloseReasonArgs {
    */
   protective?: "STOP" | "TARGET";
   /**
-   * Human phrase for the fired trigger, e.g. "Gives back 8% from the high"
+   * Human phrase for the fired trigger, e.g. "Trailing 8% from high"
    * (ToolContext.protectiveExitTriggerLabel). Named in the audit note so the
    * correction is self-explaining; falls back to generic wording if absent.
    */

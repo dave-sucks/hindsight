@@ -19,7 +19,7 @@ import {
   type DeclaredCloseReason,
 } from "@/lib/agent/triggers/enforce-close-reason";
 
-const TRAIL = "Gives back 8% from the high";
+const TRAIL = "Trailing 8% from high";
 
 describe("enforceCloseReason — no protective fire (daily run / judgment trigger)", () => {
   it("keeps the agent's own label and collapses the judgment codes to MANUAL", () => {
