@@ -19,7 +19,11 @@ import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildDiscoverySystemPrompt } from "@/lib/agent/system-prompts/discovery";
-import { getMoneyContext } from "@/lib/agent/context-bundle";
+import {
+  getMoneyContext,
+  getBookContext,
+  formatBookContextBlock,
+} from "@/lib/agent/context-bundle";
 import { MODES } from "@/lib/agent/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 
@@ -209,8 +213,18 @@ export const discoveryRun = inngest.createFunction(
         // real numbers. Fail-open: null degrades the prompt block only.
         const money = await getMoneyContext(config);
 
+        // The book — holdings, watches, and every name this seat has
+        // already traded with our realized P&L attached. `coveredTickers`
+        // above is an exclusion list; past holds appeared in no list at
+        // all, so a name we used to own could not be surfaced as a
+        // candidate by any path. Fail-open like the money block.
+        const bookBlock =
+          formatBookContextBlock(await getBookContext({ analystId: config.id })) ||
+          null;
+
         const systemPrompt = buildDiscoverySystemPrompt({
           money,
+          bookBlock,
           config: {
             name: config.name,
             // FULL analystPrompt — never truncate. This is the analyst's

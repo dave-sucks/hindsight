@@ -1675,6 +1675,51 @@ export const recordThesis = defineTool({
         } catch { /* non-fatal — overlap check is advisory, not blocking on error */ }
       }
 
+      // ── No double-PASS on the same name in the same run ──────────────
+      // A PASS record is institutional memory: every later run reads it as
+      // "we looked at this properly and declined." Two rows for one look is
+      // a lie about how much thinking happened, and nothing upstream
+      // prevented it — the cross-analyst check below is explicitly scoped
+      // `direction !== "PASS"`, so PASS writes had no duplicate guard at
+      // all. On 2026-08-25 a retried batch wrote 7 tickers twice.
+      //
+      // Keyed on STATUS, not direction: DAV-209 turns PASS + WATCHING into
+      // the ordinary soft watch, so a direction-keyed guard would collide
+      // with soft watches the moment that lands.
+      if (effectiveStatusForTriggers === "PASSED" && ctx.analystId && ctx.runId) {
+        try {
+          const alreadyPassed = await prisma.thesis.findFirst({
+            where: {
+              ticker: args.ticker,
+              status: "PASSED",
+              researchRunId: ctx.runId,
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+          });
+          if (alreadyPassed) {
+            console.warn(
+              `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} DEDUPED — PASS already recorded this run (${alreadyPassed.id}).`,
+            );
+            return {
+              summary: `${args.ticker} was already PASS-recorded in this run — kept the existing record.`,
+              data: {
+                thesis_id: alreadyPassed.id,
+                status: "PASSED" as const,
+                ticker: args.ticker,
+                note:
+                  `A PASS record for ${args.ticker} already exists on this run (${alreadyPassed.id}); no second row was written. ` +
+                  `This is not an error — treat ${args.ticker} as recorded and move on. ` +
+                  `If your reasoning has genuinely changed, call update_thesis on ${alreadyPassed.id} instead of recording again.`,
+              },
+              sources: [],
+            };
+          }
+        } catch {
+          /* non-fatal — dedup is write hygiene, never a reason to lose a record */
+        }
+      }
+
       // Effective status: explicit `status` arg wins; otherwise derive
       // from source_kind. WATCHLIST_REVIEW (and the watchlist-collapse
       // call sites that follow) → WATCHING; everything else → ACTIVE.

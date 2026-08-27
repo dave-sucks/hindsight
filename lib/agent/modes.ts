@@ -572,6 +572,19 @@ export const MODES: Record<AgentMode, ModeConfig> = {
  * has been getting through Claude Code locally.
  */
 export function buildPrincipalSystemPrompt(opts: {
+  /**
+   * System 1 context bundle (THREE_SYSTEMS.md Move 1). When the chat is
+   * pinned to an analyst, the seat's money and book travel with the SCOPE —
+   * not with the mode name. Before 2026-08-26 these were wired into
+   * discovery-run.ts and run-thesis-writer.ts by import, so an operator who
+   * scoped this chat to an analyst and ran a triage got the fence, the
+   * watchlist and the guardrails but no equity, no positions and no trade
+   * history. Render with formatMoneyContextBlock / formatBookContextBlock
+   * so every surface quotes the same reality. Fail-open: null renders
+   * nothing and the prompt degrades to what it was before.
+   */
+  moneyBlock?: string | null;
+  bookBlock?: string | null;
   scopedAnalyst?: {
     id: string;
     name: string;
@@ -590,6 +603,12 @@ export function buildPrincipalSystemPrompt(opts: {
   } | null;
 }): string {
   const scope = opts.scopedAnalyst;
+  // Pre-rendered by the caller via context-bundle's formatters. Passed as
+  // strings, not objects, because this module is imported by client
+  // components (ModelPreferenceForm, AgentChat) and the bundle pulls in
+  // Prisma + the Alpaca client.
+  const moneyBlock = opts.moneyBlock ? `\n${opts.moneyBlock}\n` : "";
+  const bookBlock = opts.bookBlock ? `\n${opts.bookBlock}\n` : "";
   const scopeBlock = scope
     ? `\n══════════════════════════════════════════════════════════════════════
 ## CURRENT SCOPE — pinned to ${scope.name}
@@ -613,7 +632,8 @@ Analyst prompt (the strategy):
 ${scope.analystPrompt ?? "(no analystPrompt set)"}
 \`\`\`
 
-Use \`get_theses\`, \`get_portfolio_context\`, and \`read_signals\` to pull current state without re-resolving the id. For cross-analyst questions ("how do my OTHER analysts compare"), use \`list_analysts\` etc.\n`
+Use \`get_theses\`, \`get_portfolio_context\`, and \`read_signals\` to pull current state without re-resolving the id. For cross-analyst questions ("how do my OTHER analysts compare"), use \`list_analysts\` etc.
+${moneyBlock}${bookBlock}`
     : `\n══════════════════════════════════════════════════════════════════════
 ## CURRENT SCOPE — Portfolio (unscoped)
 ══════════════════════════════════════════════════════════════════════

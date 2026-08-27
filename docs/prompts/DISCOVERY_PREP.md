@@ -15,18 +15,26 @@ Automated weekly discovery (Signals + Briefings) was killed — it was noise. Di
 triages + dispatches. You are the scout-prompt author; the operator is the trigger; the app is
 the closer. Grok's real unit is **people, not stocks** — see the Scout Loop.
 
-## ⚠️ THE MODE IS LOAD-BEARING (learned 2026-08-25, expensively)
+## Context follows the analyst, not the mode (fixed 2026-08-26)
 
-The paste goes into **Discovery mode on `/analysts/[id]` → Run Discovery** and NOWHERE else.
-Principal chat accepts the identical paste and silently runs it **blind**: the money-context
-bundle (#544, `getMoneyContext`) is wired into `discovery-run.ts` and `run-thesis-writer.ts`
-only. A triage run in chat never sees the book, past outcomes, or the watchlist — on
-2026-08-25 a Catalyst paste run in principal chat produced 20 PASS rows (7 duplicates),
-graded names by the scout's approval-rate scoreboard instead of our P&L, and never called
-`get_theses` or `get_portfolio_context` once.
+**Background, so nobody re-adds a workaround here.** On 2026-08-25 a Catalyst paste was run
+in principal chat and triaged blind — no equity, no positions, no trade history — because the
+money context (#544) was wired into `discovery-run.ts` and `run-thesis-writer.ts` by import
+rather than to the analyst scope. It produced 20 PASS rows (7 duplicates) and graded names on
+the scout's approval record instead of our P&L.
 
-**Your deliverable must say this, in the paste block itself, every time:** "Run this in
-Discovery mode on /analysts/[id]. Do not run it in chat — chat triage is blind to the book."
+The fix was in the product, not this doc: any chat **pinned to an analyst** now opens with that
+seat's money and book, and **past holds ship with our realized P&L attached, labelled as
+candidates rather than exclusions.** Discovery mode gets the same block. So the paste works
+wherever an analyst is in scope.
+
+Two things still worth doing:
+
+- **Prefer Discovery mode on `/analysts/[id]`** for a full triage — it also brings the discovery
+  prompt (dispatch caps, the 4-dim composite). Chat gets the context; the mode adds the recipe.
+- **Never write history claims into the paste.** The book supplies history now. A hand-written
+  line like *"previously PASSED — only revisit if something material changed"* overrides it and
+  reads as a blanket ban; that line is what blocked re-minting on 18 tickers.
 
 ## Before you start
 
@@ -70,16 +78,16 @@ For the chosen analyst, output a single ready-to-use block the operator can work
 6. **The Hindsight Discovery paste** — the triage instruction the operator appends under the
    pasted Grok+Perplexity output: archetype triage filters, `DISPATCH_CAP=5`, skip-list,
    "dispatch the N best as WATCHING; PASS-record the rest with rationale," LONG only.
-   Three hard rules for this block (each learned from the 2026-08-25 Catalyst run):
+   Two hard rules for this block (both learned from the 2026-08-25 Catalyst run):
    - **Skip-list = names currently HOLDING or WATCHING only.** Never write history claims
-     into the paste ("previously PASSED — only revisit if something material changed" reads
-     as a blanket ban and overrides the recycle path). The mode supplies history; the paste
-     supplies candidates.
-   - **Scoreboard rule, stated verbatim in the paste:** "For any candidate we have traded
-     before, weigh OUR realized P&L on the name, not the scout's outcome record. Approval
-     rate is not our scoreboard — MNKD's drug was approved and the position lost $345;
-     IONS counts as a scout 'win' and cost us $752."
-   - **Repeat the mode warning** from the section above, inside the paste.
+     into the paste. The seat's context supplies history — including past holds with our P&L
+     — and a hand-written history line overrides it.
+   - **Gate on two things, rank on the rest.** Hard-reject only on the fence (cap + industry)
+     and on "has a primary-sourced forward date." Everything else — event type, downside size,
+     date spread, our record on the name — is *ranking*. The 08-25 paste ANDed eight gates and
+     returned zero from a pool that contained at least three in-fence names, which is the
+     failure the playbook's own two-filters-max rule already warned about. Include a floor:
+     *if fewer than three clear, dispatch the best available and say what you relaxed.*
 7. **Standing reminder** — for paper seats: discovery makes the *test fair* (good candidates in);
    it does not make the promotion call. The seat stays paper until it strings together a
    positive stretch.
