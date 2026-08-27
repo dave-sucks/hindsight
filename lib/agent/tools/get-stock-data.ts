@@ -15,6 +15,11 @@ import type { NewsItem } from "@/lib/agent/tool-types";
 import { checkUniverse } from "@/lib/agent/universe";
 import type { UniverseCheck } from "@/lib/agent/universe";
 import { fmp } from "@/lib/market-data/fmp";
+import {
+  getTickerHistory,
+  formatTickerHistory,
+  formatTickerHistoryShort,
+} from "@/lib/agent/context-bundle";
 
 export const getStockData = defineTool({
   description:
@@ -46,6 +51,37 @@ export const getStockData = defineTool({
     }
 
     const doTechnicals = include_technicals !== false;
+
+    // ── Our history with THIS name, attached to the research call ────────
+    // This is the tool that runs on every candidate, so it is where "what
+    // happened last time we looked at this stock" belongs. Leaving it to a
+    // separate get_theses call the agent may or may not make is the exact
+    // shape of the 2026-08-25 failure: the triage graded 13 names, called
+    // no history tool at all, and scored them on a scout's public record
+    // instead of our own P&L.
+    //
+    // Covers what the book-level block cannot: names we researched and
+    // declined, or watched and dropped, without ever trading them.
+    // Fail-open — history is context, never a reason a data pull dies.
+    // Account-wide, not seat-only (principal's call, 2026-08-27): a name is
+    // a name. AKAM lost $396 on Catalyst and $675 on Momentum independently
+    // and neither run could see the other's result. Other seats' trades are
+    // labelled with the seat so a different mandate reads as evidence
+    // rather than a verdict.
+    const priorCoverage = ctx.analystId
+      ? await getTickerHistory({
+          analystId: ctx.analystId,
+          accountId: ctx.accountId,
+          ticker,
+        })
+      : null;
+    const priorCoverageNote = priorCoverage
+      ? formatTickerHistory(priorCoverage)
+      : null;
+    // The chat row gets a one-liner; the full paragraph goes to the model.
+    const priorCoverageChip = priorCoverage
+      ? formatTickerHistoryShort(priorCoverage)
+      : null;
 
     // Candle data comes from Alpaca only (with `feed: "iex"`). Finnhub
     // `/stock/candle` requires the paid plan (403 on basic) and FMP
@@ -256,8 +292,14 @@ export const getStockData = defineTool({
     }
 
     return {
-      summary: sParts.join(". ") + ".",
+      // Prior coverage leads the summary. The model reads this line before
+      // it reads the price — which is the point.
+      summary:
+        (priorCoverageNote ? `[Our history with $${ticker}] ${priorCoverageNote} ` : "") +
+        sParts.join(". ") +
+        ".",
       data: {
+        ...(priorCoverageNote ? { priorCoverage: priorCoverageNote } : {}),
         quote: quoteData,
         company: companyData,
         financials: financialsData,
@@ -267,7 +309,15 @@ export const getStockData = defineTool({
         news: recentNews,
         ...(universeCheck ? { universeCheck } : {}),
         ...(errors.length > 0 ? { apiErrors: errors } : {}),
-        tickers: [{ ticker, tag: "Research", summary: tickerSummaryParts.join(". ") }],
+        tickers: [
+          {
+            ticker,
+            tag: priorCoverageChip ? "Prior coverage" : "Research",
+            summary: priorCoverageChip
+              ? `${priorCoverageChip} ${tickerSummaryParts.join(". ")}`
+              : tickerSummaryParts.join(". "),
+          },
+        ],
       },
       sources: [
         { provider: "Finnhub", title: `${ticker} Real-Time Quote`, url: "https://finnhub.io/docs/api/quote" },

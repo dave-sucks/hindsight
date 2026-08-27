@@ -132,12 +132,12 @@ describe("titleSegments — the rest of the grammar", () => {
       titleSegments(
         row({
           type: "TRIGGER_FIRED",
-          summary: "Gives back 12% from the high — exit position",
+          summary: "Trailing 12% from high — exit position",
         }),
       ),
     ).toEqual({
       primary: "Trigger:",
-      secondary: "Gives back 12% from the high",
+      secondary: "Trailing 12% from high",
     });
   });
 
@@ -274,7 +274,7 @@ describe("buildTimeline", () => {
     id: "f1",
     type: "TRIGGER_FIRED",
     triggerId: "t1",
-    summary: "Gives back 12% from the high — exit position",
+    summary: "Trailing 12% from high — exit position",
     timestamp: "2026-08-18T11:10:00Z",
   });
   const answer = row({
@@ -426,7 +426,7 @@ describe("buildTimeline", () => {
 describe("trigger episodes — one sentence, fire + decision", () => {
   const exitFire = row({
     type: "TRIGGER_FIRED",
-    summary: "Gives back 12% from the high — exit position",
+    summary: "Trailing 12% from high — exit position",
   });
   const entryFire = row({
     type: "TRIGGER_FIRED",

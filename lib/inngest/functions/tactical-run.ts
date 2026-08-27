@@ -340,27 +340,19 @@ export const tacticalRun = inngest.createFunction(
         }),
       );
       if (queuedClose) {
-        // Folding into the queued proposal suppresses the DISPATCH, never the
-        // record. The condition is still true — that is the whole content of
-        // the standing-order ruling — and a fire that leaves no trace is the
-        // exact failure this project exists to end. Without this the activity
-        // log shows one proposal on 8/20 and silence through 8/24 while the
-        // floor was breached every single day.
-        await step.run("record-folded-fire", async () =>
-          writeThesisUpdate({
-            thesisId: fired.thesisId,
-            type: "TRIGGER_FIRED",
-            summary: `${describeTriggerFire(trigger)} — folded into the ${queuedClose.status === "AWAITING_APPROVAL" ? "sell awaiting your approval" : "sell already submitted"}`,
-            rationale:
-              `The condition is still true, so it fired again. No second ` +
-              `proposal was raised because one is already open on this ` +
-              `position — acting on that one is what resolves this.`,
-            triggerId: trigger.id,
-            signalIds: [],
-            runId: null,
-            priceAtTime: fired.firedPrice ?? null,
-          }),
-        );
+        // A protective trigger's whole job is to have a sell proposal open on
+        // this position. Proposal open = job done = SILENT: no run, no
+        // activity row, no DB write. The pending proposal is the record that
+        // the condition is true — re-announcing it every 5-minute tick buried
+        // the EME/MU activity feeds under hundreds of identical rows
+        // (2026-08-26).
+        //
+        // Visibility is guaranteed by the proposal lifecycle, not by logging:
+        // an unactioned proposal expires after 24h, and the next tick lands
+        // here with NO queued close and raises a fresh one — the daily nag
+        // the standing-order ruling requires, until the human sells or edits
+        // the level. (The 8/20→8/24 silent-breach failure was the re-propose
+        // path not doing that; it does now.)
         return {
           skipped: "close-already-queued",
           reason: queuedClose.status,
@@ -602,7 +594,7 @@ export const tacticalRun = inngest.createFunction(
               thesis.direction,
             ) ?? undefined
           : undefined;
-      // Human phrase for the fired trigger ("Gives back 8% from the high"),
+      // Human phrase for the fired trigger ("Trailing 8% from high"),
       // threaded alongside the tag so the close tools can name WHY the label
       // was corrected in the audit note they write (DAV-192).
       const protectiveExitTriggerLabel = protectiveExitReason

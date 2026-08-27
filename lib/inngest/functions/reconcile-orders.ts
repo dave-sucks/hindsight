@@ -285,6 +285,14 @@ async function applyFillByIntent(
             data: { avgCost: fillPrice, quantity: fillQty, initialQty: fillQty },
           });
         }
+        // The paired thesis's buy price becomes a fact here — what the fill
+        // actually cost. The approval seam never stamps it: at approve time
+        // promoteThesisOnApproval flips status and regenerates triggers only,
+        // so the column keeps the watching-era planned price forever (PBH
+        // planned $51.68 / paid $52.975, ANET planned $186.45 / paid $183.83,
+        // found 2026-08-26). place_trade's synchronous-fill path stamps it
+        // inline; this is the same stamp for fills that land via reconcile.
+        await restampThesisEntryOnFill(tx, position.analystId, position.symbol, fillPrice);
         await tx.positionEvent.create({
           data: {
             positionId: position.id,
@@ -393,6 +401,9 @@ async function applyFillByIntent(
             priceAt: fillPrice,
           },
         });
+        // An add moves what the position cost on average — keep the thesis
+        // buy price on the same number the protective math measures from.
+        await restampThesisEntryOnFill(tx, position.analystId, position.symbol, newAvg);
         break;
       }
 
@@ -404,6 +415,60 @@ async function applyFillByIntent(
     }
 
     return true;
+  });
+}
+
+type TransactionClient = Omit<
+  typeof prisma,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
+>;
+
+/**
+ * Stamp the paired HOLDING thesis's buy price with what the fill actually
+ * cost. Once you own it, the buy price is a fact, not a plan — the sheet and
+ * the agent's read of the thesis must show the paid number, the same one the
+ * protective math measures from (the evaluator reads Position.avgCost live).
+ *
+ * Idempotent and fail-soft: no matching thesis, or a price already within a
+ * cent, writes nothing.
+ */
+async function restampThesisEntryOnFill(
+  tx: TransactionClient,
+  analystId: string,
+  symbol: string,
+  paidPrice: number,
+): Promise<void> {
+  const thesis = await tx.thesis.findFirst({
+    where: {
+      ticker: symbol,
+      status: "HOLDING",
+      researchRun: { agentConfigId: analystId },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, ticker: true, entryPrice: true },
+  });
+  if (!thesis) return;
+  if (thesis.entryPrice != null && Math.abs(thesis.entryPrice - paidPrice) <= 0.01) {
+    return;
+  }
+  await tx.thesis.update({
+    where: { id: thesis.id },
+    data: { entryPrice: paidPrice },
+  });
+  await tx.thesisUpdate.create({
+    data: {
+      thesisId: thesis.id,
+      type: "UPDATED",
+      summary: `${thesis.ticker} buy price set to what was paid — $${paidPrice.toFixed(2)}`,
+      rationale:
+        thesis.entryPrice != null
+          ? `The buy filled at $${paidPrice.toFixed(2)}; the thesis carried the planned $${thesis.entryPrice.toFixed(2)}. Once the stock is owned the buy price is what was paid, not the plan.`
+          : `The buy filled at $${paidPrice.toFixed(2)} and the thesis carried no buy price.`,
+      fieldChanges: {
+        entryPrice: { from: thesis.entryPrice, to: paidPrice },
+      },
+      priceAtTime: paidPrice,
+    },
   });
 }
 

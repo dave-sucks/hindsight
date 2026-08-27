@@ -25,6 +25,13 @@ import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import type { AgentMode } from "@/lib/agent/modes";
+import { getResearchedTickersForRun } from "@/lib/agent/researched-tickers";
+import {
+  getMoneyContext,
+  getBookContext,
+  formatMoneyContextBlock,
+  formatBookContextBlock,
+} from "@/lib/agent/context-bundle";
 import { suggestConfigTool } from "@/lib/agent/tools/suggest-config";
 import { suggestPodcastConfigTool } from "@/lib/agent/tools/suggest-podcast-config";
 import { PODCAST_BUILDER_SYSTEM_PROMPT } from "@/lib/podcast/builder-prompt";
@@ -294,6 +301,10 @@ export async function POST(
       resolvedAnalystId = analystId;
 
       let scopedAnalyst: Parameters<typeof buildPrincipalSystemPrompt>[0]["scopedAnalyst"] = null;
+      // Context follows the SCOPE, not the mode name (DAV-207 standing law).
+      // Rendered below only when an analyst is actually pinned.
+      let scopedMoneyBlock: string | null = null;
+      let scopedBookBlock: string | null = null;
       if (resolvedAnalystId) {
         const ac = await prisma.agentConfig.findFirst({
           where: { id: resolvedAnalystId, accountId },
@@ -358,6 +369,36 @@ export async function POST(
           maxPositionSize: ac.maxPositionSize ? Number(ac.maxPositionSize) : 0,
           maxOpenPositions: ac.maxOpenPositions,
         };
+
+        // ── The seat's money + book (DAV-207 Move 1) ──────────────────────
+        // A chat pinned to an analyst is that analyst's desk: it must open
+        // with the same context the daily run opens with. Both calls are
+        // fail-open — a vendor outage degrades the prompt and nothing else.
+        //
+        // 2026-08-25: a Catalyst triage run in this exact scope graded 13
+        // candidates without ever calling get_theses or
+        // get_portfolio_context, scored them on the scout's approval record
+        // instead of our P&L, and wrote 20 PASS rows. A tool the agent MAY
+        // call is not context — hand it over.
+        try {
+          const [money, book] = await Promise.all([
+            getMoneyContext({
+              userId: user.id,
+              tradingEnvironment: ac.tradingEnvironment,
+              minPositionSize: ac.minPositionSize,
+              maxPositionSize: ac.maxPositionSize,
+              realMaxPosition: ac.realMaxPosition,
+            }),
+            getBookContext({
+              analystId: ac.id,
+              environment: ac.tradingEnvironment,
+            }),
+          ]);
+          scopedMoneyBlock = formatMoneyContextBlock(money) || null;
+          scopedBookBlock = formatBookContextBlock(book) || null;
+        } catch {
+          /* fail-open — context can never be why a chat dies */
+        }
         // Create or reuse a PRINCIPAL_CHAT ResearchRun for this scoped
         // session. Account-scoped: only reuse runs owned by THIS account.
         // Scope-flip mid-chat invalidates the runId (different agentConfig).
@@ -491,7 +532,11 @@ export async function POST(
         }
       }
 
-      systemPrompt = buildPrincipalSystemPrompt({ scopedAnalyst });
+      systemPrompt = buildPrincipalSystemPrompt({
+        scopedAnalyst,
+        moneyBlock: scopedMoneyBlock,
+        bookBlock: scopedBookBlock,
+      });
 
     } else if (agentMode === "podcast-builder") {
       systemPrompt = PODCAST_BUILDER_SYSTEM_PROMPT;
@@ -693,6 +738,11 @@ export async function POST(
             ? "PODCAST_SEGMENT_RUN"
             : undefined;
 
+    // Tickers this run already researched in EARLIER TURNS. A chat is one
+    // request per turn, so the in-request tracker inside createResearchTools
+    // starts empty every time — see researched-tickers.ts for what that cost.
+    const priorResearchedTickers = await getResearchedTickersForRun(runId);
+
     const allTools = createResearchTools({
       runId: runId || agentMode,
       userId: user.id,
@@ -716,7 +766,7 @@ export async function POST(
       minConfidence: (agentConfig.minConfidence as number) ?? undefined,
       alpacaCreds,
       runEnvironment,
-    });
+    }, { researchedTickers: priorResearchedTickers });
 
     // Filter by allowlist if mode restricts tools
     let filteredTools = modeConfig.toolAllowlist

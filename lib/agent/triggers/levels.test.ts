@@ -4,6 +4,7 @@ import {
   dropRedundantInherited,
   splitFiresByLevel,
   carryOverDroppedFireState,
+  adoptStoredTriggerIdentity,
 } from "./levels";
 import { inheritableDefaultLadder, DEFAULT_LADDER_IDS } from "./defaults";
 import { triggerBucket } from "./bucket";
@@ -520,5 +521,97 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
       state: "HELD",
     });
     expect(dropRedundantInherited([cadence(7, "copy")], inherited)).toEqual([]);
+  });
+});
+
+describe("adoptStoredTriggerIdentity — unchanged rungs keep their identity", () => {
+  const enter = (level: number, id?: string, over?: Partial<Trigger>) =>
+    rung({
+      id,
+      predicate: { kind: "PRICE_ABOVE", level },
+      action: "ENTER",
+      ...over,
+    });
+
+  it("an unchanged rung resent with a fresh id re-adopts the stored id (the ABT 2026-08-26 re-fire)", () => {
+    const stored = enter(103, "stored-id", {
+      lastFiredAt: "2026-08-26T13:31:00.000Z",
+      source: "AGENT",
+    });
+    const resent = enter(103, "fresh-mint");
+
+    const [adopted] = adoptStoredTriggerIdentity([resent], [stored]);
+    expect(adopted.id).toBe("stored-id");
+  });
+
+  it("a rung whose value changed keeps its fresh identity — a moved level is a new decision", () => {
+    const stored = enter(103, "stored-id", { lastFiredAt: "2026-08-26T13:31:00.000Z" });
+    const moved = enter(112, "fresh-mint");
+
+    const [adopted] = adoptStoredTriggerIdentity([moved], [stored]);
+    expect(adopted.id).toBe("fresh-mint");
+  });
+
+  it("a rung resent under its real id is untouched", () => {
+    const stored = enter(103, "stored-id");
+    const edited = enter(112, "stored-id"); // deliberate in-place edit
+
+    const [kept] = adoptStoredTriggerIdentity([edited], [stored]);
+    expect(kept.id).toBe("stored-id");
+    expect((kept.predicate as { level: number }).level).toBe(112);
+  });
+
+  it("two identical incoming rungs cannot both adopt the same stored id", () => {
+    const stored = enter(103, "stored-id");
+    const [a, b] = adoptStoredTriggerIdentity(
+      [enter(103, "mint-a"), enter(103, "mint-b")],
+      [stored],
+    );
+    expect(a.id).toBe("stored-id");
+    expect(b.id).toBe("mint-b");
+  });
+
+  it("a stored id already claimed by the payload is not adoptable by content", () => {
+    // The payload keeps "stored-id" (edited to 112) AND adds a new rung at
+    // the old value 103. The new rung must not steal "stored-id".
+    const stored = enter(103, "stored-id");
+    const [edited, added] = adoptStoredTriggerIdentity(
+      [enter(112, "stored-id"), enter(103, "mint")],
+      [stored],
+    );
+    expect(edited.id).toBe("stored-id");
+    expect(added.id).toBe("mint");
+  });
+
+  it("matches on values, not key order", () => {
+    const stored = rung({
+      id: "stored-id",
+      predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" },
+      action: "REVIEW",
+    });
+    const resent = rung({
+      id: "fresh-mint",
+      predicate: { direction: "UP", pct: 10, kind: "GAIN_FROM_ENTRY" } as Trigger["predicate"],
+      action: "REVIEW",
+    });
+
+    const [adopted] = adoptStoredTriggerIdentity([resent], [stored]);
+    expect(adopted.id).toBe("stored-id");
+  });
+
+  it("everything except the id is left alone", () => {
+    const stored = enter(103, "stored-id", {
+      lastFiredAt: "2026-08-26T13:31:00.000Z",
+      source: "PRINCIPAL",
+    });
+    const resent = enter(103, "fresh-mint", { rationale: "reworded by the agent" });
+
+    const [adopted] = adoptStoredTriggerIdentity([resent], [stored]);
+    // Identity comes back; the stamps themselves are the carry-over maps'
+    // job in update_thesis, keyed by the id this restored.
+    expect(adopted.id).toBe("stored-id");
+    expect(adopted.rationale).toBe("reworded by the agent");
+    expect(adopted.lastFiredAt).toBeUndefined();
+    expect(adopted.source).toBeUndefined();
   });
 });

@@ -63,6 +63,17 @@ export interface DiscoveryPromptArgs {
    * Optional/fail-open: null renders the block's degraded form.
    */
   money?: import("@/lib/agent/context-bundle").MoneyContext | null;
+  /**
+   * The seat's book — what it holds, watches, and has ALREADY TRADED, with
+   * our realized P&L per name. Pre-rendered by formatBookContextBlock.
+   *
+   * Why discovery needs it: `existingTickers` above is an exclusion list,
+   * and past holds were not in it or anywhere else — so a name this seat
+   * used to own was reachable by nothing. XENE (+$966), ARQT (+$845) and
+   * VRDN (+$445) went invisible the day they filled. A prior holding with
+   * a fresh dated catalyst is a lead, not a used-up name.
+   */
+  bookBlock?: string | null;
 }
 
 export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
@@ -207,6 +218,7 @@ which surfaced candidates fit your edge — not for you to re-filter.
   Market cap:   ${capMin} – ${capMax}
   Hard exclusions: ${exclusions}
   Already covered (the tools hide these): ${existingList}
+${args.bookBlock ? `\n${args.bookBlock}\n` : ""}
 
 ═══════════════════════════════════════════════════════════════════
 SCOPE — what this run IS and IS NOT
