@@ -199,7 +199,11 @@ describe("formatBookContextBlock", () => {
 
 // ── Per-ticker history (what get_stock_data attaches) ────────────────────
 
-import { formatTickerHistory, type TickerHistory } from "./context-bundle";
+import {
+  formatTickerHistory,
+  heldDaysOf,
+  type TickerHistory,
+} from "./context-bundle";
 
 const noHistory: TickerHistory = {
   ticker: "AGIO",
@@ -208,6 +212,14 @@ const noHistory: TickerHistory = {
   openPosition: null,
   loaded: true,
 };
+
+describe("heldDaysOf", () => {
+  it("counts calendar days, and returns null when either end is missing", () => {
+    expect(heldDaysOf(new Date("2026-06-17"), new Date("2026-07-16"))).toBe(29);
+    expect(heldDaysOf(null, new Date("2026-07-16"))).toBeNull();
+    expect(heldDaysOf(new Date("2026-07-16"), null)).toBeNull();
+  });
+});
 
 describe("formatTickerHistory", () => {
   it("renders nothing for a genuinely new name", () => {
@@ -225,8 +237,28 @@ describe("formatTickerHistory", () => {
       ...noHistory,
       ticker: "XENE",
       trades: [
-        { closedAt: new Date("2026-08-10"), realizedPnlUSD: -586, returnPct: -8.5, outcome: "LOSS", closeReason: "MANUAL" },
-        { closedAt: new Date("2026-07-16"), realizedPnlUSD: 966, returnPct: 24.1, outcome: "WIN", closeReason: "STOP" },
+        {
+          openedAt: new Date("2026-07-17"),
+          closedAt: new Date("2026-08-10"),
+          heldDays: 24,
+          entryPrice: 68.84,
+          exitPrice: 62.98,
+          realizedPnlUSD: -586,
+          returnPct: -8.5,
+          outcome: "LOSS",
+          closeReason: "MANUAL",
+        },
+        {
+          openedAt: new Date("2026-06-17"),
+          closedAt: new Date("2026-07-16"),
+          heldDays: 29,
+          entryPrice: 53.36,
+          exitPrice: 66.24,
+          realizedPnlUSD: 966,
+          returnPct: 24.1,
+          outcome: "WIN",
+          closeReason: "STOP",
+        },
       ],
       thesis: {
         id: "th_1",
@@ -241,6 +273,12 @@ describe("formatTickerHistory", () => {
     })!;
     expect(out).toContain("WE HAVE TRADED THIS BEFORE — 2 closed positions");
     expect(out).toContain("+$966 (+24.1%)");
+    // "when we bought and when we sold" has to be answerable inline.
+    expect(out).toContain("bought 2026-06-17 @ $53.36");
+    expect(out).toContain("sold 2026-07-16 @ $66.24 (held 29d)");
+    // And the deep detail has to be one named call away, not a guess.
+    expect(out).toContain('get_theses(tickers: ["XENE"]');
+    expect(out).toContain("include_history: true");
     expect(out).toContain("−$586 (-8.5%)");
     expect(out).toContain("RETIRED (SOLD) LONG");
     expect(out).toContain("XENE reaches $80–$100");

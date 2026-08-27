@@ -440,7 +440,12 @@ export function formatBookContextBlock(b: BookContext): string {
  * ──────────────────────────────────────────────────────────────────────── */
 
 export interface TickerTrade {
+  openedAt: Date | null;
   closedAt: Date | null;
+  /** Calendar days held, when both ends are known. */
+  heldDays: number | null;
+  entryPrice: number | null;
+  exitPrice: number | null;
   realizedPnlUSD: number | null;
   returnPct: number | null;
   outcome: string | null;
@@ -514,6 +519,7 @@ export async function getTickerHistory(args: {
           realizedPnl: true,
           outcome: true,
           closeReason: true,
+          openedAt: true,
           closedAt: true,
         },
       }),
@@ -539,7 +545,11 @@ export async function getTickerHistory(args: {
           }
         : null,
       trades: closed.map((c) => ({
+        openedAt: c.openedAt,
         closedAt: c.closedAt,
+        heldDays: heldDaysOf(c.openedAt, c.closedAt),
+        entryPrice: c.avgCost,
+        exitPrice: c.closePrice,
         realizedPnlUSD: c.realizedPnl,
         returnPct: returnPctOf(c),
         outcome: c.outcome,
@@ -560,6 +570,18 @@ export async function getTickerHistory(args: {
     );
     return unread;
   }
+}
+
+/** Pure: calendar days between entry and exit, when both are known. */
+export function heldDaysOf(
+  openedAt: Date | null,
+  closedAt: Date | null,
+): number | null {
+  if (!openedAt || !closedAt) return null;
+  const days = Math.round(
+    (closedAt.getTime() - openedAt.getTime()) / 86_400_000,
+  );
+  return Number.isFinite(days) && days >= 0 ? days : null;
 }
 
 /**
@@ -586,12 +608,18 @@ export function formatTickerHistory(h: TickerHistory): string | null {
 
   if (h.trades.length) {
     const traded = h.trades
-      .map(
-        (t) =>
-          `${fmtDate(t.closedAt)} ${t.realizedPnlUSD != null ? fmtUSD(t.realizedPnlUSD) : "P&L unknown"}${
-            t.returnPct != null ? ` (${t.returnPct > 0 ? "+" : ""}${t.returnPct}%)` : ""
-          } exit ${t.closeReason ?? "—"}`,
-      )
+      .map((t) => {
+        const bought = `bought ${fmtDate(t.openedAt)}${t.entryPrice != null ? ` @ $${t.entryPrice.toFixed(2)}` : ""}`;
+        const sold = `sold ${fmtDate(t.closedAt)}${t.exitPrice != null ? ` @ $${t.exitPrice.toFixed(2)}` : ""}`;
+        const held = t.heldDays != null ? ` (held ${t.heldDays}d)` : "";
+        const pnl =
+          t.realizedPnlUSD != null ? fmtUSD(t.realizedPnlUSD) : "P&L unknown";
+        const ret =
+          t.returnPct != null
+            ? ` (${t.returnPct > 0 ? "+" : ""}${t.returnPct}%)`
+            : "";
+        return `${bought}, ${sold}${held} → ${pnl}${ret}, exit ${t.closeReason ?? "—"}`;
+      })
       .join("; ");
     parts.push(
       `WE HAVE TRADED THIS BEFORE — ${h.trades.length} closed position${h.trades.length === 1 ? "" : "s"}: ${traded}.`,
@@ -614,6 +642,9 @@ export function formatTickerHistory(h: TickerHistory): string | null {
     if (t.coreBelief) {
       parts.push(`What we believed: "${t.coreBelief.trim()}"`);
     }
+    parts.push(
+      `Full prior thesis — assumptions, invalidation conditions, levels, triggers and the whole audit trail — is available: get_theses(tickers: ["${h.ticker}"], status: ["${t.status}"], include_history: true).`,
+    );
   }
 
   parts.push(
