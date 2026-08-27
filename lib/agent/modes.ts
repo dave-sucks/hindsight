@@ -595,6 +595,9 @@ export function buildPrincipalSystemPrompt(opts: {
     industries: string[];
     themes: string[];
     feeds: string[];
+    /** Universe cap band in dollars. null = unbounded on that end. */
+    marketCapMin?: number | null;
+    marketCapMax?: number | null;
     watchlist: string[];
     exclusionList: string[];
     minConfidence: number;
@@ -623,6 +626,11 @@ This chat is pinned to one analyst. Every write tool (place_trade, close_positio
   • Industries: ${scope.industries.join(", ") || "—"}
   • Themes: ${scope.themes.join(", ") || "—"}
   • Feeds: ${scope.feeds.join(", ") || "—"}
+  • Market cap band: ${
+    scope.marketCapMin == null && scope.marketCapMax == null
+      ? "no bound"
+      : `${scope.marketCapMin != null ? `$${(scope.marketCapMin / 1e9).toFixed(scope.marketCapMin % 1e9 === 0 ? 0 : 1)}B` : "no floor"} – ${scope.marketCapMax != null ? `$${(scope.marketCapMax / 1e9).toFixed(scope.marketCapMax % 1e9 === 0 ? 0 : 1)}B` : "no ceiling"}`
+  } — this is a HARD fence. A name outside it cannot be traded by this seat, so it is not a candidate however good the setup reads. Nothing downstream rejects an out-of-band thesis for you: record_thesis has no market-cap check, so an out-of-band name minted here becomes a watchlist item that can never be acted on.
   • Watchlist: ${scope.watchlist.join(", ") || "(empty)"}
   • Exclusion list: ${scope.exclusionList.join(", ") || "(empty)"}
   • Sizing: minConfidence ${scope.minConfidence} · maxPositionSize $${scope.maxPositionSize} · maxOpenPositions ${scope.maxOpenPositions}
