@@ -413,12 +413,214 @@ export function formatBookContextBlock(b: BookContext): string {
       "  • A name sold on price while the reasoning held is the strongest re-entry",
       "    candidate of all. Treat it as a lead, not as history.",
       "  • A losing name is not banned either — say what is different this time, then judge it.",
-      "  • The FULL prior thesis for any name above still exists — what we believed, the",
-      "    conviction, the levels, why it was retired. Pull it with",
-      "    get_theses(tickers: [\"TICKER\"], status: [\"RETIRED\", \"PASSED\"]) before you judge a",
-      "    name we have already traded. You are not starting from scratch on these.",
+      "  • You do not have to ask for the detail: get_stock_data on any ticker returns our",
+      "    prior thesis and trade history for that name automatically, including names we",
+      "    researched and never traded. You are not starting from scratch on these.",
     );
   }
 
   return lines.join("\n");
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Third slice: PER-TICKER HISTORY — what happened last time we looked at
+ * this specific name.
+ *
+ * The book block above is a front-loaded summary, and a summary has two
+ * limits that matter here. It is capped (25 closes), and it is derived from
+ * POSITIONS — so a name we researched and declined, or watched and dropped
+ * without ever trading, appears in it nowhere. NUVL, JAZZ, ZYME and RARE
+ * are all invisible to it.
+ *
+ * More importantly, "the agent can call get_theses for the rest" is the
+ * same shape as the bug this whole change exists to fix: a tool the agent
+ * MAY call is not context. So the history attaches to the tool that
+ * actually runs on every candidate at research time — get_stock_data —
+ * and arrives whether or not the agent thought to ask.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+export interface TickerTrade {
+  closedAt: Date | null;
+  realizedPnlUSD: number | null;
+  returnPct: number | null;
+  outcome: string | null;
+  closeReason: string | null;
+}
+
+export interface TickerHistory {
+  ticker: string;
+  /** Most recent thesis on this ticker for this seat — ANY status. */
+  thesis: {
+    id: string;
+    status: string;
+    direction: string | null;
+    conviction: string | null;
+    coreBelief: string | null;
+    retiredReason: string | null;
+    catalystDate: Date | null;
+    researchUpdatedAt: Date | null;
+  } | null;
+  /** Closed positions on this ticker, most recent first. */
+  trades: TickerTrade[];
+  /** Open position on this ticker right now, if any. */
+  openPosition: { quantity: number; avgCost: number; openedAt: Date | null } | null;
+  /** False when the lookup failed — unread is not "no history". */
+  loaded: boolean;
+}
+
+export async function getTickerHistory(args: {
+  analystId: string;
+  ticker: string;
+}): Promise<TickerHistory> {
+  const ticker = args.ticker.toUpperCase();
+  const unread: TickerHistory = {
+    ticker,
+    thesis: null,
+    trades: [],
+    openPosition: null,
+    loaded: false,
+  };
+
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const [thesis, closed, open] = await Promise.all([
+      prisma.thesis.findFirst({
+        where: { ticker, researchRun: { agentConfigId: args.analystId } },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          status: true,
+          direction: true,
+          conviction: true,
+          coreBelief: true,
+          retiredReason: true,
+          catalystDate: true,
+          researchUpdatedAt: true,
+        },
+      }),
+      prisma.position.findMany({
+        where: {
+          analystId: args.analystId,
+          symbol: ticker,
+          status: "CLOSED",
+          closeReason: { notIn: ["RECONCILE_DUPLICATE", "PROMOTED"] },
+        },
+        orderBy: { closedAt: "desc" },
+        take: 5,
+        select: {
+          direction: true,
+          avgCost: true,
+          closePrice: true,
+          realizedPnl: true,
+          outcome: true,
+          closeReason: true,
+          closedAt: true,
+        },
+      }),
+      prisma.position.findFirst({
+        where: { analystId: args.analystId, symbol: ticker, status: "OPEN" },
+        select: { quantity: true, avgCost: true, openedAt: true },
+      }),
+    ]);
+
+    return {
+      ticker,
+      loaded: true,
+      thesis: thesis
+        ? {
+            id: thesis.id,
+            status: String(thesis.status),
+            direction: thesis.direction,
+            conviction: thesis.conviction,
+            coreBelief: thesis.coreBelief,
+            retiredReason: thesis.retiredReason,
+            catalystDate: thesis.catalystDate,
+            researchUpdatedAt: thesis.researchUpdatedAt,
+          }
+        : null,
+      trades: closed.map((c) => ({
+        closedAt: c.closedAt,
+        realizedPnlUSD: c.realizedPnl,
+        returnPct: returnPctOf(c),
+        outcome: c.outcome,
+        closeReason: c.closeReason,
+      })),
+      openPosition: open
+        ? {
+            quantity: open.quantity,
+            avgCost: open.avgCost,
+            openedAt: open.openedAt,
+          }
+        : null,
+    };
+  } catch (err) {
+    console.warn(
+      `[context-bundle] ticker history FAILED for ${ticker}:`,
+      err instanceof Error ? err.message : err,
+    );
+    return unread;
+  }
+}
+
+/**
+ * Pure: our history with one name, as prose the agent reads inline.
+ *
+ * Returns null when there is genuinely nothing (a name we have never
+ * touched) OR when the lookup failed — in both cases the caller should say
+ * nothing rather than assert "no prior coverage," which would be a false
+ * statement in the failure case.
+ */
+export function formatTickerHistory(h: TickerHistory): string | null {
+  if (!h.loaded) return null;
+  if (!h.thesis && !h.trades.length && !h.openPosition) return null;
+
+  const parts: string[] = [];
+
+  if (h.openPosition) {
+    parts.push(
+      `WE HOLD IT NOW: ${h.openPosition.quantity} sh @ $${h.openPosition.avgCost.toFixed(2)}${
+        h.openPosition.openedAt ? ` since ${fmtDate(h.openPosition.openedAt)}` : ""
+      }.`,
+    );
+  }
+
+  if (h.trades.length) {
+    const traded = h.trades
+      .map(
+        (t) =>
+          `${fmtDate(t.closedAt)} ${t.realizedPnlUSD != null ? fmtUSD(t.realizedPnlUSD) : "P&L unknown"}${
+            t.returnPct != null ? ` (${t.returnPct > 0 ? "+" : ""}${t.returnPct}%)` : ""
+          } exit ${t.closeReason ?? "—"}`,
+      )
+      .join("; ");
+    parts.push(
+      `WE HAVE TRADED THIS BEFORE — ${h.trades.length} closed position${h.trades.length === 1 ? "" : "s"}: ${traded}.`,
+    );
+  }
+
+  if (h.thesis) {
+    const t = h.thesis;
+    const state =
+      t.status === "RETIRED" && t.retiredReason
+        ? `RETIRED (${t.retiredReason})`
+        : t.status;
+    parts.push(
+      `LAST THESIS (${t.id}): ${state}${t.direction ? ` ${t.direction}` : ""}${
+        t.conviction ? `, conviction ${t.conviction}` : ""
+      }${t.researchUpdatedAt ? `, researched ${fmtDate(t.researchUpdatedAt)}` : ""}${
+        t.catalystDate ? `, catalyst was ${fmtDate(t.catalystDate)}` : ""
+      }.`,
+    );
+    if (t.coreBelief) {
+      parts.push(`What we believed: "${t.coreBelief.trim()}"`);
+    }
+  }
+
+  parts.push(
+    h.trades.length || h.openPosition
+      ? "Judge this name on what the position actually made or lost us above — not on whether the event resolved well in the world, and not on anyone's public record. If the setup is genuinely new, say what changed since last time."
+      : "We researched this name before without trading it. Say what is different now before reaching the same conclusion or a different one.",
+  );
+
+  return parts.join(" ");
 }

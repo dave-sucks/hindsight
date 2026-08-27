@@ -183,7 +183,7 @@ describe("formatBookContextBlock", () => {
     expect(out).toMatch(/approved while the trade loses money/i);
     // The prior thesis is still in the database — point at it rather than
     // letting the agent re-underwrite a name we already researched.
-    expect(out).toContain('status: ["RETIRED", "PASSED"]');
+    expect(out).toContain("get_stock_data on any ticker returns our");
   });
 
   it("says so plainly when the seat genuinely holds nothing", () => {
@@ -194,5 +194,84 @@ describe("formatBookContextBlock", () => {
     // A DB outage must not tell an agent holding two live positions that it
     // holds none. Found by probing the real book against a dead connection.
     expect(formatBookContextBlock({ ...emptyBook, loaded: false })).toBe("");
+  });
+});
+
+// ── Per-ticker history (what get_stock_data attaches) ────────────────────
+
+import { formatTickerHistory, type TickerHistory } from "./context-bundle";
+
+const noHistory: TickerHistory = {
+  ticker: "AGIO",
+  thesis: null,
+  trades: [],
+  openPosition: null,
+  loaded: true,
+};
+
+describe("formatTickerHistory", () => {
+  it("renders nothing for a genuinely new name", () => {
+    expect(formatTickerHistory(noHistory)).toBeNull();
+  });
+
+  it("renders nothing when the lookup FAILED — unread is not 'no history'", () => {
+    // Asserting "no prior coverage" on a failed read would be a lie about a
+    // name we may have lost money on.
+    expect(formatTickerHistory({ ...noHistory, loaded: false })).toBeNull();
+  });
+
+  it("leads with our P&L on a name we traded, and carries the old belief", () => {
+    const out = formatTickerHistory({
+      ...noHistory,
+      ticker: "XENE",
+      trades: [
+        { closedAt: new Date("2026-08-10"), realizedPnlUSD: -586, returnPct: -8.5, outcome: "LOSS", closeReason: "MANUAL" },
+        { closedAt: new Date("2026-07-16"), realizedPnlUSD: 966, returnPct: 24.1, outcome: "WIN", closeReason: "STOP" },
+      ],
+      thesis: {
+        id: "th_1",
+        status: "RETIRED",
+        direction: "LONG",
+        conviction: "HIGH",
+        coreBelief: "XENE reaches $80–$100 within 12 months.",
+        retiredReason: "SOLD",
+        catalystDate: null,
+        researchUpdatedAt: new Date("2026-08-04"),
+      },
+    })!;
+    expect(out).toContain("WE HAVE TRADED THIS BEFORE — 2 closed positions");
+    expect(out).toContain("+$966 (+24.1%)");
+    expect(out).toContain("−$586 (-8.5%)");
+    expect(out).toContain("RETIRED (SOLD) LONG");
+    expect(out).toContain("XENE reaches $80–$100");
+    expect(out).toMatch(/not on whether the event resolved well in the world/);
+  });
+
+  it("surfaces a name we PASSED on but never traded — the case a position-derived list misses", () => {
+    const out = formatTickerHistory({
+      ...noHistory,
+      ticker: "NUVL",
+      thesis: {
+        id: "th_2",
+        status: "PASSED",
+        direction: null,
+        conviction: null,
+        coreBelief: null,
+        retiredReason: null,
+        catalystDate: null,
+        researchUpdatedAt: null,
+      },
+    })!;
+    expect(out).toContain("LAST THESIS (th_2): PASSED");
+    expect(out).toContain("researched this name before without trading it");
+  });
+
+  it("says plainly when we hold it right now", () => {
+    const out = formatTickerHistory({
+      ...noHistory,
+      ticker: "SRRK",
+      openPosition: { quantity: 93, avgCost: 53.895, openedAt: new Date("2026-08-13") },
+    })!;
+    expect(out).toContain("WE HOLD IT NOW: 93 sh @ $53.90 since 2026-08-13");
   });
 });
