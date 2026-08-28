@@ -28,6 +28,7 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
+import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 
 export async function GET(
   _req: Request,
@@ -64,7 +65,7 @@ export async function GET(
       targetSizePct: true,
       scalingPlan: true,
       catalystDate: true,
-      nextReviewAt: true,
+      lastReviewedAt: true,
       triggers: true,
       // Fire bookkeeping for INHERITED rungs — resolveThesisLadder overlays
       // it so the sheet's "Fired …" line reads the same field at every level.
@@ -289,7 +290,15 @@ export async function GET(
     targetSizePct: thesis.targetSizePct,
     scalingPlan: thesis.scalingPlan,
     catalystDate: thesis.catalystDate,
-    nextReviewAt: thesis.nextReviewAt,
+    // Derived at read time from the last actual look + the cadence on the
+    // resolved ladder (DAV-221). Null = no scheduled review.
+    reviewDueAt: derivedNextReviewAt({
+      status: thesis.status,
+      lastReviewedAt: thesis.lastReviewedAt,
+      createdAt: thesis.createdAt,
+      triggers,
+      horizon: thesis.horizon,
+    }),
     triggers,
     // Owning analyst — the trigger section deep-links an ANALYST-level rung
     // back to the analyst that owns it ("edit it where it lives").

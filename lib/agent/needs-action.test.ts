@@ -50,14 +50,13 @@ const baseThesis = {
   // accidentally tripping the seed discriminator.
   direction: "LONG" as string | null,
   createdAt: new Date("2026-04-01T00:00:00Z"),
-  nextReviewAt: null as Date | null,
   lastReviewedAt: null as Date | null,
 };
 
 /**
  * "Review every 7 days" — the account's standing cadence. Since DAV-195 L7
- * this trigger IS the review clock; the `nextReviewAt` column is a derived
- * display value and nothing reads it to decide anything.
+ * this trigger IS the review clock; the cached date column is gone (DAV-221)
+ * and every surface derives the due date from lastReviewedAt + this.
  */
 const CADENCE_7D: Trigger = {
   id: "trig-cadence",
@@ -317,11 +316,11 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   });
 
   it("flags pendingFirstReview on a null-direction seed (P1-24 B4)", () => {
-    // An unresearched watchlist seed now stores direction=null. A seed is
-    // minted with nextReviewAt = createdAt so it surfaces as REVIEW_DUE on
-    // the next run; the null-direction discriminator must set
-    // pendingFirstReview so the prompt routes it to the "commit a direction"
-    // path (exactly as legacy 'PENDING' did).
+    // An unresearched watchlist seed now stores direction=null and is minted
+    // with a cadence trigger + null lastReviewedAt (falls back to createdAt),
+    // so it surfaces as REVIEW_DUE within a cadence; the null-direction
+    // discriminator must set pendingFirstReview so the prompt routes it to
+    // the "commit a direction" path (exactly as legacy 'PENDING' did).
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
@@ -375,7 +374,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   });
 
   it("returns null while still inside the cadence window", () => {
-    // now = 2026-05-10T12:00Z; nextReviewAt = 2026-05-20T00:00 (10d future)
+    // Reviewed yesterday on a 7-day cadence — due again in 6 days.
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
@@ -400,7 +399,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   });
 
   // Anti-regression for the 2026-05-20 NVDA case: morning daily-run at
-  // 08:00 ET (12:00 UTC) needs to catch a thesis whose nextReviewAt is
+  // 08:00 ET (12:00 UTC) needs to catch a thesis whose review comes due
   // later TODAY (e.g. 09:30 ET = 13:30 UTC). Before the look-ahead
   // window was added, this returned null and the trigger evaluator's
   // REVIEW_DATE_HIT cron picked it up 90 min later in a redundant
@@ -421,7 +420,7 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
   });
 
   it("returns daysOverdue: 0 when the review is due within 24h", () => {
-    // now = 12:00 UTC; nextReviewAt = +23h
+    // now = 12:00 UTC; due date = +23h
     const result = computeNeedsAction({
       thesis: {
         ...baseThesis,
@@ -664,7 +663,8 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     const result = computeNeedsAction({
       thesis: {
         ...ionsThesis,
-        nextReviewAt: new Date("2026-05-01T00:00:00Z"), // overdue
+        triggers: [ionsExit, CADENCE_7D],
+        lastReviewedAt: lookedAt(11), // review overdue by 4 days
       },
       latestUpdate: null,
       latestQuote: { price: 86.24, changePct: 0 },

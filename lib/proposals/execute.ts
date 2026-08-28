@@ -448,18 +448,14 @@ export async function rejectProposal(
       order.position.analystId,
       order.position.symbol,
     );
-    // P1-29: a reject WITH a written comment flags the thesis for review via
-    // the existing nextReviewAt mechanism, so the next daily run surfaces it
-    // as needsAction=REVIEW_DUE and reads the note through
-    // get_theses.principalDirective. The agent responds with judgment — no
-    // forcing needsAction kind. A no-comment reject doesn't flag a review;
-    // the cross-day cooldown already suppresses re-proposal.
-    if (trimmedMessage) {
-      await prisma.thesis.update({
-        where: { id: thesisId },
-        data: { nextReviewAt: rejectedAt },
-      });
-    }
+    // P1-29: a reject WITH a written comment reaches the agent through the
+    // PROPOSAL_REJECTED audit row written below — while it sits unanswered
+    // at top-of-log, get_theses forces the row into the full work list and
+    // surfaces the note verbatim as principalDirective. (This used to also
+    // stamp a due-review date; that cached column is gone — DAV-221.) The
+    // agent responds with judgment — no forcing needsAction kind. A
+    // no-comment reject doesn't flag a review; the cross-day cooldown
+    // already suppresses re-proposal.
     await writeThesisUpdate({
       thesisId,
       type: "PROPOSAL_REJECTED",

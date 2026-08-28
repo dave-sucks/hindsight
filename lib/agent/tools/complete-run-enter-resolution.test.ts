@@ -67,7 +67,7 @@ function firedEnterThesis() {
     direction: "LONG",
     triggers: [enterTrigger],
     createdAt: new Date("2026-07-01"),
-    nextReviewAt: null,
+    lastReviewedAt: null,
     promotedAt: null,
     paperTenureDays: null,
     paperRealizedPnl: null,

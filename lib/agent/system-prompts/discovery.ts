@@ -35,7 +35,7 @@ import type { AgentConfigInput } from "@/lib/agent/system-prompt";
  *   - **Production (current):** 5. Set 2026-05-26 after the 2026-05-24
  *     HPQ E2E run validated Phase 2 mechanics end-to-end (see
  *     docs/discovery-reviews/2026-05-24-HPQ.md) and PR #329 closed the
- *     past-dated `nextReviewAt` cascading-review-fire bug that gated
+ *     past-dated review-date cascading-review-fire bug that gated
  *     the bump.
  *   - **Testing fallback:** 2. Use during prompt/funnel work to keep
  *     a manual fire to 1-2 child runs without burning API budget.

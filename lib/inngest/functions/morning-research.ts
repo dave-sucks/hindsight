@@ -448,7 +448,7 @@ export const morningResearch = inngest.createFunction(
           //   • triggers fired since last run + matching right now
           //   • priority reviews (near target/stop alerts)
           //   • PROMOTED rows (must resolve this run)
-          //   • review-due rows (nextReviewAt in the past)
+          //   • review-due rows (derived due date in the past — DAV-221)
           //   • unresearched seeds (direction=null → first-research due)
           const nowMs = Date.now();
           const actionableThesisIds = new Set<string>();
@@ -460,7 +460,7 @@ export const morningResearch = inngest.createFunction(
           }
           for (const t of runInput.activeTheses ?? []) {
             const reviewDue =
-              t.nextReviewAt != null && new Date(t.nextReviewAt).getTime() <= nowMs;
+              t.reviewDueAt != null && new Date(t.reviewDueAt).getTime() <= nowMs;
             if (t.status === "PROMOTED" || reviewDue || t.direction == null) {
               actionableThesisIds.add(t.id);
             }

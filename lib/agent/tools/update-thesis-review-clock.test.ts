@@ -6,8 +6,8 @@
  * that real reviews under gpt-5.5 carry narrative fields and took a path
  * that never advanced the clock, so reviewed theses re-fired every morning
  * (overdue backlog 2 → 9, 2026-08-18 run review). The fix then was a
- * conditional bump of `nextReviewAt` computed from the horizon cadence, in
- * two places that disagreed.
+ * conditional bump of a cached review-date column computed from the horizon
+ * cadence, in two places that disagreed. That column is gone (DAV-221).
  *
  * Now the clock counts from when we last LOOKED, so there is nothing to
  * compute: `lastReviewedAt` is stamped and the cadence trigger does the
@@ -62,7 +62,7 @@ function makeCtx(): ToolContext {
 }
 
 const OVERDUE = new Date(Date.now() - 9 * 86_400_000);
-const FUTURE = new Date(Date.now() + 5 * 86_400_000);
+const RECENT = new Date(Date.now() - 3_600_000);
 
 function makeRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -95,7 +95,7 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     horizon: "TARGET",
     catalystDate: null,
     maxHoldDays: null,
-    nextReviewAt: OVERDUE,
+    lastReviewedAt: OVERDUE,
     triggers: [
       {
         id: "trig_enter",
@@ -134,7 +134,7 @@ describe("update_thesis — recording that we looked", () => {
   it("stamps the review on a substantive (non-empty) update", async () => {
     // The DAV-193 bug: this path is what a real gpt-5.5 review takes, and it
     // used to leave the clock untouched.
-    mockThesisFindUnique.mockResolvedValueOnce(makeRow({ nextReviewAt: OVERDUE }));
+    mockThesisFindUnique.mockResolvedValueOnce(makeRow({ lastReviewedAt: OVERDUE }));
     const result = await makeTool().execute({
       thesis_id: "thesis_clock_1",
       rationale: "Belief refresh after today's read-through of the quarter.",
@@ -163,7 +163,7 @@ describe("update_thesis — recording that we looked", () => {
     // more: looking at a thesis restarts its cadence, full stop. "Look again
     // right before earnings" is a catalyst trigger, not a review date — that
     // is what catalystDate and the earnings predicates are for.
-    mockThesisFindUnique.mockResolvedValueOnce(makeRow({ nextReviewAt: FUTURE }));
+    mockThesisFindUnique.mockResolvedValueOnce(makeRow({ lastReviewedAt: RECENT }));
     await makeTool().execute({
       thesis_id: "thesis_clock_1",
       rationale: "Early touch — reviewed ahead of the cadence.",
@@ -175,7 +175,7 @@ describe("update_thesis — recording that we looked", () => {
 
   it("does not stamp a terminal transition", async () => {
     // Killing a thesis is not reviewing it, and a retired row has no cadence.
-    mockThesisFindUnique.mockResolvedValueOnce(makeRow({ nextReviewAt: OVERDUE }));
+    mockThesisFindUnique.mockResolvedValueOnce(makeRow({ lastReviewedAt: OVERDUE }));
     await makeTool().execute({
       thesis_id: "thesis_clock_1",
       rationale: "Bear case confirmed by the guidance cut; killing the watch.",

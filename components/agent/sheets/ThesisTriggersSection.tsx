@@ -259,7 +259,7 @@ function predicateDescription(p: TriggerPredicate): string {
     case "TIME_ELAPSED":
       return `Fires once ${p.days} days have passed since the thesis was created.`;
     case "REVIEW_DATE_HIT":
-      return "Fires when the thesis's nextReviewAt date is reached.";
+      return "Fires when the thesis's scheduled review date is reached.";
     case "AND":
       return `Composite: ALL of ${(p.predicates ?? []).length} sub-predicates must be true.`;
     case "OR":

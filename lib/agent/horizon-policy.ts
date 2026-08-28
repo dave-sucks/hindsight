@@ -1,7 +1,6 @@
 /**
- * Horizon policy — single source for per-horizon constants used by writers
- * (record_thesis nextReviewAt math), readers (daily-run system prompt), and
- * the trade evaluator (post-mortem framing).
+ * Horizon policy — single source for per-horizon constants used by the
+ * daily-run system prompt and the trade evaluator (post-mortem framing).
  *
  * The four horizons are:
  *   CATALYST   — trade built around a binary event (FDA, M&A, named earnings).

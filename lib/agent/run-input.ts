@@ -25,6 +25,7 @@ import {
   type ResearchAge,
 } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
+import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -107,7 +108,8 @@ export interface RunInput {
     // agent to call get_theses on every walk.
     horizon: string | null;
     coreBelief: string | null;
-    nextReviewAt: string | null;
+    /** Derived at read time (DAV-221): last actual look + the review cadence. */
+    reviewDueAt: string | null;
     catalystDate: string | null;
     // PROMOTED-only context — null on non-PROMOTED rows.
     promotedAt: string | null;
@@ -159,7 +161,7 @@ export interface RunInput {
   // 15-min cron). The agent uses this as the priority queue for Step 2:
   // any thesis listed here is a MUST-research today. Empty array means
   // nothing fired since last run; the agent walks theses on schedule
-  // (nextReviewAt) instead.
+  // (the review cadence) instead.
   triggersFiredSinceLastRun: Array<{
     thesisId: string;
     ticker: string;
@@ -264,7 +266,7 @@ export async function buildRunInput(
         snapshot: true,
         catalystDate: true,
         createdAt: true,
-        nextReviewAt: true,
+        lastReviewedAt: true,
       },
     });
     watchlistItems = watchingTheses.map((t) => {
@@ -283,7 +285,9 @@ export async function buildRunInput(
         conviction: composite != null ? composite * 10 : 0,
         catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
         createdAt: t.createdAt,
-        lastReviewedAt: t.nextReviewAt,
+        // The actual last-look stamp. This used to read the cached
+        // next-review date — off by a whole cadence (DAV-221).
+        lastReviewedAt: t.lastReviewedAt,
       };
     });
   } catch (err) {
@@ -393,7 +397,8 @@ export async function buildRunInput(
     snapshot: unknown; bullCase: unknown; bearCase: unknown;
     entryPrice: number | null; targetPrice: number | null;
     stopLoss: number | null; createdAt: Date; researchRunId: string; status: string;
-    horizon: string | null; coreBelief: string | null; nextReviewAt: Date | null;
+    horizon: string | null; coreBelief: string | null;
+    lastReviewedAt: Date | null; triggers: unknown;
     catalystDate: Date | null;
     promotedAt: Date | null; paperTenureDays: number | null;
     paperRealizedPnl: number | null; paperReviewCount: number | null;
@@ -421,10 +426,11 @@ export async function buildRunInput(
           stopLoss: true, createdAt: true, researchRunId: true, status: true,
           // Durable-state fields drive the prompt's per-thesis exit-policy
           // hint + structural-belief preview. coreBelief is the durable
-          // claim; nextReviewAt + catalystDate + maxHoldDays let the
-          // prompt render "review due in N days" / "catalyst in N days"
+          // claim; lastReviewedAt + triggers derive the review due date
+          // (DAV-221) and catalystDate renders "catalyst in N days"
           // without a get_theses round-trip.
-          horizon: true, coreBelief: true, nextReviewAt: true,
+          horizon: true, coreBelief: true,
+          lastReviewedAt: true, triggers: true,
           catalystDate: true,
           // PROMOTED context — used by Stage 2's PROMOTED block to render
           // the conviction picture (tenure, P&L, review count) inline.
@@ -849,7 +855,19 @@ export async function buildRunInput(
         status: t.status,
         horizon: t.horizon,
         coreBelief: t.coreBelief,
-        nextReviewAt: t.nextReviewAt ? t.nextReviewAt.toISOString() : null,
+        // Derived, not stored (DAV-221) — the raw trigger list is enough
+        // here: a held row's inherited account cadence matches the horizon
+        // fallback inside the helper.
+        reviewDueAt: (() => {
+          const due = derivedNextReviewAt({
+            status: t.status,
+            lastReviewedAt: t.lastReviewedAt,
+            createdAt: t.createdAt,
+            triggers: t.triggers,
+            horizon: t.horizon,
+          });
+          return due ? due.toISOString() : null;
+        })(),
         catalystDate: t.catalystDate ? t.catalystDate.toISOString() : null,
         // PROMOTED context — null on non-PROMOTED rows.
         promotedAt: t.promotedAt ? t.promotedAt.toISOString() : null,

@@ -112,7 +112,7 @@ function makeHeldRow(overrides: Record<string, unknown> = {}) {
     horizon: "TARGET",
     catalystDate: null,
     maxHoldDays: null,
-    nextReviewAt: null,
+    lastReviewedAt: null,
     triggers: [FLOOR_948],
     triggerState: {},
     scalingPlan: null,

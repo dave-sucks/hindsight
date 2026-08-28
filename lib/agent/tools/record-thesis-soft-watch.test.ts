@@ -91,7 +91,6 @@ function createdRow(): {
   triggers: Trigger[];
   entryPrice: unknown;
   stopLoss: unknown;
-  nextReviewAt: unknown;
 } {
   expect(mockThesisCreate).toHaveBeenCalled();
   return mockThesisCreate.mock.calls[0][0].data;
@@ -113,7 +112,6 @@ describe("record_thesis — soft watch (W2, DAV-209)", () => {
     expect(row.status).toBe("WATCHING");
     expect(row.entryPrice).toBeNull();
     expect(row.stopLoss).toBeNull();
-    expect(row.nextReviewAt).toBeNull();
 
     const kinds = row.triggers.map((t) => `${t.action}:${t.predicate.kind}`);
     expect(kinds).toEqual(["REVIEW:PRICE_BELOW"]);

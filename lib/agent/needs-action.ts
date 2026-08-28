@@ -44,11 +44,12 @@
  *                         would otherwise resolve to needsAction=null and be
  *                         skipped. Surfaces it as a press/hold/take decision.
  *                         See docs/plans/SCALE_INTO_WINNERS.md + winner-signal.ts.
- *   REVIEW_DUE          — thesis.nextReviewAt falls within the next 24h
- *                         (i.e. due today or already overdue). Look-ahead
- *                         window covers reviews scheduled for later in
- *                         the same trading day — without it, a thesis
- *                         with nextReviewAt = today 09:30 ET would be
+ *   REVIEW_DUE          — the review cadence (counted from lastReviewedAt)
+ *                         elapses within the next 24h (i.e. due today or
+ *                         already overdue). Look-ahead window covers
+ *                         reviews scheduled for later in the same trading
+ *                         day — without it, a thesis coming due at
+ *                         today 09:30 ET would be
  *                         skipped by the 08:00 ET morning daily-run
  *                         ("not yet due"), then fire the REVIEW_DATE_HIT
  *                         trigger 90 min later, spawning a tactical run
@@ -70,8 +71,8 @@
  * press/hold/take decision surfaces on the next read. Both outrank a routine
  * review because they tell the agent WHY to look.)
  *
- * A thesis with no PROMOTED status, no fires, no matches, and a future
- * nextReviewAt returns `null` — yesterday's thesis stands and the agent
+ * A thesis with no PROMOTED status, no fires, no matches, and a review
+ * not yet due returns `null` — yesterday's thesis stands and the agent
  * doesn't need to touch it.
  *
  * Pure function. Caller supplies all data; no DB, no clock, no fetches.
@@ -241,7 +242,6 @@ export interface NeedsActionInput {
     status?: string;
     triggers: Trigger[];
     createdAt: Date;
-    nextReviewAt: Date | null;
     /** When an analyst last actually looked. Drives the review cadence. */
     lastReviewedAt?: Date | null;
     /**
@@ -424,21 +424,21 @@ export function computeNeedsAction(
   // resolved.progressToTarget sit on every held row the agent reads, so a
   // stock up 212% is visible without anything pre-deciding that it matters.
 
-  // 5) REVIEW_DUE — agent-set cadence (nextReviewAt) elapsed OR coming
-  //    due within the next 24h. The 24h look-ahead is load-bearing: the
-  //    morning daily-run fires once at 08:00 ET, but the agent often
-  //    sets nextReviewAt to 09:30 ET (market open) on a future calendar
-  //    day. Without look-ahead the morning agent skips today's-09:30
-  //    review as "future," then the trigger evaluator's REVIEW_DATE_HIT
-  //    cron fires 90 min later and spawns a redundant tactical run to
-  //    do the same work. With look-ahead, the morning agent catches it
-  //    upfront. See lib/agent/triggers/defaults.ts header comment for
-  //    the matching half (REVIEW_DATE_HIT removed from watching defaults).
+  // 5) REVIEW_DUE — the review cadence elapsed OR coming due within the
+  //    next 24h. The 24h look-ahead is load-bearing: the morning daily-run
+  //    fires once at 08:00 ET, but a review can come due at 09:30 ET
+  //    (market open) the same day. Without look-ahead the morning agent
+  //    skips today's-09:30 review as "future," then the trigger
+  //    evaluator's cron fires 90 min later and spawns a redundant
+  //    tactical run to do the same work. With look-ahead, the morning
+  //    agent catches it upfront. See lib/agent/triggers/defaults.ts
+  //    header comment for the matching half (REVIEW_DATE_HIT removed
+  //    from watching defaults).
   //
   //    Special case: unresearched seeds (user/builder/editor adds, direction
-  //    null or legacy 'PENDING') carry nextReviewAt = createdAt so they
-  //    surface as REVIEW_DUE on the next daily run with the pendingFirstReview
-  //    discriminator.
+  //    null or legacy 'PENDING') carry a 7-day cadence trigger from mint and
+  //    a null lastReviewedAt (falls back to createdAt), so they surface as
+  //    REVIEW_DUE within a week with the pendingFirstReview discriminator.
   // The cadence trigger on the resolved ladder is the authority — "review
   // every N days", counted from the last actual review. It used to be a date
   // column the agent set by hand, which was a second store of the same idea

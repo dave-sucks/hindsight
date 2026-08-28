@@ -81,7 +81,7 @@ const promotedThesisRow = {
   horizon: "TARGET",
   catalystDate: null,
   maxHoldDays: null,
-  nextReviewAt: null,
+  lastReviewedAt: null,
   // Real PROMOTED rows always carry the standing ladder (stamped at mint);
   // a zero-trigger fixture would trip the unrelated zero_trigger_thesis
   // gate on the accept-path test below.

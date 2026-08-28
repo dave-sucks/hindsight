@@ -8,7 +8,6 @@
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { nextReviewFrom } from "@/lib/agent/triggers/defaults";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
@@ -30,10 +29,7 @@ import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
 import { randomUUID } from "node:crypto";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
-import {
-  holdDurationFromHorizon,
-  type Horizon as HorizonPolicy,
-} from "@/lib/agent/horizon-policy";
+import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 
 // ── V2 deep-research section shapes (PR-9 flat schema cutover) ───────────
 // Two content shapes for the 9 sections, mirroring the parsed output of
@@ -237,7 +233,7 @@ const thesisFields = z.object({
 
   // ── Thesis Durable State (PR 1 + cleanup PR) ──────────────────────────
   // REQUIRED on every thesis. Drives the auto-default trigger merge + the
-  // housekeeping nextReviewAt cadence + the tactical agent's exit policy.
+  // review cadence + the tactical agent's exit policy.
   // Without horizon, the thesis is "naked" — no triggers, no review schedule,
   // no way for the trigger evaluator to do its job. We're not letting that
   // ship anymore.
@@ -344,13 +340,8 @@ const thesisFields = z.object({
     .describe(
       "ISO timestamp. REQUIRED when horizon=CATALYST — when the dated event lands (earnings date, FDA decision, M&A close, court ruling). Drives the trigger template (filings + earnings REVIEW around the date) and the 30d-past-event exit policy. If you don't know the date, this isn't a CATALYST thesis — use TRADE (with max_hold_days) or TARGET (open-ended).",
     ),
-  next_review_at: z
-    .string()
-    .datetime()
-    .optional()
-    .describe(
-      "When housekeeping should re-look at this thesis even with no trigger fire. Default derived from horizon: CATALYST = 1 day, TRADE = 1 day, TARGET = 7 days, COMPOUNDER = 30 days.",
-    ),
+  // next_review_at is gone (DAV-221). Review timing is a REVIEW_CADENCE
+  // trigger counted from the last actual review; the mint templates stamp it.
   // Explicit status arg. Daily watchlist-review and weekly discovery both
   // need to write WATCHING; trade-eligible coverage stays ACTIVE. When
   // omitted the effective status is derived from source_kind:
@@ -953,97 +944,9 @@ export const recordThesis = defineTool({
       // `fundamentals` sub-key had zero readers. The column itself drops
       // in PR-5 after the soak.
 
-      // Default nextReviewAt by horizon AND by resulting status. WATCHING
-      // theses use the longer WATCHING_FIRST_REVIEW_DAYS cadence (e.g.
-      // COMPOUNDER WATCHING = 90d, vs. COMPOUNDER ACTIVE = 30d). A
-      // watchlist entry doesn't need walking at the same intensity as a
-      // live position. Pre-fix, every newly-minted WATCHING got the
-      // held-side cadence and fired REVIEW_DUE ~3-12x more often than
-      // intended, producing tactical busywork on stale watchlist names.
-      //
-      // Mirror of the effective-status logic below (line ~745) — kept
-      // local instead of hoisting the whole block because the canonical
-      // computation also needs args.status for downstream legal-pair
-      // guards. Both derivations branch on the same inputs so they
-      // can't disagree.
-      const isDiscoveryDirectionalEarly =
-        ctx.discoveryOnly === true &&
-        (args.direction === "LONG" || args.direction === "SHORT");
-      const willBeWatching: boolean =
-        args.direction !== "PASS" &&
-        (isDiscoveryDirectionalEarly ||
-          args.status === "WATCHING" ||
-          // Mirrors effectiveStatusForTriggers below: a directional thesis
-          // whose input status isn't explicitly ACTIVE falls to the
-          // source_kind default (WATCHING for WATCHLIST_REVIEW). Pre-
-          // relaxation this read `args.status == null`; now that the input
-          // enum tolerates a leaked ARCHIVED/PASSED, "not ACTIVE" is the
-          // correct test so the two derivations can't disagree.
-          (args.status !== "ACTIVE" &&
-            inferredSourceKind === "WATCHLIST_REVIEW"));
-
-      // ── nextReviewAt derivation ─────────────────────────────────────
-      // Derived from the review trigger this mint just wrote — the SAME
-      // helper update_thesis uses, so a thesis cannot disagree with itself.
-      //
-      // It used to read WATCHING_FIRST_REVIEW_DAYS / HORIZON_REVIEW_DAYS,
-      // a third table that contradicted the trigger beside it: a fresh
-      // CATALYST watch carried "review every day" on its trigger and "next
-      // review in 14 days" in its column. The review-due check reads the
-      // column, so the name was invisible for two weeks and then snapped to
-      // daily the first time anything touched it. AGIO and SMMT were minted
-      // that way today — daily trigger, 2026-09-10 column.
-      //
-      // BEHAVIOUR CHANGE: the first-review grace period is gone. A new watch
-      // item now comes due on its normal cadence — tomorrow for a daily
-      // catalyst — because that is what "review every day" means. If a grace
-      // period is wanted, it belongs in the trigger, where it is visible.
-      //
-      // PASS rows still get null (terminal at write), and an agent-provided
-      // date is still honoured after the sanity check below.
-      //
-      // Sanity-check the agent-provided value because the model can
-      // year-confuse (e.g. emit "2025-05-31" when today is 2026-05-31 —
-      // the HPQ E2E run on 2026-05-24 hit this, see
-      // docs/discovery-reviews/2026-05-24-HPQ.md follow-up #1). A
-      // past-dated nextReviewAt causes the trigger-evaluator cron to
-      // fire REVIEW_DATE_HIT on the very next hourly tick, creating
-      // cascading false-positive reviews. Reject the bad date silently
-      // and fall through to the horizon default + log a warning so we
-      // can spot the pattern.
-      const MIN_FUTURE_HOURS = 6;
-      const nowMs = Date.now();
-      const minAcceptableMs = nowMs + MIN_FUTURE_HOURS * 60 * 60 * 1000;
-
-      let nextReviewAt: Date | null = null;
-      if (args.direction === "PASS") {
-        // PASS = PASSED at write. Terminal: no review cadence, no wake-up.
-        nextReviewAt = null;
-      } else if (args.next_review_at) {
-        const parsed = new Date(args.next_review_at);
-        if (
-          Number.isFinite(parsed.getTime()) &&
-          parsed.getTime() >= minAcceptableMs
-        ) {
-          nextReviewAt = parsed;
-        } else {
-          console.warn(
-            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} ` +
-              `— rejecting agent-provided next_review_at="${args.next_review_at}" ` +
-              `(resolves to ${parsed.toISOString()}, which is in the past or < ${MIN_FUTURE_HOURS}h ` +
-              `from now). Falling back to horizon default. Likely a model year-confusion bug.`,
-          );
-          // Fall through to horizon default below.
-          if (args.horizon) {
-            // [] on purpose: the trigger list is assembled below, and the
-            // horizon fallback returns exactly the cadence that trigger will
-            // carry. Same number, no reordering.
-            nextReviewAt = nextReviewFrom(new Date(nowMs), [], args.horizon as HorizonPolicy);
-          }
-        }
-      } else if (args.horizon) {
-        nextReviewAt = nextReviewFrom(new Date(nowMs), [], args.horizon as HorizonPolicy);
-      }
+      // The review clock has one home (DAV-221): the REVIEW_CADENCE trigger
+      // the mint templates stamp below, counted from the last actual review
+      // (createdAt until the first one). There is no date column to seed.
 
       // ── Effective status — derived from direction ──
       // P1-24 contract legal pairs a record_thesis mint can produce:
@@ -1516,7 +1419,6 @@ export const recordThesis = defineTool({
         // DB. See the build block above for the templating rules.
         triggers: mergedTriggers as object[],
         catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
-        nextReviewAt,
         // ── Deep-research artifacts (V2 flat schema, PR-9) ────────────────
         // researchData is the raw markdown data block; the 9 columns below
         // hold the parsed narrative sections. Use `undefined` for missing
@@ -1939,7 +1841,6 @@ export const recordThesis = defineTool({
             scalingPlan: _scaling,
             triggers: _triggers,
             catalystDate: _cdate,
-            nextReviewAt: _review,
             // THESIS_RESEARCH_V2 Phase 1 + PR-9 flat schema — strip every
             // V2-era research column if Prisma client predates them.
             researchData: _rdata,
@@ -1966,7 +1867,6 @@ export const recordThesis = defineTool({
           void _scaling;
           void _triggers;
           void _cdate;
-          void _review;
           void _rdata;
           void _rupdated;
           void _snap;

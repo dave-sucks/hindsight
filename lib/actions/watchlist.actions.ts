@@ -165,7 +165,7 @@ export async function getWatchlistItems(
       sourceRationale: true,
       catalystDate: true,
       createdAt: true,
-      nextReviewAt: true,
+      lastReviewedAt: true,
     },
     orderBy: [{ direction: "asc" }, { createdAt: "desc" }],
   });
@@ -227,7 +227,7 @@ export async function getWatchlistItems(
       stopPrice: t.stopLoss,
       conviction: composite != null ? composite * 10 : 0,
       catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
-      lastReviewedAt: t.nextReviewAt,
+      lastReviewedAt: t.lastReviewedAt,
       createdAt: t.createdAt,
       thesisCount: hist?.count ?? 1,
       latestThesis: hist?.latest
@@ -246,8 +246,8 @@ export async function getWatchlistItems(
 /**
  * Add a stock to an analyst's watchlist. Mints a `Thesis(direction:null,
  * status:'WATCHING', sourceKind:'USER_ADDED')` anchored to the analyst's
- * synthetic MANUAL ResearchRun. The next daily run will research it
- * (nextReviewAt = createdAt, surfaces as REVIEW_DUE via needsAction).
+ * synthetic MANUAL ResearchRun. The 7-day cadence trigger stamped below
+ * surfaces it as REVIEW_DUE (counted from createdAt — never reviewed).
  *
  * Idempotent: if any ACTIVE/WATCHING thesis already exists on (analyst,
  * ticker), returns the existing view.
@@ -290,7 +290,7 @@ export async function addWatchlistItem(
       snapshot: true,
       sourceKind: true,
       createdAt: true,
-      nextReviewAt: true,
+      lastReviewedAt: true,
     },
   });
   if (existing) {
@@ -316,7 +316,7 @@ export async function addWatchlistItem(
       stopPrice: existing.stopLoss,
       conviction: existingComposite != null ? existingComposite * 10 : 0,
       catalyst: null,
-      lastReviewedAt: existing.nextReviewAt,
+      lastReviewedAt: existing.lastReviewedAt,
       createdAt: existing.createdAt,
       thesisCount: 1,
       latestThesis: null,
@@ -332,7 +332,6 @@ export async function addWatchlistItem(
 
   const runId = await getOrCreateManualRun({ analystId, userId, accountId });
 
-  const now = new Date();
   const thesis = await prisma.thesis.create({
     data: {
       researchRunId: runId,
@@ -360,15 +359,12 @@ export async function addWatchlistItem(
       // The seed's clock (W1, DAV-216): WATCHING no longer inherits the
       // account review cadence, so a seed with no trigger of its own
       // would be invisible forever. days=7 matches the account floor the
-      // seed rode before the change. NOTE the original "surface on the
-      // NEXT daily run" intent (the nextReviewAt: now below) has been
-      // dead since L7 made nextReviewAt a display cache — first research
-      // lands within ~a week, not next morning. Restoring next-morning
-      // surfacing is a W3 (dispositions) item, not a trigger value.
+      // seed rode before the change — first research lands within ~a
+      // week, not next morning. Restoring next-morning surfacing is a W3
+      // (dispositions) item, not a trigger value.
       triggers: [
         { ...reviewCadenceTrigger(7), source: "DEFAULT" },
       ] as object[],
-      nextReviewAt: now,
     },
   });
 
@@ -397,7 +393,7 @@ export async function addWatchlistItem(
     stopPrice: null,
     conviction: mintedComposite != null ? mintedComposite * 10 : 0,
     catalyst: null,
-    lastReviewedAt: thesis.nextReviewAt,
+    lastReviewedAt: null, // just minted — never reviewed
     createdAt: thesis.createdAt,
     thesisCount: 1,
     latestThesis: null,
@@ -492,24 +488,6 @@ export async function updateWatchlistItem(
   // priority + notes are no-ops under the unified model.
 }
 
-/**
- * Mark a watchlist item as reviewed (updates `nextReviewAt`).
- *
- * Under the unified model, this resets the review cadence for an existing
- * WATCHING thesis. Used by `place_trade` to drop the ticker off the
- * "awaiting review" surface once a position is opened.
- */
-export async function markWatchlistReviewed(
-  analystId: string,
-  symbol: string,
-): Promise<void> {
-  const upper = symbol.toUpperCase();
-  await prisma.thesis.updateMany({
-    where: {
-      ticker: upper,
-      status: "WATCHING",
-      researchRun: { agentConfigId: analystId },
-    },
-    data: { nextReviewAt: new Date() },
-  });
-}
+// markWatchlistReviewed was deleted with the cached review-date column
+// (DAV-221) — it had no callers, and "reviewed" is the lastReviewedAt
+// stamp update_thesis writes.

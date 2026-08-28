@@ -12,8 +12,6 @@
  *   - tickers:   restrict to these tickers
  *   - ids:       restrict to these thesis ids
  *   - horizon:   one or more horizon kinds
- *   - watching_review_due_only: when true, return only WATCHING theses
- *                whose nextReviewAt has passed (housekeeping signal)
  *
  * Pagination: capped hard at 50 theses per call. The agent doesn't need
  * to see hundreds; if the analyst has that many open theses something is
@@ -35,6 +33,7 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { getBars, getDailyRangePcts, getLatestPrices } from "@/lib/alpaca";
+import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import {
@@ -96,12 +95,6 @@ const schema = z.object({
     .array(z.enum(HORIZONS))
     .optional()
     .describe("Restrict to these horizon kinds."),
-  watching_review_due_only: z
-    .boolean()
-    .optional()
-    .describe(
-      "When true, return only WATCHING theses whose nextReviewAt has passed. Used by housekeeping to find watch items needing attention.",
-    ),
   include_history: z
     .boolean()
     .optional()
@@ -150,9 +143,9 @@ export interface PrincipalDirective {
  * decision, or null when the top-of-log row is an agent action. "Unaddressed"
  * is implicit in being the top row: any agent follow-up would have replaced it
  * (same latest-on-top contract TRIGGER_FIRED uses), so this self-clears once
- * the agent acts. A reject WITH a message also flags the thesis for review at
- * reject time (nextReviewAt=now), so it arrives as REVIEW_DUE and the agent
- * reads this note during the review — there's no separate forcing needsAction.
+ * the agent acts. A reject WITH a message also forces the row into the full
+ * work list (see isFullDetail), so the agent reads this note on its next run
+ * — there's no separate forcing needsAction.
  */
 function classifyPrincipalDirective(
   u:
@@ -214,7 +207,6 @@ export const getTheses = defineTool({
     if (args.ids && args.ids.length === 1) {
       return `Reading thesis ${args.ids[0].slice(-8)}`;
     }
-    if (args.watching_review_due_only) return "Watching: items due for review";
     return "Reading thesis library";
   },
 
@@ -263,7 +255,6 @@ export const getTheses = defineTool({
       !!(
         (args.status && args.status.length > 0) ||
         (args.horizon && args.horizon.length > 0) ||
-        args.watching_review_due_only ||
         args.include_history ||
         args.include_research
       );
@@ -295,12 +286,6 @@ export const getTheses = defineTool({
       ...(args.ids && args.ids.length > 0 ? { id: { in: args.ids } } : {}),
       ...(args.horizon && args.horizon.length > 0
         ? { horizon: { in: args.horizon } }
-        : {}),
-      ...(args.watching_review_due_only
-        ? {
-            status: "WATCHING",
-            nextReviewAt: { lte: new Date() },
-          }
         : {}),
     };
 
@@ -340,7 +325,7 @@ export const getTheses = defineTool({
         triggerState: true,
         scalingPlan: true,
         catalystDate: true,
-        nextReviewAt: true,
+        lastReviewedAt: true,
         sourceSignalIds: true,
         sourceKind: true,
         // 4-dim composite scoring + composite total. `composite` is the
@@ -807,10 +792,9 @@ export const getTheses = defineTool({
             ? { price, changePct: 0 }
             : null;
         // P1-29: surface the most-recent unaddressed principal decision on the
-        // row (verbatim). A reject-with-comment also flags the thesis for review
-        // at reject time (nextReviewAt=now in rejectProposal), so it arrives as
-        // needsAction=REVIEW_DUE and the agent reads this note during the review
-        // — no separate forcing needsAction kind.
+        // row (verbatim). A reject-with-comment forces the row into the full
+        // work list (see isFullDetail below), so the agent reads this note on
+        // its next run — no separate forcing needsAction kind.
         principalDirectiveByThesisId.set(
           t.id,
           classifyPrincipalDirective(latestByThesisId.get(t.id)),
@@ -824,7 +808,7 @@ export const getTheses = defineTool({
               status: t.status,
               triggers,
               createdAt: t.createdAt,
-              nextReviewAt: t.nextReviewAt,
+              lastReviewedAt: t.lastReviewedAt,
               positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
               avgCost: avgCostByThesisId.get(t.id) ?? null,
               peakPrice: peakPriceByThesisId.get(t.id) ?? null,
@@ -948,7 +932,6 @@ export const getTheses = defineTool({
             triggers: t.triggers,
             catalystDate: t.catalystDate,
             createdAt: t.createdAt,
-            nextReviewAt: t.nextReviewAt,
             scoring: t.scoring,
             parsedTriggers,
             positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
@@ -975,6 +958,11 @@ export const getTheses = defineTool({
     //     tape (DAV-188: buy level far from price / target passed / stop
     //     breached). A flagged-but-quiet row is the exact "wrong through 5
     //     runs" failure this exists to end; the flag forces the full row.
+    //   • an unanswered principal reject WITH a written message — the note
+    //     must reach the agent's work list on its next run (P1-29). This
+    //     used to ride on a due-review date stamped at reject time; the
+    //     date column is gone (DAV-221), so the directive itself forces
+    //     the full row until the agent's answer replaces it at top-of-log.
     // ACTIVE_HOLD deliberately stays quiet: it's the healthy-holding
     // default, and its work signals (UNPROTECTED_GAIN / RUNNING_WINNER /
     // trigger fires) all arrive via needsAction.
@@ -983,13 +971,18 @@ export const getTheses = defineTool({
       "STALE_PAST_CATALYST",
       "PROMOTED_DECIDE_TODAY",
     ]);
-    const isFullDetail = (t: (typeof theses)[number]): boolean =>
-      detailMode === "book" ||
-      priceFetchFailed ||
-      t.status === "PROMOTED" ||
-      (needsActionByThesisId.get(t.id) ?? null) !== null ||
-      ACTIONABLE_RESOLVED.has(resolvedByThesisId.get(t.id)?.actionability ?? "") ||
-      (resolvedByThesisId.get(t.id)?.planSanity?.length ?? 0) > 0;
+    const isFullDetail = (t: (typeof theses)[number]): boolean => {
+      const directive = principalDirectiveByThesisId.get(t.id);
+      return (
+        detailMode === "book" ||
+        priceFetchFailed ||
+        t.status === "PROMOTED" ||
+        (needsActionByThesisId.get(t.id) ?? null) !== null ||
+        ACTIONABLE_RESOLVED.has(resolvedByThesisId.get(t.id)?.actionability ?? "") ||
+        (resolvedByThesisId.get(t.id)?.planSanity?.length ?? 0) > 0 ||
+        (directive?.decision === "REJECTED" && directive.message != null)
+      );
+    };
 
     const fullTheses = theses.filter((t) => isFullDetail(t));
     const quietTheses = theses.filter((t) => !isFullDetail(t));
@@ -1016,7 +1009,15 @@ export const getTheses = defineTool({
       // months (2026-08-23 audit). One number per row; the resolver already
       // fetched it, so this costs a fetch of nothing.
       currentPrice: resolvedByThesisId.get(t.id)?.currentPrice ?? null,
-      nextReviewAt: t.nextReviewAt,
+      // Derived, not stored (DAV-221): last actual look + the cadence on
+      // the resolved ladder. Null = no scheduled review (soft watch).
+      reviewDueAt: derivedNextReviewAt({
+        status: t.status,
+        lastReviewedAt: t.lastReviewedAt,
+        createdAt: t.createdAt,
+        triggers: ladderByThesisId.get(t.id) ?? [],
+        horizon: t.horizon,
+      }),
       catalystDate: t.catalystDate,
       // Resolved ladder, not the stored column — a thesis protected
       // entirely by inherited rungs is not a zero-trigger thesis.

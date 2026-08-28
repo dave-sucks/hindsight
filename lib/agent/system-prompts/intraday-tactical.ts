@@ -117,7 +117,7 @@ function describePredicate(p: TriggerPredicate): string {
     case "TIME_ELAPSED":
       return `${p.days} days elapsed since thesis created`;
     case "REVIEW_CADENCE":
-      return `nextReviewAt has been reached`;
+      return `the review cadence has elapsed since the last review`;
     case "AND":
       return `(${p.predicates.map(describePredicate).join(" AND ")})`;
     case "OR":
