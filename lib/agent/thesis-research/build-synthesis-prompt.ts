@@ -291,11 +291,20 @@ YOUR JOB
    condition warrants a non-default predicate. Use predicate kinds from
    lib/agent/triggers/types.ts (PRICE_ABOVE, PRICE_BELOW, EARNINGS_BEAT,
    EARNINGS_MISS, GUIDANCE_CHANGE, FILING, RSI, VS_SMA, PRICE_MOVE_PCT,
-   TIME_ELAPSED, REVIEW_DATE_HIT, SIGNAL_TYPE).
+   TIME_ELAPSED, REVIEW_CADENCE, REVIEW_DATE_HIT, SIGNAL_TYPE).
    - <Optional. Format: [PREDICATE_KIND params] → ACTION — rationale.
      Example: "EARNINGS_MISS minSurprisePct: 3 → REVIEW — guidance miss
      on next print kills the AI-acceleration thesis. Cooldown 7d.">
    - <Skip this section entirely if horizon defaults are sufficient.>
+
+   **The review clock is per-stock.** The horizon default (CATALYST/
+   TRADE daily, TARGET 7d, COMPOUNDER 30d) is a fallback, not a rule.
+   When THIS stock's rhythm differs, include a custom
+   [REVIEW_CADENCE days: N] → REVIEW with a one-line why — e.g. a
+   COMPOUNDER two quiet quarters from its catalyst can breathe at 45d;
+   a TARGET name sitting on a make-or-break level deserves 3d. Pick
+   the number the way a human analyst decides how often a name is
+   worth re-opening.
 
 ═══════════════════════════════════════════════════════════════════
 CITATION FORMAT
