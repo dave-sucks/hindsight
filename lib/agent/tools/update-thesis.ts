@@ -207,7 +207,10 @@ const updateSchema = z.object({
   stop_loss: z.number().nullable().optional(),
   entry_price: z.number().nullable().optional()
     .describe(
-      "WHERE YOU'D BUY IN (or where you bought, on ACTIVE rows). The default ENTER trigger fires when price crosses entry_price — set it to the actual buy level, not just a current-price snapshot. " +
+      "WHERE YOU'D BUY IN (or where you bought, on ACTIVE rows). Set the price you actually want to pay, not a snapshot of the tape. " +
+      "When you re-level a watch, say which side you mean: BELOW the current quote is a pullback you want to buy, ABOVE it is a breakout you want confirmed first. " +
+      "If you author the ENTER trigger yourself, match the predicate to that choice — PRICE_BELOW(entry) for a pullback, PRICE_ABOVE(entry) for a breakout. " +
+      "PRICE_ABOVE on a level that already sits under the market is true the moment you write it and will re-fire every cooldown until someone removes it. " +
       "Optional for refinement updates; REQUIRED when promoting a PENDING thesis to LONG/SHORT (so target/stop have something to validate against in the shape gate). " +
       "On ACTIVE rows this is the actual fill price (set by place_trade); patching it on an ACTIVE row is rare and should only happen on a partial-fill / cost-basis correction."
     ),
