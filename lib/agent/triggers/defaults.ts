@@ -285,12 +285,46 @@ export const CADENCE_DAYS_BY_HORIZON: Record<Horizon, number> = {
   COMPOUNDER: 30,
 };
 
+/**
+ * When this thesis is next due, given when it was last actually looked at.
+ *
+ * `Thesis.nextReviewAt` is a DERIVED display value — that is what the L7
+ * comment claimed and, for one day, was not true of anything: L7 deleted both
+ * blocks that advanced the date and replaced them with a `lastReviewedAt`
+ * stamp, and nothing recomputed the column. Five readers kept reading it,
+ * including the overdue-housekeeping cron, so every thesis past its last
+ * written date read as overdue forever. Five of Catalyst's seven names were
+ * permanently flagged within a day.
+ *
+ * Cadence comes from the thesis's own review trigger when it has one, and
+ * from its horizon otherwise — which is exactly what the account rule would
+ * hand it, so an inheriting thesis gets the same answer without resolving
+ * the whole cascade on the hottest write path in the app.
+ */
+export function nextReviewFrom(
+  lastReviewedAt: Date,
+  triggers: Array<{ predicate: TriggerPredicate }> | null | undefined,
+  horizon: Horizon | null,
+): Date {
+  const own = resolvedCadenceDays(triggers ?? []);
+  const days = own ?? CADENCE_DAYS_BY_HORIZON[horizon ?? "TARGET"];
+  return new Date(lastReviewedAt.getTime() + days * 86_400_000);
+}
+
 /** The cadence in force on a resolved ladder; null when nothing sets one. */
 export function resolvedCadenceDays(
   triggers: Array<{ predicate: TriggerPredicate }>,
 ): number | null {
-  for (const t of triggers) {
-    if (t.predicate.kind === "REVIEW_CADENCE") return t.predicate.days;
+  for (const t of triggers ?? []) {
+    // Defensive: legacy rows carry malformed triggers (that is why
+    // parseTriggersResilient exists), and this runs on the review-stamp path
+    // of the most-called tool in the app. One bad trigger must not fail an
+    // otherwise valid thesis update — it just doesn't supply the cadence.
+    const kind = t?.predicate?.kind;
+    if (kind === "REVIEW_CADENCE") {
+      const days = (t.predicate as { days?: unknown }).days;
+      if (typeof days === "number" && days > 0) return days;
+    }
   }
   return null;
 }

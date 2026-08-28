@@ -285,3 +285,42 @@ describe("6. the analyst changes its mind", () => {
     expect(out.columns.stopLoss).toBeNull();
   });
 });
+
+describe("7. the review date the rest of the app reads", () => {
+  // nextReviewAt is a derived display value — and for one day it was derived
+  // by nothing. L7 deleted both blocks that advanced it, stamped
+  // lastReviewedAt instead, and left five readers pointed at a frozen
+  // column. The overdue cron read every thesis past its last written date as
+  // permanently overdue; five of one analyst's seven names were flagged
+  // within a day of deploy.
+  const { nextReviewFrom } = require("./defaults");
+  const reviewed = new Date("2026-08-26T14:00:00Z");
+  const days = (d: Date) =>
+    Math.round((d.getTime() - reviewed.getTime()) / 86_400_000);
+
+  it("moves forward when a thesis is reviewed", () => {
+    expect(nextReviewFrom(reviewed, [], "TARGET").getTime()).toBeGreaterThan(
+      reviewed.getTime(),
+    );
+  });
+
+  it("uses the thesis's own cadence when it has one", () => {
+    const own = [{ predicate: { kind: "REVIEW_CADENCE", days: 3 } }];
+    expect(days(nextReviewFrom(reviewed, own, "COMPOUNDER"))).toBe(3);
+  });
+
+  it("falls back to the horizon, which is what it would inherit anyway", () => {
+    expect(days(nextReviewFrom(reviewed, [], "CATALYST"))).toBe(1);
+    expect(days(nextReviewFrom(reviewed, [], "TRADE"))).toBe(1);
+    expect(days(nextReviewFrom(reviewed, [], "TARGET"))).toBe(7);
+    expect(days(nextReviewFrom(reviewed, [], "COMPOUNDER"))).toBe(30);
+  });
+
+  it("never returns a date in the past — the overdue-forever bug", () => {
+    for (const h of ["CATALYST", "TRADE", "TARGET", "COMPOUNDER"] as const) {
+      expect(nextReviewFrom(reviewed, [], h).getTime()).toBeGreaterThan(
+        reviewed.getTime(),
+      );
+    }
+  });
+});
