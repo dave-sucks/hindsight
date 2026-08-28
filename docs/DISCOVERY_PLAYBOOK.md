@@ -244,6 +244,12 @@ crowded is it. Get the candidate list from the calendar (pdufa.bio, BiopharmaWat
   Hard gate: **no specific primary-sourced forward date = not this archetype**, however good the story.
   At equal upside prefer **"positive data already in hand + filing/PDUFA ahead"** (the de-risked-drift
   pattern behind XENE/ARQT) over pure coin-flip readouts.
+  **Event-mix gate (2026-08-24, from live P&L):** default to **label expansions, sNDAs/supplemental
+  approvals, and PDUFAs on already-approved molecules** — a miss there costs 5–8%. First-approval
+  binaries on single-asset names gap through any floor overnight (IONS −19.6%, MLTX −20.6% — the
+  seat's only two double-digit losses, both this shape). Cap first-approval binaries to a minority
+  of the book, never more than the book already holds through the same window, and **exclude
+  single-asset companies** from them entirely.
 - **PEAD:** clean beat-AND-raise in the last 5–10 days + PT raises, within the drift window. Reject
   **guidance reiterated (not raised)** — the #1 false positive — one-time-item beats, and names that
   already gapped >10% on the print.
@@ -386,6 +392,14 @@ Rest → PASS-record with rationale.
 - **2026-06-05: Grok >> Perplexity for live biotech catalyst discovery.** Two parallel sessions: Perplexity-led run produced 6 stale/post-window candidates (recycled 2025 PDUFA catalog data, half were already past entry). Grok-led run produced 5 dispatches + 1 PASS — all live future PDUFAs in next 25 days, composite scores 7-9, clean discriminating triage ($LNTH, $MRK, $IONS, $ARQT, $VRDN dispatched; $ABBV PASS-recorded because at 91% of 52w range = entry window closed).
 - **Why:** Grok pulls live X chatter from biotech-focused handles (@AdamFeuerstein, @TheBioRunner, etc.) who post about THIS WEEK's PDUFAs they're actively trading. Perplexity's underlying data sources are catalogs that can be stale or recycle prior-year dates. For time-sensitive binary catalysts, freshness matters more than aggregated depth.
 - **New rule for Catalyst PM:** Lead every session with Grok. Use Perplexity AFTER for fundamentals validation on the names Grok surfaces (per-ticker setup quality, options-implied moves, sell-side probabilities). Do NOT lead with Perplexity "give me upcoming PDUFAs" queries — they pull stale catalogs.
+- **2026-08-24: The seat loses on gap risk, not stock picking — event TYPE is the lever.** Post-overhaul
+  live record 5W/6L, −$287. Winners all exited cleanly on trailing stops (XENE +24.1%, ARQT +21.1%,
+  EWTX +11.3%, VRDN +11.2%). Both big losses were first-approval binaries that gapped through the
+  floor overnight (IONS −19.6%/−$752, MLTX −20.6%/−$911) — no stop and no confidence threshold can
+  see an overnight gap. Shifting sourcing to supplemental/label-expansion events (a miss costs 5–8%,
+  not 20%) flips expectancy from −$26 to ~+$115/trade at the SAME 45% win rate. Corollary from the
+  08-25 blind run: **approval rate is not our scoreboard** — MNKD's drug was approved and we lost
+  $345; the scout's "wins" must be re-graded against OUR realized P&L.
 - **Boundary discipline working as designed:** Catalyst PM correctly rejects earnings-drift names ($NVDA, $ORCL, $ADBE — belong to PEAD), energy/utility plays ($SMR, $VST, $OKLO — belong to Compounder via energy transition theme), and "contract flow" momentum without a specific dated event ($PLTR ongoing AI narrative). This is the system enforcing analyst boundaries cleanly. The industry/sector fence is NOT too tight — it's the right shape.
 
 ---
