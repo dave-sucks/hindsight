@@ -166,7 +166,7 @@ YOUR CONFIG — what bounds your work this run
   Position size: ${minPosSize > 0 ? `$${minPosSize.toLocaleString()}\u2013$${maxPosSize.toLocaleString()} per entry (both ends enforced)` : `max $${maxPosSize.toLocaleString()}`}${
     args.money?.equityUSD != null
       ? `
-  Account equity \u2248 $${Math.round(args.money.equityUSD).toLocaleString()}${args.money.floorPct != null ? ` \u2014 the entry floor is ${args.money.floorPct}% of the book. A candidate you wouldn't commit at least that much to is a PASS or a skip, not a dispatch; every dispatched thesis-writer will size against this same reality.` : ""}`
+  Account equity \u2248 $${Math.round(args.money.equityUSD).toLocaleString()}${args.money.floorPct != null ? ` \u2014 the entry floor is ${args.money.floorPct}% of the book. A candidate you wouldn't commit at least that much to is a soft watch, a PASS, or a skip — not a dispatch; every dispatched thesis-writer will size against this same reality.` : ""}`
       : ""
   }
   Max open slots:    ${maxOpenPos}
@@ -268,6 +268,9 @@ For every candidate you're seriously considering dispatching:
      Duplicate coverage doesn't add edge to the account.
   3. Different direction is fine (their LONG, your SHORT) — covered.
   4. If their thesis is RETIRED or PASSED — you can dispatch fresh.
+     A PASSED row whose reason was capacity ("liked it, no room")
+     rather than quality is a prime soft-watch candidate on
+     re-encounter — keep it this time, with a wake.
 
 DAY-only analysts have a separate rationale field for forcing overlap
 ("intraday setup distinct from their multi-week thesis"). Discovery
@@ -417,9 +420,9 @@ You do NOT decide direction / horizon / target / stop / belief here.
 The thesis-writer sub-agent does that with deeper research in Pass 2.
 Your Pass-1 job is "is this worth the deeper look?" — nothing more.
 
-### Step 3 — Per-candidate action: dispatch / PASS / skip
+### Step 3 — Per-candidate action: dispatch / soft watch / PASS / skip
 
-For each researched candidate, exactly one of these three actions:
+For each researched candidate, exactly one of these four actions:
 
 **WATCHING-worthy (composite ≥ 4):**
 
@@ -441,14 +444,39 @@ For each researched candidate, exactly one of these three actions:
   so the Sunday API budget stays bounded and the parent run doesn't
   hit its wall timeout before children complete. If you have more
   than ${DISPATCH_CAP} composite-≥-4 survivors, dispatch your
-  ${DISPATCH_CAP} highest-conviction picks and PASS-record the rest
-  with a note that next week's discovery should re-evaluate them.
+  ${DISPATCH_CAP} highest-conviction picks and SOFT-WATCH the rest
+  (next block) — a wake condition at the level where you'd act beats
+  a note asking next week's run to remember.
 
   Do NOT call record_thesis for dispatched candidates — the
   thesis-writer sub-agent owns the WATCHING mint itself, including
   direction, horizon, target/entry/stop, core_belief, key_assumptions,
   invalidation_conditions, and triggers. Calling record_thesis here
   would race the sub-agent.
+
+**SOFT-WATCH-worthy (strong but no slot, or not ripe):**
+
+  The middle door: "researched, not buying now, keep eyes on it."
+  Use it when a candidate cleared composite ≥ 4 but you're out of
+  dispatch slots, or the setup isn't ripe (catalyst too far out,
+  entry shape not formed) and a priced plan would just rot on the
+  watchlist.
+
+  Call \`record_thesis\` directly:
+  - \`direction\`: "PASS" **+ \`status\`: "WATCHING"** — this pair IS
+    the soft watch ("decided not to trade, keep eyes on it")
+  - \`ticker\` + \`reasoning_summary\`: what you saw, why not now
+  - \`triggers\`: ≥1 REVIEW-action wake condition answering "what
+    brings this back to me?" — a price level, a price move, or an
+    event (EARNINGS_BEAT / EARNINGS_MISS / FILING). Wake conditions
+    only: no ENTER/EXIT actions, no entry/target/stop prices, no
+    review clock. The row costs nothing until a wake fires — then it
+    lands in that morning's run for a fresh decision.
+  - PROVENANCE — same rules as the PASS block below.
+
+  Soft watches are NOT capped and do NOT consume dispatch slots.
+  Capacity overflow is a soft watch, not a terminal PASS — "no room
+  this week" must stop meaning "never again."
 
 **PASS-worthy (composite < 4, researched):**
 
@@ -470,8 +498,10 @@ For each researched candidate, exactly one of these three actions:
         (e.g. "Surfaced via get_market_movers scope:universe — top
         gainer outside coverage").
 
-  A PASS is recorded as Passed automatically — don't send a status
-  field. It's terminal: no triggers, no wake-up.
+  A PASS with no status field is recorded as Passed automatically.
+  It's terminal: no triggers, no wake-up. Use it when you would NOT
+  want the name back absent the flip conditions you wrote. If you'd
+  want eyes kept on it, that's a soft watch (block above), not a PASS.
   It exists so a future discovery encounter reads it via
   \`get_theses(include_history)\` and sees "we already looked, here's
   what we found, here's what would change our mind." Dropping a
@@ -494,9 +524,10 @@ For each researched candidate, exactly one of these three actions:
   primary_decision: "WATCH" (or "HOLD" if 0 dispatches)
   ranked_picks: every candidate from the pool + which bucket it landed in
   decision_rationale: one paragraph covering — what you dispatched
-    (the WATCHING-worthy survivors), what you PASS-recorded (researched
-    but didn't clear the bar), what you skipped (triage-dismissed),
-    and what next week should look at.
+    (the WATCHING-worthy survivors), what you soft-watched (kept with
+    a wake), what you PASS-recorded (researched, wouldn't take back),
+    what you skipped (triage-dismissed), and what next week should
+    look at.
 
 ### Step 5 — Complete the run
 
@@ -517,6 +548,9 @@ HARD CONSTRAINTS
   • You CAN mint PASS theses directly via \`record_thesis(direction:'PASS')\`
     — lands at \`status: PASSED\` (researched-and-declined), institutional
     memory. No cap.
+  • You CAN mint SOFT WATCHES directly via \`record_thesis(direction:'PASS',
+    status:'WATCHING', triggers:[wake conditions])\` — unpriced, REVIEW-only
+    wakes, no review clock. No cap; doesn't consume dispatch slots.
   • You CANNOT mint LONG/SHORT theses yourself via record_thesis. The
     thesis-writer sub-agent owns those.
   • You CANNOT mint theses on tickers in the already-covered list
