@@ -141,6 +141,10 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
                 ticker={it.ticker}
                 tag={getTradeStatusDisplay("PENDING").label}
                 actionIcon={it.action === "BUY" ? "buy" : "sell"}
+                // No expiresAt on purpose: this renders PERSISTED tool
+                // results, so a proposal approved after this run would
+                // mislabel as "Expired". Click-time server truth (toast)
+                // stays accurate on this surface.
                 trailing={<ProposalActions orderId={it.orderId} />}
               >
                 {sizeStr}

@@ -77,6 +77,8 @@ export interface CoveragePendingProposal {
   intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
   /** Shares THIS proposal moves — the Order's quantity, not the position's. */
   quantity: number;
+  /** ISO — when the proposal lapses; drives the Expired state on the Review control. */
+  expiresAt?: string;
 }
 
 export interface CoverageData {
@@ -145,7 +147,7 @@ export async function getCoverageData(
           where: { status: "AWAITING_APPROVAL" },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { id: true, intent: true, quantity: true },
+          select: { id: true, intent: true, quantity: true, expiresAt: true },
         },
       },
     }).catch(() => [] as never[]),
@@ -186,7 +188,7 @@ export async function getCoverageData(
           where: { status: "AWAITING_APPROVAL" },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { id: true, intent: true, quantity: true },
+          select: { id: true, intent: true, quantity: true, expiresAt: true },
         },
       },
     }).catch(() => [] as never[]),
@@ -205,6 +207,7 @@ export async function getCoverageData(
       orderId: o.id,
       intent: (o.intent ?? "OPEN") as CoveragePendingProposal["intent"],
       quantity: o.quantity,
+      expiresAt: o.expiresAt?.toISOString(),
     });
   }
 
@@ -300,6 +303,7 @@ export async function getCoverageData(
             orderId: p.orders[0].id,
             intent: (p.orders[0].intent ?? "CLOSE") as CoveragePendingProposal["intent"],
             quantity: p.orders[0].quantity,
+            expiresAt: p.orders[0].expiresAt?.toISOString(),
           }
         : null,
     };

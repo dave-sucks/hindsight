@@ -123,7 +123,11 @@ function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: Mobil
             rail and the thesis sheet, so the decision can be made while
             reading the row's 1D/5D/30D move. */}
         {row.pendingProposal && (
-          <ProposalActions orderId={row.pendingProposal.orderId} align="end" />
+          <ProposalActions
+            orderId={row.pendingProposal.orderId}
+            expiresAt={row.pendingProposal.expiresAt}
+            align="end"
+          />
         )}
         {pct == null ? (
           <span className="text-muted-foreground/40 text-xs">—</span>

@@ -475,7 +475,11 @@ export default async function TradeDetailPage({
                     gain={isProposal ? null : { dollar: pnl, pct: pnlPct }}
                     right={
                       isProposal && proposalOrder ? (
-                        <ProposalActions orderId={proposalOrder.id} align="end" />
+                        <ProposalActions
+                          orderId={proposalOrder.id}
+                          expiresAt={proposalOrder.expiresAt?.toISOString()}
+                          align="end"
+                        />
                       ) : undefined
                     }
                   />

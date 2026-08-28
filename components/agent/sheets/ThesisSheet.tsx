@@ -391,7 +391,9 @@ function TradeBlock({
       entry,
       buyVerb: direction === "SHORT" ? "Short" : "Buy",
     });
-    review = <ProposalActions orderId={pp.orderId} align="end" />;
+    review = (
+      <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" />
+    );
     dotClass = "bg-amber-500";
     note = pp.rationale;
     meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
@@ -408,7 +410,9 @@ function TradeBlock({
         pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim",
       proposalQty: pp.quantity,
     });
-    review = <ProposalActions orderId={pp.orderId} align="end" />;
+    review = (
+      <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" />
+    );
     dotClass = "bg-amber-500";
     if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
     note = pp.rationale;
