@@ -251,7 +251,15 @@ export function applyLevelArgs(args: {
     // trigger for it re-arms a purchase on a name we already own — the
     // 2026-05-19 bug where 35 of 36 ENTER tacticals fired on held tickers.
     if (slot === "ENTRY" && status === "HOLDING") continue;
-    triggers = setLevel(slot, price, direction, triggers, mintId, source);
+    triggers = setLevel(
+      slot,
+      price,
+      direction,
+      triggers,
+      mintId,
+      source,
+      status === "HOLDING",
+    );
   }
 
   return {
@@ -285,6 +293,7 @@ function setLevel(
   stored: Trigger[],
   mintId: () => string,
   source?: Trigger["source"],
+  held: boolean = true,
 ): Trigger[] {
   const side = slot === "FLOOR" ? "DOWNSIDE" : "UPSIDE";
   const occupies = (t: Trigger): boolean => {
@@ -333,7 +342,7 @@ function setLevel(
       // problem the ladder exists to fix, and the trail already protects the
       // downside while the decision waits.
       action: slot === "ENTRY" ? "ENTER" : slot === "FLOOR" ? "EXIT" : "REVIEW",
-      rationale: rationaleFor(slot, price, direction),
+      rationale: rationaleFor(slot, price, direction, held),
       ...(source ? { source } : {}),
     },
   ];
@@ -475,6 +484,7 @@ function rationaleFor(
   slot: LevelSlot,
   price: number,
   direction: string | null,
+  held: boolean,
 ): string {
   const long = isLong(direction);
   const p = `$${price.toFixed(2)}`;
@@ -484,6 +494,14 @@ function rationaleFor(
       : `Short entry — start the position when the price breaks below ${p}.`;
   }
   if (slot === "FLOOR") {
+    // On a thesis we don't own, "sell" is meaningless — a floor break
+    // resolves to DEMOTE (effectiveTriggerAction) and takes the plan down.
+    // Write the wording that matches what actually happens (DAV-226).
+    if (!held) {
+      return long
+        ? `Floor — below ${p} the setup is wrong, so the plan comes down rather than waiting to be bought.`
+        : `Floor — above ${p} the setup is wrong, so the plan comes down rather than waiting to be entered.`;
+    }
     return long
       ? `Floor — sell if the price drops to ${p}. Below this the plan is wrong.`
       : `Floor — cover if the price rises to ${p}. Above this the plan is wrong.`;

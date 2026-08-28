@@ -182,16 +182,20 @@ export const triggerSchema = z.object({
   lastFiredAt: z.string().datetime().optional(),
   fireMode: z
     .enum(["TACTICAL", "DIRECT"])
-    .default("TACTICAL")
+    .optional()
     .describe(
-      // How a fired trigger is acted on. TACTICAL (default) wakes a GPT-5.5
-      // tactical run that evaluates + decides. DIRECT skips the agent and
-      // closes the position directly via closeOpenPosition — EXIT-only, and
-      // still routed through the approval gate (it saves the tactical-run
-      // cost, not the approval step). The .default keeps legacy triggers
-      // (and agent-minted ones that omit it) on the historical TACTICAL
-      // behavior; the UI add-path opts new EXIT stops into DIRECT explicitly.
-      "How a fired trigger is acted on: TACTICAL (wake a tactical run, default) or DIRECT (close directly, no agent — EXIT-only, still approval-gated).",
+      // How a fired trigger is acted on. TACTICAL wakes a GPT-5.5 tactical
+      // run that evaluates + decides. DIRECT skips the agent and closes the
+      // position directly via closeOpenPosition — EXIT-only, and still
+      // routed through the approval gate (it saves the tactical-run cost,
+      // not the approval step). Absent ⇒ TACTICAL (types.ts contract; every
+      // reader does `?? "TACTICAL"`). Was `.default("TACTICAL")` until
+      // DAV-226: the default stamped a "TACTICAL" label onto every rung on
+      // every write — including REVIEW rungs, whose fires never wake a
+      // tactical agent (they batch into the next daily run), so the stored
+      // label claimed behavior that doesn't exist. The UI add-path still
+      // opts new EXIT stops into DIRECT explicitly.
+      "How a fired trigger is acted on: TACTICAL (wake a tactical run; the behavior when omitted) or DIRECT (close directly, no agent — EXIT-only, still approval-gated).",
     ),
   // Server-owned provenance. Deliberately NO .default() — this schema is
   // also the disk-READ gate (trigger-evaluator, get-theses, thesis-sheet-

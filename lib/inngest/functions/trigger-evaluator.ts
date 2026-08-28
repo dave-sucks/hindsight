@@ -486,7 +486,10 @@ export const triggerEvaluator = inngest.createFunction(
                 await writeThesisUpdate({
                   thesisId: thesis.id,
                   type: "TRIGGER_FIRED",
-                  summary: `${describeTriggerFire(t)} — deferred to the next daily review`,
+                  // held=false: we're in the DEMOTE branch, so this thesis is
+                  // un-held — an EXIT here reads "take the plan down", not
+                  // "exit position" (DAV-226).
+                  summary: `${describeTriggerFire(t, false)} — deferred to the next daily review`,
                   rationale:
                     `${t.rationale} There was no priced plan left to set down, ` +
                     `so this is a look rather than a change.`,
@@ -740,7 +743,8 @@ export const triggerEvaluator = inngest.createFunction(
               await writeThesisUpdate({
                 thesisId: thesis.id,
                 type: "TRIGGER_FIRED",
-                summary: `${describeTriggerFire(t)} — deferred to the next daily review`,
+                // held=false: DEMOTE branch ⇒ un-held (see the signal path).
+                summary: `${describeTriggerFire(t, false)} — deferred to the next daily review`,
                 rationale:
                   `${t.rationale} There was no priced plan left to set down, ` +
                   `so this is a look rather than a change.`,
