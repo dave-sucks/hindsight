@@ -85,6 +85,7 @@ export const placeTrade = defineTool({
       ),
   }),
   ui: "tool-ui" as const,
+  gateLog: "place_trade",
   groupId: "Executing",
 
   progressLabel: (args) => {

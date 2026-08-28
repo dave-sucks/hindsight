@@ -26,6 +26,10 @@ import { tool } from "ai";
 import type { z } from "zod";
 import type { ToolContext } from "./tool-context";
 import type { ToolUI, ToolSource, ToolResult } from "./tool-result";
+import {
+  detectGateRejection,
+  recordGateRejection,
+} from "./gate-rejections";
 import type { AgentMode } from "./modes";
 
 interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
@@ -36,6 +40,16 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
   ui: ToolUI;
   /** Optional phase key — tools with the same groupId collapse in the UI */
   groupId?: string;
+  /**
+   * Gate telemetry opt-in (DAV-219). Set to the tool's registered name
+   * ("update_thesis", "place_trade", ...) and every REJECTION this tool
+   * returns — plus any thrown error, tagged `__exception__` — writes one
+   * GateRejection row. Presence of this field is the opt-in: only the
+   * write tools that carry gates set it, so read-tool vendor failures
+   * never spam the log. The write is awaited but self-swallowing — a
+   * telemetry failure can never turn a clean refusal into a crash.
+   */
+  gateLog?: string;
   /**
    * Produces a human-readable, present-tense gerund label from the args —
    * shown in the tool row and used to derive the group header. A good
@@ -111,6 +125,21 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
           const elapsed = Date.now() - t0;
           console.log(`[tool] END "${label}" ${elapsed}ms runId=${ctx.runId}`);
 
+          // DAV-219 — one row per refusal, detected from the envelope so no
+          // gate needs its own wiring. recordGateRejection never throws.
+          if (options.gateLog) {
+            const rejection = detectGateRejection(result.data);
+            if (rejection) {
+              await recordGateRejection({
+                tool: options.gateLog,
+                gateCode: rejection.gateCode,
+                summary: result.summary,
+                args,
+                ctx,
+              });
+            }
+          }
+
           return {
             ok: true as const,
             ui: result.ui ?? options.ui,
@@ -127,6 +156,18 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
             `[tool] FAILED "${label}" ${elapsed}ms runId=${ctx.runId}:`,
             msg,
           );
+          // DAV-219 — a crash is not a gate, but "the agent gave up because
+          // the tool threw" belongs in the same ledger, distinguishable by
+          // the __exception__ tag.
+          if (options.gateLog) {
+            await recordGateRejection({
+              tool: options.gateLog,
+              gateCode: "__exception__",
+              summary: msg,
+              args,
+              ctx,
+            });
+          }
           return {
             ok: false as const,
             error: msg,

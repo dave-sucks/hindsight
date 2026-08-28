@@ -487,6 +487,7 @@ export const recordThesis = defineTool({
     "Structural-belief gate: directional theses (LONG/SHORT) MUST include core_belief (1 sentence), key_assumptions (≥2 specific items), and invalidation_conditions (≥2 specific items). Without all three the call is rejected — these fields drive the trade evaluator's post-mortem, the tactical agent's invalidation reasoning, and the daily run's assumption-drift checks. PASS theses are exempt.",
   schema: thesisSchema,
   ui: "thesis-card" as const,
+  gateLog: "record_thesis",
 
   progressLabel: (args) => {
     const t = args.ticker.toUpperCase();

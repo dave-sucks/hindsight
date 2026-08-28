@@ -219,6 +219,7 @@ export const managePosition = defineTool({
     "Every action is audit-logged with your reason.",
   schema,
   ui: "tool-ui" as const,
+  gateLog: "manage_position",
   groupId: "Executing",
 
   progressLabel: (args) => {

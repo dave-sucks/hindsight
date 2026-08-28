@@ -55,6 +55,7 @@ export const closePosition = defineTool({
       ),
   }),
   ui: "tool-ui" as const,
+  gateLog: "close_position",
   groupId: "Executing",
 
   progressLabel: (args) => `Closing $${args.ticker.toUpperCase()} position`,
