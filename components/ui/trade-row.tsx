@@ -219,6 +219,8 @@ interface TradeRowProps {
     intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
     /** Shares this proposal moves — the Order's qty, not the position's. */
     quantity: number;
+    /** ISO — when the proposal lapses; drives the Expired state on the Review control. */
+    expiresAt?: string;
   };
   /** When present, clicking the row opens ThesisSheet instead of navigating to /trades/:id. */
   thesisId?: string;
@@ -382,7 +384,10 @@ export function TradeRow({
       }
       trailingBottom={
         isAwaitingApproval ? (
-          <ProposalActions orderId={pendingProposal.orderId} />
+          <ProposalActions
+            orderId={pendingProposal.orderId}
+            expiresAt={pendingProposal.expiresAt}
+          />
         ) : isStalePrice ? (
           <span className="text-[10px] text-amber-500/80">no live price</span>
         ) : isPending ? (

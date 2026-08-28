@@ -55,6 +55,7 @@ export const closePosition = defineTool({
       ),
   }),
   ui: "tool-ui" as const,
+  gateLog: "close_position",
   groupId: "Executing",
 
   progressLabel: (args) => `Closing $${args.ticker.toUpperCase()} position`,
@@ -88,8 +89,9 @@ export const closePosition = defineTool({
     const intent = enforced.declared;
     // closeOpenPosition (and Position.closeReason) only store
     // TARGET | STOP | TIME | MANUAL. The two judgment codes collapse to
-    // MANUAL — identical to manage_position's full_close mapping, so both
-    // close paths tag the row the same way.
+    // MANUAL. close_position is the ONLY tool that sells a whole position
+    // (DAV-220 removed manage_position's full_close), so this mapping is the
+    // single place a full exit gets its stored label.
     const reason: "TARGET" | "STOP" | "MANUAL" = enforced.stored;
     if (enforced.corrected) {
       console.info(

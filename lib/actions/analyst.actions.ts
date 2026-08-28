@@ -152,6 +152,8 @@ export interface PositionWithThesis {
     intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
     /** Shares this proposal moves — the Order's qty, not the position's. */
     quantity: number;
+    /** ISO — when the proposal lapses; drives the Expired state on the Review control. */
+    expiresAt?: string;
   };
 }
 
@@ -571,6 +573,7 @@ export async function getAnalystDetail(
               | "CLOSE"
               | "PARTIAL_CLOSE",
             quantity: awaiting.quantity ?? p.quantity,
+            expiresAt: awaiting.expiresAt?.toISOString(),
           }
         : undefined,
     };

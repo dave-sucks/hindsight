@@ -363,6 +363,8 @@ export async function POST(
           industries: ac.industries,
           themes: ac.themes,
           feeds: ac.feeds,
+          marketCapMin: ac.marketCapMin != null ? Number(ac.marketCapMin) : null,
+          marketCapMax: ac.marketCapMax != null ? Number(ac.marketCapMax) : null,
           watchlist: principalWatchlistSymbols,
           exclusionList: ac.exclusionList,
           minConfidence: ac.minConfidence,

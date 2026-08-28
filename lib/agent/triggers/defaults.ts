@@ -56,6 +56,13 @@ export interface ThesisShape {
   catalystDate?: Date | null;
   /** Direction colors entry-trigger semantics for watching theses. */
   direction?: ThesisDirection | null;
+  /**
+   * The live quote when this level was chosen. Decides which SIDE the ENTER
+   * rung compares on — see watchingEntryTrigger. Optional: when absent the
+   * rung keeps the historical breakout shape, so no call site regresses by
+   * not passing it.
+   */
+  currentPrice?: number | null;
 }
 
 // ── Builders for each horizon ──────────────────────────────────────────
@@ -285,12 +292,46 @@ export const CADENCE_DAYS_BY_HORIZON: Record<Horizon, number> = {
   COMPOUNDER: 30,
 };
 
+/**
+ * When this thesis is next due, given when it was last actually looked at.
+ *
+ * `Thesis.nextReviewAt` is a DERIVED display value — that is what the L7
+ * comment claimed and, for one day, was not true of anything: L7 deleted both
+ * blocks that advanced the date and replaced them with a `lastReviewedAt`
+ * stamp, and nothing recomputed the column. Five readers kept reading it,
+ * including the overdue-housekeeping cron, so every thesis past its last
+ * written date read as overdue forever. Five of Catalyst's seven names were
+ * permanently flagged within a day.
+ *
+ * Cadence comes from the thesis's own review trigger when it has one, and
+ * from its horizon otherwise — which is exactly what the account rule would
+ * hand it, so an inheriting thesis gets the same answer without resolving
+ * the whole cascade on the hottest write path in the app.
+ */
+export function nextReviewFrom(
+  lastReviewedAt: Date,
+  triggers: Array<{ predicate: TriggerPredicate }> | null | undefined,
+  horizon: Horizon | null,
+): Date {
+  const own = resolvedCadenceDays(triggers ?? []);
+  const days = own ?? CADENCE_DAYS_BY_HORIZON[horizon ?? "TARGET"];
+  return new Date(lastReviewedAt.getTime() + days * 86_400_000);
+}
+
 /** The cadence in force on a resolved ladder; null when nothing sets one. */
 export function resolvedCadenceDays(
   triggers: Array<{ predicate: TriggerPredicate }>,
 ): number | null {
-  for (const t of triggers) {
-    if (t.predicate.kind === "REVIEW_CADENCE") return t.predicate.days;
+  for (const t of triggers ?? []) {
+    // Defensive: legacy rows carry malformed triggers (that is why
+    // parseTriggersResilient exists), and this runs on the review-stamp path
+    // of the most-called tool in the app. One bad trigger must not fail an
+    // otherwise valid thesis update — it just doesn't supply the cadence.
+    const kind = t?.predicate?.kind;
+    if (kind === "REVIEW_CADENCE") {
+      const days = (t.predicate as { days?: unknown }).days;
+      if (typeof days === "number" && days > 0) return days;
+    }
   }
   return null;
 }
@@ -608,21 +649,57 @@ function watchingEntryTrigger(
   // level. That needs a predicate comparing price to the thesis's OWN
   // entryPrice, since a dollar level can't live above the thesis — specced
   // with the rest of docs/plans/LEVELS_AS_TRIGGERS.md.
+  // ── Which side to compare on ─────────────────────────────────────────
+  // The level itself says what the analyst meant. A LONG entry set BELOW
+  // the market is a price they want to come back to; set ABOVE it, it's a
+  // confirmation they want to see first. Read the intent off the level
+  // instead of hardcoding one strategy for every seat.
+  //
+  // Hardcoding PRICE_ABOVE broke both cases at once (measured 2026-08-27
+  // on the live book):
+  //   • a dip level is true the moment it's written — NOW set $130 against
+  //     a $132.51 tape, ABT $112 against $116.44 — so the rung fires every
+  //     cooldown forever and the analyst correctly declines each time
+  //     (PLTR 27 fires in 14 days, MSFT 27, NOW 26).
+  //   • a confirmation level waits, which is right, but it was the only
+  //     shape available, so every dip-buying seat got it by accident.
+  //
+  // Deliberately NOT a setting: the 2026-08-16 principal ruling removed
+  // AgentConfig.entryTriggerMode because a setting whose entire output is a
+  // trigger restates what the trigger already says, invisibly. This reads
+  // the thesis's own numbers, so the rung stays self-describing.
+  //
+  // No quote in context → keep the historical breakout shape. Existing
+  // callers that don't pass currentPrice behave exactly as before.
+  const px = thesis.currentPrice;
+  const dipEntry = px != null && Number.isFinite(px) && thesis.entryPrice < px;
+
   if (direction === "LONG") {
     return {
       id: createId(),
-      predicate: { kind: "PRICE_ABOVE", level: thesis.entryPrice },
+      predicate: dipEntry
+        ? { kind: "PRICE_BELOW", level: thesis.entryPrice }
+        : { kind: "PRICE_ABOVE", level: thesis.entryPrice },
       action: "ENTER",
-      rationale: `Entry trigger — price broke above $${thesis.entryPrice}. Validate setup and consider INITIATE.`,
+      rationale: dipEntry
+        ? `Entry trigger — price came back to $${thesis.entryPrice}, the level this thesis wants to pay. Validate setup and consider INITIATE.`
+        : `Entry trigger — price broke above $${thesis.entryPrice}. Validate setup and consider INITIATE.`,
       cooldownDays,
     };
   }
   if (direction === "SHORT") {
+    // Mirror: a short entry set ABOVE the market is a rally to sell into.
+    const rallyEntry =
+      px != null && Number.isFinite(px) && thesis.entryPrice > px;
     return {
       id: createId(),
-      predicate: { kind: "PRICE_BELOW", level: thesis.entryPrice },
+      predicate: rallyEntry
+        ? { kind: "PRICE_ABOVE", level: thesis.entryPrice }
+        : { kind: "PRICE_BELOW", level: thesis.entryPrice },
       action: "ENTER",
-      rationale: `Short entry trigger — price broke below $${thesis.entryPrice}. Validate setup and consider INITIATE short.`,
+      rationale: rallyEntry
+        ? `Short entry trigger — price rallied to $${thesis.entryPrice}, the level this thesis wants to sell into. Validate setup and consider INITIATE short.`
+        : `Short entry trigger — price broke below $${thesis.entryPrice}. Validate setup and consider INITIATE short.`,
       cooldownDays,
     };
   }

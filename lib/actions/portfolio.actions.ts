@@ -734,6 +734,7 @@ export async function getDashboardData(
           // $15,992 for a 13-share $4k SNOW trim). `shares` below deliberately
           // stays the position size — it feeds value + P&L for the held row.
           quantity: awaitingOrder.quantity ?? p.quantity,
+          expiresAt: awaitingOrder.expiresAt?.toISOString(),
         }
       : undefined;
 

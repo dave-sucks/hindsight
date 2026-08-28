@@ -20,13 +20,7 @@ import {
   awaitingApprovalEnvelope,
 } from "@/lib/proposals/maybe-await-approval";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
-import {
-  defaultTriggersForHorizon,
-  applyTriggerCooldownDefaults,
-  type Horizon,
-} from "@/lib/agent/triggers/defaults";
-import type { Trigger } from "@/lib/agent/triggers/types";
-import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
+import { armHeldLadderOnFill } from "@/lib/proposals/thesis-flips";
 import {
   positionBand,
   DEFAULT_POSITION_CAP,
@@ -85,6 +79,7 @@ export const placeTrade = defineTool({
       ),
   }),
   ui: "tool-ui" as const,
+  gateLog: "place_trade",
   groupId: "Executing",
 
   progressLabel: (args) => {
@@ -961,101 +956,18 @@ export const placeTrade = defineTool({
       // 7×, etc.). HELD templates have stops, target-hit REVIEW, and
       // per-horizon hygiene — no ENTER, because you can't enter what
       // you already hold.
-      try {
-        const watchingThesis = await prisma.thesis.findFirst({
-          where: {
-            ticker,
-            status: "WATCHING",
-            researchRun: { agentConfigId: analystId },
-          },
-          orderBy: { createdAt: "desc" },
-          select: {
-            id: true,
-            direction: true,
-            horizon: true,
-            entryPrice: true,
-            targetPrice: true,
-            stopLoss: true,
-            catalystDate: true,
-            triggers: true,
-          },
-        });
-        if (watchingThesis) {
-          // Compute the new HELD trigger set. Only when horizon is known
-          // can we pick a template; otherwise we leave the existing
-          // trigger array alone (drop only ENTER triggers manually to
-          // avoid the recurring-fire bug at minimum).
-          const horizon = watchingThesis.horizon as Horizon | null;
-          let nextTriggers: Trigger[] | undefined;
-          if (horizon) {
-            // Use the trade arguments as ground truth — entry/target/stop
-            // from `args` reflect what was actually executed, not the
-            // (now-behind-us) WATCHING levels.
-            const heldDefaults = defaultTriggersForHorizon(
-              horizon,
-              {
-                entryPrice: args.entry_price,
-                targetPrice: args.target_price,
-                stopLoss: args.stop_loss,
-                catalystDate: watchingThesis.catalystDate ?? null,
-                direction: watchingThesis.direction as "LONG" | "SHORT",
-              },
-              "HELD",
-            );
-            nextTriggers = applyTriggerCooldownDefaults(heldDefaults);
-          } else {
-            // No horizon → drop ENTER-action triggers from the existing
-            // array so the WATCHING-side ENTER doesn't keep firing on
-            // the held position. Conservative fallback.
-            const existing = (watchingThesis.triggers as unknown as Trigger[] | null) ?? [];
-            nextTriggers = existing.filter((t) => t.action !== "ENTER");
-          }
-
-          // Recompute the displayed levels from the triggers we just wrote
-          // (DAV-195 L3). Without this the buy regenerates the held-side
-          // ladder from the trade arguments while the columns keep their
-          // watching-era values — so the sheet shows the price you PLANNED to
-          // sell at while a different one is armed. That is the SNOW drift,
-          // reintroduced on every fill.
-          const heldLevels = canonicalLevels({
-            triggers: (nextTriggers ?? []).map((x) => ({
-              ...x,
-              level: "THESIS" as const,
-              inherited: false,
-            })),
-            direction: watchingThesis.direction,
-            status: "HOLDING",
-            avgCost: fillPrice,
-          });
-          await prisma.thesis.update({
-            where: { id: watchingThesis.id },
-            data: {
-              status: "HOLDING",
-              triggers: (nextTriggers ?? []) as unknown as object,
-              // entryPrice becomes a FACT here — what the fill actually cost.
-              entryPrice: fillPrice,
-              targetPrice: heldLevels.columns.targetPrice,
-              stopLoss: heldLevels.columns.stopLoss,
-            },
-          });
-          await prisma.thesisUpdate.create({
-            data: {
-              thesisId: watchingThesis.id,
-              type: "STATUS_CHANGED",
-              summary: `Promoted ${ticker} ${watchingThesis.direction} WATCHING → HOLDING on place_trade`,
-              rationale: `Entry filled — the watchlist row is now a live position, and its trigger ladder was regenerated for the held-side ${horizon ?? "default"} plan.`,
-              fieldChanges: {
-                status: { from: "WATCHING", to: "HOLDING" },
-                triggers: { from: "WATCHING-set", to: "HELD-set" },
-              },
-              runId: ctx.runId,
-              tradeId: position.id,
-            },
-          });
-        }
-      } catch (err) {
-        console.warn(`[tool] place_trade WATCHING→ACTIVE promotion failed:`, err instanceof Error ? err.message : err);
-      }
+      // ONE implementation, shared with the approval path
+      // (promoteThesisOnApproval). Fail-soft inside.
+      await armHeldLadderOnFill({
+        analystId,
+        ticker,
+        fillPrice,
+        targetPrice: args.target_price,
+        stopLoss: args.stop_loss,
+        positionId: position.id,
+        runId: ctx.runId,
+        via: "place_trade",
+      });
 
       // Fetch post-trade portfolio context (non-fatal)
       let portfolioUpdate: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number } | null = null;

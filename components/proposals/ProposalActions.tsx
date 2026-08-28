@@ -44,19 +44,49 @@ import { Button } from "@/components/ui/button";
 import { Check, X, Loader2, ChevronDown, Pencil } from "lucide-react";
 import { ThesisTriggersSection } from "@/components/agent/sheets/ThesisTriggersSection";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export interface ProposalActionsProps {
   orderId: string;
+  /**
+   * ISO expiry of the proposal. Past-expiry the control renders a muted
+   * "Expired" label instead of a Review button that can only 410 — the
+   * expiry cron sweeps every 30 min, so a proposal can be dead in the DB
+   * while its row still says AWAITING_APPROVAL. Omitted = unknown, render
+   * the button and let the server rule.
+   */
+  expiresAt?: string | null;
   /** Dropdown alignment — "end" (default) for right-aligned rows, "start" for left. */
   align?: "start" | "end";
   /** Optional positioning class on the trigger (margins only — not styling). */
   className?: string;
 }
 
-export function ProposalActions({ orderId, align = "end", className }: ProposalActionsProps) {
+/** The proposal routes return `{ error, code }` JSON for known refusals, plain text otherwise. */
+async function readApiError(
+  res: Response,
+): Promise<{ message: string; code?: string }> {
+  const text = await res.text().catch(() => "");
+  try {
+    const body = JSON.parse(text) as { error?: string; code?: string };
+    if (body && typeof body.error === "string") {
+      return { message: body.error, code: body.code };
+    }
+  } catch {
+    /* not JSON */
+  }
+  return { message: text || `HTTP ${res.status}` };
+}
+
+const EXPIRED_TOAST =
+  "This proposal expired before a decision landed. The analyst reads the expiry and can re-propose.";
+
+export function ProposalActions({ orderId, expiresAt, align = "end", className }: ProposalActionsProps) {
   const router = useRouter();
   const [pending, setPending] = useState<"approve" | "reject" | null>(null);
-  const [resolved, setResolved] = useState<"approved" | "rejected" | null>(null);
+  const [resolved, setResolved] = useState<
+    "approved" | "rejected" | "expired" | null
+  >(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectMessage, setRejectMessage] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
@@ -134,7 +164,17 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
         body: JSON.stringify(body),
       });
       if (!res.ok && res.status !== 202) {
-        throw new Error((await res.text()) || `HTTP ${res.status}`);
+        const { message, code } = await readApiError(res);
+        if (code === "EXPIRED") {
+          setEditOpen(false);
+          setResolved("expired");
+          toast.error(EXPIRED_TOAST);
+          router.refresh();
+          return;
+        }
+        setEditError(message);
+        setPending(null);
+        return;
       }
       setEditOpen(false);
       setResolved("approved");
@@ -153,12 +193,28 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
       });
       // 202 = uncertain Alpaca submit; reconcile resolves it. Still a success for UI.
       if (!res.ok && res.status !== 202) {
-        throw new Error((await res.text()) || `HTTP ${res.status}`);
+        const { message, code } = await readApiError(res);
+        if (code === "EXPIRED") {
+          // DB row is still AWAITING_APPROVAL until the expiry cron sweeps
+          // it, so a refresh alone would re-render the dead button — the
+          // local "expired" overlay is the honest state.
+          setResolved("expired");
+          toast.error(EXPIRED_TOAST);
+        } else if (code === "NOT_AWAITING") {
+          toast.error(`Already resolved: ${message}`);
+          setPending(null);
+        } else {
+          toast.error(`Approve failed: ${message}`);
+          setPending(null);
+        }
+        router.refresh();
+        return;
       }
       setResolved("approved");
       router.refresh();
     } catch (err) {
       console.error(`[proposal-actions] approve ${orderId} failed:`, err);
+      toast.error("Approve failed — network error. Try again.");
       setPending(null);
     }
   }
@@ -174,7 +230,8 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
         body: JSON.stringify(trimmed.length > 0 ? { message: trimmed } : {}),
       });
       if (!res.ok && res.status !== 202) {
-        throw new Error((await res.text()) || `HTTP ${res.status}`);
+        const { message } = await readApiError(res);
+        throw new Error(message);
       }
       setRejectOpen(false);
       setRejectMessage("");
@@ -221,7 +278,19 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
     setRejectDirection(null);
   }
 
-  if (resolved) {
+  // Past-expiry with no action taken yet: same terminal label the server
+  // would force on the first click. Server stays the authority — this only
+  // stops us offering a button whose every outcome is a 410.
+  const lapsed =
+    resolved == null && expiresAt != null && Date.parse(expiresAt) <= Date.now();
+
+  if (resolved || lapsed) {
+    const label =
+      resolved === "approved"
+        ? "Approved"
+        : resolved === "rejected"
+          ? "Rejected"
+          : "Expired";
     return (
       <span
         className={cn(
@@ -230,7 +299,7 @@ export function ProposalActions({ orderId, align = "end", className }: ProposalA
           className,
         )}
       >
-        {resolved === "approved" ? "Approved" : "Rejected"}
+        {label}
       </span>
     );
   }

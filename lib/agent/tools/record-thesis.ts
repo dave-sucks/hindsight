@@ -5,8 +5,10 @@
  * so the UI can render the full thesis card.
  */
 
+import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import { nextReviewFrom } from "@/lib/agent/triggers/defaults";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
@@ -29,8 +31,6 @@ import { randomUUID } from "node:crypto";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 import {
-  HORIZON_REVIEW_DAYS,
-  WATCHING_FIRST_REVIEW_DAYS,
   holdDurationFromHorizon,
   type Horizon as HorizonPolicy,
 } from "@/lib/agent/horizon-policy";
@@ -96,8 +96,10 @@ const thesisFields = z.object({
       "2-4 key risks. Legacy shape — V2 agents prefer `bear_case: { bullets: [{ text, citation }] }`.",
     ),
   entry_price: z.number().optional().describe(
-    "WHERE YOU'D BUY IN. The level above which you'd initiate (LONG) or below which you'd initiate short. For breakout setups: the breakout level. For 'buy now at market' setups: the current quote from get_stock_data. " +
-    "The default ENTER trigger fires when price crosses entry_price (PRICE_ABOVE for LONG, PRICE_BELOW for SHORT), so this drives the actual buy condition — NOT just a current-price snapshot. " +
+    "WHERE YOU'D BUY IN — the price you actually want to pay, not a snapshot of the tape. " +
+    "The ENTER trigger reads the SIDE from where you put this level relative to the current quote, so say what you mean: " +
+    "set it BELOW the current price for a pullback you want to buy (fires when price comes back down to it), or ABOVE the current price for a breakout you want confirmed first (fires when price clears it). " +
+    "Setting it at the current quote means 'buy it here' and will propose immediately. " +
     "REQUIRED for LONG/SHORT. Also include for PASS to enable shadow tracking."
   ),
   target_price: z.number().optional().describe("Price target. REQUIRED for LONG/SHORT."),
@@ -492,6 +494,7 @@ export const recordThesis = defineTool({
     "Structural-belief gate: directional theses (LONG/SHORT) MUST include core_belief (1 sentence), key_assumptions (≥2 specific items), and invalidation_conditions (≥2 specific items). Without all three the call is rejected — these fields drive the trade evaluator's post-mortem, the tactical agent's invalidation reasoning, and the daily run's assumption-drift checks. PASS theses are exempt.",
   schema: thesisSchema,
   ui: "thesis-card" as const,
+  gateLog: "record_thesis",
 
   progressLabel: (args) => {
     const t = args.ticker.toUpperCase();
@@ -980,10 +983,24 @@ export const recordThesis = defineTool({
             inferredSourceKind === "WATCHLIST_REVIEW"));
 
       // ── nextReviewAt derivation ─────────────────────────────────────
-      // PASS rows get null (terminal at write). Everything else uses one
-      // of two paths:
-      //   1. Agent-provided `next_review_at` — validated for sanity below.
-      //   2. Horizon-default — Date.now() + WATCHING/HELD cadence days.
+      // Derived from the review trigger this mint just wrote — the SAME
+      // helper update_thesis uses, so a thesis cannot disagree with itself.
+      //
+      // It used to read WATCHING_FIRST_REVIEW_DAYS / HORIZON_REVIEW_DAYS,
+      // a third table that contradicted the trigger beside it: a fresh
+      // CATALYST watch carried "review every day" on its trigger and "next
+      // review in 14 days" in its column. The review-due check reads the
+      // column, so the name was invisible for two weeks and then snapped to
+      // daily the first time anything touched it. AGIO and SMMT were minted
+      // that way today — daily trigger, 2026-09-10 column.
+      //
+      // BEHAVIOUR CHANGE: the first-review grace period is gone. A new watch
+      // item now comes due on its normal cadence — tomorrow for a daily
+      // catalyst — because that is what "review every day" means. If a grace
+      // period is wanted, it belongs in the trigger, where it is visible.
+      //
+      // PASS rows still get null (terminal at write), and an agent-provided
+      // date is still honoured after the sanity check below.
       //
       // Sanity-check the agent-provided value because the model can
       // year-confuse (e.g. emit "2025-05-31" when today is 2026-05-31 —
@@ -1018,21 +1035,14 @@ export const recordThesis = defineTool({
           );
           // Fall through to horizon default below.
           if (args.horizon) {
-            const dayMs = 24 * 60 * 60 * 1000;
-            const horizonKey = args.horizon as HorizonPolicy;
-            const days = willBeWatching
-              ? WATCHING_FIRST_REVIEW_DAYS[horizonKey]
-              : HORIZON_REVIEW_DAYS[horizonKey];
-            nextReviewAt = new Date(nowMs + days * dayMs);
+            // [] on purpose: the trigger list is assembled below, and the
+            // horizon fallback returns exactly the cadence that trigger will
+            // carry. Same number, no reordering.
+            nextReviewAt = nextReviewFrom(new Date(nowMs), [], args.horizon as HorizonPolicy);
           }
         }
       } else if (args.horizon) {
-        const dayMs = 24 * 60 * 60 * 1000;
-        const horizonKey = args.horizon as HorizonPolicy;
-        const days = willBeWatching
-          ? WATCHING_FIRST_REVIEW_DAYS[horizonKey]
-          : HORIZON_REVIEW_DAYS[horizonKey];
-        nextReviewAt = new Date(nowMs + days * dayMs);
+        nextReviewAt = nextReviewFrom(new Date(nowMs), [], args.horizon as HorizonPolicy);
       }
 
       // ── Effective status — derived from direction ──
@@ -1260,6 +1270,21 @@ export const recordThesis = defineTool({
         }
       }
 
+      // Live quote for the ENTER rung's SIDE. The level itself says what the
+      // analyst meant — an entry under the tape is a price they want to come
+      // back to, one above it is a confirmation they want to see first — but
+      // that reading needs the tape. Fail-open: no quote, and the rung keeps
+      // the historical breakout shape.
+      let quoteForEntrySide: number | null = null;
+      if (args.direction !== "PASS") {
+        try {
+          const q = await getStockQuote(args.ticker);
+          if (q && Number.isFinite(q.c) && q.c > 0) quoteForEntrySide = q.c;
+        } catch {
+          /* non-fatal — side falls back to breakout */
+        }
+      }
+
       // ── Hoisted trigger build ─────────────────────────────────────────
       // Hoisted so we can run the watching ENTER-trigger guard below
       // BEFORE the row hits the DB. The guard inspects the merged final
@@ -1299,6 +1324,7 @@ export const recordThesis = defineTool({
             stopLoss: args.stop_loss ?? null,
             catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
             direction: args.direction,
+            currentPrice: quoteForEntrySide,
           },
           effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
         );

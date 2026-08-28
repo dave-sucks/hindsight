@@ -1,10 +1,17 @@
 /**
- * manage_position — replaces the binary close_position with a full suite of
- * position management actions. Every action writes a PositionManagementAction
- * audit record with a human-readable reason string.
+ * manage_position — position management actions short of a full exit. Every
+ * action writes a PositionManagementAction audit record with a human-readable
+ * reason string.
+ *
+ * Selling the WHOLE position is `close_position`, not an action here. This tool
+ * used to carry a `full_close` action that did the same job with strictly less
+ * care: no `belief_survived` attestation (so a green protective exit retired the
+ * thesis permanently instead of recycling it to WATCHING — the P1-35 bug), and
+ * no PROMOTED guard. It was unused after 2026-06-05 and removed 2026-08-27
+ * (DAV-220). Don't reintroduce it: two tools that sell an entire position means
+ * one of them silently loses whichever feature the other gains next.
  *
  * Actions:
- *   full_close          — exit the entire position
  *   partial_close       — sell close_pct% of current shares
  *   add_to_position     — add add_notional dollars to the position
  *   update_targets      — change targetPrice and/or stopLoss
@@ -20,10 +27,6 @@ import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { stopMoveWeakensProtection } from "@/lib/agent/triggers/ratchet";
-import {
-  enforceCloseReason,
-  withCloseAuditNote,
-} from "@/lib/agent/triggers/enforce-close-reason";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { getAccount, getOrder, getLatestPrice, closePositionPartial, placeMarketOrder } from "@/lib/alpaca";
@@ -101,14 +104,10 @@ interface ManagePositionData {
 
 type ManagePositionReturn = { summary: string; data: ManagePositionData; sources: never[] };
 
-function makeReturn(summary: string, data: ManagePositionData): ManagePositionReturn {
-  return { summary, data, sources: [] };
-}
 
 const schema = z.object({
   symbol: z.string().describe("Ticker symbol of the position to manage"),
   action: z.enum([
-    "full_close",
     "partial_close",
     "add_to_position",
     "update_targets",
@@ -141,11 +140,11 @@ const schema = z.object({
   new_target_price: z.number().positive().optional().describe("New target price"),
   new_stop_loss: z.number().positive().optional().describe("New stop loss price. On a held stock the stop only moves toward MORE protection (up for LONG, down for SHORT) — a loosening move is rejected; only the principal moves a safety line the other way."),
 
-  // full_close reason code
+  // partial_close reason code
   close_reason: z
     .enum(["TARGET", "STOP", "THESIS_INVALIDATED", "RISK_MANAGEMENT", "MANUAL"])
     .optional()
-    .describe("For full_close or partial_close: the reason code for the exit"),
+    .describe("For partial_close: the reason code for the exit"),
 });
 
 
@@ -214,18 +213,17 @@ async function moveThesisLevels(args: {
 export const managePosition = defineTool({
   description:
     "Manage an existing open position with nuanced actions beyond binary buy/sell. " +
-    "Use this instead of close_position for any position management: partial exits, " +
+    "Use this for position management short of a full exit: partial exits, " +
     "target/stop updates, or adding to a winning position. " +
     "Every action is audit-logged with your reason.",
   schema,
   ui: "tool-ui" as const,
+  gateLog: "manage_position",
   groupId: "Executing",
 
   progressLabel: (args) => {
     const t = args.symbol.toUpperCase();
     switch (args.action) {
-      case "full_close":
-        return `Closing the ${t} position`;
       case "partial_close":
         return `Trimming ${t}${args.close_pct ? ` by ${args.close_pct}%` : ""}`;
       case "add_to_position":
@@ -287,171 +285,6 @@ export const managePosition = defineTool({
 
     try {
       switch (args.action) {
-        // ── FULL CLOSE ──────────────────────────────────────────────────────
-        case "full_close": {
-          // ── Sale-label enforcement (DAV-192) ────────────────────────────
-          // full_close is a real sale, identical in effect to close_position,
-          // so it inherits the same rule: when this tactical run was woken by
-          // a protective/price EXIT trigger, the stored label is that
-          // trigger's STOP/TARGET tag rather than the model's `close_reason`.
-          // Without this, a protective fire closed through THIS tool landed as
-          // MANUAL and went invisible to every rule that keys off the label —
-          // the exact dodge DAV-192 closes, and a hole the model could walk
-          // through just by preferring one close tool over the other.
-          // Auto-correct, never refuse; the note lands in the audit trail.
-          const enforced = enforceCloseReason({
-            declared: args.close_reason ?? "MANUAL",
-            protective: ctx.protectiveExitReason,
-            triggerLabel: ctx.protectiveExitTriggerLabel,
-          });
-          const closeReasonCode = enforced.stored;
-          const closeAuditReason = withCloseAuditNote(args.reason, enforced);
-          if (enforced.corrected) {
-            console.info(
-              `[tool] manage_position full_close sale-label auto-corrected for ${ticker}: ${enforced.declared} → ${enforced.stored}`,
-            );
-          }
-
-          const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
-          const outcome = await closeOpenPosition(
-            position.id,
-            closeReasonCode,
-            creds,
-            "agent",
-            closeAuditReason,
-            ctx.runId,
-            // manage_position collects no belief attestation, so this is
-            // undefined on an ordinary close (→ terminal RETIRED, unchanged).
-            // A declared THESIS_INVALIDATED forces `false` so the corrected
-            // STOP label can never route a structurally-broken name back to
-            // the watchlist.
-            enforced.beliefSurvived,
-          );
-
-          // Trade-as-Proposal — when the Account requires approval for sells in this environment,
-          // the helper stages an Order(AWAITING_APPROVAL) instead of
-          // submitting to Alpaca. Return a proposal envelope; the approve
-          // handler runs the rest of the close flow on user click. See
-          // docs/plans/TRADE_AS_PROPOSAL.md.
-          if (outcome.kind === "proposed") {
-            return {
-              summary: `Close proposed: $${ticker}`,
-              data: {
-                success: true, ticker, action: args.action, status: "PROPOSED" as const,
-                direction: position.direction,
-                entryPrice: position.avgCost,
-                message: `Proposed close of ${position.direction} ${position.quantity} shares of ${ticker} (${closeReasonCode}). Awaiting your approval (expires in 24h).`,
-                tickers: [],
-                items: [
-                  {
-                    kind: "proposal" as const,
-                    orderId: outcome.proposal.orderId,
-                    ticker,
-                    direction: position.direction as "LONG" | "SHORT",
-                    action: "CLOSE" as const,
-                    shares: position.quantity,
-                    estimatedPrice: position.avgCost,
-                    estimatedCost: position.quantity * position.avgCost,
-                    expiresAt: outcome.proposal.expiresAt.toISOString(),
-                    rationale: outcome.proposal.rationale,
-                  },
-                ],
-              },
-              sources: [],
-            };
-          }
-          // Rejected-exit cooldown (P1-28) — user recently rejected this same
-          // discretionary close and nothing material changed. Return a clean
-          // non-error "did not re-propose" result (the agent DID call a tool,
-          // so the narration gate stays satisfied).
-          if (outcome.kind === "suppressed") {
-            const { unapprovedExitCount, cooldownUntil } = outcome.suppressed;
-            return {
-              summary: `Held $${ticker} — exit declined ${unapprovedExitCount}× recently`,
-              data: {
-                success: true,
-                ticker,
-                action: args.action,
-                status: "SUPPRESSED" as const,
-                unapprovedExitCount,
-                cooldownUntil: cooldownUntil.toISOString(),
-                message:
-                  `Did not re-propose closing ${ticker}. The user has declined this exit ` +
-                  `${unapprovedExitCount}× recently (rejected or left to expire); re-proposal is on ` +
-                  `cooldown until ${cooldownUntil.toISOString().slice(0, 10)} unless the thesis ` +
-                  `materially changes (a STOP/TARGET trigger or new evidence). Treat it as a soft no and keep holding.`,
-                tickers: [
-                  {
-                    ticker,
-                    tag: "Held",
-                    summary: `Exit declined ${unapprovedExitCount}× — not re-proposed (cooldown)`,
-                    actionIcon: "hold",
-                  },
-                ],
-              },
-              sources: [],
-            };
-          }
-          // outcome.kind === "closed" — finalize the close audit + return.
-          const result = outcome;
-
-          const pnlSign = result.realizedPnl >= 0 ? "+" : "";
-          const pnlPct = position.avgCost > 0
-            ? (result.realizedPnl / (position.avgCost * position.quantity)) * 100
-            : 0;
-
-          if (ctx.runId) {
-            await prisma.runEvent.create({
-              data: {
-                runId: ctx.runId,
-                type: "position_closed",
-                title: `Closed ${position.direction} ${ticker}`,
-                message: `Closed ${position.quantity} shares at $${result.closePrice.toFixed(2)} — ${result.outcome} ($${pnlSign}${result.realizedPnl.toFixed(2)})`,
-                payload: {
-                  ticker,
-                  direction: position.direction,
-                  shares: position.quantity,
-                  entry_price: position.avgCost,
-                  close_price: result.closePrice,
-                  realized_pnl: result.realizedPnl,
-                  outcome: result.outcome,
-                  reason: closeReasonCode,
-                  // DAV-192: the agent's own label kept alongside the stored
-                  // one so a corrected sale is legible in the run feed.
-                  declared_reason: enforced.declared,
-                  label_auto_corrected: enforced.corrected,
-                  audit_reason: closeAuditReason,
-                } as object,
-              },
-            });
-          }
-
-          // Thesis ACTIVE → CLOSED flip + CLOSED audit row now happens inside
-          // closeOpenPosition's FILLED-close branch (closeThesisForPosition),
-          // shared with close_position, the price-monitor cron, and manual UI
-          // closes so every path flips identically. The awaited CLOSED row
-          // still satisfies the tactical-run close-out gate. See P1-18.
-
-          return {
-            summary: `Closed $${ticker}: ${result.outcome} ${pnlSign}$${result.realizedPnl.toFixed(2)}`,
-            data: {
-              success: true,
-              ticker,
-              action: args.action,
-              status: "CLOSED" as const,
-              direction: position.direction,
-              entryPrice: position.avgCost,
-              closePrice: result.closePrice,
-              realizedPnl: result.realizedPnl,
-              pnlPct: Math.round(pnlPct * 100) / 100,
-              outcome: result.outcome,
-              message: `Closed ${position.direction} ${position.quantity} shares of ${ticker} at $${result.closePrice.toFixed(2)}. ${result.outcome}: ${pnlSign}$${result.realizedPnl.toFixed(2)}`,
-              tickers: [{ ticker, tag: "Closed", summary: `${result.outcome} ${pnlSign}$${result.realizedPnl.toFixed(2)} (${Math.round(pnlPct * 100) / 100}%)`, actionIcon: result.realizedPnl >= 0 ? "closed-win" : "closed-loss" }],
-            },
-            sources: [],
-          };
-        }
-
         // ── PARTIAL CLOSE ───────────────────────────────────────────────────
         case "partial_close": {
           const pct = args.close_pct ?? 50;
@@ -459,11 +292,11 @@ export const managePosition = defineTool({
 
           if (closeQty >= position.quantity) {
             return {
-              summary: `Partial close would exit entire position — use full_close instead`,
+              summary: `Partial close would exit entire position — use close_position instead`,
               data: {
                 success: false, ticker, action: args.action, status: "FAILED" as const,
-                message: "Partial close percentage would close the entire position. Use full_close.",
-                tickers: [{ ticker, tag: "Failed", summary: "Use full_close to exit entirely", actionIcon: "failed" }],
+                message: "Partial close percentage would close the entire position. Use close_position to exit fully.",
+                tickers: [{ ticker, tag: "Failed", summary: "Use close_position to exit entirely", actionIcon: "failed" }],
               },
               sources: [],
             };
@@ -757,7 +590,7 @@ export const managePosition = defineTool({
           }
 
           // Enabled — a paused analyst cannot grow its exposure. Existing
-          // positions stay manageable via partial_close / full_close / stops;
+          // positions stay manageable via partial_close / close_position / stops;
           // only NEW dollar exposure is blocked.
           if (ctx.analystId) {
             const analystEnabledCheck = await prisma.agentConfig.findUnique({
