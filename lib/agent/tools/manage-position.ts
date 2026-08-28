@@ -16,7 +16,11 @@
  *   add_to_position     — add add_notional dollars to the position
  *   update_targets      — change targetPrice and/or stopLoss
  *   move_stop_to_breakeven — set stopLoss = avgCost
- *   set_trailing_stop   — switch exitStrategy to TRAILING with trail_pct
+ *
+ * Plan changes (trim, target/stop move, breakeven move) ALSO write a
+ * ThesisUpdate row on the paired thesis (DAV-198) — the thesis timeline is
+ * the activity log the analyst and the sheet read; a stop move that only
+ * landed in PositionManagementAction was invisible there.
  */
 
 import { z } from "zod";
@@ -38,6 +42,7 @@ import {
   awaitingApprovalEnvelope,
 } from "@/lib/proposals/maybe-await-approval";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
+import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import {
   scaleInCeiling,
   SCALE_IN_CEILING_MULTIPLE,
@@ -536,6 +541,27 @@ export const managePosition = defineTool({
             });
           });
 
+          // DAV-198 — a trim is a plan change; put it on the thesis timeline,
+          // not just the position audit tables. Non-fatal like every
+          // writeThesisUpdate call — the fill already landed.
+          if (auditThesisId) {
+            await writeThesisUpdate({
+              thesisId: auditThesisId,
+              type: "UPDATED",
+              summary: `Trimmed ${ticker} ${pct}% — sold ${closeQty} of ${position.quantity} shares at $${fillPrice.toFixed(2)} (${pnlSign}$${partialPnl.toFixed(2)})`,
+              rationale: args.reason,
+              fieldChanges: {
+                position: {
+                  from: `${position.quantity} shares`,
+                  to: `${newQty} shares`,
+                },
+              },
+              runId: ctx.runId ?? null,
+              tradeId: position.id,
+              priceAtTime: fillPrice,
+            });
+          }
+
           return {
             summary: `Partial close ${ticker}: sold ${pct}% (${closeQty} shares) ${pnlSign}$${partialPnl.toFixed(2)}`,
             data: {
@@ -994,6 +1020,29 @@ export const managePosition = defineTool({
             args.new_stop_loss ? `stop $${args.new_stop_loss.toFixed(2)}` : null,
           ].filter(Boolean).join(", ");
 
+          // DAV-198 — a level move is a plan change; the thesis timeline is
+          // where the analyst and the sheet read it back. Same numeric
+          // from/to shape the trigger-popover edit writes, so the timeline
+          // renders "Stop $X → $Y" for both paths.
+          if (auditThesisId) {
+            await writeThesisUpdate({
+              thesisId: auditThesisId,
+              type: "UPDATED",
+              summary: `Updated ${ticker} plan — ${changes}`,
+              rationale: args.reason,
+              fieldChanges: {
+                ...(args.new_target_price
+                  ? { targetPrice: { from: position.targetPrice ?? null, to: args.new_target_price } }
+                  : {}),
+                ...(args.new_stop_loss
+                  ? { stopLoss: { from: position.stopLoss ?? null, to: args.new_stop_loss } }
+                  : {}),
+              },
+              runId: ctx.runId ?? null,
+              tradeId: position.id,
+            });
+          }
+
           return {
             summary: `Updated ${ticker}: ${changes}`,
             data: {
@@ -1086,6 +1135,21 @@ export const managePosition = defineTool({
               });
             }
           });
+
+          // DAV-198 — same thesis-timeline write as update_targets.
+          if (auditThesisId) {
+            await writeThesisUpdate({
+              thesisId: auditThesisId,
+              type: "UPDATED",
+              summary: `Moved ${ticker} stop to breakeven $${newStop.toFixed(2)}`,
+              rationale: args.reason,
+              fieldChanges: {
+                stopLoss: { from: prevStop ?? null, to: newStop },
+              },
+              runId: ctx.runId ?? null,
+              tradeId: position.id,
+            });
+          }
 
           return {
             summary: `${ticker}: stop moved to breakeven $${newStop.toFixed(2)}`,
