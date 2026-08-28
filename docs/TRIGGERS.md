@@ -167,7 +167,7 @@ Set per-trigger (`fireMode`, default `TACTICAL`):
   them and a rejected protective exit re-fires when price re-crosses (#490).
 
 **A sale from a protective fire always carries the STOP/TARGET label** (DAV-192).
-Both close tools — `close_position` and `manage_position(full_close)` — run the
+The close tool — `close_position`, the only whole-position exit since DAV-220 — runs the
 model's chosen `reason` through `enforceCloseReason`
 (`lib/agent/triggers/enforce-close-reason.ts`). When the run was woken by a
 protective/price EXIT trigger, the stored `Position.closeReason` /
