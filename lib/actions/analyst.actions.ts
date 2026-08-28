@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getLatestPricesWithMeta } from "@/lib/alpaca";
 import type { TradeStatus } from "@/lib/mock-data/trades";
+import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import type { SourceCategory, QueryCategory, IntelligencePolicy } from "@/lib/intelligence/types";
 import {
@@ -1020,6 +1021,12 @@ export async function createAnalystFromBuilder(
                 citations: [],
               },
               modelUsed: "builder",
+              // Seed clock — see the W1 note in watchlist.actions.ts:
+              // WATCHING doesn't inherit cadence, so a triggerless seed
+              // is invisible forever. 7d = the old account-floor pace.
+              triggers: [
+                { ...reviewCadenceTrigger(7), source: "DEFAULT" },
+              ] as object[],
               sourceKind: "BUILDER_SEED",
               sourceRationale: w.reason || "Builder-seeded during analyst creation",
               nextReviewAt: now,
@@ -1612,6 +1619,10 @@ export async function updateAnalystFromBuilder(
                   citations: [],
                 },
                 modelUsed: "editor",
+                // Seed clock — same W1 rule as the builder seed above.
+                triggers: [
+                  { ...reviewCadenceTrigger(7), source: "DEFAULT" },
+                ] as object[],
                 sourceKind: "EDITOR_SEED",
                 sourceRationale: w.reason || "Editor-seeded via analyst-edit chat",
                 nextReviewAt: now,

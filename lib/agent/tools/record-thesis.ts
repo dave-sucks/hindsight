@@ -16,8 +16,11 @@ import {
   defaultTriggersForHorizon,
   mergeTriggers,
   applyTriggerCooldownDefaults,
+  reviewCadenceTrigger,
+  CADENCE_DAYS_BY_HORIZON,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
+import { horizonFor } from "@/lib/agent/triggers/load-levels";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { getAccount } from "@/lib/alpaca";
@@ -365,7 +368,8 @@ const thesisFields = z.object({
     .enum(["ACTIVE", "WATCHING", "ARCHIVED", "PASSED"])
     .optional()
     .describe(
-      "Coverage status. ACTIVE = trade-eligible coverage (the agent intends to act now or imminently). WATCHING = on-the-radar coverage (watchlist review, discovery candidate, named-but-not-yet-actionable). Default is derived from source_kind — WATCHLIST_REVIEW → WATCHING, else ACTIVE — pass explicitly when the intent differs. A PASS is recorded as Passed automatically — don't send a status field for it.",
+      "Coverage status. ACTIVE = trade-eligible coverage (the agent intends to act now or imminently). WATCHING = on-the-radar coverage (watchlist review, discovery candidate, named-but-not-yet-actionable). Default is derived from source_kind — WATCHLIST_REVIEW → WATCHING, else ACTIVE — pass explicitly when the intent differs. " +
+        "PASS alone = terminal (recorded as Passed, no triggers, never woken). PASS + status:'WATCHING' = a SOFT WATCH: 'decided not to trade, keep eyes on it' — requires ≥1 REVIEW-action wake trigger (price level, price move, earnings/filing event), must be unpriced (no entry/target/stop), costs no review attention, and wakes only when a trigger fires. Use it when you're out of dispatch slots or the setup isn't ripe — a capacity rejection is a soft watch, not a terminal PASS.",
     ),
   // Cross-analyst overlap acknowledgement. The tool blocks DAY-only
   // analysts from minting a thesis on a ticker another analyst on the
@@ -1102,8 +1106,23 @@ export const recordThesis = defineTool({
       // only by place_trade on a real fill). The `status` input enum still
       // tolerates ACTIVE as a legacy alias; it's silently collapsed to
       // WATCHING here, never persisted.
+      // ── Soft watch (W2, DAV-209) ─────────────────────────────────────
+      // PASS + status:"WATCHING" = "we looked, decided not to trade, want
+      // eyes on it for change-of-mind" — the middle door the line-360
+      // comment always described and the old legal-pair guard forbade.
+      // Stored shape: direction null, status WATCHING, REVIEW-only wake
+      // triggers, no plan, no cadence unless the agent adds one. Costs no
+      // review attention (W1: WATCHING doesn't inherit cadence); wakes
+      // only when a trigger fires, batched to the next daily run.
+      const isSoftWatch =
+        args.direction === "PASS" && args.status === "WATCHING";
+
       const effectiveStatusForTriggers: "WATCHING" | "PASSED" =
-        args.direction === "PASS" ? "PASSED" : "WATCHING";
+        args.direction === "PASS"
+          ? isSoftWatch
+            ? "WATCHING"
+            : "PASSED"
+          : "WATCHING";
 
       // ── Discovery LONG/SHORT WATCHING cap (Layer-1 enforcement) ────────
       // The discovery prompt has a soft cap ("mint up to 8 new WATCHING
@@ -1149,11 +1168,9 @@ export const recordThesis = defineTool({
       }
 
       // Reject illegal (direction, status) pairs explicitly when the agent
-      // passes an `status` arg that conflicts with direction.
-      if (
-        (args.direction === "PASS" && args.status === "ACTIVE") ||
-        (args.direction === "PASS" && args.status === "WATCHING")
-      ) {
+      // passes an `status` arg that conflicts with direction. PASS+WATCHING
+      // stopped being illegal in W2 — it is the soft watch (see above).
+      if (args.direction === "PASS" && args.status === "ACTIVE") {
         return {
           summary: `Thesis rejected for ${args.ticker}: illegal (direction, status) pair.`,
           data: {
@@ -1163,6 +1180,7 @@ export const recordThesis = defineTool({
               `Direction='${args.direction}' is incompatible with status='${args.status}'. ` +
               `Legal pairs:\n` +
               `  • PASS → PASSED (terminal, off the watchlist)\n` +
+              `  • PASS + status:"WATCHING" → soft watch (keep eyes on it; needs ≥1 REVIEW-action wake trigger)\n` +
               `  • LONG/SHORT → WATCHING (entry-gated; place_trade flips it to HOLDING on a fill)\n` +
               `Retry with a legal pair.`,
           },
@@ -1170,21 +1188,86 @@ export const recordThesis = defineTool({
         };
       }
 
-      // PASS theses reject triggers[] at write — they're terminal, no
-      // wake-up needed. Future re-encounter mints a fresh thesis chained
-      // via parent_thesis_id.
-      if (args.direction === "PASS" && Array.isArray(args.triggers) && args.triggers.length > 0) {
+      // TERMINAL PASS theses reject triggers[] at write — no wake-up
+      // needed. Future re-encounter mints a fresh thesis chained via
+      // parent_thesis_id. (A PASS you DO want woken from is the soft
+      // watch — pass status:"WATCHING" and the triggers become the wake.)
+      if (
+        args.direction === "PASS" &&
+        !isSoftWatch &&
+        Array.isArray(args.triggers) &&
+        args.triggers.length > 0
+      ) {
         return {
-          summary: `Thesis rejected for ${args.ticker}: PASS theses cannot carry triggers.`,
+          summary: `Thesis rejected for ${args.ticker}: terminal PASS theses cannot carry triggers.`,
           data: {
             thesis_id: null,
             status: "FAILED" as const,
             note:
               `PASS = "researched, decided not to trade." It's terminal at write (status=PASSED) and lives as institutional memory only — no review cadence, no entry trigger, no wake-up. ` +
-              `If you want the system to alert you when conditions flip, that's not a PASS — write a LONG/SHORT WATCHING thesis with an ENTER trigger at the level that would change your mind.`,
+              `If you want eyes kept on this name, that's a SOFT WATCH: resend with status:"WATCHING" and keep the triggers (REVIEW-action wake conditions only). ` +
+              `If you want a priced entry the system can act on, write a LONG/SHORT WATCHING thesis with an ENTER trigger at the level that would change your mind.`,
           },
           sources: [],
         };
+      }
+
+      // ── Soft-watch shape validation (W2) ─────────────────────────────
+      if (isSoftWatch) {
+        const supplied = (args.triggers ?? []) as Trigger[];
+        // Invariant 1 (WATCHLIST_STATES.md §3): every WATCHING item
+        // carries ≥1 wake condition. A soft watch with no triggers is
+        // invisible forever — the ETN/NVDA rot shape, made cheap.
+        if (supplied.length === 0) {
+          return {
+            summary: `Soft watch rejected for ${args.ticker}: no wake condition.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note:
+                `A soft watch must answer "what brings this back to me?" — it carries at least one REVIEW-action trigger (a price level, a price move, an earnings/filing event, or a REVIEW_CADENCE if you actually want it on a clock). ` +
+                `With no wake condition the row is invisible forever. If you truly never want to look again, that's a terminal PASS — omit the status field.`,
+            },
+            sources: [],
+          };
+        }
+        // Soft watches are REVIEW-only: no plan, so nothing to enter,
+        // exit, or resize. Wanting an ENTER is wanting a priced plan —
+        // that's a LONG/SHORT thesis, not a soft watch.
+        const nonReview = supplied.filter((t) => t.action !== "REVIEW");
+        if (nonReview.length > 0) {
+          return {
+            summary: `Soft watch rejected for ${args.ticker}: triggers must be REVIEW-action only.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note:
+                `A soft watch has no plan — ${nonReview.map((t) => t.action).join(", ")} triggers have nothing to act on. ` +
+                `Wake conditions are REVIEW-action. If you want the system to enter at a level, write a LONG/SHORT WATCHING thesis instead.`,
+            },
+            sources: [],
+          };
+        }
+        // Unpriced by definition. Price levels on a soft watch are the
+        // rot the tier exists to make impossible (invariant: plan ⇒
+        // cadence ⇒ not soft).
+        if (
+          args.entry_price != null ||
+          args.target_price != null ||
+          args.stop_loss != null
+        ) {
+          return {
+            summary: `Soft watch rejected for ${args.ticker}: a soft watch is unpriced.`,
+            data: {
+              thesis_id: null,
+              status: "FAILED" as const,
+              note:
+                `entry_price / target_price / stop_loss don't belong on a soft watch — a priced plan must be watched on a cadence, which is the managed tier. ` +
+                `Either drop the price levels (keep a PRICE-level REVIEW wake instead: "review if it hits $X"), or commit: write a LONG/SHORT WATCHING thesis with the full plan.`,
+            },
+            sources: [],
+          };
+        }
       }
 
       // Live quote for the ENTER rung's SIDE. The level itself says what the
@@ -1210,9 +1293,9 @@ export const recordThesis = defineTool({
       // upstream guard in manage_watchlist.ts and closes the last creation
       // hole for inert watching theses.
       let mergedTriggers: Trigger[] = (() => {
-        // PASS theses are terminal — no triggers. Future re-encounter
+        // Terminal PASS theses carry no triggers. Future re-encounter
         // mints a fresh directional thesis via parent_thesis_id.
-        if (args.direction === "PASS") {
+        if (args.direction === "PASS" && !isSoftWatch) {
           return [];
         }
         // Without horizon we can't pick a defaults template — agent's
@@ -1224,6 +1307,12 @@ export const recordThesis = defineTool({
           ...t,
           source: "AGENT" as const,
         }));
+        // Soft watch: the wake triggers, verbatim (validated REVIEW-only
+        // above). No horizon templates — those are directional plans —
+        // and no cadence stamp (that's the whole point of the tier).
+        if (isSoftWatch) {
+          return applyTriggerCooldownDefaults(supplied);
+        }
         if (!args.horizon) {
           return applyTriggerCooldownDefaults(supplied);
         }
@@ -1269,6 +1358,29 @@ export const recordThesis = defineTool({
       });
       mergedTriggers = applyTriggerCooldownDefaults(levelled.triggers);
       const derivedLevelColumns = levelled.columns;
+
+      // ── Cadence opt-in stamp (W1, DAV-216) ──────────────────────────
+      // WATCHING theses no longer inherit the account's review cadence
+      // (resolveLadder gates it — a watch item is reviewed iff it carries
+      // its own clock). Every mint through THIS path is a priced plan
+      // (the unpriced soft-watch path is W2), and a plan must always be
+      // watched — so stamp the horizon's cadence unless the agent
+      // supplied one. Without this, every new discovery dispatch would be
+      // born silently unreviewed the moment the resolver gate landed.
+      if (
+        args.direction !== "PASS" &&
+        !mergedTriggers.some((t) => t.predicate.kind === "REVIEW_CADENCE")
+      ) {
+        mergedTriggers = [
+          ...mergedTriggers,
+          {
+            ...reviewCadenceTrigger(
+              CADENCE_DAYS_BY_HORIZON[horizonFor(args.horizon ?? null)],
+            ),
+            source: "DEFAULT" as const,
+          },
+        ];
+      }
 
       // ── ENTER-trigger guard (shared with update_thesis) ─────────────
       // A WATCHING/LONG or WATCHING/SHORT thesis without an ENTER trigger
@@ -1472,6 +1584,25 @@ export const recordThesis = defineTool({
             select: { id: true, direction: true, status: true },
           });
           if (existingThesis) {
+            // A soft watch on an already-covered name adds nothing — the
+            // live HOLDING/WATCHING/PROMOTED row is strictly more than a
+            // soft watch. Redirect rather than chain a duplicate row.
+            if (isSoftWatch) {
+              return {
+                summary: `Use update_thesis for ${args.ticker} — already covered (${existingThesis.status}).`,
+                data: {
+                  thesis_id: null,
+                  status: "USE_UPDATE_THESIS" as const,
+                  existing_thesis_id: existingThesis.id,
+                  ticker: args.ticker,
+                  note:
+                    `NOT a failure — a ${existingThesis.status} thesis already exists for ${args.ticker} (id ${existingThesis.id}), which is more coverage than a soft watch. ` +
+                    `If your intent is to DEMOTE that coverage to a soft watch, call update_thesis on it and replace its triggers with the REVIEW-action wake conditions you want (dropping the plan triggers). ` +
+                    `Do not retry record_thesis on ${args.ticker}.`,
+                },
+                sources: [],
+              };
+            }
             if (existingThesis.direction === args.direction) {
               // Same-direction reject. The agent should be calling
               // update_thesis here.
@@ -1868,7 +1999,9 @@ export const recordThesis = defineTool({
         scoringComposite != null ? `composite ${scoringComposite}/10` : null;
       const createdSummary =
         args.direction === "PASS"
-          ? `Passed on ${args.ticker}`
+          ? isSoftWatch
+            ? `Watching ${args.ticker} (soft — wakes on triggers, no review cadence)`
+            : `Passed on ${args.ticker}`
           : compositeForMessage
             ? `${args.direction} thesis on ${args.ticker} at ${compositeForMessage}`
             : `${args.direction} thesis on ${args.ticker}`;
@@ -1960,7 +2093,8 @@ export const recordThesis = defineTool({
 
       // Persist RunEvent
       if (ctx.runId) {
-        const evType = args.direction === "PASS" ? "skip" : "thesis_complete";
+        const evType =
+          args.direction === "PASS" && !isSoftWatch ? "skip" : "thesis_complete";
         await prisma.runEvent.create({
           data: {
             runId: ctx.runId,
