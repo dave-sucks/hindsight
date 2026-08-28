@@ -5,7 +5,7 @@
  * WATCHING / PROMOTED → ACTIVE (mirroring place_trade's inline flips at
  * place-trade.ts:802-874). When the user clicks Approve on a close
  * proposal, the thesis should flip ACTIVE → CLOSED (mirroring
- * close-position.ts and manage-position.ts:full_close).
+ * close-position.ts).
  *
  * Without these, an approved buy leaves the thesis stuck in WATCHING and
  * an approved close leaves it stuck in ACTIVE — confusing the next
@@ -20,6 +20,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import {
   defaultTriggersForHorizon,
   applyTriggerCooldownDefaults,
@@ -64,11 +65,57 @@ export async function promoteThesisOnApproval(opts: {
     );
   }
 
-  // WATCHING → ACTIVE — the more common path. The thesis was a watchlist
-  // row; the executed buy graduates it. Regenerate HELD-side triggers
-  // from the executed levels so the trigger evaluator stops firing ENTER
-  // on a name we now hold (see GAPS A2 — 35/36 ENTER tactical runs in a
-  // 14-day audit were on already-held tickers).
+  // WATCHING → HOLDING — the more common path. One shared implementation with
+  // place_trade; see armHeldLadderOnFill below.
+  await armHeldLadderOnFill({
+    analystId: opts.analystId,
+    ticker: opts.ticker,
+    fillPrice: opts.entryPrice,
+    targetPrice: opts.targetPrice,
+    stopLoss: opts.stopLoss,
+    positionId: opts.positionId,
+    runId: opts.runId ?? null,
+    via: "approved proposal",
+  });
+}
+
+/**
+ * Arm the held-side ladder when a buy fills.
+ *
+ * ONE implementation, two callers: `place_trade` (paper, immediate fill) and
+ * `promoteThesisOnApproval` (live, on the principal's approval). They used to
+ * be two ~50-line copies, and the copies drifted: DAV-195 L3 taught the
+ * place_trade copy to recompute the displayed levels from the new triggers and
+ * the approval copy never got it — so on the path every live trade actually
+ * takes, the ladder regenerated while `entryPrice` / `targetPrice` / `stopLoss`
+ * kept their watching-era values. That is the SNOW drift, reintroduced on
+ * every live fill. Collapsed 2026-08-27 (DAV-220).
+ *
+ * What it does:
+ *   - finds the analyst's newest WATCHING thesis on the ticker
+ *   - regenerates the HELD template from the EXECUTED levels (the watching-side
+ *     ENTER must go — you can't enter what you already hold; GAPS A2 found
+ *     35/36 ENTER tactical runs were on already-held tickers)
+ *   - recomputes the displayed level columns FROM those triggers
+ *   - stamps entryPrice with the FILL price: once held, entry is a fact
+ *   - flips WATCHING → HOLDING and writes the STATUS_CHANGED audit row
+ *
+ * No horizon → conservative fallback: keep the existing triggers, minus ENTER.
+ * Fail-soft: a throw is logged, never rethrown — a ladder problem must not
+ * roll back a filled trade.
+ */
+export async function armHeldLadderOnFill(opts: {
+  analystId: string;
+  ticker: string;
+  /** The price the buy actually filled at. Becomes Thesis.entryPrice. */
+  fillPrice: number;
+  targetPrice: number;
+  stopLoss: number;
+  positionId: string;
+  runId?: string | null;
+  /** Where the fill came from — used only in the audit row's wording. */
+  via: "place_trade" | "approved proposal";
+}): Promise<void> {
   try {
     const watchingThesis = await prisma.thesis.findFirst({
       where: {
@@ -88,38 +135,56 @@ export async function promoteThesisOnApproval(opts: {
     if (!watchingThesis) return;
 
     const horizon = watchingThesis.horizon as Horizon | null;
-    let nextTriggers: Trigger[] | undefined;
+    let nextTriggers: Trigger[];
     if (horizon) {
-      const heldDefaults = defaultTriggersForHorizon(
-        horizon,
-        {
-          entryPrice: opts.entryPrice,
-          targetPrice: opts.targetPrice,
-          stopLoss: opts.stopLoss,
-          catalystDate: watchingThesis.catalystDate ?? null,
-          direction: watchingThesis.direction as "LONG" | "SHORT",
-        },
-        "HELD",
+      nextTriggers = applyTriggerCooldownDefaults(
+        defaultTriggersForHorizon(
+          horizon,
+          {
+            entryPrice: opts.fillPrice,
+            targetPrice: opts.targetPrice,
+            stopLoss: opts.stopLoss,
+            catalystDate: watchingThesis.catalystDate ?? null,
+            direction: watchingThesis.direction as "LONG" | "SHORT",
+          },
+          "HELD",
+        ),
       );
-      nextTriggers = applyTriggerCooldownDefaults(heldDefaults);
     } else {
       const existing = (watchingThesis.triggers as unknown as Trigger[] | null) ?? [];
       nextTriggers = existing.filter((t) => t.action !== "ENTER");
     }
 
+    // DAV-195 L3 — the columns are a read model of the ladder. Recompute them
+    // here or the sheet shows the price you PLANNED to sell at while a
+    // different one is armed.
+    const heldLevels = canonicalLevels({
+      triggers: nextTriggers.map((x) => ({
+        ...x,
+        level: "THESIS" as const,
+        inherited: false,
+      })),
+      direction: watchingThesis.direction,
+      status: "HOLDING",
+      avgCost: opts.fillPrice,
+    });
+
     await prisma.thesis.update({
       where: { id: watchingThesis.id },
       data: {
         status: "HOLDING",
-        triggers: (nextTriggers ?? []) as unknown as object,
+        triggers: nextTriggers as unknown as object,
+        entryPrice: opts.fillPrice,
+        targetPrice: heldLevels.columns.targetPrice,
+        stopLoss: heldLevels.columns.stopLoss,
       },
     });
     await prisma.thesisUpdate.create({
       data: {
         thesisId: watchingThesis.id,
         type: "STATUS_CHANGED",
-        summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → HOLDING on approved proposal`,
-        rationale: `Proposal approved (positionId=${opts.positionId}). Triggers regenerated for HELD-side ${horizon ?? "(no-horizon)"} template.`,
+        summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → HOLDING on ${opts.via}`,
+        rationale: `Entry filled at $${opts.fillPrice.toFixed(2)} — the watchlist row is now a live position, and its trigger ladder was regenerated for the held-side ${horizon ?? "(no-horizon)"} plan.`,
         fieldChanges: {
           status: { from: "WATCHING", to: "HOLDING" },
           triggers: { from: "WATCHING-set", to: "HELD-set" },
@@ -130,7 +195,7 @@ export async function promoteThesisOnApproval(opts: {
     });
   } catch (err) {
     console.warn(
-      `[promoteThesisOnApproval] WATCHING → ACTIVE flip failed for ${opts.ticker}:`,
+      `[armHeldLadderOnFill] WATCHING → HOLDING flip failed for ${opts.ticker}:`,
       err instanceof Error ? err.message : err,
     );
   }
@@ -201,7 +266,7 @@ export function shouldRecycleToWatching(
  *
  *   • closeOpenPosition's FILLED-close branch (lib/actions/closeTrade.actions.ts)
  *     — every direct close that actually fills now (agent close_position,
- *     manage_position full_close, the price-monitor trailing-stop cron, and
+ *     the price-monitor trailing-stop cron, and
  *     manual UI closes) routes through there, so they all flip identically.
  *   • closeThesisOnApproval (below) — the approval path, when an
  *     AWAITING_APPROVAL close proposal is later approved.

@@ -1,6 +1,7 @@
 /**
  * enforce-close-reason.ts — the single rule for "what label does this sale
- * carry", shared by `close_position` and `manage_position(full_close)`.
+ * carry", used by `close_position` (the only whole-position exit) and by
+ * `manage_position(partial_close)`.
  *
  * ── Why this exists (DAV-192, ex-GAPS P2 "closeReason mis-tag") ────────────
  * A sale executed because a protective trigger fired is a MATERIAL risk
