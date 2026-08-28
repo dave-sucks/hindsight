@@ -57,6 +57,8 @@ export interface MockTrade {
      * the trade keeps meaning "position size" for every P&L / value calc.
      */
     quantity: number;
+    /** ISO — when the proposal lapses; drives the Expired state on the Review control. */
+    expiresAt?: string;
   };
   /** Thesis row id — present when the position's backing thesis was found. Used to open ThesisSheet on row click. */
   thesisId?: string;

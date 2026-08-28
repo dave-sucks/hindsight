@@ -426,7 +426,9 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
         ) : null}
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {gain && <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />}
-          {isProposed && <ProposalActions orderId={item.orderId!} />}
+          {isProposed && (
+            <ProposalActions orderId={item.orderId!} expiresAt={item.expiresAt} />
+          )}
         </div>
       </HoverCardTrigger>
       <HoverCardContent side="top" align="start" className="w-72">
