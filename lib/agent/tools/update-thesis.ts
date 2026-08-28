@@ -62,6 +62,12 @@ import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import {
+  checkStatusTransition,
+  checkTerminateWithoutClose,
+  checkWatchingOptOut,
+  needsPairedCloseCheck,
+} from "@/lib/agent/thesis-transitions";
+import {
   holdDurationFromHorizon,
   type Horizon,
 } from "@/lib/agent/horizon-policy";
@@ -528,92 +534,25 @@ export const updateThesis = defineTool({
       };
     }
 
-    if (
-      existing.status !== "HOLDING" &&
-      existing.status !== "WATCHING" &&
-      existing.status !== "PROMOTED"
-    ) {
-      return {
-        summary: `Thesis ${args.thesis_id} is ${existing.status}; can't update a terminal thesis.`,
-        data: { ok: false, error: "terminal_status", current_status: existing.status },
-        sources: [],
-      };
-    }
-
-    // ── PROMOTED transition guard ───────────────────────────────────────────
-    // PROMOTED is a hard state with exactly two legal exits:
-    //   1) place_trade fills → ACTIVE (handled inside place_trade)
-    //   2) update_thesis(change_status: "WATCHING") → WATCHING (legal opt-out)
-    // INVALIDATED, CLOSED, and ARCHIVED are forbidden — the analyst was
-    // holding this name with conviction; "kill it without a position" or
-    // "walk away" are the wrong shape. If the agent wants to stop tracking
-    // it entirely, downgrade to WATCHING first and let the next run decide.
-    // ACTIVE via update_thesis is allowed (mirrors WATCHING→ACTIVE flow:
-    // recompute target/stop, then place_trade); place_trade also has its
-    // own auto-transition path as belt-and-suspenders.
-    if (existing.status === "PROMOTED") {
-      // ── THESIS_WRITER role gate (GAPS P0-4) ──────────────────────────────
-      // The thesis-writer is research-only. Status decisions on PROMOTED
-      // rows belong to the orchestrator (next daily run reads the refreshed
-      // research and chooses re-enter / defer / kill). When a refresh runs
-      // under runMode="THESIS_WRITER", any change_status arg is refused —
-      // belt-and-suspenders backstop on the prompt-side PROMOTED branch in
-      // run-thesis-writer.ts. 2026-05-26: 3 writer refreshes (AVGO, MRVL,
-      // TSM) flipped PROMOTED → WATCHING and required manual revert. See
-      // docs/THESIS_ARCHITECTURE.md §0 (the role split).
-      if (ctx.runMode === "THESIS_WRITER" && args.change_status !== undefined) {
+    // ── Status-transition law (DAV-210) ──────────────────────────────────
+    // Terminal rows, the PROMOTED state machine, and the writer role gate —
+    // one readable table in lib/agent/thesis-transitions.ts. Codes and
+    // messages are byte-identical to the inline blocks this replaced; the
+    // incident history (AVGO/MRVL/TSM writer flips, the CRWD/CEG burn)
+    // moved with the rules.
+    const transitionInput = {
+      thesisId: args.thesis_id,
+      ticker: existing.ticker,
+      currentStatus: existing.status,
+      changeStatus: args.change_status,
+      runMode: ctx.runMode,
+    };
+    {
+      const violation = checkStatusTransition(transitionInput);
+      if (violation) {
         return {
-          summary: `Refused status flip on PROMOTED $${existing.ticker} — writer is research-only.`,
-          data: {
-            ok: false,
-            error: "thesis_writer_cannot_change_promoted_status",
-            current_status: existing.status,
-            attempted: args.change_status,
-            message:
-              `update_thesis(change_status: "${args.change_status}") is refused from the thesis-writer on a PROMOTED thesis. ` +
-              `The writer's job is research refresh only — refreshed content (target / stop / triggers / belief / sections) lands on the row; the status decision belongs to the next daily run. ` +
-              `Drop change_status and retry with refreshed content. The PROMOTED state persists until the orchestrator (daily/tactical run) acts on the refreshed research.`,
-          },
-          sources: [],
-        };
-      }
-      if (
-        args.change_status === "INVALIDATED" ||
-        args.change_status === "ARCHIVED"
-      ) {
-        const errorMsg = `Cannot ${args.change_status} a PROMOTED thesis. The analyst held this in paper with conviction; the user explicitly promoted it. The only legal opt-out is change_status: "WATCHING" (downgrade and keep tracking). Use that, or place_trade to re-enter.`;
-        return {
-          summary: `Cannot ${args.change_status} a PROMOTED thesis: ${existing.ticker}`,
-          data: {
-            ok: false,
-            error: "promoted_thesis_illegal_transition",
-            current_status: existing.status,
-            attempted: args.change_status,
-            message: errorMsg,
-          },
-          sources: [],
-        };
-      }
-      // ── Resolution requirement — ORCHESTRATORS ONLY ──────────────────────
-      // A THESIS_WRITER reaching this line necessarily has no change_status
-      // (the role gate above already refused any defined value). That is the
-      // legal research-only refresh: content lands on the row, status stays
-      // PROMOTED, and the NEXT orchestrator run resolves it. Before
-      // 2026-08-13 this guard also fired on the writer's status-less call
-      // (undefined !== "WATCHING"), which combined with the role gate to
-      // make EVERY writer refresh on a PROMOTED row structurally impossible
-      // — the CRWD/CEG promotion burn on 2026-08-11. See
-      // docs/plans/AGENT_PERF_COST_FIX.md §1.
-      if (ctx.runMode !== "THESIS_WRITER" && args.change_status !== "WATCHING") {
-        const errorMsg = `PROMOTED thesis ${existing.ticker} requires an explicit resolution this run: call place_trade to re-enter live (the trade flips PROMOTED → HOLDING on fill), OR update_thesis(change_status: "WATCHING") to defer. Reasoning-only patches don't count — the thesis stays PROMOTED until you act.`;
-        return {
-          summary: `PROMOTED thesis needs explicit resolution: ${existing.ticker}`,
-          data: {
-            ok: false,
-            error: "promoted_thesis_requires_resolution",
-            current_status: existing.status,
-            message: errorMsg,
-          },
+          summary: violation.summary,
+          data: { ok: false, ...violation.data },
           sources: [],
         };
       }
@@ -649,12 +588,7 @@ export const updateThesis = defineTool({
     // (P1-24: the legacy `change_status='CLOSED'` verb is gone — exiting a held
     // name is close_position, which flips the thesis to RETIRED-sold itself.
     // The agent can no longer retire a held name without that paired close.)
-    if (
-      (args.change_status === "INVALIDATED" ||
-        args.change_status === "ARCHIVED") &&
-      existing.status === "HOLDING" &&
-      ctx.analystId
-    ) {
+    if (needsPairedCloseCheck(transitionInput) && ctx.analystId) {
       const openPosition = await prisma.position.findFirst({
         where: {
           analystId: ctx.analystId,
@@ -663,10 +597,10 @@ export const updateThesis = defineTool({
         },
         select: { id: true, direction: true, quantity: true },
       });
-      if (openPosition) {
-        // Did close_position fire on this ticker in THIS run? If so, the
-        // pair is intact — let the terminal transition through. Otherwise refuse.
-        const closeInRun = ctx.runId
+      // Did close_position fire on this ticker in THIS run? If so, the
+      // pair is intact — let the terminal transition through.
+      const closeInRun =
+        openPosition && ctx.runId
           ? await prisma.thesisUpdate.findFirst({
               where: {
                 runId: ctx.runId,
@@ -676,29 +610,16 @@ export const updateThesis = defineTool({
               select: { id: true },
             })
           : null;
-        if (!closeInRun) {
-          const action = args.change_status; // "INVALIDATED" | "ARCHIVED"
-          return {
-            summary: `Cannot ${action} $${existing.ticker} — open position requires close_position first.`,
-            data: {
-              ok: false,
-              error: "terminate_active_without_close",
-              ticker: existing.ticker,
-              attempted_status: action,
-              position: {
-                id: openPosition.id,
-                direction: openPosition.direction,
-                quantity: openPosition.quantity,
-              },
-              message:
-                `$${existing.ticker} has an open ${openPosition.direction} position (${openPosition.quantity} sh) backed by this ACTIVE thesis. ` +
-                `Terminating the thesis (${action}) without closing the position creates a zombie — open position with no live thesis to manage it. ` +
-                `Correct sequence: call \`close_position\` first to exit Alpaca (which also flips the thesis status), then retry \`update_thesis(thesis_id, change_status: "${action}", rationale: "...")\` if you want a separate audit row. ` +
-                `If the position should stay open (just refining the thesis), drop change_status and pass the fields you want to change instead.`,
-            },
-            sources: [],
-          };
-        }
+      const violation = checkTerminateWithoutClose(transitionInput, {
+        openPosition,
+        closedThisRun: closeInRun != null,
+      });
+      if (violation) {
+        return {
+          summary: violation.summary,
+          data: { ok: false, ...violation.data },
+          sources: [],
+        };
       }
     }
 
@@ -1449,16 +1370,11 @@ export const updateThesis = defineTool({
       // re-enter this name live; downgrade to WATCHING and let the next run
       // re-evaluate. Conviction context fields (paperTenureDays / P&L /
       // review count) stay on the row for reference; promotedAt clears.
-      if (existing.status !== "PROMOTED") {
+      const violation = checkWatchingOptOut(transitionInput);
+      if (violation) {
         return {
-          summary: `Refused WATCHING transition on $${existing.ticker} — current status is ${existing.status}, not PROMOTED.`,
-          data: {
-            ok: false,
-            error: "watching_transition_from_non_promoted",
-            message:
-              `change_status: "WATCHING" is reserved for the PROMOTED → WATCHING opt-out path. This thesis is ${existing.status}. ` +
-              `Did you mean change_status: "INVALIDATED" (kill the belief)? To exit an open position, call close_position.`,
-          },
+          summary: violation.summary,
+          data: { ok: false, ...violation.data },
           sources: [],
         };
       }
