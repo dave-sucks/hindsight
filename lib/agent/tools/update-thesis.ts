@@ -418,6 +418,7 @@ export const updateThesis = defineTool({
     "(4) protective-level ratchet — on a held stock, protective sell levels only move toward MORE protection. Lowering a stop, widening a trailing give-back, deleting a protective sell trigger, or switching one from automatic to judgment-first is rejected. Only the principal moves a safety line down. If you believe a level is wrong, keep it and say so in your rationale with the number you'd suggest.",
   schema: updateSchema,
   ui: "thesis-card" as const,
+  gateLog: "update_thesis",
 
   progressLabel: (args) => {
     if (args.change_status === "INVALIDATED") return `Invalidating thesis ${args.thesis_id.slice(-8)}`;

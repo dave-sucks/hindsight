@@ -492,6 +492,37 @@ model ThesisUpdate {
   @@index([type, timestamp(sort: Desc)])
 }
 
+// ── Gate rejection log (DAV-219) ─────────────────────────────────────────
+// One row every time a write tool REFUSES a call. The ~52 rejection points
+// across update_thesis / record_thesis / place_trade / manage_position /
+// close_position / complete_run previously logged to console and nowhere
+// else, so "which rules ever fire" was unanswerable — and every rule felt
+// equally load-bearing and therefore undeletable. Written centrally by the
+// defineTool() wrapper (lib/agent/gate-rejections.ts detects the rejection
+// envelopes); no per-gate wiring. Pure telemetry: nothing reads this table
+// to make a decision, so dropping a write can never affect a run.
+model GateRejection {
+  id        String   @id @default(cuid())
+  /** Tool name as registered ("update_thesis", "place_trade", ...). */
+  tool      String
+  /** Machine code when the gate supplied one ("goalpost_moving_blocked",
+   *  "protective_level_locked", ...). Null for note-only rejections
+   *  (record_thesis's FAILED shape) — group those by summary instead.
+   *  "__exception__" = the tool THREW rather than refused. */
+  gateCode  String?
+  /** The rejection's one-line summary, verbatim. */
+  summary   String
+  ticker    String?
+  runId     String?
+  analystId String?
+  runMode   String?
+  createdAt DateTime @default(now())
+
+  @@index([tool, gateCode, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@index([runId])
+}
+
 model AgentConfig {
   id                     String               @id @default(cuid())
   userId                 String // NOT unique — multiple Analysts per user
