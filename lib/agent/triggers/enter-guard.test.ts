@@ -172,14 +172,54 @@ describe("validateEnterTriggerRequired", () => {
     expect(result.reason).toBe("missing-enter-trigger");
   });
 
-  it("WATCHING LONG with only REVIEW triggers (no HELD, no ENTER): rejects with missing-enter-trigger", () => {
-    // Pure REVIEW set is structurally valid (no HELD actions to reject)
-    // but missing the required ENTER. The HELD guard passes; the
-    // ENTER guard catches it.
+  it("WATCHING LONG with only REVIEW wakes (no plan level): ok — the set-down state (DAV-224)", () => {
+    // FLIPPED 2026-08-28 (DAV-224, WATCHLIST_STATES.md §5). This exact
+    // shape used to be the "inert row" rejection; it is now the demoted
+    // watch — no plan, no clock forced, ≥1 wake keeps it reachable. The
+    // original XPEV/MDB bug (HELD-style arrays stripping the ENTER) still
+    // rejects: those arrays carry EXIT plan levels — see the test above.
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
       triggers: [REVIEW_EARNINGS, REVIEW_HYGIENE],
+      targetPrice: 100,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("set-down works for SHORT too, and with a downside price wake", () => {
+    const result = validateEnterTriggerRequired({
+      direction: "SHORT",
+      status: "WATCHING",
+      triggers: [
+        {
+          id: "trig-wake-level",
+          predicate: { kind: "PRICE_ABOVE", level: 120 },
+          action: "REVIEW",
+          rationale: "Squeeze risk — look again above $120.",
+        },
+      ],
+      targetPrice: null,
+    });
+    // PRICE_ABOVE on a SHORT is the losing side — a wake, not a plan level.
+    expect(result.ok).toBe(true);
+  });
+
+  it("an upside REVIEW level on a LONG is a plan level — still requires an ENTER", () => {
+    // isPlanLevel counts an upside absolute REVIEW as the target (the same
+    // set the DEMOTE fire strips). A "wake" that is really a target keeps
+    // the full-plan rules: plan ⇒ ENTER required, plan ⇒ cadence stamped.
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "WATCHING",
+      triggers: [
+        {
+          id: "trig-upside-review",
+          predicate: { kind: "PRICE_ABOVE", level: 150 },
+          action: "REVIEW",
+          rationale: "Reassess at $150.",
+        },
+      ],
       targetPrice: 100,
     });
     expect(result.ok).toBe(false);
@@ -189,11 +229,11 @@ describe("validateEnterTriggerRequired", () => {
 
   // ── Missing targetPrice → different error message ───────────────────────
 
-  it("WATCHING LONG with missing target_price: rejects with target-required note", () => {
+  it("WATCHING LONG with missing target_price (and no wake to make it a set-down): rejects with target-required note", () => {
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
-      triggers: [REVIEW_EARNINGS],
+      triggers: [],
       targetPrice: null,
     });
     expect(result.ok).toBe(false);
@@ -202,11 +242,11 @@ describe("validateEnterTriggerRequired", () => {
     expect(result.note).not.toMatch(/displaced/);
   });
 
-  it("WATCHING LONG with present target_price but no ENTER: rejects with displaced-default note", () => {
+  it("WATCHING LONG with present target_price but no ENTER (plan level present): rejects with displaced-default note", () => {
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
-      triggers: [REVIEW_EARNINGS],
+      triggers: [REVIEW_EARNINGS, EXIT_STOP],
       targetPrice: 100,
     });
     expect(result.ok).toBe(false);
@@ -451,7 +491,7 @@ describe("validateEnterTriggerRequired", () => {
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
-      triggers: [REVIEW_EARNINGS],
+      triggers: [REVIEW_EARNINGS, EXIT_STOP],
       targetPrice: 100,
     });
     expect(result.ok).toBe(false);

@@ -53,7 +53,7 @@ import {
 } from "@/lib/agent/triggers/ratchet";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
-import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
+import { applyLevelArgs, isPlanLevel } from "@/lib/agent/triggers/price-levels";
 import {
   writeThesisUpdate,
   diffThesisFields,
@@ -1302,17 +1302,31 @@ export const updateThesis = defineTool({
       // WATCHING no longer inherits the account's review cadence (W1), so
       // a wholesale replace that omits the cadence rung would silently
       // take a committed watch off the review clock — "reviews stop, no
-      // error." Mirror of record_thesis's mint stamp: a directional
-      // WATCHING thesis always leaves this tool with a clock. Direction-
-      // null rows (seeds, soft watches) are exempt — a soft watch being
-      // cadence-free is the point, and seeds carry their own seed clock.
-      // Terminal transitions (change_status) skip: the row is leaving the
-      // watchlist anyway.
+      // error." Mirror of record_thesis's mint stamp. Direction-null rows
+      // (seeds, soft watches) are exempt — a soft watch being cadence-free
+      // is the point, and seeds carry their own seed clock. Terminal
+      // transitions (change_status) skip: the row is leaving the watchlist
+      // anyway.
+      //
+      // The stamp keys on the PLAN, not the direction (DAV-224). Invariant
+      // 2 is "plan ⇒ cadence" — so a replace whose final ladder still
+      // carries a plan level (isPlanLevel: an ENTER/EXIT absolute, or an
+      // upside REVIEW level — the same set the DEMOTE fire strips) keeps a
+      // clock, while the §5 demote disposition — resend with the plan AND
+      // the clock removed, wakes kept — goes through clean instead of
+      // being silently re-clocked. A level ARG on the call counts as a
+      // plan too: applyLevelArgs mints its trigger after this block runs.
       const finalDirection = args.direction ?? existing.direction;
+      const hasLevelArgs =
+        args.entry_price != null ||
+        args.target_price != null ||
+        args.stop_loss != null;
       if (
         existing.status === "WATCHING" &&
         !args.change_status &&
         (finalDirection === "LONG" || finalDirection === "SHORT") &&
+        (hasLevelArgs ||
+          finalTriggers.some((t) => isPlanLevel(t, finalDirection))) &&
         !finalTriggers.some((t) => t.predicate.kind === "REVIEW_CADENCE")
       ) {
         finalTriggers = [
