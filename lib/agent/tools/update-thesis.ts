@@ -29,7 +29,10 @@ import { prisma } from "@/lib/prisma";
 import { getAccount } from "@/lib/alpaca";
 import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { applyTriggerCooldownDefaults } from "@/lib/agent/triggers/defaults";
+import {
+  applyTriggerCooldownDefaults,
+  nextReviewFrom,
+} from "@/lib/agent/triggers/defaults";
 import {
   dropRedundantInherited,
   carryOverDroppedFireState,
@@ -1615,7 +1618,20 @@ export const updateThesis = defineTool({
     // if it concluded nothing changed. If a run skips the thesis or crashes,
     // nothing is stamped and it stays due.
     if (patch.status !== "RETIRED" && patch.status !== "PASSED") {
-      patch.lastReviewedAt = new Date();
+      const reviewedAt = new Date();
+      patch.lastReviewedAt = reviewedAt;
+      // And recompute the derived date. L7 stamped lastReviewedAt, called
+      // nextReviewAt "derived", and derived it nowhere — so the column froze
+      // and the overdue cron read every thesis past its last written date as
+      // permanently overdue.
+      patch.nextReviewAt = nextReviewFrom(
+        reviewedAt,
+        (patch.triggers as unknown as Trigger[]) ??
+          (Array.isArray(existing.triggers)
+            ? (existing.triggers as unknown as Trigger[])
+            : []),
+        (args.horizon ?? existing.horizon) as Horizon | null,
+      );
     }
 
     // ── Narrative-only patches collapse to REVIEWED ──────────────────────
@@ -1678,7 +1694,16 @@ export const updateThesis = defineTool({
       const reviewedAt = new Date();
       await prisma.thesis.update({
         where: { id: existing.id },
-        data: { lastReviewedAt: reviewedAt },
+        data: {
+          lastReviewedAt: reviewedAt,
+          nextReviewAt: nextReviewFrom(
+            reviewedAt,
+            Array.isArray(existing.triggers)
+              ? (existing.triggers as unknown as Trigger[])
+              : [],
+            existing.horizon as Horizon | null,
+          ),
+        },
       });
 
       // Awaited (was void). Both the morning-research coverage gate and
