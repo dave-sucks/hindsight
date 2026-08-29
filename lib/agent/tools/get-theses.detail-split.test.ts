@@ -73,13 +73,13 @@ function thesisRow(over: Record<string, unknown>) {
     targetPrice: 130,
     stopLoss: 90,
     targetSizePct: 3,
-    // No triggers and a far-future review date → nothing fires, no review
-    // due → needsAction stays null → quiet row under "actionable".
+    // No triggers → no cadence rung → nothing fires, no review due →
+    // needsAction stays null → quiet row under "actionable".
     triggers: [],
     scalingPlan: null,
     catalystDate: null,
     maxHoldDays: null,
-    nextReviewAt: new Date(Date.now() + 30 * 86_400_000),
+    lastReviewedAt: null,
     sourceSignalIds: [],
     sourceKind: "WEB_SEARCH",
     scoring: {},

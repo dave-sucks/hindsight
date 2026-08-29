@@ -24,6 +24,7 @@ import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import {
   defaultTriggersForHorizon,
   applyTriggerCooldownDefaults,
+  reviewCadenceTrigger,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -333,17 +334,20 @@ export async function closeThesisForPosition(opts: {
     // re-enter on a pullback. (A RETIRED/SOLD row is DEAD — excluded from
     // get_theses' default book, re-mintable only by Discovery.) Held-only
     // triggers (stop EXIT, scale-in rungs) are cleared since there is no
-    // position; nextReviewAt=now flags it so the next run sets a fresh
+    // position; a 1-day review cadence flags it so the next run sets a fresh
     // re-entry trigger or archives it. Only profit-takes route here — stops,
     // invalidations, and risk exits stay RETIRED via the branch below.
     if (shouldRecycleToWatching(opts.closeReason, opts.beliefSurvived)) {
       // Two flavors land here: a profit-take (TARGET), and a protective exit
       // the closing agent attested the belief survived (P1-35). They get the
-      // same mechanism — triggers cleared (no position, so held-side rungs are
-      // meaningless) and nextReviewAt=now so the next daily run MUST resolve
-      // it: arm a reclaim entry trigger, or archive it. Re-entry always runs
-      // through an ENTER trigger on a reclaim, never an auto-rebuy at the
-      // stop-out price.
+      // same mechanism — held-side rungs cleared (no position, so they are
+      // meaningless) and a 1-day REVIEW_CADENCE stamped so the next daily
+      // run MUST resolve it: arm a reclaim entry trigger, or archive it.
+      // The cadence trigger replaces the old due-date write (DAV-221) —
+      // a bare `triggers: []` on a WATCHING row would leave it invisible
+      // forever, since watch items only come due on their own cadence.
+      // Re-entry always runs through an ENTER trigger on a reclaim, never
+      // an auto-rebuy at the stop-out price.
       const isProfitTake = isProfitTakeReentry(opts.closeReason);
       await prisma.thesis.update({
         where: { id: activeThesis.id },
@@ -352,8 +356,9 @@ export async function closeThesisForPosition(opts: {
           retiredReason: null,
           closedAt: new Date(),
           closeReason: opts.closeReason,
-          triggers: [],
-          nextReviewAt: new Date(),
+          triggers: [
+            { ...reviewCadenceTrigger(1), source: "DEFAULT" },
+          ] as object[],
         },
       });
       await writeThesisUpdate({

@@ -148,7 +148,12 @@ export interface ThesisDossier {
   levels: ThesisStateLevels | null;
   targetSizePct: number | null;
   catalystDate: string | null;
-  nextReviewAt: string | null;
+  /**
+   * When this thesis next comes due for a look — DERIVED at read time from
+   * the last actual review + the cadence on the resolved ladder (DAV-221;
+   * there is no stored column). Null = no scheduled review.
+   */
+  reviewDueAt: string | null;
   triggers: Trigger[];
   /**
    * The analyst that owns this thesis. Lets the trigger section deep-link

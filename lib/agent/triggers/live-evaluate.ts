@@ -119,7 +119,6 @@ export async function evaluateLiveTriggerMatches({
       triggerState: true,
       horizon: true,
       createdAt: true,
-      nextReviewAt: true,
       lastReviewedAt: true,
     },
   });

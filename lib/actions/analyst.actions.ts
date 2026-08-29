@@ -996,7 +996,6 @@ export async function createAnalystFromBuilder(
         select: { id: true },
       });
 
-      const now = new Date();
       const createdTheses = await Promise.all(
         seedItems.map((w) =>
           tx.thesis.create({
@@ -1029,7 +1028,6 @@ export async function createAnalystFromBuilder(
               ] as object[],
               sourceKind: "BUILDER_SEED",
               sourceRationale: w.reason || "Builder-seeded during analyst creation",
-              nextReviewAt: now,
             },
             select: { id: true, ticker: true },
           }),
@@ -1599,7 +1597,6 @@ export async function updateAnalystFromBuilder(
             select: { id: true },
           });
 
-          const now = new Date();
           for (const w of toCreate) {
             const thesis = await prisma.thesis.create({
               data: {
@@ -1625,7 +1622,6 @@ export async function updateAnalystFromBuilder(
                 ] as object[],
                 sourceKind: "EDITOR_SEED",
                 sourceRationale: w.reason || "Editor-seeded via analyst-edit chat",
-                nextReviewAt: now,
               },
               select: { id: true },
             });

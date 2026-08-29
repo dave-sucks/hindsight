@@ -295,13 +295,10 @@ export const CADENCE_DAYS_BY_HORIZON: Record<Horizon, number> = {
 /**
  * When this thesis is next due, given when it was last actually looked at.
  *
- * `Thesis.nextReviewAt` is a DERIVED display value — that is what the L7
- * comment claimed and, for one day, was not true of anything: L7 deleted both
- * blocks that advanced the date and replaced them with a `lastReviewedAt`
- * stamp, and nothing recomputed the column. Five readers kept reading it,
- * including the overdue-housekeeping cron, so every thesis past its last
- * written date read as overdue forever. Five of Catalyst's seven names were
- * permanently flagged within a day.
+ * This is the ONE place the review date comes from. The cached column this
+ * used to feed is gone (DAV-221): it froze once when its writers were
+ * deleted (DAV-195 L7) and every thesis past its last written date read as
+ * overdue forever. A value derived at read time cannot freeze.
  *
  * Cadence comes from the thesis's own review trigger when it has one, and
  * from its horizon otherwise — which is exactly what the account rule would
@@ -316,6 +313,38 @@ export function nextReviewFrom(
   const own = resolvedCadenceDays(triggers ?? []);
   const days = own ?? CADENCE_DAYS_BY_HORIZON[horizon ?? "TARGET"];
   return new Date(lastReviewedAt.getTime() + days * 86_400_000);
+}
+
+/**
+ * The review date every reporting surface shows, derived at read time.
+ *
+ * Null when there is no scheduled review: terminal rows, and WATCHING rows
+ * with no cadence rung of their own (W1, DAV-216 — watch items opt IN to a
+ * cadence; inventing one from the horizon would display a review that will
+ * never fire). Everything else falls through to `nextReviewFrom`, whose
+ * horizon fallback matches what a held row inherits from the account rule
+ * even when the caller only has the thesis's own trigger list.
+ */
+export function derivedNextReviewAt(thesis: {
+  status: string | null;
+  lastReviewedAt: Date | null;
+  createdAt: Date;
+  /** Trigger list — resolved ladder where the caller has one, else the raw column. */
+  triggers: unknown;
+  horizon: string | null;
+}): Date | null {
+  if (thesis.status === "RETIRED" || thesis.status === "PASSED") return null;
+  const triggers = Array.isArray(thesis.triggers)
+    ? (thesis.triggers as Array<{ predicate: TriggerPredicate }>)
+    : [];
+  if (thesis.status === "WATCHING" && resolvedCadenceDays(triggers) == null) {
+    return null;
+  }
+  return nextReviewFrom(
+    thesis.lastReviewedAt ?? thesis.createdAt,
+    triggers,
+    (thesis.horizon ?? null) as Horizon | null,
+  );
 }
 
 /** The cadence in force on a resolved ladder; null when nothing sets one. */
@@ -589,7 +618,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
 //   - News/event triggers stay as REVIEW
 //   - REVIEW_DATE_HIT trigger REMOVED from watching templates 2026-05-20.
 //     It was duplicating daily-run's needsAction.REVIEW_DUE check —
-//     daily-run reads Thesis.nextReviewAt directly every morning and
+//     daily-run computes review due-ness itself every morning and
 //     decides REVIEW_DUE without needing a trigger. Auto-attaching the
 //     trigger meant the 5-min cron also spawned a TACTICAL run on every
 //     overdue WATCHING thesis intra-day, which produced almost zero

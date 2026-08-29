@@ -20,7 +20,6 @@ function baseThesis(overrides: Partial<Parameters<typeof buildResolvedEnvelope>[
     triggers: [],
     catalystDate: null,
     createdAt: new Date("2026-05-30T00:00:00Z"),
-    nextReviewAt: null,
     scoring: {
       trendStrength: { score: 2, note: "" },
       relativeStrength: { score: 2, note: "" },

@@ -33,7 +33,6 @@ import {
   applyTriggerCooldownDefaults,
   reviewCadenceTrigger,
   CADENCE_DAYS_BY_HORIZON,
-  nextReviewFrom,
 } from "@/lib/agent/triggers/defaults";
 import {
   dropRedundantInherited,
@@ -70,10 +69,7 @@ import {
   checkWatchingOptOut,
   needsPairedCloseCheck,
 } from "@/lib/agent/thesis-transitions";
-import {
-  holdDurationFromHorizon,
-  type Horizon,
-} from "@/lib/agent/horizon-policy";
+import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -271,7 +267,7 @@ const updateSchema = z.object({
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
     .optional()
     .describe(
-      "Promote or demote when the trade structure has actually changed. Examples: a TRADE that's compounding past its 14d window because the thesis got bigger → upgrade to TARGET (and extend maxHoldDays + push nextReviewAt to the new cadence). A COMPOUNDER whose moat eroded but isn't dead → downgrade to TARGET with a tighter exit. A CATALYST that printed and is now a position trade on residual momentum → upgrade to TARGET. When you change horizon you MUST also update maxHoldDays and nextReviewAt to the new horizon's defaults (TRADE 14d / TARGET 90d / COMPOUNDER 365d) — leaving the old cadence in place produces a thesis whose exit policy doesn't match its label, which is worse than not promoting at all. Only spawn a fresh record_thesis when direction or core belief flips, not when the time horizon evolves.",
+      "Promote or demote when the trade structure has actually changed. Examples: a TRADE that's compounding past its 14d window because the thesis got bigger → upgrade to TARGET. A COMPOUNDER whose moat eroded but isn't dead → downgrade to TARGET with a tighter exit. A CATALYST that printed and is now a position trade on residual momentum → upgrade to TARGET. The review cadence follows the new horizon automatically — leaving the old cadence trigger in place produces a thesis whose exit policy doesn't match its label, so resend the trigger list to match. Only spawn a fresh record_thesis when direction or core belief flips, not when the time horizon evolves.",
     ),
   catalyst_date: z.string().datetime().nullable().optional(),
   triggers: triggersArraySchema
@@ -398,7 +394,6 @@ type UpdatePatch = Partial<{
   variantView: string | null;
   horizon: string | null;
   catalystDate: Date | null;
-  nextReviewAt: Date | null;
   lastReviewedAt: Date | null;
   triggers: object;
   /** Fire state for inherited rungs — see the triggers patch block. */
@@ -489,7 +484,6 @@ export const updateThesis = defineTool({
         variantView: true,
         horizon: true,
         catalystDate: true,
-        nextReviewAt: true,
         triggers: true,
         // Per-thesis fire state for inherited rungs — read so a rung
         // dropped as redundant can hand its cooldown stamp over.
@@ -628,17 +622,17 @@ export const updateThesis = defineTool({
 
     // ── Unresearched-seed-must-commit guard ──────────────────────────────
     // 2026-05-14: observed the agent calling update_thesis on seed theses
-    // with reasoning/bullets/nextReviewAt set but NO `direction` arg. The
-    // call succeeded (patch was non-empty so the empty-patch auto-bump
-    // didn't fire), the agent set nextReviewAt forward 30 days, and the
-    // seed got buried for a month with no commitment. F1 in the V2
-    // prompt tells the agent to commit; this gate ENFORCES it tool-side.
+    // with reasoning/bullets set but NO `direction` arg. The call succeeded
+    // (patch was non-empty so the empty-patch auto-bump didn't fire), the
+    // agent pushed the review clock forward 30 days, and the seed got
+    // buried for a month with no commitment. F1 in the V2 prompt tells the
+    // agent to commit; this gate ENFORCES it tool-side.
     //
     // Rule: any update_thesis call on an unresearched seed MUST include
     // `direction`. The seed is "awaiting first research" — there's nothing
     // to refine until the agent commits to a view. Refining the seed's
-    // reasoning/bullets/nextReviewAt without committing is the wrong
-    // shape regardless of how good the rationale is.
+    // reasoning/bullets without committing is the wrong shape regardless
+    // of how good the rationale is.
     //
     // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy) — the
     // isUnresearchedSeed helper catches both during the dual-read window.
@@ -674,7 +668,7 @@ export const updateThesis = defineTool({
             `  • \`direction: "LONG"\` + horizon + entry_price + target_price + stop_loss + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
             `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
             `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
-            `Refining a PENDING's reasoning/bullets/nextReviewAt without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`,
+            `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`,
         },
         sources: [],
       };
@@ -1187,7 +1181,7 @@ export const updateThesis = defineTool({
     // "review every N days", counted from the last actual review, cascading
     // account -> analyst -> thesis like every other level. An agent that
     // wants this name looked at more often edits that trigger; it does not
-    // type a date. nextReviewAt is a derived display value now.
+    // type a date. Every surface derives the due date at read time (DAV-221).
     // THESIS_RESEARCH_V2 refresh-path research persistence. PR-9: the
     // `research_sections` blob is gone — parsed sections land on the 9
     // first-class JSONB columns above (which also stamp researchUpdatedAt
@@ -1574,15 +1568,10 @@ export const updateThesis = defineTool({
     }
 
     // ── Stamp when we looked (DAV-193, relocated by DAV-195 L7) ─────────
-    // DAV-193 shipped a conditional bump here: a non-terminal update on an
-    // already-overdue thesis pushed nextReviewAt forward by the horizon
-    // cadence. It fixed same-morning re-fires, and it needed three inputs
-    // (the current date, the horizon, the cadence table) to decide a date
-    // that a second block below decided differently.
-    //
-    // The clock now counts from when we last LOOKED, so there is nothing to
-    // compute: record the fact and let the cadence trigger do the arithmetic.
-    // nextReviewAt becomes a derived display value.
+    // The clock counts from when we last LOOKED, so there is nothing to
+    // compute: record the fact and let the cadence trigger do the
+    // arithmetic. Every surface that shows a review date derives it at
+    // read time from this stamp (DAV-221 — the cached column is gone).
     //
     // A decline is not a review and never reaches here — declining a sell
     // proposal leaves the market condition true, so that trigger fires again
@@ -1590,27 +1579,14 @@ export const updateThesis = defineTool({
     // if it concluded nothing changed. If a run skips the thesis or crashes,
     // nothing is stamped and it stays due.
     if (patch.status !== "RETIRED" && patch.status !== "PASSED") {
-      const reviewedAt = new Date();
-      patch.lastReviewedAt = reviewedAt;
-      // And recompute the derived date. L7 stamped lastReviewedAt, called
-      // nextReviewAt "derived", and derived it nowhere — so the column froze
-      // and the overdue cron read every thesis past its last written date as
-      // permanently overdue.
-      patch.nextReviewAt = nextReviewFrom(
-        reviewedAt,
-        (patch.triggers as unknown as Trigger[]) ??
-          (Array.isArray(existing.triggers)
-            ? (existing.triggers as unknown as Trigger[])
-            : []),
-        (args.horizon ?? existing.horizon) as Horizon | null,
-      );
+      patch.lastReviewedAt = new Date();
     }
 
     // ── Narrative-only patches collapse to REVIEWED ──────────────────────
     // A "narrative-only" patch touches only fields the agent can fill on
     // every housekeeping pass without anything structural having changed:
     // a rewritten reasoningSummary, a re-keyed riskFlags list, refreshed
-    // thesisBullets, a bumped nextReviewAt. Under gpt-4o the agent would
+    // thesisBullets. Under gpt-4o the agent would
     // call update_thesis(rationale) with no other fields and the
     // empty-patch path below classified the row as REVIEWED. Under gpt-5.5
     // (swap day 2026-05-12) the agent is verbosely chattier and fills
@@ -1640,7 +1616,6 @@ export const updateThesis = defineTool({
       "snapshot",
       "bullCase",
       "bearCase",
-      "nextReviewAt",
       "researchUpdatedAt",
     ]);
     const patchKeysList = Object.keys(patch);
@@ -1666,16 +1641,7 @@ export const updateThesis = defineTool({
       const reviewedAt = new Date();
       await prisma.thesis.update({
         where: { id: existing.id },
-        data: {
-          lastReviewedAt: reviewedAt,
-          nextReviewAt: nextReviewFrom(
-            reviewedAt,
-            Array.isArray(existing.triggers)
-              ? (existing.triggers as unknown as Trigger[])
-              : [],
-            existing.horizon as Horizon | null,
-          ),
-        },
+        data: { lastReviewedAt: reviewedAt },
       });
 
       // Awaited (was void). Both the morning-research coverage gate and
@@ -1744,7 +1710,6 @@ export const updateThesis = defineTool({
       "targetSizePct",
       "horizon",
       "catalystDate",
-      "nextReviewAt",
       "triggers",
       "scalingPlan",
       // Lifecycle

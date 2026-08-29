@@ -135,7 +135,6 @@ export interface ResolverThesisInput {
   triggers: unknown; // Json column; parsed via triggersArraySchema by caller
   catalystDate: Date | null;
   createdAt: Date;
-  nextReviewAt: Date | null;
   scoring: unknown; // for entryQualityScore surfacing
   /** Pre-parsed trigger array — caller invokes triggersArraySchema.safeParse. */
   parsedTriggers: Trigger[];
@@ -194,7 +193,6 @@ export function buildResolvedEnvelope(args: {
         : undefined,
     thesis: {
       createdAt: thesis.createdAt,
-      nextReviewAt: thesis.nextReviewAt,
       // P1-14: ACTIVE rows anchor TIME_ELAPSED to the position open time.
       status: thesis.status,
       positionOpenedAt: thesis.positionOpenedAt ?? null,

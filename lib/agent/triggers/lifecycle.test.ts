@@ -27,7 +27,9 @@ import {
   defaultTriggersForHorizon,
   CADENCE_DAYS_BY_HORIZON,
   reviewCadenceTrigger,
+  derivedNextReviewAt,
 } from "./defaults";
+import { computeNeedsAction } from "@/lib/agent/needs-action";
 import type { Trigger, TriggerPredicate } from "./types";
 import type { ResolvedTrigger } from "./levels";
 
@@ -287,12 +289,11 @@ describe("6. the analyst changes its mind", () => {
 });
 
 describe("7. the review date the rest of the app reads", () => {
-  // nextReviewAt is a derived display value — and for one day it was derived
-  // by nothing. L7 deleted both blocks that advanced it, stamped
-  // lastReviewedAt instead, and left five readers pointed at a frozen
-  // column. The overdue cron read every thesis past its last written date as
-  // permanently overdue; five of one analyst's seven names were flagged
-  // within a day of deploy.
+  // The review date is DERIVED at read time, everywhere — the cached column
+  // is gone (DAV-221). It existed once, froze when its writers were deleted
+  // (L7), and every thesis past its last written date read as permanently
+  // overdue; five of one analyst's seven names were flagged within a day of
+  // deploy. A value nothing stores cannot freeze.
   const { nextReviewFrom } = require("./defaults");
   const reviewed = new Date("2026-08-26T14:00:00Z");
   const days = (d: Date) =>
@@ -322,5 +323,118 @@ describe("7. the review date the rest of the app reads", () => {
         reviewed.getTime(),
       );
     }
+  });
+
+  it("shows no review date on a watch item with no cadence of its own", () => {
+    // W1: watch items opt IN to a cadence. A soft watch with only wake
+    // triggers has no scheduled review — displaying a horizon-derived one
+    // would promise a fire that never comes.
+    expect(
+      derivedNextReviewAt({
+        status: "WATCHING",
+        lastReviewedAt: null,
+        createdAt: new Date("2026-08-01"),
+        triggers: [],
+        horizon: "TARGET",
+      }),
+    ).toBeNull();
+  });
+
+  it("shows no review date on a terminal row", () => {
+    for (const status of ["RETIRED", "PASSED"]) {
+      expect(
+        derivedNextReviewAt({
+          status,
+          lastReviewedAt: reviewed,
+          createdAt: new Date("2026-08-01"),
+          triggers: [reviewCadenceTrigger(7)],
+          horizon: "TARGET",
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it("a held row falls back to the horizon when the caller only has raw triggers", () => {
+    // The account's inherited cadence isn't in the raw column; the horizon
+    // fallback hands back the same number the account rule would.
+    const due = derivedNextReviewAt({
+      status: "HOLDING",
+      lastReviewedAt: reviewed,
+      createdAt: new Date("2026-08-01"),
+      triggers: [],
+      horizon: "TARGET",
+    });
+    expect(days(due!)).toBe(CADENCE_DAYS_BY_HORIZON.TARGET);
+  });
+});
+
+describe("8. a watchlist seed surfaces for its first research", () => {
+  // Every seed path (user add, builder, editor) mints direction=null,
+  // status WATCHING, a 7-day cadence trigger, and NO lastReviewedAt.
+  // Post-DAV-221 there is no date column seeding this — due-ness must fall
+  // out of the trigger + the createdAt fallback alone, or seeds go
+  // invisible forever.
+  const mintedAt = new Date("2026-08-20T14:00:00Z");
+  const seed = {
+    id: "seed-1",
+    direction: null,
+    status: "WATCHING",
+    triggers: [{ ...reviewCadenceTrigger(7), source: "DEFAULT" as const }],
+    createdAt: mintedAt,
+    lastReviewedAt: null,
+  };
+  const daysLater = (d: number) =>
+    new Date(mintedAt.getTime() + d * 86_400_000);
+
+  it("shows its first-research date: createdAt + the 7-day seed cadence", () => {
+    expect(derivedNextReviewAt({ ...seed, horizon: null })).toEqual(
+      daysLater(7),
+    );
+  });
+
+  it("is quiet before the cadence elapses", () => {
+    expect(
+      computeNeedsAction({
+        thesis: seed,
+        latestUpdate: null,
+        latestQuote: null,
+        now: daysLater(3),
+      }),
+    ).toBeNull();
+  });
+
+  it("comes due as REVIEW_DUE + pendingFirstReview once the week is up", () => {
+    const result = computeNeedsAction({
+      thesis: seed,
+      latestUpdate: null,
+      latestQuote: null,
+      now: daysLater(7),
+    });
+    expect(result).toEqual({
+      kind: "REVIEW_DUE",
+      daysOverdue: 0,
+      pendingFirstReview: true,
+    });
+  });
+
+  it("a recycled sold name (1-day cadence) is back on the desk next morning", () => {
+    // thesis-flips recycles a profit-take to WATCHING with a 1-day cadence
+    // — the replacement for the deleted due-date write. With the daily
+    // run's 24h look-ahead, that means the very next morning.
+    const recycled = {
+      id: "recycled-1",
+      direction: "LONG",
+      status: "WATCHING",
+      triggers: [{ ...reviewCadenceTrigger(1), source: "DEFAULT" as const }],
+      createdAt: mintedAt,
+      lastReviewedAt: daysLater(10), // reviewed the morning it was sold
+    };
+    const result = computeNeedsAction({
+      thesis: recycled,
+      latestUpdate: null,
+      latestQuote: null,
+      now: daysLater(10.5), // the next daily run
+    });
+    expect(result?.kind).toBe("REVIEW_DUE");
   });
 });

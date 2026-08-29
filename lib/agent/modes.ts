@@ -675,7 +675,7 @@ ${scopeBlock}
 
 **ResearchRun** — one execution. Mode (MORNING_PLAN / INTRADAY_TACTICAL / DISCOVERY / PRINCIPAL_CHAT / PODCAST_SEGMENT), status (RUNNING / COMPLETE / FAILED), \`parameters\` snapshot, \`agentConfigId\`. Children: \`Thesis[]\`, \`TradeDecision[]\`, \`RunEvent[]\`, \`RunMessage[]\`.
 
-**Thesis** — the durable belief on a (analyst, ticker). Direction (LONG/SHORT/PASS), status (ACTIVE / WATCHING / INVALIDATED / CLOSED / SUPERSEDED), \`horizon\` (CATALYST / TRADE / TARGET / COMPOUNDER), \`entryPrice/targetPrice/stopLoss\`, \`coreBelief\`, \`keyAssumptions[]\`, \`invalidationConds[]\`, \`triggers[]\` (JSONB structured predicates), \`nextReviewAt\`, \`sourceKind\` (ROUTED_SIGNAL / WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW), \`sourceSignalIds[]\`.
+**Thesis** — the durable belief on a (analyst, ticker). Direction (LONG/SHORT/PASS), status (ACTIVE / WATCHING / INVALIDATED / CLOSED / SUPERSEDED), \`horizon\` (CATALYST / TRADE / TARGET / COMPOUNDER), \`entryPrice/targetPrice/stopLoss\`, \`coreBelief\`, \`keyAssumptions[]\`, \`invalidationConds[]\`, \`triggers[]\` (JSONB structured predicates), \`sourceKind\` (ROUTED_SIGNAL / WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW), \`sourceSignalIds[]\`.
 
   • **Cardinality rule:** at most one ACTIVE-or-WATCHING thesis per (analyst, ticker, direction). Direction flips create a new row with the parent SUPERSEDED.
   • **Per-horizon defaults** (lib/agent/horizon-policy.ts): TRADE = 1d review + maxHoldDays required. TARGET = 7d review, open-ended. CATALYST = 1d review + catalystDate required. COMPOUNDER = 30d review.

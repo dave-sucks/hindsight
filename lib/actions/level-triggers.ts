@@ -41,7 +41,7 @@ export type WritableLevel = "ACCOUNT" | "ANALYST";
  * Excluded on purpose:
  *   • PRICE_ABOVE / PRICE_BELOW — an absolute dollar level is meaningless
  *     across tickers.
- *   • REVIEW_DATE_HIT — reads `Thesis.nextReviewAt`, a per-thesis date.
+ *   • REVIEW_DATE_HIT — legacy per-thesis review-date predicate.
  *   • AND / OR — composites of the above; allow once there's a UI that
  *     can build them, not before.
  *   • EARNINGS_* / GUIDANCE_CHANGE / FILING / SIGNAL_TYPE — these need

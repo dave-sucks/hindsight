@@ -458,7 +458,7 @@ async function runCompleteRunPreflight(
     status: string;
     triggers: unknown;
     createdAt: Date;
-    nextReviewAt: Date | null;
+    lastReviewedAt: Date | null;
     paperTenureDays: number | null;
     // Prisma Decimal — typed as unknown to avoid the runtime-library import;
     // coerced via Number() at the computeNeedsAction call site below.
@@ -524,7 +524,7 @@ async function runCompleteRunPreflight(
       status: true,
       triggers: true,
       createdAt: true,
-      nextReviewAt: true,
+      lastReviewedAt: true,
       paperTenureDays: true,
       paperRealizedPnl: true,
       paperReviewCount: true,
@@ -643,7 +643,7 @@ async function runCompleteRunPreflight(
         status: t.status,
         triggers: (t.triggers as unknown as Trigger[]) ?? [],
         createdAt: t.createdAt,
-        nextReviewAt: t.nextReviewAt,
+        lastReviewedAt: t.lastReviewedAt,
         positionOpenedAt:
           t.status === "HOLDING"
             ? positionOpenedAtByTicker.get(t.ticker) ?? null

@@ -641,7 +641,7 @@ function TradeStructureBlock({
 }: {
   state: {
     horizon: string | null;
-    nextReviewAt: string | null;
+    reviewDueAt: string | null;
     targetSizePct: number | null;
     analystName: string | null;
     resolved?: ResolvedEnvelope | null;
@@ -649,7 +649,7 @@ function TradeStructureBlock({
 }) {
   const hasAnalyst = state.analystName != null;
   const hasHorizon = state.horizon != null;
-  const hasNextReview = state.nextReviewAt != null;
+  const hasNextReview = state.reviewDueAt != null;
   const hasSize = state.targetSizePct != null;
   // Conviction Expression v4 — actionability rollup. Lives in Trade
   // Structure (not as a top-of-sheet badge per principal feedback) —
@@ -712,8 +712,8 @@ function TradeStructureBlock({
   if (hasNextReview) {
     cells.push({
       label: "Next review",
-      value: fmtRelativeDate(state.nextReviewAt!),
-      tooltip: new Date(state.nextReviewAt!).toLocaleString(),
+      value: fmtRelativeDate(state.reviewDueAt!),
+      tooltip: new Date(state.reviewDueAt!).toLocaleString(),
     });
   }
   // "Max hold" is a trigger now, not a field — it renders in the trigger

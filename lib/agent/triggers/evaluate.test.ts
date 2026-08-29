@@ -573,8 +573,8 @@ describe("evaluateTrigger", () => {
 
   describe("REVIEW_CADENCE", () => {
     // Counted from the last ACTUAL review, not from a date someone typed.
-    // The old REVIEW_DATE_HIT read Thesis.nextReviewAt, which was a second
-    // store of the same idea and the one nothing fired on.
+    // The old REVIEW_DATE_HIT read a stored review-date column, which was a
+    // second store of the same idea and the one nothing fired on.
     const cadence: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 7 };
 
     it("fires once the cadence has elapsed since the last review", () => {
