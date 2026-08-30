@@ -117,11 +117,24 @@ All four new industry strings were verified against the canonical GICS table in
 `lib/universe/gics.ts` before writing — the 2026-08-12 trap (a fence value the data never
 emits is invisible dead weight) does not apply here.
 
-**PEAD's `industries` array was deliberately left alone.** Verified in
-`lib/agent/tools/get-stock-data.ts:276`: Finnhub doesn't expose a separate GICS industry, so
-that tool passes `industry: null` and `checkUniverse` skips the dimension entirely. The
-industry list is inert at triage today, so emptying `sectors` is the whole change. It wakes
-up again when signal routing returns (`Signal.industries` *is* populated) — revisit then.
+**PEAD's `industries` array was left alone at first — that was WRONG, corrected 20:5x UTC.**
+The original reasoning: `lib/agent/tools/get-stock-data.ts:276` passes `industry: null`
+(Finnhub exposes no separate GICS industry), so `checkUniverse` skips the dimension. True —
+**but only in the code path.** The discovery prompt builder renders
+`config.industries.join(", ")` straight into the agent's config block, and the agent
+enforces it in prose. The first discovery run after the change proved it: **TOST was
+PASS-recorded with "outside this analyst's universe fence (Software / IT Services /
+Semiconductors)" — PEAD's industries list — while the same row recorded "Drift intact at
+$35.15."** A clean beat-and-raise with live drift, killed on classification, which is the
+precise failure the change existed to stop.
+
+| Field | Before (rollback value) | After |
+|---|---|---|
+| PEAD `industries` | `["Semiconductors","Technology Hardware, Storage & Peripherals","Software","IT Services","Biotechnology","Pharmaceuticals","Health Care Equipment & Supplies","Aerospace & Defense","Specialty Retail","Interactive Media & Services","Capital Markets"]` | `[]` |
+
+**The lesson worth keeping:** a fence has two enforcement layers — `checkUniverse` in code and
+the rendered config block in the prompt. Verifying one and not the other is how a fence that
+looks inert keeps rejecting names. Check both before calling any fence dimension dead.
 
 **The Catalyst prompt block, verbatim:**
 
