@@ -1050,7 +1050,7 @@ interface PersistToolEnvelope {
 /**
  * Run server-built args through the tool's OWN input schema, then execute.
  * Direct .execute() calls bypass the AI SDK's Zod validation layer, which
- * is where .default() values (source_signal_ids: [], trigger ids/fireMode)
+ * is where .default() values (source_signal_ids: [], trigger ids)
  * and the cross-field superRefine rules are applied — skipping it would
  * hand the tool a shape it never sees in production. A parse failure here
  * is a server-side construction bug, surfaced loudly as the persist error.

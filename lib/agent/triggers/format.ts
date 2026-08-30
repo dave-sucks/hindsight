@@ -85,8 +85,14 @@ export function predicateSentence(p: TriggerPredicate): string {
  *   TRIM       → "trim position"
  *   MOVE_STOP  → "move stop"
  *   REVIEW     → "review"
+ *
+ * `held` (pass false for a thesis we don't own) makes EXIT honest: on an
+ * un-held thesis a floor break can't sell anything — `effectiveTriggerAction`
+ * resolves it to DEMOTE, so the label says what actually happens. Omitted ⇒
+ * the historical held-side wording, so no caller changes by accident.
  */
-export function actionLabel(action: string): string {
+export function actionLabel(action: string, held?: boolean): string {
+  if (action === "EXIT" && held === false) return "take the plan down";
   switch (action) {
     case "EXIT":
       return "exit position";
@@ -111,8 +117,8 @@ export function actionLabel(action: string): string {
  *   PRICE_BELOW $5.92 + REVIEW → "Price below $5.92 — review"
  *   EARNINGS_BEAT ≥3% + ADD    → "Earnings beat ≥3% — scale in"
  */
-export function describeTriggerFire(trigger: Trigger): string {
-  return `${predicateSentence(trigger.predicate)} — ${actionLabel(trigger.action)}`;
+export function describeTriggerFire(trigger: Trigger, held?: boolean): string {
+  return `${predicateSentence(trigger.predicate)} — ${actionLabel(trigger.action, held)}`;
 }
 
 /**
@@ -200,7 +206,11 @@ export function levelBadgeLabel(
   }
 }
 
-export function actionGroupLabel(action: string): string {
+export function actionGroupLabel(action: string, held?: boolean): string {
+  // Same honesty rule as actionLabel: a floor/target EXIT on a thesis we
+  // don't own resolves to DEMOTE at fire time — the plan comes down,
+  // nothing is sold. Omitted `held` keeps the historical "Exit if".
+  if (action === "EXIT" && held === false) return "Take the plan down if";
   switch (action) {
     case "ENTER":
       return "Buy if";

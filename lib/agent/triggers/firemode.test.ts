@@ -3,8 +3,10 @@
  * Add-trigger UI + TRIGGER_FOLLOWUPS #3 (DIRECT exits skip the tactical run).
  *
  * Three pure surfaces are covered:
- *   1. triggerSchema.fireMode default — omitted ⇒ "TACTICAL" (legacy behavior
- *      preserved); explicit value passes through; bad value rejected.
+ *   1. triggerSchema.fireMode — omitted stays ABSENT (readers treat absent
+ *      as TACTICAL; DAV-226 removed the write-time "TACTICAL" stamp because
+ *      it labeled REVIEW rungs with a tactical wake that never happens);
+ *      explicit value passes through; bad value rejected.
  *   2. defaultFireModeForAction — EXIT ⇒ DIRECT, everything else ⇒ TACTICAL.
  *   3. cooldown defaulting is unaffected by fireMode (the two write-path
  *      normalizers compose).
@@ -19,13 +21,13 @@ import { isDirectEligiblePredicate } from "./types";
 import type { Trigger } from "./types";
 
 describe("triggerSchema.fireMode", () => {
-  it("defaults to TACTICAL when omitted (legacy triggers keep agent behavior)", () => {
+  it("stays absent when omitted (absent ⇒ TACTICAL at every reader; no stamped label)", () => {
     const parsed = triggerSchema.parse({
       predicate: { kind: "PRICE_BELOW", level: 100 },
       action: "EXIT",
       rationale: "stop",
     });
-    expect(parsed.fireMode).toBe("TACTICAL");
+    expect(parsed.fireMode).toBeUndefined();
   });
 
   it("passes an explicit DIRECT through", () => {

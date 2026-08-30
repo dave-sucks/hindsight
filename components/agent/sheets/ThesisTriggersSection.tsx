@@ -423,7 +423,9 @@ function TriggerPopoverContent({
     trigger.predicate,
   );
   // Sentence title in foreground — "Exit if price below", "Review if up".
-  const fieldLabel = `${actionGroupLabel(trigger.action)} ${kindLabel}`;
+  // On an un-held thesis an EXIT fire takes the plan down instead of
+  // selling (effectiveTriggerAction), and the label says so.
+  const fieldLabel = `${actionGroupLabel(trigger.action, held)} ${kindLabel}`;
 
   // Input-group adornments. Price → leading "$"; movement / gain-from-entry
   // → leading direction + trailing "%"; time-based → leading calendar icon
@@ -733,7 +735,7 @@ export function TriggerGroups({
             className="flex flex-wrap items-center gap-x-2 gap-y-1.5"
           >
             <span className="text-sm text-muted-foreground shrink-0">
-              {actionGroupLabel(action)}
+              {actionGroupLabel(action, held)}
             </span>
             {items.map((t) => (
               <TriggerPill
@@ -935,12 +937,12 @@ export function AddTriggerDialog({
             disabled={pending}
           >
             <SelectTrigger className="w-full">
-              <SelectValue>{actionGroupLabel(action)}</SelectValue>
+              <SelectValue>{actionGroupLabel(action, held)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {TRIGGER_ACTION_ORDER.map((a) => (
                 <SelectItem key={a} value={a}>
-                  {actionGroupLabel(a)}
+                  {actionGroupLabel(a, held)}
                 </SelectItem>
               ))}
             </SelectContent>

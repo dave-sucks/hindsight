@@ -85,7 +85,11 @@ export function buildPrincipalTrigger(input: {
     action: input.action,
     rationale: input.rationale?.trim() || input.defaultRationale,
     ...(input.cooldownDays != null ? { cooldownDays: input.cooldownDays } : {}),
-    fireMode,
+    // fireMode only means something on EXIT (DIRECT vs wake-the-agent). On
+    // any other action the field is inert — a REVIEW fire batches into the
+    // next daily run regardless — so don't stamp a label that claims a
+    // tactical wake that never happens (DAV-226). Absent ⇒ TACTICAL.
+    ...(input.action === "EXIT" ? { fireMode } : {}),
   });
   if (!parsed.success) {
     throw new ThesisEditError(
@@ -508,7 +512,10 @@ export async function applyTriggerAdd(
     thesisId: thesis.id,
     type: "UPDATED",
     summary: `Principal added ${thesis.ticker} trigger — ${predicateSentence(newTrigger.predicate)} → ${newTrigger.action.toLowerCase()}`,
-    rationale: `[USER] Added a "${newTrigger.action}" trigger (${predicateSentence(newTrigger.predicate)}, fire mode ${fireMode}). Honor it; it's a standing instruction.`,
+    // Fire mode is only mentioned where it means something (EXIT). A REVIEW
+    // trigger's fire batches into the next daily run — naming a fire mode on
+    // it would claim a tactical wake that never happens (DAV-226).
+    rationale: `[USER] Added a "${newTrigger.action}" trigger (${predicateSentence(newTrigger.predicate)}${input.action === "EXIT" ? `, fire mode ${fireMode}` : ""}). Honor it; it's a standing instruction.`,
     fieldChanges: {
       source: { from: null, to: "USER" },
       ...(synced.stopLoss != null
