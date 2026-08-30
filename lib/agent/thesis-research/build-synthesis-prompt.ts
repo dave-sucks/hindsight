@@ -291,7 +291,9 @@ YOUR JOB
    condition warrants a non-default predicate. Use predicate kinds from
    lib/agent/triggers/types.ts (PRICE_ABOVE, PRICE_BELOW, EARNINGS_BEAT,
    EARNINGS_MISS, GUIDANCE_CHANGE, FILING, RSI, VS_SMA, PRICE_MOVE_PCT,
-   TIME_ELAPSED, REVIEW_CADENCE, REVIEW_DATE_HIT, SIGNAL_TYPE).
+   TIME_ELAPSED, REVIEW_CADENCE, SIGNAL_TYPE). (REVIEW_DATE_HIT is
+   dead — the recurring REVIEW_CADENCE clock replaced it 2026-05-20;
+   do not author it.)
    - <Optional. Format: [PREDICATE_KIND params] → ACTION — rationale.
      Example: "EARNINGS_MISS minSurprisePct: 3 → REVIEW — guidance miss
      on next print kills the AI-acceleration thesis. Cooldown 7d.">
