@@ -100,6 +100,49 @@ that's the builder proposal to make. Not before.
 
 ---
 
+### ✅ APPLIED 2026-08-30 20:02 UTC — all three, on the principal's approval
+
+Written directly to `AgentConfig`. Rollback values recorded below; nothing else on any row
+was touched, and no thesis, position or trigger was modified.
+
+| Seat | Field | Before (rollback value) | After |
+|---|---|---|---|
+| **PEAD Specialist** | `sectors` | `["Information Technology","Health Care","Consumer Discretionary","Industrials","Communication Services","Consumer Staples","Financials"]` | `[]` |
+| **Catalyst Event PM** | `marketCapMin` | `1000000000` | `500000000` |
+| **Catalyst Event PM** | `analystPrompt` | 2,425 chars | 3,067 chars — one appended `SMALL-CAP DISCIPLINE` block (text below) |
+| **Secular Compounder** | `sectors` | 5 entries (IT, Health Care, Industrials, Utilities, Comm Services) | + `Energy`, `Materials` (7) |
+| **Secular Compounder** | `industries` | 13 entries | + `Oil & Gas Storage & Transportation`, `Metals & Mining`, `Chemicals`, `Construction Materials` (17) |
+
+All four new industry strings were verified against the canonical GICS table in
+`lib/universe/gics.ts` before writing — the 2026-08-12 trap (a fence value the data never
+emits is invisible dead weight) does not apply here.
+
+**PEAD's `industries` array was deliberately left alone.** Verified in
+`lib/agent/tools/get-stock-data.ts:276`: Finnhub doesn't expose a separate GICS industry, so
+that tool passes `industry: null` and `checkUniverse` skips the dimension entirely. The
+industry list is inert at triage today, so emptying `sectors` is the whole change. It wakes
+up again when signal routing returns (`Signal.industries` *is* populated) — revisit then.
+
+**The Catalyst prompt block, verbatim:**
+
+> SMALL-CAP DISCIPLINE: My cap floor reaches down to $500M, but that headroom is conditional,
+> not general. Below $1B I take only supplemental approvals, label expansions, and setups where
+> positive data is already in hand and a dated regulatory step is all that remains. I never take
+> a first-approval binary on a single-asset company down there — that is the exact shape behind
+> every double-digit loss I have taken, because an overnight gap runs straight through any stop
+> I could set. Sub-$1B names size at the bottom of my band, and I check cash runway before
+> entry: an approval that forces a dilutive raise at distressed prices is not a win.
+
+It names no dollar figure for size ("the bottom of my band") on purpose — the seat's prompt
+already states it doesn't restate config numbers, and a prose floor that drifts from config is
+worse than none.
+
+**Not done, deliberately:** `Coal & Consumable Fuels` would serve the nuclear-fuel-cycle theme
+and is canonical, but it wasn't in the approved proposal — flagging it rather than widening
+scope silently.
+
+---
+
 ## (b) The watchlist — verdicts confirmed, with challenges
 
 **The audit's 11 KEEP / 6 RE-PRICE / 4 REFRESH / 1 DEMOTE bucketing survives
@@ -324,9 +367,9 @@ the rest).
 2. **Run paste 2 (Catalyst discovery)** — BBIO, IBRX, NUVB (+IRD if you approve P2).
 3. **Run paste 3 (Compounder repair)** — re-prices, refreshes, ASML (± PLTR) as
    demote candidates. No new names for this seat this week.
-4. **Approve/decline the fence changes:** P1 PEAD sector-fence deletion · P2 Catalyst
-   floor $1B→$500M with the supplemental-only + floor-size pairing · P3 Compounder
-   Energy/Materials widening. Exact before/after in section (a).
+4. ~~Approve/decline the fence changes~~ — **DONE. All three applied 08-30 on approval**;
+   before/after and rollback values in section (a). FA and IRD are now inside the fences,
+   so the discovery control test should dispatch them rather than reject them.
 5. **Standing decisions already on your desk (referenced, not re-litigated):** MU exit,
    PRAX floor, WST stance, SMMT buy, and the IONS/MIRM event-mix call before those
    fills arrive. Plus ISRG: the re-entry decision, with its trigger at the money.

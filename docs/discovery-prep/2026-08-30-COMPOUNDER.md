@@ -66,7 +66,7 @@ replace — resend every rung you intend to keep.
 
 ---
 
-## Part 2 — theme prompts, HELD until the fence widens
+## Part 2 — theme prompts, NOW UNBLOCKED (fence widened 08-30)
 
 The seat's mandate names seven themes. **Two of them cannot be reached by the current fence**:
 "Energy transition" only reaches Utilities / Independent Power Producers / Electrical
@@ -75,11 +75,14 @@ Machinery / Construction & Engineering (no materials, no chemicals). This is the
 bug found on 2026-08-12, when three of seven themes turned out to be structurally unreachable
 and one config edit took aging from zero candidates to four in ten minutes.
 
-**Do not fire these prompts until the Energy + Materials widening is approved** — they will
-surface names the seat then has to PASS on fence, which wastes the session and pollutes the
-PASS record.
+**The widening landed 2026-08-30**: `sectors` gained Energy + Materials, `industries` gained
+Oil & Gas Storage & Transportation, Metals & Mining, Chemicals, and Construction Materials
+(all four verified canonical). Nuclear fuel, midstream, copper/electrification and onshoring
+materials are reachable for the first time. **Still repair the bench first** — but these
+prompts are no longer blocked, and anything they surface should land as a **soft watch** until
+the 13-name bench is back under control.
 
-**Once the fence lands, Play A, one theme per session, GLP-1 first** (it has zero bench behind
+**Play A, one theme per session, GLP-1 first** (it has zero bench behind
 held WST, and the seat's own scout roster for it is seeded but unscored: @Biohazard3737,
 @Ashwinreads, @academianlcap, @AndrewPannu):
 
