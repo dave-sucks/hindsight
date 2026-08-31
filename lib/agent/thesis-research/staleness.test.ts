@@ -191,3 +191,45 @@ describe("formatResearchAge", () => {
     expect(formatResearchAge(age)).toBe("stale (35d / 30d)");
   });
 });
+
+// ── Watchlist cap (2026-08-31) ────────────────────────────────────────────
+// A name we don't own yet is capped at WATCHLIST_STALE_DAYS_CAP on top of
+// its horizon threshold: the next decision on it is "buy this today?", and
+// that must not rest on last quarter's work. Held names keep the horizon
+// clock — a compounder you already own genuinely can run a quarter.
+describe("classifyResearchAge — the watchlist cap", () => {
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
+
+  it("flags an 80-day-old COMPOUNDER on the watchlist as stale (the GD/GEV/VST case)", () => {
+    const age = classifyResearchAge(daysAgo(80), "COMPOUNDER", "WATCHING");
+    expect(age.freshness).toBe("stale");
+    expect(age.horizonThreshold).toBe(35);
+  });
+
+  it("leaves the same 80-day-old research FRESH on a stock we own", () => {
+    const age = classifyResearchAge(daysAgo(80), "COMPOUNDER", "HOLDING");
+    expect(age.freshness).toBe("fresh");
+    expect(age.horizonThreshold).toBe(90);
+  });
+
+  it("never loosens a tighter horizon — a CATALYST watch stays on 7 days", () => {
+    expect(
+      classifyResearchAge(daysAgo(10), "CATALYST", "WATCHING").horizonThreshold,
+    ).toBe(7);
+    expect(classifyResearchAge(daysAgo(10), "CATALYST", "WATCHING").freshness).toBe(
+      "stale",
+    );
+  });
+
+  it("omitting status keeps the old horizon-only behavior", () => {
+    const age = classifyResearchAge(daysAgo(80), "COMPOUNDER");
+    expect(age.freshness).toBe("fresh");
+    expect(age.horizonThreshold).toBe(90);
+  });
+
+  it("a 20-day-old compounder watch is still fresh — this is not a weekly re-research", () => {
+    expect(classifyResearchAge(daysAgo(20), "COMPOUNDER", "WATCHING").freshness).toBe(
+      "fresh",
+    );
+  });
+});

@@ -238,6 +238,7 @@ export const tacticalRun = inngest.createFunction(
       const thesisResearchAge = classifyResearchAge(
         thesis.researchUpdatedAt,
         thesis.horizon as Horizon | null,
+        thesis.status,
       );
       const thesisSnapshotText = getThesisSnapshotText(thesis);
       const thesisBullBullets = getThesisBullCaseBullets(thesis);

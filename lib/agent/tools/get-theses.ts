@@ -1025,6 +1025,7 @@ export const getTheses = defineTool({
       researchAge: classifyResearchAge(
         t.researchUpdatedAt,
         t.horizon as Horizon | null,
+        t.status,
       ),
       resolvedActionability: resolvedByThesisId.get(t.id)?.actionability ?? null,
       needsAction: null,
@@ -1049,6 +1050,7 @@ export const getTheses = defineTool({
         researchAge: classifyResearchAge(
           t.researchUpdatedAt,
           t.horizon as Horizon | null,
+          t.status,
         ),
         // P1-28 (L2): unapproved close proposals on this held position (Order
         // ledger) — rejected by the user OR ignored to expiry. >0 means "you

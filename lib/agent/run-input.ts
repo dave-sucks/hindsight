@@ -887,6 +887,7 @@ export async function buildRunInput(
         researchAge: classifyResearchAge(
           t.researchUpdatedAt,
           t.horizon as Horizon | null,
+          t.status,
         ),
       };
     }),
