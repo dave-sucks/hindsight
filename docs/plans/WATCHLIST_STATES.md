@@ -52,12 +52,24 @@ expressible as triggers after the Levels merge:
 
 **The states are derived, never stored:**
 
-| | Wake triggers (price/event) | `REVIEW_CADENCE` | Plan (`ENTER`/`EXIT`) | Position |
+| | Wake triggers (price/time) | `REVIEW_CADENCE` | Plan (`ENTER`/`EXIT`) | Position |
 |---|---|---|---|---|
-| **Soft watch** | ≥1 required | none | none | — |
-| **Managed watch** | any | **yes** | usually | — |
+| **Quiet watch** | ≥1 required | none | **optional** | — |
+| **Managed watch** | any | **yes** | optional | — |
 | **Holding** | any | yes (inherited OK) | yes | OPEN |
 | **Archived** | not evaluated | — | — | — |
+
+*(2026-08-30: "quiet" replaces "soft" and the plan column became optional —
+a quiet watch is defined by having no review clock, NOT by being unpriced.
+Keeping a buy level on a name you have stopped reviewing is the normal case,
+not an exception.)*
+
+**A wake must be able to fire.** Price levels, price moves and time-elapsed
+rungs fire today. Earnings, guidance, filing and news predicates need the
+paused signal router — a row whose ONLY wake is one of those is invisible
+(CRWD, 2026-08-30, the first quiet watch ever created). Until routing
+returns, those kinds are decoration, and no prompt should offer them as a
+wake.
 
 - A **soft watch** costs nothing standing. It wakes only when one of its
   triggers fires; the fire defers to the next daily run (the REVIEW-batching
@@ -74,10 +86,17 @@ expressible as triggers after the Levels merge:
    level, an event trigger, or a cadence. Zero wakes = invisible = rot
    (ETN/NVDA). Enforced at the add flow: you cannot save a watch item without
    answering "what brings this back to me?"
-2. **Plan ⇒ cadence.** If ENTER/EXIT price triggers exist, a resolved
-   `REVIEW_CADENCE` must too — a priced plan is always watched. (Resolves
-   v1's §7 open decision as Option A, now expressible purely as a trigger
-   rule.) To stop watching a plan, demote it first.
+2. ~~**Plan ⇒ cadence.**~~ **DELETED 2026-08-30 by the principal.** This
+   invariant welded together the two axes §2 calls independent, and it was
+   wrong. Price levels cost nothing standing — the evaluator scores them
+   every five minutes regardless of attention — so requiring a review clock
+   alongside them made "stop reviewing this weekly, but tell me if it hits
+   $203" unexpressible: the only way to silence a name was to delete levels
+   you still believed in. **A stock may carry price levels with no review
+   clock, a clock with no levels, both, or neither.** The drift it feared
+   (ETN) is covered by `resolved.planSanity` flagging a level the price has
+   left behind, and by the run being required to pull fresh data when a
+   level fires.
 3. **WATCHING does not inherit cadence.** The account-level cadence floor
    applies to HOLDING only. A watch item is reviewed iff it carries its own
    explicit cadence trigger. This is what makes the soft tier representable

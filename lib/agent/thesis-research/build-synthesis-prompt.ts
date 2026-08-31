@@ -291,9 +291,18 @@ YOUR JOB
    condition warrants a non-default predicate. Use predicate kinds from
    lib/agent/triggers/types.ts (PRICE_ABOVE, PRICE_BELOW, EARNINGS_BEAT,
    EARNINGS_MISS, GUIDANCE_CHANGE, FILING, RSI, VS_SMA, PRICE_MOVE_PCT,
-   TIME_ELAPSED, REVIEW_CADENCE, SIGNAL_TYPE). (REVIEW_DATE_HIT is
-   dead — the recurring REVIEW_CADENCE clock replaced it 2026-05-20;
-   do not author it.)
+   TIME_ELAPSED, REVIEW_CADENCE). (REVIEW_DATE_HIT is dead — the
+   recurring REVIEW_CADENCE clock replaced it 2026-05-20; do not
+   author it.)
+
+   **Only price-, move-, and time-based predicates fire today.**
+   EARNINGS_BEAT, EARNINGS_MISS, GUIDANCE_CHANGE, FILING and
+   SIGNAL_TYPE all need news/earnings routing, which is paused — a
+   rung using one of them is decoration on the ladder, not
+   protection. Express the same intent with what fires: instead of
+   "EARNINGS_MISS → REVIEW", write the price level the miss would
+   take the stock through, or a TIME_ELAPSED rung landing just after
+   the print date.
    - <Optional. Format: [PREDICATE_KIND params] → ACTION — rationale.
      Example: "EARNINGS_MISS minSurprisePct: 3 → REVIEW — guidance miss
      on next print kills the AI-acceleration thesis. Cooldown 7d.">
