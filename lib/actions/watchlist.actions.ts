@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -252,12 +253,65 @@ export async function getWatchlistItems(
  * Idempotent: if any ACTIVE/WATCHING thesis already exists on (analyst,
  * ticker), returns the existing view.
  */
+/**
+ * The triggers a manual watchlist add is born with. Attention (the review
+ * clock) and levels (the wakes) are independent — see WATCHLIST_STATES §2.
+ */
+function buildSeedTriggers(
+  attention: "research" | "quiet",
+  wake?: { below?: number | null; above?: number | null },
+): unknown[] {
+  const out: unknown[] = [];
+  if (attention === "research") {
+    out.push({ ...reviewCadenceTrigger(7), source: "DEFAULT" });
+  }
+  if (wake?.below != null) {
+    out.push({
+      id: randomUUID(),
+      predicate: { kind: "PRICE_BELOW", level: wake.below },
+      action: "REVIEW",
+      rationale: `Look again if it drops to $${wake.below}.`,
+      source: "PRINCIPAL",
+      cooldownDays: 1,
+    });
+  }
+  if (wake?.above != null) {
+    out.push({
+      id: randomUUID(),
+      predicate: { kind: "PRICE_ABOVE", level: wake.above },
+      action: "REVIEW",
+      rationale: `Look again if it reaches $${wake.above}.`,
+      source: "PRINCIPAL",
+      cooldownDays: 1,
+    });
+  }
+  return out;
+}
+
 export async function addWatchlistItem(
   analystId: string,
   symbol: string,
   reason: string = "Added manually",
   addedBy: string = "USER",
   _priority: string = "NORMAL",
+  /**
+   * Whether the analyst should work this name.
+   *
+   *   "research" (default) — seeds a 7-day review clock, so the next runs
+   *     pick it up, research it and commit a direction. What every manual
+   *     add did unconditionally before 2026-09-01.
+   *
+   *   "quiet" — just a name on the list. No review clock, so it costs no
+   *     agent attention and never appears in a run's work list; it only
+   *     comes back if a wake fires. Pair with `wakeBelow` / `wakeAbove` to
+   *     give it one, otherwise it sits silent until you elevate it by hand.
+   *
+   * The two axes stay independent (WATCHLIST_STATES §2): this chooses
+   * ATTENTION only and says nothing about price levels.
+   */
+  attention: "research" | "quiet" = "research",
+  /** Optional price wakes for a quiet add: "tell me if it drops to X / rises to Y". */
+  wake?: { below?: number | null; above?: number | null },
 ): Promise<WatchlistItemView> {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Not authenticated");
@@ -356,22 +410,28 @@ export async function addWatchlistItem(
       modelUsed: "manual",
       sourceKind,
       sourceRationale: reason || "Manual watchlist add",
-      // The seed's clock (W1, DAV-216): WATCHING no longer inherits the
-      // account review cadence, so a seed with no trigger of its own
-      // would be invisible forever. days=7 matches the account floor the
-      // seed rode before the change — first research lands within ~a
-      // week, not next morning. Restoring next-morning surfacing is a W3
-      // (dispositions) item, not a trigger value.
-      triggers: [
-        { ...reviewCadenceTrigger(7), source: "DEFAULT" },
-      ] as object[],
+      // What the add costs you, chosen by the caller (2026-09-01).
+      //
+      // "research": a 7-day review clock, so the next runs pick it up,
+      //   research it and commit a direction. Every manual add used to do
+      //   this unconditionally — there was no way to put a bare name on
+      //   the list without buying AI attention for it.
+      //
+      // "quiet": no clock. It costs nothing and stays out of the runs'
+      //   work lists; the optional price wakes below are its way back.
+      //   A quiet add with no wake at all is legal and deliberate — it's
+      //   a name on a list, and you elevate it when you want.
+      triggers: buildSeedTriggers(attention, wake) as object[],
     },
   });
 
   await writeThesisUpdate({
     thesisId: thesis.id,
     type: "CREATED",
-    summary: `Added ${upper} to watchlist (awaiting first research)`,
+    summary:
+      attention === "research"
+        ? `Added ${upper} to watchlist (awaiting first research)`
+        : `Added ${upper} to watchlist (watching only — no review schedule)`,
     rationale: reason,
     runId,
   });

@@ -1151,26 +1151,20 @@ export const recordThesis = defineTool({
             sources: [],
           };
         }
-        // Unpriced by definition. Price levels on a soft watch are the
-        // rot the tier exists to make impossible (invariant: plan ⇒
-        // cadence ⇒ not soft).
-        if (
-          args.entry_price != null ||
-          args.target_price != null ||
-          args.stop_loss != null
-        ) {
-          return {
-            summary: `Soft watch rejected for ${args.ticker}: a soft watch is unpriced.`,
-            data: {
-              thesis_id: null,
-              status: "FAILED" as const,
-              note:
-                `entry_price / target_price / stop_loss don't belong on a soft watch — a priced plan must be watched on a cadence, which is the managed tier. ` +
-                `Either drop the price levels (keep a PRICE-level REVIEW wake instead: "review if it hits $X"), or commit: write a LONG/SHORT WATCHING thesis with the full plan.`,
-            },
-            sources: [],
-          };
-        }
+        // NOT unpriced any more (2026-09-01). This used to reject any
+        // quiet watch carrying entry/target/stop, on the old "plan ⇒
+        // cadence ⇒ not quiet" invariant. The principal deleted that
+        // invariant: price levels cost nothing standing (the evaluator
+        // scores them every five minutes regardless of attention), so
+        // "watch it at $203 and don't review it weekly" is an ordinary
+        // state, not a contradiction. update_thesis already allows it —
+        // rejecting it at mint only meant a name had to be born wrong and
+        // fixed on a second call.
+        //
+        // A PASS direction still means no committed view, so the levels
+        // that ride along are REVIEW wakes rather than an armed buy plan
+        // (the REVIEW-only action check above still holds, and derive-on-
+        // write turns the args into REVIEW-action levels).
       }
 
       // Live quote for the ENTER rung's SIDE. The level itself says what the

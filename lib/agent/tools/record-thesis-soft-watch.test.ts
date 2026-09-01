@@ -4,9 +4,13 @@
  *
  * PASS + status:"WATCHING" = the soft watch: "researched, decided not to
  * trade, keep eyes on it." Stored as direction null / status WATCHING with
- * REVIEW-only wake triggers, unpriced, no cadence stamp. These tests pin the
- * shape gates (wake invariant, REVIEW-only, unpriced), the storage shape,
- * the already-covered redirect, and that terminal PASS is unchanged.
+ * REVIEW-only wake triggers and no cadence stamp. These tests pin the shape
+ * gates (wake invariant, REVIEW-only), the storage shape, the already-covered
+ * redirect, and that terminal PASS is unchanged.
+ *
+ * 2026-09-01: the "unpriced" gate is GONE. A quiet watch is defined by having
+ * no review clock, not by being unpriced — attention and price levels are
+ * independent axes (WATCHLIST_STATES §2).
  */
 
 const mockPositionFindFirst = jest.fn().mockResolvedValue(null);
@@ -146,11 +150,26 @@ describe("record_thesis — soft watch (W2, DAV-209)", () => {
     expect(mockThesisCreate).not.toHaveBeenCalled();
   });
 
-  it("rejects price levels — a soft watch is unpriced by definition", async () => {
-    const result = await run(softWatchArgs({ entry_price: 24 }));
-    expect(result.data.status).toBe("FAILED");
-    expect(result.data.note).toContain("don't belong on a soft watch");
-    expect(mockThesisCreate).not.toHaveBeenCalled();
+  it("accepts price levels — attention and levels are independent (2026-09-01)", async () => {
+    // Was pinned the other way: any quiet watch carrying entry/target/stop
+    // was rejected on the "plan ⇒ cadence ⇒ not quiet" invariant. The
+    // principal deleted that invariant — price levels cost nothing
+    // standing, so "watch it at $203 and don't review it weekly" is an
+    // ordinary state. update_thesis already allowed it; rejecting it at
+    // mint only forced a name to be born wrong and fixed on a second call.
+    const result = await run(
+      softWatchArgs({
+        ticker: "CRM",
+        entry_price: 203,
+        triggers: [priceWake(203)],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    const row = createdRow();
+    // No review clock — the quiet tier is unchanged by the presence of a level.
+    expect(
+      row.triggers.some((t) => t.predicate.kind === "REVIEW_CADENCE"),
+    ).toBe(false);
   });
 
   it("allows an explicit REVIEW_CADENCE — an unpriced managed watch is legal", async () => {
