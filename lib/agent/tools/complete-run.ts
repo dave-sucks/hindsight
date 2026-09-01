@@ -459,6 +459,8 @@ async function runCompleteRunPreflight(
     triggers: unknown;
     createdAt: Date;
     lastReviewedAt: Date | null;
+    researchUpdatedAt: Date | null;
+    horizon: string | null;
     paperTenureDays: number | null;
     // Prisma Decimal — typed as unknown to avoid the runtime-library import;
     // coerced via Number() at the computeNeedsAction call site below.
@@ -525,6 +527,8 @@ async function runCompleteRunPreflight(
       triggers: true,
       createdAt: true,
       lastReviewedAt: true,
+      researchUpdatedAt: true,
+      horizon: true,
       paperTenureDays: true,
       paperRealizedPnl: true,
       paperReviewCount: true,
@@ -644,6 +648,8 @@ async function runCompleteRunPreflight(
         triggers: (t.triggers as unknown as Trigger[]) ?? [],
         createdAt: t.createdAt,
         lastReviewedAt: t.lastReviewedAt,
+        researchUpdatedAt: t.researchUpdatedAt ?? null,
+        horizon: t.horizon ?? null,
         positionOpenedAt:
           t.status === "HOLDING"
             ? positionOpenedAtByTicker.get(t.ticker) ?? null
@@ -709,6 +715,12 @@ async function runCompleteRunPreflight(
           ? `${needsAction.flooredGainPct >= 0 ? "+" : ""}${needsAction.flooredGainPct.toFixed(1)}%`
           : "nothing";
       detail = `unprotected gain (+${needsAction.unrealizedGainPct.toFixed(1)}% but floor locks ${floorTxt}): raise the floor`;
+    } else if (needsAction.kind === "RESEARCH_STALE") {
+      // Not a review-clock miss — the research behind the plan is old.
+      detail =
+        needsAction.freshness === "missing"
+          ? `no deep research on file: refresh it or say why the plan stands without it`
+          : `research is ${needsAction.daysOld}d old (threshold ${needsAction.threshold}d): refresh it or say why it still stands`;
     } else {
       detail = `review overdue by ${needsAction.daysOverdue}d`;
     }

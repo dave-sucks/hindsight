@@ -82,6 +82,8 @@ import { shouldFire } from "@/lib/agent/triggers/evaluate";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
+import type { Horizon as StalenessHorizon } from "@/lib/agent/horizon-policy";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -138,6 +140,29 @@ export type NeedsAction =
       hasTrail: boolean;
       /** Compact description of the tightest floor, e.g. "price < $65.00". */
       floorSummary: string | null;
+    }
+  | {
+      /**
+       * The deep research behind this thesis is older than its threshold.
+       *
+       * Why this is a work-list flag and not just a label: `researchAge`
+       * has ridden along on every thesis row since P1-1, but only the
+       * REVIEW_DUE branch of the prompt ever consulted it — so a name whose
+       * review clock wasn't due carried "stale" silently. GD, GEV and VST
+       * sat at 80 days with a 30-day clock last reviewed 2026-08-28: the
+       * label said stale, and nothing was going to look until 2026-09-27.
+       *
+       * Same shape as UNPROTECTED_GAIN: computed, not a trigger. Neither
+       * one needs to be a trigger to earn the agent's attention — a flag on
+       * a row nobody opens is decoration.
+       */
+      kind: "RESEARCH_STALE";
+      /** Whole days since the research was last written. Null = never written. */
+      daysOld: number | null;
+      /** The threshold it broke, in days. */
+      threshold: number | null;
+      /** "stale" (past the threshold) or "missing" (no deep research at all). */
+      freshness: "stale" | "missing";
     }
   | {
       kind: "REVIEW_DUE";
@@ -244,6 +269,15 @@ export interface NeedsActionInput {
     createdAt: Date;
     /** When an analyst last actually looked. Drives the review cadence. */
     lastReviewedAt?: Date | null;
+    /**
+     * When the deep research behind this thesis was last WRITTEN — not when
+     * someone last glanced at it. Drives RESEARCH_STALE. Omit and the flag
+     * simply never fires (callers that can't select the column keep their
+     * old behavior).
+     */
+    researchUpdatedAt?: Date | null;
+    /** Horizon picks the staleness threshold. Null falls back to the conservative default. */
+    horizon?: string | null;
     /**
      * P1-14 — paired open Position's openedAt, for ACTIVE rows only. Lets
      * the TRIGGER_MATCHING_NOW evaluation anchor TIME_ELAPSED to when the
@@ -466,6 +500,35 @@ export function computeNeedsAction(
       // A seed has no committed view yet — route it to "commit a direction".
       if (isUnresearchedSeed(thesis.direction)) result.pendingFirstReview = true;
       return result;
+    }
+  }
+
+  // 5) RESEARCH_STALE — the thesis is not due for review, but the work
+  //    behind it is old enough that acting on it would mean acting on
+  //    stale reasoning.
+  //
+  //    Lowest precedence deliberately: it runs only after REVIEW_DUE has
+  //    declined, because a due review already carries the staleness
+  //    instruction in the prompt. This branch catches the gap that used to
+  //    swallow it — a long clock (a compounder's 30 days) outliving the
+  //    research threshold, so "stale" was true for weeks with nothing
+  //    scheduled to look. Terminal rows are history and never flagged.
+  if (
+    thesis.researchUpdatedAt !== undefined &&
+    (thesis.status === "WATCHING" || thesis.status === "HOLDING")
+  ) {
+    const age = classifyResearchAge(
+      thesis.researchUpdatedAt,
+      (thesis.horizon ?? null) as StalenessHorizon | null,
+      thesis.status,
+    );
+    if (age.freshness === "stale" || age.freshness === "missing") {
+      return {
+        kind: "RESEARCH_STALE",
+        daysOld: age.daysOld,
+        threshold: age.horizonThreshold,
+        freshness: age.freshness,
+      };
     }
   }
 

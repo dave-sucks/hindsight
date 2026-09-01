@@ -734,3 +734,139 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
   });
 });
 
+
+// ── RESEARCH_STALE (2026-08-31) ───────────────────────────────────────────
+// The gap this closes: `researchAge` has ridden on every thesis row since
+// P1-1, but only the REVIEW_DUE branch consulted it. A compounder watch on
+// a 30-day clock reviewed on day 0 carried "stale" research silently for
+// the next month. Being computed rather than fired is no reason to stay
+// invisible — UNPROTECTED_GAIN is computed too.
+describe("computeNeedsAction — RESEARCH_STALE", () => {
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
+  const freshClock = (days: number): Trigger[] => [
+    {
+      id: "clock",
+      predicate: { kind: "REVIEW_CADENCE", days },
+      action: "REVIEW",
+      rationale: "cadence",
+    } as Trigger,
+  ];
+
+  it("flags an 80-day-old compounder watch whose review is a month away (the GD case)", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        id: "t1",
+        direction: "LONG",
+        status: "WATCHING",
+        horizon: "COMPOUNDER",
+        triggers: freshClock(30),
+        createdAt: daysAgo(200),
+        lastReviewedAt: daysAgo(0), // reviewed today — no review is due
+        researchUpdatedAt: daysAgo(80),
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now: new Date(),
+    });
+    expect(result?.kind).toBe("RESEARCH_STALE");
+    if (result?.kind !== "RESEARCH_STALE") return;
+    expect(result.daysOld).toBe(80);
+    expect(result.threshold).toBe(35);
+  });
+
+  it("does NOT flag the same age on a stock we own — held names keep the longer clock", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        id: "t2",
+        direction: "LONG",
+        status: "HOLDING",
+        horizon: "COMPOUNDER",
+        triggers: freshClock(30),
+        createdAt: daysAgo(200),
+        lastReviewedAt: daysAgo(0),
+        researchUpdatedAt: daysAgo(80),
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now: new Date(),
+    });
+    expect(result).toBeNull();
+  });
+
+  it("a due review still wins — REVIEW_DUE carries the staleness instruction already", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        id: "t3",
+        direction: "LONG",
+        status: "WATCHING",
+        horizon: "COMPOUNDER",
+        triggers: freshClock(30),
+        createdAt: daysAgo(200),
+        lastReviewedAt: daysAgo(40), // overdue
+        researchUpdatedAt: daysAgo(80),
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now: new Date(),
+    });
+    expect(result?.kind).toBe("REVIEW_DUE");
+  });
+
+  it("fresh research on a quiet row stays quiet", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        id: "t4",
+        direction: "LONG",
+        status: "WATCHING",
+        horizon: "COMPOUNDER",
+        triggers: freshClock(30),
+        createdAt: daysAgo(200),
+        lastReviewedAt: daysAgo(0),
+        researchUpdatedAt: daysAgo(10),
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now: new Date(),
+    });
+    expect(result).toBeNull();
+  });
+
+  it("a thesis with no deep research at all is flagged as missing", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        id: "t5",
+        direction: "LONG",
+        status: "WATCHING",
+        horizon: "TARGET",
+        triggers: freshClock(30),
+        createdAt: daysAgo(200),
+        lastReviewedAt: daysAgo(0),
+        researchUpdatedAt: null,
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now: new Date(),
+    });
+    expect(result?.kind).toBe("RESEARCH_STALE");
+    if (result?.kind !== "RESEARCH_STALE") return;
+    expect(result.freshness).toBe("missing");
+  });
+
+  it("callers that don't pass researchUpdatedAt keep their old behavior", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        id: "t6",
+        direction: "LONG",
+        status: "WATCHING",
+        horizon: "COMPOUNDER",
+        triggers: freshClock(30),
+        createdAt: daysAgo(200),
+        lastReviewedAt: daysAgo(0),
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now: new Date(),
+    });
+    expect(result).toBeNull();
+  });
+});

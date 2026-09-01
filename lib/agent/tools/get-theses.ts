@@ -809,6 +809,8 @@ export const getTheses = defineTool({
               triggers,
               createdAt: t.createdAt,
               lastReviewedAt: t.lastReviewedAt,
+              researchUpdatedAt: t.researchUpdatedAt ?? null,
+              horizon: t.horizon ?? null,
               positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
               avgCost: avgCostByThesisId.get(t.id) ?? null,
               peakPrice: peakPriceByThesisId.get(t.id) ?? null,
