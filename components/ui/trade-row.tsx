@@ -184,6 +184,23 @@ function usePinMenuItem(ticker: string): RowMenuItem {
   };
 }
 
+// ── GainPair — the number every row ends with ────────────────────────────────
+// Dollar amount + percent badge, same weights and colours whether it's a held
+// position's lifetime P&L or a watched name's move today. ONE component so a
+// trade row and a watchlist row can never drift into showing the gain
+// differently — the whole point of "one row design everywhere".
+
+function GainPair({ dollar, pct }: { dollar: number; pct: number }) {
+  return (
+    <>
+      <span className={cn("text-sm tabular-nums", pnlColor(dollar))}>
+        {dollar >= 0 ? "+" : ""}${Math.abs(dollar).toFixed(2)}
+      </span>
+      <PnlBadge value={pct} format="percent" className="text-xs" />
+    </>
+  );
+}
+
 // ── TradeRow (existing API, now built on shell) ──────────────────────────────
 
 interface TradeRowProps {
@@ -294,9 +311,9 @@ export function TradeRow({
   const isStalePrice = isOpen && priceSource === "missing";
   // A row with no holding behind it (a brand-new buy proposal, or a buy still
   // in flight) has no lifetime P&L to show — fill that slot with the day's
-  // move instead of an em-dash, same source as WatchlistRow. Only fetched for
-  // rows that need it.
-  const dayChangePct = useTickerQuote(isPending && !isStalePrice ? ticker : undefined)?.changePct;
+  // move instead of an em-dash, same source and same GainPair as WatchlistRow.
+  // Only fetched for rows that need it.
+  const dayQuote = useTickerQuote(isPending && !isStalePrice ? ticker : undefined);
 
   const cfg = getTradeStatusDisplay(status);
   const timeLabel = isAwaitingApproval
@@ -393,18 +410,13 @@ export function TradeRow({
         isStalePrice ? (
           <span className="text-[10px] text-amber-500/80">no live price</span>
         ) : isPending ? (
-          dayChangePct != null ? (
-            <PnlBadge value={dayChangePct} format="percent" className="text-xs" />
+          dayQuote ? (
+            <GainPair dollar={dayQuote.change} pct={dayQuote.changePct} />
           ) : (
             <span className="text-[10px] text-muted-foreground/50">—</span>
           )
         ) : (
-          <>
-            <span className={cn("text-sm tabular-nums", pnlColor(pnl))}>
-              {pnl >= 0 ? "+" : ""}${Math.abs(pnl).toFixed(2)}
-            </span>
-            <PnlBadge value={pnlPct} format="percent" className="text-xs" />
-          </>
+          <GainPair dollar={pnl} pct={pnlPct} />
         )
       }
     />
@@ -423,27 +435,25 @@ export function TradeRow({
 }
 
 // ── WatchlistRow ─────────────────────────────────────────────────────────────
-// Identical to TradeRow visually. The only difference: no shares means no
-// cost basis and no P&L. Subline reflects the underlying thesis state:
+// Identical to TradeRow — same price, same GainPair, same everything. The ONLY
+// difference is the subline: a watched name has no position, so there's no
+// value + share count to put there.
 //   null / 'PENDING' → "Awaiting review"  (unresearched seed — explicit)
-//   LONG / SHORT     → "Watching — long" / "Watching — short"
-//   undefined        → "Watching"         (no thesis context, e.g. config form)
-// P1-24 B4: the unresearched-seed sentinel is now direction=null (legacy
-// 'PENDING' kept for the dual-read window). Both render "Awaiting review".
-// `undefined` is distinct from `null`: it means the caller has no thesis
-// direction to report at all (the config-form watchlist), not a researched-
-// not-yet seed — so it keeps the generic "Watching".
-// Price renders the same way as on a trade row.
+//   anything else    → "Watching"
+// The direction used to be tacked on ("Watching — long"). It was filler for an
+// otherwise-empty slot and it's gone; direction still seeds the thesis sheet.
+// P1-24 B4: the unresearched-seed sentinel is direction=null (legacy 'PENDING'
+// kept for the dual-read window). Both render "Awaiting review".
 
 interface WatchlistRowProps {
   ticker: string;
   /** Live or last close price. */
   currentPrice?: number;
   /**
-   * Thesis direction for the underlying WATCHING thesis. LONG/SHORT surface
-   * their direction; an unresearched seed (explicit null, or legacy
-   * 'PENDING') surfaces as "Awaiting review"; undefined (no thesis context)
-   * falls back to generic "Watching".
+   * Thesis direction for the underlying WATCHING thesis. Seeds the thesis
+   * sheet; it is NOT printed on the row. An unresearched seed (explicit null,
+   * or legacy 'PENDING') is the one case that changes the subline — it reads
+   * "Awaiting review" instead of "Watching".
    */
   direction?: "LONG" | "SHORT" | "PENDING" | null;
   onRemove?: () => void;
@@ -462,26 +472,20 @@ export function WatchlistRow({
 }: WatchlistRowProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const pinMenuItem = usePinMenuItem(ticker);
-  // The day's % change — from the SAME shared quote source every other
-  // price/day-change surface uses (ticker chips, thesis cards): /api/quotes via
-  // the useTickerQuote cache. A watched name isn't held, so the row shows the
-  // day's move in the slot a trade row uses for its lifetime P&L.
-  const dayChangePct = useTickerQuote(ticker)?.changePct;
-  // P1-24 B4 dual-read: explicit null (new seed) or legacy 'PENDING' →
-  // "Awaiting review". LONG/SHORT surface their lean. undefined (no thesis
-  // context) keeps the generic "Watching".
+  // The day's move in dollars AND percent — from the SAME shared quote source
+  // every other price/day-change surface uses (ticker chips, thesis cards):
+  // /api/quotes via the useTickerQuote cache. A watched name isn't held, so the
+  // day's move fills the slot a trade row uses for its lifetime P&L, rendered
+  // by the same GainPair so the two rows are visually identical.
+  const quote = useTickerQuote(ticker);
   const menuItems: RowMenuItem[] = [
     pinMenuItem,
     ...(onRemove ? [{ label: "Remove", onSelect: onRemove, destructive: true }] : []),
   ];
+  // P1-24 B4 dual-read: explicit null (new seed) or legacy 'PENDING' →
+  // "Awaiting review". Everything else is just "Watching".
   const secondary =
-    direction === "LONG"
-      ? "Watching — long"
-      : direction === "SHORT"
-        ? "Watching — short"
-        : direction === undefined
-          ? "Watching"
-          : "Awaiting review";
+    direction === null || direction === "PENDING" ? "Awaiting review" : "Watching";
   return (
     <>
     <TradeRowShell
@@ -497,9 +501,7 @@ export function WatchlistRow({
       }
       secondary={secondary}
       trailingBottom={
-        dayChangePct != null ? (
-          <PnlBadge value={dayChangePct} format="percent" className="text-xs" />
-        ) : undefined
+        quote ? <GainPair dollar={quote.change} pct={quote.changePct} /> : undefined
       }
       menuItems={menuItems}
     />
