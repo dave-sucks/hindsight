@@ -18,7 +18,6 @@ import { cn, pnlColor } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
 import { getTradeStatusDisplay, shortAlpacaId } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
-import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { useTickerQuote } from "@/hooks/useTickerQuote";
 import { usePinned } from "@/hooks/usePinned";
 import { toast } from "sonner";
@@ -209,10 +208,13 @@ interface TradeRowProps {
   onClose?: () => void;
   /**
    * Trade-as-Proposal — when set, the row renders in the "Pending" state:
-   * status dot turns amber, the P&L slot is replaced with inline
-   * [Approve][Reject] buttons calling the existing /api/proposals routes.
+   * amber status dot + the verb ("Buy" / "Sell" / ...) leading the ticker.
+   * The row deliberately carries NO inline approve/reject control: a row is
+   * never enough context to decide on a trade, and every attempt to cram more
+   * into it failed. Clicking the row opens the thesis sheet, which is where
+   * the Review dropdown lives alongside the reasoning behind the proposal.
    * orderId is the AWAITING_APPROVAL Order's id. intent tells the row which
-   * verb to surface ("Buy" / "Close" / etc.). See docs/plans/TRADE_AS_PROPOSAL.md.
+   * verb to surface. See docs/plans/TRADE_AS_PROPOSAL.md.
    */
   pendingProposal?: {
     orderId: string;
@@ -289,7 +291,12 @@ export function TradeRow({
   const totalWorth = currentPrice * displayShares;
   const isPartial = isAwaitingApproval && pendingProposal.quantity < shares;
   const isOpen = status === "OPEN" || isPending || isAwaitingApproval;
-  const isStalePrice = isOpen && priceSource === "missing" && !isAwaitingApproval;
+  const isStalePrice = isOpen && priceSource === "missing";
+  // A row with no holding behind it (a brand-new buy proposal, or a buy still
+  // in flight) has no lifetime P&L to show — fill that slot with the day's
+  // move instead of an em-dash, same source as WatchlistRow. Only fetched for
+  // rows that need it.
+  const dayChangePct = useTickerQuote(isPending && !isStalePrice ? ticker : undefined)?.changePct;
 
   const cfg = getTradeStatusDisplay(status);
   const timeLabel = isAwaitingApproval
@@ -383,15 +390,14 @@ export function TradeRow({
         </>
       }
       trailingBottom={
-        isAwaitingApproval ? (
-          <ProposalActions
-            orderId={pendingProposal.orderId}
-            expiresAt={pendingProposal.expiresAt}
-          />
-        ) : isStalePrice ? (
+        isStalePrice ? (
           <span className="text-[10px] text-amber-500/80">no live price</span>
         ) : isPending ? (
-          <span className="text-[10px] text-muted-foreground/50">—</span>
+          dayChangePct != null ? (
+            <PnlBadge value={dayChangePct} format="percent" className="text-xs" />
+          ) : (
+            <span className="text-[10px] text-muted-foreground/50">—</span>
+          )
         ) : (
           <>
             <span className={cn("text-sm tabular-nums", pnlColor(pnl))}>

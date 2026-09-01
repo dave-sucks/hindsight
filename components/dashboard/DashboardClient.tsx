@@ -540,9 +540,12 @@ function HomeBottomSection({ activity, loading, coverage }: {
 
 // ── ProposalsPanel — pending-approval trades only ────────────────────────────
 // The CoverageTable shows held positions / watching / passed, but NOT pending
-// proposals (Order AWAITING_APPROVAL — not yet a Position). This panel restores
-// the one place on the homepage to review + approve/reject them. Renders nothing
-// when there are no proposals, so it only takes up space when it matters.
+// proposals (Order AWAITING_APPROVAL — not yet a Position). This panel is the
+// one place on the homepage that surfaces them. The rows are plain trade rows —
+// price, verb, gain/loss — with no inline approve/reject: being in this section
+// is the "needs your decision" signal, and the decision itself is made in the
+// thesis sheet the row opens, where the reasoning is. Renders nothing when
+// there are no proposals, so it only takes up space when it matters.
 function ProposalsPanel({
   proposals,
   flashIds,
