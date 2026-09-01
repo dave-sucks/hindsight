@@ -720,7 +720,8 @@ export async function getDashboardData(
     if (fillOrder?.status === "PENDING") displayStatus = "PENDING";
 
     // Trade-as-Proposal — surface the awaiting-approval order so TradeRow
-    // renders the inline [Approve][Reject] in place of the P&L slot.
+    // renders its pending state (amber dot + Buy/Sell verb). Approve/reject
+    // happens in the thesis sheet the row opens, not in the row.
     const pendingProposal = awaitingOrder
       ? {
           orderId: awaitingOrder.id,
