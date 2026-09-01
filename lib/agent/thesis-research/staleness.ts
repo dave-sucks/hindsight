@@ -47,6 +47,27 @@ export const STALE_DAYS_BY_HORIZON: Record<Horizon, number> = {
 };
 
 /**
+ * Hard cap on research age for a stock we do NOT own yet.
+ *
+ * The per-horizon numbers below answer "how fast does this KIND of thesis
+ * decay?" — a multi-year compounder genuinely can run a quarter between
+ * deep refreshes once you hold it, because the thing you're re-checking is
+ * a long arc.
+ *
+ * A watchlist name asks a different question: "should I buy this today?"
+ * That decision is made against today's tape, and it should never rest on
+ * research from three months ago. Before this cap, every Compounder watch
+ * was unflaggable for 90 days — GD, GEV and VST sat at 80 days and ETN at
+ * 77, all reported FRESH, all reviewed and waved through on 2026-08-28,
+ * with GEV's buy level sitting AT the money on 11-week-old reasoning.
+ *
+ * 35 days ≈ one earnings cycle: long enough that a quiet name isn't
+ * re-researched every week, short enough that no buy decision is made on
+ * work from the previous quarter.
+ */
+export const WATCHLIST_STALE_DAYS_CAP = 35;
+
+/**
  * Default threshold when horizon is null (PENDING seeds, edge cases).
  * Matches the most conservative horizon threshold (7 days) to bias
  * toward "refresh" rather than "looks fresh."
@@ -112,6 +133,13 @@ export interface ResearchAge {
 export function classifyResearchAge(
   researchUpdatedAt: Date | null | undefined,
   horizon?: Horizon | null,
+  /**
+   * Thesis status. Anything other than HOLDING is a name we don't own, so
+   * the watchlist cap applies on top of the horizon threshold. OMITTED =
+   * horizon threshold only (unchanged behavior for callers that can't see
+   * status).
+   */
+  status?: string | null,
 ): ResearchAge {
   if (!researchUpdatedAt) {
     return {
@@ -124,9 +152,13 @@ export function classifyResearchAge(
   const daysOld = Math.floor(
     (Date.now() - researchUpdatedAt.getTime()) / 86_400_000,
   );
-  const threshold = horizon
-    ? STALE_DAYS_BY_HORIZON[horizon]
-    : DEFAULT_STALE_DAYS;
+  const base = horizon ? STALE_DAYS_BY_HORIZON[horizon] : DEFAULT_STALE_DAYS;
+  // Held names decay on their horizon's clock; anything we don't own yet is
+  // additionally capped, because its next decision is "buy this today?".
+  const threshold =
+    status != null && status !== "HOLDING"
+      ? Math.min(base, WATCHLIST_STALE_DAYS_CAP)
+      : base;
   const freshness: Freshness = daysOld > threshold ? "stale" : "fresh";
   return {
     daysOld,
