@@ -1,13 +1,19 @@
 /**
- * update-thesis-cadence-stamp.test.ts — plan ⇒ cadence on the update path
- * (W2, DAV-209 invariant 2).
+ * update-thesis-cadence-stamp.test.ts — the review clock is independent of
+ * the plan (2026-08-30).
  *
- * WATCHING no longer inherits the account review cadence (W1), and
- * `update_thesis.triggers` is wholesale-replace — so a replace that omits
- * the cadence rung would silently take a committed watch off the review
- * clock ("reviews stop, no error"). The tool re-stamps the horizon cadence
- * on directional WATCHING rows. Direction-null rows (seeds, soft watches)
- * are exempt: a soft watch being cadence-free is the point.
+ * This file used to pin the opposite rule: a directional WATCHING row that
+ * came back without a cadence rung had one re-stamped ("plan ⇒ cadence").
+ * The principal killed that invariant — it welded together the two axes
+ * WATCHLIST_STATES §2 calls independent, and it made the actual ask
+ * ("stop reviewing this weekly, but tell me if it hits $203") impossible:
+ * the only way to silence a name was to delete levels you still believed
+ * in. Price levels cost nothing standing; the review clock is the thing
+ * that costs money, and it is now removable on its own.
+ *
+ * What still holds: mint stamps a default clock (record_thesis), an
+ * agent-supplied cadence is respected verbatim, and HOLDING rows inherit
+ * the account floor.
  */
 
 const mockThesisFindUnique = jest.fn();
@@ -104,22 +110,22 @@ beforeEach(() => {
 });
 
 describe("update_thesis — plan ⇒ cadence stamp (W2, DAV-209)", () => {
-  it("re-stamps the horizon cadence when a replace omits it on a directional watch", async () => {
+  it("a replace that omits the clock leaves it OFF — and keeps the buy level", async () => {
+    // The principal's sentence, working: "stop reviewing this weekly, but
+    // tell me if it hits $190." The ENTER rung survives and keeps firing;
+    // only the AI attention stops. Previously the tool put a 30-day
+    // COMPOUNDER clock back on this exact call.
     mockThesisFindUnique.mockResolvedValue(makeRow());
     const result = await run({
       thesis_id: "thesis_stamp_1",
-      rationale: "Re-anchoring the entry after the pullback.",
+      rationale: "Four quiet weekly reviews — going quiet, keeping the level.",
       triggers: [enterTrigger],
     });
     expect(result.ok).toBe(true);
 
-    const cadences = patchedTriggers().filter(
-      (t) => t.predicate.kind === "REVIEW_CADENCE",
-    );
-    expect(cadences).toHaveLength(1);
-    // COMPOUNDER horizon → 30 days.
-    expect(cadences[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 30 });
-    expect(cadences[0].source).toBe("DEFAULT");
+    const out = patchedTriggers();
+    expect(out.some((t) => t.predicate.kind === "REVIEW_CADENCE")).toBe(false);
+    expect(out.some((t) => t.action === "ENTER")).toBe(true);
   });
 
   it("respects an agent-supplied cadence — no duplicate stamp", async () => {

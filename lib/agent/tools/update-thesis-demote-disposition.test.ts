@@ -171,37 +171,43 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     expect(data.direction).toBeUndefined();
   });
 
-  it("a resend that still carries the plan gets the clock re-stamped (invariant 2 unchanged)", async () => {
+  it("keeping the plan while dropping the clock is legal — the two are independent", async () => {
+    // Was pinned the other way ("plan ⇒ cadence"). The principal deleted
+    // that invariant 2026-08-30: a buy level, a target and a floor cost
+    // nothing standing, so keeping them while stopping the weekly review
+    // is the ordinary case, not a violation.
     mockThesisFindUnique.mockResolvedValue(makeRow());
     const result = await run({
       thesis_id: "thesis_demote_1",
-      rationale: "Re-anchoring the entry, forgot the clock.",
+      rationale: "Levels stand; stopping the weekly review.",
       triggers: planTriggers.filter(
         (t) => t.predicate.kind !== "REVIEW_CADENCE",
       ),
     });
-    expect(result.ok).toBe(true);
+    expect(result.data?.error).toBeUndefined();
     const triggers = (patchedData().triggers ?? []) as Trigger[];
-    const cadences = triggers.filter(
-      (t) => t.predicate.kind === "REVIEW_CADENCE",
+    expect(triggers.some((t) => t.predicate.kind === "REVIEW_CADENCE")).toBe(
+      false,
     );
-    expect(cadences).toHaveLength(1);
-    // TARGET horizon → 7 days.
-    expect(cadences[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 7 });
+    // The plan is untouched — entry and floor both survive.
+    expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
+    expect(triggers.some((t) => t.action === "EXIT")).toBe(true);
   });
 
-  it("a level ARG on the call counts as a plan — wakes-only triggers plus entry_price still get a clock", async () => {
+  it("setting a price level does not drag a review clock along with it", async () => {
+    // Re-anchoring a buy level is a levels decision. It says nothing about
+    // how often a human-equivalent analyst wants to re-read the name.
     mockThesisFindUnique.mockResolvedValue(makeRow());
     const result = await run({
       thesis_id: "thesis_demote_1",
-      rationale: "Re-anchored entry, wake-shaped triggers.",
+      rationale: "Re-anchored the buy level; still not reviewing weekly.",
       triggers: wakeTriggers,
       entry_price: 165,
     });
     expect(result.data?.error).toBeUndefined();
     const triggers = (patchedData().triggers ?? []) as Trigger[];
     expect(triggers.some((t) => t.predicate.kind === "REVIEW_CADENCE")).toBe(
-      true,
+      false,
     );
   });
 

@@ -467,11 +467,15 @@ For each researched candidate, exactly one of these four actions:
     the soft watch ("decided not to trade, keep eyes on it")
   - \`ticker\` + \`reasoning_summary\`: what you saw, why not now
   - \`triggers\`: ≥1 REVIEW-action wake condition answering "what
-    brings this back to me?" — a price level, a price move, or an
-    event (EARNINGS_BEAT / EARNINGS_MISS / FILING). Wake conditions
-    only: no ENTER/EXIT actions, no entry/target/stop prices, no
-    review clock. The row costs nothing until a wake fires — then it
-    lands in that morning's run for a fresh decision.
+    brings this back to me?" — **a price level, a price move, or a
+    time-elapsed rung.** Those are the kinds that fire today. Do NOT
+    use EARNINGS_BEAT / EARNINGS_MISS / GUIDANCE_CHANGE / FILING /
+    SIGNAL_TYPE as the wake: news and earnings routing is paused, so a
+    row whose only wake is one of those is invisible forever — the
+    exact rot this tier exists to prevent. Wake conditions only: no
+    ENTER/EXIT actions, no entry/target/stop prices, no review clock.
+    The row costs nothing until a wake fires — then it lands in that
+    morning's run for a fresh decision.
   - PROVENANCE — same rules as the PASS block below.
 
   Soft watches are NOT capped and do NOT consume dispatch slots.
