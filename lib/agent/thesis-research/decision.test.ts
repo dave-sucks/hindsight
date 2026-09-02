@@ -356,7 +356,9 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
     expect(v.errors.join(" ")).toContain("ENTER rung");
   });
 
-  it("...unless entry equals the live price (buy-at-market carve-out)", () => {
+  it("...including when the entry sits on the live price — that was the carve-out", () => {
+    // The buy-at-market exemption is gone: an entry at the tape is a buy
+    // condition already true, not a reason to skip the buy trigger.
     const reviewOnly = [
       { predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", rationale: "hygiene" },
     ];
@@ -364,7 +366,8 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
       { ...validLong, triggers: reviewOnly },
       { mode: "refresh", existingStatus: "WATCHING", currentPrice: 100, existingTargetPrice: 130, existingHasTriggers: true },
     );
-    expect(v.ok).toBe(true);
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("ENTER rung");
   });
 
   it("enter-guard mirror: HOLDING refresh ladder must carry an EXIT rung", () => {

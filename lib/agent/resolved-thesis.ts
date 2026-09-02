@@ -266,16 +266,13 @@ export function buildResolvedEnvelope(args: {
     actionability = "STALE_PAST_CATALYST";
   } else if (triggerState === "ENTER_FIRED") {
     actionability = "ENTER_NOW";
-  } else if (
-    !enterTrigger &&
-    thesis.entryPrice != null &&
-    currentPrice != null &&
-    Math.abs(currentPrice - thesis.entryPrice) / thesis.entryPrice <= 0.01
-  ) {
-    // "Buy now" case — no ENTER trigger AND entry ≈ current price.
-    // The writer is saying "buy at market" via the trigger structure.
-    actionability = "ENTER_NOW";
   } else {
+    // There used to be a second ENTER_NOW branch here: no ENTER trigger and
+    // an entry within 1% of the price was read as the writer saying "buy at
+    // market". A buy level is a price we have NOT reached, so that shape is
+    // no longer authorable on either write path, and reading it as an
+    // instruction laundered a defective plan into one. Rows in that state
+    // still surface — they keep their review clock.
     actionability = "WAIT_FOR_TRIGGER";
   }
 

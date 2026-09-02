@@ -238,7 +238,7 @@ describe("validateEnterTriggerRequired", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.note).toMatch(/target_price is required/);
+    expect(result.note).toMatch(/needs a priced plan/);
     expect(result.note).not.toMatch(/displaced/);
   });
 
@@ -487,7 +487,10 @@ describe("validateEnterTriggerRequired", () => {
 
   // ── Note text matches record_thesis's old inline guard verbatim ─────────
 
-  it("error message uses PRICE_ABOVE/PRICE_BELOW guidance for the agent", () => {
+  it("error message teaches the side off the level, not off the direction", () => {
+    // It used to say "PRICE_ABOVE for LONG" flat, and to call target_price
+    // "the level the ENTER trigger fires on" — the pre-2026-05-31 shape that
+    // had the agent buying at its own take-profit level (MDB).
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
@@ -496,7 +499,8 @@ describe("validateEnterTriggerRequired", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.note).toContain("PRICE_ABOVE for LONG");
-    expect(result.note).toContain("PRICE_BELOW for SHORT");
+    expect(result.note).toContain("PRICE_ABOVE when that level is above the live price");
+    expect(result.note).toContain("PRICE_BELOW when it is below");
+    expect(result.note).not.toMatch(/target_price/);
   });
 });

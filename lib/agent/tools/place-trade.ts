@@ -58,7 +58,7 @@ export const placeTrade = defineTool({
     company_name: z.string().optional().describe("Company name from get_stock_data"),
     exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
     direction: z.enum(["LONG", "SHORT"]),
-    entry_price: z.number(),
+    entry_price: z.number().describe("The CURRENT quote — this is a market order, so this is what you expect to pay and what sizes the position. Unlike the thesis's buy level (a price we have not reached), here today's price is the right answer."),
     target_price: z.number(),
     stop_loss: z.number(),
     notional: z.number().optional().describe("Dollar amount to invest (e.g. 5000 for $5,000). Preferred over shares — just pass your position size budget directly."),

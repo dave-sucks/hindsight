@@ -762,3 +762,81 @@ describe("review cadence reaches a thesis that has none of its own", () => {
     expect(ladder.find((t) => t.predicate.kind === "REVIEW_CADENCE")).toBeUndefined();
   });
 });
+
+// ── A buy level is a price we have NOT reached ─────────────────────────
+
+/**
+ * The ENTER rung's SIDE follows the level, and this is the only place that
+ * decides it. Numbers are the live book on 2026-09-01/02.
+ *
+ * A tape-reading version shipped in defaults.ts on 2026-08-27 (#566) and
+ * never reached a single row: `applyLevelArgs` runs immediately after the
+ * horizon defaults on both write paths and rewrote every ENTER predicate
+ * back to the breakout shape. The first test below is that clobber.
+ */
+describe("applyLevelArgs — the buy level decides which side it fires on", () => {
+  const enter = (
+    stored: Trigger[],
+    entry: number,
+    direction: "LONG" | "SHORT",
+    currentPrice?: number | null,
+  ) =>
+    applyLevelArgs({
+      stored,
+      levels: { entry },
+      direction,
+      status: "WATCHING",
+      currentPrice,
+      mintId: () => "new",
+    }).triggers.find((t) => t.action === "ENTER")!;
+
+  it("does not rewrite a pullback rung back into a breakout", () => {
+    // The regression that hid #566: the horizon default hands over
+    // PRICE_BELOW $130 against a $132.51 tape, and this used to return
+    // PRICE_ABOVE $130 — a buy condition already true on arrival.
+    const fromDefaults = [trig(below(130), "ENTER", { id: "d" })];
+    expect(enter(fromDefaults, 130, "LONG", 132.51).predicate).toEqual(below(130));
+  });
+
+  it("a LONG level UNDER the tape is a pullback — waits for the price to come back", () => {
+    // CRM, 2026-08-30: the analyst wrote "buy the pullback to $203" and the
+    // row stored "buy above $203" while the stock traded at $258.56.
+    expect(enter([], 203, "LONG", 258.56).predicate).toEqual(below(203));
+  });
+
+  it("a LONG level OVER the tape stays a breakout", () => {
+    // CSCO, 2026-08-24: tape $111.04, buy level $116.10.
+    expect(enter([], 116.1, "LONG", 111.04).predicate).toEqual(above(116.1));
+  });
+
+  it("SHORT mirrors — over the tape is a rally to sell into, under it a breakdown", () => {
+    expect(enter([], 120, "SHORT", 110).predicate).toEqual(above(120));
+    expect(enter([], 100, "SHORT", 110).predicate).toEqual(below(100));
+  });
+
+  it("no quote → the direction default, so no caller regresses", () => {
+    expect(enter([], 65, "LONG").predicate).toEqual(above(65));
+    expect(enter([], 65, "SHORT", null).predicate).toEqual(below(65));
+  });
+
+  it("the rationale says which shape it is, and a side flip rewrites it", () => {
+    expect(enter([], 203, "LONG", 258.56).rationale).toContain("comes back down to");
+    expect(enter([], 116.1, "LONG", 111.04).rationale).toContain("breaks above");
+    // Re-levelling NOW from a breakout to a pullback must not leave the old
+    // sentence behind claiming the price "broke above" it.
+    const stale = [
+      trig(above(150), "ENTER", { id: "keep" , rationale: "Buy level — start the position when the price breaks above $150." }),
+    ];
+    const flipped = enter(stale, 150, "LONG", 160);
+    expect(flipped.id).toBe("keep");
+    expect(flipped.predicate).toEqual(below(150));
+    expect(flipped.rationale).toContain("comes back down to");
+  });
+
+  it("keeps the author's own wording when the side does not change", () => {
+    const stored = [
+      trig(above(116.1), "ENTER", { id: "keep", rationale: "Reclaim of the 50d — my words." }),
+    ];
+    expect(enter(stored, 116.1, "LONG", 111.04).rationale).toBe("Reclaim of the 50d — my words.");
+  });
+});

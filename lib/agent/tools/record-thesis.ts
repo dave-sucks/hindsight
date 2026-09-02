@@ -92,10 +92,10 @@ const thesisFields = z.object({
       "2-4 key risks. Legacy shape — V2 agents prefer `bear_case: { bullets: [{ text, citation }] }`.",
     ),
   entry_price: z.number().optional().describe(
-    "WHERE YOU'D BUY IN — the price you actually want to pay, not a snapshot of the tape. " +
-    "The ENTER trigger reads the SIDE from where you put this level relative to the current quote, so say what you mean: " +
+    "WHERE YOU'D BUY IN — a price the stock has NOT reached, never the current quote. " +
+    "The ENTER trigger reads the SIDE from where you put this level relative to the tape, so say what you mean: " +
     "set it BELOW the current price for a pullback you want to buy (fires when price comes back down to it), or ABOVE the current price for a breakout you want confirmed first (fires when price clears it). " +
-    "Setting it at the current quote means 'buy it here' and will propose immediately. " +
+    "A level AT the current quote is a buy condition that is already true — it fires the day you write it and re-fires forever. If you want to buy now, call place_trade; if no level is worth waiting for, the thesis is a PASS. " +
     "REQUIRED for LONG/SHORT. Also include for PASS to enable shadow tracking."
   ),
   target_price: z.number().optional().describe("Price target. REQUIRED for LONG/SHORT."),
@@ -1167,11 +1167,11 @@ export const recordThesis = defineTool({
         // write turns the args into REVIEW-action levels).
       }
 
-      // Live quote for the ENTER rung's SIDE. The level itself says what the
-      // analyst meant — an entry under the tape is a price they want to come
-      // back to, one above it is a confirmation they want to see first — but
-      // that reading needs the tape. Fail-open: no quote, and the rung keeps
-      // the historical breakout shape.
+      // Live quote for the ENTER rung's SIDE, handed to applyLevelArgs
+      // below. The level itself says what the analyst meant — an entry under
+      // the tape is a price they want to come back to, one above it is a
+      // confirmation they want to see first — but that reading needs the
+      // tape. Fail-open: no quote, and the rung keeps the breakout shape.
       let quoteForEntrySide: number | null = null;
       if (args.direction !== "PASS") {
         try {
@@ -1221,7 +1221,6 @@ export const recordThesis = defineTool({
             stopLoss: args.stop_loss ?? null,
             catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
             direction: args.direction,
-            currentPrice: quoteForEntrySide,
           },
           effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
         );
@@ -1250,6 +1249,7 @@ export const recordThesis = defineTool({
         },
         direction: args.direction === "PASS" ? null : args.direction,
         status: effectiveStatusForTriggers,
+        currentPrice: quoteForEntrySide,
         source: "AGENT",
         mintId: () => randomUUID(),
       });

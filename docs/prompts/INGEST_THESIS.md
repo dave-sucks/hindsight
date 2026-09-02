@@ -102,8 +102,9 @@ on weakness, exit only on invalidation. Concentrated book of 3-4 names.
 operator + capital-allocation discipline, pricing power (gross-margin trajectory), FCF
 conversion, management alignment. Themes: AI infrastructure, datacenter buildout, GLP-1/obesity,
 energy transition, defense reindustrialization, onshoring, demographics.
-**Prices:** `entry_price` = a level you'd start scaling in at (today's quote is fine for a
-buy-now). `target_price` = 3-5yr fair value. `stop_loss` = thesis-break level (tolerate ~−15%).
+**Prices:** `entry_price` = the level you'd start scaling in at — a price the stock has NOT
+reached (a pullback below the tape, or a breakout above it). `target_price` = 3-5yr fair
+value. `stop_loss` = thesis-break level (tolerate ~−15%).
 **Conviction → size:** STRONG 12-15 · HIGH 10-12 · MEDIUM 5-8 · LOW 3-5.
 **Invalidation must be structural:** regulatory break, demand erosion, two consecutive guidance
 cuts, CFO departure, capital-allocation breakdown. Avoid: profitless growth, story stocks,
@@ -129,8 +130,9 @@ LONG-only. Buying the drift, not the gap-day reaction.
 **>1.5× 20-day avg**; analyst estimate revisions **UP within 72h**. Filter out: one-time-item
 beats, sideways/down guides, names already gapped 10%+ (edge is gone).
 **Timing:** entry **1-3 days after** the print (not on it); target a 60-day drift window; stop
-**−8%** or a volume reversal candle. `entry_price` ≈ current quote; put the 60-day window in
-`key_assumptions` and (optionally) `max_hold_days`-via-`TRADE` if you prefer a hard time-exit.
+**−8%** or a volume reversal candle. `entry_price` = the drift-entry level you're waiting
+for — above or below the tape, never on it; put the 60-day window in `key_assumptions` and
+(optionally) `max_hold_days`-via-`TRADE` if you prefer a hard time-exit.
 **Conviction → size:** STRONG ~3 · HIGH ~2.5 · MEDIUM ~2 · LOW ~1.5 (small book; cap $3k).
 Don't hold into the next print. All sectors.
 

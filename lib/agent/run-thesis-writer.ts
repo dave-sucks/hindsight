@@ -359,10 +359,10 @@ decision by the orchestrator — you are writing the research and the plan.`;
       : `TRIGGERS — WATCHING thesis (no position; we're waiting for a reason to buy):
   • Legal actions: ENTER + REVIEW only. NEVER EXIT/TRIM/ADD/MOVE_STOP —
     there is no position.
-  • Breakout setup → ENTER on PRICE_ABOVE(entry_price) (mirror for SHORT).
-  • Buy-now-at-market intent → set entry_price = current price, omit the
-    ENTER trigger, and express urgency via conviction (STRONG + variant
-    view). Triggers are the WHEN; conviction is the WITH WHAT INTENSITY.
+  • The ENTER rung follows the level: PRICE_ABOVE(entry_price) for a
+    breakout above the tape, PRICE_BELOW(entry_price) for a pullback
+    below it (mirror for SHORT). Urgency is conviction (STRONG +
+    variant view), never a buy level parked on today's price.
   • Most theses need NO custom triggers — omit the field and the
     horizon-default template (entry/stop/review) is applied for you.`;
 
@@ -485,9 +485,11 @@ every field; the judgment rules:
      SHORT: (entry−target)/(stop−entry). Below 2:1 the tool rejects:
      tighten the stop to a REAL technical level, raise the target to a
      CITED level, or go PASS. Never fabricate levels to clear the gate.
-   • entry_price is WHERE YOU'D BUY IN (breakout level, or current price
-     for buy-now setups) — it drives the default ENTER trigger. Not a
-     price snapshot.
+   • entry_price is WHERE YOU'D BUY IN — a price the stock has NOT
+     reached: above the live price for a breakout you want confirmed,
+     below it for a pullback you want to pay. It BECOMES the buy
+     trigger, so an entry at today's price is a condition already true
+     that fires forever. No level worth waiting for → PASS.
    • core_belief: ONE falsifiable sentence = outcome + timeframe +
      mechanism ("NVDA prints ≥$50B DC revenue by Q4 FY26 as Blackwell
      replaces Hopper"). It is THE claim of record every other agent

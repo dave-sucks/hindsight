@@ -34,6 +34,7 @@
 export type PlanSanityFlag = {
   kind:
     | "ENTRY_FAR_FROM_PRICE"
+    | "ENTRY_AT_PRICE"
     | "TARGET_ALREADY_PASSED"
     | "STOP_ALREADY_BREACHED"
     | "STOP_INSIDE_NOISE";
@@ -49,6 +50,14 @@ export type PlanSanityFlag = {
  * flag asks a question, it doesn't refuse anything.
  */
 export const ENTRY_DISTANCE_FLAG_PCT = 15;
+
+/**
+ * The other end of the same question: a buy level ON the tape is a buy
+ * condition already true, so it fires the day it's written and forever
+ * after. TOST $35.15 vs a $35.16 tape, ISRG $401.23 vs $401.29. Half a
+ * percent is inside a spread — tighter than that is one number twice.
+ */
+export const ENTRY_AT_PRICE_PCT = 0.5;
 
 const fmt = (n: number) =>
   `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -95,6 +104,14 @@ export function computePlanSanity(args: {
             ? `A level this far ${rel} the tape either never fills or fills only in a collapse you wouldn't want to buy. `
             : `A level this far ${rel} the tape is a plan the price has left behind. `) +
           `Re-anchor it to current structure, state in one sentence why it's deliberately parked there, or stop watching.`,
+      });
+    } else if (Math.abs(distPct) < ENTRY_AT_PRICE_PCT) {
+      flags.push({
+        kind: "ENTRY_AT_PRICE",
+        text:
+          `The buy level ${fmt(entryPrice)} is the live price ${fmt(currentPrice)} — this plan has no entry. ` +
+          `A buy condition that is already true fires the day it's written and re-fires forever, so nothing here is ever waiting for anything. ` +
+          `Move it to a level the stock has not reached (a breakout above the tape, or a pullback below it), buy it now with place_trade if it is genuinely worth owning at this price, or stop watching.`,
       });
     }
   }

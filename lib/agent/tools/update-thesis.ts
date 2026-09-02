@@ -209,10 +209,9 @@ const updateSchema = z.object({
   stop_loss: z.number().nullable().optional(),
   entry_price: z.number().nullable().optional()
     .describe(
-      "WHERE YOU'D BUY IN (or where you bought, on ACTIVE rows). Set the price you actually want to pay, not a snapshot of the tape. " +
-      "When you re-level a watch, say which side you mean: BELOW the current quote is a pullback you want to buy, ABOVE it is a breakout you want confirmed first. " +
-      "If you author the ENTER trigger yourself, match the predicate to that choice — PRICE_BELOW(entry) for a pullback, PRICE_ABOVE(entry) for a breakout. " +
-      "PRICE_ABOVE on a level that already sits under the market is true the moment you write it and will re-fire every cooldown until someone removes it. " +
+      "WHERE YOU'D BUY IN (or where you bought, on ACTIVE rows). A price the stock has NOT reached, never the current quote. " +
+      "When you re-level a watch, the side follows the level: BELOW the current quote is a pullback you want to buy, ABOVE it is a breakout you want confirmed first — the ENTER trigger is rewritten to match, so you only have to pick the number. " +
+      "A level AT the quote is a buy condition that is already true and re-fires every cooldown until someone removes it; if you want to buy now, call place_trade. " +
       "Optional for refinement updates; REQUIRED when promoting a PENDING thesis to LONG/SHORT (so target/stop have something to validate against in the shape gate). " +
       "On ACTIVE rows this is the actual fill price (set by place_trade); patching it on an ACTIVE row is rare and should only happen on a partial-fill / cost-basis correction."
     ),
@@ -1354,6 +1353,11 @@ export const updateThesis = defineTool({
         },
         direction: levelDirection,
         status: levelStatus,
+        // The tape decides which side a re-levelled buy trigger compares on.
+        // Without it every re-level was a breakout: the CRM shape, where the
+        // analyst wrote "buy the pullback to $203" and the row stored
+        // "buy above $203" against a $258 tape.
+        currentPrice: resolvedPriceAtTime,
         source: "AGENT",
         mintId: () => randomUUID(),
       });

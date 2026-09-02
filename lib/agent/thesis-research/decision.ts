@@ -36,7 +36,7 @@ export const thesisDecisionSchema = z.object({
   horizon: z
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
     .describe("Exit policy + trigger template. CATALYST requires catalyst_date; TRADE requires max_hold_days."),
-  entry_price: z.number().optional().describe("Where you'd buy in (breakout level or current price). Required for LONG/SHORT."),
+  entry_price: z.number().optional().describe("The price you'd BUY at — a level the stock has NOT reached: above the live price for a breakout you want confirmed, below it for a pullback you want to pay. Never the current price. Required for LONG/SHORT."),
   target_price: z.number().optional().describe("Take-profit level. Required for LONG/SHORT."),
   stop_loss: z.number().optional().describe("Where the thesis breaks. Required for LONG/SHORT."),
   catalyst_date: z.string().optional().describe("ISO date. Required when horizon=CATALYST."),
@@ -387,18 +387,9 @@ export function validateThesisDecision(
           );
         }
         if (!held && !actions.has("ENTER")) {
-          // Buy-now carve-out: no ENTER trigger is the legitimate shape
-          // when the entry IS the current price (the writer's "buy at
-          // market" signal) — mirror the persist-side allowance.
-          const buyNow =
-            d.entry_price != null &&
-            opts.currentPrice != null &&
-            Math.abs(opts.currentPrice - d.entry_price) / d.entry_price <= 0.01;
-          if (!buyNow) {
-            errors.push(
-              "triggers: an unheld ladder must carry an ENTER rung (PRICE_ABOVE entry for LONG, mirror for SHORT) unless entry_price equals the current price (buy-at-market shape). Add the ENTER rung or omit the triggers field.",
-            );
-          }
+          errors.push(
+            "triggers: an unheld ladder must carry an ENTER rung — PRICE_ABOVE(entry) when the buy level is above the live price, PRICE_BELOW(entry) when it is below (mirror for SHORT). Add the ENTER rung or omit the triggers field and it is derived for you.",
+          );
         }
       }
     }

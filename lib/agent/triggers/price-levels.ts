@@ -234,11 +234,13 @@ export function applyLevelArgs(args: {
   direction: string | null;
   status?: string | null;
   avgCost?: number | null;
+  /** The live quote, read only by the ENTRY slot — see `predicateFor`. */
+  currentPrice?: number | null;
   source?: Trigger["source"];
   mintId: () => string;
 }): { triggers: Trigger[]; columns: CanonicalLevels["columns"] } {
-  const { stored, inherited, levels, direction, status, avgCost, source, mintId } =
-    args;
+  const { stored, inherited, levels, direction, status, avgCost,
+    currentPrice, source, mintId } = args;
   let triggers = stored;
 
   for (const [slot, price] of [
@@ -259,6 +261,7 @@ export function applyLevelArgs(args: {
       mintId,
       source,
       status === "HOLDING",
+      currentPrice,
     );
   }
 
@@ -299,6 +302,7 @@ function setLevel(
   mintId: () => string,
   source?: Trigger["source"],
   held: boolean = true,
+  currentPrice?: number | null,
 ): Trigger[] {
   const side = slot === "FLOOR" ? "DOWNSIDE" : "UPSIDE";
   const occupies = (t: Trigger): boolean => {
@@ -312,6 +316,8 @@ function setLevel(
   };
 
   if (price == null) return stored.filter((t) => !occupies(t));
+
+  const predicate = predicateFor(slot, price, direction, currentPrice);
 
   const matches = stored.filter(occupies);
   if (matches.length > 0) {
@@ -331,7 +337,16 @@ function setLevel(
       .filter((t) => !occupies(t) || t.id === keep.id)
       .map((t) =>
         t.id === keep.id
-          ? { ...t, predicate: predicateFor(slot, price, direction) }
+          ? {
+              ...t,
+              predicate,
+              // A side flip makes the old wording a lie — "broke above $130"
+              // on a level the price now comes back DOWN to. Only then.
+              rationale:
+                t.predicate.kind === predicate.kind
+                  ? t.rationale
+                  : rationaleFor(slot, price, direction, held, predicate.kind),
+            }
           : t,
       );
   }
@@ -340,7 +355,7 @@ function setLevel(
     ...stored,
     {
       id: mintId(),
-      predicate: predicateFor(slot, price, direction),
+      predicate,
       // A target is REVIEW, not EXIT (ruling 2026-08-24): a floor is
       // protective and acts on its own; a target is an opportunity and wakes
       // a decision. Auto-selling at the target re-creates the capped-winner
@@ -363,7 +378,7 @@ function setLevel(
           : slot === "FLOOR"
             ? "EXIT"
             : "REVIEW",
-      rationale: rationaleFor(slot, price, direction, held),
+      rationale: rationaleFor(slot, price, direction, held, predicate.kind),
       ...(source ? { source } : {}),
     },
   ];
@@ -484,18 +499,35 @@ function predicatePrice(
 }
 
 /**
- * ENTRY is direction-only: a long enters on a break UP, a short on a break
- * DOWN. Buy-the-dip is a legitimate want and is NOT this — it is an ENTER
- * trigger at the account or analyst level. See ENTRY_TRIGGER_SEMANTICS.md;
- * do not rebuild it as a setting, that was removed 2026-08-16.
+ * A buy level is a price we have NOT reached, and which side of the tape it
+ * sits on says which shape the analyst meant: above the price is a breakout
+ * they want confirmed first, below it a pullback they want to pay. One rule
+ * for both directions — a short entry above the tape is a rally to sell
+ * into, below it a breakdown. No quote (or a level sitting exactly ON the
+ * price) keeps the direction default, as every caller had before.
+ *
+ * Buy-the-dip is NOT a per-analyst setting: a setting whose entire output is
+ * a trigger restates what the trigger already says, invisibly. It was built
+ * and removed 2026-08-16 — see ENTRY_TRIGGER_SEMANTICS.md, don't rebuild it.
  */
 function predicateFor(
   slot: LevelSlot,
   price: number,
   direction: string | null,
+  currentPrice?: number | null,
 ): Extract<TriggerPredicate, { kind: "PRICE_ABOVE" | "PRICE_BELOW" }> {
   const long = isLong(direction);
-  const wantsAbove = slot === "FLOOR" ? !long : long;
+  const readsTheTape =
+    slot === "ENTRY" &&
+    currentPrice != null &&
+    Number.isFinite(currentPrice) &&
+    currentPrice > 0 &&
+    price !== currentPrice;
+  const wantsAbove = readsTheTape
+    ? price > currentPrice
+    : slot === "FLOOR"
+      ? !long
+      : long;
   return wantsAbove
     ? { kind: "PRICE_ABOVE", level: price }
     : { kind: "PRICE_BELOW", level: price };
@@ -506,13 +538,19 @@ function rationaleFor(
   price: number,
   direction: string | null,
   held: boolean,
+  kind: "PRICE_ABOVE" | "PRICE_BELOW",
 ): string {
   const long = isLong(direction);
   const p = `$${price.toFixed(2)}`;
   if (slot === "ENTRY") {
-    return long
-      ? `Buy level — start the position when the price breaks above ${p}.`
-      : `Short entry — start the position when the price breaks below ${p}.`;
+    if (long) {
+      return kind === "PRICE_ABOVE"
+        ? `Buy level — start the position when the price breaks above ${p}.`
+        : `Buy level — start the position when the price comes back down to ${p}.`;
+    }
+    return kind === "PRICE_BELOW"
+      ? `Short entry — start the position when the price breaks below ${p}.`
+      : `Short entry — start the position when the price rallies to ${p}.`;
   }
   if (slot === "FLOOR") {
     // On a thesis we don't own, "sell" is meaningless — a floor break
