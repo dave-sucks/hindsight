@@ -513,8 +513,21 @@ export function computeNeedsAction(
   //    swallow it — a long clock (a compounder's 30 days) outliving the
   //    research threshold, so "stale" was true for weeks with nothing
   //    scheduled to look. Terminal rows are history and never flagged.
+  //    Two exclusions, both load-bearing:
+  //      • direction null — an unresearched seed or a quiet watch. Neither
+  //        has a committed view whose research could have gone stale: the
+  //        seed is ASKING for first research (it surfaces via REVIEW_DUE
+  //        with pendingFirstReview, which routes to "commit a direction",
+  //        not "refresh"), and a quiet watch deliberately has no clock, so
+  //        flagging it would put a name the principal asked to leave alone
+  //        into every single morning's work list, forever, with nothing
+  //        that could ever satisfy it.
+  //      • `researchUpdatedAt === undefined` — the caller didn't select the
+  //        column; absent data is not evidence of staleness.
   if (
     thesis.researchUpdatedAt !== undefined &&
+    !isUnresearchedSeed(thesis.direction) &&
+    thesis.direction != null &&
     (thesis.status === "WATCHING" || thesis.status === "HOLDING")
   ) {
     const age = classifyResearchAge(

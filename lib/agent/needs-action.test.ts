@@ -852,6 +852,57 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
     expect(result.freshness).toBe("missing");
   });
 
+  it("never nags a quiet watch — no view, no clock, nothing that could satisfy it", () => {
+    // The interaction bug: a bare name added with attention:"quiet" has no
+    // review clock and no research, so without this exclusion it would flag
+    // RESEARCH_STALE("missing") every morning forever — turning the one
+    // tier that exists to cost nothing into permanent work.
+    const result = computeNeedsAction({
+      thesis: {
+        id: "t7",
+        direction: null,
+        status: "WATCHING",
+        horizon: null,
+        triggers: [
+          {
+            id: "wake",
+            predicate: { kind: "PRICE_BELOW", level: 24 },
+            action: "REVIEW",
+            rationale: "wake",
+          } as Trigger,
+        ],
+        createdAt: daysAgo(120),
+        lastReviewedAt: null,
+        researchUpdatedAt: null,
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now: new Date(),
+    });
+    expect(result).toBeNull();
+  });
+
+  it("an unresearched seed is not 'stale' — it surfaces as REVIEW_DUE asking for first research", () => {
+    const result = computeNeedsAction({
+      thesis: {
+        id: "t8",
+        direction: null,
+        status: "WATCHING",
+        horizon: null,
+        triggers: freshClock(7),
+        createdAt: daysAgo(30),
+        lastReviewedAt: null,
+        researchUpdatedAt: null,
+      },
+      latestUpdate: null,
+      latestQuote: null,
+      now: new Date(),
+    });
+    expect(result?.kind).toBe("REVIEW_DUE");
+    if (result?.kind !== "REVIEW_DUE") return;
+    expect(result.pendingFirstReview).toBe(true);
+  });
+
   it("callers that don't pass researchUpdatedAt keep their old behavior", () => {
     const result = computeNeedsAction({
       thesis: {
