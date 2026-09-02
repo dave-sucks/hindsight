@@ -19,6 +19,7 @@
 import { z } from "zod";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { subFloorTargetSize } from "@/lib/agent/position-sizing";
+import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 
 const scoringDimSchema = z.object({
   score: z.number(),
@@ -155,8 +156,6 @@ export interface DecisionValidationResult {
   riskReward?: number;
 }
 
-const MIN_RR = 2.0;
-
 /**
  * Pure Layer-1 pre-validation of a submit_thesis call. Mirrors the gates
  * record_thesis / update_thesis enforce at persist time so the model gets
@@ -172,6 +171,7 @@ export function validateThesisDecision(
   const errors: string[] = [];
   const d = input;
   const directional = d.direction === "LONG" || d.direction === "SHORT";
+  const held = opts.mode === "refresh" && opts.existingStatus === "HOLDING";
 
   if (!d.rationale || d.rationale.trim().length < 20) {
     errors.push("rationale: required, ≥20 chars — state the decision in your own voice.");
@@ -199,23 +199,23 @@ export function validateThesisDecision(
     if (stop == null || stop <= 0) errors.push("stop_loss: required and positive for LONG/SHORT.");
 
     if (entry != null && target != null && stop != null && entry > 0 && target > 0 && stop > 0) {
-      if (d.direction === "LONG" && !(stop < entry && entry < target)) {
-        errors.push(`price ordering: LONG requires stop_loss < entry_price < target_price (got stop=${stop}, entry=${entry}, target=${target}).`);
-      }
-      if (d.direction === "SHORT" && !(target < entry && entry < stop)) {
-        errors.push(`price ordering: SHORT requires target_price < entry_price < stop_loss (got target=${target}, entry=${entry}, stop=${stop}).`);
-      }
-      const risk = d.direction === "LONG" ? entry - stop : stop - entry;
-      const reward = d.direction === "LONG" ? target - entry : entry - target;
-      if (risk > 0 && reward > 0) {
-        riskReward = reward / risk;
-        if (riskReward < MIN_RR) {
-          errors.push(
-            `R/R floor: ${riskReward.toFixed(2)}:1 is below the mandatory ${MIN_RR}:1 minimum. ` +
-              "Either tighten the stop to a REAL technical level, raise the target to a CITED level, " +
-              "or change direction to PASS with the rationale naming what entry would fix the math.",
-          );
-        }
+      // The one plan rule (ordering + 2:1 floor) — the same helper the
+      // persist gates run, so a repair here is a pass there.
+      const shape = validateThesisShape({
+        direction: d.direction,
+        entryPrice: entry,
+        targetPrice: target,
+        stopLoss: stop,
+        minRiskReward: held ? undefined : MIN_RISK_REWARD,
+      });
+      if (!shape.ok) {
+        errors.push(
+          shape.reason === "risk-reward-below-floor"
+            ? shape.note
+            : `price ordering: ${shape.note}`,
+        );
+      } else {
+        riskReward = shape.riskReward;
       }
     }
 
@@ -360,7 +360,6 @@ export function validateThesisDecision(
       // Action-set sanity by position state — mirrors the Layer-1 guards
       // record/update enforce, surfaced here so the repair is one step.
       const actions = new Set(parsedTriggers.map((t) => t.action));
-      const held = opts.mode === "refresh" && opts.existingStatus === "HOLDING";
       if (held) {
         if (actions.has("ENTER")) {
           errors.push("triggers: this thesis is HOLDING (position open) — ENTER triggers are forbidden. Use EXIT/REVIEW/TRIM/ADD/MOVE_STOP.");

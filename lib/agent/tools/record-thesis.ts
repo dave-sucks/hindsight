@@ -27,7 +27,7 @@ import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
 import { randomUUID } from "node:crypto";
-import { validateThesisShape } from "@/lib/agent/thesis-shape";
+import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 
@@ -705,11 +705,13 @@ export const recordThesis = defineTool({
       // broken WATCHING rows from sitting in the watchlist for weeks
       // (2026-05-07 audit found 3 such rows on Earnings Drift / Secular
       // Theme dating back to April 23-27).
+      // A mint is always a plan we don't own yet, so the 2:1 floor applies.
       const shapeCheck = validateThesisShape({
         direction: args.direction,
         entryPrice: args.entry_price ?? null,
         targetPrice: args.target_price ?? null,
         stopLoss: args.stop_loss ?? null,
+        minRiskReward: MIN_RISK_REWARD,
       });
       if (!shapeCheck.ok) {
         console.warn(
