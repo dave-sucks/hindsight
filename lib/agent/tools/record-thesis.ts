@@ -391,16 +391,17 @@ const thesisFields = z.object({
     ),
 
   // ── Deep-research artifacts (THESIS_RESEARCH_V2 Phase 1) ───────────────
-  // Populated by the thesis-writer agent after calling write_thesis_research.
-  // researchData is the raw markdown data block (~3-5KB) the synthesis
-  // consumed; lands on Thesis.researchData for audit/debug. The 9 narrative
+  // Populated by the thesis-writer pipeline (run-thesis-writer.ts Phase P
+  // pulls it, Phase Z passes it through). researchData is the raw markdown
+  // data block (~3-5KB) the research call consumed; lands on
+  // Thesis.researchData for audit/debug. The 9 narrative
   // sections below each persist to their own first-class JSONB column —
   // PR-9 flattened the researchSections blob (see CLEANUP §1.3).
   research_data: z
     .string()
     .optional()
     .describe(
-      "Raw structured-data markdown block from write_thesis_research(...).data.rawDataBlock. " +
+      "Raw structured-data markdown block from the thesis-writer's data pull. " +
         "Pass through verbatim. Lands on Thesis.researchData for the card's data tab.",
     ),
 

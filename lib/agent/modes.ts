@@ -55,8 +55,10 @@ export type AgentMode =
   // THESIS_RESEARCH_V2 Phase 1 — sub-agent that produces one multi-section
   // deep-research thesis on one ticker. Spawned by dispatch_thesis_research
   // from Discovery / Daily / Tactical / Principal Chat via Inngest. Reads
-  // mostly through the write_thesis_research meta-tool; writes via
-  // record_thesis or update_thesis. See docs/plans/THESIS_RESEARCH_V2.md.
+  // through its own deterministic data pull (run-thesis-writer.ts Phase P);
+  // writes via record_thesis or update_thesis. Its toolAllowlist is empty by
+  // design — the V2 pipeline calls those tools server-side, not through the
+  // model. See docs/plans/THESIS_WRITER_V2.md.
   | "thesis-writer";
 
 // ── Mode config ──────────────────────────────────────────────────────────────
