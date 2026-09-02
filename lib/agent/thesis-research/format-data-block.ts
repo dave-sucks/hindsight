@@ -230,6 +230,37 @@ function buildSnapshot(s: StockDataInput): string {
   if (tagBits.length) lines.push(tagBits.join(" · "));
 
   if (t) {
+    // ── The price levels, in dollars (2026-09-02) ──────────────────────
+    //
+    // `sma20` and `sma50` have been pulled into this file since it was
+    // written (pull-data.ts reads them off get_stock_data.technicals) and
+    // were never printed — only the PERCENT distance to them was. So the
+    // writer, asked to name an entry, a target and a stop and to "cite the
+    // level," had exactly one dollar figure to work with: today's price.
+    // It used it. TOST entry $35.15 against a $35.16 tape; ISRG $401.23
+    // against $401.29; BMRN $64.67 against its own quoted $64.67.
+    //
+    // A moving average is the most ordinary structural level there is —
+    // "buy the pullback to the 50-day" is a sentence every analyst writes.
+    // Printing the two numbers the pull already paid for turns that from
+    // unsayable into obvious. No new fetch, no new field, no gate.
+    const levelBits: string[] = [];
+    if (t.sma20 != null) levelBits.push(`20-day: $${t.sma20.toFixed(2)}`);
+    if (t.sma50 != null) levelBits.push(`50-day: $${t.sma50.toFixed(2)}`);
+    if (levelBits.length) {
+      lines.push(
+        `Price levels — ${levelBits.join(" · ")}` +
+          (q?.week52Low != null && q.week52High != null
+            ? ` · 52w low $${q.week52Low.toFixed(2)} · 52w high $${q.week52High.toFixed(2)}`
+            : ""),
+      );
+      lines.push(
+        `(These are real levels you can anchor an entry, target or stop to. ` +
+          `An entry must be a price the stock has NOT reached — a pullback BELOW the tape ` +
+          `or a breakout ABOVE it. Today's price is not an entry.)`,
+      );
+    }
+
     const techBits: string[] = [];
     if (t.rsi14 != null) techBits.push(`RSI(14): ${t.rsi14}`);
     if (t.priceVsSma20) techBits.push(`vs SMA20: ${t.priceVsSma20}`);
