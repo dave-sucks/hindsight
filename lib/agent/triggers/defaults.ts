@@ -56,13 +56,6 @@ export interface ThesisShape {
   catalystDate?: Date | null;
   /** Direction colors entry-trigger semantics for watching theses. */
   direction?: ThesisDirection | null;
-  /**
-   * The live quote when this level was chosen. Decides which SIDE the ENTER
-   * rung compares on — see watchingEntryTrigger. Optional: when absent the
-   * rung keeps the historical breakout shape, so no call site regresses by
-   * not passing it.
-   */
-  currentPrice?: number | null;
 }
 
 // ── Builders for each horizon ──────────────────────────────────────────
@@ -665,70 +658,27 @@ function watchingEntryTrigger(
   cooldownDays: number,
 ): Trigger | null {
   if (thesis.entryPrice == null) return null;
-  // Breakout semantics: fire when price crosses UP through the level.
-  //
-  // For a dip-buying seat this is backwards — it alerts only once the name
-  // costs more than the analyst said it would pay
-  // (docs/plans/ENTRY_TRIGGER_SEMANTICS.md). A per-analyst setting to flip
-  // it was built and REMOVED on 2026-08-16: a setting whose entire output
-  // is a trigger is a second way to say what the trigger already says, and
-  // it was invisible on the thesis. Don't re-add it as a setting.
-  //
-  // The right shape is an ordinary ENTER rung at the account or analyst
-  // level. That needs a predicate comparing price to the thesis's OWN
-  // entryPrice, since a dollar level can't live above the thesis — specced
-  // with the rest of docs/plans/LEVELS_AS_TRIGGERS.md.
-  // ── Which side to compare on ─────────────────────────────────────────
-  // The level itself says what the analyst meant. A LONG entry set BELOW
-  // the market is a price they want to come back to; set ABOVE it, it's a
-  // confirmation they want to see first. Read the intent off the level
-  // instead of hardcoding one strategy for every seat.
-  //
-  // Hardcoding PRICE_ABOVE broke both cases at once (measured 2026-08-27
-  // on the live book):
-  //   • a dip level is true the moment it's written — NOW set $130 against
-  //     a $132.51 tape, ABT $112 against $116.44 — so the rung fires every
-  //     cooldown forever and the analyst correctly declines each time
-  //     (PLTR 27 fires in 14 days, MSFT 27, NOW 26).
-  //   • a confirmation level waits, which is right, but it was the only
-  //     shape available, so every dip-buying seat got it by accident.
-  //
-  // Deliberately NOT a setting: the 2026-08-16 principal ruling removed
-  // AgentConfig.entryTriggerMode because a setting whose entire output is a
-  // trigger restates what the trigger already says, invisibly. This reads
-  // the thesis's own numbers, so the rung stays self-describing.
-  //
-  // No quote in context → keep the historical breakout shape. Existing
-  // callers that don't pass currentPrice behave exactly as before.
-  const px = thesis.currentPrice;
-  const dipEntry = px != null && Number.isFinite(px) && thesis.entryPrice < px;
-
+  // Direction-only placeholder. WHICH SIDE the rung compares on is decided
+  // once, in `predicateFor` (price-levels.ts), which every write path runs
+  // after this — so a second copy of the rule here only gets overwritten.
+  // It was: #566 put a tape-reading version in this function on 2026-08-27,
+  // applyLevelArgs rewrote its output on the very next line of
+  // record_thesis, and no pullback rung reached the book in five days live.
   if (direction === "LONG") {
     return {
       id: createId(),
-      predicate: dipEntry
-        ? { kind: "PRICE_BELOW", level: thesis.entryPrice }
-        : { kind: "PRICE_ABOVE", level: thesis.entryPrice },
+      predicate: { kind: "PRICE_ABOVE", level: thesis.entryPrice },
       action: "ENTER",
-      rationale: dipEntry
-        ? `Entry trigger — price came back to $${thesis.entryPrice}, the level this thesis wants to pay. Validate setup and consider INITIATE.`
-        : `Entry trigger — price broke above $${thesis.entryPrice}. Validate setup and consider INITIATE.`,
+      rationale: `Entry trigger — price broke above $${thesis.entryPrice}. Validate setup and consider INITIATE.`,
       cooldownDays,
     };
   }
   if (direction === "SHORT") {
-    // Mirror: a short entry set ABOVE the market is a rally to sell into.
-    const rallyEntry =
-      px != null && Number.isFinite(px) && thesis.entryPrice > px;
     return {
       id: createId(),
-      predicate: rallyEntry
-        ? { kind: "PRICE_ABOVE", level: thesis.entryPrice }
-        : { kind: "PRICE_BELOW", level: thesis.entryPrice },
+      predicate: { kind: "PRICE_BELOW", level: thesis.entryPrice },
       action: "ENTER",
-      rationale: rallyEntry
-        ? `Short entry trigger — price rallied to $${thesis.entryPrice}, the level this thesis wants to sell into. Validate setup and consider INITIATE short.`
-        : `Short entry trigger — price broke below $${thesis.entryPrice}. Validate setup and consider INITIATE short.`,
+      rationale: `Short entry trigger — price broke below $${thesis.entryPrice}. Validate setup and consider INITIATE short.`,
       cooldownDays,
     };
   }

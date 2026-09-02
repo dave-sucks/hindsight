@@ -200,7 +200,11 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     expect(r.triggerDetail).toMatch(/PRICE_ABOVE 92.5 \(cur 90\.00, -2\.7%\)/);
   });
 
-  it("ENTER_NOW (buy-now case) when no ENTER trigger AND entry ≈ current price", () => {
+  it("a buy level sitting ON the price is NOT an instruction to buy", () => {
+    // This used to resolve to ENTER_NOW on the theory that the writer meant
+    // "buy at market". A buy level is a price we have not reached, so an
+    // entry at the tape is a defective plan, and reading it as an
+    // instruction laundered the defect into an order.
     const r = buildResolvedEnvelope({
       thesis: baseThesis({
         parsedTriggers: [], // no ENTER trigger
@@ -209,7 +213,7 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
       currentPrice: 100.5, // within 1%
       now: NOW,
     });
-    expect(r.actionability).toBe("ENTER_NOW");
+    expect(r.actionability).toBe("WAIT_FOR_TRIGGER");
   });
 
   it("WAIT_FOR_TRIGGER when no ENTER trigger AND entry not close to current", () => {

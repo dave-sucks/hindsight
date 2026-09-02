@@ -213,8 +213,8 @@ export function validateEnterTriggerRequired(
 
   const note =
     args.targetPrice == null
-      ? `target_price is required on a directional WATCHING thesis — that's the level the ENTER trigger fires on. Either supply target_price (the breakout level for LONG, the breakdown level for SHORT), set direction to PASS for institutional-memory-only entries, or — to set the plan down and keep watching for free — resend triggers with the plan levels removed and at least one REVIEW-action wake condition ("review if the price crosses $X / moves 8% in a day / on the next earnings print").`
-      : `Your supplied triggers[] array displaced the default ENTER trigger via the (predicate, action) merge bucket. Add a trigger with action: "ENTER" and a price predicate (PRICE_ABOVE for LONG, PRICE_BELOW for SHORT) at the entry level — without it the watchlist trigger pipeline can't promote this thesis. (If your intent is to STOP pricing this name, that's a demotion: resend with the plan levels removed entirely and keep ≥1 REVIEW-action wake.)`;
+      ? `A directional WATCHING thesis needs a priced plan: entry_price (the buy level the ENTER trigger fires on) and target_price. Supply both, set direction to PASS for institutional-memory-only entries, or — to set the plan down and keep watching for free — resend triggers with the plan levels removed and at least one REVIEW-action wake condition ("review if the price crosses $X / moves 8% in a day / on the next earnings print").`
+      : `Your supplied triggers[] array displaced the default ENTER trigger via the (predicate, action) merge bucket. Add a trigger with action: "ENTER" and a price predicate at the BUY level — PRICE_ABOVE when that level is above the live price (a breakout you want confirmed), PRICE_BELOW when it is below (a pullback you want to pay); a short mirrors. Without it the watchlist trigger pipeline can't promote this thesis. (If your intent is to STOP pricing this name, that's a demotion: resend with the plan levels removed entirely and keep ≥1 REVIEW-action wake.)`;
 
   return {
     ok: false,

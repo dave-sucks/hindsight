@@ -233,12 +233,23 @@ YOUR JOB
      tight breakouts, 10-14 for swing patterns)
 
    **Entry / Target / Stop:**
-   - Entry: $X (the current price reference from the data block)
+   - Entry: $X — the price you would BUY at, which is by definition a
+     price the stock has NOT reached. Name the shape and cite the level,
+     exactly as you do for target and stop:
+       • BREAKOUT — ABOVE the live price: the confirmation you want to
+         see first (prior high, base rim, reclaimed SMA).
+       • PULLBACK — BELOW the live price: the price you are willing to
+         pay (support, moving average, breakout retest, gap fill).
+     The live price in the data block is what you measure that level
+     AGAINST; it is never the answer. An entry at the current price is a
+     buy condition already true — it fires the moment the thesis is
+     written and re-fires forever. No level worth waiting for → PASS.
    - Target: $Y (cite the level — breakout / resistance / consensus PT /
      analyst-aggregate / earnings-pop projection)
    - Stop: $Z (cite the level — support / -N% / structural break)
-   - R:R: <target-entry>/(entry-stop) for LONG, or
-     <entry-target>/(stop-entry) for SHORT. Must be ≥ 2:1.
+   - R:R: (target−entry)/(entry−stop) for LONG, or
+     (entry−target)/(stop−entry) for SHORT — measured from YOUR entry
+     level, not from the live price. Must be ≥ 2:1.
 
    **Confidence: N/100** — one-line justification (cite the strongest
    data point that drove the score)
