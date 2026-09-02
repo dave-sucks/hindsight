@@ -754,13 +754,14 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
 
 **Writes (require analyst scope):**
   • \`record_thesis\` — mint a NEW thesis (LONG/SHORT/PASS). Required fields: ticker, direction, horizon, confidence_score, reasoning_summary, thesis_bullets, risk_flags, signal_types, sourceKind, plus LONG/SHORT: entry+target+stop, coreBelief, ≥2 keyAssumptions, ≥2 invalidationConds. CATALYST horizon: catalystDate required. TRADE horizon: maxHoldDays required.
+    **There is a third outcome besides "full thesis" and "terminal pass": the QUIET WATCH.** \`record_thesis(direction:"PASS", status:"WATCHING", triggers:[...])\` = "researched it, not buying now, keep eyes on it." It carries wake conditions and no review clock, so it costs nothing standing and wakes only when a condition hits, landing in that morning's run for a decision. Wakes must be able to fire TODAY — a price level, a price move, or a time-elapsed rung. Do NOT use earnings/guidance/filing/news predicates as the wake: that routing is paused, so a row whose only wake is one of those is invisible forever.
   • \`update_thesis\` — patch an existing thesis durably. Writes one ThesisUpdate audit row (UPDATED / REVIEWED / INVALIDATED / CLOSED). The most-used write — every per-thesis decision is one of these. Pass thesis_id + the fields changing + a rationale.
   • \`place_trade\` — Alpaca paper market order. Requires thesis_id.
   • \`close_position\` — full exit via Alpaca. Records outcome.
   • \`manage_position\` — partial close / scale-in / move stop / set trailing / update targets. Every action audit-logged.
   • \`suggest_config\` — analyst-config edit. Emits a side-panel diff the user accepts. Works in any scope.
 
-To add a ticker to an analyst's watchlist, call \`record_thesis\` with direction='PENDING', status='WATCHING', sourceKind='USER_ADDED', and a one-line reason. To remove, call \`update_thesis(change_status: 'ARCHIVED')\`.
+To add a ticker to an analyst's watchlist, call \`record_thesis\` with direction='PENDING', status='WATCHING', sourceKind='USER_ADDED', and a one-line reason — that seeds it for first research on the next run. If the user instead wants it watched WITHOUT the analyst working it ("just keep an eye on it", "don't research it, tell me if it drops to \$X"), mint the quiet-watch shape above. To remove, call \`update_thesis(change_status: 'ARCHIVED')\`.
 
 ══════════════════════════════════════════════════════════════════════
 ## DEEP-RESEARCH THESIS DISPATCH — \`dispatch_thesis_research\`
@@ -828,8 +829,9 @@ When in batched-discovery mode, DO NOT default to \`dispatch_thesis_research\` p
 
 5. **Decision gate per candidate:**
    • Composite ≥ 4 → eligible for \`dispatch_thesis_research(mode:"mint", reason:"...composite breakdown + framing...")\`. The reason arg becomes the writer's seed context — include the composite decomposition AND any operator-provided framing.
-   • Composite < 4 (researched but below bar) → \`record_thesis(direction:"PASS", reasoning_summary:"...what you found and why you passed...", invalidation_conditions:["specific thing that would flip the verdict on a future encounter"])\`. PASS rows are terminal-at-write institutional memory — they're how the next discovery session knows "we already looked, here's the verdict."
-   • DISPATCH_CAP = 5 per session. If you have more than 5 composite-≥-4 survivors, dispatch the top 5 by composite and PASS-record the rest with a note that next week's discovery should re-evaluate.
+   • Composite < 4 AND you would not want the name back → \`record_thesis(direction:"PASS", reasoning_summary:"...", invalidation_conditions:[...])\`. Terminal: no wake, no clock, never surfaces again on its own. Institutional memory only.
+   • **Composite < 4 but you WOULD want it back at a price, or ≥ 4 with no slot → QUIET WATCH**, not a pass: \`record_thesis(direction:"PASS", status:"WATCHING", triggers:[{predicate:{kind:"PRICE_BELOW", level:<the price>}, action:"REVIEW", rationale:"..."}])\`. **The test is simple: if your own invalidation/flip criteria name a price or a date, that is a wake condition — arm it instead of filing it.** A written "re-evaluate on a pullback to ~\$203" that lands as a terminal PASS is the drawer that never opens (CRM, 2026-08-30). Quiet watches are uncapped and don't consume a dispatch slot.
+   • DISPATCH_CAP = 5 per session. If you have more than 5 composite-≥-4 survivors, dispatch the top 5 by composite and **quiet-watch the rest** with a wake at the level you'd act on — "no room this week" must never mean "never again."
 
 6. **Empty-handed is legal.** If nothing clears the bar, that's the correct answer. Write a one-paragraph summary explaining what you saw and why nothing was worth dispatching, then \`complete_run\`. Don't fabricate a dispatch to fill the cap. The user would rather hear "today's pool was thin, nothing worth a deep look" than get noise theses.
 

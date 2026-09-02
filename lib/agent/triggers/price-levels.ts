@@ -280,6 +280,11 @@ export function applyLevelArgs(args: {
   };
 }
 
+/** A committed bullish/bearish view. Null / PASS / legacy PENDING are not. */
+function isDirectional(direction: string | null): boolean {
+  return direction === "LONG" || direction === "SHORT";
+}
+
 /**
  * Set or clear one slot. Editing an existing trigger in the slot is preferred
  * over adding, so it keeps its id and with it its cooldown history and
@@ -341,7 +346,23 @@ function setLevel(
       // a decision. Auto-selling at the target re-creates the capped-winner
       // problem the ladder exists to fix, and the trail already protects the
       // downside while the decision waits.
-      action: slot === "ENTRY" ? "ENTER" : slot === "FLOOR" ? "EXIT" : "REVIEW",
+      //
+      // ENTRY is a BUY only when there is a view to buy on (2026-09-01).
+      // With direction null — an unresearched seed, or a quiet watch that
+      // researched the name and declined — there is no committed thesis, no
+      // target and no stop, so an armed ENTER would let the evaluator
+      // propose a purchase off a row that says "we are not buying this."
+      // The level is still worth keeping; it just wakes a decision instead
+      // of placing an order. A later commitment (update_thesis with a
+      // direction) re-derives it as a real ENTER.
+      action:
+        slot === "ENTRY"
+          ? isDirectional(direction)
+            ? "ENTER"
+            : "REVIEW"
+          : slot === "FLOOR"
+            ? "EXIT"
+            : "REVIEW",
       rationale: rationaleFor(slot, price, direction, held),
       ...(source ? { source } : {}),
     },
