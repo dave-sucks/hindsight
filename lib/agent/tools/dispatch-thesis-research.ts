@@ -65,7 +65,7 @@ export const dispatchThesisResearch = defineTool({
         "PAPER→LIVE promotion framing. Usually you don't pass this — when mode='refresh' " +
           "and the existing thesis is in PROMOTED status, this tool auto-populates from the " +
           "Thesis row (paperTenureDays / paperRealizedPnl / paperReviewCount / promotedAt). " +
-          "Forwarded to the thesis-writer worker so write_thesis_research can frame the " +
+          "Forwarded to the thesis-writer worker so its research call can frame the " +
           "Decision Fields block around RE-ENTER / DOWNGRADE / INVALIDATE.",
       ),
   }),
@@ -125,7 +125,7 @@ export const dispatchThesisResearch = defineTool({
     // is the path the promote-analyst action takes when fanning out rewrites
     // for the first live run. The caller doesn't need to know whether the
     // thesis is PROMOTED — we read the four context fields off the row and
-    // thread them into the worker so write_thesis_research's synthesis prompt
+    // thread them into the worker so its research prompt
     // gets the RE-ENTER / DOWNGRADE / INVALIDATE framing.
     let effectivePromotionContext = args.promotion_context;
     if (

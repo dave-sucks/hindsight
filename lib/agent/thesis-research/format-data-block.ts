@@ -7,7 +7,7 @@
  * get_stock_data and get_sec_filings. Output: ~3-5KB of markdown.
  *
  * Used by the bake-off dev page (Phase 0) and will be used by the
- * write_thesis_research meta-tool (Phase 1).
+ * thesis-writer pipeline (run-thesis-writer.ts Phase P).
  */
 
 interface StockDataInput {

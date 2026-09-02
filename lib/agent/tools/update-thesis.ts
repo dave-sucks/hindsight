@@ -340,7 +340,7 @@ const updateSchema = z.object({
 
   // ── Deep-research artifact passthrough (THESIS_RESEARCH_V2 refresh) ───
   // Mirror of record_thesis's research_data arg. Populated by the
-  // thesis-writer agent's refresh path after calling write_thesis_research.
+  // thesis-writer pipeline's refresh path (run-thesis-writer.ts).
   // Persisted on Thesis.researchData (markdown data block, ~3-5KB) for the
   // card's data tab + audit.
   //
@@ -351,7 +351,7 @@ const updateSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Raw structured-data markdown block from write_thesis_research(...).data.rawDataBlock. " +
+      "Raw structured-data markdown block from the thesis-writer's data pull. " +
         "Pass through verbatim. Lands on Thesis.researchData for the card's data tab.",
     ),
 });
