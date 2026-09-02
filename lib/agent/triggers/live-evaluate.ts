@@ -40,7 +40,6 @@ const PRICE_OR_TIME_KINDS = new Set([
   "VS_SMA",
   "RSI",
   "TIME_ELAPSED",
-  "REVIEW_DATE_HIT",
 ]);
 
 function isPriceOrTimePredicate(p: TriggerPredicate): boolean {

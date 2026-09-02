@@ -259,7 +259,7 @@ describe("validateThesisDecision — horizon conditionals", () => {
     // where it can be seen and edited, instead of a field that fed a
     // template once at mint and then drifted from it.
     const v = validateThesisDecision(
-      { ...validLong, horizon: "TRADE", max_hold_days: undefined },
+      { ...validLong, horizon: "TRADE" },
       mintOpts,
     );
     expect(v.ok).toBe(true);

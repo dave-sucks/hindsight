@@ -33,8 +33,8 @@ import type { Horizon } from "@/lib/agent/horizon-policy";
  *
  *   CATALYST   — 7 days. Event windows are short. After 7d the world
  *                has moved enough to warrant a re-anchor.
- *   TRADE      — 7 days. maxHoldDays is typically 14; research can't
- *                be older than half the hold window.
+ *   TRADE      — 7 days. The TRADE template's time-elapsed review rung
+ *                is ~14d; research can't be older than half that window.
  *   TARGET     — 30 days. Open-ended swing. Monthly refresh keeps the
  *                thesis aligned without daily churn.
  *   COMPOUNDER — 90 days. Multi-year hold; quarterly is sufficient.

@@ -1146,7 +1146,6 @@ export async function writerPersistPhase(
           catalyst_date: d.catalyst_date
             ? new Date(d.catalyst_date).toISOString()
             : undefined,
-          max_hold_days: d.max_hold_days,
           scoring: d.scoring,
           conviction: d.conviction,
           conviction_rationale: d.conviction_rationale,
@@ -1212,7 +1211,6 @@ export async function writerPersistPhase(
           catalyst_date: d.catalyst_date
             ? new Date(d.catalyst_date).toISOString()
             : undefined,
-          max_hold_days: d.max_hold_days,
           scoring: d.scoring,
           conviction: d.conviction,
           conviction_rationale: d.conviction_rationale,

@@ -43,7 +43,7 @@ An invalid trigger is dropped at evaluation, so the gate rejects it up front.
 | `GUIDANCE_CHANGE` | Guidance revision | `direction` |
 | `FILING` | SEC form filed | `formType` |
 | `TIME_ELAPSED` | N days since position-open (HELD) / thesis-create (WATCHING) | `days` |
-| `REVIEW_DATE_HIT` | `nextReviewAt` reached | — |
+| `REVIEW_CADENCE` | N days since the last actual review (`lastReviewedAt`) | `days` |
 | `AND` / `OR` | Composite | `predicates[]` |
 
 The two the UI mints are **Target Price** (`PRICE_ABOVE`/`PRICE_BELOW`) and
@@ -120,7 +120,7 @@ sharing the pure `evaluateTrigger` in `triggers/evaluate.ts`:
 | `VS_SMA` | ❌ (no SMA) | — | ✅ |
 | `RSI` | ❌ stub | ❌ stub | ❌ stub |
 | `EARNINGS_*` / `GUIDANCE_CHANGE` / `FILING` / `SIGNAL_TYPE` | — | ✅ | — |
-| `TIME_ELAPSED` / `REVIEW_DATE_HIT` | ✅ | — | ✅ |
+| `TIME_ELAPSED` / `REVIEW_CADENCE` | ✅ | — | ✅ |
 
 **The Movement-Amount nuance (read this):** a **daily** (`1D`) `PRICE_MOVE_PCT`
 fires on the cron because the evaluator reads the quote's own daily % change

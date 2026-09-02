@@ -272,7 +272,7 @@ model Thesis {
   // horizon dictates exit policy:
   //   CATALYST   = exit on event (good or bad), or 30d past catalystDate
   //   TARGET     = exit at target/stop or thesis invalidation. Open-ended.
-  //   TRADE      = exit on stop/target/maxHoldDays. Bounded short-term.
+  //   TRADE      = exit on stop/target; time-bounded by a TIME_ELAPSED rung.
   //   COMPOUNDER = exit only when invalidation triggers fire. Years.
   horizon String? // "CATALYST" | "TARGET" | "TRADE" | "COMPOUNDER"
 
