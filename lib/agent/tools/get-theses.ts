@@ -323,7 +323,6 @@ export const getTheses = defineTool({
         // Fire bookkeeping for inherited rungs — resolveThesisLadder
         // overlays it so cooldown reads the same at every level.
         triggerState: true,
-        scalingPlan: true,
         catalystDate: true,
         lastReviewedAt: true,
         sourceSignalIds: true,

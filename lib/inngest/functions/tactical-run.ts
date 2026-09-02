@@ -265,7 +265,6 @@ export const tacticalRun = inngest.createFunction(
           stopLoss: thesis.stopLoss != null ? Number(thesis.stopLoss) : null,
           targetSizePct:
             thesis.targetSizePct != null ? Number(thesis.targetSizePct) : null,
-          scalingPlan: thesis.scalingPlan,
           snapshotText: thesisSnapshotText || null,
           bullCaseBullets: thesisBullBullets,
           bearCaseBullets: thesisBearBullets,
@@ -672,7 +671,6 @@ export const tacticalRun = inngest.createFunction(
           targetPrice: thesis.targetPrice,
           stopLoss: thesis.stopLoss,
           targetSizePct: thesis.targetSizePct,
-          scalingPlan: thesis.scalingPlan,
           // Phase 1: pre-computed in load-context step.run; passed verbatim.
           snapshotText: thesis.snapshotText,
           bullCaseBullets: thesis.bullCaseBullets,

@@ -35,7 +35,6 @@ function makeArgs(overrides: Record<string, any> = {}): any {
       targetPrice: 70,
       stopLoss: 50,
       targetSizePct: 3,
-      scalingPlan: null,
       snapshotText: null,
       bullCaseBullets: [],
       bearCaseBullets: [],

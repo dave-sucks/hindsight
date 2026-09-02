@@ -529,7 +529,7 @@ The **structural-belief gate** (`record_thesis`) and the **structural-unchanged-
 | `catalystDate` | REQUIRED when `horizon=CATALYST`. |
 | `maxHoldDays` | REQUIRED when `horizon=TRADE` (no silent default). |
 | `nextReviewAt` | Derived from horizon if not supplied. Drives the overdue-review cron + `REVIEW_DATE_HIT` trigger. For PENDING, set to `createdAt` so first review fires immediately. |
-| `targetSizePct`, `scalingPlan` | Optional. Position sizing intent + scale-in/out ladder. |
+| `targetSizePct` | Optional. Position sizing intent at full position. (`scalingPlan` was deleted 2026-09-02 — written on 69 rows, read by nothing; scaling in is an ADD rung on the ladder.) |
 
 ### Provenance
 
@@ -637,7 +637,7 @@ All ultimately produce Thesis rows; no parallel table.
 |---|---|---|
 | **Daily-run prompt** ([`system-prompt.ts`](../lib/agent/system-prompt.ts) → `buildDailyRunSystemPromptV2`) | Identity + edge + universe + yesterday's standup + horizon glossary + needsAction walk-through. ~165 lines. | Agent reads per-thesis state through `get_theses.needsAction` and walks each row with the appropriate decision shape. **This is the only live prompt.** The legacy `buildV2SystemPrompt` (misleadingly named — it was the V1 600-line builder) is `@deprecated` with zero callers and tracked for deletion in `GAPS.md` P0-2. |
 | **`get_theses.needsAction`** ([`needs-action.ts`](../lib/agent/needs-action.ts)) | Per-thesis: `direction`, `triggers[]`, `nextReviewAt`, latest `ThesisUpdate` row, fresh quote. | Returns `TRIGGER_FIRED` / `TRIGGER_MATCHING_NOW` / `REVIEW_DUE` / null. PENDING theses surface as `REVIEW_DUE` with `pendingFirstReview: true`. Trigger-driven only — no hardcoded proximity. |
-| **Tactical-run prompt** ([`intraday-tactical.ts`](../lib/agent/system-prompts/intraday-tactical.ts)) | Full thesis: id, ticker, direction, horizon, **coreBelief, keyAssumptions, invalidationConds**, entry/target/stop, targetSizePct, scalingPlan, recentUpdates. Plus the firing trigger and signal payload. | Validates trigger → scores against keyAssumptions → executes the action. |
+| **Tactical-run prompt** ([`intraday-tactical.ts`](../lib/agent/system-prompts/intraday-tactical.ts)) | Full thesis: id, ticker, direction, horizon, **coreBelief, keyAssumptions, invalidationConds**, entry/target/stop, targetSizePct, recentUpdates. Plus the firing trigger and signal payload. | Validates trigger → scores against keyAssumptions → executes the action. |
 | **Discovery-run prompt** ([`discovery.ts`](../lib/agent/system-prompts/discovery.ts)) | `existingTickers` (already-covered set) + analyst config. | Mints LONG/SHORT WATCHING or PASS ARCHIVED. Cannot update or close. |
 | **Trigger evaluator** ([`evaluate.ts`](../lib/agent/triggers/evaluate.ts)) | `triggers[]`, `nextReviewAt`, `createdAt`. | Pure predicate matching. No belief reading. PENDING and PASS rows have empty triggers and are naturally skipped. |
 | **Trade evaluator** ([`trade-evaluator.ts`](../lib/inngest/functions/trade-evaluator.ts)) | `direction`, `horizon`, **`coreBelief`, `keyAssumptions`, `invalidationConds`**, `sourceSignalIds`, `reasoningSummary`, `signalTypes`, `thesisBullets`. | GPT-4o post-mortem grades against the BELIEF: did each `keyAssumption` hold? Did any `invalidationCondition` come true? |

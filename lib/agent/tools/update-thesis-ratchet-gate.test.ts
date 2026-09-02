@@ -115,7 +115,6 @@ function makeHeldRow(overrides: Record<string, unknown> = {}) {
     lastReviewedAt: null,
     triggers: [FLOOR_948],
     triggerState: {},
-    scalingPlan: null,
     ...overrides,
   };
 }

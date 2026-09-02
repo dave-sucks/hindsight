@@ -76,7 +76,6 @@ function thesisRow(over: Record<string, unknown>) {
     // No triggers → no cadence rung → nothing fires, no review due →
     // needsAction stays null → quiet row under "actionable".
     triggers: [],
-    scalingPlan: null,
     catalystDate: null,
     maxHoldDays: null,
     lastReviewedAt: null,

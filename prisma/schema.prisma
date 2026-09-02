@@ -281,7 +281,6 @@ model Thesis {
   invalidationConds String[] @default([]) // What would prove this wrong
 
   targetSizePct Float? // % of portfolio at full position
-  scalingPlan   Json? // [{pct, atPrice?, atSignal?, rationale}]
 
   // Structured triggers — see lib/agent/triggers/types.ts for the full
   // discriminated-union shape. Router evaluates predicates deterministically;

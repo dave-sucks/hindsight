@@ -30,7 +30,6 @@ interface TacticalPromptArgs {
     targetPrice: number | null;
     stopLoss: number | null;
     targetSizePct: number | null;
-    scalingPlan: unknown;
     // Phase 1 read-side fix: deep-research excerpt rendered inline so
     // the tactical agent reads the analyst's narrative + top bull/bear
     // bullets + research freshness before executing the trigger's
