@@ -79,6 +79,12 @@ export interface CoveragePendingProposal {
   quantity: number;
   /** ISO — when the proposal lapses; drives the Expired state on the Review control. */
   expiresAt?: string;
+  /**
+   * Approved and sent to Alpaca, waiting on the fill (Order.status PENDING).
+   * The row keeps the proposal subhead but reads "Executing: Sell 20 shares"
+   * and drops the Review control — there's nothing left to decide.
+   */
+  executing?: boolean;
 }
 
 export interface CoverageData {
@@ -140,14 +146,15 @@ export async function getCoverageData(
         openedAt: true,
         closedAt: true,
         analyst: { select: { name: true } },
-        // The proposal awaiting a decision on this holding (close / trim /
-        // add). AWAITING_APPROVAL is NOT 'PENDING' — that one is "sent to
-        // Alpaca, not yet filled".
+        // The proposal on this holding (close / trim / add) — either awaiting
+        // your decision (AWAITING_APPROVAL) or approved and sitting at Alpaca
+        // waiting to fill (PENDING). Both keep the row's proposal subhead;
+        // only the first one still offers a Review control.
         orders: {
-          where: { status: "AWAITING_APPROVAL" },
+          where: { status: { in: ["AWAITING_APPROVAL", "PENDING"] } },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { id: true, intent: true, quantity: true, expiresAt: true },
+          select: { id: true, status: true, intent: true, quantity: true, expiresAt: true },
         },
       },
     }).catch(() => [] as never[]),
@@ -304,6 +311,7 @@ export async function getCoverageData(
             intent: (p.orders[0].intent ?? "CLOSE") as CoveragePendingProposal["intent"],
             quantity: p.orders[0].quantity,
             expiresAt: p.orders[0].expiresAt?.toISOString(),
+            executing: p.orders[0].status === "PENDING",
           }
         : null,
     };

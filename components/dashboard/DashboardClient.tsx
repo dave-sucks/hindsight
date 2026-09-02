@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { SlidersHorizontal, ArrowRight } from 'lucide-react';
 
 import {
@@ -541,7 +542,10 @@ function HomeBottomSection({ activity, loading, coverage }: {
 // ── ProposalsPanel — pending-approval trades only ────────────────────────────
 // The CoverageTable shows held positions / watching / passed, but NOT pending
 // proposals (Order AWAITING_APPROVAL — not yet a Position). This panel is the
-// one place on the homepage that surfaces them. The rows are plain trade rows —
+// one place on the homepage that surfaces them. A trade you just approved stays
+// here too, reading "Executing" until Alpaca fills it — it used to disappear the
+// instant you approved, which read as the app losing the trade. The rows are
+// plain trade rows —
 // price, verb, gain/loss — with no inline approve/reject: being in this section
 // is the "needs your decision" signal, and the decision itself is made in the
 // thesis sheet the row opens, where the reasoning is. Renders nothing when
@@ -736,6 +740,7 @@ interface DashboardClientProps {
 }
 
 export default function DashboardClient({ data, userId, digest, coverage, pinned }: DashboardClientProps) {
+  const router = useRouter();
   const [range, setRange] = useState<Range>('1M');
   const [chartView, setChartView] = useState<ChartView>('portfolio');
   const [displayMode, setDisplayMode] = useState<DisplayMode>('dollar');
@@ -777,6 +782,16 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
   // from held positions so they render in their own "Pending approval" group
   // and never inflate the "Open" count. No mock fallback — empty in mock mode.
   const pendingTrades = data?.pendingTrades ?? [];
+  // An approved order sits in the list as "Executing" until Alpaca fills it and
+  // the reconcile cron writes the fill. Nothing pushes that to the page, so
+  // while one is in flight, ask the server again every 30s — the row then
+  // clears itself instead of waiting for the next visit. Stops when none are.
+  const hasExecuting = pendingTrades.some((t) => t.pendingProposal?.executing);
+  useEffect(() => {
+    if (!hasExecuting) return;
+    const id = setInterval(() => router.refresh(), 30_000);
+    return () => clearInterval(id);
+  }, [hasExecuting, router]);
   const closedTrades = data?.closedTrades ?? [];
   const analysts = data?.analysts ?? [];
   const analystEquityCurves = data?.analystEquityCurves ?? {};

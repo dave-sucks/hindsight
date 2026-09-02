@@ -42,7 +42,41 @@ import type { TradeStatus } from "@/lib/mock-data/trades";
  *           unfilled — Order.status PENDING).
  *
  * The control is always the "Review" button (ProposalActions).
+ *
+ * ── The moment after you approve ──────────────────────────────────────────
+ * An approved order sits in Order.status PENDING until the fill lands (the
+ * reconcile cron sweeps every 5 min). That used to be a hole: the proposal
+ * left the pending list the instant it was approved and NOTHING took its
+ * place, so an approved sell looked like the app had dropped the trade
+ * (PRAX, 2026-08-31 — filled four minutes later). The same row now stays put
+ * and reads EXECUTING_LABEL where its Buy / Sell verb was, until the fill
+ * lands and it moves on by itself.
  */
+
+/** The word for "approved, sent to Alpaca, not filled yet". One string so
+ *  every surface says the same thing. */
+export const EXECUTING_LABEL = "Executing";
+
+/** Tooltip line for a row in that state. */
+export const EXECUTING_TOOLTIP = "Sent to Alpaca — waiting for the fill";
+
+/**
+ * Which order a trade-shaped row should describe, and whether it is already
+ * in flight. An unapproved proposal outranks a submitted one: if the agent
+ * proposed a trim while an earlier buy is still filling, the decision you owe
+ * is the more urgent thing to show. Returns null when neither exists.
+ *
+ * Pure so the row's two states are testable without a database.
+ */
+export function pickProposalOrder<T extends { status: string }>(
+  orders: readonly T[],
+): { order: T; executing: boolean } | null {
+  const awaiting = orders.find((o) => o.status === "AWAITING_APPROVAL");
+  if (awaiting) return { order: awaiting, executing: false };
+  const submitted = orders.find((o) => o.status === "PENDING");
+  if (submitted) return { order: submitted, executing: true };
+  return null;
+}
 
 const PROPOSAL_VERB: Record<string, string> = {
   OPEN: "Buy",
@@ -54,10 +88,17 @@ const PROPOSAL_VERB: Record<string, string> = {
 /**
  * Compact proposal sentence for row subheads — same grammar and verbs as
  * `buildTradeSentence`, minus the price (rows show it in their own column).
+ * `executing` swaps the lead-in once the order has been approved and sent:
+ * "Executing: Sell 20 shares".
  */
-export function proposalSentence(intent: string, quantity: number): string {
+export function proposalSentence(
+  intent: string,
+  quantity: number,
+  executing = false,
+): string {
   const verb = PROPOSAL_VERB[intent] ?? "Review";
-  return `Proposed: ${verb} ${quantity} share${quantity === 1 ? "" : "s"}`;
+  const lead = executing ? EXECUTING_LABEL : "Proposed";
+  return `${lead}: ${verb} ${quantity} share${quantity === 1 ? "" : "s"}`;
 }
 
 export interface TradeStatusDisplay {

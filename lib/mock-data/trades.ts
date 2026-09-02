@@ -59,6 +59,13 @@ export interface MockTrade {
     quantity: number;
     /** ISO — when the proposal lapses; drives the Expired state on the Review control. */
     expiresAt?: string;
+    /**
+     * True once you've approved it and the order is at Alpaca waiting to fill
+     * (Order.status PENDING). The row keeps its place and reads "Executing"
+     * instead of the Buy / Sell verb; there is nothing left to review, so the
+     * Review control is gone.
+     */
+    executing?: boolean;
   };
   /** Thesis row id — present when the position's backing thesis was found. Used to open ThesisSheet on row click. */
   thesisId?: string;

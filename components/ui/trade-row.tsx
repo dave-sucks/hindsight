@@ -16,7 +16,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, pnlColor } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
-import { getTradeStatusDisplay, shortAlpacaId } from "@/lib/trade-status";
+import {
+  getTradeStatusDisplay,
+  shortAlpacaId,
+  EXECUTING_LABEL,
+  EXECUTING_TOOLTIP,
+} from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { useTickerQuote } from "@/hooks/useTickerQuote";
 import { usePinned } from "@/hooks/usePinned";
@@ -240,6 +245,12 @@ interface TradeRowProps {
     quantity: number;
     /** ISO — when the proposal lapses; drives the Expired state on the Review control. */
     expiresAt?: string;
+    /**
+     * Approved, sent to Alpaca, not filled yet. The row stays exactly where it
+     * was and reads a shimmering "Executing" in the verb's place, so approving
+     * a trade doesn't look like the app lost it. Clears itself on the fill.
+     */
+    executing?: boolean;
   };
   /** When present, clicking the row opens ThesisSheet instead of navigating to /trades/:id. */
   thesisId?: string;
@@ -298,6 +309,7 @@ export function TradeRow({
   const dateStr = openedAt ? fmtShort(openedAt) : null;
   const isPending = status === "PENDING";
   const isAwaitingApproval = pendingProposal != null;
+  const isExecuting = pendingProposal?.executing === true;
 
   // A proposal row describes the ORDER, not the holding. `shares` is the
   // position size (it drives P&L everywhere else), so a trim of 13 out of a
@@ -316,9 +328,11 @@ export function TradeRow({
   const dayQuote = useTickerQuote(isPending && !isStalePrice ? ticker : undefined);
 
   const cfg = getTradeStatusDisplay(status);
-  const timeLabel = isAwaitingApproval
-    ? `Pending your approval — agent proposed this ${pendingProposal.intent === "OPEN" || pendingProposal.intent === "ADD" ? "buy" : "exit"}`
-    : cfg.timeLabel({ placedAt, filledAt, closedAt });
+  const timeLabel = isExecuting
+    ? EXECUTING_TOOLTIP
+    : isAwaitingApproval
+      ? `Pending your approval — agent proposed this ${pendingProposal.intent === "OPEN" || pendingProposal.intent === "ADD" ? "buy" : "exit"}`
+      : cfg.timeLabel({ placedAt, filledAt, closedAt });
   const shortId = shortAlpacaId(alpacaOrderId);
   const priceSourceLabel = isOpen ? fmtPriceSource(priceSource, priceUpdatedAt) : null;
 
@@ -349,8 +363,16 @@ export function TradeRow({
               the missing half of that decision. Lighter weight so the ticker
               still leads the row visually. */}
           {isAwaitingApproval && (
-            <span className="text-sm font-light text-muted-foreground">
-              {PROPOSAL_VERB[pendingProposal.intent]}
+            <span
+              className={cn(
+                "text-sm font-light text-muted-foreground",
+                // Approved and in flight — the same shimmer the agent's
+                // in-progress rows use, in the verb's slot. It's the whole
+                // signal that the trade is on its way rather than lost.
+                isExecuting && "shimmer-text",
+              )}
+            >
+              {isExecuting ? EXECUTING_LABEL : PROPOSAL_VERB[pendingProposal.intent]}
             </span>
           )}
           <span className="text-sm font-medium">{ticker}</span>
