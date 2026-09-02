@@ -17,7 +17,11 @@ checkpoint REVIEW / 8% trail EXIT / −12% loser REVIEW, `defaults.ts`) —
 stamped at mint AND at the buy fill (`place-trade.ts` held-side re-seed).
 `resolved.ladderHealth` + the `UNPROTECTED_GAIN` needsAction flag nag winners
 whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
-Everything fires as approval-gated proposals — nothing auto-trades. The three
+Everything fires as approval-gated proposals — nothing auto-trades. **Fire
+semantics differ by action (DAV-229):** a protective/review rung is a standing
+order (re-fires every day its condition holds; a decline is "did nothing");
+an ENTER fires on the *crossing* of its level (true now, false at the prior
+close) — see `shouldFire` in `lib/agent/triggers/evaluate.ts`. The three
 docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
 `docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
 `docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).

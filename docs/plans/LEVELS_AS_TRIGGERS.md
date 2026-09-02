@@ -233,9 +233,12 @@ Net across the whole project: roughly **−700 lines**.
 
 ## Rules that don't move
 
-- **A trigger is a standing order** (ruling 2026-08-16). It fires every day its
-  condition holds; a decline means "did nothing." Agents may tighten a
-  protective level, never loosen or remove one. No agent-side auto-retuning.
+- **A protective or review trigger is a standing order** (ruling 2026-08-16).
+  It fires every day its condition holds; a decline means "did nothing."
+  Agents may tighten a protective level, never loosen or remove one. No
+  agent-side auto-retuning. **An ENTER fires on the crossing** (DAV-229,
+  2026-09-02): true now, false at the prior close — a buy level the price is
+  already past is not a daily buy proposal.
 - **Sale labelling** keys off the condition kind (`protectiveExitCloseReason`).
   New canonical levels must preserve the mapping or the cooldown exemption
   misfires.

@@ -106,6 +106,8 @@ but is **principal-chat only.**
 >
 > **A trigger is the principal's standing order.** It fires **every day its
 > condition is true** — buy at a price, sell at a price, whatever it says. A
+> (Narrowed 2026-09-02, DAV-229: this holds for sells and reviews. A **buy**
+> fires on the crossing of its level, not every day the price sits past it.) A
 > decline or an expiry means "I chose to do nothing today," so it fires again
 > tomorrow. If the principal sets sell-at-$400, they get an alert every day it
 > is under $400. Forever, until they act.

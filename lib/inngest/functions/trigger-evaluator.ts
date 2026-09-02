@@ -11,7 +11,9 @@
 //                       predicates.
 //
 // Both paths emit `app/thesis.trigger.fired` on match. The `lastFiredAt`
-// cooldown stamp prevents same-trigger re-fires within cooldownDays.
+// cooldown stamp prevents same-trigger re-fires within cooldownDays. ENTER
+// rungs additionally fire only on the CROSSING of their level (price past
+// it now, not at the prior close) — see shouldFire, DAV-229.
 //
 // PR 2 boundary notes:
 // - PRICE_MOVE_PCT: the 1D window (the "Movement Amount" daily-move alert)
@@ -661,7 +663,12 @@ export const triggerEvaluator = inngest.createFunction(
               : typeof q.pc === "number" && q.pc > 0
                 ? ((q.c - q.pc) / q.pc) * 100
                 : 0;
-          return [ticker, { price: q.c, changePct }] as const;
+          // Prior close: an ENTER fires on the crossing of its level
+          // (DAV-229), and "crossed since the last close" is the cheapest
+          // honest definition the cron can afford. Finnhub always sends it.
+          const prevClose =
+            typeof q.pc === "number" && q.pc > 0 ? q.pc : undefined;
+          return [ticker, { price: q.c, changePct, prevClose }] as const;
         }),
       );
       const quoteByTicker = new Map(quoteResults);

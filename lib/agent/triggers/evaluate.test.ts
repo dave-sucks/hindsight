@@ -884,7 +884,7 @@ describe("shouldFire", () => {
 // edge-triggered variant shipped 2026-08-13 and was reverted — these pin
 // the reverted behavior so it can't creep back.
 
-describe("shouldFire — standing-order re-firing", () => {
+describe("shouldFire — a buy fires on the crossing, a sell is a standing order (DAV-229)", () => {
   const enterRung: Trigger = {
     id: "enter-1",
     predicate: { kind: "PRICE_ABOVE", level: 128.47 },
@@ -892,41 +892,111 @@ describe("shouldFire — standing-order re-firing", () => {
     rationale: "entry",
     cooldownDays: 1,
   };
-  const at = (price: number, now: Date): EvaluationContext => ({
-    latestQuote: { price, changePct: 0 },
+  const exitRung: Trigger = {
+    id: "exit-1",
+    predicate: { kind: "PRICE_BELOW", level: 400 },
+    action: "EXIT",
+    rationale: "floor",
+    cooldownDays: 1,
+  };
+  const at = (
+    price: number,
+    now: Date,
+    prevClose?: number,
+  ): EvaluationContext => ({
+    latestQuote: { price, changePct: 0, prevClose },
     thesis: { createdAt: new Date("2026-01-01"), status: "WATCHING" },
     now,
   });
+  const day1 = new Date("2026-08-12T14:00:00Z");
+  const day2 = new Date("2026-08-13T14:00:00Z");
 
-  it("re-fires the next day while the condition still holds", () => {
-    const day1 = new Date("2026-08-12T14:00:00Z");
-    const day2 = new Date("2026-08-13T14:00:00Z");
+  it("ENTER fires when the price crossed the level since the prior close", () => {
+    expect(shouldFire(enterRung, at(130, day1, 127))).toMatchObject({
+      fires: true,
+      reason: "match",
+    });
+  });
+
+  it("ENTER does NOT fire while the price merely sits past the level", () => {
+    // The PLTR shape: 33% above entry for weeks. Yesterday closed above
+    // the level too, so nothing crossed — this is not a buy signal, it is
+    // a plan the price has left behind (plan-sanity's job, not the cron's).
+    expect(shouldFire(enterRung, at(171, day1, 170))).toMatchObject({
+      fires: false,
+      reason: "no-crossing",
+    });
+  });
+
+  it("ENTER minted with the level already true fires only on a re-cross", () => {
+    // TOST: buy above $35.15 written against a $35.16 tape. Day 1 the
+    // prior close was under the level, so a crossing genuinely happened.
+    const tost: Trigger = { ...enterRung, predicate: { kind: "PRICE_ABOVE", level: 35.15 } };
+    expect(shouldFire(tost, at(35.16, day1, 34.9)).fires).toBe(true);
+    // Day 2 it closed above and still sits above — silent, not asked again.
+    expect(shouldFire(tost, at(35.4, day2, 35.16)).reason).toBe("no-crossing");
+    // Day 3 it dipped under and reclaimed — a real crossing, asks again.
+    const day3 = new Date("2026-08-14T14:00:00Z");
+    expect(shouldFire(tost, at(35.3, day3, 34.8)).fires).toBe(true);
+  });
+
+  it("a pullback ENTER mirrors: fires on the way down through the level", () => {
+    const dip: Trigger = {
+      ...enterRung,
+      predicate: { kind: "PRICE_BELOW", level: 203 },
+    };
+    expect(shouldFire(dip, at(201, day1, 206)).fires).toBe(true);
+    expect(shouldFire(dip, at(199, day2, 201)).reason).toBe("no-crossing");
+  });
+
+  it("crossing applies inside a composite ENTER predicate", () => {
+    const composite: Trigger = {
+      ...enterRung,
+      predicate: {
+        kind: "AND",
+        predicates: [
+          { kind: "PRICE_ABOVE", level: 128.47 },
+          { kind: "PRICE_MOVE_PCT", pct: 1, direction: "UP", window: "1D" },
+        ],
+      },
+    };
+    const up = (price: number, prevClose: number): EvaluationContext => ({
+      latestQuote: { price, changePct: 2, prevClose },
+      thesis: { createdAt: new Date("2026-01-01"), status: "WATCHING" },
+      now: day1,
+    });
+    expect(shouldFire(composite, up(130, 127)).fires).toBe(true);
+    expect(shouldFire(composite, up(130, 129)).reason).toBe("no-crossing");
+  });
+
+  it("an ENTER that does not read the price keeps firing on match", () => {
+    // Nothing to cross: a time-based entry is true or it isn't.
+    const timed: Trigger = {
+      ...enterRung,
+      predicate: { kind: "TIME_ELAPSED", days: 10 },
+    };
+    expect(shouldFire(timed, at(171, day1, 170)).fires).toBe(true);
+  });
+
+  it("without a prior close the snapshot consumers keep level semantics", () => {
+    // The daily run / resolver / needs-action pass a bare price and ask
+    // "is the condition true now" — the right question for a snapshot.
     expect(shouldFire(enterRung, at(171, day1)).fires).toBe(true);
+  });
 
-    // Declined yesterday; still above the level today → fires again.
-    const afterDecline: Trigger = { ...enterRung, lastFiredAt: day1.toISOString() };
-    expect(shouldFire(afterDecline, at(175, day2)).fires).toBe(true);
+  it("EXIT is a standing order: it re-fires every day the floor is breached", () => {
+    // Principal ruling 2026-08-16, unchanged: a declined sell asks again
+    // tomorrow. Yesterday closed under the floor too — still fires.
+    expect(shouldFire(exitRung, at(390, day1, 392)).fires).toBe(true);
+    const declined: Trigger = { ...exitRung, lastFiredAt: day1.toISOString() };
+    expect(shouldFire(declined, at(385, day2, 390)).fires).toBe(true);
   });
 
   it("does not fire twice within the cooldown window", () => {
-    const t = new Date("2026-08-12T14:00:00Z");
     const fired: Trigger = {
       ...enterRung,
       lastFiredAt: new Date("2026-08-12T10:00:00Z").toISOString(),
     };
-    expect(shouldFire(fired, at(171, t)).reason).toBe("cooldown");
-  });
-
-  it("keeps firing regardless of how long the condition has held", () => {
-    // The PLTR shape: 33% above entry for weeks. Under the ruling this is
-    // a standing order the principal has not withdrawn, so it keeps
-    // asking. Silencing it is the bug the ruling forbids.
-    const long: Trigger = {
-      ...enterRung,
-      lastFiredAt: new Date("2026-07-01T00:00:00Z").toISOString(),
-    };
-    expect(shouldFire(long, at(171, new Date("2026-08-12T14:00:00Z"))).fires).toBe(
-      true,
-    );
+    expect(shouldFire(fired, at(130, day1, 127)).reason).toBe("cooldown");
   });
 });

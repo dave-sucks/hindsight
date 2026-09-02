@@ -169,21 +169,17 @@ export function resolveThesisLadder(
 /**
  * Per-thesis, per-trigger bookkeeping held in `Thesis.triggerState`.
  *
- * Two things live here, both of which are per-THESIS facts about a rung
- * rather than properties of the rung itself:
- *
  *   firedAt — cooldown stamp for an INHERITED rung. It can't live on the
  *             rung because that rung is shared by every thesis under its
  *             level (thesis-level rungs keep `lastFiredAt` inline).
- *   side    — the last evaluated side of an edge-triggered predicate, so
- *             "price crossed above $X" fires once instead of every tick
- *             while it stays above. Kept here for EVERY level, including
- *             thesis rungs: `update_thesis` replaces the triggers array
- *             wholesale, and arming state must survive that.
+ *
+ * A `side` field (the last evaluated side of an edge-triggered predicate)
+ * was declared here for the 2026-08-13 latch and never written. Entry
+ * crossing (DAV-229) needs no stored side — it reads the prior close off
+ * the quote — so the field is gone.
  */
 export interface TriggerStateEntry {
   firedAt?: string;
-  side?: "MATCH" | "NO_MATCH";
 }
 
 /**
@@ -191,10 +187,9 @@ export interface TriggerStateEntry {
  * server-written map with no user input path, and a malformed entry
  * should cost that one rung its history, not the whole ladder.
  *
- * Accepts the original bare-string shape (`{ [id]: ISO }`) written before
- * `side` existed and lifts it to `{ firedAt }` — rows stamped between the
- * cascade migration and this change parse correctly rather than silently
- * losing their cooldown.
+ * Accepts the original bare-string shape (`{ [id]: ISO }`) and lifts it
+ * to `{ firedAt }` — rows stamped before the object shape parse correctly
+ * rather than silently losing their cooldown.
  */
 export function parseTriggerState(
   raw: unknown,
@@ -207,11 +202,8 @@ export function parseTriggerState(
       continue;
     }
     if (v && typeof v === "object" && !Array.isArray(v)) {
-      const e = v as { firedAt?: unknown; side?: unknown };
-      const entry: TriggerStateEntry = {};
-      if (typeof e.firedAt === "string") entry.firedAt = e.firedAt;
-      if (e.side === "MATCH" || e.side === "NO_MATCH") entry.side = e.side;
-      if (entry.firedAt || entry.side) out[k] = entry;
+      const e = v as { firedAt?: unknown };
+      if (typeof e.firedAt === "string") out[k] = { firedAt: e.firedAt };
     }
   }
   return out;
