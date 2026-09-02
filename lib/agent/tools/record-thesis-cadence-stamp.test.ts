@@ -3,11 +3,11 @@
  * (DAV-216, docs/plans/WATCHLIST_STATES.md §3 invariant 2).
  *
  * WATCHING theses no longer inherit the account's review cadence — a watch
- * item is reviewed iff it carries its own REVIEW_CADENCE rung. Every mint
- * through record_thesis is a priced plan (the unpriced soft-watch path is
- * W2), and a plan must always be watched, so the tool stamps the horizon's
- * cadence unless the agent supplied one. These tests pin that stamp:
- * without it, every new discovery dispatch is born silently unreviewed.
+ * item is reviewed iff it carries its own REVIEW_CADENCE rung. Every
+ * directional mint through record_thesis — priced or not — must be watched,
+ * so the tool stamps the horizon's cadence unless the agent supplied one.
+ * These tests pin that stamp: without it, every new discovery dispatch is
+ * born silently unreviewed. (The soft watch, direction PASS, is W2.)
  */
 
 const mockPositionFindFirst = jest.fn().mockResolvedValue(null);
@@ -40,6 +40,7 @@ jest.mock("@/lib/prisma", () => ({
       create: mockThesisUpdateCreate,
     },
     agentConfig: { findFirst: mockAgentConfigFindFirst },
+    runEvent: { create: jest.fn().mockResolvedValue({}) },
   },
 }));
 
@@ -164,5 +165,32 @@ describe("record_thesis — WATCHING cadence opt-in stamp (W1, DAV-216)", () => 
     });
     expect(result.ok).toBe(true);
     expect(createdTriggers()).toEqual([]);
+  });
+});
+
+describe("record_thesis — a directional view with no entry yet (unpriced LONG)", () => {
+  it("mints WATCHING/LONG with no levels: cadence wake stamped, no ENTER rung, no refusal", async () => {
+    // BMRN's dispatch note: "entry window opens January 2027". This shape
+    // used to be unwritable, so the writer parked the buy level on today's
+    // quote. The persist path admits the set-down state (no plan level,
+    // ≥1 REVIEW wake) — this pins that a mint can be born in it.
+    const result = await run(
+      baseLongArgs({
+        entry_price: undefined,
+        target_price: undefined,
+        stop_loss: undefined,
+        horizon: "CATALYST",
+        catalyst_date: "2027-01-15T00:00:00.000Z",
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.data?.thesis_id).toBe("thesis_new_1");
+    const triggers = createdTriggers();
+    expect(triggers.some((t) => t.action === "ENTER")).toBe(false);
+    expect(triggers.some((t) => t.action === "REVIEW")).toBe(true);
+    const data = mockThesisCreate.mock.calls[0][0].data as Record<string, unknown>;
+    expect(data.status).toBe("WATCHING");
+    expect(data.direction).toBe("LONG");
+    expect(data.entryPrice ?? null).toBeNull();
   });
 });
