@@ -29,6 +29,8 @@ import {
 } from "@/lib/agent/triggers/load-levels";
 import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
+import { pickProposalOrder } from "@/lib/trade-status";
+import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
 
 export async function GET(
   _req: Request,
@@ -136,13 +138,6 @@ export async function GET(
   // Position scoped to this analyst on this ticker. Durable metadata only;
   // live-quote-derived fields (currentPrice, marketValue, unrealizedPnl) are
   // filled in by /api/theses/[id]/quote after this paints.
-  type PendingProposalInfo = {
-    orderId: string;
-    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
-    quantity: number;
-    expiresAt: string | null;
-    rationale: string | null;
-  };
   type PositionInfo = {
     /** High-water mark (low-water on a short) — places a trailing floor. */
     peakPrice?: number | null;
@@ -157,7 +152,7 @@ export async function GET(
     realizedPnl: number | null;
     realizedPnlPct: number | null;
     closeReason: string | null;
-    pendingProposal: PendingProposalInfo | null;
+    pendingProposal: ThesisPendingProposal | null;
   };
 
   let position: PositionInfo | null = null;
@@ -186,12 +181,21 @@ export async function GET(
         closePrice: true,
         realizedPnl: true,
         closeReason: true,
+        // The order the trade block describes — either awaiting your
+        // decision (AWAITING_APPROVAL) or already approved and sitting at
+        // Alpaca waiting to fill (PENDING). Both keep the block; only the
+        // first still offers a Review control. Both statuses can be
+        // outstanding at once (a trim proposed while an add is still
+        // filling), so take a few and let pickProposalOrder rank them —
+        // take: 1 would let the newer submitted order hide the decision
+        // you still owe.
         orders: {
-          where: { status: "AWAITING_APPROVAL" },
+          where: { status: { in: ["AWAITING_APPROVAL", "PENDING"] } },
           orderBy: { createdAt: "desc" },
-          take: 1,
+          take: 5,
           select: {
             id: true,
+            status: true,
             intent: true,
             quantity: true,
             expiresAt: true,
@@ -205,7 +209,7 @@ export async function GET(
         0,
         Math.floor((Date.now() - pos.openedAt.getTime()) / 86_400_000),
       );
-      const ap = pos.orders?.[0];
+      const picked = pickProposalOrder(pos.orders ?? []);
       const cost = Number(pos.avgCost) * Number(pos.quantity);
       position = {
         id: pos.id,
@@ -223,13 +227,14 @@ export async function GET(
             ? (Number(pos.realizedPnl) / cost) * 100
             : null,
         closeReason: pos.closeReason,
-        pendingProposal: ap
+        pendingProposal: picked
           ? {
-              orderId: ap.id,
-              intent: (ap.intent ?? "OPEN") as PendingProposalInfo["intent"],
-              quantity: Number(ap.quantity),
-              expiresAt: ap.expiresAt?.toISOString() ?? null,
-              rationale: ap.rationale,
+              orderId: picked.order.id,
+              intent: (picked.order.intent ?? "OPEN") as ThesisPendingProposal["intent"],
+              quantity: Number(picked.order.quantity),
+              expiresAt: picked.order.expiresAt?.toISOString() ?? null,
+              rationale: picked.order.rationale,
+              executing: picked.executing,
             }
           : null,
       };

@@ -60,6 +60,7 @@ export type {
   TriggerPredicate,
   Trigger,
   ThesisStatePosition,
+  ThesisPendingProposal,
   ThesisScoringDim,
   ThesisScoring,
   ThesisDossier,
