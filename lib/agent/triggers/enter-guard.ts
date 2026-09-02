@@ -59,6 +59,12 @@ export interface EnterTriggerGuardArgs {
   triggers: Trigger[];
   /** The resulting target_price after the write — drives the error message. */
   targetPrice: number | null;
+  /**
+   * Live price at the moment of the write, when the caller could fetch one.
+   * Drives the already-true check below. Null/undefined = fail OPEN: a
+   * vendor outage must never block an analyst from writing a plan.
+   */
+  currentPrice?: number | null;
 }
 
 export type EnterTriggerGuardResult =
@@ -69,7 +75,8 @@ export type EnterTriggerGuardResult =
         | "missing-enter-trigger"
         | "held-actions-on-watching"
         | "enter-actions-on-active"
-        | "missing-exit-trigger-on-active";
+        | "missing-exit-trigger-on-active"
+        | "entry-already-true";
       note: string;
     };
 
@@ -194,8 +201,61 @@ export function validateEnterTriggerRequired(
   // shape gate below still requires a real ENTER.
 
   // ENTER-presence guard.
-  const hasEnter = args.triggers.some((t) => t.action === "ENTER");
-  if (hasEnter) return { ok: true };
+  const enters = args.triggers.filter((t) => t.action === "ENTER");
+  if (enters.length > 0) {
+    // ── The buy level must not already be true (2026-09-01) ────────────
+    //
+    // A standing buy trigger is a statement about a price the stock has NOT
+    // reached. Written already-true it is not a trigger at all — it is a
+    // purchase order with no approval attached, and the system cannot tell
+    // it apart from a real one. Four live examples the day this shipped:
+    //
+    //   TOST  buy above $35.15, tape $35.16  — the research-moment price
+    //   ISRG  buy above $401.23, tape $401.29 — same, sitting since August
+    //   BMRN  buy above $64.67, tape $65.77
+    //   CRM   buy above $203, tape $258.56    — the analyst meant "buy the
+    //         PULLBACK to $203" and it was written as a breakout, so the
+    //         rung says buy 27% above the price the plan was built on
+    //
+    // Why here and not as a read-time flag: `plan-sanity` deliberately
+    // catches DRIFT — a plan that was fine and the world moved. This is a
+    // BIRTH defect: wrong at the instant of writing, and the reason those
+    // four reached the principal at all is that nothing looked at the
+    // finished plan against the tape before storing it.
+    //
+    // Fails open with no quote: a vendor outage must not block a write.
+    const px = args.currentPrice;
+    if (px != null && Number.isFinite(px) && px > 0) {
+      const alreadyTrue = enters.filter((t) => {
+        if (t.predicate.kind === "PRICE_ABOVE") return px > t.predicate.level;
+        if (t.predicate.kind === "PRICE_BELOW") return px < t.predicate.level;
+        return false; // compound / event predicates: not this check's business
+      });
+      if (alreadyTrue.length > 0) {
+        const t = alreadyTrue[0];
+        const lvl =
+          t.predicate.kind === "PRICE_ABOVE" || t.predicate.kind === "PRICE_BELOW"
+            ? t.predicate.level
+            : 0;
+        const side = t.predicate.kind === "PRICE_ABOVE" ? "above" : "below";
+        return {
+          ok: false,
+          reason: "entry-already-true",
+          note:
+            `Your buy trigger is already true: it fires when the price is ${side} $${lvl}, and the price is $${px}. ` +
+            `A standing buy trigger has to describe a price the stock has NOT reached — written like this it isn't a trigger, it's a standing order to buy at whatever the price happens to be, and it will re-fire every day until someone deals with it.
+
+` +
+            `Two honest repairs:
+` +
+            `  • You meant to WAIT for a level — then move it so it isn't true yet. A breakout goes ABOVE the current price ($${px}); a pullback you'd buy into goes BELOW it. If you wrote $${lvl} meaning "buy the pullback to $${lvl}", the predicate you want is PRICE_BELOW, not PRICE_ABOVE.
+` +
+            `  • You meant to BUY IT NOW at the current price — then do that: place the trade (it is approval-gated, the principal still decides). Don't park a trigger that means "buy at market" and hope a later run notices.`,
+        };
+      }
+    }
+    return { ok: true };
+  }
 
   // The set-down state (DAV-224, WATCHLIST_STATES.md §5). A directional
   // watch whose ladder carries NO plan level but ≥1 REVIEW-action wake is a

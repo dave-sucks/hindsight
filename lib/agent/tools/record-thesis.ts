@@ -1299,6 +1299,7 @@ export const recordThesis = defineTool({
         status: effectiveStatusForTriggers,
         triggers: mergedTriggers,
         targetPrice: args.target_price ?? null,
+        currentPrice: quoteForEntrySide,
       });
       if (!enterGuard.ok) {
         console.warn(

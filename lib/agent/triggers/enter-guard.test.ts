@@ -500,3 +500,90 @@ describe("validateEnterTriggerRequired", () => {
     expect(result.note).toContain("PRICE_BELOW for SHORT");
   });
 });
+
+// ── The buy level must not already be true (2026-09-01) ───────────────────
+// Four live rows the day this shipped, all written already-true: TOST (buy
+// above $35.15, tape $35.16), ISRG ($401.23 / $401.29), BMRN ($64.67 /
+// $65.77) and CRM — buy above $203 with the tape at $258.56, because the
+// analyst meant "buy the pullback to $203" and it was stored as a breakout.
+describe("validateEnterTriggerRequired — buy level already true", () => {
+  it("rejects a LONG breakout written below the tape (the CRM case)", () => {
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "WATCHING",
+      triggers: [ENTER_LONG], // PRICE_ABOVE 100
+      targetPrice: 130,
+      currentPrice: 128,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("entry-already-true");
+    expect(result.note).toContain("PRICE_BELOW");
+  });
+
+  it("rejects the research-moment price as a buy level (TOST / ISRG)", () => {
+    const result = validateEnterTriggerRequired({
+      direction: "LONG",
+      status: "WATCHING",
+      triggers: [ENTER_LONG],
+      targetPrice: 130,
+      currentPrice: 100.01,
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("accepts a real breakout — level above the tape", () => {
+    expect(
+      validateEnterTriggerRequired({
+        direction: "LONG",
+        status: "WATCHING",
+        triggers: [ENTER_LONG],
+        targetPrice: 130,
+        currentPrice: 95,
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("accepts a real pullback — SHORT-side mirror", () => {
+    expect(
+      validateEnterTriggerRequired({
+        direction: "SHORT",
+        status: "WATCHING",
+        triggers: [ENTER_SHORT], // PRICE_BELOW 50
+        targetPrice: 40,
+        currentPrice: 55,
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("fails OPEN with no quote — a vendor outage never blocks a write", () => {
+    expect(
+      validateEnterTriggerRequired({
+        direction: "LONG",
+        status: "WATCHING",
+        triggers: [ENTER_LONG],
+        targetPrice: 130,
+        currentPrice: null,
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("ignores event-shaped buy triggers — not this check's business", () => {
+    expect(
+      validateEnterTriggerRequired({
+        direction: "LONG",
+        status: "WATCHING",
+        triggers: [
+          {
+            id: "enter-event",
+            predicate: { kind: "EARNINGS_BEAT" },
+            action: "ENTER",
+            rationale: "Enter on the print.",
+          } as Trigger,
+        ],
+        targetPrice: 130,
+        currentPrice: 128,
+      }),
+    ).toEqual({ ok: true });
+  });
+});

@@ -1473,6 +1473,9 @@ export const updateThesis = defineTool({
       status: effectiveEnterStatus,
       triggers: effectiveEnterTriggers,
       targetPrice: effectiveEnterTarget,
+      // Same live price the audit row stamps — already fetched above, so the
+      // already-true check costs no extra call.
+      currentPrice: resolvedPriceAtTime,
     });
     if (!enterGuard.ok) {
       console.warn(
