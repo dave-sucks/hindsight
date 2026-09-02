@@ -31,13 +31,16 @@
  * resolver already holds, so this adds zero cost to get_theses.
  */
 
+import { MIN_RISK_REWARD, riskReward } from "@/lib/agent/thesis-shape";
+
 export type PlanSanityFlag = {
   kind:
     | "ENTRY_FAR_FROM_PRICE"
     | "ENTRY_AT_PRICE"
     | "TARGET_ALREADY_PASSED"
     | "STOP_ALREADY_BREACHED"
-    | "STOP_INSIDE_NOISE";
+    | "STOP_INSIDE_NOISE"
+    | "PLAN_BELOW_RR_FLOOR";
   /** Plain-language statement of the arithmetic, with the numbers. */
   text: string;
 };
@@ -153,6 +156,21 @@ export function computePlanSanity(args: {
           `The stop ${fmt(stopLoss)} sits ${stopDistancePct.toFixed(1)}% from the buy level ${fmt(entryPrice)}, ` +
           `but this stock's ordinary daily move is ~${dayRangePct.toFixed(1)}%. Filled today, the plan would likely ` +
           `stop out on noise rather than thesis failure. Set the stop beneath real structure (below the range, a recent swing low), or rethink the entry.`,
+      });
+    }
+  }
+
+  // The floor the write paths enforce, read back against what's stored:
+  // rows written before the floor ran on every path (PLTR at 0.1:1) reach
+  // the daily run this way instead of waiting for the next level edit.
+  if (entryPrice != null && targetPrice != null && stopLoss != null) {
+    const rr = riskReward(direction, entryPrice, targetPrice, stopLoss);
+    if (rr != null && rr < MIN_RISK_REWARD) {
+      flags.push({
+        kind: "PLAN_BELOW_RR_FLOOR",
+        text:
+          `This plan pays ${rr.toFixed(1)}:1 — entry ${fmt(entryPrice)}, target ${fmt(targetPrice)}, stop ${fmt(stopLoss)} — under the ${MIN_RISK_REWARD}:1 floor every write path enforces. ` +
+          `Any level edit will be refused until the plan clears it: raise the target to a cited level, tighten the stop to real structure, or set the plan down.`,
       });
     }
   }
