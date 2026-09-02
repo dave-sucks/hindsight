@@ -170,6 +170,12 @@ describe("record_thesis — soft watch (W2, DAV-209)", () => {
     expect(
       row.triggers.some((t) => t.predicate.kind === "REVIEW_CADENCE"),
     ).toBe(false);
+    // And CRITICALLY: the price does NOT become an armed buy. There is no
+    // committed view on this row — an ENTER here would let the evaluator
+    // propose a purchase off a thesis that says "we are not buying this."
+    // The level wakes a decision instead.
+    expect(row.triggers.some((t) => t.action === "ENTER")).toBe(false);
+    expect(row.triggers.every((t) => t.action === "REVIEW")).toBe(true);
   });
 
   it("allows an explicit REVIEW_CADENCE — an unpriced managed watch is legal", async () => {
