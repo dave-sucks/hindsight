@@ -11,6 +11,7 @@ import {
 import { resolveAlpacaCredentials, type AlpacaEnvironment } from "@/lib/actions/api-keys.actions";
 import { getAccountId } from "@/lib/auth/account";
 import type { MockTrade, TradeStatus } from "@/lib/mock-data/trades";
+import { pickProposalOrder } from "@/lib/trade-status";
 import { etTradingDayDate } from "@/lib/market-hours";
 import {
   getThesisComposite,
@@ -704,7 +705,9 @@ export async function getDashboardData(
     // have multiple historical orders so we scan rather than indexing [0].
     // See docs/plans/TRADE_AS_PROPOSAL.md §6.
     const orders = p.orders ?? [];
-    const awaitingOrder = orders.find((o) => o.status === "AWAITING_APPROVAL");
+    // The order this row describes: an unapproved proposal, or (once approved)
+    // the same order sitting at Alpaca waiting to fill.
+    const rowOrder = pickProposalOrder(orders);
     const fillOrder = orders.find((o) => o.status !== "AWAITING_APPROVAL");
 
     // Derive the display status from Position.status + latest Order.status.
@@ -721,11 +724,13 @@ export async function getDashboardData(
 
     // Trade-as-Proposal — surface the awaiting-approval order so TradeRow
     // renders its pending state (amber dot + Buy/Sell verb). Approve/reject
-    // happens in the thesis sheet the row opens, not in the row.
-    const pendingProposal = awaitingOrder
+    // happens in the thesis sheet the row opens, not in the row. Once approved
+    // the same object rides along with `executing` set, so the row holds its
+    // place and reads "Executing" until the fill lands instead of vanishing.
+    const pendingProposal = rowOrder
       ? {
-          orderId: awaitingOrder.id,
-          intent: (awaitingOrder.intent ?? "OPEN") as
+          orderId: rowOrder.order.id,
+          intent: (rowOrder.order.intent ?? "OPEN") as
             | "OPEN"
             | "ADD"
             | "CLOSE"
@@ -734,8 +739,9 @@ export async function getDashboardData(
           // the holding; the row was showing the whole position (52 shares /
           // $15,992 for a 13-share $4k SNOW trim). `shares` below deliberately
           // stays the position size — it feeds value + P&L for the held row.
-          quantity: awaitingOrder.quantity ?? p.quantity,
-          expiresAt: awaitingOrder.expiresAt?.toISOString(),
+          quantity: rowOrder.order.quantity ?? p.quantity,
+          expiresAt: rowOrder.order.expiresAt?.toISOString(),
+          executing: rowOrder.executing,
         }
       : undefined;
 
@@ -781,10 +787,15 @@ export async function getDashboardData(
   // still counts as held for P&L (it stays in `openTrades` above); this list is
   // purely the "needs your decision" surface, so it's fine for it to appear in
   // both places.
-  const pendingProposalPositions = effectiveOpenPositions.filter(
-    (p) =>
-      p.status === "PENDING_APPROVAL" ||
-      (p.orders ?? []).some((o) => o.status === "AWAITING_APPROVAL"),
+  // An approved order stays in this list until it fills (Order.status PENDING).
+  // It no longer needs a decision, but it's the same row the decision was made
+  // on, and dropping it the instant you approved read as the app losing the
+  // trade (PRAX, 2026-08-31). It shows "Executing" here and leaves on the fill.
+  const pendingProposalPositions = effectiveOpenPositions.filter((p) =>
+    p.status === "PENDING_APPROVAL" ||
+    (p.orders ?? []).some(
+      (o) => o.status === "AWAITING_APPROVAL" || o.status === "PENDING",
+    ),
   );
   const pendingTrades: MockTrade[] = pendingProposalPositions.map(toOpenMockTrade);
 

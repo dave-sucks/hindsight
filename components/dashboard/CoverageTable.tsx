@@ -65,8 +65,9 @@ function NameCell({ row }: { row: CoverageRow }) {
   const pp = row.pendingProposal;
   if (pp) {
     // The proposal replaces the usual subhead — what you're being asked to
-    // approve matters more than the cost basis while it's outstanding.
-    subhead = proposalSentence(pp.intent, pp.quantity);
+    // approve matters more than the cost basis while it's outstanding, and
+    // once you've approved it, that it's on its way to Alpaca.
+    subhead = proposalSentence(pp.intent, pp.quantity, pp.executing);
   } else if (row.tradeState != null && row.shares != null && row.costBasis != null) {
     subhead = `${row.shares} share${row.shares === 1 ? "" : "s"} · ${formatCurrency(row.costBasis)}`;
   } else if (row.verdict != null && row.anchorPrice != null) {
@@ -90,6 +91,8 @@ function NameCell({ row }: { row: CoverageRow }) {
             className={cn(
               "text-xs tabular-nums truncate",
               pp ? "text-amber-500" : "text-muted-foreground",
+              // In flight — same shimmer the agent's running rows use.
+              pp?.executing && "shimmer-text",
             )}
           >
             {subhead}
@@ -122,7 +125,9 @@ function LifetimeCell({ row, mobileView }: { row: CoverageRow; mobileView: Mobil
         {/* Approve / reject inline — the same control as the Pending approval
             rail and the thesis sheet, so the decision can be made while
             reading the row's 1D/5D/30D move. */}
-        {row.pendingProposal && (
+        {/* Nothing left to review once it's approved and on its way — the
+            row says "Executing" instead. */}
+        {row.pendingProposal && !row.pendingProposal.executing && (
           <ProposalActions
             orderId={row.pendingProposal.orderId}
             expiresAt={row.pendingProposal.expiresAt}

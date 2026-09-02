@@ -32,7 +32,12 @@ import { PriceChange } from '@/components/ui/price-change';
 import { PriceGauge } from '@/components/ui/gauge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { getTradeStatusDisplay, shortAlpacaId } from '@/lib/trade-status';
+import {
+  getTradeStatusDisplay,
+  shortAlpacaId,
+  EXECUTING_LABEL,
+  EXECUTING_TOOLTIP,
+} from '@/lib/trade-status';
 import { closeTrade, cancelTrade } from '@/lib/actions/closeTrade.actions';
 import {
   mockOpenTrades,
@@ -269,7 +274,11 @@ export default function TradesPage({
               // not a real position yet (for buys) or a pending close (for sells).
               // The P&L slot gets [Approve][Reject] buttons; the status dot turns amber.
               // See docs/plans/TRADE_AS_PROPOSAL.md.
-              const awaitingApproval = trade.pendingProposal != null;
+              // Approved and sent to Alpaca, not filled yet — same order, but
+              // there's nothing left to review, so it reads "Executing" in the
+              // slot the Review control had.
+              const executing = trade.pendingProposal?.executing === true;
+              const awaitingApproval = trade.pendingProposal != null && !executing;
               const isOpen = trade.status === 'OPEN' || trade.status === 'PENDING';
               const isPending = trade.status === 'PENDING';
               const isStalePrice = trade.priceSource === 'missing' && !awaitingApproval;
@@ -312,7 +321,11 @@ export default function TradesPage({
                             <TooltipContent side="top">
                               <div>
                                 <div>
-                                  {awaitingApproval ? 'Awaiting your approval' : `${cfg.label} · ${timeLabel}`}
+                                  {awaitingApproval
+                                    ? 'Awaiting your approval'
+                                    : executing
+                                      ? EXECUTING_TOOLTIP
+                                      : `${cfg.label} · ${timeLabel}`}
                                 </div>
                                 {shortId && (
                                   <div className="opacity-60 font-mono text-[10px]">Alpaca {shortId}</div>
@@ -379,6 +392,8 @@ export default function TradesPage({
                           expiresAt={trade.pendingProposal!.expiresAt}
                         />
                       </div>
+                    ) : executing ? (
+                      <span className="text-sm shimmer-text">{EXECUTING_LABEL}</span>
                     ) : isStalePrice && isOpen ? (
                       <span className="text-sm text-muted-foreground/60">—</span>
                     ) : (
