@@ -49,7 +49,12 @@ export type PlanSanityFlag = {
  * setups. Deliberately one loose constant, not per-horizon tuning — the
  * flag asks a question, it doesn't refuse anything.
  */
-export const ENTRY_DISTANCE_FLAG_PCT = 15;
+export const ENTRY_DISTANCE_FLAG_PCT = 10;
+// 15 → 10 on 2026-09-02. ASML sat at 13.7% from its buy level — a plan
+// nobody could act on — and cleared the old bar by 1.3 points, so it went
+// quiet instead of into the run's work list. 10% still leaves room for a
+// genuine wait-for-my-price setup; it stops a plan rotting just under the
+// alarm.
 
 /**
  * The other end of the same question: a buy level ON the tape is a buy
