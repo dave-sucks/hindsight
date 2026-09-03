@@ -91,17 +91,31 @@ export interface ThesisStatePosition {
   realizedPnl?: number | null;
   realizedPnlPct?: number | null;
   closeReason?: string | null;
-  // Trade-as-Proposal — populated when this position has an
-  // Order(AWAITING_APPROVAL) attached. Drives the "Awaiting your approval"
-  // alert at the top of the sheet with inline [Approve][Reject] actions.
+  // Trade-as-Proposal — populated when this position has an outstanding
+  // order attached. Drives the sheet's trade block: the Review control while
+  // the decision is yours, "Executing" once you've approved it.
   // See docs/plans/TRADE_AS_PROPOSAL.md §6.
-  pendingProposal?: {
-    orderId: string;
-    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
-    quantity: number;
-    expiresAt: string | null;
-    rationale: string | null;
-  } | null;
+  pendingProposal?: ThesisPendingProposal | null;
+}
+
+/**
+ * The outstanding order the sheet's trade block describes. One shape, spoken
+ * by the route that builds it and the sheet that renders it, so the two
+ * can't drift apart on it — three hand-copied versions of this is how the
+ * sheet ended up the one surface that never learned about `executing`.
+ */
+export interface ThesisPendingProposal {
+  orderId: string;
+  intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
+  quantity: number;
+  expiresAt: string | null;
+  rationale: string | null;
+  /**
+   * Approved, sent to Alpaca, not filled yet (Order.status PENDING). The
+   * block keeps its place and reads EXECUTING_LABEL where the Review control
+   * was — there is nothing left to decide. Clears itself on the fill.
+   */
+  executing?: boolean;
 }
 
 export interface ThesisScoringDim {

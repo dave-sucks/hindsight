@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getLatestPricesWithMeta } from "@/lib/alpaca";
 import type { TradeStatus } from "@/lib/mock-data/trades";
+import { pickProposalOrder } from "@/lib/trade-status";
 import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import type { SourceCategory, QueryCategory, IntelligencePolicy } from "@/lib/intelligence/types";
@@ -143,9 +144,9 @@ export interface PositionWithThesis {
     confidenceScore: number;
     reasoningSummary: string;
   };
-  // Trade-as-Proposal — populated when an Order(AWAITING_APPROVAL) is
-  // linked to this Position. AnalystTradeRow passes this through to
-  // TradeRow which renders the inline [Approve][Reject] buttons.
+  // Trade-as-Proposal — populated when this Position has an outstanding
+  // order. AnalystTradeRow passes it through to TradeRow, which renders the
+  // Review control while the decision is yours and "Executing" once it's sent.
   // See docs/plans/TRADE_AS_PROPOSAL.md §6.
   pendingProposal?: {
     orderId: string;
@@ -154,6 +155,8 @@ export interface PositionWithThesis {
     quantity: number;
     /** ISO — when the proposal lapses; drives the Expired state on the Review control. */
     expiresAt?: string;
+    /** Approved, at Alpaca, not filled yet (Order.status PENDING). */
+    executing?: boolean;
   };
 }
 
@@ -372,13 +375,22 @@ export async function getAnalystDetail(
         outcome: true,
         openedAt: true,
         closedAt: true,
-        // Trade-as-Proposal — pull AWAITING_APPROVAL orders so the
-        // analyst-page sidebar TradeRow renders inline [Approve][Reject].
+        // Trade-as-Proposal — the order this row describes: awaiting your
+        // decision (AWAITING_APPROVAL) or already approved and waiting on the
+        // fill (PENDING). Both keep the row; only the first offers a Review
+        // control. Take a few and let pickProposalOrder rank them — take: 1
+        // would let a newly-sent order hide a decision you still owe.
         orders: {
-          where: { status: "AWAITING_APPROVAL" },
+          where: { status: { in: ["AWAITING_APPROVAL", "PENDING"] } },
           orderBy: { createdAt: "desc" },
-          take: 1,
-          select: { id: true, intent: true, expiresAt: true, quantity: true },
+          take: 5,
+          select: {
+            id: true,
+            status: true,
+            intent: true,
+            expiresAt: true,
+            quantity: true,
+          },
         },
         decisions: {
           take: 1,
@@ -541,7 +553,7 @@ export async function getAnalystDetail(
   const mappedTrades: PositionWithThesis[] = recentPositions.map((p) => {
     const th = p.decisions[0]?.thesis;
     const composite = th ? getThesisComposite(th) : null;
-    const awaiting = p.orders?.[0];
+    const proposal = pickProposalOrder(p.orders ?? []);
     return {
       id: p.id,
       symbol: p.symbol,
@@ -564,16 +576,17 @@ export async function getAnalystDetail(
             reasoningSummary: getThesisSnapshotText(th),
           }
         : { id: "", confidenceScore: 0, reasoningSummary: "" },
-      pendingProposal: awaiting
+      pendingProposal: proposal
         ? {
-            orderId: awaiting.id,
-            intent: (awaiting.intent ?? "OPEN") as
+            orderId: proposal.order.id,
+            intent: (proposal.order.intent ?? "OPEN") as
               | "OPEN"
               | "ADD"
               | "CLOSE"
               | "PARTIAL_CLOSE",
-            quantity: awaiting.quantity ?? p.quantity,
-            expiresAt: awaiting.expiresAt?.toISOString(),
+            quantity: proposal.order.quantity ?? p.quantity,
+            expiresAt: proposal.order.expiresAt?.toISOString(),
+            executing: proposal.executing,
           }
         : undefined,
     };

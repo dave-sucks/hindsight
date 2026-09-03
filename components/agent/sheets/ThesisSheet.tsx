@@ -45,6 +45,7 @@ import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineS
 import {
   ThesisTriggersSection,
   type ThesisDossier,
+  type ThesisPendingProposal,
   type QuoteResponse,
   type ResolvedEnvelope,
   type ThesisResearchSections,
@@ -62,6 +63,7 @@ import {
 import { TradeStatement, type TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { buildTradeSentence } from "@/lib/trade-statement";
+import { EXECUTING_LABEL, EXECUTING_TOOLTIP } from "@/lib/trade-status";
 import {
   getThesisStatusDisplay,
   type ThesisStatus,
@@ -358,13 +360,7 @@ function TradeBlock({
 }: {
   position: NonNullable<ThesisDossier["position"]>;
   pnl: QuoteResponse["positionPnl"] | null;
-  pendingProposal: {
-    orderId: string;
-    intent: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
-    quantity: number;
-    expiresAt: string | null;
-    rationale: string | null;
-  } | null;
+  pendingProposal: ThesisPendingProposal | null;
   direction: "LONG" | "SHORT" | null;
 }) {
   const pp = pendingProposal;
@@ -383,6 +379,33 @@ function TradeBlock({
   let note: string | null = null;
   let meta: string | null = null;
 
+  // The slot above the statement. While the decision is yours it holds the
+  // Review control; once you've approved, the order is at Alpaca and there is
+  // nothing left to decide, so the same slot reads a shimmering "Executing"
+  // until the fill lands. Leaving it empty was the bug — approving made the
+  // control vanish with nothing in its place, and the sheet looked like it
+  // had lost the trade (PRAX, 2026-08-31). Same expiry caveat: an order
+  // that's already been sent can't lapse, so its "Expires" meta goes too.
+  let reviewSlot: ReactNode = null;
+  let proposalMeta: string | null = null;
+  if (pp?.executing) {
+    reviewSlot = (
+      <Tooltip>
+        <TooltipTrigger
+          render={<span className="text-xs shimmer-text cursor-default" />}
+        >
+          {EXECUTING_LABEL}
+        </TooltipTrigger>
+        <TooltipContent className="text-xs">{EXECUTING_TOOLTIP}</TooltipContent>
+      </Tooltip>
+    );
+  } else if (pp) {
+    reviewSlot = (
+      <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" />
+    );
+    proposalMeta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
+  }
+
   if (pp && pp.intent === "OPEN") {
     // ── Pending buy (no position held yet) ──
     sentence = buildTradeSentence({
@@ -391,12 +414,10 @@ function TradeBlock({
       entry,
       buyVerb: direction === "SHORT" ? "Short" : "Buy",
     });
-    review = (
-      <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" />
-    );
+    review = reviewSlot;
     dotClass = "bg-amber-500";
     note = pp.rationale;
-    meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
+    meta = proposalMeta;
   } else if (pp) {
     // ── Held + pending sell / add / trim ──
     // Action leads, entry context trails: "Proposed: Sell at $45.41, bought
@@ -410,13 +431,11 @@ function TradeBlock({
         pp.intent === "ADD" ? "add" : pp.intent === "CLOSE" ? "close" : "trim",
       proposalQty: pp.quantity,
     });
-    review = (
-      <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" />
-    );
+    review = reviewSlot;
     dotClass = "bg-amber-500";
     if (pnl != null) gain = { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct };
     note = pp.rationale;
-    meta = pp.expiresAt ? `Expires ${fmtTradeDate(pp.expiresAt)}` : null;
+    meta = proposalMeta;
   } else if (position.closed) {
     // ── Closed ──
     sentence = buildTradeSentence({
