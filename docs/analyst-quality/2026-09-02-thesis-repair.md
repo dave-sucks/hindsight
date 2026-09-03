@@ -372,11 +372,22 @@ trigger evaluator, not the morning run, so HPE can still be bought Thursday); Ca
 sector fence (the empty tech lane is a sourcing problem, not a fence problem); the two
 disabled seats' rows.
 
-**Discovery.** The app's own discovery run was fired for all three seats at 8:02 PM ET
-(`app/discovery.run.manual`, up to 5 writer dispatches each); results land as new WATCHING
-theses and PASS records on the `/runs` page. The operator prompt packs are filed in
-`docs/discovery-prep/2026-09-02-{PEAD,CATALYST,COMPOUNDER}.md` — Grok and Perplexity prompts
-plus the Discovery paste for each seat, with tonight's skip-lists.
+**Discovery — blocked on one click of yours.** The app's discovery function was fired for
+all three seats (`app/discovery.run.manual`) at 8:02 PM and again at 8:34 PM after re-syncing
+the Inngest app (the sync came back "modified: true"). Neither firing invoked the function:
+zero runtime log lines, zero DISCOVERY runs, while the two thesis-writer events sent the same
+way ran within a minute. That is the same silence the Sunday cron has had since May 31. The
+one explanation that fits is that the `discovery-run` function is **paused in the Inngest
+dashboard**, which nothing outside the dashboard can change. **Unpause it (or tell me it is
+deliberate) and re-fire** — the command is one line:
+
+```bash
+npx tsx --tsconfig tsconfig.json scripts/trigger-discovery-manual.ts <agentConfigId>
+```
+
+Until then the operator packs are the discovery: `docs/discovery-prep/2026-09-02-{PEAD,
+CATALYST,COMPOUNDER}.md` — Grok and Perplexity prompts plus the Discovery paste for each seat,
+with tonight's skip-lists. Run them in Discovery mode on each analyst page.
 
 **The one Linear ticket:** [DAV-231](https://linear.app/davesucks/issue/DAV-231) — the six
 causes still open in code, as bullets, plus the local-credentials note.
