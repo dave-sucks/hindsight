@@ -364,7 +364,11 @@ decision by the orchestrator — you are writing the research and the plan.`;
     below it (mirror for SHORT). Urgency is conviction (STRONG +
     variant view), never a buy level parked on today's price.
   • Most theses need NO custom triggers — omit the field and the
-    horizon-default template (entry/stop/review) is applied for you.`;
+    horizon-default template (entry/stop/review) is applied for you.
+  • Setting an existing priced plan DOWN on a refresh (levels no longer
+    worth holding): omit entry/target/stop AND resend triggers with the
+    plan levels removed, keeping ≥1 REVIEW wake — the level columns are
+    recomputed from the ladder.`;
 
   // DAV-204 — state the floor as a PERCENT of live equity so "4% feels
   // right" can't author a plan place_trade will refuse.
@@ -488,8 +492,15 @@ every field; the judgment rules:
    • entry_price is WHERE YOU'D BUY IN — a price the stock has NOT
      reached: above the live price for a breakout you want confirmed,
      below it for a pullback you want to pay. It BECOMES the buy
-     trigger, so an entry at today's price is a condition already true
-     that fires forever. No level worth waiting for → PASS.
+     trigger. Never park it on today's price to satisfy the schema.
+   • NO LEVEL WORTH WAITING FOR YET (the entry window opens later, the
+     setup hasn't formed, you want to price it after the print) → omit
+     ALL THREE of entry/target/stop. The thesis stays LONG/SHORT and
+     WATCHING on its review wakes and is priced when the time comes.
+     Put the when ("price this after the January readout") in the
+     rationale; add a REVIEW trigger for it if a date or event names it.
+     PASS is for a view the research does not support — not for a view
+     that isn't ready to price.
    • core_belief: ONE falsifiable sentence = outcome + timeframe +
      mechanism ("NVDA prints ≥$50B DC revenue by Q4 FY26 as Blackwell
      replaces Hopper"). It is THE claim of record every other agent

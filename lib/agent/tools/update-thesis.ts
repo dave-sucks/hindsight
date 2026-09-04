@@ -57,7 +57,7 @@ import {
   type ThesisUpdateType,
 } from "@/lib/agent/thesis-updates";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
-import { validateThesisShape } from "@/lib/agent/thesis-shape";
+import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import {
@@ -935,14 +935,14 @@ export const updateThesis = defineTool({
       };
     }
 
-    // ── Relative-ordering gate ────────────────────────────────────────────
-    // If the patch touches target_price or stop_loss, validate that the
-    // resulting (entry, target, stop) tuple satisfies direction-relative
-    // ordering. Same shape rule that record_thesis uses; this catches the
-    // case where the agent edits one price but produces a bad pair (e.g.
-    // raises stop_loss above the existing entry_price on a LONG).
+    // ── Relative-ordering + R/R gate ──────────────────────────────────────
+    // If the patch touches ANY of the three levels, the resulting tuple
+    // must satisfy ordering and — on a plan we don't own yet — the 2:1
+    // floor (validateThesisShape, shared with record_thesis and the
+    // writer). It used to skip entry_price edits, which is how PLTR reached
+    // entry $190 / target $190 on 2026-08-27: only the entry moved.
     //
-    // We do NOT run this check when the patch leaves target/stop alone —
+    // We do NOT run this check when the patch leaves the levels alone —
     // a confidence-only update on a pre-existing broken row shouldn't be
     // blocked by this gate (the row's shape is rotten, but cleaning it up
     // is the job of either a future update or a SQL cleanup, not this
@@ -956,7 +956,9 @@ export const updateThesis = defineTool({
         ? args.direction
         : existing.direction;
     const shapeCheckNeeded =
-      (args.target_price !== undefined || args.stop_loss !== undefined) &&
+      (args.entry_price !== undefined ||
+        args.target_price !== undefined ||
+        args.stop_loss !== undefined) &&
       !isTerminalTransition &&
       (effectiveDirectionForShape === "LONG" || effectiveDirectionForShape === "SHORT");
     if (shapeCheckNeeded) {
@@ -1006,12 +1008,16 @@ export const updateThesis = defineTool({
           : existing.entryPrice != null
             ? Number(existing.entryPrice)
             : null;
+      // On a held name the entry is the fill (the patch below discards the
+      // arg), so validate against what will actually be stored.
+      const held = openPosition != null || existing.status === "HOLDING";
       const shapeCheck = validateThesisShape({
         direction: effectiveDirectionForShape as "LONG" | "SHORT",
         entryPrice:
-          args.entry_price !== undefined ? args.entry_price : effectiveEntry,
+          args.entry_price !== undefined && !held ? args.entry_price : effectiveEntry,
         targetPrice: effectiveTarget,
         stopLoss: effectiveStop,
+        minRiskReward: held ? undefined : MIN_RISK_REWARD,
       });
       if (!shapeCheck.ok) {
         return {

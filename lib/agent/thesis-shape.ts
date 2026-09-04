@@ -31,7 +31,15 @@
  *
  * Equal values fail — a target equal to entry has zero R/R and is
  * functionally the same bug as target < entry.
+ *
+ * The 2:1 reward/risk floor lives here too (2026-09-02). It ran only in
+ * the writer loop; record_thesis / update_thesis merely described it, so
+ * principal-chat plans skipped it (PLTR: 183 / 190 / 110 = 0.1:1; 8 of 26
+ * priced watch rows under the floor). Callers pass `minRiskReward` for a
+ * plan we don't own yet — on a held name the floor ratchets past the fill.
  */
+
+export const MIN_RISK_REWARD = 2;
 
 export interface ThesisShapeArgs {
   // P1-24 B4: `null` is the unresearched-seed sentinel (legacy 'PENDING'
@@ -40,11 +48,26 @@ export interface ThesisShapeArgs {
   entryPrice?: number | null;
   targetPrice?: number | null;
   stopLoss?: number | null;
+  /** When set and all three levels are present, reward/risk must be ≥ this. */
+  minRiskReward?: number;
 }
 
 export type ThesisShapeResult =
-  | { ok: true }
+  | { ok: true; riskReward?: number }
   | { ok: false; reason: string; note: string };
+
+/** Reward per unit of risk for a priced plan, or null when either side is ≤ 0. */
+export function riskReward(
+  direction: "LONG" | "SHORT",
+  entry: number,
+  target: number,
+  stop: number,
+): number | null {
+  const risk = direction === "LONG" ? entry - stop : stop - entry;
+  const reward = direction === "LONG" ? target - entry : entry - target;
+  if (risk <= 0 || reward <= 0) return null;
+  return reward / risk;
+}
 
 export function validateThesisShape(
   args: ThesisShapeArgs,
@@ -140,5 +163,22 @@ export function validateThesisShape(
     }
   }
 
-  return { ok: true };
+  if (entry == null || target == null || stop == null) return { ok: true };
+  const rr = riskReward(args.direction, entry, target, stop) ?? undefined;
+  if (rr != null && args.minRiskReward != null && rr < args.minRiskReward) {
+    const formula = isLong
+      ? "(target − entry) / (entry − stop)"
+      : "(entry − target) / (stop − entry)";
+    return {
+      ok: false,
+      reason: "risk-reward-below-floor",
+      note:
+        `R/R floor: ${rr.toFixed(2)}:1 is below the mandatory ${args.minRiskReward}:1 minimum ` +
+        `(${formula} with entry=$${entry}, target=$${target}, stop=$${stop}). ` +
+        `Tighten the stop to a REAL technical level, raise the target to a CITED level, ` +
+        `or — if no level makes the math work — set direction to PASS, or set the plan down ` +
+        `(resend triggers with the levels removed and keep a REVIEW wake). Never fabricate a level to clear the floor.`,
+    };
+  }
+  return { ok: true, riskReward: rr };
 }

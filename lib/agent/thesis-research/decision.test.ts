@@ -123,13 +123,68 @@ describe("validateThesisDecision — R/R floor and price ordering", () => {
     expect(v.errors.join(" ")).toContain("price ordering");
   });
 
-  it("rejects a directional decision with missing prices", () => {
+  it("rejects a half-priced plan (target + stop, no entry)", () => {
     const v = validateThesisDecision(
       { ...validLong, entry_price: undefined },
       mintOpts,
     );
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("entry_price");
+  });
+});
+
+describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHORT)", () => {
+  const unpriced: ThesisDecisionInput = {
+    ...validLong,
+    entry_price: undefined,
+    target_price: undefined,
+    stop_loss: undefined,
+    rationale: "Bullish into the January readout; entry to be priced after the data. Not a PASS.",
+  };
+
+  it("mint: accepted with no levels and no triggers (horizon defaults supply the wakes)", () => {
+    const v = validateThesisDecision(unpriced, mintOpts);
+    expect(v.ok).toBe(true);
+    expect(v.riskReward).toBeUndefined();
+  });
+
+  it("refresh on a priced row: omitting the levels AND the triggers is refused — the plan would silently stay", () => {
+    const v = validateThesisDecision(unpriced, {
+      mode: "refresh",
+      existingStatus: "WATCHING",
+      currentPrice: 101,
+      existingTargetPrice: 130,
+      existingHasTriggers: true,
+    });
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("resend `triggers`");
+  });
+
+  it("refresh on a priced row: the set-down ladder (no plan level, a REVIEW wake) is accepted", () => {
+    const v = validateThesisDecision(
+      {
+        ...unpriced,
+        triggers: [
+          { predicate: { kind: "TIME_ELAPSED", days: 120 }, action: "REVIEW", rationale: "Price it after the January readout." },
+        ],
+      },
+      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101, existingTargetPrice: 130, existingHasTriggers: true },
+    );
+    expect(v.ok).toBe(true);
+  });
+
+  it("an unpriced view still cannot smuggle a plan level in as a REVIEW rung without an ENTER", () => {
+    const v = validateThesisDecision(
+      {
+        ...unpriced,
+        triggers: [
+          { predicate: { kind: "PRICE_ABOVE", level: 140 }, action: "REVIEW", rationale: "target-ish" },
+        ],
+      },
+      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101, existingTargetPrice: 130, existingHasTriggers: true },
+    );
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("ENTER rung");
   });
 });
 

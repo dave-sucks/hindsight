@@ -19,6 +19,8 @@
 import { z } from "zod";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { subFloorTargetSize } from "@/lib/agent/position-sizing";
+import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
+import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
 
 const scoringDimSchema = z.object({
   score: z.number(),
@@ -36,9 +38,9 @@ export const thesisDecisionSchema = z.object({
   horizon: z
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
     .describe("Exit policy + trigger template. CATALYST requires catalyst_date; TRADE requires max_hold_days."),
-  entry_price: z.number().optional().describe("The price you'd BUY at — a level the stock has NOT reached: above the live price for a breakout you want confirmed, below it for a pullback you want to pay. Never the current price. Required for LONG/SHORT."),
-  target_price: z.number().optional().describe("Take-profit level. Required for LONG/SHORT."),
-  stop_loss: z.number().optional().describe("Where the thesis breaks. Required for LONG/SHORT."),
+  entry_price: z.number().optional().describe("The price you'd BUY at — a level the stock has NOT reached: above the live price for a breakout you want confirmed, below it for a pullback you want to pay. Never the current price. A priced plan needs all three of entry/target/stop; a directional view with NO level worth waiting for yet omits all three (the thesis stays LONG/SHORT + WATCHING on its review wakes, and is priced later)."),
+  target_price: z.number().optional().describe("Take-profit level. Required with entry_price."),
+  stop_loss: z.number().optional().describe("Where the thesis breaks. Required with entry_price."),
   catalyst_date: z.string().optional().describe("ISO date. Required when horizon=CATALYST."),
   max_hold_days: z.number().optional().describe("Required when horizon=TRADE (5-7 tight, 10-14 swing)."),
   core_belief: z
@@ -155,8 +157,6 @@ export interface DecisionValidationResult {
   riskReward?: number;
 }
 
-const MIN_RR = 2.0;
-
 /**
  * Pure Layer-1 pre-validation of a submit_thesis call. Mirrors the gates
  * record_thesis / update_thesis enforce at persist time so the model gets
@@ -172,6 +172,7 @@ export function validateThesisDecision(
   const errors: string[] = [];
   const d = input;
   const directional = d.direction === "LONG" || d.direction === "SHORT";
+  const held = opts.mode === "refresh" && opts.existingStatus === "HOLDING";
 
   if (!d.rationale || d.rationale.trim().length < 20) {
     errors.push("rationale: required, ≥20 chars — state the decision in your own voice.");
@@ -191,34 +192,50 @@ export function validateThesisDecision(
 
   let riskReward: number | undefined;
 
-  if (directional) {
+  const { entry_price: entry, target_price: target, stop_loss: stop } = d;
+  // A view is either priced (all three levels) or not priced at all. The
+  // unpriced shape is the set-down state the persist gates already admit
+  // (no plan level, ≥1 REVIEW wake — DAV-224): "bullish, entry window
+  // opens in January" used to be unwritable, so BMRN came back with
+  // today's quote as its buy level.
+  const priced = entry != null || target != null || stop != null;
+
+  if (directional && priced) {
     // ── Prices + R/R floor ────────────────────────────────────────────
-    const { entry_price: entry, target_price: target, stop_loss: stop } = d;
-    if (entry == null || entry <= 0) errors.push("entry_price: required and positive for LONG/SHORT.");
-    if (target == null || target <= 0) errors.push("target_price: required and positive for LONG/SHORT.");
-    if (stop == null || stop <= 0) errors.push("stop_loss: required and positive for LONG/SHORT.");
+    const unpricedHint = " — or omit ALL of entry/target/stop to hold the view unpriced.";
+    if (entry == null || entry <= 0) errors.push(`entry_price: required and positive on a priced plan${unpricedHint}`);
+    if (target == null || target <= 0) errors.push(`target_price: required and positive on a priced plan${unpricedHint}`);
+    if (stop == null || stop <= 0) errors.push(`stop_loss: required and positive on a priced plan${unpricedHint}`);
 
     if (entry != null && target != null && stop != null && entry > 0 && target > 0 && stop > 0) {
-      if (d.direction === "LONG" && !(stop < entry && entry < target)) {
-        errors.push(`price ordering: LONG requires stop_loss < entry_price < target_price (got stop=${stop}, entry=${entry}, target=${target}).`);
-      }
-      if (d.direction === "SHORT" && !(target < entry && entry < stop)) {
-        errors.push(`price ordering: SHORT requires target_price < entry_price < stop_loss (got target=${target}, entry=${entry}, stop=${stop}).`);
-      }
-      const risk = d.direction === "LONG" ? entry - stop : stop - entry;
-      const reward = d.direction === "LONG" ? target - entry : entry - target;
-      if (risk > 0 && reward > 0) {
-        riskReward = reward / risk;
-        if (riskReward < MIN_RR) {
-          errors.push(
-            `R/R floor: ${riskReward.toFixed(2)}:1 is below the mandatory ${MIN_RR}:1 minimum. ` +
-              "Either tighten the stop to a REAL technical level, raise the target to a CITED level, " +
-              "or change direction to PASS with the rationale naming what entry would fix the math.",
-          );
-        }
+      // The one plan rule (ordering + 2:1 floor) — the same helper the
+      // persist gates run, so a repair here is a pass there.
+      const shape = validateThesisShape({
+        direction: d.direction,
+        entryPrice: entry,
+        targetPrice: target,
+        stopLoss: stop,
+        minRiskReward: held ? undefined : MIN_RISK_REWARD,
+      });
+      if (!shape.ok) {
+        errors.push(
+          shape.reason === "risk-reward-below-floor"
+            ? shape.note
+            : `price ordering: ${shape.note}`,
+        );
+      } else {
+        riskReward = shape.riskReward;
       }
     }
+  }
 
+  if (directional && !priced && opts.mode === "refresh" && opts.existingTargetPrice != null && d.triggers === undefined) {
+    errors.push(
+      "levels: you omitted entry/target/stop but the stored plan is priced, and omitting the fields leaves it as it is. To set the plan down, resend `triggers` with the plan levels removed and ≥1 REVIEW-action wake (the persist step recomputes the level columns from the ladder). To keep the plan, send all three levels.",
+    );
+  }
+
+  if (directional) {
     // ── Belief fields ─────────────────────────────────────────────────
     if (!d.core_belief || d.core_belief.trim().length < 10) {
       errors.push("core_belief: required for LONG/SHORT — ONE falsifiable sentence (outcome + timeframe + mechanism).");
@@ -360,7 +377,6 @@ export function validateThesisDecision(
       // Action-set sanity by position state — mirrors the Layer-1 guards
       // record/update enforce, surfaced here so the repair is one step.
       const actions = new Set(parsedTriggers.map((t) => t.action));
-      const held = opts.mode === "refresh" && opts.existingStatus === "HOLDING";
       if (held) {
         if (actions.has("ENTER")) {
           errors.push("triggers: this thesis is HOLDING (position open) — ENTER triggers are forbidden. Use EXIT/REVIEW/TRIM/ADD/MOVE_STOP.");
@@ -386,9 +402,15 @@ export function validateThesisDecision(
             "triggers: a HOLDING ladder must carry at least one EXIT rung (the automated stop-loss path) — the persist gate rejects ladders without one.",
           );
         }
-        if (!held && !actions.has("ENTER")) {
+        // The set-down shape (no plan level, ≥1 REVIEW wake) is legal on an
+        // unpriced view — the same state the DEMOTE fire leaves behind.
+        const setDown =
+          !priced &&
+          actions.has("REVIEW") &&
+          !parsedTriggers.some((t) => isPlanLevel(t, d.direction));
+        if (!held && !actions.has("ENTER") && !setDown) {
           errors.push(
-            "triggers: an unheld ladder must carry an ENTER rung — PRICE_ABOVE(entry) when the buy level is above the live price, PRICE_BELOW(entry) when it is below (mirror for SHORT). Add the ENTER rung or omit the triggers field and it is derived for you.",
+            "triggers: an unheld ladder must carry an ENTER rung — PRICE_ABOVE(entry) when the buy level is above the live price, PRICE_BELOW(entry) when it is below (mirror for SHORT). Add the ENTER rung or omit the triggers field and it is derived for you. (An UNPRICED view instead carries no plan level and ≥1 REVIEW wake.)",
           );
         }
       }

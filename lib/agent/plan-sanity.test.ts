@@ -217,3 +217,30 @@ describe("computePlanSanity — scope guards", () => {
     expect(flags).toHaveLength(3);
   });
 });
+
+describe("computePlanSanity — PLAN_BELOW_RR_FLOOR (the floor, read back)", () => {
+  it("flags PLTR as stored: 183 / 190 / 110 pays 0.1:1", () => {
+    const flags = computePlanSanity({
+      ...base,
+      entryPrice: 183,
+      targetPrice: 190,
+      stopLoss: 110,
+      currentPrice: 167,
+    });
+    const rr = flags.find((f) => f.kind === "PLAN_BELOW_RR_FLOOR");
+    expect(rr).toBeDefined();
+    expect(rr?.text).toContain("0.1:1");
+    expect(rr?.text).toContain("$183.00");
+  });
+
+  it("stays quiet on a plan that clears 2:1", () => {
+    const flags = computePlanSanity({
+      ...base,
+      entryPrice: 100,
+      targetPrice: 130,
+      stopLoss: 90,
+      currentPrice: 95,
+    });
+    expect(flags.some((f) => f.kind === "PLAN_BELOW_RR_FLOOR")).toBe(false);
+  });
+});

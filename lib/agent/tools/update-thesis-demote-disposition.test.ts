@@ -198,11 +198,14 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     // Re-anchoring a buy level is a levels decision. It says nothing about
     // how often a human-equivalent analyst wants to re-read the name.
     mockThesisFindUnique.mockResolvedValue(makeRow());
+    // 180 against the row's target 215 / stop 172: a legal plan. (It was
+    // 165 — under the stop — which only ever passed because the shape gate
+    // skipped entry-only edits; it runs on every level edit now.)
     const result = await run({
       thesis_id: "thesis_demote_1",
       rationale: "Re-anchored the buy level; still not reviewing weekly.",
       triggers: wakeTriggers,
-      entry_price: 165,
+      entry_price: 180,
     });
     expect(result.data?.error).toBeUndefined();
     const triggers = (patchedData().triggers ?? []) as Trigger[];

@@ -27,7 +27,7 @@ import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
 import { randomUUID } from "node:crypto";
-import { validateThesisShape } from "@/lib/agent/thesis-shape";
+import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 
@@ -95,11 +95,12 @@ const thesisFields = z.object({
     "WHERE YOU'D BUY IN — a price the stock has NOT reached, never the current quote. " +
     "The ENTER trigger reads the SIDE from where you put this level relative to the tape, so say what you mean: " +
     "set it BELOW the current price for a pullback you want to buy (fires when price comes back down to it), or ABOVE the current price for a breakout you want confirmed first (fires when price clears it). " +
-    "A level AT the current quote is a buy condition that is already true — it fires the day you write it and re-fires forever. If you want to buy now, call place_trade; if no level is worth waiting for, the thesis is a PASS. " +
-    "REQUIRED for LONG/SHORT. Also include for PASS to enable shadow tracking."
+    "A level AT the current quote is a buy condition already true. If you want to buy now, call place_trade. " +
+    "A priced plan needs all three of entry/target/stop (2:1 floor). If there is NO level worth waiting for YET (entry window opens later, setup not formed), omit all three — the thesis stays LONG/SHORT + WATCHING on its review wakes and is priced later. PASS is for a view the research doesn't support. " +
+    "Also include for PASS to enable shadow tracking."
   ),
-  target_price: z.number().optional().describe("Price target. REQUIRED for LONG/SHORT."),
-  stop_loss: z.number().optional().describe("Stop-loss price. REQUIRED for LONG/SHORT."),
+  target_price: z.number().optional().describe("Price target. Required with entry_price."),
+  stop_loss: z.number().optional().describe("Stop-loss price. Required with entry_price."),
   // `hold_duration` arg removed 2026-05-18 (THESIS_CLEANUP PR-4). The
   // value is derived from horizon at render time via
   // holdDurationFromHorizon() — agents shouldn't have to think about it,
@@ -705,11 +706,13 @@ export const recordThesis = defineTool({
       // broken WATCHING rows from sitting in the watchlist for weeks
       // (2026-05-07 audit found 3 such rows on Earnings Drift / Secular
       // Theme dating back to April 23-27).
+      // A mint is always a plan we don't own yet, so the 2:1 floor applies.
       const shapeCheck = validateThesisShape({
         direction: args.direction,
         entryPrice: args.entry_price ?? null,
         targetPrice: args.target_price ?? null,
         stopLoss: args.stop_loss ?? null,
+        minRiskReward: MIN_RISK_REWARD,
       });
       if (!shapeCheck.ok) {
         console.warn(
@@ -1260,11 +1263,11 @@ export const recordThesis = defineTool({
       // ── Cadence opt-in stamp (W1, DAV-216) ──────────────────────────
       // WATCHING theses no longer inherit the account's review cadence
       // (resolveLadder gates it — a watch item is reviewed iff it carries
-      // its own clock). Every mint through THIS path is a priced plan
-      // (the unpriced soft-watch path is W2), and a plan must always be
-      // watched — so stamp the horizon's cadence unless the agent
-      // supplied one. Without this, every new discovery dispatch would be
-      // born silently unreviewed the moment the resolver gate landed.
+      // its own clock). Every directional mint through THIS path — priced,
+      // or an unpriced view waiting to be priced — must be watched, so
+      // stamp the horizon's cadence unless the agent supplied one. (The
+      // soft watch, direction PASS, is W2.) Without this, every new
+      // discovery dispatch would be born silently unreviewed.
       if (
         args.direction !== "PASS" &&
         !mergedTriggers.some((t) => t.predicate.kind === "REVIEW_CADENCE")
