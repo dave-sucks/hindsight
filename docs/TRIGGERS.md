@@ -207,6 +207,24 @@ predicate matches
                                                   approvals off → execute
 ```
 
+**Two fire semantics, keyed off the action (DAV-229, 2026-09-02).** A
+protective or review rung is a **standing order** (principal ruling
+2026-08-16): it fires every day its condition is true, and a declined or
+expired proposal means "did nothing today", so it asks again tomorrow. An
+**`ENTER` rung fires on the crossing**: the condition is true now and was
+false at the prior session's close (`latestQuote.prevClose`, Finnhub `pc`).
+"Buy above $35" means buy when the price gets there — not "buy now and ask
+every day it is higher", which is what the standing-order reading made of a
+level the price was already past (TOST $35.15 against a $35.16 tape; PLTR,
+16 buy fires in 30 days). The same predicate evaluated at the prior close
+decides the crossing, so composites and `VS_SMA` get it for free; entries
+that don't read the price (time, daily move) can't cross and keep firing on
+match. A plan the price has left behind is `planSanity`'s job to surface to
+the daily run, not the cron's job to propose. Read-side snapshots (the daily
+run's `TRIGGER_MATCHING_NOW`, the resolver's `ENTER_FIRED`) carry no prior
+close and keep level semantics — "is the condition true now" is the right
+question for a snapshot.
+
 **REVIEW-batching:** a `REVIEW` fire means "re-evaluate," not "act now" — it
 converts to a trade rarely, so (except BREAKING-urgency signals) it writes the
 `TRIGGER_FIRED` audit row and defers to the next daily run instead of spawning a

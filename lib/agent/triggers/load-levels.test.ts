@@ -104,16 +104,15 @@ describe("parseTriggerState", () => {
     ).toEqual({ a: { firedAt: "2026-08-01T00:00:00.000Z" } });
   });
 
-  it("reads the object shape, keeping firedAt and side", () => {
+  it("reads the object shape, keeping firedAt and dropping anything else", () => {
     expect(
       parseTriggerState({
         a: { firedAt: "2026-08-01T00:00:00.000Z", side: "MATCH" },
         b: { side: "NO_MATCH" },
-        c: { side: "SIDEWAYS" },
+        c: { firedAt: 7 },
       }),
     ).toEqual({
-      a: { firedAt: "2026-08-01T00:00:00.000Z", side: "MATCH" },
-      b: { side: "NO_MATCH" },
+      a: { firedAt: "2026-08-01T00:00:00.000Z" },
     });
   });
 

@@ -50,8 +50,17 @@ export interface EvaluationContext {
   /** Present on the signal-driven path. Undefined on cron / daily-inline. */
   signal?: EvaluationContextSignal;
 
-  /** Latest quote — present on cron and daily-inline paths. */
-  latestQuote?: { price: number; changePct: number };
+  /**
+   * Latest quote — present on cron and daily-inline paths.
+   *
+   * `prevClose` is the prior session's close (Finnhub `pc`). It is what
+   * lets an ENTER trigger fire on the CROSSING of its level rather than
+   * every tick the price sits past it (DAV-229). The 5-minute cron always
+   * has it; the read-side snapshots (daily run, resolver, needs-action)
+   * don't carry it and so keep level semantics — they answer "is the
+   * condition true now", which is the right question for a snapshot.
+   */
+  latestQuote?: { price: number; changePct: number; prevClose?: number };
 
   /** SMA precomputed by the caller; we don't fetch candles here. */
   sma?: { 50?: number; 200?: number };
@@ -270,22 +279,38 @@ export function evaluateTrigger(
 export function shouldFire(
   trigger: Trigger,
   ctx: EvaluationContext,
-): { fires: boolean; reason: "match" | "no-match" | "cooldown" } {
+): { fires: boolean; reason: "match" | "no-match" | "no-crossing" | "cooldown" } {
   const matched = evaluateTrigger(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };
 
-  // NOTE — a trigger is a STANDING ORDER (principal ruling 2026-08-16).
-  // It fires every day its condition holds; an expired or declined
-  // proposal means "did nothing", so it fires again tomorrow. Cooldown is
-  // the only rate limit, deliberately.
+  // Two fire semantics, keyed off the action (DAV-229, 2026-09-02):
   //
-  // An edge-triggered variant was built here on 2026-08-13 (fire once on
-  // the crossing, re-arm only after price crossed back) to kill PLTR's 27
-  // fires in 14 days. The ruling reverses it: latching turns a declined
-  // standing order into a silent one, which is the failure mode, not the
-  // fix. Noise belongs to cooldown and to the resolution obligation on a
-  // fired rung (a decline must move the level or stop the watch) — never
-  // to suppressing the condition. Don't reintroduce it.
+  //   Every rung but ENTER is a STANDING ORDER (principal ruling
+  //   2026-08-16): it fires every day its condition holds; a declined
+  //   proposal means "did nothing today", so it asks again tomorrow.
+  //   Cooldown is the only rate limit. Never latch a protective level —
+  //   that turns a declined sell into a silent one.
+  //
+  //   ENTER fires on the CROSSING: true now, false at the prior close.
+  //   "Buy above $35" means buy when the price gets there — under the
+  //   standing-order reading a level already past (TOST $35.15 against a
+  //   $35.16 tape; PLTR, 16 fires in 30 days) was a daily proposal the
+  //   analyst then declined. Evaluating the same predicate at the prior
+  //   close gives composites and VS_SMA the crossing for free; entries
+  //   that don't read the price can't cross and keep firing on match. No
+  //   prevClose ⇒ level semantics (the read-side snapshots).
+  if (
+    trigger.action === "ENTER" &&
+    ctx.latestQuote?.prevClose != null &&
+    ctx.latestQuote.prevClose > 0 &&
+    readsPrice(trigger.predicate)
+  ) {
+    const atPrevClose = evaluateTrigger(trigger.predicate, {
+      ...ctx,
+      latestQuote: { ...ctx.latestQuote, price: ctx.latestQuote.prevClose },
+    });
+    if (atPrevClose) return { fires: false, reason: "no-crossing" };
+  }
 
   // Read-path defense — see (2) in the docstring above.
   const isInvalidZero =
@@ -307,6 +332,21 @@ export function shouldFire(
 }
 
 // ── Internals ─────────────────────────────────────────────────────────
+
+/** Does this predicate compare the quote's price to a level? */
+function readsPrice(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+    case "PRICE_BELOW":
+    case "VS_SMA":
+      return true;
+    case "AND":
+    case "OR":
+      return p.predicates.some(readsPrice);
+    default:
+      return false;
+  }
+}
 
 const URGENCY_RANK: Record<Urgency, number> = {
   LOW: 0,

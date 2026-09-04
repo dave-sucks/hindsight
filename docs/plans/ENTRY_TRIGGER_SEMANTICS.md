@@ -201,12 +201,15 @@ June.
 
 ## Suggested sequencing
 
-1. ~~**Fix 2** first~~ — **REVERSED 2026-08-16.** Built as edge-triggering (fire once on the
-   crossing, re-arm on the way back) and reverted the same week: the principal ruling is that a
-   trigger is a standing order that fires **every day its condition is true**, because a decline
-   means "did nothing." Latching turns a declined standing order into a silent one. Noise belongs
-   to cooldown and to the resolution obligation on a fired rung (P1-40), never to suppressing the
-   condition.
+1. ~~**Fix 2** first~~ — **REVERSED 2026-08-16, then narrowed 2026-09-02 (DAV-229).** Built as
+   edge-triggering (fire once on the crossing, re-arm on the way back) and reverted the same week:
+   the principal ruling is that a trigger is a standing order that fires **every day its condition
+   is true**, because a decline means "did nothing." Latching turns a declined standing order into
+   a silent one. That ruling stands for every protective and review rung. For **`ENTER` only**, the
+   principal reversed it on 2026-09-02: a buy level fires on the **crossing** (true now, false at
+   the prior close), because "buy above $X" with the price already past $X had become a daily
+   proposal the analyst declined every morning. Shipped in `shouldFire` — no stored arming state,
+   the prior close comes off the quote.
 2. ~~**Fix 1**~~ — see the superseded note above; it becomes a rung, not a mode.
 3. **Fix 3** — needs prompt work plus a gate; scope it separately.
 
