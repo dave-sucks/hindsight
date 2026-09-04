@@ -320,19 +320,6 @@ const thesisFields = z.object({
         "If you can't articulate a variant view for a STRONG/HIGH call, your tier is MEDIUM at best — don't claim STRONG/HIGH without one. " +
         "Example: 'Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3 program is being underweighted by 2 quarters of run-rate, putting Q4 FY2027 revenue 8% above consensus.'",
     ),
-  scaling_plan: z
-    .array(
-      z.object({
-        pct: z.number().min(0).max(100),
-        atPrice: z.number().optional(),
-        atSignal: z.string().optional(),
-        rationale: z.string(),
-      }),
-    )
-    .optional()
-    .describe(
-      "Optional ladder for scaling in/out. e.g. [{pct: 33, rationale: 'starter'}, {pct: 33, atPrice: 175, rationale: 'add on pullback'}, {pct: 34, atSignal: 'earnings beat', rationale: 'full position post-print'}].",
-    ),
   triggers: triggersArraySchema.optional(),
   catalyst_date: z
     .string()
@@ -1408,9 +1395,6 @@ export const recordThesis = defineTool({
         conviction: args.conviction ?? null,
         convictionRationale: args.conviction_rationale ?? null,
         variantView: args.variant_view ?? null,
-        scalingPlan: args.scaling_plan
-          ? (args.scaling_plan as object)
-          : undefined,
         // mergedTriggers built and validated above the coreData literal.
         // Centralized so the ENTER-trigger guard can inspect the final
         // array (defaults + agent + cooldown) BEFORE the row hits the
@@ -1836,7 +1820,6 @@ export const recordThesis = defineTool({
             keyAssumptions: _assumptions,
             invalidationConds: _invalid,
             targetSizePct: _size,
-            scalingPlan: _scaling,
             triggers: _triggers,
             catalystDate: _cdate,
             // THESIS_RESEARCH_V2 Phase 1 + PR-9 flat schema — strip every
@@ -1862,7 +1845,6 @@ export const recordThesis = defineTool({
           void _assumptions;
           void _invalid;
           void _size;
-          void _scaling;
           void _triggers;
           void _cdate;
           void _rdata;

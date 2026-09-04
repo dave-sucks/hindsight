@@ -105,7 +105,6 @@ function makeRow(overrides: Record<string, unknown> = {}) {
       },
     ],
     triggerState: {},
-    scalingPlan: null,
     ...overrides,
   };
 }

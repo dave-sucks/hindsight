@@ -271,17 +271,6 @@ const updateSchema = z.object({
     .describe(
       "Replace the entire trigger set. Pass the full array — we do not merge with existing triggers. To remove all triggers, pass [].",
     ),
-  scaling_plan: z
-    .array(
-      z.object({
-        pct: z.number().min(0).max(100),
-        atPrice: z.number().optional(),
-        atSignal: z.string().optional(),
-        rationale: z.string(),
-      }),
-    )
-    .nullable()
-    .optional(),
 
   // ── V2 narrative sections (PR-9 flat schema) ──────────────────────────
   // Same 9 sections record_thesis accepts. Patching one section leaves the
@@ -394,7 +383,6 @@ type UpdatePatch = Partial<{
   triggers: object;
   /** Fire state for inherited rungs — see the triggers patch block. */
   triggerState: object;
-  scalingPlan: object | null;
   status: string;
   retiredReason: string;
   invalidatedAt: Date;
@@ -484,7 +472,6 @@ export const updateThesis = defineTool({
         // Per-thesis fire state for inherited rungs — read so a rung
         // dropped as redundant can hand its cooldown stamp over.
         triggerState: true,
-        scalingPlan: true,
       },
     });
 
@@ -1381,9 +1368,6 @@ export const updateThesis = defineTool({
         patch.entryPrice = applied.columns.entryPrice;
       }
     }
-    if (args.scaling_plan !== undefined)
-      patch.scalingPlan =
-        args.scaling_plan === null ? null : (args.scaling_plan as object);
 
     // Status transitions get extra paperwork.
     let updateType: ThesisUpdateType = "UPDATED";
@@ -1713,7 +1697,6 @@ export const updateThesis = defineTool({
       "horizon",
       "catalystDate",
       "triggers",
-      "scalingPlan",
       // Lifecycle
       "status",
       "retiredReason",

@@ -99,7 +99,6 @@ function makeExistingRow(overrides: Record<string, unknown> = {}) {
     maxHoldDays: null,
     lastReviewedAt: null,
     triggers: [{ kind: "PRICE_BELOW", action: "REVIEW", predicate: { kind: "PRICE_BELOW", level: 90 } }],
-    scalingPlan: null,
     ...overrides,
   };
 }

@@ -97,7 +97,6 @@ const promotedThesisRow = {
       action: "REVIEW",
     },
   ],
-  scalingPlan: null,
 };
 
 describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows", () => {
