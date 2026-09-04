@@ -41,16 +41,13 @@ then again tomorrow and the day after, as long as the stock stays above the line
 launches an agent run that costs money and repeats the same "no." HPE fired 8 times in two
 weeks. The new pullback levels do the same in reverse: once the stock is under $233, "buy
 below $233" fires every day it stays there. What should exist: fire once, at the moment the
-price moves from one side of the line to the other. *Ticket: DAV-229. Path: buy triggers fire
-on the crossing only; the evaluator already records when each trigger last fired. Leave sell
-floors as they are — a floor should keep nagging until acted on.*
+price moves from one side of the line to the other. *Fixed 2026-09-04 by #590 (buy triggers fire on the crossing only). Sell floors keep nagging until acted on, as they should.*
 
 **3. Risk bigger than reward on a watch plan.** A plan is three numbers: buy at X, sell at Y,
 bail at Z. If Y−X is smaller than X−Z you are risking more than you can make; the rule is at
 least 2:1. Only the expensive research agent checks the arithmetic. The daily run and the
 chat write levels through two other tools that describe the rule and never compute it. Eight
-of 26 watch names failed it, one at 0.1:1. *Ticket: DAV-231. Path: those two tools compute
-the ratio, print it in their result, and refuse a new watch plan under 2:1.*
+of 26 watch names failed it, one at 0.1:1. *Fixed 2026-09-04 by #591 (the 2:1 floor now runs on every write path).*
 
 **4. Two buy triggers on one stock, and sentences that lie.** When a run re-priced GD it added
 a new buy trigger and left the old one, so GD carried two contradictory buy instructions.
@@ -85,8 +82,7 @@ already pay for — covers 58 of the 99, no news pipeline needed.*
 
 **9. The writer cannot hold a view without a buy price.** BMRN's research said "entry window
 opens January 2027." The writer has no way to say "I like it, no entry yet," so it invented a
-buy price for today. *Ticket: DAV-230. Path: a LONG thesis may exist with no buy level and a
-wake date. Done by hand for BMRN tonight.*
+buy price for today. *Fixed 2026-09-04 by #592 (a LONG thesis may carry no buy level and a wake date). BMRN was done by hand the night before.*
 
 **10. Sold stocks vanish.** When a position is sold the name drops out of everything the
 analysts read and nothing looks at it again. Five winners sold by the automatic 8% trail then
