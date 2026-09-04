@@ -25,26 +25,90 @@ writer checks.
 
 ---
 
-## The five causes behind the twenty problems (so you only read the explanation once)
+## What each problem means, in plain terms — with the ticket and the path forward
 
-| # | Cause | Fixed for future stocks? | Names |
-|---|---|---|---|
-| 1 | **Buy level set at the price on the day it was written**, so it was true immediately and re-fired every day. | **Yes.** #589 gives the writer real price levels (20-day, 50-day, 52-week) and #586 flags any buy level within 0.5% of the current price so the next run must fix it. No hard block. | ISRG, TOST (both already re-fired and were talked out of it) |
-| 2 | **Buy triggers fire while true, not when crossed.** "Buy above $54.50" means "buy every day the stock is above $54.50" until someone removes it. Same in reverse for the new pullback levels. | **No.** Open as DAV-229. | HPE (8 fires), ABT (6), NOW (7), BMRN, CRM, MU's old lines |
-| 3 | **Risk bigger than reward on a watch plan.** The writer enforces 2:1; the two tools the daily run and chat use to write levels (`record_thesis`, `update_thesis`) only describe the rule, they do not check it. | **No.** Nothing filed until tonight — in the one Linear ticket at the bottom. | ABT, BMRN, CSCO, IONS, MIRM, MSFT, NOW, PLTR |
-| 4 | **Two buy triggers on one stock**, or a trigger's sentence disagreeing with its number after a level was moved. Nothing removes the old trigger or rewrites the old sentence. | **No.** Ticket. | GD, VST (two buys); MU, SYK, GD (text ≠ number) |
-| 5 | **A "plan is wrong" floor placed within 1% of the price on a stock we don't own**, so a normal red day takes the plan down. The drift alarm only checks the buy level. | **No.** Ticket. | HWM (twice in two days), SYK (0.7% away tonight) |
+**1. Buy level written at the day's price.** The research agent was handed one dollar number,
+today's price, and told to name an entry. So it wrote "buy above $401" with the stock at $401.
+That condition is true the moment it's written: the system asked to buy immediately, and the
+agent said "no, that's not the setup I meant." Every day. *Ticket: none needed. Fixed by #589
+(the writer now sees the 20-day, 50-day and 52-week levels) and #586 (a level within 0.5% of
+the price is flagged). ISRG and TOST, the two leftovers, were re-priced tonight.*
 
-Two more that are already handled and only need the old rows cleaned up:
+**2. Buy triggers fire while true, not when crossed.** Every five minutes the system asks a
+yes/no question: "is the price above $54.50 right now?" It has no memory of where the price
+was an hour ago. If the stock is already at $55 when the trigger is written, it fires at once,
+then again tomorrow and the day after, as long as the stock stays above the line. Each fire
+launches an agent run that costs money and repeats the same "no." HPE fired 8 times in two
+weeks. The new pullback levels do the same in reverse: once the stock is under $233, "buy
+below $233" fires every day it stays there. What should exist: fire once, at the moment the
+price moves from one side of the line to the other. *Ticket: DAV-229. Path: buy triggers fire
+on the crossing only; the evaluator already records when each trigger last fired. Leave sell
+floors as they are — a floor should keep nagging until acted on.*
 
-- **Research too old for a buy decision** (ETN, June 15). Fixed by #580 (35-day cap for
-  watch names) and #581 (stale names land in the run's work list; ETN did this morning).
-- **A quiet watch whose only wake can never fire** (CRWD). Fixed by #579 and #583; CRWD
-  was created two days before those merged.
+**3. Risk bigger than reward on a watch plan.** A plan is three numbers: buy at X, sell at Y,
+bail at Z. If Y−X is smaller than X−Z you are risking more than you can make; the rule is at
+least 2:1. Only the expensive research agent checks the arithmetic. The daily run and the
+chat write levels through two other tools that describe the rule and never compute it. Eight
+of 26 watch names failed it, one at 0.1:1. *Ticket: DAV-231. Path: those two tools compute
+the ratio, print it in their result, and refuse a new watch plan under 2:1.*
 
-Known and deliberately left alone: 99 of the book's ~300 triggers are earnings/news/filing
-triggers that cannot fire while signal routing is paused (since May 31). New theses no
-longer get them (#579); the existing ones stay until the Signals design session (DAV-196).
+**4. Two buy triggers on one stock, and sentences that lie.** When a run re-priced GD it added
+a new buy trigger and left the old one, so GD carried two contradictory buy instructions.
+Separately, when a level's number is changed the sentence attached to it is not: MU's exit
+was raised from $814 to $935 and the sentence still said "exit below $814." The agent reads
+the sentence when it decides. *Ticket: DAV-231. Path: writing a new buy level always replaces
+the old one; when a number moves, the sentence is rewritten (#586 does this for buy levels;
+extend to sells and reviews).*
+
+**5. A "plan is wrong" line placed too close to the price.** Every watch plan has a floor:
+below $X the idea is wrong, erase the plan. The morning run put HWM's floor 0.4% under the
+price; a normal red day broke it 90 minutes later and the plan was wiped — the second time in
+two days. The check that flags a buy level too close or too far from the price does not look
+at the floor. SYK's floor was 0.7% away tonight. *Ticket: DAV-231. Path: the same flag for
+the floor — it must sit under a real low and a real distance from the price.*
+
+**6. Research too old for a buy decision.** ETN was being judged on research from June. A
+stock you might buy tomorrow cannot run on last quarter's work. *Ticket: none. Fixed by #580
+(35-day limit for watch names) and #581 (stale names land in the run's work list). The run
+may still answer "old work stands" instead of refreshing; it did that with ETN this morning,
+so ETN was sent to the writer by hand tonight.*
+
+**7. A quiet watch whose only wake can never fire.** CRWD was parked with one wake, "next
+earnings beat," which needs the news/earnings feed that has been off since May 31 — invisible
+forever. *Ticket: none. Fixed by #579 and #583 for anything new; CRWD fixed by hand.*
+
+**8. A third of all triggers cannot fire.** 99 of ~300 triggers say "review on earnings beat /
+miss / guidance cut / filing / news." None can fire while the signal feed is paused. Harmless,
+but the plans look more protected than they are: MU's "exit on a guidance cut" will never
+fire. *Ticket: DAV-196. Path: earnings beat and miss computed from the earnings calendar we
+already pay for — covers 58 of the 99, no news pipeline needed.*
+
+**9. The writer cannot hold a view without a buy price.** BMRN's research said "entry window
+opens January 2027." The writer has no way to say "I like it, no entry yet," so it invented a
+buy price for today. *Ticket: DAV-230. Path: a LONG thesis may exist with no buy level and a
+wake date. Done by hand for BMRN tonight.*
+
+**10. Sold stocks vanish.** When a position is sold the name drops out of everything the
+analysts read and nothing looks at it again. Five winners sold by the automatic 8% trail then
+rose another 15–25% (SNOW, DELL, ZETA, MRK, VRDN) with nobody watching. *Ticket: DAV-228
+carries the gap. Path: a standing daily-run duty — everything sold in the last 60 days gets a
+re-enter / watch / drop decision.*
+
+**11. The automatic 8% trailing sell cuts winners.** Every holding sells if it gives back 8%
+from its high. On a 30–60 day trade that is a normal pullback, not a broken thesis. This is
+where the winners went. A rule that is too tight, not a bug. *Ticket: needs one. Path: a
+horizon-aware trail — e.g. 15% for the two event seats, none for the Compounder before 60
+days. One constant once the numbers are chosen.*
+
+**12. The Compounder only buys pullbacks, so it never buys strong stocks.** It has waited since
+April for MSFT to come back to $480 while the stock went $418 → $497; same on ASML, NOW, PLTR.
+*Ticket: needs one (or fold into 11). Path: allow a breakout entry for this seat when the
+pullback never comes — one sentence in its prompt.*
+
+**13. Catalyst's 70% confidence gate blocked every pre-decision name.** The writer's score marks
+trend and relative strength, which are always low on a stock washed out before an FDA date;
+IONS, RARE and BMRN were all refused on it this week. *Ticket: noted in DAV-231. Done tonight:
+gate set to 50; the event-mix rule and the $5k floor are the real protection.*
 
 ---
 
@@ -372,22 +436,9 @@ trigger evaluator, not the morning run, so HPE can still be bought Thursday); Ca
 sector fence (the empty tech lane is a sourcing problem, not a fence problem); the two
 disabled seats' rows.
 
-**Discovery — blocked on one click of yours.** The app's discovery function was fired for
-all three seats (`app/discovery.run.manual`) at 8:02 PM and again at 8:34 PM after re-syncing
-the Inngest app (the sync came back "modified: true"). Neither firing invoked the function:
-zero runtime log lines, zero DISCOVERY runs, while the two thesis-writer events sent the same
-way ran within a minute. That is the same silence the Sunday cron has had since May 31. The
-one explanation that fits is that the `discovery-run` function is **paused in the Inngest
-dashboard**, which nothing outside the dashboard can change. **Unpause it (or tell me it is
-deliberate) and re-fire** — the command is one line:
-
-```bash
-npx tsx --tsconfig tsconfig.json scripts/trigger-discovery-manual.ts <agentConfigId>
-```
-
-Until then the operator packs are the discovery: `docs/discovery-prep/2026-09-02-{PEAD,
-CATALYST,COMPOUNDER}.md` — Grok and Perplexity prompts plus the Discovery paste for each seat,
-with tonight's skip-lists. Run them in Discovery mode on each analyst page.
+**Discovery is manual for now.** The operator prompt packs are in
+`docs/discovery-prep/2026-09-02-{PEAD,CATALYST,COMPOUNDER}.md` — Grok and Perplexity prompts
+plus the Discovery paste for each seat, with tonight's skip-lists.
 
 **The one Linear ticket:** [DAV-231](https://linear.app/davesucks/issue/DAV-231) — the six
 causes still open in code, as bullets, plus the local-credentials note.
