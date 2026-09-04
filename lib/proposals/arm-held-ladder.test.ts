@@ -115,3 +115,48 @@ describe("armHeldLadderOnFill", () => {
     expect(thesisUpdateCreate.mock.calls[0][0].data.summary).toContain("place_trade");
   });
 });
+
+describe("armHeldLadderOnFill — the analyst's ladder survives the fill (DAV-234)", () => {
+  // ASML, 2026-09-04: a COMPOUNDER watch with an agent-written $2,800 target
+  // and a $1,625 support review was bought, and the fill regenerated the
+  // ladder from the HELD template — which mints no target rung for
+  // COMPOUNDER — so the target column went null and the reviews vanished.
+  const asml = {
+    id: "t-asml",
+    direction: "LONG",
+    horizon: "COMPOUNDER",
+    catalystDate: null,
+    triggers: [
+      { id: "enter", action: "ENTER", source: "AGENT", predicate: { kind: "PRICE_ABOVE", level: 1710 }, rationale: "buy" },
+      { id: "target", action: "REVIEW", source: "AGENT", predicate: { kind: "PRICE_ABOVE", level: 2800 }, rationale: "target" },
+      { id: "support", action: "REVIEW", source: "AGENT", predicate: { kind: "PRICE_BELOW", level: 1625 }, rationale: "support" },
+      { id: "floor", action: "EXIT", source: "AGENT", predicate: { kind: "PRICE_BELOW", level: 1580 }, rationale: "floor" },
+      { id: "watch-tmpl", action: "REVIEW", source: "DEFAULT", predicate: { kind: "REVIEW_CADENCE", days: 30 }, rationale: "watch template clock" },
+    ],
+  };
+
+  it("keeps the analyst's target and reviews, drops the buy rung, adds the held protection", async () => {
+    thesisFindFirst.mockResolvedValue(asml);
+    await armHeldLadderOnFill({ ...BASE, ticker: "ASML", fillPrice: 1716.09, targetPrice: 2800, stopLoss: 1580 });
+
+    const data = thesisUpdate.mock.calls[0][0].data;
+    const ids = (data.triggers as Array<{ id: string; action: string; predicate: { kind: string } }>).map((t) => t.id);
+    expect(ids).toContain("target");
+    expect(ids).toContain("support");
+    expect(ids).toContain("floor");
+    expect(ids).not.toContain("enter");
+    // The held template still supplies what the analyst didn't write.
+    const kinds = (data.triggers as Array<{ predicate: { kind: string } }>).map((t) => t.predicate.kind);
+    expect(kinds).toContain("TRAILING_FROM_HIGH");
+    // And the target column is read off the surviving rung, not lost.
+    expect(data.targetPrice).toBe(2800);
+    expect(data.stopLoss).toBe(1580);
+  });
+
+  it("the WATCHING template's own rungs do not carry over — the HELD template owns that layer", async () => {
+    thesisFindFirst.mockResolvedValue(asml);
+    await armHeldLadderOnFill({ ...BASE, ticker: "ASML", fillPrice: 1716.09, targetPrice: 2800, stopLoss: 1580 });
+    const ids = (thesisUpdate.mock.calls[0][0].data.triggers as Array<{ id: string }>).map((t) => t.id);
+    expect(ids).not.toContain("watch-tmpl");
+  });
+});
