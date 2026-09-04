@@ -24,6 +24,7 @@ import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import {
   defaultTriggersForHorizon,
   applyTriggerCooldownDefaults,
+  mergeTriggers,
   reviewCadenceTrigger,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
@@ -136,24 +137,36 @@ export async function armHeldLadderOnFill(opts: {
     if (!watchingThesis) return;
 
     const horizon = watchingThesis.horizon as Horizon | null;
+    // The analyst's rungs survive the fill. Only the buy rung goes (you can't
+    // enter what you hold) and the WATCHING template's own rungs go (the HELD
+    // template replaces that layer). Everything the analyst wrote — the target,
+    // a support review, a dated check — stays, and the HELD template fills the
+    // gaps: the same merge rule record_thesis uses. Replacing the ladder
+    // wholesale threw away ASML's $2,800 target and four review rungs the
+    // moment it was bought on 2026-09-04 (DAV-234).
+    const analystRungs = (
+      (watchingThesis.triggers as unknown as Trigger[] | null) ?? []
+    ).filter((t) => t.action !== "ENTER" && t.source !== "DEFAULT");
     let nextTriggers: Trigger[];
     if (horizon) {
       nextTriggers = applyTriggerCooldownDefaults(
-        defaultTriggersForHorizon(
-          horizon,
-          {
-            entryPrice: opts.fillPrice,
-            targetPrice: opts.targetPrice,
-            stopLoss: opts.stopLoss,
-            catalystDate: watchingThesis.catalystDate ?? null,
-            direction: watchingThesis.direction as "LONG" | "SHORT",
-          },
-          "HELD",
+        mergeTriggers(
+          defaultTriggersForHorizon(
+            horizon,
+            {
+              entryPrice: opts.fillPrice,
+              targetPrice: opts.targetPrice,
+              stopLoss: opts.stopLoss,
+              catalystDate: watchingThesis.catalystDate ?? null,
+              direction: watchingThesis.direction as "LONG" | "SHORT",
+            },
+            "HELD",
+          ),
+          analystRungs,
         ),
       );
     } else {
-      const existing = (watchingThesis.triggers as unknown as Trigger[] | null) ?? [];
-      nextTriggers = existing.filter((t) => t.action !== "ENTER");
+      nextTriggers = analystRungs;
     }
 
     // DAV-195 L3 — the columns are a read model of the ladder. Recompute them
@@ -185,7 +198,7 @@ export async function armHeldLadderOnFill(opts: {
         thesisId: watchingThesis.id,
         type: "STATUS_CHANGED",
         summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → HOLDING on ${opts.via}`,
-        rationale: `Entry filled at $${opts.fillPrice.toFixed(2)} — the watchlist row is now a live position, and its trigger ladder was regenerated for the held-side ${horizon ?? "(no-horizon)"} plan.`,
+        rationale: `Entry filled at $${opts.fillPrice.toFixed(2)} — the watchlist row is now a live position. The buy rung is gone; the analyst's other rungs stay and the held-side ${horizon ?? "(no-horizon)"} protection fills the gaps.`,
         fieldChanges: {
           status: { from: "WATCHING", to: "HOLDING" },
           triggers: { from: "WATCHING-set", to: "HELD-set" },
