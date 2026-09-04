@@ -155,6 +155,15 @@ export interface LadderLevels {
 
 /** Predicates that measure off an open position and are inert without one. */
 const POSITION_SCOPED_KINDS = new Set(["GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH"]);
+// Actions that operate on a position. A rung with one of these on a thesis
+// we don't hold is not a plan, it is a spawn: the account's ±7% scale-in
+// rules are PRICE_MOVE_PCT, so the predicate gate above let them through
+// onto WATCHING rows, and on 2026-09-03 five of eight tactical runs were
+// "scale in" on names with no position (HPE, RARE, PLTR, NOW; two of them
+// were then retired by an agent that had been asked to add). EXIT is not
+// here — an un-held floor resolves to DEMOTE (effectiveTriggerAction), which
+// is a real verdict, not a position action.
+const POSITION_SCOPED_ACTIONS = new Set(["ADD", "TRIM", "MOVE_STOP"]);
 
 /**
  * Order the triggers WITHIN one level so that, when two of them land in the
@@ -393,7 +402,11 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
 
   for (const level of LEVEL_PRECEDENCE) {
     for (const t of byLevel[level]) {
-      if (dropPositionScoped && POSITION_SCOPED_KINDS.has(t.predicate.kind)) {
+      if (
+        dropPositionScoped &&
+        (POSITION_SCOPED_KINDS.has(t.predicate.kind) ||
+          POSITION_SCOPED_ACTIONS.has(t.action))
+      ) {
         continue;
       }
       if (

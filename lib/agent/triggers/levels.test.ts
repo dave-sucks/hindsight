@@ -615,3 +615,52 @@ describe("adoptStoredTriggerIdentity — unchanged rungs keep their identity", (
     expect(adopted.source).toBeUndefined();
   });
 });
+
+describe("resolveLadder — position actions never reach an un-held thesis (2026-09-03)", () => {
+  // The account's standing "±7% in a day — scale in" rules are PRICE_MOVE_PCT
+  // with action ADD. The predicate gate let them onto WATCHING rows and the
+  // 5-minute cron spawned tactical runs to add to positions that did not
+  // exist (HPE, RARE, PLTR, NOW on 2026-09-03).
+  const scaleIn = rung({
+    id: "acct-scale-in",
+    predicate: { kind: "PRICE_MOVE_PCT", pct: 7, direction: "UP", window: "1D" },
+    action: "ADD",
+  });
+  const trim = rung({
+    id: "acct-trim",
+    predicate: { kind: "PRICE_ABOVE", level: 200 },
+    action: "TRIM",
+  });
+  const floor = rung({
+    id: "acct-floor",
+    predicate: { kind: "PRICE_BELOW", level: 100 },
+    action: "EXIT",
+  });
+
+  it("drops ADD / TRIM / MOVE_STOP on WATCHING and PROMOTED at every level", () => {
+    for (const state of ["WATCHING", "PROMOTED"] as const) {
+      const ids = resolveLadder({
+        thesis: [trim],
+        account: [scaleIn, floor],
+        state,
+      }).map((t) => t.id);
+      expect(ids).not.toContain("acct-scale-in");
+      expect(ids).not.toContain("acct-trim");
+      // A floor stays: on an un-held thesis it resolves to DEMOTE, a verdict.
+      expect(ids).toContain("acct-floor");
+    }
+  });
+
+  it("keeps them on HELD — scaling in is what a held ladder is for", () => {
+    const ids = resolveLadder({
+      thesis: [trim],
+      account: [scaleIn, floor],
+      state: "HELD",
+    }).map((t) => t.id);
+    expect(ids).toEqual(expect.arrayContaining(["acct-scale-in", "acct-trim", "acct-floor"]));
+  });
+
+  it("no state (settings pages) renders everything", () => {
+    expect(resolveLadder({ thesis: [], account: [scaleIn, trim, floor] })).toHaveLength(3);
+  });
+});

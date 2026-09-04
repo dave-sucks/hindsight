@@ -199,8 +199,12 @@ describe("resolveThesisLadder", () => {
     );
     expect(ladder.some((t) => t.predicate.kind === "TRAILING_FROM_HIGH")).toBe(false);
     expect(ladder.some((t) => t.predicate.kind === "GAIN_FROM_ENTRY")).toBe(false);
-    // The daily-move scale-ins are not position-scoped and survive.
-    expect(ladder.some((t) => t.predicate.kind === "PRICE_MOVE_PCT")).toBe(true);
+    // The daily-move scale-ins are ADD rungs — a position action — and go
+    // too (2026-09-03: they spawned five "scale in" runs on un-held names).
+    expect(ladder.some((t) => t.action === "ADD")).toBe(false);
+    // What survives is what a watch row can act on: the review clock is
+    // opted-in per thesis (W1), so a seeded account leaves nothing here.
+    expect(ladder.every((t) => t.action === "REVIEW" || t.action === "EXIT")).toBe(true);
   });
 
   it("overlays inherited fire state from triggerState", () => {
