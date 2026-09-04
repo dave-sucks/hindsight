@@ -6,7 +6,7 @@
  *   CATALYST   — trade built around a binary event (FDA, M&A, named earnings).
  *                Hold until the event resolves; ignore inter-event drift.
  *   TRADE      — momentum/pattern setup with a tight stop. Days-to-weeks.
- *                Bounded by maxHoldDays.
+ *                Bounded by a TIME_ELAPSED review rung on the ladder.
  *   TARGET     — swing trade with a defined upside number. Weeks-to-months.
  *                No time stop; exit at target / stop / invalidation.
  *   COMPOUNDER — long-term hold based on durable business quality. Months-to-

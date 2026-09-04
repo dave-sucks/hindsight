@@ -244,7 +244,7 @@ const thesisFields = z.object({
       "REQUIRED. Exit policy + trigger template for this thesis. Pick the kind that matches your reasoning, not just the holding period:\n" +
         "  • CATALYST — trade is built around a binary event (FDA decision, M&A close, court ruling, named earnings catalyst). Hold until the event resolves; ignore inter-event price drift.\n" +
         "  • TARGET — swing trade with a defined upside number from setup/fundamentals. Weeks-to-months. Exit at target, stop, or invalidation.\n" +
-        "  • TRADE — momentum/pattern setup with a tight stop. Days-to-weeks. max_hold_days required (default 14).\n" +
+        "  • TRADE — momentum/pattern setup with a tight stop. Days-to-weeks; the template mints a TIME_ELAPSED review rung that bounds it.\n" +
         "  • COMPOUNDER — long-term hold based on durable business quality. Months-to-years. Quarterly hygiene only; never time-exits on price alone.\n" +
         "If you can't pick one, you don't have a thesis — write PASS instead.",
     ),
@@ -326,7 +326,7 @@ const thesisFields = z.object({
     .datetime()
     .optional()
     .describe(
-      "ISO timestamp. REQUIRED when horizon=CATALYST — when the dated event lands (earnings date, FDA decision, M&A close, court ruling). Drives the trigger template (filings + earnings REVIEW around the date) and the 30d-past-event exit policy. If you don't know the date, this isn't a CATALYST thesis — use TRADE (with max_hold_days) or TARGET (open-ended).",
+      "ISO timestamp. REQUIRED when horizon=CATALYST — when the dated event lands (earnings date, FDA decision, M&A close, court ruling). Drives the trigger template (filings + earnings REVIEW around the date) and the 30d-past-event exit policy. If you don't know the date, this isn't a CATALYST thesis — use TRADE (time-bounded by its review rung) or TARGET (open-ended).",
     ),
   // next_review_at is gone (DAV-221). Review timing is a REVIEW_CADENCE
   // trigger counted from the last actual review; the mint templates stamp it.
@@ -758,11 +758,8 @@ export const recordThesis = defineTool({
       //                      a CATALYST trade is the dated event; the
       //                      trigger templates and the 30d-past-event
       //                      exit policy both key off it.
-      //   horizon=TRADE    → max_hold_days REQUIRED (no default). 14
-      //                      used to be the silent fallback. Force the
-      //                      agent to declare the window so a TRADE
-      //                      thesis isn't quietly auto-extended past
-      //                      its intended life.
+      // (TRADE used to require max_hold_days here. The column is gone —
+      // DAV-195 L8 — and the window is a TIME_ELAPSED rung on the ladder.)
       // PASS theses bypass — they're not actionable plans.
       const isDirectional = args.direction === "LONG" || args.direction === "SHORT";
       if (isDirectional && args.horizon === "CATALYST" && !args.catalyst_date) {
@@ -778,7 +775,7 @@ export const recordThesis = defineTool({
               `CATALYST horizon means the trade is built around a specific dated event (FDA decision, M&A close, named earnings, court ruling). ` +
               `The catalyst_date drives the trigger template (filings + earnings REVIEW around the date) and the 30d-past-event exit policy. ` +
               `Pass catalyst_date as an ISO timestamp (e.g. "2026-06-15T20:30:00Z" for AMC earnings on 6/15). ` +
-              `If you don't actually know when the catalyst lands, this isn't a CATALYST thesis — pick TRADE (max_hold_days bounds it) or TARGET (open-ended) instead.`,
+              `If you don't actually know when the catalyst lands, this isn't a CATALYST thesis — pick TRADE (its review rung bounds it) or TARGET (open-ended) instead.`,
           },
           sources: [],
         };

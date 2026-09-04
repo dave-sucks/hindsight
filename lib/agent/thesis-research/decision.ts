@@ -37,12 +37,11 @@ export const thesisDecisionSchema = z.object({
     .describe("2-4 sentences: the decision in your own voice. On refresh this becomes the audit-row rationale."),
   horizon: z
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
-    .describe("Exit policy + trigger template. CATALYST requires catalyst_date; TRADE requires max_hold_days."),
+    .describe("Exit policy + trigger template. CATALYST requires catalyst_date."),
   entry_price: z.number().optional().describe("The price you'd BUY at — a level the stock has NOT reached: above the live price for a breakout you want confirmed, below it for a pullback you want to pay. Never the current price. A priced plan needs all three of entry/target/stop; a directional view with NO level worth waiting for yet omits all three (the thesis stays LONG/SHORT + WATCHING on its review wakes, and is priced later)."),
   target_price: z.number().optional().describe("Take-profit level. Required with entry_price."),
   stop_loss: z.number().optional().describe("Where the thesis breaks. Required with entry_price."),
   catalyst_date: z.string().optional().describe("ISO date. Required when horizon=CATALYST."),
-  max_hold_days: z.number().optional().describe("Required when horizon=TRADE (5-7 tight, 10-14 swing)."),
   core_belief: z
     .string()
     .optional()
