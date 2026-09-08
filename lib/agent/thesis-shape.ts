@@ -50,6 +50,15 @@ export interface ThesisShapeArgs {
   stopLoss?: number | null;
   /** When set and all three levels are present, reward/risk must be ≥ this. */
   minRiskReward?: number;
+  /**
+   * The row is a live position. `entry` is then the fill, a historical
+   * fact, and the stop is meant to ratchet up past it — a breakeven stop is
+   * the whole point of protecting a winner. So the stop-vs-entry pair is
+   * skipped; target-vs-entry and target-vs-stop still apply. (SMMT
+   * 2026-09-03/07: "move the stop to the $14.35 fill" refused three times by
+   * a rule written for plans we haven't bought — DAV-233.)
+   */
+  held?: boolean;
 }
 
 export type ThesisShapeResult =
@@ -117,7 +126,7 @@ export function validateThesisShape(
     }
   }
 
-  if (entry != null && stop != null) {
+  if (entry != null && stop != null && !args.held) {
     if (isLong && stop >= entry) {
       return {
         ok: false,

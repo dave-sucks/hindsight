@@ -130,6 +130,30 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
     expect(mockThesisUpdate).toHaveBeenCalled();
   });
 
+  it("a held name may move its stop to breakeven or above the fill (DAV-233)", async () => {
+    // SMMT 2026-09-03/07: fill $14.35, stop to $14.35 then $16.20 — refused
+    // three times by the plan-shape rule, then written through
+    // manage_position. Two tools, one rule, opposite answers. Not any more.
+    mockThesisFindUnique.mockResolvedValue(
+      pltr({
+        ticker: "SMMT",
+        status: "HOLDING",
+        entryPrice: 14.35,
+        targetPrice: 26,
+        stopLoss: 12,
+        // A held ladder carries a floor, not a buy rung.
+        triggers: [
+          { id: "floor-1", predicate: { kind: "PRICE_BELOW", level: 12 }, action: "EXIT", rationale: "Floor.", source: "AGENT" },
+          { id: "clock-1", predicate: { kind: "REVIEW_CADENCE", days: 1 }, action: "REVIEW", rationale: "Daily.", source: "AGENT" },
+        ],
+      }),
+    );
+    mockPositionFindFirst.mockResolvedValueOnce({ avgCost: 14.35 });
+    const result = await run({ stop_loss: 16.2 });
+    expect(result.data?.error).toBeUndefined();
+    expect(mockThesisUpdate).toHaveBeenCalled();
+  });
+
   it("a held name is exempt from the floor (the fill is the entry, the floor ratchets)", async () => {
     mockThesisFindUnique.mockResolvedValue(pltr({ status: "HOLDING", stopLoss: 170 }));
     mockPositionFindFirst.mockResolvedValueOnce({ avgCost: 160 });

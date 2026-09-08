@@ -215,6 +215,7 @@ export function validateThesisDecision(
         targetPrice: target,
         stopLoss: stop,
         minRiskReward: held ? undefined : MIN_RISK_REWARD,
+        held,
       });
       if (!shape.ok) {
         errors.push(
