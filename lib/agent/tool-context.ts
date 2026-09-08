@@ -75,13 +75,11 @@ export interface ToolContext {
   minPositionSize?: number;
   maxPositionSize?: number;
   /**
-   * The LIVE PROMOTION CAP (AgentConfig.realMaxPosition). A temporary throttle
-   * set at promotion so a freshly-live analyst trades small with real money —
-   * not a peer of maxPositionSize. Applies only when runEnvironment="LIVE",
-   * where the smaller of the two wins so a forgetful promotion can't uncap by
-   * accident. PAPER runs ignore this field entirely.
+   * The most this analyst may hold in one stock (AgentConfig.maxPositionTotal)
+   * — the ceiling for adding to a winner. 0/undefined = twice the largest
+   * trade. See lib/agent/position-sizing.ts.
    */
-  realMaxPosition?: number;
+  maxPositionTotal?: number;
   maxOpenPositions?: number;
   /**
    * Minimum thesis confidence (0-100) required for place_trade to proceed.

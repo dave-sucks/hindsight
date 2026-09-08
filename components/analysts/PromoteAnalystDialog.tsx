@@ -59,7 +59,7 @@ export function PromoteAnalystDialog({
         setLoadError(result.error);
       } else {
         setPreview(result);
-        setMaxPosition(String(result.realMaxPosition));
+        setMaxPosition(String(result.maxPositionSize));
       }
     });
   }, [open, analystId]);
@@ -120,7 +120,7 @@ export function PromoteAnalystDialog({
     const parsedCap = Number.isFinite(capValue) && capValue > 0 ? capValue : undefined;
     startTransition(async () => {
       const result = await promoteAnalystToLive(analystId, {
-        realMaxPosition: parsedCap,
+        maxPositionSize: parsedCap,
       });
       if (result.ok) {
         toast.success(
@@ -263,7 +263,7 @@ export function PromoteAnalystDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="promote-max-position" className="text-xs">
-              Live per-position cap ($)
+              Largest trade ($)
             </Label>
             <Input
               id="promote-max-position"
@@ -273,7 +273,7 @@ export function PromoteAnalystDialog({
               onChange={(e) => setMaxPosition(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Hard ceiling on any single live order. Start small for the first week.
+              The most this analyst will put into a single buy once live. Start small for the first week; raise it in Settings as the seat proves out.
             </p>
           </div>
 

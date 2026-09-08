@@ -821,7 +821,7 @@ describe("place_trade — Guardrail 5b: minimum position size", () => {
 
     expect(result.data.success).toBe(false);
     expect(result.data.status).toBe("FAILED");
-    expect(String(result.data.message)).toMatch(/below this analyst's minimum position size/i);
+    expect(String(result.data.message)).toMatch(/below this analyst's smallest trade/i);
     // The message names the floor and the band so the agent can re-size.
     expect(String(result.data.message)).toMatch(/\$7,000/);
     expect(String(result.data.message)).toMatch(/\$7,000–\$14,000/);
@@ -848,7 +848,7 @@ describe("place_trade — Guardrail 5b: minimum position size", () => {
     });
 
     expect(result.data.success).toBe(false);
-    expect(String(result.data.message)).toMatch(/below this analyst's minimum position size/i);
+    expect(String(result.data.message)).toMatch(/below this analyst's smallest trade/i);
     expect(mockMaybeAwaitApproval).not.toHaveBeenCalled();
   });
 
@@ -873,20 +873,19 @@ describe("place_trade — Guardrail 5b: minimum position size", () => {
     expect(result.data.status).toBe("PROPOSED");
   });
 
-  it("still rejects above the ceiling, naming the live promotion cap on LIVE", async () => {
+  it("still rejects above the largest trade, naming it", async () => {
     primeGate();
 
     const result = await makeTool(
       makeCtx({
         minPositionSize: 2000,
-        maxPositionSize: 14000,
-        realMaxPosition: 6000,
+        maxPositionSize: 6000,
         runEnvironment: "LIVE",
       }),
     ).execute({ ...baseArgs, notional: 9000 });
 
     expect(result.data.success).toBe(false);
-    expect(String(result.data.message)).toMatch(/exceeds this analyst's live promotion cap/i);
+    expect(String(result.data.message)).toMatch(/exceeds this analyst's largest trade/i);
     expect(String(result.data.message)).toMatch(/\$6,000/);
   });
 });

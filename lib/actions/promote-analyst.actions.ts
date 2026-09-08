@@ -28,7 +28,7 @@ export type PromotionPreview = {
   analystName: string;
   currentEnvironment: "PAPER" | "LIVE";
   liveCredsVerified: boolean;
-  realMaxPosition: number;
+  maxPositionSize: number;
   openPaperPositions: Array<{
     id: string;
     symbol: string;
@@ -65,7 +65,7 @@ export async function getPromotionPreview(
       id: true,
       name: true,
       tradingEnvironment: true,
-      realMaxPosition: true,
+      maxPositionSize: true,
     },
   });
   if (!analyst) return { error: "Analyst not found" };
@@ -126,7 +126,7 @@ export async function getPromotionPreview(
     analystName: analyst.name,
     currentEnvironment: (analyst.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER",
     liveCredsVerified: liveKey?.verified ?? false,
-    realMaxPosition: analyst.realMaxPosition,
+    maxPositionSize: analyst.maxPositionSize,
     openPaperPositions: openPaper,
     openLivePositions: openLive,
     orphanActiveTheses,
@@ -170,7 +170,7 @@ export type PromotionResult =
  */
 export async function promoteAnalystToLive(
   analystId: string,
-  options?: { realMaxPosition?: number },
+  options?: { maxPositionSize?: number },
 ): Promise<PromotionResult> {
   const userId = await getServerUserId();
   const accountId = await getAccountId(userId);
@@ -306,13 +306,14 @@ export async function promoteAnalystToLive(
     if (promoted) promotedTheses.push(promoted);
   }
 
-  // 4. Flip the env flag. Optionally update the live cap in the same write.
+  // 4. Flip the env flag. Optionally set the largest trade in the same write
+  //    — the dialog offers it so a freshly-live seat can start small.
   await prisma.agentConfig.update({
     where: { id: analystId },
     data: {
       tradingEnvironment: "LIVE",
-      ...(options?.realMaxPosition !== undefined
-        ? { realMaxPosition: options.realMaxPosition }
+      ...(options?.maxPositionSize !== undefined
+        ? { maxPositionSize: options.maxPositionSize }
         : {}),
     },
   });

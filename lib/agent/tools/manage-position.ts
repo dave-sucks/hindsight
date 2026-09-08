@@ -44,8 +44,7 @@ import {
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import {
-  scaleInCeiling,
-  SCALE_IN_CEILING_MULTIPLE,
+  positionTotalCap,
 } from "@/lib/agent/position-sizing";
 
 /**
@@ -641,25 +640,21 @@ export const managePosition = defineTool({
             }
           }
 
-          // ── Scale-in ceiling (docs/plans/SCALE_INTO_WINNERS.md, PR1) ──────
-          // A held winner may grow to SCALE_IN_CEILING_MULTIPLE × the normal
-          // per-entry cap. Base cap mirrors place_trade's effective cap and
-          // respects realMaxPosition on LIVE — previously this branch used a
-          // flat maxPositionSize × 1.5 and ignored realMaxPosition entirely,
-          // so a LIVE add could grow past the live per-position cap. Fixed.
-          const scaleCeiling = scaleInCeiling({
-            environment: position.environment,
+          // ── Most in one stock (the analyst's third sizing setting) ─────
+          // A held winner may grow, by adding, to the analyst's "most in one
+          // stock" — a number the principal sets, not a hidden multiple.
+          const totalCap = positionTotalCap({
             maxPositionSize: ctx.maxPositionSize,
-            realMaxPosition: ctx.realMaxPosition,
+            maxPositionTotal: ctx.maxPositionTotal,
           });
           const currentValue = position.avgCost * position.quantity;
-          if (currentValue + notional > scaleCeiling) {
+          if (currentValue + notional > totalCap) {
             return {
-              summary: `Add would exceed the ${SCALE_IN_CEILING_MULTIPLE}× scale-in ceiling`,
+              summary: `Add would exceed the most this analyst may hold in one stock`,
               data: {
                 success: false, ticker, action: args.action, status: "FAILED" as const,
-                message: `Adding $${notional} to the current $${currentValue.toFixed(0)} position would exceed this analyst's ${SCALE_IN_CEILING_MULTIPLE}× scale-in ceiling ($${scaleCeiling.toFixed(0)}). A held winner may grow to ${SCALE_IN_CEILING_MULTIPLE}× the normal per-entry cap — trim or wait rather than adding beyond it.`,
-                tickers: [{ ticker, tag: "Failed", summary: "Exceeds scale-in ceiling", actionIcon: "failed" }],
+                message: `Adding $${notional} to the current $${currentValue.toFixed(0)} position would take it past the most this analyst may hold in one stock ($${totalCap.toFixed(0)}, a setting on the analyst). Trim or wait rather than adding beyond it.`,
+                tickers: [{ ticker, tag: "Failed", summary: "Exceeds most-in-one-stock", actionIcon: "failed" }],
               },
               sources: [],
             };

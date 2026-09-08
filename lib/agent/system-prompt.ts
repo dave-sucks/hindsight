@@ -36,8 +36,8 @@ export interface AgentConfigInput {
   /** Per-entry floor. 0/undefined = off. See ToolContext.minPositionSize. */
   minPositionSize?: number;
   maxPositionSize?: number;
-  /** LIVE-only promotion cap. PAPER runs ignore. See ToolContext.realMaxPosition. */
-  realMaxPosition?: number;
+  /** Most in one stock — see ToolContext.maxPositionTotal. */
+  maxPositionTotal?: number;
   maxOpenPositions?: number;
   watchlist?: string[];
   exclusionList?: string[];

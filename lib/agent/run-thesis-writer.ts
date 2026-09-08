@@ -143,7 +143,7 @@ interface WriterAnalyst {
   tradingEnvironment: string | null;
   minPositionSize: unknown;
   maxPositionSize: unknown;
-  realMaxPosition: unknown;
+  maxPositionTotal: unknown;
 }
 
 async function loadWriterAnalyst(analystId: string): Promise<WriterAnalyst | null> {
@@ -163,7 +163,7 @@ async function loadWriterAnalyst(analystId: string): Promise<WriterAnalyst | nul
       tradingEnvironment: true,
       minPositionSize: true,
       maxPositionSize: true,
-      realMaxPosition: true,
+      maxPositionTotal: true,
     },
   });
   return analyst as WriterAnalyst | null;
@@ -262,7 +262,7 @@ async function buildWriterToolCtx(
     minConfidence: analyst.minConfidence,
     minPositionSize: Number(analyst.minPositionSize),
     maxPositionSize: Number(analyst.maxPositionSize),
-    realMaxPosition: Number(analyst.realMaxPosition),
+    maxPositionTotal: Number(analyst.maxPositionTotal),
     alpacaCreds,
     forceWatchingMint: args.forceWatchingMint === true,
     groupId: (phase: string) => phase,

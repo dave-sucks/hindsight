@@ -405,21 +405,14 @@ export const placeTrade = defineTool({
         );
       }
 
-      // ── Guardrail 5: requested notional inside the per-position band ───
-      // The band is resolved by positionBand() (lib/agent/position-sizing.ts):
-      //   ceiling — PAPER → maxPositionSize; LIVE → min(maxPositionSize,
-      //     realMaxPosition), so a forgotten promotion cap can't accidentally
-      //     uncap a live order.
-      //   floor   — minPositionSize, clamped to the ceiling when a live
-      //     promotion cap sits below the analyst's configured floor.
-      // Only checks when the model explicitly sized the trade (notional or
-      // shares). If neither is set, the fallback path below uses the ceiling as
-      // the budget, which is inside the band by construction.
+      // ── Guardrail 5: requested notional inside the analyst's band ──────
+      // Smallest trade to largest trade, both settings on the analyst,
+      // resolved by positionBand() (lib/agent/position-sizing.ts). Only
+      // checks when the model explicitly sized the trade; with no size the
+      // path below picks a point inside the band by conviction.
       const band = positionBand({
-        environment: ctx.runEnvironment,
         minPositionSize: ctx.minPositionSize,
         maxPositionSize: ctx.maxPositionSize,
-        realMaxPosition: ctx.realMaxPosition,
       });
       {
         const requestedNotional =
@@ -435,9 +428,9 @@ export const placeTrade = defineTool({
           band.ceiling != null &&
           requestedNotional > band.ceiling
         ) {
-          const blockedMsg = `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} exceeds this analyst's ${band.ceilingLabel} ($${band.ceiling.toLocaleString()}). Scale it down.`;
+          const blockedMsg = `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} exceeds this analyst's largest trade ($${band.ceiling.toLocaleString()}). Scale it down, or omit notional to size from the analyst's settings.`;
           return {
-            summary: `Trade blocked: $${ticker} — exceeds ${band.ceilingLabel}`,
+            summary: `Trade blocked: $${ticker} — exceeds largest trade`,
             data: {
               success: false,
               ticker,
@@ -466,13 +459,13 @@ export const placeTrade = defineTool({
               ? `$${band.floor.toLocaleString()}–$${band.ceiling.toLocaleString()}`
               : `$${band.floor.toLocaleString()}+`;
           const blockedMsg =
-            `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} is below this analyst's minimum position size ($${band.floor.toLocaleString()}). ` +
+            `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} is below this analyst's smallest trade ($${band.floor.toLocaleString()}). ` +
             (band.floorClampedByCeiling
-              ? `Its live promotion cap ($${band.ceiling?.toLocaleString()}) sits at or below the configured floor, so a live entry must be sized exactly $${band.floor.toLocaleString()}. `
-              : `Its position band is ${bandLabel}. `) +
+              ? `Its largest trade ($${band.ceiling?.toLocaleString()}) sits at or below its smallest, so every buy is sized exactly $${band.floor.toLocaleString()}. `
+              : `Its band is ${bandLabel}. `) +
             `Either size the entry into the band or skip the name — a position this small can't move the book, and the analyst's own risk rules already assume full-size entries.`;
           return {
-            summary: `Trade blocked: $${ticker} — below min position size`,
+            summary: `Trade blocked: $${ticker} — below smallest trade`,
             data: {
               success: false,
               ticker,
