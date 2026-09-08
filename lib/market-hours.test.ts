@@ -69,3 +69,23 @@ describe("isAnalystScheduledToday", () => {
     expect(isAnalystScheduledToday([1, 3, 5], MON_10PM_ET)).toBe(true);
   });
 });
+
+import { isTradingDay } from "./market-hours";
+
+const atIso = (iso: string) => new Date(iso);
+describe("isTradingDay", () => {
+  it("Labor Day 2026 (Mon 09-07) is not a trading day", () => {
+    expect(isTradingDay(atIso("2026-09-07T12:00:00Z"))).toBe(false);
+  });
+  it("the Tuesday after is", () => {
+    expect(isTradingDay(atIso("2026-09-08T12:00:00Z"))).toBe(true);
+  });
+  it("weekends are not", () => {
+    expect(isTradingDay(atIso("2026-09-05T12:00:00Z"))).toBe(false);
+    expect(isTradingDay(atIso("2026-09-06T12:00:00Z"))).toBe(false);
+  });
+  it("uses the Eastern date, not UTC", () => {
+    // 01:00 UTC Tue 09-08 is still 21:00 ET Mon 09-07 — Labor Day.
+    expect(isTradingDay(atIso("2026-09-08T01:00:00Z"))).toBe(false);
+  });
+});

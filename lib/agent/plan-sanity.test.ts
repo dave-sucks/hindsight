@@ -244,3 +244,52 @@ describe("computePlanSanity — PLAN_BELOW_RR_FLOOR (the floor, read back)", () 
     expect(flags.some((f) => f.kind === "PLAN_BELOW_RR_FLOOR")).toBe(false);
   });
 });
+
+describe("computePlanSanity — FLOOR_INSIDE_NOISE (the HWM shape)", () => {
+  it("flags a watch floor 0.35% under the price on a stock that moves ~2% a day", () => {
+    // 2026-09-02 08:06: HWM at $254.89, floor $254, buy above $277. Set down
+    // 90 minutes later on an ordinary red day.
+    const flags = computePlanSanity({
+      ...base,
+      entryPrice: 277,
+      targetPrice: 330,
+      stopLoss: 254,
+      currentPrice: 254.89,
+      dayRangePct: 2.1,
+    });
+    const f = flags.find((x) => x.kind === "FLOOR_INSIDE_NOISE");
+    expect(f).toBeDefined();
+    expect(f?.text).toContain("$254.00");
+    expect(f?.text).toContain("0.3%");
+  });
+
+  it("stays quiet when the floor has room", () => {
+    const flags = computePlanSanity({
+      ...base,
+      entryPrice: 277,
+      targetPrice: 330,
+      stopLoss: 240,
+      currentPrice: 254.89,
+      dayRangePct: 2.1,
+    });
+    expect(flags.some((x) => x.kind === "FLOOR_INSIDE_NOISE")).toBe(false);
+  });
+
+  it("leaves an already-breached floor to STOP_ALREADY_BREACHED", () => {
+    const flags = computePlanSanity({
+      ...base,
+      entryPrice: 277,
+      targetPrice: 330,
+      stopLoss: 256,
+      currentPrice: 254.89,
+      dayRangePct: 2.1,
+    });
+    expect(flags.some((x) => x.kind === "FLOOR_INSIDE_NOISE")).toBe(false);
+    expect(flags.some((x) => x.kind === "STOP_ALREADY_BREACHED")).toBe(true);
+  });
+
+  it("skips the check without a daily range", () => {
+    const flags = computePlanSanity({ ...base, entryPrice: 277, targetPrice: 330, stopLoss: 254, currentPrice: 254.89 });
+    expect(flags.some((x) => x.kind === "FLOOR_INSIDE_NOISE")).toBe(false);
+  });
+});

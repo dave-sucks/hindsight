@@ -8,7 +8,11 @@ import { MODES } from "@/lib/agent/modes";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
-import { isAnalystScheduledToday, etWeekdayName } from "@/lib/market-hours";
+import {
+  isAnalystScheduledToday,
+  isTradingDay,
+  etWeekdayName,
+} from "@/lib/market-hours";
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
 
@@ -55,6 +59,16 @@ export const morningResearch = inngest.createFunction(
     // An explicit manual run for one analyst (targetConfigId set — the "Run"
     // button / urgent-signal path) bypasses this gate: the user is asking for
     // that analyst NOW, regardless of the day.
+    // A market holiday is not a run day for anyone. The weekday schedule
+    // below can't know that, so the three analysts ran on Labor Day 2026
+    // against Friday's closes (DAV-235). A manual run still goes through.
+    if (!targetConfigId && !isTradingDay()) {
+      console.log(
+        `[morning-research] skipping all analysts: ${etWeekdayName()} is a market holiday`,
+      );
+      return { ran: 0, reason: "market-holiday" };
+    }
+
     const scheduledConfigs = targetConfigId
       ? configs
       : configs.filter((config) => {

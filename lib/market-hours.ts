@@ -110,6 +110,31 @@ export function etWeekdayName(now: Date = new Date()): string {
   }).format(now);
 }
 
+/**
+ * Is today (ET) a day the market trades at all — a weekday that is not an
+ * NYSE holiday? The daily-run cron needs this and not `isMarketOpen`, which
+ * also asks whether the bell has rung: the cron fires at 08:00, before it.
+ * Without this the three analysts ran on Labor Day 2026 against Friday's
+ * prices and proposed an exit nobody could act on (DAV-235).
+ */
+export function isTradingDay(now: Date = new Date()): boolean {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short",
+    })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value]),
+  );
+  if (parts.weekday === "Sat" || parts.weekday === "Sun") return false;
+  return !getHolidays(parseInt(parts.year, 10)).has(
+    `${parts.year}-${parts.month}-${parts.day}`,
+  );
+}
+
 export function isMarketOpen(now: Date = new Date()): boolean {
   // Convert to Eastern Time
   const etFormatter = new Intl.DateTimeFormat("en-US", {
