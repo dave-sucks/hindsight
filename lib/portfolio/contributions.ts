@@ -102,18 +102,27 @@ export function alignFundingToEquity(
   const curve = [...equityCurve].sort((a, b) => (a.date < b.date ? -1 : 1));
   return events.map((e) => {
     if (e.amount <= 0) return e; // withdrawals / zero — not the lag case
-    const threshold = e.amount * 0.5;
-    for (let i = 0; i < curve.length; i++) {
+    // A deposit dated on or before the curve's first day IS the opening
+    // equity. There is no jump to find for it, and letting it walk forward
+    // is how the $8,000 that opened the live account on 2026-05-14 got
+    // re-dated onto the $40,000 landing of 05-15 — leaving May 14 with
+    // $8,000 of equity and nothing contributed, i.e. a phantom +$8k that
+    // every long-range P&L was then measured against (−$1,592 on a
+    // +$6,406 account).
+    if (e.date <= curve[0].date) return e;
+    // A jump belongs to THIS deposit only if it is roughly this deposit's
+    // size: at least half of it (daily trading P&L is small next to a
+    // deposit) and at most one-and-a-half times it (so a small deposit can
+    // never adopt a larger deposit's landing).
+    const low = e.amount * 0.5;
+    const high = e.amount * 1.5;
+    for (let i = 1; i < curve.length; i++) {
       if (curve[i].date < e.date) continue;
-      // Stop once we're past the settlement window: a deposit dated before the
-      // curve begins (already baked into the opening equity) or otherwise far
-      // from any jump keeps its original date instead of snapping onto a later
-      // deposit's jump.
+      // Stop once we're past the settlement window: a deposit with no
+      // matching jump keeps its original date.
       if (calendarDaysBetween(e.date, curve[i].date) > MAX_SETTLEMENT_DAYS) break;
-      // prev defaults to the same point at i=0 so the curve's first positive
-      // equity reading isn't mistaken for a jump from nothing.
-      const prev = i > 0 ? curve[i - 1].equity : curve[i].equity;
-      if (curve[i].equity - prev >= threshold) {
+      const jump = curve[i].equity - curve[i - 1].equity;
+      if (jump >= low && jump <= high) {
         return { ...e, date: curve[i].date };
       }
     }

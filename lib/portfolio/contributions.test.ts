@@ -183,3 +183,47 @@ describe("depositAdjustedPnlCurve — settlement-lag artifact", () => {
     expect(curve[curve.length - 1].value).toBeCloseTo(2_319.37, 2);
   });
 });
+
+// The live account as Alpaca actually has it (Activities → Transfers,
+// 2026-09-08): $8k on 05-14, $40k on 05-15, $40k on 05-21. Equity history
+// starts 05-14 at $8,000.
+const OPENING_EVENTS: FundingEvent[] = [
+  { date: "2026-05-14", amount: 8_000 },
+  { date: "2026-05-15", amount: 40_000 },
+  { date: "2026-05-21", amount: 40_000 },
+];
+const OPENING_EQUITY = [
+  { date: "2026-05-14", equity: 8_000 },
+  { date: "2026-05-15", equity: 48_000 },
+  { date: "2026-05-18", equity: 48_010 },
+  { date: "2026-05-19", equity: 48_000 },
+  { date: "2026-05-20", equity: 48_000 },
+  { date: "2026-05-21", equity: 88_000 },
+  { date: "2026-09-08", equity: 94_406.35 },
+];
+
+describe("alignFundingToEquity — the opening deposit stays on the opening day", () => {
+  it("does not re-date the $8k opening deposit onto the $40k landing", () => {
+    const aligned = alignFundingToEquity(OPENING_EQUITY, OPENING_EVENTS);
+    expect(aligned.find((e) => e.amount === 8_000)!.date).toBe("2026-05-14");
+    expect(aligned.filter((e) => e.amount === 40_000).map((e) => e.date)).toEqual([
+      "2026-05-15",
+      "2026-05-21",
+    ]);
+  });
+
+  it("a small deposit cannot adopt a much larger jump even mid-curve", () => {
+    const events: FundingEvent[] = [{ date: "2026-05-19", amount: 5_000 }];
+    // Only a $40k jump exists in its window — not this deposit's landing.
+    const aligned = alignFundingToEquity(OPENING_EQUITY, events);
+    expect(aligned[0].date).toBe("2026-05-19");
+  });
+
+  it("the deposit-adjusted curve now starts at zero and ends at equity − $88k", () => {
+    const curve = depositAdjustedPnlCurve(OPENING_EQUITY, OPENING_EVENTS);
+    expect(curve[0].value).toBe(0);
+    expect(curve[curve.length - 1].value).toBeCloseTo(94_406.35 - 88_000, 2);
+    // No point carries a phantom deposit-sized value in either direction.
+    for (const p of curve) expect(Math.abs(p.value)).toBeLessThan(10_000);
+  });
+});

@@ -875,16 +875,26 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
   // ── Portfolio header values ─────────────────────────────────────────────────
   const totalValueStr = formatCurrency(portfolio.totalValue);
 
+  // A window that reaches back to the account's first day is the whole
+  // account, whatever the tab says (1Y on a four-month-old account is Max).
+  // Its P&L is the identity the digest uses — equity − net contributed — and
+  // NOT "curve today minus curve on day one": the curve's first point is only
+  // zero if every opening dollar has a matching deposit record, and one
+  // mis-dated deposit turned that into −$1,592 on a +$6,406 account.
+  const includesInception =
+    pnlData.length > 0 && rawPnlCurve.length > 0 && pnlData[0].date === rawPnlCurve[0].date;
   // Range-aware P&L: delta over the selected range from the active (filtered)
   // curve. Because that curve is deposit-adjusted, the delta is pure trading
   // P&L — a deposit inside the window cancels out instead of showing as a gain.
-  const rangePnl = pnlData.length >= 2
-    ? pnlData[pnlData.length - 1].value - pnlData[0].value
-    : portfolio.totalPnl;
-  // % base: capital at the start of the window. All-Time divides by net
-  // contributed capital so "total return" = gain ÷ money-you-put-in; shorter
-  // ranges divide by the equity at the range start.
-  const rangePnlBase = range === 'Max'
+  const rangePnl = includesInception
+    ? portfolio.totalPnl
+    : pnlData.length >= 2
+      ? pnlData[pnlData.length - 1].value - pnlData[0].value
+      : portfolio.totalPnl;
+  // % base: capital at the start of the window. Whole-account windows divide
+  // by net contributed capital so "total return" = gain ÷ money-you-put-in;
+  // shorter ranges divide by the equity at the range start.
+  const rangePnlBase = includesInception || range === 'Max'
     ? (portfolio.netContributed > 0 ? portfolio.netContributed : (equityRange[0]?.value ?? 0))
     : (equityRange[0]?.value ?? portfolio.netContributed);
   const rangePnlPct = rangePnlBase > 0 ? (rangePnl / rangePnlBase) * 100 : 0;
