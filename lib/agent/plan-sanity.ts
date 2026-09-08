@@ -40,6 +40,7 @@ export type PlanSanityFlag = {
     | "TARGET_ALREADY_PASSED"
     | "STOP_ALREADY_BREACHED"
     | "STOP_INSIDE_NOISE"
+    | "FLOOR_INSIDE_NOISE"
     | "PLAN_BELOW_RR_FLOOR";
   /** Plain-language statement of the arithmetic, with the numbers. */
   text: string;
@@ -156,6 +157,33 @@ export function computePlanSanity(args: {
           `The stop ${fmt(stopLoss)} sits ${stopDistancePct.toFixed(1)}% from the buy level ${fmt(entryPrice)}, ` +
           `but this stock's ordinary daily move is ~${dayRangePct.toFixed(1)}%. Filled today, the plan would likely ` +
           `stop out on noise rather than thesis failure. Set the stop beneath real structure (below the range, a recent swing low), or rethink the entry.`,
+      });
+    }
+  }
+
+  // The HWM case: a watch floor parked within a normal day's move of the
+  // live price. To the analyst it meant "if it can't hold today's level the
+  // repair failed"; to the evaluator a floor is a tick-level tripwire that
+  // sets the plan down the first print under it. HWM's was 0.35% under the
+  // tape on 09-02 and gone 90 minutes later — the second time in two days.
+  // The stop-vs-entry check above can't see this: it measures from the buy
+  // level, which on a breakout plan sits well ABOVE the price.
+  if (
+    stopLoss != null &&
+    stopLoss > 0 &&
+    dayRangePct != null &&
+    dayRangePct > 0
+  ) {
+    const floorGapPct = isLong
+      ? ((currentPrice - stopLoss) / currentPrice) * 100
+      : ((stopLoss - currentPrice) / currentPrice) * 100;
+    if (floorGapPct > 0 && floorGapPct < dayRangePct) {
+      flags.push({
+        kind: "FLOOR_INSIDE_NOISE",
+        text:
+          `The floor ${fmt(stopLoss)} sits ${floorGapPct.toFixed(1)}% ${isLong ? "under" : "over"} the live price ${fmt(currentPrice)}, ` +
+          `but this stock's ordinary daily move is ~${dayRangePct.toFixed(1)}%. A floor on a stock we don't own sets the plan down on the first tick through it, ` +
+          `so an ordinary ${isLong ? "red" : "green"} day erases this plan. Put the floor under real structure with room, or say in one sentence that a break of today's level is meant to end the plan.`,
       });
     }
   }
