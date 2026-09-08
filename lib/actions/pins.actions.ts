@@ -1,7 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
@@ -90,7 +88,13 @@ export async function setPinnedTicker(
     await prisma.pinnedTicker.deleteMany({ where: { accountId, ticker: symbol } });
   }
 
-  revalidatePath("/");
-  revalidatePath(`/stocks/${symbol}`);
+  // No revalidatePath here. Both surfaces that read pins ("/" and
+  // /stocks/[symbol]) are dynamic — they call cookies() through the (root)
+  // layout — so there is no cache entry to invalidate. All the call did was
+  // force a full dashboard re-render (Alpaca + Finnhub + coverage) before this
+  // promise resolved, which is most of what made pinning feel slow. The rail
+  // updates itself from the shared client cache (hooks/usePinned), and the
+  // server list in app/(root)/page.tsx is only the pre-hydration fallback,
+  // re-read on the next real page load.
   return { ok: true, pinned };
 }

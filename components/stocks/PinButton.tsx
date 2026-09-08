@@ -1,6 +1,5 @@
 "use client";
 
-import { useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,13 @@ import { usePinned } from "@/hooks/usePinned";
 // One icon, two states, nothing else: filled = pinned, outline = not pinned.
 // Clicking flips it. State comes from the shared pin cache, so this button and
 // every row menu showing the same ticker flip together.
+//
+// Do NOT wrap the click in startTransition. The flip is optimistic, and React
+// holds a transition's updates until the async work inside it settles — so the
+// icon would not move until the write round-tripped. Measured: 477ms held vs
+// 15ms plain, and that was against a 400ms stub. In production the wait was
+// long enough to read as a dead button, and clicking again just toggled the
+// pin back off, which is why nothing was ever saved.
 
 export function PinButton({
   ticker,
@@ -26,7 +32,6 @@ export function PinButton({
   size?: "icon-sm" | "icon";
 }) {
   const { pinned, toggle } = usePinned(ticker);
-  const [, startTransition] = useTransition();
   const label = pinned ? `Unpin ${ticker}` : `Pin ${ticker}`;
 
   return (
@@ -41,8 +46,7 @@ export function PinButton({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              startTransition(async () => {
-                const res = await toggle();
+              void toggle().then((res) => {
                 if (!res.ok) toast.error(res.error ?? `Couldn't ${pinned ? "unpin" : "pin"} ${ticker}`);
               });
             }}

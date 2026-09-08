@@ -85,7 +85,17 @@ export function usePinned(ticker: string | undefined): {
     };
     apply(next);
 
-    const res = await setPinnedTicker(symbol, next);
+    // A thrown write (network blip, a tab left open across a deploy, a server
+    // error) has to revert too, not just a refused one. Without this the icon
+    // keeps the flip with nothing saved behind it, and — because the cache is
+    // module-level and only loads once — every later click on that ticker is
+    // the opposite of what the user means.
+    let res: { ok: boolean; pinned: boolean; error?: string };
+    try {
+      res = await setPinnedTicker(symbol, next);
+    } catch {
+      res = { ok: false, pinned: !next, error: "Couldn't save the pin — try again" };
+    }
     if (!res.ok) apply(!next);
     return res;
   }, [symbol]);
