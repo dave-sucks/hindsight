@@ -28,6 +28,7 @@ import type { ToolContext } from "./tool-context";
 import type { ToolUI, ToolSource, ToolResult } from "./tool-result";
 import {
   detectGateRejection,
+  detailFromData,
   recordGateRejection,
 } from "./gate-rejections";
 import type { AgentMode } from "./modes";
@@ -134,6 +135,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
                 tool: options.gateLog,
                 gateCode: rejection.gateCode,
                 summary: result.summary,
+                detail: detailFromData(result.data),
                 args,
                 ctx,
               });

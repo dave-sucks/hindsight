@@ -71,7 +71,7 @@ export async function GET(
       catalystDate: true,
       createdAt: true,
       scoring: true,
-      researchRun: { select: { agentConfigId: true } },
+      researchRun: { select: { agentConfigId: true, agentConfig: { select: { minConfidence: true } } } },
     },
   });
   if (!thesis) {
@@ -176,6 +176,7 @@ export async function GET(
       catalystDate: thesis.catalystDate,
       createdAt: thesis.createdAt,
       scoring: thesis.scoring,
+      minConfidence: thesis.researchRun?.agentConfig?.minConfidence ?? null,
       parsedTriggers,
       positionOpenedAt: openPosition?.openedAt ?? null,
     },

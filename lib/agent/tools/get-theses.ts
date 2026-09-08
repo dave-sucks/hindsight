@@ -933,6 +933,7 @@ export const getTheses = defineTool({
             catalystDate: t.catalystDate,
             createdAt: t.createdAt,
             scoring: t.scoring,
+            minConfidence: ctx.minConfidence ?? null,
             parsedTriggers,
             positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
           },

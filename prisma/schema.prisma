@@ -506,6 +506,9 @@ model GateRejection {
   gateCode  String?
   /** The rejection's one-line summary, verbatim. */
   summary   String
+  /** The full reason the tool gave the agent (data.message / data.note), so a
+   *  refused buy can be read — and acted on by hand — from the Activity feed. */
+  detail    String?
   ticker    String?
   runId     String?
   analystId String?

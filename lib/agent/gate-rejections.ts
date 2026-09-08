@@ -86,6 +86,14 @@ export function detectGateRejection(data: unknown): DetectedRejection | null {
   return null;
 }
 
+/** The full reason text a refusal carried, if any (message | note). */
+export function detailFromData(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const d = data as Record<string, unknown>;
+  const text = d.message ?? d.note;
+  return typeof text === "string" && text.length > 0 ? text : null;
+}
+
 /** Best-effort ticker extraction from tool args (ticker | symbol). */
 export function tickerFromArgs(args: unknown): string | null {
   if (typeof args !== "object" || args === null) return null;
@@ -104,6 +112,8 @@ export async function recordGateRejection(opts: {
   tool: string;
   gateCode: string | null;
   summary: string;
+  /** The full reason handed to the agent (data.message / data.note). */
+  detail?: string | null;
   args: unknown;
   ctx: ToolContext;
 }): Promise<void> {
@@ -113,6 +123,7 @@ export async function recordGateRejection(opts: {
         tool: opts.tool,
         gateCode: opts.gateCode,
         summary: opts.summary.slice(0, 500),
+        detail: opts.detail ? opts.detail.slice(0, 2000) : null,
         ticker: tickerFromArgs(opts.args),
         runId: opts.ctx.runId ?? null,
         analystId: opts.ctx.analystId ?? null,
