@@ -69,7 +69,7 @@ export async function ingestThesis(
 
   // Validate against the SAME Zod schema the agent path gets for free from the
   // AI SDK. The direct tool.execute() call below bypasses SDK input
-  // validation, so without this a chat emitting wrong types (target_size_pct
+  // validation, so without this a chat emitting wrong types (conviction
   // as a string, direction "long", a plain-string snapshot) would skip schema
   // checks entirely and either persist malformed data or throw deep in
   // execute(). Validate BEFORE creating the run row so a bad payload leaves no

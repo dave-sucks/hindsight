@@ -72,7 +72,6 @@ function thesisRow(over: Record<string, unknown>) {
     entryPrice: 100,
     targetPrice: 130,
     stopLoss: 90,
-    targetSizePct: 3,
     // No triggers → no cadence rung → nothing fires, no review due →
     // needsAction stays null → quiet row under "actionable".
     triggers: [],

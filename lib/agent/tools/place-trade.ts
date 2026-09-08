@@ -23,7 +23,7 @@ import { isInsideMorningBatch } from "@/lib/email-suppression";
 import { armHeldLadderOnFill } from "@/lib/proposals/thesis-flips";
 import {
   positionBand,
-  DEFAULT_POSITION_CAP,
+  entrySizeForConviction,
 } from "@/lib/agent/position-sizing";
 import {
   getThesisComposite,
@@ -61,7 +61,7 @@ export const placeTrade = defineTool({
     entry_price: z.number().describe("The CURRENT quote — this is a market order, so this is what you expect to pay and what sizes the position. Unlike the thesis's buy level (a price we have not reached), here today's price is the right answer."),
     target_price: z.number(),
     stop_loss: z.number(),
-    notional: z.number().optional().describe("Dollar amount to invest (e.g. 5000 for $5,000). Preferred over shares — just pass your position size budget directly."),
+    notional: z.number().optional().describe("Dollar amount to invest (e.g. 5000 for $5,000). OMIT IT and the trade is sized from the analyst's settings by conviction: the smallest trade normally, the largest trade on STRONG/HIGH. If you pass one it must sit inside the analyst's band."),
     shares: z.number().optional().describe("Number of shares. Only use if you need a specific share count; prefer notional instead."),
     thesis_id: z.string().describe("REQUIRED — the thesis_id returned by record_thesis. Every trade must link to a thesis."),
     entry_rationale: z
@@ -421,7 +421,6 @@ export const placeTrade = defineTool({
         maxPositionSize: ctx.maxPositionSize,
         realMaxPosition: ctx.realMaxPosition,
       });
-      const effectiveCap = band.ceiling;
       {
         const requestedNotional =
           args.notional != null && args.notional > 0
@@ -498,17 +497,15 @@ export const placeTrade = defineTool({
       } else if (args.shares != null && args.shares > 0) {
         resolvedShares = args.shares;
       } else {
-        // Final fallback: use the band's ceiling (LIVE = the promotion cap,
-        // PAPER = maxPositionSize) so a sizeless place_trade on a live analyst
-        // can't blow past the per-position ceiling. Math.max against the floor
-        // covers the one case where the ceiling is unconfigured and the flat
-        // DEFAULT_POSITION_CAP would land below a configured minimum.
-        const fallbackCap = Math.max(
-          band.floor,
-          effectiveCap ?? DEFAULT_POSITION_CAP,
-        );
-        resolvedNotional = fallbackCap;
-        resolvedShares = Math.max(1, Math.floor(fallbackCap / args.entry_price));
+        // No size from the agent: the analyst's settings decide (DAV-237).
+        // Smallest trade normally, largest on STRONG/HIGH conviction — the
+        // band the principal set, placed by the belief the thesis carries.
+        const sized = await prisma.thesis.findUnique({
+          where: { id: args.thesis_id },
+          select: { conviction: true },
+        });
+        resolvedNotional = entrySizeForConviction({ conviction: sized?.conviction, band });
+        resolvedShares = Math.max(1, Math.floor(resolvedNotional / args.entry_price));
       }
 
       // ── Workstream B: DB-first write path ────────────────────────────────

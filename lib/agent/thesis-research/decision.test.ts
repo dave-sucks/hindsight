@@ -31,7 +31,6 @@ const validLong: ThesisDecisionInput = {
   conviction_rationale:
     "I really like this setup — the catalyst is ahead and consensus is too conservative on DC revenue.",
   variant_view: "Consensus models $42B DC; channel checks support $50B+ — 2 quarters underweighted.",
-  target_size_pct: 4,
 };
 
 const mintOpts = { mode: "mint" as const, existingStatus: null, currentPrice: 101 };
@@ -436,41 +435,6 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
     );
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("EXIT rung");
-  });
-});
-
-describe("validateThesisDecision — DAV-204 sub-floor sizing mirror", () => {
-  const sized = {
-    ...mintOpts,
-    equityUSD: 125_000,
-    minPositionSize: 7000,
-    maxPositionSize: 14000,
-    realMaxPosition: 14000,
-    environment: "LIVE" as const,
-  };
-
-  it("rejects a target_size_pct whose dollars fall below the entry floor", () => {
-    // 4% of $125k = $5,000 < $7,000 floor — the 2026-08-19 mint-batch shape.
-    const v = validateThesisDecision(validLong, sized);
-    expect(v.ok).toBe(false);
-    const msg = v.errors.join(" ");
-    expect(msg).toContain("entry floor");
-    expect(msg).toContain("5.6%"); // suggested floorPct (7000/125000, rounded up)
-  });
-
-  it("accepts once the size clears the floor", () => {
-    const v = validateThesisDecision({ ...validLong, target_size_pct: 6.5 }, sized);
-    expect(v.ok).toBe(true);
-  });
-
-  it("skips the mirror when equity is unknown (fail-open)", () => {
-    const v = validateThesisDecision(validLong, { ...sized, equityUSD: null });
-    expect(v.ok).toBe(true);
-  });
-
-  it("skips the mirror when no floor is configured", () => {
-    const v = validateThesisDecision(validLong, { ...sized, minPositionSize: 0 });
-    expect(v.ok).toBe(true);
   });
 });
 

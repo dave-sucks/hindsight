@@ -7,7 +7,6 @@
  *     - conviction tier required on LONG/SHORT
  *     - conviction_rationale required whenever conviction set
  *     - variant_view required for STRONG/HIGH
- *     - target_size_pct required on LONG/SHORT
  *   • Consistency gates (§3.5):
  *     - Gate A: STRONG requires composite ≥ 7
  *     - Gate B: STRONG/HIGH require entryQuality.score ≥ 2
@@ -96,7 +95,7 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
       const ctx = makeCtx();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const tool = recordThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-      const result = await tool.execute(baseLongArgs({ target_size_pct: 4 }));
+      const result = await tool.execute(baseLongArgs({}));
 
       expect(result.data.status).toBe("FAILED");
       expect(result.summary).toMatch(/conviction tier required/i);
@@ -110,7 +109,6 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
       const result = await tool.execute(
         baseLongArgs({
           conviction: "MEDIUM",
-          target_size_pct: 2,
           // conviction_rationale missing
         }),
       );
@@ -128,7 +126,6 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
         baseLongArgs({
           conviction: "STRONG",
           conviction_rationale: "Composite 8, R/R 3:1, clear edge.",
-          target_size_pct: 5,
           scoring: {
             trendStrength: { score: 3, note: "ok" },
             relativeStrength: { score: 3, note: "ok" },
@@ -152,7 +149,6 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
         baseLongArgs({
           conviction: "HIGH",
           conviction_rationale: "Composite 7, R/R 2.6:1.",
-          target_size_pct: 4,
           // variant_view missing
         }),
       );
@@ -169,7 +165,6 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
         baseLongArgs({
           conviction: "MEDIUM",
           conviction_rationale: "Decent setup, no edge.",
-          target_size_pct: 2,
           // variant_view intentionally omitted — should be allowed
         }),
       );
@@ -178,22 +173,6 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
       // logic (triggers, persistence) may or may not succeed in this mock,
       // but the key invariant is the conviction-specific gates did NOT fire.
       expect(result.summary).not.toMatch(/variant_view/i);
-    });
-
-    it("rejects LONG without target_size_pct (promoted-to-required)", async () => {
-      const ctx = makeCtx();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tool = recordThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-      const result = await tool.execute(
-        baseLongArgs({
-          conviction: "MEDIUM",
-          conviction_rationale: "Decent setup.",
-          // target_size_pct missing
-        }),
-      );
-
-      expect(result.data.status).toBe("FAILED");
-      expect(result.summary).toMatch(/target_size_pct required/i);
     });
   });
 
@@ -212,7 +191,6 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
           conviction: "STRONG",
           conviction_rationale: "We should urgently buy this. Variant view is sharp; composite undersells what's coming.",
           variant_view: "Edge: market hasn't priced the secondary catalyst.",
-          target_size_pct: 5,
           scoring: {
             trendStrength: { score: 2, note: "ok" },
             relativeStrength: { score: 1, note: "ok" },
@@ -235,7 +213,6 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
           conviction: "STRONG",
           conviction_rationale: "Late chase on price but the catalyst forces the move. Worth chasing.",
           variant_view: "Edge: imminent catalyst that overrides entry-timing concerns.",
-          target_size_pct: 5,
           scoring: {
             trendStrength: { score: 3, note: "ok" },
             relativeStrength: { score: 3, note: "ok" },
@@ -269,7 +246,7 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
         invalidation_conditions: ["Revisit if pullback to 20d on volume."],
         source_kind: "WATCHLIST_REVIEW",
         source_rationale: "Watchlist review; passing.",
-        // NO conviction, NO conviction_rationale, NO variant_view, NO target_size_pct
+        // NO conviction, NO conviction_rationale, NO variant_view
         // PASS bypasses all four conviction gates.
       });
 
@@ -277,7 +254,6 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
       expect(result.summary ?? "").not.toMatch(/conviction tier required/i);
       expect(result.summary ?? "").not.toMatch(/conviction_rationale required/i);
       expect(result.summary ?? "").not.toMatch(/variant_view/i);
-      expect(result.summary ?? "").not.toMatch(/target_size_pct required/i);
     });
   });
 });

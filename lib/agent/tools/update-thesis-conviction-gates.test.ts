@@ -11,7 +11,7 @@
  *     STRONG row
  *   • Consistency: Gate B (STRONG/HIGH entryQuality < 2)
  *   • PENDING → LONG/SHORT promotion requires conviction + rationale +
- *     variantView (for STRONG/HIGH) + target_size_pct
+ *     variantView (for STRONG/HIGH)
  *
  * See docs/plans/CONVICTION_EXPRESSION.md §3, §3.5.
  */
@@ -90,7 +90,6 @@ function makeExistingRow(overrides: Record<string, unknown> = {}) {
     },
     targetPrice: 120,
     stopLoss: 92,
-    targetSizePct: 3,
     conviction: "MEDIUM",
     convictionRationale: "Existing medium tier.",
     variantView: null,
@@ -254,7 +253,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
         core_belief: "TEST reaches 150 within 60 days on PEAD.",
         key_assumptions: ["a1", "a2"],
         invalidation_conditions: ["i1", "i2"],
-        // conviction, conviction_rationale, variant_view, target_size_pct all missing
+        // conviction, conviction_rationale, variant_view all missing
       });
 
       expect(result.data.ok).toBe(false);
@@ -263,7 +262,6 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
         expect.arrayContaining([
           expect.stringMatching(/conviction \(STRONG/),
           "conviction_rationale",
-          "target_size_pct",
         ]),
       );
     });
@@ -298,7 +296,6 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
         invalidation_conditions: ["i1", "i2"],
         conviction: "STRONG",
         conviction_rationale: "Composite 8, R/R 3:1, clear edge.",
-        target_size_pct: 5,
         // variant_view missing — STRONG requires it
       });
 

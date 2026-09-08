@@ -175,47 +175,31 @@ describe("scaleInCeiling", () => {
   });
 });
 
-describe("subFloorTargetSize — the RARE authoring-time sizing gate (P1-40 companion)", () => {
+describe("entrySizeForConviction — the analyst's band, placed by conviction (DAV-237)", () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { subFloorTargetSize } = require("./position-sizing");
-  const base = {
-    equity: 100_000,
-    environment: "LIVE" as const,
-    minPositionSize: 5_000,
-    maxPositionSize: 14_000,
-  };
+  const { entrySizeForConviction, positionBand } = require("./position-sizing");
+  const catalyst = positionBand({ environment: "LIVE", minPositionSize: 5_000, maxPositionSize: 8_000, realMaxPosition: 8_000 });
 
-  it("flags RARE's shape: 4% of $100k = $4k under a $5k floor", () => {
-    const r = subFloorTargetSize({ ...base, targetSizePct: 4 });
-    expect(r).toMatchObject({ floorDollars: 5000, intendedDollars: 4000 });
-    // Suggested % clears the floor when retried verbatim.
-    expect((r!.floorPct / 100) * base.equity).toBeGreaterThanOrEqual(5000);
+  it("MEDIUM and LOW buy the smallest trade", () => {
+    expect(entrySizeForConviction({ conviction: "MEDIUM", band: catalyst })).toBe(5_000);
+    expect(entrySizeForConviction({ conviction: "LOW", band: catalyst })).toBe(5_000);
+    expect(entrySizeForConviction({ conviction: null, band: catalyst })).toBe(5_000);
   });
 
-  it("passes a size at or above the floor", () => {
-    expect(subFloorTargetSize({ ...base, targetSizePct: 5 })).toBeNull();
-    expect(subFloorTargetSize({ ...base, targetSizePct: 8 })).toBeNull();
+  it("STRONG and HIGH buy the largest trade", () => {
+    expect(entrySizeForConviction({ conviction: "STRONG", band: catalyst })).toBe(8_000);
+    expect(entrySizeForConviction({ conviction: "HIGH", band: catalyst })).toBe(8_000);
   });
 
-  it("no floor configured → no gate", () => {
-    expect(
-      subFloorTargetSize({ ...base, minPositionSize: 0, targetSizePct: 1 }),
-    ).toBeNull();
+  it("the live promotion cap still bounds the largest trade", () => {
+    const compounder = positionBand({ environment: "LIVE", minPositionSize: 10_000, maxPositionSize: 15_000, realMaxPosition: 10_000 });
+    expect(entrySizeForConviction({ conviction: "STRONG", band: compounder })).toBe(10_000);
   });
 
-  it("unknowable equity → no gate (fail-open)", () => {
-    expect(subFloorTargetSize({ ...base, equity: NaN, targetSizePct: 1 })).toBeNull();
-    expect(subFloorTargetSize({ ...base, equity: 0, targetSizePct: 1 })).toBeNull();
-  });
-
-  it("respects the LIVE promotion cap clamping the floor (band semantics)", () => {
-    // realMaxPosition $3k < floor $5k → band clamps floor to the ceiling;
-    // a 4% ($4k) plan is fine against the clamped $3k floor.
-    const r = subFloorTargetSize({
-      ...base,
-      realMaxPosition: 3_000,
-      targetSizePct: 4,
-    });
-    expect(r).toBeNull();
+  it("no floor configured → the smallest trade is the ceiling; nothing configured → the default cap", () => {
+    const noFloor = positionBand({ environment: "PAPER", minPositionSize: 0, maxPositionSize: 6_000 });
+    expect(entrySizeForConviction({ conviction: "MEDIUM", band: noFloor })).toBe(6_000);
+    const bare = positionBand({ environment: "PAPER" });
+    expect(entrySizeForConviction({ conviction: "MEDIUM", band: bare })).toBe(5_000);
   });
 });

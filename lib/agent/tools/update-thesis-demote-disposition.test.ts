@@ -264,7 +264,6 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
       ],
       conviction: "MEDIUM",
       conviction_rationale: "Setup confirmed by the wake, sizing standard.",
-      target_size_pct: 5,
       rationale: "The wake fired and the setup is now worth a full plan.",
     });
     expect(result.data?.error).toBeUndefined();

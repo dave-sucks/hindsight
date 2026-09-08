@@ -70,7 +70,6 @@ function pltr(overrides: Record<string, unknown> = {}) {
     conviction: "MEDIUM",
     convictionRationale: "Existing medium tier.",
     variantView: null,
-    targetSizePct: 3,
     catalystDate: null,
     lastReviewedAt: null,
     researchUpdatedAt: new Date(),
