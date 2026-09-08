@@ -255,3 +255,21 @@ describe("validateThesisShape — the 2:1 floor (one rule, every write path)", (
     ).toEqual({ ok: true });
   });
 });
+
+describe("validateThesisShape — a held name may carry a stop at or above the fill (DAV-233)", () => {
+  it("SMMT: fill $14.35, stop moved to $16.20 — accepted on a held row", () => {
+    expect(
+      validateThesisShape({ direction: "LONG", entryPrice: 14.35, targetPrice: 26, stopLoss: 16.2, held: true }),
+    ).toMatchObject({ ok: true });
+  });
+  it("the same tuple on a plan we haven't bought is still inverted", () => {
+    const r = validateThesisShape({ direction: "LONG", entryPrice: 14.35, targetPrice: 26, stopLoss: 16.2 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("LONG-stop-not-below-entry");
+  });
+  it("held still refuses a target under the stop — that is not a ratchet, that is nonsense", () => {
+    const r = validateThesisShape({ direction: "LONG", entryPrice: 14.35, targetPrice: 15, stopLoss: 16.2, held: true });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("LONG-target-not-above-stop");
+  });
+});

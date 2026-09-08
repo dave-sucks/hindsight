@@ -49,6 +49,7 @@ import {
 } from "@/lib/agent/triggers/ratchet";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
+import { triggerBucket } from "@/lib/agent/triggers/bucket";
 import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
 import {
   writeThesisUpdate,
@@ -1005,6 +1006,7 @@ export const updateThesis = defineTool({
         targetPrice: effectiveTarget,
         stopLoss: effectiveStop,
         minRiskReward: held ? undefined : MIN_RISK_REWARD,
+        held,
       });
       if (!shapeCheck.ok) {
         return {
@@ -1230,27 +1232,6 @@ export const updateThesis = defineTool({
         inheritedLadder,
       );
 
-      // Dropping a redundant rung must not drop its COOLDOWN. A thesis
-      // that carries a materialized copy of a default (most rows minted
-      // before the cascade do) converges to inheriting it the first time
-      // the agent resends the ladder — and the inherited rung has a
-      // different id, so its `lastFiredAt` would not carry over and a
-      // rung mid-cooldown could immediately re-fire. Same family as the
-      // 2026-06-02 NVDA runaway. Carry the stamp across, into the
-      // per-thesis fire state the inherited rung actually reads.
-      const droppedIds = new Set(
-        (args.triggers as Trigger[])
-          .filter((t) => !incoming.some((k) => k.id === t.id))
-          .map((t) => t.id),
-      );
-      if (droppedIds.size > 0) {
-        patch.triggerState = carryOverDroppedFireState(
-          existingTriggers.filter((t) => droppedIds.has(t.id)),
-          inheritedLadder,
-          parseTriggerState(existing.triggerState),
-        ) as object;
-      }
-
       // The agent resends the ladder WITHOUT ids and the schema mints a
       // fresh uuid per id-less rung — so before any id-keyed carry-over can
       // work, an unchanged rung must get its stored id back. Without this
@@ -1280,6 +1261,26 @@ export const updateThesis = defineTool({
           : { ...t, source: "AGENT" as const };
       });
       let finalTriggers = applyTriggerCooldownDefaults(stamped);
+
+      // A stored rung that has FIRED and is gone from the new ladder hands
+      // its cooldown to the inherited rung in the same bucket — the rung that
+      // actually takes over. It used to matter only for rungs pruned as
+      // redundant; a resend that simply OMITTED the rung was missed, and the
+      // inherited twin fired with a clean slate five minutes later (SMMT
+      // 2026-09-03: scale-in fired 09:35, ladder rewritten 09:36 without it,
+      // account scale-in fired 09:40 — two tactical runs for one move,
+      // DAV-232). Keyed by bucket, so it covers both.
+      const finalBuckets = new Set(finalTriggers.map(triggerBucket));
+      const orphaned = existingTriggers.filter(
+        (t) => t.lastFiredAt && !finalBuckets.has(triggerBucket(t)),
+      );
+      if (orphaned.length > 0) {
+        patch.triggerState = carryOverDroppedFireState(
+          orphaned,
+          inheritedLadder,
+          parseTriggerState(existing.triggerState),
+        ) as object;
+      }
 
       // ── The review clock is INDEPENDENT of the plan (2026-08-30) ────
       // There used to be a re-stamp here: a WATCHING thesis that still
