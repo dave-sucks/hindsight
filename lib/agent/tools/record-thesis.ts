@@ -22,8 +22,6 @@ import {
 import { horizonFor } from "@/lib/agent/triggers/load-levels";
 import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { getAccount } from "@/lib/alpaca";
-import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
 import { randomUUID } from "node:crypto";
@@ -265,17 +263,6 @@ const thesisFields = z.object({
     .optional()
     .describe(
       "REQUIRED for LONG/SHORT — must contain ≥2 specific items. Concrete things that would prove this thesis wrong (e.g. \"Guidance cut on next print\", \"Gross margin below 70% on next print\", \"CFO departure\"). Generic risks like \"market volatility\" are insufficient. Used by the trade evaluator to grade exits and by the daily-run prompt to decide when a signal counts as thesis-breaking. Optional only for direction=PASS.",
-    ),
-  target_size_pct: z
-    .number()
-    .min(0)
-    .max(100)
-    .optional()
-    .describe(
-      "% of portfolio at full position. REQUIRED for LONG/SHORT (Layer-1 gate — Conviction Expression v4). " +
-        "Pair with the conviction tier: STRONG = 4-6%, HIGH = 3-5%, MEDIUM = 2-3%, LOW = 1-2%. " +
-        "Captures intent — account-level caps (maxPositionSize, realMaxPosition) clip at execution. " +
-        "Actual position size may be smaller while scaling in or after a partial trim.",
     ),
   // ── Conviction Expression v4 (writer-side) ──────────────────────────
   // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Three new fields:
@@ -842,60 +829,6 @@ export const recordThesis = defineTool({
             sources: [],
           };
         }
-        if (args.target_size_pct == null) {
-          console.warn(
-            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — target_size_pct required on directional thesis.`,
-          );
-          return {
-            summary: `Thesis rejected for ${args.ticker}: target_size_pct required on directional thesis.`,
-            data: {
-              thesis_id: null,
-              status: "FAILED" as const,
-              note:
-                `Every directional thesis (LONG/SHORT) requires target_size_pct — % of portfolio at full position. ` +
-                `Pair with conviction tier: STRONG = 4-6%, HIGH = 3-5%, MEDIUM = 2-3%, LOW = 1-2%. ` +
-                `Account-level caps (maxPositionSize, realMaxPosition) still clip at execution; this field captures intent.`,
-            },
-            sources: [],
-          };
-        }
-
-        // ── Sub-floor sizing gate (P1-40 companion — the RARE bug) ─────────
-        // A targetSizePct that works out below the analyst's dollar floor is
-        // a self-rejecting plan: Guardrail 5b refuses the entry by the
-        // thesis's own numbers on the one day the ENTER fires (RARE: 4% ≈
-        // $4k vs a $5k floor — the window closed unfilled; IONS/MIRM carried
-        // the same defect). Catch it at authoring, when it costs a retry, not
-        // at the fire, when it costs the entry. Fail-open on equity-fetch
-        // failure — a data outage must not block thesis writing.
-        if (ctx.minPositionSize != null && ctx.minPositionSize > 0) {
-          try {
-            const account = await getAccount(ctx.alpacaCreds);
-            const equity = Number(account?.equity);
-            const subFloor = subFloorTargetSize({
-              targetSizePct: args.target_size_pct,
-              equity,
-              environment: ctx.runEnvironment ?? "PAPER",
-              minPositionSize: ctx.minPositionSize,
-              maxPositionSize: ctx.maxPositionSize,
-              realMaxPosition: ctx.realMaxPosition,
-            });
-            if (subFloor) {
-              return {
-                summary: `Thesis rejected for ${args.ticker}: target_size_pct ${args.target_size_pct}% is below this analyst's position floor.`,
-                data: {
-                  thesis_id: null,
-                  status: "FAILED" as const,
-                  note:
-                    `target_size_pct ${args.target_size_pct}% ≈ $${Math.round(subFloor.intendedDollars).toLocaleString()} at current equity — below this analyst's $${Math.round(subFloor.floorDollars).toLocaleString()} minimum position (place_trade rejects sub-floor entries, so this plan can never fill; that is exactly how RARE's fired ENTER died unexecuted). ` +
-                    `Retry the same record_thesis call with target_size_pct: ${subFloor.floorPct} or higher — IF conviction supports a full-floor position. ` +
-                    `If it doesn't, this name isn't sizeable for this analyst: record it as direction "PASS" instead of minting an untradeable plan.`,
-                },
-                sources: [],
-              };
-            }
-          } catch { /* fail-open: no equity, no gate */ }
-        }
       }
 
       // Compute composite = SUM of the four weighted dimensions (caps:
@@ -1382,7 +1315,6 @@ export const recordThesis = defineTool({
         coreBelief: args.core_belief ?? null,
         keyAssumptions: args.key_assumptions ?? [],
         invalidationConds: args.invalidation_conditions ?? [],
-        targetSizePct: args.target_size_pct ?? null,
         // ── Conviction Expression v4 ─────────────────────────────────
         // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Layer-1 gates
         // above enforced required-when-directional + variantView-on-
@@ -1816,7 +1748,6 @@ export const recordThesis = defineTool({
             coreBelief: _belief,
             keyAssumptions: _assumptions,
             invalidationConds: _invalid,
-            targetSizePct: _size,
             triggers: _triggers,
             catalystDate: _cdate,
             // THESIS_RESEARCH_V2 Phase 1 + PR-9 flat schema — strip every
@@ -1841,7 +1772,6 @@ export const recordThesis = defineTool({
           void _belief;
           void _assumptions;
           void _invalid;
-          void _size;
           void _triggers;
           void _cdate;
           void _rdata;

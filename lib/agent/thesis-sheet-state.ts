@@ -24,7 +24,6 @@ export const thesisSheetStateSelect = {
   entryPrice: true,
   targetPrice: true,
   stopLoss: true,
-  targetSizePct: true,
   catalystDate: true,
   triggers: true,
   coreBelief: true,

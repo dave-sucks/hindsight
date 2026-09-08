@@ -64,7 +64,6 @@ export async function GET(
       entryPrice: true,
       targetPrice: true,
       stopLoss: true,
-      targetSizePct: true,
       catalystDate: true,
       lastReviewedAt: true,
       triggers: true,
@@ -291,7 +290,6 @@ export async function GET(
       avgCost: position?.avgCost ?? null,
       peakPrice: position?.peakPrice ?? null,
     }),
-    targetSizePct: thesis.targetSizePct,
     catalystDate: thesis.catalystDate,
     // Derived at read time from the last actual look + the cadence on the
     // resolved ladder (DAV-221). Null = no scheduled review.

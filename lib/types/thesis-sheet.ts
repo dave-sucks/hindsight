@@ -160,7 +160,6 @@ export interface ThesisDossier {
    * Price Targets card and the chart render.
    */
   levels: ThesisStateLevels | null;
-  targetSizePct: number | null;
   catalystDate: string | null;
   /**
    * When this thesis next comes due for a look — DERIVED at read time from

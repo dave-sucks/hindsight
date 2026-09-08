@@ -54,7 +54,6 @@ import {
 } from "@/lib/agent/thesis-narrative";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { getMoneyContext } from "@/lib/agent/context-bundle";
 import {
   pullThesisData,
   type ThesisPullResult,
@@ -162,7 +161,6 @@ async function loadWriterAnalyst(analystId: string): Promise<WriterAnalyst | nul
       exclusionList: true,
       minConfidence: true,
       tradingEnvironment: true,
-      // DAV-204: the writer authors target_size_pct — it must see the money.
       minPositionSize: true,
       maxPositionSize: true,
       realMaxPosition: true,
@@ -240,10 +238,9 @@ async function buildWriterToolCtx(
     /* fence just falls back to universe-only matching */
   }
   const runEnvironment = (analyst.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
-  // DAV-204: sizing fields + alpaca creds so record_thesis's sub-floor gate
-  // (#524) actually runs on the writer's persist path — without these the
-  // gate silently skipped, and the 2026-08-19 mint batch authored five
-  // sub-floor (un-fillable) plans that needed a manual heal.
+  // Alpaca creds so record_thesis's recently-sold gate can read the
+  // account; the sizing fields feed place_trade's band (not used by the
+  // writer itself).
   let alpacaCreds;
   try {
     alpacaCreds = (await resolveAlpacaCredentials(analyst.userId, runEnvironment)) ?? undefined;
@@ -288,12 +285,6 @@ export interface WriterResearchPromptOpts {
   /** ISO YYYY-MM-DD (UTC) — date-awareness block. */
   runDate: string;
   promotionContext?: RunThesisWriterArgs["promotionContext"];
-  /** DAV-204: the analyst's real position band + live equity when known. */
-  sizing?: {
-    floorDollars: number;
-    ceilingDollars: number;
-    equityUSD: number | null;
-  } | null;
   /** P1-35: this analyst sold this ticker within the last 14 days. */
   priorExit?: {
     exitPrice: number | null;
@@ -369,22 +360,6 @@ decision by the orchestrator — you are writing the research and the plan.`;
     worth holding): omit entry/target/stop AND resend triggers with the
     plan levels removed, keeping ≥1 REVIEW wake — the level columns are
     recomputed from the ladder.`;
-
-  // DAV-204 — state the floor as a PERCENT of live equity so "4% feels
-  // right" can't author a plan place_trade will refuse.
-  const sizingBlock =
-    opts.sizing && opts.sizing.floorDollars > 0
-      ? `
-POSITION SIZING — REAL MONEY CONSTRAINTS (this analyst's band)
-  • Per-entry band: $${Math.round(opts.sizing.floorDollars).toLocaleString()} floor to $${Math.round(opts.sizing.ceilingDollars).toLocaleString()} ceiling. place_trade REJECTS entries outside it — a sub-floor target_size_pct is an un-fillable plan (the RARE failure: the ENTER fires and dies on the analyst's own sizing).
-${
-  opts.sizing.equityUSD
-    ? `  • Account equity ≈ $${Math.round(opts.sizing.equityUSD).toLocaleString()} → target_size_pct must be ≥ ${Math.ceil((opts.sizing.floorDollars / opts.sizing.equityUSD) * 1000) / 10}% to clear the floor. submit_thesis validates this.`
-    : `  • Live equity unavailable this run — err toward the tier's upper bound rather than under-sizing.`
-}
-  • If conviction doesn't justify a full-floor position, that is a PASS, not a small size.
-`
-      : "";
 
   const priorExitBlock = opts.priorExit
     ? `
@@ -511,14 +486,15 @@ every field; the judgment rules:
      not enthusiastic. STRONG/HIGH require a variant_view — no variant
      view means your tier is MEDIUM. conviction_rationale is the
      judgment in plain speech, NOT a paraphrase of the scoring object.
-   • target_size_pct pairs with tier: STRONG 4-6, HIGH 3-5, MEDIUM 2-3,
-     LOW 1-2.
+   • You do not size the trade. place_trade sizes it from the analyst's
+     own settings: the smallest trade normally, the largest on STRONG /
+     HIGH conviction. Conviction is the size decision.
    • confidence context: this analyst's minimum confidence for
      trade-eligible coverage is ${opts.minConfidence}/100 — calibrate composite +
      conviction honestly against that bar.
 
 ${triggerBlock}
-${sizingBlock}${priorExitBlock}
+${priorExitBlock}
 If submit_thesis returns validation errors, fix EXACTLY the listed fields
 and call it again — do NOT rewrite the research note. When it returns
 accepted, STOP. Do not write anything after acceptance.`;
@@ -685,16 +661,6 @@ export async function writerResearchPhase(
       `(Structured data pulls failed entirely: ${pullOutput.error ?? "unknown"}. Ground your note in web research and say so explicitly in the Snapshot.)`;
     const currentPrice = pullOutput.pull?.currentPrice ?? null;
 
-    // ── DAV-204: money context ──────────────────────────────────────────
-    // The writer authors target_size_pct but never saw equity or the
-    // analyst's position band — it sized by conviction habit (2.5-4%) and
-    // the 2026-08-19 batch minted five sub-floor, un-fillable plans.
-    // Sourced from the shared context bundle (System 1, THREE_SYSTEMS.md
-    // Move 1) so the writer, discovery, and future paths quote one reality.
-    const runEnvironment = (analyst.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
-    const money = await getMoneyContext(analyst);
-    const floorDollars = money.floorDollars;
-    const equityUSD = money.equityUSD;
 
     // ── P1-35 (#524): recently-sold context for mints ───────────────────
     // record_thesis refuses a mint at/above a ≤14-day exit price without an
@@ -750,16 +716,6 @@ export async function writerResearchPhase(
       minConfidence: analyst.minConfidence,
       runDate: new Date().toISOString().slice(0, 10),
       promotionContext: args.promotionContext ?? null,
-      sizing:
-        floorDollars > 0
-          ? {
-              floorDollars,
-              // positionBand-resolved (LIVE: min(max, promotion cap)) so the
-              // prompt quotes the ceiling place_trade actually enforces.
-              ceilingDollars: money.ceilingDollars ?? (Number(analyst.maxPositionSize) || 0),
-              equityUSD,
-            }
-          : null,
       priorExit,
     });
     const userPrompt = `═══════════════════════════════════════════════════════════════════
@@ -794,12 +750,7 @@ Write the research note now, then call submit_thesis.`;
           // existing row's shape — see decision.ts review-finding-#4 block.
           existingTargetPrice: existingThesis?.targetPrice ?? null,
           existingHasTriggers: existingThesis?.hasTriggers,
-          // DAV-204 sub-floor mirror + P1-35 prior-exit acknowledgment.
-          equityUSD,
-          minPositionSize: floorDollars,
-          maxPositionSize: Number(analyst.maxPositionSize) || undefined,
-          realMaxPosition: Number(analyst.realMaxPosition) || undefined,
-          environment: runEnvironment,
+          // P1-35 prior-exit acknowledgment.
           priorExit,
         });
         if (!v.ok) {
@@ -1150,7 +1101,6 @@ export async function writerPersistPhase(
           conviction: d.conviction,
           conviction_rationale: d.conviction_rationale,
           variant_view: d.variant_view,
-          target_size_pct: d.target_size_pct,
           core_belief: d.core_belief,
           key_assumptions: d.key_assumptions,
           invalidation_conditions: d.invalidation_conditions,
@@ -1215,7 +1165,6 @@ export async function writerPersistPhase(
           conviction: d.conviction,
           conviction_rationale: d.conviction_rationale,
           variant_view: d.variant_view,
-          target_size_pct: d.target_size_pct,
           core_belief: d.core_belief,
           key_assumptions: d.key_assumptions,
           invalidation_conditions: d.invalidation_conditions,

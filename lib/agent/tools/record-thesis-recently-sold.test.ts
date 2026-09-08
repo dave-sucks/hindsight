@@ -91,7 +91,6 @@ function baseLongArgs(overrides: Record<string, unknown> = {}) {
     source_rationale: "Grok-seeded discovery batch.",
     conviction: "MEDIUM",
     conviction_rationale: "Solid setup, consensus-adjacent view.",
-    target_size_pct: 5,
     scoring: {
       trendStrength: { score: 2, note: "Basing over the 50d." },
       relativeStrength: { score: 2, note: "Mid-cohort RS." },

@@ -578,11 +578,11 @@ describe("toRow — one shape for every item", () => {
       kind: "event",
       row: row({
         type: "UPDATED",
-        fieldChanges: { targetSizePct: { from: 4, to: 6.5 } },
-        rationale: "Sizing heal.",
+        fieldChanges: { targetPrice: { from: 120, to: 130 } },
+        rationale: "Target heal.",
       }),
     });
-    expect(updated.title.secondary).toBe("size 4% → 6.5%");
+    expect(updated.title.secondary).toBe("target $120.00 → $130.00");
     expect(updated.chips).toEqual([]); // the duplicate sub-row is gone
   });
 

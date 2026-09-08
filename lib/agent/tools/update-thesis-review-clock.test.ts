@@ -88,7 +88,6 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     scoring: null,
     targetPrice: 120,
     stopLoss: 92,
-    targetSizePct: 3,
     conviction: "MEDIUM",
     convictionRationale: "Existing medium tier.",
     variantView: null,

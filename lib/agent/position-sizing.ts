@@ -126,40 +126,26 @@ export function scaleInCeiling(opts: {
   return (ceiling ?? DEFAULT_POSITION_CAP) * multiple;
 }
 
-// ─── Authoring-time sizing sanity (P1-40 companion — the RARE sizing bug) ────
+// ─── Entry size from the analyst's settings ─────────────────────────────────
 
 /**
- * A thesis whose targetSizePct works out below the analyst's minPositionSize
- * floor is self-rejecting: place_trade Guardrail 5b will refuse the entry by
- * the thesis's own numbers, even on a valid fired ENTER. RARE carried 4%
- * (≈$4k) against a $5k floor — the agent never sees "your own plan is below
- * the floor" until the one afternoon the entry window is open. Post-#523 this
- * got worse: the ENTER gate compels resolution, so a sub-floor thesis pushes
- * the agent toward archiving a good name.
+ * How much a new position is, in dollars: the analyst's own band, placed by
+ * conviction. A normal thesis buys the smallest trade the analyst allows;
+ * a STRONG or HIGH conviction thesis buys the largest.
  *
- * This helper is the Layer-1 authoring-time check, shared by record_thesis
- * and update_thesis: given live equity, does the intended size clear the
- * band's floor? Returns null when fine (or unknowable), or a rejection
- * payload with the exact numbers the agent needs to fix the call. Pure —
- * the caller fetches equity and decides fail-open on fetch errors.
+ * This replaces `Thesis.targetSizePct` (DAV-237, 2026-09-08): a percent of
+ * portfolio the AGENT wrote on every thesis, which nothing but two refusal
+ * gates ever read — place_trade always sized from the agent's `notional`
+ * and clamped it to this band. Two numbers from the model, one from the
+ * principal, and the principal's was the only one that ever bound. CYTK's
+ * 4% guess under a $5,000 floor blocked a real buy crossing on 09-08.
  */
-export function subFloorTargetSize(opts: {
-  targetSizePct: number;
-  equity: number;
-  environment: "PAPER" | "LIVE";
-  minPositionSize?: number;
-  maxPositionSize?: number;
-  realMaxPosition?: number;
-}): { floorDollars: number; floorPct: number; intendedDollars: number } | null {
-  const { targetSizePct, equity } = opts;
-  if (!Number.isFinite(equity) || equity <= 0) return null;
-  if (!Number.isFinite(targetSizePct) || targetSizePct <= 0) return null;
-  const band = positionBand(opts);
-  if (band.floor <= 0) return null;
-  const intendedDollars = (targetSizePct / 100) * equity;
-  if (intendedDollars >= band.floor) return null;
-  // Round the required % UP to one decimal so the suggested value always
-  // clears the floor when the agent retries with it verbatim.
-  const floorPct = Math.ceil((band.floor / equity) * 1000) / 10;
-  return { floorDollars: band.floor, floorPct, intendedDollars };
+export function entrySizeForConviction(opts: {
+  conviction?: string | null;
+  band: PositionBand;
+}): number {
+  const { floor, ceiling } = opts.band;
+  const largest = ceiling ?? (floor > 0 ? floor : DEFAULT_POSITION_CAP);
+  const smallest = floor > 0 ? floor : largest;
+  return opts.conviction === "STRONG" || opts.conviction === "HIGH" ? largest : smallest;
 }

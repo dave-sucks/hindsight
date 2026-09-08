@@ -29,7 +29,6 @@ interface TacticalPromptArgs {
     entryPrice: number | null;
     targetPrice: number | null;
     stopLoss: number | null;
-    targetSizePct: number | null;
     // Phase 1 read-side fix: deep-research excerpt rendered inline so
     // the tactical agent reads the analyst's narrative + top bull/bear
     // bullets + research freshness before executing the trigger's
@@ -232,7 +231,6 @@ THESIS (id: ${thesis.id})
   key assumptions: ${thesis.keyAssumptions.length ? thesis.keyAssumptions.join("; ") : "(none recorded)"}
   invalidation conditions: ${thesis.invalidationConds.length ? thesis.invalidationConds.join("; ") : "(none recorded)"}
   entry: ${thesis.entryPrice != null ? `$${thesis.entryPrice}` : "(unset)"}, target: ${thesis.targetPrice != null ? `$${thesis.targetPrice}` : "(unset)"}, stop: ${thesis.stopLoss != null ? `$${thesis.stopLoss}` : "(unset)"}
-  target size: ${thesis.targetSizePct != null ? `${thesis.targetSizePct}% of portfolio` : "(unset)"}
 
 DEEP-RESEARCH EXCERPT [${thesis.researchAge.freshness === "missing" ? "research MISSING" : `research ${thesis.researchAge.freshness} (${thesis.researchAge.daysOld}d)`}]:
 ${thesis.snapshotText ? `  snapshot: ${thesis.snapshotText.length > 360 ? `${thesis.snapshotText.slice(0, 360)}…` : thesis.snapshotText}` : "  snapshot: (none)"}

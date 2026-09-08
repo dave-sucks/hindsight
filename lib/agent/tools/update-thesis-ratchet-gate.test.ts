@@ -105,7 +105,6 @@ function makeHeldRow(overrides: Record<string, unknown> = {}) {
     scoring: null,
     targetPrice: 1100,
     stopLoss: 948,
-    targetSizePct: 3,
     conviction: "MEDIUM",
     convictionRationale: "Existing medium tier.",
     variantView: null,

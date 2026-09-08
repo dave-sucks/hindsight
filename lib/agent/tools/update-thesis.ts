@@ -26,8 +26,6 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
-import { getAccount } from "@/lib/alpaca";
-import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import {
   applyTriggerCooldownDefaults,
@@ -216,7 +214,6 @@ const updateSchema = z.object({
       "Optional for refinement updates; REQUIRED when promoting a PENDING thesis to LONG/SHORT (so target/stop have something to validate against in the shape gate). " +
       "On ACTIVE rows this is the actual fill price (set by place_trade); patching it on an ACTIVE row is rare and should only happen on a partial-fill / cost-basis correction."
     ),
-  target_size_pct: z.number().min(0).max(100).optional(),
 
   // ── Conviction Expression v4 ─────────────────────────────────────────
   // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Patch-style here:
@@ -373,7 +370,6 @@ type UpdatePatch = Partial<{
   scoring: object;
   targetPrice: number | null;
   stopLoss: number | null;
-  targetSizePct: number | null;
   // ── Conviction Expression v4 (existing-row read) ──────────────────────
   conviction: string | null;
   convictionRationale: string | null;
@@ -460,7 +456,6 @@ export const updateThesis = defineTool({
         scoring: true,
         targetPrice: true,
         stopLoss: true,
-        targetSizePct: true,
         // Conviction Expression v4 — read existing values so gates can
         // enforce coherence when only a subset of (conviction, rationale,
         // variantView) is being patched.
@@ -700,7 +695,6 @@ export const updateThesis = defineTool({
         ) {
           missing.push("variant_view (required for STRONG/HIGH)");
         }
-        if (args.target_size_pct == null) missing.push("target_size_pct");
         if (missing.length > 0) {
           return {
             summary: `Refused PENDING→${args.direction} promotion on $${existing.ticker} — missing structural fields.`,
@@ -1118,43 +1112,6 @@ export const updateThesis = defineTool({
         patch.direction = args.direction;
       }
     }
-    // ── Sub-floor sizing gate (P1-40 companion — same check as record_thesis) ──
-    // A refresh must not lower targetSizePct below the analyst's dollar floor:
-    // the plan becomes self-rejecting at place_trade (RARE's 4% vs $5k floor —
-    // the fired ENTER died unexecuted). Fail-open on equity-fetch failure.
-    if (
-      args.target_size_pct !== undefined &&
-      args.target_size_pct > 0 &&
-      ctx.minPositionSize != null &&
-      ctx.minPositionSize > 0
-    ) {
-      try {
-        const account = await getAccount(ctx.alpacaCreds);
-        const subFloor = subFloorTargetSize({
-          targetSizePct: args.target_size_pct,
-          equity: Number(account?.equity),
-          environment: ctx.runEnvironment ?? "PAPER",
-          minPositionSize: ctx.minPositionSize,
-          maxPositionSize: ctx.maxPositionSize,
-          realMaxPosition: ctx.realMaxPosition,
-        });
-        if (subFloor) {
-          return {
-            summary: `Update rejected for ${existing.ticker}: target_size_pct ${args.target_size_pct}% is below this analyst's position floor.`,
-            data: {
-              ok: false,
-              error: "target_size_below_floor",
-              message:
-                `target_size_pct ${args.target_size_pct}% ≈ $${Math.round(subFloor.intendedDollars).toLocaleString()} at current equity — below this analyst's $${Math.round(subFloor.floorDollars).toLocaleString()} minimum position. place_trade rejects sub-floor entries, so this plan could never fill. ` +
-                `Retry with target_size_pct: ${subFloor.floorPct} or higher if conviction supports a full-floor position; otherwise leave sizing unchanged and reflect the reduced conviction in the tier/rationale instead.`,
-            },
-            sources: [],
-          };
-        }
-      } catch { /* fail-open */ }
-      patch.targetSizePct = args.target_size_pct;
-    } else if (args.target_size_pct !== undefined)
-      patch.targetSizePct = args.target_size_pct;
     // Conviction Expression v4 — persist patched conviction fields.
     // Coherence + consistency gates above already ran; values here are
     // safe to write. Empty-string for variantView is normalized to null
@@ -1694,7 +1651,6 @@ export const updateThesis = defineTool({
       "entryPrice",
       "targetPrice",
       "stopLoss",
-      "targetSizePct",
       "horizon",
       "catalystDate",
       "triggers",

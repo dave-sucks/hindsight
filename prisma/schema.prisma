@@ -280,7 +280,6 @@ model Thesis {
   keyAssumptions    String[] @default([]) // Premises that must hold
   invalidationConds String[] @default([]) // What would prove this wrong
 
-  targetSizePct Float? // % of portfolio at full position
 
   // Structured triggers — see lib/agent/triggers/types.ts for the full
   // discriminated-union shape. Router evaluates predicates deterministically;

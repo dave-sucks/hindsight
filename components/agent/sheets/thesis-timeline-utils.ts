@@ -644,11 +644,6 @@ const SCALAR_LINES: Array<{
   { key: "targetPrice", label: "Target", fmt: fmtLevel },
   { key: "stopLoss", label: "Stop", fmt: fmtLevel },
   { key: "entryPrice", label: "Entry", fmt: fmtLevel },
-  {
-    key: "targetSizePct",
-    label: "Size",
-    fmt: (v) => (typeof v === "number" ? `${v}%` : "—"),
-  },
   { key: "conviction", label: "Conviction", fmt: fmtPlain },
   { key: "horizon", label: "Horizon", fmt: fmtPlain },
 ];

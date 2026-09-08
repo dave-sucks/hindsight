@@ -318,7 +318,6 @@ export const getTheses = defineTool({
         entryPrice: true,
         targetPrice: true,
         stopLoss: true,
-        targetSizePct: true,
         triggers: true,
         // Fire bookkeeping for inherited rungs — resolveThesisLadder
         // overlays it so cooldown reads the same at every level.

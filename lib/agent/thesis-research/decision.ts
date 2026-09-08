@@ -18,7 +18,6 @@
 
 import { z } from "zod";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { subFloorTargetSize } from "@/lib/agent/position-sizing";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
 
@@ -75,10 +74,6 @@ export const thesisDecisionSchema = z.object({
     .string()
     .optional()
     .describe("≤300 chars: 'consensus expects X, I think Y, falsifiable because Z'. Required for STRONG/HIGH."),
-  target_size_pct: z
-    .number()
-    .optional()
-    .describe("% of portfolio at full position (STRONG 4-6, HIGH 3-5, MEDIUM 2-3, LOW 1-2). Required for LONG/SHORT."),
   prior_exit_acknowledgment: z
     .string()
     .optional()
@@ -123,18 +118,6 @@ export interface DecisionValidationOpts {
    * so a refresh on a trigger-less row must supply a full ladder.
    */
   existingHasTriggers?: boolean;
-  /**
-   * DAV-204: live account equity + the analyst's position band, when
-   * known. Mirrors #524's sub-floor gate in-loop: a target_size_pct whose
-   * dollar value can't clear the entry floor is an un-fillable plan (the
-   * RARE failure) and must be repaired before persist. All optional —
-   * missing equity/floor skips the mirror (persist gate also fails open).
-   */
-  equityUSD?: number | null;
-  minPositionSize?: number;
-  maxPositionSize?: number;
-  realMaxPosition?: number;
-  environment?: "PAPER" | "LIVE";
   /**
    * P1-35 (#524): set when this analyst sold this ticker within the last
    * 14 days. record_thesis refuses a mint at/above the exit price without
@@ -283,11 +266,6 @@ export function validateThesisDecision(
     if (d.variant_view && d.variant_view.length > 300) {
       errors.push("variant_view: over 300 chars — tighten it.");
     }
-    if (d.target_size_pct == null) {
-      errors.push("target_size_pct: required for LONG/SHORT (STRONG 4-6, HIGH 3-5, MEDIUM 2-3, LOW 1-2).");
-    } else if (d.target_size_pct < 0 || d.target_size_pct > 100) {
-      errors.push("target_size_pct: must be between 0 and 100.");
-    }
   }
 
   // ── Persist-gate mirrors (review finding #4) ────────────────────────
@@ -319,30 +297,6 @@ export function validateThesisDecision(
   }
   if (d.direction === "PASS" && d.triggers !== undefined && (d.triggers as unknown[]).length > 0) {
     errors.push("triggers: a PASS decision cannot carry triggers — omit the field entirely.");
-  }
-
-  // ── DAV-204: sub-floor sizing mirror (#524's persist gate, in-loop) ──
-  if (
-    directional &&
-    d.target_size_pct != null &&
-    opts.minPositionSize != null &&
-    opts.minPositionSize > 0 &&
-    opts.equityUSD != null &&
-    opts.equityUSD > 0
-  ) {
-    const subFloor = subFloorTargetSize({
-      targetSizePct: d.target_size_pct,
-      equity: opts.equityUSD,
-      environment: opts.environment ?? "PAPER",
-      minPositionSize: opts.minPositionSize,
-      maxPositionSize: opts.maxPositionSize,
-      realMaxPosition: opts.realMaxPosition,
-    });
-    if (subFloor) {
-      errors.push(
-        `target_size_pct: ${d.target_size_pct}% ≈ $${Math.round(subFloor.intendedDollars).toLocaleString()} at current equity — below this analyst's $${Math.round(subFloor.floorDollars).toLocaleString()} entry floor, so place_trade would refuse the entry the day it fires (the RARE failure). Use ${subFloor.floorPct}% or higher IF conviction supports a full-floor position; otherwise the honest call is direction PASS, not a small size.`,
-      );
-    }
   }
 
   // ── P1-35: recently-sold acknowledgment mirror (#524, in-loop) ───────

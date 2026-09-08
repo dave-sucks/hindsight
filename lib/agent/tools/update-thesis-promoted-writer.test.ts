@@ -77,7 +77,6 @@ const promotedThesisRow = {
   scoring: {},
   targetPrice: 195,
   stopLoss: 180,
-  targetSizePct: 5,
   horizon: "TARGET",
   catalystDate: null,
   maxHoldDays: null,

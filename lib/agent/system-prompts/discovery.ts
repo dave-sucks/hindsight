@@ -166,7 +166,7 @@ YOUR CONFIG — what bounds your work this run
   Position size: ${minPosSize > 0 ? `$${minPosSize.toLocaleString()}\u2013$${maxPosSize.toLocaleString()} per entry (both ends enforced)` : `max $${maxPosSize.toLocaleString()}`}${
     args.money?.equityUSD != null
       ? `
-  Account equity \u2248 $${Math.round(args.money.equityUSD).toLocaleString()}${args.money.floorPct != null ? ` \u2014 the entry floor is ${args.money.floorPct}% of the book. A candidate you wouldn't commit at least that much to is a soft watch, a PASS, or a skip — not a dispatch; every dispatched thesis-writer will size against this same reality.` : ""}`
+  Account equity \u2248 $${Math.round(args.money.equityUSD).toLocaleString()} \u2014 a candidate you wouldn't commit at least the smallest trade to is a soft watch, a PASS, or a skip, not a dispatch.`
       : ""
   }
   Max open slots:    ${maxOpenPos}

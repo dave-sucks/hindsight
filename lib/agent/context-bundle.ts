@@ -35,12 +35,6 @@ export interface MoneyContext {
    * enforces (positionBand), so the number shown is the number that gates.
    */
   ceilingDollars: number | null;
-  /**
-   * The floor as a percent of live equity, rounded UP to one decimal —
-   * "target_size_pct must be ≥ this to clear the floor." Null when either
-   * input is unavailable.
-   */
-  floorPct: number | null;
 }
 
 export async function getMoneyContext(analyst: {
@@ -70,25 +64,14 @@ export async function getMoneyContext(analyst: {
     const eq = Number((await getAccount(creds))?.equity);
     if (Number.isFinite(eq) && eq > 0) equityUSD = eq;
   } catch {
-    /* fail-open — no equity, no floorPct; downstream gates also fail open */
+    /* fail-open — no equity; the block says so */
   }
 
   return {
     equityUSD,
     floorDollars,
     ceilingDollars: band.ceiling,
-    floorPct: floorPctOf({ equityUSD, floorDollars }),
   };
-}
-
-/** Pure: the floor as a percent of equity, rounded UP to one decimal. */
-export function floorPctOf(args: {
-  equityUSD: number | null;
-  floorDollars: number;
-}): number | null {
-  const { equityUSD, floorDollars } = args;
-  if (equityUSD == null || equityUSD <= 0 || floorDollars <= 0) return null;
-  return Math.ceil((floorDollars / equityUSD) * 1000) / 10;
 }
 
 /**
@@ -114,11 +97,6 @@ export function formatMoneyContextBlock(m: MoneyContext): string {
           : ""
       } — both ends enforced at trade time.`,
     );
-    if (m.floorPct != null) {
-      lines.push(
-        `  • At current equity the floor is ${m.floorPct}% of the book — any plan sized below that is un-fillable by this seat's own rules.`,
-      );
-    }
     lines.push(
       "  • If conviction doesn't justify at least a full-floor position, the honest call is PASS — not a small size.",
     );

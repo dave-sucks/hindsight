@@ -661,7 +661,6 @@ function TradeStructureBlock({
   state: {
     horizon: string | null;
     reviewDueAt: string | null;
-    targetSizePct: number | null;
     analystName: string | null;
     resolved?: ResolvedEnvelope | null;
   };
@@ -669,14 +668,13 @@ function TradeStructureBlock({
   const hasAnalyst = state.analystName != null;
   const hasHorizon = state.horizon != null;
   const hasNextReview = state.reviewDueAt != null;
-  const hasSize = state.targetSizePct != null;
   // Conviction Expression v4 — actionability rollup. Lives in Trade
   // Structure (not as a top-of-sheet badge per principal feedback) —
   // it's "execution context" alongside Horizon / Next review / Size.
   const hasStatus =
     state.resolved != null && state.resolved.actionability !== "DEAD";
 
-  if (!hasHorizon && !hasNextReview && !hasSize && !hasStatus && !hasAnalyst)
+  if (!hasHorizon && !hasNextReview && !hasStatus && !hasAnalyst)
     return null;
 
   const cells: { label: string; value: React.ReactNode; tooltip?: string }[] = [];
@@ -738,12 +736,6 @@ function TradeStructureBlock({
   // "Max hold" is a trigger now, not a field — it renders in the trigger
   // list as "Open 14 days — a TRADE should have resolved by now." See
   // docs/plans/LEVELS_AS_TRIGGERS.md (L8).
-  if (hasSize) {
-    cells.push({
-      label: "Target size",
-      value: `${state.targetSizePct}% of portfolio`,
-    });
-  }
   // Last cell — "who authored this" is context for the row above it, not
   // the lead. Null on manual/legacy runs with no analyst attached.
   if (hasAnalyst) {
