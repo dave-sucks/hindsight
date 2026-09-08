@@ -59,7 +59,7 @@ import {
 
 import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
-import { positionBand } from "@/lib/agent/position-sizing";
+import { positionBand, positionTotalCap } from "@/lib/agent/position-sizing";
 import { FEEDS, feedLabel } from "@/lib/universe/feeds";
 
 // ─── Form value shape ────────────────────────────────────────────────────────
@@ -105,18 +105,16 @@ export type FormValues = {
   holdDurations: string[];
   minConfidence: number;
   maxOpenPositions: number;
-  // Position-size BAND — floor and ceiling, both enforced in place_trade.
-  // minPositionSize of 0 means no floor.
+  // Sizing — three plain numbers, all enforced (lib/agent/position-sizing.ts):
+  // the smallest trade (0 = no floor), the largest trade, and the most the
+  // analyst may hold in one stock after adding to a winner.
   minPositionSize: number;
   maxPositionSize: number;
+  maxPositionTotal?: number;
 
-  // Live trading — set by the Promote dialog (PromoteAnalystDialog), surfaced
-  // here so the promotion cap isn't invisible/uneditable after promotion. Both
-  // are LIVE-only: realMaxPosition is ignored while PAPER (paper uses the plain
-  // band). tradingEnvironment is read-only context here — promotion / demotion
-  // runs through the Promote dialog, not this form.
+  // Read-only context here — promotion / demotion runs through the Promote
+  // dialog, not this form.
   tradingEnvironment?: "PAPER" | "LIVE";
-  realMaxPosition?: number;
 
   // Schedule — ISO weekdays (1=Mon..5=Fri) the daily morning run executes on.
   // Empty = every weekday (the cron reads empty defensively as "all weekdays").
@@ -824,14 +822,13 @@ function SettingsTab({
             }}
           />
 
-          {/* Position size is a BAND. The floor is the half that was missing:
-              without it nothing stopped a $14k-ceiling analyst from opening a
-              $3.5k position, and the only workaround was prose rules in the
-              analyst prompt. Floor sits above Ceiling so the pair reads as one
-              range. See lib/agent/position-sizing.ts. */}
+          {/* Sizing is three plain numbers. A normal buy is the smallest
+              trade; a STRONG/HIGH-conviction buy is the largest; adding to a
+              winner stops at the most-in-one-stock. All three are enforced by
+              the same helper the tools use (lib/agent/position-sizing.ts). */}
           <RowLabel
-            label="Position Size Floor"
-            tooltip="Smallest single trade this analyst may open. An entry below this is rejected, not resized — the analyst commits real size or skips the name. 0 = no floor."
+            label="Smallest trade"
+            tooltip="What a normal buy is. The analyst never puts less than this into a new position; a buy below it is rejected, not resized. 0 = no minimum."
           />
           <Input
             type="number"
@@ -848,8 +845,8 @@ function SettingsTab({
           />
 
           <RowLabel
-            label="Position Size Ceiling"
-            tooltip="Biggest single trade this analyst can open. Enforced."
+            label="Largest trade"
+            tooltip="What a STRONG or HIGH conviction buy is. The analyst never puts more than this into a single buy."
           />
           <Input
             type="number"
@@ -865,31 +862,23 @@ function SettingsTab({
             }}
           />
 
-          {/* Live promotion cap — a temporary throttle set at promotion so a
-              freshly-live analyst trades small with real money, NOT a second
-              ceiling. Raise it toward the band ceiling as the seat proves out.
-              Paper runs ignore it entirely. */}
-          {values.tradingEnvironment === "LIVE" && (
-            <>
-              <RowLabel
-                label="Live promotion cap"
-                tooltip="Temporary throttle on live orders, set at promotion so a newly-live analyst trades small with real money. Live orders cap at the lower of this and the ceiling. Raise it toward the ceiling as the seat proves out. Ignored while paper."
-              />
-              <Input
-                type="number"
-                defaultValue={values.realMaxPosition}
-                min={0}
-                step={100}
-                className={cn(GHOST_INPUT, "w-24 text-right tabular-nums")}
-                onBlur={(e) => {
-                  const n = parseFloat(e.target.value);
-                  if (!isNaN(n) && n !== values.realMaxPosition) {
-                    onChange("realMaxPosition", Math.max(0, n));
-                  }
-                }}
-              />
-            </>
-          )}
+          <RowLabel
+            label="Most in one stock"
+            tooltip="The total this analyst may hold in one stock after adding to a winner. Adds that would go past it are rejected. Blank = twice the largest trade."
+          />
+          <Input
+            type="number"
+            defaultValue={values.maxPositionTotal}
+            min={0}
+            step={100}
+            className={cn(GHOST_INPUT, "w-24 text-right tabular-nums")}
+            onBlur={(e) => {
+              const n = parseFloat(e.target.value);
+              if (!isNaN(n) && n !== values.maxPositionTotal) {
+                onChange("maxPositionTotal", Math.max(0, n));
+              }
+            }}
+          />
 
           {typeof policy?.allowLiveSearch === "boolean" && (
             <>
@@ -902,16 +891,13 @@ function SettingsTab({
           )}
         </div>
 
-        {/* Effective band — shown whenever either half is non-trivial, so a
-            floor or a promotion cap below the visible boxes is never silent. */}
-        {(values.minPositionSize > 0 ||
-          (values.tradingEnvironment === "LIVE" &&
-            values.realMaxPosition != null)) && (
+        {/* What the three numbers mean in practice, resolved by the same
+            helper the tools use so the sentence can't drift from the gate. */}
+        {values.maxPositionSize > 0 && (
           <PositionBandNote
             minPositionSize={values.minPositionSize}
             maxPositionSize={values.maxPositionSize}
-            realMaxPosition={values.realMaxPosition}
-            tradingEnvironment={values.tradingEnvironment}
+            maxPositionTotal={values.maxPositionTotal}
           />
         )}
 
@@ -1117,62 +1103,45 @@ function RunDaysControl({
   );
 }
 
-// ─── Effective position-band note ────────────────────────────────────────────
-// Restates the band place_trade will actually enforce, resolved by the SAME
-// pure helper the tool gate uses (lib/agent/position-sizing.ts) so the number
-// on screen can't drift from the number that rejects a trade. Two things it
-// makes non-silent: a live promotion cap sitting below the ceiling, and a
-// promotion cap sitting below the floor (band collapses to a single size).
+// ─── What the sizing settings do ─────────────────────────────────────────────
+// One sentence in dollars, resolved by the SAME helpers the tool gates use
+// (lib/agent/position-sizing.ts), so what the principal reads is what rejects
+// a trade.
 function PositionBandNote({
   minPositionSize,
   maxPositionSize,
-  realMaxPosition,
-  tradingEnvironment,
+  maxPositionTotal,
 }: {
   minPositionSize: number;
   maxPositionSize: number;
-  realMaxPosition?: number;
-  tradingEnvironment?: "PAPER" | "LIVE";
+  maxPositionTotal?: number;
 }) {
-  const band = positionBand({
-    environment: tradingEnvironment,
-    minPositionSize,
-    maxPositionSize,
-    realMaxPosition,
-  });
+  const band = positionBand({ minPositionSize, maxPositionSize });
+  const total = positionTotalCap({ maxPositionSize, maxPositionTotal });
   const fmt = (n: number) => `$${Math.round(n).toLocaleString()}`;
-  const isLive = tradingEnvironment === "LIVE";
-  const throttled =
-    isLive && band.ceiling != null && band.ceiling < maxPositionSize;
 
   if (band.floorClampedByCeiling) {
     return (
       <p className="text-xs text-muted-foreground">
-        The live promotion cap sits at or below the floor, so every live entry
-        is sized exactly{" "}
+        The smallest trade is set above the largest, so every buy is exactly{" "}
         <span className="tabular-nums text-foreground">{fmt(band.floor)}</span>.
-        Raise the cap to reopen the band.
+        Lower the smallest trade to reopen the range.
       </p>
     );
   }
 
   return (
     <p className="text-xs text-muted-foreground">
-      {isLive ? "Live entries" : "Entries"} land between{" "}
-      <span className="tabular-nums text-foreground">{fmt(band.floor)}</span>{" "}
-      and{" "}
-      <span className="tabular-nums text-foreground">
-        {band.ceiling != null ? fmt(band.ceiling) : "no ceiling"}
-      </span>
-      {throttled ? (
+      A normal buy is{" "}
+      <span className="tabular-nums text-foreground">{fmt(band.floor || total / 2)}</span>
+      {band.ceiling != null && (
         <>
-          {" "}— the promotion cap, below the{" "}
-          <span className="tabular-nums">{fmt(maxPositionSize)}</span> ceiling
-          above, so live trades stop there.
+          ; a high-conviction buy is{" "}
+          <span className="tabular-nums text-foreground">{fmt(band.ceiling)}</span>
         </>
-      ) : (
-        <>. Anything outside the band is rejected, not resized.</>
       )}
+      . Adding to a winner stops at{" "}
+      <span className="tabular-nums text-foreground">{fmt(total)}</span>.
     </p>
   );
 }

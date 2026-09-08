@@ -1,129 +1,94 @@
 /**
- * position-sizing.ts — pure position-sizing math, no I/O.
+ * Position sizing — three plain settings on the analyst, one helper.
  *
- * Kept free of prisma/alpaca imports so it's unit-testable in isolation and
- * reusable across tools (place_trade's entry band, manage_position's scale-in
- * ceiling) and the analyst Settings UI. See docs/plans/SCALE_INTO_WINNERS.md.
+ *   Smallest trade   (AgentConfig.minPositionSize)  — a buy is never less.
+ *   Largest trade    (AgentConfig.maxPositionSize)  — a buy is never more;
+ *                                                     STRONG/HIGH conviction
+ *                                                     buys exactly this.
+ *   Most in one stock (AgentConfig.maxPositionTotal) — adding to a winner
+ *                                                     stops here.
  *
- * The config expresses sizing as a BAND, not a ceiling:
+ * Until 2026-09-08 there were two more numbers: `realMaxPosition`, a
+ * "live promotion cap" that was a second largest-trade applying only to
+ * live money (and only mattered when it was lower — one analyst), and a
+ * hidden ×2 constant that decided how far adds could grow a position. Both
+ * are gone: the cap folded into the largest trade, the constant became the
+ * third setting so the principal can see and change it.
  *
- *   minPositionSize ──────── floor ──────── ceiling ──────── maxPositionSize
- *                                             └── on LIVE, additionally
- *                                                 throttled by realMaxPosition
- *                                                 (the "live promotion cap")
- *
- * `realMaxPosition` is NOT a peer of `maxPositionSize`. It's a temporary
- * promotion throttle: run a freshly-promoted analyst small with real money,
- * then raise it toward `maxPositionSize` once the seat proves out. The UI
- * labels it "Live promotion cap"; the column keeps its legacy name.
+ * The tool gate (place_trade / manage_position) and the Settings UI both
+ * call these helpers, so the number on screen is the number that rejects
+ * a trade.
  */
 
 /**
- * Scale-in ceiling multiple (SCALE_INTO_WINNERS.md, PR1).
- *
- * A held winner may grow to this multiple of the normal per-entry cap via
- * add_to_position. This deliberately lets a proven position exceed the
- * single-entry cap that place_trade enforces (1×) — pressing conviction into a
- * working thesis is the point. Was an inline 1.5; bumped to 2 per principal.
- */
-export const SCALE_IN_CEILING_MULTIPLE = 2;
-
-/**
- * Fallback per-entry cap when an analyst has no ceiling configured at all.
- * Matches place_trade's historical inline fallback.
+ * Fallback per-entry cap when an analyst has no largest trade configured at
+ * all. Matches place_trade's historical inline fallback.
  */
 export const DEFAULT_POSITION_CAP = 5000;
 
+/**
+ * "Most in one stock" when the setting is unset (0/undefined): twice the
+ * largest trade — the value every existing analyst was backfilled with.
+ */
+const DEFAULT_TOTAL_MULTIPLE = 2;
+
 export interface PositionBandInput {
-  /** ResearchRun environment — "LIVE" activates the promotion cap. */
-  environment?: string;
-  /** AgentConfig.minPositionSize. 0/undefined = no floor. */
+  /** AgentConfig.minPositionSize — the smallest trade. 0/undefined = no floor. */
   minPositionSize?: number;
-  /** AgentConfig.maxPositionSize. */
+  /** AgentConfig.maxPositionSize — the largest trade. */
   maxPositionSize?: number;
-  /** AgentConfig.realMaxPosition — the live promotion cap. LIVE only. */
-  realMaxPosition?: number;
 }
 
 export interface PositionBand {
-  /**
-   * Smallest notional a single entry may be, after clamping (see
-   * `floorClampedByCeiling`). 0 means no floor is enforced.
-   */
+  /** Smallest notional a single entry may be. 0 = no floor. */
   floor: number;
-  /** Largest notional a single entry may be. null = no ceiling configured. */
+  /** Largest notional a single entry may be. null = none configured. */
   ceiling: number | null;
   /**
-   * Which configured field produced `ceiling` — used verbatim in the
-   * place_trade rejection message so the agent knows which knob bound it.
-   */
-  ceilingLabel: "max position size" | "live promotion cap";
-  /**
-   * True when the configured floor sat ABOVE the effective ceiling and was
-   * clamped down to it. The normal cause is a live promotion cap set below the
-   * analyst's paper floor: legitimate (the throttle is the point), so the band
-   * collapses to a single size rather than making every trade unplaceable.
+   * True when the configured smallest trade sits above the largest — a
+   * misconfiguration; the band collapses to the largest trade instead of
+   * refusing every buy as both too small and too big.
    */
   floorClampedByCeiling: boolean;
 }
 
-/**
- * Resolve the legal notional band for ONE entry.
- *
- * Ceiling:  PAPER → maxPositionSize
- *           LIVE  → min(maxPositionSize, realMaxPosition), so a forgotten
- *                   promotion cap can't accidentally uncap a live order.
- * Floor:    minPositionSize, clamped to the ceiling if it exceeds it.
- */
 export function positionBand(input: PositionBandInput): PositionBand {
-  const { environment, minPositionSize, maxPositionSize, realMaxPosition } =
-    input;
-
-  const isLive = environment === "LIVE";
-  const usesPromotionCap = isLive && realMaxPosition != null;
-
-  const rawCeiling = usesPromotionCap
-    ? Math.min(maxPositionSize ?? Infinity, realMaxPosition as number)
-    : maxPositionSize;
+  const { minPositionSize, maxPositionSize } = input;
   const ceiling =
-    rawCeiling != null && Number.isFinite(rawCeiling) ? rawCeiling : null;
-
+    maxPositionSize != null && Number.isFinite(maxPositionSize) && maxPositionSize > 0
+      ? maxPositionSize
+      : null;
   const rawFloor =
     minPositionSize != null && Number.isFinite(minPositionSize) && minPositionSize > 0
       ? minPositionSize
       : 0;
   const floorClampedByCeiling = ceiling != null && rawFloor > ceiling;
-
   return {
     floor: floorClampedByCeiling ? (ceiling as number) : rawFloor,
     ceiling,
-    ceilingLabel: usesPromotionCap ? "live promotion cap" : "max position size",
     floorClampedByCeiling,
   };
 }
 
 /**
- * Max total position value (cost basis + pending add) allowed on the
- * add_to_position path. Mirrors place_trade's effective per-entry ceiling and
- * then applies the scale-in multiple:
- *   PAPER → maxPositionSize × multiple
- *   LIVE  → min(maxPositionSize, realMaxPosition) × multiple
- * so realMaxPosition still bounds the LIVE base (× the multiple). Falls back to
- * DEFAULT_POSITION_CAP when no cap is configured, matching place_trade.
- *
- * The minPositionSize floor deliberately does NOT apply here — it governs
- * ENTRIES. A $2k add onto an existing $12k winner is a legitimate scale-in,
- * not an undersized position.
+ * The most this analyst may hold in one stock (cost basis + a pending add).
+ * The setting when it is set; otherwise twice the largest trade. The
+ * smallest-trade floor deliberately does NOT apply to adds — a $2k add onto
+ * a $12k winner is a legitimate scale-in, not an undersized position.
  */
-export function scaleInCeiling(opts: {
-  environment: string;
+export function positionTotalCap(opts: {
   maxPositionSize?: number;
-  realMaxPosition?: number;
-  multiple?: number;
+  maxPositionTotal?: number;
 }): number {
-  const multiple = opts.multiple ?? SCALE_IN_CEILING_MULTIPLE;
+  if (
+    opts.maxPositionTotal != null &&
+    Number.isFinite(opts.maxPositionTotal) &&
+    opts.maxPositionTotal > 0
+  ) {
+    return opts.maxPositionTotal;
+  }
   const { ceiling } = positionBand(opts);
-  return (ceiling ?? DEFAULT_POSITION_CAP) * multiple;
+  return (ceiling ?? DEFAULT_POSITION_CAP) * DEFAULT_TOTAL_MULTIPLE;
 }
 
 // ─── Entry size from the analyst's settings ─────────────────────────────────

@@ -29,11 +29,7 @@ export interface MoneyContext {
   equityUSD: number | null;
   /** The seat's entry floor in dollars (0 = no floor configured). */
   floorDollars: number;
-  /**
-   * The seat's effective ceiling: PAPER → maxPositionSize; LIVE →
-   * min(maxPositionSize, realMaxPosition) — same resolution place_trade
-   * enforces (positionBand), so the number shown is the number that gates.
-   */
+  /** The seat's largest trade — the number place_trade enforces. */
   ceilingDollars: number | null;
 }
 
@@ -44,16 +40,13 @@ export async function getMoneyContext(analyst: {
   // columns type as unknown; Number() normalizes all of them at runtime.
   minPositionSize: unknown;
   maxPositionSize: unknown;
-  realMaxPosition?: unknown;
 }): Promise<MoneyContext> {
   const environment =
     (analyst.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
   const floorDollars = Number(analyst.minPositionSize) || 0;
   const band = positionBand({
-    environment,
     minPositionSize: Number(analyst.minPositionSize) || undefined,
     maxPositionSize: Number(analyst.maxPositionSize) || undefined,
-    realMaxPosition: Number(analyst.realMaxPosition) || undefined,
   });
 
   let equityUSD: number | null = null;

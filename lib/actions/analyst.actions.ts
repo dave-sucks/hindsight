@@ -31,11 +31,8 @@ export interface AnalystConfig {
   enabled: boolean;
   /** PAPER (default) or LIVE — drives which Alpaca account this analyst trades into. */
   tradingEnvironment: "PAPER" | "LIVE";
-  /**
-   * Live promotion cap — a temporary throttle on live order size set at
-   * promotion, not a peer of maxPositionSize. LIVE only; ignored in PAPER.
-   */
-  realMaxPosition: number;
+  /** Most in one stock — the ceiling for adding to a winner. */
+  maxPositionTotal: number;
   analystPrompt: string | null;
   description: string | null;
   sectors: string[];
@@ -518,7 +515,7 @@ export async function getAnalystDetail(
     name: config.name,
     enabled: config.enabled,
     tradingEnvironment: (config.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER",
-    realMaxPosition: config.realMaxPosition,
+    maxPositionTotal: config.maxPositionTotal,
     analystPrompt: config.analystPrompt,
     description: config.description,
     sectors: config.sectors as string[],
@@ -748,7 +745,7 @@ export async function createAnalystFromWizard(
       graduationMinTrades: 50,
       graduationProfitFactor: 1.5,
       tradingEnvironment: "PAPER",
-      realMaxPosition: data.maxPositionSize,
+      maxPositionTotal: data.maxPositionSize * 2,
       emailAlerts: true,
       weeklyDigestEnabled: true,
     },
@@ -969,7 +966,7 @@ export async function createAnalystFromBuilder(
         graduationMinTrades: 50,
         graduationProfitFactor: 1.5,
         tradingEnvironment: "PAPER",
-        realMaxPosition: posSize,
+        maxPositionTotal: posSize * 2,
         emailAlerts: true,
         weeklyDigestEnabled: true,
         intelligencePolicy: intelligencePolicy as unknown as object,
@@ -1137,12 +1134,8 @@ type UpdatableField =
   // lib/agent/tools/place-trade.ts and lib/agent/position-sizing.ts.
   | "minPositionSize"
   | "maxPositionSize"
-  // Live promotion cap (LIVE only) — a temporary throttle set at promotion via
-  // PromoteAnalystDialog, editable here so it isn't invisible after promotion.
-  // NOT a peer ceiling: place_trade caps live orders at
-  // min(maxPositionSize, realMaxPosition), and it's meant to be raised toward
-  // maxPositionSize as the seat proves out. Ignored in PAPER.
-  | "realMaxPosition"
+  // Most in one stock — how far adding to a winner may grow a position.
+  | "maxPositionTotal"
   | "maxOpenPositions"
   // NOTE: maxRiskPct and scheduleTime removed from the editable surface —
   // both are orphan fields at runtime (no code path reads them). If
