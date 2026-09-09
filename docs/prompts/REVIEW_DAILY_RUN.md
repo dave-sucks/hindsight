@@ -3,6 +3,15 @@
 You are reviewing the morning research runs for Hindsight. Your job is to produce a
 structured run review that can serve as the baseline for the next review session.
 
+## Step zero — the twelve invariants, before anything else
+
+Run every query in [`RUN_REVIEW_INVARIANTS.md`](RUN_REVIEW_INVARIANTS.md) first.
+They catch breakage (saves failing, vendors returning nothing, plans under the
+floor, discovery not running, schema drift); the rubric below judges quality
+and assumes the machine is working. In September 2026 two outages hid for
+weeks behind "all sources ok" and "Thesis persisted" because reviews started
+with the rubric. If an invariant fails, that is finding #1.
+
 ## Scrutiny level — READ FIRST
 
 **Live analysts** (`AgentConfig.tradingEnvironment = "LIVE"`, or any thesis with

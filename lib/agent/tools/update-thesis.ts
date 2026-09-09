@@ -1283,6 +1283,37 @@ export const updateThesis = defineTool({
       if (levelStatus !== "HOLDING") {
         patch.entryPrice = applied.columns.entryPrice;
       }
+
+      // The gate above validated the ARGS. A triggers-only resend moves the
+      // buy level too (derive-on-write), and that path skipped the floor:
+      // ETN 2026-09-09 — the buy moved $375 → $432 by resending triggers,
+      // target $490 / stop $355 stayed, and 0.75:1 was stored. Validate the
+      // tuple that will actually be written, on a plan we don't own yet.
+      if (
+        !touchesLevels &&
+        levelStatus !== "HOLDING" &&
+        !isTerminalTransition &&
+        (levelDirection === "LONG" || levelDirection === "SHORT")
+      ) {
+        const derivedShape = validateThesisShape({
+          direction: levelDirection,
+          entryPrice: applied.columns.entryPrice,
+          targetPrice: applied.columns.targetPrice,
+          stopLoss: applied.columns.stopLoss,
+          minRiskReward: MIN_RISK_REWARD,
+        });
+        if (!derivedShape.ok) {
+          return {
+            summary: `Refused update on $${existing.ticker} — the resent triggers produce an invalid plan (${derivedShape.reason}).`,
+            data: {
+              ok: false,
+              error: "invalid_thesis_shape",
+              message: derivedShape.note,
+            },
+            sources: [],
+          };
+        }
+      }
     }
 
     // Status transitions get extra paperwork.
