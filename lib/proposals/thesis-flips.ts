@@ -18,16 +18,22 @@
  * See docs/plans/TRADE_AS_PROPOSAL.md.
  */
 
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
 import {
   defaultTriggersForHorizon,
-  applyTriggerCooldownDefaults,
-  mergeTriggers,
   reviewCadenceTrigger,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
+import { triggerBucket } from "@/lib/agent/triggers/bucket";
+import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
+import {
+  acceptedOps,
+  applyTriggerOps,
+  type TriggerOp,
+} from "@/lib/agent/triggers/ops";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 /**
@@ -93,16 +99,21 @@ export async function promoteThesisOnApproval(opts: {
  * kept their watching-era values. That is the SNOW drift, reintroduced on
  * every live fill. Collapsed 2026-08-27 (DAV-220).
  *
- * What it does:
+ * What it does — as trigger ops, never a rewrite (DAV-242; DAV-234 is
+ * what a rewrite cost: ASML's $2,800 target and four reviews, gone on the
+ * fill):
  *   - finds the analyst's newest WATCHING thesis on the ticker
- *   - regenerates the HELD template from the EXECUTED levels (the watching-side
- *     ENTER must go — you can't enter what you already hold; GAPS A2 found
- *     35/36 ENTER tactical runs were on already-held tickers)
- *   - recomputes the displayed level columns FROM those triggers
+ *   - removes the buy trigger(s) — you can't enter what you already hold
+ *     (GAPS A2 found 35/36 ENTER tactical runs were on already-held tickers)
+ *   - sets the floor and target to the EXECUTED levels (an edit of the
+ *     trigger that is there, an add if none)
+ *   - adds each held-side template trigger whose bucket is missing — the
+ *     standing protection, the scale-ins, the held review cadence
+ *   - recomputes the displayed level columns FROM the resulting triggers
  *   - stamps entryPrice with the FILL price: once held, entry is a fact
- *   - flips WATCHING → HOLDING and writes the STATUS_CHANGED audit row
+ *   - flips WATCHING → HOLDING and writes the STATUS_CHANGED audit row,
+ *     one line per op
  *
- * No horizon → conservative fallback: keep the existing triggers, minus ENTER.
  * Fail-soft: a throw is logged, never rethrown — a ladder problem must not
  * roll back a filled trade.
  */
@@ -137,37 +148,39 @@ export async function armHeldLadderOnFill(opts: {
     if (!watchingThesis) return;
 
     const horizon = watchingThesis.horizon as Horizon | null;
-    // The analyst's rungs survive the fill. Only the buy rung goes (you can't
-    // enter what you hold) and the WATCHING template's own rungs go (the HELD
-    // template replaces that layer). Everything the analyst wrote — the target,
-    // a support review, a dated check — stays, and the HELD template fills the
-    // gaps: the same merge rule record_thesis uses. Replacing the ladder
-    // wholesale threw away ASML's $2,800 target and four review rungs the
-    // moment it was bought on 2026-09-04 (DAV-234).
-    const analystRungs = (
-      (watchingThesis.triggers as unknown as Trigger[] | null) ?? []
-    ).filter((t) => t.action !== "ENTER" && t.source !== "DEFAULT");
-    let nextTriggers: Trigger[];
-    if (horizon) {
-      nextTriggers = applyTriggerCooldownDefaults(
-        mergeTriggers(
-          defaultTriggersForHorizon(
-            horizon,
-            {
-              entryPrice: opts.fillPrice,
-              targetPrice: opts.targetPrice,
-              stopLoss: opts.stopLoss,
-              catalystDate: watchingThesis.catalystDate ?? null,
-              direction: watchingThesis.direction as "LONG" | "SHORT",
-            },
-            "HELD",
-          ),
-          analystRungs,
-        ),
-      );
-    } else {
-      nextTriggers = analystRungs;
-    }
+    const stored = parseTriggersResilient(watchingThesis.triggers).triggers as Trigger[];
+    const heldTemplate = horizon
+      ? defaultTriggersForHorizon(
+          horizon,
+          {
+            entryPrice: opts.fillPrice,
+            targetPrice: opts.targetPrice,
+            stopLoss: opts.stopLoss,
+            catalystDate: watchingThesis.catalystDate ?? null,
+            direction: watchingThesis.direction as "LONG" | "SHORT",
+          },
+          "HELD",
+        )
+      : [];
+    const ops: TriggerOp[] = [
+      ...stored.filter((t) => t.action === "ENTER").map((t) => ({ op: "remove" as const, id: t.id })),
+      { op: "level", slot: "FLOOR", price: opts.stopLoss },
+      { op: "level", slot: "TARGET", price: opts.targetPrice },
+      ...heldTemplate.map((t) => ({ op: "add" as const, trigger: t })),
+    ];
+    // A template trigger whose bucket the analyst already filled is left
+    // alone: the add would become an edit of theirs, and the fill must not
+    // move a level the analyst chose.
+    const taken = new Set(stored.map(triggerBucket));
+    const applied = applyTriggerOps({
+      stored,
+      ops: ops.filter((o) => o.op !== "add" || !taken.has(triggerBucket(o.trigger))),
+      direction: watchingThesis.direction,
+      status: "HOLDING",
+      actor: "SYSTEM",
+      mintId: () => randomUUID(),
+    });
+    const nextTriggers = applied.triggers;
 
     // DAV-195 L3 — the columns are a read model of the ladder. Recompute them
     // here or the sheet shows the price you PLANNED to sell at while a
@@ -198,10 +211,10 @@ export async function armHeldLadderOnFill(opts: {
         thesisId: watchingThesis.id,
         type: "STATUS_CHANGED",
         summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → HOLDING on ${opts.via}`,
-        rationale: `Entry filled at $${opts.fillPrice.toFixed(2)} — the watchlist row is now a live position. The buy rung is gone; the analyst's other rungs stay and the held-side ${horizon ?? "(no-horizon)"} protection fills the gaps.`,
+        rationale: `Entry filled at $${opts.fillPrice.toFixed(2)} — the watchlist row is now a live position. The buy trigger is gone; the analyst's other triggers stay and the held-side ${horizon ?? "(no-horizon)"} protection fills the gaps.`,
         fieldChanges: {
           status: { from: "WATCHING", to: "HOLDING" },
-          triggers: { from: "WATCHING-set", to: "HELD-set" },
+          triggerOps: { from: null, to: acceptedOps(applied.results) },
         },
         runId: opts.runId ?? null,
         tradeId: opts.positionId,

@@ -244,7 +244,10 @@ describe("validateEnterTriggerRequired", () => {
     expect(result.note).not.toMatch(/displaced/);
   });
 
-  it("WATCHING LONG with present target_price but no ENTER (plan level present): rejects with displaced-default note", () => {
+  it("WATCHING LONG with a target but no ENTER: the same finish-the-plan note", () => {
+    // FLIPPED 2026-09-09 (DAV-242): the "displaced the default ENTER via the
+    // merge bucket" note existed only because the list was replaced whole.
+    // Triggers are edited one at a time now; there is one note.
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
@@ -253,8 +256,7 @@ describe("validateEnterTriggerRequired", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.note).toMatch(/displaced the default ENTER trigger/);
-    expect(result.note).not.toMatch(/target_price is required/);
+    expect(result.note).toMatch(/no buy level to reach it from/);
   });
 
   // ── ACTIVE-side symmetric checks ────────────────────────────────────────
@@ -485,24 +487,5 @@ describe("validateEnterTriggerRequired", () => {
         targetPrice: null,
       }),
     ).toEqual({ ok: true });
-  });
-
-  // ── Note text matches record_thesis's old inline guard verbatim ─────────
-
-  it("error message teaches the side off the level, not off the direction", () => {
-    // It used to say "PRICE_ABOVE for LONG" flat, and to call target_price
-    // "the level the ENTER trigger fires on" — the pre-2026-05-31 shape that
-    // had the agent buying at its own take-profit level (MDB).
-    const result = validateEnterTriggerRequired({
-      direction: "LONG",
-      status: "WATCHING",
-      triggers: [REVIEW_EARNINGS, EXIT_STOP],
-      targetPrice: 100,
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.note).toContain("PRICE_ABOVE when that level is above the live price");
-    expect(result.note).toContain("PRICE_BELOW when it is below");
-    expect(result.note).not.toMatch(/target_price/);
   });
 });

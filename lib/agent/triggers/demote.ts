@@ -37,6 +37,7 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { parseTriggersResilient } from "./schema";
 import type { Trigger } from "./types";
 import { isPlanLevel } from "./price-levels";
+import { describeTrigger } from "./ops";
 
 export { isPlanLevel };
 
@@ -114,8 +115,14 @@ export async function demoteThesisPlan(args: {
     runId: args.runId ?? null,
     priceAtTime: args.priceAtTime ?? null,
     fieldChanges: {
-      entryPrice: { from: null, to: null },
-      triggers: { from: `${current.length} triggers`, to: `${kept.length} triggers` },
+      triggerOps: {
+        from: null,
+        to: doomed.map((t) => ({
+          op: "remove",
+          id: t.id,
+          text: `Removed: ${describeTrigger(t, thesis.direction)}`,
+        })),
+      },
     },
   });
 

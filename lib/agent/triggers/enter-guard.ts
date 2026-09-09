@@ -100,11 +100,8 @@ export function validateEnterTriggerRequired(
   // Production evidence: backfill 2026-05-26. The thesis-writer's
   // WATCHING-only prompt produced WATCHING-shape triggers on every ACTIVE
   // refresh, stripping EXIT predicates from 9 of 10 ACTIVE held paper
-  // positions. Without this guard, the corruption survives any refresh
-  // path that wholesale-replaces triggers (update_thesis with a triggers
-  // arg). place_trade re-regenerates HELD triggers on the WATCHING/PROMOTED
-  // → ACTIVE flip, but theses that are ALREADY ACTIVE and get refreshed
-  // mid-flight are exposed in the gap.
+  // positions. The guard runs on the final list after every trigger op so
+  // a refresh cannot strip the sell trigger from a held name.
   if (args.status === "HOLDING") {
     const enterOffenders = args.triggers.filter((t) => t.action === "ENTER");
     if (enterOffenders.length > 0) {
@@ -186,14 +183,9 @@ export function validateEnterTriggerRequired(
   );
   if (!hasPlanLevel) return { ok: true };
 
-  const note =
-    args.targetPrice == null
-      ? `This thesis carries a plan level (a floor or a target) with no buy level to reach it from. Either finish the plan — entry_price (the level the ENTER trigger fires on) plus target_price — or drop the plan levels entirely and keep the name in view without one.`
-      : `Your supplied triggers[] array displaced the default ENTER trigger via the (predicate, action) merge bucket. Add a trigger with action: "ENTER" and a price predicate at the BUY level — PRICE_ABOVE when that level is above the live price (a breakout you want confirmed), PRICE_BELOW when it is below (a pullback you want to pay); a short mirrors. Without it the watchlist trigger pipeline can't promote this thesis. (If your intent is to STOP pricing this name, resend with the plan levels removed entirely.)`;
-
   return {
     ok: false,
     reason: "missing-enter-trigger",
-    note,
+    note: `This thesis carries a plan level (a floor or a target) with no buy level to reach it from. Either finish the plan — set entry_price (the level the buy trigger fires on) — or remove the floor and target triggers and keep the name in view without a plan.`,
   };
 }

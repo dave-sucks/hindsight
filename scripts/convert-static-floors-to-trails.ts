@@ -17,10 +17,9 @@
  *
  * A rung is only ADDED when no same-bucket rung (same predicateKey +
  * action — see `triggerBucket`) is already present. Every existing trigger
- * is PRESERVED VERBATIM: `Thesis.triggers` is a wholesale-replace JSONB
- * column, so the script reads the raw array, appends the missing rungs,
- * and writes the full array back. It never rewrites, reorders, or dedupes
- * the hand-written rungs.
+ * is PRESERVED VERBATIM: the script reads the raw JSONB array, appends the
+ * missing rungs, and writes the array back. It never rewrites, reorders, or
+ * dedupes the hand-written rungs.
  *
  * ═══════════════════════════════════════════════════════════════════════
  * ⚠️  DEPLOY-ORDERING FOOTGUN — DO NOT RUN BEFORE PR-A IS LIVE IN PROD ⚠️
@@ -146,7 +145,7 @@ async function main() {
 
     // Validation gate BEFORE building the write: if the existing array
     // doesn't parse, refuse — appending to an unparseable array and
-    // writing it back could persist a shape every reader drops wholesale.
+    // writing it back could persist a shape every reader drops entirely.
     const parsed = triggersArraySchema.safeParse(t.triggers);
     if (!parsed.success) {
       console.log(

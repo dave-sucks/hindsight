@@ -81,9 +81,11 @@ describe("armHeldLadderOnFill", () => {
     thesisFindFirst.mockResolvedValue({
       id: "t1", direction: "LONG", horizon: null, // no horizon → fallback path
       catalystDate: null,
+      // Rationales because the fill parses the stored list (one rung without
+      // one used to be cast through raw and would now be dropped as malformed).
       triggers: [
-        { id: "a", action: "ENTER", predicate: { kind: "PRICE_ABOVE", level: 50 } },
-        { id: "b", action: "REVIEW", predicate: { kind: "PRICE_BELOW", level: 40 } },
+        { id: "a", action: "ENTER", predicate: { kind: "PRICE_ABOVE", level: 50 }, rationale: "buy" },
+        { id: "b", action: "REVIEW", predicate: { kind: "PRICE_BELOW", level: 40 }, rationale: "support" },
       ],
     });
 
@@ -153,10 +155,31 @@ describe("armHeldLadderOnFill — the analyst's ladder survives the fill (DAV-23
     expect(data.stopLoss).toBe(1580);
   });
 
-  it("the WATCHING template's own rungs do not carry over — the HELD template owns that layer", async () => {
+  it("the WATCHING template's own rungs stay too — a fill adds, it never rewrites", async () => {
+    // FLIPPED 2026-09-09 (DAV-242): the fill is trigger ops — remove the buy,
+    // set the floor and target, add what is missing. Nothing on the row is
+    // thrown away for having come from a template.
     thesisFindFirst.mockResolvedValue(asml);
     await armHeldLadderOnFill({ ...BASE, ticker: "ASML", fillPrice: 1716.09, targetPrice: 2800, stopLoss: 1580 });
     const ids = (thesisUpdate.mock.calls[0][0].data.triggers as Array<{ id: string }>).map((t) => t.id);
-    expect(ids).not.toContain("watch-tmpl");
+    expect(ids).toContain("watch-tmpl");
+  });
+
+  it("adds only the protection that is missing — the analyst's tighter trail keeps its id and value", async () => {
+    thesisFindFirst.mockResolvedValue({
+      ...asml,
+      triggers: [
+        ...asml.triggers,
+        { id: "my-trail", action: "EXIT", source: "AGENT", predicate: { kind: "TRAILING_FROM_HIGH", pct: 6 }, rationale: "tight trail" },
+      ],
+    });
+    await armHeldLadderOnFill({ ...BASE, ticker: "ASML", fillPrice: 1716.09, targetPrice: 2800, stopLoss: 1580 });
+    const triggers = thesisUpdate.mock.calls[0][0].data.triggers as Array<{ id: string; action: string; predicate: { kind: string; pct?: number } }>;
+    const trails = triggers.filter((t) => t.predicate.kind === "TRAILING_FROM_HIGH" && t.action === "EXIT");
+    expect(trails).toEqual([expect.objectContaining({ id: "my-trail", predicate: { kind: "TRAILING_FROM_HIGH", pct: 6 } })]);
+    // The audit row lists each op — one line per change.
+    const fc = thesisUpdateCreate.mock.calls[0][0].data.fieldChanges as { triggerOps: { to: Array<{ op: string; text: string }> } };
+    expect(fc.triggerOps.to.map((o) => o.text)).toEqual(expect.arrayContaining(["Removed: buy above $1710"]));
+    expect(fc.triggerOps.to.every((o) => o.op !== "edit" || !/Target/.test(o.text))).toBe(true);
   });
 });

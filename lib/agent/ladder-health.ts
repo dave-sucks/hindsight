@@ -368,16 +368,17 @@ export function computeLadderHealth(opts: {
 
 /**
  * fieldChanges keys that mark a ThesisUpdate row as a LADDER edit:
- *   - "triggers"  — the agent's update_thesis diffs the full trigger array
- *   - "fireMode"  — principal UI fire-mode change (thesis-edit.ts)
- *   - "stopLoss"  — principal UI stop-rung edits + agent stop moves sync here
+ *   - "triggerOps" — the trigger ops the caller sent (agent or principal)
+ *   - "triggers"   — legacy rows, from before ops (a full-array diff)
+ *   - "fireMode"   — legacy principal fire-mode rows
+ *   - "stopLoss"   — stop moves synced from a level edit
  * Deliberately EXCLUDES "targetPrice" (a target move is a plan change, not
  * protection work) and "source" (stamped on every principal edit, ladder or
  * not). Principal UI edits that touch only a non-stop rung value write none
  * of these keys — the metric then errs toward "stale," which fails safe
  * (extra attention, never missed attention).
  */
-const LADDER_EDIT_FIELD_KEYS = ["triggers", "fireMode", "stopLoss"] as const;
+const LADDER_EDIT_FIELD_KEYS = ["triggerOps", "triggers", "fireMode", "stopLoss"] as const;
 
 /**
  * Is this ThesisUpdate row a ladder edit? CREATED rows count (the ladder is

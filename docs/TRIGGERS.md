@@ -259,47 +259,45 @@ but the price path only **evaluates during the regular session**:
 
 ## 8. Editing surfaces
 
-All write through the same audited helpers in `lib/actions/thesis-edit.ts` +
-`/api/theses/[id]/triggers`:
+Once a thesis exists, its triggers change **one at a time**, through one
+function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
 
-- **Add** — `applyTriggerAdd` (UI "Add trigger": Target Price | Movement Amount).
-- **Edit value / fire mode** — `applyTriggerValueEdit` / `applyTriggerFireModeChange`.
-- **Delete** — `applyTriggerDelete`.
-- **Reject dialog** — embeds the editor (`editableOnly`: price/% triggers only)
-  so you can retune the stop/target or add a % alert while rejecting a proposal.
-- **Agent** — `record_thesis` / `update_thesis`, auto-merged with horizon
-  defaults.
+- **UI** — `lib/actions/thesis-edit.ts` + `/api/theses/[id]/triggers`:
+  `applyTriggerAdd`, `applyTriggerValueEdit`, `applyTriggerFireModeChange`,
+  `applyTriggerDelete` — each is one op. The reject dialog embeds the same
+  editor (`editableOnly`: price/% triggers only).
+- **Agent** — `update_thesis(add_triggers | edit_triggers | remove_trigger_ids)`;
+  `entry_price` / `target_price` / `stop_loss` are the same op on the buy /
+  target / floor trigger. `record_thesis` still takes a whole `triggers` list —
+  a mint is a new list by definition — merged with the horizon defaults.
+- **A buy fill** removes the buy trigger, sets the floor and target to the
+  executed levels, and adds the held-side template triggers that are missing
+  (`armHeldLadderOnFill`). Never a rewrite: the analyst's target and reviews
+  survive the fill.
+- **A plan set-down** (DEMOTE) removes the buy, floor and target triggers.
 
-Canonical price stop/target edits mirror onto `Thesis.stopLoss`/`targetPrice` +
-the open `Position` so the chart, run-summary, and evaluator never drift.
+Rules run per op on the resulting list; a refused op is returned by id with
+the reason and the rest of the call lands (`data.trigger_ops` on the tool):
 
-### The `update_thesis.triggers` wholesale-replace footgun
+- One trigger per bucket, one per plan slot: adding a second buy trigger,
+  target, floor or review cadence **edits the one that is there**.
+- An edited trigger keeps its id, so `lastFiredAt` and the cooldown carry.
+- An agent's level / pct / days edit needs a `rationale` — the sentence moves
+  with the number (the principal's edits get the number substituted).
+- On a held stock an agent may only tighten a protective sell level (§ the
+  ratchet, DAV-185); the principal is exempt.
+- After all ops, ONE check on the derived plan: ordering everywhere, 2:1 on a
+  plan we don't own, and a buy trigger where a floor or target is armed.
 
-`update_thesis(triggers: [...])` **replaces the entire trigger set wholesale** —
-it does NOT merge with the existing rungs (unlike `record_thesis`, which merges
-with horizon defaults). Pass `[]` and every rung is cleared. So **resend every
-rung you want to keep** on any edit — a rung you omit is dropped, silently
-taking its protection with it. The single most common way to strip a holding's
-gain-protection ladder is to `update_thesis` with a partial `triggers` array.
-
-Two server-managed fields survive the replacement, keyed by trigger **id**
-(`update-thesis.ts:1181-1213`):
-
-- **`lastFiredAt`** — the cooldown stamp the agent never sees. Preserved from
-  the prior rung **only when you resend the same `id`.** Drop the id (or mint a
-  fresh rung) and the firing memory resets → the predicate re-fires on the next
-  tick. Edit in place = same id; net-new = fresh id.
-- **`cooldownDays`** — agent-authored rungs often omit it;
-  `applyTriggerCooldownDefaults` backfills the per-kind default so the cooldown
-  gate is never a silent no-op (and rewrites a `0` on any non-EXIT action, §6).
-
-There is **no `source`/provenance field yet** — a `DEFAULT | ANALYST_RULE |
-AGENT | PRINCIPAL` stamp is a convergence gap tracked in
-`docs/plans/TRIGGER_MODEL.md` §5. Until it lands, a wholesale replace also
-loses the "who set this rung" distinction, so re-authoring is the only record.
+The plan columns (`entryPrice` / `targetPrice` / `stopLoss`) are recomputed from
+the resulting triggers and mirrored onto the open `Position`, so the chart,
+run-summary, and evaluator never drift. The Activity feed shows the ops the
+caller sent — "Entry $183 → $190", "Removed: sell below $110" — stored verbatim
+on the row's `fieldChanges.triggerOps`.
 
 ## Key files
 
+- `lib/agent/triggers/ops.ts` — the per-trigger write path (`applyTriggerOps` + `checkLadder`) every editor goes through once a thesis exists (§8)
 - `lib/agent/triggers/types.ts` — predicate union (incl. `GAIN_FROM_ENTRY` + `TRAILING_FROM_HIGH`) + `Trigger` type + `isDirectEligiblePredicate` / `DIRECT_ELIGIBLE_PREDICATE_KINDS` + `protectiveExitCloseReason`
 - `lib/agent/triggers/enforce-close-reason.ts` — the sale-label rule: a close from a protective fire stores STOP/TARGET, auto-corrected with an audit note (DAV-192)
 - `lib/agent/triggers/schema.ts` — the one Zod gate

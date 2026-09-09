@@ -25,8 +25,13 @@ close) — see `shouldFire` in `lib/agent/triggers/evaluate.ts`. The three
 docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
 `docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
 `docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).
-Gotcha: `update_thesis.triggers` is wholesale-REPLACE — resend every rung you
-keep. Signal-side rungs (earnings/filing/news) can't fire today — routing is
+Triggers are edited one at a time (DAV-242): `update_thesis` takes
+`add_triggers` / `edit_triggers` (by id) / `remove_trigger_ids`, and
+`entry_price` / `target_price` / `stop_loss` are the same edit on the buy /
+target / floor trigger. Every op is one line in the Activity feed; a refused
+op comes back by id and the rest of the call lands. The shared core is
+`lib/agent/triggers/ops.ts` — the UI popover and the agent go through it.
+Signal-side rungs (earnings/filing/news) can't fire today — routing is
 deliberately paused (GAPS P1-34; design doc `docs/plans/SIGNALS_REDESIGN.md`).
 
 ## Where to put what (doc navigation)
@@ -671,6 +676,7 @@ new, file it there — not here.)
 - app/api/research/agent-run/route.ts — creates ResearchRun row
 
 ### Triggers (the living ladder)
+- lib/agent/triggers/ops.ts — THE write path once a thesis exists: applyTriggerOps (add / edit by id / remove by id / a plan level as an op) + checkLadder (the one post-op plan check). update_thesis, the UI popover, a buy fill and a plan set-down all go through it (DAV-242)
 - lib/agent/triggers/types.ts — predicate union (incl. GAIN_FROM_ENTRY + TRAILING_FROM_HIGH) + isDirectEligiblePredicate + protectiveExitCloseReason
 - lib/agent/triggers/evaluate.ts — pure evaluator (1D daily-move + HOLDING-only gain/trail paths)
 - lib/agent/triggers/defaults.ts — horizon templates + standingProtectionTriggers() (+10%/8%/−12%) + scaleInOn* (±7%) + cooldown defaults

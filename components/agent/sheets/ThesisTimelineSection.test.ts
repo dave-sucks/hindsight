@@ -7,7 +7,7 @@
  *     ("10 shares at $832.84"). Stored summaries never render verbatim.
  *   - railDot: green = money in, red = money out, amber = proposal that
  *     didn't trade
- *   - triggerDiffLines: per-rung ladder diff with id-churn cancelled
+ *   - ladderChangeLines: the trigger ops on a row, one chip each
  *
  * Fixtures mirror live production rows (XENE / EME / HPE arcs).
  */
@@ -17,7 +17,7 @@ import {
   triggerPhrase,
   updatedSecondary,
   railDot,
-  triggerDiffLines,
+  ladderChangeLines,
   buildTimeline,
   outcomePhrase,
   groupTitle,
@@ -485,46 +485,45 @@ describe("proposalSpanSegments", () => {
   });
 });
 
-describe("triggerDiffLines", () => {
-  const floor64 = {
-    id: "t-floor",
-    action: "EXIT",
-    fireMode: "TACTICAL",
-    predicate: { kind: "PRICE_BELOW", level: 64 },
-  };
-  const floor71 = { ...floor64, predicate: { kind: "PRICE_BELOW", level: 71 } };
-  const trail8 = {
-    id: "t-trail",
-    action: "EXIT",
-    fireMode: "TACTICAL",
-    predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 },
-  };
-
-  it('renders a level move as "before → after" (the floor 64 → 71 case)', () => {
-    const lines = triggerDiffLines({
-      from: [floor64, trail8],
-      to: [floor71, trail8],
-    });
+describe("ladderChangeLines — the chips are the ops the caller sent (DAV-242)", () => {
+  // FLIPPED 2026-09-09: the chips used to be a diff of two whole lists with
+  // id-churn cancelled — the replace-all write made visible. One op, one chip.
+  it("one chip per op, in the words the op was written in", () => {
+    const lines = ladderChangeLines(
+      row({
+        fieldChanges: {
+          triggerOps: {
+            from: null,
+            to: [
+              { op: "edit", id: "t-floor", text: "Stop $64 → $71 (tightened)" },
+              { op: "remove", id: "t-old", text: "Removed: sell below $110" },
+              { op: "add", id: "t-new", text: "Added: review every 14 days" },
+            ],
+          },
+        },
+      }),
+    );
     expect(lines).toEqual([
-      { kind: "edit", text: "Price below $64 → Price below $71" },
+      { kind: "edit", text: "Stop $64 → $71 (tightened)" },
+      { kind: "remove", text: "Removed: sell below $110" },
+      { kind: "add", text: "Added: review every 14 days" },
     ]);
   });
 
-  it("cancels id-churn: a rung re-minted with identical content is not a change", () => {
-    const reMinted = [
-      { ...floor64, id: "a2" },
-      { ...trail8, id: "b2", rationale: "new words" },
-    ];
-    expect(triggerDiffLines({ from: [floor64, trail8], to: reMinted })).toEqual(
-      [],
-    );
+  it("renders nothing for rows from before ops (a whole-list diff, or a count)", () => {
+    expect(ladderChangeLines(row({ fieldChanges: { triggers: { from: [], to: [{ id: "x" }] } } }))).toEqual([]);
+    expect(ladderChangeLines(row({ fieldChanges: { triggers: { from: 11, to: 14 } } }))).toEqual([]);
   });
 
-  it("renders nothing for the legacy non-array shapes", () => {
-    expect(triggerDiffLines({ from: 11, to: 14 })).toEqual([]);
-    expect(
-      triggerDiffLines({ from: "WATCHING-set", to: "HELD-set" }),
-    ).toEqual([]);
+  it("the secondary clause leads with the ops and does not repeat the level columns", () => {
+    const u = row({
+      fieldChanges: {
+        triggerOps: { from: null, to: [{ op: "edit", id: "buy", text: "Entry $183 → $190" }] },
+        entryPrice: { from: 183, to: 190 },
+        conviction: { from: "MEDIUM", to: "HIGH" },
+      },
+    });
+    expect(updatedSecondary(u)).toBe("Entry $183 → $190, conviction MEDIUM → HIGH");
   });
 });
 
@@ -592,21 +591,12 @@ describe("toRow — one shape for every item", () => {
       row: row({
         type: "UPDATED",
         fieldChanges: {
-          triggers: {
-            from: [],
-            to: [
-              {
-                id: "t1",
-                action: "EXIT",
-                predicate: { kind: "PRICE_BELOW", level: 64 },
-              },
-            ],
-          },
+          triggerOps: { from: null, to: [{ op: "add", id: "t1", text: "Added: sell below $64" }] },
         },
       }),
     });
     expect(withLadder.chips).toEqual([
-      { kind: "add", text: "Price below $64 → exit" },
+      { kind: "add", text: "Added: sell below $64" },
     ]);
   });
 

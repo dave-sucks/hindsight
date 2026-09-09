@@ -17,38 +17,35 @@
  * - Status transitions go through a separate `change_status` field. We
  *   don't allow agents to silently flip ACTIVE → INVALIDATED via this tool;
  *   that's a deliberate transition with its own ThesisUpdate type.
- * - Triggers are replaced wholesale when supplied — we don't try to merge.
- *   The agent should pass the FULL trigger array it wants, not a delta.
- *   This keeps the schema simple and avoids "ghost trigger" bugs.
+ * - Triggers change one at a time (DAV-242): `add_triggers`, `edit_triggers`
+ *   by id, `remove_trigger_ids`, and the entry / target / stop arguments are
+ *   the same ops on the buy / target / floor trigger. Every op is its own
+ *   line in the activity log; a refused op is reported by id and the rest
+ *   of the call lands. See lib/agent/triggers/ops.ts.
  */
 
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import {
-  applyTriggerCooldownDefaults,
-} from "@/lib/agent/triggers/defaults";
-import {
-  dropRedundantInherited,
-  carryOverDroppedFireState,
-  adoptStoredTriggerIdentity,
-} from "@/lib/agent/triggers/levels";
+  parseTriggersResilient,
+  triggersArraySchema,
+  triggerActionSchema,
+} from "@/lib/agent/triggers/schema";
 import {
   loadLevelSources,
-  parseTriggerState,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
-import {
-  protectiveRatchetViolations,
-  describeRatchetViolation,
-} from "@/lib/agent/triggers/ratchet";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
-import { triggerBucket } from "@/lib/agent/triggers/bucket";
-import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
+import {
+  acceptedOps,
+  applyTriggerOps,
+  checkLadder,
+  type TriggerOp,
+  type TriggerOpResult,
+} from "@/lib/agent/triggers/ops";
 import {
   writeThesisUpdate,
   diffThesisFields,
@@ -56,8 +53,6 @@ import {
   type ThesisUpdateType,
 } from "@/lib/agent/thesis-updates";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
-import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
-import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import {
   checkStatusTransition,
@@ -66,10 +61,6 @@ import {
   needsPairedCloseCheck,
 } from "@/lib/agent/thesis-transitions";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
-import {
-  getThesisComposite,
-  getThesisSnapshotText,
-} from "@/lib/agent/thesis-narrative";
 
 // ── V2 deep-research section shapes (PR-9 flat schema cutover) ───────────
 // Same shape as record_thesis. See lib/agent/tools/record-thesis.ts.
@@ -204,15 +195,16 @@ const updateSchema = z.object({
     .describe(
       "Update the 4-dim composite scoring. Pass all four dims (with `composite` computed by the tool) to fully replace; pass a subset to merge with the existing scoring. composite ≥ 7 = ADD/ROTATE eligible; < 7 = WATCH or PASS.",
     ),
-  target_price: z.number().nullable().optional(),
-  stop_loss: z.number().nullable().optional(),
+  target_price: z.number().nullable().optional()
+    .describe("The target — edits the target trigger (adds one if none, null removes it). One change, one activity line."),
+  stop_loss: z.number().nullable().optional()
+    .describe("The floor — edits the sell-below trigger (adds one if none, null removes it). On a held stock it may only tighten."),
   entry_price: z.number().nullable().optional()
     .describe(
-      "WHERE YOU'D BUY IN (or where you bought, on ACTIVE rows). A price the stock has NOT reached, never the current quote. " +
-      "When you re-level a watch, the side follows the level: BELOW the current quote is a pullback you want to buy, ABOVE it is a breakout you want confirmed first — the ENTER trigger is rewritten to match, so you only have to pick the number. " +
+      "WHERE YOU'D BUY IN — edits the buy trigger (adds one if none, null removes it). A price the stock has NOT reached, never the current quote. " +
+      "The side follows the level: BELOW the current quote is a pullback you want to buy, ABOVE it is a breakout you want confirmed first — the buy trigger is rewritten to match, so you only have to pick the number. " +
       "A level AT the quote is a buy condition that is already true and re-fires every cooldown until someone removes it; if you want to buy now, call place_trade. " +
-      "Optional for refinement updates; REQUIRED when promoting a PENDING thesis to LONG/SHORT (so target/stop have something to validate against in the shape gate). " +
-      "On ACTIVE rows this is the actual fill price (set by place_trade); patching it on an ACTIVE row is rare and should only happen on a partial-fill / cost-basis correction."
+      "REQUIRED when promoting an unresearched seed to LONG/SHORT. Not editable on a held stock — there the entry is the fill."
     ),
 
   // ── Conviction Expression v4 ─────────────────────────────────────────
@@ -264,11 +256,36 @@ const updateSchema = z.object({
       "Promote or demote when the trade structure has actually changed. Examples: a TRADE that's compounding past its 14d window because the thesis got bigger → upgrade to TARGET. A COMPOUNDER whose moat eroded but isn't dead → downgrade to TARGET with a tighter exit. A CATALYST that printed and is now a position trade on residual momentum → upgrade to TARGET. The review cadence follows the new horizon automatically — leaving the old cadence trigger in place produces a thesis whose exit policy doesn't match its label, so resend the trigger list to match. Only spawn a fresh record_thesis when direction or core belief flips, not when the time horizon evolves.",
     ),
   catalyst_date: z.string().datetime().nullable().optional(),
-  triggers: triggersArraySchema
+
+  // ── Trigger ops (DAV-242) — one trigger at a time, never a whole list ──
+  add_triggers: triggersArraySchema
     .optional()
     .describe(
-      "Replace the entire trigger set. Pass the full array — we do not merge with existing triggers. To remove all triggers, pass [].",
+      "Triggers to ADD. Each is { predicate, action, rationale, cooldownDays?, fireMode? }; ids are minted here. " +
+        "Adding where one already exists (a second buy trigger, target, floor, or review cadence) EDITS the existing one — a stock never carries two buy triggers.",
     ),
+  edit_triggers: z
+    .array(
+      z.object({
+        id: z.string().describe("The trigger's id, from get_theses."),
+        level: z.number().optional().describe("New price for a price-above / price-below trigger."),
+        pct: z.number().optional().describe("New percent for a move / gain / trailing trigger."),
+        days: z.number().int().optional().describe("New day count for a time-elapsed / review-cadence trigger."),
+        action: triggerActionSchema.optional(),
+        fire_mode: z.enum(["TACTICAL", "DIRECT"]).optional(),
+        rationale: z.string().optional().describe("REQUIRED when level / pct / days changes — the sentence moves with the number."),
+        cooldown_days: z.number().int().min(0).max(90).optional(),
+      }),
+    )
+    .optional()
+    .describe(
+      "Triggers to EDIT by id. Change the number, the action, the fire mode, or the wording. A level change needs a rationale. " +
+        "On a held stock a protective sell level may only tighten — a loosening edit is refused by itself; the rest of the call lands.",
+    ),
+  remove_trigger_ids: z
+    .array(z.string())
+    .optional()
+    .describe("Triggers to REMOVE by id. On a held stock a protective sell trigger cannot be removed."),
 
   // ── V2 narrative sections (PR-9 flat schema) ──────────────────────────
   // Same 9 sections record_thesis accepts. Patching one section leaves the
@@ -378,8 +395,6 @@ type UpdatePatch = Partial<{
   catalystDate: Date | null;
   lastReviewedAt: Date | null;
   triggers: object;
-  /** Fire state for inherited rungs — see the triggers patch block. */
-  triggerState: object;
   status: string;
   retiredReason: string;
   invalidatedAt: Date;
@@ -396,11 +411,10 @@ type UpdatePatch = Partial<{
 export const updateThesis = defineTool({
   description:
     "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief). " +
-    "Four hard-reject conditions to know about: " +
-    "(1) zero-trigger guard — refuses updates on theses with no triggers unless the update adds triggers OR closes the thesis; " +
-    "(2) goalpost-moving guard — refuses to raise targetPrice on a WATCHING thesis whose existing entry condition is currently met (price has crossed the old target — your job is to PROMOTE, not move the bar); " +
-    "(3) structural-belief discipline gate — patches that change confidence_score / target_price / stop_loss WITHOUT also touching core_belief / key_assumptions / invalidation_conditions are rejected unless `structural_unchanged_reason` is supplied. Either update the belief to reflect why the trade plan is moving, or state explicitly why the belief is intact; " +
-    "(4) protective-level ratchet — on a held stock, protective sell levels only move toward MORE protection. Lowering a stop, widening a trailing give-back, deleting a protective sell trigger, or switching one from automatic to judgment-first is rejected. Only the principal moves a safety line down. If you believe a level is wrong, keep it and say so in your rationale with the number you'd suggest.",
+    "Three hard-reject conditions to know about: " +
+    "(1) goalpost-moving guard — refuses to raise targetPrice on a WATCHING thesis whose existing entry condition is currently met (price has crossed the old target — your job is to PROMOTE, not move the bar); " +
+    "(2) structural-belief discipline gate — patches that change confidence_score / target_price / stop_loss WITHOUT also touching core_belief / key_assumptions / invalidation_conditions are rejected unless `structural_unchanged_reason` is supplied. Either update the belief to reflect why the trade plan is moving, or state explicitly why the belief is intact; " +
+    "(3) protective-level ratchet — on a held stock, protective sell levels only move toward MORE protection. Lowering a stop, widening a trailing give-back, removing a protective sell trigger, or switching one from automatic to judgment-first is refused per trigger (the rest of the call still lands; every op comes back in `trigger_ops` with accepted/refused and why). Only the principal moves a safety line down. If you believe a level is wrong, keep it and say so in your rationale with the number you'd suggest.",
   schema: updateSchema,
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
@@ -802,25 +816,35 @@ export const updateThesis = defineTool({
       args.change_status === "ARCHIVED" ||
       args.direction === "PASS";
 
-    let inheritedLadder: ResolvedTrigger[] = [];
-    // The zero-trigger guard that used to stand here is gone (DAV-209).
-    // It refused a review-only update on a thesis with no triggers —
-    // "a review without action is a no-op" — which made a name with
-    // nothing on it unreviewable and un-updatable without first inventing
-    // a wake for it. Zero triggers is a legal state: the name is in view
-    // and nothing will wake it, which is exactly what some names deserve.
-    // Held positions are unaffected — they inherit the standing protection
-    // rungs, and the enter-guard below still requires a real EXIT on them.
-    //
+    // ── Trigger ops (DAV-242) ────────────────────────────────────────────
+    // Every trigger change is an op: add, edit by id, remove by id — and
+    // the entry / target / stop arguments are the same ops on the buy /
+    // target / floor trigger. Zero triggers is a legal state (DAV-209): a
+    // review-only update on a bare thesis goes through untouched.
+    const triggerOps: TriggerOp[] = [
+      ...(args.add_triggers ?? []).map((t) => ({ op: "add" as const, trigger: t as Trigger })),
+      ...(args.edit_triggers ?? []).map((e) => ({
+        op: "edit" as const,
+        id: e.id,
+        level: e.level,
+        pct: e.pct,
+        days: e.days,
+        action: e.action,
+        fireMode: e.fire_mode,
+        rationale: e.rationale,
+        cooldownDays: e.cooldown_days,
+      })),
+      ...(args.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
+      ...(args.entry_price !== undefined ? [{ op: "level" as const, slot: "ENTRY" as const, price: args.entry_price }] : []),
+      ...(args.stop_loss !== undefined ? [{ op: "level" as const, slot: "FLOOR" as const, price: args.stop_loss }] : []),
+      ...(args.target_price !== undefined ? [{ op: "level" as const, slot: "TARGET" as const, price: args.target_price }] : []),
+    ];
+
     // The levels above this thesis, resolved against an EMPTY thesis array
-    // so we see them unmasked by the thesis's own rungs — used by the
-    // wholesale-replace path below to keep inherited rungs from being
-    // copied onto the row.
-    //
-    // Lazy: update_thesis is the most-called tool in the app and most
-    // calls don't touch triggers at all. Only pay the two level queries
-    // when the answer can actually change something.
-    if (args.triggers !== undefined) {
+    // so we see them unmasked by the thesis's own triggers. Lazy: this is
+    // the most-called tool in the app and most calls don't touch triggers.
+    let inheritedLadder: ResolvedTrigger[] = [];
+    if (triggerOps.length > 0 && !isTerminalTransition) {
       const analystId = existing.researchRun?.agentConfigId ?? null;
       const levelSources = analystId
         ? (await loadLevelSources([analystId])).get(analystId)
@@ -835,142 +859,6 @@ export const updateThesis = defineTool({
         levelSources,
         `thesis=${args.thesis_id}`,
       );
-    }
-
-    // ── Goalpost-moving guard (audit Root Cause #3) ───────────────────────
-    // Refuse to raise targetPrice on a WATCHING thesis whose existing
-    // entry condition is currently met. This is the MRVL pattern: trigger
-    // PRICE_ABOVE $172 has fired (current price $172.15), and instead of
-    // entering the trade the agent calls update_thesis to raise the
-    // target to $195 — moving the bar instead of acting. The trigger-
-    // evaluator will keep firing on every signal route until the agent
-    // either INITIATEs or invalidates.
-    //
-    // A target raise on WATCHING is allowed when the current price is
-    // BELOW the OLD target (legitimate refinement before the entry
-    // condition triggers). It's blocked when the current price has
-    // already crossed the OLD target.
-    //
-    // P1-24: promotion is place_trade (WATCHING → HOLDING), which doesn't go
-    // through this tool, so there's no longer an ACTIVE-via-update_thesis
-    // bypass to carve out — the guard applies on every WATCHING target-raise
-    // whose entry condition is already met.
-    if (
-      existing.status === "WATCHING" &&
-      args.target_price != null &&
-      existing.targetPrice != null &&
-      args.target_price > existing.targetPrice &&
-      resolvedPriceAtTime != null &&
-      resolvedPriceAtTime >= existing.targetPrice
-    ) {
-      return {
-        summary: `Refused to raise target on $${existing.ticker} — entry condition is currently met.`,
-        data: {
-          ok: false,
-          error: "goalpost_moving_blocked",
-          message:
-            `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${existing.targetPrice.toFixed(2)}. The entry condition is MET — your action is to PROMOTE (place_trade, which flips WATCHING → HOLDING), not raise the target to $${args.target_price.toFixed(2)} and walk away. If you genuinely think the setup has changed, document a concrete rejection reason in record_run_summary's decision_rationale (volume too low, regime change, fresh negative news, R/R no longer 2:1) and leave the target untouched. Or close the thesis with change_status: "INVALIDATED".`,
-        },
-        sources: [],
-      };
-    }
-
-    // ── Relative-ordering + R/R gate ──────────────────────────────────────
-    // If the patch touches ANY of the three levels, the resulting tuple
-    // must satisfy ordering and — on a plan we don't own yet — the 2:1
-    // floor (validateThesisShape, shared with record_thesis and the
-    // writer). It used to skip entry_price edits, which is how PLTR reached
-    // entry $190 / target $190 on 2026-08-27: only the entry moved.
-    //
-    // We do NOT run this check when the patch leaves the levels alone —
-    // a confidence-only update on a pre-existing broken row shouldn't be
-    // blocked by this gate (the row's shape is rotten, but cleaning it up
-    // is the job of either a future update or a SQL cleanup, not this
-    // particular review). Terminal transitions (INVALIDATED/CLOSED) also
-    // bypass — the values become reference history at that point.
-    // Effective direction for the shape check: when the agent is promoting
-    // PENDING → LONG/SHORT, validate against the NEW direction (the resulting
-    // state), not the existing PENDING. PENDING has no shape rule.
-    const effectiveDirectionForShape =
-      args.direction === "LONG" || args.direction === "SHORT"
-        ? args.direction
-        : existing.direction;
-    const shapeCheckNeeded =
-      (args.entry_price !== undefined ||
-        args.target_price !== undefined ||
-        args.stop_loss !== undefined) &&
-      !isTerminalTransition &&
-      (effectiveDirectionForShape === "LONG" || effectiveDirectionForShape === "SHORT");
-    if (shapeCheckNeeded) {
-      const effectiveTarget =
-        args.target_price !== undefined
-          ? args.target_price
-          : existing.targetPrice != null
-            ? Number(existing.targetPrice)
-            : null;
-      const effectiveStop =
-        args.stop_loss !== undefined
-          ? args.stop_loss
-          : existing.stopLoss != null
-            ? Number(existing.stopLoss)
-            : null;
-      // Effective entry: prefer the OPEN Position's actual fill price
-      // over the thesis row's planned entry. Captures the 2026-05-12 AMD
-      // shape — a WATCHING thesis carries entryPrice=$420 (the planned
-      // breakout level / ENTER trigger), the position fills at $446,
-      // and the agent's stop at $434 is correct relative to the FILL
-      // but the shape gate read against the stale $420 and rejected
-      // every attempt. The Position table is the canonical record of
-      // "what we actually own at what price" — for shape validation we
-      // want the real entry, not the planned one. Falls back to the
-      // thesis row's entryPrice for WATCHING theses (no position yet)
-      // or when no open position is found.
-      // P1-24 B4: an unresearched seed (direction null or legacy 'PENDING')
-      // never has an OPEN position — skip the lookup. For committed rows the
-      // direction is LONG/SHORT; `?? undefined` keeps the Position filter
-      // happy now that the column type is `string | null`.
-      const openPosition =
-        ctx.analystId && !isUnresearchedSeed(existing.direction)
-          ? await prisma.position.findFirst({
-              where: {
-                analystId: ctx.analystId,
-                symbol: existing.ticker,
-                direction: existing.direction ?? undefined,
-                status: "OPEN",
-              },
-              select: { avgCost: true },
-              orderBy: { openedAt: "desc" },
-            })
-          : null;
-      const effectiveEntry =
-        openPosition?.avgCost != null
-          ? Number(openPosition.avgCost)
-          : existing.entryPrice != null
-            ? Number(existing.entryPrice)
-            : null;
-      // On a held name the entry is the fill (the patch below discards the
-      // arg), so validate against what will actually be stored.
-      const held = openPosition != null || existing.status === "HOLDING";
-      const shapeCheck = validateThesisShape({
-        direction: effectiveDirectionForShape as "LONG" | "SHORT",
-        entryPrice:
-          args.entry_price !== undefined && !held ? args.entry_price : effectiveEntry,
-        targetPrice: effectiveTarget,
-        stopLoss: effectiveStop,
-        minRiskReward: held ? undefined : MIN_RISK_REWARD,
-        held,
-      });
-      if (!shapeCheck.ok) {
-        return {
-          summary: `Refused update on $${existing.ticker} — invalid post-patch shape (${shapeCheck.reason}).`,
-          data: {
-            ok: false,
-            error: "invalid_thesis_shape",
-            message: shapeCheck.note,
-          },
-          sources: [],
-        };
-      }
     }
 
     // Build the patch. Only set keys the agent supplied — undefined ≠ null.
@@ -1039,11 +927,11 @@ export const updateThesis = defineTool({
       const c = (merged.catalystFreshness as { score?: number } | undefined)?.score ?? 0;
       patch.scoring = { ...merged, composite: t + r + e + c };
     }
-    // target_price / stop_loss / entry_price are NOT written here any more.
-    // A level change is a TRIGGER change; the columns are recomputed from the
-    // resulting trigger list further down (search "derive-on-write"). Writing
-    // the column directly is how SNOW ended up showing a $256 stop that
-    // nothing would ever have sold at. See docs/plans/LEVELS_AS_TRIGGERS.md.
+    // target_price / stop_loss / entry_price are NOT written here. A level
+    // change is a trigger op; the columns are recomputed from the resulting
+    // trigger list in the ops block below. Writing the column directly is
+    // how SNOW ended up showing a $256 stop that nothing would ever have
+    // sold at. See docs/plans/LEVELS_AS_TRIGGERS.md.
     // PENDING-promotion direction flip (guarded above so this only runs on
     // legal transitions). A PASS (incl. PENDING → PASS) flips status to
     // PASSED and clears triggers; PENDING → LONG/SHORT stays WATCHING with
@@ -1106,212 +994,131 @@ export const updateThesis = defineTool({
         patch.researchUpdatedAt = new Date();
       }
     }
-    if (args.triggers !== undefined) {
-      // Triggers are wholesale-replaced (intentional — agent passes the FULL
-      // array, see file header). But two server-managed fields must survive
-      // that replacement:
-      //
-      //   1. `lastFiredAt` — the cooldown stamp. The agent never sees nor
-      //      reasons about it; if we trust its trigger payload verbatim,
-      //      every update wipes the firing memory and the next signal
-      //      re-fires the trigger. PR 2.5 / PR 3 both relied on this stamp
-      //      and silently lost it on every update_thesis touch.
-      //
-      //   2. `cooldownDays` — agent-authored triggers often omit it
-      //      (schema marks it optional). applyTriggerCooldownDefaults
-      //      backfills a sane per-kind default so the cooldown gate isn't
-      //      a no-op.
-      //
-      // We key by trigger id. The agent SHOULD pass the existing id when
-      // editing an in-place trigger; new triggers get a fresh id from the
-      // schema layer. Triggers with no prior match are treated as net-new.
-      const existingTriggers: Trigger[] = Array.isArray(existing.triggers)
-        ? (existing.triggers as unknown as Trigger[])
-        : [];
-      const lastFiredById = new Map(
-        existingTriggers
-          .filter((t) => t.id && t.lastFiredAt)
-          .map((t) => [t.id, t.lastFiredAt] as const),
-      );
-      //   3. Rungs the thesis INHERITS must not be copied onto it. The
-      //      agent now reads the resolved ladder (get_theses), so a
-      //      faithful wholesale-replace resends the analyst / account /
-      //      default rungs too. Storing those would promote them to
-      //      THESIS level and freeze a snapshot of the level above —
-      //      after one review cycle every standing rule would be
-      //      overridden everywhere by a copy of itself. Only a rung whose
-      //      VALUE or fire mode actually differs is kept as an override.
-      //      See dropRedundantInherited in lib/agent/triggers/levels.
-      const incoming = dropRedundantInherited(
-        args.triggers as Trigger[],
-        inheritedLadder,
-      );
-
-      // The agent resends the ladder WITHOUT ids and the schema mints a
-      // fresh uuid per id-less rung — so before any id-keyed carry-over can
-      // work, an unchanged rung must get its stored id back. Without this
-      // the resend wipes the firing memory despite the map above (ABT
-      // 2026-08-26: ENTER fired, the tactical run resent the ladder, the
-      // fresh id dropped `lastFiredAt`, and the next 5-minute tick re-fired
-      // it — four tactical runs in 15 minutes on one unchanged trigger).
-      // It also keeps `source` honest below: resending a principal-authored
-      // floor verbatim must not re-stamp it AGENT.
-      const readopted = adoptStoredTriggerIdentity(incoming, existingTriggers);
-
-      const preserved = readopted.map((t) => {
-        if (t.lastFiredAt != null) return t; // agent provided one — respect it
-        const prior = t.id ? lastFiredById.get(t.id) : undefined;
-        return prior ? { ...t, lastFiredAt: prior } : t;
-      });
-      // Agent-authored rungs are stamped AGENT. A rung whose id matches an
-      // existing one keeps whatever source it already had — resending a
-      // rung you didn't author doesn't make it yours.
-      const sourceById = new Map(
-        existingTriggers.filter((t) => t.id).map((t) => [t.id, t.source] as const),
-      );
-      const stamped = preserved.map((t) => {
-        const prior = t.id ? sourceById.get(t.id) : undefined;
-        return prior !== undefined
-          ? { ...t, source: prior }
-          : { ...t, source: "AGENT" as const };
-      });
-      let finalTriggers = applyTriggerCooldownDefaults(stamped);
-
-      // A stored rung that has FIRED and is gone from the new ladder hands
-      // its cooldown to the inherited rung in the same bucket — the rung that
-      // actually takes over. It used to matter only for rungs pruned as
-      // redundant; a resend that simply OMITTED the rung was missed, and the
-      // inherited twin fired with a clean slate five minutes later (SMMT
-      // 2026-09-03: scale-in fired 09:35, ladder rewritten 09:36 without it,
-      // account scale-in fired 09:40 — two tactical runs for one move,
-      // DAV-232). Keyed by bucket, so it covers both.
-      const finalBuckets = new Set(finalTriggers.map(triggerBucket));
-      const orphaned = existingTriggers.filter(
-        (t) => t.lastFiredAt && !finalBuckets.has(triggerBucket(t)),
-      );
-      if (orphaned.length > 0) {
-        patch.triggerState = carryOverDroppedFireState(
-          orphaned,
-          inheritedLadder,
-          parseTriggerState(existing.triggerState),
-        ) as object;
-      }
-
-      // ── The review clock is INDEPENDENT of the plan (2026-08-30) ────
-      // There used to be a re-stamp here: a WATCHING thesis that still
-      // carried a plan level but no REVIEW_CADENCE had one added back
-      // ("plan ⇒ cadence", WATCHLIST_STATES invariant 2). It is deleted,
-      // and nothing replaces it.
-      //
-      // The invariant welded together the two axes the same doc calls
-      // independent. Price levels cost NOTHING standing — the evaluator
-      // scores them every 5 minutes whether or not anyone reviews the
-      // name — while a review cadence spends real tokens. So "stop
-      // reviewing this weekly, but tell me if it hits $203" was
-      // unexpressible: removing the clock silently put it back unless the
-      // levels were deleted too, which is the opposite of the ask.
-      //
-      // What the invariant was actually afraid of — a priced plan drifting
-      // into nonsense unattended (ETN) — is covered twice already:
-      // `resolved.planSanity` flags a level the price has left behind and
-      // forces the run to resolve it, and a firing level wakes a run that
-      // must pull fresh data before it can act. The clock was never the
-      // thing protecting the plan.
-      //
-      // Mint still stamps a default clock (record_thesis) — new plans
-      // start watched. The difference is that it can now be removed and
-      // STAY removed.
-      patch.triggers = finalTriggers as object;
-    }
-
-    // ── Derive-on-write: levels are triggers (DAV-195 L3) ────────────────
-    // Runs AFTER the wholesale replace so an explicit level argument lands on
-    // top of a resent trigger list — update_thesis({triggers:[...],
-    // stop_loss:720}) ends with the floor at 720.
-    //
-    // Two things happen here, and the second runs even when the caller passed
-    // no level argument at all:
-    //   1. each supplied level is written as a TRIGGER, and
-    //   2. the cached columns are recomputed from the FINAL trigger list.
-    // (2) is what closes the wholesale-replace hole: resend a ladder without
-    // the floor and `stopLoss` goes null with it, instead of lingering as a
-    // number nothing enforces. Whether dropping it is ALLOWED is the ratchet
-    // gate's business, and that runs below on this output.
-    const touchesLevels =
-      args.entry_price !== undefined ||
-      args.target_price !== undefined ||
-      args.stop_loss !== undefined;
-    if (touchesLevels || patch.triggers !== undefined) {
-      const baseTriggers: Trigger[] =
-        patch.triggers !== undefined
-          ? ((patch.triggers as unknown as Trigger[]) ?? [])
-          : Array.isArray(existing.triggers)
-            ? (existing.triggers as unknown as Trigger[])
-            : [];
-      const levelDirection = ("direction" in patch
-        ? patch.direction
-        : existing.direction) as string | null;
-      const levelStatus = (patch.status ?? existing.status) as string | null;
-      const applied = applyLevelArgs({
-        stored: baseTriggers,
-        inherited: inheritedLadder,
-        levels: {
-          entry: args.entry_price,
-          target: args.target_price,
-          floor: args.stop_loss,
-        },
-        direction: levelDirection,
-        status: levelStatus,
-        // The tape decides which side a re-levelled buy trigger compares on.
-        // Without it every re-level was a breakout: the CRM shape, where the
-        // analyst wrote "buy the pullback to $203" and the row stored
-        // "buy above $203" against a $258 tape.
-        currentPrice: resolvedPriceAtTime,
-        source: "AGENT",
-        mintId: () => randomUUID(),
-      });
-      patch.triggers = applyTriggerCooldownDefaults(
-        applied.triggers,
-      ) as unknown as object;
-      patch.targetPrice = applied.columns.targetPrice;
-      patch.stopLoss = applied.columns.stopLoss;
-      // entryPrice on a HELD thesis is a historical fact — what the fill
-      // actually cost, written once by place_trade. It is not a plan and
-      // nothing here may recompute it (doing so would null it out on every
-      // review, since the buy trigger is deliberately gone once we own the
-      // name). On a watch row it derives from the buy level like the others.
-      if (levelStatus !== "HOLDING") {
-        patch.entryPrice = applied.columns.entryPrice;
-      }
-
-      // The gate above validated the ARGS. A triggers-only resend moves the
-      // buy level too (derive-on-write), and that path skipped the floor:
-      // ETN 2026-09-09 — the buy moved $375 → $432 by resending triggers,
-      // target $490 / stop $355 stayed, and 0.75:1 was stored. Validate the
-      // tuple that will actually be written, on a plan we don't own yet.
-      if (
-        !touchesLevels &&
-        levelStatus !== "HOLDING" &&
-        !isTerminalTransition &&
-        (levelDirection === "LONG" || levelDirection === "SHORT")
-      ) {
-        const derivedShape = validateThesisShape({
+    // ── Apply the trigger ops ────────────────────────────────────────────
+    // Rules run per op on the resulting list (one trigger per bucket, the
+    // ratchet on a held stock, a rationale on an agent's level change); a
+    // refused op is reported by id and the rest lands. Then ONE check on the
+    // derived plan — ordering, and 2:1 on a plan we don't own — replaces the
+    // argument gate and the derived-tuple gate that used to run here.
+    const opResults: TriggerOpResult[] = [];
+    if (triggerOps.length > 0) {
+      if (isTerminalTransition) {
+        opResults.push(
+          ...triggerOps.map((o) => ({
+            op: o.op === "level" ? ("edit" as const) : o.op,
+            id: "id" in o ? o.id : "",
+            ok: false,
+            text: "Trigger change",
+            reason: "The thesis is being retired in this call — its triggers are cleared with it.",
+          })),
+        );
+      } else if (parseTriggersResilient(existing.triggers).dropped > 0) {
+        // A write must not "repair" a list by dropping what it can't parse —
+        // that would silently delete a stop. Say so; nothing changes.
+        opResults.push(
+          ...triggerOps.map((o) => ({
+            op: o.op === "level" ? ("edit" as const) : o.op,
+            id: "id" in o ? o.id : "",
+            ok: false,
+            text: "Trigger change",
+            reason: `$${existing.ticker} carries a trigger that cannot be parsed — fix the stored triggers before editing them.`,
+          })),
+        );
+      } else {
+        const levelDirection = ("direction" in patch ? patch.direction : existing.direction) as string | null;
+        const levelStatus = (patch.status ?? existing.status) as string | null;
+        const existingTriggers = parseTriggersResilient(existing.triggers).triggers as Trigger[];
+        const applied = applyTriggerOps({
+          stored: existingTriggers,
+          inherited: inheritedLadder,
+          ops: triggerOps,
           direction: levelDirection,
-          entryPrice: applied.columns.entryPrice,
-          targetPrice: applied.columns.targetPrice,
-          stopLoss: applied.columns.stopLoss,
-          minRiskReward: MIN_RISK_REWARD,
+          status: levelStatus,
+          actor: "AGENT",
+          // The tape decides which side a re-levelled buy trigger compares on.
+          // Without it every re-level was a breakout: the CRM shape, where the
+          // analyst wrote "buy the pullback to $203" and the row stored
+          // "buy above $203" against a $258 tape.
+          currentPrice: resolvedPriceAtTime,
+          mintId: () => randomUUID(),
         });
-        if (!derivedShape.ok) {
-          return {
-            summary: `Refused update on $${existing.ticker} — the resent triggers produce an invalid plan (${derivedShape.reason}).`,
-            data: {
-              ok: false,
-              error: "invalid_thesis_shape",
-              message: derivedShape.note,
-            },
-            sources: [],
-          };
+        opResults.push(...applied.results);
+
+        if (applied.results.some((r) => r.ok)) {
+          // Held: the entry is the fill. The open Position's avgCost is the
+          // canonical record of what we actually own at what price (the
+          // 2026-05-12 AMD shape — a $420 planned entry, a $446 fill, and a
+          // $434 stop refused against the plan). Fall back to the row.
+          const held = levelStatus === "HOLDING";
+          const openPosition =
+            held && ctx.analystId
+              ? await prisma.position.findFirst({
+                  where: {
+                    analystId: ctx.analystId,
+                    symbol: existing.ticker,
+                    status: "OPEN",
+                  },
+                  select: { avgCost: true },
+                  orderBy: { openedAt: "desc" },
+                })
+              : null;
+          const avgCost =
+            openPosition?.avgCost != null ? Number(openPosition.avgCost) : null;
+          const check = checkLadder({
+            triggers: applied.triggers,
+            inherited: inheritedLadder,
+            direction: levelDirection,
+            status: levelStatus,
+            entryPrice:
+              avgCost ?? (existing.entryPrice != null ? Number(existing.entryPrice) : null),
+            avgCost,
+          });
+          if (!check.ok) {
+            return {
+              summary: `Refused update on $${existing.ticker} — the resulting plan is invalid (${check.error}).`,
+              data: {
+                ok: false,
+                error: check.error,
+                message: check.message,
+                trigger_ops: opResults,
+              },
+              sources: [],
+            };
+          }
+
+          // ── Goalpost-moving guard (audit Root Cause #3) ──────────────────
+          // Raising the target on a WATCHING thesis whose price has already
+          // crossed the OLD target is moving the bar instead of acting (the
+          // MRVL pattern). A raise while price is still below the old target
+          // is a legitimate refinement.
+          if (
+            levelStatus === "WATCHING" &&
+            check.columns.targetPrice != null &&
+            existing.targetPrice != null &&
+            check.columns.targetPrice > Number(existing.targetPrice) &&
+            resolvedPriceAtTime != null &&
+            resolvedPriceAtTime >= Number(existing.targetPrice)
+          ) {
+            return {
+              summary: `Refused to raise target on $${existing.ticker} — entry condition is currently met.`,
+              data: {
+                ok: false,
+                error: "goalpost_moving_blocked",
+                message:
+                  `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${Number(existing.targetPrice).toFixed(2)}. The entry condition is MET — your action is to PROMOTE (place_trade, which flips WATCHING → HOLDING), not raise the target to $${check.columns.targetPrice.toFixed(2)} and walk away. If you genuinely think the setup has changed, document a concrete rejection reason in record_run_summary's decision_rationale (volume too low, regime change, fresh negative news, R/R no longer 2:1) and leave the target untouched. Or close the thesis with change_status: "INVALIDATED".`,
+                trigger_ops: opResults,
+              },
+              sources: [],
+            };
+          }
+
+          patch.triggers = applied.triggers as unknown as object;
+          patch.targetPrice = check.columns.targetPrice;
+          patch.stopLoss = check.columns.stopLoss;
+          // entryPrice on a HELD thesis is a historical fact — what the fill
+          // actually cost, written once by place_trade. On a watch row it
+          // derives from the buy trigger like the others.
+          if (!held) patch.entryPrice = check.columns.entryPrice;
         }
       }
     }
@@ -1366,139 +1173,6 @@ export const updateThesis = defineTool({
     // WATCHING/PROMOTED → HOLDING atomically with the Alpaca fill and computes
     // the levels from the actual entry); the agent no longer sets a holding
     // status via update_thesis.
-
-    // ── ENTER-trigger guard (parity with record_thesis) ──────────────────
-    // A WATCHING LONG/SHORT thesis must have at least one ENTER trigger,
-    // otherwise the trigger evaluator has no entry-promotion path and the
-    // thesis sits inert forever. record_thesis enforced this at mint time;
-    // this guard plugs the second write surface so the thesis-writer's
-    // refresh path can't strip the ENTER trigger by passing a HELD-style
-    // triggers[] array (XPEV 2026-05-25 production evidence).
-    //
-    // Runs LATE so patch.status / patch.direction / patch.triggers reflect
-    // every transition processed above (change_status, PENDING-promotion,
-    // PASS → PASSED, wholesale-trigger-replace). Pure helper lives in
-    // lib/agent/triggers/enter-guard.ts and is shared with record_thesis.
-    // P1-24 B4: existing.direction may be null (unresearched seed). The
-    // enter-guard treats any non-LONG/SHORT value (incl. null/'PENDING') as
-    // a bypass, so passing null through is correct.
-    // P1-24 PASS-off-direction: a PASS patch sets patch.direction=null — a
-    // VALID patched value, not "absent". Use `"direction" in patch` so the
-    // null isn't swallowed by `??` and we don't fall back to the stale
-    // existing direction (which would let the guard inspect a LONG/SHORT it
-    // no longer is). When direction was patched, the patched value wins
-    // (incl. null); otherwise keep the existing direction.
-    const effectiveEnterDirection = ("direction" in patch
-      ? patch.direction
-      : existing.direction) as "LONG" | "SHORT" | "PASS" | null;
-    const effectiveEnterStatus = (patch.status ?? existing.status) as
-      | "WATCHING"
-      | "HOLDING"
-      | "PROMOTED"
-      | "PASSED"
-      | "RETIRED";
-    const effectiveEnterTriggers: Trigger[] =
-      patch.triggers !== undefined
-        ? ((patch.triggers as unknown as Trigger[]) ?? [])
-        : Array.isArray(existing.triggers)
-          ? (existing.triggers as unknown as Trigger[])
-          : [];
-    const effectiveEnterTarget =
-      patch.targetPrice !== undefined
-        ? patch.targetPrice
-        : existing.targetPrice != null
-          ? Number(existing.targetPrice)
-          : null;
-    const enterGuard = validateEnterTriggerRequired({
-      direction: effectiveEnterDirection,
-      status: effectiveEnterStatus,
-      triggers: effectiveEnterTriggers,
-      targetPrice: effectiveEnterTarget,
-    });
-    if (!enterGuard.ok) {
-      console.warn(
-        `[update-thesis] thesis=${args.thesis_id} ticker=${existing.ticker} REJECTED — WATCHING ${effectiveEnterDirection} with no ENTER trigger.`,
-      );
-      return {
-        summary: `Refused update on $${existing.ticker} — WATCHING ${effectiveEnterDirection} requires an ENTER trigger.`,
-        data: {
-          ok: false,
-          error: "missing_enter_trigger",
-          message: enterGuard.note,
-        },
-        sources: [],
-      };
-    }
-
-    // ── Protective-level ratchet gate (DAV-185) ──────────────────────────
-    // The 2026-08-16 standing ruling as code: on a held stock, an analyst
-    // may raise/tighten a protective sell level; it may never lower, widen,
-    // or delete one, or demote it from automatic (DIRECT) to judgment-first.
-    // Prompt-side versions of this rule failed live on 2026-08-18 (MU floor
-    // 948 → 814 while two sell proposals from the 948 breach sat awaiting
-    // approval). The principal's UI paths (thesis sheet, reject dialog —
-    // lib/actions/thesis-edit.ts / level-triggers.ts) don't run this gate;
-    // "thesis is broken, sell" flows don't either (terminal transitions set
-    // patch.status, so effectiveEnterStatus is no longer HOLDING, and the
-    // sell itself is close_position).
-    //
-    // Runs LATE like the ENTER guard: patch.triggers is the final processed
-    // replacement (post dropRedundantInherited), so resending an inherited
-    // rung verbatim stays legal, while deleting a thesis override to let a
-    // weaker inherited value show through is caught.
-    if (effectiveEnterStatus === "HOLDING") {
-      const ratchetProblems: string[] = [];
-      if (patch.triggers !== undefined) {
-        const violations = protectiveRatchetViolations({
-          direction: effectiveEnterDirection,
-          before: Array.isArray(existing.triggers)
-            ? (existing.triggers as unknown as Trigger[])
-            : [],
-          after: (patch.triggers as unknown as Trigger[]) ?? [],
-          inherited: inheritedLadder,
-        });
-        ratchetProblems.push(...violations.map(describeRatchetViolation));
-      }
-      // The stopLoss COLUMN is the same safety line in its scalar form
-      // (P1-42 dual representation) — tactical validation reads it, so a
-      // lowered column misinforms the next protective-fire review even
-      // though the trigger evaluator fires off the rungs.
-      if (patch.stopLoss !== undefined) {
-        const oldStop =
-          existing.stopLoss != null ? Number(existing.stopLoss) : null;
-        const newStop = patch.stopLoss;
-        if (oldStop != null && newStop == null) {
-          ratchetProblems.push(
-            `stop_loss $${oldStop} → cleared — that removes the recorded stop on a stock we own.`,
-          );
-        } else if (oldStop != null && newStop != null) {
-          const isLong = effectiveEnterDirection !== "SHORT";
-          if (isLong ? newStop < oldStop : newStop > oldStop) {
-            ratchetProblems.push(
-              `stop_loss $${oldStop} → $${newStop} — that moves the stop the wrong way on a stock we own.`,
-            );
-          }
-        }
-      }
-      if (ratchetProblems.length > 0) {
-        console.warn(
-          `[update-thesis] thesis=${args.thesis_id} ticker=${existing.ticker} REJECTED — protective-level ratchet: ${ratchetProblems.length} violation(s).`,
-        );
-        return {
-          summary: `Refused update on $${existing.ticker} — protective levels on a held stock only move toward more protection.`,
-          data: {
-            ok: false,
-            error: "protective_level_locked",
-            message:
-              `This update weakens the protection on $${existing.ticker}, a stock we currently own:\n` +
-              ratchetProblems.map((p) => `  • ${p}`).join("\n") +
-              `\n\nProtective levels only move toward MORE protection. Only the principal moves a safety line down, widens it, or removes it — from the thesis sheet or when rejecting a sell proposal. ` +
-              `Resend your update keeping every current protective level (raising/tightening is fine). If you believe a level is wrong, say so in your rationale with the number you'd suggest and why — that reaches the principal with the next proposal.`,
-          },
-          sources: [],
-        };
-      }
-    }
 
     // ── Stamp when we looked (DAV-193, relocated by DAV-195 L7) ─────────
     // The clock counts from when we last LOOKED, so there is nothing to
@@ -1597,6 +1271,7 @@ export const updateThesis = defineTool({
           ok: true,
           thesis_id: existing.id,
           type: "REVIEWED" as const,
+          trigger_ops: opResults,
           card: thesisToCardData({ ...existing, lastReviewedAt: reviewedAt }),
         },
         sources: [],
@@ -1642,14 +1317,14 @@ export const updateThesis = defineTool({
       "stopLoss",
       "horizon",
       "catalystDate",
-      "triggers",
       // Lifecycle
       "status",
       "retiredReason",
     ] as const;
     // Bulky JSONB sections store a short preview instead of two full copies
-    // per row. Scalars and the trigger arrays keep exact from/to — the
-    // Activity timeline renders those numbers ("floor 64 → 71") directly.
+    // per row. Scalars keep exact from/to. The trigger list is NOT diffed:
+    // the ops the caller sent are the change, stored verbatim below, and the
+    // Activity feed renders those lines ("Entry $183 → $190").
     const BULKY_DIFF_KEYS = [
       "snapshot",
       "bullCase",
@@ -1673,6 +1348,8 @@ export const updateThesis = defineTool({
       diffThesisFields(prevSnapshot, nextSnapshot, [...diffFields]),
       BULKY_DIFF_KEYS,
     );
+    const landedOps = acceptedOps(opResults);
+    if (landedOps.length > 0) fieldChanges.triggerOps = { from: null, to: landedOps };
 
     // ── Structural-unchanged-reason gate (P0-1) ──────────────────────────
     // Substantive non-belief patches (target_price / stop_loss /
@@ -1816,18 +1493,10 @@ export const updateThesis = defineTool({
     // watchlist view (which is just `WHERE status='WATCHING'`). No
     // mirror table to sync.
 
-    // Build a punchy summary line for the timeline list view.
-    const summaryParts: string[] = [];
-    if (fieldChanges.targetPrice) {
-      summaryParts.push(
-        `target ${fmtNum(fieldChanges.targetPrice.from)} → ${fmtNum(fieldChanges.targetPrice.to)}`,
-      );
-    }
-    if (fieldChanges.stopLoss) {
-      summaryParts.push(
-        `stop ${fmtNum(fieldChanges.stopLoss.from)} → ${fmtNum(fieldChanges.stopLoss.to)}`,
-      );
-    }
+    // Build a punchy summary line for the timeline list view. The trigger
+    // ops lead, one line each — a moved entry IS the entry change, not
+    // "triggers updated" plus a separate column line.
+    const summaryParts: string[] = landedOps.map((o) => o.text);
     if (fieldChanges.scoring) {
       const from = (fieldChanges.scoring.from as { composite?: number } | null)
         ?.composite;
@@ -1843,9 +1512,6 @@ export const updateThesis = defineTool({
       summaryParts.push(
         `${fieldChanges.status.from} → ${fieldChanges.status.to}`,
       );
-    }
-    if (fieldChanges.triggers) {
-      summaryParts.push("triggers updated");
     }
     if (
       fieldChanges.coreBelief ||
@@ -1906,6 +1572,7 @@ export const updateThesis = defineTool({
         thesis_id: existing.id,
         type: updateType,
         changed_fields: Object.keys(fieldChanges),
+        trigger_ops: opResults,
         // Post-update thesis snapshot for the chat renderer. Merges the
         // pre-update record with the patch we just applied — no extra DB
         // read. Drives the "Wrote / edited theses" carousel.
@@ -1966,10 +1633,4 @@ function thesisToCardData(t: Record<string, unknown>): {
       | "RETIRED"
       | "PASSED") ?? "WATCHING",
   };
-}
-
-function fmtNum(v: unknown): string {
-  if (typeof v === "number") return v.toFixed(2);
-  if (v == null) return "—";
-  return String(v);
 }

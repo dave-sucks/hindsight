@@ -5,7 +5,7 @@
  * podcast. Mirror of AnalystFindingsTab in shape, only swapping the
  * scoping query parameter (analystId → podcastId).
  *
- * Reuses SignalRow, FindingDetailDialog, SignalFilters wholesale —
+ * Reuses SignalRow, FindingDetailDialog, SignalFilters as-is —
  * the signal feed UX is identical between trading analysts and podcasts;
  * only the routing junction table differs (server-side).
  */

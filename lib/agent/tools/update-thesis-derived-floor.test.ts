@@ -3,10 +3,10 @@
  * triggers-only resend (DAV-241, 2026-09-09).
  *
  * `update_thesis` validated the plan only when the agent passed a price
- * argument. Resending `triggers` moves the buy level through derive-on-write
- * and used to skip the floor: ETN went $375 → $432 with target $490 and stop
- * $355 kept — 0.75:1 stored on a watch row. The tuple that is actually
- * written is what gets validated now.
+ * argument. Moving the buy level through the trigger used to skip the
+ * floor: ETN went $375 → $432 with target $490 and stop $355 kept — 0.75:1
+ * stored on a watch row. Under per-trigger ops (DAV-242) the plan derived
+ * from the resulting list is checked once, whichever way the level moved.
  */
 
 const mockThesisFindUnique = jest.fn();
@@ -63,7 +63,7 @@ function etnRow() {
     entryPrice: 375,
     targetPrice: 490,
     stopLoss: 355,
-    triggers: [],
+    triggers: ladder(375),
     triggerState: {},
     researchRun: { agentConfigId: "analyst_1" },
     createdAt: new Date(Date.now() - 30 * 86_400_000),
@@ -90,13 +90,14 @@ beforeEach(() => {
   mockThesisUpdate.mockClear();
 });
 
-describe("update_thesis — the floor covers a triggers-only resend (DAV-241)", () => {
+describe("update_thesis — the floor covers a buy level moved through its trigger (DAV-241)", () => {
   it("refuses a buy level moved through the trigger that leaves the plan under 2:1", async () => {
     mockThesisFindUnique.mockResolvedValue(etnRow());
     const result = await run({
       thesis_id: "thesis_etn",
       rationale: "Re-anchoring the watch to confirmation above current structure.",
-      triggers: ladder(432), // (490 − 432) / (432 − 355) = 0.75:1
+      // (490 − 432) / (432 − 355) = 0.75:1
+      edit_triggers: [{ id: "buy", level: 432, rationale: "Confirmation is above the repair range." }],
     });
     expect(result.data.ok).toBe(false);
     expect(result.data.error).toBe("invalid_thesis_shape");
@@ -109,7 +110,8 @@ describe("update_thesis — the floor covers a triggers-only resend (DAV-241)", 
     const result = await run({
       thesis_id: "thesis_etn",
       rationale: "Buy the pullback a little higher; plan still 4.4:1.",
-      triggers: ladder(380), // (490 − 380) / (380 − 355) = 4.4:1
+      // (490 − 380) / (380 − 355) = 4.4:1
+      edit_triggers: [{ id: "buy", level: 380, rationale: "A little higher, still a clean breakout." }],
     });
     expect(result.ok).toBe(true);
     expect(mockThesisUpdate).toHaveBeenCalled();

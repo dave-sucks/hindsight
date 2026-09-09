@@ -2,8 +2,9 @@
  * update-thesis-demote-disposition.test.ts — the §5 demote verdict
  * (DAV-224, WATCHLIST_STATES.md §5).
  *
- * A review may conclude "set the plan down": resend `triggers` with the
- * plan levels AND the review clock removed, keeping ≥1 REVIEW-action wake.
+ * A review may conclude "set the plan down": remove the buy, floor and
+ * target triggers AND the review clock, keeping ≥1 REVIEW-action wake.
+ * (FLIPPED 2026-09-09, DAV-242: ops by id instead of a resent list.)
  * Two things used to silently block that exact edit:
  *
  *   1. the plan ⇒ cadence stamp keyed on DIRECTION, so any directional
@@ -151,7 +152,8 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
       thesis_id: "thesis_demote_1",
       rationale:
         "Four weekly reviews with nothing to say — setting the plan down. Wake on the pullback to $160 or the next beat.",
-      triggers: wakeTriggers,
+      remove_trigger_ids: ["enter-1", "floor-1", "clock-1"],
+      add_triggers: wakeTriggers,
     });
     expect(result.data?.error).toBeUndefined();
 
@@ -180,9 +182,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     const result = await run({
       thesis_id: "thesis_demote_1",
       rationale: "Levels stand; stopping the weekly review.",
-      triggers: planTriggers.filter(
-        (t) => t.predicate.kind !== "REVIEW_CADENCE",
-      ),
+      remove_trigger_ids: ["clock-1"],
     });
     expect(result.data?.error).toBeUndefined();
     const triggers = (patchedData().triggers ?? []) as Trigger[];
@@ -204,7 +204,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     const result = await run({
       thesis_id: "thesis_demote_1",
       rationale: "Re-anchored the buy level; still not reviewing weekly.",
-      triggers: wakeTriggers,
+      remove_trigger_ids: ["clock-1"],
       entry_price: 180,
     });
     expect(result.data?.error).toBeUndefined();
@@ -214,7 +214,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     );
   });
 
-  it("an empty resend on a directional watch is accepted — zero triggers is legal (DAV-209)", async () => {
+  it("removing every trigger on a directional watch is accepted — zero triggers is legal (DAV-209)", async () => {
     // FLIPPED 2026-09-08. This used to refuse with missing_enter_trigger on
     // the "every watch carries a wake" rule. Clearing the ladder now leaves
     // a name in view with nothing on it, which is a state a person is
@@ -223,7 +223,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     const result = await run({
       thesis_id: "thesis_demote_1",
       rationale: "Clearing everything.",
-      triggers: [],
+      remove_trigger_ids: ["enter-1", "floor-1", "clock-1"],
     });
     expect(result.data?.ok).not.toBe(false);
     expect(mockThesisUpdate).toHaveBeenCalled();

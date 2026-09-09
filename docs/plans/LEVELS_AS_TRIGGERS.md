@@ -242,9 +242,9 @@ Net across the whole project: roughly **−700 lines**.
 - **Sale labelling** keys off the condition kind (`protectiveExitCloseReason`).
   New canonical levels must preserve the mapping or the cooldown exemption
   misfires.
-- **`update_thesis.triggers` replaces the whole list.** A cache recomputed from
-  a replaced list must not lose a level the agent didn't resend — pairs with
-  `dropRedundantInherited`.
+- **Triggers are edited one at a time** (`lib/agent/triggers/ops.ts`, DAV-242).
+  The cache is recomputed from the resulting list after every op, so a level
+  only leaves the columns when its trigger is removed on purpose.
 - **Don't rebuild entry direction (buy-the-dip vs buy-confirmation) as a
   setting.** Removed 2026-08-16, see `ENTRY_TRIGGER_SEMANTICS.md`. It's an
   account/analyst-level ENTER trigger.

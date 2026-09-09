@@ -244,11 +244,10 @@ export const tacticalRun = inngest.createFunction(
       const thesisBullBullets = getThesisBullCaseBullets(thesis);
       const thesisBearBullets = getThesisBearCaseBullets(thesis);
       // Full ladder for the prompt's CURRENT TRIGGER LADDER section +
-      // re-ladder duty: update_thesis `triggers` is wholesale-replace, so
-      // the agent needs every rung in view to edit without dropping any.
-      // Resolved (not the raw column) so inherited rungs are visible —
-      // resending one unchanged is a no-op (dropRedundantInherited), and
-      // changing its value is a deliberate per-thesis override.
+      // re-ladder duty: the agent edits triggers one at a time by id, so
+      // it needs every trigger and its id in view. Resolved (not the raw
+      // column) so inherited triggers are visible — adding one in the same
+      // bucket with a different value is a deliberate per-thesis override.
       const allTriggers = ladder;
       return {
         thesis: {

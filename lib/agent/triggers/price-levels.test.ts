@@ -518,10 +518,10 @@ describe("applyLevelArgs", () => {
     expect(out.columns.stopLoss).toBe(256);
   });
 
-  it("recomputes the columns from a resent ladder that dropped the floor", () => {
-    // Wholesale replace without the floor: the column must go with it rather
-    // than lingering as a number nothing enforces. (Whether the agent is
-    // ALLOWED to drop it is the ratchet's job, not this function's.)
+  it("recomputes the columns from a list with no floor", () => {
+    // No floor trigger: the column must go with it rather than lingering as
+    // a number nothing enforces. (Whether the agent is ALLOWED to drop it is
+    // the ratchet's job, not this function's.)
     const out = applyLevelArgs({
       ...base,
       stored: [trig(above(1150), "REVIEW", { id: "t" })],

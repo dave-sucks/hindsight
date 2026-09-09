@@ -77,7 +77,7 @@ function existingThesis(status: string) {
     stopLoss: 180,
     composite: 7,
     snapshotText: "Old snapshot",
-    hasTriggers: true,
+    triggers: [],
   };
 }
 

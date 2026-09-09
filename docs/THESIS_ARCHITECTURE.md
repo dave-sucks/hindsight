@@ -85,7 +85,7 @@ Every thesis carries a **trigger ladder** — a set of `(condition → action)` 
 
 The motivating failure (IONS): bought $73.83, day-one floor at $65, ran +17%, three rubber-stamp reviews, then crashed and fired the day-one floor for a LOSS — no level was ever re-earned. The living ladder makes that impossible to do silently.
 
-**The footgun** (see [`TRIGGERS.md`](./TRIGGERS.md) §8): `update_thesis.triggers` is **wholesale-REPLACE**, not merge. Resend every rung you keep or it's dropped; keep each rung's `id` or the server-managed `lastFiredAt` cooldown stamp is lost and the predicate re-fires.
+**Editing** (see [`TRIGGERS.md`](./TRIGGERS.md) §8): once a thesis exists its triggers change one at a time — `update_thesis(add_triggers | edit_triggers | remove_trigger_ids)`, the same ops the UI popover sends. An edited trigger keeps its id, so the `lastFiredAt` cooldown stamp carries; everything not named stays as it is.
 
 **Signal-side rungs (earnings/filing/news) can't fire today** — signal routing is deliberately paused (0 routes in 14d; GAPS P1-34, design in [`plans/SIGNALS_REDESIGN.md`](./plans/SIGNALS_REDESIGN.md)). Price/gain/time rungs on the 5-min cron are the live protection surface; the earnings/filing REVIEW rungs on every ladder are currently decorative.
 
@@ -525,7 +525,7 @@ The **structural-belief gate** (`record_thesis`) and the **structural-unchanged-
 | `horizon` | Required for LONG/SHORT. CATALYST/TRADE/TARGET/COMPOUNDER. Null for PENDING/PASS. |
 | `entryPrice`, `targetPrice`, `stopLoss` | Required for LONG/SHORT WATCHING. Validated via [`thesis-shape.ts`](../lib/agent/thesis-shape.ts) (LONG: target > entry > stop). |
 | `confidenceScore` | 0-100. Calibration tracking. |
-| `triggers` | JSONB array of structured predicates — the **living ladder** (§1a), NOT a write-once field: authored at mint, re-earned on every tactical fire, audited every daily run. **Full mechanics — predicate catalog (incl. `GAIN_FROM_ENTRY` / `TRAILING_FROM_HIGH`), the standing protection minimums, the cron-vs-signal firing matrix, fire modes (TACTICAL/DIRECT), cooldown, and the wholesale-REPLACE footgun — live in [`TRIGGERS.md`](./TRIGGERS.md).** `record_thesis` auto-merges with horizon defaults from [`triggers/defaults.ts`](../lib/agent/triggers/defaults.ts); `update_thesis` replaces wholesale (preserving `lastFiredAt` by id). **Empty for PENDING and PASS theses.** |
+| `triggers` | JSONB array of structured predicates — the **living ladder** (§1a), NOT a write-once field: authored at mint, re-earned on every tactical fire, audited every daily run. **Full mechanics — predicate catalog (incl. `GAIN_FROM_ENTRY` / `TRAILING_FROM_HIGH`), the standing protection minimums, the cron-vs-signal firing matrix, fire modes (TACTICAL/DIRECT), cooldown, and the per-trigger edit contract — live in [`TRIGGERS.md`](./TRIGGERS.md).** `record_thesis` auto-merges with horizon defaults from [`triggers/defaults.ts`](../lib/agent/triggers/defaults.ts); `update_thesis` edits one trigger at a time by id (`lib/agent/triggers/ops.ts`). **Empty for PENDING and PASS theses.** |
 | `catalystDate` | REQUIRED when `horizon=CATALYST`. |
 | `maxHoldDays` | REQUIRED when `horizon=TRADE` (no silent default). |
 | `nextReviewAt` | Derived from horizon if not supplied. Drives the overdue-review cron + `REVIEW_DATE_HIT` trigger. For PENDING, set to `createdAt` so first review fires immediately. |
@@ -575,7 +575,7 @@ Required: thesis_id, rationale (≥10 chars). Optional: any field on the row, pl
 - `change_status` (`ACTIVE` / `INVALIDATED` / `CLOSED` / `ARCHIVED`)
 - `direction` (`LONG` / `SHORT` / `PASS`) — **PENDING-promotion only.** Allowed only when existing.direction === 'PENDING'.
 - `entry_price` — required when promoting PENDING → LONG/SHORT.
-- `triggers` (wholesale replace), `signal_ids`, `trigger_id`, `trade_id`, `structural_unchanged_reason`.
+- `add_triggers` / `edit_triggers` (by id) / `remove_trigger_ids` (one trigger at a time — DAV-242), `signal_ids`, `trigger_id`, `trade_id`, `structural_unchanged_reason`.
 
 Gates:
 - **Terminal-status block** — can't update INVALIDATED/CLOSED/SUPERSEDED/ARCHIVED.

@@ -14,6 +14,9 @@
  * What still holds: mint stamps a default clock (record_thesis), an
  * agent-supplied cadence is respected verbatim, and HOLDING rows inherit
  * the account floor.
+ *
+ * FLIPPED 2026-09-09 (DAV-242): triggers are edited one at a time — the
+ * cases below send add / edit / remove ops instead of resending the list.
  */
 
 const mockThesisFindUnique = jest.fn();
@@ -90,6 +93,12 @@ const enterTrigger = {
   action: "ENTER",
   rationale: "Breakout confirmation.",
 };
+const clockTrigger = {
+  id: "clock-1",
+  predicate: { kind: "REVIEW_CADENCE", days: 30 },
+  action: "REVIEW",
+  rationale: "Monthly.",
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function run(args: Record<string, unknown>): Promise<any> {
@@ -109,17 +118,17 @@ beforeEach(() => {
   mockThesisUpdate.mockClear();
 });
 
-describe("update_thesis — plan ⇒ cadence stamp (W2, DAV-209)", () => {
-  it("a replace that omits the clock leaves it OFF — and keeps the buy level", async () => {
+describe("update_thesis — the review cadence is a trigger like any other (DAV-209)", () => {
+  it("removing the clock leaves it OFF — and keeps the buy level", async () => {
     // The principal's sentence, working: "stop reviewing this weekly, but
     // tell me if it hits $190." The ENTER rung survives and keeps firing;
     // only the AI attention stops. Previously the tool put a 30-day
     // COMPOUNDER clock back on this exact call.
-    mockThesisFindUnique.mockResolvedValue(makeRow());
+    mockThesisFindUnique.mockResolvedValue(makeRow({ triggers: [enterTrigger, clockTrigger] }));
     const result = await run({
       thesis_id: "thesis_stamp_1",
       rationale: "Four quiet weekly reviews — going quiet, keeping the level.",
-      triggers: [enterTrigger],
+      remove_trigger_ids: ["clock-1"],
     });
     expect(result.ok).toBe(true);
 
@@ -129,14 +138,12 @@ describe("update_thesis — plan ⇒ cadence stamp (W2, DAV-209)", () => {
   });
 
   it("respects an agent-supplied cadence — no duplicate stamp", async () => {
-    mockThesisFindUnique.mockResolvedValue(makeRow());
+    mockThesisFindUnique.mockResolvedValue(makeRow({ triggers: [enterTrigger] }));
     const result = await run({
       thesis_id: "thesis_stamp_1",
       rationale: "Slowing the clock deliberately.",
-      triggers: [
-        enterTrigger,
+      add_triggers: [
         {
-          id: "own-clock",
           predicate: { kind: "REVIEW_CADENCE", days: 14 },
           action: "REVIEW",
           rationale: "Every two weeks is enough here.",
@@ -176,14 +183,7 @@ describe("update_thesis — plan ⇒ cadence stamp (W2, DAV-209)", () => {
     const result = await run({
       thesis_id: "thesis_stamp_1",
       rationale: "Refreshing the wake level.",
-      triggers: [
-        {
-          id: "wake-1",
-          predicate: { kind: "PRICE_BELOW", level: 150 },
-          action: "REVIEW",
-          rationale: "Interesting again down here.",
-        },
-      ],
+      edit_triggers: [{ id: "wake-0", level: 150, rationale: "Interesting again down here." }],
     });
     expect(result.ok).toBe(true);
     expect(
@@ -192,18 +192,16 @@ describe("update_thesis — plan ⇒ cadence stamp (W2, DAV-209)", () => {
   });
 
   it("does not stamp a HOLDING row — positions inherit the account floor", async () => {
-    mockThesisFindUnique.mockResolvedValue(makeRow({ status: "HOLDING" }));
+    mockThesisFindUnique.mockResolvedValue(
+      makeRow({
+        status: "HOLDING",
+        triggers: [{ id: "floor-1", predicate: { kind: "PRICE_BELOW", level: 172 }, action: "EXIT", rationale: "Floor." }],
+      }),
+    );
     const result = await run({
       thesis_id: "thesis_stamp_1",
       rationale: "Tightening the floor.",
-      triggers: [
-        {
-          id: "floor-1",
-          predicate: { kind: "PRICE_BELOW", level: 180 },
-          action: "EXIT",
-          rationale: "Raised floor after the gain.",
-        },
-      ],
+      edit_triggers: [{ id: "floor-1", level: 180, rationale: "Raised floor after the gain." }],
     });
     expect(result.ok).toBe(true);
     expect(

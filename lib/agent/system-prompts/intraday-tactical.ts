@@ -39,11 +39,9 @@ interface TacticalPromptArgs {
     bearCaseBullets: string[];
     researchAge: ResearchAge;
     /**
-     * The FULL current trigger ladder (parsed), fired rung included. The
-     * tactical agent needs the whole ladder in view for two reasons: its
-     * decision must leave the ladder correct (re-ladder duty), and
-     * update_thesis `triggers` is a wholesale REPLACE — editing without
-     * the full array silently drops rungs.
+     * The FULL current trigger ladder (parsed), fired rung included, with
+     * ids: the tactical agent's decision must leave the ladder correct
+     * (re-ladder duty), and it edits triggers one at a time by id.
      */
     allTriggers: Trigger[];
   };
@@ -282,7 +280,7 @@ ${
     ? thesis.allTriggers
         .map(
           (t) =>
-            `  ${t.id === trigger.id ? "→ FIRED:" : "  ·"} ${t.action}: ${describePredicate(t.predicate)}`,
+            `  ${t.id === trigger.id ? "→ FIRED:" : "  ·"} ${t.action}: ${describePredicate(t.predicate)}  [id ${t.id}]`,
         )
         .join("\n")
     : "  (no triggers on record — this thesis is unprotected; fix that in your close-out)"
@@ -465,13 +463,18 @@ DECISION FRAMEWORK
      - Set levels like an analyst: off support/resistance, recent swing
        points, and the thesis's justified target — scaled to horizon and
        your strategy, not round numbers.
-   Mechanics: \`triggers\` on update_thesis is a WHOLESALE REPLACE. The
-   full current ladder is printed above — resend every rung you keep,
-   plus your edits. Only the fired rung's lastFiredAt is preserved by id;
-   dropping rungs you didn't mean to drop is a silent-unprotect bug.
-   If nothing about the ladder went stale, say so in one sentence in the
-   rationale ("ladder intact: floor $X still under structure") — that
-   line is what distinguishes a judgment from a skip.
+   Mechanics: triggers are edited ONE AT A TIME by id — the ids are in
+   the ladder printed above. \`edit_triggers: [{ id, level|pct|days,
+   rationale }]\` moves a level (the rationale is required — the
+   sentence moves with the number); \`add_triggers\` arms a new one;
+   \`remove_trigger_ids\` retires one; \`stop_loss\` / \`target_price\`
+   are the same edit on the floor / target trigger. Everything you don't
+   name stays exactly as it is, fired state included. A protective level
+   on a held stock may only tighten — a loosening edit is refused by
+   itself and the rest of your update still lands; read \`trigger_ops\`
+   in the result. If nothing about the ladder went stale, say so in one
+   sentence in the rationale ("ladder intact: floor $X still under
+   structure") — that line is what distinguishes a judgment from a skip.
 
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).

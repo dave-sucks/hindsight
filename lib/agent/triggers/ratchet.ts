@@ -23,18 +23,14 @@
  * neither are judgment rungs (earnings, signals, composites).
  *
  * The comparison runs on the EFFECTIVE ladder — thesis rungs resolved over
- * the inherited analyst/account/default rungs — on both sides. That keeps
- * two legal moves legal:
- *   - resending an inherited protective rung verbatim (dropRedundantInherited
- *     drops the copy; the inherited rung still covers the bucket), and
- *   - omitting inherited rungs entirely (the agent can't delete what isn't
- *     stored on the thesis).
- * And it catches the sneaky version of lowering: deleting a thesis override
- * so a weaker inherited value shows through.
+ * the inherited analyst/account/default rungs — on both sides, so it catches
+ * the sneaky version of lowering: removing a thesis override so a weaker
+ * inherited value shows through.
  *
- * Pure module — no DB, no context. Wired into update_thesis; the principal's
- * UI write paths (lib/actions/thesis-edit.ts, lib/actions/level-triggers.ts)
- * deliberately do NOT run this gate.
+ * Pure module — no DB, no context. Run per trigger op by
+ * lib/agent/triggers/ops.ts for agent edits only; the principal's edits
+ * (the trigger popover, lib/actions/level-triggers.ts) deliberately do NOT
+ * run this gate.
  */
 
 import { triggerBucket } from "./bucket";
@@ -119,12 +115,12 @@ function weakens(prev: TriggerPredicate, next: TriggerPredicate): boolean {
 }
 
 /**
- * Every way the proposed trigger replacement weakens the protection that
- * is currently in force on a held stock. Empty array = the edit is legal.
+ * Every way the proposed trigger list weakens the protection that is
+ * currently in force on a held stock. Empty array = the edit is legal.
  *
- * `before`/`after` are the THESIS-stored rungs (after = the processed
- * wholesale-replace payload, post dropRedundantInherited); `inherited` is
- * the resolved analyst/account/default ladder, identical on both sides.
+ * `before`/`after` are the THESIS-stored rungs before and after one op;
+ * `inherited` is the resolved analyst/account/default ladder, identical on
+ * both sides.
  */
 export function protectiveRatchetViolations(args: {
   direction: string | null;
