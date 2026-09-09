@@ -337,7 +337,13 @@ decision by the orchestrator — you are writing the research and the plan.`;
     PRICE_ABOVE stop for SHORT) — that's the automated stop-loss path.
   • Simplest correct move: OMIT the triggers field and the existing
     ladder stays untouched; pass a full ladder only when the refresh
-    genuinely re-plans it (triggers are wholesale-REPLACE).`
+    genuinely re-plans it (triggers are wholesale-REPLACE).
+  • PROTECTIVE LEVELS ONLY TIGHTEN on a stock we own. The stop on record
+    is $${opts.existingThesis?.stopLoss ?? "—"}: submit that number or a
+    tighter one. A looser stop is refused by the tool and the whole
+    refresh is lost. If you believe the stop is wrong, keep it and say
+    so in the rationale with the number you'd suggest — that reaches
+    the principal; you cannot move it.`
     : isPromotedRefresh
       ? `TRIGGERS — YOU ARE REFRESHING A PROMOTED THESIS (no live position):
   • The paper position was force-closed at promotion. Legal actions:
@@ -1160,16 +1166,38 @@ export async function writerPersistPhase(
           existing?.direction && d.direction !== existing.direction
             ? ` ⚠ Writer's refreshed view is ${d.direction} vs stored ${existing.direction} — orchestrator should re-evaluate direction.`
             : "";
+        // Held refresh: protective levels only tighten (the 2026-08-16
+        // ruling; the update_thesis ratchet gate enforces it). A writer
+        // that proposes a looser stop used to lose the ENTIRE refresh —
+        // research, scoring, sections — to that one number (SMMT,
+        // 2026-09-08: $16.80 → $15.50, run FAILED). Keep the level on
+        // record, drop the writer's ladder so the existing rungs stand,
+        // and put the writer's suggestion in the rationale where the
+        // principal sees it.
+        let stopForUpdate = d.direction === "PASS" ? undefined : d.stop_loss;
+        let triggersForUpdate = d.triggers;
+        let clampNote = "";
+        if (
+          existing?.status === "HOLDING" &&
+          existing.stopLoss != null &&
+          stopForUpdate != null &&
+          ((d.direction === "LONG" && stopForUpdate < existing.stopLoss) ||
+            (d.direction === "SHORT" && stopForUpdate > existing.stopLoss))
+        ) {
+          clampNote = ` [Writer proposed a stop of $${stopForUpdate}; the stop on record ($${existing.stopLoss}) is kept — protective levels only tighten. Existing ladder left untouched.]`;
+          stopForUpdate = existing.stopLoss;
+          triggersForUpdate = undefined;
+        }
         const toolArgs: Record<string, unknown> = {
           thesis_id: args.existingThesisId,
-          rationale: `${d.rationale}${directionFlag}`,
+          rationale: `${d.rationale}${directionFlag}${clampNote}`,
           // Always supplied: the P0-1 gate refuses price moves when the
           // belief text happens to be unchanged; the writer's judgment on
           // why lives in the decision rationale.
           structural_unchanged_reason: d.rationale,
           entry_price: d.direction === "PASS" ? undefined : d.entry_price,
           target_price: d.direction === "PASS" ? undefined : d.target_price,
-          stop_loss: d.direction === "PASS" ? undefined : d.stop_loss,
+          stop_loss: stopForUpdate,
           horizon: d.horizon,
           catalyst_date: d.catalyst_date
             ? new Date(d.catalyst_date).toISOString()
@@ -1181,7 +1209,7 @@ export async function writerPersistPhase(
           core_belief: d.core_belief,
           key_assumptions: d.key_assumptions,
           invalidation_conditions: d.invalidation_conditions,
-          triggers: d.triggers,
+          triggers: triggersForUpdate,
           price_at_time: pullOutput.pull?.currentPrice ?? undefined,
           research_data: pullOutput.pull?.rawDataBlock,
           ...sectionArgs,
