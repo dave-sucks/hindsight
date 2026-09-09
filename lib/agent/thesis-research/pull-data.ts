@@ -227,12 +227,19 @@ export async function pullThesisData(
     filings,
   });
 
+  // A pull that resolved with nothing in it is reported like a pull that
+  // failed. "All sources ok" was true for months while FMP returned empty
+  // bodies for 26 of 28 names (2026-09-08) — the writer reasoned without
+  // financials and nobody could see it in the run.
   const pullErrors: string[] = [];
   if (stockRes.status === "rejected" || stockData == null) pullErrors.push("stock_data");
   if (financialsRes.status === "rejected") pullErrors.push("financials");
+  else if (!financials || (financials.annual?.length ?? 0) === 0) pullErrors.push("financials(empty)");
   if (analystCovRes.status === "rejected") pullErrors.push("analyst_coverage");
+  else if (!analystCoverage?.consensus) pullErrors.push("analyst_coverage(empty)");
   if (insiderRes.status === "rejected") pullErrors.push("insider");
   if (earningsHistRes.status === "rejected") pullErrors.push("earnings_history");
+  else if (!earningsHistory || (earningsHistory.history?.length ?? 0) === 0) pullErrors.push("earnings_history(empty)");
   if (peersRes.status === "rejected") pullErrors.push("peers");
   if (filingsRes.status === "rejected") pullErrors.push("filings");
 

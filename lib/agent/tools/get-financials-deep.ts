@@ -1,62 +1,50 @@
 /**
- * get_financials_deep — 5-year FMP income statement + cash flow + ratios + forward estimates.
+ * get_financials_deep — 5-year filed income statement + cash flow + ratios.
  *
  * Provides the multi-year financial trajectory the thesis-writer needs:
- * revenue growth curve, margin trend, EBITDA, FCF, EPS, plus 2-year forward
- * analyst estimates. The companion to `get_stock_data` (which is point-in-time);
- * this is the time-series view.
+ * revenue growth curve, margin trend, EBITDA, FCF, EPS. The companion to
+ * `get_stock_data` (which is point-in-time); this is the time-series view.
  *
- * Falls back gracefully on per-endpoint 403s — some FMP tiers gate
- * /analyst-estimates and /key-metrics. Returns partial data with an
- * `errors[]` array describing what couldn't be fetched.
+ * Sources (2026-09-08, DAV-191 finished): statements come from Finnhub's
+ * as-filed SEC numbers (`lib/market-data/finnhub-financials.ts`), ratios
+ * from Finnhub `/stock/metric`. FMP was removed — the tier we hold refused
+ * 26 of the 28 names on the book while the run reported "all sources ok".
+ *
+ * Forward analyst estimates are NOT available on the data plans we hold
+ * (Finnhub gates `/stock/eps-estimate` and `/stock/revenue-estimate`;
+ * FMP never served them for these names). `forwardEstimates` is always []
+ * and the items say so, so the writer never mistakes silence for consensus.
  */
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { fmp } from "@/lib/market-data/fmp";
+import { finnhub } from "@/lib/agent/research-helpers";
+import { getReportedFinancials } from "@/lib/market-data/finnhub-financials";
 
-interface IncomeStatementRow {
-  date: string;
-  calendarYear?: string;
-  revenue?: number;
-  grossProfit?: number;
-  ebitda?: number;
-  netIncome?: number;
-  eps?: number;
-  epsdiluted?: number;
+/** Finnhub `/stock/metric?metric=all` — the handful of keys we read. */
+interface FinnhubMetric {
+  peTTM?: number | null;
+  peBasicExclExtraTTM?: number | null;
+  pegTTM?: number | null;
+  currentRatioAnnual?: number | null;
+  currentRatioQuarterly?: number | null;
+  "totalDebt/totalEquityAnnual"?: number | null;
+  "totalDebt/totalEquityQuarterly"?: number | null;
+  roaTTM?: number | null;
+  roeTTM?: number | null;
+  roiTTM?: number | null;
 }
 
-interface CashFlowRow {
-  date: string;
-  operatingCashFlow?: number;
-  capitalExpenditure?: number;
-  freeCashFlow?: number;
-}
-
-interface KeyMetricsRow {
-  date: string;
-  peRatio?: number;
-  pegRatio?: number;
-  debtToEquity?: number;
-  currentRatio?: number;
-  returnOnAssets?: number;
-  returnOnEquity?: number;
-  roic?: number;
-}
-
-interface AnalystEstimateRow {
-  date: string;
-  estimatedRevenueAvg?: number;
-  estimatedEpsAvg?: number;
-}
+const num = (v: number | null | undefined): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
 
 export const getFinancialsDeep = defineTool({
   description:
-    "Get 5-year annual income statement, cash flow, key ratios, and 2-year forward analyst " +
-    "estimates for a stock. Use for the time-series fundamentals view that backs the thesis " +
-    "'Fundamentals' section — revenue trajectory, margin trend, FCF, EBITDA, EPS, plus what " +
-    "analysts expect for the next 2 years. Gracefully degrades when FMP tier-gates specific " +
-    "endpoints (returns partial data + errors[] noting what's missing).",
+    "Get 5 years of filed annual financials — revenue, gross margin, EBITDA, net income, " +
+    "diluted EPS, operating cash flow, capex and free cash flow — plus current valuation " +
+    "and balance-sheet ratios. Backs the thesis 'Fundamentals' section. Forward analyst " +
+    "estimates are not available on the current data plan and are reported as absent, " +
+    "never guessed.",
   schema: z.object({
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
   }),
@@ -67,126 +55,82 @@ export const getFinancialsDeep = defineTool({
 
   execute: async ({ ticker }) => {
     const T = ticker.toUpperCase();
-    const [incomeRes, cashRes, metricsRes, estimatesRes] = await Promise.all([
-      fmp<IncomeStatementRow[]>(`/stable/income-statement?symbol=${T}&limit=5&period=annual`, { expectNonEmpty: true }),
-      fmp<CashFlowRow[]>(`/stable/cash-flow-statement?symbol=${T}&limit=5&period=annual`, { expectNonEmpty: true }),
-      fmp<KeyMetricsRow[]>(`/stable/key-metrics?symbol=${T}&limit=5&period=annual`, { expectNonEmpty: true }),
-      fmp<AnalystEstimateRow[]>(`/stable/analyst-estimates?symbol=${T}&period=annual&limit=2`, { expectNonEmpty: true }),
+    const [filed, metricRes] = await Promise.all([
+      getReportedFinancials(T, "annual", 5),
+      finnhub(`/stock/metric?symbol=${T}&metric=all`, 2),
     ]);
 
     const errors: string[] = [];
-    if (incomeRes.error) errors.push(`income-statement: ${incomeRes.error}`);
-    if (cashRes.error) errors.push(`cash-flow: ${cashRes.error}`);
-    if (metricsRes.error) errors.push(`key-metrics: ${metricsRes.error}`);
-    if (estimatesRes.error) errors.push(`analyst-estimates: ${estimatesRes.error}`);
+    if (filed.error) errors.push(`financials-reported: ${filed.error}`);
+    if (metricRes.error) errors.push(`metric: ${metricRes.error}`);
 
-    const incomeRows = (incomeRes.data ?? []).slice().sort((a, b) => a.date.localeCompare(b.date));
-    const cashRows = (cashRes.data ?? []).slice().sort((a, b) => a.date.localeCompare(b.date));
-    const metricsRows = (metricsRes.data ?? []).slice().sort((a, b) => a.date.localeCompare(b.date));
-    const estimateRows = (estimatesRes.data ?? []).slice().sort((a, b) => a.date.localeCompare(b.date));
+    const periods = filed.periods;
 
-    const cashByDate = new Map(cashRows.map((r) => [r.date, r]));
-
-    // Build annual series with YoY growth + margins.
-    const annual = incomeRows.map((row, i) => {
-      const prev = i > 0 ? incomeRows[i - 1] : null;
+    // Build annual series with YoY growth + margins. Shape is unchanged from
+    // the FMP era so the data-block formatter reads it as before.
+    const annual = periods.map((row, i) => {
+      const prev = i > 0 ? periods[i - 1] : null;
       const revenueGrowth =
         prev?.revenue && row.revenue
           ? ((row.revenue - prev.revenue) / Math.abs(prev.revenue)) * 100
           : null;
       const epsGrowth =
-        prev?.epsdiluted != null && row.epsdiluted != null && prev.epsdiluted !== 0
-          ? ((row.epsdiluted - prev.epsdiluted) / Math.abs(prev.epsdiluted)) * 100
+        prev?.dilutedEps != null && row.dilutedEps != null && prev.dilutedEps !== 0
+          ? ((row.dilutedEps - prev.dilutedEps) / Math.abs(prev.dilutedEps)) * 100
+          : null;
+      const ebitda =
+        row.operatingIncome != null && row.depreciation != null
+          ? row.operatingIncome + row.depreciation
           : null;
       const grossMargin =
-        row.revenue && row.grossProfit ? (row.grossProfit / row.revenue) * 100 : null;
-      const ebitdaMargin =
-        row.revenue && row.ebitda != null ? (row.ebitda / row.revenue) * 100 : null;
+        row.revenue && row.grossProfit != null ? (row.grossProfit / row.revenue) * 100 : null;
+      const ebitdaMargin = row.revenue && ebitda != null ? (ebitda / row.revenue) * 100 : null;
       const netMargin =
         row.revenue && row.netIncome != null ? (row.netIncome / row.revenue) * 100 : null;
-      const cash = cashByDate.get(row.date);
 
       return {
-        period: row.date,
-        year: row.calendarYear ?? row.date.slice(0, 4),
-        revenue: row.revenue ?? null,
+        period: row.period,
+        year: String(row.year),
+        revenue: row.revenue,
         revenueGrowthPct: revenueGrowth,
-        grossProfit: row.grossProfit ?? null,
+        grossProfit: row.grossProfit,
         grossMarginPct: grossMargin,
-        ebitda: row.ebitda ?? null,
+        ebitda,
         ebitdaMarginPct: ebitdaMargin,
-        netIncome: row.netIncome ?? null,
+        netIncome: row.netIncome,
         netMarginPct: netMargin,
-        dilutedEps: row.epsdiluted ?? row.eps ?? null,
+        dilutedEps: row.dilutedEps,
         epsGrowthPct: epsGrowth,
-        operatingCashFlow: cash?.operatingCashFlow ?? null,
-        capex: cash?.capitalExpenditure ?? null,
-        freeCashFlow: cash?.freeCashFlow ?? null,
+        operatingCashFlow: row.operatingCashFlow,
+        capex: row.capex,
+        freeCashFlow: row.freeCashFlow,
       };
     });
 
-    const forwardEstimates = estimateRows.map((row, i) => {
-      // `prev` can be either the last actual income-statement row (when computing
-      // the first forward year's growth) or the prior forward estimate (when
-      // computing year N+1's growth). Unify via duck-typing — extract revenue
-      // and EPS via field-presence checks so TypeScript doesn't choke on the
-      // union.
-      const prev:
-        | IncomeStatementRow
-        | AnalystEstimateRow
-        | null =
-        i === 0 && incomeRows.length > 0
-          ? incomeRows[incomeRows.length - 1]
-          : i > 0
-            ? estimateRows[i - 1]
-            : null;
+    // Not on our plans. Kept as an (always empty) field so consumers and the
+    // formatter keep one shape; the item below tells the writer why.
+    const forwardEstimates: Array<{
+      period: string;
+      year: string;
+      revenue: number | null;
+      revenueGrowthPct: number | null;
+      eps: number | null;
+      epsGrowthPct: number | null;
+    }> = [];
 
-      const prevRev: number | null = prev
-        ? ("revenue" in prev && prev.revenue != null
-            ? prev.revenue
-            : "estimatedRevenueAvg" in prev && prev.estimatedRevenueAvg != null
-              ? prev.estimatedRevenueAvg
-              : null)
-        : null;
-      const prevEps: number | null = prev
-        ? ("epsdiluted" in prev && prev.epsdiluted != null
-            ? prev.epsdiluted
-            : "eps" in prev && prev.eps != null
-              ? prev.eps
-              : "estimatedEpsAvg" in prev && prev.estimatedEpsAvg != null
-                ? prev.estimatedEpsAvg
-                : null)
-        : null;
-
-      const revenueGrowth =
-        prevRev && row.estimatedRevenueAvg
-          ? ((row.estimatedRevenueAvg - prevRev) / Math.abs(prevRev)) * 100
-          : null;
-      const epsGrowth =
-        prevEps != null && row.estimatedEpsAvg != null && prevEps !== 0
-          ? ((row.estimatedEpsAvg - prevEps) / Math.abs(prevEps)) * 100
-          : null;
-
-      return {
-        period: row.date,
-        year: row.date.slice(0, 4),
-        revenue: row.estimatedRevenueAvg ?? null,
-        revenueGrowthPct: revenueGrowth,
-        eps: row.estimatedEpsAvg ?? null,
-        epsGrowthPct: epsGrowth,
-      };
-    });
-
-    const latestMetrics = metricsRows[metricsRows.length - 1] ?? null;
-    const ratios = latestMetrics
+    const m = (metricRes.data as { metric?: FinnhubMetric } | null)?.metric ?? null;
+    const ratios = m
       ? {
-          pe: latestMetrics.peRatio ?? null,
-          pegRatio: latestMetrics.pegRatio ?? null,
-          debtToEquity: latestMetrics.debtToEquity ?? null,
-          currentRatio: latestMetrics.currentRatio ?? null,
-          roa: latestMetrics.returnOnAssets ?? null,
-          roe: latestMetrics.returnOnEquity ?? null,
-          roic: latestMetrics.roic ?? null,
+          pe: num(m.peTTM) ?? num(m.peBasicExclExtraTTM),
+          pegRatio: num(m.pegTTM),
+          debtToEquity:
+            num(m["totalDebt/totalEquityQuarterly"]) ?? num(m["totalDebt/totalEquityAnnual"]),
+          currentRatio: num(m.currentRatioQuarterly) ?? num(m.currentRatioAnnual),
+          // Finnhub reports these as percentages; the formatter multiplies by
+          // 100 for display, so hand it fractions like FMP used to.
+          roa: num(m.roaTTM) != null ? (m.roaTTM as number) / 100 : null,
+          roe: num(m.roeTTM) != null ? (m.roeTTM as number) / 100 : null,
+          roic: num(m.roiTTM) != null ? (m.roiTTM as number) / 100 : null,
         }
       : null;
 
@@ -206,27 +150,21 @@ export const getFinancialsDeep = defineTool({
       items.push({
         kind: "ticker",
         ticker: T,
-        tag: `${annual.length}-yr fundamentals`,
-        text: revLine ?? `${annual.length} annual periods returned`,
+        tag: `${annual.length}-yr filed`,
+        text: revLine ?? `${annual.length} annual filings returned`,
       });
     } else {
       items.push({
         kind: "ticker",
         ticker: T,
         tag: "no data",
-        text: "FMP returned no annual income statement rows.",
+        text: "Finnhub returned no annual filings for this symbol.",
       });
     }
-    if (forwardEstimates.length > 0) {
-      const last = forwardEstimates[forwardEstimates.length - 1];
-      const revText =
-        last.revenue != null ? ` rev $${(last.revenue / 1e9).toFixed(1)}B` : "";
-      const epsText = last.eps != null ? ` EPS $${last.eps.toFixed(2)}` : "";
-      items.push({
-        kind: "generic",
-        text: `Forward estimates through ${last.year}:${revText}${epsText}`.trim(),
-      });
-    }
+    items.push({
+      kind: "generic",
+      text: "Forward estimates: not available on the current data plan — reason from the filed trajectory, not from a consensus number you did not see.",
+    });
     if (ratios) {
       const parts: string[] = [];
       if (ratios.pe != null) parts.push(`P/E ${ratios.pe.toFixed(1)}`);
@@ -239,15 +177,15 @@ export const getFinancialsDeep = defineTool({
     if (errors.length > 0) {
       items.push({
         kind: "generic",
-        text: `Partial data — ${errors.length} endpoint(s) unavailable: ${errors.join("; ")}`,
+        text: `Partial data — ${errors.length} source(s) unavailable: ${errors.join("; ")}`,
       });
     }
 
     return {
       summary:
         annual.length > 0
-          ? `$${T} financials — ${annual.length} annual periods + ${forwardEstimates.length} forward estimates.`
-          : `$${T} financials — no FMP data (${errors.join("; ") || "empty"}).`,
+          ? `$${T} financials — ${annual.length} filed annual periods; forward estimates not on plan.`
+          : `$${T} financials — no filed data (${errors.join("; ") || "empty"}).`,
       data: {
         ticker: T,
         annual,
@@ -258,10 +196,13 @@ export const getFinancialsDeep = defineTool({
       },
       sources: [
         {
-          provider: "FMP",
-          title: `${T} 5-Year Financials`,
-          url: `https://financialmodelingprep.com/financial-statements/${T}`,
+          provider: "Finnhub",
+          title: `${T} Financials as Reported (SEC)`,
+          url: "https://finnhub.io/docs/api/financials-reported",
         },
+        ...(ratios
+          ? [{ provider: "Finnhub", title: `${T} Basic Financials`, url: "https://finnhub.io/docs/api/company-basic-financials" }]
+          : []),
       ],
     };
   },

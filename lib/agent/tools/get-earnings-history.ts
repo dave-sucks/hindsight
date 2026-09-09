@@ -7,14 +7,17 @@
  * surprise%, BEAT/MISS/INLINE outcome.
  *
  * Backs the thesis 'Latest Earnings' bullets section. Uses Finnhub
- * /stock/earnings for the EPS history and FMP /historical/earning_calendar
- * for the revenue side.
+ * /stock/earnings for the EPS history and Finnhub's as-filed quarterly
+ * statements for the revenue side (FMP removed 2026-09-08 — its tier
+ * refused 26 of 28 book names). Revenue ESTIMATES are not on our plans,
+ * so the revenue column carries the reported figure only; the beat /
+ * miss verdict is EPS-based.
  */
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { finnhub } from "@/lib/agent/research-helpers";
-import { fmp } from "@/lib/market-data/fmp";
+import { getReportedFinancials } from "@/lib/market-data/finnhub-financials";
 
 interface FinnhubEarningsRow {
   period: string;
@@ -24,19 +27,6 @@ interface FinnhubEarningsRow {
   surprisePercent?: number;
 }
 
-interface FmpEarningsCalendarRow {
-  date: string;
-  symbol: string;
-  // Legacy /api/v3 shape — kept for backward compat if FMP ever flips back.
-  eps?: number | null;
-  revenue?: number | null;
-  fiscalDateEnding?: string;
-  // /stable/ shape (current — 2026-05-19+).
-  epsActual?: number | null;
-  epsEstimated?: number | null;
-  revenueActual?: number | null;
-  revenueEstimated?: number | null;
-}
 
 function outcomeFor(actual: number | null | undefined, estimate: number | null | undefined): "BEAT" | "MISS" | "INLINE" | "UNK" {
   if (actual == null || estimate == null) return "UNK";
@@ -51,7 +41,8 @@ export const getEarningsHistory = defineTool({
   description:
     "Get the last 8 quarters of earnings results — revenue actual vs estimate, EPS actual vs " +
     "estimate, surprise %, beat/miss/inline outcome. Backs the thesis 'Latest Earnings' bullets. " +
-    "Combines Finnhub EPS-surprise history with FMP earnings-calendar revenue data.",
+    "Combines Finnhub EPS-surprise history with the revenue line of each filed 10-Q/10-K. " +
+    "Revenue estimates are not available on the current data plan.",
   schema: z.object({
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
     quarters: z
@@ -71,24 +62,21 @@ export const getEarningsHistory = defineTool({
     const T = ticker.toUpperCase();
     const n = quarters ?? 8;
 
-    const [epsRes, calRes] = await Promise.all([
+    const [epsRes, filed] = await Promise.all([
       finnhub(`/stock/earnings?symbol=${T}&limit=${n}`, 2),
-      // /stable/earnings replaces /historical/earning_calendar; free
-      // tier caps `limit` at 5, so clamp downward when the agent asks
-      // for more. The Finnhub /stock/earnings call below is the
-      // canonical n-quarter source — FMP is just enrichment.
-      fmp<FmpEarningsCalendarRow[]>(
-        `/stable/earnings?symbol=${T}&limit=${Math.min(n + 2, 5)}`,
-      ),
+      // Quarterly as-filed statements — the revenue column. The Finnhub
+      // /stock/earnings call is the canonical n-quarter EPS source.
+      getReportedFinancials(T, "quarterly", n + 4),
     ]);
 
     const errors: string[] = [];
-    if (calRes.error) errors.push(`fmp-earnings: ${calRes.error}`);
+    if (epsRes.error) errors.push(`finnhub-earnings: ${epsRes.error}`);
+    if (filed.error) errors.push(`financials-reported: ${filed.error}`);
 
     const epsRows = Array.isArray(epsRes.data) ? (epsRes.data as FinnhubEarningsRow[]) : [];
-    const calRows = (calRes.data ?? []).filter((r) => r.symbol === T);
+    const filedRows = filed.periods;
 
-    // Index FMP calendar by period (YYYY-MM-DD) so we can join with Finnhub by date proximity.
+    // Join filed revenue to the Finnhub EPS row by period-end proximity.
     type Joined = {
       quarter: string; // "Q1 2026" style label, derived from Finnhub period
       reportedAt: string | null;
@@ -98,26 +86,23 @@ export const getEarningsHistory = defineTool({
     };
 
     const history: Joined[] = epsRows.slice(0, n).map((er) => {
-      // Match against FMP by closest date. Finnhub 'period' is quarter-end (YYYY-MM-DD).
-      const qEnd = er.period;
-      let best: FmpEarningsCalendarRow | null = null;
+      // Match the filed quarter whose period end is nearest Finnhub's
+      // 'period' (both are quarter-end YYYY-MM-DD; accept within ~20 days).
+      const qEnd = new Date(er.period).getTime();
+      let matched: (typeof filedRows)[number] | null = null;
       let bestDiff = Number.POSITIVE_INFINITY;
-      for (const cr of calRows) {
-        const calDate = (cr.fiscalDateEnding ?? cr.date ?? "").slice(0, 10);
-        if (!calDate) continue;
-        const diff = Math.abs(new Date(calDate).getTime() - new Date(qEnd).getTime());
+      for (const fr of filedRows) {
+        const diff = Math.abs(new Date(fr.period).getTime() - qEnd);
         if (diff < bestDiff) {
           bestDiff = diff;
-          best = cr;
+          matched = fr;
         }
       }
-      // Accept the match only if within ~120 days (matches the same fiscal quarter).
-      const matched = bestDiff < 120 * 86400_000 ? best : null;
+      if (bestDiff > 20 * 86400_000) matched = null;
 
-      // /stable/ returns `revenueActual`; legacy /api/v3 returned `revenue`.
-      // Read either shape — they're populated by the FMP response.
-      const revActual = matched?.revenueActual ?? matched?.revenue ?? null;
-      const revEst = matched?.revenueEstimated ?? null;
+      const revActual = matched?.revenue ?? null;
+      // No revenue-estimate source on the current plans.
+      const revEst: number | null = null;
       const revSurprisePct =
         revActual != null && revEst != null && revEst !== 0
           ? ((revActual - revEst) / Math.abs(revEst)) * 100
@@ -148,7 +133,7 @@ export const getEarningsHistory = defineTool({
 
       return {
         quarter,
-        reportedAt: matched?.date ?? null,
+        reportedAt: null,
         revenue: {
           actual: revActual,
           estimate: revEst,
@@ -197,7 +182,9 @@ export const getEarningsHistory = defineTool({
       const revText =
         q.revenue.actual != null && q.revenue.estimate != null
           ? ` rev $${(q.revenue.actual / 1e9).toFixed(2)}B vs $${(q.revenue.estimate / 1e9).toFixed(2)}B est`
-          : "";
+          : q.revenue.actual != null
+            ? ` rev $${(q.revenue.actual / 1e9).toFixed(2)}B (filed; no estimate on plan)`
+            : "";
       const surprise = q.eps.surprisePct != null ? `${q.eps.surprisePct >= 0 ? "+" : ""}${q.eps.surprisePct.toFixed(1)}%` : "n/a";
       items.push({
         kind: "generic",
@@ -230,7 +217,7 @@ export const getEarningsHistory = defineTool({
       },
       sources: [
         { provider: "Finnhub", title: `${T} EPS Surprise History`, url: "https://finnhub.io/docs/api/company-earnings" },
-        { provider: "FMP", title: `${T} Earnings Calendar History`, url: `https://financialmodelingprep.com/earnings-calendar` },
+        { provider: "Finnhub", title: `${T} Financials as Reported (SEC)`, url: "https://finnhub.io/docs/api/financials-reported" },
       ],
     };
   },

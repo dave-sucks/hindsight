@@ -2,8 +2,8 @@
  * get_market_movers — pull tool for today's biggest movers.
  *
  * The firm-market-sweep cron writes one aggregate Signal per category
- * (gainers, losers, most actives) per day via FMP /stable/biggest-gainers,
- * /stable/biggest-losers, /stable/most-actives. Analysts subscribed via
+ * (gainers, losers, most actives) per day from Alpaca's stock screener
+ * (FMP removed 2026-09-08 — see lib/market-data/alpaca-screener.ts). Analysts subscribed via
  * `AgentConfig.feeds` (canonical `MARKET_MOVERS_GAINERS`,
  * `MARKET_MOVERS_LOSERS`, `MARKET_MOVERS_ACTIVES`) get them routed
  * automatically. This tool is the on-demand pull path for analysts that
@@ -17,29 +17,17 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { fmp } from "@/lib/market-data/fmp";
+import { getAlpacaMovers, type MoverRow } from "@/lib/market-data/alpaca-screener";
 
-
-const MOVER_PATHS: Record<"gainers" | "losers" | "active", { path: string; label: string }> = {
-  gainers: { path: "/stable/biggest-gainers", label: "Top gainers" },
-  losers: { path: "/stable/biggest-losers", label: "Top losers" },
-  active: { path: "/stable/most-actives", label: "Most active" },
+const MOVER_PATHS: Record<"gainers" | "losers" | "active", { label: string }> = {
+  gainers: { label: "Top gainers" },
+  losers: { label: "Top losers" },
+  active: { label: "Most active" },
 };
-
-interface MoverRow {
-  symbol: string;
-  name?: string;
-  price?: number;
-  change?: number;
-  // FMP renamed `changesPercentage` → `percentChange` in /stable/. Accept both.
-  percentChange?: number;
-  changesPercentage?: number;
-  volume?: number;
-}
 
 export const getMarketMovers = defineTool({
   description:
-    "Pull today's market movers from FMP — gainers, losers, or most actives. " +
+    "Pull today's market movers (Alpaca screener) — gainers, losers, or most actives. " +
     "Three scopes: `scope: \"all\"` returns the full firehose; `scope: \"universe\"` returns " +
     "movers that are NOT already in your coverage (active/watching theses ∪ watchlist ∪ open " +
     "positions) — the discovery set; `scope: \"coverage\"` returns ONLY movers among your " +
@@ -68,16 +56,17 @@ export const getMarketMovers = defineTool({
 
   execute: async (args, ctx) => {
     const scope = args.scope ?? "all";
-    const { path, label } = MOVER_PATHS[args.type];
+    const { label } = MOVER_PATHS[args.type];
 
-    // Movers are FMP's one irreplaceable capability — no other vendor we hold
-    // serves them — so an empty list is always unexpected, never "quiet day".
-    // The shared client logs the failure; surface it to the agent too rather
-    // than returning an empty top-list that reads like a calm market.
-    const moversRes = await fmp<MoverRow[]>(path, { expectNonEmpty: true });
-    if (moversRes.error) {
+    // An empty top-list is never a real market state — surface the failure
+    // to the agent rather than returning a list that reads like a calm day.
+    const moversRes = await getAlpacaMovers(args.type, {
+      top: 50,
+      creds: (ctx as { alpacaCreds?: import("@/lib/alpaca").AlpacaCredentials }).alpacaCreds,
+    });
+    if (moversRes.error || !moversRes.data) {
       return {
-        summary: `FMP ${label.toLowerCase()} unavailable — ${moversRes.error}.`,
+        summary: `${label} unavailable — ${moversRes.error ?? "no data"}.`,
         data: {
           items: [{ kind: "generic" as const, text: `${label} unavailable: ${moversRes.error}` }],
           type: args.type,
@@ -90,7 +79,7 @@ export const getMarketMovers = defineTool({
     }
     const raw: MoverRow[] = moversRes.data ?? [];
 
-    const pctOf = (m: MoverRow): number => m.percentChange ?? m.changesPercentage ?? 0;
+    const pctOf = (m: MoverRow): number => m.percentChange ?? 0;
 
     // 2026-05-10 — scope semantics rewrite.
     //
@@ -107,7 +96,7 @@ export const getMarketMovers = defineTool({
     //                what the old "universe" used to mean).
     //
     // Sector/industry/marketCap fencing still requires per-ticker
-    // enrichment (FMP movers endpoints don't return that data) and is
+    // enrichment (the screener doesn't return that data) and is
     // deferred — for discovery, the practical filter is "what's moving
     // that I don't already cover?", which is enough to surface useful
     // candidates the agent can drill into via get_stock_data.
@@ -132,7 +121,7 @@ export const getMarketMovers = defineTool({
       // 2026-05-13 — penny-stock + moonshot exclusion for universe scope.
       //
       // PRIOR BUG: scope:"universe" only excluded the analyst's
-      // already-covered tickers; the FMP gainers/losers endpoints return
+      // already-covered tickers; the raw gainers/losers screener returns
       // sub-$5 micro-cap moonshots like TDIC +127% / BWEN +117% / BZFD
       // +90% / CPHI / ERNA / AEHL that no momentum-semis analyst would
       // ever trade. Sector enrichment via per-ticker /profile lookups
@@ -218,9 +207,9 @@ export const getMarketMovers = defineTool({
       },
       sources: [
         {
-          provider: "FMP",
+          provider: "Alpaca",
           title: label,
-          url: `https://financialmodelingprep.com${path}`,
+          url: "https://docs.alpaca.markets/reference/mostactives",
         },
       ],
     };

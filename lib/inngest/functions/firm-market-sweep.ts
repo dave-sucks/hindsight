@@ -15,7 +15,7 @@ import {
   deduplicateSignals,
 } from "@/lib/intelligence/signals"
 import type { SignalType, SignalSentiment, SignalUrgency } from "@/lib/intelligence/types"
-import { fmp } from "@/lib/market-data/fmp"
+import { getAlpacaMovers, type MoverKind } from "@/lib/market-data/alpaca-screener"
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY!
 
@@ -28,20 +28,19 @@ const CATEGORY_TO_SIGNAL_TYPE: Record<string, SignalType> = {
   EVENT: "EARNINGS",
 }
 
-// FMP's /api/v3/stock_market/{gainers,losers,actives} endpoints were retired
-// on Aug 31, 2025 ("Legacy Endpoint" 403 for any non-legacy subscriber). The
-// same functionality lives on the new /stable/ namespace — free plan still
-// gets access per FMP's "How to Retrieve Market Movers Using a Free API" doc.
+// Movers come from Alpaca's stock screener (2026-09-08; FMP removed — the
+// tier we hold stopped serving the book's names). The `monitor_fmp_*` ids are
+// stored Monitor rows and stay as-is so history keeps linking.
 const MOVER_CONFIG: Array<{
-  path: string
+  kind: MoverKind
   label: string
   sentiment: SignalSentiment
   aggregateType: string
   monitorId: string
 }> = [
-  { path: "/stable/biggest-gainers", label: "top gainers", sentiment: "BULLISH", aggregateType: "MARKET_MOVERS_GAINERS", monitorId: "monitor_fmp_gainers" },
-  { path: "/stable/biggest-losers",  label: "top losers",  sentiment: "BEARISH", aggregateType: "MARKET_MOVERS_LOSERS",  monitorId: "monitor_fmp_losers"  },
-  { path: "/stable/most-actives",    label: "most active", sentiment: "NEUTRAL", aggregateType: "MARKET_MOVERS_ACTIVES", monitorId: "monitor_fmp_actives" },
+  { kind: "gainers", label: "top gainers", sentiment: "BULLISH", aggregateType: "MARKET_MOVERS_GAINERS", monitorId: "monitor_fmp_gainers" },
+  { kind: "losers",  label: "top losers",  sentiment: "BEARISH", aggregateType: "MARKET_MOVERS_LOSERS",  monitorId: "monitor_fmp_losers"  },
+  { kind: "active",  label: "most active", sentiment: "NEUTRAL", aggregateType: "MARKET_MOVERS_ACTIVES", monitorId: "monitor_fmp_actives" },
 ]
 
 export const firmMarketSweep = inngest.createFunction(
@@ -141,30 +140,18 @@ export const firmMarketSweep = inngest.createFunction(
       }
     }
 
-    // ── Step 4: Market movers (FMP gainers/losers/actives) — 1 aggregate signal per category
+    // ── Step 4: Market movers (Alpaca screener gainers/losers/actives) — 1 aggregate signal per category
 
     const moversResult = await step.run("market-movers", async () => {
       let created = 0
       let failed = 0
       const errors: string[] = []
 
-      for (const { path, label, sentiment, aggregateType, monitorId } of MOVER_CONFIG) {
+      for (const { kind, label, sentiment, aggregateType, monitorId } of MOVER_CONFIG) {
         try {
-          // FMP renamed `changesPercentage` to `percentChange` in the /stable
-          // namespace. Accept either so we're robust to further renames.
-          const moversRes = await fmp<
-            Array<{
-              symbol: string
-              name?: string
-              change?: number
-              price?: number
-              changesPercentage?: number
-              percentChange?: number
-              volume?: number
-            }>
-          >(path, { expectNonEmpty: true })
+          const moversRes = await getAlpacaMovers(kind, { top: 50 })
 
-          if (moversRes.error) {
+          if (moversRes.error && !moversRes.data?.length) {
             const msg = `[firm-sweep] ${label}: ${moversRes.error}`
             errors.push(msg)
             failed++
@@ -177,7 +164,7 @@ export const firmMarketSweep = inngest.createFunction(
           // vendor failure so the sweep reports it instead of silently
           // producing zero signals (DAV-191).
           if (data.length === 0) {
-            const msg = `[firm-sweep] ${label}: FMP returned an empty list — no signals created`
+            const msg = `[firm-sweep] ${label}: the screener returned an empty list — no signals created`
             console.warn(msg)
             errors.push(msg)
             failed++
@@ -186,7 +173,7 @@ export const firmMarketSweep = inngest.createFunction(
 
           const top10 = data.slice(0, 10)
           const pctOf = (item: (typeof top10)[number]): number =>
-            item.percentChange ?? item.changesPercentage ?? 0
+            item.percentChange ?? 0
 
           // Build aggregate payload
           const dataPayload = top10.map((item) => ({
@@ -225,9 +212,9 @@ export const firmMarketSweep = inngest.createFunction(
             sourceQuality: 3,
             freshness: "TODAY",
             sourceUrls: [],
-            sourceNames: ["FMP"],
-            searchTool: "FMP",
-            searchQuery: path,
+            sourceNames: ["Alpaca"],
+            searchTool: "ALPACA_SCREENER",
+            searchQuery: kind,
             searchContext: `market_movers:${label}`,
             aggregateType,
             dataPayload,
@@ -244,7 +231,7 @@ export const firmMarketSweep = inngest.createFunction(
             console.warn(`[firm-sweep] Could not update lastRunAt for monitor ${monitorId}`)
           })
         } catch (error) {
-          const msg = `FMP ${path} threw: ${error instanceof Error ? error.message : String(error)}`
+          const msg = `Alpaca screener ${kind} threw: ${error instanceof Error ? error.message : String(error)}`
           console.error(`[firm-sweep] ${msg}`)
           errors.push(msg)
           failed++

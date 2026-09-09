@@ -14,7 +14,6 @@ import { getBars } from "@/lib/alpaca";
 import type { NewsItem } from "@/lib/agent/tool-types";
 import { checkUniverse } from "@/lib/agent/universe";
 import type { UniverseCheck } from "@/lib/agent/universe";
-import { fmp } from "@/lib/market-data/fmp";
 import {
   getTickerHistory,
   formatTickerHistory,
@@ -99,7 +98,10 @@ export const getStockData = defineTool({
           2,
         ),
         finnhub(`/stock/recommendation?symbol=${ticker}`, 2),
-        fmp(`/stable/price-target-consensus?symbol=${ticker}`, { expectNonEmpty: true }),
+        // Price targets: no source on the current plans (FMP removed
+        // 2026-09-08; Finnhub gates /stock/price-target). Kept as a null
+        // slot so the snapshot shape is unchanged.
+        Promise.resolve({ data: null as unknown, error: undefined as string | undefined }),
       ]);
 
     const quote = quoteResult.data as Record<string, number> | null;
@@ -325,7 +327,6 @@ export const getStockData = defineTool({
         { provider: "Finnhub", title: `${ticker} Key Financials`, url: "https://finnhub.io/docs/api/stock-basic-financials" },
         ...(consensusData ? [{ provider: "Finnhub", title: `${ticker} Analyst Consensus`, url: "https://finnhub.io/docs/api/recommendation-trends" }] : []),
         ...(techData ? [{ provider: techProvider, title: `${ticker} 90-Day Price History`, url: "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/" }] : []),
-        ...(targetsData ? [{ provider: "FMP", title: `${ticker} Analyst Price Targets`, url: `https://financialmodelingprep.com/financial-summary/${ticker}` }] : []),
       ],
     };
   },
