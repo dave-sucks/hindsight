@@ -81,7 +81,7 @@ export interface ThesisRowData {
    */
   status?: string;
   /** Days on this name's review clock; null = on no schedule (DAV-225). */
-  reviewCadenceDays?: number | null;
+  reviewClockDays?: number | null;
   position?: {
     id: string;
     status: string;
@@ -300,7 +300,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
             {t.companyName && <p className="font-mono text-[11px] text-muted-foreground">{t.ticker}</p>}
           </div>
           <div className="flex items-center gap-2">
-            <ReviewClockIcon days={t.reviewCadenceDays ?? null} />
+            <ReviewClockIcon days={t.reviewClockDays ?? null} />
             {t.currentPrice != null && <span className="text-base tabular-nums">{$(t.currentPrice)}</span>}
             {deltaPct != null && <PctArrow value={deltaPct} />}
           </div>

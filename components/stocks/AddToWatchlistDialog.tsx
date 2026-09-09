@@ -29,7 +29,7 @@ import {
 
 export interface AddToWatchlistChoices {
   writeThesisNow: boolean;
-  reviewCadenceDays: number | null;
+  reviewClockDays: number | null;
 }
 
 const CADENCES = [
@@ -113,7 +113,7 @@ export function AddToWatchlistDialog({
             onClick={() => {
               onConfirm({
                 writeThesisNow: research,
-                reviewCadenceDays: onClock ? Number(cadence) : null,
+                reviewClockDays: onClock ? Number(cadence) : null,
               });
               onOpenChange(false);
             }}

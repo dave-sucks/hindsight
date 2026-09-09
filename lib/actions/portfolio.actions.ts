@@ -143,7 +143,7 @@ export interface RecentPick {
   runId: string;
   sourcesUsed: unknown;
   /** Days on this name's review clock; null = on no schedule (DAV-225). */
-  reviewCadenceDays: number | null;
+  reviewClockDays: number | null;
 }
 
 export interface SpyBenchmark {
@@ -1065,7 +1065,7 @@ export async function getDashboardData(
       analystId: p.researchRun?.agentConfig?.id ?? null,
       runId: p.researchRunId,
       sourcesUsed: [],
-      reviewCadenceDays: reviewClockDays(p.triggers),
+      reviewClockDays: reviewClockDays(p.triggers),
     };
   });
 

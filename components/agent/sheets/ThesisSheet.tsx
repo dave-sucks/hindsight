@@ -116,7 +116,7 @@ export type ThesisCardData = {
   status?: "HOLDING" | "RETIRED" | "WATCHING" | "PROMOTED" | "PASSED";
   created_at?: string;
   /** Days on this name's review clock; null = on no schedule (DAV-225). */
-  review_cadence_days?: number | null;
+  review_clock_days?: number | null;
   /**
    * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
    * Trigger-driven only — no hardcoded thresholds. Drives the alert chip

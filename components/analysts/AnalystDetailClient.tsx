@@ -99,7 +99,7 @@ function thesisCardToRowData(
     thesisBullets: t.thesis_bullets,
     riskFlags: t.risk_flags,
     createdAt: t.created_at ?? null,
-    reviewCadenceDays: t.review_cadence_days ?? null,
+    reviewClockDays: t.review_clock_days ?? null,
     candles,
     currentPrice: quote?.price ?? null,
     priceChange: quote ? { amount: quote.change, percent: quote.changePct } : null,
@@ -402,7 +402,7 @@ export default function AnalystDetailClient({
     if (choices.writeThesisNow) {
       startTransition(async () => {
         try {
-          await sendToThesisWriter(config.id, upper, choices.reviewCadenceDays);
+          await sendToThesisWriter(config.id, upper, choices.reviewClockDays);
           toast.success(`Researching ${upper} — the thesis lands shortly.`);
         } catch (err) {
           toast.error(err instanceof Error ? err.message : `Couldn't research ${upper}`);
@@ -437,7 +437,7 @@ export default function AnalystDetailClient({
         "Added manually",
         "USER",
         "NORMAL",
-        choices.reviewCadenceDays,
+        choices.reviewClockDays,
       );
       // Replace temp item with real one
       setWatchlistItems((prev) =>

@@ -1816,7 +1816,7 @@ export async function getAnalystTheses(analystId: string) {
       hold_duration: t.holdDuration ?? undefined,
       status,
       created_at: t.createdAt.toISOString(),
-      review_cadence_days: reviewClockDays(t.triggers),
+      review_clock_days: reviewClockDays(t.triggers),
     };
   });
 }
