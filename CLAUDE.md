@@ -141,7 +141,7 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 
 ### V3 Intelligence Pipeline (background, pre-run)
 - 4 Inngest jobs run 6:30–7:30 AM ET before analysts wake up
-- Firm market sweep: Perplexity Sonar + FMP movers + Finnhub earnings
+- Firm market sweep: Perplexity Sonar + Alpaca screener movers + Finnhub earnings
 - Portfolio/watchlist monitor: Sonar per-ticker searches
 - Domain monitor: domain-filtered Sonar + Firecrawl extraction
 - Signal router: scores and routes signals to analysts; emits
@@ -156,16 +156,17 @@ in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
 ### Data Sources
 - Finnhub: quotes, candles, earnings calendar, company metrics,
   news, recommendations (PRIMARY for all quote data)
-- FMP: market movers (gainers/losers/actives), analyst price
-  targets, quote, earnings, financial statements, key metrics,
-  analyst estimates. **All FMP calls go through the ONE client at
-  `lib/market-data/fmp.ts`** — never hand-roll a `fetch` to FMP.
-  DEAD on our plan (verified 2026-08-19, DAV-191): economic calendar
-  (402), options chain / upgrades-downgrades / ratings-grades-historical
-  (404), and the whole `/api/v3` + `/api/v4` namespace (403, retired
-  2025-08-31). **Vendor health is NOT stable** — several of these
-  endpoints were 402 on 2026-08-14 and 200 five days later. Re-probe
-  against the real key before assuming anything is alive or dead.
+- FMP: **REMOVED 2026-09-08.** The tier we held refused 26 of the 28
+  names on the book ("this value set for 'symbol' is not available under
+  your current subscription") while every pull reported "ok" with an
+  empty body. Statements now come from Finnhub `/stock/financials-reported`
+  (`lib/market-data/finnhub-financials.ts`), ratios from `/stock/metric`,
+  movers from Alpaca's screener (`lib/market-data/alpaca-screener.ts`).
+  Not on any plan we hold: analyst price-target ranges and forward
+  revenue/EPS estimates — the tools report them as absent, never guess.
+  Do not re-add an FMP client without a plan that covers all US symbols,
+  and probe it with a mid-cap (SMMT, not AAPL) — the free list covers the
+  mega-caps, which is how the August audit was fooled.
 - Alpaca: paper trade execution, order fill, position tracking
 - Perplexity Sonar: web search for intelligence pipeline + agent
 - Firecrawl: full-page extraction for artifacts
@@ -282,7 +283,7 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 9. get_earnings_calendar — firm-wide upcoming earnings calendar; `scope:"universe"`
    fences to watchlist + positions, `scope:"all"` returns the full firehose.
    Pull-tool counterpart to the `EARNINGS_CALENDAR` feed subscription.
-10. get_market_movers — today's gainers / losers / most-actives from FMP;
+10. get_market_movers — today's gainers / losers / most-actives from the Alpaca screener;
     `scope:"universe"` fences to watchlist + positions, `scope:"all"` returns
     the full top list. Pull-tool counterpart to the `MARKET_MOVERS_*` feeds.
 11. get_sec_filings — SEC EDGAR filings
@@ -378,7 +379,7 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
 
 ## Inngest Crons (lib/inngest/functions/)
 ### Intelligence Pipeline (6:30–7:30 AM ET Mon-Fri)
-- firm-market-sweep.ts — 6:30 AM, Sonar + FMP movers + earnings
+- firm-market-sweep.ts — 6:30 AM, Sonar + Alpaca screener movers + earnings
 - portfolio-watchlist-monitor.ts — 7:00 AM, per-ticker Sonar
 - domain-monitor.ts — 7:15 AM, domain Sonar + Firecrawl
 - signal-router.ts — 7:30 AM, routes signals + emits app/signal.routed

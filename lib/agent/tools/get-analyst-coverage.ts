@@ -20,7 +20,6 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { fmp } from "@/lib/market-data/fmp";
 import { finnhub } from "@/lib/agent/research-helpers";
 
 interface PriceTargetConsensus {
@@ -67,8 +66,8 @@ interface RecommendationRow {
 export const getAnalystCoverage = defineTool({
   description:
     "Get analyst coverage for a stock — the consensus BUY/HOLD/SELL distribution across " +
-    "covering analysts plus the Low/Avg/Median/High price-target range and implied upside " +
-    "versus the live price. Backs the thesis 'Analyst Consensus' section.",
+    "covering analysts. The price-target range is not available on the current data plan " +
+    "and is reported as absent. Backs the thesis 'Analyst Consensus' section.",
   schema: z.object({
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
   }),
@@ -80,48 +79,26 @@ export const getAnalystCoverage = defineTool({
   execute: async ({ ticker }) => {
     const T = ticker.toUpperCase();
 
-    const [consensusRes, summaryRes, quoteRes, recsRes] = await Promise.all([
-      fmp<PriceTargetConsensus[]>(`/stable/price-target-consensus?symbol=${T}`, {
-        expectNonEmpty: true,
-      }),
-      fmp<PriceTargetSummary[]>(`/stable/price-target-summary?symbol=${T}`, {
-        expectNonEmpty: true,
-      }),
-      // Live price drives impliedUpsidePct — must bypass the Data Cache.
-      fmp<QuoteRow[]>(`/stable/quote?symbol=${T}`, { liveQuote: true }),
-      finnhub(`/stock/recommendation?symbol=${T}`, 2),
-    ]);
+    // Price-target range: FMP's endpoints were removed 2026-09-08 — the tier
+    // we hold refused 26 of 28 book names — and Finnhub gates
+    // /stock/price-target on a higher plan. So the range is reported as
+    // absent rather than silently empty; consensus rating still comes from
+    // Finnhub recommendation trends.
+    const recsRes = await finnhub(`/stock/recommendation?symbol=${T}`, 2);
 
     const errors: string[] = [];
-    if (consensusRes.error) errors.push(`price-target-consensus: ${consensusRes.error}`);
-    if (summaryRes.error) errors.push(`price-target-summary: ${summaryRes.error}`);
-    if (quoteRes.error) errors.push(`quote: ${quoteRes.error}`);
     if (recsRes.error) errors.push(`recommendation: ${recsRes.error}`);
 
-    const consensusRow = consensusRes.data?.[0];
-    const summaryRow = summaryRes.data?.[0];
-    const currentPrice = quoteRes.data?.[0]?.price ?? null;
-
-    const priceTargets = consensusRow
-      ? {
-          low: consensusRow.targetLow ?? null,
-          average: consensusRow.targetConsensus ?? null,
-          median: consensusRow.targetMedian ?? null,
-          high: consensusRow.targetHigh ?? null,
-          currentPrice,
-          impliedUpsidePct:
-            currentPrice && consensusRow.targetConsensus
-              ? ((consensusRow.targetConsensus - currentPrice) / currentPrice) * 100
-              : null,
-          // Targets published in the last quarter — the count that actually
-          // stands behind the current consensus. Falls back to the 1y count
-          // for thinly-covered names.
-          numAnalysts:
-            summaryRow?.lastQuarterCount ||
-            summaryRow?.lastYearCount ||
-            null,
-        }
-      : null;
+    const currentPrice = null as number | null;
+    const priceTargets = null as {
+      low: number | null;
+      average: number | null;
+      median: number | null;
+      high: number | null;
+      currentPrice: number | null;
+      impliedUpsidePct: number | null;
+      numAnalysts: number | null;
+    } | null;
 
     // Consensus from Finnhub's most-recent monthly recommendation snapshot.
     const recRows = Array.isArray(recsRes.data)
@@ -195,6 +172,11 @@ export const getAnalystCoverage = defineTool({
         kind: "generic",
         text: `Targets — Low $${priceTargets.low?.toFixed(2)} · Avg $${priceTargets.average.toFixed(2)} · High $${priceTargets.high?.toFixed(2)}${upText}`,
       });
+    } else {
+      items.push({
+        kind: "generic",
+        text: "Price-target range: not available on the current data plan. Do not cite a consensus target you did not see.",
+      });
     }
 
     if (errors.length > 0) {
@@ -223,15 +205,6 @@ export const getAnalystCoverage = defineTool({
                 provider: "Finnhub",
                 title: `${T} Recommendation Trends`,
                 url: "https://finnhub.io/docs/api/recommendation-trends",
-              },
-            ]
-          : []),
-        ...(priceTargets
-          ? [
-              {
-                provider: "FMP",
-                title: `${T} Analyst Price Targets`,
-                url: `https://financialmodelingprep.com/financial-summary/${T}`,
               },
             ]
           : []),

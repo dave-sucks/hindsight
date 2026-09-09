@@ -410,7 +410,9 @@ function buildEarnings(e: EarningsHistoryInput | null): string {
     const revText =
       q.revenue.actual != null && q.revenue.estimate != null
         ? ` rev ${fmtDollar(q.revenue.actual, { compact: true })} vs ${fmtDollar(q.revenue.estimate, { compact: true })} est (${fmtPct(q.revenue.surprisePct, 1)})`
-        : "";
+        : q.revenue.actual != null
+          ? ` rev ${fmtDollar(q.revenue.actual, { compact: true })} (filed; no estimate on plan)`
+          : "";
     const epsSurprise = q.eps.surprisePct != null ? ` (${fmtPct(q.eps.surprisePct, 1)})` : "";
     lines.push(
       `${q.quarter}${q.reportedAt ? ` reported ${q.reportedAt}` : ""}: EPS $${q.eps.actual.toFixed(2)} vs $${q.eps.estimate.toFixed(2)} est${epsSurprise}${revText} — ${q.outcome}`,

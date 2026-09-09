@@ -602,7 +602,7 @@ export async function writerPullPhase(
     await writePhaseEvent(
       args.childRunId,
       "Data pulled",
-      `7 parallel pulls${pull.pullErrors.length ? ` — ${pull.pullErrors.length} failed: ${pull.pullErrors.join(", ")}` : " — all sources ok"}. Live price: ${pull.currentPrice ?? "unavailable"}.`,
+      `7 parallel pulls${pull.pullErrors.length ? ` — ${pull.pullErrors.length} failed or empty: ${pull.pullErrors.join(", ")}` : " — all sources returned data"}. Live price: ${pull.currentPrice ?? "unavailable"}.`,
       { ticker: T, pullErrors: pull.pullErrors, currentPrice: pull.currentPrice },
     );
     return { ok: true, pull };
