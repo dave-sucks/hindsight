@@ -1,13 +1,13 @@
 /**
- * record-thesis-cadence-stamp.test.ts — the W1 cadence opt-in stamp
- * (DAV-216, docs/plans/WATCHLIST_STATES.md §3 invariant 2).
+ * record-thesis-review-clock.test.ts — the review clock is chosen, never
+ * inherited (DAV-209).
  *
- * WATCHING theses no longer inherit the account's review cadence — a watch
- * item is reviewed iff it carries its own REVIEW_CADENCE rung. Every
- * directional mint through record_thesis — priced or not — must be watched,
- * so the tool stamps the horizon's cadence unless the agent supplied one.
- * These tests pin that stamp: without it, every new discovery dispatch is
- * born silently unreviewed. (The soft watch, direction PASS, is W2.)
+ * A watched name is reviewed iff it carries its own REVIEW_CADENCE rung.
+ * That rung is an ordinary trigger: record_thesis adds one when the caller
+ * sends one, and never otherwise. No clock is the default and a legal state
+ * — nothing looks at the name until one of its own triggers fires. These
+ * tests pin that "buy at $X, no schedule" lands in ONE call, which was the
+ * defect.
  */
 
 const mockPositionFindFirst = jest.fn().mockResolvedValue(null);
@@ -102,35 +102,81 @@ beforeEach(() => {
   mockThesisFindFirst.mockResolvedValue(null);
 });
 
-describe("record_thesis — WATCHING cadence opt-in stamp (W1, DAV-216)", () => {
-  it("stamps the horizon cadence on a directional mint with none supplied", async () => {
+describe("record_thesis — the review clock is asked for, never assumed", () => {
+  it("a priced buy plan with no clock asked for lands with NO clock", async () => {
+    // The defect DAV-209 names: "buy at $186, don't put it on a schedule"
+    // was unwritable in one call, because the mint re-added a clock.
     const result = await run(baseLongArgs());
+    expect(result.ok).toBe(true);
+
+    const triggers = createdTriggers();
+    expect(
+      triggers.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+    ).toHaveLength(0);
+    // The plan itself is intact — no clock is not no triggers.
+    expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
+  });
+
+  it("an explicitly supplied ENTER rung with no clock also lands with no clock", async () => {
+    // The literal shape DAV-209 says nobody could write in one call:
+    // "buy at $186, no schedule."
+    const result = await run(
+      baseLongArgs({
+        triggers: [
+          {
+            id: "agent-enter",
+            predicate: { kind: "PRICE_ABOVE", level: 186 },
+            action: "ENTER",
+            rationale: "Buy the confirmed break above $186.",
+          },
+        ],
+      }),
+    );
+    expect(result.ok).toBe(true);
+
+    const triggers = createdTriggers();
+    expect(
+      triggers.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+    ).toHaveLength(0);
+    expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
+  });
+
+  it("a clock the caller sends as a trigger is kept, at its own cadence", async () => {
+    // The clock is an ordinary trigger: you get one by sending one.
+    const result = await run(
+      baseLongArgs({
+        triggers: [
+          {
+            id: "agent-clock",
+            predicate: { kind: "REVIEW_CADENCE", days: 3 },
+            action: "REVIEW",
+            rationale: "Heating into the print — look daily-ish.",
+          },
+        ],
+      }),
+    );
     expect(result.ok).toBe(true);
 
     const cadences = createdTriggers().filter(
       (t) => t.predicate.kind === "REVIEW_CADENCE",
     );
     expect(cadences).toHaveLength(1);
-    // TARGET horizon → 7 days, matching CADENCE_DAYS_BY_HORIZON.
-    expect(cadences[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 7 });
-    // A template default, not an agent-authored rung.
-    expect(cadences[0].source).toBe("DEFAULT");
+    // 3, not the TARGET horizon's 7 — nothing overrides the caller.
+    expect(cadences[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 3 });
   });
 
-  it("uses the horizon's own clock — CATALYST stamps daily", async () => {
+  it("a CATALYST mint gets no clock either unless one is asked for", async () => {
     const result = await run(
       baseLongArgs({ horizon: "CATALYST", catalyst_date: "2026-09-30T00:00:00.000Z" }),
     );
     expect(result.ok).toBe(true);
 
-    const cadences = createdTriggers().filter(
-      (t) => t.predicate.kind === "REVIEW_CADENCE",
-    );
-    expect(cadences).toHaveLength(1);
-    expect(cadences[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 1 });
+    expect(
+      createdTriggers().filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+    ).toHaveLength(0);
   });
 
-  it("does not duplicate an agent-supplied cadence — the opt-in wins", async () => {
+  it("does not duplicate a clock the caller already sent", async () => {
     const result = await run(
       baseLongArgs({
         triggers: [
@@ -168,11 +214,11 @@ describe("record_thesis — WATCHING cadence opt-in stamp (W1, DAV-216)", () => 
 });
 
 describe("record_thesis — a directional view with no entry yet (unpriced LONG)", () => {
-  it("mints WATCHING/LONG with no levels: cadence wake stamped, no ENTER rung, no refusal", async () => {
+  it("mints WATCHING/LONG with no levels, no ENTER rung, no refusal", async () => {
     // BMRN's dispatch note: "entry window opens January 2027". This shape
     // used to be unwritable, so the writer parked the buy level on today's
-    // quote. The persist path admits the set-down state (no plan level,
-    // ≥1 REVIEW wake) — this pins that a mint can be born in it.
+    // quote. A view with no plan is a legal row — this pins that a mint can
+    // be born in it.
     const result = await run(
       baseLongArgs({
         entry_price: undefined,
@@ -186,7 +232,6 @@ describe("record_thesis — a directional view with no entry yet (unpriced LONG)
     expect(result.data?.thesis_id).toBe("thesis_new_1");
     const triggers = createdTriggers();
     expect(triggers.some((t) => t.action === "ENTER")).toBe(false);
-    expect(triggers.some((t) => t.action === "REVIEW")).toBe(true);
     const data = mockThesisCreate.mock.calls[0][0].data as Record<string, unknown>;
     expect(data.status).toBe("WATCHING");
     expect(data.direction).toBe("LONG");

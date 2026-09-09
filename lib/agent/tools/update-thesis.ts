@@ -616,13 +616,12 @@ export const updateThesis = defineTool({
     // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy) — the
     // isUnresearchedSeed helper catches both during the dual-read window.
     //
-    // W2 (DAV-209): direction-null now ALSO means a soft watch — "looked,
-    // declined to trade, keeping a wake on it." A soft watch is a finished
-    // decision, not an unresearched seed, and its wake triggers must stay
-    // editable without forcing a direction commitment. The derived
-    // discriminator: a soft watch always carries ≥1 AGENT-authored trigger
-    // (the mint gate enforces the wake invariant); a seed carries none
-    // (zero triggers, or only the DEFAULT-source seed cadence).
+    // DAV-209: direction-null also covers "looked, no view yet, keeping the
+    // name in view." That is a finished decision, not an unresearched seed,
+    // and its wake triggers must stay editable without forcing a direction
+    // commitment. The derived discriminator: such a row carries ≥1
+    // AGENT-authored trigger; a seed carries none (zero triggers, or only a
+    // DEFAULT-source clock).
     const existingRowTriggers: Trigger[] = Array.isArray(existing.triggers)
       ? (existing.triggers as unknown as Trigger[])
       : [];
@@ -796,48 +795,32 @@ export const updateThesis = defineTool({
       // point. Conviction patches now stand on their own.
     }
 
-    // ── Zero-trigger guard (audit Step 4) ─────────────────────────────────
-    // A WATCHING thesis with no triggers can't react to anything — the
-    // trigger evaluator has nothing to fire on, the agent has nothing to
-    // promote. If the agent is reviewing one of these and isn't either
-    // (a) closing it or (b) adding triggers, the review is a no-op that
-    // still claims the closeout-contract slot. Refuse the update so the
-    // agent has to either fix it or close it.
-    //
-    // ACTIVE theses with zero triggers are also broken (no exit triggers!)
-    // — same rule applies.
-    //
-    // Exception: status transition to INVALIDATED/CLOSED is the
-    // legitimate "give up on this broken thesis" path. Allow that.
-    //
-    // Since the cascade landed, "can this thesis react to anything?" is a
-    // question about the RESOLVED ladder, not the stored column: a thesis
-    // storing zero rungs of its own still inherits its analyst's, its
-    // account's, and the standing code minimums. Counting only the column
-    // would refuse legitimate reviews on exactly the theses that are
-    // protected purely by inherited rungs.
+    // A terminal flip clears the plan, so the price-shape rules below don't
+    // apply to it. (PASS on a seed is terminal too — it lands PASSED.)
     const isTerminalTransition =
       args.change_status === "INVALIDATED" ||
       args.change_status === "ARCHIVED" ||
-      // PASS (seed → PASS) is a terminal flip — clears triggers, sets PASSED.
       args.direction === "PASS";
 
+    let inheritedLadder: ResolvedTrigger[] = [];
+    // The zero-trigger guard that used to stand here is gone (DAV-209).
+    // It refused a review-only update on a thesis with no triggers —
+    // "a review without action is a no-op" — which made a name with
+    // nothing on it unreviewable and un-updatable without first inventing
+    // a wake for it. Zero triggers is a legal state: the name is in view
+    // and nothing will wake it, which is exactly what some names deserve.
+    // Held positions are unaffected — they inherit the standing protection
+    // rungs, and the enter-guard below still requires a real EXIT on them.
+    //
     // The levels above this thesis, resolved against an EMPTY thesis array
-    // so we see them unmasked by the thesis's own rungs. Used twice: by
-    // the guard just below, and by the wholesale-replace path further down
-    // to keep inherited rungs from being copied onto the row.
+    // so we see them unmasked by the thesis's own rungs — used by the
+    // wholesale-replace path below to keep inherited rungs from being
+    // copied onto the row.
     //
     // Lazy: update_thesis is the most-called tool in the app and most
     // calls don't touch triggers at all. Only pay the two level queries
-    // when the answer can actually change something — a trigger replace,
-    // or a stored-count of zero where the guard needs to know whether
-    // inherited rungs are covering the thesis.
-    const storedTriggerCount = Array.isArray(existing.triggers)
-      ? (existing.triggers as unknown[]).length
-      : 0;
-    const needsLevels = args.triggers !== undefined || storedTriggerCount === 0;
-    let inheritedLadder: ResolvedTrigger[] = [];
-    if (needsLevels) {
+    // when the answer can actually change something.
+    if (args.triggers !== undefined) {
       const analystId = existing.researchRun?.agentConfigId ?? null;
       const levelSources = analystId
         ? (await loadLevelSources([analystId])).get(analystId)
@@ -852,31 +835,6 @@ export const updateThesis = defineTool({
         levelSources,
         `thesis=${args.thesis_id}`,
       );
-    }
-
-    const existingTriggerCount = storedTriggerCount + inheritedLadder.length;
-    const updateAddsTriggers =
-      args.triggers !== undefined && args.triggers.length > 0;
-    // Unresearched seeds always start with zero triggers — that's expected,
-    // not a violation. Only fire the zero-trigger guard on committed rows.
-    // P1-24 B4: seed = direction null (new) or 'PENDING' (legacy).
-    const isPendingPromotion = isUnresearchedSeed(existing.direction);
-    if (
-      existingTriggerCount === 0 &&
-      !updateAddsTriggers &&
-      !isTerminalTransition &&
-      !isPendingPromotion
-    ) {
-      return {
-        summary: `Thesis ${args.thesis_id} has no triggers; refusing review-only update.`,
-        data: {
-          ok: false,
-          error: "zero_trigger_thesis",
-          message:
-            `${existing.ticker} thesis has no triggers — the trigger system can't fire anything on it. A review without action is a no-op. You must EITHER (a) supply a non-empty triggers[] array describing what would fire entry/exit/review, OR (b) close it via change_status: "INVALIDATED" if the thesis is no longer trackable.`,
-        },
-        sources: [],
-      };
     }
 
     // ── Goalpost-moving guard (audit Root Cause #3) ───────────────────────

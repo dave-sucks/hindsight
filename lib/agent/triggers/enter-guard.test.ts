@@ -160,24 +160,25 @@ describe("validateEnterTriggerRequired", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("WATCHING LONG with empty triggers array: rejects with missing-enter-trigger", () => {
+  it("WATCHING LONG with NO triggers at all: ok — a pinned name is legal (DAV-209)", () => {
+    // FLIPPED 2026-09-08. This used to be the "inert row" rejection. A
+    // stock can now be kept in view with nothing on it: nothing wakes it,
+    // the watchlist screen is what keeps it visible, and that is a choice
+    // a person is allowed to make. targetPrice on the row is not a plan
+    // level — only a trigger is.
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
       triggers: [],
       targetPrice: 100,
     });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe("missing-enter-trigger");
+    expect(result.ok).toBe(true);
   });
 
-  it("WATCHING LONG with only REVIEW wakes (no plan level): ok — the set-down state (DAV-224)", () => {
-    // FLIPPED 2026-08-28 (DAV-224, WATCHLIST_STATES.md §5). This exact
-    // shape used to be the "inert row" rejection; it is now the demoted
-    // watch — no plan, no clock forced, ≥1 wake keeps it reachable. The
-    // original XPEV/MDB bug (HELD-style arrays stripping the ENTER) still
-    // rejects: those arrays carry EXIT plan levels — see the test above.
+  it("WATCHING LONG with only REVIEW wakes (no plan level): ok — no plan, no ENTER needed", () => {
+    // A name kept in view with wakes but no buy plan. The original
+    // XPEV/MDB bug (HELD-style arrays stripping the ENTER) still rejects:
+    // those arrays carry EXIT plan levels — see the test above.
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
@@ -208,7 +209,7 @@ describe("validateEnterTriggerRequired", () => {
   it("an upside REVIEW level on a LONG is a plan level — still requires an ENTER", () => {
     // isPlanLevel counts an upside absolute REVIEW as the target (the same
     // set the DEMOTE fire strips). A "wake" that is really a target keeps
-    // the full-plan rules: plan ⇒ ENTER required, plan ⇒ cadence stamped.
+    // the full-plan rule: a plan needs the buy level to reach it from.
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
@@ -229,16 +230,17 @@ describe("validateEnterTriggerRequired", () => {
 
   // ── Missing targetPrice → different error message ───────────────────────
 
-  it("WATCHING LONG with missing target_price (and no wake to make it a set-down): rejects with target-required note", () => {
+  it("a half plan — a floor with no buy level — rejects with the finish-the-plan note", () => {
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
-      triggers: [],
+      triggers: [EXIT_STOP],
       targetPrice: null,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.note).toMatch(/needs a priced plan/);
+    expect(result.reason).toBe("missing-enter-trigger");
+    expect(result.note).toMatch(/no buy level to reach it from/);
     expect(result.note).not.toMatch(/displaced/);
   });
 
