@@ -150,6 +150,23 @@ const PROTECT_CHECKPOINT_GAIN_PCT = 10;
 const PROTECT_TRAIL_PCT = 8;
 /** Loser attention: down X% from entry → hold-vs-cut REVIEW. */
 const LOSER_ATTENTION_DRAWDOWN_PCT = 12;
+/**
+ * COMPOUNDER only: a give-back from the high is a QUESTION, not a sale.
+ * At this give-back a tactical run asks "is the reason we bought still
+ * true?" and answers hold-and-raise-the-floor / trim / sell. The seat's
+ * own prompt says price alone is never an invalidation; the 8% mechanical
+ * sale contradicted it and sold SNOW/DELL/ZETA-class winners at +12%
+ * (2026-09-08 review).
+ */
+const COMPOUNDER_GIVEBACK_REVIEW_PCT = 15;
+/**
+ * COMPOUNDER only: the hard line that still sells without judgment. Sits
+ * far enough below the review that a normal pullback never reaches it.
+ * This rung must exist on the thesis: the ACCOUNT ladder carries an 8%
+ * TRAILING_FROM_HIGH → EXIT, and only a thesis rung in the same bucket
+ * (predicate + action) overrides it.
+ */
+const COMPOUNDER_HARD_TRAIL_PCT = 25;
 
 function gainCheckpointTrigger(): Trigger {
   return {
@@ -209,6 +226,36 @@ export function standingProtectionTriggers(): Trigger[] {
   return [
     gainCheckpointTrigger(),
     trailingRatchetTrigger(),
+    loserAttentionTrigger(),
+  ];
+}
+
+/**
+ * The COMPOUNDER variant of the standing minimums. Same gain checkpoint and
+ * loser attention; the give-back is a REVIEW (a question for the analyst)
+ * and the mechanical sale moves out to a catastrophe line. See the two
+ * constants above for why.
+ */
+export function compounderProtectionTriggers(): Trigger[] {
+  return [
+    gainCheckpointTrigger(),
+    {
+      id: createId(),
+      predicate: { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_GIVEBACK_REVIEW_PCT },
+      action: "REVIEW",
+      // No fireMode: a price REVIEW is answered by the next morning run, not a
+      // tactical spawn (#573 — honest labels). The 25% EXIT below is the
+      // in-between protection.
+      rationale: `Gave back ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.`,
+      cooldownDays: 7,
+    },
+    {
+      id: createId(),
+      predicate: { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_HARD_TRAIL_PCT },
+      action: "EXIT",
+      rationale: `Gave back ${COMPOUNDER_HARD_TRAIL_PCT}% from the high — the catastrophe line for a multi-year hold. The review at ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% should have acted long before this; if we are here, protect the capital.`,
+      cooldownDays: 0,
+    },
     loserAttentionTrigger(),
   ];
 }
@@ -451,7 +498,7 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
 
   out.push(scaleInOnStrengthTrigger());
   out.push(scaleInOnPullbackTrigger());
-  out.push(...standingProtectionTriggers());
+  out.push(...compounderProtectionTriggers());
 
   return out;
 }

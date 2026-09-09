@@ -521,7 +521,7 @@ Buys best-in-class operators with 3-5 year secular tailwinds across AI infrastru
 
 ### Triggers
 
-- **ENTER:** scaled entry over 3-6 months on weakness; durable moat + verifiable secular tailwind + growth and cash generation that are best-in-class **for that name's own industry** (see the yardstick note below); minConfidence ≥78
+- **ENTER:** first tranche on confirmation (breakout above a base, 50-day reclaim, or pullback to the 50-day — whichever comes first; never wait more than 30 days for a pullback on a stock in an uptrend), then scale to full size over 3-6 months; durable moat + verifiable secular tailwind + growth and cash generation that are best-in-class **for that name's own industry** (see the yardstick note below); minConfidence ≥70 (lowered from 78 on 2026-09-08 — 78 required an 8/10 score and silently refused ABT, GD, GEV, VST)
 - **PASS:** profitless growth dressed as "secular," story stocks without unit economics, mediocre operator in a real theme, cyclical names mislabeled as secular
 - **HOLD:** through earnings noise, intra-quarter volatility, -10% to -15% drawdowns; never trims on price alone
 - **EXIT:** ONLY on invalidation — regulatory break, CFO departure, 2 consecutive guidance cuts, structural demand erosion, broken capital allocation discipline

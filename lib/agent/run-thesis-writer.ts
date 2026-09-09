@@ -492,6 +492,13 @@ every field; the judgment rules:
    • confidence context: this analyst's minimum confidence for
      trade-eligible coverage is ${opts.minConfidence}/100 — calibrate composite +
      conviction honestly against that bar.
+   • entryQuality on a COMPOUNDER horizon: a stock at or near its highs on a
+     working thesis is NOT a 0. Score the entry on whether the thesis is
+     CONFIRMED (breakout above a base, reclaim of the 50-day, or a pullback
+     to the 50-day), not on distance from the high. "Extended" is a
+     trader's word; for a multi-year hold it just means working. Scoring
+     every strong stock 0 here is how this seat watched MSFT go $418 → $497
+     for four months without buying.
 
 ${triggerBlock}
 ${priorExitBlock}

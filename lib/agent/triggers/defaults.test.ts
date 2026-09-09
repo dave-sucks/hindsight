@@ -318,6 +318,23 @@ describe("defaultTriggersForHorizon — standing protection minimums (Game Plan 
       expect(rung!.cooldownDays).toBeUndefined();
     });
 
+    if (horizon === "COMPOUNDER") {
+      // 2026-09-08: a give-back on a multi-year hold is a question, not a sale.
+      it("HELD COMPOUNDER carries TRAILING_FROM_HIGH 15% → REVIEW (the question) and 25% → EXIT (the catastrophe line)", () => {
+        const triggers = defaultTriggersForHorizon(horizon, base(), "HELD");
+        const trails = triggers.filter((t) => t.predicate.kind === "TRAILING_FROM_HIGH");
+        expect(trails.map((t) => [t.predicate.kind === "TRAILING_FROM_HIGH" ? t.predicate.pct : null, t.action])).toEqual([
+          [15, "REVIEW"],
+          [25, "EXIT"],
+        ]);
+        // A price REVIEW never spawns a tactical (#573) — no fireMode label on it.
+        expect(trails.find((t) => t.action === "REVIEW")!.fireMode).toBeUndefined();
+        expect(trails.find((t) => t.action === "EXIT")!.cooldownDays).toBe(0);
+        // No 8% mechanical sale on a compounder — the account's 8% rule is
+        // overridden by the thesis-level 25% EXIT in the same bucket.
+        expect(trails.some((t) => t.predicate.kind === "TRAILING_FROM_HIGH" && t.predicate.pct === 8)).toBe(false);
+      });
+    } else {
     it(`HELD ${horizon} carries TRAILING_FROM_HIGH 8% → EXIT (mechanical ratchet)`, () => {
       const rung = findTrail(defaultTriggersForHorizon(horizon, base(), "HELD"));
       expect(rung).toBeDefined();
@@ -326,6 +343,7 @@ describe("defaultTriggersForHorizon — standing protection minimums (Game Plan 
       // Terminal EXIT keeps the explicit cooldown opt-out, same as the hard stop.
       expect(rung!.cooldownDays).toBe(0);
     });
+    }
 
     it(`HELD ${horizon} carries GAIN_FROM_ENTRY DOWN 12% → REVIEW (loser attention)`, () => {
       const rung = findGain(
