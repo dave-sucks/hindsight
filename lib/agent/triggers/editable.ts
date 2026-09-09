@@ -43,8 +43,8 @@ export function editableTriggerField(
     case "TRAILING_FROM_HIGH":
       return { label: "Trail %", value: p.pct, suffix: "%", min: 1, step: 0.5 };
     case "REVIEW_CADENCE":
-      // The review clock — days between scheduled reviews. Editable here so
-      // it lives in the same popover as every other trigger (DAV-225).
+      // Agent Watch — days between the agent's reviews. Editable here so it
+      // lives in the same popover as every other trigger (DAV-225).
       return {
         label: "Review every",
         value: p.days,
