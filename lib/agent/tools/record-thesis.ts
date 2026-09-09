@@ -304,7 +304,11 @@ const thesisFields = z.object({
         "If you can't articulate a variant view for a STRONG/HIGH call, your tier is MEDIUM at best — don't claim STRONG/HIGH without one. " +
         "Example: 'Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3 program is being underweighted by 2 quarters of run-rate, putting Q4 FY2027 revenue 8% above consensus.'",
     ),
-  triggers: triggersArraySchema.optional(),
+  triggers: triggersArraySchema
+    .optional()
+    .describe(
+      "The trigger ladder. Omit it to accept the horizon defaults. The review clock lives here like any other rung — include a REVIEW_CADENCE trigger to have this name reviewed on a schedule, and leave it out to have nothing review it until one of its other triggers fires. Nothing adds a clock for you.",
+    ),
   catalyst_date: z
     .string()
     .datetime()
@@ -332,7 +336,7 @@ const thesisFields = z.object({
     .optional()
     .describe(
       "Coverage status. ACTIVE = trade-eligible coverage (the agent intends to act now or imminently). WATCHING = on-the-radar coverage (watchlist review, discovery candidate, named-but-not-yet-actionable). Default is derived from source_kind — WATCHLIST_REVIEW → WATCHING, else ACTIVE — pass explicitly when the intent differs. " +
-        "PASS alone = terminal (recorded as Passed, no triggers, never woken). PASS + status:'WATCHING' = 'no view yet, but keep the name in view' — it stores no direction and no committed plan, carries whatever triggers you give it (including none), and gets a review clock only if you ask for one via review_cadence_days. Use it when you're out of dispatch slots or the setup isn't ripe — a capacity rejection keeps the name, it isn't a terminal PASS.",
+        "PASS alone = terminal (recorded as Passed, no triggers, never woken). PASS + status:'WATCHING' = 'no view yet, but keep the name in view' — it stores no direction and no committed plan, carries whatever triggers you give it (including none), and is reviewed on a schedule only if you include a REVIEW_CADENCE trigger in `triggers` — the review clock is an ordinary trigger, and omitting it means nothing looks at the name until one of its other triggers fires. Use it when you're out of dispatch slots or the setup isn't ripe — a capacity rejection keeps the name, it isn't a terminal PASS.",
     ),
   // Cross-analyst overlap acknowledgement. The tool blocks DAY-only
   // analysts from minting a thesis on a ticker another analyst on the
@@ -862,9 +866,11 @@ export const recordThesis = defineTool({
       // `fundamentals` sub-key had zero readers. The column itself drops
       // in PR-5 after the soak.
 
-      // The review clock has one home (DAV-221): the REVIEW_CADENCE trigger
-      // the mint templates stamp below, counted from the last actual review
-      // (createdAt until the first one). There is no date column to seed.
+      // The review clock has one home (DAV-221): a REVIEW_CADENCE trigger,
+      // counted from the last actual review (createdAt until the first one).
+      // There is no date column to seed. Held templates stamp one; watching
+      // templates do not, so a watched name is scheduled only if the caller
+      // sent a clock rung (DAV-209).
 
       // ── Effective status — derived from direction ──
       // P1-24 contract legal pairs a record_thesis mint can produce:
@@ -931,8 +937,8 @@ export const recordThesis = defineTool({
       // view." Stored shape: direction null, status WATCHING, no committed
       // plan. It is an ordinary watched row, not a tier of its own — it
       // carries whatever triggers the caller gave it (including none), and
-      // it is reviewed on a schedule only if `review_cadence_days` asked
-      // for one (DAV-209).
+      // it is reviewed on a schedule only if the caller sent a
+      // REVIEW_CADENCE trigger of its own (DAV-209).
       const passKeepsWatch =
         args.direction === "PASS" && args.status === "WATCHING";
 

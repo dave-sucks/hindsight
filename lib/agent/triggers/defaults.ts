@@ -313,10 +313,10 @@ export const DEFAULT_LADDER_IDS = {
  * one of its own triggers fires.
  *
  * A clock is chosen, never inherited. The WATCHING templates below do not
- * stamp one: whoever creates the thesis says how often to look at it (or
- * that nobody should), and passes that through as `review_cadence_days`.
- * Held templates keep theirs — a position we own is reviewed on a schedule
- * by default.
+ * stamp one: whoever creates the thesis decides how often to look at it, or
+ * that nobody should, by including a REVIEW_CADENCE trigger or leaving it
+ * out. Held templates keep theirs — a position we own is reviewed on a
+ * schedule by default.
  */
 export function reviewCadenceTrigger(days: number): Trigger {
   return {
