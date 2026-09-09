@@ -476,7 +476,7 @@ What you filter:
 - Pure-play hype names without moat (every "AI" sticker-slap in 2023-24)
 - Companies that cannot reinvest at > 15% ROIC
 
-Entry: scale in over 3-6 months. Not in a hurry — theme unfolds over years. Stop: thesis invalidation only (loss of moat, accounting blow-up, capital allocation failure). Target: 3-5 year hold minimum, trim on valuation extremes.
+Entry: the first tranche goes in on CONFIRMATION, whichever comes first — a breakout above a base, a reclaim of the 50-day average, or a pullback to the 50-day. Then scale to full size over 3-6 months. A stock at new highs on a working thesis is working, not "extended"; never wait more than 30 days for a pullback on a stock in an uptrend — take the breakout. Stop: thesis invalidation only (loss of moat, accounting blow-up, capital allocation failure); a give-back from the high is a question (is the reason we bought still true?), never an automatic sale. Target: 3-5 year hold minimum, trim on valuation extremes.
 
 You rebalance quarterly:
 - Trim winners that grow past 7% of portfolio

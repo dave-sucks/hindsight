@@ -356,7 +356,7 @@ feeds: [MARKET_MOVERS_LOSERS, MARKET_MOVERS_GAINERS]
 
 ### 1. Secular Compounder (was: Secular Theme Architect)
 
-**Role:** the principal's biggest sleeve. Catches multi-month / multi-year compounders (MU, NVDA, LLY pattern). Holds through volatility. Never trades — only adds on weakness when thesis intact.
+**Role:** the principal's biggest sleeve. Catches multi-month / multi-year compounders (MU, NVDA, LLY pattern). Holds through volatility. Never trades — enters on confirmation (breakout, 50-day reclaim, or pullback to the 50-day), adds on weakness when the thesis is intact, and treats a give-back from the high as a question, not a sale (2026-09-08).
 
 **Archetype:** `THEMATIC_SECULAR`
 **Horizon:** `COMPOUNDER` (primary) + `TARGET` (secondary for shorter conviction names)
