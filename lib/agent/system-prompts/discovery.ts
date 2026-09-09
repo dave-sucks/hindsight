@@ -466,16 +466,16 @@ For each researched candidate, exactly one of these four actions:
   - \`direction\`: "PASS" **+ \`status\`: "WATCHING"** — this pair IS
     the soft watch ("decided not to trade, keep eyes on it")
   - \`ticker\` + \`reasoning_summary\`: what you saw, why not now
-  - \`triggers\`: ≥1 REVIEW-action wake condition answering "what
-    brings this back to me?" — **a price level, a price move, or a
-    time-elapsed rung.** Those are the kinds that fire today. Do NOT
-    use EARNINGS_BEAT / EARNINGS_MISS / GUIDANCE_CHANGE / FILING /
-    SIGNAL_TYPE as the wake: news and earnings routing is paused, so a
-    row whose only wake is one of those is invisible forever — the
-    exact rot this tier exists to prevent. Wake conditions only: no
-    ENTER/EXIT actions, no entry/target/stop prices, no review clock.
-    The row costs nothing until a wake fires — then it lands in that
-    morning's run for a fresh decision.
+  - \`triggers\`: whatever wakes you want, or none. A wake answers
+    "what brings this back to me?" — **a price level, a price move, or
+    a time-elapsed rung**; those are the kinds that fire today
+    (EARNINGS_BEAT / EARNINGS_MISS / GUIDANCE_CHANGE / FILING /
+    SIGNAL_TYPE will not fire — news and earnings routing is paused).
+    A row with NO triggers at all is legal: it is a name on the list,
+    visible on the watchlist screen, waiting for a person rather than
+    the system. Choose that deliberately rather than by accident. Add
+    a \`REVIEW_CADENCE\` rung only if the name has earned scheduled
+    attention — it is the one thing that costs money.
   - PROVENANCE — same rules as the PASS block below.
 
   Soft watches are NOT capped and do NOT consume dispatch slots.

@@ -153,7 +153,6 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
       existingStatus: "WATCHING",
       currentPrice: 101,
       existingTargetPrice: 130,
-      existingHasTriggers: true,
     });
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("resend `triggers`");
@@ -167,7 +166,7 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
           { predicate: { kind: "TIME_ELAPSED", days: 120 }, action: "REVIEW", rationale: "Price it after the January readout." },
         ],
       },
-      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101, existingTargetPrice: 130, existingHasTriggers: true },
+      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101, existingTargetPrice: 130 },
     );
     expect(v.ok).toBe(true);
   });
@@ -180,7 +179,7 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
           { predicate: { kind: "PRICE_ABOVE", level: 140 }, action: "REVIEW", rationale: "target-ish" },
         ],
       },
-      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101, existingTargetPrice: 130, existingHasTriggers: true },
+      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101, existingTargetPrice: 130 },
     );
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("ENTER rung");
@@ -365,7 +364,6 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
         existingStatus: "WATCHING",
         currentPrice: 132,
         existingTargetPrice: 130,
-        existingHasTriggers: true,
       },
     );
     expect(v.ok).toBe(false);
@@ -380,22 +378,19 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
         existingStatus: "WATCHING",
         currentPrice: 101,
         existingTargetPrice: 130,
-        existingHasTriggers: true,
       },
     );
     expect(v.ok).toBe(true);
   });
 
-  it("zero-trigger mirror: a refresh on a bare thesis may not omit triggers", () => {
+  it("a refresh on a thesis with no triggers may omit triggers — zero is legal (DAV-209)", () => {
     const v = validateThesisDecision({ ...validLong, triggers: undefined }, {
       mode: "refresh",
       existingStatus: "WATCHING",
       currentPrice: 101,
       existingTargetPrice: 130,
-      existingHasTriggers: false,
     });
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("NO triggers");
+    expect(v.ok).toBe(true);
   });
 
   it("enter-guard mirror: WATCHING refresh with a REVIEW-only ladder is rejected...", () => {
@@ -404,7 +399,7 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
     ];
     const v = validateThesisDecision(
       { ...validLong, triggers: reviewOnly },
-      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 90, existingTargetPrice: 130, existingHasTriggers: true },
+      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 90, existingTargetPrice: 130 },
     );
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("ENTER rung");
@@ -418,7 +413,7 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
     ];
     const v = validateThesisDecision(
       { ...validLong, triggers: reviewOnly },
-      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 100, existingTargetPrice: 130, existingHasTriggers: true },
+      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 100, existingTargetPrice: 130 },
     );
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("ENTER rung");
@@ -431,7 +426,7 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
     ];
     const v = validateThesisDecision(
       { ...validLong, triggers: noExit },
-      { mode: "refresh", existingStatus: "HOLDING", currentPrice: 110, existingTargetPrice: 130, existingHasTriggers: true },
+      { mode: "refresh", existingStatus: "HOLDING", currentPrice: 110, existingTargetPrice: 130 },
     );
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("EXIT rung");
@@ -485,7 +480,6 @@ describe("validateThesisDecision — P1-35 prior-exit acknowledgment mirror", ()
       existingStatus: "WATCHING",
       currentPrice: 101,
       existingTargetPrice: 130,
-      existingHasTriggers: true,
       priorExit: { exitPrice: 95, daysAgo: 3, closeReason: "STOP" },
     });
     expect(v.ok).toBe(true);

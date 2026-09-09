@@ -756,7 +756,6 @@ Write the research note now, then call submit_thesis.`;
           // Persist-gate mirrors (goalpost + zero-trigger) need the
           // existing row's shape — see decision.ts review-finding-#4 block.
           existingTargetPrice: existingThesis?.targetPrice ?? null,
-          existingHasTriggers: existingThesis?.hasTriggers,
           // P1-35 prior-exit acknowledgment.
           priorExit,
         });

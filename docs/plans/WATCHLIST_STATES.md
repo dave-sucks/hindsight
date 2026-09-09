@@ -1,6 +1,17 @@
 # Watchlist states v2 — cadence is the feature
 
-> **Status:** ruled by the principal 2026-08-25, after the Levels-Are-Triggers
+> **⚠️ SUPERSEDED 2026-09-08 by the DAV-209 ruling. Read this as history.**
+>
+> This doc treats watch items as STATES with rules of their own — a soft watch
+> that must carry a wake, a managed watch that must carry a plan. That frame is
+> gone. A thesis can carry any triggers or none; the review clock
+> (`REVIEW_CADENCE`) is an ordinary trigger, and whether a name has one is the
+> only thing that decides if an analyst reviews it on a schedule. §3's "every
+> watch item carries ≥1 wake" invariant and the gates enforcing it are deleted.
+>
+> ---
+>
+> **Status (historical):** ruled by the principal 2026-08-25, after the Levels-Are-Triggers
 > merge (#553/#554). **Supersedes v1's discriminator** — v1 derived soft/active
 > from the `entryPrice`/`stopLoss` columns; those are now a derived cache of
 > the trigger list, so the states derive from triggers directly.

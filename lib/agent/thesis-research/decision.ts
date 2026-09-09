@@ -112,13 +112,6 @@ export interface DecisionValidationOpts {
   /** Existing thesis target on refresh — feeds the goalpost-guard mirror. */
   existingTargetPrice?: number | null;
   /**
-   * Whether the existing thesis carries any triggers (refresh only).
-   * update_thesis is wholesale-REPLACE with NO default merge, and its
-   * zero-trigger gate refuses a review-shaped patch on a bare thesis —
-   * so a refresh on a trigger-less row must supply a full ladder.
-   */
-  existingHasTriggers?: boolean;
-  /**
    * P1-35 (#524): set when this analyst sold this ticker within the last
    * 14 days. record_thesis refuses a mint at/above the exit price without
    * an explicit acknowledgment — required here so the repair happens
@@ -287,13 +280,6 @@ export function validateThesisDecision(
         `target_price: the live price (${opts.currentPrice}) has already crossed the stored target (${opts.existingTargetPrice}) — raising the target now would be rejected by the goalpost gate. Keep target_price ≤ ${opts.existingTargetPrice}; note the re-rating case in the rationale and let the orchestrator decide entry.`,
       );
     }
-    // Zero-trigger gate mirror: update_thesis refuses a patch that leaves
-    // a thesis with no triggers at all.
-    if (opts.existingHasTriggers === false && d.triggers === undefined) {
-      errors.push(
-        "triggers: the existing thesis has NO triggers, and omitting the field would leave it bare (update_thesis rejects zero-trigger patches). Supply a full ladder for this refresh.",
-      );
-    }
   }
   if (d.direction === "PASS" && d.triggers !== undefined && (d.triggers as unknown[]).length > 0) {
     errors.push("triggers: a PASS decision cannot carry triggers — omit the field entirely.");
@@ -356,15 +342,15 @@ export function validateThesisDecision(
             "triggers: a HOLDING ladder must carry at least one EXIT rung (the automated stop-loss path) — the persist gate rejects ladders without one.",
           );
         }
-        // The set-down shape (no plan level, ≥1 REVIEW wake) is legal on an
-        // unpriced view — the same state the DEMOTE fire leaves behind.
-        const setDown =
-          !priced &&
-          actions.has("REVIEW") &&
-          !parsedTriggers.some((t) => isPlanLevel(t, d.direction));
-        if (!held && !actions.has("ENTER") && !setDown) {
+        // No plan level means no plan — legal with any wakes or none. What
+        // still needs an ENTER is a plan: a floor or target with no buy
+        // level to reach it from.
+        const hasPlanLevel = parsedTriggers.some((t) =>
+          isPlanLevel(t, d.direction),
+        );
+        if (!held && !actions.has("ENTER") && (priced || hasPlanLevel)) {
           errors.push(
-            "triggers: an unheld ladder must carry an ENTER rung — PRICE_ABOVE(entry) when the buy level is above the live price, PRICE_BELOW(entry) when it is below (mirror for SHORT). Add the ENTER rung or omit the triggers field and it is derived for you. (An UNPRICED view instead carries no plan level and ≥1 REVIEW wake.)",
+            "triggers: this ladder carries a plan (a floor or a target) with no ENTER rung to reach it from. Add the ENTER rung, or omit the triggers field and it is derived for you. To keep the name in view WITHOUT a plan, drop the plan levels entirely.",
           );
         }
       }

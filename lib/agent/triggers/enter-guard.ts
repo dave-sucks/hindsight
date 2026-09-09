@@ -5,10 +5,10 @@
  * to enforce that the triggers[] array matches the thesis's state. Two
  * mirror-image structural rules:
  *
- *   WATCHING (no position yet) — needs ≥1 ENTER, must not carry any HELD-only
- *     action (EXIT/TRIM/ADD/MOVE_STOP). Without ENTER the watchlist sits
- *     inert. With EXIT/TRIM/etc on WATCHING, the trigger evaluator would
- *     spawn orphan tactical EXIT runs on a position that doesn't exist.
+ *   WATCHING (no position yet) — a thesis carrying a PLAN LEVEL (a floor or
+ *     a target) needs the buy level to reach it from, i.e. ≥1 ENTER. A name
+ *     kept in view with no plan levels needs nothing at all, including no
+ *     triggers (DAV-209).
  *
  *   ACTIVE (held position) — needs ≥1 EXIT (the automated stop-loss path),
  *     must not carry any ENTER action (already in, nothing to enter).
@@ -67,32 +67,10 @@ export type EnterTriggerGuardResult =
       ok: false;
       reason:
         | "missing-enter-trigger"
-        | "held-actions-on-watching"
         | "enter-actions-on-active"
         | "missing-exit-trigger-on-active";
       note: string;
     };
-
-/**
- * Action kinds that only make sense on HELD positions (ACTIVE status) — they
- * all operate on an open Alpaca position. A WATCHING thesis has no position,
- * so any of these on a WATCHING row is structurally wrong:
- *
- *   - EXIT       → close a position that doesn't exist
- *   - TRIM       → reduce a position that doesn't exist
- *   - ADD        → scale into a position that doesn't exist
- *   - MOVE_STOP  → adjust the stop on a position that doesn't exist
- *
- * Production evidence on MDB 2026-05-25: the thesis-writer's refresh path
- * landed a WATCHING thesis with 3 EXIT triggers (earnings_miss, guidance
- * cut, price_below stop). Trigger evaluator would have spawned orphan
- * tactical EXIT runs the moment price crossed the stop — close_position
- * refuses cleanly ("no position"), but the noisy logs on day 1 of live
- * trading are exactly what we don't want. ENTER + REVIEW are the only
- * legal actions on WATCHING.
- */
-const HELD_ONLY_ACTIONS = ["EXIT", "TRIM", "ADD", "MOVE_STOP"] as const;
-type HeldOnlyAction = (typeof HELD_ONLY_ACTIONS)[number];
 
 /**
  * Returns ok:true unless the resulting thesis is LONG/SHORT and one of:
@@ -197,24 +175,21 @@ export function validateEnterTriggerRequired(
   const hasEnter = args.triggers.some((t) => t.action === "ENTER");
   if (hasEnter) return { ok: true };
 
-  // The set-down state (DAV-224, WATCHLIST_STATES.md §5). A directional
-  // watch whose ladder carries NO plan level but ≥1 REVIEW-action wake is a
-  // DEMOTED name — "not worth a priced plan right now; wake me if…" — the
-  // same shape the automatic DEMOTE fire (L5) already leaves behind. The
-  // guard exists to prevent INERT rows and half-plans, not to forbid
-  // setting a plan down: no plan at all + a wake = legal; any plan level
-  // present (isPlanLevel — the set the DEMOTE fire strips) = the full-plan
-  // rules apply and an ENTER is required as before.
+  // A directional watch with NO plan level is a name being kept in view
+  // without a buy plan — "not worth pricing right now." That is legal with
+  // any triggers or none at all (DAV-209): a stock can be pinned with
+  // nothing on it, and the only cost of doing so is that nothing wakes it.
+  // What this guard still refuses is a HALF plan — a floor or a target
+  // sitting on the row with no buy level to reach them from.
   const hasPlanLevel = args.triggers.some((t) =>
     isPlanLevel(t, args.direction),
   );
-  const hasReviewWake = args.triggers.some((t) => t.action === "REVIEW");
-  if (!hasPlanLevel && hasReviewWake) return { ok: true };
+  if (!hasPlanLevel) return { ok: true };
 
   const note =
     args.targetPrice == null
-      ? `A directional WATCHING thesis needs a priced plan: entry_price (the buy level the ENTER trigger fires on) and target_price. Supply both, set direction to PASS for institutional-memory-only entries, or — to set the plan down and keep watching for free — resend triggers with the plan levels removed and at least one REVIEW-action wake condition ("review if the price crosses $X / moves 8% in a day / on the next earnings print").`
-      : `Your supplied triggers[] array displaced the default ENTER trigger via the (predicate, action) merge bucket. Add a trigger with action: "ENTER" and a price predicate at the BUY level — PRICE_ABOVE when that level is above the live price (a breakout you want confirmed), PRICE_BELOW when it is below (a pullback you want to pay); a short mirrors. Without it the watchlist trigger pipeline can't promote this thesis. (If your intent is to STOP pricing this name, that's a demotion: resend with the plan levels removed entirely and keep ≥1 REVIEW-action wake.)`;
+      ? `This thesis carries a plan level (a floor or a target) with no buy level to reach it from. Either finish the plan — entry_price (the level the ENTER trigger fires on) plus target_price — or drop the plan levels entirely and keep the name in view without one.`
+      : `Your supplied triggers[] array displaced the default ENTER trigger via the (predicate, action) merge bucket. Add a trigger with action: "ENTER" and a price predicate at the BUY level — PRICE_ABOVE when that level is above the live price (a breakout you want confirmed), PRICE_BELOW when it is below (a pullback you want to pay); a short mirrors. Without it the watchlist trigger pipeline can't promote this thesis. (If your intent is to STOP pricing this name, resend with the plan levels removed entirely.)`;
 
   return {
     ok: false,

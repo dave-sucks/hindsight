@@ -307,9 +307,16 @@ export const DEFAULT_LADDER_IDS = {
 /**
  * "Look at this again every N days", counted from the last actual review.
  *
- * Replaces the review-date column and `HORIZON_REVIEW_DAYS`. The account
- * carries the 7-day rule; a horizon that needs a tighter one overrides it
- * through the ordinary cascade, and a thesis can override that in turn.
+ * The review clock, and the ONLY thing that decides whether an analyst
+ * spends money reviewing a watched name (DAV-209). With one, the daily run
+ * picks the name up on that schedule; without one, nothing touches it until
+ * one of its own triggers fires.
+ *
+ * A clock is chosen, never inherited. The WATCHING templates below do not
+ * stamp one: whoever creates the thesis says how often to look at it (or
+ * that nobody should), and passes that through as `review_cadence_days`.
+ * Held templates keep theirs — a position we own is reviewed on a schedule
+ * by default.
  */
 export function reviewCadenceTrigger(days: number): Trigger {
   return {
@@ -359,9 +366,9 @@ export function nextReviewFrom(
  * The review date every reporting surface shows, derived at read time.
  *
  * Null when there is no scheduled review: terminal rows, and WATCHING rows
- * with no cadence rung of their own (W1, DAV-216 — watch items opt IN to a
- * cadence; inventing one from the horizon would display a review that will
- * never fire). Everything else falls through to `nextReviewFrom`, whose
+ * with no clock of their own (DAV-209 — a watched name is reviewed iff it
+ * carries a clock; inventing one from the horizon would display a review
+ * that will never fire). Everything else falls through to `nextReviewFrom`, whose
  * horizon fallback matches what a held row inherits from the account rule
  * even when the caller only has the thesis's own trigger list.
  */
@@ -790,7 +797,6 @@ function watchingPlanLevels(
 
 function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
-  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.CATALYST));
   const direction = thesis.direction ?? "LONG";
 
   // ── Setup-aware default ENTER trigger for CATALYST ────────────────────
@@ -909,7 +915,6 @@ function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
 
 function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
-  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TRADE));
   const direction = thesis.direction ?? "LONG";
 
   // TRADE-horizon entries are tight by design — the agent set a specific
@@ -951,7 +956,6 @@ function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
 
 function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
-  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TARGET));
   const direction = thesis.direction ?? "LONG";
 
   const entry = watchingEntryTrigger(thesis, direction, 1);
@@ -1006,7 +1010,6 @@ function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
 
 function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
-  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.COMPOUNDER));
   const direction = thesis.direction ?? "LONG";
 
   // COMPOUNDER entry requires patience — short-term spikes through the
