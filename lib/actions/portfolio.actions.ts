@@ -152,7 +152,7 @@ export interface SpyBenchmark {
 /** A single item in the homepage activity timeline. */
 export interface ActivityFeedItem {
   id: string;
-  type: "OPENED" | "CLOSED" | "MODIFIED" | "PROPOSED" | "REJECTED";
+  type: "OPENED" | "CLOSED" | "MODIFIED" | "PROPOSED" | "REJECTED" | "BLOCKED";
   positionId: string;
   symbol: string;
   direction: string | null;
@@ -1240,6 +1240,47 @@ export async function getDashboardData(
       outcome: null,
       analystName: action.position.analyst?.name ?? null,
     });
+  }
+
+  // Refused buys. When the analyst tried to buy and place_trade said no
+  // (composite under the analyst's minimum, size outside the band, live
+  // cap), the receipt #565 writes is the only record — nothing else in the
+  // app showed it, so a stock the analyst wanted vanished from view (VST and
+  // CYTK, 2026-09-08). Surface the last two weeks so the principal can read
+  // the reason and buy by hand if they disagree.
+  try {
+    const analystIds = dbAgentConfigs.map((a) => a.id);
+    const analystNameById = new Map(dbAgentConfigs.map((a) => [a.id, a.name] as const));
+    const blocked = await prisma.gateRejection.findMany({
+      where: {
+        tool: "place_trade",
+        analystId: { in: analystIds },
+        createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: { id: true, ticker: true, summary: true, detail: true, analystId: true, createdAt: true },
+    });
+    for (const b of blocked) {
+      if (!b.ticker) continue;
+      activityFeed.push({
+        id: `blocked-${b.id}`,
+        type: "BLOCKED",
+        positionId: "",
+        symbol: b.ticker,
+        direction: null,
+        timestamp: b.createdAt.toISOString(),
+        label: "Buy blocked",
+        source: "agent",
+        reason: b.detail ?? b.summary,
+        pnl: null,
+        pnlPct: null,
+        outcome: null,
+        analystName: b.analystId ? analystNameById.get(b.analystId) ?? null : null,
+      });
+    }
+  } catch {
+    /* the receipts table is telemetry — its absence must not break the page */
   }
 
   // Sort descending by timestamp, keep top 40

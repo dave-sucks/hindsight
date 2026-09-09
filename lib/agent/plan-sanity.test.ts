@@ -293,3 +293,17 @@ describe("computePlanSanity — FLOOR_INSIDE_NOISE (the HWM shape)", () => {
     expect(flags.some((x) => x.kind === "FLOOR_INSIDE_NOISE")).toBe(false);
   });
 });
+
+describe("computePlanSanity — COMPOSITE_BELOW_MINIMUM (VST 2026-09-08)", () => {
+  it("flags a 5/10 plan on an analyst that only buys at 78", () => {
+    const flags = computePlanSanity({ ...base, entryPrice: 151, targetPrice: 210, stopLoss: 132, currentPrice: 149, composite: 5, minConfidence: 78 });
+    const f = flags.find((x) => x.kind === "COMPOSITE_BELOW_MINIMUM");
+    expect(f).toBeDefined();
+    expect(f?.text).toContain("5/10");
+    expect(f?.text).toContain("7.8/10");
+  });
+  it("stays quiet at or above the bar, and without either input", () => {
+    expect(computePlanSanity({ ...base, entryPrice: 75, targetPrice: 91, stopLoss: 67, currentPrice: 72, composite: 9, minConfidence: 50 }).some((x) => x.kind === "COMPOSITE_BELOW_MINIMUM")).toBe(false);
+    expect(computePlanSanity({ ...base, entryPrice: 75, targetPrice: 91, stopLoss: 67, currentPrice: 72, composite: 5 }).some((x) => x.kind === "COMPOSITE_BELOW_MINIMUM")).toBe(false);
+  });
+});

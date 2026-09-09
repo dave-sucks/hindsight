@@ -41,7 +41,8 @@ export type PlanSanityFlag = {
     | "STOP_ALREADY_BREACHED"
     | "STOP_INSIDE_NOISE"
     | "FLOOR_INSIDE_NOISE"
-    | "PLAN_BELOW_RR_FLOOR";
+    | "PLAN_BELOW_RR_FLOOR"
+    | "COMPOSITE_BELOW_MINIMUM";
   /** Plain-language statement of the arithmetic, with the numbers. */
   text: string;
 };
@@ -84,6 +85,10 @@ export function computePlanSanity(args: {
    * absent ⇒ the noise check is skipped, everything else still runs.
    */
   dayRangePct?: number | null;
+  /** The thesis's 4-dimension composite, out of 10. Optional. */
+  composite?: number | null;
+  /** The analyst's minimum confidence to trade, 0–100. Optional. */
+  minConfidence?: number | null;
 }): PlanSanityFlag[] {
   const {
     status,
@@ -93,6 +98,8 @@ export function computePlanSanity(args: {
     stopLoss,
     currentPrice,
     dayRangePct,
+    composite,
+    minConfidence,
   } = args;
   if (status !== "WATCHING") return [];
   if (direction !== "LONG" && direction !== "SHORT") return [];
@@ -186,6 +193,25 @@ export function computePlanSanity(args: {
           `so an ordinary ${isLong ? "red" : "green"} day erases this plan. Put the floor under real structure with room, or say in one sentence that a break of today's level is meant to end the plan.`,
       });
     }
+  }
+
+  // The analyst's own bar. place_trade refuses any buy whose composite is
+  // under the analyst's minimum confidence, so a priced plan below it can
+  // never fill — and the agent found that out at the crossing (VST
+  // 2026-09-08: 5/10 against a 78% bar, then moved the buy level instead
+  // of the score). Say it on the row, before the crossing.
+  if (
+    composite != null &&
+    minConfidence != null &&
+    minConfidence > 0 &&
+    composite * 10 < minConfidence
+  ) {
+    flags.push({
+      kind: "COMPOSITE_BELOW_MINIMUM",
+      text:
+        `This plan scores ${composite}/10 and this analyst only buys at ${(minConfidence / 10).toFixed(1)}/10 or better (its minimum confidence). ` +
+        `The buy will be refused the day the level fires. Re-score honestly if the setup has improved, or set the plan down — moving the buy level does not change this.`,
+    });
   }
 
   // The floor the write paths enforce, read back against what's stored:

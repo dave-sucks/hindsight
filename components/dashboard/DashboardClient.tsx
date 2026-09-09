@@ -274,11 +274,13 @@ const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; 
   // Trade-as-Proposal — see docs/plans/TRADE_AS_PROPOSAL.md
   PROPOSED: { label: 'Pending',        dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
   REJECTED: { label: 'Rejected',       dotClass: 'bg-muted-foreground/40',    tooltip: 'Proposal rejected — never executed' },
+  BLOCKED:  { label: 'Buy blocked',    dotClass: 'bg-negative',               tooltip: 'The analyst tried to buy and the trade was refused — read why, and buy by hand if you disagree' },
 };
 
 function getDecisionAction(item: ActivityFeedItem): string {
   if (item.type === 'PROPOSED') return 'PROPOSED';
   if (item.type === 'REJECTED') return 'REJECTED';
+  if (item.type === 'BLOCKED') return 'BLOCKED';
   if (item.type === 'OPENED') return item.direction === 'SHORT' ? 'SHORT' : 'INITIATE';
   if (item.type === 'CLOSED') return 'EXIT';
   const lbl = item.label.toLowerCase();
@@ -309,6 +311,7 @@ function getActivitySentence(item: ActivityFeedItem): string {
     }
     return `Position closed by ${src}.`;
   }
+  if (item.type === 'BLOCKED' && item.reason) return item.reason;
   if (item.reason) return `${item.reason} (via ${src}).`;
   return `${item.label} via ${src}.`;
 }
@@ -409,7 +412,7 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
       <HoverCardTrigger
         render={
           <Link
-            href={`/trades/${item.positionId}`}
+            href={item.type === 'BLOCKED' ? `/stocks/${item.symbol}` : `/trades/${item.positionId}`}
             className="flex items-center gap-1.5 rounded-md p-2 hover:bg-muted/70 transition-colors"
           />
         }
@@ -460,7 +463,7 @@ function HomeBottomSection({ activity, loading, coverage }: {
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
 
   const filteredActivity = activity.filter((a) => {
-    if (activityFilter === 'opens') return a.type === 'OPENED';
+    if (activityFilter === 'opens') return a.type === 'OPENED' || a.type === 'BLOCKED';
     if (activityFilter === 'closes') return a.type === 'CLOSED';
     if (activityFilter === 'updates') return a.type === 'MODIFIED';
     return true;

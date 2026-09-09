@@ -20,6 +20,7 @@
  * read.
  */
 
+import { getThesisComposite } from "@/lib/agent/thesis-narrative";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
@@ -135,7 +136,9 @@ export interface ResolverThesisInput {
   triggers: unknown; // Json column; parsed via triggersArraySchema by caller
   catalystDate: Date | null;
   createdAt: Date;
-  scoring: unknown; // for entryQualityScore surfacing
+  scoring: unknown; // for entryQualityScore surfacing + the composite
+  /** The owning analyst's minimum confidence (0–100), for the plan flag. */
+  minConfidence?: number | null;
   /** Pre-parsed trigger array — caller invokes triggersArraySchema.safeParse. */
   parsedTriggers: Trigger[];
   /**
@@ -312,6 +315,8 @@ export function buildResolvedEnvelope(args: {
     stopLoss: thesis.stopLoss ?? null,
     currentPrice,
     dayRangePct: thesis.dayRangePct ?? null,
+    composite: getThesisComposite({ scoring: thesis.scoring }),
+    minConfidence: thesis.minConfidence ?? null,
   });
 
   return {
