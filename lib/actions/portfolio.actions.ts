@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { reviewClockDays } from "@/lib/agent/triggers/review-clock";
 import { createClient } from "@/lib/supabase/server";
 import { getAccount, getFundingActivities, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
 import {
@@ -141,6 +142,8 @@ export interface RecentPick {
   analystId: string | null;
   runId: string;
   sourcesUsed: unknown;
+  /** Days on this name's review clock; null = on no schedule (DAV-225). */
+  reviewCadenceDays: number | null;
 }
 
 export interface SpyBenchmark {
@@ -467,6 +470,7 @@ export async function getDashboardData(
         targetPrice: true,
         stopLoss: true,
         createdAt: true,
+        triggers: true,
         researchRun: {
           select: { agentConfig: { select: { id: true, name: true } } },
         },
@@ -1061,6 +1065,7 @@ export async function getDashboardData(
       analystId: p.researchRun?.agentConfig?.id ?? null,
       runId: p.researchRunId,
       sourcesUsed: [],
+      reviewCadenceDays: reviewClockDays(p.triggers),
     };
   });
 

@@ -397,6 +397,9 @@ const ADDABLE_PREDICATE_KINDS = new Set<TriggerPredicate["kind"]>([
   "PRICE_MOVE_PCT",
   "GAIN_FROM_ENTRY",
   "TRAILING_FROM_HIGH",
+  // The review clock — the one rung that decides whether an analyst looks at
+  // this name at all, so the principal must be able to put one on and off.
+  "REVIEW_CADENCE",
 ]);
 
 /** Kinds that evaluate off the open position (avgCost / peakPrice). With no
@@ -432,6 +435,11 @@ function addedTriggerRationale(
   action: TriggerAction,
   predicate: TriggerPredicate,
 ): string {
+  // A clock is a schedule, not a condition — "Review when every 7 days since
+  // the last review" is not a sentence.
+  if (predicate.kind === "REVIEW_CADENCE") {
+    return `Look at this every ${predicate.days} day(s), from the last review (set by principal).`;
+  }
   const cond = predicateSentence(predicate).toLowerCase();
   switch (action) {
     case "EXIT":
@@ -458,7 +466,7 @@ export async function applyTriggerAdd(
   if (!ADDABLE_PREDICATE_KINDS.has(input.predicate.kind)) {
     throw new ThesisEditError(
       "INVALID",
-      `Can only add a target-price, movement-amount, gain-from-entry, or trailing-from-high trigger (got ${input.predicate.kind}).`,
+      `Can only add a target-price, movement-amount, gain-from-entry, trailing-from-high, or review-clock trigger (got ${input.predicate.kind}).`,
     );
   }
   let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);

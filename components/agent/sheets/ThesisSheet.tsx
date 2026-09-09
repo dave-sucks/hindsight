@@ -42,6 +42,8 @@ import {
 } from "@/components/ui/tooltip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
+import { ReviewClockIcon } from "@/components/ui/review-clock-icon";
+import { reviewClockDays } from "@/lib/agent/triggers/review-clock";
 import {
   ThesisTriggersSection,
   type ThesisDossier,
@@ -113,6 +115,8 @@ export type ThesisCardData = {
   // direction=null). Threaded so the sheet's isPass keys on status.
   status?: "HOLDING" | "RETIRED" | "WATCHING" | "PROMOTED" | "PASSED";
   created_at?: string;
+  /** Days on this name's review clock; null = on no schedule (DAV-225). */
+  review_cadence_days?: number | null;
   /**
    * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
    * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
@@ -1324,6 +1328,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
             <>
               <StatusPill status={liveStatus} />
               <ConvictionBadge conviction={conviction} rationale={convictionRationale} />
+              <ReviewClockIcon days={reviewClockDays(state.triggers)} />
             </>
           }
           actions={<PinButton ticker={ticker} />}

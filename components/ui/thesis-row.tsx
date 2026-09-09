@@ -10,6 +10,7 @@ import { Favicon } from "@/components/intelligence/signal-feed";
 import { getTradeStatusDisplay } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
+import { ReviewClockIcon } from "@/components/ui/review-clock-icon";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
 import { ThesisChart } from "@/components/domain/thesis-chart";
@@ -79,6 +80,8 @@ export interface ThesisRowData {
    * `getThesisStatusDisplay` falls back gracefully on unknown values.
    */
   status?: string;
+  /** Days on this name's review clock; null = on no schedule (DAV-225). */
+  reviewCadenceDays?: number | null;
   position?: {
     id: string;
     status: string;
@@ -297,6 +300,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
             {t.companyName && <p className="font-mono text-[11px] text-muted-foreground">{t.ticker}</p>}
           </div>
           <div className="flex items-center gap-2">
+            <ReviewClockIcon days={t.reviewCadenceDays ?? null} />
             {t.currentPrice != null && <span className="text-base tabular-nums">{$(t.currentPrice)}</span>}
             {deltaPct != null && <PctArrow value={deltaPct} />}
           </div>

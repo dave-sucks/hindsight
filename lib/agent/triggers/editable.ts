@@ -4,9 +4,10 @@
  * (renders the label + input) and the trigger-edit write path (applies the
  * new value) so the two never drift.
  *
- * Editable set: the PRICE levels (take-profit / stop the principal drags) and
- * the PRICE_MOVE_PCT percent — all strictly-positive values, which keeps the
- * write-path's `value > 0` guard exactly right (a $0 price / 0% move is
+ * Editable set: the PRICE levels (take-profit / stop the principal drags),
+ * the PRICE_MOVE_PCT percent, and the REVIEW_CADENCE days (the review clock)
+ * — all strictly-positive values, which keeps the write-path's `value > 0`
+ * guard exactly right (a $0 price, a 0% move and a 0-day clock are all
  * invalid). Every other predicate — earnings surprise %, RSI, time-elapsed
  * days, SMA, signal, filing, review-date, composites — renders read-only in
  * the popover. Broadening to those (where 0 can be valid) is a follow-up.
@@ -22,6 +23,8 @@ export interface EditableTriggerField {
   suffix?: string;
   min?: number;
   step?: number;
+  /** Quick values offered as buttons above the input. */
+  presets?: number[];
 }
 
 export function editableTriggerField(
@@ -39,6 +42,17 @@ export function editableTriggerField(
       return { label: "Gain %", value: p.pct, suffix: "%", min: 0, step: 0.5 };
     case "TRAILING_FROM_HIGH":
       return { label: "Trail %", value: p.pct, suffix: "%", min: 1, step: 0.5 };
+    case "REVIEW_CADENCE":
+      // The review clock — days between scheduled reviews. Editable here so
+      // it lives in the same popover as every other trigger (DAV-225).
+      return {
+        label: "Review every",
+        value: p.days,
+        suffix: "days",
+        min: 1,
+        step: 1,
+        presets: [1, 7, 30],
+      };
     default:
       return null;
   }
@@ -57,6 +71,8 @@ export function withEditedValue(
     case "GAIN_FROM_ENTRY":
     case "TRAILING_FROM_HIGH":
       return { ...p, pct: value };
+    case "REVIEW_CADENCE":
+      return { ...p, days: value };
     default:
       return p;
   }
