@@ -60,14 +60,14 @@ export function WatchlistDropdown({ symbol, analysts }: WatchlistDropdownProps) 
     );
     // Research mints the coverage itself, so don't seed a bare row first.
     const work = choices.writeThesisNow
-      ? sendToThesisWriter(analyst.id, symbol, choices.reviewCadenceDays)
+      ? sendToThesisWriter(analyst.id, symbol, choices.reviewClockDays)
       : addWatchlistItem(
           analyst.id,
           symbol,
           'Added manually',
           'USER',
           'NORMAL',
-          choices.reviewCadenceDays,
+          choices.reviewClockDays,
         );
     work.catch(console.error);
   }
