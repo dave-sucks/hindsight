@@ -10,7 +10,6 @@ import { Favicon } from "@/components/intelligence/signal-feed";
 import { getTradeStatusDisplay } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
-import { ReviewClockIcon } from "@/components/ui/review-clock-icon";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
 import { ThesisChart } from "@/components/domain/thesis-chart";
@@ -80,8 +79,8 @@ export interface ThesisRowData {
    * `getThesisStatusDisplay` falls back gracefully on unknown values.
    */
   status?: string;
-  /** Days on this name's review clock; null = on no schedule (DAV-225). */
-  reviewClockDays?: number | null;
+  /** Days between the agent's reviews; null = a plain watch (DAV-225). */
+  agentWatchDays?: number | null;
   position?: {
     id: string;
     status: string;
@@ -132,6 +131,8 @@ function domain(url: string): string {
 interface RowBanner {
   label: string;
   dotClass: string;
+  /** The agent reviews this on its own schedule — breathing dot + shimmer. */
+  agentWatched?: boolean;
   sentence: string | null;
   gain: TradeStatementGain | null;
   /**
@@ -241,9 +242,14 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
   const status = (t.status ?? "").toUpperCase();
 
   if (status === "WATCHING") {
+    // A name the agent revisits on its own schedule reads as "Agent Watch",
+    // with the breathing dot. One you keep an eye on yourself stays
+    // "Watching", still and gray.
+    const agentWatched = t.agentWatchDays != null;
     return {
-      label: d.label,
+      label: agentWatched ? "Agent Watch" : d.label,
       dotClass: d.dotClass,
+      agentWatched,
       sentence:
         t.targetPrice != null && t.targetPrice > 0
           ? `buy above ${$(t.targetPrice)}`
@@ -300,7 +306,6 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
             {t.companyName && <p className="font-mono text-[11px] text-muted-foreground">{t.ticker}</p>}
           </div>
           <div className="flex items-center gap-2">
-            <ReviewClockIcon days={t.reviewClockDays ?? null} />
             {t.currentPrice != null && <span className="text-base tabular-nums">{$(t.currentPrice)}</span>}
             {deltaPct != null && <PctArrow value={deltaPct} />}
           </div>
@@ -352,6 +357,12 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
           <TradeStatement
             label={banner.label}
             dotClass={banner.dotClass}
+            dot={
+              banner.agentWatched ? (
+                <span className="agent-watch-dot size-2 rounded-full shrink-0 self-center bg-foreground" />
+              ) : undefined
+            }
+            labelClassName={banner.agentWatched ? "shimmer-text" : undefined}
             sentence={banner.sentence}
             gain={banner.gain}
           />

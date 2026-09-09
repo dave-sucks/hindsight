@@ -268,6 +268,22 @@
   color: transparent;
   animation: shimmer-slide 2.5s linear infinite;
 }
+/* ── Agent Watch — a name the agent reviews on its own schedule ────────── */
+/* Slow on purpose: this is ambient state, not activity. It should read as a
+ * heartbeat you notice once, never as something demanding attention. */
+@keyframes agent-watch-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.3; transform: scale(0.8); }
+}
+
+.agent-watch-dot {
+  animation: agent-watch-pulse 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-watch-dot { animation: none; }
+}
+
 /* ── Single breathing dot — the one and only in-flight indicator ──────── */
 /* Shown while the assistant message is streaming (data-status="running").
  * Covers model-thinking AND tool-in-flight, so it stays lit the whole time

@@ -29,7 +29,7 @@ import {
 
 export interface AddToWatchlistChoices {
   writeThesisNow: boolean;
-  reviewClockDays: number | null;
+  agentWatchDays: number | null;
 }
 
 const CADENCES = [
@@ -52,14 +52,14 @@ export function AddToWatchlistDialog({
   onConfirm: (choices: AddToWatchlistChoices) => void;
 }) {
   const [research, setResearch] = React.useState(false);
-  const [onClock, setOnClock] = React.useState(false);
+  const [agentWatch, setAgentWatch] = React.useState(false);
   const [cadence, setCadence] = React.useState("7");
 
   // Fresh questions per name — the last answer is not the next default.
   React.useEffect(() => {
     if (open) {
       setResearch(false);
-      setOnClock(false);
+      setAgentWatch(false);
       setCadence("7");
     }
   }, [open]);
@@ -85,11 +85,11 @@ export function AddToWatchlistDialog({
         <div className="flex items-center gap-3">
           <Checkbox
             id="on-clock"
-            checked={onClock}
-            onCheckedChange={(v) => setOnClock(v === true)}
+            checked={agentWatch}
+            onCheckedChange={(v) => setAgentWatch(v === true)}
           />
-          <Label htmlFor="on-clock">Review on a schedule</Label>
-          {onClock ? (
+          <Label htmlFor="on-clock">Let the agent review it on a schedule</Label>
+          {agentWatch ? (
             <Select value={cadence} onValueChange={(v) => setCadence(v ?? "7")}>
               <SelectTrigger size="sm" aria-label="Review schedule">
                 <SelectValue />
@@ -113,7 +113,7 @@ export function AddToWatchlistDialog({
             onClick={() => {
               onConfirm({
                 writeThesisNow: research,
-                reviewClockDays: onClock ? Number(cadence) : null,
+                agentWatchDays: agentWatch ? Number(cadence) : null,
               });
               onOpenChange(false);
             }}

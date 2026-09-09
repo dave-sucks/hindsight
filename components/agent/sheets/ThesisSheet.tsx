@@ -42,8 +42,11 @@ import {
 } from "@/components/ui/tooltip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
-import { ReviewClockIcon } from "@/components/ui/review-clock-icon";
-import { reviewClockDays } from "@/lib/agent/triggers/review-clock";
+import { SendToAgentButton } from "@/components/stocks/SendToAgentButton";
+import {
+  agentWatchDays,
+  agentWatchTooltip,
+} from "@/lib/agent/triggers/agent-watch";
 import {
   ThesisTriggersSection,
   type ThesisDossier,
@@ -115,8 +118,8 @@ export type ThesisCardData = {
   // direction=null). Threaded so the sheet's isPass keys on status.
   status?: "HOLDING" | "RETIRED" | "WATCHING" | "PROMOTED" | "PASSED";
   created_at?: string;
-  /** Days on this name's review clock; null = on no schedule (DAV-225). */
-  review_clock_days?: number | null;
+  /** Days between the agent's reviews; null = a plain watch (DAV-225). */
+  agent_watch_days?: number | null;
   /**
    * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
    * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
@@ -162,13 +165,42 @@ export function hasFundamentalDetails(f: FundamentalsData): boolean {
 // cell, no per-status branches — same shape that appears on the
 // read-theses table, the carousel cards, the trade detail header.
 
-function StatusPill({ status }: { status: ThesisStatus }) {
+// A watched name the agent revisits on its own schedule reads as "Agent
+// Watch", with a slow breathing dot and a shimmer on the word. Ambient, not
+// urgent: it should register once and then sit there. A plain watch — one
+// you keep an eye on yourself — stays "Watching" with a still gray dot.
+function StatusPill({
+  status,
+  agentWatchDays: days = null,
+}: {
+  status: ThesisStatus;
+  /** Days between the agent's reviews; null = it isn't reviewing this. */
+  agentWatchDays?: number | null;
+}) {
   const display = getThesisStatusDisplay(status);
+  const agentWatched = status === "WATCHING" && days != null;
+
+  if (!agentWatched) {
+    return (
+      <Badge variant="secondary" className="gap-1.5 font-normal">
+        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
+        {display.label}
+      </Badge>
+    );
+  }
+
   return (
-    <Badge variant="secondary" className="gap-1.5 font-normal">
-      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", display.dotClass)} />
-      {display.label}
-    </Badge>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge variant="secondary" className="gap-1.5 font-normal">
+            <span className="agent-watch-dot h-1.5 w-1.5 rounded-full shrink-0 bg-foreground" />
+            <span className="shimmer-text">Agent Watch</span>
+          </Badge>
+        }
+      />
+      <TooltipContent side="bottom">{agentWatchTooltip(days)}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -1326,12 +1358,28 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           exchange={quote?.exchange ?? null}
           badges={
             <>
-              <StatusPill status={liveStatus} />
+              <StatusPill
+                status={liveStatus}
+                agentWatchDays={agentWatchDays(state.triggers)}
+              />
               <ConvictionBadge conviction={conviction} rationale={convictionRationale} />
-              <ReviewClockIcon days={reviewClockDays(state.triggers)} />
             </>
           }
-          actions={<PinButton ticker={ticker} />}
+          actions={
+            <>
+              {/* Hand the name to the agent. Same strip as the pin — one
+                  action on this stock, always in the same place. */}
+              {thesis_id && state.analystId ? (
+                <SendToAgentButton
+                  analystId={state.analystId}
+                  ticker={ticker}
+                  thesisId={thesis_id}
+                  onSent={() => setRefreshKey((k) => k + 1)}
+                />
+              ) : null}
+              <PinButton ticker={ticker} />
+            </>
+          }
         />
         {/* Live current price + day's change. Comes from the separate
             /quote endpoint (slow — Finnhub call) so this block usually

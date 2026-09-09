@@ -104,8 +104,6 @@ import {
   levelScopeLabel,
   levelBadgeLabel,
 } from "@/lib/agent/triggers/format";
-import { reviewClockDays } from "@/lib/agent/triggers/review-clock";
-import { sendToThesisWriter } from "@/lib/actions/watchlist.actions";
 import {
   isDirectEligiblePredicate,
   type TriggerPredicate as SharedTriggerPredicate,
@@ -800,7 +798,7 @@ export function TriggerGroups({
 // applyTriggerAdd rejects them un-held as the backend backstop.
 // All fire through the same evaluator → trigger pipeline as every trigger.
 
-type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL" | "CLOCK";
+type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL" | "CADENCE";
 
 export function AddTriggerDialog({
   held,
@@ -834,8 +832,9 @@ export function AddTriggerDialog({
   const isMove = criterion === "MOVE";
   const isGain = criterion === "GAIN";
   const isTrail = criterion === "TRAIL";
-  /** The review clock — a schedule in days, so no direction and no $ or %. */
-  const isClock = criterion === "CLOCK";
+  // Agent Watch — a review schedule in days, so no direction and no $ or %.
+  // Adding one is what makes a plain watch an Agent Watch.
+  const isCadence = criterion === "CADENCE";
   /** %-valued criteria share the % input adornment + 0.5 step. */
   const isPct = isMove || isGain || isTrail;
   const showFireMode = action === "EXIT" && held;
@@ -849,7 +848,7 @@ export function AddTriggerDialog({
       : ([] as const)),
     { v: "MOVE", l: held || !allowAbsolutePrice ? "% Move" : "% Movement" },
     ...(held ? ([{ v: "GAIN", l: "% Gain" }, { v: "TRAIL", l: "% Trail" }] as const) : ([] as const)),
-    { v: "CLOCK", l: "Clock" },
+    { v: "CADENCE", l: "Agent Watch" },
   ];
 
   const dirOptions =
@@ -870,7 +869,7 @@ export function AddTriggerDialog({
     if (criterion === "GAIN") setDir("UP");
     else if (criterion === "MOVE") setDir("DOWN");
     else if (criterion === "PRICE") setDir("BELOW");
-    if (criterion === "CLOCK") setAction("REVIEW");
+    if (criterion === "CADENCE") setAction("REVIEW");
   }, [criterion]);
 
   // Default fire mode by action — EXIT → DIRECT, else TACTICAL. Mirrors the
@@ -890,13 +889,13 @@ export function AddTriggerDialog({
     (!(isMove || isTrail) || num < 100) &&
     // Zod floors the trail at 1% (sub-1% off the peak re-fires on noise).
     (!isTrail || num >= 1) &&
-    (!isClock || Number.isInteger(num));
+    (!isCadence || Number.isInteger(num));
 
   async function save() {
     if (!valid) return;
     setPending(true);
     setErr(null);
-    const predicate = isClock
+    const predicate = isCadence
       ? { kind: "REVIEW_CADENCE", days: num }
       : isGain
       ? { kind: "GAIN_FROM_ENTRY", pct: num, direction: dir }
@@ -1010,7 +1009,7 @@ export function AddTriggerDialog({
             has no direction (orientation follows the thesis direction), so
             the group collapses to the % input alone. */}
         <ButtonGroup className="w-full">
-          {isTrail || isClock ? null : (
+          {isTrail || isCadence ? null : (
             <Select
               value={dir}
               onValueChange={(v) => {
@@ -1033,7 +1032,7 @@ export function AddTriggerDialog({
             </Select>
           )}
           <InputGroup>
-            {isPct || isClock ? null : (
+            {isPct || isCadence ? null : (
               <InputGroupAddon>
                 <InputGroupText>$</InputGroupText>
               </InputGroupAddon>
@@ -1042,23 +1041,23 @@ export function AddTriggerDialog({
               type="number"
               inputMode="decimal"
               value={val}
-              min={isTrail || isClock ? 1 : 0}
-              step={isClock ? 1 : isPct ? 0.5 : 0.01}
-              placeholder={isClock ? "7" : isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"}
+              min={isTrail || isCadence ? 1 : 0}
+              step={isCadence ? 1 : isPct ? 0.5 : 0.01}
+              placeholder={isCadence ? "7" : isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"}
               onChange={(e) => setVal(e.target.value)}
               disabled={pending}
             />
-            {isPct || isClock ? (
+            {isPct || isCadence ? (
               <InputGroupAddon align="inline-end">
-                <InputGroupText>{isClock ? "days" : "%"}</InputGroupText>
+                <InputGroupText>{isCadence ? "days" : "%"}</InputGroupText>
               </InputGroupAddon>
             ) : null}
           </InputGroup>
         </ButtonGroup>
 
         <p className="text-xs text-muted-foreground">
-          {isClock
-            ? "Look at this name every N days, from the last real review. Without a clock, nothing reviews it until another trigger fires."
+          {isCadence
+            ? "The agent reviews this name every N days, counting from its last real review. Without it, nothing reviews the name until another trigger fires."
             : isGain
             ? `Fires when the position is ${dir === "UP" ? "up" : "down"} this much from entry (avg cost) — cumulative, not a single day.`
             : isTrail
@@ -1143,57 +1142,6 @@ interface Props {
   onChanged?: () => void;
 }
 
-/**
- * Hand this name to the thesis writer, and put it on the horizon's clock so
- * the result stops being invisible (DAV-225). Shown only on a watch with no
- * clock — one already scheduled is already going to be looked at.
- */
-function SendToResearchButton({
-  analystId,
-  ticker,
-  thesisId,
-  onChanged,
-}: {
-  analystId: string;
-  ticker: string;
-  thesisId: string;
-  onChanged?: () => void;
-}) {
-  const [pending, setPending] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function send() {
-    setPending(true);
-    setErr(null);
-    try {
-      await sendToThesisWriter(analystId, ticker, "horizon", "refresh", thesisId);
-      setSent(true);
-      onChanged?.();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPending(false);
-    }
-  }
-
-  if (sent) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Researching {ticker} — it lands shortly, on a review schedule.
-      </p>
-    );
-  }
-  return (
-    <div className="space-y-1">
-      <Button variant="outline" size="sm" disabled={pending} onClick={() => void send()}>
-        Send to research
-      </Button>
-      {err ? <p className="text-xs text-negative">{err}</p> : null}
-    </div>
-  );
-}
-
 export function ThesisTriggersSection({
   thesisId,
   data: dataProp,
@@ -1260,20 +1208,6 @@ export function ThesisTriggersSection({
 
   return (
     <div className="space-y-2">
-      {/* A name with no clock is never picked up by a run; until now only
-          agents could dispatch the writer, so there was no way to say "go
-          look at this" by hand. */}
-      {editable &&
-      !editableOnly &&
-      data.analystId &&
-      reviewClockDays(data.triggers) == null ? (
-        <SendToResearchButton
-          analystId={data.analystId}
-          ticker={data.ticker}
-          thesisId={thesisId}
-          onChanged={onChanged}
-        />
-      ) : null}
       {shownTriggers.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           {editableOnly
