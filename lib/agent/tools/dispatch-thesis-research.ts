@@ -46,6 +46,18 @@ export const dispatchThesisResearch = defineTool({
       .describe(
         "Required when mode='refresh' — the Thesis.id whose research should be updated.",
       ),
+    review_cadence_days: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .optional()
+      .describe(
+        "The review clock to put this name on, in days — a separate decision from researching it. " +
+          "Omit and the writer decides (it defaults to no clock). Pass null to say explicitly that this name goes on NO clock: " +
+          "nothing reviews it again until one of its own triggers fires, which costs nothing and is the right answer for most names. " +
+          "Pass a number when the name earns scheduled attention: 1 for a live catalyst, 7 for a name you're stalking, 30 for a compounder.",
+      ),
     reason: z
       .string()
       .min(20)
@@ -336,6 +348,10 @@ export const dispatchThesisResearch = defineTool({
           parentRunId: resolvedParentRunId ?? null,
           dispatchedAt: new Date().toISOString(),
           promotionContext: effectivePromotionContext ?? null,
+          reviewCadenceDays:
+            args.review_cadence_days === undefined
+              ? undefined
+              : args.review_cadence_days,
         } as object,
       },
       select: { id: true },
@@ -376,6 +392,9 @@ export const dispatchThesisResearch = defineTool({
         parentRunId: resolvedParentRunId ?? null,
         forceWatchingMint: args.mode === "mint",
         promotionContext: effectivePromotionContext ?? null,
+        // undefined = the caller didn't decide, so the writer does.
+        // null = the caller decided: no clock.
+        reviewCadenceDays: args.review_cadence_days,
       },
     });
 

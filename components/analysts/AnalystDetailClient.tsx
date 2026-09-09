@@ -13,7 +13,12 @@ import { AnalystConfigSheet } from "@/components/analysts/AnalystConfigSheet";
 import { StockSearch } from "@/components/stocks/StockSearch";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import {
+  AddToWatchlistDialog,
+  type AddToWatchlistChoices,
+} from "@/components/stocks/AddToWatchlistDialog";
+import {
   addWatchlistItem,
+  dispatchThesisWrite,
   removeWatchlistItem,
   type WatchlistItemView,
 } from "@/lib/actions/watchlist.actions";
@@ -94,6 +99,7 @@ function thesisCardToRowData(
     thesisBullets: t.thesis_bullets,
     riskFlags: t.risk_flags,
     createdAt: t.created_at ?? null,
+    reviewCadenceDays: t.review_cadence_days ?? null,
     candles,
     currentPrice: quote?.price ?? null,
     priceChange: quote ? { amount: quote.change, percent: quote.changePct } : null,
@@ -369,6 +375,8 @@ export default function AnalystDetailClient({
   const [showRunShowcase, setShowRunShowcase] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
+  /** Ticker awaiting the two add questions, or null when none is. */
+  const [pendingAdd, setPendingAdd] = useState<string | null>(null);
 
   async function handleDelete() {
     setDeleteLoading(true);
@@ -382,9 +390,28 @@ export default function AnalystDetailClient({
     }
   }
 
+  // Adding asks the two questions first (DAV-225) — research it now, and
+  // review it on a schedule — so neither is assumed on the user's behalf.
   const handleAddStock = (symbol: string) => {
     const upper = symbol.toUpperCase();
     if (watchlistItems.some((i) => i.symbol === upper)) return;
+    setPendingAdd(upper);
+  };
+
+  const confirmAddStock = (upper: string, choices: AddToWatchlistChoices) => {
+    // "Write a thesis now" hands the name to the writer, which mints the
+    // coverage itself — seeding a bare row first would collide with it.
+    if (choices.writeThesisNow) {
+      startTransition(async () => {
+        try {
+          await dispatchThesisWrite(config.id, upper, choices.reviewCadenceDays);
+          toast.success(`Researching ${upper} — the thesis lands in a few minutes.`);
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : `Couldn't research ${upper}`);
+        }
+      });
+      return;
+    }
     // Optimistic add
     const tempItem: WatchlistItemView = {
       id: `temp-${upper}`,
@@ -406,7 +433,14 @@ export default function AnalystDetailClient({
     };
     setWatchlistItems((prev) => [...prev, tempItem]);
     startTransition(async () => {
-      const item = await addWatchlistItem(config.id, upper);
+      const item = await addWatchlistItem(
+        config.id,
+        upper,
+        "Added manually",
+        "USER",
+        "NORMAL",
+        choices.reviewCadenceDays,
+      );
       // Replace temp item with real one
       setWatchlistItems((prev) =>
         prev.map((i) => (i.id === tempItem.id ? item : i)),
@@ -974,6 +1008,18 @@ export default function AnalystDetailClient({
         open={promoteOpen}
         onOpenChange={setPromoteOpen}
       />
+
+      {pendingAdd ? (
+        <AddToWatchlistDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setPendingAdd(null);
+          }}
+          symbol={pendingAdd}
+          analystName={config.name}
+          onConfirm={(choices) => confirmAddStock(pendingAdd, choices)}
+        />
+      ) : null}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-[400px]">

@@ -304,6 +304,10 @@ const ADDABLE_PREDICATE_KINDS = new Set<TriggerPredicate["kind"]>([
   "PRICE_MOVE_PCT",
   "GAIN_FROM_ENTRY",
   "TRAILING_FROM_HIGH",
+  // The review clock (DAV-225). Not a price level — it is the one rung that
+  // decides whether an analyst spends money looking at this name at all, so
+  // the principal has to be able to put one on and take one off.
+  "REVIEW_CADENCE",
 ]);
 
 /** Kinds that evaluate off the open position (avgCost / peakPrice). With no
@@ -338,6 +342,13 @@ function addedTriggerRationale(
   action: TriggerAction,
   predicate: TriggerPredicate,
 ): string {
+  // The review clock reads as a schedule, not a condition — "Review when
+  // every 7 days since the last review" is not a sentence.
+  if (predicate.kind === "REVIEW_CADENCE") {
+    return predicate.days === 1
+      ? "Look at this every day (set by principal)."
+      : `Look at this every ${predicate.days} days, counting from the last real review (set by principal).`;
+  }
   const cond = predicateSentence(predicate).toLowerCase();
   switch (action) {
     case "EXIT":
@@ -364,7 +375,7 @@ export async function applyTriggerAdd(
   if (!ADDABLE_PREDICATE_KINDS.has(input.predicate.kind)) {
     throw new ThesisEditError(
       "INVALID",
-      `Can only add a target-price, movement-amount, gain-from-entry, or trailing-from-high trigger (got ${input.predicate.kind}).`,
+      `Can only add a target-price, movement-amount, gain-from-entry, trailing-from-high, or review-clock trigger (got ${input.predicate.kind}).`,
     );
   }
 
@@ -622,11 +633,19 @@ export async function applyTriggerDelete(
     }
   });
 
+  // Taking the review clock off is an instruction about ATTENTION, not about
+  // a price level, so it says so in its own words — otherwise the agent reads
+  // "removed the REVIEW trigger" and puts a new clock on at the next review.
+  const isClock = target.predicate.kind === "REVIEW_CADENCE";
   await writeThesisUpdate({
     thesisId: thesis.id,
     type: "UPDATED",
-    summary: `Principal removed ${thesis.ticker} trigger — ${predicateSentence(target.predicate)} → ${target.action.toLowerCase()}`,
-    rationale: `[USER] Removed the "${target.action}" trigger (${predicateSentence(target.predicate)}). Don't re-create it unless the thesis materially changes.`,
+    summary: isClock
+      ? `Principal took ${thesis.ticker} off its review schedule`
+      : `Principal removed ${thesis.ticker} trigger — ${predicateSentence(target.predicate)} → ${target.action.toLowerCase()}`,
+    rationale: isClock
+      ? `[USER] Took this name off its review schedule. Stop reviewing it on a clock — it stays on the watchlist and its other triggers still fire. Don't put a new clock on it unless the thesis materially changes.`
+      : `[USER] Removed the "${target.action}" trigger (${predicateSentence(target.predicate)}). Don't re-create it unless the thesis materially changes.`,
     fieldChanges: { source: { from: null, to: "USER" } },
     runId: null,
     tradeId: position?.id,

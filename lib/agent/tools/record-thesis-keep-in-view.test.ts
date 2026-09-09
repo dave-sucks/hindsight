@@ -1,16 +1,16 @@
 /**
- * record-thesis-soft-watch.test.ts — the W2 soft-watch mint path
- * (DAV-209, docs/plans/WATCHLIST_STATES.md §2/§5 W2).
+ * record-thesis-keep-in-view.test.ts — PASS + status:"WATCHING", the
+ * "researched, no view to commit yet, keep the name in view" mint.
  *
- * PASS + status:"WATCHING" = the soft watch: "researched, decided not to
- * trade, keep eyes on it." Stored as direction null / status WATCHING with
- * REVIEW-only wake triggers and no cadence stamp. These tests pin the shape
- * gates (wake invariant, REVIEW-only), the storage shape, the already-covered
- * redirect, and that terminal PASS is unchanged.
+ * Stored as direction null / status WATCHING, with whatever triggers the
+ * caller sent and no clock unless one was asked for. These tests pin the
+ * storage shape, the already-covered redirect, and that terminal PASS is
+ * unchanged.
  *
- * 2026-09-01: the "unpriced" gate is GONE. A quiet watch is defined by having
- * no review clock, not by being unpriced — attention and price levels are
- * independent axes (WATCHLIST_STATES §2).
+ * DAV-209 (2026-09-08): the two shape gates that used to live here are
+ * gone. Zero triggers is legal (a pinned name, kept visible by the
+ * watchlist screen), and so is any trigger action — there is no separate
+ * kind of row with its own rules.
  */
 
 const mockPositionFindFirst = jest.fn().mockResolvedValue(null);
@@ -68,7 +68,7 @@ const priceWake = (level: number, id = "wake-price"): Record<string, unknown> =>
   rationale: `Interesting again if it comes in to $${level}.`,
 });
 
-function softWatchArgs(overrides: Record<string, unknown> = {}) {
+function keepInViewArgs(overrides: Record<string, unknown> = {}) {
   return {
     ticker: "TOST",
     direction: "PASS",
@@ -106,9 +106,9 @@ beforeEach(() => {
   mockThesisFindFirst.mockResolvedValue(null);
 });
 
-describe("record_thesis — soft watch (W2, DAV-209)", () => {
-  it("mints direction null / status WATCHING with the wake triggers, unpriced, no cadence", async () => {
-    const result = await run(softWatchArgs());
+describe("record_thesis — PASS + WATCHING keeps the name in view", () => {
+  it("mints direction null / status WATCHING with the wake triggers, unpriced, no clock", async () => {
+    const result = await run(keepInViewArgs());
     expect(result.ok).toBe(true);
 
     const row = createdRow();
@@ -119,35 +119,22 @@ describe("record_thesis — soft watch (W2, DAV-209)", () => {
 
     const kinds = row.triggers.map((t) => `${t.action}:${t.predicate.kind}`);
     expect(kinds).toEqual(["REVIEW:PRICE_BELOW"]);
-    // No cadence stamped — a soft watch costs no review attention.
+    // No clock stamped — none was asked for, so the name costs no attention.
     expect(
       row.triggers.some((t) => t.predicate.kind === "REVIEW_CADENCE"),
     ).toBe(false);
   });
 
-  it("rejects a soft watch with no wake condition (invariant 1)", async () => {
-    const result = await run(softWatchArgs({ triggers: [] }));
-    expect(result.data.status).toBe("FAILED");
-    expect(result.data.note).toContain("what brings this back to me?");
-    expect(mockThesisCreate).not.toHaveBeenCalled();
-  });
-
-  it("rejects non-REVIEW actions — a soft watch has no plan to act on", async () => {
-    const result = await run(
-      softWatchArgs({
-        triggers: [
-          {
-            id: "bad-enter",
-            predicate: { kind: "PRICE_BELOW", level: 24 },
-            action: "ENTER",
-            rationale: "Buy the dip.",
-          },
-        ],
-      }),
-    );
-    expect(result.data.status).toBe("FAILED");
-    expect(result.data.note).toContain("REVIEW");
-    expect(mockThesisCreate).not.toHaveBeenCalled();
+  it("accepts zero triggers — a pinned name is legal (DAV-209)", async () => {
+    // FLIPPED 2026-09-08. This used to reject with "what brings this back
+    // to me?". Nothing brings it back, and that is allowed: the name sits
+    // on the watchlist screen until a person picks it up.
+    const result = await run(keepInViewArgs({ triggers: [] }));
+    expect(result.ok).toBe(true);
+    const row = createdRow();
+    expect(row.status).toBe("WATCHING");
+    expect(row.direction).toBeNull();
+    expect(row.triggers).toEqual([]);
   });
 
   it("accepts price levels — attention and levels are independent (2026-09-01)", async () => {
@@ -158,7 +145,7 @@ describe("record_thesis — soft watch (W2, DAV-209)", () => {
     // ordinary state. update_thesis already allowed it; rejecting it at
     // mint only forced a name to be born wrong and fixed on a second call.
     const result = await run(
-      softWatchArgs({
+      keepInViewArgs({
         ticker: "CRM",
         entry_price: 203,
         triggers: [priceWake(203)],
@@ -166,7 +153,7 @@ describe("record_thesis — soft watch (W2, DAV-209)", () => {
     );
     expect(result.ok).toBe(true);
     const row = createdRow();
-    // No review clock — the quiet tier is unchanged by the presence of a level.
+    // Still no clock — a level on the row does not put it on a schedule.
     expect(
       row.triggers.some((t) => t.predicate.kind === "REVIEW_CADENCE"),
     ).toBe(false);
@@ -178,9 +165,9 @@ describe("record_thesis — soft watch (W2, DAV-209)", () => {
     expect(row.triggers.every((t) => t.action === "REVIEW")).toBe(true);
   });
 
-  it("allows an explicit REVIEW_CADENCE — an unpriced managed watch is legal", async () => {
+  it("allows an explicit clock — a name kept in view may still be on a schedule", async () => {
     const result = await run(
-      softWatchArgs({
+      keepInViewArgs({
         triggers: [
           {
             id: "own-clock",
@@ -210,25 +197,25 @@ describe("record_thesis — soft watch (W2, DAV-209)", () => {
         return Promise.resolve(null);
       },
     );
-    const result = await run(softWatchArgs());
+    const result = await run(keepInViewArgs());
     expect(result.data.status).toBe("USE_UPDATE_THESIS");
     expect(result.data.existing_thesis_id).toBe("thesis_existing");
-    expect(result.data.note).toContain("DEMOTE");
+    expect(result.data.note).toContain("set that coverage down");
     expect(mockThesisCreate).not.toHaveBeenCalled();
   });
 
   it("terminal PASS is unchanged: triggers still rejected, no status field needed", async () => {
     const result = await run(
-      softWatchArgs({ status: undefined, triggers: [priceWake(24)] }),
+      keepInViewArgs({ status: undefined, triggers: [priceWake(24)] }),
     );
     expect(result.data.status).toBe("FAILED");
-    expect(result.data.note).toContain("SOFT WATCH");
+    expect(result.data.note).toContain("keep the name in view");
     expect(mockThesisCreate).not.toHaveBeenCalled();
   });
 
   it("terminal PASS without triggers still lands PASSED", async () => {
     const result = await run(
-      softWatchArgs({ status: undefined, triggers: undefined }),
+      keepInViewArgs({ status: undefined, triggers: undefined }),
     );
     expect(result.ok).toBe(true);
     const row = createdRow();

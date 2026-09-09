@@ -368,6 +368,23 @@ describe("defaultTriggersForHorizon — standing protection minimums (Game Plan 
     });
   }
 
+  // ── The review clock is chosen, never inherited (DAV-209) ──
+  for (const horizon of HELD_HORIZONS) {
+    it(`WATCHING ${horizon} template carries NO review clock`, () => {
+      const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
+      expect(
+        triggers.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+      ).toHaveLength(0);
+    });
+
+    it(`HELD ${horizon} template still carries its review clock`, () => {
+      const triggers = defaultTriggersForHorizon(horizon, base(), "HELD");
+      expect(
+        triggers.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
+      ).toHaveLength(1);
+    });
+  }
+
   it("PROMOTED has no protection rungs (no live position yet)", () => {
     const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
     expect(findGain(triggers, "UP")).toBeUndefined();

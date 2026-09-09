@@ -42,6 +42,8 @@ import {
 } from "@/components/ui/tooltip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
+import { ReviewClockIcon } from "@/components/ui/review-clock-icon";
+import { reviewClockDays } from "@/lib/agent/triggers/review-clock";
 import {
   ThesisTriggersSection,
   type ThesisDossier,
@@ -113,6 +115,12 @@ export type ThesisCardData = {
   // direction=null). Threaded so the sheet's isPass keys on status.
   status?: "HOLDING" | "RETIRED" | "WATCHING" | "PROMOTED" | "PASSED";
   created_at?: string;
+  /**
+   * Days on this thesis's review clock, or null/undefined when it is on no
+   * schedule (DAV-225). Drives the quiet clock icon; the clock itself is
+   * edited in the sheet, where it lives as a REVIEW_CADENCE trigger.
+   */
+  review_cadence_days?: number | null;
   /**
    * Per-thesis "needs work today" annotation set by get_theses (Fix #2).
    * Trigger-driven only — no hardcoded thresholds. Drives the alert chip
@@ -1324,6 +1332,11 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
             <>
               <StatusPill status={liveStatus} />
               <ConvictionBadge conviction={conviction} rationale={convictionRationale} />
+              {/* Whether this name is on a review schedule (DAV-225). Quiet
+                  by design — an icon when there is a clock, nothing when
+                  there isn't. The clock itself is edited below, with the
+                  other triggers. */}
+              <ReviewClockIcon days={reviewClockDays(state.triggers)} />
             </>
           }
           actions={<PinButton ticker={ticker} />}

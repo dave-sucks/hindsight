@@ -214,17 +214,21 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     );
   });
 
-  it("an empty resend on a directional watch is still refused — demote keeps a wake, inert stays illegal", async () => {
+  it("an empty resend on a directional watch is accepted — zero triggers is legal (DAV-209)", async () => {
+    // FLIPPED 2026-09-08. This used to refuse with missing_enter_trigger on
+    // the "every watch carries a wake" rule. Clearing the ladder now leaves
+    // a name in view with nothing on it, which is a state a person is
+    // allowed to choose; the plan levels go with the rungs that held them.
     mockThesisFindUnique.mockResolvedValue(makeRow());
     const result = await run({
       thesis_id: "thesis_demote_1",
       rationale: "Clearing everything.",
       triggers: [],
     });
-    // ToolResult envelope: the CALL succeeds, the payload carries the refusal.
-    expect(result.data?.ok).toBe(false);
-    expect(result.data?.error).toBe("missing_enter_trigger");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    expect(result.data?.ok).not.toBe(false);
+    expect(mockThesisUpdate).toHaveBeenCalled();
+    const patch = mockThesisUpdate.mock.calls[0][0].data as Record<string, unknown>;
+    expect(patch.triggers).toEqual([]);
   });
 
   it("promote: a soft watch commits to a full plan through the direction path", async () => {

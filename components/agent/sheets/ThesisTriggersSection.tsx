@@ -207,6 +207,12 @@ function predicateKindValue(p: TriggerPredicate): {
       };
     case "REVIEW_DATE_HIT":
       return { kind: "review date hit", value: null };
+    case "REVIEW_CADENCE":
+      // The review clock. Reads as a schedule, not a condition.
+      return {
+        kind: "review every",
+        value: p.days != null ? plural(p.days, "day") : null,
+      };
     case "AND":
       return {
         kind: "all of",
@@ -777,7 +783,7 @@ export function TriggerGroups({
 // applyTriggerAdd rejects them un-held as the backend backstop.
 // All fire through the same evaluator → trigger pipeline as every trigger.
 
-type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL";
+type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL" | "CLOCK";
 
 export function AddTriggerDialog({
   held,
@@ -811,6 +817,9 @@ export function AddTriggerDialog({
   const isMove = criterion === "MOVE";
   const isGain = criterion === "GAIN";
   const isTrail = criterion === "TRAIL";
+  // The review clock — "look at this every N days". Not a market condition,
+  // so it has no direction and its value is a day count.
+  const isClock = criterion === "CLOCK";
   /** %-valued criteria share the % input adornment + 0.5 step. */
   const isPct = isMove || isGain || isTrail;
   const showFireMode = action === "EXIT" && held;
@@ -824,6 +833,7 @@ export function AddTriggerDialog({
       : ([] as const)),
     { v: "MOVE", l: held || !allowAbsolutePrice ? "% Move" : "% Movement" },
     ...(held ? ([{ v: "GAIN", l: "% Gain" }, { v: "TRAIL", l: "% Trail" }] as const) : ([] as const)),
+    { v: "CLOCK", l: "Review clock" },
   ];
 
   const dirOptions =
@@ -844,6 +854,8 @@ export function AddTriggerDialog({
     if (criterion === "GAIN") setDir("UP");
     else if (criterion === "MOVE") setDir("DOWN");
     else if (criterion === "PRICE") setDir("BELOW");
+    // A clock only ever reviews — there is nothing else to do on a schedule.
+    if (criterion === "CLOCK") setAction("REVIEW");
   }, [criterion]);
 
   // Default fire mode by action — EXIT → DIRECT, else TACTICAL. Mirrors the
@@ -862,13 +874,17 @@ export function AddTriggerDialog({
     // Gain from entry CAN exceed 100 (up 150% from entry is a real milestone).
     (!(isMove || isTrail) || num < 100) &&
     // Zod floors the trail at 1% (sub-1% off the peak re-fires on noise).
-    (!isTrail || num >= 1);
+    (!isTrail || num >= 1) &&
+    // A clock is a whole number of days.
+    (!isClock || Number.isInteger(num));
 
   async function save() {
     if (!valid) return;
     setPending(true);
     setErr(null);
-    const predicate = isGain
+    const predicate = isClock
+      ? { kind: "REVIEW_CADENCE", days: num }
+      : isGain
       ? { kind: "GAIN_FROM_ENTRY", pct: num, direction: dir }
       : isTrail
         ? { kind: "TRAILING_FROM_HIGH", pct: num }
@@ -980,7 +996,7 @@ export function AddTriggerDialog({
             has no direction (orientation follows the thesis direction), so
             the group collapses to the % input alone. */}
         <ButtonGroup className="w-full">
-          {isTrail ? null : (
+          {isTrail || isClock ? null : (
             <Select
               value={dir}
               onValueChange={(v) => {
@@ -1003,7 +1019,7 @@ export function AddTriggerDialog({
             </Select>
           )}
           <InputGroup>
-            {isPct ? null : (
+            {isPct || isClock ? null : (
               <InputGroupAddon>
                 <InputGroupText>$</InputGroupText>
               </InputGroupAddon>
@@ -1012,22 +1028,26 @@ export function AddTriggerDialog({
               type="number"
               inputMode="decimal"
               value={val}
-              min={isTrail ? 1 : 0}
-              step={isPct ? 0.5 : 0.01}
-              placeholder={isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"}
+              min={isTrail || isClock ? 1 : 0}
+              step={isClock ? 1 : isPct ? 0.5 : 0.01}
+              placeholder={
+                isClock ? "7" : isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"
+              }
               onChange={(e) => setVal(e.target.value)}
               disabled={pending}
             />
-            {isPct ? (
+            {isPct || isClock ? (
               <InputGroupAddon align="inline-end">
-                <InputGroupText>%</InputGroupText>
+                <InputGroupText>{isClock ? "days" : "%"}</InputGroupText>
               </InputGroupAddon>
             ) : null}
           </InputGroup>
         </ButtonGroup>
 
         <p className="text-xs text-muted-foreground">
-          {isGain
+          {isClock
+            ? "The review clock. Look at this name every N days, counting from the last real review. Without one, nothing reviews it until another trigger fires."
+            : isGain
             ? `Fires when the position is ${dir === "UP" ? "up" : "down"} this much from entry (avg cost) — cumulative, not a single day.`
             : isTrail
               ? "Fires when price gives back this much from its high since entry. The high ratchets up as the position runs."

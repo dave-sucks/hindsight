@@ -115,6 +115,40 @@ export interface RunThesisWriterArgs {
     paperReviewCount: number | null;
     promotedAt: string | null;
   } | null;
+  /**
+   * A review clock to put on the thesis, in days, chosen by whoever
+   * dispatched the research (DAV-209). Null or absent = no clock, which is
+   * the default: nothing reviews the name until one of its own triggers
+   * fires. Rides through as an ordinary REVIEW_CADENCE rung — the clock is
+   * a trigger like any other, not a field.
+   */
+  reviewCadenceDays?: number | null;
+}
+
+/**
+ * The dispatcher's review clock, as a rung on the ladder the writer wrote.
+ *
+ * Researching a name and agreeing to look at it every week are two separate
+ * decisions, and the second belongs to whoever asked for the research — so
+ * it is applied here rather than left to the model. No clock asked for means
+ * no clock: nothing is defaulted into existence.
+ */
+function withReviewClock(
+  triggers: unknown[] | undefined,
+  days: number | null | undefined,
+): unknown[] | undefined {
+  if (days == null || days <= 0) return triggers;
+  return [
+    ...(triggers ?? []),
+    {
+      predicate: { kind: "REVIEW_CADENCE", days },
+      action: "REVIEW",
+      rationale:
+        days === 1
+          ? "Look at this every day."
+          : `Look at this every ${days} days, counting from the last real review.`,
+    },
+  ];
 }
 
 export interface RunThesisWriterResult {
@@ -756,7 +790,6 @@ Write the research note now, then call submit_thesis.`;
           // Persist-gate mirrors (goalpost + zero-trigger) need the
           // existing row's shape — see decision.ts review-finding-#4 block.
           existingTargetPrice: existingThesis?.targetPrice ?? null,
-          existingHasTriggers: existingThesis?.hasTriggers,
           // P1-35 prior-exit acknowledgment.
           priorExit,
         });
@@ -1113,7 +1146,10 @@ export async function writerPersistPhase(
           invalidation_conditions: d.invalidation_conditions,
           // PASS theses cannot carry triggers (record_thesis gate) — the
           // validator rejects this too; strip defensively.
-          triggers: d.direction === "PASS" ? undefined : d.triggers,
+          triggers:
+            d.direction === "PASS"
+              ? undefined
+              : withReviewClock(d.triggers, args.reviewCadenceDays),
           // P1-35: pass the model's engagement with a recent sale through
           // to record_thesis's recently-sold gate.
           acknowledge_prior_exit: d.prior_exit_acknowledgment,

@@ -119,7 +119,7 @@ In the code, these four parts are encoded across **structured triggers** (the ac
 
 | Status         | Meaning                                                                 | On watchlist? |
 |----------------|-------------------------------------------------------------------------|---------------|
-| `WATCHING`     | Active tracking; triggers maintained; reviewed on cadence.              | **Yes**       |
+| `WATCHING`     | On the watchlist. Reviewed on a schedule **iff** it carries a `REVIEW_CADENCE` trigger (the review clock); otherwise it waits for one of its own triggers to fire, and a name with no triggers at all waits for a person. Nothing stamps a clock — it is an ordinary trigger you add or remove like any other (DAV-209). `docs/plans/WATCHLIST_STATES.md` describes the superseded tier model. | **Yes**       |
 | `ACTIVE`       | Position open via Alpaca.                                               | No — in Positions |
 | `PROMOTED`     | Conviction-pause. ACTIVE+held → user promoted analyst PAPER→LIVE → paper position force-closed → awaiting first-live-run resolution. Set only by the promote-analyst action; rejected by `record_thesis` / `update_thesis` at the Zod layer. | Surfaces as "Awaiting live entry" |
 | `CLOSED`       | Position was opened and closed.                                         | No            |

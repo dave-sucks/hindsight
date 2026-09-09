@@ -56,6 +56,12 @@ interface ThesisWriteRequestedPayload {
     paperReviewCount: number | null;
     promotedAt: string | null;
   } | null;
+  /**
+   * The review clock the dispatcher chose, in days. `undefined` = the
+   * dispatcher didn't decide and the writer's own answer stands; `null` =
+   * the dispatcher decided this name goes on no clock.
+   */
+  reviewCadenceDays?: number | null;
 }
 
 export const thesisWriter = inngest.createFunction(
@@ -95,6 +101,7 @@ export const thesisWriter = inngest.createFunction(
       parentRunId: payload.parentRunId ?? null,
       forceWatchingMint: payload.forceWatchingMint === true,
       promotionContext: payload.promotionContext ?? null,
+      reviewCadenceDays: payload.reviewCadenceDays,
     };
 
     // Cheap COMPLETE short-circuit for full-function retries (PR #383).
