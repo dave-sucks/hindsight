@@ -80,6 +80,21 @@ fails the build instead of shipping code that can't talk to its own database.
   nearly all of ours) are rollback-safe. A `DROP`/`RENAME`/`NOT NULL`-without-
   default is not: rolling back leaves old code querying something gone. Ship
   those as an expand/contract pair across two deploys.
+- **A column DROP is always two PRs, and the schema line goes first.** The
+  migration runs at *build start*, so the previous deployment keeps serving
+  against the new schema for the whole build (~5 min) — and any browser tab
+  pinned to that deployment by skew protection keeps hitting it afterwards
+  (P2022 "column does not exist"; the analyst page 404 on 2026-09-08 was
+  this). Worse: on 2026-09-08 PR #605 shipped the migration that dropped
+  `Thesis.targetSizePct` but left the field in `prisma/schema.prisma`, so the
+  *new* client kept selecting a column that no longer existed and **every
+  thesis write failed for ~4 hours** (the writer even logged "Thesis
+  persisted" — see DAV-231). Order of operations: **PR 1** removes the field
+  from `schema.prisma` and every code reference (the column stays in the
+  database, unused, harmless); **PR 2**, after PR 1 is live, ships the
+  migration with `DROP COLUMN IF EXISTS`. Before opening either PR,
+  `git grep <columnName> prisma/schema.prisma lib app components` must come
+  back empty except for comments.
 - **One-off data heals still go in `prisma/manual-sql/`** and are still run by
   hand. This automation covers `prisma/migrations/` only.
 

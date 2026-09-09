@@ -126,12 +126,6 @@ const saveThesisInput = {
     .max(300)
     .optional()
     .describe("Required for STRONG/HIGH. 'Consensus thinks X; I think Y; falsifiable reason.'"),
-  target_size_pct: z
-    .number()
-    .min(0)
-    .max(100)
-    .optional()
-    .describe("Required for LONG/SHORT. % of portfolio at full size. Use the analyst's conviction→size tiers."),
   catalyst_date: z
     .string()
     .optional()

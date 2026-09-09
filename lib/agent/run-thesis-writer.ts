@@ -1013,7 +1013,9 @@ export function sectionArgsFrom(sections: ParsedSections): SectionArgs {
 }
 
 interface PersistToolEnvelope {
+  /** defineTool's envelope: `ok:false` + `error` when execute() threw. */
   ok?: boolean;
+  error?: string;
   data?: Record<string, unknown>;
   summary?: string;
 }
@@ -1125,6 +1127,10 @@ export async function writerPersistPhase(
         const res = await executeThroughSchema(recordThesis(ctx), "record_thesis", toolArgs);
         if ("__schemaError" in res) {
           persistError = res.__schemaError;
+        } else if (res.ok === false) {
+          // The tool threw (e.g. a Prisma error). defineTool's envelope
+          // carries the message at the top level, not in `data`.
+          persistError = `record_thesis failed: ${res.error ?? res.summary ?? "unknown"}`;
         } else {
           const data = res?.data ?? {};
           if (typeof data.thesis_id === "string" && data.thesis_id) {
@@ -1183,17 +1189,31 @@ export async function writerPersistPhase(
         const res = await executeThroughSchema(updateThesis(ctx), "update_thesis", toolArgs);
         if ("__schemaError" in res) {
           persistError = res.__schemaError;
+        } else if (res.ok === false) {
+          // The tool threw (e.g. a Prisma error). defineTool's envelope
+          // carries the message at the top level, not in `data`. 2026-09-08:
+          // every update_thesis failed on a dropped column and this path
+          // fell through to the audit-row check below, which then defaulted
+          // to the existing id — so the run logged "Thesis persisted" and
+          // was marked COMPLETE with nothing saved (ABT, DAV-231).
+          persistError = `update_thesis failed: ${res.error ?? res.summary ?? "unknown"}`;
         } else {
           const data = res?.data ?? {};
           if (data.ok === false) {
             persistError = `update_thesis refused: ${String(data.message ?? data.error ?? res?.summary ?? "unknown")}`;
           } else {
-            // Confirm via the audit row — same source of truth V1 used.
+            // The audit row is the proof — a missing row means nothing was
+            // saved, whatever the envelope said. Never default to the
+            // existing id here.
             const touch = await prisma.thesisUpdate.findFirst({
               where: { runId: args.childRunId, thesisId: args.existingThesisId },
               select: { thesisId: true },
             });
-            thesisId = touch?.thesisId ?? args.existingThesisId;
+            if (touch) {
+              thesisId = touch.thesisId;
+            } else {
+              persistError = `update_thesis returned ok but wrote no audit row for ${args.existingThesisId} — nothing was saved`;
+            }
           }
         }
       }

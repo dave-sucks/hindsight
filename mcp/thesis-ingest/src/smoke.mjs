@@ -18,7 +18,6 @@ const good = {
   conviction: "HIGH",
   conviction_rationale: "Cleanest non-NVDA way to own AI-accelerator unit growth; VMware annuity is a margin floor.",
   variant_view: "Consensus underweights the custom-XPU ramp at a third hyperscaler by two quarters.",
-  target_size_pct: 11,
 };
 
 const bad = { ...good, conviction: undefined, conviction_rationale: undefined, variant_view: undefined };
