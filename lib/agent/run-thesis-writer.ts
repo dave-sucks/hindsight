@@ -115,6 +115,13 @@ export interface RunThesisWriterArgs {
     paperReviewCount: number | null;
     promotedAt: string | null;
   } | null;
+  /**
+   * Review clock the dispatcher asked for, in days (DAV-225). Null/absent =
+   * no clock. Applied as an ordinary REVIEW_CADENCE rung — researching a
+   * name and agreeing to look at it weekly are separate decisions, and the
+   * second belongs to whoever asked for the research.
+   */
+  reviewCadenceDays?: number | null;
 }
 
 export interface RunThesisWriterResult {
@@ -1120,7 +1127,22 @@ export async function writerPersistPhase(
           invalidation_conditions: d.invalidation_conditions,
           // PASS theses cannot carry triggers (record_thesis gate) — the
           // validator rejects this too; strip defensively.
-          triggers: d.direction === "PASS" ? undefined : d.triggers,
+          triggers:
+            d.direction === "PASS"
+              ? undefined
+              : args.reviewCadenceDays
+                ? [
+                    ...(d.triggers ?? []),
+                    {
+                      predicate: {
+                        kind: "REVIEW_CADENCE",
+                        days: args.reviewCadenceDays,
+                      },
+                      action: "REVIEW",
+                      rationale: `Look at this every ${args.reviewCadenceDays} day(s), from the last review.`,
+                    },
+                  ]
+                : d.triggers,
           // P1-35: pass the model's engagement with a recent sale through
           // to record_thesis's recently-sold gate.
           acknowledge_prior_exit: d.prior_exit_acknowledgment,

@@ -8,6 +8,7 @@ import { getLatestPricesWithMeta } from "@/lib/alpaca";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { pickProposalOrder } from "@/lib/trade-status";
 import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
+import { reviewClockDays } from "@/lib/agent/triggers/review-clock";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
 import type { SourceCategory, QueryCategory, IntelligencePolicy } from "@/lib/intelligence/types";
 import {
@@ -1785,6 +1786,7 @@ export async function getAnalystTheses(analystId: string) {
       stopLoss: true,
       holdDuration: true,
       createdAt: true,
+      triggers: true,
     },
   });
 
@@ -1814,6 +1816,7 @@ export async function getAnalystTheses(analystId: string) {
       hold_duration: t.holdDuration ?? undefined,
       status,
       created_at: t.createdAt.toISOString(),
+      review_cadence_days: reviewClockDays(t.triggers),
     };
   });
 }

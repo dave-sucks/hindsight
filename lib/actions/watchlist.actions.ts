@@ -7,7 +7,12 @@ import { revalidatePath } from "next/cache";
 import { getAccountId } from "@/lib/auth/account";
 import { getOrCreateManualRun } from "@/lib/agent/manual-run-anchor";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
+import {
+  reviewCadenceTrigger,
+  CADENCE_DAYS_BY_HORIZON,
+} from "@/lib/agent/triggers/defaults";
+import { horizonFor } from "@/lib/agent/triggers/load-levels";
+import { inngest } from "@/lib/inngest/client";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -258,12 +263,12 @@ export async function getWatchlistItems(
  * clock) and levels (the wakes) are independent — see WATCHLIST_STATES §2.
  */
 function buildSeedTriggers(
-  attention: "research" | "quiet",
+  reviewCadenceDays: number | null,
   wake?: { below?: number | null; above?: number | null },
 ): unknown[] {
   const out: unknown[] = [];
-  if (attention === "research") {
-    out.push({ ...reviewCadenceTrigger(7), source: "DEFAULT" });
+  if (reviewCadenceDays != null && reviewCadenceDays > 0) {
+    out.push({ ...reviewCadenceTrigger(reviewCadenceDays), source: "PRINCIPAL" });
   }
   if (wake?.below != null) {
     out.push({
@@ -288,6 +293,93 @@ function buildSeedTriggers(
   return out;
 }
 
+/**
+ * Send a ticker to the thesis writer by hand (DAV-225).
+ *
+ * Fires the same `app/thesis.write.requested` event `dispatch_thesis_research`
+ * emits — until now only agents and the promote dialog could dispatch.
+ * `reviewCadenceDays` rides along and lands as an ordinary REVIEW_CADENCE
+ * rung, so the result comes back scheduled only when you asked for that.
+ */
+export async function sendToThesisWriter(
+  analystId: string,
+  symbol: string,
+  /** Days, null for no clock, or "horizon" to use the thesis's own default. */
+  reviewCadence: number | null | "horizon",
+  mode: "mint" | "refresh" = "mint",
+  existingThesisId: string | null = null,
+): Promise<{ childRunId: string }> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Not authenticated");
+  const accountId = await getAccountId(userId);
+  if (!accountId) throw new Error("No account");
+
+  const analyst = await prisma.agentConfig.findFirst({
+    where: { id: analystId, accountId },
+    select: { id: true, tradingEnvironment: true },
+  });
+  if (!analyst) throw new Error("Analyst not found");
+
+  const upper = symbol.toUpperCase();
+  // "horizon" is the Send-to-research button: a name pulled back in by hand
+  // comes back scheduled, on whatever cadence its horizon implies.
+  let reviewCadenceDays: number | null = null;
+  if (reviewCadence === "horizon") {
+    const row = existingThesisId
+      ? await prisma.thesis.findUnique({
+          where: { id: existingThesisId },
+          select: { horizon: true },
+        })
+      : null;
+    reviewCadenceDays = CADENCE_DAYS_BY_HORIZON[horizonFor(row?.horizon ?? null)];
+  } else {
+    reviewCadenceDays = reviewCadence;
+  }
+  const reason = `Sent to research by hand from the watchlist (${upper}).`;
+  const childRun = await prisma.researchRun.create({
+    data: {
+      userId,
+      accountId,
+      agentConfigId: analystId,
+      source: "USER",
+      status: "RUNNING",
+      // String column, not an enum — same as dispatch_thesis_research.
+      mode: "THESIS_WRITER",
+      environment: analyst.tradingEnvironment as "PAPER" | "LIVE",
+      parameters: {
+        ticker: upper,
+        mode,
+        existingThesisId,
+        reason,
+        dispatchedAt: new Date().toISOString(),
+        reviewCadenceDays,
+        dispatchedBy: "manual",
+      } as object,
+    },
+    select: { id: true },
+  });
+
+  await inngest.send({
+    name: "app/thesis.write.requested",
+    data: {
+      childRunId: childRun.id,
+      ticker: upper,
+      analystId,
+      mode,
+      existingThesisId,
+      reason,
+      parentRunId: null,
+      // A hand-sent name is coverage to study, never an auto-trade.
+      forceWatchingMint: mode === "mint",
+      promotionContext: null,
+      reviewCadenceDays,
+    },
+  });
+
+  revalidatePath(`/analysts/${analystId}`);
+  return { childRunId: childRun.id };
+}
+
 export async function addWatchlistItem(
   analystId: string,
   symbol: string,
@@ -295,22 +387,12 @@ export async function addWatchlistItem(
   addedBy: string = "USER",
   _priority: string = "NORMAL",
   /**
-   * Whether the analyst should work this name.
-   *
-   *   "research" (default) — seeds a 7-day review clock, so the next runs
-   *     pick it up, research it and commit a direction. What every manual
-   *     add did unconditionally before 2026-09-01.
-   *
-   *   "quiet" — just a name on the list. No review clock, so it costs no
-   *     agent attention and never appears in a run's work list; it only
-   *     comes back if a wake fires. Pair with `wakeBelow` / `wakeAbove` to
-   *     give it one, otherwise it sits silent until you elevate it by hand.
-   *
-   * The two axes stay independent (WATCHLIST_STATES §2): this chooses
-   * ATTENTION only and says nothing about price levels.
+   * How often to review this name, in days — the review clock. Null (the
+   * default) means no clock: the name sits on the list costing nothing, and
+   * nothing looks at it until one of its own triggers fires (DAV-225).
    */
-  attention: "research" | "quiet" = "research",
-  /** Optional price wakes for a quiet add: "tell me if it drops to X / rises to Y". */
+  reviewCadenceDays: number | null = null,
+  /** Optional price wakes: "tell me if it drops to X / rises to Y". */
   wake?: { below?: number | null; above?: number | null },
 ): Promise<WatchlistItemView> {
   const userId = await getCurrentUserId();
@@ -410,18 +492,10 @@ export async function addWatchlistItem(
       modelUsed: "manual",
       sourceKind,
       sourceRationale: reason || "Manual watchlist add",
-      // What the add costs you, chosen by the caller (2026-09-01).
-      //
-      // "research": a 7-day review clock, so the next runs pick it up,
-      //   research it and commit a direction. Every manual add used to do
-      //   this unconditionally — there was no way to put a bare name on
-      //   the list without buying AI attention for it.
-      //
-      // "quiet": no clock. It costs nothing and stays out of the runs'
-      //   work lists; the optional price wakes below are its way back.
-      //   A quiet add with no wake at all is legal and deliberate — it's
-      //   a name on a list, and you elevate it when you want.
-      triggers: buildSeedTriggers(attention, wake) as object[],
+      // A clock buys AI attention on a schedule; no clock costs nothing and
+      // stays out of every run's work list. An add with neither a clock nor
+      // a wake is a name on a list — legal and deliberate.
+      triggers: buildSeedTriggers(reviewCadenceDays, wake) as object[],
     },
   });
 
@@ -429,9 +503,9 @@ export async function addWatchlistItem(
     thesisId: thesis.id,
     type: "CREATED",
     summary:
-      attention === "research"
-        ? `Added ${upper} to watchlist (awaiting first research)`
-        : `Added ${upper} to watchlist (watching only — no review schedule)`,
+      reviewCadenceDays != null
+        ? `Added ${upper} to watchlist (reviewed every ${reviewCadenceDays}d)`
+        : `Added ${upper} to watchlist (no review schedule)`,
     rationale: reason,
     runId,
   });
