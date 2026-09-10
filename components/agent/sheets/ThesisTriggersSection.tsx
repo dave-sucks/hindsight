@@ -135,7 +135,7 @@ function overriddenLevelPhrase(level: string): string {
  * Split a predicate into a left-side "kind" label and a right-side value
  * for the two-cell trigger pill (2026-05-20 redesign):
  *   [ price above ][ $149 ]
- *   [ time elapsed ][ 14 days ]
+ *   [ review every ][ 30 days ]
  *   [ earnings beat ][ ≥3% ]
  *
  * Returns `value: null` when there's no value half (e.g. REVIEW_DATE_HIT,
@@ -297,7 +297,7 @@ function fmtFiredAt(iso?: string): string {
 // ── Trigger pill — 2 cells separated by a real border ─────────────────
 // Restyled 2026-05-20:  [ kind ][ value ]
 //   - Cell 1 (kind): faint muted bg, muted-foreground text
-//     ("price above" / "time elapsed" / "earnings beat" / etc.)
+//     ("price above" / "review every" / "earnings beat" / etc.)
 //   - Cell 2 (value): no bg, plain foreground text ("$149" / "14 days")
 //   - Smaller font (text-xs), shorter row (h-7)
 //   - No action icon — action info is communicated via the section
