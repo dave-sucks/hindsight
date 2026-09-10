@@ -286,8 +286,10 @@ the reason and the rest of the call lands (`data.trigger_ops` on the tool):
   with the number (the principal's edits get the number substituted).
 - On a held stock an agent may only tighten a protective sell level (§ the
   ratchet, DAV-185); the principal is exempt.
-- After all ops, ONE check on the derived plan: ordering everywhere, 2:1 on a
-  plan we don't own, and a buy trigger where a floor or target is armed.
+- After all ops, ONE check on the derived plan: ordering everywhere, a buy
+  trigger where a floor or target is armed, and — for an agent only — 2:1 on
+  a plan we don't own. The principal is exempt from the ratio as from the
+  ratchet; a stop above the buy price is refused for anyone.
 
 The plan columns (`entryPrice` / `targetPrice` / `stopLoss`) are recomputed from
 the resulting triggers and mirrored onto the open `Position`, so the chart,

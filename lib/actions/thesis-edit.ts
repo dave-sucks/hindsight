@@ -262,6 +262,7 @@ async function runPrincipalOp(
     inherited: thesis.inherited,
     direction: thesis.direction,
     status: thesis.status,
+    actor: "PRINCIPAL",
     entryPrice: thesis.position?.avgCost ?? thesis.entryPrice,
     avgCost: thesis.position?.avgCost,
   });

@@ -478,14 +478,17 @@ export type LadderCheck =
 
 /**
  * Derive the plan from the list and check it once: ordering everywhere, the
- * 2:1 floor on a plan we don't own, and the buy-trigger / sell-trigger rules
- * of `validateEnterTriggerRequired`. Held: `entryPrice` is the fill.
+ * buy-trigger / sell-trigger rules of `validateEnterTriggerRequired`, and —
+ * for an AGENT only — the 2:1 floor on a plan we don't own. The floor is a
+ * rule for plans the agents write; the principal is exempt from it as from
+ * the ratchet. Held: `entryPrice` is the fill.
  */
 export function checkLadder(input: {
   triggers: Trigger[];
   inherited?: ResolvedTrigger[];
   direction: string | null;
   status: string | null;
+  actor: ApplyTriggerOpsInput["actor"];
   /** The fill on a held name (position avgCost, else the stored entry). */
   entryPrice?: number | null;
   avgCost?: number | null;
@@ -508,7 +511,7 @@ export function checkLadder(input: {
       entryPrice: held ? (input.entryPrice ?? columns.entryPrice) : columns.entryPrice,
       targetPrice: columns.targetPrice,
       stopLoss: columns.stopLoss,
-      minRiskReward: held ? undefined : MIN_RISK_REWARD,
+      minRiskReward: held || input.actor !== "AGENT" ? undefined : MIN_RISK_REWARD,
       held,
     });
     if (!shape.ok) return { ok: false, error: "invalid_thesis_shape", message: shape.note };

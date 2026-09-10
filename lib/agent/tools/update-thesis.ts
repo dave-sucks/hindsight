@@ -1069,6 +1069,7 @@ export const updateThesis = defineTool({
             inherited: inheritedLadder,
             direction: levelDirection,
             status: levelStatus,
+            actor: "AGENT",
             entryPrice:
               avgCost ?? (existing.entryPrice != null ? Number(existing.entryPrice) : null),
             avgCost,

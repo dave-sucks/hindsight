@@ -229,17 +229,26 @@ describe("checkLadder — the one check after all ops", () => {
       { ...target, predicate: { kind: "PRICE_ABOVE", level: 490 } },
       { ...floor, predicate: { kind: "PRICE_BELOW", level: 355 } },
     ]);
-    const check = checkLadder({ triggers: out.triggers, direction: "LONG", status: "WATCHING" });
+    const check = checkLadder({ triggers: out.triggers, direction: "LONG", status: "WATCHING", actor: "AGENT" });
     expect(check).toMatchObject({ ok: false, error: "invalid_thesis_shape", message: expect.stringMatching(/R\/R floor/) });
   });
 
+  it("the 2:1 floor is for the agents — the principal's edit passes on ratio, and ordering still applies", () => {
+    const under = [buy, { ...target, predicate: { kind: "PRICE_ABOVE" as const, level: 490 } }, { ...floor, predicate: { kind: "PRICE_BELOW" as const, level: 355 } }];
+    const moved = applyTriggerOps({ stored: under, ops: [{ op: "edit", id: "buy", level: 432 }], direction: "LONG", status: "WATCHING", actor: "PRINCIPAL", mintId });
+    expect(checkLadder({ triggers: moved.triggers, direction: "LONG", status: "WATCHING", actor: "PRINCIPAL" }).ok).toBe(true);
+    // A stop above the buy price is nonsense for anyone.
+    const inverted = applyTriggerOps({ stored: under, ops: [{ op: "edit", id: "floor", level: 400 }], direction: "LONG", status: "WATCHING", actor: "PRINCIPAL", mintId });
+    expect(checkLadder({ triggers: inverted.triggers, direction: "LONG", status: "WATCHING", actor: "PRINCIPAL" })).toMatchObject({ ok: false, error: "invalid_thesis_shape" });
+  });
+
   it("derives the columns from the list when the plan is legal", () => {
-    const check = checkLadder({ triggers: [buy, target, floor], direction: "LONG", status: "WATCHING" });
+    const check = checkLadder({ triggers: [buy, target, floor], direction: "LONG", status: "WATCHING", actor: "AGENT" });
     expect(check).toEqual({ ok: true, columns: { entryPrice: 183, targetPrice: 250, stopLoss: 150 } });
   });
 
   it("a floor with no buy level is a half plan", () => {
-    const check = checkLadder({ triggers: [floor], direction: "LONG", status: "WATCHING" });
+    const check = checkLadder({ triggers: [floor], direction: "LONG", status: "WATCHING", actor: "AGENT" });
     expect(check).toMatchObject({ ok: false, error: "missing_enter_trigger" });
   });
 
@@ -249,6 +258,7 @@ describe("checkLadder — the one check after all ops", () => {
       inherited: [{ id: "acct-trail", predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 }, action: "EXIT", rationale: "trail", level: "ACCOUNT", inherited: true }],
       direction: "LONG",
       status: "HOLDING",
+      actor: "AGENT",
       entryPrice: 100,
       avgCost: 100,
     });
