@@ -15,15 +15,34 @@ export function isAgentWatched(triggers: unknown): boolean {
   return agentWatchDays(triggers) != null;
 }
 
-/** Days between the agent's reviews, or null when it isn't scheduled. */
+/**
+ * Days between the agent's reviews, or null when it isn't scheduled.
+ *
+ * Two predicates put a name on a schedule today. REVIEW_CADENCE is the real
+ * one, counted from the last actual review. TIME_ELAPSED is the older,
+ * worse one: anchored to when the thesis was written, so reviewing it never
+ * resets it — it just nags on its cooldown. Both are read here because both
+ * genuinely mean "the agent comes back to this on its own", and a pill that
+ * ignored the second told you a name was unwatched while it was being
+ * reviewed. TIME_ELAPSED is being deleted; when it is, this loop loses a
+ * branch and nothing else changes.
+ */
 export function agentWatchDays(triggers: unknown): number | null {
   if (!Array.isArray(triggers)) return null;
+  let fallback: number | null = null;
   for (const t of triggers) {
-    const p = (t as { predicate?: { kind?: string; days?: unknown } })?.predicate;
-    if (p?.kind !== "REVIEW_CADENCE") continue;
-    if (typeof p.days === "number" && p.days > 0) return p.days;
+    const rung = t as { action?: string; predicate?: { kind?: string; days?: unknown } };
+    const p = rung?.predicate;
+    const days = typeof p?.days === "number" && p.days > 0 ? p.days : null;
+    if (days == null) continue;
+    if (p?.kind === "REVIEW_CADENCE") return days;
+    // A time-elapsed REVIEW is a schedule in all but name. It only counts
+    // when nothing better is on the row.
+    if (p?.kind === "TIME_ELAPSED" && rung.action === "REVIEW") {
+      fallback ??= days;
+    }
   }
-  return null;
+  return fallback;
 }
 
 /** The one-line explanation, wherever Agent Watch is shown. */

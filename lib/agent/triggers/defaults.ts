@@ -795,271 +795,28 @@ function watchingPlanLevels(
   return out;
 }
 
-function watchingCatalystDefaults(thesis: ThesisShape): Trigger[] {
-  const out: Trigger[] = [];
+/**
+ * The four watch templates below emit ONLY what the author's own numbers
+ * imply: the entry rung off `entryPrice`, and the plan levels off
+ * `stopLoss` / `targetPrice`. Nothing else.
+ *
+ * They used to invent a review schedule and a set of earnings / filing /
+ * guidance rungs on every new watch. Both are gone (DAV-209). The schedule
+ * was the forced clock. The event rungs were worse than useless: news and
+ * earnings routing is paused, so an EARNINGS_BEAT rung cannot fire at all —
+ * it was ladder decoration that made a name look watched when nothing was
+ * watching it. A watch now carries what its author wrote, and nothing more.
+ *
+ * The horizon still decides the ENTER rung's cooldown: a COMPOUNDER waits a
+ * week before re-firing on a level it keeps crossing; a TRADE fires the same
+ * day.
+ */
+function watchingDefaults(thesis: ThesisShape, enterCooldownDays: number): Trigger[] {
   const direction = thesis.direction ?? "LONG";
-
-  // ── Setup-aware default ENTER trigger for CATALYST ────────────────────
-  // When the catalyst date is within 7 trading days, the typical CATALYST
-  // play is pre-event accumulation (buy now or on the event print), NOT
-  // breakout-above-entry-level. In that window the right default is
-  // event-based: EARNINGS_BEAT for an earnings catalyst (the most common
-  // case in our roster). This fires on the post-print signal and lets
-  // tactical decide whether to INITIATE.
-  //
-  // When the catalyst date is further out (>7 days) OR not set, default
-  // back to the breakout-pattern entry (PRICE_ABOVE(entryPrice) for LONG)
-  // — covers the rare CATALYST case where the writer wants "buy on
-  // breakout that confirms the setup, then ride into the catalyst."
-  //
-  // 2026-05-31: the long comment block that used to live here flagged
-  // the now-fixed P1-3 bug ("PRICE_ABOVE(target) as ENTER is structurally
-  // wrong"). watchingEntryTrigger now reads entryPrice, not targetPrice,
-  // so the default is no longer broken — the event-based fallback for
-  // catalystSoon is kept anyway because it's a better setup match for
-  // pre-event accumulation than a breakout entry would be.
-  //
-  // Agent can always override either default via the (predicate, action)
-  // merge bucket.
-  const catalystSoon =
-    thesis.catalystDate != null &&
-    thesis.catalystDate.getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000;
-
-  if (catalystSoon && (direction === "LONG" || direction === "SHORT")) {
-    // Event-based ENTER — fires on the catalyst event itself.
-    // EARNINGS_BEAT for LONG, EARNINGS_MISS for SHORT (the catalyst
-    // confirming the directional thesis).
-    out.push({
-      id: createId(),
-      predicate:
-        direction === "LONG"
-          ? { kind: "EARNINGS_BEAT" }
-          : { kind: "EARNINGS_MISS" },
-      action: "ENTER",
-      rationale:
-        direction === "LONG"
-          ? `Catalyst within 7d — enter on earnings beat confirmation. Tactical validates the post-print tape before INITIATE.`
-          : `Catalyst within 7d — short-side entry on earnings miss confirmation. Tactical validates the post-print tape before INITIATE short.`,
-      cooldownDays: 7,
-    });
-  } else {
-    const entry = watchingEntryTrigger(thesis, direction, 1);
-    if (entry) out.push(entry);
-  }
-
-  // Catalyst windows live and die on filings + earnings — those are
-  // typically how the catalyst lands. No support-REVIEW: a binary
-  // catalyst is either resolved or not, intermediate price wiggles
-  // don't change the entry plan.
-  //
-  // When the ENTER trigger above is the matching earnings predicate
-  // (LONG → EARNINGS_BEAT, SHORT → EARNINGS_MISS), skip the REVIEW on
-  // the SAME predicate to avoid the trigger evaluator firing both ENTER
-  // and REVIEW on the same earnings signal (redundant tactical-run
-  // spawn — the ENTER already handles the post-print decision).
-  const earningsBeatIsEntry = catalystSoon && direction === "LONG";
-  const earningsMissIsEntry = catalystSoon && direction === "SHORT";
-
-  out.push({
-    id: createId(),
-    predicate: {
-      kind: "OR",
-      predicates: [
-        { kind: "FILING", formType: "8-K" },
-        { kind: "FILING", formType: "10-Q" },
-        { kind: "FILING", formType: "10-K" },
-      ],
-    },
-    action: "REVIEW",
-    rationale:
-      direction === "PASS"
-        ? `Material filing on a catalyst-PASS — the news may invalidate the rejection.`
-        : `Material filing on a catalyst-watch — the filing may BE the catalyst.`,
-    cooldownDays: 1,
-  });
-  if (!earningsBeatIsEntry) {
-    out.push({
-      id: createId(),
-      predicate: { kind: "EARNINGS_BEAT" },
-      action: "REVIEW",
-      rationale:
-        direction === "PASS"
-          ? `Beat — possibly a reason to flip the PASS.`
-          : `Beat — possibly the catalyst. Validate before INITIATE.`,
-      cooldownDays: 7,
-    });
-  }
-  if (!earningsMissIsEntry) {
-    out.push({
-      id: createId(),
-      predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
-      action: "REVIEW",
-      rationale:
-        direction === "PASS"
-          ? `Miss — confirms the PASS, possibly remove from watch.`
-          : `Miss — possibly the inverse catalyst. Consider removing from watch.`,
-      cooldownDays: 7,
-    });
-  }
-  out.push({
-    id: createId(),
-    predicate: { kind: "TIME_ELAPSED", days: 14 },
-    action: "REVIEW",
-    rationale: `Catalyst-window hygiene — if we're still watching after 14 days, the setup is stale.`,
-    cooldownDays: 12,
-  });
-
-  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
-  return out;
-}
-
-function watchingTradeDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
-  const direction = thesis.direction ?? "LONG";
-
-  // TRADE-horizon entries are tight by design — the agent set a specific
-  // breakout level on a known short-term setup. Cooldown 1d so an
-  // intraday cross fires once and tactical-run takes it from there.
-  const entry = watchingEntryTrigger(thesis, direction, 1);
+  const entry = watchingEntryTrigger(thesis, direction, enterCooldownDays);
   if (entry) out.push(entry);
-
-  // No support-REVIEW for TRADE: the setup IS the entry plan; if price
-  // drops to "support" the setup is gone, the thesis should age out via
-  // TIME_ELAPSED rather than fire a noisy mid-window REVIEW.
-  out.push(
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_BEAT" },
-      action: "REVIEW",
-      rationale: `Beat — short-term tape may flip in our favor before the entry trigger.`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
-      action: "REVIEW",
-      rationale: `Miss — entry conditions deteriorating. Consider removing.`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "TIME_ELAPSED", days: 14 },
-      action: "REVIEW",
-      rationale: `Trade-window hygiene — TRADE setups stale after 14 days. Confirm or remove.`,
-      cooldownDays: 12,
-    },
-  );
-
-  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
-  return out;
-}
-
-function watchingTargetDefaults(thesis: ThesisShape): Trigger[] {
-  const out: Trigger[] = [];
-  const direction = thesis.direction ?? "LONG";
-
-  const entry = watchingEntryTrigger(thesis, direction, 1);
-  if (entry) out.push(entry);
-
-  // Support-REVIEW for LONG: a pullback to the stop level is either
-  // a better entry or evidence the thesis is breaking. Worth a look.
-  // (SHORT mirror omitted — kept lean.)
-  if (thesis.stopLoss != null && direction === "LONG") {
-    out.push({
-      id: createId(),
-      predicate: { kind: "PRICE_BELOW", level: thesis.stopLoss },
-      action: "REVIEW",
-      rationale: `Price dropped to support level $${thesis.stopLoss}. Better entry, or thesis weakening?`,
-      cooldownDays: 1,
-    });
-  }
-
-  out.push(
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_BEAT" },
-      action: "REVIEW",
-      rationale:
-        direction === "PASS"
-          ? `Beat — possibly a reason to flip the PASS.`
-          : `Beat — possible entry catalyst. Validate before INITIATE.`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
-      action: "REVIEW",
-      rationale:
-        direction === "PASS"
-          ? `Miss — confirms the PASS, possibly remove from watch.`
-          : `Miss — entry conditions worsening. Consider removing.`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "TIME_ELAPSED", days: 30 },
-      action: "REVIEW",
-      rationale: `Monthly hygiene — is this still worth tracking?`,
-      cooldownDays: 25,
-    },
-  );
-
-  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
-  return out;
-}
-
-function watchingCompounderDefaults(thesis: ThesisShape): Trigger[] {
-  const out: Trigger[] = [];
-  const direction = thesis.direction ?? "LONG";
-
-  // COMPOUNDER entry requires patience — short-term spikes through the
-  // breakout level are noise on a multi-year hold. 7d cooldown means a
-  // single fleeting cross doesn't spam tactical runs; if price holds
-  // above the level over a week the cron will re-fire.
-  const entry = watchingEntryTrigger(thesis, direction, 7);
-  if (entry) out.push(entry);
-
-  // No support-REVIEW. Compounder watches don't react to intra-month
-  // price moves — only to fundamental events (earnings/guidance) or
-  // the scheduled hygiene check.
-  out.push(
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_BEAT" },
-      action: "REVIEW",
-      rationale:
-        direction === "PASS"
-          ? `Beat — possibly a reason to flip the PASS.`
-          : `Beat — long-term entry validation. Re-evaluate.`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
-      action: "REVIEW",
-      rationale:
-        direction === "PASS"
-          ? `Miss — confirms the PASS.`
-          : `Miss — does this break the compounder thesis?`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "GUIDANCE_CHANGE", direction: "DOWN" },
-      action: "REVIEW",
-      rationale: `Guidance cut on a compounder watch — biggest signal that the long-term thesis is flawed. Re-evaluate.`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "TIME_ELAPSED", days: 90 },
-      action: "REVIEW",
-      rationale: `Quarterly hygiene — even compounders get a periodic look.`,
-      cooldownDays: 80,
-    },
-  );
-
-  out.push(...watchingPlanLevels(thesis, thesis.direction ?? "LONG"));
+  out.push(...watchingPlanLevels(thesis, direction));
   return out;
 }
 
@@ -1113,16 +870,9 @@ function defaultTriggersForHorizonInner(
     // flip), plus the same news/earnings/hygiene REVIEW set. The
     // WATCHING templates already produce exactly this shape so the
     // PROMOTED branch is a straight delegation.
-    switch (horizon) {
-      case "CATALYST":
-        return watchingCatalystDefaults(thesis);
-      case "TRADE":
-        return watchingTradeDefaults(thesis);
-      case "TARGET":
-        return watchingTargetDefaults(thesis);
-      case "COMPOUNDER":
-        return watchingCompounderDefaults(thesis);
-    }
+    // COMPOUNDER waits a week before re-firing an entry level it keeps
+    // crossing; the shorter horizons act the same day.
+    return watchingDefaults(thesis, horizon === "COMPOUNDER" ? 7 : 1);
   }
   switch (horizon) {
     case "COMPOUNDER":

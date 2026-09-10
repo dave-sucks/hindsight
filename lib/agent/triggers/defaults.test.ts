@@ -385,6 +385,47 @@ describe("defaultTriggersForHorizon — standing protection minimums (Game Plan 
     });
   }
 
+  // ── A watch carries only what its author wrote (DAV-209) ──
+  for (const horizon of HELD_HORIZONS) {
+    it(`WATCHING ${horizon} with no prices emits NOTHING`, () => {
+      // The templates used to invent a review schedule plus earnings, filing
+      // and guidance rungs on every new watch. An author who supplied no
+      // levels and no triggers now gets an empty ladder, which is a legal,
+      // free state: nothing looks at the name until something they wrote does.
+      const triggers = defaultTriggersForHorizon(
+        horizon,
+        {
+          entryPrice: null,
+          targetPrice: null,
+          stopLoss: null,
+          catalystDate: null,
+          direction: "LONG",
+        },
+        "WATCHING",
+      );
+      expect(triggers).toEqual([]);
+    });
+
+    it(`WATCHING ${horizon} emits ONLY the author's own levels`, () => {
+      const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
+      // Every rung traces back to a number the author supplied.
+      const kinds = new Set(triggers.map((t) => t.predicate.kind));
+      expect(kinds.has("TIME_ELAPSED")).toBe(false);
+      expect(kinds.has("EARNINGS_BEAT")).toBe(false);
+      expect(kinds.has("EARNINGS_MISS")).toBe(false);
+      expect(kinds.has("GUIDANCE_CHANGE")).toBe(false);
+      expect(kinds.has("FILING")).toBe(false);
+      expect(kinds.has("REVIEW_CADENCE")).toBe(false);
+      // What it DOES carry: the buy level, and the plan levels around it.
+      expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
+    });
+  }
+
+  it("PROMOTED still gets its re-entry rung off the author's entry level", () => {
+    const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
+    expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
+  });
+
   it("PROMOTED has no protection rungs (no live position yet)", () => {
     const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
     expect(findGain(triggers, "UP")).toBeUndefined();
