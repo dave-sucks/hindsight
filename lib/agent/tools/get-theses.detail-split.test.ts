@@ -56,6 +56,28 @@ function makeCtx(runMode?: string): ToolContext {
   } as unknown as ToolContext;
 }
 
+/**
+ * Fixture dates are RELATIVE, and must stay that way.
+ *
+ * These rows are meant to read as "quiet": nothing fired, nothing due, so
+ * `needsAction` stays null and the row collapses to an index entry. Several
+ * of the thresholds that decide that are measured against the real clock, so
+ * a hardcoded date is a time bomb — it passes until the wall clock drifts
+ * past the threshold, then fails for a reason that has nothing to do with
+ * the code under test.
+ *
+ * That is exactly what happened: `researchUpdatedAt` was pinned to
+ * 2026-08-10, the TARGET horizon calls research stale after 30 days, and on
+ * 2026-09-09 the quiet row started reporting RESEARCH_STALE and stopped
+ * being quiet.
+ *
+ * If you add a threshold-sensitive field here, express it in days-ago.
+ */
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
+
+/** Comfortably inside every staleness threshold, including CATALYST's 7 days. */
+const FRESH_RESEARCH = () => daysAgo(3);
+
 function thesisRow(over: Record<string, unknown>) {
   return {
     id: "t1",
@@ -84,8 +106,8 @@ function thesisRow(over: Record<string, unknown>) {
     conviction: "MEDIUM",
     convictionRationale: "fine",
     variantView: null,
-    createdAt: new Date("2026-08-01"),
-    updatedAt: new Date("2026-08-10"),
+    createdAt: daysAgo(40),
+    updatedAt: FRESH_RESEARCH(),
     invalidatedAt: null,
     invalidReason: null,
     closedAt: null,
@@ -95,7 +117,7 @@ function thesisRow(over: Record<string, unknown>) {
     paperTenureDays: null,
     paperRealizedPnl: null,
     paperReviewCount: null,
-    researchUpdatedAt: new Date("2026-08-10"),
+    researchUpdatedAt: FRESH_RESEARCH(),
     ...over,
   };
 }
@@ -126,7 +148,7 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
         id: "t_promoted",
         ticker: "PROMO",
         status: "PROMOTED",
-        promotedAt: new Date("2026-08-11"),
+        promotedAt: daysAgo(3),
       }),
     ]);
 
@@ -155,6 +177,25 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     // Counts span the whole book.
     expect(res.data.count).toBe(2);
     expect(res.data.note).toContain("index rows");
+  });
+
+  it("still holds a year from now — the fixture is not a time bomb", async () => {
+    // The guard for the bug this file already had once. Every fixture date is
+    // relative, so moving the wall clock forward moves the rows with it and
+    // the quiet row stays quiet. Re-hardcode a date and this fails the moment
+    // it crosses a threshold, here rather than on some random morning.
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] });
+    try {
+      jest.setSystemTime(new Date(Date.now() + 365 * 86_400_000));
+      mockThesisFindMany.mockResolvedValue([
+        thesisRow({ id: "t_quiet", ticker: "QUIET" }),
+      ]);
+      const res = await run(makeCtx("MORNING_PLAN"));
+      expect(res.data.theses).toHaveLength(0);
+      expect(res.data.quiet_theses).toHaveLength(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("an explicit ticker filter is a drill-down — always full detail", async () => {
@@ -223,7 +264,7 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
       {
         id: "pos_held",
         symbol: "HELD",
-        openedAt: new Date("2026-08-01"),
+        openedAt: daysAgo(40),
         avgCost: 100,
         peakPrice: 110,
       },
@@ -291,7 +332,7 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
       {
         id: "pos_held",
         symbol: "HELD",
-        openedAt: new Date("2026-08-01"),
+        openedAt: daysAgo(40),
         avgCost: 100,
         peakPrice: 110,
       },
