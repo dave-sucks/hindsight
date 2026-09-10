@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { SendToAgentIcon } from "@/components/ui/send-to-agent-icon";
 import {
   Tooltip,
   TooltipContent,
@@ -341,13 +342,18 @@ function TriggerPill({
           />
         }
       >
-        {/* Cell 1 — kind label, faint muted background */}
+        {/* Cell 1 — kind label, faint muted background. A rung that puts the
+            agent on a schedule carries the same mark as Send to Agent, so
+            the two read as the same idea wherever they appear. */}
         <div
           className={cn(
-            "flex items-center px-2 bg-muted/30 text-muted-foreground",
+            "flex items-center gap-1 px-2 bg-muted/30 text-muted-foreground",
             value ? "border-r border-border" : "",
           )}
         >
+          {trigger.predicate.kind === "REVIEW_CADENCE" ? (
+            <SendToAgentIcon className="size-3" />
+          ) : null}
           {kind}
         </div>
 
@@ -573,8 +579,13 @@ function TriggerPopoverContent({
   return (
     <PopoverContent side="left" align="start" className="w-72 space-y-2.5">
       {/* Title (sentence, foreground) + full-width input group */}
-      <div className="space-y-1">
-        <p className="text-sm font-medium text-foreground">{fieldLabel}</p>
+      <div className="space-y-2.5">
+        <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+          {trigger.predicate.kind === "REVIEW_CADENCE" ? (
+            <SendToAgentIcon className="size-3.5" />
+          ) : null}
+          {fieldLabel}
+        </p>
         {canEdit && isCadenceRung ? (
           <ButtonGroup className="w-full">
             <InputGroup>
@@ -723,25 +734,15 @@ function TriggerPopoverContent({
       {/* Chips — cooldown + delete (icon only). */}
       {trigger.cooldownDays || editable ? (
         <div className="flex items-center gap-1.5">
-          {/* A cadence rung's cooldown always equals its own interval, so
-              the chip would just restate the number above it. */}
+          {/* A cadence rung's rate limit always equals its own interval, so
+              saying it again would just restate the number above. */}
           {trigger.cooldownDays &&
           trigger.predicate.kind !== "REVIEW_CADENCE" ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Badge variant="secondary">
-                    <Clock className="size-3" />
-                    {trigger.cooldownDays}d cooldown
-                  </Badge>
-                }
-              />
-              <TooltipContent side="bottom">
-                Once this fires, it won&apos;t fire again for{" "}
-                {trigger.cooldownDays} days — so a condition that stays true
-                doesn&apos;t ask you the same question daily.
-              </TooltipContent>
-            </Tooltip>
+            <p className="text-xs text-muted-foreground">
+              {trigger.cooldownDays === 1
+                ? "Fires at most once a day."
+                : `Fires at most once every ${trigger.cooldownDays} days.`}
+            </p>
           ) : null}
           {editable ? (
             <Button
