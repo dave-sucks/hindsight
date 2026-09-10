@@ -7,8 +7,9 @@
 > direction. Companion to `EARNINGS_AND_MOVERS.md` (the earnings-trigger
 > build) and the parked `SIGNALS_REDESIGN.md` (news — not this).
 >
-> **Status:** proposal. Section 1 is a to-do list that needs the principal's
-> go. Sections 2–7 explain the model. Section 8 is the scope table — what's
+> **Status:** in motion. Section 1's cuts are in #625 (one dashboard action
+> is still the principal's). The earnings triggers and the sheet block are in
+> #621. Sections 2–7 explain the model. Section 8 is the scope table — what's
 > in, what's next, what's parked, what doesn't matter.
 
 ---
@@ -50,10 +51,10 @@ newsletters. **Yes, a little.** Here is the honest state, measured today.
 
 | Wire | What it does today | How to cut it |
 |---|---|---|
-| **Newsletter webhook** (`/api/intelligence/email-ingest`) | Resend forwards every newsletter; GPT-4o-mini extracts "signals" (92 last week); it then calls the dead router **and can spawn a full daily run on any held ticker it labels BREAKING.** That spawn hasn't fired in 30 days, but it is armed and it is a real cost path. | Stop the forwarding at Resend (or the mailbox that feeds it). Optionally make the route return 410. **This is the one that costs money.** |
-| **Discovery prompt** hard-requires `read_signals` | "ALWAYS call read_signals" is step 1 of the discovery run. With routing dead it returns nothing and the analyst starts from an empty pool. Discovery is paused today, so it's dormant — but the day you resume it, this fires first. | Drop `read_signals` from the discovery allowlist and prompt. Movers + calendar pull tools are the real step 1. |
-| **`AgentConfig.feeds`** | A subscription dimension that routes the movers/calendar firehose into the inbox. All 3 enabled analysts have it set. It has delivered nothing since May and depends on two paused jobs. | Delete the field, the `lib/universe/feeds.ts` enum, and the archetype defaults. The pull tools and the trigger path (below) replace it outright. |
-| **Builder / editor "inbox" tools** (`discover_signals_for_fence`, `read_analyst_inbox_stats`) | Read the empty route table and tell the builder "no signals match this fence" — which reads as a fact about the market, not about a dead pipeline. | Remove from the builder/editor allowlists. |
+| **Newsletter webhook** (`/api/intelligence/email-ingest`) | Resend forwards every newsletter; GPT-4o-mini extracts "signals" (92 last week); it then calls the dead router **and can spawn a full daily run on any held ticker it labels BREAKING.** That spawn hasn't fired in 30 days, but it is armed and it is a real cost path. | **Cut in #625** — the route now acknowledges and drops. **Still yours: stop the forward at Resend**, or the mailbox keeps paying for delivery. |
+| **Discovery prompt** hard-requires `read_signals` | "ALWAYS call read_signals" is step 1 of the discovery run. With routing dead it returns nothing and the analyst starts from an empty pool. Discovery is paused today, so it's dormant — but the day you resume it, this fires first. | **Cut in #625** — two pull tools every week, no `feeds` gate. |
+| **`AgentConfig.feeds`** | A subscription dimension that routes the movers/calendar firehose into the inbox. All 3 enabled analysts have it set. It has delivered nothing since May and depends on two paused jobs. Nothing reads it any more after #625. | Delete the field, the `lib/universe/feeds.ts` enum, and the archetype defaults. A column drop — two PRs per house rule. |
+| **Builder / editor "inbox" tools** (`discover_signals_for_fence`, `read_analyst_inbox_stats`) | Read the empty route table and tell the builder "no signals match this fence" — which reads as a fact about the market, not about a dead pipeline. | **Bigger than it looked.** Both prompts use these as hard rules ("watchlist tickers MUST come from `…tickerFrequency`", "if it returns 0, do NOT proceed"). Detaching is a rewrite of ~15 rule sites, not an allowlist flip. Own PR. |
 
 ### Dormant — leave until the news decision (DAV-196)
 
@@ -97,11 +98,16 @@ activity row on the thesis with the figures in it — *"Reported 2026-08-26
 $94.01B est."* A review that results writes a review. A trade writes a trade.
 The record lives where the decision lives, on the thesis, and nowhere else.
 
-One small exception worth ruling on: **the next report date.** It's useful on
-the thesis row itself — the sheet can show "reports Sep 30", the daily run
-can see it without a call. `Thesis.catalystDate` already exists for exactly
-this idea (today only the CATALYST-horizon theses use it). Populating it from
-the calendar for every thesis is one write per morning and no new field.
+**Shown, not stored — the Earnings block on the thesis sheet (#621).** Next
+report with the bell and the street estimate, and the last four quarters
+as beat/miss, read live when the sheet opens — exactly how the price at the
+top of the sheet works. Zero new storage.
+
+One small exception still worth ruling on: **the next report date on the
+row itself.** The sheet reads it live now, but the daily run and a
+"reporting this week" list would want it without a vendor call per name.
+`Thesis.catalystDate` already exists for exactly this idea (today only the
+CATALYST-horizon theses use it). One write per morning, no new field.
 Recommended; not done.
 
 ---
@@ -117,8 +123,10 @@ for the whole market, matches it against your names, and evaluates:
 - **Earnings beat / miss** — reported EPS against estimate, arithmetic.
   *Built (#621).* Fires once per report, at the next open. The activity row
   carries the numbers.
-- **Earnings within N days** — "MU reports in 2 days." *Proposed.* Same
-  call, one new trigger type. Fires once per approaching report.
+- **Earnings within N days** — "MU reports in 2 days." *Built (#621).*
+  Same call, one new trigger type. Fires once per approaching report, at
+  the first open inside the window; the activity row carries the date,
+  the bell, and the street estimate.
 - **Guidance up / down, filings, news** — *cannot* be computed from a
   calendar. Parked with DAV-196. (Filings via SEC EDGAR is plausibly cheap
   and separate; not scoped here.)
@@ -283,10 +291,12 @@ are what separate momentum from a pump. The thresholds should be yours.
 |---|---|---|
 | Earnings beat / miss triggers off the calendar | **In — built, #621** | Fires from 2026-09-30 (MU). |
 | Fire carries the numbers into the audit row and tactical kickoff | **In — built, #621** | |
-| Cut the newsletter webhook | **Next — needs your go** | The only live spend path. Stop the Resend forward. |
+| Cut the newsletter webhook | **Done — #625** | Route is inert. **Stop the Resend forward** — that part is yours. |
 | Delete `AgentConfig.feeds` | **Next — needs your go** | A deletion. Offsets #621's line count. |
-| Drop `read_signals` from discovery; drop inbox tools from builder/editor | **Next — needs your go** | Small, mechanical. |
-| Earnings-within-N-days trigger | **Next — needs your ruling** | New trigger type. Rides the same call. Highest value for buy timing. |
+| Drop `read_signals` and the `feeds` gate from discovery | **Done — #625** | Two pull tools every week. |
+| Detach the builder / editor from the inbox tools | **Later, medium** | ~15 hard-rule sites across two prompts. Not an allowlist flip. |
+| Earnings-within-N-days trigger | **In — built, #621** | `EARNINGS_WITHIN`, 1–14 days. In the add dialog as "Earnings". |
+| Earnings block on the thesis sheet (live, not stored) | **In — built, #621** | Next report + last four quarters. |
 | Next report date onto the thesis row (`catalystDate`) | **Next — needs your ruling** | Existing field, one write per morning. |
 | Daily-run opening context: reporting this week / on today's active list | **Later, small** | Two lines of input. |
 | Post-earnings discovery screen (the PEAD funnel, computed) | **Later, medium** | Deterministic; replaces hand-written Grok prompts for that seat. |
