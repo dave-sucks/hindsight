@@ -51,7 +51,8 @@ const ctx = {
   groupId: (phase: string) => phase,
 } as ToolContext;
 
-// PLTR as it stood on 2026-08-26: entry 183, target 190, stop 110.
+// PLTR as it stood on 2026-08-26: entry 183, target 190, stop 110 — as
+// triggers, since the columns are read off the triggers (DAV-195 L3).
 function pltr(overrides: Record<string, unknown> = {}) {
   return {
     id: "thesis_pltr",
@@ -80,6 +81,20 @@ function pltr(overrides: Record<string, unknown> = {}) {
         action: "ENTER",
         rationale: "Reclaim.",
         source: "AGENT",
+      },
+      {
+        id: "target-1",
+        predicate: { kind: "PRICE_ABOVE", level: 190 },
+        action: "REVIEW",
+        rationale: "Target $190.00 — decide here.",
+        source: "DEFAULT",
+      },
+      {
+        id: "floor-1",
+        predicate: { kind: "PRICE_BELOW", level: 110 },
+        action: "EXIT",
+        rationale: "Floor — sell if the price drops to $110.00.",
+        source: "DEFAULT",
       },
       {
         id: "clock-1",
@@ -154,7 +169,16 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
   });
 
   it("a held name is exempt from the floor (the fill is the entry, the floor ratchets)", async () => {
-    mockThesisFindUnique.mockResolvedValue(pltr({ status: "HOLDING", stopLoss: 170 }));
+    mockThesisFindUnique.mockResolvedValue(
+      pltr({
+        status: "HOLDING",
+        stopLoss: 170,
+        triggers: [
+          { id: "floor-1", predicate: { kind: "PRICE_BELOW", level: 170 }, action: "EXIT", rationale: "Floor.", source: "AGENT" },
+          { id: "target-1", predicate: { kind: "PRICE_ABOVE", level: 190 }, action: "REVIEW", rationale: "Target.", source: "AGENT" },
+        ],
+      }),
+    );
     mockPositionFindFirst.mockResolvedValueOnce({ avgCost: 160 });
     // Raising the floor toward the fill leaves reward 30 / risk ~0 — no R/R
     // question on a held name, only ordering.

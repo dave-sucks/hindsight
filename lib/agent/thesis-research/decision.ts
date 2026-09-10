@@ -19,7 +19,6 @@
 import { z } from "zod";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
-import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
 
 const scoringDimSchema = z.object({
   score: z.number(),
@@ -84,16 +83,40 @@ export const thesisDecisionSchema = z.object({
     .array(z.unknown())
     .optional()
     .describe(
-      "OPTIONAL custom trigger ladder. Omit to accept the horizon-default template (right answer for most theses). " +
-        "Shape per trigger: { predicate: {kind, ...params}, action, rationale, cooldownDays? }.",
+      "MINT ONLY. Optional custom trigger ladder; omit to accept the horizon-default template (right answer for most theses). " +
+        "Shape per trigger: { predicate: {kind, ...params}, action, rationale, cooldownDays? }. On a refresh use add_triggers / edit_triggers / remove_trigger_ids instead.",
     ),
+  // ── Refresh: triggers change one at a time (DAV-242) ─────────────────
+  add_triggers: z
+    .array(z.unknown())
+    .optional()
+    .describe("REFRESH ONLY. Triggers to add: { predicate, action, rationale, cooldownDays? }. Adding where one exists in the same bucket edits that one."),
+  edit_triggers: z
+    .array(
+      z.object({
+        id: z.string(),
+        level: z.number().optional(),
+        pct: z.number().optional(),
+        days: z.number().int().optional(),
+        action: z.string().optional(),
+        rationale: z.string().optional(),
+      }),
+    )
+    .optional()
+    .describe("REFRESH ONLY. Edit a trigger by the id shown in EXISTING THESIS. A level / pct / days change REQUIRES rationale."),
+  remove_trigger_ids: z
+    .array(z.string())
+    .optional()
+    .describe("REFRESH ONLY. Trigger ids to remove. To set a priced plan down, remove the buy, floor and target triggers and keep a REVIEW wake."),
 });
 
 export type ThesisDecisionInput = z.infer<typeof thesisDecisionSchema>;
 
 /** A decision that passed validation; triggers are the parsed, typed array. */
-export interface ValidatedThesisDecision extends Omit<ThesisDecisionInput, "triggers"> {
+export interface ValidatedThesisDecision
+  extends Omit<ThesisDecisionInput, "triggers" | "add_triggers"> {
   triggers?: z.infer<typeof triggersArraySchema>;
+  add_triggers?: z.infer<typeof triggersArraySchema>;
   /** Sum of the four scoring dimensions (present on LONG/SHORT). */
   composite?: number;
 }
@@ -205,9 +228,15 @@ export function validateThesisDecision(
     }
   }
 
-  if (directional && !priced && opts.mode === "refresh" && opts.existingTargetPrice != null && d.triggers === undefined) {
+  if (
+    directional &&
+    !priced &&
+    opts.mode === "refresh" &&
+    opts.existingTargetPrice != null &&
+    !(d.remove_trigger_ids && d.remove_trigger_ids.length > 0)
+  ) {
     errors.push(
-      "levels: you omitted entry/target/stop but the stored plan is priced, and omitting the fields leaves it as it is. To set the plan down, resend `triggers` with the plan levels removed and ≥1 REVIEW-action wake (the persist step recomputes the level columns from the ladder). To keep the plan, send all three levels.",
+      "levels: you omitted entry/target/stop but the stored plan is priced, and omitting the fields leaves it as it is. To set the plan down, send `remove_trigger_ids` naming the buy, floor and target trigger ids from EXISTING THESIS (keep ≥1 REVIEW wake; the level columns follow the triggers). To keep the plan, send all three levels.",
     );
   }
 
@@ -284,6 +313,19 @@ export function validateThesisDecision(
   if (d.direction === "PASS" && d.triggers !== undefined && (d.triggers as unknown[]).length > 0) {
     errors.push("triggers: a PASS decision cannot carry triggers — omit the field entirely.");
   }
+  if (opts.mode === "refresh" && d.triggers !== undefined) {
+    errors.push(
+      "triggers: a refresh edits triggers one at a time — use add_triggers / edit_triggers (by the ids in EXISTING THESIS) / remove_trigger_ids. Omit `triggers`.",
+    );
+  }
+  if (opts.mode === "mint" && (d.add_triggers || d.edit_triggers || d.remove_trigger_ids)) {
+    errors.push("add_triggers / edit_triggers / remove_trigger_ids: a mint has no existing triggers to edit — send `triggers` (or omit it for the horizon defaults).");
+  }
+  for (const e of d.edit_triggers ?? []) {
+    if ((e.level !== undefined || e.pct !== undefined || e.days !== undefined) && !e.rationale?.trim()) {
+      errors.push(`edit_triggers[${e.id}]: a level / pct / days change requires a rationale — the sentence moves with the number.`);
+    }
+  }
 
   // ── P1-35: recently-sold acknowledgment mirror (#524, in-loop) ───────
   if (
@@ -300,9 +342,13 @@ export function validateThesisDecision(
   }
 
   // ── Triggers (optional — omission means horizon defaults) ───────────
+  // On a refresh the same checks run on `add_triggers`: an added trigger is
+  // a new trigger, so the action-set rules apply to it alone.
   let parsedTriggers: z.infer<typeof triggersArraySchema> | undefined;
-  if (d.triggers !== undefined) {
-    const parsed = triggersArraySchema.safeParse(d.triggers);
+  let parsedAdds: z.infer<typeof triggersArraySchema> | undefined;
+  const supplied = opts.mode === "refresh" ? d.add_triggers : d.triggers;
+  if (supplied !== undefined) {
+    const parsed = triggersArraySchema.safeParse(supplied);
     if (!parsed.success) {
       const issues = parsed.error.issues
         .slice(0, 5)
@@ -313,10 +359,11 @@ export function validateThesisDecision(
           "Simplest fix: OMIT the triggers field entirely and accept the horizon-default template.",
       );
     } else {
-      parsedTriggers = parsed.data;
+      if (opts.mode === "refresh") parsedAdds = parsed.data;
+      else parsedTriggers = parsed.data;
       // Action-set sanity by position state — mirrors the Layer-1 guards
       // record/update enforce, surfaced here so the repair is one step.
-      const actions = new Set(parsedTriggers.map((t) => t.action));
+      const actions = new Set(parsed.data.map((t) => t.action));
       if (held) {
         if (actions.has("ENTER")) {
           errors.push("triggers: this thesis is HOLDING (position open) — ENTER triggers are forbidden. Use EXIT/REVIEW/TRIM/ADD/MOVE_STOP.");
@@ -333,27 +380,6 @@ export function validateThesisDecision(
         }
       }
 
-      // Required-action mirrors of the persist-side enter-guard (review
-      // finding #4c). update_thesis is wholesale-REPLACE with no default
-      // merge, so a refresh ladder must itself carry the load-bearing rung.
-      if (opts.mode === "refresh" && directional && parsedTriggers.length > 0) {
-        if (held && !actions.has("EXIT")) {
-          errors.push(
-            "triggers: a HOLDING ladder must carry at least one EXIT rung (the automated stop-loss path) — the persist gate rejects ladders without one.",
-          );
-        }
-        // No plan level means no plan — legal with any wakes or none. What
-        // still needs an ENTER is a plan: a floor or target with no buy
-        // level to reach it from.
-        const hasPlanLevel = parsedTriggers.some((t) =>
-          isPlanLevel(t, d.direction),
-        );
-        if (!held && !actions.has("ENTER") && (priced || hasPlanLevel)) {
-          errors.push(
-            "triggers: this ladder carries a plan (a floor or a target) with no ENTER rung to reach it from. Add the ENTER rung, or omit the triggers field and it is derived for you. To keep the name in view WITHOUT a plan, drop the plan levels entirely.",
-          );
-        }
-      }
     }
   }
 
@@ -366,6 +392,7 @@ export function validateThesisDecision(
     decision: {
       ...d,
       triggers: parsedTriggers,
+      add_triggers: parsedAdds,
       composite: d.scoring
         ? d.scoring.trendStrength.score +
           d.scoring.relativeStrength.score +

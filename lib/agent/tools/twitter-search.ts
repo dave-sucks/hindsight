@@ -69,7 +69,7 @@ export const twitterSearch = defineTool({
     const policy = ctx.intelligencePolicy;
 
     // Respect the same allowLiveSearch flag as web_search — if the analyst
-    // has live search disabled wholesale, twitter_search is also disabled.
+    // has live search disabled entirely, twitter_search is also disabled.
     if (policy && !policy.allowLiveSearch) {
       return {
         summary: "Live search disabled by intelligence policy.",

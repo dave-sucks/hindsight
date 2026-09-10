@@ -108,7 +108,7 @@ function Dot({ kind, pulse }: { kind: DotKind; pulse: boolean }) {
  * Sub-metadata: ladder rung changes as solid muted badges — the shared
  * Badge in its `muted` variant with squared corners, matching the
  * thesis trigger chips. Icon carries the kind: + added, × removed,
- * ↻ edited. Capped so a wholesale ladder rewrite can't wall the row.
+ * ↻ edited. Capped so a long list of ops can't wall the row.
  */
 function LadderBadges({ changes }: { changes: LadderChange[] }) {
   const shown = changes.slice(0, 4);

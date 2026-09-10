@@ -218,15 +218,18 @@ export function canonicalLevels(input: LevelInputs): CanonicalLevels {
  *
  *  1. A level change IS a trigger change. SNOW happened because the agent
  *     raised `stop_loss` to $256 and no trigger was written.
- *  2. A wholesale trigger replace cannot leave a stale column: the columns
- *     are recomputed from the FINAL list, so resending a ladder without the
- *     floor nulls `stopLoss` too. Whether that drop is ALLOWED is the ratchet
- *     gate's job — run it on this output.
+ *  2. The columns are recomputed from the FINAL list, so a level that is
+ *     removed nulls its column with it instead of lingering as a number
+ *     nothing enforces.
+ *
+ * Used where a thesis is being minted (record_thesis) or a position's stop
+ * and target are synced (manage_position). Once a thesis exists, its
+ * triggers change through ops — `lib/agent/triggers/ops.ts`.
  *
  * `undefined` leaves a slot alone; `null` clears it.
  */
 export function applyLevelArgs(args: {
-  /** Thesis-stored triggers, post wholesale-replace if one happened. */
+  /** Thesis-stored triggers. */
   stored: Trigger[];
   /** The resolved analyst/account levels above this thesis. */
   inherited?: ResolvedTrigger[];
@@ -289,6 +292,19 @@ function isDirectional(direction: string | null): boolean {
 }
 
 /**
+ * Which plan slot an absolute price trigger occupies, if any: the buy level
+ * (ENTER), the floor (a downside EXIT) or the target (an upside EXIT or
+ * REVIEW). One trigger per slot is the rule every write path keeps.
+ */
+export function levelSlotOf(t: Trigger, direction: string | null): LevelSlot | null {
+  if (!ABSOLUTE.has(t.predicate.kind)) return null;
+  if (t.action === "ENTER") return "ENTRY";
+  const side = levelSide(t.predicate, direction);
+  if (side === "DOWNSIDE") return t.action === "EXIT" ? "FLOOR" : null;
+  return t.action === "EXIT" || t.action === "REVIEW" ? "TARGET" : null;
+}
+
+/**
  * Set or clear one slot. Editing an existing trigger in the slot is preferred
  * over adding, so it keeps its id and with it its cooldown history and
  * `source` stamp. A duplicate behind it is dropped — a second trigger in the
@@ -304,16 +320,7 @@ function setLevel(
   held: boolean = true,
   currentPrice?: number | null,
 ): Trigger[] {
-  const side = slot === "FLOOR" ? "DOWNSIDE" : "UPSIDE";
-  const occupies = (t: Trigger): boolean => {
-    if (!ABSOLUTE.has(t.predicate.kind)) return false;
-    if (slot === "ENTRY") return t.action === "ENTER";
-    if (t.action === "ENTER") return false;
-    if (levelSide(t.predicate, direction) !== side) return false;
-    return slot === "FLOOR"
-      ? t.action === "EXIT"
-      : t.action === "EXIT" || t.action === "REVIEW";
-  };
+  const occupies = (t: Trigger): boolean => levelSlotOf(t, direction) === slot;
 
   if (price == null) return stored.filter((t) => !occupies(t));
 
@@ -510,7 +517,7 @@ function predicatePrice(
  * a trigger restates what the trigger already says, invisibly. It was built
  * and removed 2026-08-16 — see ENTRY_TRIGGER_SEMANTICS.md, don't rebuild it.
  */
-function predicateFor(
+export function predicateFor(
   slot: LevelSlot,
   price: number,
   direction: string | null,
@@ -533,7 +540,7 @@ function predicateFor(
     : { kind: "PRICE_BELOW", level: price };
 }
 
-function rationaleFor(
+export function rationaleFor(
   slot: LevelSlot,
   price: number,
   direction: string | null,

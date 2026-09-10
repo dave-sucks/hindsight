@@ -1,10 +1,7 @@
 import {
   resolveLadder,
   LEVEL_PRECEDENCE,
-  dropRedundantInherited,
   splitFiresByLevel,
-  carryOverDroppedFireState,
-  adoptStoredTriggerIdentity,
 } from "./levels";
 import { inheritableDefaultLadder, DEFAULT_LADDER_IDS } from "./defaults";
 import { triggerBucket } from "./bucket";
@@ -263,68 +260,6 @@ describe("resolveLadder — override annotation", () => {
   });
 });
 
-describe("dropRedundantInherited — the anti-drift guard", () => {
-  it("drops a rung that merely restates what is inherited", () => {
-    const kept = dropRedundantInherited([trail(8, "resent")], [trail(8, "inherited")]);
-    expect(kept).toEqual([]);
-  });
-
-  it("keeps a rung whose VALUE differs — that is a real override", () => {
-    const kept = dropRedundantInherited([trail(5, "own")], [trail(8, "inherited")]);
-    expect(kept.map((t) => t.id)).toEqual(["own"]);
-  });
-
-  it("keeps a rung whose fire mode differs", () => {
-    const incoming = { ...trail(8, "own"), fireMode: "DIRECT" as const };
-    const inherited = { ...trail(8, "inh"), fireMode: "TACTICAL" as const };
-    expect(dropRedundantInherited([incoming], [inherited]).map((t) => t.id)).toEqual([
-      "own",
-    ]);
-  });
-
-  it("treats absent fireMode as TACTICAL rather than as a difference", () => {
-    const incoming = trail(8, "own"); // no fireMode
-    const inherited = { ...trail(8, "inh"), fireMode: "TACTICAL" as const };
-    expect(dropRedundantInherited([incoming], [inherited])).toEqual([]);
-  });
-
-  it("ignores rationale differences — rewording is not overriding", () => {
-    const incoming = { ...trail(8, "own"), rationale: "reworded by the agent" };
-    expect(dropRedundantInherited([incoming], [trail(8, "inh")])).toEqual([]);
-  });
-
-  it("keeps rungs in buckets nothing is inherited for", () => {
-    const kept = dropRedundantInherited(
-      [trail(8, "redundant"), gainReview(25, "novel")],
-      [trail(8, "inherited")],
-    );
-    expect(kept.map((t) => t.id)).toEqual(["novel"]);
-  });
-
-  it("is a no-op when nothing is inherited", () => {
-    const incoming = [trail(8, "a"), gainReview(10, "b")];
-    expect(dropRedundantInherited(incoming, [])).toBe(incoming);
-  });
-
-  it("survives a full resend of the resolved ladder without collapsing the cascade", () => {
-    // The exact drift scenario: the agent reads the resolved ladder and
-    // faithfully resends every rung. Only its own overrides should persist.
-    const own = trail(4, "own-trail");
-    const resolved = resolveLadder({
-      thesis: [own],
-      account: [gainReview(15, "acct-gain")],
-      defaults: [trail(8, "def-trail"), gainReview(10, "def-gain")],
-    });
-
-    const stored = dropRedundantInherited(
-      resolved.map((t) => ({ ...t })),
-      resolved.filter((t) => t.inherited),
-    );
-
-    expect(stored.map((t) => t.id)).toEqual(["own-trail"]);
-  });
-});
-
 describe("inheritableDefaultLadder", () => {
   it("uses stable ids across calls (fire state keys off them)", () => {
     const a = inheritableDefaultLadder("TARGET");
@@ -400,44 +335,6 @@ describe("splitFiresByLevel", () => {
   });
 });
 
-describe("carryOverDroppedFireState", () => {
-  const fired = "2026-08-10T00:00:00.000Z";
-
-  it("hands a dropped rung's cooldown to the inherited rung that replaces it", () => {
-    const dropped = { ...trail(8, "thesis-copy"), lastFiredAt: fired };
-    const next = carryOverDroppedFireState([dropped], [trail(8, "inherited")], {});
-    expect(next["inherited"]).toEqual({ firedAt: fired });
-  });
-
-  it("keeps the LATER stamp when the inherited rung already fired", () => {
-    const later = "2026-08-12T00:00:00.000Z";
-    const dropped = { ...trail(8, "thesis-copy"), lastFiredAt: fired };
-    const next = carryOverDroppedFireState([dropped], [trail(8, "inh")], {
-      inh: { firedAt: later },
-    });
-    expect(next["inh"].firedAt).toBe(later);
-  });
-
-  it("ignores a dropped rung that never fired", () => {
-    const next = carryOverDroppedFireState([trail(8, "copy")], [trail(8, "inh")], {});
-    expect(next).toEqual({});
-  });
-
-  it("ignores a dropped rung with no inherited counterpart", () => {
-    const dropped = { ...trail(8, "copy"), lastFiredAt: fired };
-    expect(carryOverDroppedFireState([dropped], [], {})).toEqual({});
-  });
-
-  it("preserves unrelated entries and never mutates the input", () => {
-    const state = { other: { firedAt: fired, side: "MATCH" } };
-    const snapshot = JSON.stringify(state);
-    const dropped = { ...trail(8, "copy"), lastFiredAt: fired };
-    const next = carryOverDroppedFireState([dropped], [trail(8, "inh")], state);
-    expect(next["other"]).toEqual({ firedAt: fired, side: "MATCH" });
-    expect(JSON.stringify(state)).toBe(snapshot);
-  });
-});
-
 describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
   const cadence = (days: number, id?: string) =>
     rung({ id, predicate: { kind: "REVIEW_CADENCE", days }, action: "REVIEW" });
@@ -501,119 +398,6 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
     ).toHaveLength(1);
   });
 
-  it("a deliberate opt-in matching the account value is not 'redundant' on WATCHING", () => {
-    // inherited ladder as update_thesis builds it: resolved with the real state
-    const inherited = resolveLadder({
-      thesis: [],
-      account: [cadence(7, "account-cadence")],
-      state: "WATCHING",
-    });
-    // Agent opts a watch item into the same 7d clock the account uses.
-    const kept = dropRedundantInherited([cadence(7, "opt-in")], inherited);
-    expect(kept).toHaveLength(1);
-    expect(kept[0].id).toBe("opt-in");
-  });
-
-  it("on HELD the same rung IS redundant and converges to inheritance", () => {
-    const inherited = resolveLadder({
-      thesis: [],
-      account: [cadence(7, "account-cadence")],
-      state: "HELD",
-    });
-    expect(dropRedundantInherited([cadence(7, "copy")], inherited)).toEqual([]);
-  });
-});
-
-describe("adoptStoredTriggerIdentity — unchanged rungs keep their identity", () => {
-  const enter = (level: number, id?: string, over?: Partial<Trigger>) =>
-    rung({
-      id,
-      predicate: { kind: "PRICE_ABOVE", level },
-      action: "ENTER",
-      ...over,
-    });
-
-  it("an unchanged rung resent with a fresh id re-adopts the stored id (the ABT 2026-08-26 re-fire)", () => {
-    const stored = enter(103, "stored-id", {
-      lastFiredAt: "2026-08-26T13:31:00.000Z",
-      source: "AGENT",
-    });
-    const resent = enter(103, "fresh-mint");
-
-    const [adopted] = adoptStoredTriggerIdentity([resent], [stored]);
-    expect(adopted.id).toBe("stored-id");
-  });
-
-  it("a rung whose value changed keeps its fresh identity — a moved level is a new decision", () => {
-    const stored = enter(103, "stored-id", { lastFiredAt: "2026-08-26T13:31:00.000Z" });
-    const moved = enter(112, "fresh-mint");
-
-    const [adopted] = adoptStoredTriggerIdentity([moved], [stored]);
-    expect(adopted.id).toBe("fresh-mint");
-  });
-
-  it("a rung resent under its real id is untouched", () => {
-    const stored = enter(103, "stored-id");
-    const edited = enter(112, "stored-id"); // deliberate in-place edit
-
-    const [kept] = adoptStoredTriggerIdentity([edited], [stored]);
-    expect(kept.id).toBe("stored-id");
-    expect((kept.predicate as { level: number }).level).toBe(112);
-  });
-
-  it("two identical incoming rungs cannot both adopt the same stored id", () => {
-    const stored = enter(103, "stored-id");
-    const [a, b] = adoptStoredTriggerIdentity(
-      [enter(103, "mint-a"), enter(103, "mint-b")],
-      [stored],
-    );
-    expect(a.id).toBe("stored-id");
-    expect(b.id).toBe("mint-b");
-  });
-
-  it("a stored id already claimed by the payload is not adoptable by content", () => {
-    // The payload keeps "stored-id" (edited to 112) AND adds a new rung at
-    // the old value 103. The new rung must not steal "stored-id".
-    const stored = enter(103, "stored-id");
-    const [edited, added] = adoptStoredTriggerIdentity(
-      [enter(112, "stored-id"), enter(103, "mint")],
-      [stored],
-    );
-    expect(edited.id).toBe("stored-id");
-    expect(added.id).toBe("mint");
-  });
-
-  it("matches on values, not key order", () => {
-    const stored = rung({
-      id: "stored-id",
-      predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" },
-      action: "REVIEW",
-    });
-    const resent = rung({
-      id: "fresh-mint",
-      predicate: { direction: "UP", pct: 10, kind: "GAIN_FROM_ENTRY" } as Trigger["predicate"],
-      action: "REVIEW",
-    });
-
-    const [adopted] = adoptStoredTriggerIdentity([resent], [stored]);
-    expect(adopted.id).toBe("stored-id");
-  });
-
-  it("everything except the id is left alone", () => {
-    const stored = enter(103, "stored-id", {
-      lastFiredAt: "2026-08-26T13:31:00.000Z",
-      source: "PRINCIPAL",
-    });
-    const resent = enter(103, "fresh-mint", { rationale: "reworded by the agent" });
-
-    const [adopted] = adoptStoredTriggerIdentity([resent], [stored]);
-    // Identity comes back; the stamps themselves are the carry-over maps'
-    // job in update_thesis, keyed by the id this restored.
-    expect(adopted.id).toBe("stored-id");
-    expect(adopted.rationale).toBe("reworded by the agent");
-    expect(adopted.lastFiredAt).toBeUndefined();
-    expect(adopted.source).toBeUndefined();
-  });
 });
 
 describe("resolveLadder — position actions never reach an un-held thesis (2026-09-03)", () => {

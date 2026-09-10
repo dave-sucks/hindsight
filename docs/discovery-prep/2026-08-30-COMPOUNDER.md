@@ -60,8 +60,7 @@ DEMOTE CANDIDATE — flag for the principal, do not force:
 
 For each name, end with one explicit disposition: KEEP (nothing changed), RE-PRICE (new
 levels), RE-CLOCK (new review cadence), DEMOTE (drop the clock and plan, keep at least
-one wake condition), or ARCHIVE. Remember that the triggers field is a wholesale
-replace — resend every rung you intend to keep.
+one wake condition), or ARCHIVE. Name the triggers you change by id; the rest stay.
 ```
 
 ---

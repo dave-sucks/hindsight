@@ -13,12 +13,9 @@
  *   - Stored `summary` strings are inconsistent legacy prose — the title
  *     is DERIVED here, never rendered verbatim.
  *
- *   - triggerDiffLines: per-rung ladder diff, id-churn cancelled, tolerant
- *     of the legacy non-array shapes older rows carry
+ *   - ladderChangeLines: the trigger ops the caller sent, one chip each
+ *     ("Entry $183 → $190") — never a diff of two lists
  */
-
-import { predicateSentence } from "@/lib/agent/triggers/format";
-import type { Trigger } from "@/lib/agent/triggers/types";
 
 export type FieldChange = { from: unknown; to: unknown };
 
@@ -245,10 +242,13 @@ function closedSecondary(u: TimelineUpdate): string | null {
 export function updatedSecondary(u: TimelineUpdate): string | null {
   const fc = u.fieldChanges;
   if (!fc || typeof fc !== "object") return null;
-  const parts: string[] = [];
+  // The trigger ops lead — a moved entry IS the entry change, so the level
+  // columns are not repeated after them.
+  const ops = ladderChangeLines(u);
+  const parts: string[] = ops.map((o) => o.text);
   for (const { key, label, fmt } of SCALAR_LINES) {
     const entry = fc[key];
-    if (!entry) continue;
+    if (!entry || (ops.length > 0 && LEVEL_KEYS.has(key))) continue;
     parts.push(`${label.toLowerCase()} ${fmt(entry.from)} → ${fmt(entry.to)}`);
   }
   const scoring = fc.scoring;
@@ -258,8 +258,6 @@ export function updatedSecondary(u: TimelineUpdate): string | null {
     if (from != null && to != null && from !== to)
       parts.push(`composite ${from} → ${to}`);
   }
-  if (fc.triggers && triggerDiffLines(fc.triggers).length > 0)
-    parts.push("triggers");
   if (
     RESEARCH_KEYS.some((k) => fc[k]) &&
     parts.length === 0 // research alone; otherwise the level moves lead
@@ -633,8 +631,10 @@ export function monthLabel(timestamp: string, now = new Date()): string {
 }
 
 // ── Field-change lines (expanded view) ───────────────────────────────────────
-// Exact from → to for the scalar plan fields, plus a per-rung diff of the
-// trigger ladder. This is the "floor 64 → 71" rendering P1-33 asks for.
+// Exact from → to for the scalar plan fields. The trigger ops carry their
+// own lines ("Stop $64 → $71"), so the level columns yield to them.
+
+const LEVEL_KEYS = new Set(["targetPrice", "stopLoss", "entryPrice"]);
 
 const SCALAR_LINES: Array<{
   key: string;
@@ -657,118 +657,26 @@ function fmtPlain(v: unknown): string {
 }
 
 /**
- * predicateSentence has no default case — legacy rung shapes (pre-predicate
- * `condition` objects, retired kinds) return undefined or throw. Fall back
- * to null so callers can substitute a bare kind string rather than render
- * "undefined".
- */
-function safePredicateSentence(p: Trigger["predicate"]): string | null {
-  try {
-    const s = predicateSentence(p);
-    return typeof s === "string" && s.length > 0 ? s : null;
-  } catch {
-    return null;
-  }
-}
-
-function describeTriggerBrief(t: Trigger): string {
-  const sentence =
-    safePredicateSentence(t.predicate) ??
-    (t.predicate as { kind?: string } | undefined)?.kind ??
-    "trigger";
-  return `${sentence} → ${t.action?.toLowerCase() ?? "review"}`;
-}
-
-/**
- * Per-rung diff of a triggers fieldChange. Keyed by trigger id: added,
- * removed, and changed rungs (predicate or action moved — rationale,
- * cooldown, and lastFiredAt churn is deliberately ignored as noise).
- * Older rows store non-array shapes here (counts, notes) — those render
- * nothing rather than guessing.
+ * One chip per trigger op. `fieldChanges.triggerOps.to` is the list of ops
+ * the caller sent, stored verbatim with the line the feed shows. Rows from
+ * before ops (a `triggers` from/to diff) render no chips — their summary
+ * still says what happened.
  */
 export type LadderChange = {
   kind: "add" | "remove" | "edit";
   text: string;
 };
 
-export function triggerDiffLines(entry: FieldChange): LadderChange[] {
-  const from = Array.isArray(entry.from) ? (entry.from as Trigger[]) : null;
-  const to = Array.isArray(entry.to) ? (entry.to as Trigger[]) : null;
-  if (!from || !to) return [];
-  const fromById = new Map(from.filter((t) => t?.id).map((t) => [t.id, t]));
-  const toIds = new Set(to.filter((t) => t?.id).map((t) => t.id));
-
-  const changed: LadderChange[] = [];
-  const added: Trigger[] = [];
-  const removed: Trigger[] = [];
-  for (const t of to) {
-    if (!t?.id) continue;
-    const prev = fromById.get(t.id);
-    if (!prev) {
-      added.push(t);
-    } else if (
-      JSON.stringify(prev.predicate) !== JSON.stringify(t.predicate) ||
-      prev.action !== t.action
-    ) {
-      const before = safePredicateSentence(prev.predicate);
-      const after = safePredicateSentence(t.predicate);
-      if (before && after) {
-        changed.push({
-          kind: "edit",
-          text: `${before} → ${after}${
-            prev.action !== t.action
-              ? ` (${prev.action.toLowerCase()} → ${t.action.toLowerCase()})`
-              : ""
-          }`,
-        });
-      }
-      // Unknown predicate shape on either side — skip rather than lie.
-    }
-  }
-  for (const t of from) {
-    if (t?.id && !toIds.has(t.id)) removed.push(t);
-  }
-
-  // Cancel id-churn. Agents wholesale-replace the ladder and routinely mint
-  // FRESH ids for rungs whose condition + action didn't move, so an id-keyed
-  // diff lists the entire ladder twice ("+ Earnings beat ≥5% → review" and
-  // "− Earnings beat ≥5% → review" — the Aug 12 EME rows). A rung removed
-  // and re-added with identical content is not a change; pair those off and
-  // keep only what actually moved. Rationale/cooldown churn stays invisible
-  // by design.
-  const sig = (t: Trigger) => `${JSON.stringify(t.predicate)}|${t.action}`;
-  const removedBySig = new Map<string, Trigger[]>();
-  for (const t of removed) {
-    const k = sig(t);
-    const bucket = removedBySig.get(k);
-    if (bucket) bucket.push(t);
-    else removedBySig.set(k, [t]);
-  }
-  const realAdded = added.filter((t) => {
-    const bucket = removedBySig.get(sig(t));
-    if (bucket && bucket.length > 0) {
-      bucket.pop();
-      return false;
-    }
-    return true;
-  });
-  const realRemoved = Array.from(removedBySig.values()).flat();
-
-  return [
-    ...realAdded.map(
-      (t) => ({ kind: "add", text: describeTriggerBrief(t) }) as LadderChange,
-    ),
-    ...changed,
-    ...realRemoved.map(
-      (t) => ({ kind: "remove", text: describeTriggerBrief(t) }) as LadderChange,
-    ),
-  ];
-}
-
-/** The ladder diff for a row, [] when it has none. */
+/** The trigger ops on a row, [] when it has none. */
 export function ladderChangeLines(u: TimelineUpdate): LadderChange[] {
-  const entry = u.fieldChanges?.triggers;
-  return entry ? triggerDiffLines(entry) : [];
+  const ops = u.fieldChanges?.triggerOps?.to;
+  if (!Array.isArray(ops)) return [];
+  return ops.flatMap((o) => {
+    const { op, text } = (o ?? {}) as { op?: unknown; text?: unknown };
+    if (typeof text !== "string" || !text) return [];
+    const kind = op === "add" ? "add" : op === "remove" ? "remove" : "edit";
+    return [{ kind, text } as LadderChange];
+  });
 }
 
 

@@ -94,7 +94,7 @@ The five mechanics that all four sources converge on:
 
 5. **Persistent cross-run memory.** TradingAgents writes a `trading_memory.md` and injects "most recent same-ticker decisions plus recent cross-ticker lessons" into the next decision. Hindsight has `AnalystBriefing` (within-day continuity) but no longitudinal rollup.
 
-What to **skip**: FinRobot's 5+ specialist agents wholesale (cost bomb under Hindsight's step budgets), TradingAgents' Fund Manager layer (Hindsight's user is the FM), DCF / 3-year projection generators (heavy and not Hindsight's edge), and the StockHero black-box framing entirely — it's the anti-pattern.
+What to **skip**: FinRobot's 5+ specialist agents entirely (cost bomb under Hindsight's step budgets), TradingAgents' Fund Manager layer (Hindsight's user is the FM), DCF / 3-year projection generators (heavy and not Hindsight's edge), and the StockHero black-box framing entirely — it's the anti-pattern.
 
 ---
 
@@ -844,7 +844,7 @@ Full content of the research review conducted 2026-05-14. URLs and key claims pr
 - **Models:** GPT-4 (`gpt-4-0125-preview` in default config). Plug-and-play LLM but OpenAI-default.
 - **License:** Apache-2.0. Python pip + local Flask UI on `127.0.0.1:8001`.
 - **Worth stealing:** the section taxonomy (8 named subsections per thesis); the "Director routes to specialists" pattern as a single-LLM-with-sub-prompts approach.
-- **Worth skipping:** the codebase wholesale (Python service, local web UI), the DCF/projection generator, the RL loop.
+- **Worth skipping:** the codebase entirely (Python service, local web UI), the DCF/projection generator, the RL loop.
 
 ### A.2. FinRobot.ai (hosted)
 
@@ -862,7 +862,7 @@ Full content of the research review conducted 2026-05-14. URLs and key claims pr
 - **Memory:** persists `~/.tradingagents/memory/trading_memory.md`. Injects recent same-ticker decisions + cross-ticker lessons into next decision.
 - **License:** Apache-2.0, Python library + CLI.
 - **Worth stealing:** bull/bear debate as the depth mechanism (highest-leverage idea); quick-think/deep-think model split; persistent decision journal; specialist analyst roles before synthesizer; risk-management gate before commit.
-- **Worth skipping:** 5-team org-chart wholesale (cost bomb under Inngest billing + step budgets); Fund Manager layer (Hindsight's user is the FM); the project's performance claims as a methodology.
+- **Worth skipping:** 5-team org-chart entirely (cost bomb under Inngest billing + step budgets); Fund Manager layer (Hindsight's user is the FM); the project's performance claims as a methodology.
 
 ### A.4. StockHero
 

@@ -244,122 +244,6 @@ function protectiveTightestFirst(
  * Pure. Returns a fresh array, most-specific level first; consumers that
  * care about presentation order (the sheet groups by action) re-sort.
  */
-/**
- * Strip rungs from a wholesale-replace payload that merely restate what
- * the thesis already inherits.
- *
- * The hazard this closes: `update_thesis.triggers` is wholesale-REPLACE
- * by design — the agent resends every rung it wants to keep. Now that
- * `get_theses` shows it the RESOLVED ladder, a faithful agent will resend
- * the inherited rungs too, which would copy them onto the thesis and
- * silently promote them to THESIS level. Do that once per review and
- * within a week every analyst and account rule is overridden everywhere
- * by a frozen snapshot of itself — the cascade would still typecheck,
- * pass tests, and be dead.
- *
- * A rung counts as "merely restating" when its predicate, action and
- * effective fire mode all match the inherited rung in its bucket.
- * Rationale is deliberately NOT compared: the agent rewording an
- * explanation is not a decision to override a level. Any change to the
- * VALUE (or the fire mode) is a real override and is kept.
- */
-export function dropRedundantInherited(
-  incoming: Trigger[],
-  inherited: Trigger[],
-): Trigger[] {
-  if (inherited.length === 0) return incoming;
-  const inheritedByBucket = new Map(inherited.map((t) => [triggerBucket(t), t]));
-
-  return incoming.filter((t) => {
-    const match = inheritedByBucket.get(triggerBucket(t));
-    if (!match) return true;
-    const sameMode =
-      (t.fireMode ?? "TACTICAL") === (match.fireMode ?? "TACTICAL");
-    return !(sameMode && samePredicateValue(t.predicate, match.predicate));
-  });
-}
-
-/**
- * Canonical JSON of a predicate — object keys sorted recursively, so two
- * predicates that say the same thing serialize identically regardless of
- * the key order the author happened to use.
- */
-const normPredicate = (p: unknown): string =>
-  JSON.stringify(p, (_k, v: unknown) =>
-    v && typeof v === "object" && !Array.isArray(v)
-      ? Object.fromEntries(
-          Object.entries(v as Record<string, unknown>).sort(([x], [y]) =>
-            x.localeCompare(y),
-          ),
-        )
-      : v,
-  );
-
-/**
- * Structural equality over predicates. `triggerBucket` already matched
- * the KIND and the discriminating fields, so this is really asking "same
- * numbers?" — JSON comparison over sorted keys is sufficient and stays
- * correct as new predicate kinds are added.
- */
-function samePredicateValue(a: Trigger["predicate"], b: Trigger["predicate"]): boolean {
-  return normPredicate(a) === normPredicate(b);
-}
-
-/**
- * Re-adopt stored trigger ids for a wholesale-replace payload.
- *
- * The agent resends trigger ladders WITHOUT ids and the schema mints a
- * fresh uuid for every id-less rung, so an UNCHANGED rung comes back as a
- * stranger. Everything keyed by id then breaks at once: `lastFiredAt`
- * doesn't carry over (the rung re-fires on the next evaluator tick — ABT
- * 2026-08-26, four tactical runs in 15 minutes on one unchanged ENTER),
- * `source` doesn't carry over (a principal-authored floor gets re-stamped
- * AGENT), and the per-thesis fire-state map orphans its entries.
- *
- * The rule: an incoming rung that does not name an existing id, but whose
- * CONTENT — action, predicate kind and exact values — matches a stored rung
- * nothing else in the payload claims, IS that rung and takes its id. A rung
- * whose values changed matches nothing and keeps its fresh identity: a
- * moved level is a new decision and may legitimately fire.
- *
- * Pure. Returns a fresh array; order and everything but `id` untouched.
- */
-export function adoptStoredTriggerIdentity(
-  incoming: Trigger[],
-  existing: Trigger[],
-): Trigger[] {
-  if (existing.length === 0 || incoming.length === 0) return incoming;
-
-  const existingIds = new Set(
-    existing.map((t) => t.id).filter((id): id is string => Boolean(id)),
-  );
-  // Stored rungs the payload doesn't already claim by id, grouped by
-  // content. A queue per key so two identical incoming rungs can't both
-  // adopt the same stored id.
-  const claimed = new Set(
-    incoming
-      .map((t) => t.id)
-      .filter((id): id is string => Boolean(id) && existingIds.has(id as string)),
-  );
-  const adoptable = new Map<string, Trigger[]>();
-  for (const t of existing) {
-    if (!t.id || claimed.has(t.id)) continue;
-    const key = `${triggerBucket(t)}|${normPredicate(t.predicate)}`;
-    const queue = adoptable.get(key);
-    if (queue) queue.push(t);
-    else adoptable.set(key, [t]);
-  }
-  if (adoptable.size === 0) return incoming;
-
-  return incoming.map((t) => {
-    if (t.id && existingIds.has(t.id)) return t; // an edit-in-place — keep it
-    const match = adoptable
-      .get(`${triggerBucket(t)}|${normPredicate(t.predicate)}`)
-      ?.shift();
-    return match?.id ? { ...t, id: match.id } : t;
-  });
-}
-
 export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
   const order = (ts: Trigger[]) => protectiveTightestFirst(ts, input.direction);
   const byLevel: Record<TriggerLevel, Trigger[]> = {
@@ -394,10 +278,8 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
   //     pages (no thesis in scope) still render account/analyst cadence
   //     rules normally.
   //
-  // Downstream this also keeps `dropRedundantInherited` honest: on a
-  // WATCHING thesis the inherited ladder contains no cadence, so an agent
-  // deliberately opting in with days=7 is a real rung, not "redundant
-  // with the account" — the opt-in cannot be silently swallowed.
+  // A thesis-level cadence added on a WATCHING row is therefore always a
+  // real trigger, never "already in force from the account".
   const dropInheritedCadence = input.state === "WATCHING";
 
   for (const level of LEVEL_PRECEDENCE) {
@@ -464,33 +346,4 @@ export function splitFiresByLevel(fires: ResolvedTrigger[]): {
     firedTriggerIds: fires.filter((t) => !t.inherited).map((t) => t.id),
     firedInheritedTriggerIds: fires.filter((t) => t.inherited).map((t) => t.id),
   };
-}
-
-/**
- * When a wholesale trigger replace drops a rung as redundant with an
- * inherited one, hand its cooldown stamp to the inherited rung.
- *
- * The inherited rung has a DIFFERENT id, so without this the thesis loses
- * that rung's fire history the first time the agent resends its ladder,
- * and a rung mid-cooldown can re-fire immediately — the 2026-06-02 NVDA
- * runaway shape. Returns a fresh state map; never mutates its input.
- */
-export function carryOverDroppedFireState(
-  droppedRungs: Trigger[],
-  inherited: Trigger[],
-  state: Record<string, { firedAt?: string; side?: string }>,
-): Record<string, { firedAt?: string; side?: string }> {
-  const out = { ...state };
-  const inheritedByBucket = new Map(inherited.map((t) => [triggerBucket(t), t]));
-  for (const t of droppedRungs) {
-    if (!t.lastFiredAt) continue;
-    const target = inheritedByBucket.get(triggerBucket(t));
-    if (!target) continue;
-    // Keep the LATER of the two — the inherited rung may already have
-    // fired on its own since the copy was made.
-    if ((out[target.id]?.firedAt ?? "") < t.lastFiredAt) {
-      out[target.id] = { ...out[target.id], firedAt: t.lastFiredAt };
-    }
-  }
-  return out;
 }

@@ -155,34 +155,23 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
       existingTargetPrice: 130,
     });
     expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("resend `triggers`");
+    expect(v.errors.join(" ")).toContain("remove_trigger_ids");
   });
 
-  it("refresh on a priced row: the set-down ladder (no plan level, a REVIEW wake) is accepted", () => {
+  it("refresh on a priced row: removing the plan triggers (and keeping a REVIEW wake) is accepted", () => {
+    // FLIPPED 2026-09-09 (DAV-242): the set-down is ops by id, not a resent list.
     const v = validateThesisDecision(
       {
         ...unpriced,
-        triggers: [
+        remove_trigger_ids: ["buy", "floor", "target"],
+        add_triggers: [
           { predicate: { kind: "TIME_ELAPSED", days: 120 }, action: "REVIEW", rationale: "Price it after the January readout." },
         ],
       },
       { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101, existingTargetPrice: 130 },
     );
     expect(v.ok).toBe(true);
-  });
-
-  it("an unpriced view still cannot smuggle a plan level in as a REVIEW rung without an ENTER", () => {
-    const v = validateThesisDecision(
-      {
-        ...unpriced,
-        triggers: [
-          { predicate: { kind: "PRICE_ABOVE", level: 140 }, action: "REVIEW", rationale: "target-ish" },
-        ],
-      },
-      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101, existingTargetPrice: 130 },
-    );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("ENTER rung");
+    expect(v.decision?.add_triggers).toHaveLength(1);
   });
 });
 
@@ -291,20 +280,22 @@ describe("validateThesisDecision — trigger action-set by position state", () =
     expect(v.errors.join(" ")).toContain("no position exists");
   });
 
-  it("HOLDING refresh: ENTER is forbidden", () => {
+  // On a refresh the same rules run on `add_triggers` (DAV-242: a refresh
+  // edits one trigger at a time; `triggers` is a mint-only argument).
+  it("HOLDING refresh: adding an ENTER is forbidden", () => {
     const v = validateThesisDecision(
-      { ...validLong, triggers: [enterTrigger] },
+      { ...validLong, add_triggers: [enterTrigger] },
       { mode: "refresh", existingStatus: "HOLDING", currentPrice: 101 },
     );
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("ENTER triggers are forbidden");
   });
 
-  it("HOLDING refresh: EXIT + REVIEW ladder is legal", () => {
+  it("HOLDING refresh: adding EXIT + REVIEW is legal", () => {
     const v = validateThesisDecision(
       {
         ...validLong,
-        triggers: [
+        add_triggers: [
           exitTrigger,
           {
             predicate: { kind: "REVIEW_CADENCE", days: 7 },
@@ -318,14 +309,38 @@ describe("validateThesisDecision — trigger action-set by position state", () =
     expect(v.ok).toBe(true);
   });
 
-  it("PROMOTED refresh (no live position): EXIT is forbidden, ENTER is legal", () => {
+  it("PROMOTED refresh (no live position): adding EXIT is forbidden, ENTER is legal", () => {
     const promotedOpts = { mode: "refresh" as const, existingStatus: "PROMOTED", currentPrice: 101 };
     expect(
-      validateThesisDecision({ ...validLong, triggers: [exitTrigger] }, promotedOpts).ok,
+      validateThesisDecision({ ...validLong, add_triggers: [exitTrigger] }, promotedOpts).ok,
     ).toBe(false);
     expect(
-      validateThesisDecision({ ...validLong, triggers: [enterTrigger] }, promotedOpts).ok,
+      validateThesisDecision({ ...validLong, add_triggers: [enterTrigger] }, promotedOpts).ok,
     ).toBe(true);
+  });
+
+  it("refresh: a whole `triggers` list is refused — edit one at a time", () => {
+    const v = validateThesisDecision(
+      { ...validLong, triggers: [exitTrigger] },
+      { mode: "refresh", existingStatus: "HOLDING", currentPrice: 101 },
+    );
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("one at a time");
+  });
+
+  it("refresh: a level edit without a rationale is refused in the loop", () => {
+    const v = validateThesisDecision(
+      { ...validLong, edit_triggers: [{ id: "floor", level: 95 }] },
+      { mode: "refresh", existingStatus: "HOLDING", currentPrice: 101 },
+    );
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("requires a rationale");
+  });
+
+  it("mint: ops are refused — there is nothing to edit yet", () => {
+    const v = validateThesisDecision({ ...validLong, remove_trigger_ids: ["x"] }, mintOpts);
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("a mint has no existing triggers");
   });
 
   it("malformed trigger shapes are reported as repairable errors, not thrown", () => {
@@ -393,43 +408,21 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
     expect(v.ok).toBe(true);
   });
 
-  it("enter-guard mirror: WATCHING refresh with a REVIEW-only ladder is rejected...", () => {
-    const reviewOnly = [
-      { predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", rationale: "hygiene" },
-    ];
+  it("refresh: adding a REVIEW wake on a watch is accepted — the buy trigger already on the row is not being replaced", () => {
+    // FLIPPED 2026-09-09 (DAV-242): the "ladder must carry an ENTER / EXIT"
+    // mirrors existed because a resent list replaced the whole ladder. An
+    // op adds one trigger; the buy and sell triggers on the row stay, and
+    // the tool checks the resulting plan once at persist.
     const v = validateThesisDecision(
-      { ...validLong, triggers: reviewOnly },
+      {
+        ...validLong,
+        add_triggers: [
+          { predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", rationale: "hygiene" },
+        ],
+      },
       { mode: "refresh", existingStatus: "WATCHING", currentPrice: 90, existingTargetPrice: 130 },
     );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("ENTER rung");
-  });
-
-  it("...including when the entry sits on the live price — that was the carve-out", () => {
-    // The buy-at-market exemption is gone: an entry at the tape is a buy
-    // condition already true, not a reason to skip the buy trigger.
-    const reviewOnly = [
-      { predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", rationale: "hygiene" },
-    ];
-    const v = validateThesisDecision(
-      { ...validLong, triggers: reviewOnly },
-      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 100, existingTargetPrice: 130 },
-    );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("ENTER rung");
-  });
-
-  it("enter-guard mirror: HOLDING refresh ladder must carry an EXIT rung", () => {
-    const noExit = [
-      { predicate: { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" }, action: "ADD", rationale: "press" },
-      { predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", rationale: "hygiene" },
-    ];
-    const v = validateThesisDecision(
-      { ...validLong, triggers: noExit },
-      { mode: "refresh", existingStatus: "HOLDING", currentPrice: 110, existingTargetPrice: 130 },
-    );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("EXIT rung");
+    expect(v.ok).toBe(true);
   });
 });
 

@@ -3,9 +3,11 @@
  * through the real tool (DAV-185).
  *
  * The pure comparison logic is covered in lib/agent/triggers/ratchet.test.ts;
- * these tests prove the tool actually refuses before any DB write, with the
- * MU 2026-08-18 shapes: floor lowered 948 → 814, DIRECT → TACTICAL demotion,
- * and the stop_loss column moved the wrong way. Legal raises must still land.
+ * these tests prove the tool refuses the OP — by id, with the reason — and
+ * writes no trigger change, with the MU 2026-08-18 shapes: floor lowered
+ * 948 → 814, DIRECT → TACTICAL demotion, and the stop moved the wrong way.
+ * Legal raises must still land. (FLIPPED 2026-09-09, DAV-242: a refused op
+ * no longer sinks the call; the rest of the update lands.)
  */
 
 const mockThesisFindUnique = jest.fn();
@@ -127,6 +129,15 @@ function makeTool(): { execute: (args: any) => Promise<any> } {
   };
 }
 
+/** No trigger change reached the database. */
+function noTriggerWrite() {
+  expect(
+    mockThesisUpdate.mock.calls.every(
+      (c) => (c[0].data as Record<string, unknown>).triggers === undefined,
+    ),
+  ).toBe(true);
+}
+
 describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
   beforeEach(() => {
     mockThesisFindUnique.mockReset();
@@ -139,21 +150,13 @@ describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
     const result = await makeTool().execute({
       thesis_id: "thesis_held_1",
       rationale: "Recalibrating the floor to reduce alert noise.",
-      triggers: [
-        {
-          id: "trig_floor",
-          predicate: { kind: "PRICE_BELOW", level: 814 },
-          action: "EXIT",
-          rationale: "Adjusted floor.",
-          fireMode: "DIRECT",
-        },
-      ],
+      edit_triggers: [{ id: "trig_floor", level: 814, rationale: "Adjusted floor." }],
     });
 
-    expect(result.data.ok).toBe(false);
-    expect(result.data.error).toBe("protective_level_locked");
-    expect(result.data.message).toContain("$948");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    const op = result.data.trigger_ops[0];
+    expect(op).toMatchObject({ id: "trig_floor", ok: false });
+    expect(op.reason).toContain("$948");
+    noTriggerWrite();
   });
 
   it("refuses demoting the floor from automatic (DIRECT) to judgment-first", async () => {
@@ -161,45 +164,40 @@ describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
     const result = await makeTool().execute({
       thesis_id: "thesis_held_1",
       rationale: "Prefer agent judgment on this exit.",
-      triggers: [{ ...FLOOR_948, fireMode: "TACTICAL" }],
+      edit_triggers: [{ id: "trig_floor", fire_mode: "TACTICAL" }],
     });
 
-    expect(result.data.ok).toBe(false);
-    expect(result.data.error).toBe("protective_level_locked");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    expect(result.data.trigger_ops[0]).toMatchObject({ id: "trig_floor", ok: false });
+    noTriggerWrite();
   });
 
-  it("refuses deleting the floor from the resent trigger list", async () => {
+  it("refuses removing the floor", async () => {
     mockThesisFindUnique.mockResolvedValueOnce(makeHeldRow());
     const result = await makeTool().execute({
       thesis_id: "thesis_held_1",
       rationale: "Simplifying the ladder.",
-      triggers: [
-        {
-          predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 },
-          action: "EXIT",
-          rationale: "Trail only.",
-        },
-      ],
+      remove_trigger_ids: ["trig_floor"],
     });
 
-    expect(result.data.ok).toBe(false);
-    expect(result.data.error).toBe("protective_level_locked");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    expect(result.data.trigger_ops[0]).toMatchObject({ op: "remove", id: "trig_floor", ok: false });
+    noTriggerWrite();
   });
 
-  it("refuses moving the stop_loss column the wrong way on a held stock", async () => {
+  it("refuses moving the stop the wrong way on a held stock — and the rest of the call lands", async () => {
     mockThesisFindUnique.mockResolvedValueOnce(makeHeldRow({ stopLoss: 814 }));
     const result = await makeTool().execute({
       thesis_id: "thesis_held_1",
       rationale: "Widening the stop for volatility.",
       stop_loss: 730,
-      structural_unchanged_reason: "Belief intact; adjusting risk band.",
+      core_belief: "The belief moved with the market.",
     });
 
-    expect(result.data.ok).toBe(false);
-    expect(result.data.error).toBe("protective_level_locked");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    expect(result.data.ok).not.toBe(false);
+    expect(result.data.trigger_ops[0]).toMatchObject({ ok: false, text: "Stop $948 → $730 (loosened)" });
+    noTriggerWrite();
+    // The belief edit still landed.
+    const written = mockThesisUpdate.mock.calls.find((c) => "coreBelief" in (c[0].data as object));
+    expect(written).toBeTruthy();
   });
 
   it("allows raising the floor (more protection) and writes the update", async () => {
@@ -207,19 +205,13 @@ describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
     const result = await makeTool().execute({
       thesis_id: "thesis_held_1",
       rationale: "Locking in more of the gain after the run-up.",
-      triggers: [
-        {
-          id: "trig_floor",
-          predicate: { kind: "PRICE_BELOW", level: 980 },
-          action: "EXIT",
-          rationale: "Raised floor.",
-          fireMode: "DIRECT",
-        },
-      ],
+      edit_triggers: [{ id: "trig_floor", level: 980, rationale: "Raised floor." }],
     });
 
     expect(result.data.ok).not.toBe(false);
-    expect(mockThesisUpdate).toHaveBeenCalled();
+    expect(result.data.trigger_ops[0]).toMatchObject({ ok: true, text: "Stop $948 → $980 (tightened)" });
+    const data = mockThesisUpdate.mock.calls[0][0].data as { triggers: Array<{ id: string; predicate: { level: number } }> };
+    expect(data.triggers.find((t) => t.id === "trig_floor")?.predicate.level).toBe(980);
   });
 
   it("allows raising the stop_loss column (the legal direction)", async () => {
@@ -259,18 +251,11 @@ describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
     );
     const result = await makeTool().execute({
       thesis_id: "thesis_held_1",
-      rationale: "Watchlist re-plan; lowering the planned stop.",
-      triggers: [
-        {
-          id: "trig_enter",
-          predicate: { kind: "PRICE_ABOVE", level: 950 },
-          action: "ENTER",
-          rationale: "Entry.",
-        },
-      ],
+      rationale: "Watchlist re-plan; dropping the planned stop.",
+      remove_trigger_ids: ["trig_floor"],
     });
 
-    expect(result.data.error).not.toBe("protective_level_locked");
+    expect(result.data.trigger_ops[0]).toMatchObject({ id: "trig_floor", ok: true });
   });
 
   it("does not gate the terminal invalidation path (thesis broken → sell path handles the exit)", async () => {

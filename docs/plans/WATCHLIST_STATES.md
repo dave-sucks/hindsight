@@ -128,7 +128,7 @@ wake.
 
 A review (cadence fire, wake fire, or the daily batch) must conclude with an
 explicit disposition. Each is a trigger edit; none is a new tool — the agent
-already holds wholesale-replace on `update_thesis.triggers`. This is a run
+edits triggers one at a time through `update_thesis` (DAV-242). This is a run
 duty (Layer 3), not a gate.
 
 | Disposition | Trigger edit | Example verdict |
@@ -155,8 +155,8 @@ all work today. `SIGNAL_TYPE` (news) wakes exist in schema but signal routing
 is paused (P1-34) — "the news that would ignite it" arms when Signals
 returns, and the soft pool is that rebuild's best customer.
 
-**Footgun to respect:** `update_thesis.triggers` is wholesale-replace — a
-disposition that edits one trigger must resend the rest. Same gotcha as ever.
+A disposition that edits one trigger names that one trigger
+(`edit_triggers` / `remove_trigger_ids`); the rest stays as it is (DAV-242).
 
 ## 6. The holes (= the build list, in order)
 
@@ -180,8 +180,7 @@ Order: **W1 → W2 → (W3 ∥ W4) → W5.** W6 whenever.
   re-entry risk when Signals returns — noted on DAV-196.)
 - `REVIEW_CADENCE` cascade + `lastReviewedAt` clock + cooldowns (L7).
 - Manual demote via trigger deletion in the popover.
-- Wholesale-replace protection (`dropRedundantInherited`) and the ratchet
-  rules — unchanged.
+- The ratchet rules — unchanged, applied per trigger op.
 - A human-alert channel later hangs off the existing `TRIGGER_FIRED` event;
   nothing here blocks or requires it.
 

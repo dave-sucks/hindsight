@@ -69,6 +69,9 @@ import {
 } from "@/lib/agent/thesis-research/decision";
 import { recordThesis } from "@/lib/agent/tools/record-thesis";
 import { updateThesis } from "@/lib/agent/tools/update-thesis";
+import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
+import { describeTrigger } from "@/lib/agent/triggers/ops";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 // ── Phase budgets ───────────────────────────────────────────────────────
 // V1's inner synthesis abort was 180s against an observed 187-192s EVERY
@@ -179,7 +182,8 @@ interface WriterExistingThesis {
   stopLoss: number | null;
   composite: number | null;
   snapshotText: string;
-  hasTriggers: boolean;
+  /** The stored triggers, with ids — a refresh edits them one at a time. */
+  triggers: Trigger[];
 }
 
 async function loadExistingThesis(
@@ -211,7 +215,7 @@ async function loadExistingThesis(
     stopLoss: row.stopLoss != null ? Number(row.stopLoss) : null,
     composite: getThesisComposite(row),
     snapshotText: getThesisSnapshotText(row),
-    hasTriggers: Array.isArray(row.triggers) && row.triggers.length > 0,
+    triggers: parseTriggersResilient(row.triggers).triggers as Trigger[],
   };
 }
 
@@ -314,6 +318,17 @@ export function buildWriterResearchPrompt(opts: WriterResearchPromptOpts): strin
   • stop_loss: ${opts.existingThesis.stopLoss ?? "—"}
   • composite: ${opts.existingThesis.composite ?? "—"}/10
   • snapshot: ${opts.existingThesis.snapshotText.slice(0, 300)}
+  • triggers (edit by id — these ids are the handles):
+${
+  opts.existingThesis.triggers.length
+    ? opts.existingThesis.triggers
+        .map(
+          (t) =>
+            `      - ${t.id}: ${describeTrigger(t, opts.existingThesis!.direction)} — "${t.rationale.slice(0, 90)}"`,
+        )
+        .join("\n")
+    : "      (none)"
+}
 
 Where new evidence contradicts or supersedes the existing view, flag the
 change explicitly in the note.`
@@ -335,14 +350,16 @@ decision by the orchestrator — you are writing the research and the plan.`;
     we already own it.
   • At least one EXIT rung on the stop (PRICE_BELOW stop for LONG,
     PRICE_ABOVE stop for SHORT) — that's the automated stop-loss path.
-  • Simplest correct move: OMIT the triggers field and the existing
-    ladder stays untouched; pass a full ladder only when the refresh
-    genuinely re-plans it (triggers are wholesale-REPLACE).
+  • Triggers are edited ONE AT A TIME: edit_triggers by the ids listed
+    under EXISTING THESIS (a level change needs a rationale),
+    add_triggers for a new one, remove_trigger_ids to retire one.
+    Everything you don't name stays exactly as it is. Most refreshes
+    need no trigger ops at all.
   • PROTECTIVE LEVELS ONLY TIGHTEN on a stock we own. The stop on record
     is $${opts.existingThesis?.stopLoss ?? "—"}: submit that number or a
-    tighter one. A looser stop is refused by the tool and the whole
-    refresh is lost. If you believe the stop is wrong, keep it and say
-    so in the rationale with the number you'd suggest — that reaches
+    tighter one. A looser stop is refused by itself — the rest of the
+    refresh still lands. If you believe the stop is wrong, keep it and
+    say so in the rationale with the number you'd suggest — that reaches
     the principal; you cannot move it.`
     : isPromotedRefresh
       ? `TRIGGERS — YOU ARE REFRESHING A PROMOTED THESIS (no live position):
@@ -363,9 +380,9 @@ decision by the orchestrator — you are writing the research and the plan.`;
   • Most theses need NO custom triggers — omit the field and the
     horizon-default template (entry/stop/review) is applied for you.
   • Setting an existing priced plan DOWN on a refresh (levels no longer
-    worth holding): omit entry/target/stop AND resend triggers with the
-    plan levels removed, keeping ≥1 REVIEW wake — the level columns are
-    recomputed from the ladder.`;
+    worth holding): omit entry/target/stop AND send remove_trigger_ids
+    naming the buy, floor and target trigger ids from EXISTING THESIS,
+    keeping ≥1 REVIEW wake — the level columns follow the triggers.`;
 
   const priorExitBlock = opts.priorExit
     ? `
@@ -1166,37 +1183,20 @@ export async function writerPersistPhase(
             ? ` ⚠ Writer's refreshed view is ${d.direction} vs stored ${existing.direction} — orchestrator should re-evaluate direction.`
             : "";
         // Held refresh: protective levels only tighten (the 2026-08-16
-        // ruling; the update_thesis ratchet gate enforces it). A writer
-        // that proposes a looser stop used to lose the ENTIRE refresh —
-        // research, scoring, sections — to that one number (SMMT,
-        // 2026-09-08: $16.80 → $15.50, run FAILED). Keep the level on
-        // record, drop the writer's ladder so the existing rungs stand,
-        // and put the writer's suggestion in the rationale where the
-        // principal sees it.
-        let stopForUpdate = d.direction === "PASS" ? undefined : d.stop_loss;
-        let triggersForUpdate = d.triggers;
-        let clampNote = "";
-        if (
-          existing?.status === "HOLDING" &&
-          existing.stopLoss != null &&
-          stopForUpdate != null &&
-          ((d.direction === "LONG" && stopForUpdate < existing.stopLoss) ||
-            (d.direction === "SHORT" && stopForUpdate > existing.stopLoss))
-        ) {
-          clampNote = ` [Writer proposed a stop of $${stopForUpdate}; the stop on record ($${existing.stopLoss}) is kept — protective levels only tighten. Existing ladder left untouched.]`;
-          stopForUpdate = existing.stopLoss;
-          triggersForUpdate = undefined;
-        }
+        // ruling). A looser stop is refused as its own op inside
+        // update_thesis and the rest of the refresh lands — nothing to
+        // clamp here any more (DAV-242; SMMT 2026-09-08 lost a whole
+        // refresh to that one number under the old all-or-nothing write).
         const toolArgs: Record<string, unknown> = {
           thesis_id: args.existingThesisId,
-          rationale: `${d.rationale}${directionFlag}${clampNote}`,
+          rationale: `${d.rationale}${directionFlag}`,
           // Always supplied: the P0-1 gate refuses price moves when the
           // belief text happens to be unchanged; the writer's judgment on
           // why lives in the decision rationale.
           structural_unchanged_reason: d.rationale,
           entry_price: d.direction === "PASS" ? undefined : d.entry_price,
           target_price: d.direction === "PASS" ? undefined : d.target_price,
-          stop_loss: stopForUpdate,
+          stop_loss: d.direction === "PASS" ? undefined : d.stop_loss,
           horizon: d.horizon,
           catalyst_date: d.catalyst_date
             ? new Date(d.catalyst_date).toISOString()
@@ -1208,7 +1208,9 @@ export async function writerPersistPhase(
           core_belief: d.core_belief,
           key_assumptions: d.key_assumptions,
           invalidation_conditions: d.invalidation_conditions,
-          triggers: triggersForUpdate,
+          add_triggers: d.add_triggers,
+          edit_triggers: d.edit_triggers,
+          remove_trigger_ids: d.remove_trigger_ids,
           price_at_time: pullOutput.pull?.currentPrice ?? undefined,
           research_data: pullOutput.pull?.rawDataBlock,
           ...sectionArgs,

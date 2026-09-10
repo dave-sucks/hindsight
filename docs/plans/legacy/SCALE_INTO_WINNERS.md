@@ -120,9 +120,9 @@ Verified 2026-06-29. The hard parts exist — this plan is connective tissue, no
   rewrite. A **triggers-only edit does NOT trip the structural-belief gate** (that gate's
   `touchesQuant` is scoped to target/stop/confidence only, `:1484-1488`). **Raising a target**
   needs a one-line `structural_unchanged_reason` or a paired belief edit — i.e. the "re-attest
-  belief before moving the goalpost" discipline is already enforced for free. **Footgun:**
-  `triggers` is wholesale-REPLACE, not merge (`:254-257`) — to add one, resend the full array +
-  the new trigger; the L2 work must surface the current ladder so an edit can't silently drop one.
+  belief before moving the goalpost" discipline is already enforced for free. (Historical: at the time
+  `triggers` replaced the whole list — to add one you resent the full array. Superseded by
+  per-trigger ops, DAV-242.)
   Guards that still apply to a trigger edit: WATCHING longs/shorts must keep ≥1 ENTER trigger;
   can't strip a committed thesis to zero triggers.
 - **DIRECT fire-mode is EXIT-only today.** An ADD/TRIM with `fireMode:"DIRECT"` is coerced to
@@ -213,8 +213,8 @@ through every PR below; it is not a single PR.
 - **L2 data (makes triggers SMART, not arbitrary — the most overlooked piece):** hand the agent
   (and pre-compute candidate levels from) recent swing highs/lows, support/resistance, 20/50-day,
   ATR/volatility, distance-to-target — so it sets "$893" off structure, not a round number. Plus
-  surface the CURRENT trigger array clearly so an edit-and-resend can't silently drop a trigger
-  (the wholesale-replace footgun).
+  surface the CURRENT trigger array clearly (historical: the replace-all footgun, since
+  removed by DAV-242).
 - **L1 gate:** refuse to close out a run that leaves a HOLDING with no forward trigger — enforce
   activeness structurally, not in prose.
 
