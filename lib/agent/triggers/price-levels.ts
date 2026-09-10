@@ -342,20 +342,24 @@ function setLevel(
           });
     return stored
       .filter((t) => !occupies(t) || t.id === keep.id)
-      .map((t) =>
-        t.id === keep.id
-          ? {
-              ...t,
-              predicate,
-              // A side flip makes the old wording a lie — "broke above $130"
-              // on a level the price now comes back DOWN to. Only then.
-              rationale:
-                t.predicate.kind === predicate.kind
-                  ? t.rationale
-                  : rationaleFor(slot, price, direction, held, predicate.kind),
-            }
-          : t,
-      );
+      .map((t) => {
+        if (t.id !== keep.id) return t;
+        // The sentence moves with the number. A side flip makes the old
+        // wording a lie ("broke above $130" on a level the price now comes
+        // back DOWN to) → template sentence. A same-side move keeps the
+        // author's words with the number swapped ("Exit below $935" on a
+        // $969 floor sat on MU for two weeks); when the old number isn't in
+        // the text, the template sentence. Unchanged number → untouched.
+        const before = priceOf(t);
+        const rationale =
+          t.predicate.kind !== predicate.kind
+            ? rationaleFor(slot, price, direction, held, predicate.kind)
+            : before != null && before !== price
+              ? (moveNumberInText(t.rationale, "level", before, price) ??
+                rationaleFor(slot, price, direction, held, predicate.kind))
+              : t.rationale;
+        return { ...t, predicate, rationale };
+      });
   }
 
   return [
@@ -613,4 +617,30 @@ function priceOf(t: Trigger): number | null {
   return t.predicate.kind === "PRICE_ABOVE" || t.predicate.kind === "PRICE_BELOW"
     ? t.predicate.level
     : null;
+}
+
+/**
+ * Move the number in a trigger's sentence when its level moves and the
+ * caller gave no new wording. MU's $969 floor kept saying "Exit below $935"
+ * for two weeks; a sentence that names the old number is worse than none.
+ * Returns null when the old number isn't in the text — callers fall back
+ * to the template sentence for a plan level and keep the text otherwise.
+ * Shared by the level path (applyLevelArgs) and the edit-op path (ops.ts).
+ */
+export function moveNumberInText(
+  text: string,
+  field: "level" | "pct" | "days",
+  from: number,
+  to: number,
+): string | null {
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const forms = [String(from), from.toFixed(2), from.toLocaleString("en-US")];
+  for (const f of forms) {
+    const re = new RegExp(`(?<![\\d.])${escape(f)}(?![\\d])`, "g");
+    if (re.test(text)) {
+      const repl = field === "level" ? (to % 1 === 0 ? String(to) : to.toFixed(2)) : String(to);
+      return text.replace(re, repl);
+    }
+  }
+  return null;
 }

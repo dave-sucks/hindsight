@@ -840,3 +840,66 @@ describe("applyLevelArgs — the buy level decides which side it fires on", () =
     expect(enter(stored, 116.1, "LONG", 111.04).rationale).toBe("Reclaim of the 50d — my words.");
   });
 });
+
+// ── A moved level rewrites its sentence; one buy rung per thesis ────────
+
+describe("a moved level rewrites its sentence (level path)", () => {
+  const enterAt = (stored: Trigger[], price: number, tape: number) =>
+    applyLevelArgs({
+      stored,
+      levels: { entry: price },
+      direction: "LONG",
+      status: "WATCHING",
+      currentPrice: tape,
+      mintId: () => "new",
+    }).triggers.find((t) => t.action === "ENTER")!;
+
+  it("same side, new number → the author's sentence with the number swapped", () => {
+    const stored = [
+      trig(above(150), "ENTER", { id: "keep", rationale: "Buy level — start the position when the price breaks above $150." }),
+    ];
+    const moved = enterAt(stored, 160, 140);
+    expect(moved.id).toBe("keep");
+    expect(moved.predicate).toEqual(above(160));
+    expect(moved.rationale).toBe("Buy level — start the position when the price breaks above $160.");
+  });
+
+  it("same side, new number, old number not in the text → the template sentence", () => {
+    const stored = [trig(above(116.1), "ENTER", { id: "keep", rationale: "Reclaim of the 50d — my words." })];
+    expect(enterAt(stored, 120, 111).rationale).toContain("breaks above $120.00");
+  });
+
+  it("same side, same number → untouched", () => {
+    const stored = [trig(above(116.1), "ENTER", { id: "keep", rationale: "Reclaim of the 50d — my words." })];
+    expect(enterAt(stored, 116.1, 111).rationale).toBe("Reclaim of the 50d — my words.");
+  });
+
+  it("a floor move rewrites too (the MU shape: $969 floor still saying $935)", () => {
+    const stored = [trig(below(935), "EXIT", { id: "floor", rationale: "Exit below $935 — the thesis is wrong there." })];
+    const out = applyLevelArgs({
+      stored,
+      levels: { floor: 969 },
+      direction: "LONG",
+      status: "HOLDING",
+      mintId: () => "new",
+    }).triggers.find((t) => t.action === "EXIT")!;
+    expect(out.predicate).toEqual(below(969));
+    expect(out.rationale).toBe("Exit below $969 — the thesis is wrong there.");
+  });
+
+  it("one buy rung per thesis: a level write collapses two ENTER rungs to one", () => {
+    const stored = [
+      trig(above(150), "ENTER", { id: "a", rationale: "Breakout." }),
+      trig(below(120), "ENTER", { id: "b", rationale: "Pullback." }),
+    ];
+    const out = applyLevelArgs({
+      stored,
+      levels: { entry: 160 },
+      direction: "LONG",
+      status: "WATCHING",
+      currentPrice: 140,
+      mintId: () => "new",
+    }).triggers;
+    expect(out.filter((t) => t.action === "ENTER")).toHaveLength(1);
+  });
+});
