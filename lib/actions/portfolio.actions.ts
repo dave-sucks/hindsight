@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { createClient } from "@/lib/supabase/server";
 import { getAccount, getFundingActivities, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
 import {
@@ -141,6 +142,8 @@ export interface RecentPick {
   analystId: string | null;
   runId: string;
   sourcesUsed: unknown;
+  /** Days between the agent's reviews; null = a plain watch (DAV-225). */
+  agentWatchDays: number | null;
 }
 
 export interface SpyBenchmark {
@@ -467,6 +470,7 @@ export async function getDashboardData(
         targetPrice: true,
         stopLoss: true,
         createdAt: true,
+        triggers: true,
         researchRun: {
           select: { agentConfig: { select: { id: true, name: true } } },
         },
@@ -1061,6 +1065,7 @@ export async function getDashboardData(
       analystId: p.researchRun?.agentConfig?.id ?? null,
       runId: p.researchRunId,
       sourcesUsed: [],
+      agentWatchDays: agentWatchDays(p.triggers),
     };
   });
 

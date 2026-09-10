@@ -106,7 +106,6 @@ export type TriggerPredicate =
     }
 
   // ── Time-based — housekeeping or periodic worker ──────────────────────
-  | { kind: "TIME_ELAPSED"; days: number }
   // "Look at this again every N days", counted from when it was last
   // ACTUALLY reviewed (Thesis.lastReviewedAt). Replaced REVIEW_DATE_HIT on
   // 2026-08-25, which read a date column the agent set by hand — two stores

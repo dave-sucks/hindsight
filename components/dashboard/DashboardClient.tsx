@@ -331,6 +331,7 @@ function pickToThesisRow(pick: RecentPick, candles?: StockCandle[]): ThesisRowDa
     // the footer timestamp. (Previously overridden to the position's openedAt
     // for holdings, which would have collapsed the Watching marker onto Entry.)
     createdAt: pick.createdAt,
+    agentWatchDays: pick.agentWatchDays,
     currentPrice: pick.currentPrice,
     candles,
     companyName: pick.companyName,

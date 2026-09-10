@@ -54,7 +54,7 @@ The current `needsAction` enum blurs three genuinely different things:
 
 **Classification of today's flags:**
 - `REVIEW_DUE` → already a trigger in disguise (`REVIEW_DATE_HIT` /
-  `TIME_ELAPSED`). ✅ correct shape. ("Add every 30 days" is the same shape
+  `REVIEW_CADENCE`). ✅ correct shape. ("Add every 30 days" is the same shape
   with action=ADD — legal today.)
 - `RUNNING_WINNER` → a pure position predicate (`progress ≥ 0.75 OR gain ≥
   12% → REVIEW, batched`). **Should eventually be a visible trigger**, not an

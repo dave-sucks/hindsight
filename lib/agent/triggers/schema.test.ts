@@ -1,7 +1,7 @@
 /**
  * schema.test.ts — the read path must never lose a whole ladder.
  *
- * On 2026-08-16, GD / ASML / ETN each carried a TIME_ELAPSED review rung
+ * On 2026-08-16, GD / ASML / ETN each carried a time-based review rung
  * with a cooldown of 144 / 144 / 292 against the schema's max of 90. Array
  * validation is all-or-nothing, so ALL 8 / 8 / 6 of their rungs — entry
  * triggers included — were discarded on every read. No error, no alert.
@@ -19,7 +19,7 @@ const good = {
 /** The exact shape that was discarding whole ladders. */
 const badCooldown = {
   id: "t2",
-  predicate: { kind: "TIME_ELAPSED", days: 180 },
+  predicate: { kind: "REVIEW_CADENCE", days: 180 },
   action: "REVIEW",
   rationale: "hygiene",
   cooldownDays: 292,

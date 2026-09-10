@@ -593,7 +593,7 @@ async function runCompleteRunPreflight(
     }),
   );
 
-  // P1-14: anchor TIME_ELAPSED to the paired open position's openedAt for
+  // Anchor held-row time questions to the paired open position's openedAt for
   // ACTIVE rows, so the gate doesn't flag a 0-day-old position's "max hold"
   // trigger as unaddressed work just because the thesis row is old.
   const activeOpenedAtTickers = Array.from(
@@ -622,7 +622,7 @@ async function runCompleteRunPreflight(
       }
     } catch (err) {
       console.warn(
-        "[complete_run] open-position openedAt lookup failed; TIME_ELAPSED falls back to createdAt:",
+        "[complete_run] open-position openedAt lookup failed; falls back to createdAt:",
         err,
       );
     }

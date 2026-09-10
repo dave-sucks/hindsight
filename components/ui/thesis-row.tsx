@@ -79,6 +79,8 @@ export interface ThesisRowData {
    * `getThesisStatusDisplay` falls back gracefully on unknown values.
    */
   status?: string;
+  /** Days between the agent's reviews; null = a plain watch (DAV-225). */
+  agentWatchDays?: number | null;
   position?: {
     id: string;
     status: string;
@@ -129,6 +131,8 @@ function domain(url: string): string {
 interface RowBanner {
   label: string;
   dotClass: string;
+  /** The agent reviews this on its own schedule — breathing dot + shimmer. */
+  agentWatched?: boolean;
   sentence: string | null;
   gain: TradeStatementGain | null;
   /**
@@ -238,9 +242,14 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
   const status = (t.status ?? "").toUpperCase();
 
   if (status === "WATCHING") {
+    // A name the agent revisits on its own schedule reads as "Agent Watch",
+    // with the breathing dot. One you keep an eye on yourself stays
+    // "Watching", still and gray.
+    const agentWatched = t.agentWatchDays != null;
     return {
-      label: d.label,
+      label: agentWatched ? "Agent Watch" : d.label,
       dotClass: d.dotClass,
+      agentWatched,
       sentence:
         t.targetPrice != null && t.targetPrice > 0
           ? `buy above ${$(t.targetPrice)}`
@@ -348,6 +357,12 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
           <TradeStatement
             label={banner.label}
             dotClass={banner.dotClass}
+            dot={
+              banner.agentWatched ? (
+                <span className="agent-watch-dot size-2 rounded-full shrink-0 self-center bg-foreground" />
+              ) : undefined
+            }
+            labelClassName={banner.agentWatched ? "shimmer-text" : undefined}
             sentence={banner.sentence}
             gain={banner.gain}
           />

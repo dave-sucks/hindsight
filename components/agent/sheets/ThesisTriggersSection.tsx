@@ -26,6 +26,12 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { SendToAgentIcon } from "@/components/ui/send-to-agent-icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -42,7 +48,6 @@ import {
 import { ButtonGroup } from "@/components/ui/button-group";
 import Link from "next/link";
 import {
-  Clock,
   Loader2,
   Plus,
   Trash2,
@@ -130,7 +135,7 @@ function overriddenLevelPhrase(level: string): string {
  * Split a predicate into a left-side "kind" label and a right-side value
  * for the two-cell trigger pill (2026-05-20 redesign):
  *   [ price above ][ $149 ]
- *   [ time elapsed ][ 14 days ]
+ *   [ review every ][ 30 days ]
  *   [ earnings beat ][ ≥3% ]
  *
  * Returns `value: null` when there's no value half (e.g. REVIEW_DATE_HIT,
@@ -200,13 +205,13 @@ function predicateKindValue(p: TriggerPredicate): {
       };
     case "FILING":
       return { kind: "filing", value: p.formType ?? null };
-    case "TIME_ELAPSED":
-      return {
-        kind: "time elapsed",
-        value: p.days != null ? plural(p.days, "day") : null,
-      };
     case "REVIEW_DATE_HIT":
       return { kind: "review date hit", value: null };
+    case "REVIEW_CADENCE":
+      return {
+        kind: "review every",
+        value: p.days != null ? plural(p.days, "day") : null,
+      };
     case "AND":
       return {
         kind: "all of",
@@ -257,10 +262,10 @@ function predicateDescription(p: TriggerPredicate): string {
       return `Fires when company issues ${p.direction?.toLowerCase()} guidance revision.`;
     case "FILING":
       return `Fires when a ${p.formType} is filed.`;
-    case "TIME_ELAPSED":
-      return `Fires once ${p.days} days have passed since the thesis was created.`;
     case "REVIEW_DATE_HIT":
       return "Fires when the thesis's scheduled review date is reached.";
+    case "REVIEW_CADENCE":
+      return `The agent reviews this name every ${p.days} days, counting from its last real review.`;
     case "AND":
       return `Composite: ALL of ${(p.predicates ?? []).length} sub-predicates must be true.`;
     case "OR":
@@ -292,7 +297,7 @@ function fmtFiredAt(iso?: string): string {
 // ── Trigger pill — 2 cells separated by a real border ─────────────────
 // Restyled 2026-05-20:  [ kind ][ value ]
 //   - Cell 1 (kind): faint muted bg, muted-foreground text
-//     ("price above" / "time elapsed" / "earnings beat" / etc.)
+//     ("price above" / "review every" / "earnings beat" / etc.)
 //   - Cell 2 (value): no bg, plain foreground text ("$149" / "14 days")
 //   - Smaller font (text-xs), shorter row (h-7)
 //   - No action icon — action info is communicated via the section
@@ -336,13 +341,18 @@ function TriggerPill({
           />
         }
       >
-        {/* Cell 1 — kind label, faint muted background */}
+        {/* Cell 1 — kind label, faint muted background. A rung that puts the
+            agent on a schedule carries the same mark as Send to Agent, so
+            the two read as the same idea wherever they appear. */}
         <div
           className={cn(
-            "flex items-center px-2 bg-muted/30 text-muted-foreground",
+            "flex items-center gap-1 px-2 bg-muted/30 text-muted-foreground",
             value ? "border-r border-border" : "",
           )}
         >
+          {trigger.predicate.kind === "REVIEW_CADENCE" ? (
+            <SendToAgentIcon className="size-3" />
+          ) : null}
           {kind}
         </div>
 
@@ -377,6 +387,31 @@ function TriggerPill({
  *   • fired / cooldown metadata as small badges
  *   • Save / Cancel, shown only once the value is changed
  */
+/**
+ * A review cadence is stored as days, but nobody thinks in days past a
+ * fortnight. Split it into the largest unit that divides cleanly — 30 → 1
+ * month, 14 → 2 weeks, 3 → 3 days — so the editor reads like a calendar.
+ */
+const CADENCE_UNITS = [
+  { v: "day", label: "days", days: 1 },
+  { v: "week", label: "weeks", days: 7 },
+  { v: "month", label: "months", days: 30 },
+] as const;
+type CadenceUnit = (typeof CADENCE_UNITS)[number]["v"];
+
+function splitCadence(days: number | null): { count: string; unit: CadenceUnit } {
+  if (days == null || days <= 0) return { count: "", unit: "day" };
+  for (const u of [...CADENCE_UNITS].reverse()) {
+    if (days % u.days === 0) return { count: String(days / u.days), unit: u.v };
+  }
+  return { count: String(days), unit: "day" };
+}
+
+function cadenceToDays(count: string, unit: CadenceUnit): number {
+  const per = CADENCE_UNITS.find((u) => u.v === unit)?.days ?? 1;
+  return Math.round(Number(count) * per);
+}
+
 function TriggerPopoverContent({
   trigger,
   direction,
@@ -426,7 +461,10 @@ function TriggerPopoverContent({
   // Sentence title in foreground — "Exit if price below", "Review if up".
   // On an un-held thesis an EXIT fire takes the plan down instead of
   // selling (effectiveTriggerAction), and the label says so.
-  const fieldLabel = `${actionGroupLabel(trigger.action, held)} ${kindLabel}`;
+  const fieldLabel =
+    trigger.predicate.kind === "REVIEW_CADENCE"
+      ? "Agent Watch"
+      : `${actionGroupLabel(trigger.action, held)} ${kindLabel}`;
 
   // Input-group adornments. Price → leading "$"; movement / gain-from-entry
   // → leading direction + trailing "%"; time-based → leading calendar icon
@@ -441,10 +479,17 @@ function TriggerPopoverContent({
       : null;
   const leadingText = field?.prefix ?? moveDir;
   const trailingText = field?.suffix ?? null;
-  const leadingIcon = pk === "TIME_ELAPSED" || pk === "REVIEW_DATE_HIT";
+  const leadingIcon = pk === "REVIEW_DATE_HIT";
 
-  const initial = field?.value != null ? String(field.value) : "";
+  const isCadenceRung = trigger.predicate.kind === "REVIEW_CADENCE";
+  const split = splitCadence(isCadenceRung ? (field?.value ?? null) : null);
+  const initial = isCadenceRung
+    ? split.count
+    : field?.value != null
+      ? String(field.value)
+      : "";
   const [val, setVal] = useState(initial);
+  const [unit, setUnit] = useState<CadenceUnit>(split.unit);
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -455,10 +500,17 @@ function TriggerPopoverContent({
   useEffect(() => {
     setVal(initial);
   }, [initial]);
+  useEffect(() => {
+    setUnit(split.unit);
+  }, [split.unit]);
 
-  const parsed = Number(val);
+  const parsed = isCadenceRung ? cadenceToDays(val, unit) : Number(val);
   const dirty =
-    canEdit && val.trim() !== "" && Number.isFinite(parsed) && parsed !== field?.value;
+    canEdit &&
+    val.trim() !== "" &&
+    Number.isFinite(parsed) &&
+    parsed > 0 &&
+    parsed !== field?.value;
 
   async function save() {
     setPending(true);
@@ -526,37 +578,79 @@ function TriggerPopoverContent({
   return (
     <PopoverContent side="left" align="start" className="w-72 space-y-2.5">
       {/* Title (sentence, foreground) + full-width input group */}
-      <div className="space-y-1">
-        <p className="text-sm font-medium text-foreground">{fieldLabel}</p>
-        <InputGroup>
-          {leadingIcon ? (
-            <InputGroupAddon>
-              <Calendar />
-            </InputGroupAddon>
-          ) : leadingText ? (
-            <InputGroupAddon>
-              <InputGroupText>{leadingText}</InputGroupText>
-            </InputGroupAddon>
+      <div className="space-y-2.5">
+        <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+          {trigger.predicate.kind === "REVIEW_CADENCE" ? (
+            <SendToAgentIcon className="size-3.5" />
           ) : null}
-          {canEdit ? (
-            <InputGroupInput
-              type="number"
-              inputMode="decimal"
-              value={val}
-              min={field?.min}
-              step={field?.step}
-              onChange={(e) => setVal(e.target.value)}
+          {fieldLabel}
+        </p>
+        {canEdit && isCadenceRung ? (
+          <ButtonGroup className="w-full">
+            <InputGroup>
+              <InputGroupInput
+                type="number"
+                inputMode="numeric"
+                value={val}
+                min={1}
+                step={1}
+                onChange={(e) => setVal(e.target.value)}
+                disabled={pending}
+                aria-label="Review every"
+              />
+            </InputGroup>
+            <Select
+              value={unit}
+              onValueChange={(v) => {
+                if (typeof v === "string") setUnit(v as CadenceUnit);
+              }}
               disabled={pending}
-            />
-          ) : (
-            <InputGroupInput value={displayValue ?? kindLabel} readOnly disabled />
-          )}
-          {canEdit && trailingText ? (
-            <InputGroupAddon align="inline-end">
-              <InputGroupText>{trailingText}</InputGroupText>
-            </InputGroupAddon>
-          ) : null}
-        </InputGroup>
+            >
+              <SelectTrigger aria-label="Unit">
+                <SelectValue>
+                  {CADENCE_UNITS.find((u) => u.v === unit)?.label ?? ""}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {CADENCE_UNITS.map((u) => (
+                  <SelectItem key={u.v} value={u.v}>
+                    {u.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </ButtonGroup>
+        ) : (
+          <InputGroup>
+            {leadingIcon ? (
+              <InputGroupAddon>
+                <Calendar />
+              </InputGroupAddon>
+            ) : leadingText ? (
+              <InputGroupAddon>
+                <InputGroupText>{leadingText}</InputGroupText>
+              </InputGroupAddon>
+            ) : null}
+            {canEdit ? (
+              <InputGroupInput
+                type="number"
+                inputMode="decimal"
+                value={val}
+                min={field?.min}
+                step={field?.step}
+                onChange={(e) => setVal(e.target.value)}
+                disabled={pending}
+              />
+            ) : (
+              <InputGroupInput value={displayValue ?? kindLabel} readOnly disabled />
+            )}
+            {canEdit && trailingText ? (
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>{trailingText}</InputGroupText>
+              </InputGroupAddon>
+            ) : null}
+          </InputGroup>
+        )}
       </div>
 
       {/* On fire — Trigger Tactical Run (agent decides) vs Automatically
@@ -639,11 +733,15 @@ function TriggerPopoverContent({
       {/* Chips — cooldown + delete (icon only). */}
       {trigger.cooldownDays || editable ? (
         <div className="flex items-center gap-1.5">
-          {trigger.cooldownDays ? (
-            <Badge variant="secondary">
-              <Clock className="size-3" />
-              {trigger.cooldownDays}d cooldown
-            </Badge>
+          {/* A cadence rung's rate limit always equals its own interval, so
+              saying it again would just restate the number above. */}
+          {trigger.cooldownDays &&
+          trigger.predicate.kind !== "REVIEW_CADENCE" ? (
+            <p className="text-xs text-muted-foreground">
+              {trigger.cooldownDays === 1
+                ? "Fires at most once a day."
+                : `Fires at most once every ${trigger.cooldownDays} days.`}
+            </p>
           ) : null}
           {editable ? (
             <Button
@@ -777,7 +875,7 @@ export function TriggerGroups({
 // applyTriggerAdd rejects them un-held as the backend backstop.
 // All fire through the same evaluator → trigger pipeline as every trigger.
 
-type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL";
+type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL" | "CADENCE";
 
 export function AddTriggerDialog({
   held,
@@ -811,6 +909,9 @@ export function AddTriggerDialog({
   const isMove = criterion === "MOVE";
   const isGain = criterion === "GAIN";
   const isTrail = criterion === "TRAIL";
+  // Agent Watch — a review schedule in days, so no direction and no $ or %.
+  // Adding one is what makes a plain watch an Agent Watch.
+  const isCadence = criterion === "CADENCE";
   /** %-valued criteria share the % input adornment + 0.5 step. */
   const isPct = isMove || isGain || isTrail;
   const showFireMode = action === "EXIT" && held;
@@ -824,6 +925,7 @@ export function AddTriggerDialog({
       : ([] as const)),
     { v: "MOVE", l: held || !allowAbsolutePrice ? "% Move" : "% Movement" },
     ...(held ? ([{ v: "GAIN", l: "% Gain" }, { v: "TRAIL", l: "% Trail" }] as const) : ([] as const)),
+    { v: "CADENCE", l: "Agent Watch" },
   ];
 
   const dirOptions =
@@ -844,6 +946,7 @@ export function AddTriggerDialog({
     if (criterion === "GAIN") setDir("UP");
     else if (criterion === "MOVE") setDir("DOWN");
     else if (criterion === "PRICE") setDir("BELOW");
+    if (criterion === "CADENCE") setAction("REVIEW");
   }, [criterion]);
 
   // Default fire mode by action — EXIT → DIRECT, else TACTICAL. Mirrors the
@@ -862,13 +965,16 @@ export function AddTriggerDialog({
     // Gain from entry CAN exceed 100 (up 150% from entry is a real milestone).
     (!(isMove || isTrail) || num < 100) &&
     // Zod floors the trail at 1% (sub-1% off the peak re-fires on noise).
-    (!isTrail || num >= 1);
+    (!isTrail || num >= 1) &&
+    (!isCadence || Number.isInteger(num));
 
   async function save() {
     if (!valid) return;
     setPending(true);
     setErr(null);
-    const predicate = isGain
+    const predicate = isCadence
+      ? { kind: "REVIEW_CADENCE", days: num }
+      : isGain
       ? { kind: "GAIN_FROM_ENTRY", pct: num, direction: dir }
       : isTrail
         ? { kind: "TRAILING_FROM_HIGH", pct: num }
@@ -980,7 +1086,7 @@ export function AddTriggerDialog({
             has no direction (orientation follows the thesis direction), so
             the group collapses to the % input alone. */}
         <ButtonGroup className="w-full">
-          {isTrail ? null : (
+          {isTrail || isCadence ? null : (
             <Select
               value={dir}
               onValueChange={(v) => {
@@ -1003,7 +1109,7 @@ export function AddTriggerDialog({
             </Select>
           )}
           <InputGroup>
-            {isPct ? null : (
+            {isPct || isCadence ? null : (
               <InputGroupAddon>
                 <InputGroupText>$</InputGroupText>
               </InputGroupAddon>
@@ -1012,22 +1118,24 @@ export function AddTriggerDialog({
               type="number"
               inputMode="decimal"
               value={val}
-              min={isTrail ? 1 : 0}
-              step={isPct ? 0.5 : 0.01}
-              placeholder={isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"}
+              min={isTrail || isCadence ? 1 : 0}
+              step={isCadence ? 1 : isPct ? 0.5 : 0.01}
+              placeholder={isCadence ? "7" : isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"}
               onChange={(e) => setVal(e.target.value)}
               disabled={pending}
             />
-            {isPct ? (
+            {isPct || isCadence ? (
               <InputGroupAddon align="inline-end">
-                <InputGroupText>%</InputGroupText>
+                <InputGroupText>{isCadence ? "days" : "%"}</InputGroupText>
               </InputGroupAddon>
             ) : null}
           </InputGroup>
         </ButtonGroup>
 
         <p className="text-xs text-muted-foreground">
-          {isGain
+          {isCadence
+            ? "The agent reviews this name every N days, counting from its last real review. Without it, nothing reviews the name until another trigger fires."
+            : isGain
             ? `Fires when the position is ${dir === "UP" ? "up" : "down"} this much from entry (avg cost) — cumulative, not a single day.`
             : isTrail
               ? "Fires when price gives back this much from its high since entry. The high ratchets up as the position runs."

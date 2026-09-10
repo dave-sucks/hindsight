@@ -62,7 +62,7 @@ Two principles:
 
 Existing, all cron-live for 1D/levels: `PRICE_ABOVE/BELOW` (fixed levels),
 `PRICE_MOVE_PCT 1D` (day %), `SIGNAL_TYPE`/`EARNINGS_*`/`GUIDANCE_CHANGE`/
-`FILING` (news), `TIME_ELAPSED`/`REVIEW_DATE_HIT` (time), `AND`/`OR`.
+`FILING` (news), `REVIEW_CADENCE` (time), `AND`/`OR`.
 
 New in **PR-A** (both deterministic, cron-evaluable, any action):
 

@@ -66,8 +66,6 @@ export function predicateSentence(p: TriggerPredicate): string {
       return `Guidance ${p.direction.toLowerCase()}`;
     case "FILING":
       return `${p.formType} filed`;
-    case "TIME_ELAPSED":
-      return `${p.days} days elapsed`;
     case "REVIEW_CADENCE":
       return `Every ${p.days} days since the last review`;
     case "AND":

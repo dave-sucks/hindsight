@@ -51,7 +51,7 @@ describe("effectiveTriggerAction", () => {
     // Review cadence, earnings, news — these still just want a look.
     expect(
       effectiveTriggerAction(
-        t({ kind: "TIME_ELAPSED", days: 30 }, "REVIEW"),
+        t({ kind: "REVIEW_CADENCE", days: 30 }, "REVIEW"),
         WATCH,
       ),
     ).toBe("REVIEW");
@@ -95,7 +95,7 @@ describe("isPlanLevel — what demotion actually removes", () => {
 
   it("keeps everything that makes it still a watch", () => {
     // The whole point is that the item survives — only the numbers go.
-    expect(isPlanLevel(t({ kind: "TIME_ELAPSED", days: 30 }, "REVIEW"), "LONG")).toBe(
+    expect(isPlanLevel(t({ kind: "REVIEW_CADENCE", days: 30 }, "REVIEW"), "LONG")).toBe(
       false,
     );
     expect(

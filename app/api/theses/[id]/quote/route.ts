@@ -83,7 +83,7 @@ export async function GET(
 
   // One parallel batch: the slow Finnhub quote, the StockInfo cache identity,
   // the terminal-sibling supersession lookup (same-analyst scope), and the
-  // open position (qty/avgCost for PnL + openedAt for TIME_ELAPSED). Quote
+  // open position (qty/avgCost for PnL + openedAt). Quote
   // failure is non-fatal — the sheet just omits the price line + PnL.
   const [liveQuote, identity, terminalSiblings, openPosition] =
     await Promise.all([
