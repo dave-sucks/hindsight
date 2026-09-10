@@ -82,6 +82,7 @@ function baseLongArgs(overrides: Record<string, unknown> = {}) {
     direction: "LONG",
     horizon: "TARGET",
     entry_price: 67,
+    current_price: 65,
     target_price: 100,
     stop_loss: 55,
     core_belief: "XENE re-rates on the next pipeline readout within 90 days.",

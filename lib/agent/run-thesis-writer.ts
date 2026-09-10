@@ -1124,6 +1124,10 @@ export async function writerPersistPhase(
           entry_price: d.entry_price,
           target_price: d.target_price,
           stop_loss: d.stop_loss,
+          // The price the research was done at. record_thesis reads the buy
+          // level's side (pullback vs breakout) off it when its own quote
+          // fails — and refuses rather than guesses when both are missing.
+          current_price: pullOutput.pull?.currentPrice ?? undefined,
           horizon: d.horizon,
           catalyst_date: d.catalyst_date
             ? new Date(d.catalyst_date).toISOString()

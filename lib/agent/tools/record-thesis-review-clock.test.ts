@@ -65,6 +65,7 @@ function baseLongArgs(overrides: Record<string, unknown> = {}) {
     direction: "LONG",
     horizon: "TARGET",
     entry_price: 186,
+    current_price: 180,
     target_price: 215,
     stop_loss: 172,
     core_belief: "ANET drifts to $215 within 60 days of the Q2 print.",

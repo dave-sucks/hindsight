@@ -128,7 +128,8 @@ const updateSchema = z.object({
     .number()
     .optional()
     .describe(
-      "Current price for this ticker at the moment of update. Optional — captured into the activity log row for context.",
+      "Current price for this ticker at the moment of update (get_stock_data's quote). Captured into the activity log row, and it decides which SIDE of the price a buy level sits on: " +
+        "pass it whenever you set entry_price or move a buy trigger's level. A fresh quote is tried first; with neither, that update is refused (no_live_price) — the side is never guessed.",
     ),
 
   // ── Patchable fields ──────────────────────────────────────────────────
@@ -509,7 +510,36 @@ export const updateThesis = defineTool({
           resolvedPriceAtTime = quote.c;
         }
       } catch {
-        /* non-fatal */
+        /* handled below when the call needs a price */
+      }
+    }
+    // A buy level's SIDE (pullback below the price, breakout above it) is
+    // read off the price. When this call places or moves one and there is
+    // no price at all — no price_at_time, quote failed — refuse rather than
+    // guess. The guess was always "breakout" (the CRM shape: "buy the
+    // pullback to $203" stored as "buy above $203" against a $258 price).
+    if (resolvedPriceAtTime == null) {
+      const enterIds = new Set(
+        (parseTriggersResilient(existing.triggers).triggers as Trigger[])
+          .filter((t) => t.action === "ENTER")
+          .map((t) => t.id),
+      );
+      const placesBuyLevel =
+        args.entry_price != null ||
+        (args.edit_triggers ?? []).some((e) => e.level != null && (e.action === "ENTER" || enterIds.has(e.id)));
+      if (placesBuyLevel) {
+        console.warn(`[update_thesis] refused ${existing.ticker}: no live price to place the buy level`);
+        return {
+          summary: `No live price for ${existing.ticker} — cannot place the buy level.`,
+          data: {
+            ok: false,
+            error: "no_live_price",
+            note:
+              `The quote for ${existing.ticker} failed and no price_at_time was passed, so there is no way to know whether the buy level ` +
+              `is a pullback (below the price) or a breakout (above it). Retry the same call with price_at_time set to the price from get_stock_data. The side is never guessed.`,
+          },
+          sources: [],
+        };
       }
     }
     if (

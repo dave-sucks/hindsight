@@ -148,6 +148,7 @@ describe("record_thesis — PASS + WATCHING keeps the name in view", () => {
       keepInViewArgs({
         ticker: "CRM",
         entry_price: 203,
+        current_price: 195,
         triggers: [priceWake(203)],
       }),
     );
