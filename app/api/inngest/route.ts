@@ -6,6 +6,7 @@ import { syncHeartbeat } from "@/lib/inngest/functions/sync-heartbeat";
 import { evaluateTrade } from "@/lib/inngest/functions/trade-evaluator";
 import { morningResearch } from "@/lib/inngest/functions/morning-research";
 import { eodEvaluation } from "@/lib/inngest/functions/eod-evaluation";
+import { vendorProbe } from "@/lib/inngest/functions/vendor-probe";
 import { dailyRunDigest } from "@/lib/inngest/functions/daily-run-digest";
 import { accuracyScorer } from "@/lib/inngest/functions/accuracy-scorer";
 // V3 Intelligence Layer
@@ -71,6 +72,10 @@ export const { GET, POST, PUT } = serve({
     // roll-up scan-at-a-glance.
     dailyRunDigest,
     accuracyScorer,
+    // 6:25 AM ET Mon-Fri — market-data health: every vendor endpoint probed
+    // with a mid-cap book name; emails when a source is empty or erroring
+    // (DAV-239). Runs before the pipeline so the day starts with the answer.
+    vendorProbe,
     // V3 Intelligence (run in order: 6:30 → 7:00 → 7:15 → 7:30 → 7:45 → 8:00 analyst runs)
     firmMarketSweep,
     portfolioWatchlistMonitor,
