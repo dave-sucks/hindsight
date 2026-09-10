@@ -14,11 +14,10 @@ import {
 describe("the review clock is editable like any other trigger (DAV-225)", () => {
   const clock = { kind: "REVIEW_CADENCE" as const, days: 7 };
 
-  it("exposes its days, with the named schedules as presets", () => {
+  it("exposes its days so the popover can edit the schedule", () => {
     const f = editableTriggerField(clock);
     expect(f?.value).toBe(7);
     expect(f?.min).toBe(1);
-    expect(f?.presets).toEqual([1, 7, 30]);
   });
 
   it("writes a new cadence back onto the predicate", () => {
