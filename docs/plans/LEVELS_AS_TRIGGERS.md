@@ -76,7 +76,7 @@ Three separate stores of the same idea:
 | "take profit at $360" | `Thesis.targetPrice` | ❌ same |
 | "buy at $245.67" | `Thesis.entryPrice` | ⚠️ via the WATCHING template's ENTER trigger, minted once |
 | "look again on Aug 21" | `Thesis.nextReviewAt` | ⚠️ read directly by the daily run; `REVIEW_DATE_HIT` was removed from the templates 2026-05-20 |
-| "exit after N days" | `Thesis.maxHoldDays` | ⚠️ via a `TIME_ELAPSED` trigger, minted once |
+| "exit after N days" | `Thesis.maxHoldDays` | ⚠️ folded into `REVIEW_CADENCE` (DAV-209) |
 
 The sync that exists is **one-way and partial**: editing a stop *pill* mirrors
 onto `Thesis.stopLoss` + the open `Position` (`applyTriggerValueEdit`,

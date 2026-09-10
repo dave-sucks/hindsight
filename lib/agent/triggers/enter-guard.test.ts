@@ -45,7 +45,7 @@ const REVIEW_EARNINGS: Trigger = {
 
 const REVIEW_HYGIENE: Trigger = {
   id: "trig-review-hygiene",
-  predicate: { kind: "TIME_ELAPSED", days: 14 },
+  predicate: { kind: "REVIEW_CADENCE", days: 14 },
   action: "REVIEW",
   rationale: "Catalyst-window hygiene",
   cooldownDays: 12,

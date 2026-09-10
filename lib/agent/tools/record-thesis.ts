@@ -239,7 +239,7 @@ const thesisFields = z.object({
       "REQUIRED. Exit policy + trigger template for this thesis. Pick the kind that matches your reasoning, not just the holding period:\n" +
         "  • CATALYST — trade is built around a binary event (FDA decision, M&A close, court ruling, named earnings catalyst). Hold until the event resolves; ignore inter-event price drift.\n" +
         "  • TARGET — swing trade with a defined upside number from setup/fundamentals. Weeks-to-months. Exit at target, stop, or invalidation.\n" +
-        "  • TRADE — momentum/pattern setup with a tight stop. Days-to-weeks; the template mints a TIME_ELAPSED review rung that bounds it.\n" +
+        "  • TRADE — momentum/pattern setup with a tight stop. Days-to-weeks; the template mints a review cadence that bounds it.\n" +
         "  • COMPOUNDER — long-term hold based on durable business quality. Months-to-years. Quarterly hygiene only; never time-exits on price alone.\n" +
         "If you can't pick one, you don't have a thesis — write PASS instead.",
     ),
@@ -747,7 +747,7 @@ export const recordThesis = defineTool({
       //                      trigger templates and the 30d-past-event
       //                      exit policy both key off it.
       // (TRADE used to require max_hold_days here. The column is gone —
-      // DAV-195 L8 — and the window is a TIME_ELAPSED rung on the ladder.)
+      // DAV-195 L8 — and the window is the review cadence on the ladder.)
       // PASS theses bypass — they're not actionable plans.
       const isDirectional = args.direction === "LONG" || args.direction === "SHORT";
       if (isDirectional && args.horizon === "CATALYST" && !args.catalyst_date) {

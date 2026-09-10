@@ -42,7 +42,6 @@ An invalid trigger is dropped at evaluation, so the gate rejects it up front.
 | `EARNINGS_BEAT` / `EARNINGS_MISS` | Earnings surprise | `minSurprisePct?` |
 | `GUIDANCE_CHANGE` | Guidance revision | `direction` |
 | `FILING` | SEC form filed | `formType` |
-| `TIME_ELAPSED` | N days since position-open (HELD) / thesis-create (WATCHING) | `days` |
 | `REVIEW_CADENCE` | N days since the last actual review (`lastReviewedAt`) | `days` |
 | `AND` / `OR` | Composite | `predicates[]` |
 
@@ -120,7 +119,7 @@ sharing the pure `evaluateTrigger` in `triggers/evaluate.ts`:
 | `VS_SMA` | ❌ (no SMA) | — | ✅ |
 | `RSI` | ❌ stub | ❌ stub | ❌ stub |
 | `EARNINGS_*` / `GUIDANCE_CHANGE` / `FILING` / `SIGNAL_TYPE` | — | ✅ | — |
-| `TIME_ELAPSED` / `REVIEW_CADENCE` | ✅ | — | ✅ |
+| `REVIEW_CADENCE` | ✅ | — | ✅ |
 
 **The Movement-Amount nuance (read this):** a **daily** (`1D`) `PRICE_MOVE_PCT`
 fires on the cron because the evaluator reads the quote's own daily % change
@@ -236,7 +235,7 @@ tactical run. `ENTER`/`EXIT` always spawn (or DIRECT-close).
 (`defaultCooldownDaysForPredicate`: EARNINGS_*/GUIDANCE 7, FILING/SIGNAL/PRICE_*
 1, `GAIN_FROM_ENTRY` 7 — the milestone latches, so 7d stops a same-week re-fire
 if the acting agent forgets to re-arm the next checkpoint; `TRAILING_FROM_HIGH`
-1, TIME_ELAPSED ~80% of window, …). **`cooldownDays: 0` is reserved for terminal
+1, REVIEW_CADENCE its own interval, …). **`cooldownDays: 0` is reserved for terminal
 `EXIT` triggers only** — `0` on any other action causes a 5-min evaluator
 infinite loop the instant the predicate latches true, so the write path
 overwrites it with the per-kind default (`applyTriggerCooldownDefaults`). The

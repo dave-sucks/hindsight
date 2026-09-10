@@ -190,7 +190,6 @@ const PRICE_OR_TIME_KINDS = new Set([
   "TRAILING_FROM_HIGH",
   "VS_SMA",
   "RSI",
-  "TIME_ELAPSED",
   // REVIEW_CADENCE is deliberately NOT here: it has its own needsAction
   // kind (REVIEW_DUE) with a 24h look-ahead the generic loop can't express,
   // and routing it through TRIGGER_MATCHING_NOW would relabel every routine
@@ -223,8 +222,6 @@ export function describePredicate(p: TriggerPredicate): string {
       return `${p.direction.toLowerCase()} ${p.period}-day SMA`;
     case "RSI":
       return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
-    case "TIME_ELAPSED":
-      return `${p.days}d elapsed since thesis creation`;
     case "REVIEW_CADENCE":
       return `due for review (every ${p.days}d)`;
     case "SIGNAL_TYPE":
@@ -279,9 +276,7 @@ export interface NeedsActionInput {
     /** Horizon picks the staleness threshold. Null falls back to the conservative default. */
     horizon?: string | null;
     /**
-     * P1-14 — paired open Position's openedAt, for ACTIVE rows only. Lets
-     * the TRIGGER_MATCHING_NOW evaluation anchor TIME_ELAPSED to when the
-     * position opened rather than the (older) thesis row. Null when not
+     * Paired open Position's openedAt, for held rows only. Null when not
      * held or the caller didn't resolve a position.
      */
     positionOpenedAt?: Date | null;
@@ -391,9 +386,6 @@ export function computeNeedsAction(
       thesis: {
         createdAt: thesis.createdAt,
         lastReviewedAt: thesis.lastReviewedAt ?? null,
-        // P1-14: ACTIVE rows anchor TIME_ELAPSED to the position open time.
-        status: thesis.status,
-        positionOpenedAt: thesis.positionOpenedAt ?? null,
       },
       now,
     });

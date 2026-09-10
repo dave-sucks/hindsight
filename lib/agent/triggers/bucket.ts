@@ -52,8 +52,6 @@ export function predicateKey(p: TriggerPredicate): string {
       return `${p.kind}:${p.direction}`;
     case "FILING":
       return `${p.kind}:${p.formType}`;
-    case "TIME_ELAPSED":
-      return p.kind;
     case "REVIEW_CADENCE":
       return p.kind;
     case "AND":

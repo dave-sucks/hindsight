@@ -112,8 +112,6 @@ function describePredicate(p: TriggerPredicate): string {
       return `guidance ${p.direction}`;
     case "FILING":
       return `${p.formType} filed`;
-    case "TIME_ELAPSED":
-      return `${p.days} days elapsed since thesis created`;
     case "REVIEW_CADENCE":
       return `the review cadence has elapsed since the last review`;
     case "AND":

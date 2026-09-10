@@ -205,11 +205,6 @@ function predicateKindValue(p: TriggerPredicate): {
       };
     case "FILING":
       return { kind: "filing", value: p.formType ?? null };
-    case "TIME_ELAPSED":
-      return {
-        kind: "time elapsed",
-        value: p.days != null ? plural(p.days, "day") : null,
-      };
     case "REVIEW_DATE_HIT":
       return { kind: "review date hit", value: null };
     case "REVIEW_CADENCE":
@@ -267,8 +262,6 @@ function predicateDescription(p: TriggerPredicate): string {
       return `Fires when company issues ${p.direction?.toLowerCase()} guidance revision.`;
     case "FILING":
       return `Fires when a ${p.formType} is filed.`;
-    case "TIME_ELAPSED":
-      return `Fires once ${p.days} days have passed since the thesis was created.`;
     case "REVIEW_DATE_HIT":
       return "Fires when the thesis's scheduled review date is reached.";
     case "REVIEW_CADENCE":
@@ -481,7 +474,7 @@ function TriggerPopoverContent({
       : null;
   const leadingText = field?.prefix ?? moveDir;
   const trailingText = field?.suffix ?? null;
-  const leadingIcon = pk === "TIME_ELAPSED" || pk === "REVIEW_DATE_HIT";
+  const leadingIcon = pk === "REVIEW_DATE_HIT";
 
   const isCadenceRung = trigger.predicate.kind === "REVIEW_CADENCE";
   const split = splitCadence(isCadenceRung ? (field?.value ?? null) : null);

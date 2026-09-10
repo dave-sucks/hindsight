@@ -142,7 +142,6 @@ function scaleInOnPullbackTrigger(): Trigger {
 // minted with (editable per-thesis in the trigger popover).
 
 /** How long a TRADE-horizon position runs before it must be re-examined. */
-const TRADE_MAX_HOLD_DAYS = 14;
 
 /** Gain milestone: up X% from entry → checkpoint re-underwrite (REVIEW). */
 const PROTECT_CHECKPOINT_GAIN_PCT = 10;
@@ -494,13 +493,6 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
       rationale: `8-K filed — material event. Read the filing and update the thesis if anything changed.`,
       cooldownDays: 1,
     },
-    {
-      id: createId(),
-      predicate: { kind: "TIME_ELAPSED", days: 90 },
-      action: "REVIEW",
-      rationale: `Quarterly hygiene check. Even with no fires, walk the thesis once a quarter.`,
-      cooldownDays: 80,
-    },
   );
 
   out.push(scaleInOnStrengthTrigger());
@@ -546,13 +538,6 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
       rationale: `Miss ≥ 3% — re-evaluate target.`,
       cooldownDays: 7,
     },
-    {
-      id: createId(),
-      predicate: { kind: "TIME_ELAPSED", days: 30 },
-      action: "REVIEW",
-      rationale: `Monthly hygiene check.`,
-      cooldownDays: 25,
-    },
   );
   out.push(scaleInOnStrengthTrigger());
   out.push(scaleInOnPullbackTrigger());
@@ -581,21 +566,11 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
       cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
-  // "This has been open long enough — look at it." Was Thesis.maxHoldDays, a
-  // column that produced exactly this trigger once at mint and was never read
-  // again, then drifted from it. It is a plain TIME_ELAPSED review now, on
-  // the ladder where it can be seen and edited like anything else.
-  const maxDays = TRADE_MAX_HOLD_DAYS;
-  out.push({
-    id: createId(),
-    predicate: { kind: "TIME_ELAPSED", days: maxDays },
-    action: "REVIEW",
-    rationale: `Open ${maxDays} days — a TRADE should have resolved by now. Close it or re-underwrite it.`,
-    // cooldownDays intentionally unset — falls back to the per-kind default
-    // (~80% of `days`) which is the right shape: TIME_ELAPSED stays true
-    // forever once the window is reached, so without ANY cooldown it would
-    // re-fire on every signal-routed evaluation.
-  });
+  // The "open long enough?" rung is gone, and nothing
+  // replaces it. It was a 14-day window on a horizon the review clock
+  // already visits EVERY day — the daily review asks "close it or
+  // re-underwrite it" two weeks before the max-hold rung ever fired. A
+  // second, slower clock on the same ladder would only add noise.
   out.push(scaleInOnStrengthTrigger());
   out.push(...standingProtectionTriggers());
   return out;
@@ -909,8 +884,7 @@ function defaultTriggersForHorizonInner(
  * predicates rate-limit at the quarterly cycle (7d caps the
  * "earnings-beat aftershocks" window); filings/news/price predicates
  * rate-limit at 1 day so they don't fan out on every quote tick or
- * intel batch; review-cadence predicates rate-limit closer to their
- * window (TIME_ELAPSED 30 ⇒ 25, etc.).
+ * intel batch; a review cadence rate-limits at its own interval.
  */
 export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
   switch (p.kind) {
@@ -938,13 +912,11 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
       // anyway; REVIEW/TRIM rungs get one nudge per day, matching the
       // other price predicates.
       return 1;
-    case "TIME_ELAPSED":
-      // Most TIME_ELAPSED predicates fire once and stay fired; pick a
-      // cooldown ~80% of the window so they don't re-fire every tick once
-      // elapsed but allow re-firing if the agent's window is short.
-      return Math.max(1, Math.round(p.days * 0.8));
     case "REVIEW_CADENCE":
-      return 7;
+      // The cadence IS the interval. A clock allowed to re-fire sooner than
+      // its own schedule is just a faster clock; the flat 7 that used to sit
+      // here made a 30-day review nag weekly once it latched.
+      return p.days;
     case "AND":
     case "OR":
       // Composite: pick the max child cooldown. If a composite contains
@@ -966,14 +938,14 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
  * terminal (the position closes and the cron's `status:ACTIVE` filter
  * takes over), so re-firing isn't a runaway risk. On any other action
  * (REVIEW, ENTER, TRIM) `0` is structurally invalid against a sticky
- * predicate (TIME_ELAPSED, PRICE_ABOVE/BELOW, VS_SMA, RSI, AND/OR
+ * predicate (PRICE_ABOVE/BELOW, VS_SMA, RSI, REVIEW_CADENCE, AND/OR
  * composites of the same) — once the condition is true it stays true,
  * and a 5-min trigger-evaluator tick re-fires every cycle until
  * intervention. Treat `0` on non-EXIT as "needs default" and overwrite
  * with the per-predicate cooldown.
  *
  * Background: 2026-06-02 NVDA tactical runaway — agent-supplied
- * `update_thesis` triggers stamped `cooldownDays: 0` on a TIME_ELAPSED
+ * `update_thesis` triggers stamped `cooldownDays: 0` on a review
  * 14d REVIEW, the old `!= null` check walked past it, and the loop
  * fired 15 times in 70 min before manual hotfix. See `docs/GAPS.md`.
  */

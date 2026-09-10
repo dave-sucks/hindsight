@@ -471,7 +471,7 @@ The horizon doesn't just label the trade — it constrains the shape of every ot
 
 ### TRADE / ACTIVE / LONG (swing breakout)
 - `max_hold_days` REQUIRED (no default; agent declares the window)
-- Triggers: PRICE_BELOW(stop) → EXIT (cd=0), PRICE_ABOVE(target) → EXIT (cd=0), TIME_ELAPSED(maxHoldDays) → REVIEW
+- Triggers: PRICE_BELOW(stop) → EXIT (cd=0), PRICE_ABOVE(target) → EXIT (cd=0), REVIEW_CADENCE → REVIEW
 - `core_belief` is setup-specific ("$NVDA breaks $185 base on volume")
 
 ### TARGET / ACTIVE / LONG (the 6-month / +150% / -5% anchor)
