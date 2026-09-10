@@ -5,10 +5,16 @@
 //   1. Signal-driven  — consumes `app/signal.routed`, evaluates each
 //                       active+watching thesis on the signal's tickers
 //                       against the signal's signal-side predicates.
-//   2. Cron-driven    — every 15 min during US market hours, walks every
+//   2. Cron-driven    — every 5 min during US market hours, walks every
 //                       ACTIVE thesis with non-empty triggers[], pulls
 //                       latest Finnhub quote, evaluates price-side
-//                       predicates.
+//                       predicates. Since 2026-09-02 it also pulls the
+//                       firm-wide earnings calendar (one call for the whole
+//                       batch) and evaluates EARNINGS_BEAT / EARNINGS_MISS
+//                       off reported EPS vs estimate — those used to need a
+//                       routed signal and so had never fired. See
+//                       lib/agent/triggers/earnings.ts and
+//                       docs/plans/EARNINGS_AND_MOVERS.md.
 //
 // Both paths emit `app/thesis.trigger.fired` on match. The `lastFiredAt`
 // cooldown stamp prevents same-trigger re-fires within cooldownDays. ENTER
@@ -38,6 +44,11 @@ import {
 } from "@/lib/agent/research-helpers";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
+import {
+  describeEarningsReport,
+  fetchRecentEarningsReports,
+} from "@/lib/agent/triggers/earnings";
+import type { EarningsReport } from "@/lib/agent/triggers/earnings";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { effectiveTriggerAction } from "@/lib/agent/triggers/types";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
@@ -82,7 +93,18 @@ function parseTriggers(raw: unknown, thesisId: string): Trigger[] {
   });
 }
 
-/** Predicate kinds that can be evaluated without a Signal. */
+/**
+ * Predicate kinds the cron path can evaluate — everything that needs no
+ * Signal.
+ *
+ * EARNINGS_BEAT / EARNINGS_MISS joined this set on 2026-09-02. They read
+ * the published earnings calendar (reported EPS vs estimate) off
+ * `ctx.earnings`, which the cron path fetches for the whole firm in one
+ * call — no producer, no router. Before that they lived only on the signal
+ * path, which has been down since 2026-05-31 and never carried a surprise
+ * figure even when it was up: 57 earnings triggers across 30 names, zero
+ * fires, ever. See lib/agent/triggers/earnings.ts.
+ */
 function isPriceSidePredicate(p: TriggerPredicate): boolean {
   switch (p.kind) {
     case "PRICE_ABOVE":
@@ -93,10 +115,26 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
     case "VS_SMA":
     case "RSI":
     case "REVIEW_CADENCE":
+    case "EARNINGS_BEAT":
+    case "EARNINGS_MISS":
       return true;
     case "AND":
     case "OR":
       return p.predicates.every(isPriceSidePredicate);
+    default:
+      return false;
+  }
+}
+
+/** Does this predicate read reported earnings? Drives the calendar fetch. */
+function needsEarningsData(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "EARNINGS_BEAT":
+    case "EARNINGS_MISS":
+      return true;
+    case "AND":
+    case "OR":
+      return p.predicates.some(needsEarningsData);
     default:
       return false;
   }
@@ -215,6 +253,13 @@ interface FiringEvent {
    * audit row — without it those rows have no price in the Activity tab.
    */
   firedPrice?: number | null;
+  /**
+   * One sentence of the facts that fired it, when the predicate had any
+   * beyond the price — today that means the reported earnings figures.
+   * Threaded into the tactical run's kickoff message so the agent starts
+   * knowing the numbers rather than spending a tool call re-fetching them.
+   */
+  firedContext?: string | null;
 }
 
 /**
@@ -670,6 +715,19 @@ export const triggerEvaluator = inngest.createFunction(
       );
       const quoteByTicker = new Map(quoteResults);
 
+      // Reported earnings for the whole firm in ONE call, only when some
+      // thesis in this batch actually carries an earnings trigger. The
+      // window is short enough that the entire market's recent reports come
+      // back in ~18KB, so this is cheaper than fanning out per ticker and
+      // stays cheap as the book grows. A failure returns an empty map and
+      // logs — price triggers still evaluate. See ./earnings.
+      const wantsEarnings = candidates.some((c) =>
+        c.ladder.some((t) => needsEarningsData(t.predicate)),
+      );
+      const earningsByTicker = wantsEarnings
+        ? await fetchRecentEarningsReports({ now })
+        : new Map<string, EarningsReport>();
+
       const events: FiringEvent[] = [];
       for (const { thesis, analystId, ladder: triggers } of candidates) {
         // Non-null by the filter above; narrowed for the FiringEvent below.
@@ -682,6 +740,10 @@ export const triggerEvaluator = inngest.createFunction(
           // RSI return false because we don't pass recentPrices / sma
           // here — see the file-header note for the rationale.
           latestQuote: latestQuote ?? undefined,
+          // EARNINGS_BEAT / EARNINGS_MISS read this. Absent when the name
+          // hasn't reported inside the lookback window, which is the
+          // overwhelmingly common case — those predicates then return false.
+          earnings: earningsByTicker.get(thesis.ticker) ?? null,
           // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read the open position's
           // entry cost + water mark; absent (WATCHING) → they return false.
           position: posInfo
@@ -718,6 +780,14 @@ export const triggerEvaluator = inngest.createFunction(
             status: thesis.status,
             direction: thesis.direction,
           });
+
+          // The facts behind an earnings fire, when that's what fired. Null
+          // for a price/time trigger — the price is already stamped.
+          const report = earningsByTicker.get(thesis.ticker);
+          const firedContext =
+            report && needsEarningsData(t.predicate)
+              ? describeEarningsReport(report)
+              : null;
 
           // DEMOTE is deterministic and costs nothing to be wrong about — no
           // money moves — so it runs inline. Never a tactical spawn: arming
@@ -768,7 +838,12 @@ export const triggerEvaluator = inngest.createFunction(
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",
               summary: `${describeTriggerFire(t)} — deferred to the next daily review`,
-              rationale: t.rationale,
+              // The figures ride along on an earnings fire. Tomorrow's run
+              // reads this row to decide what to do; "Earnings miss" alone
+              // makes it go and re-fetch what the row could have told it.
+              rationale: firedContext
+                ? `${t.rationale} ${firedContext}`
+                : t.rationale,
               triggerId: t.id,
               signalIds: [],
               runId: null,
@@ -784,6 +859,7 @@ export const triggerEvaluator = inngest.createFunction(
             action,
             predicateKind: t.predicate.kind,
             firedPrice: latestQuote?.price ?? null,
+            firedContext,
           });
         }
       }
@@ -808,6 +884,7 @@ export const triggerEvaluator = inngest.createFunction(
 // directly without standing up Inngest.
 export const __test__ = {
   isPriceSidePredicate,
+  needsEarningsData,
   isSignalSidePredicate,
   parseTriggers,
   evaluateThesisTriggers,

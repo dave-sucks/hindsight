@@ -54,6 +54,14 @@ interface FiredPayload {
   predicateKind: string;
   /** Quote that fired the predicate (price-cron fires only; see evaluator). */
   firedPrice?: number | null;
+  /**
+   * The facts behind the fire, when the predicate had any beyond price —
+   * today, the reported earnings figures ("Reported 2026-08-26 (after
+   * close): EPS $2.22 vs $2.14 est — beat by 3.8%…"). Set by the evaluator.
+   * Goes into the kickoff message so the agent starts with the numbers
+   * instead of spending a step fetching what fired it.
+   */
+  firedContext?: string | null;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -456,7 +464,12 @@ export const tacticalRun = inngest.createFunction(
           thesisId: thesis.id,
           type: "TRIGGER_FIRED",
           summary,
-          rationale: trigger.rationale,
+          // Same reasoning as the evaluator's deferred-REVIEW row: an
+          // earnings fire carries its figures so the record says what
+          // happened, not just that something did.
+          rationale: fired.firedContext
+            ? `${trigger.rationale} ${fired.firedContext}`
+            : trigger.rationale,
           triggerId: trigger.id,
           signalIds: signal ? [signal.id] : [],
           runId: run.id,
@@ -691,8 +704,10 @@ export const tacticalRun = inngest.createFunction(
       const signalSuffix = signal
         ? ` Signal: "${(signal as { headline: string }).headline.slice(0, 120)}"`
         : "";
+      // The numbers behind an earnings fire, when the evaluator sent them.
+      const contextSuffix = fired.firedContext ? ` ${fired.firedContext}` : "";
       const userPrompt =
-        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${signalSuffix} ` +
+        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${signalSuffix} ` +
         `Validate, decide, act if warranted, then close out via update_thesis. ` +
         `You are running unattended — no human will respond. Every turn must call a tool; ` +
         `text-only turns terminate the run as FAILED.`;

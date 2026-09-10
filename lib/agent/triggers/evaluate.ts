@@ -23,6 +23,7 @@
 
 import type { Trigger, TriggerPredicate, Urgency } from "./types";
 import { defaultCooldownDaysForPredicate } from "./defaults";
+import type { EarningsReport } from "./earnings";
 
 // ── EvaluationContext ─────────────────────────────────────────────────
 
@@ -61,6 +62,22 @@ export interface EvaluationContext {
    * condition true now", which is the right question for a snapshot.
    */
   latestQuote?: { price: number; changePct: number; prevClose?: number };
+
+  /**
+   * This ticker's most recently reported quarter, when it reported inside
+   * the evaluator's lookback window. Read by EARNINGS_BEAT / EARNINGS_MISS.
+   *
+   * This is the source that works today. The signal-side path below stayed
+   * dark for months because no producer ever stamped a surprise figure onto
+   * a Signal; the calendar carries reported EPS against estimate directly,
+   * so beat/miss is arithmetic with nothing in between. See ./earnings and
+   * docs/plans/EARNINGS_AND_MOVERS.md.
+   *
+   * Absent (didn't report, or the caller doesn't do earnings) → those
+   * predicates fall back to `signal`, and then to false. A missed trigger,
+   * never a crash.
+   */
+  earnings?: EarningsReport | null;
 
   /** SMA precomputed by the caller; we don't fetch candles here. */
   sma?: { 50?: number; 200?: number };
@@ -167,8 +184,7 @@ export function evaluateTrigger(
       return evaluateSignalType(predicate, ctx);
 
     case "EARNINGS_BEAT": {
-      if (ctx.signal?.type !== "EARNINGS") return false;
-      const surprise = ctx.signal.earningsSurprisePct;
+      const surprise = reportedSurprisePct(ctx);
       if (surprise == null || surprise <= 0) return false;
       if (predicate.minSurprisePct != null && surprise < predicate.minSurprisePct) {
         return false;
@@ -177,8 +193,7 @@ export function evaluateTrigger(
     }
 
     case "EARNINGS_MISS": {
-      if (ctx.signal?.type !== "EARNINGS") return false;
-      const surprise = ctx.signal.earningsSurprisePct;
+      const surprise = reportedSurprisePct(ctx);
       if (surprise == null || surprise >= 0) return false;
       const absSurprise = Math.abs(surprise);
       if (predicate.minSurprisePct != null && absSurprise < predicate.minSurprisePct) {
@@ -311,6 +326,24 @@ function readsPrice(p: TriggerPredicate): boolean {
     default:
       return false;
   }
+}
+
+/**
+ * The reported surprise percentage for this ticker, from whichever source
+ * the caller supplied. Positive = beat, negative = miss, null = we don't
+ * know (nothing reported, or an estimate we can't compute a percentage
+ * against).
+ *
+ * Calendar first. It is the arithmetic — reported EPS against the published
+ * estimate — whereas a signal's figure is whatever a producer stamped onto
+ * the row, and in practice no producer ever stamped one. The signal branch
+ * stays so that a restored router still works, not because it currently
+ * carries anything.
+ */
+function reportedSurprisePct(ctx: EvaluationContext): number | null {
+  if (ctx.earnings?.surprisePct != null) return ctx.earnings.surprisePct;
+  if (ctx.signal?.type === "EARNINGS") return ctx.signal.earningsSurprisePct ?? null;
+  return null;
 }
 
 const URGENCY_RANK: Record<Urgency, number> = {

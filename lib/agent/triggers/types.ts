@@ -97,6 +97,13 @@ export type TriggerPredicate =
       sentiment?: Sentiment;
       minUrgency?: Urgency;
     }
+  // EARNINGS_BEAT / EARNINGS_MISS are NOT signal-dependent any more. They
+  // evaluate on the price cron off the published earnings calendar —
+  // reported EPS against estimate, arithmetic, no router (see
+  // lib/agent/triggers/earnings.ts). They spent months inert waiting on a
+  // producer to stamp a surprise figure onto a Signal that never came. The
+  // signal branch in evaluate.ts is kept as a fallback for a restored
+  // router; it is not what fires them today.
   | { kind: "EARNINGS_BEAT"; minSurprisePct?: number }
   | { kind: "EARNINGS_MISS"; minSurprisePct?: number }
   | { kind: "GUIDANCE_CHANGE"; direction: "UP" | "DOWN" }
