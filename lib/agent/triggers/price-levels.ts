@@ -634,13 +634,35 @@ export function moveNumberInText(
   to: number,
 ): string | null {
   const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const forms = [String(from), from.toFixed(2), from.toLocaleString("en-US")];
-  for (const f of forms) {
-    const re = new RegExp(`(?<![\\d.])${escape(f)}(?![\\d])`, "g");
-    if (re.test(text)) {
-      const repl = field === "level" ? (to % 1 === 0 ? String(to) : to.toFixed(2)) : String(to);
-      return text.replace(re, repl);
-    }
+  const plain = field === "level" ? (to % 1 === 0 ? String(to) : to.toFixed(2)) : String(to);
+  // Each way the old number may be written, paired with the new number in
+  // the same style — "$935.00" stays two-decimal, "$1,580" keeps its comma.
+  const numForms: Array<{ from: string; to: string }> = [
+    { from: String(from), to: plain },
+    { from: from.toFixed(2), to: field === "level" ? to.toFixed(2) : String(to) },
+    { from: from.toLocaleString("en-US"), to: field === "level" ? to.toLocaleString("en-US") : String(to) },
+  ];
+
+  // The number as the field writes it — "$50", "8%", "30 days" — is tried
+  // FIRST, so a level of 50 in "Buy above $50, a reclaim of the 50d" moves
+  // the price and leaves the moving average alone. Only when no unit form
+  // is present does a bare number count, and then never one glued to a
+  // letter or a hyphen (50d, 50-day, 200DMA) or to more digits (150.5).
+  const unitForms: Array<{ re: RegExp; repl: string }> =
+    field === "level"
+      ? numForms.map((n) => ({ re: new RegExp(`\\$${escape(n.from)}(?![\\d])(?!\\.\\d)`, "g"), repl: `$${n.to}` }))
+      : field === "pct"
+        ? numForms.map((n) => ({ re: new RegExp(`(?<![\\d.])${escape(n.from)}%`, "g"), repl: `${n.to}%` }))
+        : numForms.flatMap((n) => [
+            { re: new RegExp(`(?<![\\d.])${escape(n.from)}( days?)\\b`, "g"), repl: `${n.to}$1` },
+            { re: new RegExp(`(?<![\\d.])${escape(n.from)}(-day|d)\\b`, "g"), repl: `${n.to}$1` },
+          ]);
+  for (const { re, repl } of unitForms) {
+    if (re.test(text)) return text.replace(re, repl);
+  }
+  for (const n of numForms) {
+    const re = new RegExp(`(?<![\\d.$])${escape(n.from)}(?![\\w-])(?!\\.\\d)`, "g");
+    if (re.test(text)) return text.replace(re, n.to);
   }
   return null;
 }

@@ -11,6 +11,7 @@ import {
   applyLevelArgs,
   levelLabelState,
   canonicalLevels,
+  moveNumberInText,
 } from "./price-levels";
 import { resolveLadder } from "./levels";
 import type { ResolvedTrigger } from "./levels";
@@ -901,5 +902,45 @@ describe("a moved level rewrites its sentence (level path)", () => {
       mintId: () => "new",
     }).triggers;
     expect(out.filter((t) => t.action === "ENTER")).toHaveLength(1);
+  });
+});
+
+// ── moveNumberInText — the unit form first, a bare number never glued to a word
+
+describe("moveNumberInText", () => {
+  it("moves the $ level and leaves a moving average with the same digits alone", () => {
+    expect(moveNumberInText("Buy above $50, a reclaim of the 50d.", "level", 50, 52)).toBe(
+      "Buy above $52, a reclaim of the 50d.",
+    );
+    expect(moveNumberInText("Floor $200 — the 200-day held twice.", "level", 200, 210)).toBe(
+      "Floor $210 — the 200-day held twice.",
+    );
+    expect(moveNumberInText("Exit below $20; the 20DMA is the tell.", "level", 20, 19)).toBe(
+      "Exit below $19; the 20DMA is the tell.",
+    );
+  });
+
+  it("falls back to a bare number only when no $ form is present, and never one glued to a letter or hyphen", () => {
+    expect(moveNumberInText("Start the position when the price breaks above 150.", "level", 150, 160)).toBe(
+      "Start the position when the price breaks above 160.",
+    );
+    expect(moveNumberInText("A reclaim of the 50d, nothing else.", "level", 50, 52)).toBeNull();
+    expect(moveNumberInText("Above the 50-day.", "level", 50, 52)).toBeNull();
+    expect(moveNumberInText("Trades at 150.5 today.", "level", 150, 160)).toBeNull();
+  });
+
+  it("percent and day fields move their own unit", () => {
+    expect(moveNumberInText("Gave back 8% from the high — a question, not a sale.", "pct", 8, 15)).toBe(
+      "Gave back 15% from the high — a question, not a sale.",
+    );
+    expect(moveNumberInText("Review every 30 days; the 30d average is context.", "days", 30, 45)).toBe(
+      "Review every 45 days; the 30d average is context.",
+    );
+    expect(moveNumberInText("A 30-day hygiene check.", "days", 30, 20)).toBe("A 20-day hygiene check.");
+  });
+
+  it("keeps the two-decimal and thousands forms", () => {
+    expect(moveNumberInText("Exit below $935.00.", "level", 935, 969)).toBe("Exit below $969.00.");
+    expect(moveNumberInText("Buy level $1,580 — the base.", "level", 1580, 1620)).toBe("Buy level $1,620 — the base.");
   });
 });
