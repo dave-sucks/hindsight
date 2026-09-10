@@ -60,7 +60,6 @@ export const LEVEL_ELIGIBLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"
     "PRICE_MOVE_PCT",
     "GAIN_FROM_ENTRY",
     "TRAILING_FROM_HIGH",
-    "TIME_ELAPSED",
     "VS_SMA",
     "RSI",
   ]);

@@ -460,7 +460,7 @@ export const getTheses = defineTool({
     const principalDirectiveByThesisId = new Map<string, PrincipalDirective | null>();
 
     // ── Position openedAt per ACTIVE thesis (P1-14) ─────────────────────
-    // TIME_ELAPSED on a HELD thesis measures "max hold N days" from when the
+    // A HELD thesis measures elapsed time from when the
     // position opened, not the (possibly older) thesis row. Resolve the open
     // Position per ACTIVE (ticker) once; shared by both the needsAction and
     // resolver loops below. WATCHING/PROMOTED rows keep their createdAt clock
@@ -619,7 +619,7 @@ export const getTheses = defineTool({
         }
       } catch (err) {
         console.warn(
-          "[get_theses] open-position openedAt/rejected-exit lookup failed; TIME_ELAPSED falls back to createdAt:",
+          "[get_theses] open-position openedAt/rejected-exit lookup failed; falls back to createdAt:",
           err,
         );
       }

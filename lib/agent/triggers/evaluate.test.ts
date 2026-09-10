@@ -491,85 +491,6 @@ describe("evaluateTrigger", () => {
 
   // ── Time-based ──────────────────────────────────────────────────────
 
-  describe("TIME_ELAPSED", () => {
-    it("fires when elapsed days >= threshold", () => {
-      // thesis created 28d before NOW; threshold 7d → fires.
-      const predicate: TriggerPredicate = { kind: "TIME_ELAPSED", days: 7 };
-      expect(evaluateTrigger(predicate, makeCtx())).toBe(true);
-    });
-
-    it("does not fire when threshold not yet reached", () => {
-      const predicate: TriggerPredicate = { kind: "TIME_ELAPSED", days: 90 };
-      expect(evaluateTrigger(predicate, makeCtx())).toBe(false);
-    });
-
-    // ── P1-14: clock selection (ACTIVE→openedAt, WATCHING→createdAt) ─────
-    // The thesis row is 28d old (THESIS_CREATED). A position opened 2d ago.
-    // A "max hold 14d" trigger must NOT fire on the 2-day-old position even
-    // though the thesis row is 28 days old.
-    const POSITION_OPENED = new Date(NOW.getTime() - 2 * 86_400_000); // 2d ago
-
-    it("ACTIVE: measures from positionOpenedAt, not createdAt (does not fire on a young position)", () => {
-      // 14d trigger; position only 2d old → must NOT fire even though the
-      // thesis is 28d old. This is the NVDA incident from P1-14.
-      const predicate: TriggerPredicate = { kind: "TIME_ELAPSED", days: 14 };
-      const ctx = makeCtx({
-        thesis: {
-          createdAt: THESIS_CREATED, // 28d old
-          lastReviewedAt: null,
-          status: "HOLDING",
-          positionOpenedAt: POSITION_OPENED, // 2d old
-        },
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
-    });
-
-    it("ACTIVE: fires once the position itself is old enough", () => {
-      // 1d trigger; position 2d old → fires off the position clock.
-      const predicate: TriggerPredicate = { kind: "TIME_ELAPSED", days: 1 };
-      const ctx = makeCtx({
-        thesis: {
-          createdAt: THESIS_CREATED,
-          lastReviewedAt: null,
-          status: "HOLDING",
-          positionOpenedAt: POSITION_OPENED, // 2d ago
-        },
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
-    });
-
-    it("WATCHING: stays on createdAt (fires off the 28d-old thesis row)", () => {
-      // Even with a positionOpenedAt present, a non-ACTIVE row must use the
-      // thesis createdAt clock — "is this watch row stale" measures from
-      // when the watch was created. 14d trigger, thesis 28d old → fires.
-      const predicate: TriggerPredicate = { kind: "TIME_ELAPSED", days: 14 };
-      const ctx = makeCtx({
-        thesis: {
-          createdAt: THESIS_CREATED, // 28d old
-          lastReviewedAt: null,
-          status: "WATCHING",
-          positionOpenedAt: POSITION_OPENED, // ignored on WATCHING
-        },
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
-    });
-
-    it("ACTIVE without positionOpenedAt: falls back to createdAt (legacy callers)", () => {
-      // A caller that didn't resolve a position (status ACTIVE but
-      // positionOpenedAt null) keeps the pre-fix createdAt behavior so the
-      // clock degrades gracefully rather than never firing.
-      const predicate: TriggerPredicate = { kind: "TIME_ELAPSED", days: 14 };
-      const ctx = makeCtx({
-        thesis: {
-          createdAt: THESIS_CREATED, // 28d old → fires off createdAt
-          lastReviewedAt: null,
-          status: "HOLDING",
-          positionOpenedAt: null,
-        },
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
-    });
-  });
 
   describe("REVIEW_CADENCE", () => {
     // Counted from the last ACTUAL review, not from a date someone typed.
@@ -636,7 +557,7 @@ describe("evaluateTrigger", () => {
         kind: "AND",
         predicates: [
           { kind: "PRICE_ABOVE", level: 100 },
-          { kind: "TIME_ELAPSED", days: 7 },
+          { kind: "REVIEW_CADENCE", days: 7 },
         ],
       };
       const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
@@ -648,7 +569,7 @@ describe("evaluateTrigger", () => {
         kind: "AND",
         predicates: [
           { kind: "PRICE_ABOVE", level: 100 },
-          { kind: "TIME_ELAPSED", days: 90 }, // 28d < 90d → false
+          { kind: "REVIEW_CADENCE", days: 90 }, // 28d < 90d → not due
         ],
       };
       const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
@@ -662,7 +583,7 @@ describe("evaluateTrigger", () => {
         kind: "OR",
         predicates: [
           { kind: "PRICE_ABOVE", level: 200 }, // false (price 110)
-          { kind: "TIME_ELAPSED", days: 7 }, // true
+          { kind: "REVIEW_CADENCE", days: 7 }, // true
         ],
       };
       const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
@@ -674,7 +595,7 @@ describe("evaluateTrigger", () => {
         kind: "OR",
         predicates: [
           { kind: "PRICE_ABOVE", level: 200 },
-          { kind: "TIME_ELAPSED", days: 90 },
+          { kind: "REVIEW_CADENCE", days: 90 },
         ],
       };
       const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
@@ -689,7 +610,7 @@ describe("evaluateTrigger", () => {
             kind: "AND",
             predicates: [
               { kind: "PRICE_ABOVE", level: 200 }, // false
-              { kind: "TIME_ELAPSED", days: 7 }, // true → AND false
+              { kind: "REVIEW_CADENCE", days: 7 }, // true → AND false
             ],
           },
           { kind: "PRICE_BELOW", level: 200 }, // true → OR true
@@ -905,7 +826,7 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
     prevClose?: number,
   ): EvaluationContext => ({
     latestQuote: { price, changePct: 0, prevClose },
-    thesis: { createdAt: new Date("2026-01-01"), status: "WATCHING" },
+    thesis: { createdAt: new Date("2026-01-01") },
     now,
   });
   const day1 = new Date("2026-08-12T14:00:00Z");
@@ -962,7 +883,7 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
     };
     const up = (price: number, prevClose: number): EvaluationContext => ({
       latestQuote: { price, changePct: 2, prevClose },
-      thesis: { createdAt: new Date("2026-01-01"), status: "WATCHING" },
+      thesis: { createdAt: new Date("2026-01-01") },
       now: day1,
     });
     expect(shouldFire(composite, up(130, 127)).fires).toBe(true);
@@ -973,7 +894,7 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
     // Nothing to cross: a time-based entry is true or it isn't.
     const timed: Trigger = {
       ...enterRung,
-      predicate: { kind: "TIME_ELAPSED", days: 10 },
+      predicate: { kind: "REVIEW_CADENCE", days: 10 },
     };
     expect(shouldFire(timed, at(171, day1, 170)).fires).toBe(true);
   });

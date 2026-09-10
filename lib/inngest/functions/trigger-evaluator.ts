@@ -92,7 +92,6 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
     case "TRAILING_FROM_HIGH":
     case "VS_SMA":
     case "RSI":
-    case "TIME_ELAPSED":
     case "REVIEW_CADENCE":
       return true;
     case "AND":
@@ -123,7 +122,7 @@ function isSignalSidePredicate(p: TriggerPredicate): boolean {
 /**
  * P1-14 — resolve the paired open Position's `openedAt` per ACTIVE thesis.
  *
- * TIME_ELAPSED on a HELD thesis must measure from when the position opened,
+ * A HELD thesis must measure elapsed time from when the position opened,
  * not when the (possibly much older) thesis row was created. We key the
  * position by (analystId, symbol, status=OPEN) — the same linkage every
  * close path uses, since there's no direct Thesis↔Position FK.
@@ -390,7 +389,7 @@ export const triggerEvaluator = inngest.createFunction(
           theses.map((t) => t.researchRun.agentConfigId).filter((id): id is string => !!id),
         );
 
-        // P1-14: for ACTIVE (held) theses, TIME_ELAPSED measures from the
+        // For held theses, elapsed time measures from the
         // paired position's openedAt, not the thesis row's createdAt. Look
         // up the open Position per (analyst, ticker) once for the ACTIVE
         // theses in this batch.
@@ -437,8 +436,6 @@ export const triggerEvaluator = inngest.createFunction(
             thesis: {
               createdAt: thesis.createdAt,
               lastReviewedAt: thesis.lastReviewedAt ?? null,
-              status: thesis.status,
-              positionOpenedAt: posInfo?.openedAt ?? null,
             },
             now,
           };
@@ -623,7 +620,7 @@ export const triggerEvaluator = inngest.createFunction(
         .filter((c) => c.analystId && c.ladder.length > 0);
       if (candidates.length === 0) return [] as FiringEvent[];
 
-      // P1-14: anchor TIME_ELAPSED to the paired position's openedAt for
+      // Anchor held-row time questions to the paired position's openedAt for
       // ACTIVE (held) theses. WATCHING rows stay on createdAt.
       const openedAtByThesisId = await buildPositionOpenedAtMap(
         candidates.map((c) => c.thesis),
@@ -693,9 +690,7 @@ export const triggerEvaluator = inngest.createFunction(
           thesis: {
             createdAt: thesis.createdAt,
             lastReviewedAt: thesis.lastReviewedAt ?? null,
-            status: thesis.status,
             direction: thesis.direction,
-            positionOpenedAt: posInfo?.openedAt ?? null,
           },
           now,
         };

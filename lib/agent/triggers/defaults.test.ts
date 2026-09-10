@@ -116,7 +116,7 @@ describe("defaultTriggersForHorizon — WATCHING ENTER trigger (P1-3 fix)", () =
 
 /**
  * 2026-06-02 NVDA runaway — the agent stamped `cooldownDays: 0` on a
- * TIME_ELAPSED 14d REVIEW via `update_thesis`. The old `!= null` check
+ * a 14d REVIEW rung via `update_thesis`. The old `!= null` check
  * walked past the 0 and the trigger evaluator fired 15 times in 70 min
  * before manual hotfix. These tests pin the new rule: on non-EXIT
  * actions, `cooldownDays: 0` is structurally invalid and the default
@@ -133,15 +133,16 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
     };
   }
 
-  it("REVIEW + TIME_ELAPSED + cooldownDays:0 → overwrites with ~80% of days", () => {
+  it("REVIEW + REVIEW_CADENCE + cooldownDays:0 → overwrites with the cadence itself", () => {
     const t = mkTrigger({
       action: "REVIEW",
-      predicate: { kind: "TIME_ELAPSED", days: 14 },
+      predicate: { kind: "REVIEW_CADENCE", days: 14 },
       cooldownDays: 0,
     });
     const [out] = applyTriggerCooldownDefaults([t]);
-    // ~80% of 14 = 11
-    expect(out.cooldownDays).toBe(11);
+    // A clock's cooldown is its own interval — anything shorter is a
+    // faster clock wearing the slow one's number.
+    expect(out.cooldownDays).toBe(14);
   });
 
   it("REVIEW + PRICE_BELOW + cooldownDays:0 → overwrites with per-kind default 1", () => {
@@ -187,7 +188,7 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
   it("non-zero cooldownDays on any action is preserved (no override)", () => {
     const t = mkTrigger({
       action: "REVIEW",
-      predicate: { kind: "TIME_ELAPSED", days: 14 },
+      predicate: { kind: "REVIEW_CADENCE", days: 14 },
       cooldownDays: 3,
     });
     const [out] = applyTriggerCooldownDefaults([t]);
@@ -197,24 +198,24 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
   it("undefined cooldownDays still gets default (original behavior)", () => {
     const t = mkTrigger({
       action: "REVIEW",
-      predicate: { kind: "TIME_ELAPSED", days: 14 },
+      predicate: { kind: "REVIEW_CADENCE", days: 14 },
       // cooldownDays unset
     });
     const [out] = applyTriggerCooldownDefaults([t]);
-    expect(out.cooldownDays).toBe(11);
+    expect(out.cooldownDays).toBe(14);
   });
 
-  it("the exact NVDA shape — fills with 11", () => {
+  it("the exact NVDA shape — fills with the cadence", () => {
     // Verbatim shape from the runaway audit row.
     const t = mkTrigger({
       action: "REVIEW",
-      predicate: { kind: "TIME_ELAPSED", days: 14 },
+      predicate: { kind: "REVIEW_CADENCE", days: 14 },
       rationale:
         "Momentum Breakout trades are days-to-weeks holds; re-check the setup by max hold date and exit if momentum has not followed through.",
       cooldownDays: 0,
     });
     const [out] = applyTriggerCooldownDefaults([t]);
-    expect(out.cooldownDays).toBe(11);
+    expect(out.cooldownDays).toBe(14);
   });
 });
 
@@ -410,7 +411,7 @@ describe("defaultTriggersForHorizon — standing protection minimums (Game Plan 
       const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
       // Every rung traces back to a number the author supplied.
       const kinds = new Set(triggers.map((t) => t.predicate.kind));
-      expect(kinds.has("TIME_ELAPSED")).toBe(false);
+      expect(kinds.has("REVIEW_CADENCE")).toBe(false);
       expect(kinds.has("EARNINGS_BEAT")).toBe(false);
       expect(kinds.has("EARNINGS_MISS")).toBe(false);
       expect(kinds.has("GUIDANCE_CHANGE")).toBe(false);

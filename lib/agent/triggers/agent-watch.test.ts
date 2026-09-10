@@ -49,33 +49,6 @@ describe("agentWatchDays — is the agent on this one?", () => {
   });
 });
 
-describe("a time-elapsed review is a schedule too, for now", () => {
-  const elapsed = (days: number) => ({
-    predicate: { kind: "TIME_ELAPSED", days },
-    action: "REVIEW",
-  });
-
-  it("counts as an agent watch — it does bring the agent back", () => {
-    // PLTR's shape: no cadence, a 90-day elapsed review. The pill used to
-    // read "Watching" while the agent was in fact reviewing it.
-    expect(agentWatchDays([priceRung, elapsed(90)])).toBe(90);
-    expect(isAgentWatched([elapsed(90)])).toBe(true);
-  });
-
-  it("a real cadence wins when a row carries both", () => {
-    expect(agentWatchDays([elapsed(90), cadence(30)])).toBe(30);
-    expect(agentWatchDays([cadence(30), elapsed(90)])).toBe(30);
-  });
-
-  it("a time-elapsed rung that is NOT a review doesn't count", () => {
-    // Only a REVIEW brings the agent back; an exit on elapsed time is a
-    // max-hold, not a schedule.
-    expect(
-      agentWatchDays([{ predicate: { kind: "TIME_ELAPSED", days: 90 }, action: "EXIT" }]),
-    ).toBeNull();
-  });
-});
-
 describe("agentWatchTooltip — one plain sentence", () => {
   it("says how often, in words for the common cases", () => {
     expect(agentWatchTooltip(1)).toBe("The agent reviews this every day.");

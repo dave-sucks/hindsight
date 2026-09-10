@@ -165,7 +165,7 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
         ...unpriced,
         remove_trigger_ids: ["buy", "floor", "target"],
         add_triggers: [
-          { predicate: { kind: "TIME_ELAPSED", days: 120 }, action: "REVIEW", rationale: "Price it after the January readout." },
+          { predicate: { kind: "REVIEW_CADENCE", days: 120 }, action: "REVIEW", rationale: "Price it after the January readout." },
         ],
       },
       { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101, existingTargetPrice: 130 },
@@ -242,7 +242,7 @@ describe("validateThesisDecision — horizon conditionals", () => {
 
   it("no longer requires max_hold_days on a TRADE", () => {
     // The column is gone (DAV-195 L8). "This has been open long enough" is a
-    // TIME_ELAPSED review trigger the TRADE template mints — on the ladder,
+    // review cadence the TRADE template mints — on the ladder,
     // where it can be seen and edited, instead of a field that fed a
     // template once at mint and then drifted from it.
     const v = validateThesisDecision(

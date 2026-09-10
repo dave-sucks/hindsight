@@ -77,7 +77,6 @@ describe("isDirectEligiblePredicate — only deterministic price/% exits", () =>
     "EARNINGS_BEAT",
     "SIGNAL_TYPE",
     "RSI",
-    "TIME_ELAPSED",
     "GUIDANCE_CHANGE",
     "FILING",
     "TRAILING_STOP",

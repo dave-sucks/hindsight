@@ -60,7 +60,7 @@ Two flows, cleanly split.
 
 Triggered by:
 - `nextReviewAt` passing (per-horizon cadence — CATALYST daily, TRADE daily, TARGET weekly, COMPOUNDER quarterly)
-- REVIEW triggers firing (TIME_ELAPSED, FILING, EARNINGS_BEAT, GUIDANCE_CHANGE, etc.)
+- REVIEW triggers firing (REVIEW_CADENCE, FILING, EARNINGS_BEAT, GUIDANCE_CHANGE, etc.)
 - The daily run walking the book and finding `needsAction = REVIEW_DUE`
 
 Agent's decision tree per REVIEW:

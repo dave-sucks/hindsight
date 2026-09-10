@@ -39,7 +39,6 @@ const PRICE_OR_TIME_KINDS = new Set([
   "TRAILING_FROM_HIGH",
   "VS_SMA",
   "RSI",
-  "TIME_ELAPSED",
 ]);
 
 function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
@@ -67,8 +66,6 @@ function describePredicate(p: TriggerPredicate): string {
       return `${p.direction.toLowerCase()} ${p.period}-day SMA`;
     case "RSI":
       return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
-    case "TIME_ELAPSED":
-      return `${p.days}d elapsed since thesis creation`;
     case "REVIEW_CADENCE":
       return "review date hit";
     case "AND":
@@ -124,7 +121,7 @@ export async function evaluateLiveTriggerMatches({
 
   if (theses.length === 0) return [];
 
-  // P1-14: anchor TIME_ELAPSED to the paired open position's openedAt for
+  // Anchor held-row time questions to the paired open position's openedAt for
   // ACTIVE (held) theses. One query over this analyst's OPEN positions on
   // the relevant tickers; WATCHING rows keep their createdAt clock.
   const activeTickers = Array.from(
@@ -222,10 +219,7 @@ export async function evaluateLiveTriggerMatches({
         thesis: {
           createdAt: thesis.createdAt,
           lastReviewedAt: thesis.lastReviewedAt ?? null,
-          // P1-14: held rows anchor TIME_ELAPSED to the position open time.
-          status: thesis.status,
           direction: thesis.direction,
-          positionOpenedAt: posInfo?.openedAt ?? null,
         },
         now,
       });

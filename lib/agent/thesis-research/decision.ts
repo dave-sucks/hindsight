@@ -184,7 +184,7 @@ export function validateThesisDecision(
     errors.push(`catalyst_date: "${d.catalyst_date}" is not a parseable date — use ISO YYYY-MM-DD.`);
   }
   // max_hold_days is gone (DAV-195 L8). "This has been open long enough"
-  // is a TIME_ELAPSED review trigger on the ladder, minted per horizon —
+  // is the review cadence on the ladder, minted per horizon —
   // visible and editable, unlike a column that fed a template once at mint
   // and then drifted from it.
 

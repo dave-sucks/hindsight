@@ -25,7 +25,7 @@ const EXIT_LONG: Trigger = {
 
 const REVIEW_HYGIENE: Trigger = {
   id: "trig-review",
-  predicate: { kind: "TIME_ELAPSED", days: 30 },
+  predicate: { kind: "REVIEW_CADENCE", days: 30 },
   action: "REVIEW",
   rationale: "Monthly hygiene",
   cooldownDays: 25,
