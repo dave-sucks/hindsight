@@ -115,7 +115,6 @@ function nameOf(t: Trigger, direction: string | null): string {
   const slot = levelSlotOf(t, direction);
   if (slot) return SLOT_LABEL[slot];
   if (t.predicate.kind === "REVIEW_CADENCE") return "Review cadence";
-  if (t.predicate.kind === "TIME_ELAPSED") return "Time elapsed";
   return predicateSentence(t.predicate);
 }
 
@@ -141,7 +140,6 @@ function numberOf(p: TriggerPredicate): { field: "level" | "pct" | "days"; value
     case "GAIN_FROM_ENTRY":
     case "TRAILING_FROM_HIGH":
       return { field: "pct", value: p.pct };
-    case "TIME_ELAPSED":
     case "REVIEW_CADENCE":
       return { field: "days", value: p.days };
     default:
