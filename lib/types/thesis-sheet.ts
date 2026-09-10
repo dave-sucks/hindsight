@@ -347,3 +347,29 @@ export interface ThesisStateLevels {
   all: ThesisStateLevel[];
   next: { above: ThesisStateLevel | null; below: ThesisStateLevel | null };
 }
+
+/**
+ * The earnings layer (GET /api/theses/:id/earnings) — live from the vendor
+ * when the sheet opens, never stored. The next scheduled report and the
+ * last few reported quarters. What the system DID about a report (fired,
+ * reviewed, traded) is the activity log, not this.
+ */
+export interface EarningsResponse {
+  next: {
+    /** YYYY-MM-DD */
+    date: string;
+    /** "bmo" | "amc" | "" — before open / after close, when known. */
+    hour: string | null;
+    epsEstimate: number | null;
+    revenueEstimate: number | null;
+  } | null;
+  /** Newest first. */
+  recent: Array<{
+    /** Fiscal period end, YYYY-MM-DD. */
+    period: string;
+    actual: number | null;
+    estimate: number | null;
+    /** Positive = beat, negative = miss, null = not scorable. */
+    surprisePct: number | null;
+  }>;
+}
