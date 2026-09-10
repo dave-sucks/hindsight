@@ -268,10 +268,12 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     provider: "openai",
     maxSteps: 45,
     toolAllowlist: [
-      // Read-only intel — three discovery sources: routed signals,
-      // movers (universe-fenced), earnings calendar (universe-fenced).
-      "read_signals",
-      "read_artifact",
+      // Read-only intel — two discovery sources: movers and the earnings
+      // calendar, both universe-fenced. read_signals / read_artifact left
+      // 2026-09-10 with the Signals retirement (docs/plans/MARKET_DATA.md
+      // §1): routing has been paused since May, so the inbox they read is
+      // empty, and a prompt that said "ALWAYS call read_signals" started
+      // every run from an empty pool.
       "get_stock_data",
       "get_earnings_data",
       "get_earnings_calendar",

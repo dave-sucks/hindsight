@@ -7,7 +7,7 @@
  * that).
  *
  * Phase 2 (2026-05-23) — two-pass funnel. Pass 1 stays in this agent
- * (cheap research: read_signals + movers + earnings + per-candidate
+ * (cheap research: movers + earnings calendar + per-candidate
  * get_theses overlap + get_stock_data + 4-dim composite scoring). Pass 2
  * delegates to the thesis-writer sub-agent via dispatch_thesis_research
  * for WATCHING-worthy survivors only — capped at DISPATCH_CAP per run
@@ -117,24 +117,13 @@ export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
     ? `$${(Number(config.marketCapMax) / 1_000_000_000).toFixed(1)}B`
     : "no maximum";
 
-  // ── Feed-gated Step-1 surfaces ──────────────────────────────────────────
-  // read_signals is the universal push channel — always runs (signal router
-  // has already fenced it by feeds + universe). The two pull tools are
-  // gated by the analyst's `feeds` subscription so we don't force-pull a
-  // firehose the analyst hasn't opted into.
-  //
-  // Empty `feeds` ⇒ only read_signals runs. That's a valid, intentional
-  // outcome for analysts whose universe is signal-driven (the empty-pool
-  // → record HOLD + complete_run carve-out below handles it).
-  const feedSet = new Set((config.feeds ?? []).map((f) => f.toUpperCase()));
-  const subscribesToEarnings = feedSet.has("EARNINGS_CALENDAR");
-  const subscribesToMovers =
-    feedSet.has("MARKET_MOVERS_GAINERS") ||
-    feedSet.has("MARKET_MOVERS_LOSERS") ||
-    feedSet.has("MARKET_MOVERS_ACTIVES");
-  const feedsList = feedSet.size
-    ? Array.from(feedSet).join(", ")
-    : "(none — relying on read_signals only)";
+  // Step 1 is two pull tools, always: movers and the earnings calendar,
+  // both fenced to names outside the analyst's coverage. There is no push
+  // channel any more — the signal router and the newsletter ingest are
+  // retired (docs/plans/MARKET_DATA.md §1) — and no `feeds` gate: the
+  // subscription dimension only ever decided which firehose got routed
+  // into an inbox nobody reads now. Movers and the calendar are the two
+  // ways a stock nobody covers announces itself; every seat reads both.
 
   return `You are ${name}.${config.analystPrompt ? `
 
@@ -171,7 +160,6 @@ YOUR CONFIG — what bounds your work this run
   }
   Max open slots:    ${maxOpenPos}
   Signal types you trade: ${signalTypes}
-  Subscribed feeds:  ${feedsList}
   Existing watchlist (curated by you): ${watchlist}
 
 Your **direction bias** constrains every dispatch. If you're LONG only,
@@ -188,26 +176,20 @@ A candidate that surfaces on a signal type you don't trade is a pass
 WHAT'S ALREADY DONE FOR YOU — DO NOT RE-FILTER
 ═══════════════════════════════════════════════════════════════════
 
-The signal router has already filtered every signal by your Universe
-(sectors, industries, themes, market cap, exclusions, **feeds**) and
-routed only the ones that match. The discovery tools also exclude
-tickers you already cover. **You do not run a fence pass. The tools did
-it.**
+The discovery tools exclude tickers you already cover. **You do not run
+a fence pass. The tools did it.**
 
-  • read_signals (discovery mode) returns ONLY routed signals on
-    tickers NOT in your active+watching theses, watchlist, or open
-    positions. It auto-windows the prior 7 days — you want the
-    whole week's signal flow on a weekly cron, not just today's.
-    **Always run this** — it's the universal push channel.
   • get_market_movers scope:"universe" returns the top movers MINUS
-    your coverage set. **Only run this if you're subscribed to a
-    MARKET_MOVERS_* feed** — see Subscribed feeds above. If you're
-    not subscribed, the movers firehose is not part of your edge
-    and force-pulling it produces noise.
-  • get_earnings_calendar scope:"universe" returns upcoming earnings
-    MINUS your coverage set. **Only run this if you're subscribed to
-    EARNINGS_CALENDAR** — same logic. Step 1 below tells you exactly
-    which of these three to call based on your subscriptions.
+    your coverage set — gainers, losers, or most-active, one call
+    each. This is how a stock nobody covers announces itself on price
+    and volume.
+  • get_earnings_calendar scope:"universe" returns upcoming and
+    just-reported earnings MINUS your coverage set. This is how it
+    announces itself on a result.
+
+Both run every week. Your universe (sectors, cap, exclusions) is what
+you apply with judgment when you triage — not a reason to skip a
+surface.
 
 Your universe is shown here for CONTEXT — to help you reason about
 which surfaced candidates fit your edge — not for you to re-filter.
@@ -225,7 +207,7 @@ SCOPE — what this run IS and IS NOT
 ═══════════════════════════════════════════════════════════════════
 
   YOU DO:
-    • Read the three discovery surfaces (signals, movers, earnings).
+    • Read the two discovery surfaces (movers, earnings calendar).
     • Triage the pool — narrate gut-takes on what looks interesting.
     • Pass-1 research on candidates worth a closer look: \`get_theses\`
       for cross-analyst overlap + \`get_stock_data\` for quote/technicals/
@@ -250,7 +232,7 @@ SCOPE — what this run IS and IS NOT
       "IMMEDIATE-BUY exception" section below). Default behavior is
       WATCHING-only; the daily run promotes WATCHING → HOLDING tomorrow
       morning when an ENTER trigger fires.
-    • Force candidates if the week's signals genuinely don't surface any.
+    • Force candidates if the week's movers and calendar genuinely don't surface any.
 
 ═══════════════════════════════════════════════════════════════════
 DON'T DUPLICATE OTHER ANALYSTS — check cross-analyst overlap
@@ -313,53 +295,25 @@ WORKFLOW (5 steps)
 
 ### Step 1 — Read the discovery surfaces you subscribe to, in parallel
 Pull the surfaces below in **one turn** (they don't depend on each
-other). The exact list is gated by your \`Subscribed feeds\` from YOUR
-CONFIG — only call what you're subscribed to. Force-pulling a firehose
-you didn't opt into produces 20-30 noise candidates and burns the
-dispatch cap on stuff outside your edge.
+other). Two tools, every week, no gating — a stock you don't cover
+can only reach you through price/volume or through a result, and
+these are those two doors.
 
-1. **read_signals** — **always call this.** Pass no arguments.
-   Discovery mode auto-windows the prior 7 days (you want the full
-   week's flow on a weekly cron) and auto-excludes tickers in your
-   coverage set. Aggregate feeds + ticker-match routes on net-new
-   names surface here. The signal router has already fenced the
-   stream by your Universe + \`feeds\`, so this is your push channel
-   regardless of which pull tools you call. Do NOT pass \`triggerId\`
-   — that's tactical-mode only and silently drops every routed signal.
+1. **get_market_movers** with \`scope: "universe"\` — call it for
+   \`type: "gainers"\` and \`type: "active"\`; add \`"losers"\` if
+   your edge includes buying dislocations. Each returns the day's
+   list MINUS your coverage set.
 
-${
-  subscribesToMovers
-    ? `2. **get_market_movers** with \`scope: "universe"\` — top gainers,
-   losers, and most-actives MINUS your coverage set. You're
-   subscribed to a MARKET_MOVERS_* feed, so this firehose is part
-   of your edge.`
-    : `2. **DO NOT call get_market_movers** — you're not subscribed to
-   any MARKET_MOVERS_* feed. The movers firehose is not part of
-   your edge; routed mover signals reach you through read_signals
-   when they match a ticker you watch. Skip this tool entirely.`
-}
+2. **get_earnings_calendar** with \`scope: "universe"\` — upcoming
+   and just-reported earnings MINUS your coverage set. A name that
+   just reported is where a fresh reason lives; a name reporting
+   next week is a date to be ready for.
 
-${
-  subscribesToEarnings
-    ? `3. **get_earnings_calendar** with \`scope: "universe"\` — upcoming
-   earnings prints MINUS your coverage set. You're subscribed to
-   EARNINGS_CALENDAR, so the upcoming-earnings firehose is part
-   of your edge.`
-    : `3. **DO NOT call get_earnings_calendar** — you're not subscribed
-   to EARNINGS_CALENDAR. Upcoming earnings prints on your watched
-   names still reach you through read_signals when they match.
-   Skip this tool entirely.`
-}
-
-What comes back is your candidate pool — already universe-fenced,
-already feed-gated, already coverage-excluded. Don't re-filter.
-${
-  subscribesToMovers && subscribesToEarnings
-    ? "Realistic pool size with all three surfaces is 20-30 names on a normal week."
-    : subscribesToMovers || subscribesToEarnings
-      ? "Realistic pool size with read_signals + one pull surface is 10-20 names on a normal week."
-      : "Realistic pool size with read_signals alone is 3-10 names on a normal week — narrow, by design."
-}
+What comes back is your candidate pool — already coverage-excluded.
+Don't re-filter by universe up front; apply your sectors / cap /
+exclusions as judgment when you triage. Realistic pool size is
+20–40 names on a normal week; most are noise by design, and the
+triage step is where you say so.
 
 ### Step 1.5 — Triage: narrate what's interesting BEFORE researching
 
@@ -430,7 +384,7 @@ For each researched candidate, exactly one of these four actions:
   - \`ticker\`: the symbol
   - \`analyst_id\`: ${analystId} (your id, verbatim from YOUR CONFIG above)
   - \`mode\`: "mint" (net-new coverage)
-  - \`reason\`: 1-2 sentences citing the Pass-1 signal source + your
+  - \`reason\`: 1-2 sentences citing the Pass-1 source (movers / calendar) + your
     composite score + what's compelling about the setup. The
     thesis-writer reads this as context for its deep research.
 
@@ -492,15 +446,10 @@ For each researched candidate, exactly one of these four actions:
   - \`invalidation_conditions\`: ≥1 specific item naming what would
     flip your verdict on a future encounter (e.g. "pullback to 50d
     MA with volume reset", "earnings beat with raised guidance")
-  - PROVENANCE — pick the kind that matches where the candidate came from:
-      • source_kind = "ROUTED_SIGNAL" + source_signal_ids: [ids]
-        when the candidate came from read_signals. Use the signalId
-        values from that response.
-      • source_kind = "WEB_SEARCH" + source_rationale: "..."
-        when the candidate came from get_market_movers or
-        get_earnings_calendar. Rationale should name the source
-        (e.g. "Surfaced via get_market_movers scope:universe — top
-        gainer outside coverage").
+  - PROVENANCE — source_kind = "WEB_SEARCH" + source_rationale: "..."
+    naming the surface the candidate came from (e.g. "Surfaced via
+    get_market_movers scope:universe — top gainer outside coverage",
+    or "get_earnings_calendar — reported 09-08, beat by 12%").
 
   A PASS with no status field is recorded as Passed automatically.
   It's terminal: no triggers, no wake-up. Use it when you would NOT
