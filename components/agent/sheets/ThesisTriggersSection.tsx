@@ -27,6 +27,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -266,6 +271,8 @@ function predicateDescription(p: TriggerPredicate): string {
       return `Fires once ${p.days} days have passed since the thesis was created.`;
     case "REVIEW_DATE_HIT":
       return "Fires when the thesis's scheduled review date is reached.";
+    case "REVIEW_CADENCE":
+      return `The agent reviews this name every ${p.days} days, counting from its last real review.`;
     case "AND":
       return `Composite: ALL of ${(p.predicates ?? []).length} sub-predicates must be true.`;
     case "OR":
@@ -382,6 +389,31 @@ function TriggerPill({
  *   • fired / cooldown metadata as small badges
  *   • Save / Cancel, shown only once the value is changed
  */
+/**
+ * A review cadence is stored as days, but nobody thinks in days past a
+ * fortnight. Split it into the largest unit that divides cleanly — 30 → 1
+ * month, 14 → 2 weeks, 3 → 3 days — so the editor reads like a calendar.
+ */
+const CADENCE_UNITS = [
+  { v: "day", label: "days", days: 1 },
+  { v: "week", label: "weeks", days: 7 },
+  { v: "month", label: "months", days: 30 },
+] as const;
+type CadenceUnit = (typeof CADENCE_UNITS)[number]["v"];
+
+function splitCadence(days: number | null): { count: string; unit: CadenceUnit } {
+  if (days == null || days <= 0) return { count: "", unit: "day" };
+  for (const u of [...CADENCE_UNITS].reverse()) {
+    if (days % u.days === 0) return { count: String(days / u.days), unit: u.v };
+  }
+  return { count: String(days), unit: "day" };
+}
+
+function cadenceToDays(count: string, unit: CadenceUnit): number {
+  const per = CADENCE_UNITS.find((u) => u.v === unit)?.days ?? 1;
+  return Math.round(Number(count) * per);
+}
+
 function TriggerPopoverContent({
   trigger,
   direction,
@@ -431,7 +463,10 @@ function TriggerPopoverContent({
   // Sentence title in foreground — "Exit if price below", "Review if up".
   // On an un-held thesis an EXIT fire takes the plan down instead of
   // selling (effectiveTriggerAction), and the label says so.
-  const fieldLabel = `${actionGroupLabel(trigger.action, held)} ${kindLabel}`;
+  const fieldLabel =
+    trigger.predicate.kind === "REVIEW_CADENCE"
+      ? "Agent Watch"
+      : `${actionGroupLabel(trigger.action, held)} ${kindLabel}`;
 
   // Input-group adornments. Price → leading "$"; movement / gain-from-entry
   // → leading direction + trailing "%"; time-based → leading calendar icon
@@ -448,8 +483,15 @@ function TriggerPopoverContent({
   const trailingText = field?.suffix ?? null;
   const leadingIcon = pk === "TIME_ELAPSED" || pk === "REVIEW_DATE_HIT";
 
-  const initial = field?.value != null ? String(field.value) : "";
+  const isCadenceRung = trigger.predicate.kind === "REVIEW_CADENCE";
+  const split = splitCadence(isCadenceRung ? (field?.value ?? null) : null);
+  const initial = isCadenceRung
+    ? split.count
+    : field?.value != null
+      ? String(field.value)
+      : "";
   const [val, setVal] = useState(initial);
+  const [unit, setUnit] = useState<CadenceUnit>(split.unit);
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -460,10 +502,17 @@ function TriggerPopoverContent({
   useEffect(() => {
     setVal(initial);
   }, [initial]);
+  useEffect(() => {
+    setUnit(split.unit);
+  }, [split.unit]);
 
-  const parsed = Number(val);
+  const parsed = isCadenceRung ? cadenceToDays(val, unit) : Number(val);
   const dirty =
-    canEdit && val.trim() !== "" && Number.isFinite(parsed) && parsed !== field?.value;
+    canEdit &&
+    val.trim() !== "" &&
+    Number.isFinite(parsed) &&
+    parsed > 0 &&
+    parsed !== field?.value;
 
   async function save() {
     setPending(true);
@@ -533,51 +582,72 @@ function TriggerPopoverContent({
       {/* Title (sentence, foreground) + full-width input group */}
       <div className="space-y-1">
         <p className="text-sm font-medium text-foreground">{fieldLabel}</p>
-        <InputGroup>
-          {leadingIcon ? (
-            <InputGroupAddon>
-              <Calendar />
-            </InputGroupAddon>
-          ) : leadingText ? (
-            <InputGroupAddon>
-              <InputGroupText>{leadingText}</InputGroupText>
-            </InputGroupAddon>
-          ) : null}
-          {canEdit ? (
-            <InputGroupInput
-              type="number"
-              inputMode="decimal"
-              value={val}
-              min={field?.min}
-              step={field?.step}
-              onChange={(e) => setVal(e.target.value)}
-              disabled={pending}
-            />
-          ) : (
-            <InputGroupInput value={displayValue ?? kindLabel} readOnly disabled />
-          )}
-          {canEdit && trailingText ? (
-            <InputGroupAddon align="inline-end">
-              <InputGroupText>{trailingText}</InputGroupText>
-            </InputGroupAddon>
-          ) : null}
-        </InputGroup>
-        {canEdit && field?.presets ? (
-          <div className="flex items-center gap-1">
-            {field.presets.map((d) => (
-              <Button
-                key={d}
-                type="button"
-                variant={Number(val) === d ? "secondary" : "ghost"}
-                size="sm"
+        {canEdit && isCadenceRung ? (
+          <ButtonGroup className="w-full">
+            <InputGroup>
+              <InputGroupInput
+                type="number"
+                inputMode="numeric"
+                value={val}
+                min={1}
+                step={1}
+                onChange={(e) => setVal(e.target.value)}
                 disabled={pending}
-                onClick={() => setVal(String(d))}
-              >
-                {d === 1 ? "Daily" : d === 7 ? "Weekly" : "Monthly"}
-              </Button>
-            ))}
-          </div>
-        ) : null}
+                aria-label="Review every"
+              />
+            </InputGroup>
+            <Select
+              value={unit}
+              onValueChange={(v) => {
+                if (typeof v === "string") setUnit(v as CadenceUnit);
+              }}
+              disabled={pending}
+            >
+              <SelectTrigger aria-label="Unit">
+                <SelectValue>
+                  {CADENCE_UNITS.find((u) => u.v === unit)?.label ?? ""}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {CADENCE_UNITS.map((u) => (
+                  <SelectItem key={u.v} value={u.v}>
+                    {u.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </ButtonGroup>
+        ) : (
+          <InputGroup>
+            {leadingIcon ? (
+              <InputGroupAddon>
+                <Calendar />
+              </InputGroupAddon>
+            ) : leadingText ? (
+              <InputGroupAddon>
+                <InputGroupText>{leadingText}</InputGroupText>
+              </InputGroupAddon>
+            ) : null}
+            {canEdit ? (
+              <InputGroupInput
+                type="number"
+                inputMode="decimal"
+                value={val}
+                min={field?.min}
+                step={field?.step}
+                onChange={(e) => setVal(e.target.value)}
+                disabled={pending}
+              />
+            ) : (
+              <InputGroupInput value={displayValue ?? kindLabel} readOnly disabled />
+            )}
+            {canEdit && trailingText ? (
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>{trailingText}</InputGroupText>
+              </InputGroupAddon>
+            ) : null}
+          </InputGroup>
+        )}
       </div>
 
       {/* On fire — Trigger Tactical Run (agent decides) vs Automatically
@@ -660,11 +730,25 @@ function TriggerPopoverContent({
       {/* Chips — cooldown + delete (icon only). */}
       {trigger.cooldownDays || editable ? (
         <div className="flex items-center gap-1.5">
-          {trigger.cooldownDays ? (
-            <Badge variant="secondary">
-              <Clock className="size-3" />
-              {trigger.cooldownDays}d cooldown
-            </Badge>
+          {/* A cadence rung's cooldown always equals its own interval, so
+              the chip would just restate the number above it. */}
+          {trigger.cooldownDays &&
+          trigger.predicate.kind !== "REVIEW_CADENCE" ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Badge variant="secondary">
+                    <Clock className="size-3" />
+                    {trigger.cooldownDays}d cooldown
+                  </Badge>
+                }
+              />
+              <TooltipContent side="bottom">
+                Once this fires, it won&apos;t fire again for{" "}
+                {trigger.cooldownDays} days — so a condition that stays true
+                doesn&apos;t ask you the same question daily.
+              </TooltipContent>
+            </Tooltip>
           ) : null}
           {editable ? (
             <Button

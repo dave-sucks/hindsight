@@ -23,8 +23,6 @@ export interface EditableTriggerField {
   suffix?: string;
   min?: number;
   step?: number;
-  /** Quick values offered as buttons above the input. */
-  presets?: number[];
 }
 
 export function editableTriggerField(
@@ -51,7 +49,6 @@ export function editableTriggerField(
         suffix: "days",
         min: 1,
         step: 1,
-        presets: [1, 7, 30],
       };
     default:
       return null;
