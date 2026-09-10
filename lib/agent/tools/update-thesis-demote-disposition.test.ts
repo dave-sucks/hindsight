@@ -38,7 +38,7 @@ jest.mock("@/lib/prisma", () => ({
   },
 }));
 jest.mock("@/lib/actions/finnhub.actions", () => ({
-  getStockQuote: jest.fn().mockResolvedValue(null),
+  getStockQuote: jest.fn().mockResolvedValue({ c: 150 }),
 }));
 jest.mock("@/lib/agent/thesis-updates", () => ({
   writeThesisUpdate: mockWriteThesisUpdate,

@@ -96,6 +96,11 @@ const thesisFields = z.object({
   ),
   target_price: z.number().optional().describe("Price target. Required with entry_price."),
   stop_loss: z.number().optional().describe("Stop-loss price. Required with entry_price."),
+  current_price: z.number().optional().describe(
+    "The live price you researched at (get_stock_data's quote). Pass it whenever you set entry_price: " +
+    "it decides which SIDE of the price the buy level sits on. A fresh quote is tried first and this is the fallback; " +
+    "with neither, a priced mint is refused (NO_LIVE_PRICE) — the side is never guessed.",
+  ),
   // `hold_duration` arg removed 2026-05-18 (THESIS_CLEANUP PR-4). The
   // value is derived from horizon at render time via
   // holdDurationFromHorizon() — agents shouldn't have to think about it,
@@ -1045,18 +1050,44 @@ export const recordThesis = defineTool({
       // the watchlist screen keeps visible. Nothing replaces them — what was
       // missing was a screen, not another rule.
 
-      // Live quote for the ENTER rung's SIDE, handed to applyLevelArgs
+      // The price that decides the ENTER rung's SIDE, handed to applyLevelArgs
       // below. The level itself says what the analyst meant — an entry under
-      // the tape is a price they want to come back to, one above it is a
-      // confirmation they want to see first — but that reading needs the
-      // tape. Fail-open: no quote, and the rung keeps the breakout shape.
+      // the price is a pullback they want to pay, one above it a confirmation
+      // they want to see first — but that reading needs the price. Fresh
+      // quote first, the caller's `current_price` second. With neither, a
+      // priced mint is REFUSED rather than guessed: the old fail-open picked
+      // "breakout" and wrote HPE's $54.75 pullback as PRICE_ABOVE against a
+      // $57.08 price on 2026-09-09 (quote failed, three writers in parallel),
+      // a buy that could only fire after a dip below and a re-cross.
       let quoteForEntrySide: number | null = null;
       if (args.direction !== "PASS") {
         try {
           const q = await getStockQuote(args.ticker);
           if (q && Number.isFinite(q.c) && q.c > 0) quoteForEntrySide = q.c;
         } catch {
-          /* non-fatal — side falls back to breakout */
+          /* handled below — the caller's price, or a refusal */
+        }
+        if (quoteForEntrySide == null && args.current_price != null && args.current_price > 0) {
+          quoteForEntrySide = args.current_price;
+          console.warn(
+            `[record_thesis] quote unavailable for ${args.ticker}; ENTER side read from current_price=${args.current_price}`,
+          );
+        }
+        if (quoteForEntrySide == null && args.entry_price != null) {
+          console.warn(`[record_thesis] refused ${args.ticker}: no live price to place the buy level`);
+          return {
+            summary: `No live price for ${args.ticker} — cannot place the $${args.entry_price} buy level.`,
+            data: {
+              thesis_id: null,
+              status: "NO_LIVE_PRICE" as const,
+              ticker: args.ticker,
+              note:
+                `The quote for ${args.ticker} failed and no current_price was passed, so there is no way to know whether $${args.entry_price} ` +
+                `is a pullback (below the price) or a breakout (above it). Retry the same record_thesis call with current_price set to the ` +
+                `price from get_stock_data. The side is never guessed.`,
+            },
+            sources: [],
+          };
         }
       }
 
