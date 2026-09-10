@@ -14,51 +14,39 @@
 -- schedule that looks real on screen and fires nothing. That is why this runs
 -- rather than leaving the rows to rot.
 --
--- WHAT IT DOES, and why it is not a blanket delete:
+-- WHAT IT DOES:
 --
---   1. A rung stamped source='DEFAULT' is DROPPED, always, cadence or no
---      cadence. That is a template stamp, not a schedule anyone chose —
---      the exact thing this whole change exists to stop. Carrying it
---      forward would hand three watches minted this morning a monthly
---      review nobody asked for. They come out as free watches; put a
---      schedule on them by hand if they earn one.
---   2. Otherwise, on a LIVE row (HOLDING / WATCHING / PROMOTED) with NO
---      review cadence, the time-elapsed REVIEW is REWRITTEN as a
---      REVIEW_CADENCE of the same length. An analyst wrote "come back to
---      this in N days" and still gets it; it now resets when someone looks.
---   3. On a live row that ALREADY carries a cadence, the rung is DROPPED.
---      Two cadences on one ladder is not a schedule, it is a race — and
---      under the one-trigger-per-bucket rule it is illegal outright. The
---      surviving clock always asks sooner anyway.
---   4. On a terminal row (PASSED / RETIRED) it is dropped outright. Nothing
---      evaluates history.
+--   1. On a WATCHING or PROMOTED row the rung is DROPPED. Always. A watch
+--      does not gain a schedule it never had because of a predicate being
+--      retired — that would hand names an Agent Watch nobody set, which is
+--      the opposite of the point.
+--   2. On a HELD row with no review cadence, it is REWRITTEN as a cadence of
+--      the same length. That is the max-hold case: "this has been open N
+--      days, look at it" is a real question about a live position, and the
+--      cadence asks it and resets when someone answers.
+--   3. On a HELD row that already has a cadence, it is DROPPED — two
+--      cadences on one ladder is illegal under the one-trigger-per-bucket
+--      rule, and the existing clock always asks sooner.
+--   4. On a terminal row (PASSED / RETIRED) it is dropped outright.
 --
--- Note on rule 1: only an EXPLICIT 'DEFAULT' counts as a template stamp. One
--- legacy row (CEG) carries no source field at all; it has a cadence, so rule
--- 3 drops it regardless, and there is no row today where the distinction
--- changes the outcome.
+-- An earlier draft converted on any row without a cadence, watch or held.
+-- That was wider than intended and would have given five watches — BMRN,
+-- CRWD, CSCO, PLTR, TOST — a review schedule they do not have today. Nothing
+-- gains attention here; rows only lose a rung that no longer evaluates.
 --
 -- Verified against production 2026-09-09 — 180 rungs, every one action=REVIEW:
 --   WATCHING  19    HOLDING 6    PASSED 6    RETIRED 149
 --
 -- Simulated against the live book. 25 live rows touched; none ends with two
--- cadences or a surviving time-elapsed rung.
+-- cadences or a surviving rung, and NO row gains a schedule it lacks today.
 --
---   CONVERTED — six schedules an analyst actually wrote, on rows with no
---     clock: BMRN 120 ("entry window opens in January"), CRWD 85 and
---     TOST 63 (next earnings print), CSCO 40 (window closes Oct 11),
---     PLTR 90 ("re-read at 90 days"), SMMT 1 (daily through a binary
---     catalyst — that is what its analyst wrote, and one number in the
---     popover if it is more than you want).
---   DROPPED as template stamps (rule 1) — DOCU 30, FIVE 30, HPE 30, minted
---     this morning and never chosen by anyone. They become free watches.
---   DROPPED because a tighter clock already exists (rule 3) — ABT, AGIO,
---     ASML, BWXT, CEG, CYTK, ETN, GD, GEV, ISRG, MIRM, NOW, NVDA, PBH,
---     SYK, WST. ETN loses a 365-day rung to a 30-day clock, GD 180 to 30,
---     SYK 60 to 30 — the clock that stays reviews each of them sooner.
---
--- Rows keep every other rung. A row whose only trigger was this one and which
--- already had a cadence simply loses the duplicate.
+--   CONVERTED — SMMT only. Held, no cadence, a 1-day rung its analyst wrote
+--     for a binary catalyst. It becomes a 1-day review cadence, which is one
+--     number in the popover if that is more than you want.
+--   DROPPED — every other row. 19 watches lose a rung that no longer
+--     evaluates; 8 of the 23 watches end up on no schedule at all (DOCU,
+--     FIVE, HPE, PLTR, BMRN, CRWD, CSCO, TOST), and the 15 that are Agent
+--     Watches today stay Agent Watches on the cadence they already carry.
 
 BEGIN;
 
@@ -91,10 +79,11 @@ SET triggers = (
         WHERE NOT (
           r->'predicate'->>'kind' = 'TIME_ELAPSED'
           AND (
-            -- A template stamp is not the author's schedule. Never carry it
-            -- forward, cadence or no cadence.
-            r->>'source' = 'DEFAULT'
-            -- Otherwise: drop rather than rewrite when a clock already exists.
+            -- A watch never gains a schedule from this migration.
+            t.status <> 'HOLDING'
+            -- A template stamp is not anyone's schedule.
+            OR r->>'source' = 'DEFAULT'
+            -- A held row that already has a clock keeps the one it has.
             OR EXISTS (
               SELECT 1 FROM jsonb_array_elements(t.triggers) x
               WHERE x->'predicate'->>'kind' = 'REVIEW_CADENCE'
