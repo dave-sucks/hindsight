@@ -342,20 +342,24 @@ function setLevel(
           });
     return stored
       .filter((t) => !occupies(t) || t.id === keep.id)
-      .map((t) =>
-        t.id === keep.id
-          ? {
-              ...t,
-              predicate,
-              // A side flip makes the old wording a lie — "broke above $130"
-              // on a level the price now comes back DOWN to. Only then.
-              rationale:
-                t.predicate.kind === predicate.kind
-                  ? t.rationale
-                  : rationaleFor(slot, price, direction, held, predicate.kind),
-            }
-          : t,
-      );
+      .map((t) => {
+        if (t.id !== keep.id) return t;
+        // The sentence moves with the number. A side flip makes the old
+        // wording a lie ("broke above $130" on a level the price now comes
+        // back DOWN to) → template sentence. A same-side move keeps the
+        // author's words with the number swapped ("Exit below $935" on a
+        // $969 floor sat on MU for two weeks); when the old number isn't in
+        // the text, the template sentence. Unchanged number → untouched.
+        const before = priceOf(t);
+        const rationale =
+          t.predicate.kind !== predicate.kind
+            ? rationaleFor(slot, price, direction, held, predicate.kind)
+            : before != null && before !== price
+              ? (moveNumberInText(t.rationale, "level", before, price) ??
+                rationaleFor(slot, price, direction, held, predicate.kind))
+              : t.rationale;
+        return { ...t, predicate, rationale };
+      });
   }
 
   return [
@@ -613,4 +617,52 @@ function priceOf(t: Trigger): number | null {
   return t.predicate.kind === "PRICE_ABOVE" || t.predicate.kind === "PRICE_BELOW"
     ? t.predicate.level
     : null;
+}
+
+/**
+ * Move the number in a trigger's sentence when its level moves and the
+ * caller gave no new wording. MU's $969 floor kept saying "Exit below $935"
+ * for two weeks; a sentence that names the old number is worse than none.
+ * Returns null when the old number isn't in the text — callers fall back
+ * to the template sentence for a plan level and keep the text otherwise.
+ * Shared by the level path (applyLevelArgs) and the edit-op path (ops.ts).
+ */
+export function moveNumberInText(
+  text: string,
+  field: "level" | "pct" | "days",
+  from: number,
+  to: number,
+): string | null {
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const plain = field === "level" ? (to % 1 === 0 ? String(to) : to.toFixed(2)) : String(to);
+  // Each way the old number may be written, paired with the new number in
+  // the same style — "$935.00" stays two-decimal, "$1,580" keeps its comma.
+  const numForms: Array<{ from: string; to: string }> = [
+    { from: String(from), to: plain },
+    { from: from.toFixed(2), to: field === "level" ? to.toFixed(2) : String(to) },
+    { from: from.toLocaleString("en-US"), to: field === "level" ? to.toLocaleString("en-US") : String(to) },
+  ];
+
+  // The number as the field writes it — "$50", "8%", "30 days" — is tried
+  // FIRST, so a level of 50 in "Buy above $50, a reclaim of the 50d" moves
+  // the price and leaves the moving average alone. Only when no unit form
+  // is present does a bare number count, and then never one glued to a
+  // letter or a hyphen (50d, 50-day, 200DMA) or to more digits (150.5).
+  const unitForms: Array<{ re: RegExp; repl: string }> =
+    field === "level"
+      ? numForms.map((n) => ({ re: new RegExp(`\\$${escape(n.from)}(?![\\d])(?!\\.\\d)`, "g"), repl: `$${n.to}` }))
+      : field === "pct"
+        ? numForms.map((n) => ({ re: new RegExp(`(?<![\\d.])${escape(n.from)}%`, "g"), repl: `${n.to}%` }))
+        : numForms.flatMap((n) => [
+            { re: new RegExp(`(?<![\\d.])${escape(n.from)}( days?)\\b`, "g"), repl: `${n.to}$1` },
+            { re: new RegExp(`(?<![\\d.])${escape(n.from)}(-day|d)\\b`, "g"), repl: `${n.to}$1` },
+          ]);
+  for (const { re, repl } of unitForms) {
+    if (re.test(text)) return text.replace(re, repl);
+  }
+  for (const n of numForms) {
+    const re = new RegExp(`(?<![\\d.$])${escape(n.from)}(?![\\w-])(?!\\.\\d)`, "g");
+    if (re.test(text)) return text.replace(re, n.to);
+  }
+  return null;
 }

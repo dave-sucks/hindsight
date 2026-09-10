@@ -41,6 +41,7 @@ import { validateEnterTriggerRequired } from "./enter-guard";
 import {
   canonicalLevels,
   levelSlotOf,
+  moveNumberInText,
   predicateFor,
   rationaleFor,
   type LevelSlot,
@@ -151,30 +152,9 @@ function fmtValue(field: "level" | "pct" | "days", v: number): string {
   return field === "level" ? money(v) : field === "pct" ? `${v}%` : `${v} days`;
 }
 
-/**
- * Move the number in a trigger's sentence when its level moves and the
- * caller gave no new wording. MU's $969 floor kept saying "Exit below $935"
- * for two weeks; a sentence that names the old number is worse than none.
- * When the old number isn't in the text, the template sentence is used for
- * a plan level and the old text is kept for everything else.
- */
-function moveNumberInText(
-  text: string,
-  field: "level" | "pct" | "days",
-  from: number,
-  to: number,
-): string | null {
-  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const forms = [String(from), from.toFixed(2), from.toLocaleString("en-US")];
-  for (const f of forms) {
-    const re = new RegExp(`(?<![\\d.])${escape(f)}(?![\\d])`, "g");
-    if (re.test(text)) {
-      const repl = field === "level" ? (to % 1 === 0 ? String(to) : to.toFixed(2)) : String(to);
-      return text.replace(re, repl);
-    }
-  }
-  return null;
-}
+// moveNumberInText lives in ./price-levels now, so the level path (entry /
+// target / stop columns written through applyLevelArgs) rewrites a moved
+// sentence the same way an edit op does.
 
 /** The trigger an add would collide with: same plan slot, else same bucket. */
 function collision(

@@ -11,6 +11,7 @@ import {
   applyLevelArgs,
   levelLabelState,
   canonicalLevels,
+  moveNumberInText,
 } from "./price-levels";
 import { resolveLadder } from "./levels";
 import type { ResolvedTrigger } from "./levels";
@@ -838,5 +839,108 @@ describe("applyLevelArgs — the buy level decides which side it fires on", () =
       trig(above(116.1), "ENTER", { id: "keep", rationale: "Reclaim of the 50d — my words." }),
     ];
     expect(enter(stored, 116.1, "LONG", 111.04).rationale).toBe("Reclaim of the 50d — my words.");
+  });
+});
+
+// ── A moved level rewrites its sentence; one buy rung per thesis ────────
+
+describe("a moved level rewrites its sentence (level path)", () => {
+  const enterAt = (stored: Trigger[], price: number, tape: number) =>
+    applyLevelArgs({
+      stored,
+      levels: { entry: price },
+      direction: "LONG",
+      status: "WATCHING",
+      currentPrice: tape,
+      mintId: () => "new",
+    }).triggers.find((t) => t.action === "ENTER")!;
+
+  it("same side, new number → the author's sentence with the number swapped", () => {
+    const stored = [
+      trig(above(150), "ENTER", { id: "keep", rationale: "Buy level — start the position when the price breaks above $150." }),
+    ];
+    const moved = enterAt(stored, 160, 140);
+    expect(moved.id).toBe("keep");
+    expect(moved.predicate).toEqual(above(160));
+    expect(moved.rationale).toBe("Buy level — start the position when the price breaks above $160.");
+  });
+
+  it("same side, new number, old number not in the text → the template sentence", () => {
+    const stored = [trig(above(116.1), "ENTER", { id: "keep", rationale: "Reclaim of the 50d — my words." })];
+    expect(enterAt(stored, 120, 111).rationale).toContain("breaks above $120.00");
+  });
+
+  it("same side, same number → untouched", () => {
+    const stored = [trig(above(116.1), "ENTER", { id: "keep", rationale: "Reclaim of the 50d — my words." })];
+    expect(enterAt(stored, 116.1, 111).rationale).toBe("Reclaim of the 50d — my words.");
+  });
+
+  it("a floor move rewrites too (the MU shape: $969 floor still saying $935)", () => {
+    const stored = [trig(below(935), "EXIT", { id: "floor", rationale: "Exit below $935 — the thesis is wrong there." })];
+    const out = applyLevelArgs({
+      stored,
+      levels: { floor: 969 },
+      direction: "LONG",
+      status: "HOLDING",
+      mintId: () => "new",
+    }).triggers.find((t) => t.action === "EXIT")!;
+    expect(out.predicate).toEqual(below(969));
+    expect(out.rationale).toBe("Exit below $969 — the thesis is wrong there.");
+  });
+
+  it("one buy rung per thesis: a level write collapses two ENTER rungs to one", () => {
+    const stored = [
+      trig(above(150), "ENTER", { id: "a", rationale: "Breakout." }),
+      trig(below(120), "ENTER", { id: "b", rationale: "Pullback." }),
+    ];
+    const out = applyLevelArgs({
+      stored,
+      levels: { entry: 160 },
+      direction: "LONG",
+      status: "WATCHING",
+      currentPrice: 140,
+      mintId: () => "new",
+    }).triggers;
+    expect(out.filter((t) => t.action === "ENTER")).toHaveLength(1);
+  });
+});
+
+// ── moveNumberInText — the unit form first, a bare number never glued to a word
+
+describe("moveNumberInText", () => {
+  it("moves the $ level and leaves a moving average with the same digits alone", () => {
+    expect(moveNumberInText("Buy above $50, a reclaim of the 50d.", "level", 50, 52)).toBe(
+      "Buy above $52, a reclaim of the 50d.",
+    );
+    expect(moveNumberInText("Floor $200 — the 200-day held twice.", "level", 200, 210)).toBe(
+      "Floor $210 — the 200-day held twice.",
+    );
+    expect(moveNumberInText("Exit below $20; the 20DMA is the tell.", "level", 20, 19)).toBe(
+      "Exit below $19; the 20DMA is the tell.",
+    );
+  });
+
+  it("falls back to a bare number only when no $ form is present, and never one glued to a letter or hyphen", () => {
+    expect(moveNumberInText("Start the position when the price breaks above 150.", "level", 150, 160)).toBe(
+      "Start the position when the price breaks above 160.",
+    );
+    expect(moveNumberInText("A reclaim of the 50d, nothing else.", "level", 50, 52)).toBeNull();
+    expect(moveNumberInText("Above the 50-day.", "level", 50, 52)).toBeNull();
+    expect(moveNumberInText("Trades at 150.5 today.", "level", 150, 160)).toBeNull();
+  });
+
+  it("percent and day fields move their own unit", () => {
+    expect(moveNumberInText("Gave back 8% from the high — a question, not a sale.", "pct", 8, 15)).toBe(
+      "Gave back 15% from the high — a question, not a sale.",
+    );
+    expect(moveNumberInText("Review every 30 days; the 30d average is context.", "days", 30, 45)).toBe(
+      "Review every 45 days; the 30d average is context.",
+    );
+    expect(moveNumberInText("A 30-day hygiene check.", "days", 30, 20)).toBe("A 20-day hygiene check.");
+  });
+
+  it("keeps the two-decimal and thousands forms", () => {
+    expect(moveNumberInText("Exit below $935.00.", "level", 935, 969)).toBe("Exit below $969.00.");
+    expect(moveNumberInText("Buy level $1,580 — the base.", "level", 1580, 1620)).toBe("Buy level $1,620 — the base.");
   });
 });
