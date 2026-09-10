@@ -467,10 +467,12 @@ For each researched candidate, exactly one of these four actions:
     the soft watch ("decided not to trade, keep eyes on it")
   - \`ticker\` + \`reasoning_summary\`: what you saw, why not now
   - \`triggers\`: whatever wakes you want, or none. A wake answers
-    "what brings this back to me?" — **a price level, a price move, or
-    a time-elapsed rung**; those are the kinds that fire today
-    (EARNINGS_BEAT / EARNINGS_MISS / GUIDANCE_CHANGE / FILING /
-    SIGNAL_TYPE will not fire — news and earnings routing is paused).
+    "what brings this back to me?" — **a price level, a price move, an
+    earnings beat / miss, or "reports within N days"
+    (EARNINGS_WITHIN)**; those are the kinds that fire today. The
+    earnings ones read the published calendar, no news needed.
+    (GUIDANCE_CHANGE / FILING / SIGNAL_TYPE will not fire — news
+    routing is paused.)
     A row with NO triggers at all is legal: it is a name on the list,
     visible on the watchlist screen, waiting for a person rather than
     the system. Choose that deliberately rather than by accident. Add

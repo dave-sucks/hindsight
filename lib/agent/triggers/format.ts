@@ -62,6 +62,8 @@ export function predicateSentence(p: TriggerPredicate): string {
       return p.minSurprisePct
         ? `Earnings miss ≥${p.minSurprisePct}%`
         : "Any earnings miss";
+    case "EARNINGS_WITHIN":
+      return `Reports within ${p.days} day${p.days === 1 ? "" : "s"}`;
     case "GUIDANCE_CHANGE":
       return `Guidance ${p.direction.toLowerCase()}`;
     case "FILING":

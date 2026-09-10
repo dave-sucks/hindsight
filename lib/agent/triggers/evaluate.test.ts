@@ -535,6 +535,51 @@ describe("evaluateTrigger", () => {
       expect(evaluateTrigger({ kind: "EARNINGS_BEAT" }, ctx)).toBe(true);
     });
 
+    // ── The heads-up BEFORE a report ─────────────────────────────────
+    describe("EARNINGS_WITHIN", () => {
+      const NOW_SEP_27 = new Date("2026-09-27T14:30:00Z");
+      const upcoming: EarningsReport = {
+        ...report({ symbol: "MU", reportDate: "2026-09-30", hour: "amc" }),
+        epsActual: null,
+        surprisePct: null,
+        revenueActual: null,
+      };
+      const ctxAt = (now: Date) =>
+        makeCtx({ upcomingEarnings: upcoming, now });
+
+      it("fires when the report is inside the window", () => {
+        // 3 days out, window 3 → fires. Window 2 → not yet.
+        expect(evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 3 }, ctxAt(NOW_SEP_27))).toBe(true);
+        expect(evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 2 }, ctxAt(NOW_SEP_27))).toBe(false);
+      });
+
+      it("fires on the report day itself", () => {
+        expect(
+          evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 1 }, ctxAt(new Date("2026-09-30T15:00:00Z"))),
+        ).toBe(true);
+      });
+
+      it("does not fire once the date has passed", () => {
+        expect(
+          evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 5 }, ctxAt(new Date("2026-10-02T15:00:00Z"))),
+        ).toBe(false);
+      });
+
+      it("does not fire with no scheduled report in the context", () => {
+        expect(evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 7 }, makeCtx({ now: NOW_SEP_27 }))).toBe(false);
+        expect(
+          evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 7 }, makeCtx({ now: NOW_SEP_27, upcomingEarnings: null })),
+        ).toBe(false);
+      });
+
+      it("is independent of a reported quarter in the same context", () => {
+        // Last quarter's beat is in `earnings`; the next report is in
+        // `upcomingEarnings`. The heads-up reads only the latter.
+        const ctx = makeCtx({ earnings: report({ surprisePct: 8 }), upcomingEarnings: null, now: NOW_SEP_27 });
+        expect(evaluateTrigger({ kind: "EARNINGS_WITHIN", days: 7 }, ctx)).toBe(false);
+      });
+    });
+
     it("composes with price predicates", () => {
       // "Missed AND broke the floor" — the composite the cron path can now
       // evaluate end-to-end, because both halves need no signal.

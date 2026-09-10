@@ -400,6 +400,9 @@ const ADDABLE_PREDICATE_KINDS = new Set<TriggerPredicate["kind"]>([
   // The review clock — the one rung that decides whether an analyst looks at
   // this name at all, so the principal must be able to put one on and off.
   "REVIEW_CADENCE",
+  // The earnings heads-up — "this reports within N days." Reads the calendar,
+  // no position needed, so it's legal on a watch as well as a holding.
+  "EARNINGS_WITHIN",
 ]);
 
 /** Kinds that evaluate off the open position (avgCost / peakPrice). With no

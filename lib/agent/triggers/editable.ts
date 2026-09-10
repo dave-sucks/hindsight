@@ -22,6 +22,7 @@ export interface EditableTriggerField {
   prefix?: string; // "$"
   suffix?: string;
   min?: number;
+  max?: number;
   step?: number;
 }
 
@@ -50,6 +51,9 @@ export function editableTriggerField(
         min: 1,
         step: 1,
       };
+    case "EARNINGS_WITHIN":
+      // The earnings heads-up — how many days before the report to wake.
+      return { label: "Days before", value: p.days, suffix: "days", min: 1, max: 14, step: 1 };
     default:
       return null;
   }
@@ -69,6 +73,7 @@ export function withEditedValue(
     case "TRAILING_FROM_HIGH":
       return { ...p, pct: value };
     case "REVIEW_CADENCE":
+    case "EARNINGS_WITHIN":
       return { ...p, days: value };
     default:
       return p;

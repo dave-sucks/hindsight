@@ -142,6 +142,7 @@ function numberOf(p: TriggerPredicate): { field: "level" | "pct" | "days"; value
     case "TRAILING_FROM_HIGH":
       return { field: "pct", value: p.pct };
     case "REVIEW_CADENCE":
+    case "EARNINGS_WITHIN":
       return { field: "days", value: p.days };
     default:
       return null;

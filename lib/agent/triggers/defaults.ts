@@ -892,6 +892,12 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
     case "EARNINGS_MISS":
     case "GUIDANCE_CHANGE":
       return 7;
+    case "EARNINGS_WITHIN":
+      // "Reports within N days" is true every day of the approach, so the
+      // cooldown is what makes it fire once. 30 clears any legal window
+      // (≤14) with room and is well short of a quarter, so the next
+      // report still fires.
+      return 30;
     case "FILING":
       return 1;
     case "SIGNAL_TYPE":

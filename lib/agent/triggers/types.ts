@@ -106,6 +106,13 @@ export type TriggerPredicate =
   // router; it is not what fires them today.
   | { kind: "EARNINGS_BEAT"; minSurprisePct?: number }
   | { kind: "EARNINGS_MISS"; minSurprisePct?: number }
+  // "This stock reports within N days." The heads-up BEFORE a report, read
+  // off the same calendar call as beat/miss. A holding about to report is a
+  // sizing question — trim, hold through, or don't add until after — and
+  // nothing else in the ladder asks it. Fires once per approaching report
+  // (30-day default cooldown ≫ the window, ≪ a quarter). Added 2026-09-10;
+  // see docs/plans/MARKET_DATA.md §3.
+  | { kind: "EARNINGS_WITHIN"; days: number }
   | { kind: "GUIDANCE_CHANGE"; direction: "UP" | "DOWN" }
   | {
       kind: "FILING";

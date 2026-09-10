@@ -46,9 +46,11 @@ import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import {
   describeEarningsReport,
-  fetchRecentEarningsReports,
+  describeUpcomingReport,
+  fetchEarningsWindow,
+  EARNINGS_LOOKAHEAD_DAYS,
 } from "@/lib/agent/triggers/earnings";
-import type { EarningsReport } from "@/lib/agent/triggers/earnings";
+import type { EarningsWindow } from "@/lib/agent/triggers/earnings";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { effectiveTriggerAction } from "@/lib/agent/triggers/types";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
@@ -117,6 +119,7 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
     case "REVIEW_CADENCE":
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
+    case "EARNINGS_WITHIN":
       return true;
     case "AND":
     case "OR":
@@ -126,15 +129,29 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
   }
 }
 
-/** Does this predicate read reported earnings? Drives the calendar fetch. */
+/** Does this predicate read the earnings calendar at all? Drives the fetch. */
 function needsEarningsData(p: TriggerPredicate): boolean {
   switch (p.kind) {
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
+    case "EARNINGS_WITHIN":
       return true;
     case "AND":
     case "OR":
       return p.predicates.some(needsEarningsData);
+    default:
+      return false;
+  }
+}
+
+/** Does this predicate ask about a report that hasn't happened yet? Drives the lookahead. */
+function needsUpcomingEarnings(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "EARNINGS_WITHIN":
+      return true;
+    case "AND":
+    case "OR":
+      return p.predicates.some(needsUpcomingEarnings);
     default:
       return false;
   }
@@ -724,9 +741,17 @@ export const triggerEvaluator = inngest.createFunction(
       const wantsEarnings = candidates.some((c) =>
         c.ladder.some((t) => needsEarningsData(t.predicate)),
       );
-      const earningsByTicker = wantsEarnings
-        ? await fetchRecentEarningsReports({ now })
-        : new Map<string, EarningsReport>();
+      // The forward half (scheduled reports) only when an EARNINGS_WITHIN
+      // is armed somewhere — it triples the payload for nothing otherwise.
+      const wantsUpcoming = candidates.some((c) =>
+        c.ladder.some((t) => needsUpcomingEarnings(t.predicate)),
+      );
+      const earnings: EarningsWindow = wantsEarnings
+        ? await fetchEarningsWindow({
+            now,
+            lookaheadDays: wantsUpcoming ? EARNINGS_LOOKAHEAD_DAYS : 0,
+          })
+        : { reported: new Map(), upcoming: new Map() };
 
       const events: FiringEvent[] = [];
       for (const { thesis, analystId, ladder: triggers } of candidates) {
@@ -743,7 +768,10 @@ export const triggerEvaluator = inngest.createFunction(
           // EARNINGS_BEAT / EARNINGS_MISS read this. Absent when the name
           // hasn't reported inside the lookback window, which is the
           // overwhelmingly common case — those predicates then return false.
-          earnings: earningsByTicker.get(thesis.ticker) ?? null,
+          earnings: earnings.reported.get(thesis.ticker) ?? null,
+          // EARNINGS_WITHIN reads this — the next scheduled report, when
+          // one is inside the lookahead.
+          upcomingEarnings: earnings.upcoming.get(thesis.ticker) ?? null,
           // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read the open position's
           // entry cost + water mark; absent (WATCHING) → they return false.
           position: posInfo
@@ -782,10 +810,16 @@ export const triggerEvaluator = inngest.createFunction(
           });
 
           // The facts behind an earnings fire, when that's what fired. Null
-          // for a price/time trigger — the price is already stamped.
-          const report = earningsByTicker.get(thesis.ticker);
-          const firedContext =
-            report && needsEarningsData(t.predicate)
+          // for a price/time trigger — the price is already stamped. A
+          // heads-up carries the upcoming date + estimate; a beat/miss
+          // carries the reported figures.
+          const upcoming = earnings.upcoming.get(thesis.ticker);
+          const report = earnings.reported.get(thesis.ticker);
+          const firedContext = needsUpcomingEarnings(t.predicate)
+            ? upcoming
+              ? describeUpcomingReport(upcoming, now)
+              : null
+            : report && needsEarningsData(t.predicate)
               ? describeEarningsReport(report)
               : null;
 
@@ -885,6 +919,7 @@ export const triggerEvaluator = inngest.createFunction(
 export const __test__ = {
   isPriceSidePredicate,
   needsEarningsData,
+  needsUpcomingEarnings,
   isSignalSidePredicate,
   parseTriggers,
   evaluateThesisTriggers,

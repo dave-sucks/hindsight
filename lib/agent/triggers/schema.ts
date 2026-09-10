@@ -44,6 +44,7 @@ type PredicateShape =
     }
   | { kind: "EARNINGS_BEAT"; minSurprisePct?: number }
   | { kind: "EARNINGS_MISS"; minSurprisePct?: number }
+  | { kind: "EARNINGS_WITHIN"; days: number }
   | { kind: "GUIDANCE_CHANGE"; direction: "UP" | "DOWN" }
   | { kind: "FILING"; formType: "10-K" | "10-Q" | "8-K" | "FORM_4" }
   | { kind: "REVIEW_CADENCE"; days: number }
@@ -94,6 +95,12 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
     z.object({
       kind: z.literal("EARNINGS_MISS"),
       minSurprisePct: z.number().optional(),
+    }),
+    z.object({
+      kind: z.literal("EARNINGS_WITHIN"),
+      // Capped at the calendar lookahead (EARNINGS_LOOKAHEAD_DAYS) — a
+      // longer horizon would ask about reports the evaluator never fetches.
+      days: z.number().int().min(1).max(14),
     }),
     z.object({
       kind: z.literal("GUIDANCE_CHANGE"),

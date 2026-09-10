@@ -24,6 +24,7 @@
 import type { Trigger, TriggerPredicate, Urgency } from "./types";
 import { defaultCooldownDaysForPredicate } from "./defaults";
 import type { EarningsReport } from "./earnings";
+import { daysUntilReport } from "./earnings";
 
 // ── EvaluationContext ─────────────────────────────────────────────────
 
@@ -78,6 +79,13 @@ export interface EvaluationContext {
    * never a crash.
    */
   earnings?: EarningsReport | null;
+
+  /**
+   * This ticker's NEXT scheduled report, when one falls inside the
+   * evaluator's lookahead. Read by EARNINGS_WITHIN — the heads-up before
+   * a report, off the same calendar call as `earnings`. Absent → false.
+   */
+  upcomingEarnings?: EarningsReport | null;
 
   /** SMA precomputed by the caller; we don't fetch candles here. */
   sma?: { 50?: number; 200?: number };
@@ -200,6 +208,16 @@ export function evaluateTrigger(
         return false;
       }
       return true;
+    }
+
+    case "EARNINGS_WITHIN": {
+      // "Reports within N days." 0 = reports today (a before-open print has
+      // already happened; an after-close one is tonight) — both are the
+      // heads-up this exists for. Past-dated rows never reach the context.
+      const next = ctx.upcomingEarnings;
+      if (!next) return false;
+      const days = daysUntilReport(next, ctx.now);
+      return days >= 0 && days <= predicate.days;
     }
 
     case "GUIDANCE_CHANGE":

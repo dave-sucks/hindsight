@@ -28,14 +28,20 @@
 
 import { finnhub } from "@/lib/agent/research-helpers";
 
-/** One company's most recent reported quarter, as the calendar has it. */
+/**
+ * One calendar row for one company — either its most recent reported
+ * quarter (`epsActual` set) or its next scheduled one (`epsActual` null).
+ * Which of the two it is depends on which map of `EarningsWindow` it came
+ * from; the shape is the same.
+ */
 export interface EarningsReport {
   symbol: string;
   /** Report date, YYYY-MM-DD. Finnhub's calendar `date`. */
   reportDate: string;
   /** "bmo" | "amc" | "" — before open / after close, when known. */
   hour: string | null;
-  epsActual: number;
+  /** Null until the company reports. */
+  epsActual: number | null;
   epsEstimate: number | null;
   /**
    * (actual − estimate) ÷ |estimate| × 100. Positive = beat, negative =
@@ -66,6 +72,15 @@ export interface EarningsReport {
  * market next opens on Monday.
  */
 export const EARNINGS_LOOKBACK_DAYS = 3;
+
+/**
+ * How far forward to look for scheduled reports — the ceiling on
+ * EARNINGS_WITHIN's `days`. Two weeks covers every sensible "heads up"
+ * (2–7 days is the useful range; the schema caps at 14) and keeps the
+ * firm-wide payload to a few hundred rows. Only fetched when some trigger
+ * in the batch actually asks about an upcoming report.
+ */
+export const EARNINGS_LOOKAHEAD_DAYS = 14;
 
 /**
  * The surprise percentage, or null when it isn't defined.
@@ -111,12 +126,11 @@ function money(n: number): string {
  * everyone already knows; a row carrying the figures lets it decide.
  */
 export function describeEarningsReport(r: EarningsReport): string {
-  const when =
-    r.hour === "bmo"
-      ? " (before open)"
-      : r.hour === "amc"
-        ? " (after close)"
-        : "";
+  const when = bellLabel(r.hour);
+  if (r.epsActual == null) {
+    // Not a report yet — the caller handed us an upcoming row.
+    return describeUpcomingReport(r, new Date(`${r.reportDate}T00:00:00Z`));
+  }
   const parts = [`Reported ${r.reportDate}${when}: EPS $${r.epsActual.toFixed(2)}`];
 
   if (r.epsEstimate != null) parts.push(` vs $${r.epsEstimate.toFixed(2)} est`);
@@ -132,6 +146,41 @@ export function describeEarningsReport(r: EarningsReport): string {
     parts.push(".");
   }
 
+  return parts.join("");
+}
+
+function bellLabel(hour: string | null): string {
+  return hour === "bmo" ? " (before open)" : hour === "amc" ? " (after close)" : "";
+}
+
+/**
+ * Calendar days from `now` to the report date. 0 = reports today; negative
+ * = already past. Whole days in UTC, which is what the calendar's dates are.
+ */
+export function daysUntilReport(r: EarningsReport, now: Date): number {
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const [y, m, d] = r.reportDate.split("-").map(Number);
+  return Math.round((Date.UTC(y, m - 1, d) - today) / 86_400_000);
+}
+
+/**
+ * One sentence for an approaching report, for the audit row and the
+ * tactical kickoff:
+ *
+ *   "Reports 2026-09-30 (after close), in 3 days. EPS est $32.21."
+ *
+ * This is the "don't walk into your own report unaware" fact. A holding
+ * that is about to report is a sizing question, not a news question, and
+ * the sentence carries what that decision needs: when, and what the
+ * street expects.
+ */
+export function describeUpcomingReport(r: EarningsReport, now: Date): string {
+  const days = daysUntilReport(r, now);
+  const inDays =
+    days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+  const parts = [`Reports ${r.reportDate}${bellLabel(r.hour)}, ${inDays}.`];
+  if (r.epsEstimate != null) parts.push(` EPS est $${r.epsEstimate.toFixed(2)}.`);
+  if (r.revenueEstimate != null) parts.push(` Revenue est ${money(r.revenueEstimate)}.`);
   return parts.join("");
 }
 
@@ -152,32 +201,47 @@ interface FinnhubCalendarRow {
   revenueEstimate?: number | null;
 }
 
+/** Both halves of one calendar call, keyed by ticker. */
+export interface EarningsWindow {
+  /** Most recent report inside the lookback. `epsActual` is set. */
+  reported: Map<string, EarningsReport>;
+  /** Next scheduled report inside the lookahead. `epsActual` is null. */
+  upcoming: Map<string, EarningsReport>;
+}
+
+const EMPTY_WINDOW = (): EarningsWindow => ({ reported: new Map(), upcoming: new Map() });
+
 /**
- * Every company that reported in the last `lookbackDays`, keyed by ticker.
+ * Every company that reported in the last `lookbackDays`, and every one
+ * scheduled to report in the next `lookaheadDays`, from ONE firm-wide call.
  *
- * ONE firm-wide call — deliberately not one per ticker. The window is short
- * enough that the whole market's reports are ~110 rows / 18KB, which is
- * cheaper than fanning out over the 30-odd names we cover and stays cheap
- * as the book grows.
+ * Deliberately not one call per ticker. The window is short enough that
+ * the whole market comes back in a few hundred rows, which is cheaper than
+ * fanning out over the names we cover and stays cheap as the book grows.
  *
  * `epsActual != null` is the "has reported" test: the calendar carries the
  * estimate for scheduled quarters and fills the actual in afterwards
  * (verified — NVDA's 2026-11-17 row has a null actual, its 2026-08-26 row
- * does not).
+ * does not). A past-dated row with no actual is a report that hasn't been
+ * posted yet; it lands in neither map.
  *
- * Never throws. A vendor failure returns an empty map and logs; the caller
+ * Never throws. A vendor failure returns empty maps and logs; the caller
  * carries on with price triggers. A dropped call must delay a look, never
  * block a stop.
  */
-export async function fetchRecentEarningsReports(opts: {
+export async function fetchEarningsWindow(opts: {
   now: Date;
   lookbackDays?: number;
-}): Promise<Map<string, EarningsReport>> {
-  const out = new Map<string, EarningsReport>();
+  /** 0 (the default) skips the forward half entirely. */
+  lookaheadDays?: number;
+}): Promise<EarningsWindow> {
+  const out = EMPTY_WINDOW();
 
   const lookback = opts.lookbackDays ?? EARNINGS_LOOKBACK_DAYS;
-  const to = isoDay(opts.now);
+  const lookahead = opts.lookaheadDays ?? 0;
+  const today = isoDay(opts.now);
   const from = isoDay(new Date(opts.now.getTime() - lookback * 86_400_000));
+  const to = isoDay(new Date(opts.now.getTime() + lookahead * 86_400_000));
   const path = `/calendar/earnings?from=${from}&to=${to}`;
 
   // Through the shared client, like every other Finnhub call — it owns the
@@ -193,9 +257,8 @@ export async function fetchRecentEarningsReports(opts: {
   // surfaces served an arbitrarily old value; this surface is polled, so
   // every window boundary refreshes it.
   //
-  // `finnhub()` resolves rather than throws on failure. Empty map + a log,
-  // and the caller carries on with price triggers: a dropped call must delay
-  // a look, never block a stop.
+  // `finnhub()` resolves rather than throws on failure. Empty maps + a log,
+  // and the caller carries on with price triggers.
   const res = await finnhub(path, 1);
   if (res.error || res.data == null) {
     console.warn(
@@ -209,27 +272,35 @@ export async function fetchRecentEarningsReports(opts: {
 
   for (const row of rows) {
     if (!row.symbol || !row.date) continue;
-    if (row.epsActual == null || !Number.isFinite(row.epsActual)) continue;
-
     const symbol = row.symbol.toUpperCase();
+    const hasActual = row.epsActual != null && Number.isFinite(row.epsActual);
+
     const report: EarningsReport = {
       symbol,
       reportDate: row.date,
       hour: row.hour ?? null,
-      epsActual: row.epsActual,
+      epsActual: hasActual ? (row.epsActual as number) : null,
       epsEstimate: row.epsEstimate ?? null,
-      surprisePct: surprisePct(row.epsActual, row.epsEstimate),
+      surprisePct: hasActual ? surprisePct(row.epsActual as number, row.epsEstimate) : null,
       revenueActual: row.revenueActual ?? null,
       revenueEstimate: row.revenueEstimate ?? null,
       quarter: row.quarter ?? null,
       year: row.year ?? null,
     };
 
-    // A ticker can't report twice in three days, but the calendar has been
-    // known to carry a duplicate row; keep the later date.
-    const existing = out.get(symbol);
-    if (existing && existing.reportDate >= report.reportDate) continue;
-    out.set(symbol, report);
+    if (hasActual) {
+      // A ticker can't report twice in three days, but the calendar has
+      // been known to carry a duplicate row; keep the later date.
+      const existing = out.reported.get(symbol);
+      if (existing && existing.reportDate >= report.reportDate) continue;
+      out.reported.set(symbol, report);
+    } else if (row.date >= today) {
+      // Scheduled. Keep the EARLIEST — that is the next one.
+      const existing = out.upcoming.get(symbol);
+      if (existing && existing.reportDate <= report.reportDate) continue;
+      out.upcoming.set(symbol, report);
+    }
+    // else: past-dated with no actual — not posted yet. Neither map.
   }
 
   return out;

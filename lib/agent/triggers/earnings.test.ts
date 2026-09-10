@@ -8,9 +8,12 @@
  */
 
 import {
+  daysUntilReport,
   describeEarningsReport,
-  fetchRecentEarningsReports,
+  describeUpcomingReport,
+  fetchEarningsWindow,
   surprisePct,
+  EARNINGS_LOOKAHEAD_DAYS,
   EARNINGS_LOOKBACK_DAYS,
 } from "./earnings";
 import type { EarningsReport } from "./earnings";
@@ -62,7 +65,7 @@ describe("surprisePct", () => {
   });
 });
 
-describe("fetchRecentEarningsReports", () => {
+describe("fetchEarningsWindow", () => {
   const NOW = new Date("2026-09-02T14:30:00Z");
 
   function mockCalendar(rows: unknown[]) {
@@ -79,10 +82,49 @@ describe("fetchRecentEarningsReports", () => {
 
   it("asks the shared client for the lookback window ending today", () => {
     mockCalendar([]);
-    return fetchRecentEarningsReports({ now: NOW }).then(() => {
+    return fetchEarningsWindow({ now: NOW }).then(() => {
       const path = String(finnhubMock.mock.calls[0][0]);
       expect(path).toBe("/calendar/earnings?from=2026-08-30&to=2026-09-02");
     });
+  });
+
+  it("extends the window forward only when asked", async () => {
+    // The scheduled half triples the payload; the cron only asks for it
+    // when some thesis carries an EARNINGS_WITHIN.
+    mockCalendar([]);
+    await fetchEarningsWindow({ now: NOW, lookaheadDays: 14 });
+    const path = String(finnhubMock.mock.calls[0][0]);
+    expect(path).toBe("/calendar/earnings?from=2026-08-30&to=2026-09-16");
+  });
+
+  it("puts a scheduled row in `upcoming`, keeping the earliest per ticker", async () => {
+    mockCalendar([
+      { symbol: "MU", date: "2026-09-30", hour: "amc", epsEstimate: 32.21, epsActual: null },
+      { symbol: "MU", date: "2026-12-17", hour: "amc", epsEstimate: 35, epsActual: null },
+      { symbol: "ABT", date: "2026-10-13", hour: "bmo", epsEstimate: 1.43, epsActual: null },
+    ]);
+    const w = await fetchEarningsWindow({ now: NOW, lookaheadDays: 14 });
+    expect(w.reported.size).toBe(0);
+    expect(w.upcoming.get("MU")?.reportDate).toBe("2026-09-30");
+    expect(w.upcoming.get("MU")?.epsActual).toBeNull();
+    expect(w.upcoming.get("ABT")?.hour).toBe("bmo");
+  });
+
+  it("drops a past-dated row with no actual — not posted yet, not scheduled", async () => {
+    mockCalendar([
+      { symbol: "LATE", date: "2026-08-31", epsEstimate: 1, epsActual: null },
+    ]);
+    const w = await fetchEarningsWindow({ now: NOW, lookaheadDays: 14 });
+    expect(w.reported.has("LATE")).toBe(false);
+    expect(w.upcoming.has("LATE")).toBe(false);
+  });
+
+  it("a row dated today with no actual is upcoming (after-close print tonight)", async () => {
+    mockCalendar([
+      { symbol: "AVGO", date: "2026-09-02", hour: "amc", epsEstimate: 3.3, epsActual: null },
+    ]);
+    const w = await fetchEarningsWindow({ now: NOW, lookaheadDays: 14 });
+    expect(w.upcoming.get("AVGO")?.reportDate).toBe("2026-09-02");
   });
 
   it("goes through the shared client, not a raw fetch", async () => {
@@ -90,7 +132,7 @@ describe("fetchRecentEarningsReports", () => {
     // fans out over up to 200 quotes on the same tick, so an unthrottled
     // extra call is exactly the one that trips the rate limit.
     mockCalendar([]);
-    await fetchRecentEarningsReports({ now: NOW });
+    await fetchEarningsWindow({ now: NOW });
     expect(finnhubMock).toHaveBeenCalledTimes(1);
   });
 
@@ -109,7 +151,7 @@ describe("fetchRecentEarningsReports", () => {
       },
     ]);
 
-    const map = await fetchRecentEarningsReports({ now: NOW });
+    const map = (await fetchEarningsWindow({ now: NOW })).reported;
     const nvda = map.get("NVDA");
     expect(nvda).toBeDefined();
     expect(nvda!.reportDate).toBe("2026-08-26");
@@ -133,8 +175,10 @@ describe("fetchRecentEarningsReports", () => {
       },
     ]);
 
-    const map = await fetchRecentEarningsReports({ now: NOW });
-    expect(map.has("NVDA")).toBe(false);
+    const w = await fetchEarningsWindow({ now: NOW });
+    expect(w.reported.has("NVDA")).toBe(false);
+    // It's a scheduled report, so it's the NEXT one — that's the other map.
+    expect(w.upcoming.get("NVDA")?.reportDate).toBe("2026-11-17");
   });
 
   it("keeps a report whose estimate is missing, with a null surprise", async () => {
@@ -144,7 +188,7 @@ describe("fetchRecentEarningsReports", () => {
       { symbol: "BBN", date: "2026-09-02", epsEstimate: null, epsActual: 0.42 },
     ]);
 
-    const map = await fetchRecentEarningsReports({ now: NOW });
+    const map = (await fetchEarningsWindow({ now: NOW })).reported;
     expect(map.get("BBN")?.surprisePct).toBeNull();
   });
 
@@ -155,7 +199,7 @@ describe("fetchRecentEarningsReports", () => {
       { symbol: "XYZ", epsActual: 1 },
     ]);
 
-    const map = await fetchRecentEarningsReports({ now: NOW });
+    const map = (await fetchEarningsWindow({ now: NOW })).reported;
     expect(map.size).toBe(1);
     expect(map.has("AVGO")).toBe(true);
   });
@@ -166,7 +210,7 @@ describe("fetchRecentEarningsReports", () => {
       { symbol: "DUP", date: "2026-09-02", epsEstimate: 1, epsActual: 1.5 },
     ]);
 
-    const map = await fetchRecentEarningsReports({ now: NOW });
+    const map = (await fetchEarningsWindow({ now: NOW })).reported;
     expect(map.get("DUP")?.reportDate).toBe("2026-09-02");
   });
 
@@ -179,26 +223,29 @@ describe("fetchRecentEarningsReports", () => {
     });
     jest.spyOn(console, "warn").mockImplementation(() => {});
 
-    await expect(fetchRecentEarningsReports({ now: NOW })).resolves.toEqual(
-      new Map(),
-    );
+    await expect(fetchEarningsWindow({ now: NOW })).resolves.toEqual({
+      reported: new Map(),
+      upcoming: new Map(),
+    });
   });
 
   it("returns an empty map when the payload has no data", async () => {
     finnhubMock.mockResolvedValue({ data: null });
     jest.spyOn(console, "warn").mockImplementation(() => {});
 
-    await expect(fetchRecentEarningsReports({ now: NOW })).resolves.toEqual(
-      new Map(),
-    );
+    await expect(fetchEarningsWindow({ now: NOW })).resolves.toEqual({
+      reported: new Map(),
+      upcoming: new Map(),
+    });
   });
 
   it("returns an empty map when the payload has no calendar array", async () => {
     finnhubMock.mockResolvedValue({ data: {} });
 
-    await expect(fetchRecentEarningsReports({ now: NOW })).resolves.toEqual(
-      new Map(),
-    );
+    await expect(fetchEarningsWindow({ now: NOW })).resolves.toEqual({
+      reported: new Map(),
+      upcoming: new Map(),
+    });
   });
 
   it("stays inside the 7-day earnings cooldown so one report fires once", () => {
@@ -258,5 +305,45 @@ describe("describeEarningsReport", () => {
     expect(
       describeEarningsReport({ ...base, revenueActual: 383980000, revenueEstimate: 303620342 }),
     ).toContain("Revenue $383.98M vs $303.62M est.");
+  });
+});
+
+describe("upcoming reports", () => {
+  const NOW = new Date("2026-09-27T14:30:00Z");
+  const mu: EarningsReport = {
+    symbol: "MU",
+    reportDate: "2026-09-30",
+    hour: "amc",
+    epsActual: null,
+    epsEstimate: 32.2138,
+    surprisePct: null,
+    revenueActual: null,
+    revenueEstimate: 12_010_000_000,
+    quarter: 4,
+    year: 2026,
+  };
+
+  it("counts calendar days to the report", () => {
+    expect(daysUntilReport(mu, NOW)).toBe(3);
+    expect(daysUntilReport(mu, new Date("2026-09-30T20:00:00Z"))).toBe(0);
+    expect(daysUntilReport(mu, new Date("2026-10-01T00:00:00Z"))).toBe(-1);
+  });
+
+  it("describes the heads-up with date, bell, and estimates", () => {
+    expect(describeUpcomingReport(mu, NOW)).toBe(
+      "Reports 2026-09-30 (after close), in 3 days. EPS est $32.21. Revenue est $12.01B.",
+    );
+    expect(describeUpcomingReport(mu, new Date("2026-09-29T12:00:00Z"))).toContain("tomorrow");
+    expect(describeUpcomingReport(mu, new Date("2026-09-30T12:00:00Z"))).toContain("today");
+  });
+
+  it("describeEarningsReport hands an unreported row to the upcoming form", () => {
+    expect(describeEarningsReport(mu)).toMatch(/^Reports 2026-09-30/);
+  });
+
+  it("the schema's 14-day cap matches the fetch lookahead", () => {
+    // An EARNINGS_WITHIN longer than the lookahead would ask about reports
+    // the cron never fetches — it would silently never fire.
+    expect(EARNINGS_LOOKAHEAD_DAYS).toBe(14);
   });
 });

@@ -68,6 +68,8 @@ function describePredicate(p: TriggerPredicate): string {
       return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
     case "REVIEW_CADENCE":
       return "review date hit";
+    case "EARNINGS_WITHIN":
+      return `reports within ${p.days}d`;
     case "AND":
       return `(${p.predicates.map(describePredicate).join(" AND ")})`;
     case "OR":
