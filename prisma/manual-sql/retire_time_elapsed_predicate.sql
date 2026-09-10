@@ -16,20 +16,29 @@
 --
 -- WHAT IT DOES, and why it is not a blanket delete:
 --
---   1. On a LIVE row (HOLDING / WATCHING / PROMOTED) a time-elapsed REVIEW is
---      REWRITTEN as a REVIEW_CADENCE of the same length. The author meant
---      "come back to this in N days" and still gets that; it now resets when
---      someone actually looks. This covers the held max-hold rungs and the
---      agent-written watch schedules alike (ETN 365, GD 180, SYK 60, PLTR 90
---      and the rest keep their intervals).
---   2. Unless the row ALREADY carries a REVIEW_CADENCE — then the rung is
---      dropped instead. Two clocks on one ladder is not a schedule, it is a
---      race, and the resolver would silently pick whichever came first.
+--   1. On a LIVE row (HOLDING / WATCHING / PROMOTED) with NO review cadence,
+--      the time-elapsed REVIEW is REWRITTEN as a REVIEW_CADENCE of the same
+--      length. The author meant "come back to this in N days" and still gets
+--      that; it now resets when someone actually looks.
+--   2. On a live row that ALREADY carries a cadence, the rung is DROPPED.
+--      Two cadences on one ladder is not a schedule, it is a race — and
+--      under the one-trigger-per-bucket rule it is illegal outright. The
+--      surviving clock always asks sooner anyway.
 --   3. On a terminal row (PASSED / RETIRED) it is dropped outright. Nothing
 --      evaluates history.
 --
 -- Verified against production 2026-09-09 — 180 rungs, every one action=REVIEW:
 --   WATCHING  19    HOLDING 6    PASSED 6    RETIRED 149
+--
+-- Simulated against the live book, 25 rows touched, and every one ends with
+-- exactly one cadence and zero time-elapsed rungs:
+--
+--   CONVERTED (no cadence today) — BMRN 120, CRWD 85, CSCO 40, DOCU 30,
+--     FIVE 30, HPE 30, PLTR 90, TOST 63, SMMT 1
+--   DROPPED (cadence already there, and it is the tighter one) — ABT, AGIO,
+--     ASML, BWXT, CEG, CYTK, ETN, GD, GEV, ISRG, MIRM, NOW, NVDA, PBH, SYK,
+--     WST. ETN loses a 365-day rung to a 30-day clock, GD 180 to 30, SYK 60
+--     to 30 — the clock that stays reviews each of them sooner.
 --
 -- Rows keep every other rung. A row whose only trigger was this one and which
 -- already had a cadence simply loses the duplicate.
