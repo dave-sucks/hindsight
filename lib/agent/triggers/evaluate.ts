@@ -399,6 +399,10 @@ function readsPrice(p: TriggerPredicate): boolean {
     case "PCT_FROM_52W_HIGH":
     case "RSI":
       return true;
+    // The 5D/20D move is measured from the live price, so it can cross; the
+    // 1D move reads the quote's own change and can't be re-read at the close.
+    case "PRICE_MOVE_PCT":
+      return p.window !== "1D";
     case "AND":
     case "OR":
       return p.predicates.some(readsPrice);

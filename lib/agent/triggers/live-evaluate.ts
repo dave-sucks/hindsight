@@ -24,6 +24,7 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
+import { isMarketOpen } from "@/lib/market-hours";
 import { describePredicate } from "@/lib/agent/needs-action";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import type {
@@ -196,6 +197,8 @@ export async function evaluateLiveTriggerMatches({
           : null;
       const fires = evaluateTrigger(trigger.predicate, {
         latestQuote,
+        // A close-basis level isn't true mid-session — it waits for the close.
+        session: isMarketOpen(now) ? "INTRADAY" : undefined,
         indicators: indicators.get(thesis.ticker) ?? null,
         // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read entry cost + water
         // mark from the open position; WATCHING rows get null → false.
