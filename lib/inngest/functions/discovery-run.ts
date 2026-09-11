@@ -41,9 +41,15 @@ export const discoveryRun = inngest.createFunction(
     { event: "app/discovery.run.manual" },
   ],
   async ({ event, step }) => {
-    const targetConfigId =
-      (event as { data?: { agentConfigId?: string } })?.data?.agentConfigId ??
-      null;
+    const payload =
+      (event as { data?: { agentConfigId?: string; focus?: string } })?.data ?? {};
+    const targetConfigId = payload.agentConfigId ?? null;
+    // The ask. A manual fire can say what this run is FOR — "discovery off
+    // this week's earnings", "names that reported yesterday and gapped up"
+    // — and the prompt's earnings-driven section keys off exactly that
+    // framing (get_earnings_calendar window:"reported"). Absent on the
+    // cron: the standard movers + calendar pass.
+    const focus = typeof payload.focus === "string" ? payload.focus.trim().slice(0, 500) : "";
 
     const configs = await step.run("load-agent-configs", async () => {
       const all = await prisma.agentConfig.findMany({
@@ -148,8 +154,8 @@ export const discoveryRun = inngest.createFunction(
           undefined;
 
         // coveredTickers = ACTIVE + WATCHING thesis tickers ∪ watchlist ∪
-        // open position tickers. Tools (read_signals discoveryOnly path,
-        // get_market_movers/get_earnings_calendar scope:"universe") use
+        // open position tickers. Tools (get_market_movers /
+        // get_earnings_calendar scope:"universe") use
         // this to mean "the set of names you've already chosen NOT to
         // discover again" — anything outside it is a candidate.
         const openPositionTickers = await prisma.position
@@ -186,11 +192,8 @@ export const discoveryRun = inngest.createFunction(
           minConfidence: config.minConfidence,
           alpacaCreds,
           runEnvironment,
-          // Discovery's job is finding NEW coverage. read_signals' discovery
-          // path filters by "ticker NOT in coveredTickers" (was incorrectly
-          // using routeReasonCode buckets, which dropped AGGREGATE_TICKER_MATCH
-          // routes on watchlist names into the watchlist bucket and then hid
-          // them — the 2026-05-10 weekly auto-cron hit this).
+          // Discovery's job is finding NEW coverage: the pull tools' universe
+          // scope filters by "ticker NOT in coveredTickers".
           discoveryOnly: true,
           coveredTickers,
         });
@@ -247,11 +250,6 @@ export const discoveryRun = inngest.createFunction(
             maxOpenPositions: config.maxOpenPositions,
             signalTypes: config.signalTypes,
             watchlist: watchlistSymbols,
-            // Feeds-aware Step 1 — the prompt only tells the agent to call
-            // get_market_movers / get_earnings_calendar when the analyst's
-            // feeds list includes the matching FEED. Empty feeds → only
-            // read_signals runs (the universal push channel).
-            feeds: config.feeds,
           },
           // Phase 2 — exposed verbatim in the prompt body so the agent has
           // a value to plug into dispatch_thesis_research(analyst_id).
@@ -260,7 +258,8 @@ export const discoveryRun = inngest.createFunction(
         });
 
         const userPrompt =
-          "Begin your weekly discovery scan (Phase 2 — two-pass funnel). Pass 1: ALWAYS call read_signals; only call get_market_movers(scope:\"universe\") if your Subscribed feeds include a MARKET_MOVERS_* feed; only call get_earnings_calendar(scope:\"universe\") if you're subscribed to EARNINGS_CALENDAR. Triage the resulting pool with 1-2 sentence gut-takes, then run cheap research (get_theses + get_stock_data) on the survivors and score them on the 4-dim composite. Pass 2: for composite ≥ 4, call dispatch_thesis_research(mode:\"mint\") — fire-and-forget, honoring the dispatch cap stated in your system prompt. For composite < 4 but researched, record_thesis(direction:'PASS'). For triage-dismissed candidates, no thesis row. Don't re-filter by universe — the tools did it.";
+          (focus ? `THE ASK FOR THIS RUN: ${focus}\n\nRead the pool through that ask first — if it names a report window, start from get_earnings_calendar(window:"reported", scope:"universe") as your system prompt describes. Then the standard pass.\n\n` : "") +
+          "Begin your weekly discovery scan (Phase 2 — two-pass funnel). Pass 1: call get_market_movers(scope:\"universe\") for gainers and most-active (and losers if your edge buys dislocations), and get_earnings_calendar(scope:\"universe\"). Triage the resulting pool with 1-2 sentence gut-takes, then run cheap research (get_theses + get_stock_data) on the survivors and score them on the 4-dim composite. Pass 2: for composite ≥ 4, call dispatch_thesis_research(mode:\"mint\") — fire-and-forget, honoring the dispatch cap stated in your system prompt. For composite < 4 but researched, record_thesis(direction:'PASS'). For triage-dismissed candidates, no thesis row. Don't re-filter by universe — the tools did it.";
 
         try {
           const { steps, response } = await generateText({

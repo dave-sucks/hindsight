@@ -99,7 +99,30 @@ async function findOrCreateEmailMonitor(
   });
 }
 
+/**
+ * RETIRED 2026-09-10 — the Signals pipeline is switched off (principal's
+ * decision; docs/plans/MARKET_DATA.md §1). This webhook was the last live
+ * producer: every newsletter Resend forwarded became GPT-extracted
+ * "signals" (92 in the week before this), which then called a router that
+ * has been paused since 2026-05-31 — and, on any BREAKING label on a held
+ * ticker, could spawn a full daily run. That spawn is the one path in the
+ * retired machinery that cost money.
+ *
+ * Acknowledge and drop. 200 so Resend stops retrying; no signature check
+ * because nothing is acted on. The extraction code below is left intact
+ * and unreachable — it is the shape a rebuilt news layer would plug back
+ * into (DAV-196). The forward itself should also be stopped at Resend so
+ * the mailbox stops paying for delivery.
+ */
+const SIGNALS_RETIRED = true;
+
 export async function POST(req: Request) {
+  if (SIGNALS_RETIRED) {
+    // Drain the body so the connection closes cleanly; ignore the content.
+    await req.text().catch(() => "");
+    return NextResponse.json({ ok: true, skipped: "signals-retired" });
+  }
+
   const secret = process.env.RESEND_WEBHOOK_SECRET;
   if (!secret) {
     console.error("[email-ingest] RESEND_WEBHOOK_SECRET not configured");
