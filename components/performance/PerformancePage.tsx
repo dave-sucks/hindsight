@@ -7,6 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { cn, PNL_HEX } from '@/lib/utils';
 import type { AnalyticsData, AnalystStat, ResearchRunSummary, CalibrationData } from '@/lib/actions/analytics.actions';
+import type { SetupRow } from '@/lib/performance/setup-scorecard';
+import { SetupScorecard } from '@/components/performance/SetupScorecard';
 import {
   ResponsiveContainer,
   LineChart,
@@ -380,9 +382,11 @@ function CalibrationCard({ calibration }: { calibration: CalibrationData }) {
 
 interface Props {
   data: AnalyticsData;
+  /** Per-setup rows (DAV-248) — lib/performance/load-setup-scorecard. */
+  scorecard?: SetupRow[];
 }
 
-export default function PerformancePage({ data }: Props) {
+export default function PerformancePage({ data, scorecard = [] }: Props) {
   const [activeRange, setActiveRange] = useState<TimeRange>('1M');
 
   const { equityCurve, directionBreakdown, durationBreakdown, sectorBreakdown, confidenceScatter, stats, analystBreakdown, recentRuns, calibration } = data;
@@ -670,6 +674,9 @@ export default function PerformancePage({ data }: Props) {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Scorecard by setup (DAV-248) ── */}
+      <SetupScorecard rows={scorecard} />
 
       {/* ── Agent Calibration (only when AccuracyReport data exists) ── */}
       {calibration && <CalibrationCard calibration={calibration} />}
