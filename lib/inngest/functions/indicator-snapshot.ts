@@ -3,7 +3,8 @@
  * ticker on the book and store the numbers a trigger reads. DAV-247.
  *
  * "On the book" = every HOLDING / WATCHING / PROMOTED thesis under an
- * enabled analyst — the same set the trigger evaluator walks. One year of
+ * enabled analyst — the same set the trigger evaluator walks — plus SPY,
+ * which the regime reading uses (DAV-251). One year of
  * completed SIP daily bars per ticker (lib/alpaca.ts getDailyBars), SPY
  * once, lib/market-data/price-structure.ts for the arithmetic, one
  * TickerIndicators row per (ticker, session).
@@ -43,7 +44,8 @@ export const indicatorSnapshot = inngest.createFunction(
         select: { ticker: true },
         distinct: ["ticker"],
       });
-      return rows.map((r) => r.ticker.toUpperCase()).sort();
+      // SPY rides along: the regime (lib/agent/regime.ts) reads its snapshot.
+      return Array.from(new Set(["SPY", ...rows.map((r) => r.ticker.toUpperCase())])).sort();
     });
     if (tickers.length === 0) return { written: 0, skipped: [] as string[] };
 

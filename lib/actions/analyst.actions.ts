@@ -34,6 +34,8 @@ export interface AnalystConfig {
   tradingEnvironment: "PAPER" | "LIVE";
   /** Most in one stock — the ceiling for adding to a winner. */
   maxPositionTotal: number;
+  /** Risk per trade, % of equity — sizes a buy from the stop distance (DAV-251). */
+  riskPct: number;
   analystPrompt: string | null;
   description: string | null;
   sectors: string[];
@@ -45,7 +47,6 @@ export interface AnalystConfig {
   /** Per-entry floor; 0 = no floor. Enforced in place_trade. */
   minPositionSize: number;
   maxPositionSize: number;
-  maxRiskPct: number | null;
   minMarketCapTier: string | null;
   exchanges: string[];
   watchlist: string[];
@@ -517,6 +518,7 @@ export async function getAnalystDetail(
     enabled: config.enabled,
     tradingEnvironment: (config.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER",
     maxPositionTotal: config.maxPositionTotal,
+    riskPct: config.riskPct,
     analystPrompt: config.analystPrompt,
     description: config.description,
     sectors: config.sectors as string[],
@@ -527,7 +529,6 @@ export async function getAnalystDetail(
     maxOpenPositions: config.maxOpenPositions,
     minPositionSize: config.minPositionSize,
     maxPositionSize: config.maxPositionSize,
-    maxRiskPct: config.maxRiskPct,
     minMarketCapTier: config.minMarketCapTier,
     exchanges: (config.exchanges as string[]) ?? [],
     watchlist: watchlistTheses.map((t) => t.ticker),
@@ -733,7 +734,6 @@ export async function createAnalystFromWizard(
       maxPositionSize: data.maxPositionSize,
       maxOpenPositions: 5,
       minConfidence: data.minConfidence,
-      maxRiskPct: 2,
       dailyLossLimit: 300,
       holdDurations: data.holdDurations,
       directionBias: data.directionBias,
@@ -954,8 +954,7 @@ export async function createAnalystFromBuilder(
         maxPositionSize: posSize,
         maxOpenPositions: maxPos,
         minConfidence: minConf,
-        maxRiskPct: 2,
-        dailyLossLimit: 300,
+          dailyLossLimit: 300,
         holdDurations: holdDurs,
         directionBias: bias,
         signalTypes: signals,
@@ -1137,10 +1136,11 @@ type UpdatableField =
   | "maxPositionSize"
   // Most in one stock — how far adding to a winner may grow a position.
   | "maxPositionTotal"
+  // Risk per trade, % of equity — the one sizing setting (DAV-251).
+  | "riskPct"
   | "maxOpenPositions"
-  // NOTE: maxRiskPct and scheduleTime removed from the editable surface —
-  // both are orphan fields at runtime (no code path reads them). If
-  // scheduling becomes per-analyst in the future, add scheduleTime back.
+  // NOTE: scheduleTime is an orphan field (no code path reads it). If
+  // scheduling becomes per-analyst in the future, add it back.
   | "holdDurations"
   | "watchlist"
   | "exclusionList"
@@ -1223,6 +1223,11 @@ export async function updateAnalystField(
       ),
     ).sort((a, b) => a - b);
     storedValue = days;
+  } else if (field === "riskPct") {
+    // % of equity at risk per trade. Bounded to a sane band so a typo (10
+    // instead of 1.0) can't size a buy at ten times the intended risk.
+    const n = Number(value);
+    storedValue = Number.isFinite(n) ? Math.min(Math.max(n, 0.1), 3) : 1;
   }
 
   await prisma.agentConfig.update({
