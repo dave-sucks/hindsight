@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -55,7 +56,7 @@ function ReportLine({
       <span className="text-muted-foreground">{label}</span>
       <span className="text-muted-foreground">{estimate != null ? `${fmt(estimate)} est` : "—"}</span>
       <span className="font-medium">{actual != null ? fmt(actual) : "—"}</span>
-      <span className={cn("font-medium", pct == null ? "text-muted-foreground" : pct >= 0 ? "text-emerald-500" : "text-red-500")}>
+      <span className={cn("font-medium", pct == null ? "text-muted-foreground" : pct >= 0 ? "text-positive" : "text-negative")}>
         {pct == null ? "—" : `${pct >= 0 ? "Beat" : "Missed"} ${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(2)}%`}
       </span>
     </div>
@@ -122,28 +123,27 @@ export function StockEarningsSection({ symbol }: { symbol: string }) {
       {/* Quarter chips — next first, then history newest → oldest */}
       <div className="flex flex-wrap gap-1.5">
         {data.next ? (
-          <span className="rounded-md border px-2 py-1 text-xs tabular-nums">
+          <Badge variant="outline" className="tabular-nums">
             {data.next.year != null && data.next.quarter != null
               ? `Q${data.next.quarter} ${data.next.year}`
-              : "Next"}{" "}
+              : "Next"}
             <span className="text-muted-foreground">
               · {fmtDate(data.next.reportDate).replace(/^\w+, /, "")}
-              {bell(data.next.hour) ? ` ${bell(data.next.hour)}` : ""}
             </span>
-          </span>
+          </Badge>
         ) : null}
         {data.recent.map((q) => (
-          <span key={q.period} className="rounded-md border px-2 py-1 text-xs tabular-nums">
-            {q.period.slice(0, 7)}{" "}
+          <Badge key={q.period} variant="outline" className="tabular-nums">
+            {q.period.slice(0, 7)}
             {q.surprisePct != null ? (
-              <span className={q.surprisePct >= 0 ? "text-emerald-500" : "text-red-500"}>
+              <span className={q.surprisePct >= 0 ? "text-positive" : "text-negative"}>
                 {q.surprisePct >= 0 ? "+" : "−"}
                 {Math.abs(q.surprisePct).toFixed(2)}%
               </span>
             ) : (
               <span className="text-muted-foreground">—</span>
             )}
-          </span>
+          </Badge>
         ))}
       </div>
 

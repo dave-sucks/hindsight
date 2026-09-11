@@ -4,26 +4,29 @@
  * The earnings calendar — a week strip and one day's reporters with the
  * numbers. Live from the vendor on every day change; nothing stored.
  *
- * Our names sort first and carry the analyst's badge; every row has the
- * same "send to agent" control the watchlist uses, so a name that just
- * reported is one click from an analyst researching it.
+ * Built on the app's own row: every reporter is a `TradeRowShell` (the
+ * ONE trade-row design), inside the same card-table wrapper the dashboard
+ * uses, under the same page container as Runs. Send-to-agent is the row's
+ * kebab menu, one item per analyst not already on the name.
  */
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { ChipTabs } from "@/components/ui/chip-tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TickerBadge } from "@/components/ui/ticker-badge";
+import { PnlBadge } from "@/components/ui/pnl-badge";
 import { PriceChange } from "@/components/ui/price-change";
-import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
+import { TradeRowShell } from "@/components/ui/trade-row";
+import { StockLogo } from "@/components/StockLogo";
+import { sendToThesisWriter } from "@/lib/actions/watchlist.actions";
 import { cn } from "@/lib/utils";
 import type { EarningsDayView, EarningsDayRow } from "@/lib/market-data/earnings-calendar";
 
 const DAY_MS = 86_400_000;
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+const utc = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
 function money(n: number): string {
   const a = Math.abs(n);
@@ -32,44 +35,56 @@ function money(n: number): string {
   return `$${n.toFixed(0)}`;
 }
 
-function bell(hour: string | null): string {
-  return hour === "bmo" ? "Before open" : hour === "amc" ? "After close" : "";
+function bell(hour: string | null): string | null {
+  return hour === "bmo" ? "before open" : hour === "amc" ? "after close" : null;
 }
 
-/** "est $0.94 → $1.11" with the beat/miss colored. Null actual = not yet. */
-function EstActual({
-  label,
-  estimate,
-  actual,
-  fmt,
-}: {
-  label: string;
-  estimate: number | null;
-  actual: number | null;
-  fmt: (n: number) => string;
-}) {
-  const pct =
-    actual != null && estimate != null && estimate !== 0
-      ? ((actual - estimate) / Math.abs(estimate)) * 100
-      : null;
+function pctOf(actual: number | null, estimate: number | null): number | null {
+  if (actual == null || estimate == null || estimate === 0) return null;
+  return ((actual - estimate) / Math.abs(estimate)) * 100;
+}
+
+/** "EPS $1.92 vs $1.78 est · Rev $19.34B vs $19.53B est, missed" */
+function Figures({ row }: { row: EarningsDayRow }) {
+  const parts: React.ReactNode[] = [];
+  if (row.epsActual != null) {
+    parts.push(
+      <span key="eps">
+        EPS ${row.epsActual.toFixed(2)}
+        {row.epsEstimate != null ? ` vs $${row.epsEstimate.toFixed(2)} est` : ""}
+      </span>,
+    );
+  } else if (row.epsEstimate != null) {
+    parts.push(<span key="eps">EPS est ${row.epsEstimate.toFixed(2)}</span>);
+  }
+  if (row.revenueActual != null) {
+    const p = pctOf(row.revenueActual, row.revenueEstimate);
+    parts.push(
+      <span key="rev">
+        Rev {money(row.revenueActual)}
+        {row.revenueEstimate != null ? ` vs ${money(row.revenueEstimate)} est` : ""}
+        {p != null ? (
+          <span className={cn("ml-1", p >= 0 ? "text-positive" : "text-negative")}>
+            {p >= 0 ? "beat" : "missed"}
+          </span>
+        ) : null}
+      </span>,
+    );
+  } else if (row.revenueEstimate != null) {
+    parts.push(<span key="rev">Rev est {money(row.revenueEstimate)}</span>);
+  }
+  const when = bell(row.hour);
+  if (row.epsActual == null && when) parts.push(<span key="when">{when}</span>);
+  if (parts.length === 0) return <>—</>;
   return (
-    <div className="flex items-baseline gap-1.5 text-sm tabular-nums">
-      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground w-8">
-        {label}
-      </span>
-      <span className="text-muted-foreground">{estimate != null ? `est ${fmt(estimate)}` : "no est"}</span>
-      {actual != null ? (
-        <>
-          <span className="text-muted-foreground/60">→</span>
-          <span className="font-medium">{fmt(actual)}</span>
-          {pct != null ? (
-            <span className={pct >= 0 ? "text-emerald-500" : "text-red-500"}>
-              {pct >= 0 ? "beat" : "missed"} {Math.abs(pct).toFixed(1)}%
-            </span>
-          ) : null}
-        </>
-      ) : null}
-    </div>
+    <>
+      {parts.map((p, i) => (
+        <span key={i}>
+          {i > 0 ? <span className="mx-1 text-muted-foreground/40">·</span> : null}
+          {p}
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -81,39 +96,52 @@ function Row({
   analysts: Array<{ id: string; name: string }>;
 }) {
   const onBook = row.analystIds.length > 0;
-  const reported = row.epsActual != null;
+  const menuItems = analysts
+    .filter((a) => !row.analystIds.includes(a.id))
+    .map((a) => ({
+      label: `Send to ${a.name}`,
+      onSelect: () => {
+        sendToThesisWriter(a.id, row.symbol, "horizon")
+          .then(() => toast.success(`${row.symbol} sent to ${a.name} — it lands shortly.`))
+          .catch((err: unknown) =>
+            toast.error(err instanceof Error ? err.message : `Couldn't send ${row.symbol}`),
+          );
+      },
+    }));
+
   return (
-    <div className="flex items-start gap-3 py-3 border-b border-border last:border-0">
-      <Link href={`/stocks/${row.symbol}`} className="shrink-0 pt-0.5">
-        <TickerBadge ticker={row.symbol} direction={row.changePct == null ? null : row.changePct >= 0 ? "up" : "down"} />
-      </Link>
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Link href={`/stocks/${row.symbol}`} className="text-sm font-medium hover:underline truncate">
-            {row.companyName ?? row.symbol}
-          </Link>
-          {onBook ? <Badge variant="secondary">On your book</Badge> : null}
-          <span className="text-xs text-muted-foreground">{bell(row.hour)}</span>
-          {!reported ? <span className="text-xs text-muted-foreground">· not yet reported</span> : null}
-        </div>
-        <EstActual label="EPS" estimate={row.epsEstimate} actual={row.epsActual} fmt={(n) => `$${n.toFixed(2)}`} />
-        <EstActual label="Rev" estimate={row.revenueEstimate} actual={row.revenueActual} fmt={money} />
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {row.price != null ? (
-          <div className="text-right">
-            <div className="text-sm font-medium tabular-nums">${row.price.toFixed(2)}</div>
+    <TradeRowShell
+      href={`/stocks/${row.symbol}`}
+      leading={<StockLogo ticker={row.symbol} size="md" className="rounded-md" />}
+      primary={
+        <>
+          <span className="text-sm font-medium">{row.symbol}</span>
+          {row.companyName ? (
+            <span className="text-xs text-muted-foreground truncate max-w-[14rem]">{row.companyName}</span>
+          ) : null}
+          {onBook ? <span className="size-1.5 rounded-full bg-primary" title="On your book" /> : null}
+        </>
+      }
+      trailingTop={
+        row.price != null ? (
+          <span className="inline-flex items-center gap-1.5 text-sm tabular-nums font-light">
+            ${row.price.toFixed(2)}
             {row.changePct != null ? (
               <PriceChange dollarChange={0} percentChange={row.changePct} percentOnly size="sm" />
             ) : null}
-          </div>
-        ) : null}
-        <WatchlistDropdown
-          symbol={row.symbol}
-          analysts={analysts.map((a) => ({ ...a, isWatched: row.analystIds.includes(a.id) }))}
-        />
-      </div>
-    </div>
+          </span>
+        ) : undefined
+      }
+      secondary={<Figures row={row} />}
+      trailingBottom={
+        row.surprisePct != null ? (
+          <PnlBadge value={row.surprisePct} format="percent" className="text-xs" />
+        ) : row.epsActual == null ? (
+          <span className="text-[10px] text-muted-foreground/60">not yet reported</span>
+        ) : undefined
+      }
+      menuItems={menuItems}
+    />
   );
 }
 
@@ -143,81 +171,78 @@ export function EarningsCalendar({
     load(date);
   }, [date, load]);
 
-  const shift = (days: number) =>
-    setDate(isoDay(new Date(new Date(`${date}T00:00:00Z`).getTime() + days * DAY_MS)));
   const today = isoDay(new Date());
+  const shift = (days: number) => setDate(isoDay(new Date(utc(date).getTime() + days * DAY_MS)));
 
-  const strip = view?.days ?? Array.from({ length: 7 }, (_, i) => {
-    const anchor = new Date(`${date}T00:00:00Z`);
-    const sunday = new Date(anchor.getTime() - anchor.getUTCDay() * DAY_MS);
-    return { date: isoDay(new Date(sunday.getTime() + i * DAY_MS)), count: 0 };
+  // Sun..Sat around the date — from the response when we have it, else
+  // computed so the strip paints before the first load returns.
+  const strip =
+    view?.days ??
+    Array.from({ length: 7 }, (_, i) => {
+      const sunday = new Date(utc(date).getTime() - utc(date).getUTCDay() * DAY_MS);
+      return { date: isoDay(new Date(sunday.getTime() + i * DAY_MS)), count: 0 };
+    });
+  const options = strip.map((d) => ({
+    value: d.date,
+    label: utc(d.date).toLocaleDateString("en-US", { weekday: "short", day: "numeric", timeZone: "UTC" }),
+    title: d.count > 0 ? `${d.count} report${d.count === 1 ? "" : "s"}` : "No reports",
+  }));
+  const selected = strip.find((d) => d.date === date);
+  const dayLabel = utc(date).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
   });
 
   return (
-    <div className="space-y-4">
-      {/* Week strip */}
+    <div className="space-y-3">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon-sm" aria-label="Previous week" onClick={() => shift(-7)}>
-          <ChevronLeft className="size-4" />
+          <ChevronLeft className="h-4 w-4" />
         </Button>
-        <div className="grid flex-1 grid-cols-7 gap-1.5">
-          {strip.map((d) => {
-            const dt = new Date(`${d.date}T00:00:00Z`);
-            const active = d.date === date;
-            return (
-              <button
-                key={d.date}
-                type="button"
-                onClick={() => setDate(d.date)}
-                className={cn(
-                  "rounded-md border px-2 py-2 text-center transition-colors",
-                  active ? "bg-muted border-foreground/30" : "hover:bg-muted/50",
-                  d.date === today && !active ? "border-primary/40" : "",
-                )}
-              >
-                <div className="text-xs text-muted-foreground">
-                  {dt.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })}
-                </div>
-                <div className="text-sm font-medium">
-                  {dt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
-                </div>
-                <div className="text-xs text-muted-foreground tabular-nums">
-                  {d.count > 0 ? `${d.count} report${d.count === 1 ? "" : "s"}` : "—"}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        <ChipTabs options={options} value={date} onChange={(v) => v && setDate(v)} clearable={false} />
         <Button variant="ghost" size="icon-sm" aria-label="Next week" onClick={() => shift(7)}>
-          <ChevronRight className="size-4" />
+          <ChevronRight className="h-4 w-4" />
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setDate(today)} disabled={date === today}>
+        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setDate(today)} disabled={date === today}>
           Today
         </Button>
       </div>
 
-      {/* Day list */}
-      <Card>
-        <CardContent className="p-6">
-          {error ? (
-            <p className="text-sm text-red-500">{error}</p>
-          ) : loading && !view ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
+      {error ? (
+        <div className="rounded-xl border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">{error}</p>
+        </div>
+      ) : loading && !view ? (
+        <div className="rounded-lg border overflow-hidden bg-card">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 last:border-0">
+              <Skeleton className="size-8 rounded-md" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-40" />
+                <Skeleton className="h-3 w-72" />
+              </div>
             </div>
-          ) : view && view.rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No notable reports this day.</p>
-          ) : (
-            <div className={cn(loading ? "opacity-60" : "")}>
-              {view?.rows.map((r) => (
-                <Row key={r.symbol} row={r} analysts={analysts} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          ))}
+        </div>
+      ) : view && view.rows.length === 0 ? (
+        <div className="rounded-xl border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">No notable reports on {dayLabel}.</p>
+        </div>
+      ) : (
+        <div className={cn("rounded-lg border overflow-hidden bg-card", loading && "opacity-60")}>
+          <div className="flex items-center justify-between px-3 py-2 border-b">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{dayLabel}</span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {selected?.count ?? view?.rows.length ?? 0} reports
+            </span>
+          </div>
+          {view?.rows.map((r) => (
+            <Row key={r.symbol} row={r} analysts={analysts} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

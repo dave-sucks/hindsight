@@ -28,9 +28,10 @@ export default async function EarningsPage() {
       })
     : [];
 
+  // Same container as Runs and Intelligence.
   return (
-    <div className="space-y-4">
-      <div>
+    <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto space-y-3">
+      <div className="mb-4 space-y-1">
         <h1 className="text-2xl font-semibold">Earnings</h1>
         <p className="text-sm text-muted-foreground">
           Who reports this week, and how it went. Your names first.
