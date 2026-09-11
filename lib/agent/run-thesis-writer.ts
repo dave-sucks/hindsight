@@ -40,6 +40,7 @@
  * own its lifecycle.
  */
 
+import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { generateText, stepCountIs, tool } from "ai";
 import type { ModelMessage } from "ai";
 import { z } from "zod";
@@ -296,6 +297,12 @@ export interface WriterResearchPromptOpts {
   /** ISO YYYY-MM-DD (UTC) — date-awareness block. */
   runDate: string;
   promotionContext?: RunThesisWriterArgs["promotionContext"];
+  /**
+   * This analyst's own closed-trade record by setup (DAV-248), one data line
+   * each — "Base breakout: 12 trades, 42% win, +1.9R, 11d held, …". Empty or
+   * absent → no block.
+   */
+  setupRecord?: string[];
   /** P1-35: this analyst sold this ticker within the last 14 days. */
   priorExit?: {
     exitPrice: number | null;
@@ -539,7 +546,11 @@ every field; the judgment rules:
      HIGH conviction. Conviction is the size decision.
    • confidence context: this analyst's minimum confidence for
      trade-eligible coverage is ${opts.minConfidence}/100 — calibrate composite +
-     conviction honestly against that bar.
+     conviction honestly against that bar.${
+       opts.setupRecord?.length
+         ? `\n   • your record by setup (closed trades since 2026-05-27):\n${opts.setupRecord.map((l) => `       ${l}`).join("\n")}`
+         : ""
+     }
    • entryQuality on a COMPOUNDER horizon: a stock at or near its highs on a
      working thesis is NOT a 0. Score the entry on whether the thesis is
      CONFIRMED (breakout above a base, reclaim of the 50-day, or a pullback
@@ -773,6 +784,11 @@ export async function writerResearchPhase(
       runDate: new Date().toISOString().slice(0, 10),
       promotionContext: args.promotionContext ?? null,
       priorExit,
+      setupRecord: await loadScorecardLines({
+        accountId: analyst.accountId,
+        analystId: analyst.id,
+        environment: analyst.tradingEnvironment ?? "PAPER",
+      }),
     });
     const userPrompt = `═══════════════════════════════════════════════════════════════════
 GROUND-TRUTH DATA — use these numbers; do not invent or contradict

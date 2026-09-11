@@ -923,6 +923,10 @@ model Position {
   // Targets & exit strategy
   targetPrice         Float?
   stopLoss            Float?
+  /// The stop when the position opened (after any edit at approval). Never
+  /// moves: R = gain ÷ (entry − initialStop) for the setup scorecard
+  /// (DAV-248). stopLoss above moves with the plan; this is the risk taken.
+  initialStop         Float?
   exitStrategy        String // "PRICE_TARGET" | "TIME_BASED" | "TRAILING" | "MANUAL"
   exitDate            DateTime? // for TIME_BASED exits
   trailingStopPct     Float? // for TRAILING exits
