@@ -21,6 +21,7 @@ import { getDailyBars } from "@/lib/alpaca";
 import { computePriceStructure } from "@/lib/market-data/price-structure";
 import { toIndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { CHART_SESSIONS } from "@/lib/market-data/benchmark-bars";
+import { fetchOpenMarketBuys } from "@/lib/market-data/insider-cluster";
 
 /** Tickers per step — bounds one step's wall time (≈10 Alpaca pulls). */
 const CHUNK = 10;
@@ -65,6 +66,10 @@ export const indicatorSnapshot = inngest.createFunction(
               continue;
             }
             const snapshot = toIndicatorSnapshot(structure, bars);
+            // Open-market insider buys for INSIDER_CLUSTER (DAV-252). Fail-open:
+            // a vendor miss leaves the field off and that kind reads false.
+            const buys = ticker === "SPY" ? null : await fetchOpenMarketBuys(ticker).catch(() => null);
+            if (buys) snapshot.insiderBuys = buys;
             await prisma.tickerIndicators.upsert({
               where: { ticker_asOf: { ticker, asOf: snapshot.asOf } },
               create: { ticker, asOf: snapshot.asOf, volumeFeed: feed, snapshot: snapshot as unknown as object },

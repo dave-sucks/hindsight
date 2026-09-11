@@ -863,6 +863,7 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
       return 7;
     case "EARNINGS_WITHIN":
     case "EARNINGS_SINCE":
+    case "INSIDER_CLUSTER":
       // "Reports within N days" is true every day of the approach, so the
       // cooldown is what makes it fire once. 30 clears any legal window
       // (≤14) with room and is well short of a quarter, so the next

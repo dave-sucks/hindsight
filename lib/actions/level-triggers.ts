@@ -68,6 +68,7 @@ export const LEVEL_ELIGIBLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"
     "PCT_FROM_52W_HIGH",
     "RS_VS_SPY",
     "GAP_UP",
+    "INSIDER_CLUSTER",
   ]);
 
 export interface LevelTriggerContext {

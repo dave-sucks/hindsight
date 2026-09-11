@@ -70,6 +70,7 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
 import { getTodaySessionBars } from "@/lib/alpaca";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
+import { describeCluster, insiderCluster } from "@/lib/market-data/insider-cluster";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -128,6 +129,7 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
     case "RS_VS_SPY":
     case "GAP_UP":
     case "RSI":
+    case "INSIDER_CLUSTER":
     case "REVIEW_CADENCE":
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
@@ -182,6 +184,7 @@ function needsIndicators(p: TriggerPredicate): boolean {
     case "RS_VS_SPY":
     case "GAP_UP":
     case "RSI":
+    case "INSIDER_CLUSTER":
       return true;
     case "PRICE_MOVE_PCT":
       return p.window !== "1D";
@@ -922,13 +925,18 @@ export const triggerEvaluator = inngest.createFunction(
           // carries the reported figures.
           const upcoming = earnings.upcoming.get(thesis.ticker);
           const report = earnings.reported.get(thesis.ticker);
-          const firedContext = needsUpcomingEarnings(t.predicate)
-            ? upcoming
-              ? describeUpcomingReport(upcoming, now)
-              : null
-            : report && needsEarningsData(t.predicate)
-              ? describeEarningsReport(report)
-              : null;
+          // An insider cluster names its buyers on the audit row (DAV-252).
+          const snapBuys = indicators.get(thesis.ticker)?.insiderBuys;
+          const firedContext =
+            t.predicate.kind === "INSIDER_CLUSTER" && snapBuys
+              ? describeCluster(insiderCluster(snapBuys, t.predicate.days, now))
+              : needsUpcomingEarnings(t.predicate)
+                ? upcoming
+                  ? describeUpcomingReport(upcoming, now)
+                  : null
+                : report && needsEarningsData(t.predicate)
+                  ? describeEarningsReport(report)
+                  : null;
 
           // DEMOTE is deterministic and costs nothing to be wrong about — no
           // money moves — so it runs inline. Never a tactical spawn: arming

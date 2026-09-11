@@ -9,6 +9,7 @@
  */
 
 import type { ToolContext } from "@/lib/agent/tool-context";
+import { describeCluster, fetchOpenMarketBuys, insiderCluster } from "@/lib/market-data/insider-cluster";
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 import {
   formatDataBlock,
@@ -194,7 +195,12 @@ export async function pullThesisData(
     analystTargets: sd?.priceTargets ?? null,
   };
 
+  // Open-market insider buying (DAV-252) — one Finnhub call, fail-open.
+  const buys = await fetchOpenMarketBuys(T).catch(() => null);
+  const clusterLine = buys ? describeCluster(insiderCluster(buys, 30)) : null;
+
   const rawDataBlock = formatDataBlock({
+    insiderCluster: clusterLine,
     ticker: T,
     pulledAt,
     stockData: stockBlockInput,
