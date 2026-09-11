@@ -18,9 +18,8 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getDailyBars } from "@/lib/alpaca";
-import { computePriceStructure } from "@/lib/market-data/price-structure";
-import { toIndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { CHART_SESSIONS } from "@/lib/market-data/benchmark-bars";
+import { computeAndStoreSnapshot } from "@/lib/market-data/ensure-snapshots";
 
 /** Tickers per step — bounds one step's wall time (≈10 Alpaca pulls). */
 const CHUNK = 10;
@@ -58,18 +57,11 @@ export const indicatorSnapshot = inngest.createFunction(
         const missed: string[] = [];
         for (const ticker of chunk) {
           try {
-            const { feed, bars } = await getDailyBars(ticker, CHART_SESSIONS);
-            const structure = computePriceStructure({ bars, spyBars: spy });
-            if (!structure) {
-              missed.push(`${ticker}(${bars.length} bars)`);
+            const snapshot = await computeAndStoreSnapshot(ticker, spy);
+            if (!snapshot) {
+              missed.push(`${ticker}(too few bars)`);
               continue;
             }
-            const snapshot = toIndicatorSnapshot(structure, bars);
-            await prisma.tickerIndicators.upsert({
-              where: { ticker_asOf: { ticker, asOf: snapshot.asOf } },
-              create: { ticker, asOf: snapshot.asOf, volumeFeed: feed, snapshot: snapshot as unknown as object },
-              update: { volumeFeed: feed, snapshot: snapshot as unknown as object, computedAt: new Date() },
-            });
             ok++;
           } catch (err) {
             missed.push(`${ticker}(${err instanceof Error ? err.message.slice(0, 60) : "error"})`);

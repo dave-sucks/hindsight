@@ -100,11 +100,16 @@ function isProtectiveStop(t: Trigger, direction: string | null): boolean {
  */
 function weakens(prev: TriggerPredicate, next: TriggerPredicate): boolean {
   if (prev.kind !== next.kind) return false;
+  // Moving a stop from "trades below $X" to "CLOSES below $X" loosens it —
+  // the stock can spend all day under the line and never fire (DAV-247
+  // review). Same level, weaker protection.
+  const toCloseBasis = (p: TriggerPredicate, n: TriggerPredicate) =>
+    (p as { basis?: string }).basis !== "close" && (n as { basis?: string }).basis === "close";
   switch (prev.kind) {
     case "PRICE_BELOW":
-      return (next as { level: number }).level < prev.level;
+      return (next as { level: number }).level < prev.level || toCloseBasis(prev, next);
     case "PRICE_ABOVE":
-      return (next as { level: number }).level > prev.level;
+      return (next as { level: number }).level > prev.level || toCloseBasis(prev, next);
     case "PRICE_MOVE_PCT":
     case "GAIN_FROM_ENTRY":
     case "TRAILING_FROM_HIGH":

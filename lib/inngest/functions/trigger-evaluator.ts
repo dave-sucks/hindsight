@@ -69,7 +69,8 @@ import {
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
 import { getTodaySessionBars } from "@/lib/alpaca";
-import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
+import { ensureIndicatorSnapshots } from "@/lib/market-data/ensure-snapshots";
+import { describeChartFire } from "@/lib/agent/triggers/chart-context";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -805,13 +806,20 @@ export const triggerEvaluator = inngest.createFunction(
       );
       const quoteByTicker = new Map(quoteResults);
 
-      // The daily indicator snapshot — only when some rung reads the chart.
-      const wantsIndicators = candidates.some((c) =>
-        c.ladder.some((t) => needsIndicators(t.predicate)),
-      );
-      const indicators = wantsIndicators
-        ? await loadIndicatorSnapshots(uniqueTickers, now).catch((err) => {
-            console.error("[trigger-evaluator] indicator snapshot load failed — chart kinds read false:", err);
+      // The daily indicator snapshot — only for tickers with a rung that
+      // reads the chart. A ticker added since 06:30 has none yet; a few are
+      // computed on the spot each pass so a mid-day add isn't dark until
+      // tomorrow (ensure-snapshots, DAV-247 review).
+      const chartTickers = Array.from(
+        new Set(
+          candidates
+            .filter((c) => c.ladder.some((t) => needsIndicators(t.predicate)))
+            .map((c) => c.thesis.ticker),
+        ),
+      ).filter((t) => uniqueTickers.includes(t));
+      const indicators = chartTickers.length
+        ? await ensureIndicatorSnapshots(chartTickers, { now }).catch((err) => {
+            console.error("[trigger-evaluator] indicator snapshots unavailable — chart kinds read false:", err);
             return new Map();
           })
         : new Map();
@@ -928,7 +936,13 @@ export const triggerEvaluator = inngest.createFunction(
               : null
             : report && needsEarningsData(t.predicate)
               ? describeEarningsReport(report)
-              : null;
+              : needsIndicators(t.predicate)
+                ? describeChartFire(t.predicate, indicators.get(thesis.ticker), latestQuote?.price, {
+                    open: quote?.open ?? null,
+                    volume: todayBar?.volume ?? null,
+                    prevClose: quote?.prevClose ?? null,
+                  })
+                : null;
 
           // DEMOTE is deterministic and costs nothing to be wrong about — no
           // money moves — so it runs inline. Never a tactical spawn: arming

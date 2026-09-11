@@ -44,6 +44,7 @@ import {
   moveNumberInText,
   predicateFor,
   rationaleFor,
+  withBasisOf,
   type LevelSlot,
 } from "./price-levels";
 import {
@@ -278,6 +279,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       if (wanted.field === "level" && slot === "ENTRY" && !tapeKnown && !meta.kind) {
         predicate = { kind: target.predicate.kind as "PRICE_ABOVE" | "PRICE_BELOW", level: wanted.value };
       }
+      // Moving the number never changes when it fires (DAV-247 review).
+      if (wanted.field === "level") predicate = withBasisOf(target.predicate, predicate);
     }
     const action = op.action ?? target.action;
     let rationale = op.rationale?.trim() || target.rationale;
