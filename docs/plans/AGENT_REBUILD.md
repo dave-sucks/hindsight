@@ -372,6 +372,14 @@ half-kinds.
 
 ## 4. The PR list, in Dave's order, with what blocks what
 
+Linear project **Agent Rebuild** (team Davesucks) holds one ticket per PR
+with the blocking relations below encoded as Linear relations:
+PR 1 = DAV-243 · PR 2 = DAV-247 · PR 7 = DAV-250 · PR 3 = DAV-244 ·
+PR 4 = DAV-249 · PR 5 = DAV-253 · PR 8 = DAV-251 · PR 6 = DAV-254 ·
+PR 9 = DAV-255 · PR 11 = DAV-248 · PR 10 = DAV-252. Dave's rulings =
+DAV-245; the "#621 closed" gate = DAV-246. Each ticket is written to be run
+by a fresh session with no other context.
+
 Order: **1, 2, 7, 3, 4, 5, 8, 6, 9, 11, 10.** Sell rules come third so the
 declined-sell noise ends first; entries next; sizing after; discovery last
 because it is being done by hand anyway. Sizes are working days for one
