@@ -28,7 +28,7 @@
 import { horizonStandingRules } from "./defaults";
 import { triggerBucket } from "./bucket";
 import { resolveThesisLadder } from "./load-levels";
-import { protectiveRatchetViolations } from "./ratchet";
+import { pinsToKeepProtection } from "./ratchet";
 import type { Trigger } from "./types";
 
 /** The buckets the horizon sets own. Legacy every-horizon rules here are replaced. */
@@ -108,23 +108,13 @@ export function planHorizonRules(args: {
 
     // Step 2: every sell line the new inheritance loosens or drops is kept
     // at today's value, on the thesis.
-    const violations = protectiveRatchetViolations({
+    const pinned = pinsToKeepProtection({
       direction: row.direction,
-      before: before as Trigger[],
-      after: after as Trigger[],
-      inherited: [],
+      before,
+      after,
+      mintId: args.mintId,
+      note: "Kept on this stock when the account's sell rules moved to one set per horizon — only you lower it.",
     });
-    const pinned: Trigger[] = violations
-      .filter((v) => (before.find((t) => t.id === v.before.id)?.level ?? "THESIS") !== "THESIS")
-      .map((v) => ({
-        id: args.mintId(),
-        predicate: v.before.predicate,
-        action: v.before.action,
-        rationale: `${v.before.rationale} (Kept on this stock when the account's sell rules moved to one set per horizon — only you lower it.)`,
-        ...(v.before.cooldownDays != null ? { cooldownDays: v.before.cooldownDays } : {}),
-        ...(v.before.fireMode ? { fireMode: v.before.fireMode } : {}),
-        source: v.before.source ?? "DEFAULT",
-      }));
 
     // Step 3: the principal's named loosenings — the thesis's own trail
     // sells tighter than the horizon's catastrophe line come off.

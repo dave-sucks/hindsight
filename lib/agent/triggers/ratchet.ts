@@ -179,6 +179,40 @@ export function stopMoveWeakensProtection(args: {
   return isLong ? newStop < oldStop : newStop > oldStop;
 }
 
+/**
+ * When what a held stock INHERITS changes — its horizon changed, or the
+ * account's rules moved — the protection in force can loosen without anyone
+ * touching a trigger on it. Only the principal lowers a level, so every
+ * inherited sell line the change would loosen or drop is copied onto the
+ * thesis at today's value. Returns the triggers to add; empty when nothing
+ * loosens. `before`/`after` are the full resolved ladders.
+ */
+export function pinsToKeepProtection(args: {
+  direction: string | null;
+  before: Array<Trigger & { level?: string }>;
+  after: Array<Trigger & { level?: string }>;
+  mintId: () => string;
+  /** Appended to the kept line's rationale — says why it is on the thesis. */
+  note: string;
+}): Trigger[] {
+  return protectiveRatchetViolations({
+    direction: args.direction,
+    before: args.before,
+    after: args.after,
+    inherited: [],
+  })
+    .filter((v) => (args.before.find((t) => t.id === v.before.id)?.level ?? "THESIS") !== "THESIS")
+    .map((v) => ({
+      id: args.mintId(),
+      predicate: v.before.predicate,
+      action: v.before.action,
+      rationale: `${v.before.rationale} (${args.note})`,
+      ...(v.before.cooldownDays != null ? { cooldownDays: v.before.cooldownDays } : {}),
+      ...(v.before.fireMode ? { fireMode: v.before.fireMode } : {}),
+      source: v.before.source ?? "DEFAULT",
+    }));
+}
+
 /** Plain-language name for a protective rung, for refusal messages. */
 export function describeProtectiveRung(t: Trigger): string {
   const p = t.predicate;
