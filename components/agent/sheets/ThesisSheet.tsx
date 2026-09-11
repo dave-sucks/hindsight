@@ -696,7 +696,7 @@ function EarningsBlock({ data }: { data: EarningsResponse }) {
     const est = data.next.epsEstimate;
     cells.push({
       label: "Next report",
-      value: fmtReportDate(data.next.date, data.next.hour),
+      value: fmtReportDate(data.next.reportDate, data.next.hour),
       tooltip: est != null ? `Street expects EPS $${est.toFixed(2)}.` : undefined,
     });
   }

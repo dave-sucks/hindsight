@@ -1,41 +1,37 @@
 /**
- * get_earnings_calendar — pull tool for the upcoming earnings firehose.
+ * get_earnings_calendar — the earnings calendar, forward or back.
  *
- * The firm-market-sweep cron writes one aggregate Signal per day for the
- * earnings calendar (lib/inngest/functions/firm-market-sweep.ts step
- * "earnings-calendar"). Analysts subscribed via `AgentConfig.feeds`
- * (canonical `EARNINGS_CALENDAR`) get it routed automatically. This tool
- * is the on-demand pull path for analysts that aren't subscribed but want
- * to look at the calendar mid-run, or for any analyst that wants a fresh
- * view at a different days-out window than the cron's default 7-day pull.
+ * `window: "upcoming"` (default) — who reports in the next N days. The
+ * date to be ready for.
+ * `window: "reported"` — who reported in the LAST N days, with actual vs
+ * estimate and the surprise. The discovery input: "do discovery off this
+ * week's earnings" means this call, `scope: "universe"`, sorted so the
+ * biggest beats come first.
  *
- * Renders via the generic ToolUIRenderer (`ui: "tool-ui"`). Each calendar
- * row becomes a ticker row item; an opening generic row narrates how many
- * names + the date window. NEVER add a per-tool renderer for this — the
- * recurring-bugs guidance in CLAUDE.md is explicit on that.
+ * Reads through lib/market-data/earnings-calendar — the same shared call
+ * the /earnings page and the trigger evaluator use. No signal, no router.
+ *
+ * Renders via the generic ToolUIRenderer (`ui: "tool-ui"`). Each row is a
+ * ticker item; an opening generic row narrates how many + the window.
+ * NEVER add a per-tool renderer for this — CLAUDE.md is explicit.
  */
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import { fetchCalendarRows } from "@/lib/market-data/earnings-calendar";
+import type { EarningsReport as EarningsRow } from "@/lib/agent/triggers/earnings";
 
-const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
-
-interface EarningsRow {
-  symbol: string;
-  date: string;
-  hour?: string | null;
-  epsEstimate: number | null;
-  revenueEstimate: number | null;
-}
+const money = (n: number) =>
+  Math.abs(n) >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : `$${(n / 1e6).toFixed(0)}M`;
 
 export const getEarningsCalendar = defineTool({
   description:
-    "Pull the upcoming earnings calendar for the next N days (default 7). " +
-    "Three scopes: `scope: \"all\"` returns the full firm calendar; `scope: \"universe\"` " +
-    "returns reports for tickers NOT already in your coverage (the discovery set); " +
-    "`scope: \"coverage\"` returns ONLY reports on watchlist + open-position tickers (your book). " +
-    "Default is `coverage` to preserve legacy behavior. For per-ticker earnings detail " +
-    "(EPS history, beat rate) use get_earnings_data instead.",
+    "The earnings calendar, forward or back. `window: \"upcoming\"` (default): who reports in the next N days. " +
+    "`window: \"reported\"`: who reported in the LAST N days, with EPS and revenue actual vs estimate and the surprise %, " +
+    "biggest beats first — use this for earnings-driven discovery (\"find names off this week's reports\"). " +
+    "Three scopes: `scope: \"all\"` = the full firm calendar; `scope: \"universe\"` = names NOT already in your coverage " +
+    "(the discovery set); `scope: \"coverage\"` = ONLY watchlist + open-position names (your book). Default is `coverage`. " +
+    "For one ticker's history and beat rate use get_earnings_data instead.",
   schema: z.object({
     days: z
       .number()
@@ -43,7 +39,11 @@ export const getEarningsCalendar = defineTool({
       .min(1)
       .max(30)
       .optional()
-      .describe("Days forward to pull; defaults to 7."),
+      .describe("Days forward (upcoming) or back (reported); defaults to 7."),
+    window: z
+      .enum(["upcoming", "reported"])
+      .optional()
+      .describe("'upcoming' = scheduled reports ahead (default). 'reported' = reports already in, with actuals and surprise."),
     scope: z
       .enum(["universe", "coverage", "all"])
       .optional()
@@ -56,51 +56,38 @@ export const getEarningsCalendar = defineTool({
 
   progressLabel: (args) => {
     const scope = args.scope ?? "coverage";
-    if (scope === "all") return "Pulling the firm earnings calendar";
-    if (scope === "universe") return "Pulling earnings outside your coverage";
-    return "Pulling earnings on your book";
+    const what = args.window === "reported" ? "reported earnings" : "upcoming earnings";
+    if (scope === "all") return `Pulling ${what}, firm-wide`;
+    if (scope === "universe") return `Pulling ${what} outside your coverage`;
+    return `Pulling ${what} on your book`;
   },
 
   execute: async (args, ctx) => {
     const days = args.days ?? 7;
     const scope = args.scope ?? "coverage";
+    const window = args.window ?? "upcoming";
 
     const today = new Date();
-    const out = new Date(Date.now() + days * 86400_000);
-    const from = today.toISOString().slice(0, 10);
-    const to = out.toISOString().slice(0, 10);
+    const other = new Date(Date.now() + (window === "reported" ? -days : days) * 86400_000);
+    const from = (window === "reported" ? other : today).toISOString().slice(0, 10);
+    const to = (window === "reported" ? today : other).toISOString().slice(0, 10);
 
-    const url = `https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${FINNHUB_KEY}`;
-    let calendar: EarningsRow[] = [];
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-      if (!res.ok) {
-        return {
-          summary: `Finnhub earnings calendar unavailable (HTTP ${res.status}).`,
-          data: {
-            items: [
-              { kind: "generic" as const, text: `Earnings calendar fetch failed (HTTP ${res.status}).` },
-            ],
-            from,
-            to,
-            scope,
-            count: 0,
-            rows: [] as EarningsRow[],
-          },
-          sources: [],
-        };
-      }
-      const json = (await res.json()) as { earningsCalendar?: EarningsRow[] };
-      calendar = (json.earningsCalendar ?? []).filter((r) => r.symbol && r.date);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "earnings calendar fetch error";
+    let calendar = await fetchCalendarRows({ from, to });
+    // Reported = has an actual. Upcoming = doesn't yet (a row dated today
+    // with no actual is tonight's, or this morning's not yet posted).
+    calendar =
+      window === "reported"
+        ? calendar.filter((r) => r.epsActual != null)
+        : calendar.filter((r) => r.epsActual == null);
+    if (calendar.length === 0) {
       return {
-        summary: `Finnhub earnings calendar fetch threw: ${msg}.`,
+        summary: `No ${window} earnings ${from} → ${to} (or the calendar was unavailable).`,
         data: {
-          items: [{ kind: "generic" as const, text: `Earnings calendar unavailable: ${msg}` }],
+          items: [{ kind: "generic" as const, text: `No ${window} earnings ${from} → ${to}.` }],
           from,
           to,
           scope,
+          window,
           count: 0,
           rows: [] as EarningsRow[],
         },
@@ -159,7 +146,11 @@ export const getEarningsCalendar = defineTool({
     // real candidate" — companies without estimates are typically
     // micro-caps with no analyst coverage.
     const sorted = [...filtered]
-      .sort((a, b) => a.date.localeCompare(b.date))
+      .sort((a, b) =>
+        window === "reported"
+          ? Math.abs(b.surprisePct ?? 0) - Math.abs(a.surprisePct ?? 0)
+          : a.reportDate.localeCompare(b.reportDate),
+      )
       .filter((r) => (scope === "universe" ? r.epsEstimate != null : true));
     const VISIBLE_CAP = scope === "universe" ? 15 : 30;
     const visible = sorted.slice(0, VISIBLE_CAP);
@@ -178,8 +169,8 @@ export const getEarningsCalendar = defineTool({
 
     const headerText =
       sorted.length === 0
-        ? `No upcoming earnings ${from} → ${to} (${fenceNote}).`
-        : `${sorted.length} report${sorted.length === 1 ? "" : "s"} ${from} → ${to} (${fenceNote}).`;
+        ? `No ${window} earnings ${from} → ${to} (${fenceNote}).`
+        : `${sorted.length} ${window === "reported" ? "report" : "scheduled report"}${sorted.length === 1 ? "" : "s"} ${from} → ${to} (${fenceNote}).`;
 
     const items: Array<
       | { kind: "generic"; text: string }
@@ -187,13 +178,20 @@ export const getEarningsCalendar = defineTool({
     > = [{ kind: "generic", text: headerText }];
 
     for (const row of visible) {
-      const eps = row.epsEstimate != null ? `EPS est $${row.epsEstimate.toFixed(2)}` : "no EPS est";
-      items.push({
-        kind: "ticker",
-        ticker: row.symbol,
-        tag: row.date,
-        text: eps,
-      });
+      const bell = row.hour === "bmo" ? " before open" : row.hour === "amc" ? " after close" : "";
+      let text: string;
+      if (row.epsActual != null) {
+        const s = row.surprisePct;
+        const verdict = s == null ? "" : ` — ${s >= 0 ? "beat" : "missed"} by ${Math.abs(s).toFixed(1)}%`;
+        const rev =
+          row.revenueActual != null
+            ? ` · Rev ${money(row.revenueActual)}${row.revenueEstimate != null ? ` vs ${money(row.revenueEstimate)} est` : ""}`
+            : "";
+        text = `EPS $${row.epsActual.toFixed(2)}${row.epsEstimate != null ? ` vs $${row.epsEstimate.toFixed(2)} est` : ""}${verdict}${rev}`;
+      } else {
+        text = `${row.epsEstimate != null ? `EPS est $${row.epsEstimate.toFixed(2)}` : "no EPS est"}${bell}`;
+      }
+      items.push({ kind: "ticker", ticker: row.symbol, tag: row.reportDate, text });
     }
 
     if (remaining > 0) {
@@ -202,13 +200,14 @@ export const getEarningsCalendar = defineTool({
 
     return {
       summary: sorted.length
-        ? `Earnings ${from}→${to}: ${sorted.length} name${sorted.length === 1 ? "" : "s"} (${fenceNote}).`
-        : `No earnings ${from}→${to} (${fenceNote}).`,
+        ? `${window === "reported" ? "Reported" : "Upcoming"} earnings ${from}→${to}: ${sorted.length} name${sorted.length === 1 ? "" : "s"} (${fenceNote}).`
+        : `No ${window} earnings ${from}→${to} (${fenceNote}).`,
       data: {
         items,
         from,
         to,
         scope,
+        window,
         count: sorted.length,
         rows: sorted,
       },

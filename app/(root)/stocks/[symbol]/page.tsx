@@ -29,6 +29,7 @@ import {
 } from "@/lib/actions/finnhub.actions";
 import { getAnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { getStockInfo } from "@/lib/actions/stock-info";
+import { StockEarningsSection } from "@/components/earnings/StockEarningsSection";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
 import { PriceChange } from "@/components/ui/price-change";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
@@ -237,6 +238,7 @@ export default async function StockDetailPage({ params }: Props) {
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="financials">Financials</TabsTrigger>
+              <TabsTrigger value="earnings">Earnings</TabsTrigger>
               <TabsTrigger value="news">News</TabsTrigger>
               <TabsTrigger value="theses">Theses</TabsTrigger>
             </TabsList>
@@ -320,6 +322,14 @@ export default async function StockDetailPage({ params }: Props) {
                   <NewsTab symbol={upperSymbol} />
                 </Suspense>
               </div>
+            </TabsContent>
+
+            {/* ── EARNINGS ─────────────────────────────────────────── */}
+            {/* Live from the vendor when the tab renders — quarter chips
+                with the surprise, the latest report vs the estimate, the
+                next date. Same data the trigger evaluator reads. */}
+            <TabsContent value="earnings" className="mt-4">
+              <StockEarningsSection symbol={upperSymbol} />
             </TabsContent>
 
             {/* ── FINANCIALS ───────────────────────────────────────── */}

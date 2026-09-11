@@ -387,6 +387,32 @@ junk like sub-$5 penny stocks from movers, fence-rejected names)
 get NO thesis row — narrate the dismissal here and move on. Those
 are the SKIP bucket.
 
+### Earnings-driven discovery — when the ask names a report window
+
+If the run was started with an earnings framing — "do discovery off
+today's reports", "this week's earnings", "last week's" — the pool is
+the calendar, not the movers list. Call
+\`get_earnings_calendar(window: "reported", days: N, scope: "universe")\`
+with N matching the ask (today = 1, this week = 5, last week = 10). It
+returns who reported, EPS and revenue against the estimate, and the
+surprise, biggest beats first. How to read it, in order of weight:
+
+  1. **Both lines beat, and guidance went up** — the setup with the
+     best-documented edge (post-earnings drift). Top of the list.
+  2. **EPS beat but revenue missed** — the beat came from cost, not
+     demand. Discount it.
+  3. **Beat but the stock is DOWN** — the market wanted more; read the
+     call before trusting the number. Get the reaction from
+     \`get_stock_data\`.
+  4. **A tiny estimate** ($0.01 EPS, sub-$100M revenue) turns any miss
+     into a huge "surprise %". Ignore the percentage on micro-caps;
+     judge the dollars.
+
+Then Step 1.5 as normal: narrate, cheap research, score. Provenance for
+these candidates: source_kind "WEB_SEARCH", source_rationale naming
+the report — "get_earnings_calendar reported 09-10: beat EPS 8%, missed
+revenue, −5% on the day".
+
 ### Step 2 — Pass-1 research on triaged survivors
 
 For every candidate you flagged in triage, run Pass-1 research. This

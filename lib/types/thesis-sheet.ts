@@ -355,15 +355,11 @@ export interface ThesisStateLevels {
  * reviewed, traded) is the activity log, not this.
  */
 export interface EarningsResponse {
-  next: {
-    /** YYYY-MM-DD */
-    date: string;
-    /** "bmo" | "amc" | "" — before open / after close, when known. */
-    hour: string | null;
-    epsEstimate: number | null;
-    revenueEstimate: number | null;
-  } | null;
-  /** Newest first. */
+  /** Next scheduled report. `epsActual` is null. */
+  next: EarningsCalendarEntry | null;
+  /** Most recent report, with revenue — when the calendar still carries it. */
+  latest: EarningsCalendarEntry | null;
+  /** EPS history, newest first. */
   recent: Array<{
     /** Fiscal period end, YYYY-MM-DD. */
     period: string;
@@ -372,4 +368,20 @@ export interface EarningsResponse {
     /** Positive = beat, negative = miss, null = not scorable. */
     surprisePct: number | null;
   }>;
+}
+
+/** One calendar row — the serialized `EarningsReport` from lib/agent/triggers/earnings. */
+export interface EarningsCalendarEntry {
+  symbol: string;
+  /** YYYY-MM-DD */
+  reportDate: string;
+  /** "bmo" | "amc" | "" — before open / after close, when known. */
+  hour: string | null;
+  epsActual: number | null;
+  epsEstimate: number | null;
+  surprisePct: number | null;
+  revenueActual: number | null;
+  revenueEstimate: number | null;
+  quarter: number | null;
+  year: number | null;
 }
