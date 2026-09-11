@@ -1,26 +1,27 @@
 "use client";
 
 /**
- * The earnings calendar — a week strip and one day's reporters with the
- * numbers. Live from the vendor on every day change; nothing stored.
+ * The earnings calendar — a week of day boxes and one day's reporters.
+ * Live from the vendor on every day change; nothing stored.
  *
- * Built on the app's own row: every reporter is a `TradeRowShell` (the
- * ONE trade-row design), inside the same card-table wrapper the dashboard
- * uses, under the same page container as Runs. Send-to-agent is the row's
- * kebab menu, one item per analyst not already on the name.
+ * Shape follows the Perplexity Finance earnings view, in this app's tokens:
+ * a header line with the week controls at the right, seven equal day boxes
+ * that fill the width, then a card of reporters divided by hairlines —
+ * logo, company name over ticker, the quarter pill at the right, and two
+ * quiet lines of numbers underneath (EPS, revenue) each ending in its own
+ * beat / missed verdict. Send-to-agent is the stock page's own bookmark
+ * dropdown, one item per analyst.
  */
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ChipTabs } from "@/components/ui/chip-tabs";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PnlBadge } from "@/components/ui/pnl-badge";
 import { PriceChange } from "@/components/ui/price-change";
-import { TradeRowShell } from "@/components/ui/trade-row";
 import { StockLogo } from "@/components/StockLogo";
-import { sendToThesisWriter } from "@/lib/actions/watchlist.actions";
+import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { cn } from "@/lib/utils";
 import type { EarningsDayView, EarningsDayRow } from "@/lib/market-data/earnings-calendar";
 
@@ -36,7 +37,7 @@ function money(n: number): string {
 }
 
 function bell(hour: string | null): string | null {
-  return hour === "bmo" ? "before open" : hour === "amc" ? "after close" : null;
+  return hour === "bmo" ? "Before open" : hour === "amc" ? "After close" : null;
 }
 
 function pctOf(actual: number | null, estimate: number | null): number | null {
@@ -44,47 +45,36 @@ function pctOf(actual: number | null, estimate: number | null): number | null {
   return ((actual - estimate) / Math.abs(estimate)) * 100;
 }
 
-/** "EPS $1.92 vs $1.78 est · Rev $19.34B vs $19.53B est, missed" */
-function Figures({ row }: { row: EarningsDayRow }) {
-  const parts: React.ReactNode[] = [];
-  if (row.epsActual != null) {
-    parts.push(
-      <span key="eps">
-        EPS ${row.epsActual.toFixed(2)}
-        {row.epsEstimate != null ? ` vs $${row.epsEstimate.toFixed(2)} est` : ""}
-      </span>,
-    );
-  } else if (row.epsEstimate != null) {
-    parts.push(<span key="eps">EPS est ${row.epsEstimate.toFixed(2)}</span>);
-  }
-  if (row.revenueActual != null) {
-    const p = pctOf(row.revenueActual, row.revenueEstimate);
-    parts.push(
-      <span key="rev">
-        Rev {money(row.revenueActual)}
-        {row.revenueEstimate != null ? ` vs ${money(row.revenueEstimate)} est` : ""}
-        {p != null ? (
-          <span className={cn("ml-1", p >= 0 ? "text-positive" : "text-negative")}>
-            {p >= 0 ? "beat" : "missed"}
-          </span>
-        ) : null}
-      </span>,
-    );
-  } else if (row.revenueEstimate != null) {
-    parts.push(<span key="rev">Rev est {money(row.revenueEstimate)}</span>);
-  }
-  const when = bell(row.hour);
-  if (row.epsActual == null && when) parts.push(<span key="when">{when}</span>);
-  if (parts.length === 0) return <>—</>;
+/** One quiet line: "EPS   $0.22 est   $0.79   Beat +265.57%" */
+function FigureLine({
+  label,
+  estimate,
+  actual,
+  fmt,
+}: {
+  label: string;
+  estimate: number | null;
+  actual: number | null;
+  fmt: (n: number) => string;
+}) {
+  if (estimate == null && actual == null) return null;
+  const pct = pctOf(actual, estimate);
   return (
-    <>
-      {parts.map((p, i) => (
-        <span key={i}>
-          {i > 0 ? <span className="mx-1 text-muted-foreground/40">·</span> : null}
-          {p}
-        </span>
-      ))}
-    </>
+    <div className="flex items-baseline gap-3 text-xs tabular-nums">
+      <span className="w-9 text-muted-foreground">{label}</span>
+      <span className="text-muted-foreground">{estimate != null ? `${fmt(estimate)} est` : "—"}</span>
+      {actual != null ? (
+        <>
+          <span className="text-foreground">{fmt(actual)}</span>
+          {pct != null ? (
+            <span className={pct >= 0 ? "text-positive" : "text-negative"}>
+              {pct >= 0 ? "Beat" : "Missed"} {pct >= 0 ? "+" : "−"}
+              {Math.abs(pct).toFixed(2)}%
+            </span>
+          ) : null}
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -96,52 +86,64 @@ function Row({
   analysts: Array<{ id: string; name: string }>;
 }) {
   const onBook = row.analystIds.length > 0;
-  const menuItems = analysts
-    .filter((a) => !row.analystIds.includes(a.id))
-    .map((a) => ({
-      label: `Send to ${a.name}`,
-      onSelect: () => {
-        sendToThesisWriter(a.id, row.symbol, "horizon")
-          .then(() => toast.success(`${row.symbol} sent to ${a.name} — it lands shortly.`))
-          .catch((err: unknown) =>
-            toast.error(err instanceof Error ? err.message : `Couldn't send ${row.symbol}`),
-          );
-      },
-    }));
-
+  const reported = row.epsActual != null;
+  const quarter =
+    row.year != null && row.quarter != null ? `Q${row.quarter} ${row.year}` : null;
+  const when = bell(row.hour);
   return (
-    <TradeRowShell
-      href={`/stocks/${row.symbol}`}
-      leading={<StockLogo ticker={row.symbol} size="md" className="rounded-md" />}
-      primary={
-        <>
-          <span className="text-sm font-medium">{row.symbol}</span>
-          {row.companyName ? (
-            <span className="text-xs text-muted-foreground truncate max-w-[14rem]">{row.companyName}</span>
-          ) : null}
-          {onBook ? <span className="size-1.5 rounded-full bg-primary" title="On your book" /> : null}
-        </>
-      }
-      trailingTop={
-        row.price != null ? (
-          <span className="inline-flex items-center gap-1.5 text-sm tabular-nums font-light">
-            ${row.price.toFixed(2)}
-            {row.changePct != null ? (
-              <PriceChange dollarChange={0} percentChange={row.changePct} percentOnly size="sm" />
-            ) : null}
-          </span>
-        ) : undefined
-      }
-      secondary={<Figures row={row} />}
-      trailingBottom={
-        row.surprisePct != null ? (
-          <PnlBadge value={row.surprisePct} format="percent" className="text-xs" />
-        ) : row.epsActual == null ? (
-          <span className="text-[10px] text-muted-foreground/60">not yet reported</span>
-        ) : undefined
-      }
-      menuItems={menuItems}
-    />
+    <div className="flex gap-3 px-4 py-4 border-b border-border/40 last:border-0 hover:bg-accent/30 transition-colors group">
+      <Link href={`/stocks/${row.symbol}`} className="shrink-0 pt-0.5">
+        <StockLogo ticker={row.symbol} size="md" className="rounded-md" />
+      </Link>
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <Link href={`/stocks/${row.symbol}`} className="block text-sm font-medium truncate hover:underline">
+              {row.companyName ?? row.symbol}
+            </Link>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="font-mono">{row.symbol}</span>
+              {onBook ? (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span>On your book</span>
+                </>
+              ) : null}
+              {row.price != null ? (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="tabular-nums">${row.price.toFixed(2)}</span>
+                  {row.changePct != null ? (
+                    <PriceChange dollarChange={0} percentChange={row.changePct} percentOnly size="sm" />
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Badge variant="secondary" className="font-normal tabular-nums">
+              {[quarter, when].filter(Boolean).join(" · ") || (reported ? "Reported" : "Scheduled")}
+            </Badge>
+            <WatchlistDropdown
+              symbol={row.symbol}
+              analysts={analysts.map((a) => ({ ...a, isWatched: row.analystIds.includes(a.id) }))}
+            />
+          </div>
+        </div>
+        {reported ? (
+          <div className="space-y-1">
+            <FigureLine label="EPS" estimate={row.epsEstimate} actual={row.epsActual} fmt={(n) => `$${n.toFixed(2)}`} />
+            <FigureLine label="Rev" estimate={row.revenueEstimate} actual={row.revenueActual} fmt={money} />
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground tabular-nums">
+            Not yet reported
+            {row.epsEstimate != null ? ` · street expects EPS $${row.epsEstimate.toFixed(2)}` : ""}
+            {row.revenueEstimate != null ? `, revenue ${money(row.revenueEstimate)}` : ""}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -175,39 +177,65 @@ export function EarningsCalendar({
   const shift = (days: number) => setDate(isoDay(new Date(utc(date).getTime() + days * DAY_MS)));
 
   // Sun..Sat around the date — from the response when we have it, else
-  // computed so the strip paints before the first load returns.
+  // computed so the boxes paint before the first load returns.
   const strip =
     view?.days ??
     Array.from({ length: 7 }, (_, i) => {
       const sunday = new Date(utc(date).getTime() - utc(date).getUTCDay() * DAY_MS);
       return { date: isoDay(new Date(sunday.getTime() + i * DAY_MS)), count: 0 };
     });
-  const options = strip.map((d) => ({
-    value: d.date,
-    label: utc(d.date).toLocaleDateString("en-US", { weekday: "short", day: "numeric", timeZone: "UTC" }),
-    title: d.count > 0 ? `${d.count} report${d.count === 1 ? "" : "s"}` : "No reports",
-  }));
-  const selected = strip.find((d) => d.date === date);
-  const dayLabel = utc(date).toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon-sm" aria-label="Previous week" onClick={() => shift(-7)}>
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <ChipTabs options={options} value={date} onChange={(v) => v && setDate(v)} clearable={false} />
-        <Button variant="ghost" size="icon-sm" aria-label="Next week" onClick={() => shift(7)}>
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setDate(today)} disabled={date === today}>
-          Today
-        </Button>
+      {/* Header line: label left, week controls right — as Perplexity. */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Earnings calendar
+        </span>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon-sm" aria-label="Previous week" onClick={() => shift(-7)}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setDate(today)} disabled={date === today}>
+            Today
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Next week" onClick={() => shift(7)}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Seven equal day boxes, full width. */}
+      <div className="grid grid-cols-7 gap-1.5">
+        {strip.map((d) => {
+          const dt = utc(d.date);
+          const active = d.date === date;
+          const isToday = d.date === today;
+          return (
+            <button
+              key={d.date}
+              type="button"
+              onClick={() => setDate(d.date)}
+              className={cn(
+                "rounded-lg border px-2 py-2 text-center transition-colors",
+                active
+                  ? "bg-secondary border-border"
+                  : "border-border/40 hover:bg-accent/40",
+              )}
+            >
+              <div className={cn("text-[10px] uppercase tracking-wide", active ? "text-foreground" : "text-muted-foreground")}>
+                {dt.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })}
+                {isToday ? " · today" : ""}
+              </div>
+              <div className="text-sm font-medium tabular-nums">
+                {dt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
+              </div>
+              <div className="text-[10px] text-muted-foreground tabular-nums">
+                {d.count > 0 ? `${d.count} report${d.count === 1 ? "" : "s"}` : "No reports"}
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {error ? (
@@ -216,11 +244,12 @@ export function EarningsCalendar({
         </div>
       ) : loading && !view ? (
         <div className="rounded-lg border overflow-hidden bg-card">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="flex items-center gap-3 px-3 py-2.5 border-b border-border/40 last:border-0">
-              <Skeleton className="size-8 rounded-md" />
-              <div className="flex-1 space-y-1.5">
-                <Skeleton className="h-3.5 w-40" />
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="flex gap-3 px-4 py-4 border-b border-border/40 last:border-0">
+              <Skeleton className="h-8 w-8 rounded-md" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-3.5 w-48" />
+                <Skeleton className="h-3 w-24" />
                 <Skeleton className="h-3 w-72" />
               </div>
             </div>
@@ -228,16 +257,10 @@ export function EarningsCalendar({
         </div>
       ) : view && view.rows.length === 0 ? (
         <div className="rounded-xl border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">No notable reports on {dayLabel}.</p>
+          <p className="text-sm text-muted-foreground">No notable reports this day.</p>
         </div>
       ) : (
         <div className={cn("rounded-lg border overflow-hidden bg-card", loading && "opacity-60")}>
-          <div className="flex items-center justify-between px-3 py-2 border-b">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{dayLabel}</span>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {selected?.count ?? view?.rows.length ?? 0} reports
-            </span>
-          </div>
           {view?.rows.map((r) => (
             <Row key={r.symbol} row={r} analysts={analysts} />
           ))}

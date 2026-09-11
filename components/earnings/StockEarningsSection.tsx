@@ -2,16 +2,16 @@
 
 /**
  * One company's earnings — the stock page's Earnings tab. Quarter chips
- * with the surprise, the latest report against the estimate, and the next
- * date. Live from the vendor when the tab renders; nothing stored.
+ * with the surprise, then the latest report as the same stat grid the
+ * Financials tab uses (estimate · actual · verdict, and the tape's
+ * reaction), then the next date. Live from the vendor; nothing stored.
  */
 
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import type { EarningsResponse, EarningsCalendarEntry } from "@/lib/types/thesis-sheet";
+import type { EarningsResponse } from "@/lib/types/thesis-sheet";
 
 function money(n: number): string {
   const a = Math.abs(n);
@@ -20,13 +20,13 @@ function money(n: number): string {
   return `$${n.toFixed(0)}`;
 }
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string, opts: Intl.DateTimeFormatOptions = {}): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
-    weekday: "short",
     month: "short",
     day: "numeric",
     year: "numeric",
     timeZone: "UTC",
+    ...opts,
   });
 }
 
@@ -39,50 +39,22 @@ function pctOf(actual: number | null, estimate: number | null): number | null {
   return ((actual - estimate) / Math.abs(estimate)) * 100;
 }
 
-function ReportLine({
-  label,
-  estimate,
-  actual,
-  fmt,
-}: {
-  label: string;
-  estimate: number | null;
-  actual: number | null;
-  fmt: (n: number) => string;
-}) {
-  const pct = pctOf(actual, estimate);
+/** The Financials tab's stat cell, verbatim, plus an optional color. */
+function StatCell({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
-    <div className="grid grid-cols-[4rem_1fr_1fr_1fr] items-baseline gap-2 text-sm tabular-nums border-b border-border py-1.5 last:border-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-muted-foreground">{estimate != null ? `${fmt(estimate)} est` : "—"}</span>
-      <span className="font-medium">{actual != null ? fmt(actual) : "—"}</span>
-      <span className={cn("font-medium", pct == null ? "text-muted-foreground" : pct >= 0 ? "text-positive" : "text-negative")}>
-        {pct == null ? "—" : `${pct >= 0 ? "Beat" : "Missed"} ${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(2)}%`}
-      </span>
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className={cn("text-sm font-medium tabular-nums text-foreground truncate", className)}>{value}</span>
     </div>
   );
 }
 
-function LatestReport({ r }: { r: EarningsCalendarEntry }) {
-  return (
-    <Card>
-      <CardContent className="p-6 space-y-3">
-        <div>
-          <p className="text-lg font-medium">
-            {r.year != null && r.quarter != null ? `${r.year} Q${r.quarter} report` : "Latest report"}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {fmtDate(r.reportDate)}
-            {bell(r.hour) ? ` · ${bell(r.hour)}` : ""}
-          </p>
-        </div>
-        <div>
-          <ReportLine label="Revenue" estimate={r.revenueEstimate} actual={r.revenueActual} fmt={money} />
-          <ReportLine label="EPS" estimate={r.epsEstimate} actual={r.epsActual} fmt={(n) => `$${n.toFixed(2)}`} />
-        </div>
-      </CardContent>
-    </Card>
-  );
+function verdict(pct: number | null): { text: string; className: string } {
+  if (pct == null) return { text: "—", className: "text-muted-foreground" };
+  return {
+    text: `${pct >= 0 ? "Beat" : "Missed"} ${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(2)}%`,
+    className: pct >= 0 ? "text-positive" : "text-negative",
+  };
 }
 
 export function StockEarningsSection({ symbol }: { symbol: string }) {
@@ -108,9 +80,9 @@ export function StockEarningsSection({ symbol }: { symbol: string }) {
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-8 w-2/3" />
-        <Skeleton className="h-32 w-full" />
+      <div className="space-y-4">
+        <Skeleton className="h-6 w-2/3" />
+        <Skeleton className="h-24 w-full" />
       </div>
     );
   }
@@ -118,22 +90,22 @@ export function StockEarningsSection({ symbol }: { symbol: string }) {
     return <p className="text-sm text-muted-foreground">No earnings data for {symbol}.</p>;
   }
 
+  const latest = data.latest;
+  const eps = latest ? verdict(pctOf(latest.epsActual, latest.epsEstimate)) : null;
+  const rev = latest ? verdict(pctOf(latest.revenueActual, latest.revenueEstimate)) : null;
+
   return (
     <div className="space-y-4">
       {/* Quarter chips — next first, then history newest → oldest */}
       <div className="flex flex-wrap gap-1.5">
         {data.next ? (
-          <Badge variant="outline" className="tabular-nums">
-            {data.next.year != null && data.next.quarter != null
-              ? `Q${data.next.quarter} ${data.next.year}`
-              : "Next"}
-            <span className="text-muted-foreground">
-              · {fmtDate(data.next.reportDate).replace(/^\w+, /, "")}
-            </span>
+          <Badge variant="outline" className="font-normal tabular-nums">
+            {data.next.year != null && data.next.quarter != null ? `Q${data.next.quarter} ${data.next.year}` : "Next"}
+            <span className="text-muted-foreground">· {fmtDate(data.next.reportDate, { year: undefined })}</span>
           </Badge>
         ) : null}
         {data.recent.map((q) => (
-          <Badge key={q.period} variant="outline" className="tabular-nums">
+          <Badge key={q.period} variant="outline" className="font-normal tabular-nums">
             {q.period.slice(0, 7)}
             {q.surprisePct != null ? (
               <span className={q.surprisePct >= 0 ? "text-positive" : "text-negative"}>
@@ -147,11 +119,32 @@ export function StockEarningsSection({ symbol }: { symbol: string }) {
         ))}
       </div>
 
-      {data.latest ? <LatestReport r={data.latest} /> : null}
+      {latest ? (
+        <div className="space-y-3">
+          <div>
+            <p className="text-sm font-medium">
+              {latest.year != null && latest.quarter != null ? `Q${latest.quarter} ${latest.year} report` : "Latest report"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {fmtDate(latest.reportDate, { weekday: "short" })}
+              {bell(latest.hour) ? ` · ${bell(latest.hour)}` : ""}
+            </p>
+          </div>
+          {/* Same grid as the Financials tab: estimate · actual · verdict */}
+          <div className="grid grid-cols-3 gap-x-4 gap-y-3 py-3 border-y">
+            <StatCell label="Revenue est" value={latest.revenueEstimate != null ? money(latest.revenueEstimate) : "—"} />
+            <StatCell label="Revenue" value={latest.revenueActual != null ? money(latest.revenueActual) : "—"} />
+            <StatCell label="Revenue surprise" value={rev!.text} className={rev!.className} />
+            <StatCell label="EPS est" value={latest.epsEstimate != null ? `$${latest.epsEstimate.toFixed(2)}` : "—"} />
+            <StatCell label="EPS" value={latest.epsActual != null ? `$${latest.epsActual.toFixed(2)}` : "—"} />
+            <StatCell label="EPS surprise" value={eps!.text} className={eps!.className} />
+          </div>
+        </div>
+      ) : null}
 
       {data.next ? (
-        <p className="text-sm text-muted-foreground">
-          Next report {fmtDate(data.next.reportDate)}
+        <p className="text-xs text-muted-foreground tabular-nums">
+          Next report {fmtDate(data.next.reportDate, { weekday: "short" })}
           {bell(data.next.hour) ? ` ${bell(data.next.hour)}` : ""}
           {data.next.epsEstimate != null ? ` · street expects EPS $${data.next.epsEstimate.toFixed(2)}` : ""}
           {data.next.revenueEstimate != null ? `, revenue ${money(data.next.revenueEstimate)}` : ""}.
