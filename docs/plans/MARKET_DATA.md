@@ -289,7 +289,7 @@ are what separate momentum from a pump. The thresholds should be yours.
 
 | Piece | Status | Note |
 |---|---|---|
-| Earnings beat / miss triggers off the calendar | **In — built, #621** | Fires from 2026-09-30 (MU). |
+| Earnings beat / miss triggers off the calendar | **In — built, #621** | First fire 2026-09-30 (MU). |
 | Fire carries the numbers into the audit row and tactical kickoff | **In — built, #621** | |
 | Cut the newsletter webhook | **Done — #625** | Route is inert. **Stop the Resend forward** — that part is yours. |
 | Delete `AgentConfig.feeds` | **Next — needs your go** | A deletion. Offsets #621's line count. |
@@ -297,8 +297,14 @@ are what separate momentum from a pump. The thresholds should be yours.
 | Detach the builder / editor from the inbox tools | **Later, medium** | ~15 hard-rule sites across two prompts. Not an allowlist flip. |
 | Earnings-within-N-days trigger | **In — built, #621** | `EARNINGS_WITHIN`, 1–14 days. In the add dialog as "Earnings". |
 | Earnings block on the thesis sheet (live, not stored) | **In — built, #621** | Next report + last four quarters. |
-| Next report date onto the thesis row (`catalystDate`) | **Next — needs your ruling** | Existing field, one write per morning. |
-| Daily-run opening context: reporting this week / on today's active list | **Later, small** | Two lines of input. |
+| `/earnings` page and the stock page's Earnings tab | **In — built, #621** | Week of day boxes; a day's reporters with the figures; per-stock quarters and latest report. Live, not stored. |
+| `get_earnings_calendar(window: "reported")` for the agent | **In — built, #621** | "Do discovery off this week's earnings" is one call. |
+| **Earnings is not opt-in** — account rules: heads-up 3 days before, review on any beat or miss, on every held and watched name | **In — built, #621** | A standing wake, not a clock. Overridable per name; deletable in settings. Existing accounts get it once at the next morning run. |
+| Thesis writer knows the earnings kinds, and when a thesis wants its own | **In — built, #621** | Never ENTER on a beat by itself. |
+| The earnings playbook in the daily run and the tactical run | **In — built, #621** | Heads-up = sizing; both-lines beat → raise; EPS-beat-revenue-miss → nothing; beat-but-down → read the call; miss → wrong vs early. |
+| Next report date onto the thesis row (`catalystDate`) | **Not doing** | Would be a stored copy of the calendar. The live "earnings on your book this week" line and the sheet's live block cover it. |
+| Daily-run opening context: "earnings on your book this week" | **In — built, #621** | Who reports in the next 7 days, who reported in the last 3 with the figures. |
+| Daily-run opening context: "on today's most-active list" | **Later, small** | One line off the movers call. |
 | Post-earnings discovery screen (the PEAD funnel, computed) | **Later, medium** | Deterministic; replaces hand-written Grok prompts for that seat. |
 | Momentum discovery screen (movers + volume + trend + cap) | **Later, medium** | Same shape. Thresholds are yours. |
 | Volume trigger for held names | **Later, if wanted** | Cheap once a daily average is on the quote path. |
