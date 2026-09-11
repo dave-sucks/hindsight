@@ -33,6 +33,38 @@
 
 ---
 
+## 0a. What V1 is, in the principal's words
+
+Earnings incorporated into every feature and touchpoint where it belongs:
+
+- **Discovery, from the chat.** "Do discovery using earnings from the last
+  two weeks" → `get_earnings_calendar(window: "reported", scope:
+  "universe")` → the agent reads the rows the way an analyst would (both
+  lines beat and guidance up first; a profit beat on a revenue miss is
+  cost, not demand; a beat the stock fell on means read the call; a miss
+  is wrong-or-early) → dispatches the writer on the ones worth a thesis.
+  The chat is the door. No cron, no dashboard.
+- **Triggers set.** Every held and watched name carries the three earnings
+  wakes as account rules; the writer knows the four kinds and when a
+  thesis wants its own.
+- **Triggers firing.** The 5-minute evaluator reads the calendar every
+  pass; a fire carries the figures into the activity row and the tactical
+  kickoff. First live fire: MU, 2026-09-27 (heads-up) and 2026-09-30.
+- **Every reviewing agent** — daily, tactical, writer, chat — has the tool
+  on its allowlist, knows when to call it, and carries the same playbook.
+- **A person can see it** — the `/earnings` page, the stock tab, the sheet.
+
+If any of those five is not true on a given day, V1 is not done. §8 is the
+ledger.
+
+**The extension is the same shape, per data type.** Movers (already a
+pull tool; discovery input, never a trigger), SEC filings via EDGAR, and
+any other structured event: one shared reader off the vendor, a page, an
+agent tool, trigger kinds where the event is deterministic, and the
+reading order in the prompts. Never through Signals.
+
+---
+
 ## 1. Killing Signals cleanly — what it actually takes
 
 You asked whether it's more than deleting monitors and turning off
