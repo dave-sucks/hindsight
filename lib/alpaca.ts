@@ -12,6 +12,7 @@
 
 import AlpacaAPI from "@alpacahq/alpaca-trade-api";
 import type { FundingEvent } from "@/lib/portfolio/contributions";
+import type { DailyBar } from "@/lib/market-data/price-structure";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -672,6 +673,87 @@ export async function getBars(
   };
 
   return withTimeout(collectBars(), `getBars(${symbol})`);
+}
+
+/**
+ * A year of COMPLETED daily sessions, full OHLCV, for the chart module
+ * (lib/market-data/price-structure.ts, DAV-243).
+ *
+ * SIP first: our plan serves the consolidated tape for any window that ends
+ * 15+ minutes ago, and only SIP volume is real — IEX carries ~2% of it
+ * (MSFT 2026-09-01: SIP 21.1M shares, IEX 483k). A volume ratio off IEX is a
+ * ratio of a sliver. IEX is the fallback when SIP comes back empty, and the
+ * result says which feed it is so a caller never presents IEX volume as the
+ * market's.
+ *
+ * Today's bar is dropped until 4:20 PM ET: before then it is a partial
+ * session (and on SIP, 15 minutes stale), and the chart is built from
+ * finished days — the live price is passed separately.
+ */
+export async function getDailyBars(
+  symbol: string,
+  sessions: number,
+  creds?: AlpacaCredentials,
+  now: Date = new Date(),
+): Promise<{ feed: "sip" | "iex"; bars: DailyBar[] }> {
+  // ~1.45 calendar days per session covers weekends + holidays.
+  const start = new Date(now.getTime() - Math.ceil(sessions * 1.45 + 10) * 86400_000)
+    .toISOString()
+    .slice(0, 10);
+  const et = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const part = (t: string) => et.find((p) => p.type === t)?.value ?? "";
+  const todayEt = `${part("year")}-${part("month")}-${part("day")}`;
+  const minutesEt = Number(part("hour")) * 60 + Number(part("minute"));
+  const todayFinished = minutesEt >= 16 * 60 + 20;
+
+  const pull = async (feed: "sip" | "iex") => {
+    const end = feed === "sip" ? new Date(now.getTime() - 16 * 60_000).toISOString() : now.toISOString();
+    const out: DailyBar[] = [];
+    const it = getClient(creds).getBarsV2(symbol, {
+      start,
+      end,
+      timeframe: "1Day",
+      limit: sessions + 20,
+      feed,
+    });
+    for await (const bar of it) {
+      const b = bar as {
+        Timestamp?: string; t?: string;
+        OpenPrice?: number; o?: number;
+        HighPrice?: number; h?: number;
+        LowPrice?: number; l?: number;
+        ClosePrice?: number; c?: number;
+        Volume?: number; v?: number;
+      };
+      const ts = b.Timestamp ?? b.t;
+      const open = b.OpenPrice ?? b.o;
+      const high = b.HighPrice ?? b.h;
+      const low = b.LowPrice ?? b.l;
+      const close = b.ClosePrice ?? b.c;
+      if (!ts || open == null || high == null || low == null || close == null) continue;
+      // Daily bars are stamped at midnight ET (04:00/05:00Z) — the UTC date is the session date.
+      const date = String(ts).slice(0, 10);
+      if (date === todayEt && !todayFinished) continue;
+      out.push({ date, open, high, low, close, volume: b.Volume ?? b.v ?? 0 });
+    }
+    return out.slice(-sessions);
+  };
+
+  try {
+    const sip = await withTimeout(pull("sip"), `getDailyBars(${symbol}, sip)`);
+    if (sip.length > 0) return { feed: "sip", bars: sip };
+  } catch (err) {
+    console.warn(`[alpaca] getDailyBars: SIP failed for ${symbol}, falling back to IEX:`, err instanceof Error ? err.message : err);
+  }
+  return { feed: "iex", bars: await withTimeout(pull("iex"), `getDailyBars(${symbol}, iex)`) };
 }
 
 /**

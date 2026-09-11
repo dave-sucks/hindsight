@@ -9,6 +9,7 @@
  */
 
 import type { ToolContext } from "@/lib/agent/tool-context";
+import type { PriceStructure } from "@/lib/market-data/price-structure";
 import {
   formatDataBlock,
   type DataBlockInputs,
@@ -75,17 +76,7 @@ interface StockDataShape {
     avgVolume10d: number | null;
     beta: number | null;
   } | null;
-  technicals?: {
-    currentPrice: number;
-    rsi14: number | null;
-    sma20: number | null;
-    sma50: number | null;
-    priceVsSma20: string | null;
-    priceVsSma50: string | null;
-    positionIn52wRange: string;
-    volumeRatio: string | null;
-    trend: string;
-  } | null;
+  technicals?: (PriceStructure & { volumeFeed: "sip" | "iex" }) | null;
   news?: { headline: string; source: string; date: string; url: string }[];
   priceTargets?: {
     consensus?: number;
@@ -194,23 +185,11 @@ export async function pullThesisData(
           week52High: sd?.financials?.high52w ?? null,
           week52Low: sd?.financials?.low52w ?? null,
           marketCap: sd?.company?.marketCap ?? null,
-          volume: sd?.financials?.avgVolume10d ?? null,
           beta: sd?.financials?.beta ?? null,
           pe: sd?.financials?.peRatio ?? null,
         }
       : undefined,
-    technicals: sd?.technicals
-      ? {
-          rsi14: sd.technicals.rsi14,
-          sma20: sd.technicals.sma20,
-          sma50: sd.technicals.sma50,
-          priceVsSma20: sd.technicals.priceVsSma20,
-          priceVsSma50: sd.technicals.priceVsSma50,
-          positionIn52wRange: sd.technicals.positionIn52wRange,
-          volumeRatio: sd.technicals.volumeRatio,
-          trend: sd.technicals.trend,
-        }
-      : undefined,
+    technicals: sd?.technicals ?? null,
     recentNews: sd?.news ?? [],
     analystTargets: sd?.priceTargets ?? null,
   };
@@ -233,6 +212,7 @@ export async function pullThesisData(
   // financials and nobody could see it in the run.
   const pullErrors: string[] = [];
   if (stockRes.status === "rejected" || stockData == null) pullErrors.push("stock_data");
+  else if (!stockData.technicals) pullErrors.push("chart(empty)");
   if (financialsRes.status === "rejected") pullErrors.push("financials");
   else if (!financials || (financials.annual?.length ?? 0) === 0) pullErrors.push("financials(empty)");
   if (analystCovRes.status === "rejected") pullErrors.push("analyst_coverage");
@@ -246,7 +226,7 @@ export async function pullThesisData(
   return {
     rawDataBlock,
     pullErrors,
-    currentPrice: sd?.quote?.price ?? sd?.technicals?.currentPrice ?? null,
+    currentPrice: sd?.quote?.price ?? sd?.technicals?.price ?? null,
     companyName: sd?.company?.name ?? null,
     exchange: sd?.company?.exchange ?? null,
     pulledAt: pulledAt.toISOString(),

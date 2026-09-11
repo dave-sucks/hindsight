@@ -2,15 +2,22 @@
  * get_stock_data — migrated to defineTool().
  *
  * Gets comprehensive stock data: quote, company profile, financials,
- * technical indicators (RSI, SMA, volume), analyst consensus, price
- * targets, and recent news. Finnhub primary, FMP + Alpaca bars fallback
- * for technicals.
+ * the chart (lib/market-data/price-structure.ts — a year of daily bars:
+ * moving averages, ATR, swings, base, gaps, relative strength), analyst
+ * consensus, and recent news. Finnhub for quote/profile/metrics/news,
+ * Alpaca for bars.
  */
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { finnhub, calcRSI, calcSMA } from "@/lib/agent/research-helpers";
-import { getBars } from "@/lib/alpaca";
+import { finnhub } from "@/lib/agent/research-helpers";
+import { getDailyBars } from "@/lib/alpaca";
+import {
+  computePriceStructure,
+  sectorEtfFor,
+  type PriceStructure,
+} from "@/lib/market-data/price-structure";
+import { getBenchmarkBars, CHART_SESSIONS } from "@/lib/market-data/benchmark-bars";
 import type { NewsItem } from "@/lib/agent/tool-types";
 import { checkUniverse } from "@/lib/agent/universe";
 import type { UniverseCheck } from "@/lib/agent/universe";
@@ -22,13 +29,13 @@ import {
 
 export const getStockData = defineTool({
   description:
-    "Get comprehensive data for a stock: price quote, company profile, key financials, analyst ratings, recent news, technical indicators (RSI, SMA, volume), and analyst price targets. This is your primary research tool — includes everything you need for a single ticker.",
+    "Get comprehensive data for a stock: price quote, company profile, key financials, analyst ratings, recent news, and the chart — a year of daily bars read into moving averages (20/50/150/200-day with slope), ATR, swing high/low, the current base and its pivot, recent gaps, volume vs average, relative strength vs SPY and the sector ETF, and a trend verdict. This is your primary research tool — includes everything you need for a single ticker.",
   schema: z.object({
     ticker: z.string().describe("Stock ticker symbol, e.g. AAPL"),
     include_technicals: z
       .boolean()
       .optional()
-      .describe("Include technical analysis (RSI, SMA, volume). Default true."),
+      .describe("Include the chart (price structure from a year of daily bars). Default true."),
   }),
   ui: "tool-ui" as const,
   groupId: "Researching",
@@ -82,12 +89,9 @@ export const getStockData = defineTool({
       ? formatTickerHistoryShort(priorCoverage)
       : null;
 
-    // Candle data comes from Alpaca only (with `feed: "iex"`). Finnhub
-    // `/stock/candle` requires the paid plan (403 on basic) and FMP
-    // `/historical-price-full` is deprecated since 2025-08-31. The dead
-    // primary calls used to live in this Promise.all and add ~500ms of
-    // wasted latency to every get_stock_data call. 2026-05-19 cleanup
-    // after the A1 alpaca feed=iex fix verified Alpaca-only candles work.
+    // Candle data comes from Alpaca only (getDailyBars: SIP, IEX fallback).
+    // Finnhub `/stock/candle` requires the paid plan (403 on basic) and FMP
+    // is gone (2026-09-08).
     const [quoteResult, profileResult, financialsResult, newsResult, recsResult, priceTargetResult] =
       await Promise.all([
         finnhub(`/quote?symbol=${ticker}`, 2),
@@ -129,62 +133,33 @@ export const getStockData = defineTool({
       ? (recommendations as Record<string, number>[])[0]
       : null;
 
-    // ── Technical analysis ─────────────────────────────────────────────────
-    let techData: {
-      currentPrice: number;
-      rsi14: number | null;
-      sma20: number | null;
-      sma50: number | null;
-      priceVsSma20: string | null;
-      priceVsSma50: string | null;
-      positionIn52wRange: string;
-      volumeRatio: string | null;
-      trend: string;
-    } | null = null;
-    const techProvider = "Alpaca";
-
+    // ── The chart ──────────────────────────────────────────────────────────
+    // A year of completed daily sessions → lib/market-data/price-structure.ts.
+    // SPY and the sector ETF come from the shared benchmark cache. The live
+    // quote is the price distances are measured from. Fail-open: no bars, no
+    // chart block — never a reason the research call dies.
+    let techData: (PriceStructure & { volumeFeed: "sip" | "iex" }) | null = null;
     if (doTechnicals) {
-      let candles: { s?: string; c?: number[]; v?: number[] } | null = null;
-
-      try {
-        const threeMonthsAgo = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
-        const today = new Date().toISOString().slice(0, 10);
-        const alpacaBars = await getBars(ticker, { start: threeMonthsAgo, end: today }, ctx.alpacaCreds);
-        if (alpacaBars.length >= 14) {
-          candles = { s: "ok", c: alpacaBars.map((b) => b.close), v: alpacaBars.map((b) => b.volume) };
-        } else if (alpacaBars.length > 0) {
-          console.warn(`[tool] get_stock_data: Alpaca returned ${alpacaBars.length} bars for ${ticker} — under the 14-bar minimum, technicals skipped.`);
-        }
-      } catch (err) {
-        console.warn(`[tool] get_stock_data: Alpaca bars failed for ${ticker}:`, err instanceof Error ? err.message : err);
-      }
-
-      if (candles && candles.s === "ok" && candles.c?.length) {
-        const closes = candles.c;
-        const currentPrice = closes[closes.length - 1];
-        const rsi = calcRSI(closes);
-        const sma20 = calcSMA(closes, 20);
-        const sma50 = calcSMA(closes, 50);
-        const high52 = Math.max(...closes);
-        const low52 = Math.min(...closes);
-        const position52w = high52 !== low52 ? Math.round(((currentPrice - low52) / (high52 - low52)) * 100) : 50;
-        const volumes: number[] = candles.v ?? [];
-        const avgVol20 = volumes.length >= 20 ? volumes.slice(-20).reduce((a, b) => a + b, 0) / 20 : null;
-        const latestVol = volumes[volumes.length - 1];
-        const volumeRatio = avgVol20 && avgVol20 > 0 ? Math.round((latestVol / avgVol20) * 100) / 100 : null;
-
-        techData = {
-          currentPrice,
-          rsi14: rsi,
-          sma20,
-          sma50,
-          priceVsSma20: sma20 ? `${currentPrice > sma20 ? "above" : "below"} (${Math.round(((currentPrice - sma20) / sma20) * 10000) / 100}%)` : null,
-          priceVsSma50: sma50 ? `${currentPrice > sma50 ? "above" : "below"} (${Math.round(((currentPrice - sma50) / sma50) * 10000) / 100}%)` : null,
-          positionIn52wRange: `${position52w}%`,
-          volumeRatio: volumeRatio ? `${volumeRatio}x average (${volumeRatio > 1.5 ? "elevated" : volumeRatio < 0.7 ? "low" : "normal"})` : null,
-          trend: sma20 && sma50 ? (sma20 > sma50 ? "bullish (SMA20 > SMA50)" : "bearish (SMA20 < SMA50)") : "unknown",
-        };
-      }
+      const sectorEtf = sectorEtfFor((profile?.finnhubIndustry as string | undefined) ?? null);
+      const [own, spy, sector] = await Promise.all([
+        getDailyBars(ticker, CHART_SESSIONS, ctx.alpacaCreds).catch((err) => {
+          console.warn(`[tool] get_stock_data: bars failed for ${ticker}:`, err instanceof Error ? err.message : err);
+          return null;
+        }),
+        getBenchmarkBars("SPY", ctx.alpacaCreds).catch(() => undefined),
+        sectorEtf ? getBenchmarkBars(sectorEtf, ctx.alpacaCreds).catch(() => undefined) : undefined,
+      ]);
+      const structure = own
+        ? computePriceStructure({
+            bars: own.bars,
+            price: quote?.c ?? null,
+            spyBars: spy,
+            sectorBars: sector,
+            sectorEtf,
+          })
+        : null;
+      if (structure && own) techData = { ...structure, volumeFeed: own.feed };
+      else if (own) console.warn(`[tool] get_stock_data: ${own.bars.length} bars for ${ticker} — too few for a chart.`);
     }
 
     // ── Price targets ──────────────────────────────────────────────────────
@@ -239,8 +214,8 @@ export const getStockData = defineTool({
     if (metaParts.length > 0) sParts.push(metaParts.join(" · "));
     if (techData) {
       const techParts: string[] = [];
+      if (techData.verdict) techParts.push(techData.verdict);
       if (techData.rsi14 != null) techParts.push(`RSI ${techData.rsi14.toFixed(1)}`);
-      if (techData.trend && techData.trend !== "unknown") techParts.push(techData.trend.split(" ")[0]);
       if (techParts.length > 0) sParts.push(techParts.join(", "));
     }
     if (recentNews.length > 0) sParts.push(`${recentNews.length} news`);
@@ -248,7 +223,7 @@ export const getStockData = defineTool({
     const tickerSummaryParts: string[] = [];
     if (companyData?.name) tickerSummaryParts.push(companyData.name);
     if (metaParts.length > 0) tickerSummaryParts.push(metaParts.join(" · "));
-    if (techData?.rsi14 != null) tickerSummaryParts.push(`RSI ${techData.rsi14.toFixed(1)} ${techData.trend?.split(" ")[0] ?? ""}`);
+    if (techData?.verdict) tickerSummaryParts.push(techData.verdict);
 
     // ── Universe check (informational) ──────────────────────────────────
     // If the analyst has a Universe fence, check whether this ticker falls
@@ -326,7 +301,7 @@ export const getStockData = defineTool({
         { provider: "Finnhub", title: `${ticker} Company Profile`, url: "https://finnhub.io/docs/api/company-profile2" },
         { provider: "Finnhub", title: `${ticker} Key Financials`, url: "https://finnhub.io/docs/api/stock-basic-financials" },
         ...(consensusData ? [{ provider: "Finnhub", title: `${ticker} Analyst Consensus`, url: "https://finnhub.io/docs/api/recommendation-trends" }] : []),
-        ...(techData ? [{ provider: techProvider, title: `${ticker} 90-Day Price History`, url: "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/" }] : []),
+        ...(techData ? [{ provider: "Alpaca", title: `${ticker} One-Year Daily Bars`, url: "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/" }] : []),
       ],
     };
   },

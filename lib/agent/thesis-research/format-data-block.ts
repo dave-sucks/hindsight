@@ -10,6 +10,8 @@
  * thesis-writer pipeline (run-thesis-writer.ts Phase P).
  */
 
+import type { PriceStructure } from "@/lib/market-data/price-structure";
+
 interface StockDataInput {
   ticker: string;
   companyName?: string | null;
@@ -26,20 +28,11 @@ interface StockDataInput {
     week52High?: number | null;
     week52Low?: number | null;
     marketCap?: number | null;
-    volume?: number | null;
     beta?: number | null;
     pe?: number | null;
   };
-  technicals?: {
-    rsi14: number | null;
-    sma20: number | null;
-    sma50: number | null;
-    priceVsSma20: string | null;
-    priceVsSma50: string | null;
-    positionIn52wRange: string | null;
-    volumeRatio: string | null;
-    trend: string | null;
-  };
+  /** The chart (lib/market-data/price-structure.ts) + which feed its volume came from. */
+  technicals?: (PriceStructure & { volumeFeed?: "sip" | "iex" }) | null;
   recentNews?: { headline: string; source: string; date: string; url: string }[];
   analystTargets?: {
     consensus?: number;
@@ -209,7 +202,6 @@ function padLeft(s: string, width: number): string {
 
 function buildSnapshot(s: StockDataInput): string {
   const q = s.quote;
-  const t = s.technicals;
   const lines: string[] = [];
   if (q?.current != null) {
     const chg = q.changePercent != null ? ` (${fmtPct(q.changePercent, 2)})` : "";
@@ -224,54 +216,131 @@ function buildSnapshot(s: StockDataInput): string {
   }
   const tagBits: string[] = [];
   if (q?.marketCap != null) tagBits.push(`Market cap: ${fmtDollar(q.marketCap, { compact: true })}`);
-  if (q?.volume != null) tagBits.push(`Volume: ${(q.volume / 1e6).toFixed(1)}M`);
   if (q?.beta != null) tagBits.push(`Beta: ${q.beta.toFixed(2)}`);
   if (q?.pe != null) tagBits.push(`P/E: ${q.pe.toFixed(1)}`);
   if (tagBits.length) lines.push(tagBits.join(" · "));
 
-  if (t) {
-    // ── The price levels, in dollars (2026-09-02) ──────────────────────
-    //
-    // `sma20` and `sma50` have been pulled into this file since it was
-    // written (pull-data.ts reads them off get_stock_data.technicals) and
-    // were never printed — only the PERCENT distance to them was. So the
-    // writer, asked to name an entry, a target and a stop and to "cite the
-    // level," had exactly one dollar figure to work with: today's price.
-    // It used it. TOST entry $35.15 against a $35.16 tape; ISRG $401.23
-    // against $401.29; BMRN $64.67 against its own quoted $64.67.
-    //
-    // A moving average is the most ordinary structural level there is —
-    // "buy the pullback to the 50-day" is a sentence every analyst writes.
-    // Printing the two numbers the pull already paid for turns that from
-    // unsayable into obvious. No new fetch, no new field, no gate.
-    const levelBits: string[] = [];
-    if (t.sma20 != null) levelBits.push(`20-day: $${t.sma20.toFixed(2)}`);
-    if (t.sma50 != null) levelBits.push(`50-day: $${t.sma50.toFixed(2)}`);
-    if (levelBits.length) {
-      lines.push(
-        `Price levels — ${levelBits.join(" · ")}` +
-          (q?.week52Low != null && q.week52High != null
-            ? ` · 52w low $${q.week52Low.toFixed(2)} · 52w high $${q.week52High.toFixed(2)}`
-            : ""),
-      );
-      lines.push(
-        `(These are real levels you can anchor an entry, target or stop to. ` +
-          `An entry must be a price the stock has NOT reached — a pullback BELOW the tape ` +
-          `or a breakout ABOVE it. Today's price is not an entry.)`,
-      );
-    }
-
-    const techBits: string[] = [];
-    if (t.rsi14 != null) techBits.push(`RSI(14): ${t.rsi14}`);
-    if (t.priceVsSma20) techBits.push(`vs SMA20: ${t.priceVsSma20}`);
-    if (t.priceVsSma50) techBits.push(`vs SMA50: ${t.priceVsSma50}`);
-    if (t.positionIn52wRange) techBits.push(`52w pos: ${t.positionIn52wRange}`);
-    if (t.volumeRatio) techBits.push(`Vol: ${t.volumeRatio}`);
-    if (t.trend) techBits.push(`Trend: ${t.trend}`);
-    if (techBits.length) lines.push(techBits.join(" · "));
-  }
   if (lines.length === 0) lines.push("(snapshot unavailable)");
 
+  return lines.join("\n");
+}
+
+/**
+ * The chart, in dollars (DAV-243). Before this section the writer priced a
+ * plan off six numbers over 90 days of bars — asked to "cite the level," it
+ * had one dollar figure, today's price, and used it (TOST entry $35.15 on a
+ * $35.16 tape, 2026-09-02). Every level a setup in TRADING_PLAYBOOK.md
+ * Part D anchors to is printed here with its date.
+ */
+function buildPriceStructure(s: StockDataInput): string {
+  const t = s.technicals;
+  if (!t) return "(chart unavailable — no daily bars)";
+  const $ = (n: number) => `$${n.toFixed(2)}`;
+  const sp = (n: number, digits = 1) => `${n >= 0 ? "+" : ""}${n.toFixed(digits)}`;
+  const slope = (x: string) => x.toLowerCase();
+  const lines: string[] = [];
+
+  const feed = t.volumeFeed === "iex" ? "IEX-only volume — ratios are rough, dollar volume understated" : "consolidated volume";
+  lines.push(`Chart: ${t.bars} daily sessions through ${t.asOf} (${feed}) · Verdict: ${t.verdict ?? "unknown"}`);
+
+  const ma: string[] = [];
+  for (const [label, m] of [
+    ["20-day", t.sma.d20],
+    ["50-day", t.sma.d50],
+    ["150-day", t.sma.d150],
+    ["200-day", t.sma.d200],
+  ] as const) {
+    if (m) ma.push(`${label} ${$(m.value)} (${slope(m.slope)}; price ${sp(m.pctFromPrice)}%)`);
+  }
+  if (t.ema.d10 != null) ma.push(`10-day EMA ${$(t.ema.d10)}`);
+  if (t.ema.d21 != null) ma.push(`21-day EMA ${$(t.ema.d21)}`);
+  if (ma.length) lines.push(`Moving averages — ${ma.join(" · ")}`);
+
+  const vol: string[] = [];
+  if (t.atr14) vol.push(`ATR(14) ${$(t.atr14.dollars)} (${t.atr14.pct.toFixed(1)}% of price)`);
+  if (t.adr20Pct != null) vol.push(`average daily range (20d) ${t.adr20Pct.toFixed(1)}%`);
+  if (t.rsi14 != null) vol.push(`RSI(14) ${t.rsi14}`);
+  if (vol.length) lines.push(`Volatility — ${vol.join(" · ")}`);
+
+  const r = t.range;
+  lines.push(
+    `Range — 20-day ${$(r.low20)}–${$(r.high20)} · 52-week ${$(r.low52w)}–${$(r.high52w)} · ` +
+      `${r.pctBelow52wHigh.toFixed(1)}% below the 52-week high · ${r.pctAbove52wLow.toFixed(1)}% above the 52-week low`,
+  );
+
+  const sw: string[] = [];
+  if (t.swings.lastHigh) sw.push(`last swing high ${$(t.swings.lastHigh.price)} (${t.swings.lastHigh.date})`);
+  if (t.swings.lastLow) sw.push(`last swing low ${$(t.swings.lastLow.price)} (${t.swings.lastLow.date})`);
+  lines.push(`Swings — ${sw.length ? sw.join(" · ") : "none confirmed in the window"}`);
+
+  if (t.base) {
+    const b = t.base;
+    lines.push(
+      `Base — ${b.lengthBars} sessions, ${b.startDate} to ${b.endDate}: pivot ${$(b.pivot)}, low ${$(b.low)}, ` +
+        `${b.depthPct.toFixed(1)}% deep, last 10 sessions ${b.lastContractionPct.toFixed(1)}% tight; ` +
+        `price ${b.brokenOut ? "above the pivot (broken out)" : "below the pivot"}`,
+    );
+  } else {
+    lines.push("Base — none (no sideways stretch of 20+ sessions inside a 15% range)");
+  }
+
+  const v: string[] = [];
+  if (t.volume.lastVsAvg20 != null) v.push(`last session ${t.volume.lastVsAvg20.toFixed(2)}× its 20-day average`);
+  if (t.volume.upDownRatio20 != null) v.push(`up-day ÷ down-day volume (20d) ${t.volume.upDownRatio20.toFixed(2)}`);
+  if (t.volume.avgDollarVolume50 != null) v.push(`average dollar volume (50d) ${fmtDollar(t.volume.avgDollarVolume50, { compact: true })}`);
+  if (v.length) lines.push(`Volume — ${v.join(" · ")}`);
+
+  lines.push(
+    `Gaps (last 10 sessions, 3%+) — ` +
+      (t.gaps.length
+        ? t.gaps
+            .map(
+              (g) =>
+                `${g.date} ${g.direction} ${sp(g.pct)}%` +
+                (g.volumeRatio != null ? ` on ${g.volumeRatio.toFixed(1)}× volume` : "") +
+                `: gap-day low ${$(g.low)} · mid ${$(g.mid)} · high ${$(g.high)}`,
+            )
+            .join("; ")
+        : "none"),
+  );
+
+  const rs = (label: string, x: { m1: number | null; m3: number | null; m6: number | null }) =>
+    `${label}: 1M ${x.m1 != null ? sp(x.m1) : "—"} · 3M ${x.m3 != null ? sp(x.m3) : "—"} · 6M ${x.m6 != null ? sp(x.m6) : "—"}`;
+  const rsBits: string[] = [];
+  if (t.relativeStrength.vsSpy) rsBits.push(rs("vs SPY", t.relativeStrength.vsSpy));
+  if (t.relativeStrength.vsSector) rsBits.push(rs(`vs ${t.relativeStrength.vsSector.etf}`, t.relativeStrength.vsSector));
+  if (rsBits.length) lines.push(`Relative strength (stock return minus benchmark, percentage points) — ${rsBits.join(" | ")}`);
+
+  if (t.fib) {
+    const f = t.fib;
+    lines.push(
+      `Retracements of the last up-leg (${$(f.legLow)} on ${f.legLowDate} → ${$(f.legHigh)} on ${f.legHighDate}) — ` +
+        `38.2% ${$(f.retrace382)} · 50% ${$(f.retrace500)} · 61.8% ${$(f.retrace618)} · ` +
+        `extensions 1.272 ${$(f.extension1272)} · 1.618 ${$(f.extension1618)} ` +
+        `(candidates only: use one when it lines up with a level above — a moving average, swing or base edge)`,
+    );
+  }
+
+  if (t.trendTemplate) {
+    const tt = t.trendTemplate;
+    lines.push(`Trend Template — ${tt.passed}/${tt.of}${tt.failing.length ? `; failing: ${tt.failing.join("; ")}` : ""}`);
+  }
+
+  const sg: string[] = [];
+  if (t.suggested.trendStrength) sg.push(`trendStrength ${t.suggested.trendStrength.score} ("${t.suggested.trendStrength.note}")`);
+  if (t.suggested.relativeStrength) sg.push(`relativeStrength ${t.suggested.relativeStrength.score} ("${t.suggested.relativeStrength.note}")`);
+  if (sg.length) {
+    lines.push(
+      `Computed composite scores from this chart — ${sg.join(" · ")}. ` +
+        `Use them unless your research says otherwise; if you change one, say why in its note.`,
+    );
+  }
+
+  lines.push(
+    `(These are real levels you can anchor an entry, target or stop to. ` +
+      `An entry must be a price the stock has NOT reached — a pullback BELOW the tape ` +
+      `or a breakout ABOVE it. Today's price is not an entry.)`,
+  );
   return lines.join("\n");
 }
 
@@ -575,6 +644,8 @@ Pulled ${pulledStr} — use these numbers as ground truth.
   );
 
   sections.push(`## Snapshot\n\n${buildSnapshot(stockData)}`);
+
+  sections.push(`## Price structure\n\n${buildPriceStructure(stockData)}`);
 
   sections.push(`## Company\n\n${buildCompany(stockData)}`);
 

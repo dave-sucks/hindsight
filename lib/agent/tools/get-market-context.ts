@@ -7,7 +7,8 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { finnhub, calcSMA } from "@/lib/agent/research-helpers";
+import { finnhub } from "@/lib/agent/research-helpers";
+import { sma } from "@/lib/market-data/price-structure";
 import { getBars } from "@/lib/alpaca";
 import type { MacroEvent } from "@/lib/discovery/types";
 
@@ -101,7 +102,8 @@ export const getMarketContext = defineTool({
     const spyCandle = spyBarsResult.data as { c?: number[]; s?: string } | null;
     if (spyCandle && spyCandle.s === "ok" && Array.isArray(spyCandle.c) && spyCandle.c.length >= 5) {
       const closes = spyCandle.c;
-      const sma20 = calcSMA(closes, 20);
+      const rawSma20 = sma(closes, 20);
+      const sma20 = rawSma20 != null ? Math.round(rawSma20 * 100) / 100 : null;
       const currentPrice = closes[closes.length - 1];
       fiveDayReturn = closes.length >= 6
         ? ((currentPrice - closes[closes.length - 6]) / closes[closes.length - 6]) * 100

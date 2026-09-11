@@ -12,7 +12,8 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { finnhub, calcRSI } from "@/lib/agent/research-helpers";
+import { finnhub } from "@/lib/agent/research-helpers";
+import { rsi } from "@/lib/market-data/price-structure";
 import { getBars } from "@/lib/alpaca";
 
 interface PeerMetrics {
@@ -68,7 +69,7 @@ async function fetchPeerMetrics(ticker: string): Promise<PeerMetrics> {
       : null;
 
   const rsi14 =
-    recentCandle?.s === "ok" && recentCandle.c?.length ? calcRSI(recentCandle.c) : null;
+    recentCandle?.s === "ok" && recentCandle.c?.length ? rsi(recentCandle.c) : null;
 
   // Composite leader score — normalized blend of growth + YTD return.
   let leaderScore = 50;
