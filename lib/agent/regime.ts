@@ -1,9 +1,13 @@
 /**
  * regime.ts — what the market allows today (TRADING_PLAYBOOK.md Part C).
  *
- *   RISK_OFF  SPY below its 200-day
- *   CAUTION   SPY below its 50-day (above the 200-day)
- *   RISK_ON   SPY above both
+ *   RISK_OFF  SPY more than 1% below its 200-day
+ *   CAUTION   SPY more than 1% below its 50-day (not RISK_OFF)
+ *   RISK_ON   otherwise
+ *
+ * The 1% buffer (REGIME_BUFFER_PCT, Dave 2026-09-11): a line with no
+ * buffer flips on noise — on 2026-09-10 SPY closed 42¢ under its 50-day
+ * and every buy would have been halved.
  *
  * Plus breadth: the share of the book's names above their own 50-day,
  * reported alongside (the playbook's RISK_ON also asks for ≥ 60%; it is a
@@ -19,6 +23,8 @@ import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import type { Regime } from "@/lib/agent/position-sizing";
 
 export const BREADTH_RISK_ON_PCT = 60;
+/** SPY must be this far under an average before it counts as below it. */
+export const REGIME_BUFFER_PCT = 1;
 
 export interface RegimeReading {
   regime: Regime;
@@ -41,7 +47,8 @@ export function computeRegime(
   const s200 = spy.sma[200];
   if (close == null || s50 == null || s200 == null) return null;
 
-  const regime: Regime = close < s200 ? "RISK_OFF" : close < s50 ? "CAUTION" : "RISK_ON";
+  const under = (avg: number) => close < avg * (1 - REGIME_BUFFER_PCT / 100);
+  const regime: Regime = under(s200) ? "RISK_OFF" : under(s50) ? "CAUTION" : "RISK_ON";
   const withAvg = book.filter((b) => b.sma[50] != null && b.closes.length > 0);
   const breadthPct = withAvg.length
     ? Math.round((withAvg.filter((b) => b.closes[b.closes.length - 1] > (b.sma[50] as number)).length / withAvg.length) * 100)

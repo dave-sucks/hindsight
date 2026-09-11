@@ -60,13 +60,17 @@ describe("computeRegime", () => {
   it("RISK_ON above both averages", () => {
     expect(computeRegime(snap(600, 580, 550), [])!.regime).toBe("RISK_ON");
   });
-  it("CAUTION under the 50-day, above the 200-day", () => {
+  it("a hairline under the 50-day is still RISK_ON — the 1% buffer (SPY 09-10: 42¢ under)", () => {
+    expect(computeRegime(snap(757.83, 758.25, 713.71), [])!.regime).toBe("RISK_ON");
+  });
+  it("CAUTION more than 1% under the 50-day, above the 200-day", () => {
     const r = computeRegime(snap(570, 580, 550), [])!;
     expect(r.regime).toBe("CAUTION");
     expect(r.line).toContain("half size on new entries");
   });
-  it("RISK_OFF under the 200-day", () => {
+  it("RISK_OFF more than 1% under the 200-day", () => {
     expect(computeRegime(snap(540, 580, 550), [])!.regime).toBe("RISK_OFF");
+    expect(computeRegime(snap(546, 580, 550), [])!.regime).toBe("CAUTION");
   });
   it("reports breadth and flags thin leadership in RISK_ON", () => {
     const book = [snap(10, 9, 8), snap(10, 11, 8), snap(10, 12, 8)];
