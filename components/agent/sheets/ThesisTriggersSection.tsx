@@ -189,6 +189,8 @@ function predicateKindValue(p: TriggerPredicate): {
       };
     case "GAP_UP":
       return { kind: "gap up", value: `${p.minPct ?? "?"}%` };
+    case "INSIDER_CLUSTER":
+      return { kind: `insiders buying (${p.days ?? "?"}d)`, value: `${p.minBuyers ?? "?"}+` };
     case "RSI":
       return {
         kind: `RSI(${p.period ?? 14}) ${p.direction ? p.direction.toLowerCase() : ""}`.trim(),
@@ -273,6 +275,8 @@ function predicateDescription(p: TriggerPredicate): string {
       return `Fires when the stock opens ${p.minPct}%+ above the prior close on ${p.minVolRatio}× average volume${(p.withinDays ?? 1) > 1 ? `, today or within the last ${p.withinDays} sessions` : ""}.`;
     case "RSI":
       return `Fires when RSI(${p.period ?? 14}) is ${p.direction?.toLowerCase()} ${p.threshold}.`;
+    case "INSIDER_CLUSTER":
+      return `Fires when ${p.minBuyers} or more insiders have bought on the open market in the last ${p.days} days (Form 4 purchases; grants and exercises don't count).`;
     case "EARNINGS_BEAT":
       return p.minSurprisePct
         ? `Fires on an earnings beat of at least ${p.minSurprisePct}%.`
@@ -905,7 +909,8 @@ type ChartKind =
   | "VOLUME_RATIO"
   | "GAP_UP"
   | "RSI"
-  | "RS_VS_SPY";
+  | "RS_VS_SPY"
+  | "INSIDER_CLUSTER";
 
 const CHART_KIND_OPTIONS: ReadonlyArray<{ v: ChartKind; l: string }> = [
   { v: "NEAR_SMA", l: "Near an average" },
@@ -916,6 +921,7 @@ const CHART_KIND_OPTIONS: ReadonlyArray<{ v: ChartKind; l: string }> = [
   { v: "GAP_UP", l: "Gap up" },
   { v: "RSI", l: "RSI" },
   { v: "RS_VS_SPY", l: "Beating SPY" },
+  { v: "INSIDER_CLUSTER", l: "Insider buying" },
 ];
 
 /** The second choice a chart condition needs (which average, which window), if any. */
@@ -944,6 +950,12 @@ function chartParamOptions(k: ChartKind): ReadonlyArray<{ v: string; l: string }
         { v: "1M", l: "1 month" },
         { v: "3M", l: "3 months" },
         { v: "6M", l: "6 months" },
+      ];
+    case "INSIDER_CLUSTER":
+      return [
+        { v: "30", l: "30 days" },
+        { v: "60", l: "60 days" },
+        { v: "90", l: "90 days" },
       ];
     default:
       return null;
@@ -976,6 +988,8 @@ function chartHelp(k: ChartKind, param: string, dir: string): string {
       return `Fires when ${param === "2" ? "RSI(2)" : "RSI(14)"} is ${dir === "ABOVE" ? "above" : "below"} this level.`;
     case "RS_VS_SPY":
       return "Fires when the stock's return over the window beats SPY's by this many percentage points (as of the last close).";
+    case "INSIDER_CLUSTER":
+      return `Fires when at least this many insiders bought on the open market in the last ${param} days. Three or more is the documented edge.`;
   }
 }
 
@@ -1030,7 +1044,15 @@ export function AddTriggerDialog({
   const chartDirectional = isChart && (chartKind === "VS_SMA" || chartKind === "RSI");
   /** The unit the chart condition's number is in. */
   const chartUnit =
-    chartKind === "VOLUME_RATIO" ? "×" : chartKind === "RSI" ? "" : chartKind === "RS_VS_SPY" ? "pts" : "%";
+    chartKind === "VOLUME_RATIO"
+      ? "×"
+      : chartKind === "RSI"
+        ? ""
+        : chartKind === "RS_VS_SPY"
+          ? "pts"
+          : chartKind === "INSIDER_CLUSTER"
+            ? "insiders"
+            : "%";
   /** %-valued criteria share the % input adornment + 0.5 step. */
   const isPct = isMove || isGain || isTrail;
   const showFireMode = action === "EXIT" && held;
@@ -1075,6 +1097,7 @@ export function AddTriggerDialog({
   useEffect(() => {
     const opts = chartParamOptions(chartKind);
     setChartParam(opts ? (chartKind === "NEAR_SMA" || chartKind === "VS_SMA" ? "50" : chartKind === "RS_VS_SPY" ? "3M" : opts[0].v) : "");
+    if (chartKind === "INSIDER_CLUSTER") setAction("REVIEW");
     if (chartKind === "RSI") setDir("BELOW");
   }, [chartKind]);
 
@@ -1092,7 +1115,8 @@ export function AddTriggerDialog({
         Number.isFinite(num) &&
         (chartKind === "RS_VS_SPY" ? num > -100 : num > 0) &&
         (chartKind !== "RSI" || num < 100) &&
-        (chartKind !== "NEAR_SMA" || num <= 10))
+        (chartKind !== "NEAR_SMA" || num <= 10) &&
+        (chartKind !== "INSIDER_CLUSTER" || (Number.isInteger(num) && num <= 10)))
     : null;
   const valid = chartValid ?? (
     val.trim() !== "" &&
@@ -1129,6 +1153,8 @@ export function AddTriggerDialog({
           return { kind: "RSI", period: Number(chartParam), threshold: num, direction: dir };
         case "RS_VS_SPY":
           return { kind: "RS_VS_SPY", window: chartParam, min: num };
+        case "INSIDER_CLUSTER":
+          return { kind: "INSIDER_CLUSTER", minBuyers: num, days: Number(chartParam) };
       }
     };
     const predicate = isChart
@@ -1375,7 +1401,7 @@ export function AddTriggerDialog({
               value={val}
               min={isTrail || isDays ? 1 : isChart && chartKind === "RS_VS_SPY" ? undefined : 0}
               max={isEarnings ? 14 : undefined}
-              step={isDays || (isChart && chartKind === "RSI") ? 1 : isPct || isChart ? 0.5 : 0.01}
+              step={isDays || (isChart && (chartKind === "RSI" || chartKind === "INSIDER_CLUSTER")) ? 1 : isPct || isChart ? 0.5 : 0.01}
               placeholder={
                 isChart
                   ? chartKind === "VOLUME_RATIO"
@@ -1388,7 +1414,9 @@ export function AddTriggerDialog({
                           ? "0"
                           : chartKind === "PCT_FROM_52W_HIGH"
                             ? "5"
-                            : "2"
+                            : chartKind === "INSIDER_CLUSTER"
+                              ? "3"
+                              : "2"
                   : isEarnings ? "3" : isCadence ? "7" : isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"
               }
               onChange={(e) => setVal(e.target.value)}

@@ -20,6 +20,7 @@ const DIALOG_POSTS: TriggerPredicate[] = [
   { kind: "GAP_UP", minPct: 8, minVolRatio: 3 },
   { kind: "RSI", period: 2, threshold: 10, direction: "BELOW" },
   { kind: "RS_VS_SPY", window: "3M", min: 0 },
+  { kind: "INSIDER_CLUSTER", minBuyers: 3, days: 30 },
   { kind: "PRICE_ABOVE", level: 517.88, basis: "close" },
   { kind: "PRICE_MOVE_PCT", pct: 8, direction: "DOWN", window: "5D" },
 ];

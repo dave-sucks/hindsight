@@ -33,6 +33,7 @@ import {
   volumeRatio,
   type IndicatorSnapshot,
 } from "@/lib/market-data/indicator-snapshot";
+import { insiderCluster } from "@/lib/market-data/insider-cluster";
 
 // ── EvaluationContext ─────────────────────────────────────────────────
 
@@ -236,6 +237,12 @@ export function evaluateTrigger(
 
     case "GAP_UP":
       return evaluateGapUp(predicate, ctx);
+
+    case "INSIDER_CLUSTER": {
+      const buys = ctx.indicators?.insiderBuys;
+      if (!buys) return false;
+      return insiderCluster(buys, predicate.days, ctx.now).buyers >= predicate.minBuyers;
+    }
 
     case "RSI": {
       if (!ctx.indicators || ctx.latestQuote == null) return false;

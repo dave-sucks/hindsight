@@ -122,6 +122,10 @@ export type TriggerPredicate =
       threshold: number;
       direction: "ABOVE" | "BELOW";
     }
+  // At least minBuyers distinct insiders bought on the open market (Form 4,
+  // code P) within the last `days` (TRADING_PLAYBOOK.md D9). Reads the
+  // snapshot's insiderBuys, refreshed each morning. DAV-252.
+  | { kind: "INSIDER_CLUSTER"; minBuyers: number; days: number }
 
   // ── Calendar-based ────────────────────────────────────────────────────
   // EARNINGS_BEAT / EARNINGS_MISS are NOT signal-dependent any more. They

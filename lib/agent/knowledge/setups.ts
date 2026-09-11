@@ -579,7 +579,7 @@ export const SETUPS: Setup[] = [
       confirmation: [],
       chaseLimitPct: null,
       buyNowNormal: false,
-      text: "A screen and a conviction input; the entry is a D1 or D5 condition. (INSIDER_CLUSTER as a trigger kind is PR 10.)",
+      text: "A screen and a conviction input; the entry is a D1 or D5 condition. As a wake: INSIDER_CLUSTER (≥ 3 open-market buyers within 30 days) → REVIEW, with the buyers named on the fire.",
     },
     stop: {
       structure: ["the lowest insider purchase price"],
@@ -610,7 +610,7 @@ export const SETUPS: Setup[] = [
       confirmation: [],
       chaseLimitPct: null,
       buyNowNormal: false,
-      text: "A screen and D4's third confirmation. (ESTIMATE_REVISION as a trigger kind is PR 10, vendor permitting — no plan we hold serves forward estimates today.)",
+      text: "A screen and D4's third confirmation — but no plan we hold serves estimate history (Finnhub /stock/eps-estimate refuses; probed 2026-09-11), so there is no revision number to read and no trigger kind for it. Cite a revision only from a source you actually read.",
     },
     stop: { structure: [], maxPct: null, minAtr: MIN_STOP_ATR, text: "From the entry setup used." },
     target: { minR: MIN_REWARD_RISK, text: "From the entry setup used." },

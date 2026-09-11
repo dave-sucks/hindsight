@@ -29,6 +29,8 @@ export interface TriggerPredicate {
   minPct?: number;
   minVolRatio?: number;
   withinDays?: number;
+  /** INSIDER_CLUSTER — distinct open-market buyers needed. */
+  minBuyers?: number;
   /** EARNINGS_SINCE — days after the report, inclusive. */
   min?: number;
   max?: number;

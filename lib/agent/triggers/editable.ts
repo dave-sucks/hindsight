@@ -65,6 +65,8 @@ export function editableTriggerField(
       return { label: "Gap", value: p.minPct, suffix: "%", min: 0, max: 100, step: 0.5 };
     case "RSI":
       return { label: "RSI", value: p.threshold, min: 0, max: 100, step: 1 };
+    case "INSIDER_CLUSTER":
+      return { label: "Buyers", value: p.minBuyers, suffix: "insiders", min: 1, max: 10, step: 1 };
     default:
       return null;
   }
@@ -96,6 +98,8 @@ export function withEditedValue(
       return { ...p, minPct: value };
     case "RSI":
       return { ...p, threshold: value };
+    case "INSIDER_CLUSTER":
+      return { ...p, minBuyers: Math.round(value) };
     default:
       return p;
   }
