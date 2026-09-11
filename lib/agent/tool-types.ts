@@ -73,9 +73,9 @@ export type RouteReasonCode =
   | "CROSS_ANALYST"
   // Aggregate routes — populated when Signal.aggregateType is set (earnings
   // calendar, market movers). Aggregates bypass the news-signal universe
-  // fence and instead match via AgentConfig.feeds subscription OR via
-  // ticker overlap with watchlist/positions. See
-  // lib/inngest/functions/signal-router.ts and lib/universe/feeds.ts.
+  // fence and match via ticker overlap with watchlist/positions.
+  // FIRM_AGGREGATE_FEED is historical (the AgentConfig.feeds subscription
+  // was deleted 2026-09-11). See lib/inngest/functions/signal-router.ts.
   | "FIRM_AGGREGATE_FEED"
   | "AGGREGATE_TICKER_MATCH";
 

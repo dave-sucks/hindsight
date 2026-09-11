@@ -3,11 +3,9 @@
  *
  * The firm-market-sweep cron writes one aggregate Signal per category
  * (gainers, losers, most actives) per day from Alpaca's stock screener
- * (FMP removed 2026-09-08 — see lib/market-data/alpaca-screener.ts). Analysts subscribed via
- * `AgentConfig.feeds` (canonical `MARKET_MOVERS_GAINERS`,
- * `MARKET_MOVERS_LOSERS`, `MARKET_MOVERS_ACTIVES`) get them routed
- * automatically. This tool is the on-demand pull path for analysts that
- * aren't subscribed but want a fresh look.
+ * (FMP removed 2026-09-08 — see lib/market-data/alpaca-screener.ts). This
+ * tool is how any analyst reads them — the feeds subscription that once
+ * routed them automatically was deleted 2026-09-11.
  *
  * Renders via the generic ToolUIRenderer (`ui: "tool-ui"`). Each mover
  * becomes a ticker row item with the % change in the tag and price in the

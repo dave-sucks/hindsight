@@ -46,8 +46,8 @@ export const ROUTE_GROUP_CODES: Record<RouteGroup, RouteReasonCode[]> = {
   industry: ["INDUSTRY_MATCH"],
   theme: ["THEME_MATCH"],
   cross: ["CROSS_ANALYST"],
-  // Firm-aggregate feed subscriptions — the analyst opted into the firehose
-  // via AgentConfig.feeds (earnings calendar, market movers).
+  // Historical: routes from when analysts could subscribe to a firehose
+  // (AgentConfig.feeds, deleted 2026-09-11). No new routes carry this code.
   feeds: ["FIRM_AGGREGATE_FEED"],
   legacy: [], // special-cased: counts routes with no routeReasonCode
 };
@@ -74,7 +74,7 @@ const GROUP_TOOLTIP: Record<RouteGroup, string> = {
   cross:
     "Signal was routed to another analyst first, cross-posted here because a ticker overlap exists.",
   feeds:
-    "Firm-aggregate signal (earnings calendar / market movers) that this analyst is subscribed to via the Feeds field. Full firehose.",
+    "Firm-aggregate signal (earnings calendar / market movers) routed while this analyst had a Feeds subscription. The field was retired 2026-09-11 — historical routes only.",
   legacy:
     "Routes from before the router tagged reason codes. Historical context only.",
 };

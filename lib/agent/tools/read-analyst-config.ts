@@ -74,7 +74,7 @@ export const readAnalystConfig = defineTool({
       },
       {
         kind: "generic" as const,
-        text: `Universe: ${analyst.sectors.length} sectors · ${analyst.industries.length} industries · ${analyst.themes.length} themes · ${analyst.feeds.length} feeds`,
+        text: `Universe: ${analyst.sectors.length} sectors · ${analyst.industries.length} industries · ${analyst.themes.length} themes`,
       },
       {
         kind: "generic" as const,
@@ -102,7 +102,6 @@ export const readAnalystConfig = defineTool({
           sectors: analyst.sectors,
           industries: analyst.industries,
           themes: analyst.themes,
-          feeds: analyst.feeds,
           marketCapMin: analyst.marketCapMin?.toString() ?? null,
           marketCapMax: analyst.marketCapMax?.toString() ?? null,
           watchlist,
