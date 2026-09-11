@@ -403,7 +403,7 @@ describe("resolveLadder tie-break", () => {
     const out = resolveLadder({
       thesis: [
         trig(above(1150), "REVIEW", { id: "a" }),
-        trig({ kind: "SIGNAL_TYPE", signalType: "NEWS" }, "REVIEW", { id: "b" }),
+        trig({ kind: "NEAR_SMA", period: 50, withinPct: 2 }, "REVIEW", { id: "b" }),
       ],
       direction: "LONG",
     });

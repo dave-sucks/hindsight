@@ -254,7 +254,7 @@ describe("computeLadderHealth — predicate composition", () => {
         kind: "AND",
         predicates: [
           { kind: "PRICE_BELOW", level: 105 },
-          { kind: "SIGNAL_TYPE", signalType: "NEWS" },
+          { kind: "VOLUME_RATIO", min: 1.5 },
         ],
       },
       action: "EXIT",

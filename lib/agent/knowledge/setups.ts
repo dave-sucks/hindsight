@@ -80,47 +80,30 @@ export type Horizon = "TRADE" | "TARGET" | "CATALYST" | "COMPOUNDER";
 export type Placeholder = `{${string}}`;
 type Level = number | Placeholder;
 
-/**
- * Kinds PR 2 (DAV-247) adds to the trigger vocabulary. The templates use
- * them now so the catalog is written once; when PR 2 lands these join
- * TriggerPredicate and this list is deleted (its test switches to the
- * union). docs/plans/AGENT_REBUILD.md §3.
- */
-export const PLANNED_KINDS = [
-  "VOLUME_RATIO",
-  "NEW_HIGH",
-  "NEAR_SMA",
-  "PCT_FROM_52W_HIGH",
-  "RS_VS_SPY",
-  "GAP_UP",
-] as const;
-
-/** Kinds PR 2 deletes — no template may name them. */
+/** Kinds deleted in DAV-247 (they could never fire) — no template may name them. */
 export const DELETED_KINDS = ["SIGNAL_TYPE", "GUIDANCE_CHANGE", "FILING"] as const;
 
-export type LiveKind = Exclude<TriggerPredicate["kind"], (typeof DELETED_KINDS)[number]>;
-export type TemplateKind = LiveKind | (typeof PLANNED_KINDS)[number];
+export type TemplateKind = TriggerPredicate["kind"];
 
 /**
- * An entry condition with holes. Parameter names follow the §3 vocabulary
- * table; `basis` on PRICE_ABOVE/BELOW and `period` on RSI are the PR 2
- * extensions.
+ * An entry condition with holes: the TriggerPredicate shapes, with a price
+ * level allowed to be a `{placeholder}` the writer fills from the chart.
  */
 export type TemplatePredicate =
   | { kind: "PRICE_ABOVE" | "PRICE_BELOW"; level: Level; basis?: "close" | "intraday" }
   | { kind: "VOLUME_RATIO"; min: number }
   | { kind: "NEW_HIGH"; window: "20D" | "52W" }
-  | { kind: "NEAR_SMA"; period: 10 | 20 | 50 | 200; withinPct: number }
-  | { kind: "VS_SMA"; period: 50 | 200; direction: "ABOVE" | "BELOW" }
+  | { kind: "NEAR_SMA"; period: 20 | 50 | 150 | 200; withinPct: number }
+  | { kind: "VS_SMA"; period: 20 | 50 | 150 | 200; direction: "ABOVE" | "BELOW" }
   | { kind: "PCT_FROM_52W_HIGH"; max: number }
   | { kind: "RS_VS_SPY"; window: "1M" | "3M" | "6M"; min: number }
-  | { kind: "GAP_UP"; minPct: number; minVolRatio: number }
-  | { kind: "RSI"; period: 2 | 14; threshold: number; direction: "ABOVE" | "BELOW" }
+  | { kind: "GAP_UP"; minPct: number; minVolRatio: number; withinDays?: number }
+  | { kind: "RSI"; period?: 2 | 14; threshold: number; direction: "ABOVE" | "BELOW" }
   | { kind: "EARNINGS_SINCE"; min: number; max: number }
   | { kind: "EARNINGS_WITHIN"; days: number }
   | { kind: "AND" | "OR"; predicates: TemplatePredicate[] };
 
-/** Compile-time: a template kind is a live kind or a PR 2 kind — never a deleted one. */
+/** Compile-time: every template kind is a real trigger kind. */
 type AssertKinds<T extends TemplateKind> = T;
 export type TemplatePredicateKind = AssertKinds<TemplatePredicate["kind"]>;
 
@@ -331,7 +314,9 @@ export const SETUPS: Setup[] = [
       template: {
         kind: "AND",
         predicates: [
-          { kind: "GAP_UP", minPct: EP_GAP_MIN_PCT, minVolRatio: EP_GAP_MIN_VOLUME_RATIO },
+          // The gap happened today or in the last two sessions — the entry is
+          // day 1 (close above the gap-day high) or day 2 (hold the midpoint).
+          { kind: "GAP_UP", minPct: EP_GAP_MIN_PCT, minVolRatio: EP_GAP_MIN_VOLUME_RATIO, withinDays: 3 },
           {
             kind: "OR",
             predicates: [
@@ -782,9 +767,9 @@ export function describeTemplate(p: TemplatePredicate | null): string {
     case "RS_VS_SPY":
       return `RS_VS_SPY(${p.window}) > ${p.min}`;
     case "GAP_UP":
-      return `GAP_UP(≥ ${p.minPct}% on ≥ ${p.minVolRatio}× volume)`;
+      return `GAP_UP(≥ ${p.minPct}% on ≥ ${p.minVolRatio}× volume${p.withinDays ? `, within ${p.withinDays} sessions` : ""})`;
     case "RSI":
-      return `RSI(${p.period}) ${p.direction === "BELOW" ? "<" : ">"} ${p.threshold}`;
+      return `RSI(${p.period ?? 14}) ${p.direction === "BELOW" ? "<" : ">"} ${p.threshold}`;
     case "EARNINGS_SINCE":
       return `EARNINGS_SINCE(${p.min}–${p.max} days)`;
     case "EARNINGS_WITHIN":

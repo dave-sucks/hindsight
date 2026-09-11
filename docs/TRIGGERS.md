@@ -32,26 +32,53 @@ An invalid trigger is dropped at evaluation, so the gate rejects it up front.
 
 | Kind | Means | Value |
 |---|---|---|
-| `PRICE_ABOVE` / `PRICE_BELOW` | Last quote crosses a fixed level ("Target Price") | `level` ($) |
-| `PRICE_MOVE_PCT` | Daily % move vs prior close ("Movement Amount") | `pct`, `direction: UP\|DOWN`, `window` |
+| `PRICE_ABOVE` / `PRICE_BELOW` | Last quote crosses a fixed level ("Target Price"). `basis: "close"` = the day must **close** past it — the 5-minute passes skip it and the close pass (16:20–16:34 ET) reads the day's consolidated close. | `level` ($), `basis?: intraday\|close` |
+| `PRICE_MOVE_PCT` | % move ("Movement Amount"): `1D` vs the prior close off the quote; `5D` / `20D` vs the close that many sessions back, off the snapshot | `pct`, `direction: UP\|DOWN`, `window: 1D\|5D\|20D` |
 | `GAIN_FROM_ENTRY` | **Cumulative** % vs the open position's `avgCost` — not the single-day move. `UP` fires at gain ≥ `pct` (the +10% checkpoint milestone); `DOWN` fires at gain ≤ −`pct` (the −12% loser-attention drawdown). LONG: `(price−avg)/avg`; SHORT inverts (a gain is a price DROP). **HOLDING-only** — no open position in context ⇒ evaluates false. | `pct`, `direction: UP\|DOWN` |
 | `TRAILING_FROM_HIGH` | Give-back % off the position's tracked peak (`Position.peakPrice` — high-water for LONG, low-water for SHORT, maintained by the price monitor). The mechanical gain ratchet: the floor follows the high with **zero agent memory**. LONG fires when price ≤ `peak × (1 − pct/100)`; SHORT mirrors off the low. **HOLDING-only.** | `pct` |
-| `VS_SMA` | Price vs 50/200-day SMA | `period`, `direction` |
-| `RSI` | RSI vs threshold (**stubbed — never fires**) | `threshold`, `direction` |
-| `SIGNAL_TYPE` | A routed signal of a given type/sentiment/urgency | `signalType`, `sentiment?`, `minUrgency?` |
+| `VS_SMA` | Price above / below a moving average (snapshot) | `period: 20\|50\|150\|200`, `direction` |
+| `NEAR_SMA` | Price within `withinPct`% of a moving average — the pullback arm | `period`, `withinPct` |
+| `VOLUME_RATIO` | Today's volume so far ÷ the 20-session average. No projection — true only once the volume is really there; read at the close it is the day's ratio | `min` (×) |
+| `NEW_HIGH` | Price above the prior 20 sessions' / 52 weeks' high | `window: 20D\|52W` |
+| `PCT_FROM_52W_HIGH` | Price within `max`% of the 52-week high | `max` (%) |
+| `RS_VS_SPY` | Return over the window minus SPY's, percentage points, as of the last close | `window: 1M\|3M\|6M`, `min` |
+| `GAP_UP` | Opened ≥ `minPct`% over the prior close on ≥ `minVolRatio`× volume — today, or within `withinDays` sessions | `minPct`, `minVolRatio`, `withinDays?` |
+| `RSI` | RSI over the snapshot's closes with the live price as today's | `period?: 2\|14`, `threshold`, `direction` |
 | `EARNINGS_BEAT` / `EARNINGS_MISS` | Earnings surprise — reported EPS vs estimate, read off the Finnhub calendar on the cron (one firm-wide call per pass; `triggers/earnings.ts`). Fires at the first open after the report, once per report (3-day lookback inside the 7-day cooldown). The audit row carries the figures. | `minSurprisePct?` |
 | `EARNINGS_WITHIN` | The heads-up **before** a report: "this stock reports within N days." Same calendar call, 14-day lookahead. Fires once per approaching report (30-day cooldown). The audit row carries the date, bell, and estimates. | `days` (1–14) |
 | `EARNINGS_SINCE` | The window **after** a report: "reported between min and max days ago" (0 = the report day). The post-report drift entry window, once the reaction is known. Same calendar, 5-day lookback. Fires once per report (30-day cooldown). | `min`, `max` (0–5) |
-| `GUIDANCE_CHANGE` | Guidance revision | `direction` |
-| `FILING` | SEC form filed | `formType` |
 | `REVIEW_CADENCE` | N days since the last actual review (`lastReviewedAt`) | `days` |
 | `AND` / `OR` | Composite | `predicates[]` |
 
-The UI mints **Target Price** (`PRICE_ABOVE`/`PRICE_BELOW`), **Movement
-Amount** (`PRICE_MOVE_PCT`), the held-only **Gain / Trail** pair, the
-**Agent Watch** clock (`REVIEW_CADENCE`), and the **Earnings** heads-up
-(`EARNINGS_WITHIN`). The rest come from horizon defaults
+The UI mints **Target Price** (`PRICE_ABOVE`/`PRICE_BELOW`, intraday or at
+the close), **Movement Amount** (`PRICE_MOVE_PCT`, today / 5 / 20 sessions),
+the held-only **Gain / Trail** pair, the **Agent Watch** clock
+(`REVIEW_CADENCE`), the **Earnings** heads-up (`EARNINGS_WITHIN`), and
+**Chart** (every chart kind above). The rest come from horizon defaults
 (`triggers/defaults.ts`) or the agent.
+
+**The chart kinds read the daily indicator snapshot** (DAV-247):
+`lib/inngest/functions/indicator-snapshot.ts` runs at 06:30 ET, computes the
+chart for every ticker on the book with `lib/market-data/price-structure.ts`
+(a year of SIP daily bars) and stores numbers — moving averages, 20-day /
+52-week highs, the 20-day volume average, the last 60 closes, RS vs SPY, the
+last 10 sessions' gaps — in `TickerIndicators`. The evaluator reads the
+newest row next to the live quote; a snapshot older than 5 days is ignored
+(logged). No snapshot ⇒ the chart kinds read false. `VOLUME_RATIO` and
+`GAP_UP` also read today's consolidated volume (one batched Alpaca call, ~16
+minutes delayed — Finnhub quotes carry no volume).
+
+**`fireOnMatch`** (a field on the trigger, ENTER only): the rung fires on its
+first check where the condition is true, even if it was already true at the
+prior close. It is the buy-now rung — an ENTER otherwise waits for the
+crossing, which a level the price is already past never produces on a flat or
+down day. After the first fire it is an ordinary ENTER.
+
+**Deleted 2026-09-11 (DAV-247):** `SIGNAL_TYPE`, `GUIDANCE_CHANGE`, `FILING`.
+They needed the signal router, which has been off since 2026-05-31, and could
+never fire. A migration stripped them from every stored ladder (207 rungs
+removed, 1 rewritten, 119 theses). When the Signals project returns, its kinds
+are added fresh against a source that exists.
 
 `GAIN_FROM_ENTRY` + `TRAILING_FROM_HIGH` **are the gain-protection system**
 (#477). They are the two predicates the standing protection minimums in §2a
@@ -116,29 +143,27 @@ sharing the pure `evaluateTrigger` in `triggers/evaluate.ts`:
 | Predicate | Cron (5-min, market hours) | Signal (`app/signal.routed`) | Daily-run inline |
 |---|:--:|:--:|:--:|
 | `PRICE_ABOVE` / `PRICE_BELOW` | ✅ | — | ✅ |
-| **`PRICE_MOVE_PCT` `window:"1D"`** (the % alerts) | ✅ **fires** | — | ⚠️ only if candles supplied |
-| `PRICE_MOVE_PCT` `5D` / `30D` | ❌ (no candles) | — | ✅ |
+| **`PRICE_MOVE_PCT` `window:"1D"`** (the % alerts) | ✅ **fires** | — | ⚠️ only if a daily change is supplied |
+| `PRICE_MOVE_PCT` `5D` / `20D` | ✅ (snapshot) | — | ✅ (snapshot) |
 | **`GAIN_FROM_ENTRY`** (HOLDING-only) | ✅ **fires** | — | ✅ |
 | **`TRAILING_FROM_HIGH`** (HOLDING-only) | ✅ **fires** | — | ✅ |
-| `VS_SMA` | ❌ (no SMA) | — | ✅ |
-| `RSI` | ❌ stub | ❌ stub | ❌ stub |
+| `VS_SMA` / `NEAR_SMA` / `NEW_HIGH` / `PCT_FROM_52W_HIGH` / `RS_VS_SPY` / `RSI` | ✅ (snapshot) | — | ✅ (snapshot) |
+| `VOLUME_RATIO` / `GAP_UP` | ✅ (snapshot + today's volume) | — | ❌ (no volume on that path) |
+| `PRICE_ABOVE` / `PRICE_BELOW` `basis:"close"` | ✅ **close pass only** (16:20–16:34 ET) | — | ✅ (read as a plain level) |
 | **`EARNINGS_BEAT` / `EARNINGS_MISS` / `EARNINGS_WITHIN` / `EARNINGS_SINCE`** | ✅ **fires** (calendar) | ✅ (beat/miss only, if a signal ever carries a surprise) | — |
-| `GUIDANCE_CHANGE` / `FILING` / `SIGNAL_TYPE` | — | ✅ (routing paused — inert) | — |
 | `REVIEW_CADENCE` | ✅ | — | ✅ |
 
 **The Movement-Amount nuance (read this):** a **daily** (`1D`) `PRICE_MOVE_PCT`
 fires on the cron because the evaluator reads the quote's own daily % change
 (`latestQuote.changePct` — Finnhub `dp`, with a prev-close `(c−pc)/pc` fallback
 for thin names; `trigger-evaluator.ts`). It does **not** need candles. The
-multi-day windows (`5D`/`30D`) and `VS_SMA` **do** need candles the cron doesn't
-fetch, so they only evaluate on the daily-run inline path. `RSI` is a stub
-everywhere. **The UI only mints `1D`**, so every % alert you set from the UI
-fires on the cron.
+multi-day windows (`5D`/`20D`) read the snapshot's closes.
 
 > Historical note: before the Movement-Amount work, ALL `PRICE_MOVE_PCT`
 > returned false on the cron. The `1D`-via-`changePct` path is what connected
 > the daily % alerts. If you see a claim that "the cron can't read
-> `PRICE_MOVE_PCT`," it's describing the pre-fix code or the 5D/30D case.
+> `PRICE_MOVE_PCT`," it's describing the pre-fix code. (`30D` was removed
+> 2026-08-25; `5D` / `20D` came back with the snapshot in DAV-247.)
 
 **The gain-protection nuance (read this):** `GAIN_FROM_ENTRY` and
 `TRAILING_FROM_HIGH` fire on the 5-min cron because the cron supplies the open
@@ -237,8 +262,8 @@ tactical run. `ENTER`/`EXIT` always spawn (or DIRECT-close).
 ## 6. Cooldown
 
 `cooldownDays` rate-limits re-fires. Omit it → a per-kind default
-(`defaultCooldownDaysForPredicate`: EARNINGS_*/GUIDANCE 7, FILING/SIGNAL/PRICE_*
-1, `GAIN_FROM_ENTRY` 7 — the milestone latches, so 7d stops a same-week re-fire
+(`defaultCooldownDaysForPredicate`: EARNINGS_BEAT/MISS 7, EARNINGS_WITHIN/SINCE
+30, PRICE_* and the chart kinds 1, `GAP_UP` its `withinDays`, `GAIN_FROM_ENTRY` 7 — the milestone latches, so 7d stops a same-week re-fire
 if the acting agent forgets to re-arm the next checkpoint; `TRAILING_FROM_HIGH`
 1, REVIEW_CADENCE its own interval, …). **`cooldownDays: 0` is reserved for terminal
 `EXIT` triggers only** — `0` on any other action causes a 5-min evaluator
@@ -259,6 +284,11 @@ but the price path only **evaluates during the regular session**:
   the cron path gates on `isMarketOpen()` (regular session 9:30–16:00 ET,
   holiday-aware — the same guard `price-monitor` uses) and no-ops outside it.
   The **signal path is not gated** — news doesn't keep market hours.
+- **The close pass:** the ticks from 16:20 to 16:34 ET on a trading day are
+  not skipped: they evaluate only rungs with a `basis: "close"` price level,
+  with today's consolidated close (Alpaca SIP daily bar) as the price. A name
+  with no bar for today is skipped rather than evaluated on a guess. Cooldown
+  makes the three ticks fire a rung at most once.
 - **Cap:** 200 unique tickers per tick.
 
 ## 8. Editing surfaces

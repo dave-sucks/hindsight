@@ -10,7 +10,6 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import {
   DELETED_KINDS,
   PLACEHOLDERS,
-  PLANNED_KINDS,
   SEAT_SETUPS,
   SETUPS,
   SETUP_IDS,
@@ -19,18 +18,21 @@ import {
   setupIndex,
   templateKinds,
   templatePlaceholders,
+  type TemplatePredicate,
 } from "./setups";
 import { STRATEGY_ARCHETYPES } from "./strategy-archetypes";
+import { triggerPredicateSchema } from "@/lib/agent/triggers/schema";
 import { readKnowledgeLibrary } from "@/lib/agent/tools/read-knowledge-library";
 import { createToolContext } from "@/lib/agent/tool-context";
 
-/** Every predicate kind in TriggerPredicate today (lib/agent/triggers/types.ts). */
-const LIVE_KINDS = [
-  "PRICE_ABOVE", "PRICE_BELOW", "PRICE_MOVE_PCT", "GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH",
-  "VS_SMA", "RSI", "EARNINGS_BEAT", "EARNINGS_MISS", "EARNINGS_WITHIN", "EARNINGS_SINCE",
-  "REVIEW_CADENCE", "AND", "OR",
-];
-const AFTER_PR2 = new Set<string>([...LIVE_KINDS, ...PLANNED_KINDS]);
+/** A template with every `{placeholder}` level filled with a number. */
+function filled(p: TemplatePredicate): unknown {
+  if (p.kind === "AND" || p.kind === "OR") return { ...p, predicates: p.predicates.map(filled) };
+  if ((p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW") && typeof p.level === "string") {
+    return { ...p, level: 100 };
+  }
+  return p;
+}
 
 describe("the setup catalog", () => {
   it("has the twelve playbook setups, D1–D12, once each", () => {
@@ -75,12 +77,17 @@ describe("the setup catalog", () => {
     }
   });
 
-  it("every template names only kinds that exist after PR 2", () => {
-    for (const s of SETUPS) {
-      for (const k of templateKinds(s.entry.template)) {
-        expect({ setup: s.id, kind: k, known: AFTER_PR2.has(k) }).toEqual({ setup: s.id, kind: k, known: true });
-      }
+  it("every template, filled in, is a predicate the trigger write path accepts", () => {
+    for (const s of SETUPS.filter((x) => x.entry.template)) {
+      const parsed = triggerPredicateSchema.safeParse(filled(s.entry.template!));
+      expect({ setup: s.id, ok: parsed.success, issues: parsed.error?.issues.slice(0, 1) }).toEqual({
+        setup: s.id,
+        ok: true,
+        issues: undefined,
+      });
     }
+    // The check itself bites.
+    expect(triggerPredicateSchema.safeParse({ kind: "GUIDANCE_CHANGE", direction: "DOWN" }).success).toBe(false);
   });
 
   it("no template names a kind PR 2 deletes", () => {

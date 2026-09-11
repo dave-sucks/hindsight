@@ -161,11 +161,10 @@ export async function createSignalsFromSonar(
         : item.tickers;
 
       // Heuristic dataPayload extraction — pulls surprisePct, guidance
-      // direction, filing form types out of the headline+summary so the
-      // trigger evaluator can fire EARNINGS_BEAT/MISS/GUIDANCE_CHANGE/
-      // FILING predicates against real signals. Also upgrades the
-      // SignalType (NEWS → EARNINGS / FILING) when extraction succeeds,
-      // since the predicates gate on signal.type.
+      // direction, filing form types out of the headline+summary (the
+      // signal path reads surprisePct as an earnings fallback). Also
+      // upgrades the SignalType (NEWS → EARNINGS / FILING) when extraction
+      // succeeds.
       const extracted = extractDataPayload({
         type: signalType,
         headline: item.headline,

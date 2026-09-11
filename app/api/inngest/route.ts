@@ -7,6 +7,7 @@ import { evaluateTrade } from "@/lib/inngest/functions/trade-evaluator";
 import { morningResearch } from "@/lib/inngest/functions/morning-research";
 import { eodEvaluation } from "@/lib/inngest/functions/eod-evaluation";
 import { vendorProbe } from "@/lib/inngest/functions/vendor-probe";
+import { indicatorSnapshot } from "@/lib/inngest/functions/indicator-snapshot";
 import { dailyRunDigest } from "@/lib/inngest/functions/daily-run-digest";
 import { accuracyScorer } from "@/lib/inngest/functions/accuracy-scorer";
 // V3 Intelligence Layer
@@ -76,6 +77,10 @@ export const { GET, POST, PUT } = serve({
     // with a mid-cap book name; emails when a source is empty or erroring
     // (DAV-239). Runs before the pipeline so the day starts with the answer.
     vendorProbe,
+    // 6:30 AM ET Mon-Fri — the chart numbers every trigger reads (moving
+    // averages, highs, volume average, closes, RS vs SPY, gaps) for every
+    // ticker on the book, into TickerIndicators (DAV-247).
+    indicatorSnapshot,
     // V3 Intelligence (run in order: 6:30 → 7:00 → 7:15 → 7:30 → 7:45 → 8:00 analyst runs)
     firmMarketSweep,
     portfolioWatchlistMonitor,

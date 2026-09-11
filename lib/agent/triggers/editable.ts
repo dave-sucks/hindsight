@@ -8,9 +8,10 @@
  * the PRICE_MOVE_PCT percent, and the REVIEW_CADENCE days (the review clock)
  * — all strictly-positive values, which keeps the write-path's `value > 0`
  * guard exactly right (a $0 price, a 0% move and a 0-day clock are all
- * invalid). Every other predicate — earnings surprise %, RSI, time-elapsed
- * days, SMA, signal, filing, review-date, composites — renders read-only in
- * the popover. Broadening to those (where 0 can be valid) is a follow-up.
+ * invalid). The chart kinds expose their one positive number too (the
+ * distance to an average, the volume multiple, the gap size, the RSI
+ * level). Earnings surprise %, relative strength (where 0 and negatives
+ * are legal), the averages' period and composites render read-only.
  */
 
 import type { TriggerPredicate } from "./types";
@@ -54,6 +55,16 @@ export function editableTriggerField(
     case "EARNINGS_WITHIN":
       // The earnings heads-up — how many days before the report to wake.
       return { label: "Days before", value: p.days, suffix: "days", min: 1, max: 14, step: 1 };
+    case "NEAR_SMA":
+      return { label: "Within", value: p.withinPct, suffix: "%", min: 0, max: 10, step: 0.5 };
+    case "VOLUME_RATIO":
+      return { label: "Volume", value: p.min, suffix: "×", min: 0, max: 50, step: 0.1 };
+    case "PCT_FROM_52W_HIGH":
+      return { label: "Within", value: p.max, suffix: "%", min: 0, max: 100, step: 0.5 };
+    case "GAP_UP":
+      return { label: "Gap", value: p.minPct, suffix: "%", min: 0, max: 100, step: 0.5 };
+    case "RSI":
+      return { label: "RSI", value: p.threshold, min: 0, max: 100, step: 1 };
     default:
       return null;
   }
@@ -75,6 +86,16 @@ export function withEditedValue(
     case "REVIEW_CADENCE":
     case "EARNINGS_WITHIN":
       return { ...p, days: value };
+    case "NEAR_SMA":
+      return { ...p, withinPct: value };
+    case "VOLUME_RATIO":
+      return { ...p, min: value };
+    case "PCT_FROM_52W_HIGH":
+      return { ...p, max: value };
+    case "GAP_UP":
+      return { ...p, minPct: value };
+    case "RSI":
+      return { ...p, threshold: value };
     default:
       return p;
   }

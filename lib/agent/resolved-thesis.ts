@@ -364,10 +364,7 @@ function describePredicate(
     }
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
-    case "GUIDANCE_CHANGE":
-    case "FILING":
-    case "SIGNAL_TYPE":
-      return `${p.kind} (event-driven; fires on signal)`;
+      return `${p.kind} (fires off the earnings calendar)`;
     default:
       return p.kind ?? "(unknown)";
   }

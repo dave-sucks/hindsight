@@ -9,6 +9,7 @@ import { evaluateTrigger, shouldFire } from "./evaluate";
 import type { EvaluationContext, EvaluationContextSignal } from "./evaluate";
 import type { EarningsReport } from "./earnings";
 import type { Trigger, TriggerPredicate } from "./types";
+import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 
 const NOW = new Date("2026-04-29T14:30:00Z");
 const THESIS_CREATED = new Date("2026-04-01T00:00:00Z"); // 28 days before NOW
@@ -282,113 +283,186 @@ describe("evaluateTrigger", () => {
     });
   });
 
+  // ── Chart-based — the daily indicator snapshot (DAV-247) ────────────
+
+  // Closes 100 → 159 over 60 sessions (+1/day); 50-day 134.5; 20-day 149.5.
+  const closes = Array.from({ length: 60 }, (_, i) => 100 + i);
+  const snap: IndicatorSnapshot = {
+    asOf: "2026-04-28",
+    sma: { 20: 149.5, 50: 134.5, 150: null, 200: 120 },
+    high20: 160,
+    low20: 139,
+    high52w: 180,
+    low52w: 90,
+    volumeAvg20: 1_000_000,
+    closes,
+    rsVsSpy: { "1M": 4, "3M": 12, "6M": -3 },
+    gaps: [{ sessionsAgo: 2, pct: 9, volumeRatio: 4, low: 150, mid: 152, high: 154 }],
+    atr14: 3,
+  };
+  const at = (price: number, extra: Partial<EvaluationContext> = {}) =>
+    makeCtx({ latestQuote: { price, changePct: 0, prevClose: 159 }, indicators: snap, ...extra });
+
   describe("VS_SMA", () => {
-    it("fires when price is ABOVE SMA", () => {
-      const predicate: TriggerPredicate = {
-        kind: "VS_SMA",
-        period: 50,
-        direction: "ABOVE",
-      };
-      const ctx = makeCtx({
-        latestQuote: { price: 110, changePct: 0 },
-        sma: { 50: 100 },
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
+    it("fires off the snapshot's average — the kind that never had one", () => {
+      const p: TriggerPredicate = { kind: "VS_SMA", period: 50, direction: "ABOVE" };
+      expect(evaluateTrigger(p, at(140))).toBe(true);
+      expect(evaluateTrigger(p, at(130))).toBe(false);
     });
 
-    it("does not fire when sma value missing", () => {
-      const predicate: TriggerPredicate = {
-        kind: "VS_SMA",
-        period: 200,
-        direction: "BELOW",
-      };
-      const ctx = makeCtx({
-        latestQuote: { price: 110, changePct: 0 },
-        sma: { 50: 100 }, // 200 not provided
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
+    it("reads BELOW the 200-day", () => {
+      const p: TriggerPredicate = { kind: "VS_SMA", period: 200, direction: "BELOW" };
+      expect(evaluateTrigger(p, at(115))).toBe(true);
+    });
+
+    it("is false with no snapshot, or no average for the period", () => {
+      const p: TriggerPredicate = { kind: "VS_SMA", period: 150, direction: "ABOVE" };
+      expect(evaluateTrigger(p, at(200))).toBe(false);
+      expect(
+        evaluateTrigger({ kind: "VS_SMA", period: 50, direction: "ABOVE" }, makeCtx({ latestQuote: { price: 200, changePct: 0 } })),
+      ).toBe(false);
     });
   });
 
-  describe("RSI (v1 stub)", () => {
-    it("always returns false (stub) — match case", () => {
-      const predicate: TriggerPredicate = {
-        kind: "RSI",
-        threshold: 70,
-        direction: "ABOVE",
-      };
-      expect(evaluateTrigger(predicate, makeCtx())).toBe(false);
+  describe("NEAR_SMA", () => {
+    const p: TriggerPredicate = { kind: "NEAR_SMA", period: 50, withinPct: 2 };
+    it("fires within the band on either side", () => {
+      expect(evaluateTrigger(p, at(136))).toBe(true);
+      expect(evaluateTrigger(p, at(132))).toBe(true);
     });
-
-    it("always returns false (stub) — non-match case", () => {
-      const predicate: TriggerPredicate = {
-        kind: "RSI",
-        threshold: 30,
-        direction: "BELOW",
-      };
-      expect(evaluateTrigger(predicate, makeCtx())).toBe(false);
+    it("does not fire outside it", () => {
+      expect(evaluateTrigger(p, at(140))).toBe(false);
     });
   });
 
-  // ── Signal-based ────────────────────────────────────────────────────
-
-  describe("SIGNAL_TYPE", () => {
-    it("fires on type match alone", () => {
-      const predicate: TriggerPredicate = {
-        kind: "SIGNAL_TYPE",
-        signalType: "FILING",
-      };
-      const ctx = makeCtx({ signal: makeSignal({ type: "FILING" }) });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
+  describe("VOLUME_RATIO", () => {
+    const p: TriggerPredicate = { kind: "VOLUME_RATIO", min: 1.5 };
+    it("fires on today's volume ÷ the 20-day average", () => {
+      expect(evaluateTrigger(p, at(150, { today: { volume: 1_600_000 } }))).toBe(true);
+      expect(evaluateTrigger(p, at(150, { today: { volume: 1_400_000 } }))).toBe(false);
     });
-
-    it("does not fire when signal type differs", () => {
-      const predicate: TriggerPredicate = {
-        kind: "SIGNAL_TYPE",
-        signalType: "FILING",
-      };
-      const ctx = makeCtx({ signal: makeSignal({ type: "NEWS" }) });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
+    it("is false with no volume for today", () => {
+      expect(evaluateTrigger(p, at(150))).toBe(false);
     });
+  });
 
-    it("respects sentiment filter when set", () => {
-      const predicate: TriggerPredicate = {
-        kind: "SIGNAL_TYPE",
-        signalType: "ANALYST_NOTE",
-        sentiment: "BEARISH",
-      };
-      const matchCtx = makeCtx({
-        signal: makeSignal({ type: "ANALYST_NOTE", sentiment: "BEARISH" }),
-      });
-      const mismatchCtx = makeCtx({
-        signal: makeSignal({ type: "ANALYST_NOTE", sentiment: "BULLISH" }),
-      });
-      expect(evaluateTrigger(predicate, matchCtx)).toBe(true);
-      expect(evaluateTrigger(predicate, mismatchCtx)).toBe(false);
+  describe("NEW_HIGH", () => {
+    it("20D: above the prior 20 sessions' high", () => {
+      const p: TriggerPredicate = { kind: "NEW_HIGH", window: "20D" };
+      expect(evaluateTrigger(p, at(161))).toBe(true);
+      expect(evaluateTrigger(p, at(159))).toBe(false);
     });
-
-    it("respects minUrgency rank when set", () => {
-      const predicate: TriggerPredicate = {
-        kind: "SIGNAL_TYPE",
-        signalType: "NEWS",
-        minUrgency: "HIGH",
-      };
-      const matchCtx = makeCtx({
-        signal: makeSignal({ type: "NEWS", urgency: "BREAKING" }),
-      });
-      const mismatchCtx = makeCtx({
-        signal: makeSignal({ type: "NEWS", urgency: "MEDIUM" }),
-      });
-      expect(evaluateTrigger(predicate, matchCtx)).toBe(true);
-      expect(evaluateTrigger(predicate, mismatchCtx)).toBe(false);
+    it("52W: above the 52-week high", () => {
+      const p: TriggerPredicate = { kind: "NEW_HIGH", window: "52W" };
+      expect(evaluateTrigger(p, at(181))).toBe(true);
+      expect(evaluateTrigger(p, at(170))).toBe(false);
     });
+  });
 
-    it("does not fire when no signal in context", () => {
-      const predicate: TriggerPredicate = {
-        kind: "SIGNAL_TYPE",
-        signalType: "FILING",
+  describe("PCT_FROM_52W_HIGH", () => {
+    const p: TriggerPredicate = { kind: "PCT_FROM_52W_HIGH", max: 5 };
+    it("fires within 5% of the high, and above it", () => {
+      expect(evaluateTrigger(p, at(172))).toBe(true);
+      expect(evaluateTrigger(p, at(190))).toBe(true);
+    });
+    it("does not fire further off", () => {
+      expect(evaluateTrigger(p, at(160))).toBe(false);
+    });
+  });
+
+  describe("RS_VS_SPY", () => {
+    it("reads the window's excess return", () => {
+      expect(evaluateTrigger({ kind: "RS_VS_SPY", window: "3M", min: 10 }, at(150))).toBe(true);
+      expect(evaluateTrigger({ kind: "RS_VS_SPY", window: "6M", min: 0 }, at(150))).toBe(false);
+      expect(evaluateTrigger({ kind: "RS_VS_SPY", window: "6M", min: -5 }, at(150))).toBe(true);
+    });
+  });
+
+  describe("GAP_UP", () => {
+    it("fires on today's gap: open vs prior close, on volume", () => {
+      const p: TriggerPredicate = { kind: "GAP_UP", minPct: 8, minVolRatio: 3 };
+      expect(evaluateTrigger(p, at(175, { today: { open: 172, volume: 3_500_000 } }))).toBe(true);
+      expect(evaluateTrigger(p, at(175, { today: { open: 172, volume: 2_000_000 } }))).toBe(false);
+      expect(evaluateTrigger(p, at(165, { today: { open: 163, volume: 5_000_000 } }))).toBe(false);
+    });
+    it("withinDays reaches back to a recent gap in the snapshot", () => {
+      expect(evaluateTrigger({ kind: "GAP_UP", minPct: 8, minVolRatio: 3, withinDays: 3 }, at(155))).toBe(true);
+      expect(evaluateTrigger({ kind: "GAP_UP", minPct: 8, minVolRatio: 3, withinDays: 2 }, at(155))).toBe(false);
+      expect(evaluateTrigger({ kind: "GAP_UP", minPct: 10, minVolRatio: 3, withinDays: 3 }, at(155))).toBe(false);
+    });
+  });
+
+  describe("RSI — computed, not stubbed", () => {
+    it("RSI(14) is high after a straight climb", () => {
+      expect(evaluateTrigger({ kind: "RSI", threshold: 70, direction: "ABOVE" }, at(160))).toBe(true);
+    });
+    it("RSI(2) drops under 10 on a sharp two-day flush", () => {
+      const flush = { ...snap, closes: [...closes.slice(0, 58), 150, 140] };
+      expect(
+        evaluateTrigger({ kind: "RSI", period: 2, threshold: 10, direction: "BELOW" }, at(135, { indicators: flush })),
+      ).toBe(true);
+    });
+    it("is false with no snapshot", () => {
+      expect(evaluateTrigger({ kind: "RSI", threshold: 30, direction: "BELOW" }, makeCtx({ latestQuote: { price: 1, changePct: 0 } }))).toBe(false);
+    });
+  });
+
+  describe("PRICE_MOVE_PCT 5D / 20D — off the snapshot's closes", () => {
+    it("5D: the live price vs the close five sessions back", () => {
+      // closes[55] = 155 → 170 is +9.7%.
+      expect(evaluateTrigger({ kind: "PRICE_MOVE_PCT", pct: 9, direction: "UP", window: "5D" }, at(170))).toBe(true);
+      expect(evaluateTrigger({ kind: "PRICE_MOVE_PCT", pct: 10, direction: "UP", window: "5D" }, at(170))).toBe(false);
+    });
+    it("20D DOWN", () => {
+      // closes[40] = 140 → 126 is −10%.
+      expect(evaluateTrigger({ kind: "PRICE_MOVE_PCT", pct: 10, direction: "DOWN", window: "20D" }, at(126))).toBe(true);
+    });
+    it("is false with no snapshot (1D still reads the quote)", () => {
+      const ctx = makeCtx({ latestQuote: { price: 170, changePct: 3 } });
+      expect(evaluateTrigger({ kind: "PRICE_MOVE_PCT", pct: 1, direction: "UP", window: "5D" }, ctx)).toBe(false);
+      expect(evaluateTrigger({ kind: "PRICE_MOVE_PCT", pct: 1, direction: "UP", window: "1D" }, ctx)).toBe(true);
+    });
+  });
+
+  describe("PRICE_ABOVE basis: close", () => {
+    const p: TriggerPredicate = { kind: "PRICE_ABOVE", level: 160, basis: "close" };
+    it("never fires on an intraday pass", () => {
+      expect(evaluateTrigger(p, at(165, { session: "INTRADAY" }))).toBe(false);
+    });
+    it("fires on the close pass when the day closed above", () => {
+      expect(evaluateTrigger(p, at(165, { session: "CLOSE" }))).toBe(true);
+      expect(evaluateTrigger(p, at(158, { session: "CLOSE" }))).toBe(false);
+    });
+    it("reads as a plain level on the read-side snapshots (no session)", () => {
+      expect(evaluateTrigger(p, at(165))).toBe(true);
+    });
+  });
+
+  describe("composites of the new kinds", () => {
+    const breakout: TriggerPredicate = {
+      kind: "AND",
+      predicates: [
+        { kind: "PRICE_ABOVE", level: 160, basis: "close" },
+        { kind: "VOLUME_RATIO", min: 1.5 },
+      ],
+    };
+    it("the D1 breakout fires at the close on volume, not on the intraday cross", () => {
+      const heavy = { today: { volume: 2_000_000 } };
+      expect(evaluateTrigger(breakout, at(165, { ...heavy, session: "INTRADAY" }))).toBe(false);
+      expect(evaluateTrigger(breakout, at(165, { ...heavy, session: "CLOSE" }))).toBe(true);
+      expect(evaluateTrigger(breakout, at(165, { today: { volume: 900_000 }, session: "CLOSE" }))).toBe(false);
+    });
+    it("the D5 pullback: near the 50-day OR near the 20-day", () => {
+      const pullback: TriggerPredicate = {
+        kind: "OR",
+        predicates: [
+          { kind: "NEAR_SMA", period: 20, withinPct: 2 },
+          { kind: "NEAR_SMA", period: 50, withinPct: 2 },
+        ],
       };
-      expect(evaluateTrigger(predicate, makeCtx())).toBe(false);
+      expect(evaluateTrigger(pullback, at(148))).toBe(true);
+      expect(evaluateTrigger(pullback, at(135))).toBe(true);
+      expect(evaluateTrigger(pullback, at(142))).toBe(false);
     });
   });
 
@@ -631,54 +705,6 @@ describe("evaluateTrigger", () => {
           }),
         ),
       ).toBe(false);
-    });
-  });
-
-  describe("GUIDANCE_CHANGE", () => {
-    it("fires when guidance direction matches", () => {
-      const predicate: TriggerPredicate = {
-        kind: "GUIDANCE_CHANGE",
-        direction: "DOWN",
-      };
-      const ctx = makeCtx({
-        signal: makeSignal({ type: "EARNINGS", guidanceDirection: "DOWN" }),
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
-    });
-
-    it("does not fire when signal is not EARNINGS", () => {
-      const predicate: TriggerPredicate = {
-        kind: "GUIDANCE_CHANGE",
-        direction: "DOWN",
-      };
-      const ctx = makeCtx({
-        signal: makeSignal({ type: "NEWS", guidanceDirection: "DOWN" }),
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
-    });
-  });
-
-  describe("FILING", () => {
-    it("fires when formType matches and signal is FILING", () => {
-      const predicate: TriggerPredicate = {
-        kind: "FILING",
-        formType: "8-K",
-      };
-      const ctx = makeCtx({
-        signal: makeSignal({ type: "FILING", filingFormType: "8-K" }),
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
-    });
-
-    it("does not fire when formType differs", () => {
-      const predicate: TriggerPredicate = {
-        kind: "FILING",
-        formType: "8-K",
-      };
-      const ctx = makeCtx({
-        signal: makeSignal({ type: "FILING", filingFormType: "10-Q" }),
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
     });
   });
 
@@ -1030,6 +1056,36 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
       fires: true,
       reason: "match",
     });
+  });
+
+  it("fireOnMatch: a buy-now rung fires on its first check though nothing crossed (DAV-247)", () => {
+    // Written at $171 with the price already past its level; a flat day.
+    const buyNow: Trigger = { ...enterRung, fireOnMatch: true };
+    expect(shouldFire(buyNow, at(171, day1, 170))).toMatchObject({ fires: true, reason: "match" });
+  });
+
+  it("fireOnMatch: once fired, it is an ordinary ENTER again (crossing + cooldown)", () => {
+    const fired: Trigger = { ...enterRung, fireOnMatch: true, lastFiredAt: day1.toISOString() };
+    expect(shouldFire(fired, at(172, day2, 171)).reason).toBe("no-crossing");
+  });
+
+  it("fireOnMatch does nothing on a sell", () => {
+    const sell: Trigger = { ...exitRung, fireOnMatch: true };
+    expect(shouldFire(sell, at(390, day1, 391)).fires).toBe(true);
+  });
+
+  it("a close-basis ENTER crosses on the close pass: above today, not at yesterday's close", () => {
+    const closeRung: Trigger = {
+      ...enterRung,
+      predicate: { kind: "PRICE_ABOVE", level: 128.47, basis: "close" },
+    };
+    const closePass = (price: number, prevClose: number): EvaluationContext => ({
+      ...at(price, day1, prevClose),
+      session: "CLOSE",
+    });
+    expect(shouldFire(closeRung, closePass(130, 127)).fires).toBe(true);
+    expect(shouldFire(closeRung, closePass(131, 130)).reason).toBe("no-crossing");
+    expect(shouldFire(closeRung, { ...at(130, day1, 127), session: "INTRADAY" }).reason).toBe("no-match");
   });
 
   it("ENTER does NOT fire while the price merely sits past the level", () => {

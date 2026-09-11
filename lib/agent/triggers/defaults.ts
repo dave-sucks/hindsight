@@ -3,7 +3,7 @@
  *
  * Every thesis carries a `triggers[]` array of structured predicates that
  * the router evaluates deterministically. Most of those are universal —
- * "stop hit", "earnings dropped", "8-K filed", "quarterly hygiene check"
+ * "stop hit", "earnings dropped", "closed under the 50-day", "quarterly hygiene check"
  * — and the agent shouldn't have to remember to attach them to every
  * thesis it mints. This module supplies the baseline keyed off horizon.
  *
@@ -479,20 +479,6 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
       rationale: `Earnings miss ≥ 3% — downside surprise tests the core belief. Validate or step back.`,
       cooldownDays: 7,
     },
-    {
-      id: createId(),
-      predicate: { kind: "GUIDANCE_CHANGE", direction: "DOWN" },
-      action: "REVIEW",
-      rationale: `Guidance cut compresses the multiple. For a long-horizon hold this is the single biggest non-price signal.`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "FILING", formType: "8-K" },
-      action: "REVIEW",
-      rationale: `8-K filed — material event. Read the filing and update the thesis if anything changed.`,
-      cooldownDays: 1,
-    },
   );
 
   out.push(scaleInOnStrengthTrigger());
@@ -588,23 +574,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
       cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
-  // Any FILING is interesting on a catalyst trade — frequently the
-  // catalyst arrives via a filing.
   out.push(
-    {
-      id: createId(),
-      predicate: {
-        kind: "OR",
-        predicates: [
-          { kind: "FILING", formType: "8-K" },
-          { kind: "FILING", formType: "10-Q" },
-          { kind: "FILING", formType: "10-K" },
-        ],
-      },
-      action: "REVIEW",
-      rationale: `Any material filing on a catalyst-horizon thesis warrants a look — the filing might BE the catalyst.`,
-      cooldownDays: 1,
-    },
     {
       id: createId(),
       predicate: { kind: "EARNINGS_BEAT" },
@@ -658,7 +628,7 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
 // REVIEW triggers ("the move I dismissed actually happened — re-look").
 //
 // Per-horizon shape (matches the held side's per-horizon split):
-//   CATALYST    — entry trigger + filing/earnings REVIEW + tight 14d
+//   CATALYST    — entry trigger + earnings REVIEW + tight 14d
 //                 hygiene (catalyst windows are short)
 //   TRADE       — entry trigger + 14d REVIEW (matches max-hold; if a
 //                 watch is stale after the trade window, kill it)
@@ -874,7 +844,7 @@ function defaultTriggersForHorizonInner(
 // We now apply a sane per-predicate-kind default at write time in
 // record_thesis / update_thesis. The values mirror the conventions
 // already baked into the horizon templates above (EARNINGS_*: 7,
-// FILING: 1, etc.) so behavior of a default-minted trigger doesn't
+// price and chart kinds: 1, etc.) so behavior of a default-minted trigger doesn't
 // change — these only kick in when an agent-supplied trigger is
 // missing the field.
 
@@ -890,7 +860,6 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
   switch (p.kind) {
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
-    case "GUIDANCE_CHANGE":
       return 7;
     case "EARNINGS_WITHIN":
     case "EARNINGS_SINCE":
@@ -899,16 +868,21 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
       // (≤14) with room and is well short of a quarter, so the next
       // report still fires.
       return 30;
-    case "FILING":
-      return 1;
-    case "SIGNAL_TYPE":
-      return 1;
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
     case "PRICE_MOVE_PCT":
     case "VS_SMA":
+    case "NEAR_SMA":
+    case "VOLUME_RATIO":
+    case "NEW_HIGH":
+    case "PCT_FROM_52W_HIGH":
+    case "RS_VS_SPY":
     case "RSI":
+      // Price and chart conditions: one nudge per day at most.
       return 1;
+    case "GAP_UP":
+      // A gap stays "within the last N sessions" for N days; one fire per gap.
+      return Math.max(1, p.withinDays ?? 1);
     case "GAIN_FROM_ENTRY":
       // A gain milestone LATCHES (up 10% stays up 10%): the acting agent
       // is expected to replace the fired rung with the next checkpoint;

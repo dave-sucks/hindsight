@@ -75,10 +75,9 @@ describe("isDirectEligiblePredicate — only deterministic price/% exits", () =>
   it.each([
     "EARNINGS_MISS",
     "EARNINGS_BEAT",
-    "SIGNAL_TYPE",
     "RSI",
-    "GUIDANCE_CHANGE",
-    "FILING",
+    "NEAR_SMA",
+    "VOLUME_RATIO",
     "TRAILING_STOP",
     "AND",
     "OR",

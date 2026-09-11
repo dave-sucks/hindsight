@@ -757,6 +757,66 @@ export async function getDailyBars(
 }
 
 /**
+ * Today's session bar for many symbols in one call — consolidated (SIP)
+ * volume through ~16 minutes ago, and at 16:20 ET the day's close. Read by
+ * the trigger evaluator for VOLUME_RATIO / GAP_UP and by its close pass
+ * (DAV-247). Finnhub quotes carry no volume; IEX volume is ~2% of the tape.
+ *
+ * Only a bar dated today (ET) is returned — before the open the "today" bar
+ * holds overnight prints and must not be read as the session. Fail-open:
+ * any error returns what was gathered, logged.
+ */
+export async function getTodaySessionBars(
+  symbols: string[],
+  creds?: AlpacaCredentials,
+  now: Date = new Date(),
+): Promise<Record<string, { close: number; high: number; low: number; volume: number }>> {
+  const out: Record<string, { close: number; high: number; low: number; volume: number }> = {};
+  if (symbols.length === 0) return out;
+  const keyId = creds?.keyId || process.env.ALPACA_API_KEY;
+  const secretKey = creds?.secretKey || process.env.ALPACA_API_SECRET;
+  if (!keyId || !secretKey) return out;
+  const todayEt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const end = new Date(now.getTime() - 16 * 60_000).toISOString();
+  for (let i = 0; i < symbols.length; i += 100) {
+    const chunk = symbols.slice(i, i + 100);
+    try {
+      const url =
+        `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(chunk.join(","))}` +
+        `&timeframe=1Day&start=${todayEt}&end=${end}&feed=sip&limit=10000`;
+      const body = await withTimeout(
+        fetch(url, {
+          headers: { "APCA-API-KEY-ID": keyId, "APCA-API-SECRET-KEY": secretKey },
+          // Intraday-fresh — never the Data Cache (CLAUDE.md recurring-bugs rule).
+          cache: "no-store",
+        }).then(async (res) => {
+          if (!res.ok) throw new Error(`Alpaca bars ${res.status}`);
+          return res.json() as Promise<{
+            bars?: Record<string, { t: string; c: number; h: number; l: number; v: number }[]>;
+          }>;
+        }),
+        `getTodaySessionBars(${chunk.length} symbols)`,
+      );
+      for (const [symbol, rows] of Object.entries(body.bars ?? {})) {
+        const today = rows.find((r) => String(r.t).slice(0, 10) === todayEt);
+        if (today) out[symbol.toUpperCase()] = { close: today.c, high: today.h, low: today.l, volume: today.v };
+      }
+    } catch (err) {
+      console.warn(
+        `[getTodaySessionBars] lookup failed (${chunk.length} symbols):`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  return out;
+}
+
+/**
  * Batched daily-range lookup for the plan-sanity noise check (DAV-188).
  *
  * One REST call to /v2/stocks/snapshots for the whole symbol list; per

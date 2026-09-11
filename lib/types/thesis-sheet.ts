@@ -14,17 +14,21 @@
 export interface TriggerPredicate {
   kind: string;
   level?: number;
+  /** PRICE_ABOVE / PRICE_BELOW — "close" waits for the day's close. */
+  basis?: string;
   pct?: number;
   direction?: string;
   window?: string;
   period?: number;
   threshold?: number;
-  signalType?: string;
-  sentiment?: string;
-  minUrgency?: string;
   minSurprisePct?: number;
-  formType?: string;
   days?: number;
+  /** NEAR_SMA — % distance from the average. */
+  withinPct?: number;
+  /** GAP_UP — gap size, volume multiple, and how many sessions back. */
+  minPct?: number;
+  minVolRatio?: number;
+  withinDays?: number;
   /** EARNINGS_SINCE — days after the report, inclusive. */
   min?: number;
   max?: number;

@@ -1417,3 +1417,26 @@ model PinnedTicker {
   @@unique([accountId, ticker])
   @@index([accountId, sortOrder])
 }
+
+// ── Daily indicator snapshot (DAV-247) ──────────────────────────────────
+// The chart numbers a trigger reads (moving averages, 20-day / 52-week
+// highs, volume average, recent closes, relative strength vs SPY, recent
+// gaps) for every ticker on the book, computed at 06:30 ET by
+// lib/inngest/functions/indicator-snapshot.ts from
+// lib/market-data/price-structure.ts. `snapshot` is the IndicatorSnapshot
+// shape in lib/market-data/indicator-snapshot.ts — numbers only, never
+// sentences. One row per ticker per session; the evaluator reads the
+// newest.
+model TickerIndicators {
+  id         String   @id @default(cuid())
+  ticker     String
+  /// Date of the last completed session the numbers cover (YYYY-MM-DD).
+  asOf       String
+  computedAt DateTime @default(now())
+  /// "sip" (consolidated) or "iex" (fallback — volume understated).
+  volumeFeed String
+  snapshot   Json
+
+  @@unique([ticker, asOf])
+}
+

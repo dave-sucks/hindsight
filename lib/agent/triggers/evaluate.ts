@@ -13,18 +13,26 @@
  *
  * The function is pure: no DB, no fetches, no clock. Everything required
  * comes through `EvaluationContext`. Predicates that need data not in the
- * context (e.g. PRICE_MOVE_PCT with no recentPrices) return `false`
+ * context (a chart kind with no indicator snapshot, say) return `false`
  * rather than throwing — the failure mode is a missed trigger, not a
  * crashed cron.
  *
- * RSI is stubbed to `false` for v1. Real RSI calculation needs candle
- * handling that isn't worth blocking PR 2 on.
+ * The chart kinds (VS_SMA, NEAR_SMA, VOLUME_RATIO, NEW_HIGH,
+ * PCT_FROM_52W_HIGH, RS_VS_SPY, GAP_UP, RSI, the 5D/20D move) read the
+ * daily indicator snapshot (lib/market-data/indicator-snapshot.ts) next to
+ * the live quote. DAV-247.
  */
 
-import type { Trigger, TriggerPredicate, Urgency } from "./types";
+import type { Trigger, TriggerPredicate } from "./types";
 import { defaultCooldownDaysForPredicate } from "./defaults";
 import type { EarningsReport } from "./earnings";
 import { daysUntilReport } from "./earnings";
+import {
+  liveRsi,
+  movePctOverSessions,
+  volumeRatio,
+  type IndicatorSnapshot,
+} from "@/lib/market-data/indicator-snapshot";
 
 // ── EvaluationContext ─────────────────────────────────────────────────
 
@@ -38,14 +46,8 @@ export interface EvaluationContextSignal {
   /** mirrors Signal.tickers */
   tickers: string[];
 
-  // Fields the producer stamps on EARNINGS / FILING signals when known.
-  // Absent → predicates that need them return false rather than throwing.
-  /** Earnings surprise pct: positive = beat, negative = miss. */
+  /** Earnings surprise pct a producer stamped on an EARNINGS signal, when known. */
   earningsSurprisePct?: number;
-  /** Direction the company guided. */
-  guidanceDirection?: "UP" | "DOWN";
-  /** SEC form type (only set on FILING signals). */
-  filingFormType?: "10-K" | "10-Q" | "8-K" | "FORM_4";
 }
 
 export interface EvaluationContext {
@@ -87,8 +89,27 @@ export interface EvaluationContext {
    */
   upcomingEarnings?: EarningsReport | null;
 
-  /** SMA precomputed by the caller; we don't fetch candles here. */
-  sma?: { 50?: number; 200?: number };
+  /**
+   * The daily indicator snapshot for this ticker (completed sessions through
+   * yesterday). Read by every chart kind. Absent → those kinds are false.
+   */
+  indicators?: IndicatorSnapshot | null;
+
+  /**
+   * Today's session so far. `volume` is consolidated volume through ~15
+   * minutes ago (SIP); `open` is today's open. Read by VOLUME_RATIO and
+   * GAP_UP. Absent → those kinds are false.
+   */
+  today?: { open?: number | null; volume?: number | null } | null;
+
+  /**
+   * Which pass is evaluating. "INTRADAY": the 5-minute cron — a
+   * `basis: "close"` price level is false (it waits for the close).
+   * "CLOSE": the 16:20 ET pass — latestQuote.price IS the day's close.
+   * Absent (the read-side snapshots): every level is read against the
+   * price given, because they answer "is this true right now".
+   */
+  session?: "INTRADAY" | "CLOSE";
 
   /**
    * Open-position economics — required by GAIN_FROM_ENTRY (avgCost) and
@@ -138,9 +159,11 @@ export function evaluateTrigger(
   switch (predicate.kind) {
     // ── Price-based ───────────────────────────────────────────────────
     case "PRICE_ABOVE":
+      if (predicate.basis === "close" && ctx.session === "INTRADAY") return false;
       return ctx.latestQuote != null && ctx.latestQuote.price > predicate.level;
 
     case "PRICE_BELOW":
+      if (predicate.basis === "close" && ctx.session === "INTRADAY") return false;
       return ctx.latestQuote != null && ctx.latestQuote.price < predicate.level;
 
     case "PRICE_MOVE_PCT":
@@ -176,20 +199,50 @@ export function evaluateTrigger(
     }
 
     case "VS_SMA": {
-      const smaVal = ctx.sma?.[predicate.period];
-      if (smaVal == null || ctx.latestQuote == null) return false;
+      const avg = ctx.indicators?.sma[predicate.period];
+      if (avg == null || ctx.latestQuote == null) return false;
       return predicate.direction === "ABOVE"
-        ? ctx.latestQuote.price > smaVal
-        : ctx.latestQuote.price < smaVal;
+        ? ctx.latestQuote.price > avg
+        : ctx.latestQuote.price < avg;
     }
 
-    case "RSI":
-      // TODO(PR 2.1): real RSI calculation requires candle history; v1 stub.
-      return false;
+    case "NEAR_SMA": {
+      const avg = ctx.indicators?.sma[predicate.period];
+      if (avg == null || avg <= 0 || ctx.latestQuote == null) return false;
+      return (Math.abs(ctx.latestQuote.price - avg) / avg) * 100 <= predicate.withinPct;
+    }
 
-    // ── Signal-based ──────────────────────────────────────────────────
-    case "SIGNAL_TYPE":
-      return evaluateSignalType(predicate, ctx);
+    case "VOLUME_RATIO": {
+      const ratio = ctx.indicators ? volumeRatio(ctx.indicators, ctx.today?.volume) : null;
+      return ratio != null && ratio >= predicate.min;
+    }
+
+    case "NEW_HIGH": {
+      const snap = ctx.indicators;
+      if (!snap || ctx.latestQuote == null) return false;
+      return ctx.latestQuote.price > (predicate.window === "20D" ? snap.high20 : snap.high52w);
+    }
+
+    case "PCT_FROM_52W_HIGH": {
+      const hi = ctx.indicators?.high52w;
+      if (hi == null || hi <= 0 || ctx.latestQuote == null) return false;
+      return Math.max(0, ((hi - ctx.latestQuote.price) / hi) * 100) <= predicate.max;
+    }
+
+    case "RS_VS_SPY": {
+      const rs = ctx.indicators?.rsVsSpy[predicate.window];
+      return rs != null && rs >= predicate.min;
+    }
+
+    case "GAP_UP":
+      return evaluateGapUp(predicate, ctx);
+
+    case "RSI": {
+      if (!ctx.indicators || ctx.latestQuote == null) return false;
+      const value = liveRsi(ctx.indicators, ctx.latestQuote.price, predicate.period ?? 14);
+      if (value == null) return false;
+      return predicate.direction === "ABOVE" ? value > predicate.threshold : value < predicate.threshold;
+    }
 
     case "EARNINGS_BEAT": {
       const surprise = reportedSurprisePct(ctx);
@@ -228,18 +281,6 @@ export function evaluateTrigger(
       const since = -daysUntilReport(r, ctx.now);
       return since >= predicate.min && since <= predicate.max;
     }
-
-    case "GUIDANCE_CHANGE":
-      return (
-        ctx.signal?.type === "EARNINGS" &&
-        ctx.signal.guidanceDirection === predicate.direction
-      );
-
-    case "FILING":
-      return (
-        ctx.signal?.type === "FILING" &&
-        ctx.signal.filingFormType === predicate.formType
-      );
 
     // ── Time-based ────────────────────────────────────────────────────
     case "REVIEW_CADENCE": {
@@ -306,8 +347,15 @@ export function shouldFire(
   //   close gives composites and VS_SMA the crossing for free; entries
   //   that don't read the price can't cross and keep firing on match. No
   //   prevClose ⇒ level semantics (the read-side snapshots).
+  //
+  //   `fireOnMatch` (a buy-now rung, DAV-247) skips the crossing for its
+  //   FIRST fire: the level is already behind the price by design, and on a
+  //   flat or down day the crossing would never come. Once it has fired it
+  //   is an ordinary ENTER again.
+  const firstFireOnMatch = trigger.fireOnMatch === true && trigger.lastFiredAt == null;
   if (
     trigger.action === "ENTER" &&
+    !firstFireOnMatch &&
     ctx.latestQuote?.prevClose != null &&
     ctx.latestQuote.prevClose > 0 &&
     readsPrice(trigger.predicate)
@@ -346,6 +394,10 @@ function readsPrice(p: TriggerPredicate): boolean {
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
     case "VS_SMA":
+    case "NEAR_SMA":
+    case "NEW_HIGH":
+    case "PCT_FROM_52W_HIGH":
+    case "RSI":
       return true;
     case "AND":
     case "OR":
@@ -373,44 +425,51 @@ function reportedSurprisePct(ctx: EvaluationContext): number | null {
   return null;
 }
 
-const URGENCY_RANK: Record<Urgency, number> = {
-  LOW: 0,
-  MEDIUM: 1,
-  HIGH: 2,
-  BREAKING: 3,
-};
-
-function evaluateSignalType(
-  predicate: Extract<TriggerPredicate, { kind: "SIGNAL_TYPE" }>,
-  ctx: EvaluationContext,
-): boolean {
-  if (!ctx.signal) return false;
-  if (ctx.signal.type !== predicate.signalType) return false;
-
-  if (predicate.sentiment != null && ctx.signal.sentiment !== predicate.sentiment) {
-    return false;
-  }
-
-  if (predicate.minUrgency != null) {
-    const signalRank = URGENCY_RANK[ctx.signal.urgency as Urgency];
-    const minRank = URGENCY_RANK[predicate.minUrgency];
-    if (signalRank == null || signalRank < minRank) return false;
-  }
-
-  return true;
-}
-
 function evaluatePriceMovePct(
   predicate: Extract<TriggerPredicate, { kind: "PRICE_MOVE_PCT" }>,
   ctx: EvaluationContext,
 ): boolean {
-  // The daily move, off the quote's own change vs prior close (Finnhub `dp`,
-  // carried on latestQuote.changePct). This is the number every app shows,
-  // and it needs no candle history — which is why it is the only window that
-  // survives. See the PRICE_MOVE_PCT note in ./types.
-  const dailyPct = ctx.latestQuote?.changePct;
-  if (typeof dailyPct !== "number") return false;
-  return predicate.direction === "UP"
-    ? dailyPct >= predicate.pct
-    : dailyPct <= -predicate.pct;
+  // 1D: the quote's own change vs prior close (Finnhub `dp`, carried on
+  // latestQuote.changePct) — the number every app shows. 5D / 20D: the live
+  // price against the close that many sessions back, off the snapshot.
+  let move: number | null;
+  if (predicate.window === "1D") {
+    move = typeof ctx.latestQuote?.changePct === "number" ? ctx.latestQuote.changePct : null;
+  } else {
+    const sessions = predicate.window === "5D" ? 5 : 20;
+    move =
+      ctx.indicators && ctx.latestQuote
+        ? movePctOverSessions(ctx.indicators, ctx.latestQuote.price, sessions)
+        : null;
+  }
+  if (move == null) return false;
+  return predicate.direction === "UP" ? move >= predicate.pct : move <= -predicate.pct;
+}
+
+/**
+ * Gapped up ≥ minPct on ≥ minVolRatio× volume — today (live open vs prior
+ * close, volume so far), or within the last `withinDays` sessions off the
+ * snapshot's gap list. withinDays 1 = today only.
+ */
+function evaluateGapUp(
+  predicate: Extract<TriggerPredicate, { kind: "GAP_UP" }>,
+  ctx: EvaluationContext,
+): boolean {
+  const snap = ctx.indicators;
+  if (!snap) return false;
+  const within = predicate.withinDays ?? 1;
+  const prevClose = ctx.latestQuote?.prevClose;
+  const open = ctx.today?.open;
+  if (open != null && prevClose != null && prevClose > 0) {
+    const pct = ((open - prevClose) / prevClose) * 100;
+    const ratio = volumeRatio(snap, ctx.today?.volume);
+    if (pct >= predicate.minPct && ratio != null && ratio >= predicate.minVolRatio) return true;
+  }
+  return snap.gaps.some(
+    (g) =>
+      g.sessionsAgo < within &&
+      g.pct >= predicate.minPct &&
+      g.volumeRatio != null &&
+      g.volumeRatio >= predicate.minVolRatio,
+  );
 }

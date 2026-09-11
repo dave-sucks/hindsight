@@ -57,7 +57,7 @@ describe("effectiveTriggerAction", () => {
     ).toBe("REVIEW");
     expect(
       effectiveTriggerAction(
-        t({ kind: "SIGNAL_TYPE", signalType: "NEWS" }, "REVIEW"),
+        t({ kind: "NEAR_SMA", period: 50, withinPct: 2 }, "REVIEW"),
         WATCH,
       ),
     ).toBe("REVIEW");
@@ -99,7 +99,7 @@ describe("isPlanLevel — what demotion actually removes", () => {
       false,
     );
     expect(
-      isPlanLevel(t({ kind: "SIGNAL_TYPE", signalType: "NEWS" }, "REVIEW"), "LONG"),
+      isPlanLevel(t({ kind: "NEAR_SMA", period: 50, withinPct: 2 }, "REVIEW"), "LONG"),
     ).toBe(false);
     expect(
       isPlanLevel(

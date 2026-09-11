@@ -414,8 +414,6 @@ describe("defaultTriggersForHorizon — standing protection minimums (Game Plan 
       expect(kinds.has("REVIEW_CADENCE")).toBe(false);
       expect(kinds.has("EARNINGS_BEAT")).toBe(false);
       expect(kinds.has("EARNINGS_MISS")).toBe(false);
-      expect(kinds.has("GUIDANCE_CHANGE")).toBe(false);
-      expect(kinds.has("FILING")).toBe(false);
       expect(kinds.has("REVIEW_CADENCE")).toBe(false);
       // What it DOES carry: the buy level, and the plan levels around it.
       expect(triggers.some((t) => t.action === "ENTER")).toBe(true);

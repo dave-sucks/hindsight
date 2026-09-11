@@ -13,7 +13,8 @@
  * tool path are all narrower.
  */
 
-import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+import type { Trigger } from "@/lib/agent/triggers/types";
+import { describePredicate } from "@/lib/agent/needs-action";
 import type { ResearchAge } from "@/lib/agent/thesis-research/staleness";
 
 interface TacticalPromptArgs {
@@ -82,45 +83,6 @@ interface TacticalPromptArgs {
    * Replaces the deprecated per-analyst AnalystBriefing.
    */
   latestDigest?: { narrative: string; date: string } | null;
-}
-
-function describePredicate(p: TriggerPredicate): string {
-  switch (p.kind) {
-    case "PRICE_ABOVE":
-      return `price > $${p.level}`;
-    case "PRICE_BELOW":
-      return `price < $${p.level}`;
-    case "PRICE_MOVE_PCT":
-      return `${p.direction === "UP" ? "+" : "-"}${p.pct}% over ${p.window}`;
-    case "GAIN_FROM_ENTRY":
-      return `position ${p.direction === "UP" ? "up" : "down"} ${p.pct}% cumulative from entry`;
-    case "TRAILING_FROM_HIGH":
-      return `price has given back ${p.pct}% from the position high`;
-    case "VS_SMA":
-      return `price ${p.direction.toLowerCase()} ${p.period}-day SMA`;
-    case "RSI":
-      return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
-    case "SIGNAL_TYPE":
-      return `signal type=${p.signalType}${p.sentiment ? ` sentiment=${p.sentiment}` : ""}${p.minUrgency ? ` urgency≥${p.minUrgency}` : ""}`;
-    case "EARNINGS_BEAT":
-      return `earnings beat${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`;
-    case "EARNINGS_MISS":
-      return `earnings miss${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`;
-    case "EARNINGS_WITHIN":
-      return `earnings report within ${p.days} day${p.days === 1 ? "" : "s"}`;
-    case "EARNINGS_SINCE":
-      return `${p.min}–${p.max} days after the earnings report`;
-    case "GUIDANCE_CHANGE":
-      return `guidance ${p.direction}`;
-    case "FILING":
-      return `${p.formType} filed`;
-    case "REVIEW_CADENCE":
-      return `the review cadence has elapsed since the last review`;
-    case "AND":
-      return `(${p.predicates.map(describePredicate).join(" AND ")})`;
-    case "OR":
-      return `(${p.predicates.map(describePredicate).join(" OR ")})`;
-  }
 }
 
 export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
@@ -501,7 +463,7 @@ TOOLS
     get_stock_data         — REQUIRED. Pull fresh quote + technicals + news.
     get_earnings_data      — when the trigger involves earnings.
     get_market_context     — only if regime matters for the call.
-    get_sec_filings        — when the trigger is FILING.
+    get_sec_filings        — when a filing bears on the call.
     web_search             — last resort. Budget-limited.
     read_artifact          — full text of the signal source if signal-driven.
     get_theses             — for context on adjacent thesis state.

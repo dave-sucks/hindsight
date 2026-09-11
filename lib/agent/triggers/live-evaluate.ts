@@ -12,9 +12,10 @@
  * and just produces a "current state" snapshot for the daily-run prompt.
  * Same evaluator function (`evaluateTrigger`) — different consumer.
  *
- * Signal-side predicates (SIGNAL_TYPE, EARNINGS_*, FILING, GUIDANCE) are
- * NOT evaluated here — those need a signal payload to match against and
- * already get surfaced via triggersFiredSinceLastRun.
+ * Earnings predicates are NOT evaluated here — they read the calendar,
+ * which this path doesn't fetch, and their fires already arrive via
+ * triggersFiredSinceLastRun. The chart kinds read the daily indicator
+ * snapshot, loaded once for the batch (DAV-247).
  */
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices, type AlpacaCredentials } from "@/lib/alpaca";
@@ -23,6 +24,8 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
+import { describePredicate } from "@/lib/agent/needs-action";
+import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import type {
   Trigger,
   TriggerPredicate,
@@ -38,6 +41,12 @@ const PRICE_OR_TIME_KINDS = new Set([
   "GAIN_FROM_ENTRY",
   "TRAILING_FROM_HIGH",
   "VS_SMA",
+  "NEAR_SMA",
+  "VOLUME_RATIO",
+  "NEW_HIGH",
+  "PCT_FROM_52W_HIGH",
+  "RS_VS_SPY",
+  "GAP_UP",
   "RSI",
 ]);
 
@@ -48,37 +57,6 @@ function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
     return p.predicates.every(isPriceOrTimePredicate);
   }
   return false;
-}
-
-function describePredicate(p: TriggerPredicate): string {
-  switch (p.kind) {
-    case "PRICE_BELOW":
-      return `price < $${p.level}`;
-    case "PRICE_ABOVE":
-      return `price > $${p.level}`;
-    case "PRICE_MOVE_PCT":
-      return `${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}`;
-    case "GAIN_FROM_ENTRY":
-      return `${p.direction === "UP" ? "up" : "down"} ${p.pct}% from entry`;
-    case "TRAILING_FROM_HIGH":
-      return `gives back ${p.pct}% from the high`;
-    case "VS_SMA":
-      return `${p.direction.toLowerCase()} ${p.period}-day SMA`;
-    case "RSI":
-      return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
-    case "REVIEW_CADENCE":
-      return "review date hit";
-    case "EARNINGS_WITHIN":
-      return `reports within ${p.days}d`;
-    case "EARNINGS_SINCE":
-      return `${p.min}–${p.max}d after the report`;
-    case "AND":
-      return `(${p.predicates.map(describePredicate).join(" AND ")})`;
-    case "OR":
-      return `(${p.predicates.map(describePredicate).join(" OR ")})`;
-    default:
-      return p.kind;
-  }
 }
 
 export interface LiveMatch {
@@ -185,6 +163,9 @@ export async function evaluateLiveTriggerMatches({
 
   const matches: LiveMatch[] = [];
   const now = new Date();
+  // Chart kinds read yesterday's snapshot. Fail-open: no snapshot → those
+  // kinds read false, the rest still evaluate.
+  const indicators = await loadIndicatorSnapshots(tickers).catch(() => new Map());
 
   // ANALYST + ACCOUNT levels once for the batch — this function is
   // already scoped to a single analyst.
@@ -215,6 +196,7 @@ export async function evaluateLiveTriggerMatches({
           : null;
       const fires = evaluateTrigger(trigger.predicate, {
         latestQuote,
+        indicators: indicators.get(thesis.ticker) ?? null,
         // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read entry cost + water
         // mark from the open position; WATCHING rows get null → false.
         position: posInfo

@@ -45,6 +45,11 @@ export type Urgency = "LOW" | "MEDIUM" | "HIGH" | "BREAKING";
 
 // ── Predicate kinds ────────────────────────────────────────────────────
 
+/** "intraday" (default): the live quote. "close": the day's close, read once at 16:20 ET. */
+export type PriceBasis = "intraday" | "close";
+export type MoveWindow = "1D" | "5D" | "20D";
+export type SmaPeriod = 20 | 50 | 150 | 200;
+
 /**
  * The discriminated-union shape every trigger predicate takes. Stored on
  * Thesis.triggers as JSONB; validated by Zod when written via
@@ -53,16 +58,19 @@ export type Urgency = "LOW" | "MEDIUM" | "HIGH" | "BREAKING";
  */
 export type TriggerPredicate =
   // ── Price-based — periodic worker against latest quote ────────────────
-  | { kind: "PRICE_ABOVE"; level: number }
-  | { kind: "PRICE_BELOW"; level: number }
-  // The daily move — "the stock is up/down X% today", off the quote's own
-  // change vs prior close. 5D and 30D windows were removed 2026-08-25: they
-  // needed a close series the 5-minute evaluator never had, so they silently
-  // evaluated false for their entire existence. Four theses carried one. A
-  // predicate that cannot fire is worse than no predicate, because the ladder
-  // says it is covered. Multi-day moves belong on the daily run, which reads
-  // the numbers directly off the row.
-  | { kind: "PRICE_MOVE_PCT"; pct: number; direction: "UP" | "DOWN"; window: "1D" }
+  // `basis: "close"` means "the day CLOSES past the level": the 5-minute
+  // passes skip it and one pass at 16:20 ET evaluates it against the day's
+  // close (DAV-247). An intraday poke through a breakout level fails about
+  // half the time (TRADING_PLAYBOOK.md D1); a close is the confirmation.
+  // Absent = intraday, the behaviour every rung before DAV-247 had.
+  | { kind: "PRICE_ABOVE"; level: number; basis?: PriceBasis }
+  | { kind: "PRICE_BELOW"; level: number; basis?: PriceBasis }
+  // The move over a window. 1D reads the quote's own change vs the prior
+  // close. 5D and 20D read the close N sessions back off the daily
+  // indicator snapshot (TickerIndicators) — the windows removed 2026-08-25
+  // because nothing supplied a close series are back now that something
+  // does.
+  | { kind: "PRICE_MOVE_PCT"; pct: number; direction: "UP" | "DOWN"; window: MoveWindow }
   // Cumulative % vs the open position's avgCost (LONG: (price−avg)/avg;
   // SHORT inverted). UP = gain milestone ("we're up 10%" → checkpoint
   // re-underwrite); DOWN = drawdown-from-entry ("down 12%" → loser
@@ -79,24 +87,43 @@ export type TriggerPredicate =
   // daily-% moves; this reinstates cumulative protection ALONGSIDE the
   // daily-% predicate, not instead of it). HOLDING-only.
   | { kind: "TRAILING_FROM_HIGH"; pct: number }
-  | {
-      kind: "VS_SMA";
-      period: 50 | 200;
-      direction: "ABOVE" | "BELOW";
-    }
+
+  // ── Chart-based — the live quote against the daily indicator snapshot ──
+  // Every kind below reads lib/market-data/price-structure.ts numbers the
+  // 06:30 ET job stores in TickerIndicators (completed sessions through
+  // yesterday). No snapshot for the ticker → false: a missed trigger,
+  // never a crash. docs/plans/AGENT_REBUILD.md §3.
+  //
+  // Price above / below a moving average. Until DAV-247 nothing ever
+  // supplied the average, so this was false for its entire existence
+  // (GD and SYK carried buy rungs that could not fire).
+  | { kind: "VS_SMA"; period: SmaPeriod; direction: "ABOVE" | "BELOW" }
+  // Within withinPct% of a moving average, either side — the pullback arm.
+  | { kind: "NEAR_SMA"; period: SmaPeriod; withinPct: number }
+  // Today's volume so far ÷ the 20-session average. No projection: a
+  // morning can't look heavy until it is, so intraday this only turns true
+  // once the real volume is there. Read at the close it is the day's ratio.
+  | { kind: "VOLUME_RATIO"; min: number }
+  // Price above the highest high of the prior 20 sessions / 52 weeks.
+  | { kind: "NEW_HIGH"; window: "20D" | "52W" }
+  // Price within max% of the 52-week high.
+  | { kind: "PCT_FROM_52W_HIGH"; max: number }
+  // Return over the window minus SPY's, in percentage points, as of the
+  // last close (daily resolution).
+  | { kind: "RS_VS_SPY"; window: "1M" | "3M" | "6M"; min: number }
+  // Opened ≥ minPct% over the prior close on ≥ minVolRatio× average volume,
+  // today or within the last withinDays sessions (default 1 = today).
+  | { kind: "GAP_UP"; minPct: number; minVolRatio: number; withinDays?: number }
+  // RSI over the snapshot's closes with the live price as today's close.
+  // period defaults to 14; RSI(2) is the mean-reversion read (D6).
   | {
       kind: "RSI";
+      period?: 2 | 14;
       threshold: number;
       direction: "ABOVE" | "BELOW";
     }
 
-  // ── Signal-based — router on every new signal for this ticker ─────────
-  | {
-      kind: "SIGNAL_TYPE";
-      signalType: SignalType;
-      sentiment?: Sentiment;
-      minUrgency?: Urgency;
-    }
+  // ── Calendar-based ────────────────────────────────────────────────────
   // EARNINGS_BEAT / EARNINGS_MISS are NOT signal-dependent any more. They
   // evaluate on the price cron off the published earnings calendar —
   // reported EPS against estimate, arithmetic, no router (see
@@ -119,11 +146,6 @@ export type TriggerPredicate =
   // is known. Fires once per report (30-day cooldown). Bounded above by
   // the evaluator's lookback (EARNINGS_LOOKBACK_DAYS).
   | { kind: "EARNINGS_SINCE"; min: number; max: number }
-  | { kind: "GUIDANCE_CHANGE"; direction: "UP" | "DOWN" }
-  | {
-      kind: "FILING";
-      formType: "10-K" | "10-Q" | "8-K" | "FORM_4";
-    }
 
   // ── Time-based — housekeeping or periodic worker ──────────────────────
   // "Look at this again every N days", counted from when it was last
@@ -196,6 +218,16 @@ export type Trigger = {
   cooldownDays?: number;
   /** Set by the trigger evaluator; read for cooldown gating. */
   lastFiredAt?: string; // ISO timestamp
+  /**
+   * ENTER only: fire on the first check where the condition is true, even
+   * if it was already true at the prior close. An ENTER otherwise fires on
+   * the CROSSING of its level (DAV-229), so a buy-now plan — a level the
+   * price is already past — would never fire on a flat or down day. After
+   * the first fire the rung behaves like any other ENTER (crossing +
+   * cooldown). Written by the buy-now path (PR 4); ignored on every other
+   * action. DAV-247.
+   */
+  fireOnMatch?: boolean;
   /**
    * How a fired trigger is acted on:
    *   TACTICAL — fan out `app/thesis.trigger.fired` → a GPT-5.5 tactical run

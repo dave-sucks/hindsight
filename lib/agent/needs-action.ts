@@ -189,6 +189,12 @@ const PRICE_OR_TIME_KINDS = new Set([
   "GAIN_FROM_ENTRY",
   "TRAILING_FROM_HIGH",
   "VS_SMA",
+  "NEAR_SMA",
+  "VOLUME_RATIO",
+  "NEW_HIGH",
+  "PCT_FROM_52W_HIGH",
+  "RS_VS_SPY",
+  "GAP_UP",
   "RSI",
   // REVIEW_CADENCE is deliberately NOT here: it has its own needsAction
   // kind (REVIEW_DUE) with a 24h look-ahead the generic loop can't express,
@@ -206,12 +212,18 @@ function isPriceOrTimePredicate(p: TriggerPredicate): boolean {
 
 // ─── Predicate description (compact one-liner for the prompt) ───────────────
 
+/**
+ * The one compact wording of a predicate for agent prompts and tool rows —
+ * the daily run's needsAction lines, the live matching-now list
+ * (./triggers/live-evaluate) and the tactical run's "what fired" line all
+ * read this. (The UI's longer sentence lives in ./triggers/format.)
+ */
 export function describePredicate(p: TriggerPredicate): string {
   switch (p.kind) {
     case "PRICE_BELOW":
-      return `price < $${p.level}`;
+      return `${p.basis === "close" ? "closes" : "price"} < $${p.level}`;
     case "PRICE_ABOVE":
-      return `price > $${p.level}`;
+      return `${p.basis === "close" ? "closes" : "price"} > $${p.level}`;
     case "PRICE_MOVE_PCT":
       return `${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}`;
     case "GAIN_FROM_ENTRY":
@@ -219,13 +231,23 @@ export function describePredicate(p: TriggerPredicate): string {
     case "TRAILING_FROM_HIGH":
       return `gives back ${p.pct}% from the high`;
     case "VS_SMA":
-      return `${p.direction.toLowerCase()} ${p.period}-day SMA`;
+      return `${p.direction.toLowerCase()} the ${p.period}-day`;
+    case "NEAR_SMA":
+      return `within ${p.withinPct}% of the ${p.period}-day`;
+    case "VOLUME_RATIO":
+      return `volume ≥ ${p.min}× the 20-day average`;
+    case "NEW_HIGH":
+      return p.window === "20D" ? "new 20-day high" : "new 52-week high";
+    case "PCT_FROM_52W_HIGH":
+      return `within ${p.max}% of the 52-week high`;
+    case "RS_VS_SPY":
+      return `${p.window} return vs SPY ≥ ${p.min} pts`;
+    case "GAP_UP":
+      return `gap up ≥ ${p.minPct}% on ≥ ${p.minVolRatio}× volume${(p.withinDays ?? 1) > 1 ? ` within ${p.withinDays} sessions` : ""}`;
     case "RSI":
-      return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
+      return `RSI(${p.period ?? 14}) ${p.direction.toLowerCase()} ${p.threshold}`;
     case "REVIEW_CADENCE":
       return `due for review (every ${p.days}d)`;
-    case "SIGNAL_TYPE":
-      return `${p.signalType} signal${p.sentiment ? ` (${p.sentiment.toLowerCase()})` : ""}`;
     case "EARNINGS_BEAT":
       return `earnings beat${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`;
     case "EARNINGS_MISS":
@@ -234,10 +256,6 @@ export function describePredicate(p: TriggerPredicate): string {
       return `reports within ${p.days}d`;
     case "EARNINGS_SINCE":
       return `${p.min}–${p.max}d after the report`;
-    case "GUIDANCE_CHANGE":
-      return `guidance ${p.direction.toLowerCase()}`;
-    case "FILING":
-      return `${p.formType} filing`;
     case "AND":
       return `(${p.predicates.map(describePredicate).join(" AND ")})`;
     case "OR":

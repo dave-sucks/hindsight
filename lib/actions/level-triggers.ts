@@ -44,11 +44,8 @@ export type WritableLevel = "ACCOUNT" | "ANALYST";
  *   • REVIEW_DATE_HIT — legacy per-thesis review-date predicate.
  *   • AND / OR — composites of the above; allow once there's a UI that
  *     can build them, not before.
- *   • EARNINGS_* / GUIDANCE_CHANGE / FILING / SIGNAL_TYPE — these need
- *     the signal-routing path, which is severed (GAPS P1-34: 0 routes in
- *     14d). Accepting them here would mint standing rules that are born
- *     unable to fire, on the surface whose whole purpose is making rules
- *     visible and trustworthy. Re-add when routing is rebuilt.
+ *   • EARNINGS_* — the account earnings rules are seeded by code
+ *     (seed-account.ts), not authored here.
  *
  * GAIN_FROM_ENTRY and TRAILING_FROM_HIGH ARE allowed even though they're
  * position-scoped: they evaluate false with no open position rather than
@@ -62,6 +59,15 @@ export const LEVEL_ELIGIBLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"
     "TRAILING_FROM_HIGH",
     "VS_SMA",
     "RSI",
+    // The chart kinds (DAV-247) mean the same thing on every ticker —
+    // "within 2% of the 50-day", "a new 52-week high" — so they can be
+    // standing rules.
+    "NEAR_SMA",
+    "VOLUME_RATIO",
+    "NEW_HIGH",
+    "PCT_FROM_52W_HIGH",
+    "RS_VS_SPY",
+    "GAP_UP",
   ]);
 
 export interface LevelTriggerContext {

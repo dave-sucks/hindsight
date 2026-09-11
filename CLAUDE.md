@@ -31,8 +31,13 @@ Triggers are edited one at a time (DAV-242): `update_thesis` takes
 target / floor trigger. Every op is one line in the Activity feed; a refused
 op comes back by id and the rest of the call lands. The shared core is
 `lib/agent/triggers/ops.ts` — the UI popover and the agent go through it.
-Signal-side rungs (earnings/filing/news) can't fire today — routing is
-deliberately paused (GAPS P1-34; design doc `docs/plans/SIGNALS_REDESIGN.md`).
+The chart kinds (VS_SMA, NEAR_SMA, VOLUME_RATIO, NEW_HIGH, PCT_FROM_52W_HIGH,
+RS_VS_SPY, GAP_UP, RSI, the 5D/20D move) read the daily indicator snapshot
+(`TickerIndicators`, written 06:30 ET from `lib/market-data/price-structure.ts`);
+a `basis: "close"` price level fires only on the 16:20 ET close pass; an ENTER
+with `fireOnMatch` fires on its first true check (the buy-now rung). The
+signal kinds (SIGNAL_TYPE / GUIDANCE_CHANGE / FILING) were deleted in DAV-247 —
+news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 
 ## Where to put what (doc navigation)
 | You want to... | File |
