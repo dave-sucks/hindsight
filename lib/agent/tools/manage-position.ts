@@ -40,6 +40,7 @@ import type { ToolUIItem } from "@/lib/agent/tool-result";
 import {
   maybeAwaitApproval,
   awaitingApprovalEnvelope,
+  recordProposalRunEvent,
 } from "@/lib/proposals/maybe-await-approval";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -347,6 +348,13 @@ export const managePosition = defineTool({
             // PARTIAL_CLOSE is never subject to the P1-28 CLOSE-only cooldown,
             // so awaiting is only ever awaiting_approval | null here.
             if (awaiting?.state === "awaiting_approval") {
+              await recordProposalRunEvent({
+                runId: ctx.runId,
+                type: "position_modify_proposed",
+                ticker,
+                orderId: awaiting.orderId,
+                title: `Proposed trimming ${ticker} ${pct}%`,
+              });
               return {
                 summary: `Partial close proposed: ${ticker} (-${pct}%)`,
                 data: {
@@ -700,6 +708,13 @@ export const managePosition = defineTool({
             });
             // ADD is risk-increasing, never subject to the CLOSE cooldown.
             if (awaiting?.state === "awaiting_approval") {
+              await recordProposalRunEvent({
+                runId: ctx.runId,
+                type: "position_modify_proposed",
+                ticker,
+                orderId: awaiting.orderId,
+                title: `Proposed adding to ${ticker}`,
+              });
               return {
                 summary: `Add proposed: ${ticker} +$${notional}`,
                 data: {

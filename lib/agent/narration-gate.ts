@@ -45,9 +45,10 @@ interface VerbRule {
 // new position) are intentionally excluded — that path is gated
 // upstream by the morning-research trade-execution gap check.
 export const VERB_RULES: VerbRule[] = [
-  // close_position
+  // close_position. "sell-side" / "sell side" is the analyst community, not a
+  // sale — "the recent sell-side tone improved" refused a 09-11 run (DAV-259).
   {
-    pattern: /\b(closing|closed|exit|exiting|exited|sell|selling|sold)\b/gi,
+    pattern: /\b(closing|closed|exit|exiting|exited|sell|selling|sold)\b(?![-\s]side\b)/gi,
     expectedTool: "close_position",
     label: "close/exit",
   },
@@ -122,14 +123,39 @@ const BARE_TICKER_RE = /\b([A-Z]{2,5})\b/g;
 // real ticker, so block them from matching.
 const DOLLAR_BLOCKLIST = new Set(["X", "A", "I"]);
 
+// A sentence ends at . ! ? followed by whitespace — so "$56.40" and "U.S."
+// mid-word don't split, while "…re-proposed the STOP exit. SMMT remains a HOLD"
+// does.
+const SENTENCE_END_RE = /[.!?](?=\s)/g;
+
+/** [start, end) of the sentence containing `anchor`. */
+function sentenceBounds(text: string, anchor: number): [number, number] {
+  let start = 0;
+  let end = text.length;
+  SENTENCE_END_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = SENTENCE_END_RE.exec(text)) != null) {
+    if (m.index < anchor) start = m.index + 1;
+    else {
+      end = m.index + 1;
+      break;
+    }
+  }
+  return [start, end];
+}
+
 function nearestTicker(
   text: string,
   anchor: number,
   knownTickers: Set<string>,
   span = 80,
 ): string | null {
-  const start = Math.max(0, anchor - span);
-  const end = Math.min(text.length, anchor + span);
+  // Never reach into the next or previous sentence: on 09-11 "I re-proposed
+  // the STOP exit. SMMT remains a HOLD" pinned SRRK's exit on SMMT and refused
+  // the run (DAV-259). A verb with no ticker in its own sentence is no hit.
+  const [sentStart, sentEnd] = sentenceBounds(text, anchor);
+  const start = Math.max(sentStart, anchor - span);
+  const end = Math.min(sentEnd, anchor + span);
   const window = text.slice(start, end);
   const localAnchor = anchor - start;
 
@@ -198,10 +224,50 @@ export function detectNarrationHits(
   return hits;
 }
 
+export type RunSummaryPayload = {
+  decision_rationale?: unknown;
+  ranked_picks?: unknown;
+};
+
+/**
+ * Every narration hit in a record_run_summary payload: the decision rationale
+ * (tickers from the ranked picks count as known) plus each pick's reasoning
+ * (attributed to that pick). What complete_run checks against the run's
+ * tool events.
+ */
+export function detectSummaryHits(payload: RunSummaryPayload): NarrationHit[] {
+  const rationale = typeof payload.decision_rationale === "string" ? payload.decision_rationale : "";
+  const picks = Array.isArray(payload.ranked_picks)
+    ? (payload.ranked_picks as Array<{ ticker?: unknown; reasoning?: unknown }>)
+    : [];
+  const knownTickers = new Set<string>();
+  for (const p of picks) {
+    if (typeof p.ticker === "string" && p.ticker.length > 0) knownTickers.add(p.ticker.toUpperCase());
+  }
+  if (knownTickers.size === 0 && !rationale) return [];
+
+  const hits: NarrationHit[] = [];
+  if (rationale) hits.push(...detectNarrationHits(rationale, "rationale", undefined, knownTickers));
+  for (const p of picks) {
+    if (typeof p.reasoning !== "string" || !p.reasoning) continue;
+    const ticker = typeof p.ticker === "string" ? p.ticker : undefined;
+    hits.push(...detectNarrationHits(p.reasoning, "pick_reasoning", ticker, knownTickers));
+  }
+  return hits;
+}
+
 const RUN_EVENT_TYPE_TO_TOOL: Record<string, ExpectedTool> = {
   position_closed: "close_position",
   position_modified: "manage_position",
+  // LIVE sells are proposals Dave approves — the tool fired, nothing filled
+  // yet. Before these existed the check was blind to every LIVE sell and made
+  // agents delete true "proposed the exit" lines from their summaries (DAV-259).
+  position_close_proposed: "close_position",
+  position_modify_proposed: "manage_position",
 };
+
+/** RunEvent types that count as "the tool fired" — complete_run reads exactly these. */
+export const CREDITED_RUN_EVENT_TYPES = Object.keys(RUN_EVENT_TYPE_TO_TOOL);
 
 // What counts as "the tool fired" for each narrated intent. close_position
 // narration is satisfied if a position_closed event exists for that ticker

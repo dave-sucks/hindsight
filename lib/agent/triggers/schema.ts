@@ -243,6 +243,24 @@ export const triggersArraySchema = z
     "Structured triggers attached to this thesis. Each is a (predicate, action, rationale) tuple the router evaluates deterministically. Capped at 20 per thesis to keep the matching loop bounded.",
   );
 
+/**
+ * One edit to an existing trigger, by id. The ONE shape for every caller that
+ * edits a trigger — update_thesis and the thesis writer's submit_thesis both
+ * use it. Two hand-written copies drifted on 2026-09-11 (the writer's `action`
+ * was a free string, update_thesis's the enum) and a PRAX refresh passed the
+ * writer's check, then failed at save with no retry (DAV-257).
+ */
+export const editTriggerOpSchema = z.object({
+  id: z.string().describe("The trigger's id, as shown on the thesis."),
+  level: z.number().optional().describe("New price for a price-above / price-below trigger."),
+  pct: z.number().optional().describe("New percent for a move / gain / trailing trigger."),
+  days: z.number().int().optional().describe("New day count for a review-cadence trigger."),
+  action: triggerActionSchema.optional(),
+  fire_mode: z.enum(["TACTICAL", "DIRECT"]).optional(),
+  rationale: z.string().optional().describe("REQUIRED when level / pct / days changes — the sentence moves with the number."),
+  cooldown_days: z.number().int().min(0).max(90).optional(),
+});
+
 export type TriggerInput = z.infer<typeof triggerSchema>;
 
 // ── Resilient read-path parse ──────────────────────────────────────────
