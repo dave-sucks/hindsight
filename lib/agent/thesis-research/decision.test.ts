@@ -6,9 +6,11 @@
  */
 
 import {
+  thesisDecisionSchema,
   validateThesisDecision,
   type ThesisDecisionInput,
 } from "./decision";
+import { editTriggerOpSchema } from "@/lib/agent/triggers/schema";
 
 const validLong: ThesisDecisionInput = {
   direction: "LONG",
@@ -476,5 +478,37 @@ describe("validateThesisDecision — P1-35 prior-exit acknowledgment mirror", ()
       priorExit: { exitPrice: 95, daysAgo: 3, closeReason: "STOP" },
     });
     expect(v.ok).toBe(true);
+  });
+});
+
+// ─── DAV-257: one edit form for the writer and the save ─────────────────────
+// PRAX 2026-09-11: the writer put the review cadence's wording into
+// edit_triggers[0].action. submit_thesis accepted it (its copy of the form had
+// action: string), update_thesis refused it at save (the enum), and the whole
+// paid refresh was thrown away — the save has no retry, the submit loop does.
+
+describe("submit_thesis edit_triggers — the same form update_thesis saves (DAV-257)", () => {
+  const PRAX_0911_EDIT = {
+    id: "3998148e-9487-4d0a-9dca-99b71178e1a9",
+    action:
+      "Weekly PDUFA-path check-in — monitor for any new FDA correspondence, BIMO outcomes, or analyst updates ahead of the December 27 relutrigine PDUFA.",
+  };
+
+  it("rejects PRAX's 09-11 edit at submit, where the writer can fix it", () => {
+    const parsed = thesisDecisionSchema.safeParse({ ...validLong, edit_triggers: [PRAX_0911_EDIT] });
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues[0]?.path).toEqual(["edit_triggers", 0, "action"]);
+  });
+
+  it("accepts a real action name", () => {
+    const parsed = thesisDecisionSchema.safeParse({
+      ...validLong,
+      edit_triggers: [{ id: PRAX_0911_EDIT.id, action: "REVIEW", days: 7, rationale: "Weekly into the PDUFA." }],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("is the one shared edit form, not a copy that can drift", () => {
+    expect(thesisDecisionSchema.shape.edit_triggers.unwrap().element).toBe(editTriggerOpSchema);
   });
 });

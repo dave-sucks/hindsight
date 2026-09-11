@@ -31,7 +31,7 @@ import { prisma } from "@/lib/prisma";
 import {
   parseTriggersResilient,
   triggersArraySchema,
-  triggerActionSchema,
+  editTriggerOpSchema,
 } from "@/lib/agent/triggers/schema";
 import {
   loadLevelSources,
@@ -266,18 +266,7 @@ const updateSchema = z.object({
         "Adding where one already exists (a second buy trigger, target, floor, or review cadence) EDITS the existing one — a stock never carries two buy triggers.",
     ),
   edit_triggers: z
-    .array(
-      z.object({
-        id: z.string().describe("The trigger's id, from get_theses."),
-        level: z.number().optional().describe("New price for a price-above / price-below trigger."),
-        pct: z.number().optional().describe("New percent for a move / gain / trailing trigger."),
-        days: z.number().int().optional().describe("New day count for a time-elapsed / review-cadence trigger."),
-        action: triggerActionSchema.optional(),
-        fire_mode: z.enum(["TACTICAL", "DIRECT"]).optional(),
-        rationale: z.string().optional().describe("REQUIRED when level / pct / days changes — the sentence moves with the number."),
-        cooldown_days: z.number().int().min(0).max(90).optional(),
-      }),
-    )
+    .array(editTriggerOpSchema)
     .optional()
     .describe(
       "Triggers to EDIT by id. Change the number, the action, the fire mode, or the wording. A level change needs a rationale. " +
@@ -408,6 +397,17 @@ type UpdatePatch = Partial<{
   // higher up in this same type (stamped when any V2 section lands).
   researchData: string;
 }>;
+
+/**
+ * A refused call writes nothing, so no trigger change landed — every op says
+ * so. Returning the per-op results unchanged told the VST analyst "Removed:
+ * buy above $165, ok" on a refused call; it believed the buy was gone, removed
+ * the floor and target instead, and left the buy it meant to delete (DAV-258).
+ */
+export function notApplied(results: TriggerOpResult[], error: string): TriggerOpResult[] {
+  const reason = `Not applied — the whole update was refused (${error}).`;
+  return results.map((r) => (r.ok ? { ...r, ok: false, reason } : r));
+}
 
 export const updateThesis = defineTool({
   description:
@@ -1111,7 +1111,7 @@ export const updateThesis = defineTool({
                 ok: false,
                 error: check.error,
                 message: check.message,
-                trigger_ops: opResults,
+                trigger_ops: notApplied(opResults, check.error),
               },
               sources: [],
             };
@@ -1137,7 +1137,7 @@ export const updateThesis = defineTool({
                 error: "goalpost_moving_blocked",
                 message:
                   `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${Number(existing.targetPrice).toFixed(2)}. The entry condition is MET — your action is to PROMOTE (place_trade, which flips WATCHING → HOLDING), not raise the target to $${check.columns.targetPrice.toFixed(2)} and walk away. If you genuinely think the setup has changed, document a concrete rejection reason in record_run_summary's decision_rationale (volume too low, regime change, fresh negative news, R/R no longer 2:1) and leave the target untouched. Or close the thesis with change_status: "INVALIDATED".`,
-                trigger_ops: opResults,
+                trigger_ops: notApplied(opResults, "goalpost_moving_blocked"),
               },
               sources: [],
             };
