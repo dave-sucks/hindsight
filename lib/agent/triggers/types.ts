@@ -113,6 +113,12 @@ export type TriggerPredicate =
   // (30-day default cooldown ≫ the window, ≪ a quarter). Added 2026-09-10;
   // see docs/plans/MARKET_DATA.md §3.
   | { kind: "EARNINGS_WITHIN"; days: number }
+  // "This stock reported between min and max days ago." The mirror of
+  // EARNINGS_WITHIN, off the same calendar: the post-report window where a
+  // drift trade is entered — day 1 to 3 after the print, once the reaction
+  // is known. Fires once per report (30-day cooldown). Bounded above by
+  // the evaluator's lookback (EARNINGS_LOOKBACK_DAYS).
+  | { kind: "EARNINGS_SINCE"; min: number; max: number }
   | { kind: "GUIDANCE_CHANGE"; direction: "UP" | "DOWN" }
   | {
       kind: "FILING";

@@ -580,6 +580,29 @@ describe("evaluateTrigger", () => {
       });
     });
 
+    // ── The window AFTER a report ────────────────────────────────────
+    describe("EARNINGS_SINCE", () => {
+      const reported = report({ reportDate: "2026-08-26", surprisePct: 3.8 });
+      const at = (iso: string) => makeCtx({ earnings: reported, now: new Date(`${iso}T15:00:00Z`) });
+
+      it("fires inside the window, counting the report day as 0", () => {
+        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 1, max: 3 }, at("2026-08-27"))).toBe(true);
+        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 1, max: 3 }, at("2026-08-29"))).toBe(true);
+        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 0, max: 0 }, at("2026-08-26"))).toBe(true);
+      });
+
+      it("does not fire before min or after max", () => {
+        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 1, max: 3 }, at("2026-08-26"))).toBe(false);
+        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 1, max: 3 }, at("2026-08-30"))).toBe(false);
+      });
+
+      it("does not fire on an upcoming row or with nothing reported", () => {
+        const upcoming = { ...report({ reportDate: "2026-09-30" }), epsActual: null, surprisePct: null };
+        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 0, max: 3 }, makeCtx({ earnings: upcoming, now: new Date("2026-09-30T15:00:00Z") }))).toBe(false);
+        expect(evaluateTrigger({ kind: "EARNINGS_SINCE", min: 0, max: 3 }, makeCtx())).toBe(false);
+      });
+    });
+
     it("composes with price predicates", () => {
       // "Missed AND broke the floor" — the composite the cron path can now
       // evaluate end-to-end, because both halves need no signal.

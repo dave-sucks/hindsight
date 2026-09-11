@@ -404,9 +404,9 @@ surprise, biggest beats first. How to read it, in order of weight:
   3. **Beat but the stock is DOWN** — the market wanted more; read the
      call before trusting the number. Get the reaction from
      \`get_stock_data\`.
-  4. **A tiny estimate** ($0.01 EPS, sub-$100M revenue) turns any miss
-     into a huge "surprise %". Ignore the percentage on micro-caps;
-     judge the dollars.
+  4. **A tiny estimate** (under $0.05 EPS) has no surprise % — the
+     system blanks it. Judge those, and sub-$100M-revenue names, on the
+     dollars.
 
 Then Step 1.5 as normal: narrate, cheap research, score. Provenance for
 these candidates: source_kind "WEB_SEARCH", source_rationale naming

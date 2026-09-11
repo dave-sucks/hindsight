@@ -68,10 +68,20 @@ export interface EarningsReport {
  * the next report still fires. Keep this comfortably under 7 if you change
  * it, and don't raise it without re-checking the stored cooldowns.
  *
- * 3 rather than 1 so a Friday after-close report is still caught when the
- * market next opens on Monday.
+ * 5 rather than 3: the Tuesday after a Monday holiday looks back to the
+ * prior Thursday, so a Friday after-close report is still inside the
+ * window. Still two days short of the 7-day cooldown.
  */
-export const EARNINGS_LOOKBACK_DAYS = 3;
+export const EARNINGS_LOOKBACK_DAYS = 5;
+
+/**
+ * Below this, a surprise percentage means nothing: a one-cent estimate
+ * turns a two-cent miss into "−200%". Such a report is still a report
+ * (it lands in the maps, the page shows the dollars), but it cannot
+ * SCORE — `surprisePct` returns null, so beat/miss can't fire on it and
+ * no reader has to be told to ignore it. Layer 2, not Layer 3.
+ */
+export const MIN_SCORABLE_ESTIMATE = 0.05;
 
 /**
  * How far forward to look for scheduled reports — the ceiling on
@@ -91,15 +101,17 @@ export const EARNINGS_LOOKAHEAD_DAYS = 14;
  * /stock/earnings endpoint — verified against NVDA 2026-08-26 (est 2.1384,
  * actual 2.22 → 3.8159% both ways).
  *
- * A zero estimate has no meaningful percentage, so it returns null rather
- * than Infinity. A predicate with no `minSurprisePct` would otherwise fire
- * on a number that means nothing.
+ * A zero or tiny estimate (under MIN_SCORABLE_ESTIMATE) has no meaningful
+ * percentage, so it returns null rather than Infinity or "−200%". A
+ * predicate with no `minSurprisePct` would otherwise fire on a number
+ * that means nothing.
  */
 export function surprisePct(
   actual: number,
   estimate: number | null | undefined,
 ): number | null {
-  if (estimate == null || !Number.isFinite(estimate) || estimate === 0) return null;
+  if (estimate == null || !Number.isFinite(estimate)) return null;
+  if (Math.abs(estimate) < MIN_SCORABLE_ESTIMATE) return null;
   if (!Number.isFinite(actual)) return null;
   return ((actual - estimate) / Math.abs(estimate)) * 100;
 }

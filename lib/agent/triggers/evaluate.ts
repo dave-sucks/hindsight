@@ -220,6 +220,15 @@ export function evaluateTrigger(
       return days >= 0 && days <= predicate.days;
     }
 
+    case "EARNINGS_SINCE": {
+      // "Reported min–max days ago." Reads the reported row; the day of the
+      // report is 0. The entry window for a post-report drift trade.
+      const r = ctx.earnings;
+      if (!r || r.epsActual == null) return false;
+      const since = -daysUntilReport(r, ctx.now);
+      return since >= predicate.min && since <= predicate.max;
+    }
+
     case "GUIDANCE_CHANGE":
       return (
         ctx.signal?.type === "EARNINGS" &&

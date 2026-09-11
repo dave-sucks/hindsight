@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { surprisePct } from "@/lib/agent/triggers/earnings";
 import type { EarningsResponse } from "@/lib/types/thesis-sheet";
 
 function money(n: number): string {
@@ -34,9 +35,9 @@ function bell(hour: string | null): string {
   return hour === "bmo" ? "before open" : hour === "amc" ? "after close" : "";
 }
 
+/** The one surprise formula — tiny estimates come back null, by design. */
 function pctOf(actual: number | null, estimate: number | null): number | null {
-  if (actual == null || estimate == null || estimate === 0) return null;
-  return ((actual - estimate) / Math.abs(estimate)) * 100;
+  return actual == null ? null : surprisePct(actual, estimate);
 }
 
 /** The Financials tab's stat cell, verbatim, plus an optional color. */

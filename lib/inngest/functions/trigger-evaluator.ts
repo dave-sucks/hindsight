@@ -120,6 +120,7 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
     case "EARNINGS_WITHIN":
+    case "EARNINGS_SINCE":
       return true;
     case "AND":
     case "OR":
@@ -135,6 +136,7 @@ function needsEarningsData(p: TriggerPredicate): boolean {
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
     case "EARNINGS_WITHIN":
+    case "EARNINGS_SINCE":
       return true;
     case "AND":
     case "OR":

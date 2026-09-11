@@ -203,6 +203,11 @@ function predicateKindValue(p: TriggerPredicate): {
         kind: "reports within",
         value: p.days != null ? plural(p.days, "day") : null,
       };
+    case "EARNINGS_SINCE":
+      return {
+        kind: "after the report",
+        value: p.min != null && p.max != null ? (p.min === p.max ? plural(p.min, "day") : `${p.min}–${p.max} days`) : null,
+      };
     case "GUIDANCE_CHANGE":
       return {
         kind: "guidance",
@@ -265,6 +270,8 @@ function predicateDescription(p: TriggerPredicate): string {
         : "Fires on any earnings miss.";
     case "EARNINGS_WITHIN":
       return `Fires once when the next earnings report is ${p.days} day${p.days === 1 ? "" : "s"} away or closer — the heads-up to size for it.`;
+    case "EARNINGS_SINCE":
+      return `Fires once when the last earnings report is ${p.min}–${p.max} days old — the window to act on the reaction.`;
     case "GUIDANCE_CHANGE":
       return `Fires when company issues ${p.direction?.toLowerCase()} guidance revision.`;
     case "FILING":

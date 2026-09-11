@@ -70,6 +70,8 @@ function describePredicate(p: TriggerPredicate): string {
       return "review date hit";
     case "EARNINGS_WITHIN":
       return `reports within ${p.days}d`;
+    case "EARNINGS_SINCE":
+      return `${p.min}–${p.max}d after the report`;
     case "AND":
       return `(${p.predicates.map(describePredicate).join(" AND ")})`;
     case "OR":

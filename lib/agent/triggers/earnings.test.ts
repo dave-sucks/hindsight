@@ -48,6 +48,13 @@ describe("surprisePct", () => {
     expect(surprisePct(-0.35, -0.25)).toBeCloseTo(-40, 6);
   });
 
+  it("returns null on a tiny estimate — a one-cent bar is not a bar", () => {
+    // est $0.01, actual −$0.01 would read "−200%". In code, not in a prompt.
+    expect(surprisePct(-0.01, 0.01)).toBeNull();
+    expect(surprisePct(0.1, 0.04)).toBeNull();
+    expect(surprisePct(0.1, 0.05)).not.toBeNull();
+  });
+
   it("returns null on a zero estimate rather than Infinity", () => {
     // A predicate with no minSurprisePct would otherwise fire on a
     // percentage that means nothing.
@@ -84,7 +91,7 @@ describe("fetchEarningsWindow", () => {
     mockCalendar([]);
     return fetchEarningsWindow({ now: NOW }).then(() => {
       const path = String(finnhubMock.mock.calls[0][0]);
-      expect(path).toBe("/calendar/earnings?from=2026-08-30&to=2026-09-02");
+      expect(path).toBe("/calendar/earnings?from=2026-08-28&to=2026-09-02");
     });
   });
 
@@ -94,7 +101,7 @@ describe("fetchEarningsWindow", () => {
     mockCalendar([]);
     await fetchEarningsWindow({ now: NOW, lookaheadDays: 14 });
     const path = String(finnhubMock.mock.calls[0][0]);
-    expect(path).toBe("/calendar/earnings?from=2026-08-30&to=2026-09-16");
+    expect(path).toBe("/calendar/earnings?from=2026-08-28&to=2026-09-16");
   });
 
   it("puts a scheduled row in `upcoming`, keeping the earliest per ticker", async () => {

@@ -41,6 +41,7 @@ An invalid trigger is dropped at evaluation, so the gate rejects it up front.
 | `SIGNAL_TYPE` | A routed signal of a given type/sentiment/urgency | `signalType`, `sentiment?`, `minUrgency?` |
 | `EARNINGS_BEAT` / `EARNINGS_MISS` | Earnings surprise — reported EPS vs estimate, read off the Finnhub calendar on the cron (one firm-wide call per pass; `triggers/earnings.ts`). Fires at the first open after the report, once per report (3-day lookback inside the 7-day cooldown). The audit row carries the figures. | `minSurprisePct?` |
 | `EARNINGS_WITHIN` | The heads-up **before** a report: "this stock reports within N days." Same calendar call, 14-day lookahead. Fires once per approaching report (30-day cooldown). The audit row carries the date, bell, and estimates. | `days` (1–14) |
+| `EARNINGS_SINCE` | The window **after** a report: "reported between min and max days ago" (0 = the report day). The post-report drift entry window, once the reaction is known. Same calendar, 5-day lookback. Fires once per report (30-day cooldown). | `min`, `max` (0–5) |
 | `GUIDANCE_CHANGE` | Guidance revision | `direction` |
 | `FILING` | SEC form filed | `formType` |
 | `REVIEW_CADENCE` | N days since the last actual review (`lastReviewedAt`) | `days` |
@@ -121,7 +122,7 @@ sharing the pure `evaluateTrigger` in `triggers/evaluate.ts`:
 | **`TRAILING_FROM_HIGH`** (HOLDING-only) | ✅ **fires** | — | ✅ |
 | `VS_SMA` | ❌ (no SMA) | — | ✅ |
 | `RSI` | ❌ stub | ❌ stub | ❌ stub |
-| **`EARNINGS_BEAT` / `EARNINGS_MISS` / `EARNINGS_WITHIN`** | ✅ **fires** (calendar) | ✅ (beat/miss only, if a signal ever carries a surprise) | — |
+| **`EARNINGS_BEAT` / `EARNINGS_MISS` / `EARNINGS_WITHIN` / `EARNINGS_SINCE`** | ✅ **fires** (calendar) | ✅ (beat/miss only, if a signal ever carries a surprise) | — |
 | `GUIDANCE_CHANGE` / `FILING` / `SIGNAL_TYPE` | — | ✅ (routing paused — inert) | — |
 | `REVIEW_CADENCE` | ✅ | — | ✅ |
 

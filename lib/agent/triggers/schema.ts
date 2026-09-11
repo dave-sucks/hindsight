@@ -45,6 +45,7 @@ type PredicateShape =
   | { kind: "EARNINGS_BEAT"; minSurprisePct?: number }
   | { kind: "EARNINGS_MISS"; minSurprisePct?: number }
   | { kind: "EARNINGS_WITHIN"; days: number }
+  | { kind: "EARNINGS_SINCE"; min: number; max: number }
   | { kind: "GUIDANCE_CHANGE"; direction: "UP" | "DOWN" }
   | { kind: "FILING"; formType: "10-K" | "10-Q" | "8-K" | "FORM_4" }
   | { kind: "REVIEW_CADENCE"; days: number }
@@ -102,6 +103,15 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
       // longer horizon would ask about reports the evaluator never fetches.
       days: z.number().int().min(1).max(14),
     }),
+    z
+      .object({
+        kind: z.literal("EARNINGS_SINCE"),
+        // 0 = the report day itself. Max is the calendar lookback
+        // (EARNINGS_LOOKBACK_DAYS) — beyond it the row isn't fetched.
+        min: z.number().int().min(0).max(5),
+        max: z.number().int().min(0).max(5),
+      })
+      .refine((p) => p.min <= p.max, { message: "min must be ≤ max" }),
     z.object({
       kind: z.literal("GUIDANCE_CHANGE"),
       direction: z.enum(["UP", "DOWN"]),

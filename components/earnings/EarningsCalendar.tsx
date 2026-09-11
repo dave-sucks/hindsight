@@ -23,6 +23,7 @@ import { PriceChange } from "@/components/ui/price-change";
 import { StockLogo } from "@/components/StockLogo";
 import { WatchlistDropdown } from "@/components/stocks/WatchlistDropdown";
 import { cn } from "@/lib/utils";
+import { surprisePct } from "@/lib/agent/triggers/earnings";
 import type { EarningsDayView, EarningsDayRow } from "@/lib/market-data/earnings-calendar";
 
 const DAY_MS = 86_400_000;
@@ -40,9 +41,9 @@ function bell(hour: string | null): string | null {
   return hour === "bmo" ? "Before open" : hour === "amc" ? "After close" : null;
 }
 
+/** The one surprise formula — tiny estimates come back null, by design. */
 function pctOf(actual: number | null, estimate: number | null): number | null {
-  if (actual == null || estimate == null || estimate === 0) return null;
-  return ((actual - estimate) / Math.abs(estimate)) * 100;
+  return actual == null ? null : surprisePct(actual, estimate);
 }
 
 /** One quiet line: "EPS   $0.22 est   $0.79   Beat +265.57%" */

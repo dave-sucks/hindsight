@@ -25,6 +25,9 @@ export interface TriggerPredicate {
   minSurprisePct?: number;
   formType?: string;
   days?: number;
+  /** EARNINGS_SINCE — days after the report, inclusive. */
+  min?: number;
+  max?: number;
   trailPct?: number;
   predicates?: TriggerPredicate[];
 }

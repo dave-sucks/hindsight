@@ -296,6 +296,8 @@ are what separate momentum from a pump. The thresholds should be yours.
 | Drop `read_signals` and the `feeds` gate from discovery | **Done — #625** | Two pull tools every week. |
 | Detach the builder / editor from the inbox tools | **Later, medium** | ~15 hard-rule sites across two prompts. Not an allowlist flip. |
 | Earnings-within-N-days trigger | **In — built, #621** | `EARNINGS_WITHIN`, 1–14 days. In the add dialog as "Earnings". |
+| Days-since-report trigger (`EARNINGS_SINCE`) | **In — built, #621** | The post-report entry window, 0–5 days. The rebuild's PEAD seat uses it. |
+| Tiny estimates can't score | **In — built, #621** | Under $0.05 EPS the surprise is null in code — no trigger fires on it, no prompt has to say "ignore it". |
 | Earnings block on the thesis sheet (live, not stored) | **In — built, #621** | Next report + last four quarters. |
 | `/earnings` page and the stock page's Earnings tab | **In — built, #621** | Week of day boxes; a day's reporters with the figures; per-stock quarters and latest report. Live, not stored. |
 | `get_earnings_calendar(window: "reported")` for the agent | **In — built, #621** | "Do discovery off this week's earnings" is one call. |

@@ -108,6 +108,8 @@ function describePredicate(p: TriggerPredicate): string {
       return `earnings miss${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`;
     case "EARNINGS_WITHIN":
       return `earnings report within ${p.days} day${p.days === 1 ? "" : "s"}`;
+    case "EARNINGS_SINCE":
+      return `${p.min}–${p.max} days after the earnings report`;
     case "GUIDANCE_CHANGE":
       return `guidance ${p.direction}`;
     case "FILING":
