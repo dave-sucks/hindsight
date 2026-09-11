@@ -41,9 +41,15 @@ export const discoveryRun = inngest.createFunction(
     { event: "app/discovery.run.manual" },
   ],
   async ({ event, step }) => {
-    const targetConfigId =
-      (event as { data?: { agentConfigId?: string } })?.data?.agentConfigId ??
-      null;
+    const payload =
+      (event as { data?: { agentConfigId?: string; focus?: string } })?.data ?? {};
+    const targetConfigId = payload.agentConfigId ?? null;
+    // The ask. A manual fire can say what this run is FOR — "discovery off
+    // this week's earnings", "names that reported yesterday and gapped up"
+    // — and the prompt's earnings-driven section keys off exactly that
+    // framing (get_earnings_calendar window:"reported"). Absent on the
+    // cron: the standard movers + calendar pass.
+    const focus = typeof payload.focus === "string" ? payload.focus.trim().slice(0, 500) : "";
 
     const configs = await step.run("load-agent-configs", async () => {
       const all = await prisma.agentConfig.findMany({
@@ -252,6 +258,7 @@ export const discoveryRun = inngest.createFunction(
         });
 
         const userPrompt =
+          (focus ? `THE ASK FOR THIS RUN: ${focus}\n\nRead the pool through that ask first — if it names a report window, start from get_earnings_calendar(window:"reported", scope:"universe") as your system prompt describes. Then the standard pass.\n\n` : "") +
           "Begin your weekly discovery scan (Phase 2 — two-pass funnel). Pass 1: call get_market_movers(scope:\"universe\") for gainers and most-active (and losers if your edge buys dislocations), and get_earnings_calendar(scope:\"universe\"). Triage the resulting pool with 1-2 sentence gut-takes, then run cheap research (get_theses + get_stock_data) on the survivors and score them on the 4-dim composite. Pass 2: for composite ≥ 4, call dispatch_thesis_research(mode:\"mint\") — fire-and-forget, honoring the dispatch cap stated in your system prompt. For composite < 4 but researched, record_thesis(direction:'PASS'). For triage-dismissed candidates, no thesis row. Don't re-filter by universe — the tools did it.";
 
         try {
