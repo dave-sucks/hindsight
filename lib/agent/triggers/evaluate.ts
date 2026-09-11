@@ -23,6 +23,7 @@
  * the live quote. DAV-247.
  */
 
+import { trailFireLevel } from "./trail";
 import type { Trigger, TriggerPredicate } from "./types";
 import { defaultCooldownDaysForPredicate } from "./defaults";
 import type { EarningsReport } from "./earnings";
@@ -190,9 +191,9 @@ export function evaluateTrigger(
       const peak = ctx.position?.peakPrice;
       if (peak == null || peak <= 0 || ctx.latestQuote == null) return false;
       const isLong = ctx.thesis.direction !== "SHORT";
-      const trail = isLong
-        ? peak * (1 - predicate.pct / 100)
-        : peak * (1 + predicate.pct / 100);
+      // Null until armed (armAtGainPct, DAV-250) — see ./trail.
+      const trail = trailFireLevel(predicate, { peak, avgCost: ctx.position?.avgCost, isLong });
+      if (trail == null) return false;
       return isLong
         ? ctx.latestQuote.price <= trail
         : ctx.latestQuote.price >= trail;

@@ -15,6 +15,7 @@ import { parseTriggersResilient } from "./schema";
 import { resolveLadder, type ResolvedTrigger } from "./levels";
 import type { Horizon, ThesisState } from "./defaults";
 import type { Trigger } from "./types";
+import { triggerBucket } from "./bucket";
 import { unseededAccountFallback } from "./seed-account";
 
 /** The two stored levels above a thesis, for one analyst. */
@@ -99,7 +100,7 @@ export async function loadLevelSources(
 /**
  * The thesis-state axis the default templates key off. `HELD` is the only
  * state that carries position-scoped rungs (gain-from-entry, trail,
- * scale-ins) — see `inheritableDefaultLadder`.
+ * scale-ins) — see `POSITION_SCOPED_KINDS` in ./levels.
  */
 export function thesisStateFor(status: string | null): ThesisState {
   if (status === "HOLDING") return "HELD";
@@ -115,6 +116,24 @@ export function horizonFor(horizon: string | null): Horizon {
     horizon === "TARGET"
     ? horizon
     : "TARGET";
+}
+
+/**
+ * The account/analyst rules that apply to a thesis of horizon `h` (DAV-250).
+ * One account carries a trade's sell rules and a compounder's side by side;
+ * each thesis inherits its own. A rule with no `horizons` applies to every
+ * horizon — unless the same level also has a rule for this horizon in the
+ * same bucket, which is the more specific statement and wins regardless of
+ * which is tighter.
+ */
+export function rulesForHorizon(rules: Trigger[], h: Horizon): Trigger[] {
+  const scoped = rules.filter((t) => t.horizons?.includes(h));
+  const scopedBuckets = new Set(scoped.map(triggerBucket));
+  return rules.filter((t) =>
+    t.horizons?.length
+      ? t.horizons.includes(h)
+      : !scopedBuckets.has(triggerBucket(t)),
+  );
 }
 
 /** The thesis columns resolution needs. Keep selects in sync with this. */
@@ -144,10 +163,11 @@ export function resolveThesisLadder(
   label = "thesis",
 ): ResolvedTrigger[] {
   const { analyst, account } = sources ?? EMPTY_SOURCES;
+  const h = horizonFor(thesis.horizon);
   return resolveLadder({
     thesis: parseLevelTriggers(thesis.triggers, label),
-    analyst,
-    account,
+    analyst: rulesForHorizon(analyst, h),
+    account: rulesForHorizon(account, h),
     // No DEFAULT level any more — the constant rungs are seeded onto the
     // account as editable rules (lib/agent/triggers/seed-account), so the
     // cascade bottoms out at ACCOUNT. `state` still gates the

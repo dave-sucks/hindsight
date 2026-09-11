@@ -1,9 +1,12 @@
+jest.mock("@/lib/prisma", () => ({ prisma: {} }));
+
 import {
   resolveLadder,
   LEVEL_PRECEDENCE,
   splitFiresByLevel,
 } from "./levels";
-import { inheritableDefaultLadder, DEFAULT_LADDER_IDS } from "./defaults";
+import { horizonStandingRules } from "./defaults";
+import { resolveThesisLadder, rulesForHorizon } from "./load-levels";
 import { triggerBucket } from "./bucket";
 import type { Trigger } from "./types";
 
@@ -260,50 +263,46 @@ describe("resolveLadder — override annotation", () => {
   });
 });
 
-describe("inheritableDefaultLadder", () => {
-  it("uses stable ids across calls (fire state keys off them)", () => {
-    const a = inheritableDefaultLadder("TARGET");
-    const b = inheritableDefaultLadder("TARGET");
-    expect(a.map((t) => t.id)).toEqual(b.map((t) => t.id));
-    expect(a.map((t) => t.id)).toContain(DEFAULT_LADDER_IDS.trailRatchet);
-  });
+describe("account sell rules resolve per horizon (DAV-250)", () => {
+  const account = horizonStandingRules();
 
-  it("stamps every rung source=DEFAULT", () => {
-    for (const t of inheritableDefaultLadder("COMPOUNDER")) {
-      expect(t.source).toBe("DEFAULT");
+  it("each horizon's set resolves without self-collision", () => {
+    for (const h of ["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const) {
+      const mine = rulesForHorizon(account, h);
+      expect(new Set(mine.map(triggerBucket)).size).toBe(mine.length);
+      expect(resolveLadder({ thesis: [], account: mine })).toHaveLength(mine.length);
     }
   });
 
-  it("carries the three standing protection rungs on every held horizon", () => {
-    for (const horizon of ["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const) {
-      const ids = inheritableDefaultLadder(horizon).map((t) => t.id);
-      expect(ids).toContain(DEFAULT_LADDER_IDS.gainCheckpoint);
-      expect(ids).toContain(DEFAULT_LADDER_IDS.trailRatchet);
-      expect(ids).toContain(DEFAULT_LADDER_IDS.loserAttention);
-    }
+  it("a held compounder inherits the 25% sale, a held trade the 8% one", () => {
+    const sources = { analyst: [], account };
+    const sell = (horizon: string) =>
+      resolveThesisLadder({ triggers: [], status: "HOLDING", horizon }, sources)
+        .filter((t) => t.action === "EXIT" && t.predicate.kind === "TRAILING_FROM_HIGH")
+        .map((t) => (t.predicate.kind === "TRAILING_FROM_HIGH" ? t.predicate.pct : null));
+    expect(sell("COMPOUNDER")).toEqual([25]);
+    expect(sell("TRADE")).toEqual([8]);
+    expect(sell("CATALYST")).toEqual([]);
   });
 
-  it("omits the pullback-add on TRADE only", () => {
-    expect(inheritableDefaultLadder("TRADE").map((t) => t.id)).not.toContain(
-      DEFAULT_LADDER_IDS.scaleInPullback,
+  it("a thesis-level rule still beats its horizon's account rule", () => {
+    const own = [
+      { id: "own", predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 }, action: "EXIT", rationale: "pinned" },
+    ];
+    const ladder = resolveThesisLadder(
+      { triggers: own, status: "HOLDING", horizon: "COMPOUNDER" },
+      { analyst: [], account },
     );
-    expect(inheritableDefaultLadder("TARGET").map((t) => t.id)).toContain(
-      DEFAULT_LADDER_IDS.scaleInPullback,
-    );
+    const trail = ladder.filter((t) => t.action === "EXIT" && t.predicate.kind === "TRAILING_FROM_HIGH");
+    expect(trail.map((t) => t.id)).toEqual(["own"]);
   });
 
-  it("is empty for WATCHING and PROMOTED (position-scoped predicates)", () => {
-    expect(inheritableDefaultLadder("TARGET", "WATCHING")).toEqual([]);
-    expect(inheritableDefaultLadder("TARGET", "PROMOTED")).toEqual([]);
-  });
-
-  it("emits one rung per bucket, so it resolves without self-collision", () => {
-    const ladder = inheritableDefaultLadder("TARGET");
-    const buckets = ladder.map(triggerBucket);
-    expect(new Set(buckets).size).toBe(ladder.length);
-    expect(resolveLadder({ thesis: [], defaults: ladder })).toHaveLength(
-      ladder.length,
+  it("a watched name inherits none of them (position-scoped)", () => {
+    const ladder = resolveThesisLadder(
+      { triggers: [], status: "WATCHING", horizon: "TRADE" },
+      { analyst: [], account },
     );
+    expect(ladder.filter((t) => t.action === "EXIT" || t.action === "ADD")).toEqual([]);
   });
 });
 

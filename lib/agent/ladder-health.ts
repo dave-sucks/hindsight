@@ -47,6 +47,7 @@
  * mark — mirroring lib/agent/triggers/evaluate.ts.
  */
 
+import { trailFireLevel } from "@/lib/agent/triggers/trail";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 
 // ─── Tunable constants ───────────────────────────────────────────────────────
@@ -201,10 +202,10 @@ function extractPriceRungs(
     }
     case "TRAILING_FROM_HIGH": {
       // LONG: fires when price falls to peak×(1−pct/100); SHORT: rises to
-      // peak×(1+pct/100) off the low-water mark.
-      const price = ctx.isLong
-        ? ctx.peak * (1 - predicate.pct / 100)
-        : ctx.peak * (1 + predicate.pct / 100);
+      // peak×(1+pct/100) off the low-water mark. A trail that hasn't armed
+      // yet (armAtGainPct) protects nothing and is not a rung.
+      const price = trailFireLevel(predicate, ctx);
+      if (price == null) return [];
       return [
         {
           kind: "TRAILING_FROM_HIGH",

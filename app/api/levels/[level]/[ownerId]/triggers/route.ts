@@ -11,22 +11,23 @@
  * GET returns the level's own rungs PLUS everything it inherits, each
  * tagged with `level` + `inherited` — resolved against an empty thesis
  * array, since there's no thesis in scope here. So the account page shows
- * its own rules solid and the code defaults dashed; the analyst page adds
- * the account's rules dashed in between.
+ * its own rules solid; the analyst page adds the account's rules dashed
+ * beneath its own. Rules carry `horizons`, and the page groups by them.
  */
 
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 import { prisma } from "@/lib/prisma";
-import { resolveLadder } from "@/lib/agent/triggers/levels";
-import { inheritableDefaultLadder } from "@/lib/agent/triggers/defaults";
-import { parseLevelTriggers } from "@/lib/agent/triggers/load-levels";
+import { resolveLadder, type ResolvedTrigger } from "@/lib/agent/triggers/levels";
+import { parseLevelTriggers, rulesForHorizon } from "@/lib/agent/triggers/load-levels";
 import {
   addLevelTrigger,
   type WritableLevel,
 } from "@/lib/actions/level-triggers";
 import { statusForEditError, ThesisEditError } from "@/lib/actions/thesis-edit";
 import type { TriggerAction, TriggerPredicate } from "@/lib/agent/triggers/types";
+
+const HORIZONS = ["TRADE", "TARGET", "CATALYST", "COMPOUNDER"] as const;
 
 /** "account" | "analyst" → the cascade level. Anything else is a 404. */
 function parseLevel(raw: string): WritableLevel | null {
@@ -94,23 +95,36 @@ export async function GET(
   }
 
   // No thesis in scope, so the thesis level is empty and the level being
-  // viewed occupies the top slot. HELD/TARGET for the default ladder —
-  // a standing rule is written for the general case, and the held-side
-  // template is the one that carries the protection minimums.
-  const resolved = resolveLadder({
-    thesis: [],
-    analyst:
-      auth.level === "ANALYST" ? parseLevelTriggers(own, `analyst=${ownerId}`) : [],
-    account:
-      auth.level === "ACCOUNT"
-        ? parseLevelTriggers(own, `account=${ownerId}`)
-        : parseLevelTriggers(accountRungs, `account=${accountId}`),
-    defaults: inheritableDefaultLadder("TARGET", "HELD"),
-    // Own rungs solid + editable; everything below dashed + read-only.
-    // Without this every level renders its OWN rules as inherited and the
-    // page can't edit the thing it exists to edit.
-    viewLevel: auth.level,
-  });
+  // viewed occupies the top slot. The rules are horizon-scoped (DAV-250):
+  // a trade's trail and a compounder's trail share a bucket but are
+  // different rules, so resolving them together would hide all but one.
+  // Resolve the ladder each horizon actually inherits and show their union.
+  const analystRules =
+    auth.level === "ANALYST" ? parseLevelTriggers(own, `analyst=${ownerId}`) : [];
+  const accountRules =
+    auth.level === "ACCOUNT"
+      ? parseLevelTriggers(own, `account=${ownerId}`)
+      : parseLevelTriggers(accountRungs, `account=${accountId}`);
+  const resolved: ResolvedTrigger[] = [];
+  const seen = new Set<string>();
+  for (const h of HORIZONS) {
+    const ladder = resolveLadder({
+      thesis: [],
+      analyst: rulesForHorizon(analystRules, h),
+      account: rulesForHorizon(accountRules, h),
+      defaults: [],
+      // Own rungs solid + editable; everything below dashed + read-only.
+      // Without this every level renders its OWN rules as inherited and the
+      // page can't edit the thing it exists to edit.
+      viewLevel: auth.level,
+    });
+    for (const t of ladder) {
+      const key = `${t.level}:${t.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      resolved.push(t);
+    }
+  }
 
   // Whether THIS caller may write here. Returned by the server rather
   // than passed in by each surface: the analyst Triggers tab has no role
@@ -143,6 +157,7 @@ export async function POST(
     predicate?: unknown;
     fireMode?: unknown;
     rationale?: unknown;
+    horizons?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -165,6 +180,9 @@ export async function POST(
             ? body.fireMode
             : undefined,
         rationale: typeof body.rationale === "string" ? body.rationale : undefined,
+        horizons: Array.isArray(body.horizons)
+          ? HORIZONS.filter((h) => (body.horizons as unknown[]).includes(h))
+          : undefined,
       },
       { accountId, actorUserId: user.id },
     );

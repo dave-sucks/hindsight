@@ -344,7 +344,11 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     commit(next, { op: "remove", id, ok: true, text });
   };
 
-  const doAdd = (trigger: Trigger) => {
+  const doAdd = (supplied: Trigger) => {
+    // `horizons` scopes an account/analyst rule; on a thesis it means
+    // nothing (the rule already belongs to one thesis), so it isn't stored.
+    const { horizons: _scope, ...trigger } = supplied;
+    void _scope;
     const existing = collision(stored, trigger, direction);
     if (existing) {
       // One trigger per bucket: the add becomes an edit of the one that is

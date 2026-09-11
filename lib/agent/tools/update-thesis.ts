@@ -39,6 +39,7 @@ import {
 } from "@/lib/agent/triggers/load-levels";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
+import { pinsToKeepProtection } from "@/lib/agent/triggers/ratchet";
 import {
   acceptedOps,
   applyTriggerOps,
@@ -869,6 +870,35 @@ export const updateThesis = defineTool({
       ...(args.stop_loss !== undefined ? [{ op: "level" as const, slot: "FLOOR" as const, price: args.stop_loss }] : []),
       ...(args.target_price !== undefined ? [{ op: "level" as const, slot: "TARGET" as const, price: args.target_price }] : []),
     ];
+
+    // A held stock inherits its horizon's sell rules (DAV-250), so a horizon
+    // change can loosen protection without touching a trigger — a trade
+    // moved to compounder would go from an 8% sell to 25%. Only the
+    // principal lowers a level: every inherited sell line the new horizon
+    // would loosen is kept on the thesis at today's value. Not a refusal —
+    // the horizon changes; the protection stays.
+    if (
+      !isTerminalTransition &&
+      existing.status === "HOLDING" &&
+      args.horizon != null &&
+      args.horizon !== existing.horizon
+    ) {
+      const analystId = existing.researchRun?.agentConfigId ?? null;
+      const sources = analystId ? (await loadLevelSources([analystId])).get(analystId) : undefined;
+      const row = {
+        triggers: parseTriggersResilient(existing.triggers).triggers,
+        status: existing.status,
+        direction: existing.direction,
+      };
+      const pins = pinsToKeepProtection({
+        direction: existing.direction,
+        before: resolveThesisLadder({ ...row, horizon: existing.horizon }, sources),
+        after: resolveThesisLadder({ ...row, horizon: args.horizon }, sources),
+        mintId: () => randomUUID(),
+        note: `Kept when the horizon moved ${existing.horizon ?? "TARGET"} → ${args.horizon}: the new horizon's rules are looser, and only the principal lowers a sell line.`,
+      });
+      for (const trigger of pins) triggerOps.push({ op: "add", trigger });
+    }
 
     // The levels above this thesis, resolved against an EMPTY thesis array
     // so we see them unmasked by the thesis's own triggers. Lazy: this is
