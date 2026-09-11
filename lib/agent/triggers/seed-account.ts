@@ -21,19 +21,10 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { inheritableDefaultLadder, reviewCadenceTrigger } from "./defaults";
+import { horizonStandingRules, reviewCadenceTrigger } from "./defaults";
 import { triggerBucket } from "./bucket";
 import type { Trigger } from "./types";
 
-/**
- * The rules a fresh account starts with: the constant rungs every holding
- * should carry. Derived from the same templates that used to supply them
- * at runtime, so the numbers can't drift from `defaults.ts`.
- *
- * TARGET/HELD is the source template — it carries the full constant set
- * (the TRADE variant omits the pullback-add, which is a horizon nuance,
- * not an account-wide rule).
- */
 /**
  * Earnings is not opt-in. Anything the account holds or watches gets a look
  * three days before it reports and a look on the report — a standing WAKE,
@@ -89,7 +80,10 @@ export function accountSeedTriggers(): Trigger[] {
     // HORIZON_REVIEW_DAYS table used; a CATALYST or TRADE thesis overrides
     // it with a tighter one through the ordinary cascade.
     reviewCadenceTrigger(7),
-    ...inheritableDefaultLadder("TARGET", "HELD"),
+    // The sell rules, one set per horizon (DAV-250) — a trade's 8% trail
+    // and a compounder's 25% catastrophe line live side by side, each
+    // applying only to theses of its horizon.
+    ...horizonStandingRules(),
     ...earningsStandingTriggers(),
   ].map((t) => ({
     ...t,
@@ -171,5 +165,5 @@ export function unseededAccountFallback(accountId: string): Trigger[] {
     `[trigger-levels] account=${accountId} has no seeded standing rules — ` +
       `falling back to the code constants. Run seedAccountTriggers().`,
   );
-  return inheritableDefaultLadder("TARGET", "HELD");
+  return horizonStandingRules();
 }

@@ -66,10 +66,9 @@ export function predicateKey(p: TriggerPredicate): string {
 }
 
 /**
- * `(predicateKey, action)`. Exported for
- * scripts/convert-static-floors-to-trails.ts, which needs "is a same-bucket
- * rung already present?" WITHOUT mergeTriggers' within-list dedup (the
- * hand-written ladders must be preserved verbatim, duplicates and all).
+ * `(predicateKey, action)`. Exported for "is a same-bucket rung already
+ * present?" checks that must not go through mergeTriggers' within-list
+ * dedup (the level write path, the horizon filter, the ratchet).
  *
  * Takes the structural minimum rather than a full `Trigger` so callers
  * holding a loosely-typed client-side rung can use it without a cast.

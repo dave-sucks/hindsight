@@ -13,12 +13,15 @@ import { accountSeedTriggers } from "./seed-account";
 import { triggerBucket } from "./bucket";
 
 describe("accountSeedTriggers", () => {
-  it("carries the constant minimums", () => {
+  it("carries a sell ladder for every horizon (DAV-250)", () => {
     const seed = accountSeedTriggers();
-    const kinds = seed.map((t) => t.predicate.kind);
-    expect(kinds).toContain("TRAILING_FROM_HIGH");
-    expect(kinds.filter((k) => k === "GAIN_FROM_ENTRY")).toHaveLength(2);
-    expect(kinds.filter((k) => k === "PRICE_MOVE_PCT")).toHaveLength(2);
+    for (const h of ["TRADE", "TARGET", "COMPOUNDER"] as const) {
+      expect(
+        seed.some((t) => t.action === "EXIT" && t.predicate.kind === "TRAILING_FROM_HIGH" && t.horizons?.includes(h)),
+      ).toBe(true);
+    }
+    // No sell rule applies to every horizon — each one names its horizon.
+    expect(seed.filter((t) => t.action === "EXIT" && !t.horizons?.length)).toEqual([]);
   });
 
   it("carries the earnings rules — a look before the report and a look on it", () => {
@@ -42,8 +45,11 @@ describe("accountSeedTriggers", () => {
     expect(a.every((t) => !t.id.startsWith("default:"))).toBe(true);
   });
 
-  it("emits one rung per bucket so it resolves without self-collision", () => {
+  it("emits one rule per bucket per horizon, so each horizon resolves without self-collision", () => {
     const seed = accountSeedTriggers();
-    expect(new Set(seed.map(triggerBucket)).size).toBe(seed.length);
+    for (const h of ["TRADE", "TARGET", "CATALYST", "COMPOUNDER"] as const) {
+      const mine = seed.filter((t) => !t.horizons?.length || t.horizons.includes(h));
+      expect(new Set(mine.map(triggerBucket)).size).toBe(mine.length);
+    }
   });
 });

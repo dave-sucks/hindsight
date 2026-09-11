@@ -101,10 +101,9 @@ export interface LadderLevels {
   /** `Account.triggers` — account-wide standing rules. */
   account?: Trigger[];
   /**
-   * Code-template constants for this thesis's state — see
-   * `inheritableDefaultLadder`. Pass `[]` in contexts that have no
-   * position concept (e.g. the account settings page renders these as the
-   * bottom level explicitly rather than resolving against a thesis).
+   * Code-constant level beneath ACCOUNT. No production caller supplies it
+   * any more — the constants are seeded account rules (2026-08-16) and the
+   * sell rules are per-horizon account rules (DAV-250).
    */
   defaults?: Trigger[];
   /**

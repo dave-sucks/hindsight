@@ -19,6 +19,7 @@ import { triggerEvaluator } from "@/lib/inngest/functions/trigger-evaluator";
 import { tacticalRun } from "@/lib/inngest/functions/tactical-run";
 import { discoveryRun } from "@/lib/inngest/functions/discovery-run";
 import { backfillSignalFingerprint } from "@/lib/inngest/functions/backfill-signal-fingerprint";
+import { migrateHorizonRules } from "@/lib/inngest/functions/migrate-horizon-rules";
 import { pipelineCleanup } from "@/lib/inngest/functions/pipeline-cleanup";
 import { episodeTts } from "@/lib/inngest/functions/episode-tts";
 import { podcastSegmentRun } from "@/lib/inngest/functions/podcast-segment-run";
@@ -111,6 +112,9 @@ export const { GET, POST, PUT } = serve({
     // directly via tools — no need for a synthesized AI digest.
     // One-shot Session 2 backfill (event-triggered, idempotent)
     backfillSignalFingerprint,
+    // One-shot DAV-250 — account sell rules to one set per horizon
+    // (event-triggered, dry run by default, idempotent).
+    migrateHorizonRules,
     // Phase 3 — daily pruning at 11 PM ET (route archive + signal soft-delete)
     pipelineCleanup,
     // Podcast Phase 2 — ElevenLabs TTS audio generation

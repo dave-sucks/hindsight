@@ -168,7 +168,10 @@ function predicateKindValue(p: TriggerPredicate): {
       };
     case "TRAILING_FROM_HIGH":
       // Give-back off the tracked peak — "Exit if · off the high · 8%".
-      return { kind: "off the high", value: `${p.pct ?? "?"}%` };
+      return {
+        kind: p.armAtGainPct ? `off the high, once up ${p.armAtGainPct}%` : "off the high",
+        value: `${p.pct ?? "?"}%`,
+      };
     case "VS_SMA":
       return {
         kind: `${p.direction === "BELOW" ? "below" : "above"} the ${p.period ?? "?"}-day`,
@@ -254,7 +257,12 @@ function predicateDescription(p: TriggerPredicate): string {
         ? `Fires when the position is up ${p.pct}% from entry (avg cost) — the cumulative gain milestone.`
         : `Fires when the position is down ${p.pct}% from entry (avg cost) — drawdown attention.`;
     case "TRAILING_FROM_HIGH":
-      return `Fires when price gives back ${p.pct}% from its high since entry. The high ratchets up as the position runs.`;
+      return (
+        `Fires when price gives back ${p.pct}% from its high since entry. The high ratchets up as the position runs.` +
+        (p.armAtGainPct
+          ? ` Off until the position has been up ${p.armAtGainPct}% from entry — until then the floor governs.`
+          : "")
+      );
     case "VS_SMA":
       return `Fires when price is ${p.direction?.toLowerCase()} its ${p.period}-day average (from yesterday's close).`;
     case "NEAR_SMA":
@@ -983,10 +991,16 @@ export function AddTriggerDialog({
   held,
   endpointBase,
   allowAbsolutePrice = true,
+  horizons,
   onChanged,
 }: {
   held: boolean;
   endpointBase: string;
+  /**
+   * Account/analyst levels: the horizons the new rule applies to — the
+   * group it was added from (DAV-250). Omitted = every horizon.
+   */
+  horizons?: string[];
   /**
    * False at the account/analyst levels: an absolute dollar level means
    * nothing applied across every ticker, so the "$ Price" criterion is
@@ -1159,6 +1173,7 @@ export function AddTriggerDialog({
           // don't post a DIRECT the user never saw. Backend still coerces, but
           // the request should match the UI.
           fireMode: showFireMode ? fireMode : undefined,
+          horizons,
         }),
       });
       if (!res.ok) {

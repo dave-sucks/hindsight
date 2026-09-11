@@ -86,7 +86,11 @@ export type TriggerPredicate =
   // TRAILING_STOP removed in #458 (that removal traded peak-trailing for
   // daily-% moves; this reinstates cumulative protection ALONGSIDE the
   // daily-% predicate, not instead of it). HOLDING-only.
-  | { kind: "TRAILING_FROM_HIGH"; pct: number }
+  //
+  // Optional (DAV-250): `armAtGainPct` keeps the trail off until the
+  // position has once been up that much (a TARGET position isn't trailed
+  // tight from day one). Where it fires: ./trail.
+  | { kind: "TRAILING_FROM_HIGH"; pct: number; armAtGainPct?: number }
 
   // ── Chart-based — the live quote against the daily indicator snapshot ──
   // Every kind below reads lib/market-data/price-structure.ts numbers the
@@ -228,6 +232,14 @@ export type Trigger = {
    * action. DAV-247.
    */
   fireOnMatch?: boolean;
+  /**
+   * ACCOUNT / ANALYST rules only: the thesis horizons this rule applies to
+   * (DAV-250). Absent = every horizon. A TRADE position and a COMPOUNDER
+   * inherit different sell rules from the same account — each horizon's set
+   * is edited in the same trigger popover as every other rule. Ignored on a
+   * thesis-level rung (it already belongs to one thesis).
+   */
+  horizons?: ("TRADE" | "TARGET" | "CATALYST" | "COMPOUNDER")[];
   /**
    * How a fired trigger is acted on:
    *   TACTICAL — fan out `app/thesis.trigger.fired` → a GPT-5.5 tactical run
