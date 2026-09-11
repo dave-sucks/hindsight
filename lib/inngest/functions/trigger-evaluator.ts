@@ -862,12 +862,17 @@ export const triggerEvaluator = inngest.createFunction(
         // bar); with no bar for the name there is no close to read, so its
         // close rungs wait for tomorrow rather than fire on a guess.
         if (session === "CLOSE" && !todayBar) continue;
+        // Prior close for the crossing: the quote's, else yesterday's close
+        // off the snapshot — so a Finnhub miss at 16:20 doesn't skip a day's
+        // close-basis rungs when the closing bar itself is in hand.
+        const snapPrev = indicators.get(thesis.ticker)?.closes.at(-1);
+        const prevForClose = quote?.prevClose ?? (typeof snapPrev === "number" ? snapPrev : undefined);
         const latestQuote =
-          quote && session === "CLOSE" && todayBar
+          session === "CLOSE" && todayBar
             ? {
                 price: todayBar.close,
-                changePct: quote.prevClose ? ((todayBar.close - quote.prevClose) / quote.prevClose) * 100 : quote.changePct,
-                prevClose: quote.prevClose,
+                changePct: prevForClose ? ((todayBar.close - prevForClose) / prevForClose) * 100 : (quote?.changePct ?? 0),
+                prevClose: prevForClose,
               }
             : quote
               ? { price: quote.price, changePct: quote.changePct, prevClose: quote.prevClose }
