@@ -24,7 +24,10 @@ import { armHeldLadderOnFill } from "@/lib/proposals/thesis-flips";
 import {
   positionBand,
   entrySizeForConviction,
+  sizeByRisk,
 } from "@/lib/agent/position-sizing";
+import { loadAccountRisk, industryOf } from "@/lib/agent/load-account-risk";
+import { heatLine, industryLine } from "@/lib/agent/portfolio-risk";
 import {
   getThesisComposite,
   getThesisSnapshotText,
@@ -61,7 +64,7 @@ export const placeTrade = defineTool({
     entry_price: z.number().describe("The CURRENT quote — this is a market order, so this is what you expect to pay and what sizes the position. Unlike the thesis's buy level (a price we have not reached), here today's price is the right answer."),
     target_price: z.number(),
     stop_loss: z.number(),
-    notional: z.number().optional().describe("Dollar amount to invest (e.g. 5000 for $5,000). OMIT IT and the trade is sized from the analyst's settings by conviction: the smallest trade normally, the largest trade on STRONG/HIGH. If you pass one it must sit inside the analyst's band."),
+    notional: z.number().optional().describe("Dollar amount to invest (e.g. 5000 for $5,000). OMIT IT and the trade is sized by risk: the account loses about the analyst's risk per trade (% of equity, scaled by conviction) if the stop hits, kept between the analyst's smallest and largest trade. If you pass one it must sit inside that band."),
     shares: z.number().optional().describe("Number of shares. Only use if you need a specific share count; prefer notional instead."),
     thesis_id: z.string().describe("REQUIRED — the thesis_id returned by record_thesis. Every trade must link to a thesis."),
     entry_rationale: z
@@ -479,27 +482,80 @@ export const placeTrade = defineTool({
         }
       }
 
-      // 1. Resolve qty — prefer notional (dollar amount), fall back to shares
-      // Server-side calculation removes a cognitive step from the model.
+      // 1. Resolve qty — prefer notional (dollar amount), fall back to shares.
+      // With no size from the agent, the risk rule decides (DAV-251):
+      // shares = equity × riskPct × conviction ÷ the stop distance, clamped
+      // to the analyst's dollar limits. Whatever path sized it, the proposal
+      // carries the arithmetic plus the open-risk, industry and regime lines
+      // — lines the principal reads when approving, never refusals.
+      const [sizingThesis, sizingAnalyst, accountRisk] = await Promise.all([
+        prisma.thesis.findUnique({
+          where: { id: args.thesis_id },
+          select: { conviction: true, horizon: true, setupId: true },
+        }),
+        effectiveAnalystId
+          ? prisma.agentConfig.findUnique({ where: { id: effectiveAnalystId }, select: { riskPct: true } })
+          : Promise.resolve(null),
+        loadAccountRisk({
+          accountId: ctx.accountId,
+          environment: ctx.runEnvironment ?? "PAPER",
+          creds: ctx.alpacaCreds,
+        }).catch(() => null),
+      ]);
+      // A dated binary event: the pre-catalyst setup, or (until the writer
+      // stamps setupId) any CATALYST-horizon thesis.
+      const binary =
+        sizingThesis?.setupId === "PRE_CATALYST" ||
+        (sizingThesis?.setupId == null && sizingThesis?.horizon === "CATALYST");
+      const riskSized =
+        accountRisk?.equity != null
+          ? sizeByRisk({
+              equity: accountRisk.equity,
+              riskPct: sizingAnalyst?.riskPct,
+              conviction: sizingThesis?.conviction,
+              entry: args.entry_price,
+              stop: args.stop_loss,
+              direction: args.direction,
+              binary,
+              regime: accountRisk.regime?.regime ?? null,
+              band,
+            })
+          : null;
+
       let resolvedShares: number | undefined;
       let resolvedNotional: number | undefined;
+      const sizingNotes: string[] = [];
       if (args.notional != null && args.notional > 0) {
         resolvedNotional = args.notional;
         // Compute shares for DB record (approximate — actual fill may differ)
         resolvedShares = Math.max(1, Math.floor(args.notional / args.entry_price));
+        sizingNotes.push(`Sized by the analyst: $${Math.round(args.notional).toLocaleString()}.`);
       } else if (args.shares != null && args.shares > 0) {
         resolvedShares = args.shares;
+        sizingNotes.push(`Sized by the analyst: ${args.shares} shares.`);
+      } else if (riskSized) {
+        resolvedShares = riskSized.shares;
+        resolvedNotional = riskSized.notional;
+        sizingNotes.push(riskSized.line);
       } else {
-        // No size from the agent: the analyst's settings decide (DAV-237).
-        // Smallest trade normally, largest on STRONG/HIGH conviction — the
-        // band the principal set, placed by the belief the thesis carries.
-        const sized = await prisma.thesis.findUnique({
-          where: { id: args.thesis_id },
-          select: { conviction: true },
-        });
-        resolvedNotional = entrySizeForConviction({ conviction: sized?.conviction, band });
+        // No usable stop distance or no equity reading: the band, placed by
+        // conviction (the pre-DAV-251 rule), and the proposal says why.
+        resolvedNotional = entrySizeForConviction({ conviction: sizingThesis?.conviction, band });
         resolvedShares = Math.max(1, Math.floor(resolvedNotional / args.entry_price));
+        sizingNotes.push(
+          `Sized from the analyst's band by conviction ($${Math.round(resolvedNotional).toLocaleString()}) — ` +
+            (accountRisk?.equity == null ? "account equity unavailable" : "no usable stop distance") +
+            ", so the risk rule couldn't run.",
+        );
       }
+      if (accountRisk?.open && accountRisk.equity) {
+        const perShare = args.direction === "SHORT" ? args.stop_loss - args.entry_price : args.entry_price - args.stop_loss;
+        const addedRisk = Math.max(0, perShare) * (resolvedShares ?? 0);
+        sizingNotes.push(heatLine(accountRisk.open, accountRisk.equity, addedRisk));
+        const ind = industryLine(accountRisk.open, await industryOf(ticker), ticker);
+        if (ind) sizingNotes.push(ind);
+      }
+      if (accountRisk?.regime) sizingNotes.push(accountRisk.regime.line);
 
       // ── Workstream B: DB-first write path ────────────────────────────────
       // Old flow: Alpaca first, then DB. A crash between the two left an
@@ -671,6 +727,11 @@ export const placeTrade = defineTool({
             ? getThesisSnapshotText(thesisForRationale)
             : null;
         }
+        // The sizing arithmetic and the book lines ride on the proposal, so
+        // the principal sees them at the moment of approving (DAV-251).
+        if (sizingNotes.length) {
+          proposalRationale = [proposalRationale, sizingNotes.join("\n")].filter(Boolean).join("\n\n");
+        }
         const awaiting = await maybeAwaitApproval({
           accountId: ctx.accountId,
           positionId: position.id,
@@ -696,6 +757,7 @@ export const placeTrade = defineTool({
                 shares: finalShares,
                 estimatedPrice: args.entry_price,
               }),
+              sizing: sizingNotes,
             },
             sources: [{ provider: "Hindsight", title: `Proposal ${ticker}` }],
           };
@@ -1078,6 +1140,7 @@ export const placeTrade = defineTool({
           placedAt: placedAt.toISOString(),
           filledAt: filledAt ? filledAt.toISOString() : null,
           message,
+          sizing: sizingNotes,
           ...(portfolioUpdate ? { portfolioUpdate } : {}),
           tickers: [{ ticker, tag: tickerTag, summary: tickerSummary, actionIcon: "buy" }],
         },

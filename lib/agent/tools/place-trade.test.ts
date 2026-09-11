@@ -53,6 +53,13 @@ const mockGetOrder = jest.fn();
 const mockGetLatestPrice = jest.fn();
 const mockGetAccount = jest.fn();
 
+// The account-wide book (open risk, regime) is read live in production; here
+// it is unreadable, so only the sizing line rides on the proposal.
+jest.mock("@/lib/agent/load-account-risk", () => ({
+  loadAccountRisk: jest.fn().mockResolvedValue({ equity: null, holdings: [], open: null, regime: null }),
+  industryOf: jest.fn().mockResolvedValue(null),
+}));
+
 jest.mock("@/lib/alpaca", () => ({
   placeMarketOrder: mockPlaceMarketOrder,
   getOrder: mockGetOrder,
@@ -452,6 +459,8 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
     });
     // First findUnique call — directionCheck against thesis.direction.
     mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    // Second — the sizing lookup (conviction / horizon / setup, DAV-251).
+    mockThesisFindUnique.mockResolvedValueOnce({ conviction: "MEDIUM", horizon: "TARGET", setupId: null });
     // Second findUnique call — the snapshot fetch in the proposal block.
     // This is the only call that should hit IF entry_rationale is absent.
     // The V2 flat-schema `snapshot` column stores `{ text, citations }`,
@@ -522,7 +531,8 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
     expect(result.data.status).toBe("PROPOSED");
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale).toBe(tacticalEntryReason);
+    expect(callArgs.rationale.split("\n\n")[0]).toBe(tacticalEntryReason);
+    expect(callArgs.rationale).toMatch(/\n\nSized by the analyst/);
     // Critical anti-regression: the stale snapshot text must NOT have leaked
     // through.
     expect(callArgs.rationale).not.toMatch(/not actionable/i);
@@ -545,7 +555,8 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale).toBe("Trigger validated: $NVTS broke above $29.50.");
+    expect(callArgs.rationale.split("\n\n")[0]).toBe("Trigger validated: $NVTS broke above $29.50.");
+    expect(callArgs.rationale).toMatch(/\n\nSized by the analyst/);
   });
 
   it("falls back to thesis.snapshot when entry_rationale is absent (principal-chat one-shot path)", async () => {
@@ -566,7 +577,8 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale).toBe(fallbackSnapshot);
+    expect(callArgs.rationale.split("\n\n")[0]).toBe(fallbackSnapshot);
+    expect(callArgs.rationale).toMatch(/\n\nSized by the analyst/);
   });
 
   it("falls back to snapshot when entry_rationale is an empty string", async () => {
@@ -586,7 +598,8 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale).toBe(fallbackSnapshot);
+    expect(callArgs.rationale.split("\n\n")[0]).toBe(fallbackSnapshot);
+    expect(callArgs.rationale).toMatch(/\n\nSized by the analyst/);
   });
 
   it("falls back to snapshot when entry_rationale is whitespace-only", async () => {
@@ -606,7 +619,8 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
 
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
-    expect(callArgs.rationale).toBe(fallbackSnapshot);
+    expect(callArgs.rationale.split("\n\n")[0]).toBe(fallbackSnapshot);
+    expect(callArgs.rationale).toMatch(/\n\nSized by the analyst/);
   });
 });
 
@@ -624,6 +638,72 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
  * a validated live ARQT entry. The guard must only run when ctx.analystId is
  * unset (the sole case where args.analyst_id is actually used for the trade).
  */
+describe("place_trade — sized by risk when no size is given (DAV-251)", () => {
+  it("sizes from the stop distance and puts the sizing, open-risk and regime lines on the proposal", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { loadAccountRisk } = require("@/lib/agent/load-account-risk");
+    (loadAccountRisk as jest.Mock).mockResolvedValueOnce({
+      equity: 100_000,
+      holdings: [],
+      open: { riskDollars: 3_000, riskPct: 3, perName: [{ symbol: "MU", riskDollars: 3_000 }], unstopped: [], byIndustry: new Map() },
+      regime: { regime: "RISK_ON", line: "Regime RISK_ON: SPY above both averages — full size." },
+    });
+
+    mockThesisFindUnique.mockReset();
+    mockPositionFindFirst.mockReset();
+    mockPositionCreate.mockReset();
+    mockOrderCreate.mockReset();
+    mockGetLatestPrice.mockReset();
+    mockAgentConfigFindUnique.mockReset();
+    mockMaybeAwaitApproval.mockReset();
+    // enabled check, then the riskPct lookup
+    mockAgentConfigFindUnique.mockResolvedValue({ enabled: true, name: "Test Analyst", riskPct: 1 });
+    mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG" });
+    mockThesisFindUnique.mockResolvedValueOnce({ conviction: "HIGH", horizon: "TARGET", setupId: null });
+    mockThesisFindUnique.mockResolvedValueOnce({ snapshot: { text: "watching", citations: [] } });
+    mockPositionFindFirst.mockResolvedValueOnce(null);
+    mockGetLatestPrice.mockResolvedValueOnce(100);
+    mockPositionCreate.mockResolvedValue({ id: "pos_r", symbol: "ABC", direction: "LONG", quantity: 100 });
+    mockOrderCreate.mockResolvedValue({ id: "order_r" });
+    mockTransaction.mockImplementation(async (arg: unknown) =>
+      typeof arg === "function"
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? (arg as (tx: any) => Promise<unknown>)({
+            position: { create: mockPositionCreate },
+            order: { create: mockOrderCreate, update: mockOrderUpdate },
+            positionEvent: { create: mockPositionEventCreate },
+            tradeDecision: { create: mockTradeDecisionCreate },
+            runEvent: { create: mockRunEventCreate },
+          })
+        : arg,
+    );
+    mockMaybeAwaitApproval.mockResolvedValue({
+      state: "awaiting_approval",
+      orderId: "order_r",
+      positionId: "pos_r",
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+
+    await makeTool(makeCtx({ minPositionSize: 5_000, maxPositionSize: 16_000 })).execute({
+      ticker: "ABC",
+      direction: "LONG",
+      entry_price: 100,
+      target_price: 130,
+      stop_loss: 90,
+      thesis_id: "thesis_abc",
+      entry_rationale: "Closed above the pivot on 1.8× volume.",
+    });
+
+    // 1% × 1.0 (HIGH) = $1,000 at risk ÷ $10 = 100 shares ($10,000).
+    expect(mockPositionCreate.mock.calls[0][0].data.quantity).toBe(100);
+    const rationale: string = mockMaybeAwaitApproval.mock.calls[0][0].rationale;
+    expect(rationale.split("\n\n")[0]).toBe("Closed above the pivot on 1.8× volume.");
+    expect(rationale).toContain("Sized by risk: 1% of $100,000 × 1 (HIGH) = $1,000 at risk over a $10.00 stop distance → 100 shares ($10,000).");
+    expect(rationale).toContain("Open risk after this buy: 4.0% of equity (cap 6%)");
+    expect(rationale).toContain("Regime RISK_ON");
+  });
+});
+
 describe("place_trade — analyst_id ownership guard (P1-18)", () => {
   function primeProposalPath(): void {
     mockThesisFindUnique.mockReset();

@@ -534,9 +534,10 @@ every field; the judgment rules:
      not enthusiastic. STRONG/HIGH require a variant_view — no variant
      view means your tier is MEDIUM. conviction_rationale is the
      judgment in plain speech, NOT a paraphrase of the scoring object.
-   • You do not size the trade. place_trade sizes it from the analyst's
-     own settings: the smallest trade normally, the largest on STRONG /
-     HIGH conviction. Conviction is the size decision.
+   • You do not size the trade. place_trade sizes it by risk from your
+     stop: the account loses about the analyst's risk per trade if the
+     stop hits, scaled by conviction (LOW ×0.5 … STRONG ×1.25). A tight,
+     honest stop is what earns size.
    • confidence context: this analyst's minimum confidence for
      trade-eligible coverage is ${opts.minConfidence}/100 — calibrate composite +
      conviction honestly against that bar.

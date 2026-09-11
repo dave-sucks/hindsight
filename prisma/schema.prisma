@@ -580,7 +580,12 @@ model AgentConfig {
   maxPositionSize        Float                @default(500)
   maxOpenPositions       Int                  @default(5)
   minConfidence          Int                  @default(70)
-  maxRiskPct             Float                @default(2)
+  // Risk per trade, % of account equity (DAV-251). A buy with no explicit
+  // size is shares = equity × riskPct × conviction multiplier ÷ the stop
+  // distance, clamped inside the three dollar limits above.
+  // lib/agent/position-sizing.ts sizeByRisk. The orphan maxRiskPct column
+  // this replaces is dropped in the follow-up migration (two-PR rule).
+  riskPct                Float                @default(1)
   dailyLossLimit         Float                @default(200)
   holdDurations          String[] // ["SWING"]
   directionBias          String               @default("BOTH")

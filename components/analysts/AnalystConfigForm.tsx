@@ -105,9 +105,11 @@ export type FormValues = {
   holdDurations: string[];
   minConfidence: number;
   maxOpenPositions: number;
-  // Sizing — three plain numbers, all enforced (lib/agent/position-sizing.ts):
-  // the smallest trade (0 = no floor), the largest trade, and the most the
-  // analyst may hold in one stock after adding to a winner.
+  // Sizing (lib/agent/position-sizing.ts): risk per trade sizes a buy from
+  // its stop distance; the three dollar limits clamp it — the smallest trade
+  // (0 = no floor), the largest trade, and the most the analyst may hold in
+  // one stock after adding to a winner.
+  riskPct?: number;
   minPositionSize: number;
   maxPositionSize: number;
   maxPositionTotal?: number;
@@ -822,13 +824,32 @@ function SettingsTab({
             }}
           />
 
-          {/* Sizing is three plain numbers. A normal buy is the smallest
-              trade; a STRONG/HIGH-conviction buy is the largest; adding to a
-              winner stops at the most-in-one-stock. All three are enforced by
-              the same helper the tools use (lib/agent/position-sizing.ts). */}
+          {/* Sizing (DAV-251): risk per trade sizes a buy from how far away
+              its stop is; the three dollar limits clamp the result. All four
+              are read by the same helper the tools use
+              (lib/agent/position-sizing.ts). */}
+          <RowLabel
+            label="Risk per trade"
+            tooltip="How much of the account a buy may lose if its stop hits, in % of equity. A buy with a tight stop gets more shares, a wide stop fewer. Conviction scales it (LOW ×0.5, MEDIUM ×0.75, HIGH ×1, STRONG ×1.25); a binary event halves it."
+          />
+          <Input
+            type="number"
+            defaultValue={values.riskPct ?? 1}
+            min={0.1}
+            max={3}
+            step={0.25}
+            className={cn(GHOST_INPUT, "w-24 text-right tabular-nums")}
+            onBlur={(e) => {
+              const n = parseFloat(e.target.value);
+              if (!isNaN(n) && n !== values.riskPct) {
+                onChange("riskPct", Math.min(3, Math.max(0.1, n)));
+              }
+            }}
+          />
+
           <RowLabel
             label="Smallest trade"
-            tooltip="What a normal buy is. The analyst never puts less than this into a new position; a buy below it is rejected, not resized. 0 = no minimum."
+            tooltip="A buy is never less than this. When the risk rule asks for less (a wide stop), the buy is raised to this and the proposal says the risk is above target. 0 = no minimum."
           />
           <Input
             type="number"
@@ -846,7 +867,7 @@ function SettingsTab({
 
           <RowLabel
             label="Largest trade"
-            tooltip="What a STRONG or HIGH conviction buy is. The analyst never puts more than this into a single buy."
+            tooltip="A single buy is never more than this, whatever the risk rule asks for."
           />
           <Input
             type="number"
@@ -898,6 +919,7 @@ function SettingsTab({
             minPositionSize={values.minPositionSize}
             maxPositionSize={values.maxPositionSize}
             maxPositionTotal={values.maxPositionTotal}
+            riskPct={values.riskPct}
           />
         )}
 
@@ -1111,10 +1133,12 @@ function PositionBandNote({
   minPositionSize,
   maxPositionSize,
   maxPositionTotal,
+  riskPct,
 }: {
   minPositionSize: number;
   maxPositionSize: number;
   maxPositionTotal?: number;
+  riskPct?: number;
 }) {
   const band = positionBand({ minPositionSize, maxPositionSize });
   const total = positionTotalCap({ maxPositionSize, maxPositionTotal });
@@ -1132,11 +1156,13 @@ function PositionBandNote({
 
   return (
     <p className="text-xs text-muted-foreground">
-      A normal buy is{" "}
-      <span className="tabular-nums text-foreground">{fmt(band.floor || total / 2)}</span>
+      A buy risks{" "}
+      <span className="tabular-nums text-foreground">{riskPct ?? 1}%</span> of the
+      account at its stop, sized between{" "}
+      <span className="tabular-nums text-foreground">{fmt(band.floor)}</span>
       {band.ceiling != null && (
         <>
-          ; a high-conviction buy is{" "}
+          {" "}and{" "}
           <span className="tabular-nums text-foreground">{fmt(band.ceiling)}</span>
         </>
       )}
