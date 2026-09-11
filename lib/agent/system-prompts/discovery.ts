@@ -451,8 +451,6 @@ For each researched candidate, exactly one of these four actions:
     earnings beat / miss, or "reports within N days"
     (EARNINGS_WITHIN)**; those are the kinds that fire today. The
     earnings ones read the published calendar, no news needed.
-    (GUIDANCE_CHANGE / FILING / SIGNAL_TYPE will not fire — news
-    routing is paused.)
     A row with NO triggers at all is legal: it is a name on the list,
     visible on the watchlist screen, waiting for a person rather than
     the system. Choose that deliberately rather than by accident. Add

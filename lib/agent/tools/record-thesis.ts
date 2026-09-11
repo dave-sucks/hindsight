@@ -319,7 +319,7 @@ const thesisFields = z.object({
     .datetime()
     .optional()
     .describe(
-      "ISO timestamp. REQUIRED when horizon=CATALYST — when the dated event lands (earnings date, FDA decision, M&A close, court ruling). Drives the trigger template (filings + earnings REVIEW around the date) and the 30d-past-event exit policy. If you don't know the date, this isn't a CATALYST thesis — use TRADE (time-bounded by its review rung) or TARGET (open-ended).",
+      "ISO timestamp. REQUIRED when horizon=CATALYST — when the dated event lands (earnings date, FDA decision, M&A close, court ruling). Drives the trigger template (earnings REVIEW around the date) and the 30d-past-event exit policy. If you don't know the date, this isn't a CATALYST thesis — use TRADE (time-bounded by its review rung) or TARGET (open-ended).",
     ),
   // next_review_at is gone (DAV-221). Review timing is a REVIEW_CADENCE
   // trigger counted from the last actual review; the mint templates stamp it.
@@ -766,7 +766,7 @@ export const recordThesis = defineTool({
             status: "FAILED" as const,
             note:
               `CATALYST horizon means the trade is built around a specific dated event (FDA decision, M&A close, named earnings, court ruling). ` +
-              `The catalyst_date drives the trigger template (filings + earnings REVIEW around the date) and the 30d-past-event exit policy. ` +
+              `The catalyst_date drives the trigger template (earnings REVIEW around the date) and the 30d-past-event exit policy. ` +
               `Pass catalyst_date as an ISO timestamp (e.g. "2026-06-15T20:30:00Z" for AMC earnings on 6/15). ` +
               `If you don't actually know when the catalyst lands, this isn't a CATALYST thesis — pick TRADE (its review rung bounds it) or TARGET (open-ended) instead.`,
           },

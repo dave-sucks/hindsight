@@ -21,15 +21,19 @@
 // rungs additionally fire only on the CROSSING of their level (price past
 // it now, not at the prior close) — see shouldFire, DAV-229.
 //
-// PR 2 boundary notes:
-// - PRICE_MOVE_PCT: the 1D window (the "Movement Amount" daily-move alert)
-//   DOES fire on the cron — it evaluates off the quote's daily % change
-//   (latestQuote.changePct, derived from Finnhub dp / prior close below). The
-//   multi-day windows (5D/30D) still evaluate to false here because we don't
-//   fetch candles per tick; the daily-run inline path catches those with the
-//   candle data get_stock_data already pulls. VS_SMA likewise needs candles
-//   and stays false on the cron.
-// - RSI is stubbed in evaluate.ts; same reasoning.
+// Chart kinds (DAV-247): VS_SMA, NEAR_SMA, VOLUME_RATIO, NEW_HIGH,
+// PCT_FROM_52W_HIGH, RS_VS_SPY, GAP_UP, RSI and the 5D/20D move read the
+// daily indicator snapshot (TickerIndicators, written 06:30 ET) next to the
+// quote — loaded once per pass, only when a ladder in the batch needs it.
+// VOLUME_RATIO / GAP_UP also read today's consolidated volume (one batched
+// Alpaca call, ~16 minutes delayed).
+//
+// The close pass: ticks from 16:20 to 16:34 ET on a trading day evaluate
+// only rungs carrying a `basis: "close"` price level, with the day's close
+// as the price. The 5-minute passes never fire those — "closes above the
+// pivot" is not an intraday poke. Cooldown makes the three close ticks fire
+// at most once.
+//
 // - Cooldown lives on the trigger object inside Thesis.triggers JSONB.
 //   No schema change in PR 2. A separate TriggerFiring table is a
 //   follow-up if hot-write contention shows up.
@@ -63,7 +67,9 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { isMarketOpen } from "@/lib/market-hours";
+import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
+import { getTodaySessionBars } from "@/lib/alpaca";
+import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -115,6 +121,12 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
     case "GAIN_FROM_ENTRY":
     case "TRAILING_FROM_HIGH":
     case "VS_SMA":
+    case "NEAR_SMA":
+    case "VOLUME_RATIO":
+    case "NEW_HIGH":
+    case "PCT_FROM_52W_HIGH":
+    case "RS_VS_SPY":
+    case "GAP_UP":
     case "RSI":
     case "REVIEW_CADENCE":
     case "EARNINGS_BEAT":
@@ -159,14 +171,75 @@ function needsUpcomingEarnings(p: TriggerPredicate): boolean {
   }
 }
 
+/** Does this predicate read the daily indicator snapshot? Drives the load. */
+function needsIndicators(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "VS_SMA":
+    case "NEAR_SMA":
+    case "VOLUME_RATIO":
+    case "NEW_HIGH":
+    case "PCT_FROM_52W_HIGH":
+    case "RS_VS_SPY":
+    case "GAP_UP":
+    case "RSI":
+      return true;
+    case "PRICE_MOVE_PCT":
+      return p.window !== "1D";
+    case "AND":
+    case "OR":
+      return p.predicates.some(needsIndicators);
+    default:
+      return false;
+  }
+}
+
+/** Does this predicate read today's session volume? Drives the Alpaca call. */
+function needsTodayVolume(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "VOLUME_RATIO":
+    case "GAP_UP":
+      return true;
+    case "AND":
+    case "OR":
+      return p.predicates.some(needsTodayVolume);
+    default:
+      return false;
+  }
+}
+
+/** Does this predicate wait for the close? Selects the rungs of the close pass. */
+function hasCloseBasis(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "PRICE_ABOVE":
+    case "PRICE_BELOW":
+      return p.basis === "close";
+    case "AND":
+    case "OR":
+      return p.predicates.some(hasCloseBasis);
+    default:
+      return false;
+  }
+}
+
+/** 16:20–16:34 ET on a trading day: the pass that reads the day's close. */
+function isClosePassTick(now: Date): boolean {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const h = Number(parts.find((x) => x.type === "hour")?.value);
+  const m = Number(parts.find((x) => x.type === "minute")?.value);
+  const minutes = h * 60 + m;
+  return isTradingDay(now) && minutes >= 16 * 60 + 20 && minutes < 16 * 60 + 35;
+}
+
 /** Predicate kinds that require a Signal in the context. */
 function isSignalSidePredicate(p: TriggerPredicate): boolean {
   switch (p.kind) {
-    case "SIGNAL_TYPE":
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
-    case "GUIDANCE_CHANGE":
-    case "FILING":
       return true;
     case "AND":
     case "OR":
@@ -459,9 +532,8 @@ export const triggerEvaluator = inngest.createFunction(
         // theses in this batch.
         const openedAtByThesisId = await buildPositionOpenedAtMap(theses);
 
-        // Pull earnings / filing detail off Signal.dataPayload if the
-        // producer stamped it. Producers may keep these in a {beat,
-        // surprise, guidance, formType} shape on dataPayload — best-effort.
+        // Pull the earnings surprise off Signal.dataPayload if the producer
+        // stamped it — best-effort; the calendar is the real source.
         const dp = (signal.dataPayload ?? {}) as Record<string, unknown>;
         const ctxSignal = {
           type: signal.type,
@@ -469,15 +541,6 @@ export const triggerEvaluator = inngest.createFunction(
           urgency: signal.urgency,
           tickers: signal.tickers,
           earningsSurprisePct: typeof dp.surprisePct === "number" ? dp.surprisePct : undefined,
-          guidanceDirection:
-            dp.guidanceDirection === "UP" || dp.guidanceDirection === "DOWN"
-              ? (dp.guidanceDirection as "UP" | "DOWN")
-              : undefined,
-          filingFormType:
-            typeof dp.formType === "string" &&
-            ["10-K", "10-Q", "8-K", "FORM_4"].includes(dp.formType)
-              ? (dp.formType as "10-K" | "10-Q" | "8-K" | "FORM_4")
-              : undefined,
         };
 
         const events: FiringEvent[] = [];
@@ -614,10 +677,10 @@ export const triggerEvaluator = inngest.createFunction(
     // (9:30–16:00 ET, holiday-aware) — the same guard price-monitor already
     // uses. The signal-driven path above is intentionally NOT gated: news
     // doesn't keep market hours.
-    const marketOpen = await step.run("check-market-hours", async () =>
-      isMarketOpen(),
+    const session = await step.run("check-market-hours", async () =>
+      isMarketOpen() ? "INTRADAY" : isClosePassTick(new Date()) ? "CLOSE" : null,
     );
-    if (!marketOpen) {
+    if (!session) {
       return { path: "cron", skipped: "market-closed" };
     }
 
@@ -679,6 +742,12 @@ export const triggerEvaluator = inngest.createFunction(
             `thesis=${thesis.id}`,
           ),
         }))
+        // The close pass only looks at rungs that wait for the close.
+        .map((c) =>
+          session === "CLOSE"
+            ? { ...c, ladder: c.ladder.filter((t) => hasCloseBasis(t.predicate)) }
+            : c,
+        )
         // No analyst owner ⇒ tactical-run can't dispatch; no rungs ⇒
         // nothing to evaluate.
         .filter((c) => c.analystId && c.ladder.length > 0);
@@ -729,10 +798,30 @@ export const triggerEvaluator = inngest.createFunction(
           // honest definition the cron can afford. Finnhub always sends it.
           const prevClose =
             typeof q.pc === "number" && q.pc > 0 ? q.pc : undefined;
-          return [ticker, { price: q.c, changePct, prevClose }] as const;
+          // Today's regular-session open — GAP_UP reads it.
+          const open = typeof q.o === "number" && q.o > 0 ? q.o : null;
+          return [ticker, { price: q.c, changePct, prevClose, open }] as const;
         }),
       );
       const quoteByTicker = new Map(quoteResults);
+
+      // The daily indicator snapshot — only when some rung reads the chart.
+      const wantsIndicators = candidates.some((c) =>
+        c.ladder.some((t) => needsIndicators(t.predicate)),
+      );
+      const indicators = wantsIndicators
+        ? await loadIndicatorSnapshots(uniqueTickers, now).catch((err) => {
+            console.error("[trigger-evaluator] indicator snapshot load failed — chart kinds read false:", err);
+            return new Map();
+          })
+        : new Map();
+
+      // Today's consolidated bar: volume for VOLUME_RATIO / GAP_UP, and on
+      // the close pass the day's close itself.
+      const wantsTodayBar =
+        session === "CLOSE" ||
+        candidates.some((c) => c.ladder.some((t) => needsTodayVolume(t.predicate)));
+      const todayBars = wantsTodayBar ? await getTodaySessionBars(uniqueTickers, undefined, now) : {};
 
       // Reported earnings for the whole firm in ONE call, only when some
       // thesis in this batch actually carries an earnings trigger. The
@@ -759,14 +848,30 @@ export const triggerEvaluator = inngest.createFunction(
       for (const { thesis, analystId, ladder: triggers } of candidates) {
         // Non-null by the filter above; narrowed for the FiringEvent below.
         if (!analystId) continue;
-        const latestQuote = quoteByTicker.get(thesis.ticker) ?? undefined;
+        const quote = quoteByTicker.get(thesis.ticker) ?? undefined;
+        const todayBar = todayBars[thesis.ticker];
+        // On the close pass the price IS the day's close (the consolidated
+        // bar); with no bar for the name there is no close to read, so its
+        // close rungs wait for tomorrow rather than fire on a guess.
+        if (session === "CLOSE" && !todayBar) continue;
+        const latestQuote =
+          quote && session === "CLOSE" && todayBar
+            ? {
+                price: todayBar.close,
+                changePct: quote.prevClose ? ((todayBar.close - quote.prevClose) / quote.prevClose) * 100 : quote.changePct,
+                prevClose: quote.prevClose,
+              }
+            : quote
+              ? { price: quote.price, changePct: quote.changePct, prevClose: quote.prevClose }
+              : undefined;
 
         const posInfo = openedAtByThesisId.get(thesis.id);
         const ctx: EvaluationContext = {
-          // No signal on this path. Multi-day PRICE_MOVE_PCT / VS_SMA /
-          // RSI return false because we don't pass recentPrices / sma
-          // here — see the file-header note for the rationale.
-          latestQuote: latestQuote ?? undefined,
+          // No signal on this path.
+          latestQuote,
+          session,
+          indicators: indicators.get(thesis.ticker) ?? null,
+          today: { open: quote?.open ?? null, volume: todayBar?.volume ?? null },
           // EARNINGS_BEAT / EARNINGS_MISS read this. Absent when the name
           // hasn't reported inside the lookback window, which is the
           // overwhelmingly common case — those predicates then return false.
@@ -911,6 +1016,7 @@ export const triggerEvaluator = inngest.createFunction(
 
     return {
       path: "cron",
+      session,
       firings: cronFires.length,
     };
   },
@@ -920,6 +1026,10 @@ export const triggerEvaluator = inngest.createFunction(
 // directly without standing up Inngest.
 export const __test__ = {
   isPriceSidePredicate,
+  needsIndicators,
+  needsTodayVolume,
+  hasCloseBasis,
+  isClosePassTick,
   needsEarningsData,
   needsUpcomingEarnings,
   isSignalSidePredicate,

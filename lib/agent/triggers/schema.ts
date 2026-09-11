@@ -11,56 +11,46 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 
-const signalTypeEnum = z.enum([
-  "NEWS",
-  "EARNINGS",
-  "FILING",
-  "SOCIAL",
-  "PRICE_ACTION",
-  "ANALYST_NOTE",
-  "OPTIONS",
-  "MACRO",
-  "SECTOR",
-]);
-
-const sentimentEnum = z.enum(["BULLISH", "BEARISH", "NEUTRAL"]);
-const urgencyEnum = z.enum(["LOW", "MEDIUM", "HIGH", "BREAKING"]);
-
 // Recursive shape for AND/OR composition. Zod doesn't support direct
 // discriminated-union recursion, so we type the recursion via z.lazy.
 type PredicateShape =
-  | { kind: "PRICE_ABOVE"; level: number }
-  | { kind: "PRICE_BELOW"; level: number }
-  | { kind: "PRICE_MOVE_PCT"; pct: number; direction: "UP" | "DOWN"; window: "1D" }
+  | { kind: "PRICE_ABOVE"; level: number; basis?: "intraday" | "close" }
+  | { kind: "PRICE_BELOW"; level: number; basis?: "intraday" | "close" }
+  | { kind: "PRICE_MOVE_PCT"; pct: number; direction: "UP" | "DOWN"; window: "1D" | "5D" | "20D" }
   | { kind: "GAIN_FROM_ENTRY"; pct: number; direction: "UP" | "DOWN" }
   | { kind: "TRAILING_FROM_HIGH"; pct: number }
-  | { kind: "VS_SMA"; period: 50 | 200; direction: "ABOVE" | "BELOW" }
-  | { kind: "RSI"; threshold: number; direction: "ABOVE" | "BELOW" }
-  | {
-      kind: "SIGNAL_TYPE";
-      signalType: z.infer<typeof signalTypeEnum>;
-      sentiment?: z.infer<typeof sentimentEnum>;
-      minUrgency?: z.infer<typeof urgencyEnum>;
-    }
+  | { kind: "VS_SMA"; period: 20 | 50 | 150 | 200; direction: "ABOVE" | "BELOW" }
+  | { kind: "NEAR_SMA"; period: 20 | 50 | 150 | 200; withinPct: number }
+  | { kind: "VOLUME_RATIO"; min: number }
+  | { kind: "NEW_HIGH"; window: "20D" | "52W" }
+  | { kind: "PCT_FROM_52W_HIGH"; max: number }
+  | { kind: "RS_VS_SPY"; window: "1M" | "3M" | "6M"; min: number }
+  | { kind: "GAP_UP"; minPct: number; minVolRatio: number; withinDays?: number }
+  | { kind: "RSI"; period?: 2 | 14; threshold: number; direction: "ABOVE" | "BELOW" }
   | { kind: "EARNINGS_BEAT"; minSurprisePct?: number }
   | { kind: "EARNINGS_MISS"; minSurprisePct?: number }
   | { kind: "EARNINGS_WITHIN"; days: number }
   | { kind: "EARNINGS_SINCE"; min: number; max: number }
-  | { kind: "GUIDANCE_CHANGE"; direction: "UP" | "DOWN" }
-  | { kind: "FILING"; formType: "10-K" | "10-Q" | "8-K" | "FORM_4" }
   | { kind: "REVIEW_CADENCE"; days: number }
   | { kind: "AND"; predicates: PredicateShape[] }
   | { kind: "OR"; predicates: PredicateShape[] };
 
+const priceBasis = z
+  .enum(["intraday", "close"])
+  .optional()
+  .describe('"close" = the day must CLOSE past the level (checked once at 16:20 ET); omit for the intraday cross.');
+const smaPeriod = z.union([z.literal(20), z.literal(50), z.literal(150), z.literal(200)]);
+
 export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
   z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("PRICE_ABOVE"), level: z.number() }),
-    z.object({ kind: z.literal("PRICE_BELOW"), level: z.number() }),
+    z.object({ kind: z.literal("PRICE_ABOVE"), level: z.number(), basis: priceBasis }),
+    z.object({ kind: z.literal("PRICE_BELOW"), level: z.number(), basis: priceBasis }),
     z.object({
       kind: z.literal("PRICE_MOVE_PCT"),
       pct: z.number().positive(),
       direction: z.enum(["UP", "DOWN"]),
-      window: z.literal("1D"),
+      // 1D off the quote; 5D / 20D off the daily snapshot's closes.
+      window: z.enum(["1D", "5D", "20D"]),
     }),
     z.object({
       kind: z.literal("GAIN_FROM_ENTRY"),
@@ -75,19 +65,44 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
     }),
     z.object({
       kind: z.literal("VS_SMA"),
-      period: z.union([z.literal(50), z.literal(200)]),
+      period: smaPeriod,
       direction: z.enum(["ABOVE", "BELOW"]),
+    }),
+    z.object({
+      kind: z.literal("NEAR_SMA"),
+      period: smaPeriod,
+      withinPct: z.number().positive().max(10),
+    }),
+    z.object({
+      kind: z.literal("VOLUME_RATIO"),
+      min: z.number().positive().max(50),
+    }),
+    z.object({
+      kind: z.literal("NEW_HIGH"),
+      window: z.enum(["20D", "52W"]),
+    }),
+    z.object({
+      kind: z.literal("PCT_FROM_52W_HIGH"),
+      max: z.number().min(0).max(100),
+    }),
+    z.object({
+      kind: z.literal("RS_VS_SPY"),
+      window: z.enum(["1M", "3M", "6M"]),
+      // Percentage points vs SPY; negative is legal ("not lagging by more than 5").
+      min: z.number().min(-100).max(500),
+    }),
+    z.object({
+      kind: z.literal("GAP_UP"),
+      minPct: z.number().positive().max(100),
+      minVolRatio: z.number().min(0).max(50),
+      // 1 = today only; up to the 10 sessions the snapshot keeps gaps for.
+      withinDays: z.number().int().min(1).max(10).optional(),
     }),
     z.object({
       kind: z.literal("RSI"),
+      period: z.union([z.literal(2), z.literal(14)]).optional(),
       threshold: z.number().min(0).max(100),
       direction: z.enum(["ABOVE", "BELOW"]),
-    }),
-    z.object({
-      kind: z.literal("SIGNAL_TYPE"),
-      signalType: signalTypeEnum,
-      sentiment: sentimentEnum.optional(),
-      minUrgency: urgencyEnum.optional(),
     }),
     z.object({
       kind: z.literal("EARNINGS_BEAT"),
@@ -112,14 +127,6 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
         max: z.number().int().min(0).max(5),
       })
       .refine((p) => p.min <= p.max, { message: "min must be ≤ max" }),
-    z.object({
-      kind: z.literal("GUIDANCE_CHANGE"),
-      direction: z.enum(["UP", "DOWN"]),
-    }),
-    z.object({
-      kind: z.literal("FILING"),
-      formType: z.enum(["10-K", "10-Q", "8-K", "FORM_4"]),
-    }),
     z.object({
       kind: z.literal("REVIEW_CADENCE"),
       days: z.number().int().positive().max(365),
@@ -168,7 +175,7 @@ export const triggerSchema = z.object({
     .string()
     .min(1)
     .describe(
-      "Prose the LLM reads when acting on this trigger. e.g. 'Guidance cut compresses the multiple — exit immediately.'",
+      "Prose the LLM reads when acting on this trigger. e.g. 'A close under the 50-day on heavy volume breaks the pullback thesis — exit.'",
     ),
   cooldownDays: z
     .number()
@@ -189,9 +196,15 @@ export const triggerSchema = z.object({
       // including the legitimate EXIT stops sitting next to the bad
       // REVIEW. That's the same silent-failure shape PR #371 just fixed
       // for the id-less bug; don't re-introduce it.
-      "Don't re-fire this trigger more than once per N days. OMIT to use the per-predicate-kind default (EARNINGS_*: 7, FILING/SIGNAL_TYPE/PRICE_*: 1, REVIEW_CADENCE: matches the cadence) — that's the right answer in almost every case. The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT.",
+      "Don't re-fire this trigger more than once per N days. OMIT to use the per-predicate-kind default (EARNINGS_BEAT/MISS: 7, PRICE_* and chart kinds: 1, REVIEW_CADENCE: matches the cadence) — that's the right answer in almost every case. The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT.",
     ),
   lastFiredAt: z.string().datetime().optional(),
+  fireOnMatch: z
+    .boolean()
+    .optional()
+    .describe(
+      "ENTER only: fire on the first check where the condition is already true (a buy-now level the price is past), instead of waiting for it to cross. Ignored on other actions.",
+    ),
   fireMode: z
     .enum(["TACTICAL", "DIRECT"])
     .optional()

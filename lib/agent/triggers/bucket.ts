@@ -25,8 +25,8 @@ import type { TriggerAction, TriggerPredicate } from "./types";
  * what makes an override an override rather than a second stop.
  *
  * AND/OR composites use a structural fingerprint so an agent's custom
- * "OR(FILING 8-K, FILING 10-Q)" doesn't get duplicated by the catalyst
- * default's similar OR — same intent, same key.
+ * "AND(close above, volume)" doesn't get duplicated by a template's
+ * similar AND — same intent, same key.
  */
 export function predicateKey(p: TriggerPredicate): string {
   switch (p.kind) {
@@ -41,19 +41,22 @@ export function predicateKey(p: TriggerPredicate): string {
       return p.kind;
     case "VS_SMA":
       return `${p.kind}:${p.period}:${p.direction}`;
+    case "NEAR_SMA":
+      return `${p.kind}:${p.period}`;
+    case "VOLUME_RATIO":
+    case "PCT_FROM_52W_HIGH":
+    case "GAP_UP":
+      return p.kind;
+    case "NEW_HIGH":
+    case "RS_VS_SPY":
+      return `${p.kind}:${p.window}`;
     case "RSI":
-      return `${p.kind}:${p.direction}`;
-    case "SIGNAL_TYPE":
-      return `${p.kind}:${p.signalType}:${p.sentiment ?? ""}`;
+      return `${p.kind}:${p.period ?? 14}:${p.direction}`;
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
     case "EARNINGS_WITHIN":
     case "EARNINGS_SINCE":
       return p.kind;
-    case "GUIDANCE_CHANGE":
-      return `${p.kind}:${p.direction}`;
-    case "FILING":
-      return `${p.kind}:${p.formType}`;
     case "REVIEW_CADENCE":
       return p.kind;
     case "AND":

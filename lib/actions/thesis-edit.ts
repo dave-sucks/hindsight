@@ -391,7 +391,7 @@ export async function applyTriggerValueEdit(
  *  high (Trailing from high). The last two are position-scoped (they read
  *  avgCost / peakPrice), so the add path additionally requires an open
  *  position for them. */
-const ADDABLE_PREDICATE_KINDS = new Set<TriggerPredicate["kind"]>([
+export const ADDABLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"]> = new Set<TriggerPredicate["kind"]>([
   "PRICE_ABOVE",
   "PRICE_BELOW",
   "PRICE_MOVE_PCT",
@@ -403,6 +403,16 @@ const ADDABLE_PREDICATE_KINDS = new Set<TriggerPredicate["kind"]>([
   // The earnings heads-up — "this reports within N days." Reads the calendar,
   // no position needed, so it's legal on a watch as well as a holding.
   "EARNINGS_WITHIN",
+  // The chart kinds (DAV-247) — read the daily snapshot, legal on a watch
+  // or a holding.
+  "VS_SMA",
+  "NEAR_SMA",
+  "VOLUME_RATIO",
+  "NEW_HIGH",
+  "PCT_FROM_52W_HIGH",
+  "RS_VS_SPY",
+  "GAP_UP",
+  "RSI",
 ]);
 
 /** Kinds that evaluate off the open position (avgCost / peakPrice). With no
@@ -469,7 +479,7 @@ export async function applyTriggerAdd(
   if (!ADDABLE_PREDICATE_KINDS.has(input.predicate.kind)) {
     throw new ThesisEditError(
       "INVALID",
-      `Can only add a target-price, movement-amount, gain-from-entry, trailing-from-high, or review-clock trigger (got ${input.predicate.kind}).`,
+      `That trigger kind can't be added from the sheet (got ${input.predicate.kind}).`,
     );
   }
   let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);

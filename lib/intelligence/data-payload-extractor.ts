@@ -1,9 +1,10 @@
 /**
  * Heuristic dataPayload extraction for signals coming from text sources
- * (Sonar headlines + summaries, news feeds, etc.). The trigger evaluator
- * needs structured data on Signal.dataPayload to fire EARNINGS_BEAT,
- * EARNINGS_MISS, GUIDANCE_CHANGE, and FILING predicates against real
- * signals — but our text-based producers don't currently stamp it.
+ * (Sonar headlines + summaries, news feeds, etc.). The signal path of the
+ * trigger evaluator reads Signal.dataPayload.surprisePct as a fallback for
+ * EARNINGS_BEAT / EARNINGS_MISS (the calendar is the real source). The
+ * guidance and filing fields are stamped for the Signals rebuild; no trigger
+ * kind reads them since DAV-247 deleted GUIDANCE_CHANGE and FILING.
  *
  * This module fills that gap with regex-based extraction. It's lossy:
  *   - "beat by 12%" → surprisePct: 12 ✅
@@ -15,7 +16,7 @@
  *
  * Strategy: read headline + summary, look for high-confidence patterns,
  * stamp dataPayload. Optionally upgrade the SignalType (NEWS → EARNINGS
- * or FILING) so the trigger evaluator's type-gated predicates match.
+ * or FILING).
  *
  * Single-call exit: returns the inputs back if nothing extracts. Producers
  * call this just before createSignal and pass through the (possibly
@@ -35,9 +36,9 @@ export interface ExtractInput {
 export interface ExtractedDataPayload {
   // Earnings shape — read by EARNINGS_BEAT / EARNINGS_MISS predicates.
   surprisePct?: number;
-  // Guidance shape — read by GUIDANCE_CHANGE predicate.
+  // Guidance shape — no trigger reads it (kept for the Signals rebuild).
   guidanceDirection?: "UP" | "DOWN";
-  // Filing shape — read by FILING predicate.
+  // Filing shape — no trigger reads it (kept for the Signals rebuild).
   formType?: "10-K" | "10-Q" | "8-K" | "FORM_4";
 }
 

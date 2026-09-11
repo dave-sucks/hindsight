@@ -64,7 +64,7 @@ describe("protectiveExitCloseReason — protective/price EXIT → STOP/TARGET ta
 
   it("returns null for judgment predicates (they keep the LLM's tag → cooldown applies)", () => {
     const judgment: TriggerPredicate[] = [
-      { kind: "SIGNAL_TYPE", signalType: "NEWS" },
+      { kind: "NEAR_SMA", period: 50, withinPct: 2 },
       { kind: "EARNINGS_MISS" },
       { kind: "RSI", threshold: 70, direction: "ABOVE" },
       { kind: "REVIEW_CADENCE", days: 30 },

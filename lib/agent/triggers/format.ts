@@ -22,16 +22,18 @@ import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
  *
  *   PRICE_BELOW $5.92            → "Price below $5.92"
  *   EARNINGS_BEAT ≥3%            → "Earnings beat ≥3%"
- *   SIGNAL_TYPE NEWS BULLISH     → "Bullish news"
+ *   NEAR_SMA 50 2%               → "Within 2% of the 50-day"
  */
 export function predicateSentence(p: TriggerPredicate): string {
   switch (p.kind) {
     case "PRICE_BELOW":
-      return `Price below $${p.level}`;
+      return p.basis === "close" ? `Closes below $${p.level}` : `Price below $${p.level}`;
     case "PRICE_ABOVE":
-      return `Price above $${p.level}`;
+      return p.basis === "close" ? `Closes above $${p.level}` : `Price above $${p.level}`;
     case "PRICE_MOVE_PCT":
-      return `Price ${p.direction === "UP" ? "up" : "down"} ${p.pct}% over ${p.window}`;
+      return p.window === "1D"
+        ? `Price ${p.direction === "UP" ? "up" : "down"} ${p.pct}% today`
+        : `Price ${p.direction === "UP" ? "up" : "down"} ${p.pct}% over ${p.window === "5D" ? "5 sessions" : "20 sessions"}`;
     case "GAIN_FROM_ENTRY":
       return p.direction === "UP"
         ? `Up ${p.pct}% from entry`
@@ -42,18 +44,21 @@ export function predicateSentence(p: TriggerPredicate): string {
       // type that doesn't exist in the builder.
       return `Trailing ${p.pct}% from high`;
     case "VS_SMA":
-      return `Price ${p.direction.toLowerCase()} ${p.period}-day SMA`;
+      return `Price ${p.direction.toLowerCase()} the ${p.period}-day`;
+    case "NEAR_SMA":
+      return `Within ${p.withinPct}% of the ${p.period}-day`;
+    case "VOLUME_RATIO":
+      return `Volume ${p.min}× average`;
+    case "NEW_HIGH":
+      return p.window === "20D" ? "New 20-day high" : "New 52-week high";
+    case "PCT_FROM_52W_HIGH":
+      return `Within ${p.max}% of the 52-week high`;
+    case "RS_VS_SPY":
+      return `${p.window} vs SPY ${p.min >= 0 ? "+" : ""}${p.min} pts or better`;
+    case "GAP_UP":
+      return `Gap up ${p.minPct}%+ on ${p.minVolRatio}× volume${(p.withinDays ?? 1) > 1 ? ` (last ${p.withinDays} sessions)` : ""}`;
     case "RSI":
-      return `RSI ${p.direction.toLowerCase()} ${p.threshold}`;
-    case "SIGNAL_TYPE": {
-      const parts: string[] = [];
-      if (p.sentiment) parts.push(p.sentiment.toLowerCase());
-      const kind = p.signalType.toLowerCase().replace(/_/g, " ");
-      parts.push(kind);
-      let s = parts.join(" ");
-      if (p.minUrgency) s += ` ≥${p.minUrgency.toLowerCase()} urgency`;
-      return s.charAt(0).toUpperCase() + s.slice(1);
-    }
+      return `RSI(${p.period ?? 14}) ${p.direction.toLowerCase()} ${p.threshold}`;
     case "EARNINGS_BEAT":
       return p.minSurprisePct
         ? `Earnings beat ≥${p.minSurprisePct}%`
@@ -68,10 +73,6 @@ export function predicateSentence(p: TriggerPredicate): string {
       return p.min === p.max
         ? `${p.min} day${p.min === 1 ? "" : "s"} after the report`
         : `${p.min}–${p.max} days after the report`;
-    case "GUIDANCE_CHANGE":
-      return `Guidance ${p.direction.toLowerCase()}`;
-    case "FILING":
-      return `${p.formType} filed`;
     case "REVIEW_CADENCE":
       return `Every ${p.days} days since the last review`;
     case "AND":

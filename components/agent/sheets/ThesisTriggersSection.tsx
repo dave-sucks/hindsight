@@ -51,7 +51,6 @@ import {
   Loader2,
   Plus,
   Trash2,
-  Calendar,
   SlidersHorizontal,
 } from "lucide-react";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
@@ -138,7 +137,7 @@ function overriddenLevelPhrase(level: string): string {
  *   [ review every ][ 30 days ]
  *   [ earnings beat ][ ≥3% ]
  *
- * Returns `value: null` when there's no value half (e.g. REVIEW_DATE_HIT,
+ * Returns `value: null` when there's no value half (e.g. NEW_HIGH,
  * EARNINGS_BEAT with no minimum surprise pct); the pill collapses to a
  * single cell in that case.
  */
@@ -150,9 +149,9 @@ function predicateKindValue(p: TriggerPredicate): {
     `${n} ${word}${n === 1 ? "" : "s"}`;
   switch (p.kind) {
     case "PRICE_ABOVE":
-      return { kind: "price above", value: `$${p.level ?? "?"}` };
+      return { kind: p.basis === "close" ? "closes above" : "price above", value: `$${p.level ?? "?"}` };
     case "PRICE_BELOW":
-      return { kind: "price below", value: `$${p.level ?? "?"}` };
+      return { kind: p.basis === "close" ? "closes below" : "price below", value: `$${p.level ?? "?"}` };
     case "PRICE_MOVE_PCT": {
       // Daily move (window 1D) reads as a clean "up / down" — the standard
       // "stock is up/down X% today" alert. Multi-day windows append the span.
@@ -172,22 +171,29 @@ function predicateKindValue(p: TriggerPredicate): {
       return { kind: "off the high", value: `${p.pct ?? "?"}%` };
     case "VS_SMA":
       return {
-        kind: `${p.period ?? "?"}-day SMA`,
-        value: p.direction ? p.direction.toLowerCase() : null,
+        kind: `${p.direction === "BELOW" ? "below" : "above"} the ${p.period ?? "?"}-day`,
+        value: null,
       };
+    case "NEAR_SMA":
+      return { kind: `near the ${p.period ?? "?"}-day`, value: `${p.withinPct ?? "?"}%` };
+    case "VOLUME_RATIO":
+      return { kind: "volume", value: `${p.min ?? "?"}×` };
+    case "NEW_HIGH":
+      return { kind: p.window === "20D" ? "new 20-day high" : "new 52-week high", value: null };
+    case "PCT_FROM_52W_HIGH":
+      return { kind: "off the 52-week high", value: `≤${p.max ?? "?"}%` };
+    case "RS_VS_SPY":
+      return {
+        kind: `${p.window ?? "?"} vs SPY`,
+        value: p.min != null ? `${p.min >= 0 ? "+" : ""}${p.min} pts` : null,
+      };
+    case "GAP_UP":
+      return { kind: "gap up", value: `${p.minPct ?? "?"}%` };
     case "RSI":
       return {
-        kind: `RSI ${p.direction ? p.direction.toLowerCase() : ""}`.trim(),
+        kind: `RSI(${p.period ?? 14}) ${p.direction ? p.direction.toLowerCase() : ""}`.trim(),
         value: p.threshold != null ? String(p.threshold) : null,
       };
-    case "SIGNAL_TYPE": {
-      const valueParts = [
-        p.signalType ? p.signalType.toLowerCase().replace(/_/g, " ") : null,
-        p.sentiment ? p.sentiment.toLowerCase() : null,
-        p.minUrgency ? `≥${p.minUrgency.toLowerCase()}` : null,
-      ].filter((v): v is string => Boolean(v));
-      return { kind: "signal", value: valueParts.join(" · ") || null };
-    }
     case "EARNINGS_BEAT":
       return {
         kind: "earnings beat",
@@ -208,15 +214,6 @@ function predicateKindValue(p: TriggerPredicate): {
         kind: "after the report",
         value: p.min != null && p.max != null ? (p.min === p.max ? plural(p.min, "day") : `${p.min}–${p.max} days`) : null,
       };
-    case "GUIDANCE_CHANGE":
-      return {
-        kind: "guidance",
-        value: p.direction ? p.direction.toLowerCase() : null,
-      };
-    case "FILING":
-      return { kind: "filing", value: p.formType ?? null };
-    case "REVIEW_DATE_HIT":
-      return { kind: "review date hit", value: null };
     case "REVIEW_CADENCE":
       return {
         kind: "review every",
@@ -241,13 +238,17 @@ function predicateKindValue(p: TriggerPredicate): {
 function predicateDescription(p: TriggerPredicate): string {
   switch (p.kind) {
     case "PRICE_ABOVE":
-      return `Fires when last quote crosses above $${p.level}.`;
+      return p.basis === "close"
+        ? `Fires when the day closes above $${p.level} — checked once, after the close.`
+        : `Fires when last quote crosses above $${p.level}.`;
     case "PRICE_BELOW":
-      return `Fires when last quote crosses below $${p.level}.`;
+      return p.basis === "close"
+        ? `Fires when the day closes below $${p.level} — checked once, after the close.`
+        : `Fires when last quote crosses below $${p.level}.`;
     case "PRICE_MOVE_PCT":
       return p.window === "1D"
         ? `Fires when the stock is ${p.direction === "UP" ? "up" : "down"} ${p.pct}% on the day (vs prior close).`
-        : `Fires when price moves ${p.direction === "UP" ? "+" : "−"}${p.pct}% over ${p.window}.`;
+        : `Fires when the stock is ${p.direction === "UP" ? "up" : "down"} ${p.pct}% from its close ${p.window === "5D" ? "5" : "20"} sessions ago.`;
     case "GAIN_FROM_ENTRY":
       return p.direction === "UP"
         ? `Fires when the position is up ${p.pct}% from entry (avg cost) — the cumulative gain milestone.`
@@ -255,11 +256,23 @@ function predicateDescription(p: TriggerPredicate): string {
     case "TRAILING_FROM_HIGH":
       return `Fires when price gives back ${p.pct}% from its high since entry. The high ratchets up as the position runs.`;
     case "VS_SMA":
-      return `Fires when price moves ${p.direction?.toLowerCase()} the ${p.period}-day SMA.`;
+      return `Fires when price is ${p.direction?.toLowerCase()} its ${p.period}-day average (from yesterday's close).`;
+    case "NEAR_SMA":
+      return `Fires when price comes within ${p.withinPct}% of its ${p.period}-day average — the pullback zone.`;
+    case "VOLUME_RATIO":
+      return `Fires when today's volume reaches ${p.min}× the 20-day average. No projection — it turns true once the volume is really there.`;
+    case "NEW_HIGH":
+      return p.window === "20D"
+        ? "Fires when price clears the highest high of the last 20 sessions."
+        : "Fires when price clears the 52-week high.";
+    case "PCT_FROM_52W_HIGH":
+      return `Fires when price is within ${p.max}% of the 52-week high.`;
+    case "RS_VS_SPY":
+      return `Fires when the stock's ${p.window} return beats SPY's by ${p.min} percentage points or more (as of the last close).`;
+    case "GAP_UP":
+      return `Fires when the stock opens ${p.minPct}%+ above the prior close on ${p.minVolRatio}× average volume${(p.withinDays ?? 1) > 1 ? `, today or within the last ${p.withinDays} sessions` : ""}.`;
     case "RSI":
-      return `Fires when RSI moves ${p.direction?.toLowerCase()} ${p.threshold}.`;
-    case "SIGNAL_TYPE":
-      return `Fires on a ${p.signalType} signal${p.sentiment ? ` with ${p.sentiment.toLowerCase()} sentiment` : ""}${p.minUrgency ? ` at urgency ≥ ${p.minUrgency.toLowerCase()}` : ""}.`;
+      return `Fires when RSI(${p.period ?? 14}) is ${p.direction?.toLowerCase()} ${p.threshold}.`;
     case "EARNINGS_BEAT":
       return p.minSurprisePct
         ? `Fires on an earnings beat of at least ${p.minSurprisePct}%.`
@@ -272,12 +285,6 @@ function predicateDescription(p: TriggerPredicate): string {
       return `Fires once when the next earnings report is ${p.days} day${p.days === 1 ? "" : "s"} away or closer — the heads-up to size for it.`;
     case "EARNINGS_SINCE":
       return `Fires once when the last earnings report is ${p.min}–${p.max} days old — the window to act on the reaction.`;
-    case "GUIDANCE_CHANGE":
-      return `Fires when company issues ${p.direction?.toLowerCase()} guidance revision.`;
-    case "FILING":
-      return `Fires when a ${p.formType} is filed.`;
-    case "REVIEW_DATE_HIT":
-      return "Fires when the thesis's scheduled review date is reached.";
     case "REVIEW_CADENCE":
       return `The agent reviews this name every ${p.days} days, counting from its last real review.`;
     case "AND":
@@ -316,7 +323,7 @@ function fmtFiredAt(iso?: string): string {
 //   - Smaller font (text-xs), shorter row (h-7)
 //   - No action icon — action info is communicated via the section
 //     grouping (ENTER IF / EXIT IF / REVIEW IF) above
-//   - Value-less predicates (REVIEW_DATE_HIT, EARNINGS_BEAT without min%)
+//   - Value-less predicates (NEW_HIGH, EARNINGS_BEAT without min%)
 //     render the kind cell only.
 
 function TriggerPill({
@@ -493,7 +500,6 @@ function TriggerPopoverContent({
       : null;
   const leadingText = field?.prefix ?? moveDir;
   const trailingText = field?.suffix ?? null;
-  const leadingIcon = pk === "REVIEW_DATE_HIT";
 
   const isCadenceRung = trigger.predicate.kind === "REVIEW_CADENCE";
   const split = splitCadence(isCadenceRung ? (field?.value ?? null) : null);
@@ -636,11 +642,7 @@ function TriggerPopoverContent({
           </ButtonGroup>
         ) : (
           <InputGroup>
-            {leadingIcon ? (
-              <InputGroupAddon>
-                <Calendar />
-              </InputGroupAddon>
-            ) : leadingText ? (
+            {leadingText ? (
               <InputGroupAddon>
                 <InputGroupText>{leadingText}</InputGroupText>
               </InputGroupAddon>
@@ -887,9 +889,95 @@ export function TriggerGroups({
 // The position-scoped kinds (gain / trail) evaluate false with no open
 // position, so the form only offers them when the thesis is HOLDING —
 // applyTriggerAdd rejects them un-held as the backend backstop.
+// Chart → the chart kinds (DAV-247): near / above / below an average, a new
+//   high, near the 52-week high, a volume surge, a gap up, RSI, beating SPY.
+//   One criterion with a condition picker — they read the daily indicator
+//   snapshot, legal on a watch or a holding.
 // All fire through the same evaluator → trigger pipeline as every trigger.
 
-type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL" | "CADENCE" | "EARNINGS";
+type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL" | "CADENCE" | "EARNINGS" | "CHART";
+
+type ChartKind =
+  | "NEAR_SMA"
+  | "VS_SMA"
+  | "NEW_HIGH"
+  | "PCT_FROM_52W_HIGH"
+  | "VOLUME_RATIO"
+  | "GAP_UP"
+  | "RSI"
+  | "RS_VS_SPY";
+
+const CHART_KIND_OPTIONS: ReadonlyArray<{ v: ChartKind; l: string }> = [
+  { v: "NEAR_SMA", l: "Near an average" },
+  { v: "VS_SMA", l: "Above / below an average" },
+  { v: "NEW_HIGH", l: "New high" },
+  { v: "PCT_FROM_52W_HIGH", l: "Near the 52-week high" },
+  { v: "VOLUME_RATIO", l: "Volume surge" },
+  { v: "GAP_UP", l: "Gap up" },
+  { v: "RSI", l: "RSI" },
+  { v: "RS_VS_SPY", l: "Beating SPY" },
+];
+
+/** The second choice a chart condition needs (which average, which window), if any. */
+function chartParamOptions(k: ChartKind): ReadonlyArray<{ v: string; l: string }> | null {
+  switch (k) {
+    case "NEAR_SMA":
+    case "VS_SMA":
+      return [
+        { v: "20", l: "20-day" },
+        { v: "50", l: "50-day" },
+        { v: "150", l: "150-day" },
+        { v: "200", l: "200-day" },
+      ];
+    case "NEW_HIGH":
+      return [
+        { v: "20D", l: "20-day" },
+        { v: "52W", l: "52-week" },
+      ];
+    case "RSI":
+      return [
+        { v: "14", l: "RSI(14)" },
+        { v: "2", l: "RSI(2)" },
+      ];
+    case "RS_VS_SPY":
+      return [
+        { v: "1M", l: "1 month" },
+        { v: "3M", l: "3 months" },
+        { v: "6M", l: "6 months" },
+      ];
+    default:
+      return null;
+  }
+}
+
+/** Does this chart condition take a number from the input? */
+function chartHasValue(k: ChartKind): boolean {
+  return k !== "VS_SMA" && k !== "NEW_HIGH";
+}
+
+/** One line under the chart condition saying exactly when it fires. */
+function chartHelp(k: ChartKind, param: string, dir: string): string {
+  switch (k) {
+    case "NEAR_SMA":
+      return `Fires when price comes within this % of its ${param}-day average — the pullback zone.`;
+    case "VS_SMA":
+      return `Fires when price is ${dir === "BELOW" ? "below" : "above"} its ${param}-day average.`;
+    case "NEW_HIGH":
+      return param === "20D"
+        ? "Fires when price clears the highest high of the last 20 sessions."
+        : "Fires when price clears the 52-week high.";
+    case "PCT_FROM_52W_HIGH":
+      return "Fires when price is within this % of its 52-week high.";
+    case "VOLUME_RATIO":
+      return "Fires when today's volume reaches this multiple of the 20-day average. Pair it with a price level for a breakout.";
+    case "GAP_UP":
+      return "Fires when the stock opens at least this % above the prior close on 3× average volume.";
+    case "RSI":
+      return `Fires when ${param === "2" ? "RSI(2)" : "RSI(14)"} is ${dir === "ABOVE" ? "above" : "below"} this level.`;
+    case "RS_VS_SPY":
+      return "Fires when the stock's return over the window beats SPY's by this many percentage points (as of the last close).";
+  }
+}
 
 export function AddTriggerDialog({
   held,
@@ -916,6 +1004,11 @@ export function AddTriggerDialog({
   );
   const [dir, setDir] = useState<string>("BELOW"); // ABOVE/BELOW · UP/DOWN
   const [val, setVal] = useState("");
+  // PRICE: intraday cross or the day's close. MOVE: today / 5 / 20 sessions.
+  const [basis, setBasis] = useState<"intraday" | "close">("intraday");
+  const [moveWindow, setMoveWindow] = useState<"1D" | "5D" | "20D">("1D");
+  const [chartKind, setChartKind] = useState<ChartKind>("NEAR_SMA");
+  const [chartParam, setChartParam] = useState<string>("50");
   const [fireMode, setFireMode] = useState<"TACTICAL" | "DIRECT">("DIRECT");
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -931,6 +1024,13 @@ export function AddTriggerDialog({
   const isEarnings = criterion === "EARNINGS";
   /** Day-valued criteria: integer input, "days" suffix, no direction. */
   const isDays = isCadence || isEarnings;
+  const isChart = criterion === "CHART";
+  const chartParams = isChart ? chartParamOptions(chartKind) : null;
+  const chartTakesValue = isChart && chartHasValue(chartKind);
+  const chartDirectional = isChart && (chartKind === "VS_SMA" || chartKind === "RSI");
+  /** The unit the chart condition's number is in. */
+  const chartUnit =
+    chartKind === "VOLUME_RATIO" ? "×" : chartKind === "RSI" ? "" : chartKind === "RS_VS_SPY" ? "pts" : "%";
   /** %-valued criteria share the % input adornment + 0.5 step. */
   const isPct = isMove || isGain || isTrail;
   const showFireMode = action === "EXIT" && held;
@@ -946,6 +1046,7 @@ export function AddTriggerDialog({
     ...(held ? ([{ v: "GAIN", l: "% Gain" }, { v: "TRAIL", l: "% Trail" }] as const) : ([] as const)),
     { v: "CADENCE", l: "Agent Watch" },
     { v: "EARNINGS", l: "Earnings" },
+    { v: "CHART", l: "Chart" },
   ];
 
   const dirOptions =
@@ -967,7 +1068,15 @@ export function AddTriggerDialog({
     else if (criterion === "MOVE") setDir("DOWN");
     else if (criterion === "PRICE") setDir("BELOW");
     if (criterion === "CADENCE" || criterion === "EARNINGS") setAction("REVIEW");
+    if (criterion === "CHART") setDir("ABOVE");
   }, [criterion]);
+
+  // A chart condition's second choice defaults to its usual one.
+  useEffect(() => {
+    const opts = chartParamOptions(chartKind);
+    setChartParam(opts ? (chartKind === "NEAR_SMA" || chartKind === "VS_SMA" ? "50" : chartKind === "RS_VS_SPY" ? "3M" : opts[0].v) : "");
+    if (chartKind === "RSI") setDir("BELOW");
+  }, [chartKind]);
 
   // Default fire mode by action — EXIT → DIRECT, else TACTICAL. Mirrors the
   // server-side defaultFireModeForAction (can't import it here: defaults.ts
@@ -977,7 +1086,15 @@ export function AddTriggerDialog({
   }, [action]);
 
   const num = Number(val);
-  const valid =
+  const chartValid = isChart
+    ? !chartTakesValue ||
+      (val.trim() !== "" &&
+        Number.isFinite(num) &&
+        (chartKind === "RS_VS_SPY" ? num > -100 : num > 0) &&
+        (chartKind !== "RSI" || num < 100) &&
+        (chartKind !== "NEAR_SMA" || num <= 10))
+    : null;
+  const valid = chartValid ?? (
     val.trim() !== "" &&
     Number.isFinite(num) &&
     num > 0 &&
@@ -988,13 +1105,35 @@ export function AddTriggerDialog({
     (!isTrail || num >= 1) &&
     (!isDays || Number.isInteger(num)) &&
     // The calendar lookahead is 14 days — a longer heads-up can't be seen.
-    (!isEarnings || num <= 14);
+    (!isEarnings || num <= 14));
 
   async function save() {
     if (!valid) return;
     setPending(true);
     setErr(null);
-    const predicate = isEarnings
+    const chartPredicate = (): Record<string, unknown> => {
+      switch (chartKind) {
+        case "NEAR_SMA":
+          return { kind: "NEAR_SMA", period: Number(chartParam), withinPct: num };
+        case "VS_SMA":
+          return { kind: "VS_SMA", period: Number(chartParam), direction: dir };
+        case "NEW_HIGH":
+          return { kind: "NEW_HIGH", window: chartParam };
+        case "PCT_FROM_52W_HIGH":
+          return { kind: "PCT_FROM_52W_HIGH", max: num };
+        case "VOLUME_RATIO":
+          return { kind: "VOLUME_RATIO", min: num };
+        case "GAP_UP":
+          return { kind: "GAP_UP", minPct: num, minVolRatio: 3 };
+        case "RSI":
+          return { kind: "RSI", period: Number(chartParam), threshold: num, direction: dir };
+        case "RS_VS_SPY":
+          return { kind: "RS_VS_SPY", window: chartParam, min: num };
+      }
+    };
+    const predicate = isChart
+      ? chartPredicate()
+      : isEarnings
       ? { kind: "EARNINGS_WITHIN", days: num }
       : isCadence
       ? { kind: "REVIEW_CADENCE", days: num }
@@ -1003,8 +1142,12 @@ export function AddTriggerDialog({
       : isTrail
         ? { kind: "TRAILING_FROM_HIGH", pct: num }
         : isMove
-          ? { kind: "PRICE_MOVE_PCT", pct: num, direction: dir, window: "1D" }
-          : { kind: dir === "ABOVE" ? "PRICE_ABOVE" : "PRICE_BELOW", level: num };
+          ? { kind: "PRICE_MOVE_PCT", pct: num, direction: dir, window: moveWindow }
+          : {
+              kind: dir === "ABOVE" ? "PRICE_ABOVE" : "PRICE_BELOW",
+              level: num,
+              ...(basis === "close" ? { basis: "close" } : {}),
+            };
     try {
       const res = await fetch(endpointBase, {
         method: "POST",
@@ -1105,12 +1248,99 @@ export function AddTriggerDialog({
           </div>
         </div>
 
+        {/* Chart condition — which chart reading, and its second choice
+            (which average / which window) when it has one. */}
+        {isChart ? (
+          <ButtonGroup className="w-full">
+            <Select
+              value={chartKind}
+              onValueChange={(v) => {
+                if (typeof v === "string") setChartKind(v as ChartKind);
+              }}
+              disabled={pending}
+            >
+              <SelectTrigger>
+                <SelectValue>{CHART_KIND_OPTIONS.find((o) => o.v === chartKind)?.l ?? ""}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {CHART_KIND_OPTIONS.map((o) => (
+                  <SelectItem key={o.v} value={o.v}>
+                    {o.l}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {chartParams ? (
+              <Select
+                value={chartParam}
+                onValueChange={(v) => {
+                  if (typeof v === "string") setChartParam(v);
+                }}
+                disabled={pending}
+              >
+                <SelectTrigger>
+                  <SelectValue>{chartParams.find((o) => o.v === chartParam)?.l ?? ""}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {chartParams.map((o) => (
+                    <SelectItem key={o.v} value={o.v}>
+                      {o.l}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+          </ButtonGroup>
+        ) : null}
+
+        {/* When: a price level can wait for the close; a move has a window. */}
+        {criterion === "PRICE" || isMove ? (
+          <Select
+            value={criterion === "PRICE" ? basis : moveWindow}
+            onValueChange={(v) => {
+              if (typeof v !== "string") return;
+              if (criterion === "PRICE") setBasis(v as "intraday" | "close");
+              else setMoveWindow(v as "1D" | "5D" | "20D");
+            }}
+            disabled={pending}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue>
+                {criterion === "PRICE"
+                  ? basis === "close"
+                    ? "At the close"
+                    : "Any time in the day"
+                  : moveWindow === "1D"
+                    ? "Today"
+                    : moveWindow === "5D"
+                      ? "Over 5 sessions"
+                      : "Over 20 sessions"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {criterion === "PRICE" ? (
+                <>
+                  <SelectItem value="intraday">Any time in the day</SelectItem>
+                  <SelectItem value="close">At the close</SelectItem>
+                </>
+              ) : (
+                <>
+                  <SelectItem value="1D">Today</SelectItem>
+                  <SelectItem value="5D">Over 5 sessions</SelectItem>
+                  <SelectItem value="20D">Over 20 sessions</SelectItem>
+                </>
+              )}
+            </SelectContent>
+          </Select>
+        ) : null}
+
         {/* Direction select + value input as one full-width button group:
             [ Above ▾ | $ ____ ]  ·  [ Up ▾ | ____ % ]. Trailing from high
             has no direction (orientation follows the thesis direction), so
             the group collapses to the % input alone. */}
+        {isChart && !chartTakesValue && !chartDirectional ? null : (
         <ButtonGroup className="w-full">
-          {isTrail || isDays ? null : (
+          {isTrail || isDays || (isChart && !chartDirectional) ? null : (
             <Select
               value={dir}
               onValueChange={(v) => {
@@ -1132,8 +1362,9 @@ export function AddTriggerDialog({
               </SelectContent>
             </Select>
           )}
+          {isChart && !chartTakesValue ? null : (
           <InputGroup>
-            {isPct || isDays ? null : (
+            {isPct || isDays || isChart ? null : (
               <InputGroupAddon>
                 <InputGroupText>$</InputGroupText>
               </InputGroupAddon>
@@ -1142,23 +1373,41 @@ export function AddTriggerDialog({
               type="number"
               inputMode="decimal"
               value={val}
-              min={isTrail || isDays ? 1 : 0}
+              min={isTrail || isDays ? 1 : isChart && chartKind === "RS_VS_SPY" ? undefined : 0}
               max={isEarnings ? 14 : undefined}
-              step={isDays ? 1 : isPct ? 0.5 : 0.01}
-              placeholder={isEarnings ? "3" : isCadence ? "7" : isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"}
+              step={isDays || (isChart && chartKind === "RSI") ? 1 : isPct || isChart ? 0.5 : 0.01}
+              placeholder={
+                isChart
+                  ? chartKind === "VOLUME_RATIO"
+                    ? "1.5"
+                    : chartKind === "RSI"
+                      ? "30"
+                      : chartKind === "GAP_UP"
+                        ? "8"
+                        : chartKind === "RS_VS_SPY"
+                          ? "0"
+                          : chartKind === "PCT_FROM_52W_HIGH"
+                            ? "5"
+                            : "2"
+                  : isEarnings ? "3" : isCadence ? "7" : isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"
+              }
               onChange={(e) => setVal(e.target.value)}
               disabled={pending}
             />
-            {isPct || isDays ? (
+            {isPct || isDays || (isChart && chartUnit) ? (
               <InputGroupAddon align="inline-end">
-                <InputGroupText>{isDays ? "days" : "%"}</InputGroupText>
+                <InputGroupText>{isDays ? "days" : isChart ? chartUnit : "%"}</InputGroupText>
               </InputGroupAddon>
             ) : null}
           </InputGroup>
+          )}
         </ButtonGroup>
+        )}
 
         <p className="text-xs text-muted-foreground">
-          {isEarnings
+          {isChart
+            ? chartHelp(chartKind, chartParam, dir)
+            : isEarnings
             ? "Fires once when the next earnings report is this many days away — the heads-up to decide whether to hold through it, trim, or wait. Beat and miss are separate triggers the analyst sets."
             : isCadence
             ? "The agent reviews this name every N days, counting from its last real review. Without it, nothing reviews the name until another trigger fires."
@@ -1167,8 +1416,12 @@ export function AddTriggerDialog({
             : isTrail
               ? "Fires when price gives back this much from its high since entry. The high ratchets up as the position runs."
               : isMove
-                ? `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much on the day (vs prior close).`
-                : `Fires when the last quote crosses ${dir === "ABOVE" ? "above" : "below"} your price.`}
+                ? moveWindow === "1D"
+                  ? `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much on the day (vs prior close).`
+                  : `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much from its close ${moveWindow === "5D" ? "5" : "20"} sessions ago.`
+                : basis === "close"
+                  ? `Fires when the day closes ${dir === "ABOVE" ? "above" : "below"} your price — checked once, after the close. An intraday poke through the level doesn't count.`
+                  : `Fires when the last quote crosses ${dir === "ABOVE" ? "above" : "below"} your price.`}
         </p>
 
         {/* On fire (held EXIT only) — full width, our verbs */}
