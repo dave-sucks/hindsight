@@ -215,7 +215,14 @@ export const morningResearch = inngest.createFunction(
 
         // Standing rules the account may predate (the earnings wakes,
         // 2026-09-10). One-time top-up, stamped; a no-op every day after.
-        await ensureAccountStandingRules(config.accountId);
+        // Fail-soft: a missed top-up costs one day of earnings wakes; a
+        // throw here would cost the whole daily run.
+        try {
+          const added = await ensureAccountStandingRules(config.accountId);
+          if (added > 0) console.log(`[morning-research] account=${config.accountId} +${added} standing rule(s)`);
+        } catch (err) {
+          console.error("[morning-research] ensureAccountStandingRules failed (non-fatal):", err);
+        }
 
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
         const systemPrompt = buildDailyRunSystemPromptV2(agentConfig, runInput);
