@@ -542,13 +542,13 @@ dated catalyst is.
 | Relative strength vs SPY / group | **No** | Compute; screen input; `RS_VS_SPY` predicate |
 | Setup recognition | **No** — the writer is asked for four prices with no pattern | Setup catalog; `setup_id` on the thesis |
 | Entry: level + volume + close basis | Level only, intraday only | `basis: close`, `VOLUME_RATIO`, `NEW_HIGH`, `GAP_UP`, `NEAR_SMA`, composed with `AND` (which exists) |
-| Entry: buy now | **Forbidden** | `entry_kind: NOW` |
+| Entry: buy now | **Forbidden** | `entry_kind: NOW` → a buy trigger at the live price that fires on the next check (`fireOnMatch`); same approval path as every buy |
 | Entry: chase limit | No | Plan-sanity flag `ENTRY_CHASED` (> 5% past pivot) |
 | Entry: days since / to earnings | "Reports within N days" built (#621, `EARNINGS_WITHIN`); "N days after the print" not yet | `EARNINGS_SINCE {min,max}` on the same calendar |
 | Stop: structure + ATR check | ATR check exists as an after-the-fact flag; no structure in the writer's data | Price-structure module; writer rule |
 | Stop: only rises | Yes (ratchet) | Keep |
 | Target: measured move / prior high / R | 2R floor only | Method cited from the structure block |
-| Size: risk-based, heat, sector cap | **No** — conviction band | `sharesForRisk`, heat cap, industry cap |
+| Size: risk-based, heat, sector cap | **No** — conviction band | one `riskPct` setting + `sharesForRisk`; heat and industry caps as constants shown in the proposal |
 | Trail by horizon | **No** — one 8% trail for all | Per-horizon templates; the compounder one exists unwired |
 | Partial profits / 8-week rule | No | TRADE/TARGET ladder rungs |
 | Time limits | Review cadence only | `ENTRY_STALE`, per-setup time rungs |
@@ -558,6 +558,6 @@ dated catalyst is.
 | Insider cluster / revisions | No | Daily jobs off Finnhub; predicates; vendor decision |
 | Thesis anatomy | Mostly yes (belief, assumptions, invalidations, variant view, conviction) | Add setup + driver + upside number |
 | Post-mortem by setup | No (per analyst) | Scorecard grouped by `setup_id` |
-| Fired buy → decide | Retune allowed as an equal answer | Buy, or set down with a reason; "raise the level" is not a resolution |
+| Fired buy → decide | Retune allowed as an equal answer | Buy, or set down with a reason; a level raised away without structure becomes a visible flag (`ENTRY_RAISED_AWAY`), never a refusal |
 
 Every "No" in this table is a PR in `AGENT_REBUILD.md`.
