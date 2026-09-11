@@ -52,6 +52,12 @@ export interface IndicatorSnapshot {
   /** 3%+ UP gaps in the last 10 completed sessions. */
   gaps: SnapshotGap[];
   atr14: number | null;
+  /**
+   * Open-market insider purchases in the last INSIDER_LOOKBACK_DAYS (DAV-252).
+   * Absent on snapshots written before it, or when the vendor didn't answer —
+   * INSIDER_CLUSTER then reads false.
+   */
+  insiderBuys?: import("@/lib/market-data/insider-cluster").InsiderBuy[];
 }
 
 export function toIndicatorSnapshot(structure: PriceStructure, bars: DailyBar[]): IndicatorSnapshot {

@@ -27,6 +27,7 @@ type PredicateShape =
   | { kind: "RS_VS_SPY"; window: "1M" | "3M" | "6M"; min: number }
   | { kind: "GAP_UP"; minPct: number; minVolRatio: number; withinDays?: number }
   | { kind: "RSI"; period?: 2 | 14; threshold: number; direction: "ABOVE" | "BELOW" }
+  | { kind: "INSIDER_CLUSTER"; minBuyers: number; days: number }
   | { kind: "EARNINGS_BEAT"; minSurprisePct?: number }
   | { kind: "EARNINGS_MISS"; minSurprisePct?: number }
   | { kind: "EARNINGS_WITHIN"; days: number }
@@ -103,6 +104,12 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
       period: z.union([z.literal(2), z.literal(14)]).optional(),
       threshold: z.number().min(0).max(100),
       direction: z.enum(["ABOVE", "BELOW"]),
+    }),
+    z.object({
+      kind: z.literal("INSIDER_CLUSTER"),
+      minBuyers: z.number().int().min(1).max(10),
+      // The snapshot keeps 90 days of buys (INSIDER_LOOKBACK_DAYS).
+      days: z.number().int().min(1).max(90),
     }),
     z.object({
       kind: z.literal("EARNINGS_BEAT"),

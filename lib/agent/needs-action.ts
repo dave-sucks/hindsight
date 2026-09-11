@@ -196,6 +196,7 @@ const PRICE_OR_TIME_KINDS = new Set([
   "RS_VS_SPY",
   "GAP_UP",
   "RSI",
+  "INSIDER_CLUSTER",
   // REVIEW_CADENCE is deliberately NOT here: it has its own needsAction
   // kind (REVIEW_DUE) with a 24h look-ahead the generic loop can't express,
   // and routing it through TRIGGER_MATCHING_NOW would relabel every routine
@@ -246,6 +247,8 @@ export function describePredicate(p: TriggerPredicate): string {
       return `gap up ≥ ${p.minPct}% on ≥ ${p.minVolRatio}× volume${(p.withinDays ?? 1) > 1 ? ` within ${p.withinDays} sessions` : ""}`;
     case "RSI":
       return `RSI(${p.period ?? 14}) ${p.direction.toLowerCase()} ${p.threshold}`;
+    case "INSIDER_CLUSTER":
+      return `≥ ${p.minBuyers} insiders bought on the open market within ${p.days}d`;
     case "REVIEW_CADENCE":
       return `due for review (every ${p.days}d)`;
     case "EARNINGS_BEAT":

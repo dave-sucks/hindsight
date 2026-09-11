@@ -161,7 +161,21 @@ export interface DataBlockInputs {
   earningsHistory: EarningsHistoryInput | null;
   peers: PeersInput | null;
   filings: FilingsInput | null;
+  /**
+   * Open-market insider buying, one sentence (lib/market-data/insider-cluster
+   * describeCluster, 30 days). Undefined → the line reads "unavailable".
+   * DAV-252.
+   */
+  insiderCluster?: string | null;
 }
+
+/**
+ * The two lines that open the Insider section (DAV-252): open-market buying
+ * — the cluster signal, grants and exercises excluded — and the estimate-
+ * revision gap, said out loud so nothing reasons from an absent number.
+ */
+export const ESTIMATE_REVISIONS_GAP_LINE =
+  "Estimate revisions: not available — Finnhub's EPS-estimate history is not on our data plan, so there is no revision signal to cite.";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -657,7 +671,12 @@ Pulled ${pulledStr} — use these numbers as ground truth.
 
   sections.push(`## Analyst Price Targets (snapshot)\n\n${buildAnalystTargets(stockData)}`);
 
-  sections.push(`## Insider Activity\n\n${buildInsider(inputs.insider)}`);
+  sections.push(
+    `## Insider Activity\n\n` +
+      `Open-market buying (Form 4 purchases only): ${inputs.insiderCluster ?? "unavailable"}\n` +
+      `${ESTIMATE_REVISIONS_GAP_LINE}\n\n` +
+      buildInsider(inputs.insider),
+  );
 
   sections.push(`## Peer Comparison\n\n${buildPeers(inputs.peers, T)}`);
 

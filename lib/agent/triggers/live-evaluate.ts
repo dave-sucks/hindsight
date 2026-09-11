@@ -48,6 +48,7 @@ const PRICE_OR_TIME_KINDS = new Set([
   "RS_VS_SPY",
   "GAP_UP",
   "RSI",
+  "INSIDER_CLUSTER",
 ]);
 
 function isPriceOrTimePredicate(p: TriggerPredicate): boolean {

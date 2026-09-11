@@ -59,6 +59,8 @@ export function predicateSentence(p: TriggerPredicate): string {
       return `Gap up ${p.minPct}%+ on ${p.minVolRatio}× volume${(p.withinDays ?? 1) > 1 ? ` (last ${p.withinDays} sessions)` : ""}`;
     case "RSI":
       return `RSI(${p.period ?? 14}) ${p.direction.toLowerCase()} ${p.threshold}`;
+    case "INSIDER_CLUSTER":
+      return `${p.minBuyers}+ insiders buying in ${p.days} days`;
     case "EARNINGS_BEAT":
       return p.minSurprisePct
         ? `Earnings beat ≥${p.minSurprisePct}%`
