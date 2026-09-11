@@ -22,6 +22,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { inheritableDefaultLadder, reviewCadenceTrigger } from "./defaults";
+import { triggerBucket } from "./bucket";
 import type { Trigger } from "./types";
 
 /**
@@ -33,6 +34,54 @@ import type { Trigger } from "./types";
  * (the TRADE variant omits the pullback-add, which is a horizon nuance,
  * not an account-wide rule).
  */
+/**
+ * Earnings is not opt-in. Anything the account holds or watches gets a look
+ * three days before it reports and a look on the report — a standing WAKE,
+ * not a clock: it costs nothing until the company actually reports, and
+ * then a look is exactly what a watch is for. Overridable per name through
+ * the ordinary cascade; deletable here like any account rule. A REVIEW
+ * fire on a watch lands in the next morning's batch — no per-trigger AI.
+ * See docs/plans/MARKET_DATA.md §3.
+ */
+export function earningsStandingTriggers(): Trigger[] {
+  return [
+    {
+      id: "seed:earnings-within",
+      predicate: { kind: "EARNINGS_WITHIN", days: 3 },
+      action: "REVIEW",
+      rationale:
+        "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
+      cooldownDays: 30,
+      source: "DEFAULT",
+    },
+    {
+      id: "seed:earnings-beat",
+      predicate: { kind: "EARNINGS_BEAT" },
+      action: "REVIEW",
+      rationale:
+        "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
+      cooldownDays: 7,
+      source: "DEFAULT",
+    },
+    {
+      id: "seed:earnings-miss",
+      predicate: { kind: "EARNINGS_MISS" },
+      action: "REVIEW",
+      rationale:
+        "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
+      cooldownDays: 7,
+      source: "DEFAULT",
+    },
+  ];
+}
+
+/**
+ * Accounts seeded before this date never got the earnings rules. One-time
+ * top-up: `ensureAccountStandingRules` adds them and bumps the seed stamp,
+ * so a later deletion by the principal sticks.
+ */
+const EARNINGS_RULES_SINCE = new Date("2026-09-10T00:00:00Z");
+
 export function accountSeedTriggers(): Trigger[] {
   return [
     // Review cadence is a standing account rule now, not a date column on
@@ -41,6 +90,7 @@ export function accountSeedTriggers(): Trigger[] {
     // it with a tighter one through the ordinary cascade.
     reviewCadenceTrigger(7),
     ...inheritableDefaultLadder("TARGET", "HELD"),
+    ...earningsStandingTriggers(),
   ].map((t) => ({
     ...t,
     // Fresh ids: these are real stored rows now, not the synthetic
@@ -69,6 +119,41 @@ export async function seedAccountTriggers(accountId: string): Promise<boolean> {
     },
   });
   return true;
+}
+
+/**
+ * Bring an already-seeded account up to the current standing set — today,
+ * the earnings rules. Runs at the top of every morning run and is a no-op
+ * once the seed stamp is past `EARNINGS_RULES_SINCE`, which is what keeps
+ * it from resurrecting a rule the principal deleted: added once, stamped,
+ * never again. Unseeded accounts go through the normal seed. Returns how
+ * many rules were added.
+ */
+export async function ensureAccountStandingRules(accountId: string): Promise<number> {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    select: { triggers: true, triggersSeededAt: true },
+  });
+  if (!account) return 0;
+  if (account.triggersSeededAt == null) {
+    return (await seedAccountTriggers(accountId)) ? accountSeedTriggers().length : 0;
+  }
+  if (account.triggersSeededAt >= EARNINGS_RULES_SINCE) return 0;
+
+  const current = Array.isArray(account.triggers) ? (account.triggers as unknown as Trigger[]) : [];
+  const have = new Set(current.map(triggerBucket));
+  const missing = earningsStandingTriggers()
+    .filter((t) => !have.has(triggerBucket(t)))
+    .map((t) => ({ ...t, id: globalThis.crypto.randomUUID() }));
+
+  await prisma.account.update({
+    where: { id: accountId },
+    data: {
+      triggers: [...current, ...missing] as unknown as object,
+      triggersSeededAt: new Date(),
+    },
+  });
+  return missing.length;
 }
 
 /**

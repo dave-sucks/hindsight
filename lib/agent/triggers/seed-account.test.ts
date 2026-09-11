@@ -21,6 +21,19 @@ describe("accountSeedTriggers", () => {
     expect(kinds.filter((k) => k === "PRICE_MOVE_PCT")).toHaveLength(2);
   });
 
+  it("carries the earnings rules — a look before the report and a look on it", () => {
+    const kinds = accountSeedTriggers().map((t) => t.predicate.kind);
+    expect(kinds).toContain("EARNINGS_WITHIN");
+    expect(kinds).toContain("EARNINGS_BEAT");
+    expect(kinds).toContain("EARNINGS_MISS");
+    // Wakes, not clocks: every earnings rule is a REVIEW, never a trade.
+    expect(
+      accountSeedTriggers()
+        .filter((t) => t.predicate.kind.startsWith("EARNINGS"))
+        .every((t) => t.action === "REVIEW"),
+    ).toBe(true);
+  });
+
   it("mints fresh ids per call — these are real stored rows now", () => {
     const a = accountSeedTriggers();
     const b = accountSeedTriggers();

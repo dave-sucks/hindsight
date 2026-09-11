@@ -26,6 +26,7 @@ import {
 } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
+import { describeEarningsReport, fetchEarningsWindow } from "@/lib/agent/triggers/earnings";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -198,6 +199,15 @@ export interface RunInput {
     narrative: string;
     date: string;
   } | null;
+  // Earnings on the book this week, live off the calendar at run start
+  // (one call; the same one the trigger evaluator makes). Held and watched
+  // names reporting in the next 7 days, and those that reported in the
+  // last 3 with the figures. Rendered as one block so the run sees the
+  // week whole; the earnings triggers still do the waking.
+  earnings: {
+    reportingSoon: Array<{ ticker: string; date: string; hour: string | null }>;
+    justReported: Array<{ ticker: string; date: string; summary: string }>;
+  };
   intelligencePolicy: IntelligencePolicy;
 }
 
@@ -752,6 +762,31 @@ export async function buildRunInput(
   // quotes). Picks up price-side predicate matches independent of the
   // 15-min cron's delivery cycle.
   // ─────────────────────────────────────────────────────────────────────
+  // Earnings on the book this week — fail-soft, never blocks the run.
+  let earnings: RunInput["earnings"] = { reportingSoon: [], justReported: [] };
+  try {
+    const book = new Set<string>([
+      ...symbols.map((t) => t.toUpperCase()),
+      ...watchlistItems.map((w) => String(w.symbol).toUpperCase()),
+    ]);
+    if (book.size > 0) {
+      const now = new Date();
+      const w = await fetchEarningsWindow({ now, lookaheadDays: 7 });
+      earnings = {
+        reportingSoon: [...w.upcoming.values()]
+          .filter((r) => book.has(r.symbol))
+          .sort((a, b) => a.reportDate.localeCompare(b.reportDate))
+          .map((r) => ({ ticker: r.symbol, date: r.reportDate, hour: r.hour })),
+        justReported: [...w.reported.values()]
+          .filter((r) => book.has(r.symbol))
+          .sort((a, b) => b.reportDate.localeCompare(a.reportDate))
+          .map((r) => ({ ticker: r.symbol, date: r.reportDate, summary: describeEarningsReport(r) })),
+      };
+    }
+  } catch (err) {
+    console.error("[buildRunInput] earnings week failed (non-fatal):", err);
+  }
+
   let triggersMatchingNow: RunInput["triggersMatchingNow"] = [];
   try {
     const { evaluateLiveTriggerMatches } = await import(
@@ -897,6 +932,7 @@ export async function buildRunInput(
     triggersFiredSinceLastRun,
     triggersMatchingNow,
     latestDigest,
+    earnings,
     intelligencePolicy,
   };
 }

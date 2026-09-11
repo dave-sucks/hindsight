@@ -279,6 +279,7 @@ export async function POST(
             triggersFiredSinceLastRun: [],
             triggersMatchingNow: [],
             latestDigest: null,
+            earnings: { reportingSoon: [], justReported: [] },
             intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
           });
 
