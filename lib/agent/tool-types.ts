@@ -142,61 +142,6 @@ export interface MarketContextData {
   apiErrors?: string[];
 }
 
-/** get_stock_data → data */
-export interface StockDataData {
-  quote: {
-    price: number;
-    change: number;
-    changePct: number;
-    high: number;
-    low: number;
-    open: number;
-    prevClose: number;
-  } | null;
-  company: {
-    name: string;
-    sector: string;
-    marketCap: number | null;
-    exchange: string;
-    country: string;
-  } | null;
-  financials: {
-    peRatio: number | null;
-    pbRatio: number | null;
-    high52w: number | null;
-    low52w: number | null;
-    avgVolume10d: number | null;
-    beta: number | null;
-  } | null;
-  technicals: {
-    currentPrice: number;
-    rsi14: number | null;
-    sma20: number | null;
-    sma50: number | null;
-    priceVsSma20: string | null;
-    priceVsSma50: string | null;
-    positionIn52wRange: string;
-    volumeRatio: string | null;
-    trend: string;
-  } | null;
-  analystConsensus: {
-    buy: number;
-    hold: number;
-    sell: number;
-    strongBuy: number;
-    strongSell: number;
-  } | null;
-  priceTargets: {
-    consensus: number | undefined;
-    high: number | undefined;
-    low: number | undefined;
-    median: number | undefined;
-    numAnalysts: number | undefined;
-  } | null;
-  news: NewsItem[];
-  apiErrors?: string[];
-}
-
 /** get_earnings_data → data */
 export interface EarningsDataData {
   nextEarnings: { date: string; epsEstimate: number | null } | null;

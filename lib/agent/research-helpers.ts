@@ -165,31 +165,3 @@ export function quoteAgeMs(
 /** Quotes older than this during market hours mean something is wrong. */
 export const STALE_QUOTE_THRESHOLD_MS = 15 * 60 * 1000;
 
-// ── Technical indicator calculations ────────────────────────────────────────
-
-export function calcRSI(closes: number[], period = 14): number | null {
-  if (closes.length < period + 1) return null;
-  let gains = 0;
-  let losses = 0;
-  for (let i = 1; i <= period; i++) {
-    const diff = closes[i] - closes[i - 1];
-    if (diff > 0) gains += diff;
-    else losses -= diff;
-  }
-  let avgGain = gains / period;
-  let avgLoss = losses / period;
-  for (let i = period + 1; i < closes.length; i++) {
-    const diff = closes[i] - closes[i - 1];
-    avgGain = (avgGain * (period - 1) + (diff > 0 ? diff : 0)) / period;
-    avgLoss = (avgLoss * (period - 1) + (diff < 0 ? -diff : 0)) / period;
-  }
-  if (avgLoss === 0) return 100;
-  const rs = avgGain / avgLoss;
-  return Math.round((100 - 100 / (1 + rs)) * 10) / 10;
-}
-
-export function calcSMA(closes: number[], period: number): number | null {
-  if (closes.length < period) return null;
-  const slice = closes.slice(-period);
-  return Math.round((slice.reduce((a, b) => a + b, 0) / period) * 100) / 100;
-}
