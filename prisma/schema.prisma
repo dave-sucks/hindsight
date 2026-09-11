@@ -276,6 +276,12 @@ model Thesis {
   //   COMPOUNDER = exit only when invalidation triggers fire. Years.
   horizon String? // "CATALYST" | "TARGET" | "TRADE" | "COMPOUNDER"
 
+  // Which buy pattern this plan was written on — an id from
+  // lib/agent/knowledge/setups.ts (BASE_BREAKOUT, PEAD, MA_PULLBACK, …).
+  // Null on every thesis written before the setup catalog (DAV-244); the
+  // writer sets it from PR 4 on, and the scorecard groups by it (PR 11).
+  setupId String?
+
   coreBelief        String? // The actual claim, separate from the trade rationale
   keyAssumptions    String[] @default([]) // Premises that must hold
   invalidationConds String[] @default([]) // What would prove this wrong

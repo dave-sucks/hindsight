@@ -52,6 +52,16 @@ export {
   type SegmentTemplate,
 } from "./podcast-formats";
 
+export {
+  SETUPS,
+  SEAT_SETUPS,
+  getSetup,
+  setupIndex,
+  describeTemplate,
+  type Setup,
+  type SetupId,
+} from "./setups";
+
 import { archetypeIndex } from "./strategy-archetypes";
 import { sourceIndex } from "./source-catalog";
 import { signalIndex } from "./signal-type-catalog";

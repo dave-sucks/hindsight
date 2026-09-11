@@ -2,8 +2,10 @@
  * read_knowledge_library — surfaces the curated knowledge library to
  * the Analyst Builder, Editor, and Manager agents.
  *
- * Three topic modes:
+ * Topic modes:
  *   - "archetype" → full StrategyArchetype by ID (or index if id omitted)
+ *   - "setup"     → full Setup (a buy pattern, TRADING_PLAYBOOK.md Part D)
+ *                   by ID, or the index of all twelve (DAV-244)
  *   - "source"    → full SourceEntry by ID (or index if id omitted)
  *   - "signal"    → full SignalType by ID (or index if id omitted)
  *
@@ -24,20 +26,23 @@ import {
   signalIndex,
   getPodcastFormat,
   podcastFormatIndex,
+  getSetup,
+  setupIndex,
+  describeTemplate,
 } from "@/lib/agent/knowledge";
 
 export const readKnowledgeLibrary = defineTool({
   description:
-    "Read an entry from the Hindsight knowledge library — curated strategy archetypes (trading), vetted research sources, the signal-type taxonomy, AND podcast format archetypes (craft library for the podcast builder/editor). " +
-    "Call with {topic:'archetype'|'source'|'signal'|'podcast-format'} and optionally an id. Without an id you get the index; with an id you get the full entry. " +
+    "Read an entry from the Hindsight knowledge library — curated strategy archetypes (trading), the setup catalog (buy patterns: entry condition, stop, target, trail, time limit), vetted research sources, the signal-type taxonomy, AND podcast format archetypes (craft library for the podcast builder/editor). " +
+    "Call with {topic:'archetype'|'setup'|'source'|'signal'|'podcast-format'} and optionally an id. Without an id you get the index; with an id you get the full entry. " +
     "Trading builders/editors: use this BEFORE suggest_config to ground in a real archetype. " +
     "Podcast builders/editors: use this with topic:'podcast-format' BEFORE suggest_podcast_config to pick a structural format (Daily News Brief, Weekly Roundup, Interview Show, Essay & Analysis, Recap & Reaction, Daily Tracker, Explainer Deep Dive) and adapt it to the user's pitch.",
   schema: z.object({
-    topic: z.enum(["archetype", "source", "signal", "podcast-format"]).describe(
-      "Which catalog to query: 'archetype' for trading styles, 'source' for research sources, 'signal' for signal types, 'podcast-format' for podcast structural formats.",
+    topic: z.enum(["archetype", "setup", "source", "signal", "podcast-format"]).describe(
+      "Which catalog to query: 'archetype' for trading styles, 'setup' for buy patterns, 'source' for research sources, 'signal' for signal types, 'podcast-format' for podcast structural formats.",
     ),
     id: z.string().optional().describe(
-      "The entry ID (e.g. 'EARNINGS_DRIFT', 'SEC_EDGAR', 'INSIDER_BUYING', 'DAILY_NEWS_BRIEF'). Leave empty to list the index.",
+      "The entry ID (e.g. 'EARNINGS_DRIFT', 'BASE_BREAKOUT', 'SEC_EDGAR', 'INSIDER_BUYING', 'DAILY_NEWS_BRIEF'). Leave empty to list the index.",
     ),
   }),
   ui: "tool-ui" as const,
@@ -55,6 +60,11 @@ export const readKnowledgeLibrary = defineTool({
       return args.id
         ? `Reading the ${humanize(args.id)} playbook`
         : "Looking at the strategy playbook library";
+    }
+    if (args.topic === "setup") {
+      return args.id
+        ? `Reading the ${humanize(args.id)} setup`
+        : "Looking at the setup catalog";
     }
     if (args.topic === "signal") {
       return args.id
@@ -130,6 +140,42 @@ export const readKnowledgeLibrary = defineTool({
         // No source emission — the playbook IS the tool row itself,
         // expandable to show the full content. A citation chip would
         // imply an external reference, which this isn't.
+        sources: [],
+      };
+    }
+
+    if (topic === "setup") {
+      if (!id) {
+        const index = setupIndex();
+        return {
+          summary: `${index.length} setups: ${previewNames(index.map((x) => x.name))}`,
+          data: { topic: "setup" as const, mode: "index" as const, count: index.length, index },
+          sources: [],
+        };
+      }
+      const entry = getSetup(id);
+      if (!entry) {
+        return {
+          summary: `Unknown setup: ${id}`,
+          data: {
+            topic: "setup" as const,
+            mode: "entry" as const,
+            found: false,
+            id,
+            hint: `Available setups: ${setupIndex().map((x) => x.id).join(", ")}`,
+          },
+          sources: [],
+        };
+      }
+      return {
+        summary: `Loaded the ${entry.name} setup`,
+        data: {
+          topic: "setup" as const,
+          mode: "entry" as const,
+          found: true,
+          entry,
+          content: formatSetupText(entry),
+        },
         sources: [],
       };
     }
@@ -264,6 +310,7 @@ type ArchetypeEntry = ReturnType<typeof getArchetype>;
 type SourceEntryType = ReturnType<typeof getSource>;
 type SignalEntry = ReturnType<typeof getSignalType>;
 type PodcastFormatEntry = ReturnType<typeof getPodcastFormat>;
+type SetupEntry = ReturnType<typeof getSetup>;
 
 function humanizeToken(s: string): string {
   return s
@@ -350,6 +397,39 @@ function formatArchetypeMarkdown(entry: NonNullable<ArchetypeEntry>): string {
     entry.watchOutFor.forEach((w) => lines.push(`  • ${w}`));
     lines.push("");
   }
+  return lines.join("\n").trim();
+}
+
+function formatSetupText(entry: NonNullable<SetupEntry>): string {
+  const lines: string[] = [];
+  lines.push(`${entry.name} (${entry.code})`);
+  lines.push(entry.summary);
+  lines.push("");
+  lines.push(`Role: ${entry.role === "ENTRY" ? "a buy pattern with its own entry" : "a screen — the entry comes from another setup"}`);
+  lines.push(`Horizons: ${entry.horizons.map(humanizeToken).join(", ")}`);
+  lines.push("");
+  lines.push("Must be true first:");
+  entry.preconditions.forEach((p) => lines.push(`  • ${p}`));
+  lines.push("");
+  lines.push(`Entry: ${entry.entry.text}`);
+  lines.push(`  Condition: ${describeTemplate(entry.entry.template)}`);
+  if (entry.entry.entryVia?.length) lines.push(`  Entered via: ${entry.entry.entryVia.join(", ")}`);
+  entry.entry.confirmation.forEach((c) => lines.push(`  Confirm: ${c}`));
+  if (entry.entry.chaseLimitPct != null) lines.push(`  Chase limit: ${entry.entry.chaseLimitPct}% past the level`);
+  lines.push(`  Buy-now is the normal case: ${entry.entry.buyNowNormal ? "yes" : "no"}`);
+  lines.push("");
+  lines.push(`Stop: ${entry.stop.text}`);
+  lines.push(`Target: ${entry.target.text}`);
+  lines.push(`Size: ${entry.sizing}${entry.riskMultiplier !== 1 ? ` (risk × ${entry.riskMultiplier})` : ""}`);
+  const trail = Object.entries(entry.trail);
+  if (trail.length) {
+    lines.push("Trail:");
+    trail.forEach(([h, t]) => lines.push(`  ${humanizeToken(h)}: ${t}`));
+  }
+  lines.push(`Time: ${entry.time.text}`);
+  lines.push("");
+  lines.push("Failure looks like:");
+  entry.failureSigns.forEach((f) => lines.push(`  • ${f}`));
   return lines.join("\n").trim();
 }
 
