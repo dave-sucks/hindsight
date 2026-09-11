@@ -47,6 +47,8 @@ export function predicateKey(p: TriggerPredicate): string {
       return `${p.kind}:${p.signalType}:${p.sentiment ?? ""}`;
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
+    case "EARNINGS_WITHIN":
+    case "EARNINGS_SINCE":
       return p.kind;
     case "GUIDANCE_CHANGE":
       return `${p.kind}:${p.direction}`;

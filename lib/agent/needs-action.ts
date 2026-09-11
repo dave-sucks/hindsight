@@ -230,6 +230,10 @@ export function describePredicate(p: TriggerPredicate): string {
       return `earnings beat${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`;
     case "EARNINGS_MISS":
       return `earnings miss${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`;
+    case "EARNINGS_WITHIN":
+      return `reports within ${p.days}d`;
+    case "EARNINGS_SINCE":
+      return `${p.min}–${p.max}d after the report`;
     case "GUIDANCE_CHANGE":
       return `guidance ${p.direction.toLowerCase()}`;
     case "FILING":

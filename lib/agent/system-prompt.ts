@@ -148,6 +148,28 @@ export function buildDailyRunSystemPromptV2(
     sections.push(`## Yesterday's portfolio digest\n\n${digest}`);
   }
 
+  // ── Earnings on the book this week (live off the calendar) ─────────────
+  const soon = runInput.earnings?.reportingSoon ?? [];
+  const justReported = runInput.earnings?.justReported ?? [];
+  if (soon.length > 0 || justReported.length > 0) {
+    const lines: string[] = ["## Earnings on your book this week"];
+    if (soon.length > 0) {
+      lines.push(
+        "Reporting: " +
+          soon
+            .map((e) => `${e.ticker} ${e.date}${e.hour === "bmo" ? " before open" : e.hour === "amc" ? " after close" : ""}`)
+            .join(" · "),
+      );
+    }
+    if (justReported.length > 0) {
+      lines.push("Just reported: " + justReported.map((e) => `${e.ticker} ${e.date} — ${e.summary}`).join(" · "));
+    }
+    lines.push(
+      "A held name reporting this week is a sizing question before the print; a name that just reported is re-underwritten on the numbers. The earnings triggers on these names handle the wake — this line is so you see the week whole.",
+    );
+    sections.push(lines.join("\n"));
+  }
+
   // ── Horizon glossary ───────────────────────────────────────────────────
   sections.push(
     [
@@ -252,6 +274,13 @@ Each morning:
          "Raised the target" is not a rejection — the goalpost guard will reject the call. Narrating a rejection in prose without one of (a)/(b)/(c) is a run failure.
        - **EXIT** → \`close_position\`. The tool owns the HOLDING → RETIRED (reason SOLD) flip (on fill/approval) — you do NOT set \`change_status\`. Pair a rationale-only \`update_thesis\` to log why you exited. **On any protective exit (reason=STOP) you MUST answer \`belief_survived\`** — did the *story* break, or did you just sell on price? Selling a trailing give-back, or a stop tripped in a broad-market flush, with the thesis intact → \`belief_survived: true\`, and the name returns to WATCHING so a later run can arm a reclaim entry. An invalidation tripped, the catalyst failed, the bear case confirmed → \`false\`, and it retires for good. This is not paperwork: without it a name you stopped out of on noise is dead forever (28 of 29 sold theses went dark that way, including three *green* exits). **If the row carries \`heldThroughFloor\`** (the principal rejected or let expire this protective exit \`heldThroughCount\`× in the last 7 days and price is still under the floor), still propose the exit — a standing trigger alerts every day its condition is true; that is the system working, never go quiet. But make the proposal WORTH reading: state which day of the breach this is, quote their \`rejectMessage\` if present, and include \`recentLow\` with a concrete suggested new floor level ("recent low $842 — if you'd rather keep holding, consider moving the floor to ~$840") so the principal can move the line when declining. You may NOT move the floor yourself — see the ratchet rule.
        - **REVIEW** → \`update_thesis\` with the substantive change you decide. Cite signal_ids that informed the update.
+       - **REVIEW from an EARNINGS trigger** — the row's summary carries the figures (EPS and revenue vs the street, the surprise, or the upcoming date and estimate). Read them in this order, then act through the same tools as any review:
+           · **"Reports within N days"** — a sizing question, not a trade. Held: are we sized for a ±10% open? Trim, hold through, or move the floor to where a bad print breaks the story; say which. Watched: do not buy into the print — hold the buy level until the report is known.
+           · **Beat on both lines, guidance up** — the strong case. Raise the target and the floor via \`update_thesis\` / \`manage_position\`; consider pressing.
+           · **EPS beat, revenue missed** — the beat came from cost, not demand. Do not raise anything on it.
+           · **Beat, but the stock is DOWN on the day** — the market wanted more. Read the call (\`get_earnings_data\`, \`web_search\`) before trusting the number; tighten the floor.
+           · **Miss** — decide wrong vs early. A broken assumption → \`close_position\` / \`INVALIDATED\`; an intact story that is early → keep, floor under structure, say what would change your mind.
+         A surprise on a tiny estimate (under $0.05) is blanked by the system — judge those on the dollars.
        - **REVIEW fire on a WATCH WITH NO CLOCK** (\`direction: null\` with agent-authored wake triggers, no plan, no review clock — NOT an unresearched seed): the wake is asking one question — do you want this name back? Three honest answers, pick one: **elevate** — commit the full view in one \`update_thesis\` (direction, horizon, prices, belief, assumptions, invalidations, triggers — the same shape as a seed commitment); **re-arm** — \`update_thesis\` with \`edit_triggers\` moving the wake triggers to the levels that now matter (\`add_triggers\` a \`REVIEW_CADENCE\` trigger if the name has earned a review cadence — say why); or **let go** — \`update_thesis(change_status: "ARCHIVED")\`. A rationale-only row that changes nothing is the failure mode: the same wake refires and you re-decide this daily.
        - **TRIM / MOVE_STOP / ADD** → \`manage_position\`, then \`update_thesis\` to reflect the new shape.
    - **Press** — the thesis is *stronger* than at entry (catalyst confirming, estimates/targets rising, healthy structure): \`manage_position(add_to_position)\` to scale in (bounded by the 2× per-name ceiling), then \`update_thesis\` to raise the target — supply \`structural_unchanged_reason\` (or edit the belief) to re-attest conviction — and \`manage_position(move_stop_to_breakeven)\` or \`update_targets\` to raise the stop under the bigger position. Add on confirmed strength, or on a market-wide pullback that leaves the thesis intact — never add into company-specific bad news.

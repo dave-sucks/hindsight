@@ -198,6 +198,16 @@ function predicateKindValue(p: TriggerPredicate): {
         kind: "earnings miss",
         value: p.minSurprisePct ? `≥${p.minSurprisePct}%` : null,
       };
+    case "EARNINGS_WITHIN":
+      return {
+        kind: "reports within",
+        value: p.days != null ? plural(p.days, "day") : null,
+      };
+    case "EARNINGS_SINCE":
+      return {
+        kind: "after the report",
+        value: p.min != null && p.max != null ? (p.min === p.max ? plural(p.min, "day") : `${p.min}–${p.max} days`) : null,
+      };
     case "GUIDANCE_CHANGE":
       return {
         kind: "guidance",
@@ -258,6 +268,10 @@ function predicateDescription(p: TriggerPredicate): string {
       return p.minSurprisePct
         ? `Fires on an earnings miss of at least ${p.minSurprisePct}%.`
         : "Fires on any earnings miss.";
+    case "EARNINGS_WITHIN":
+      return `Fires once when the next earnings report is ${p.days} day${p.days === 1 ? "" : "s"} away or closer — the heads-up to size for it.`;
+    case "EARNINGS_SINCE":
+      return `Fires once when the last earnings report is ${p.min}–${p.max} days old — the window to act on the reaction.`;
     case "GUIDANCE_CHANGE":
       return `Fires when company issues ${p.direction?.toLowerCase()} guidance revision.`;
     case "FILING":
@@ -875,7 +889,7 @@ export function TriggerGroups({
 // applyTriggerAdd rejects them un-held as the backend backstop.
 // All fire through the same evaluator → trigger pipeline as every trigger.
 
-type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL" | "CADENCE";
+type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL" | "CADENCE" | "EARNINGS";
 
 export function AddTriggerDialog({
   held,
@@ -912,6 +926,11 @@ export function AddTriggerDialog({
   // Agent Watch — a review schedule in days, so no direction and no $ or %.
   // Adding one is what makes a plain watch an Agent Watch.
   const isCadence = criterion === "CADENCE";
+  // Earnings heads-up — days before the next report, so no direction and
+  // no $ or %. Same input shape as the review clock.
+  const isEarnings = criterion === "EARNINGS";
+  /** Day-valued criteria: integer input, "days" suffix, no direction. */
+  const isDays = isCadence || isEarnings;
   /** %-valued criteria share the % input adornment + 0.5 step. */
   const isPct = isMove || isGain || isTrail;
   const showFireMode = action === "EXIT" && held;
@@ -926,6 +945,7 @@ export function AddTriggerDialog({
     { v: "MOVE", l: held || !allowAbsolutePrice ? "% Move" : "% Movement" },
     ...(held ? ([{ v: "GAIN", l: "% Gain" }, { v: "TRAIL", l: "% Trail" }] as const) : ([] as const)),
     { v: "CADENCE", l: "Agent Watch" },
+    { v: "EARNINGS", l: "Earnings" },
   ];
 
   const dirOptions =
@@ -946,7 +966,7 @@ export function AddTriggerDialog({
     if (criterion === "GAIN") setDir("UP");
     else if (criterion === "MOVE") setDir("DOWN");
     else if (criterion === "PRICE") setDir("BELOW");
-    if (criterion === "CADENCE") setAction("REVIEW");
+    if (criterion === "CADENCE" || criterion === "EARNINGS") setAction("REVIEW");
   }, [criterion]);
 
   // Default fire mode by action — EXIT → DIRECT, else TACTICAL. Mirrors the
@@ -966,13 +986,17 @@ export function AddTriggerDialog({
     (!(isMove || isTrail) || num < 100) &&
     // Zod floors the trail at 1% (sub-1% off the peak re-fires on noise).
     (!isTrail || num >= 1) &&
-    (!isCadence || Number.isInteger(num));
+    (!isDays || Number.isInteger(num)) &&
+    // The calendar lookahead is 14 days — a longer heads-up can't be seen.
+    (!isEarnings || num <= 14);
 
   async function save() {
     if (!valid) return;
     setPending(true);
     setErr(null);
-    const predicate = isCadence
+    const predicate = isEarnings
+      ? { kind: "EARNINGS_WITHIN", days: num }
+      : isCadence
       ? { kind: "REVIEW_CADENCE", days: num }
       : isGain
       ? { kind: "GAIN_FROM_ENTRY", pct: num, direction: dir }
@@ -1086,7 +1110,7 @@ export function AddTriggerDialog({
             has no direction (orientation follows the thesis direction), so
             the group collapses to the % input alone. */}
         <ButtonGroup className="w-full">
-          {isTrail || isCadence ? null : (
+          {isTrail || isDays ? null : (
             <Select
               value={dir}
               onValueChange={(v) => {
@@ -1109,7 +1133,7 @@ export function AddTriggerDialog({
             </Select>
           )}
           <InputGroup>
-            {isPct || isCadence ? null : (
+            {isPct || isDays ? null : (
               <InputGroupAddon>
                 <InputGroupText>$</InputGroupText>
               </InputGroupAddon>
@@ -1118,22 +1142,25 @@ export function AddTriggerDialog({
               type="number"
               inputMode="decimal"
               value={val}
-              min={isTrail || isCadence ? 1 : 0}
-              step={isCadence ? 1 : isPct ? 0.5 : 0.01}
-              placeholder={isCadence ? "7" : isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"}
+              min={isTrail || isDays ? 1 : 0}
+              max={isEarnings ? 14 : undefined}
+              step={isDays ? 1 : isPct ? 0.5 : 0.01}
+              placeholder={isEarnings ? "3" : isCadence ? "7" : isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"}
               onChange={(e) => setVal(e.target.value)}
               disabled={pending}
             />
-            {isPct || isCadence ? (
+            {isPct || isDays ? (
               <InputGroupAddon align="inline-end">
-                <InputGroupText>{isCadence ? "days" : "%"}</InputGroupText>
+                <InputGroupText>{isDays ? "days" : "%"}</InputGroupText>
               </InputGroupAddon>
             ) : null}
           </InputGroup>
         </ButtonGroup>
 
         <p className="text-xs text-muted-foreground">
-          {isCadence
+          {isEarnings
+            ? "Fires once when the next earnings report is this many days away — the heads-up to decide whether to hold through it, trim, or wait. Beat and miss are separate triggers the analyst sets."
+            : isCadence
             ? "The agent reviews this name every N days, counting from its last real review. Without it, nothing reviews the name until another trigger fires."
             : isGain
             ? `Fires when the position is ${dir === "UP" ? "up" : "down"} this much from entry (avg cost) — cumulative, not a single day.`

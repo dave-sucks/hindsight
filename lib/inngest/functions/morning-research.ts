@@ -6,6 +6,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { MODES } from "@/lib/agent/modes";
 import { buildRunInput } from "@/lib/agent/run-input";
+import { ensureAccountStandingRules } from "@/lib/agent/triggers/seed-account";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import {
@@ -211,6 +212,17 @@ export const morningResearch = inngest.createFunction(
         const alpacaCreds =
           (await resolveAlpacaCredentials(config.userId, runEnvironment)) ??
           undefined;
+
+        // Standing rules the account may predate (the earnings wakes,
+        // 2026-09-10). One-time top-up, stamped; a no-op every day after.
+        // Fail-soft: a missed top-up costs one day of earnings wakes; a
+        // throw here would cost the whole daily run.
+        try {
+          const added = await ensureAccountStandingRules(config.accountId);
+          if (added > 0) console.log(`[morning-research] account=${config.accountId} +${added} standing rule(s)`);
+        } catch (err) {
+          console.error("[morning-research] ensureAccountStandingRules failed (non-fatal):", err);
+        }
 
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
         const systemPrompt = buildDailyRunSystemPromptV2(agentConfig, runInput);

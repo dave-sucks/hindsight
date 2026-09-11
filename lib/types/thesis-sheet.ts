@@ -25,6 +25,9 @@ export interface TriggerPredicate {
   minSurprisePct?: number;
   formType?: string;
   days?: number;
+  /** EARNINGS_SINCE — days after the report, inclusive. */
+  min?: number;
+  max?: number;
   trailPct?: number;
   predicates?: TriggerPredicate[];
 }
@@ -346,4 +349,42 @@ export interface ThesisStateLevels {
   target: ThesisStateLevel | null;
   all: ThesisStateLevel[];
   next: { above: ThesisStateLevel | null; below: ThesisStateLevel | null };
+}
+
+/**
+ * The earnings layer (GET /api/theses/:id/earnings) — live from the vendor
+ * when the sheet opens, never stored. The next scheduled report and the
+ * last few reported quarters. What the system DID about a report (fired,
+ * reviewed, traded) is the activity log, not this.
+ */
+export interface EarningsResponse {
+  /** Next scheduled report. `epsActual` is null. */
+  next: EarningsCalendarEntry | null;
+  /** Most recent report, with revenue — when the calendar still carries it. */
+  latest: EarningsCalendarEntry | null;
+  /** EPS history, newest first. */
+  recent: Array<{
+    /** Fiscal period end, YYYY-MM-DD. */
+    period: string;
+    actual: number | null;
+    estimate: number | null;
+    /** Positive = beat, negative = miss, null = not scorable. */
+    surprisePct: number | null;
+  }>;
+}
+
+/** One calendar row — the serialized `EarningsReport` from lib/agent/triggers/earnings. */
+export interface EarningsCalendarEntry {
+  symbol: string;
+  /** YYYY-MM-DD */
+  reportDate: string;
+  /** "bmo" | "amc" | "" — before open / after close, when known. */
+  hour: string | null;
+  epsActual: number | null;
+  epsEstimate: number | null;
+  surprisePct: number | null;
+  revenueActual: number | null;
+  revenueEstimate: number | null;
+  quarter: number | null;
+  year: number | null;
 }

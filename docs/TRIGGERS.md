@@ -39,14 +39,18 @@ An invalid trigger is dropped at evaluation, so the gate rejects it up front.
 | `VS_SMA` | Price vs 50/200-day SMA | `period`, `direction` |
 | `RSI` | RSI vs threshold (**stubbed — never fires**) | `threshold`, `direction` |
 | `SIGNAL_TYPE` | A routed signal of a given type/sentiment/urgency | `signalType`, `sentiment?`, `minUrgency?` |
-| `EARNINGS_BEAT` / `EARNINGS_MISS` | Earnings surprise | `minSurprisePct?` |
+| `EARNINGS_BEAT` / `EARNINGS_MISS` | Earnings surprise — reported EPS vs estimate, read off the Finnhub calendar on the cron (one firm-wide call per pass; `triggers/earnings.ts`). Fires at the first open after the report, once per report (3-day lookback inside the 7-day cooldown). The audit row carries the figures. | `minSurprisePct?` |
+| `EARNINGS_WITHIN` | The heads-up **before** a report: "this stock reports within N days." Same calendar call, 14-day lookahead. Fires once per approaching report (30-day cooldown). The audit row carries the date, bell, and estimates. | `days` (1–14) |
+| `EARNINGS_SINCE` | The window **after** a report: "reported between min and max days ago" (0 = the report day). The post-report drift entry window, once the reaction is known. Same calendar, 5-day lookback. Fires once per report (30-day cooldown). | `min`, `max` (0–5) |
 | `GUIDANCE_CHANGE` | Guidance revision | `direction` |
 | `FILING` | SEC form filed | `formType` |
 | `REVIEW_CADENCE` | N days since the last actual review (`lastReviewedAt`) | `days` |
 | `AND` / `OR` | Composite | `predicates[]` |
 
-The two the UI mints are **Target Price** (`PRICE_ABOVE`/`PRICE_BELOW`) and
-**Movement Amount** (`PRICE_MOVE_PCT`). The rest come from horizon defaults
+The UI mints **Target Price** (`PRICE_ABOVE`/`PRICE_BELOW`), **Movement
+Amount** (`PRICE_MOVE_PCT`), the held-only **Gain / Trail** pair, the
+**Agent Watch** clock (`REVIEW_CADENCE`), and the **Earnings** heads-up
+(`EARNINGS_WITHIN`). The rest come from horizon defaults
 (`triggers/defaults.ts`) or the agent.
 
 `GAIN_FROM_ENTRY` + `TRAILING_FROM_HIGH` **are the gain-protection system**
@@ -118,7 +122,8 @@ sharing the pure `evaluateTrigger` in `triggers/evaluate.ts`:
 | **`TRAILING_FROM_HIGH`** (HOLDING-only) | ✅ **fires** | — | ✅ |
 | `VS_SMA` | ❌ (no SMA) | — | ✅ |
 | `RSI` | ❌ stub | ❌ stub | ❌ stub |
-| `EARNINGS_*` / `GUIDANCE_CHANGE` / `FILING` / `SIGNAL_TYPE` | — | ✅ | — |
+| **`EARNINGS_BEAT` / `EARNINGS_MISS` / `EARNINGS_WITHIN` / `EARNINGS_SINCE`** | ✅ **fires** (calendar) | ✅ (beat/miss only, if a signal ever carries a surprise) | — |
+| `GUIDANCE_CHANGE` / `FILING` / `SIGNAL_TYPE` | — | ✅ (routing paused — inert) | — |
 | `REVIEW_CADENCE` | ✅ | — | ✅ |
 
 **The Movement-Amount nuance (read this):** a **daily** (`1D`) `PRICE_MOVE_PCT`

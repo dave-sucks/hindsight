@@ -387,6 +387,32 @@ junk like sub-$5 penny stocks from movers, fence-rejected names)
 get NO thesis row — narrate the dismissal here and move on. Those
 are the SKIP bucket.
 
+### Earnings-driven discovery — when the ask names a report window
+
+If the run was started with an earnings framing — "do discovery off
+today's reports", "this week's earnings", "last week's" — the pool is
+the calendar, not the movers list. Call
+\`get_earnings_calendar(window: "reported", days: N, scope: "universe")\`
+with N matching the ask (today = 1, this week = 5, last week = 10). It
+returns who reported, EPS and revenue against the estimate, and the
+surprise, biggest beats first. How to read it, in order of weight:
+
+  1. **Both lines beat, and guidance went up** — the setup with the
+     best-documented edge (post-earnings drift). Top of the list.
+  2. **EPS beat but revenue missed** — the beat came from cost, not
+     demand. Discount it.
+  3. **Beat but the stock is DOWN** — the market wanted more; read the
+     call before trusting the number. Get the reaction from
+     \`get_stock_data\`.
+  4. **A tiny estimate** (under $0.05 EPS) has no surprise % — the
+     system blanks it. Judge those, and sub-$100M-revenue names, on the
+     dollars.
+
+Then Step 1.5 as normal: narrate, cheap research, score. Provenance for
+these candidates: source_kind "WEB_SEARCH", source_rationale naming
+the report — "get_earnings_calendar reported 09-10: beat EPS 8%, missed
+revenue, −5% on the day".
+
 ### Step 2 — Pass-1 research on triaged survivors
 
 For every candidate you flagged in triage, run Pass-1 research. This
@@ -467,10 +493,12 @@ For each researched candidate, exactly one of these four actions:
     the soft watch ("decided not to trade, keep eyes on it")
   - \`ticker\` + \`reasoning_summary\`: what you saw, why not now
   - \`triggers\`: whatever wakes you want, or none. A wake answers
-    "what brings this back to me?" — **a price level, a price move, or
-    a time-elapsed rung**; those are the kinds that fire today
-    (EARNINGS_BEAT / EARNINGS_MISS / GUIDANCE_CHANGE / FILING /
-    SIGNAL_TYPE will not fire — news and earnings routing is paused).
+    "what brings this back to me?" — **a price level, a price move, an
+    earnings beat / miss, or "reports within N days"
+    (EARNINGS_WITHIN)**; those are the kinds that fire today. The
+    earnings ones read the published calendar, no news needed.
+    (GUIDANCE_CHANGE / FILING / SIGNAL_TYPE will not fire — news
+    routing is paused.)
     A row with NO triggers at all is legal: it is a name on the list,
     visible on the watchlist screen, waiting for a person rather than
     the system. Choose that deliberately rather than by accident. Add

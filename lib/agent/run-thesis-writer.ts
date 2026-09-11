@@ -391,6 +391,24 @@ decision by the orchestrator — you are writing the research and the plan.`;
     naming the buy, floor and target trigger ids from EXISTING THESIS,
     keeping ≥1 REVIEW wake — the level columns follow the triggers.`;
 
+  // Earnings triggers fire off the published calendar (no news needed).
+  // The account already carries the basics for every name; the writer
+  // authors one only where the report IS the thesis.
+  const earningsTriggerBlock = `
+EARNINGS TRIGGERS — three kinds, all live (they read the earnings
+calendar, not news):
+  • EARNINGS_WITHIN { days } — "reports within N days", the heads-up
+    BEFORE the report. Fires once per approaching report.
+  • EARNINGS_BEAT / EARNINGS_MISS { minSurprisePct? } — reported EPS
+    against the estimate, at the first open after the report.
+  The account rules already give EVERY name a 3-day heads-up and a
+  review on any beat or miss, so most theses need none of these. Author
+  one only when the report is the thesis: a CATALYST built on the print
+  wants a tighter bar (EARNINGS_BEAT minSurprisePct 5 → REVIEW, or the
+  miss → EXIT on a held name); a long-dated COMPOUNDER may want a wider
+  heads-up (EARNINGS_WITHIN 7). Never ENTER on a beat by itself — a beat
+  the stock sold on is the market saying it wanted more; price the entry.`;
+
   const priorExitBlock = opts.priorExit
     ? `
 ⚠ RECENTLY SOLD — YOU exited this name ${opts.priorExit.daysAgo} day${opts.priorExit.daysAgo === 1 ? "" : "s"} ago${opts.priorExit.exitPrice != null ? ` at $${opts.priorExit.exitPrice}` : ""}${opts.priorExit.closeReason ? ` (${opts.priorExit.closeReason})` : ""}.
@@ -531,6 +549,7 @@ every field; the judgment rules:
      for four months without buying.
 
 ${triggerBlock}
+${earningsTriggerBlock}
 ${priorExitBlock}
 If submit_thesis returns validation errors, fix EXACTLY the listed fields
 and call it again — do NOT rewrite the research note. When it returns

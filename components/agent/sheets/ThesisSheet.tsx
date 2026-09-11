@@ -59,6 +59,7 @@ import {
   type ResearchCitation,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import type { StockCandle } from "@/lib/actions/finnhub.actions";
+import type { EarningsResponse } from "@/lib/types/thesis-sheet";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -665,6 +666,93 @@ function ScoringGauge({ score, max }: { score: number; max: number }) {
 // with complete data. Each block renders iff its value is present — no
 // tri-state (`real : loading-skeleton : null`), no partial-paint window.
 
+// ── EarningsBlock ──────────────────────────────────────────────────────
+// The earnings layer, live from the vendor when the sheet opens — never
+// stored, like the price at the top of the sheet. Next report (date, bell,
+// street estimate) and the last few quarters as beat/miss. Same visual
+// language as Trade Structure below: one labelled row of cells. Renders
+// nothing when the vendor has nothing, so a ticker with no coverage
+// doesn't get an empty heading. What the system DID about a report lives
+// in the activity feed, not here. See docs/plans/MARKET_DATA.md §2.
+
+function fmtReportDate(iso: string, hour: string | null): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  const n = new Date();
+  const todayUtc = Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
+  const days = Math.round((d.getTime() - todayUtc) / 86_400_000);
+  const rel = days === 0 ? "today" : days === 1 ? "tomorrow" : days > 0 ? `${days}d` : `${Math.abs(days)}d ago`;
+  const bell = hour === "bmo" ? " · before open" : hour === "amc" ? " · after close" : "";
+  return `${label} · ${rel}${bell}`;
+}
+
+function EarningsBlock({ data }: { data: EarningsResponse }) {
+  const hasNext = data.next != null;
+  const scored = data.recent.filter((q) => q.surprisePct != null).slice(0, 4);
+  if (!hasNext && scored.length === 0) return null;
+
+  const cells: { label: string; value: React.ReactNode; tooltip?: string }[] = [];
+  if (data.next) {
+    const est = data.next.epsEstimate;
+    cells.push({
+      label: "Next report",
+      value: fmtReportDate(data.next.reportDate, data.next.hour),
+      tooltip: est != null ? `Street expects EPS $${est.toFixed(2)}.` : undefined,
+    });
+  }
+  if (scored.length > 0) {
+    const beats = scored.filter((q) => (q.surprisePct as number) >= 0).length;
+    cells.push({
+      label: `Last ${scored.length}`,
+      value: (
+        <span className="inline-flex items-center gap-1.5">
+          {scored.map((q) => {
+            const pct = q.surprisePct as number;
+            const beat = pct >= 0;
+            return (
+              <span
+                key={q.period}
+                className={beat ? "text-emerald-500" : "text-red-500"}
+                title={`${q.period}: EPS ${q.actual != null ? `$${q.actual.toFixed(2)}` : "—"} vs ${q.estimate != null ? `$${q.estimate.toFixed(2)}` : "—"} est`}
+              >
+                {beat ? "+" : "−"}
+                {Math.abs(pct).toFixed(1)}%
+              </span>
+            );
+          })}
+        </span>
+      ),
+      tooltip: `Beat ${beats} of the last ${scored.length} quarters. Newest first; EPS vs the street estimate.`,
+    });
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+        Earnings
+      </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+        {cells.map((c, i) => (
+          <span key={c.label} className="inline-flex items-center gap-1.5">
+            {i > 0 && <span className="text-muted-foreground/40">·</span>}
+            <span className="text-muted-foreground">{c.label}</span>
+            {c.tooltip ? (
+              <Tooltip>
+                <TooltipTrigger render={<span className="font-medium tabular-nums cursor-default" />}>
+                  {c.value}
+                </TooltipTrigger>
+                <TooltipContent className="text-xs">{c.tooltip}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="font-medium tabular-nums">{c.value}</span>
+            )}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── TradeStructureBlock ───────────────────────────────────────────────
 // Compact single-row block of trade-shape mechanics: next review (with
 // the absolute date in tooltip), max hold (TRADE horizon only — see
@@ -1137,6 +1225,9 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
   const [loaded, setLoaded] = useState(false);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(true);
+  // Earnings layer — own region, never gates the paint, no skeleton (the
+  // block simply appears when the vendor answers; absence is a valid state).
+  const [earnings, setEarnings] = useState<EarningsResponse | null>(null);
   const [candles, setCandles] = useState<StockCandle[] | null>(null);
   const [candlesLoading, setCandlesLoading] = useState(true);
   const [coverage, setCoverage] = useState<AnalystCoverageData | null>(null);
@@ -1156,9 +1247,28 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     setQuote(null);
     setCandles(null);
     setCoverage(null);
+    setEarnings(null);
     setQuoteLoading(true);
     setCandlesLoading(true);
     setCoverageLoading(true);
+  }, [thesis_id]);
+
+  // Earnings layer — next report + recent quarters, live from Finnhub.
+  // Fails soft: a vendor miss leaves the block absent.
+  useEffect(() => {
+    if (!thesis_id) return;
+    let cancelled = false;
+    fetch(`/api/theses/${thesis_id}/earnings`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: EarningsResponse | null) => {
+        if (!cancelled) setEarnings(json);
+      })
+      .catch(() => {
+        /* absent block is the failure state */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [thesis_id]);
 
   // Durable dossier — the ONLY fetch that gates the paint. Re-runs on a
@@ -1575,6 +1685,12 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       {state ? (
         <TradeStructureBlock state={{ ...state, resolved }} />
       ) : null}
+
+      {/* ── Earnings ─────────────────────────────────────────── */}
+      {/* Live from the vendor; next report + last quarters. Sits with the
+          trade-shape mechanics because "reports in 3 days" is a sizing
+          fact, the same class of thing as Next review. */}
+      {earnings ? <EarningsBlock data={earnings} /> : null}
 
       {/* ── Variant View (Conviction Expression v4) ─────────── */}
       {/* The writer's contrarian take — "consensus thinks X, I think Y."

@@ -106,6 +106,10 @@ function describePredicate(p: TriggerPredicate): string {
       return `earnings beat${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`;
     case "EARNINGS_MISS":
       return `earnings miss${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`;
+    case "EARNINGS_WITHIN":
+      return `earnings report within ${p.days} day${p.days === 1 ? "" : "s"}`;
+    case "EARNINGS_SINCE":
+      return `${p.min}–${p.max} days after the earnings report`;
     case "GUIDANCE_CHANGE":
       return `guidance ${p.direction}`;
     case "FILING":
@@ -318,6 +322,15 @@ DECISION FRAMEWORK
      confirmed → \`false\`, and it retires for good. Omitting it retires the
      name by default: that is how 28 of 29 sold theses went dark, including
      three green protective exits (ARQT +$845, VRDN +$445, XENE +$966).
+   - **An EARNINGS trigger.** The kickoff carries the figures. A beat is
+     not a buy and a miss is not a sell by itself — the reaction is the
+     information: a beat the stock is DOWN on means the market wanted
+     more (read the call before trusting the number, tighten the floor);
+     a miss the stock shrugged off was priced in. "Reports within N
+     days" is a sizing question — trim or floor for a ±10% open, never
+     add into the print. On a miss with a broken assumption, EXIT and
+     answer belief_survived=false; on a miss with the story intact, keep
+     it and say what would change your mind.
    - **WATCHING → HOLDING promotion (entry triggers).** When the thesis
      status is WATCHING and the action is ADD, call place_trade for the
      entry. The trade tool owns the WATCHING → HOLDING flip — on immediate
