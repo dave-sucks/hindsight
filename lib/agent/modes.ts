@@ -598,7 +598,6 @@ export function buildPrincipalSystemPrompt(opts: {
     sectors: string[];
     industries: string[];
     themes: string[];
-    feeds: string[];
     /** Universe cap band in dollars. null = unbounded on that end. */
     marketCapMin?: number | null;
     marketCapMax?: number | null;
@@ -629,7 +628,6 @@ This chat is pinned to one analyst. Every write tool (place_trade, close_positio
   • Sectors: ${scope.sectors.join(", ") || "—"}
   • Industries: ${scope.industries.join(", ") || "—"}
   • Themes: ${scope.themes.join(", ") || "—"}
-  • Feeds: ${scope.feeds.join(", ") || "—"}
   • Market cap band: ${
     scope.marketCapMin == null && scope.marketCapMax == null
       ? "no bound"
@@ -675,7 +673,7 @@ ${scopeBlock}
 ## DATA MODEL (the rows you can read + write)
 ══════════════════════════════════════════════════════════════════════
 
-**AgentConfig** — the analyst. Universe fields (sectors / industries / themes / marketCap / feeds / exclusionList), strategy prompt (\`analystPrompt\`), sizing (\`minConfidence\`, \`maxPositionSize\`, \`maxOpenPositions\`), \`intelligencePolicy\`, \`watchlist\`.
+**AgentConfig** — the analyst. Universe fields (sectors / industries / themes / marketCap / exclusionList), strategy prompt (\`analystPrompt\`), sizing (\`minConfidence\`, \`maxPositionSize\`, \`maxOpenPositions\`), \`intelligencePolicy\`, \`watchlist\`.
 
 **ResearchRun** — one execution. Mode (MORNING_PLAN / INTRADAY_TACTICAL / DISCOVERY / PRINCIPAL_CHAT / PODCAST_SEGMENT), status (RUNNING / COMPLETE / FAILED), \`parameters\` snapshot, \`agentConfigId\`. Children: \`Thesis[]\`, \`TradeDecision[]\`, \`RunEvent[]\`, \`RunMessage[]\`.
 
@@ -718,11 +716,10 @@ Nothing auto-trades. When the account's approval toggle is on for a side, every 
 ## UNIVERSE — the discovery fence
 ══════════════════════════════════════════════════════════════════════
 
-Each analyst has a Universe = the set of names + feeds in scope. Dimensions:
+Each analyst has a Universe = the set of names in scope. Dimensions:
 
   • \`sectors\` (broad GICS) · \`industries\` (narrower GICS) · \`themes\` (analyst-defined)
   • \`marketCapMin\` / \`marketCapMax\` · \`exclusionList\` (hard reject)
-  • \`feeds\` (firm-aggregate firehoses — canonical FEEDS = EARNINGS_CALENDAR / MARKET_MOVERS_GAINERS / MARKET_MOVERS_LOSERS / MARKET_MOVERS_ACTIVES; mirrors \`Signal.aggregateType\` 1:1)
   • \`watchlist\` (always in-scope bypass)
   • Open positions (always in-scope bypass)
 
@@ -995,7 +992,6 @@ Write a DETAILED, opinionated strategy prompt (3–5+ paragraphs) covering:
 
 Then call **suggest_config** with EVERY required field filled, including all four Universe fields (sectors, industries, themes, marketCapMin/Max) that came out of the interview — leave a field empty only if the user actively chose "no filter on that axis".
 
-**Feeds seeding.** When you read the archetype via read_knowledge_library, the "Default firm-aggregate feeds" line tells you which firm-wide firehoses that playbook consumes (e.g. Earnings Drift → EARNINGS_CALENDAR; Momentum Breakout → MARKET_MOVERS_GAINERS + MARKET_MOVERS_ACTIVES + EARNINGS_CALENDAR). Seed \`universe.feeds\` with exactly those values. If the archetype lists no default feeds (Deep Value, Insider Cluster, etc. — the firehose isn't part of their daily workflow), omit the field or pass \`[]\`. Analysts without a feed subscription still see aggregates fenced to their watchlist/position tickers, and can always pull on-demand via get_earnings_calendar / get_market_movers — so "no feed" is a valid default, not a gap.
 
 ### Step 6 — Refine
 If the user wants changes, ask_question for the specific tradeoff, optionally re-validate, then suggest_config again.
@@ -1005,11 +1001,10 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 2. read_knowledge_library with topic:"archetype" at LEAST once before suggest_config.
 3. get_market_context + discover_signals_for_fence BOTH called before suggest_config.
 4. Watchlist tickers in suggest_config MUST come from discover_signals_for_fence.tickerFrequency — not hallucinated.
-5. **\`universe.feeds\` is MANDATORY when the archetype has defaultFeeds.** Copy them verbatim from the read_knowledge_library "Default firm-aggregate feeds" line into \`universe.feeds\` on suggest_config. Omitting feeds when the archetype provides them is a HARD VIOLATION — the analyst will be blind to the firehoses they were designed around. Canonical names: EARNINGS_CALENDAR, MARKET_MOVERS_GAINERS, MARKET_MOVERS_LOSERS, MARKET_MOVERS_ACTIVES. Only an archetype with NO defaultFeeds (Deep Value, Insider Cluster) may omit the field.
 
 5a. **Respect sector-agnostic archetypes.** If the archetype's promptSkeleton or universeHints leaves sectors/industries empty (e.g., an intraday scalper that trades whatever moves), pass \`sectors: []\`, \`industries: []\`, \`themes: []\` on suggest_config. Do NOT synthesize a sector fence from discover_signals_for_fence output if the archetype is sector-agnostic — that fence will silently filter out the very names the strategy targets. The marketCap / exclusion fields are still your friends; the sector ones aren't always.
 
-5b. **Honor BUILDER CONFIG DEFAULTS blocks in the promptSkeleton.** Some archetypes embed an explicit "BUILDER CONFIG DEFAULTS" header at the top of their promptSkeleton listing exact values for feeds, universe shape, and intelligencePolicy. When you see that block, seed those fields verbatim. Don't strip the block from the analystPrompt — it's instruction-as-data for the analyst at runtime too.
+5b. **Honor BUILDER CONFIG DEFAULTS blocks in the promptSkeleton.** Some archetypes embed an explicit "BUILDER CONFIG DEFAULTS" header at the top of their promptSkeleton listing exact values for universe shape and intelligencePolicy. When you see that block, seed those fields verbatim. Don't strip the block from the analystPrompt — it's instruction-as-data for the analyst at runtime too.
 6. If the user gave a clear spec and says "just do it" / "skip the questions" / "I know what I want": HONOR THAT. Skip Step 1-2, do Step 3 (knowledge library) + Step 4 (validate) + Step 5 (suggest_config). The questions exist to extract intent the user hasn't given; if they already gave it, asking is friction, not value.
 7. One ask_question CALL per turn — but bundle multiple related questions inside it via the \`steps[]\` argument. Never make two separate ask_question tool calls back-to-back. If you need 2-5 related discrete answers (e.g. direction + hold + sectors), pass them as \`steps[]\` in a single ask_question call so the user gets one multi-step card with a progress bar.
 
@@ -1205,7 +1200,6 @@ Call **suggest_config** with EVERY required field filled, including all four Uni
 
 **marketCapMin/Max: omit the field entirely for no bound.** Do NOT send Number.MAX_SAFE_INTEGER, 0, or any other sentinel. An undefined field means "no filter on that axis". The tool schema rejects values above $10T.
 
-**Feeds edits.** \`universe.feeds\` is the firm-aggregate subscription dimension (EARNINGS_CALENDAR, MARKET_MOVERS_GAINERS, MARKET_MOVERS_LOSERS, MARKET_MOVERS_ACTIVES). Only propose changes when the user or inbox stats point to a real mismatch — e.g. an earnings-focused analyst missing EARNINGS_CALENDAR, or a momentum trader subscribed to feeds they never cite in theses. If you add a feed, the analystPrompt should mention how that firehose feeds into the playbook; if you remove one, say why in your summary sentence. Do not churn feeds cosmetically.
 
 For the \`analystPrompt\` field specifically:
 - Lane (a): you won't call suggest_config at all.
