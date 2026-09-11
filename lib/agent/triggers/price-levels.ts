@@ -29,6 +29,7 @@
  * Pure — no DB, no clock, no fetches.
  */
 
+import { trailFireLevel } from "./trail";
 import type { Trigger, TriggerAction, TriggerPredicate } from "./types";
 import type { ResolvedTrigger, TriggerLevel } from "./levels";
 
@@ -492,11 +493,9 @@ function predicatePrice(
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
       return p.level;
-    case "TRAILING_FROM_HIGH": {
-      const peak = ctx.peakPrice;
-      if (peak == null || peak <= 0) return null;
-      return long ? peak * (1 - p.pct / 100) : peak * (1 + p.pct / 100);
-    }
+    case "TRAILING_FROM_HIGH":
+      // Null until armed — an unarmed trail has no live line to draw.
+      return trailFireLevel(p, { peak: ctx.peakPrice, avgCost: ctx.avgCost, isLong: long });
     case "GAIN_FROM_ENTRY": {
       const avg = ctx.avgCost;
       if (avg == null || avg <= 0) return null;

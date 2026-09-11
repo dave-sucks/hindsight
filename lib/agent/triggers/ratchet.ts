@@ -105,9 +105,13 @@ function weakens(prev: TriggerPredicate, next: TriggerPredicate): boolean {
       return (next as { level: number }).level < prev.level;
     case "PRICE_ABOVE":
       return (next as { level: number }).level > prev.level;
+    case "TRAILING_FROM_HIGH": {
+      // A wider give-back, or arming later — each protects less.
+      const n = next as { pct: number; armAtGainPct?: number };
+      return n.pct > prev.pct || (n.armAtGainPct ?? 0) > (prev.armAtGainPct ?? 0);
+    }
     case "PRICE_MOVE_PCT":
     case "GAIN_FROM_ENTRY":
-    case "TRAILING_FROM_HIGH":
       return (next as { pct: number }).pct > prev.pct;
     default:
       return false;

@@ -12,9 +12,12 @@ Built for one user now, marketed later.
 Every thesis carries a **trigger ladder** (condition → action: ENTER/ADD/TRIM/
 EXIT/REVIEW) the agents author and maintain. New predicates `GAIN_FROM_ENTRY`
 (cumulative % vs entry) + `TRAILING_FROM_HIGH` (give-back off the tracked
-peak) protect gains. Every HOLDING auto-carries standing minimums (+10%
-checkpoint REVIEW / 8% trail EXIT / −12% loser REVIEW, `defaults.ts`) —
-stamped at mint AND at the buy fill (`place-trade.ts` held-side re-seed).
+peak) protect gains. Every HOLDING inherits its horizon's sell rules from the
+account — one set per horizon (`Trigger.horizons`; a trade trails 8%, a
+compounder's only automatic sale is 25% off the high), seeded by
+`horizonStandingRules()` in `defaults.ts`, edited in Settings → Triggers.
+Nothing stamps them onto the thesis (DAV-250): a thesis rung beats the account
+rule, so a stamped copy would freeze the old numbers. See TRIGGERS.md §2a.
 `resolved.ladderHealth` + the `UNPROTECTED_GAIN` needsAction flag nag winners
 whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
 Everything fires as approval-gated proposals — nothing auto-trades. **Fire
@@ -685,7 +688,7 @@ new, file it there — not here.)
 - lib/agent/triggers/ops.ts — THE write path once a thesis exists: applyTriggerOps (add / edit by id / remove by id / a plan level as an op) + checkLadder (the one post-op plan check). update_thesis, the UI popover, a buy fill and a plan set-down all go through it (DAV-242)
 - lib/agent/triggers/types.ts — predicate union (incl. GAIN_FROM_ENTRY + TRAILING_FROM_HIGH) + isDirectEligiblePredicate + protectiveExitCloseReason
 - lib/agent/triggers/evaluate.ts — pure evaluator (1D daily-move + HOLDING-only gain/trail paths)
-- lib/agent/triggers/defaults.ts — horizon templates + standingProtectionTriggers() (+10%/8%/−12%) + scaleInOn* (±7%) + cooldown defaults
+- lib/agent/triggers/defaults.ts — horizon templates + horizonStandingRules() (the per-horizon account sell rules) + cooldown defaults
 - lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note); THESIS_INVALIDATED stays distinct via belief_survived
 - lib/inngest/functions/trigger-evaluator.ts — 5-min cron + signal paths
 - lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer

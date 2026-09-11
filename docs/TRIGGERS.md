@@ -81,43 +81,58 @@ removed, 1 rewritten, 119 theses). When the Signals project returns, its kinds
 are added fresh against a source that exists.
 
 `GAIN_FROM_ENTRY` + `TRAILING_FROM_HIGH` **are the gain-protection system**
-(#477). They are the two predicates the standing protection minimums in §2a
-are built on — the checkpoint / loser rungs are `GAIN_FROM_ENTRY`, the trail
-ratchet is `TRAILING_FROM_HIGH`. Both are complements to `PRICE_MOVE_PCT`,
+(#477). They are the two predicates the per-horizon sell rules in §2a
+are built on — the checkpoint / loser rules are `GAIN_FROM_ENTRY`, the trails
+are `TRAILING_FROM_HIGH`. Both are complements to `PRICE_MOVE_PCT`,
 which only ever sees the single-day move: `GAIN_FROM_ENTRY` catches the quiet
 cumulative winner/bleeder, and `TRAILING_FROM_HIGH` banks a run-up mechanically
 (the IONS failure — see §2a and `docs/plans/THESIS_GAME_PLAN.md`).
 
-## 2a. Standing protection minimums (the gain-protection ladder)
+## 2a. Standing sell rules — one set per horizon (DAV-250)
 
-Every HOLDING auto-carries three always-on protection rungs, stamped by
-`standingProtectionTriggers()` in `triggers/defaults.ts` and pushed into every
-HELD horizon template (also re-seeded on the buy fill — `place-trade.ts`). They
-exist so no holding can quietly run up, or bleed, without forcing a decision.
-The motivating failure is IONS: bought $73.83, day-one floor at $65, ran +17%,
-three rubber-stamp reviews, then crashed and fired the day-one floor for a LOSS
-— no level was ever re-earned. These rungs make that impossible to do silently.
+Every holding inherits its horizon's sell rules from the **account** (seeded
+by `horizonStandingRules()` in `triggers/defaults.ts`, stored as ordinary
+account rules with `Trigger.horizons`, edited in the same trigger popover as
+everything else on Settings → Triggers, grouped by horizon). A held thesis
+carries only what is its own: the floor, the target, the catalyst exit, the
+review clock and the earnings reviews. The buy fill no longer stamps sell
+rules or scale-ins onto the thesis — a thesis rung beats any account rule in
+its bucket, so stamping them froze every holding on one TARGET ladder (an 8%
+automatic sale on compounders whose mandate forbids one) and made the account
+rules powerless.
 
-| Rung | Predicate | Action | Cooldown | What it does |
-|---|---|---|---|---|
-| Gain checkpoint | `GAIN_FROM_ENTRY` `UP` +10% | REVIEW → next morning | 7d (per-kind default) | Up 10% from entry → re-underwrite: raise the floor to lock the gain, arm the next milestone. |
-| Trail ratchet | `TRAILING_FROM_HIGH` 8% | EXIT → tactical | 0 (re-fires) | Gave back 8% off the high → bank the gain instead of round-tripping it. Terminal EXIT, so `cooldownDays: 0` (same convention as the hard stop). |
-| Loser attention | `GAIN_FROM_ENTRY` `DOWN` −12% | REVIEW → next morning | 7d | Down 12% from entry → decide hold-vs-cut deliberately, before the hard stop decides for us. |
+The motivating failure for having sell rules at all is still IONS: bought
+$73.83, day-one floor at $65, ran +17%, three rubber-stamp reviews, then
+crashed and fired the day-one floor for a LOSS. These rules make that
+impossible to do silently; the horizon split makes them fit the position.
 
-Plus two **scale rungs** on the conviction horizons (also stamped by default):
+| Horizon | Rules (numbers: TRADING_PLAYBOOK.md E5/F) |
+|---|---|
+| Every horizon | +7% day → ADD (3d); review clock 7d; earnings within 3d / beat / miss → REVIEW |
+| TRADE | +8% from entry → REVIEW · 8% off the high → EXIT · −7% from entry → EXIT · beat and fell 3%+ → REVIEW |
+| TARGET | −7% day → ADD · +10% → REVIEW · 12% off the high, **armed once up 10%** → EXIT · −12% → REVIEW · beat and fell 3%+ → REVIEW |
+| CATALYST | −7% day → ADD · −10% → REVIEW (the event is the exit; the thesis carries the stop) |
+| COMPOUNDER | −7% day → ADD · +15% → REVIEW · 15% off the high → REVIEW · below the 200-day → REVIEW · **25% off the high → EXIT (the only automatic sale)** · −15% → REVIEW |
 
-| Rung | Predicate | Action | Cooldown | Horizons |
-|---|---|---|---|---|
-| Add on strength | `PRICE_MOVE_PCT` `1D` `UP` +7% | ADD → tactical | 3d | all HELD |
-| Add on pullback | `PRICE_MOVE_PCT` `1D` `DOWN` −7% | ADD → tactical | 3d | COMPOUNDER/TARGET/CATALYST (not TRADE — momentum trades exit on weakness, they don't average down) |
+Resolution (`rulesForHorizon` in `triggers/load-levels.ts`): a rule with no
+`horizons` applies to every horizon; a rule for this horizon in the same bucket
+at the same level wins over it regardless of which is tighter (it is the more
+specific statement). The level write path refuses a second rule in the same
+bucket for an overlapping set of horizons. Account/analyst arrays cap at 48
+(`levelTriggersArraySchema`); a thesis still caps at 20.
 
-The three constants (`PROTECT_CHECKPOINT_GAIN_PCT` 10, `PROTECT_TRAIL_PCT` 8,
-`LOSER_ATTENTION_DRAWDOWN_PCT` 12) are principal-tunable in `defaults.ts`;
-every future mint picks up a change, and existing theses keep the value they
-were minted with (editable per-thesis in the trigger popover). Merge dedup is
-per `(predicateKey, action)` bucket — an agent that authors its own +15% gain
-checkpoint REVIEW replaces the +10% default rather than stacking a second, while
-a custom `GAIN_FROM_ENTRY DOWN` rung leaves the UP default intact.
+`armAtGainPct` (TRAILING_FROM_HIGH): the trail has no level until the position
+has once been up that much from entry. `trailFireLevel` in `triggers/trail.ts`
+is the one place the fire line is computed — the evaluator, the sheet's price
+levels and ladder health all call it, so an unarmed trail is never drawn.
+
+**Moving the live account** (`migrate-horizon-rules`, event
+`app/triggers.horizon-rules.migrate`, dry run unless `dryRun:false`): replaces
+the legacy every-horizon rules in the four buckets above, keeps every other
+account rule, copies onto each held stock any inherited sell line the new
+rules would loosen (only the principal lowers a level), and removes the own
+tighter trail sell on the compounders named in `loosen` (Dave's ruling: ASML,
+CEG, WST). Idempotent.
 
 **Target is a REVIEW checkpoint, not an auto-exit — except on the TRADE
 horizon.** For TARGET/COMPOUNDER/CATALYST holds, `PRICE_ABOVE(target)` is a
@@ -338,7 +353,7 @@ on the row's `fieldChanges.triggerOps`.
 - `lib/agent/triggers/enforce-close-reason.ts` — the sale-label rule: a close from a protective fire stores STOP/TARGET, auto-corrected with an audit note (DAV-192)
 - `lib/agent/triggers/schema.ts` — the one Zod gate
 - `lib/agent/triggers/evaluate.ts` — pure evaluator (incl. the 1D daily-move path + the HOLDING-only gain/trail paths)
-- `lib/agent/triggers/defaults.ts` — horizon templates + `standingProtectionTriggers()` (the +10%/8%/−12% minimums) + `scaleInOn*` (±7% rungs) + cooldown defaults
+- `lib/agent/triggers/defaults.ts` — horizon templates + `horizonStandingRules()` (the per-horizon account sell rules, §2a) + cooldown defaults
 - `lib/inngest/functions/trigger-evaluator.ts` — signal + cron paths
 - `lib/inngest/functions/tactical-run.ts` — consumer (TACTICAL agent / DIRECT close)
 - `lib/actions/thesis-edit.ts` — add / edit / delete / fire-mode write paths

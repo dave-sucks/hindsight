@@ -18,7 +18,7 @@ type PredicateShape =
   | { kind: "PRICE_BELOW"; level: number; basis?: "intraday" | "close" }
   | { kind: "PRICE_MOVE_PCT"; pct: number; direction: "UP" | "DOWN"; window: "1D" | "5D" | "20D" }
   | { kind: "GAIN_FROM_ENTRY"; pct: number; direction: "UP" | "DOWN" }
-  | { kind: "TRAILING_FROM_HIGH"; pct: number }
+  | { kind: "TRAILING_FROM_HIGH"; pct: number; armAtGainPct?: number }
   | { kind: "VS_SMA"; period: 20 | 50 | 150 | 200; direction: "ABOVE" | "BELOW" }
   | { kind: "NEAR_SMA"; period: 20 | 50 | 150 | 200; withinPct: number }
   | { kind: "VOLUME_RATIO"; min: number }
@@ -62,6 +62,8 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
       // ≥1%: a sub-1% trail off the peak would re-fire on ordinary noise
       // every tick the moment the peak is set.
       pct: z.number().min(1),
+      // Off until the position has once been up this % from entry.
+      armAtGainPct: z.number().min(0).max(200).optional(),
     }),
     z.object({
       kind: z.literal("VS_SMA"),
@@ -199,6 +201,13 @@ export const triggerSchema = z.object({
       "Don't re-fire this trigger more than once per N days. OMIT to use the per-predicate-kind default (EARNINGS_BEAT/MISS: 7, PRICE_* and chart kinds: 1, REVIEW_CADENCE: matches the cadence) — that's the right answer in almost every case. The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT.",
     ),
   lastFiredAt: z.string().datetime().optional(),
+  horizons: z
+    .array(z.enum(["TRADE", "TARGET", "CATALYST", "COMPOUNDER"]))
+    .min(1)
+    .optional()
+    .describe(
+      "Account/analyst rules only: the thesis horizons this rule applies to. Omit for every horizon. Ignored on a thesis's own trigger.",
+    ),
   fireOnMatch: z
     .boolean()
     .optional()
@@ -242,6 +251,13 @@ export const triggersArraySchema = z
   .describe(
     "Structured triggers attached to this thesis. Each is a (predicate, action, rationale) tuple the router evaluates deterministically. Capped at 20 per thesis to keep the matching loop bounded.",
   );
+
+/**
+ * An account's or analyst's standing rules. Larger cap than a thesis: since
+ * DAV-250 the account holds one sell ladder per horizon (four of them) plus
+ * the rules every horizon shares — 20 on a fresh seed.
+ */
+export const levelTriggersArraySchema = z.array(triggerSchema).max(48);
 
 export type TriggerInput = z.infer<typeof triggerSchema>;
 

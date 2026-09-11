@@ -34,13 +34,13 @@ You'll also see **AND / OR** rungs that combine conditions. The two you can add 
 
 Every level on the ladder is set by *someone*, and the rule is **most-specific wins.** There are three kinds of author:
 
-1. **System defaults (the floor of floors).** Every holding carries a set of **standing protection minimums** for free, baked into the code: a **+10% checkpoint** (up 10% from entry → come re-check the plan), an **8% trail** (give back 8% from the high → propose an exit), and a **−12% loser review** (down 12% from entry → decide hold-or-cut), plus scale rungs at roughly ±7% days. These are the *minimum* protection every name gets. They are deliberately generic — the same for every analyst today.
+1. **Your account's sell rules, one set per horizon.** Every holding inherits the rules for its horizon from your account — you edit them in Settings → Triggers, grouped by horizon. A **trade** is kept on a short leash: review at +8%, sell on an 8% give-back from the high, sell at −7%. A **target** position gets room: review at +10%, and a 12% trail that only switches on once it has been up 10%. A **compounder** is only sold automatically on a 25% give-back — a 15% give-back or a close under the 200-day is a question for the analyst, not a sale. Every horizon gets an add rung on a +7% day.
 
 2. **The analyst, with nuance.** This is the analyst's brain doing its job. It writes the **actual** levels — the floor tucked under the real breakout shelf, the trail width fitted to how volatile *this* name is, the add rung at the price where the setup confirms. It authors the full plan when the research is fresh, and it **re-earns every level on every review** and after every fire. An analyst-authored rung always beats the generic default.
 
 3. **You.** From the thesis sheet you can set or edit any trigger — retune a stop or target, add a % alert, change how a rung fires. You can also retune levels while rejecting a proposal. Your edits beat everything, and they're fed back to the analyst as a directive it must honor, not overwrite.
 
-*(A fourth author, per-analyst standing rules — "this analyst always trails 5%" — is coming but not live yet; today every analyst gets the same system minimums.)*
+*(Each analyst can also carry its own standing rules — "this analyst always trails 5%" — which beat the account's for that analyst's stocks.)*
 
 ## What happens when a rung fires — three routes, zero surprises
 
@@ -63,8 +63,8 @@ Say an analyst buys a name at **$74** and sets a floor at **$65** on day one.
 1. Weeks later the stock is up 10% from our entry. The **+10% checkpoint fires** — a Review rung, so it doesn't wake anyone; it just flags the name for the next morning. *(The machine, keeping watch.)*
 2. Next morning the [Daily Run](agent:agent) sees the flag, pulls fresh data, and decides the story is still good — so it **raises the floor from $65 to ~$78** (tucked under the breakout) and arms the next checkpoint at +20%. That's the analyst re-earning the level. *(Judgment.)*
 3. Any morning it *hasn't* done that, the name shows up flagged as an **unprotected gain** and the run can't rubber-stamp past it. *(The machine forcing the conversation.)*
-4. The stock keeps running to $86, and the **8% trail ratchets up with it** — no one has to remember to move it. *(The mechanical ratchet.)*
-5. Then a bad day: the stock gives back its 8% and the **trail fires**, staging a close proposal that lands in your inbox with an email and a push. You approve, and we **bank the gain** instead of riding it all the way back down to the day-one $65. *(The machine, handing you the decision.)*
+4. The stock keeps running to $86, and the **trail ratchets up with it** — no one has to remember to move it. *(The mechanical ratchet — 12% off the high for a target position, switched on once it was up 10%.)*
+5. Then a bad day: the stock gives back its 12% and the **trail fires**, staging a close proposal that lands in your inbox with an email and a push. You approve, and we **bank the gain** instead of riding it all the way back down to the day-one $65. *(The machine, handing you the decision.)*
 
 The old way — floor at $65, "reviewed, no changes" three mornings in a row, then a crash fires the *day-one* floor for a loss on a trade that had been up 17% — is exactly what re-laddering exists to prevent.
 

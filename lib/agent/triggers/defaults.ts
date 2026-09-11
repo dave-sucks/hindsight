@@ -23,10 +23,14 @@
  */
 
 import { randomUUID } from "node:crypto";
-
-const createId = () => randomUUID();
+import {
+  COMPOUNDER_CATASTROPHE_PCT,
+  COMPOUNDER_GIVEBACK_REVIEW_PCT,
+} from "@/lib/agent/knowledge/setups";
 import type { Trigger, TriggerPredicate } from "./types";
 import { triggerBucket } from "./bucket";
+
+const createId = () => randomUUID();
 
 export type Horizon = "CATALYST" | "TARGET" | "TRADE" | "COMPOUNDER";
 
@@ -122,187 +126,106 @@ function scaleInOnPullbackTrigger(): Trigger {
   };
 }
 
-// ── Standing protection minimums (docs/plans/THESIS_GAME_PLAN.md PR-D; GAPS P1-31) ──
+// ── Standing sell rules by horizon (DAV-250) ────────────────────────────
 //
-// Three always-on protection rungs every HELD thesis carries, so no holding
-// can quietly run up (or bleed) without forcing a decision. The motivating
-// failure is the IONS autopsy: bought $73.83, day-one floor at $65, ran +17%,
-// three rubber-stamp reviews, then crashed and fired the day-one floor for a
-// LOSS. No level was ever re-earned. These rungs make that impossible to do
-// silently: the gain milestone forces a re-underwrite, the trail banks the
-// gain mechanically, and the drawdown rung forces a hold-vs-cut decision
-// before the hard stop decides for us.
+// These used to be stamped onto every thesis at mint and again at the buy
+// fill — one TARGET ladder (8% trail sell) for every holding on every seat,
+// and a thesis-level rung beats any account rule, so nothing above it could
+// ever govern. ASML/CEG/WST carried an automatic 8% sale their compounder
+// mandate forbids; winners were sold 7–17 points off their peaks.
 //
-// GAIN_FROM_ENTRY / TRAILING_FROM_HIGH are HOLDING-only predicates (no open
-// position ⇒ evaluate false), so these are wired into the HELD templates
-// only — never WATCHING / PROMOTED.
-//
-// The three constants are PRINCIPAL-TUNABLE: change the number here and
-// every future mint picks it up. Existing theses keep the value they were
-// minted with (editable per-thesis in the trigger popover).
+// Now they are ACCOUNT rules, one set per horizon (Trigger.horizons), seeded
+// from here and edited in the same trigger popover as everything else. A
+// held thesis carries only what is its own — the floor, the target, the
+// catalyst exit, its review clock — and inherits its horizon's sell rules.
+// Numbers: TRADING_PLAYBOOK.md E5/F, blessed on DAV-245.
 
-/** How long a TRADE-horizon position runs before it must be re-examined. */
+type H = "TRADE" | "TARGET" | "CATALYST" | "COMPOUNDER";
 
-/** Gain milestone: up X% from entry → checkpoint re-underwrite (REVIEW). */
-const PROTECT_CHECKPOINT_GAIN_PCT = 10;
-/** Mechanical ratchet: give back X% off the tracked high → banked EXIT. */
-const PROTECT_TRAIL_PCT = 8;
-/** Loser attention: down X% from entry → hold-vs-cut REVIEW. */
-const LOSER_ATTENTION_DRAWDOWN_PCT = 12;
-/**
- * COMPOUNDER only: a give-back from the high is a QUESTION, not a sale.
- * At this give-back a tactical run asks "is the reason we bought still
- * true?" and answers hold-and-raise-the-floor / trim / sell. The seat's
- * own prompt says price alone is never an invalidation; the 8% mechanical
- * sale contradicted it and sold SNOW/DELL/ZETA-class winners at +12%
- * (2026-09-08 review).
- */
-const COMPOUNDER_GIVEBACK_REVIEW_PCT = 15;
-/**
- * COMPOUNDER only: the hard line that still sells without judgment. Sits
- * far enough below the review that a normal pullback never reaches it.
- * This rung must exist on the thesis: the ACCOUNT ladder carries an 8%
- * TRAILING_FROM_HIGH → EXIT, and only a thesis rung in the same bucket
- * (predicate + action) overrides it.
- */
-const COMPOUNDER_HARD_TRAIL_PCT = 25;
-
-function gainCheckpointTrigger(): Trigger {
+function rule(
+  horizons: H[] | undefined,
+  predicate: TriggerPredicate,
+  action: Trigger["action"],
+  rationale: string,
+  cooldownDays?: number,
+): Trigger {
   return {
     id: createId(),
-    predicate: {
-      kind: "GAIN_FROM_ENTRY",
-      pct: PROTECT_CHECKPOINT_GAIN_PCT,
-      direction: "UP",
+    predicate,
+    action,
+    rationale,
+    ...(cooldownDays != null ? { cooldownDays } : {}),
+    ...(horizons ? { horizons } : {}),
+    source: "DEFAULT",
+  };
+}
+
+/** A beat the market sold: the strongest fade signal in earnings (playbook D4). */
+const beatAndFade = (horizons: H[]): Trigger =>
+  rule(
+    horizons,
+    {
+      kind: "AND",
+      predicates: [
+        { kind: "EARNINGS_BEAT" },
+        { kind: "PRICE_MOVE_PCT", pct: 3, direction: "DOWN", window: "1D" },
+      ],
     },
-    action: "REVIEW",
-    rationale: `Up ${PROTECT_CHECKPOINT_GAIN_PCT}% from entry — gain milestone checkpoint. Re-underwrite at the new price: raise the floor to lock the gain in, and arm the next milestone.`,
-    // cooldownDays intentionally unset — per-kind default (GAIN_FROM_ENTRY:
-    // 7d). The milestone latches once hit; the acting agent is expected to
-    // replace the fired rung with the next checkpoint, and 7d stops a
-    // same-week re-fire if it doesn't.
-  };
-}
-
-function trailingRatchetTrigger(): Trigger {
-  return {
-    id: createId(),
-    predicate: { kind: "TRAILING_FROM_HIGH", pct: PROTECT_TRAIL_PCT },
-    action: "EXIT",
-    rationale: `Gave back ${PROTECT_TRAIL_PCT}% from the high — mechanical gain ratchet. Bank the gain instead of round-tripping it (the IONS lesson: +17% became a loss because no level was ever re-earned).`,
-    cooldownDays: 0, // explicit opt-out — terminal EXIT, same convention as the hard stop.
-  };
-}
-
-function loserAttentionTrigger(): Trigger {
-  return {
-    id: createId(),
-    predicate: {
-      kind: "GAIN_FROM_ENTRY",
-      pct: LOSER_ATTENTION_DRAWDOWN_PCT,
-      direction: "DOWN",
-    },
-    action: "REVIEW",
-    rationale: `Down ${LOSER_ATTENTION_DRAWDOWN_PCT}% from entry — loser attention. Decide hold-vs-cut deliberately, before the hard stop decides for us.`,
-    // cooldownDays intentionally unset — per-kind default (GAIN_FROM_ENTRY: 7d).
-  };
-}
+    "REVIEW",
+    "Beat and the stock fell 3%+ — the market wanted more. On a trade this is a review-or-exit, not a hold.",
+    7,
+  );
 
 /**
- * The three standing protection minimums, fresh ids per call. Pushed into
- * every HELD horizon template below; also exported for
- * scripts/convert-static-floors-to-trails.ts, which retrofits them onto the
- * 2026-07-09 hand-backfilled live ladders (the `bf79-*` trigger ids).
- *
- * mergeTriggers dedup: an agent-authored rung in the same
- * (predicateKey, action) bucket wins over these — predicateKey is
- * `GAIN_FROM_ENTRY:UP` / `GAIN_FROM_ENTRY:DOWN` / `TRAILING_FROM_HIGH`, so
- * an agent that writes its own +15% gain checkpoint REVIEW replaces the
- * +10% default rather than stacking a second one, while a custom
- * GAIN_FROM_ENTRY DOWN rung leaves the UP default intact.
+ * Every standing sell rule an account is seeded with, horizon-scoped.
+ * Fresh ids per call.
  */
-export function standingProtectionTriggers(): Trigger[] {
+export function horizonStandingRules(): Trigger[] {
   return [
-    gainCheckpointTrigger(),
-    trailingRatchetTrigger(),
-    loserAttentionTrigger(),
+    // ── Every horizon ─────────────────────────────────────────────────
+    { ...scaleInOnStrengthTrigger(), source: "DEFAULT" },
+    // Short-horizon trades exit on weakness; they don't average into a dip.
+    // One rule per horizon, so each is edited in its own horizon's group.
+    ...(["TARGET", "CATALYST", "COMPOUNDER"] as const).map(
+      (h): Trigger => ({ ...scaleInOnPullbackTrigger(), horizons: [h], source: "DEFAULT" }),
+    ),
+
+    // ── TRADE — tight: a trade is right fast or it's wrong ─────────────
+    rule(["TRADE"], { kind: "GAIN_FROM_ENTRY", pct: 8, direction: "UP" }, "REVIEW",
+      "Up 8% on a trade — take a partial or raise the stop to breakeven."),
+    rule(["TRADE"], { kind: "TRAILING_FROM_HIGH", pct: 8 }, "EXIT",
+      "Gave back 8% from the high — the trade's trail.", 0),
+    rule(["TRADE"], { kind: "GAIN_FROM_ENTRY", pct: 7, direction: "DOWN" }, "EXIT",
+      "Down 7% from entry — a trade that's wrong by this much is wrong. Cut it.", 0),
+    beatAndFade(["TRADE"]),
+
+    // ── TARGET — room to work, then a trail tied to the chart ──────────
+    rule(["TARGET"], { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" }, "REVIEW",
+      "Up 10% from entry — re-underwrite: raise the floor under real structure and arm the next milestone."),
+    rule(["TARGET"], { kind: "TRAILING_FROM_HIGH", pct: 12, armAtGainPct: 10 }, "EXIT",
+      "Gave back 12% from the high, once the position had been up 10% — bank the run.", 0),
+    rule(["TARGET"], { kind: "GAIN_FROM_ENTRY", pct: 12, direction: "DOWN" }, "REVIEW",
+      "Down 12% from entry — decide hold-vs-cut deliberately, before the floor decides for us."),
+    beatAndFade(["TARGET"]),
+
+    // ── CATALYST — the event is the exit; the thesis carries the stop ──
+    rule(["CATALYST"], { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "DOWN" }, "REVIEW",
+      "Down 10% into the catalyst — is the run-up broken, or is the event still the thesis?"),
+
+    // ── COMPOUNDER — only a named invalidation sells; price asks ───────
+    rule(["COMPOUNDER"], { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "UP" }, "REVIEW",
+      "Up 15% — check the business is doing what we said; trims only at valuation extremes."),
+    rule(["COMPOUNDER"], { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_GIVEBACK_REVIEW_PCT }, "REVIEW",
+      `Gave back ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% from the high. A question, not a sale: is the reason we bought still true?`, 7),
+    rule(["COMPOUNDER"], { kind: "VS_SMA", period: 200, direction: "BELOW" }, "REVIEW",
+      "Below the 200-day — the long trend is in question. Review the business, not the chart."),
+    rule(["COMPOUNDER"], { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_CATASTROPHE_PCT }, "EXIT",
+      `Gave back ${COMPOUNDER_CATASTROPHE_PCT}% from the high — the catastrophe line for a multi-year hold. The review at ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% should have acted long before this.`, 0),
+    rule(["COMPOUNDER"], { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "DOWN" }, "REVIEW",
+      "Down 15% from entry — has the thesis broken, or only the price?"),
   ];
 }
 
-/**
- * The COMPOUNDER variant of the standing minimums. Same gain checkpoint and
- * loser attention; the give-back is a REVIEW (a question for the analyst)
- * and the mechanical sale moves out to a catastrophe line. See the two
- * constants above for why.
- */
-export function compounderProtectionTriggers(): Trigger[] {
-  return [
-    gainCheckpointTrigger(),
-    {
-      id: createId(),
-      predicate: { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_GIVEBACK_REVIEW_PCT },
-      action: "REVIEW",
-      // No fireMode: a price REVIEW is answered by the next morning run, not a
-      // tactical spawn (#573 — honest labels). The 25% EXIT below is the
-      // in-between protection.
-      rationale: `Gave back ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% from the high. This is a question, not a sale: is the reason we bought still true? If yes, hold and raise the floor under real structure (the 20-day low, the breakout level). If partly, trim. Sell only if you can name what broke in the business.`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_HARD_TRAIL_PCT },
-      action: "EXIT",
-      rationale: `Gave back ${COMPOUNDER_HARD_TRAIL_PCT}% from the high — the catastrophe line for a multi-year hold. The review at ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% should have acted long before this; if we are here, protect the capital.`,
-      cooldownDays: 0,
-    },
-    loserAttentionTrigger(),
-  ];
-}
-
-// ── The DEFAULT level of the cascade (lib/agent/triggers/levels) ────────
-//
-// The same constant rungs as above, but as the bottom LEVEL of the
-// cascade rather than rows copied onto a thesis at mint. Two differences
-// from `standingProtectionTriggers()`, both load-bearing:
-//
-//   1. STABLE ids. These rungs are not stored anywhere, so their fire
-//      bookkeeping lives in `Thesis.triggerState` keyed BY ID. A fresh
-//      uuid per call (what the mint-time builders do, by design — see the
-//      "mints fresh ids on every call" test) would orphan that state on
-//      every read, and a rung whose cooldown resets every 5 minutes is a
-//      rung with no cooldown. Prefixed `default:` so they are obviously
-//      not database ids when they turn up in an audit row.
-//   2. `source: "DEFAULT"` stamped, so the popover can say where the
-//      number came from.
-//
-// Only the CONSTANT rungs are inheritable. Rungs parameterized by the
-// thesis's own numbers (hard stop at `stopLoss`, target at `targetPrice`,
-// max-hold off `maxHoldDays`) cannot live at a level above the thesis —
-// there is no account-wide "$64.00". Those stay materialized on the
-// thesis by `defaultTriggersForHorizon`, which is why that function keeps
-// emitting them.
-
-export const DEFAULT_LADDER_IDS = {
-  scaleInStrength: "default:scale-in-strength",
-  scaleInPullback: "default:scale-in-pullback",
-  gainCheckpoint: "default:gain-checkpoint",
-  trailRatchet: "default:trail-ratchet",
-  loserAttention: "default:loser-attention",
-} as const;
-
-/**
- * The code-constant rungs every HELD thesis carries, as the DEFAULT level
- * of the cascade. An account or analyst rung in the same bucket overrides
- * one of these; a thesis rung overrides both.
- *
- * Empty for WATCHING / PROMOTED: `GAIN_FROM_ENTRY` and
- * `TRAILING_FROM_HIGH` are position-scoped predicates that evaluate false
- * with no open position, and the scale-in rungs act on a position too.
- *
- * TRADE horizon omits the pullback-add for the same reason the HELD
- * template does: short-horizon momentum trades exit on weakness, they
- * don't average into a dip.
- */
 /**
  * "Look at this again every N days", counted from the last actual review.
  *
@@ -411,34 +334,6 @@ export function resolvedCadenceDays(
   return null;
 }
 
-export function inheritableDefaultLadder(
-  horizon: Horizon,
-  state: ThesisState = "HELD",
-): Trigger[] {
-  if (state !== "HELD") return [];
-
-  const stamp = (t: Trigger, id: string): Trigger => ({
-    ...t,
-    id,
-    source: "DEFAULT",
-  });
-
-  const out: Trigger[] = [
-    stamp(scaleInOnStrengthTrigger(), DEFAULT_LADDER_IDS.scaleInStrength),
-  ];
-  if (horizon !== "TRADE") {
-    out.push(
-      stamp(scaleInOnPullbackTrigger(), DEFAULT_LADDER_IDS.scaleInPullback),
-    );
-  }
-  out.push(
-    stamp(gainCheckpointTrigger(), DEFAULT_LADDER_IDS.gainCheckpoint),
-    stamp(trailingRatchetTrigger(), DEFAULT_LADDER_IDS.trailRatchet),
-    stamp(loserAttentionTrigger(), DEFAULT_LADDER_IDS.loserAttention),
-  );
-  return out;
-}
-
 function compounderDefaults(thesis: ThesisShape): Trigger[] {
   const out: Trigger[] = [];
   out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.COMPOUNDER));
@@ -481,9 +376,6 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
     },
   );
 
-  out.push(scaleInOnStrengthTrigger());
-  out.push(scaleInOnPullbackTrigger());
-  out.push(...compounderProtectionTriggers());
 
   return out;
 }
@@ -525,9 +417,6 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
       cooldownDays: 7,
     },
   );
-  out.push(scaleInOnStrengthTrigger());
-  out.push(scaleInOnPullbackTrigger());
-  out.push(...standingProtectionTriggers());
   return out;
 }
 
@@ -557,8 +446,6 @@ function tradeDefaults(thesis: ThesisShape): Trigger[] {
   // already visits EVERY day — the daily review asks "close it or
   // re-underwrite it" two weeks before the max-hold rung ever fired. A
   // second, slower clock on the same ladder would only add noise.
-  out.push(scaleInOnStrengthTrigger());
-  out.push(...standingProtectionTriggers());
   return out;
 }
 
@@ -590,9 +477,6 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
       cooldownDays: 7,
     },
   );
-  out.push(scaleInOnStrengthTrigger());
-  out.push(scaleInOnPullbackTrigger());
-  out.push(...standingProtectionTriggers());
   return out;
 }
 

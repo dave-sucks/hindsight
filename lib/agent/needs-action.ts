@@ -229,7 +229,10 @@ export function describePredicate(p: TriggerPredicate): string {
     case "GAIN_FROM_ENTRY":
       return `${p.direction === "UP" ? "up" : "down"} ${p.pct}% from entry`;
     case "TRAILING_FROM_HIGH":
-      return `gives back ${p.pct}% from the high`;
+      return (
+        `gives back ${p.pct}% from the high` +
+        (p.armAtGainPct ? `, armed once up ${p.armAtGainPct}%` : "")
+      );
     case "VS_SMA":
       return `${p.direction.toLowerCase()} the ${p.period}-day`;
     case "NEAR_SMA":
