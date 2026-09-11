@@ -318,6 +318,39 @@ export async function maybeAwaitApproval(
  * (TradeRow, ActivityRow, ThesisSheet) read the orderId off the linked
  * Order(AWAITING_APPROVAL) directly.
  */
+/**
+ * Mark on the run that a trade tool fired and staged a proposal. complete_run's
+ * narration check credits these (`CREDITED_RUN_EVENT_TYPES` in
+ * lib/agent/narration-gate.ts). Without one, a LIVE sell — always a proposal —
+ * read as "said exit, never called the tool," and agents deleted true exits
+ * from their run summaries to get past the check (DAV-259). Never fails the
+ * trade tool.
+ */
+export async function recordProposalRunEvent(opts: {
+  runId: string | null | undefined;
+  type: "position_close_proposed" | "position_modify_proposed";
+  ticker: string;
+  orderId: string;
+  title: string;
+}): Promise<void> {
+  if (!opts.runId) return;
+  try {
+    await prisma.runEvent.create({
+      data: {
+        runId: opts.runId,
+        type: opts.type,
+        title: opts.title,
+        payload: { ticker: opts.ticker, orderId: opts.orderId },
+      },
+    });
+  } catch (err) {
+    console.warn(
+      `[proposals] ${opts.type} RunEvent write failed (non-fatal):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 export function awaitingApprovalEnvelope(opts: {
   awaiting: AwaitingApprovalResult;
   ticker: string;
