@@ -226,6 +226,9 @@ export type Trigger = {
   cooldownDays?: number;
   /** Set by the trigger evaluator; read for cooldown gating. */
   lastFiredAt?: string; // ISO timestamp
+  /** ENTER only, server-stamped: the live price when written (./written-price). */
+  writtenPrice?: number;
+  writtenAt?: string; // ISO timestamp
   /**
    * ACCOUNT / ANALYST rules only: the thesis horizons this rule applies to
    * (DAV-250). Absent = every horizon. A TRADE position and a COMPOUNDER

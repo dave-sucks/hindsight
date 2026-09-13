@@ -135,6 +135,29 @@ export function isTradingDay(now: Date = new Date()): boolean {
   );
 }
 
+/** 16:00 ET on the trading day before the current (or last) session — the close a quote's `prevClose` is. */
+export function priorSessionCloseAt(now: Date = new Date()): Date {
+  const DAY = 86_400_000;
+  const ymd = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  let cursor = new Date(`${ymd(now)}T16:00:00Z`);
+  while (!isTradingDay(cursor)) cursor = new Date(cursor.getTime() - DAY);
+  cursor = new Date(cursor.getTime() - DAY);
+  while (!isTradingDay(cursor)) cursor = new Date(cursor.getTime() - DAY);
+  return etWallClock(ymd(cursor), 16, 0);
+}
+
+/** The UTC instant of a wall-clock time in New York on a given date (DST-aware). */
+function etWallClock(ymd: string, hour: number, minute: number): Date {
+  for (const offset of [4, 5]) {
+    const candidate = new Date(`${ymd}T${String(hour + offset).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`);
+    const h = Number(
+      new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", hour12: false }).format(candidate),
+    );
+    if (h === hour) return candidate;
+  }
+  return new Date(`${ymd}T${String(hour + 5).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`);
+}
+
 export function isMarketOpen(now: Date = new Date()): boolean {
   // Convert to Eastern Time
   const etFormatter = new Intl.DateTimeFormat("en-US", {

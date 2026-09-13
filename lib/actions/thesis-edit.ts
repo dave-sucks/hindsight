@@ -17,6 +17,7 @@
 
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import {
@@ -240,13 +241,29 @@ async function runPrincipalOp(
   audit: (thesis: EditableThesis, id: string) => { summary: string; rationale: string },
 ): Promise<OpOutcome> {
   const thesis = await loadEditableThesis(thesisId, ctx);
+  const op = buildOp(thesis);
+  // A buy edit stamps the live price (triggers/written-price); it doesn't re-pick your side.
+  const touchesBuy =
+    op.op === "level"
+      ? op.slot === "ENTRY"
+      : op.op === "add"
+        ? op.trigger.action === "ENTER"
+        : thesis.triggers.some((t) => t.id === op.id && t.action === "ENTER") ||
+          (op.op === "edit" && op.action === "ENTER");
+  let writtenPrice: number | null = null;
+  if (touchesBuy) {
+    const q = await getStockQuote(thesis.ticker).catch(() => null);
+    writtenPrice = q && Number.isFinite(q.c) && q.c > 0 ? q.c : null;
+  }
   const applied = applyTriggerOps({
     stored: thesis.triggers,
     inherited: thesis.inherited,
-    ops: [buildOp(thesis)],
+    ops: [op],
     direction: thesis.direction,
     status: thesis.status,
     actor: "PRINCIPAL",
+    writtenPrice,
+    now: new Date(),
     mintId: () => randomUUID(),
   });
   const result = applied.results[0];

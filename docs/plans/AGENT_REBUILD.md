@@ -229,11 +229,9 @@ submit. `submit_thesis` gains:
   is no path from the writer to a proposal.** The discovery prompt's
   "immediate-buy exception" (wait for the writer, then `place_trade`) is
   a second path and is deleted in PR 9.
-  *Known behaviour to design around:* a buy fires on the crossing versus
-  yesterday's close, so on a DOWN day (price under yesterday's close) an
-  entry at the current price or a dollar above does not fire that day even
-  when the price trades through it; on an up day it fires on the next tick
-  past it. Verified 2026-09-13 through the real write path.
+  A buy written after the prior close measures its crossing from the price
+  it was written at (#641), so an entry a few cents past the current price
+  fires on the first tick through it, up day or down.
 - `entry_condition`: the filled predicate template — `AND[PRICE_ABOVE
   pivot close, VOLUME_RATIO 1.5]`, `NEAR_SMA 50 + reversal`, `DAYS_SINCE_
   EARNINGS 1..3`, `GAP_UP …` — not a bare number. `entry_price` stays as

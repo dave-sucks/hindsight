@@ -1100,6 +1100,7 @@ export const updateThesis = defineTool({
           // analyst wrote "buy the pullback to $203" and the row stored
           // "buy above $203" against a $258 tape.
           currentPrice: resolvedPriceAtTime,
+          now: new Date(),
           mintId: () => randomUUID(),
         });
         opResults.push(...applied.results);

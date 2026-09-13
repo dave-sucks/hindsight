@@ -24,6 +24,7 @@
  */
 
 import { trailFireLevel } from "./trail";
+import { crossingBaseline } from "./written-price";
 import type { Trigger, TriggerPredicate } from "./types";
 import { defaultCooldownDaysForPredicate } from "./defaults";
 import type { EarningsReport } from "./earnings";
@@ -355,17 +356,20 @@ export function shouldFire(
   //   close gives composites and VS_SMA the crossing for free; entries
   //   that don't read the price can't cross and keep firing on match. No
   //   prevClose ⇒ level semantics (the read-side snapshots).
-  if (
-    trigger.action === "ENTER" &&
-    ctx.latestQuote?.prevClose != null &&
-    ctx.latestQuote.prevClose > 0 &&
-    readsPrice(trigger.predicate)
-  ) {
-    const atPrevClose = evaluateTrigger(trigger.predicate, {
+  //
+  //   A buy written after that close is measured from the price it was
+  //   written at instead, until the next close — otherwise a level set on a
+  //   down day is dead on arrival (./written-price).
+  const baseline =
+    trigger.action === "ENTER" && ctx.latestQuote?.prevClose != null && ctx.latestQuote.prevClose > 0
+      ? crossingBaseline(trigger, ctx.latestQuote.prevClose, ctx.now)
+      : null;
+  if (baseline != null && ctx.latestQuote && readsPrice(trigger.predicate)) {
+    const atBaseline = evaluateTrigger(trigger.predicate, {
       ...ctx,
-      latestQuote: { ...ctx.latestQuote, price: ctx.latestQuote.prevClose },
+      latestQuote: { ...ctx.latestQuote, price: baseline },
     });
-    if (atPrevClose) return { fires: false, reason: "no-crossing" };
+    if (atBaseline) return { fires: false, reason: "no-crossing" };
   }
 
   // Read-path defense — see (2) in the docstring above.
