@@ -318,7 +318,8 @@ DECISION FRAMEWORK
            whether volume is a hard gate or informational context:
              • **TRADE horizon (or DAY-style intraday analysts):** a
                single-session breakout needs real participation. Pull
-               \`technicals.volumeRatio\`. If it is < 1.5x AND the
+               \`technicals.today.volumeVsAvg20\` (today's volume so far ÷
+               the 20-day average). If it is < 1.5x AND the
                session is past mid-day (current ET time after ~14:00),
                pass — write update_thesis(REVIEWED) "low-volume
                breakout for TRADE horizon, no conviction." If it is <

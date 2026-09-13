@@ -69,7 +69,8 @@ import {
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
 import { getTodaySessionBars } from "@/lib/alpaca";
-import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
+import { ensureIndicatorSnapshots } from "@/lib/market-data/ensure-snapshots";
+import { describeChartFire } from "@/lib/agent/triggers/chart-context";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -805,13 +806,20 @@ export const triggerEvaluator = inngest.createFunction(
       );
       const quoteByTicker = new Map(quoteResults);
 
-      // The daily indicator snapshot — only when some rung reads the chart.
-      const wantsIndicators = candidates.some((c) =>
-        c.ladder.some((t) => needsIndicators(t.predicate)),
-      );
-      const indicators = wantsIndicators
-        ? await loadIndicatorSnapshots(uniqueTickers, now).catch((err) => {
-            console.error("[trigger-evaluator] indicator snapshot load failed — chart kinds read false:", err);
+      // The daily indicator snapshot — only for tickers with a rung that
+      // reads the chart. A ticker added since 06:30 has none yet; a few are
+      // computed on the spot each pass so a mid-day add isn't dark until
+      // tomorrow (ensure-snapshots, DAV-247 review).
+      const chartTickers = Array.from(
+        new Set(
+          candidates
+            .filter((c) => c.ladder.some((t) => needsIndicators(t.predicate)))
+            .map((c) => c.thesis.ticker),
+        ),
+      ).filter((t) => uniqueTickers.includes(t));
+      const indicators = chartTickers.length
+        ? await ensureIndicatorSnapshots(chartTickers, { now }).catch((err) => {
+            console.error("[trigger-evaluator] indicator snapshots unavailable — chart kinds read false:", err);
             return new Map();
           })
         : new Map();
@@ -854,12 +862,17 @@ export const triggerEvaluator = inngest.createFunction(
         // bar); with no bar for the name there is no close to read, so its
         // close rungs wait for tomorrow rather than fire on a guess.
         if (session === "CLOSE" && !todayBar) continue;
+        // Prior close for the crossing: the quote's, else yesterday's close
+        // off the snapshot — so a Finnhub miss at 16:20 doesn't skip a day's
+        // close-basis rungs when the closing bar itself is in hand.
+        const snapPrev = indicators.get(thesis.ticker)?.closes.at(-1);
+        const prevForClose = quote?.prevClose ?? (typeof snapPrev === "number" ? snapPrev : undefined);
         const latestQuote =
-          quote && session === "CLOSE" && todayBar
+          session === "CLOSE" && todayBar
             ? {
                 price: todayBar.close,
-                changePct: quote.prevClose ? ((todayBar.close - quote.prevClose) / quote.prevClose) * 100 : quote.changePct,
-                prevClose: quote.prevClose,
+                changePct: prevForClose ? ((todayBar.close - prevForClose) / prevForClose) * 100 : (quote?.changePct ?? 0),
+                prevClose: prevForClose,
               }
             : quote
               ? { price: quote.price, changePct: quote.changePct, prevClose: quote.prevClose }
@@ -928,7 +941,13 @@ export const triggerEvaluator = inngest.createFunction(
               : null
             : report && needsEarningsData(t.predicate)
               ? describeEarningsReport(report)
-              : null;
+              : needsIndicators(t.predicate)
+                ? describeChartFire(t.predicate, indicators.get(thesis.ticker), latestQuote?.price, {
+                    open: quote?.open ?? null,
+                    volume: todayBar?.volume ?? null,
+                    prevClose: quote?.prevClose ?? null,
+                  })
+                : null;
 
           // DEMOTE is deterministic and costs nothing to be wrong about — no
           // money moves — so it runs inline. Never a tactical spawn: arming

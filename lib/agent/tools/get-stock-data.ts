@@ -11,7 +11,7 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { finnhub } from "@/lib/agent/research-helpers";
-import { getDailyBars } from "@/lib/alpaca";
+import { getDailyBars, getTodaySessionBars } from "@/lib/alpaca";
 import {
   computePriceStructure,
   sectorEtfFor,
@@ -138,7 +138,24 @@ export const getStockData = defineTool({
     // SPY and the sector ETF come from the shared benchmark cache. The live
     // quote is the price distances are measured from. Fail-open: no bars, no
     // chart block — never a reason the research call dies.
-    let techData: (PriceStructure & { volumeFeed: "sip" | "iex" }) | null = null;
+    let techData:
+      | (PriceStructure & {
+          volumeFeed: "sip" | "iex";
+          /**
+           * Today's session so far — the chart above is completed sessions
+           * only, so "is today's breakout on volume?" needs its own read
+           * (DAV-247 review: the tactical volume gate read a field #628
+           * removed). Consolidated volume through ~16 minutes ago. Null
+           * before the first print or when the vendor didn't answer.
+           */
+          today: {
+            volumeSoFar: number;
+            volumeVsAvg20: number | null;
+            open: number | null;
+            gapPct: number | null;
+          } | null;
+        })
+      | null = null;
     if (doTechnicals) {
       const sectorEtf = sectorEtfFor((profile?.finnhubIndustry as string | undefined) ?? null);
       const [own, spy, sector] = await Promise.all([
@@ -158,7 +175,25 @@ export const getStockData = defineTool({
             sectorEtf,
           })
         : null;
-      if (structure && own) techData = { ...structure, volumeFeed: own.feed };
+      if (structure && own) {
+        const todayBar = (await getTodaySessionBars([ticker.toUpperCase()]).catch(() => ({}) as Record<string, { volume: number }>))[ticker.toUpperCase()];
+        const recentVols = own.bars.slice(-20).map((b) => b.volume);
+        const avg20 = recentVols.length === 20 ? recentVols.reduce((a, b) => a + b, 0) / 20 : null;
+        const open = typeof quote?.o === "number" && quote.o > 0 ? quote.o : null;
+        const prevClose = typeof quote?.pc === "number" && quote.pc > 0 ? quote.pc : null;
+        techData = {
+          ...structure,
+          volumeFeed: own.feed,
+          today: todayBar
+            ? {
+                volumeSoFar: todayBar.volume,
+                volumeVsAvg20: avg20 ? Math.round((todayBar.volume / avg20) * 100) / 100 : null,
+                open,
+                gapPct: open != null && prevClose ? Math.round(((open - prevClose) / prevClose) * 10000) / 100 : null,
+              }
+            : null,
+        };
+      }
       else if (own) console.warn(`[tool] get_stock_data: ${own.bars.length} bars for ${ticker} — too few for a chart.`);
     }
 

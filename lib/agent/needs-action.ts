@@ -79,6 +79,7 @@
  */
 
 import { shouldFire } from "@/lib/agent/triggers/evaluate";
+import { isMarketOpen } from "@/lib/market-hours";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
@@ -405,6 +406,9 @@ export function computeNeedsAction(
     if (!isPriceOrTimePredicate(trigger.predicate)) continue;
     const result = shouldFire(trigger, {
       latestQuote: latestQuote ?? undefined,
+      // During the session a "closes above $X" level is not true yet — it
+      // waits for the close pass. Outside it, the last price IS a close.
+      session: isMarketOpen(now) ? "INTRADAY" : undefined,
       thesis: {
         createdAt: thesis.createdAt,
         lastReviewedAt: thesis.lastReviewedAt ?? null,

@@ -324,7 +324,7 @@ function setLevel(
 
   if (price == null) return stored.filter((t) => !occupies(t));
 
-  const predicate = predicateFor(slot, price, direction, currentPrice);
+  const fresh = predicateFor(slot, price, direction, currentPrice);
 
   const matches = stored.filter(occupies);
   if (matches.length > 0) {
@@ -340,6 +340,10 @@ function setLevel(
             if (a == null || b == null) return best;
             return (long ? a > b : a < b) ? t : best;
           });
+    // Moving the number never changes WHEN it fires: a "closes above $X"
+    // level stays a close-basis level (DAV-247 review — the rebuild used to
+    // drop `basis`, turning a close confirmation into an intraday poke).
+    const predicate = withBasisOf(keep.predicate, fresh);
     return stored
       .filter((t) => !occupies(t) || t.id === keep.id)
       .map((t) => {
@@ -366,7 +370,7 @@ function setLevel(
     ...stored,
     {
       id: mintId(),
-      predicate,
+      predicate: fresh,
       // A target is REVIEW, not EXIT (ruling 2026-08-24): a floor is
       // protective and acts on its own; a target is an opportunity and wakes
       // a decision. Auto-selling at the target re-creates the capped-winner
@@ -389,7 +393,7 @@ function setLevel(
           : slot === "FLOOR"
             ? "EXIT"
             : "REVIEW",
-      rationale: rationaleFor(slot, price, direction, held, predicate.kind),
+      rationale: rationaleFor(slot, price, direction, held, fresh.kind),
       ...(source ? { source } : {}),
     },
   ];
@@ -521,6 +525,18 @@ function predicatePrice(
  * a trigger restates what the trigger already says, invisibly. It was built
  * and removed 2026-08-16 — see ENTRY_TRIGGER_SEMANTICS.md, don't rebuild it.
  */
+/**
+ * A rebuilt level predicate keeps the `basis` of the one it replaces — the
+ * number moved, not the rule about when it fires. Only a price level has a
+ * basis; anything else passes through.
+ */
+export function withBasisOf<P extends TriggerPredicate>(prior: TriggerPredicate, next: P): P {
+  const basis =
+    (prior.kind === "PRICE_ABOVE" || prior.kind === "PRICE_BELOW") ? prior.basis : undefined;
+  if (basis == null || (next.kind !== "PRICE_ABOVE" && next.kind !== "PRICE_BELOW")) return next;
+  return { ...next, basis } as P;
+}
+
 export function predicateFor(
   slot: LevelSlot,
   price: number,

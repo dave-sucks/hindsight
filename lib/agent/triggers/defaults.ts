@@ -876,10 +876,13 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
     case "VOLUME_RATIO":
     case "NEW_HIGH":
     case "PCT_FROM_52W_HIGH":
-    case "RS_VS_SPY":
     case "RSI":
       // Price and chart conditions: one nudge per day at most.
       return 1;
+    case "RS_VS_SPY":
+      // A daily-resolution number that stays true for weeks: once a week, not
+      // a daily re-ask (it can't "cross" — it doesn't read the price).
+      return 7;
     case "GAP_UP":
       // A gap stays "within the last N sessions" for N days; one fire per gap.
       return Math.max(1, p.withinDays ?? 1);
