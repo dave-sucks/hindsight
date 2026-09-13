@@ -16,13 +16,18 @@
  * See docs/plans/PRICE_LEVEL_SEMANTICS.md.
  */
 
+jest.mock("@/lib/prisma", () => ({ prisma: {} }));
+
 import {
   applyTriggerCooldownDefaults,
   defaultTriggersForHorizon,
+  horizonStandingRules,
   mergeTriggers,
-  standingProtectionTriggers,
   type ThesisShape,
 } from "./defaults";
+import { rulesForHorizon } from "./load-levels";
+import { accountSeedTriggers } from "./seed-account";
+import { levelTriggersArraySchema } from "./schema";
 import { triggerBucket } from "./bucket";
 import type { Trigger } from "./types";
 
@@ -219,60 +224,39 @@ describe("applyTriggerCooldownDefaults — cooldownDays:0 hardening", () => {
   });
 });
 
-describe("defaultTriggersForHorizon — scale-in rungs (SCALE_INTO_WINNERS.md PR2+PR4)", () => {
-  const HELD_HORIZONS = ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const;
-  const PULLBACK_HORIZONS = ["COMPOUNDER", "TARGET", "CATALYST"] as const; // not TRADE
+const HELD_HORIZONS = ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const;
 
-  const findAdd = (triggers: Trigger[], direction: "UP" | "DOWN") =>
-    triggers.find(
-      (t) =>
-        t.action === "ADD" &&
-        t.predicate.kind === "PRICE_MOVE_PCT" &&
-        t.predicate.direction === direction,
-    );
+/**
+ * DAV-250: the fill no longer stamps constant sell rules or scale-ins onto
+ * the thesis. A thesis-level rung beats any account rule in its bucket, so
+ * stamping them froze every holding on one TARGET ladder (an 8% trail sell
+ * on compounders whose mandate forbids it). They are account rules now, one
+ * set per horizon — see the horizonStandingRules block below.
+ */
+describe("defaultTriggersForHorizon — HELD carries only the thesis's own levels", () => {
+  const CONSTANT_KINDS = new Set(["GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH", "PRICE_MOVE_PCT"]);
 
-  // ── Strength rung (PR2): UP → ADD on every HELD horizon ──
   for (const horizon of HELD_HORIZONS) {
-    it(`HELD ${horizon} includes a PRICE_MOVE_PCT UP → ADD rung`, () => {
-      const add = findAdd(defaultTriggersForHorizon(horizon, base(), "HELD"), "UP");
-      expect(add).toBeDefined();
-      expect(add!.predicate).toEqual({
-        kind: "PRICE_MOVE_PCT",
-        pct: 7,
-        direction: "UP",
-        window: "1D",
-      });
-      // ADD is held-only and resolves to TACTICAL by default (defaults omit fireMode).
-      expect(add!.fireMode).toBeUndefined();
-      expect(add!.cooldownDays).toBe(3);
+    it(`HELD ${horizon} stamps no scale-in and no percentage sell rule`, () => {
+      const triggers = defaultTriggersForHorizon(horizon, base(), "HELD");
+      expect(triggers.filter((t) => t.action === "ADD")).toEqual([]);
+      expect(triggers.filter((t) => CONSTANT_KINDS.has(t.predicate.kind))).toEqual([]);
     });
-  }
 
-  // ── Pullback rung (PR4): DOWN → ADD on conviction holds, NOT on TRADE ──
-  for (const horizon of PULLBACK_HORIZONS) {
-    it(`HELD ${horizon} includes a PRICE_MOVE_PCT DOWN → ADD (pullback) rung`, () => {
-      const add = findAdd(defaultTriggersForHorizon(horizon, base(), "HELD"), "DOWN");
-      expect(add).toBeDefined();
-      expect(add!.predicate).toEqual({
-        kind: "PRICE_MOVE_PCT",
-        pct: 7,
-        direction: "DOWN",
-        window: "1D",
-      });
+    it(`HELD ${horizon} keeps its review clock and its floor`, () => {
+      const triggers = defaultTriggersForHorizon(horizon, base(), "HELD");
+      expect(triggers.filter((t) => t.predicate.kind === "REVIEW_CADENCE")).toHaveLength(1);
+      expect(
+        triggers.some(
+          (t) => t.action === "EXIT" && t.predicate.kind === "PRICE_BELOW" && t.predicate.level === 168,
+        ),
+      ).toBe(true);
     });
-  }
 
-  it("HELD TRADE does NOT include a pullback (DOWN) rung — trades exit on weakness", () => {
-    const triggers = defaultTriggersForHorizon("TRADE", base(), "HELD");
-    expect(findAdd(triggers, "DOWN")).toBeUndefined();
-    expect(findAdd(triggers, "UP")).toBeDefined(); // strength rung still present
-  });
-
-  // ── ADD is held-only: never on WATCHING / PROMOTED ──
-  for (const horizon of HELD_HORIZONS) {
-    it(`WATCHING ${horizon} has no ADD rung (held-only)`, () => {
+    it(`WATCHING ${horizon} has no ADD and no protection rungs`, () => {
       const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
       expect(triggers.find((t) => t.action === "ADD")).toBeUndefined();
+      expect(triggers.filter((t) => CONSTANT_KINDS.has(t.predicate.kind))).toEqual([]);
     });
   }
 
@@ -282,203 +266,147 @@ describe("defaultTriggersForHorizon — scale-in rungs (SCALE_INTO_WINNERS.md PR
   });
 });
 
-/**
- * Standing protection minimums (docs/plans/THESIS_GAME_PLAN.md PR-D;
- * GAPS P1-31). Every HELD template must carry the three always-on
- * protection rungs — gain checkpoint, trailing ratchet, loser attention —
- * so no holding can silently repeat the IONS round-trip (+17% to a loss on
- * a never-re-earned day-one floor).
- */
-describe("defaultTriggersForHorizon — standing protection minimums (Game Plan PR-D)", () => {
-  const HELD_HORIZONS = ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const;
+describe("horizonStandingRules — one sell ladder per horizon (DAV-250)", () => {
+  const rules = horizonStandingRules();
+  const shape = (h: (typeof HELD_HORIZONS)[number]) =>
+    rulesForHorizon(rules, h).map((t) => [t.predicate, t.action]);
+  const trail = (pct: number, extra: object = {}) => ({ kind: "TRAILING_FROM_HIGH", pct, ...extra });
+  const gain = (pct: number, direction: "UP" | "DOWN") => ({ kind: "GAIN_FROM_ENTRY", pct, direction });
+  const move = (direction: "UP" | "DOWN") => ({ kind: "PRICE_MOVE_PCT", pct: 7, direction, window: "1D" });
 
-  const findGain = (triggers: Trigger[], direction: "UP" | "DOWN") =>
-    triggers.find(
-      (t) =>
-        t.predicate.kind === "GAIN_FROM_ENTRY" &&
-        t.predicate.direction === direction,
-    );
-  const findTrail = (triggers: Trigger[]) =>
-    triggers.find((t) => t.predicate.kind === "TRAILING_FROM_HIGH");
+  it("TRADE: +7% add, +8% review, 8% trail sell, −7% sell, beat-and-fade review — no pullback add", () => {
+    expect(shape("TRADE")).toEqual([
+      [move("UP"), "ADD"],
+      [gain(8, "UP"), "REVIEW"],
+      [trail(8), "EXIT"],
+      [gain(7, "DOWN"), "EXIT"],
+      [expect.objectContaining({ kind: "AND" }), "REVIEW"],
+    ]);
+  });
 
-  for (const horizon of HELD_HORIZONS) {
-    it(`HELD ${horizon} carries GAIN_FROM_ENTRY UP 10% → REVIEW (gain checkpoint)`, () => {
-      const rung = findGain(
-        defaultTriggersForHorizon(horizon, base(), "HELD"),
-        "UP",
-      );
-      expect(rung).toBeDefined();
-      expect(rung!.predicate).toEqual({
-        kind: "GAIN_FROM_ENTRY",
-        pct: 10,
-        direction: "UP",
-      });
-      expect(rung!.action).toBe("REVIEW");
-      // cooldownDays omitted — the per-kind default (7d) fills it at write
-      // time. 0 on a REVIEW would be the NVDA-runaway shape.
-      expect(rung!.cooldownDays).toBeUndefined();
-    });
+  it("TARGET: the 12% trail only arms once the position has been up 10%", () => {
+    expect(shape("TARGET")).toEqual([
+      [move("UP"), "ADD"],
+      [move("DOWN"), "ADD"],
+      [gain(10, "UP"), "REVIEW"],
+      [trail(12, { armAtGainPct: 10 }), "EXIT"],
+      [gain(12, "DOWN"), "REVIEW"],
+      [expect.objectContaining({ kind: "AND" }), "REVIEW"],
+    ]);
+  });
 
-    if (horizon === "COMPOUNDER") {
-      // 2026-09-08: a give-back on a multi-year hold is a question, not a sale.
-      it("HELD COMPOUNDER carries TRAILING_FROM_HIGH 15% → REVIEW (the question) and 25% → EXIT (the catastrophe line)", () => {
-        const triggers = defaultTriggersForHorizon(horizon, base(), "HELD");
-        const trails = triggers.filter((t) => t.predicate.kind === "TRAILING_FROM_HIGH");
-        expect(trails.map((t) => [t.predicate.kind === "TRAILING_FROM_HIGH" ? t.predicate.pct : null, t.action])).toEqual([
-          [15, "REVIEW"],
-          [25, "EXIT"],
-        ]);
-        // A price REVIEW never spawns a tactical (#573) — no fireMode label on it.
-        expect(trails.find((t) => t.action === "REVIEW")!.fireMode).toBeUndefined();
-        expect(trails.find((t) => t.action === "EXIT")!.cooldownDays).toBe(0);
-        // No 8% mechanical sale on a compounder — the account's 8% rule is
-        // overridden by the thesis-level 25% EXIT in the same bucket.
-        expect(trails.some((t) => t.predicate.kind === "TRAILING_FROM_HIGH" && t.predicate.pct === 8)).toBe(false);
-      });
-    } else {
-    it(`HELD ${horizon} carries TRAILING_FROM_HIGH 8% → EXIT (mechanical ratchet)`, () => {
-      const rung = findTrail(defaultTriggersForHorizon(horizon, base(), "HELD"));
-      expect(rung).toBeDefined();
-      expect(rung!.predicate).toEqual({ kind: "TRAILING_FROM_HIGH", pct: 8 });
-      expect(rung!.action).toBe("EXIT");
-      // Terminal EXIT keeps the explicit cooldown opt-out, same as the hard stop.
-      expect(rung!.cooldownDays).toBe(0);
-    });
-    }
+  it("CATALYST: no percentage sell — the event is the exit and the thesis carries the stop", () => {
+    expect(shape("CATALYST")).toEqual([
+      [move("UP"), "ADD"],
+      [move("DOWN"), "ADD"],
+      [gain(10, "DOWN"), "REVIEW"],
+    ]);
+  });
 
-    it(`HELD ${horizon} carries GAIN_FROM_ENTRY DOWN 12% → REVIEW (loser attention)`, () => {
-      const rung = findGain(
-        defaultTriggersForHorizon(horizon, base(), "HELD"),
-        "DOWN",
-      );
-      expect(rung).toBeDefined();
-      expect(rung!.predicate).toEqual({
-        kind: "GAIN_FROM_ENTRY",
-        pct: 12,
-        direction: "DOWN",
-      });
-      expect(rung!.action).toBe("REVIEW");
-      expect(rung!.cooldownDays).toBeUndefined();
-    });
+  it("COMPOUNDER: a 15% give-back and the 200-day are questions; 25% is the only automatic sale", () => {
+    expect(shape("COMPOUNDER")).toEqual([
+      [move("UP"), "ADD"],
+      [move("DOWN"), "ADD"],
+      [gain(15, "UP"), "REVIEW"],
+      [trail(15), "REVIEW"],
+      [{ kind: "VS_SMA", period: 200, direction: "BELOW" }, "REVIEW"],
+      [trail(25), "EXIT"],
+      [gain(15, "DOWN"), "REVIEW"],
+    ]);
+    const exits = rulesForHorizon(rules, "COMPOUNDER").filter((t) => t.action === "EXIT");
+    expect(exits).toHaveLength(1);
+    expect(exits[0].predicate).toEqual(trail(25));
+  });
 
-    it(`WATCHING ${horizon} has NO protection rungs (HOLDING-only predicates)`, () => {
-      const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
-      expect(findGain(triggers, "UP")).toBeUndefined();
-      expect(findGain(triggers, "DOWN")).toBeUndefined();
-      expect(findTrail(triggers)).toBeUndefined();
-    });
-  }
+  it("every sell rule is a terminal EXIT with the cooldown opt-out", () => {
+    for (const t of rules.filter((r) => r.action === "EXIT")) expect(t.cooldownDays).toBe(0);
+  });
 
-  // ── The review clock is chosen, never inherited (DAV-209) ──
+  it("the account seed fits under the level cap, with room to add", () => {
+    expect(levelTriggersArraySchema.safeParse(accountSeedTriggers()).success).toBe(true);
+    expect(accountSeedTriggers().length).toBeLessThanOrEqual(24);
+  });
+
+  it("cooldown defaults fill the gain REVIEW rungs with the 7d latch", () => {
+    const filled = applyTriggerCooldownDefaults(rulesForHorizon(rules, "TARGET"));
+    const up = filled.find((t) => t.predicate.kind === "GAIN_FROM_ENTRY" && t.predicate.direction === "UP")!;
+    expect(up.cooldownDays).toBe(7);
+  });
+
+  it("mints fresh ids on every call", () => {
+    const a = horizonStandingRules();
+    const b = horizonStandingRules();
+    for (let i = 0; i < a.length; i++) expect(a[i].id).not.toBe(b[i].id);
+  });
+});
+
+describe("rulesForHorizon — a horizon rule beats an every-horizon rule in the same bucket", () => {
+  const every: Trigger = {
+    id: "every",
+    predicate: { kind: "TRAILING_FROM_HIGH", pct: 6 },
+    action: "EXIT",
+    rationale: "every horizon",
+  };
+  const compounder: Trigger = { ...every, id: "c", predicate: { kind: "TRAILING_FROM_HIGH", pct: 25 }, horizons: ["COMPOUNDER"] };
+
+  it("the compounder gets its own 25%, not the tighter every-horizon 6%", () => {
+    expect(rulesForHorizon([every, compounder], "COMPOUNDER").map((t) => t.id)).toEqual(["c"]);
+  });
+  it("other horizons keep the every-horizon rule", () => {
+    expect(rulesForHorizon([every, compounder], "TRADE").map((t) => t.id)).toEqual(["every"]);
+  });
+  it("a thesis of another horizon never sees a scoped rule", () => {
+    expect(rulesForHorizon([compounder], "TARGET")).toEqual([]);
+  });
+});
+
+describe("mergeTriggers", () => {
+  it("an agent-authored same-bucket rung replaces the default", () => {
+    const agent: Trigger[] = [
+      {
+        id: "agent-1",
+        predicate: { kind: "PRICE_BELOW", level: 171 },
+        action: "EXIT",
+        rationale: "Tighter floor under the new base.",
+        cooldownDays: 0,
+      },
+    ];
+    const merged = mergeTriggers(defaultTriggersForHorizon("TARGET", base(), "HELD"), agent);
+    const floors = merged.filter((t) => t.predicate.kind === "PRICE_BELOW" && t.action === "EXIT");
+    expect(floors).toHaveLength(1);
+    expect(floors[0].id).toBe("agent-1");
+    expect(merged.some((t) => t.predicate.kind === "REVIEW_CADENCE")).toBe(true);
+  });
+});
+
+// ── A watch carries only what its author wrote (DAV-209) ──
+describe("defaultTriggersForHorizon — WATCHING carries only the author's levels", () => {
   for (const horizon of HELD_HORIZONS) {
     it(`WATCHING ${horizon} template carries NO review clock`, () => {
       const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
-      expect(
-        triggers.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
-      ).toHaveLength(0);
+      expect(triggers.filter((t) => t.predicate.kind === "REVIEW_CADENCE")).toHaveLength(0);
     });
 
-    it(`HELD ${horizon} template still carries its review clock`, () => {
-      const triggers = defaultTriggersForHorizon(horizon, base(), "HELD");
-      expect(
-        triggers.filter((t) => t.predicate.kind === "REVIEW_CADENCE"),
-      ).toHaveLength(1);
-    });
-  }
-
-  // ── A watch carries only what its author wrote (DAV-209) ──
-  for (const horizon of HELD_HORIZONS) {
     it(`WATCHING ${horizon} with no prices emits NOTHING`, () => {
-      // The templates used to invent a review schedule plus earnings, filing
-      // and guidance rungs on every new watch. An author who supplied no
-      // levels and no triggers now gets an empty ladder, which is a legal,
-      // free state: nothing looks at the name until something they wrote does.
       const triggers = defaultTriggersForHorizon(
         horizon,
-        {
-          entryPrice: null,
-          targetPrice: null,
-          stopLoss: null,
-          catalystDate: null,
-          direction: "LONG",
-        },
+        { entryPrice: null, targetPrice: null, stopLoss: null, catalystDate: null, direction: "LONG" },
         "WATCHING",
       );
       expect(triggers).toEqual([]);
     });
 
     it(`WATCHING ${horizon} emits ONLY the author's own levels`, () => {
-      const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
-      // Every rung traces back to a number the author supplied.
-      const kinds = new Set(triggers.map((t) => t.predicate.kind));
+      const kinds = new Set(defaultTriggersForHorizon(horizon, base(), "WATCHING").map((t) => t.predicate.kind));
       expect(kinds.has("REVIEW_CADENCE")).toBe(false);
       expect(kinds.has("EARNINGS_BEAT")).toBe(false);
       expect(kinds.has("EARNINGS_MISS")).toBe(false);
-      expect(kinds.has("REVIEW_CADENCE")).toBe(false);
-      // What it DOES carry: the buy level, and the plan levels around it.
-      expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
     });
   }
 
   it("PROMOTED still gets its re-entry rung off the author's entry level", () => {
     const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
     expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
-  });
-
-  it("PROMOTED has no protection rungs (no live position yet)", () => {
-    const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
-    expect(findGain(triggers, "UP")).toBeUndefined();
-    expect(findTrail(triggers)).toBeUndefined();
-  });
-
-  it("cooldown defaults fill the REVIEW rungs with the GAIN_FROM_ENTRY 7d latch", () => {
-    const filled = applyTriggerCooldownDefaults(standingProtectionTriggers());
-    const up = findGain(filled, "UP")!;
-    const down = findGain(filled, "DOWN")!;
-    const trail = findTrail(filled)!;
-    expect(up.cooldownDays).toBe(7);
-    expect(down.cooldownDays).toBe(7);
-    expect(trail.cooldownDays).toBe(0); // EXIT opt-out preserved
-  });
-
-  it("standingProtectionTriggers mints fresh ids on every call", () => {
-    const a = standingProtectionTriggers();
-    const b = standingProtectionTriggers();
-    for (let i = 0; i < a.length; i++) {
-      expect(a[i].id).toBeTruthy();
-      expect(a[i].id).not.toBe(b[i].id);
-    }
-  });
-
-  it("mergeTriggers: an agent-authored same-bucket rung replaces the default", () => {
-    // Agent writes its own +15% gain checkpoint — the +10% default in the
-    // same (GAIN_FROM_ENTRY:UP, REVIEW) bucket must NOT stack a second one.
-    const agent: Trigger[] = [
-      {
-        id: "agent-1",
-        predicate: { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "UP" },
-        action: "REVIEW",
-        rationale: "Next milestone at +15%.",
-        cooldownDays: 7,
-      },
-    ];
-    const merged = mergeTriggers(
-      defaultTriggersForHorizon("TARGET", base(), "HELD"),
-      agent,
-    );
-    const gains = merged.filter(
-      (t) =>
-        t.predicate.kind === "GAIN_FROM_ENTRY" &&
-        t.predicate.direction === "UP",
-    );
-    expect(gains).toHaveLength(1);
-    expect(gains[0].id).toBe("agent-1");
-    expect(
-      gains[0].predicate.kind === "GAIN_FROM_ENTRY" && gains[0].predicate.pct,
-    ).toBe(15);
-    // The other two buckets are untouched by the agent's rung — defaults fill.
-    expect(findGain(merged, "DOWN")).toBeDefined();
-    expect(findTrail(merged)).toBeDefined();
   });
 });
 

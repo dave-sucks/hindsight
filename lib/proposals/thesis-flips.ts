@@ -108,7 +108,10 @@ export async function promoteThesisOnApproval(opts: {
  *   - sets the floor and target to the EXECUTED levels (an edit of the
  *     trigger that is there, an add if none)
  *   - adds each held-side template trigger whose bucket is missing — the
- *     standing protection, the scale-ins, the held review cadence
+ *     held review cadence and the earnings reviews. The sell rules and
+ *     scale-ins are NOT stamped: they are the account's rules for this
+ *     horizon and apply by inheritance (DAV-250), so editing them in
+ *     Settings reaches every holding instead of none
  *   - recomputes the displayed level columns FROM the resulting triggers
  *   - stamps entryPrice with the FILL price: once held, entry is a fact
  *   - flips WATCHING → HOLDING and writes the STATUS_CHANGED audit row,
@@ -211,7 +214,7 @@ export async function armHeldLadderOnFill(opts: {
         thesisId: watchingThesis.id,
         type: "STATUS_CHANGED",
         summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → HOLDING on ${opts.via}`,
-        rationale: `Entry filled at $${opts.fillPrice.toFixed(2)} — the watchlist row is now a live position. The buy trigger is gone; the analyst's other triggers stay and the held-side ${horizon ?? "(no-horizon)"} protection fills the gaps.`,
+        rationale: `Entry filled at $${opts.fillPrice.toFixed(2)} — the watchlist row is now a live position. The buy trigger is gone; the analyst's other triggers stay, and the account's ${horizon ?? "TARGET"} sell rules apply.`,
         fieldChanges: {
           status: { from: "WATCHING", to: "HOLDING" },
           triggerOps: { from: null, to: acceptedOps(applied.results) },

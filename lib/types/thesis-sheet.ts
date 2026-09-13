@@ -35,6 +35,8 @@ export interface TriggerPredicate {
   min?: number;
   max?: number;
   trailPct?: number;
+  /** TRAILING_FROM_HIGH — off until the position has once been up this %. */
+  armAtGainPct?: number;
   predicates?: TriggerPredicate[];
 }
 
@@ -47,6 +49,8 @@ export interface Trigger {
   lastFiredAt?: string;
   /** "TACTICAL" (wake an agent) | "DIRECT" (close directly, no agent). Absent ⇒ TACTICAL. */
   fireMode?: "TACTICAL" | "DIRECT";
+  /** Account/analyst rules: the horizons this rule applies to. Absent ⇒ every horizon. */
+  horizons?: string[];
   /**
    * Which record this rung is stored on — the cascade level. Set by the
    * server's resolver (lib/agent/triggers/levels), never by the client.

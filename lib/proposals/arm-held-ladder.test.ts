@@ -137,7 +137,7 @@ describe("armHeldLadderOnFill — the analyst's ladder survives the fill (DAV-23
     ],
   };
 
-  it("keeps the analyst's target and reviews, drops the buy rung, adds the held protection", async () => {
+  it("keeps the analyst's target and reviews, drops the buy rung, stamps no sell rules", async () => {
     thesisFindFirst.mockResolvedValue(asml);
     await armHeldLadderOnFill({ ...BASE, ticker: "ASML", fillPrice: 1716.09, targetPrice: 2800, stopLoss: 1580 });
 
@@ -147,9 +147,12 @@ describe("armHeldLadderOnFill — the analyst's ladder survives the fill (DAV-23
     expect(ids).toContain("support");
     expect(ids).toContain("floor");
     expect(ids).not.toContain("enter");
-    // The held template still supplies what the analyst didn't write.
-    const kinds = (data.triggers as Array<{ predicate: { kind: string } }>).map((t) => t.predicate.kind);
-    expect(kinds).toContain("TRAILING_FROM_HIGH");
+    // DAV-250: the sell rules and scale-ins are the account's rules for this
+    // horizon and apply by inheritance. A stamped copy would beat them
+    // forever — that is how ASML ended up with an 8% automatic sale.
+    const triggers = data.triggers as Array<{ action: string; predicate: { kind: string } }>;
+    expect(triggers.some((t) => t.predicate.kind === "TRAILING_FROM_HIGH")).toBe(false);
+    expect(triggers.some((t) => t.action === "ADD")).toBe(false);
     // And the target column is read off the surviving rung, not lost.
     expect(data.targetPrice).toBe(2800);
     expect(data.stopLoss).toBe(1580);
@@ -165,7 +168,7 @@ describe("armHeldLadderOnFill — the analyst's ladder survives the fill (DAV-23
     expect(ids).toContain("watch-tmpl");
   });
 
-  it("adds only the protection that is missing — the analyst's tighter trail keeps its id and value", async () => {
+  it("the analyst's own trail keeps its id and value through the fill", async () => {
     thesisFindFirst.mockResolvedValue({
       ...asml,
       triggers: [
