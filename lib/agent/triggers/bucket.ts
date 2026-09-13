@@ -6,8 +6,7 @@
  *   - within one level: `mergeTriggers` keeps the agent-supplied rung over
  *     the horizon default (lib/agent/triggers/defaults).
  *   - across levels: `resolveLadder` keeps the most-specific level's rung
- *     (lib/agent/triggers/levels) — thesis beats analyst beats account
- *     beats code default.
+ *     (lib/agent/triggers/levels) — thesis beats analyst beats account.
  *
  * Extracted from `defaults.ts` on 2026-08-05 so the cascade resolver and
  * the client-side trigger UI can share it: `defaults.ts` imports

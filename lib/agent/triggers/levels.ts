@@ -3,15 +3,16 @@
  *
  * > Canonical shape: docs/plans/TRIGGER_MODEL.md §5.5 (the cascade) and
  * > TRIGGER_LIFECYCLE.md §1 (the authority model). This module is the
- * > implementation of "layer 2 (analyst standing rules)" + "layer 1 (code
- * > constants)" that both docs list as missing.
+ * > implementation of the analyst and account standing-rule layers.
  *
  * ## Level is WHERE a rung is stored, not a field on it
  *
  *   Thesis.triggers      → THESIS   (solid pill, editable)
  *   AgentConfig.triggers → ANALYST  (dotted pill, edit at the analyst)
  *   Account.triggers     → ACCOUNT  (dotted pill, edit in settings)
- *   ./defaults templates → DEFAULT  (dotted pill, read-only — code constants)
+ *
+ * The cascade bottoms out at ACCOUNT. The built-in rules are seeded onto
+ * the account as ordinary editable rules (./seed-account), not a level.
  *
  * `Trigger.source` is a *different* axis (who authored the value) and is
  * deliberately not consulted here. Storing the level as a field would let
@@ -44,7 +45,7 @@ import { protectiveExitCloseReason } from "./types";
 import type { Trigger } from "./types";
 
 /** Where a resolved rung is stored — most-specific first. */
-export type TriggerLevel = "THESIS" | "ANALYST" | "ACCOUNT" | "DEFAULT";
+export type TriggerLevel = "THESIS" | "ANALYST" | "ACCOUNT";
 
 /**
  * Resolution order, most-specific → least. The array order IS the
@@ -54,7 +55,6 @@ export const LEVEL_PRECEDENCE: readonly TriggerLevel[] = [
   "THESIS",
   "ANALYST",
   "ACCOUNT",
-  "DEFAULT",
 ];
 
 /**
@@ -70,8 +70,8 @@ export type ResolvedTrigger = Trigger & {
    * from somewhere further down the cascade. Drives the dashed border and
    * the read-only popover.
    *
-   * Relative to `viewLevel`, not to THESIS: on `/settings/triggers` an
-   * ACCOUNT rung is the thing you own and a DEFAULT rung is inherited,
+   * Relative to `viewLevel`, not to THESIS: on the analyst page an
+   * ANALYST rung is the thing you own and an ACCOUNT rung is inherited,
    * while on a thesis both are inherited. Hardcoding THESIS here made the
    * account and analyst pages render their own rules dashed and
    * read-only — the exact opposite of their purpose.
@@ -84,7 +84,7 @@ export type ResolvedTrigger = Trigger & {
    * Without this the cascade is only half legible: a dashed border tells
    * you about levels nothing has overridden, but an override looks
    * identical to a rule invented from scratch. On a thesis reviewing at
-   * +20% from entry, nothing on screen says the app default is +10% and
+   * +20% from entry, nothing on screen says the account rule is +10% and
    * the analyst deliberately moved it. Surfaced in the popover.
    */
   overrides?: {
@@ -100,12 +100,6 @@ export interface LadderLevels {
   analyst?: Trigger[];
   /** `Account.triggers` — account-wide standing rules. */
   account?: Trigger[];
-  /**
-   * Code-constant level beneath ACCOUNT. No production caller supplies it
-   * any more — the constants are seeded account rules (2026-08-16) and the
-   * sell rules are per-horizon account rules (DAV-250).
-   */
-  defaults?: Trigger[];
   /**
    * `Thesis.triggerState` — per-thesis fire bookkeeping for rungs that
    * live on a SHARED record. An analyst rung fires per-thesis, but it is
@@ -136,9 +130,8 @@ export interface LadderLevels {
    *
    * `GAIN_FROM_ENTRY` and `TRAILING_FROM_HIGH` measure off an open
    * position's avgCost / peak, so on a WATCHING or PROMOTED thesis they
-   * evaluate false forever. That used to be handled by the DEFAULT
-   * level's HELD-only templates; now that those rungs are seeded onto the
-   * ACCOUNT (where there is no per-thesis state), the gate belongs here —
+   * evaluate false forever. Those rungs live on the ACCOUNT (where there
+   * is no per-thesis state), so the gate belongs here —
    * otherwise every watchlist thesis renders a trail rung that can never
    * fire. Omit ⇒ no gating (settings surfaces, which have no thesis).
    */
@@ -249,7 +242,6 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
     THESIS: order(input.thesis ?? []),
     ANALYST: order(input.analyst ?? []),
     ACCOUNT: order(input.account ?? []),
-    DEFAULT: order(input.defaults ?? []),
   };
 
   const claimed = new Set<string>();
@@ -303,7 +295,7 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
       if (claimed.has(bucket)) {
         // Losing rung: annotate the winner with what it displaced, but
         // only the FIRST one found — "overrides the analyst rule" is what
-        // the reader needs, not the whole chain down to the code default.
+        // the reader needs, not the whole chain down to the account.
         const winnerIdx = winnerIndexByBucket.get(bucket);
         if (winnerIdx != null && out[winnerIdx].overrides === undefined) {
           out[winnerIdx].overrides = { level, predicate: t.predicate };

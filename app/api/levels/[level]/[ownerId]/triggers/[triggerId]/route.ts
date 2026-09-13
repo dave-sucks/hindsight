@@ -7,10 +7,6 @@
  * which level it's editing:
  *   { value: number }                   → edit the value
  *   { fireMode: "TACTICAL" | "DIRECT" } → change how it fires
- *
- * Attempting either on a code DEFAULT rung 404s with an explanation —
- * those aren't stored anywhere, and the way to change one is to add a
- * rule at this level that overrides it.
  */
 
 import { createClient } from "@/lib/supabase/server";

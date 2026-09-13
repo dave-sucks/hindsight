@@ -123,10 +123,8 @@ function overriddenLevelPhrase(level: string): string {
     case "ANALYST":
       return "this analyst's rule";
     case "ACCOUNT":
-      return "your account rule";
-    case "DEFAULT":
     default:
-      return "the app default";
+      return "your account rule";
   }
 }
 
@@ -359,8 +357,8 @@ function TriggerPill({
   onChanged?: () => void;
 }) {
   const { kind, value } = predicateKindValue(trigger.predicate);
-  // Inherited = stored at a level above this thesis (analyst / account /
-  // code default). One treatment for all three per the 2026-08-05 design
+  // Inherited = stored at a level above this thesis (analyst / account).
+  // One treatment for both per the 2026-08-05 design
   // call: a dashed border. The popover names which level it is.
   const inherited = trigger.inherited ?? false;
   return (
@@ -482,8 +480,7 @@ function TriggerPopoverContent({
   const canEdit = editable && field != null;
 
   const inherited = trigger.inherited ?? false;
-  // Where the rung can actually be changed. A DEFAULT rung is a code
-  // constant — there is no settings screen that owns it, so no link.
+  // Where the rung can actually be changed.
   const editHref =
     trigger.level === "ANALYST" && analystId
       ? `/analysts/${analystId}`
@@ -726,7 +723,7 @@ function TriggerPopoverContent({
       {/* What this rung displaced. Only on a rung that actually overrode
           something — otherwise the cascade is only half visible (the
           dashed border explains inherited rungs, nothing explains an
-          override). Reads "Overrides the app default: gives back 8% from
+          override). Reads "Overrides your account rule: gives back 8% from
           the high." */}
       {trigger.overrides ? (
         <p className="text-xs text-muted-foreground">
@@ -736,9 +733,7 @@ function TriggerPopoverContent({
       ) : null}
 
       {/* Level — only on an inherited rung, where it answers "why is this
-          read-only?" The link goes to the surface that owns it; a DEFAULT
-          rung is a code constant with no owner, so it gets the sentence
-          without a link. */}
+          read-only?" The link goes to the surface that owns it. */}
       {inherited ? (
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground">

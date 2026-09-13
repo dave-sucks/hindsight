@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Resolved ladder, not the raw column — an inherited rung (analyst /
-  // account / code default) is not stored on the thesis, and a manual
+  // account) is not stored on the thesis, and a manual
   // fire of one is exactly as legitimate as a manual fire of its own.
   const ladder = resolveThesisLadder(
     thesis,

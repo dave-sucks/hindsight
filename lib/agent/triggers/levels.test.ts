@@ -30,12 +30,11 @@ const gainReview = (pct: number, id?: string) =>
   });
 
 describe("resolveLadder — precedence", () => {
-  it("thesis beats analyst beats account beats default in the same bucket", () => {
+  it("thesis beats analyst beats account in the same bucket", () => {
     const resolved = resolveLadder({
       thesis: [trail(5)],
       analyst: [trail(6)],
       account: [trail(7)],
-      defaults: [trail(8)],
     });
 
     expect(resolved).toHaveLength(1);
@@ -45,10 +44,9 @@ describe("resolveLadder — precedence", () => {
 
   it("falls through one level at a time as each is removed", () => {
     const levels = [
-      { input: { thesis: [trail(5)], analyst: [trail(6)], account: [trail(7)], defaults: [trail(8)] }, level: "THESIS", pct: 5 },
-      { input: { thesis: [], analyst: [trail(6)], account: [trail(7)], defaults: [trail(8)] }, level: "ANALYST", pct: 6 },
-      { input: { thesis: [], analyst: [], account: [trail(7)], defaults: [trail(8)] }, level: "ACCOUNT", pct: 7 },
-      { input: { thesis: [], analyst: [], account: [], defaults: [trail(8)] }, level: "DEFAULT", pct: 8 },
+      { input: { thesis: [trail(5)], analyst: [trail(6)], account: [trail(7)] }, level: "THESIS", pct: 5 },
+      { input: { thesis: [], analyst: [trail(6)], account: [trail(7)] }, level: "ANALYST", pct: 6 },
+      { input: { thesis: [], analyst: [], account: [trail(7)] }, level: "ACCOUNT", pct: 7 },
     ];
 
     for (const { input, level, pct } of levels) {
@@ -86,7 +84,7 @@ describe("resolveLadder — precedence", () => {
       predicate: { kind: "GAIN_FROM_ENTRY", pct: 12, direction: "DOWN" },
       action: "REVIEW",
     });
-    const resolved = resolveLadder({ thesis: [up], defaults: [down] });
+    const resolved = resolveLadder({ thesis: [up], account: [down] });
 
     expect(resolved).toHaveLength(2);
     expect(triggerBucket(up)).not.toBe(triggerBucket(down));
@@ -111,7 +109,6 @@ describe("resolveLadder — precedence", () => {
       "THESIS",
       "ANALYST",
       "ACCOUNT",
-      "DEFAULT",
     ]);
   });
 });
@@ -194,13 +191,9 @@ describe("resolveLadder — viewLevel", () => {
     const resolved = resolveLadder({
       thesis: [],
       account: [trail(6, "acct")],
-      defaults: [gainReview(10, "def")],
       viewLevel: "ACCOUNT",
     });
-    const own = resolved.find((t) => t.id === "acct")!;
-    const def = resolved.find((t) => t.id === "def")!;
-    expect(own.inherited).toBe(false);
-    expect(def.inherited).toBe(true);
+    expect(resolved.find((t) => t.id === "acct")!.inherited).toBe(false);
   });
 
   it("treats the account as inherited when viewed from the analyst", () => {
@@ -228,10 +221,10 @@ describe("resolveLadder — override annotation", () => {
   it("tells a winning rung what it displaced", () => {
     const [only] = resolveLadder({
       thesis: [gainReview(20)],
-      defaults: [gainReview(10)],
+      account: [gainReview(10)],
     });
     expect(only.level).toBe("THESIS");
-    expect(only.overrides?.level).toBe("DEFAULT");
+    expect(only.overrides?.level).toBe("ACCOUNT");
     expect((only.overrides?.predicate as { pct: number }).pct).toBe(10);
   });
 
@@ -240,7 +233,6 @@ describe("resolveLadder — override annotation", () => {
       thesis: [trail(4)],
       analyst: [trail(5)],
       account: [trail(6)],
-      defaults: [trail(8)],
     });
     expect(only.overrides?.level).toBe("ANALYST");
     expect((only.overrides?.predicate as { pct: number }).pct).toBe(5);
@@ -254,12 +246,12 @@ describe("resolveLadder — override annotation", () => {
   it("annotates an inherited winner too", () => {
     const [only] = resolveLadder({
       thesis: [],
-      account: [trail(6)],
-      defaults: [trail(8)],
+      analyst: [trail(6)],
+      account: [trail(8)],
     });
-    expect(only.level).toBe("ACCOUNT");
+    expect(only.level).toBe("ANALYST");
     expect(only.inherited).toBe(true);
-    expect(only.overrides?.level).toBe("DEFAULT");
+    expect(only.overrides?.level).toBe("ACCOUNT");
   });
 });
 
@@ -310,8 +302,8 @@ describe("splitFiresByLevel", () => {
   it("files thesis rungs inline and inherited rungs into triggerState", () => {
     const resolved = resolveLadder({
       thesis: [trail(4, "own")],
-      account: [gainReview(15, "acct")],
-      defaults: [gainReview(10, "def-masked")],
+      analyst: [gainReview(15, "acct")],
+      account: [gainReview(10, "acct-masked")],
     });
     const split = splitFiresByLevel(resolved);
     expect(split.firedTriggerIds).toEqual(["own"]);
@@ -319,7 +311,7 @@ describe("splitFiresByLevel", () => {
   });
 
   it("handles an all-inherited and an all-owned batch", () => {
-    const inheritedOnly = resolveLadder({ thesis: [], defaults: [trail(8, "d")] });
+    const inheritedOnly = resolveLadder({ thesis: [], account: [trail(8, "d")] });
     expect(splitFiresByLevel(inheritedOnly).firedTriggerIds).toEqual([]);
 
     const ownedOnly = resolveLadder({ thesis: [trail(8, "t")] });
@@ -343,7 +335,6 @@ describe("resolveLadder — WATCHING cadence opt-in (W1, DAV-216)", () => {
       thesis: [],
       analyst: [cadence(1, "analyst-cadence")],
       account: [cadence(7, "account-cadence")],
-      defaults: [cadence(14, "default-cadence")],
       state: "WATCHING",
     });
     expect(resolved.filter((t) => t.predicate.kind === "REVIEW_CADENCE")).toEqual([]);

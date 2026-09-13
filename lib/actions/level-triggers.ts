@@ -233,7 +233,7 @@ export async function editLevelTriggerValue(
   if (!found) {
     throw new ThesisEditError(
       "NOT_FOUND",
-      `Trigger ${triggerId} is not stored at this level. App defaults are code constants and can't be edited — override one by adding a rule here.`,
+      `Trigger ${triggerId} not found at this level.`,
     );
   }
   if (!editableTriggerField(found.predicate)) {
@@ -286,7 +286,7 @@ export async function deleteLevelTrigger(
   if (!existing.some((t) => t.id === triggerId)) {
     throw new ThesisEditError(
       "NOT_FOUND",
-      `Trigger ${triggerId} is not stored at this level. App defaults can't be deleted — they're the floor beneath every level.`,
+      `Trigger ${triggerId} not found at this level.`,
     );
   }
   await target.write(existing.filter((t) => t.id !== triggerId));

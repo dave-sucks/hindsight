@@ -8,14 +8,9 @@ import {
 import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
 
 /**
- * /settings/triggers — the ACCOUNT level of the trigger cascade, and the
- * first place the app defaults are visible at all.
- *
- * Before this page existed, "what protection does every holding carry?"
- * was answerable only by reading `lib/agent/triggers/defaults.ts`. The
- * rungs here are the same pills the thesis sheet renders: your own
- * account-wide rules solid and editable, the app defaults dashed and
- * read-only beneath them.
+ * /settings/triggers — the ACCOUNT level of the trigger cascade, the
+ * bottom of it. The built-in rules are seeded here as ordinary editable
+ * rules; the pills are the same ones the thesis sheet renders.
  */
 export default async function TriggerSettingsPage() {
   const supabase = await createClient();
@@ -39,14 +34,14 @@ export default async function TriggerSettingsPage() {
 
       <SettingsSection
         title="Account rules"
-        description="Rules you set for every analyst, and the built-in defaults they sit on top of."
+        description="Rules for every analyst on this account."
       >
         <LevelTriggersSection level="account" ownerId={accountId} />
       </SettingsSection>
 
       <SettingsSection
         title="How the levels stack"
-        description="Most specific wins. Account rules override the app defaults; an analyst overrides the account; a single thesis overrides them all. Deleting a rung reveals whatever sits beneath it."
+        description="Most specific wins. An analyst overrides the account; a single thesis overrides them all. Deleting a rung reveals whatever sits beneath it."
       >
         <p className="text-xs text-muted-foreground">
           Rules here can only express things that mean the same on every
