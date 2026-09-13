@@ -122,9 +122,17 @@ describe("update_thesis — a refused call claims no change (DAV-258)", () => {
     }
   });
 
-  it("the set-down the analyst meant — buy, floor and target in one call — lands", async () => {
-    const result = await run({ remove_trigger_ids: [BUY, FLOOR, TARGET] });
-    expect(result.data?.error).toBeUndefined();
+  it("the refusal names the exact set-down call, and following it lands", async () => {
+    const refused = await run({ remove_trigger_ids: [BUY, CADENCE] });
+    const message = String(refused.data?.message);
+    expect(message).toContain("To set the plan down");
+    // Buy, floor and target by id — not the review cadence, which survives a set-down.
+    const named = [...message.matchAll(/"([0-9a-f-]{36})"/g)].map((m) => m[1]);
+    expect(named.sort()).toEqual([BUY, FLOOR, TARGET].sort());
+
+    mockThesisUpdate.mockClear();
+    const followed = await run({ remove_trigger_ids: named });
+    expect(followed.data?.error).toBeUndefined();
     expect(mockThesisUpdate).toHaveBeenCalled();
   });
 });

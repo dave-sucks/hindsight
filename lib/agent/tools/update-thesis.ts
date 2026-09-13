@@ -44,9 +44,11 @@ import {
   acceptedOps,
   applyTriggerOps,
   checkLadder,
+  describeTrigger,
   type TriggerOp,
   type TriggerOpResult,
 } from "@/lib/agent/triggers/ops";
+import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
 import {
   writeThesisUpdate,
   diffThesisFields,
@@ -408,6 +410,20 @@ type UpdatePatch = Partial<{
 export function notApplied(results: TriggerOpResult[], error: string): TriggerOpResult[] {
   const reason = `Not applied — the whole update was refused (${error}).`;
   return results.map((r) => (r.ok ? { ...r, ok: false, reason } : r));
+}
+
+/**
+ * The exact call that sets a plan down. VST 09-11: the analyst removed only
+ * the buy, the half-plan rule refused it, and the message said "remove the
+ * floor and target triggers" without saying which — so it guessed. Every plan
+ * level on the stored list, by id, removed together, is a call that lands.
+ */
+export function setDownInstruction(stored: Trigger[], direction: string | null): string {
+  const levels = stored.filter((t) => isPlanLevel(t, direction));
+  if (levels.length === 0) return "";
+  const ids = levels.map((t) => `"${t.id}"`).join(", ");
+  const words = levels.map((t) => describeTrigger(t, direction)).join(", ");
+  return `To set the plan down, remove all of them in one call: remove_trigger_ids: [${ids}] (${words}).`;
 }
 
 export const updateThesis = defineTool({
@@ -1140,7 +1156,10 @@ export const updateThesis = defineTool({
               data: {
                 ok: false,
                 error: check.error,
-                message: check.message,
+                message:
+                  check.error === "missing_enter_trigger"
+                    ? `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim()
+                    : check.message,
                 trigger_ops: notApplied(opResults, check.error),
               },
               sources: [],
