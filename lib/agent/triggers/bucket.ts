@@ -46,6 +46,7 @@ export function predicateKey(p: TriggerPredicate): string {
     case "VOLUME_RATIO":
     case "PCT_FROM_52W_HIGH":
     case "GAP_UP":
+    case "INSIDER_CLUSTER":
       return p.kind;
     case "NEW_HIGH":
     case "RS_VS_SPY":

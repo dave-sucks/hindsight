@@ -413,6 +413,7 @@ export const ADDABLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"]> = ne
   "RS_VS_SPY",
   "GAP_UP",
   "RSI",
+  "INSIDER_CLUSTER",
 ]);
 
 /** Kinds that evaluate off the open position (avgCost / peakPrice). With no

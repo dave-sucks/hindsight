@@ -44,6 +44,7 @@ An invalid trigger is dropped at evaluation, so the gate rejects it up front.
 | `RS_VS_SPY` | Return over the window minus SPY's, percentage points, as of the last close | `window: 1M\|3M\|6M`, `min` |
 | `GAP_UP` | Opened ≥ `minPct`% over the prior close on ≥ `minVolRatio`× volume — today, or within `withinDays` sessions | `minPct`, `minVolRatio`, `withinDays?` |
 | `RSI` | RSI over the snapshot's closes with the live price as today's | `period?: 2\|14`, `threshold`, `direction` |
+| `INSIDER_CLUSTER` | At least `minBuyers` distinct insiders bought on the open market (Form 4 code P; grants and exercises excluded) within `days`. Read from the snapshot's `insiderBuys` (Finnhub, refreshed 06:30 ET). The fire's audit row names the buyers. Cooldown 30. (DAV-252) | `minBuyers` (1–10), `days` (1–90) |
 | `EARNINGS_BEAT` / `EARNINGS_MISS` | Earnings surprise — reported EPS vs estimate, read off the Finnhub calendar on the cron (one firm-wide call per pass; `triggers/earnings.ts`). Fires at the first open after the report, once per report (3-day lookback inside the 7-day cooldown). The audit row carries the figures. | `minSurprisePct?` |
 | `EARNINGS_WITHIN` | The heads-up **before** a report: "this stock reports within N days." Same calendar call, 14-day lookahead. Fires once per approaching report (30-day cooldown). The audit row carries the date, bell, and estimates. | `days` (1–14) |
 | `EARNINGS_SINCE` | The window **after** a report: "reported between min and max days ago" (0 = the report day). The post-report drift entry window, once the reaction is known. Same calendar, 5-day lookback. Fires once per report (30-day cooldown). | `min`, `max` (0–5) |
@@ -147,7 +148,7 @@ sharing the pure `evaluateTrigger` in `triggers/evaluate.ts`:
 | `PRICE_MOVE_PCT` `5D` / `20D` | ✅ (snapshot) | — | ✅ (snapshot) |
 | **`GAIN_FROM_ENTRY`** (HOLDING-only) | ✅ **fires** | — | ✅ |
 | **`TRAILING_FROM_HIGH`** (HOLDING-only) | ✅ **fires** | — | ✅ |
-| `VS_SMA` / `NEAR_SMA` / `NEW_HIGH` / `PCT_FROM_52W_HIGH` / `RS_VS_SPY` / `RSI` | ✅ (snapshot) | — | ✅ (snapshot) |
+| `VS_SMA` / `NEAR_SMA` / `NEW_HIGH` / `PCT_FROM_52W_HIGH` / `RS_VS_SPY` / `RSI` / `INSIDER_CLUSTER` | ✅ (snapshot) | — | ✅ (snapshot) |
 | `VOLUME_RATIO` / `GAP_UP` | ✅ (snapshot + today's volume) | — | ❌ (no volume on that path) |
 | `PRICE_ABOVE` / `PRICE_BELOW` `basis:"close"` | ✅ **close pass only** (16:20–16:34 ET) | — | ✅ (read as a plain level) |
 | **`EARNINGS_BEAT` / `EARNINGS_MISS` / `EARNINGS_WITHIN` / `EARNINGS_SINCE`** | ✅ **fires** (calendar) | ✅ (beat/miss only, if a signal ever carries a surprise) | — |

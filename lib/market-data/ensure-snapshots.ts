@@ -19,6 +19,7 @@ import { computePriceStructure, type DailyBar } from "@/lib/market-data/price-st
 import { toIndicatorSnapshot, type IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { CHART_SESSIONS, getBenchmarkBars } from "@/lib/market-data/benchmark-bars";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
+import { fetchOpenMarketBuys } from "@/lib/market-data/insider-cluster";
 
 /** Fills per evaluator pass — bounds one 5-minute tick's extra work (~1–2s each). */
 export const MAX_FILLS_PER_PASS = 8;
@@ -32,6 +33,10 @@ export async function computeAndStoreSnapshot(
   const structure = computePriceStructure({ bars, spyBars });
   if (!structure) return null;
   const snapshot = toIndicatorSnapshot(structure, bars);
+  // Open-market insider buys for INSIDER_CLUSTER (DAV-252). Fail-open: a
+  // vendor miss leaves the field off and that kind reads false.
+  const buys = ticker === "SPY" ? null : await fetchOpenMarketBuys(ticker).catch(() => null);
+  if (buys) snapshot.insiderBuys = buys;
   await prisma.tickerIndicators.upsert({
     where: { ticker_asOf: { ticker, asOf: snapshot.asOf } },
     create: { ticker, asOf: snapshot.asOf, volumeFeed: feed, snapshot: snapshot as unknown as object },
