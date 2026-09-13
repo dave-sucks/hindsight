@@ -16,7 +16,6 @@ import {
   normalizeIndustries,
   normalizeThemes,
 } from "@/lib/universe/canonical";
-import { normalizeFeeds } from "@/lib/universe/feeds";
 import { getAccountId } from "@/lib/auth/account";
 import {
   getThesisComposite,
@@ -55,9 +54,6 @@ export interface AnalystConfig {
   themes: string[];
   marketCapMin: number | null;
   marketCapMax: number | null;
-  // ── Feeds — firm-aggregate subscription dimension ────────────────
-  // Canonical FEEDS values (lib/universe/feeds.ts) matching Signal.aggregateType.
-  feeds: string[];
   dailyLossLimit: number;
   scheduleTime: string;
   /**
@@ -536,7 +532,6 @@ export async function getAnalystDetail(
     themes: (config.themes as string[]) ?? [],
     marketCapMin: config.marketCapMin != null ? Number(config.marketCapMin) : null,
     marketCapMax: config.marketCapMax != null ? Number(config.marketCapMax) : null,
-    feeds: (config.feeds as string[] | undefined) ?? [],
     dailyLossLimit: config.dailyLossLimit,
     scheduleTime: config.scheduleTime,
     runDaysOfWeek: (config.runDaysOfWeek as number[] | undefined) ?? [1, 2, 3, 4, 5],
@@ -809,12 +804,6 @@ interface BuilderConfig {
     priceMin?: number;
     priceMax?: number;
     exclusions?: string[];
-    // Firm-aggregate feed subscriptions (canonical FEEDS in lib/universe/feeds.ts).
-    // Builder seeds from the chosen archetype's defaultFeeds; editor can patch.
-    // Wiring into suggest_config schema deferred until after PR #170 merges
-    // (it owns suggest-config.ts) — this field is defensively read on the
-    // analyst write path so when the builder side ships it Just Works.
-    feeds?: string[];
   };
 }
 
@@ -920,11 +909,6 @@ export async function createAnalystFromBuilder(
     typeof universe?.marketCapMax === "number" && Number.isFinite(universe.marketCapMax)
       ? BigInt(Math.round(universe.marketCapMax))
       : null;
-  // Feeds — canonical FEEDS values. Dropped silently if the builder slipped a
-  // non-canonical key in (same policy as sectors/industries normalization).
-  const feeds = normalizeFeeds(
-    Array.isArray(universe?.feeds) ? universe!.feeds! : [],
-  );
 
   // ── Transactional creation: analyst + watchlist + monitors ──
   // All intelligence setup is atomic — if monitor creation fails midway,
@@ -946,7 +930,6 @@ export async function createAnalystFromBuilder(
         themes,
         marketCapMin,
         marketCapMax,
-        feeds,
         // Watchlist removed from AgentConfig — Thesis(status=WATCHING) is
         // the single store now. Seed theses are minted below.
         exclusionList: combinedExclusions,
@@ -1151,8 +1134,6 @@ type UpdatableField =
   | "themes"
   | "marketCapMin"
   | "marketCapMax"
-  // ── Feeds (firm-aggregate subscription dimension) ────────
-  | "feeds"
   // ── Schedule ─────────────────────────────────────────────
   // Per-analyst daily-run days (ISO weekdays 1=Mon..5=Fri). Read by the
   // morning-research cron gate (lib/inngest/functions/morning-research.ts).
@@ -1209,8 +1190,6 @@ export async function updateAnalystField(
     storedValue = normalizeIndustries(value as string[]);
   } else if (field === "themes" && Array.isArray(value)) {
     storedValue = normalizeThemes(value as string[]);
-  } else if (field === "feeds" && Array.isArray(value)) {
-    storedValue = normalizeFeeds(value as string[]);
   } else if (field === "runDaysOfWeek" && Array.isArray(value)) {
     // ISO weekdays, Mon–Fri only (1..5). Dedupe + sort so the stored array is
     // canonical regardless of click order. Weekends are out of scope (the cron
@@ -1506,9 +1485,6 @@ export async function updateAnalystFromBuilder(
       updateData.exclusionList = Array.from(
         new Set([...base, ...u.exclusions].map((s) => s.toUpperCase())),
       );
-    }
-    if (Array.isArray(u.feeds)) {
-      updateData.feeds = normalizeFeeds(u.feeds);
     }
   }
 

@@ -2,8 +2,7 @@
  * print-analyst-config.ts
  *
  * Pre-flight inspection for the manual discovery trigger. Prints the
- * Universe + feeds + edge fields the discovery prompt will render, so
- * you can predict what Step 1 will actually call before firing the run.
+ * Universe + edge fields the discovery prompt will render.
  *
  * Run with:
  *   npx tsx scripts/print-analyst-config.ts <agentConfigId>
@@ -12,9 +11,7 @@
  *   npx tsx scripts/print-analyst-config.ts
  *
  * Useful for: "I'm about to fire app/discovery.run.manual — what will
- * the agent see?" Especially the `feeds` field, since the new Step 1
- * only calls get_market_movers / get_earnings_calendar when the analyst
- * is subscribed to the matching feed (PR #326).
+ * the agent see?"
  */
 
 import { prisma } from "@/lib/prisma";
@@ -46,7 +43,6 @@ async function main() {
       sectors: true,
       industries: true,
       themes: true,
-      feeds: true,
       signalTypes: true,
       marketCapMin: true,
       marketCapMax: true,
@@ -63,16 +59,6 @@ async function main() {
     process.exit(1);
   }
 
-  // Predict which Step-1 surfaces the discovery prompt will tell the
-  // agent to call, given this analyst's feeds. Mirrors the gating
-  // logic in lib/agent/system-prompts/discovery.ts.
-  const feedSet = new Set((config.feeds ?? []).map((f) => f.toUpperCase()));
-  const willCallMovers =
-    feedSet.has("MARKET_MOVERS_GAINERS") ||
-    feedSet.has("MARKET_MOVERS_LOSERS") ||
-    feedSet.has("MARKET_MOVERS_ACTIVES");
-  const willCallEarnings = feedSet.has("EARNINGS_CALENDAR");
-
   console.log("\n═══════════════════════════════════════════════════");
   console.log(`Analyst: ${config.name}`);
   console.log(`  id:      ${config.id}`);
@@ -84,8 +70,6 @@ async function main() {
   console.log(`  themes:         ${fmtList(config.themes)}`);
   console.log(`  market cap:     ${fmtCap(config.marketCapMin)} – ${fmtCap(config.marketCapMax)}`);
   console.log(`  exclusions:     ${fmtList(config.exclusionList)}`);
-  console.log("\nFEEDS (firm-aggregate subscriptions)");
-  console.log(`  feeds:          ${fmtList(config.feeds)}`);
   console.log("\nEDGE");
   console.log(`  direction bias: ${config.directionBias ?? "BOTH"}`);
   console.log(`  hold duration:  ${fmtList(config.holdDurations)}`);
@@ -94,34 +78,6 @@ async function main() {
   console.log(`  max positions:  ${config.maxOpenPositions ?? 5} slots`);
   console.log(`  pos size band:  $${config.minPositionSize ?? 0} \u2013 $${config.maxPositionSize ?? 500}`);
 
-  console.log("\n═══════════════════════════════════════════════════");
-  console.log("PREDICTED STEP-1 TOOL CALLS for next discovery run");
-  console.log("═══════════════════════════════════════════════════");
-  console.log("  read_signals             : ALWAYS (universal push)");
-  console.log(
-    `  get_market_movers        : ${willCallMovers ? "YES (subscribed)" : "NO  (not subscribed)"}`,
-  );
-  console.log(
-    `  get_earnings_calendar    : ${willCallEarnings ? "YES (subscribed)" : "NO  (not subscribed)"}`,
-  );
-
-  if (!willCallMovers && !willCallEarnings) {
-    console.log(
-      "\n⚠  This analyst's only Step-1 surface is read_signals.",
-    );
-    console.log(
-      "   If the routed-signal inbox is sparse this week, the run",
-    );
-    console.log(
-      "   will land HOLD with 0 dispatches and 0 PASS rows. That's",
-    );
-    console.log(
-      "   the intended behavior per the feeds-gating change — but",
-    );
-    console.log(
-      "   adjust the analyst's feeds field if you want a richer pool.",
-    );
-  }
   console.log("");
 
   await prisma.$disconnect();

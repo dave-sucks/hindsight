@@ -106,11 +106,6 @@ Universe fields on AgentConfig:
 - `sectors` — broad GICS-style ["Technology", "Energy", ...]
 - `industries` — narrower GICS ["Semiconductors", "Auto Manufacturers", ...]
 - `themes` — analyst-defined ["AI infrastructure", "EV transition", "GLP-1", ...]
-- `feeds` — firm-aggregate firehoses ["EARNINGS_CALENDAR", "MARKET_MOVERS_GAINERS",
-  "MARKET_MOVERS_LOSERS", "MARKET_MOVERS_ACTIVES"]. Canonical values mirror
-  `Signal.aggregateType` 1:1 (see lib/universe/feeds.ts). Same fence semantic
-  as the other dimensions. Composition: an analyst with `feeds:["EARNINGS_CALENDAR"]`
-  + `industries:["Semiconductors"]` ends up with the calendar fenced to semis names.
 - `marketCapMin` / `marketCapMax` — BigInt? in dollars; null = no bound
 - `exclusionList` — tickers/industries always skipped (hard reject)
 - `tickerUniverse` — DIRECTED-mode seed list (separate concept, kept as-is)
@@ -122,33 +117,26 @@ See docs/AGENT_OVERHAUL_PLAN.md → Workstream B for the full spec.
 Routing output on AnalystSignalRoute (populated by Workstream A):
 - `routeReasonCode` — "DISCOVERY" | "WATCHLIST" | "POSITION" | "DIRECT_TICKER"
   | "SECTOR_MATCH" | "INDUSTRY_MATCH" | "THEME_MATCH" | "CROSS_ANALYST"
-  | "FIRM_AGGREGATE_FEED" | "AGGREGATE_TICKER_MATCH"
+  | "FIRM_AGGREGATE_FEED" (historical — the feeds subscription was deleted
+  2026-09-11) | "AGGREGATE_TICKER_MATCH"
 - `matchedUniverse` Json — { sectors, industries, themes, inWatchlist,
   inPositions, fromAnalystId?, feed? }
 
-### Three access tiers for firm-aggregate signals
-Firm aggregates (earnings calendar, market movers, future insider/options flow)
-reach analysts via three orthogonal paths. Pick the right one by intent, don't
-add a fourth.
+### How firm-aggregate signals reach an analyst
+Firm aggregates (earnings calendar, market movers) reach analysts two ways:
 
-1. **Subscription push** — `AgentConfig.feeds` includes the aggregate's type.
-   The full firehose routes into `read_signals` automatically. Earnings
-   Catalyst archetype → `feeds:["EARNINGS_CALENDAR"]`; Momentum Breakout
-   → `feeds:["MARKET_MOVERS_GAINERS","MARKET_MOVERS_ACTIVES"]`.
+1. **Universe-intersection push** — the aggregate's tickers intersect with the
+   analyst's watchlist + open positions (router-side): "3 of your watchlist
+   names are on today's most-active list."
 
-2. **Universe-intersection push** — the aggregate's tickers intersect with the
-   analyst's watchlist + open positions (router-side). Even an analyst with no
-   feed subscription gets a *fenced* view: "3 of your watchlist names are on
-   today's most-active list." This path is the right answer to "I want to know
-   when MY names move" without subscribing to the full firehose.
+2. **On-demand pull tools** — `get_earnings_calendar`, `get_market_movers`. Any
+   analyst can call them mid-run. Use `scope:"universe"` to fence to watchlist
+   + positions; `scope:"all"` for the full firehose.
 
-3. **On-demand pull tools** — `get_earnings_calendar`, `get_market_movers`. Any
-   analyst can call them mid-run regardless of subscription. Use `scope:"universe"`
-   to fence to watchlist + positions; `scope:"all"` for the full firehose.
-
-Defaults are seeded by archetype via `defaultFeeds` on each StrategyArchetype
-in `lib/agent/knowledge/strategy-archetypes.ts`. Builder reads it via
-`read_knowledge_library` and includes the matching feeds in `suggest_config`.
+The subscription path (`AgentConfig.feeds`, a Universe dimension that routed
+the whole firehose) was deleted 2026-09-11: routing has been paused since
+2026-05-31 and nothing set it. Don't re-add a subscription field — the pull
+tools cover the intent.
 
 ### V3 Intelligence Pipeline (background, pre-run)
 - 4 Inngest jobs run 6:30–7:30 AM ET before analysts wake up
@@ -293,10 +281,9 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 8. get_earnings_data — per-ticker EPS history, beat rate, next report date
 9. get_earnings_calendar — firm-wide upcoming earnings calendar; `scope:"universe"`
    fences to watchlist + positions, `scope:"all"` returns the full firehose.
-   Pull-tool counterpart to the `EARNINGS_CALENDAR` feed subscription.
 10. get_market_movers — today's gainers / losers / most-actives from the Alpaca screener;
     `scope:"universe"` fences to watchlist + positions, `scope:"all"` returns
-    the full top list. Pull-tool counterpart to the `MARKET_MOVERS_*` feeds.
+    the full top list.
 11. get_sec_filings — SEC EDGAR filings
     NOTE: `get_options_flow` was DELETED 2026-08-19 (DAV-191) — options
     chains are dead on both vendors (FMP 404, Finnhub 403), so the tool
@@ -631,11 +618,9 @@ it with a ticker chip as if it were a traded security.
 - **Fix:** PR #270 deprecated the V1 builder (`buildV2SystemPrompt` — misnamed) and made route.ts call `buildDailyRunSystemPromptV2` unconditionally. The `useV2Prompt` flag is no longer read; column stays for migration cleanup.
 - See `GAPS_HISTORY.md` → "Migrated from GAPS.md as part of this consolidation" → P0-11.
 
-**Aggregates and the FEEDS dimension** (`lib/universe/feeds.ts`, `lib/inngest/functions/firm-market-sweep.ts`, `lib/inngest/functions/signal-router.ts`)
-- Aggregate signals (`Signal.aggregateType` populated) carry empty `sectors`/`industries` by design — they're firm-wide. Routing them through the news-signal fence (sector/industry match) silently drops everything; that's the bug that #163/#164/#165/#166 chased.
-- Right answer: aggregates match analysts via `feeds` membership (`analyst.feeds.includes(signal.aggregateType)`) — `feeds` is a peer Universe dimension, not a separate routing axis. Composition still applies: an analyst with `feeds:["EARNINGS_CALENDAR"]` + `industries:["Semiconductors"]` ends up with the calendar fenced to semis names by the existing AND-across-dimensions rule.
-- Producers populate canonical FEEDS values verbatim (no mapping). When you add a new aggregate type, add the value to `lib/universe/feeds.ts`, have the producer write that exact string as `aggregateType`, and add a default-feeds entry to any matching strategy archetype in `lib/agent/knowledge/strategy-archetypes.ts`.
-- The `aggregate-novelty-skip` carve-out from #164 is kept in place even though feed-subscription + ticker-intersection are now the correct primary gates. Reason: existing analysts with empty `feeds` still rely on the ticker-overlap path, and that path would get crushed by 7d route-history novelty without the carve-out. Safe to remove in a follow-up once every enabled analyst has a populated `feeds` array AND there's a deploy cycle of data confirming no regression.
+**Aggregates in the router** (`lib/inngest/functions/firm-market-sweep.ts`, `lib/inngest/functions/signal-router.ts`)
+- Aggregate signals (`Signal.aggregateType` populated) carry empty `sectors`/`industries` by design — they're firm-wide. Routing them through the news-signal fence (sector/industry match) silently drops everything; that's the bug that #163/#164/#165/#166 chased. They reach an analyst only through ticker overlap with its watchlist/positions (or an owned monitor). The `feeds` subscription dimension was deleted 2026-09-11.
+- The `aggregate-novelty-skip` carve-out from #164 stays: the ticker-overlap path would otherwise be crushed by 7d route-history novelty.
 
 - FMP historical-price-full may 403 on legacy plan (affects
   technical analysis for small-cap/ADR tickers)
@@ -662,9 +647,9 @@ new, file it there — not here.)
 - lib/agent/tools/ — 18 individual tool files, each using defineTool()
 - lib/agent/tools/index.ts — single export + createResearchTools() wrapper
 - lib/agent/define-tool.ts — defineTool() factory with timing/logging
-- lib/universe/feeds.ts — canonical FEEDS enum + normalizeFeeds (mirrors Signal.aggregateType)
-- lib/agent/tools/get-earnings-calendar.ts — pull-tool counterpart to EARNINGS_CALENDAR feed
-- lib/agent/tools/get-market-movers.ts — pull-tool counterpart to MARKET_MOVERS_* feeds
+- lib/universe/feeds.ts — the aggregate-type vocabulary + display labels (mirrors Signal.aggregateType)
+- lib/agent/tools/get-earnings-calendar.ts — the earnings calendar, on demand
+- lib/agent/tools/get-market-movers.ts — today's gainers / losers / most-actives, on demand
 - lib/agent/tool-result.ts — ToolResult<T> discriminated union + normalizer
 - lib/agent/tool-context.ts — ToolContext interface + createToolContext()
 - lib/agent/modes.ts — model, provider, thinking budget, tool allowlists

@@ -139,7 +139,6 @@ function toFormValues(config: AgentConfigData): FormValues {
     sectors: config.sectors ?? [],
     industries: config.industries ?? [],
     themes: config.themes ?? [],
-    feeds: config.feeds ?? [],
     marketCapMin: config.marketCapMin ?? null,
     marketCapMax: config.marketCapMax ?? null,
     exclusionList: config.exclusionList ?? [],
@@ -165,7 +164,6 @@ function applyChange<K extends keyof FormValues>(
     case "sectors":
     case "industries":
     case "themes":
-    case "feeds":
     case "marketCapMin":
     case "marketCapMax":
     case "exclusionList":

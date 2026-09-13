@@ -67,7 +67,6 @@ export function AnalystConfigSheet({
     sectors: config.sectors,
     industries: config.industries,
     themes: config.themes,
-    feeds: config.feeds,
     marketCapMin: config.marketCapMin,
     marketCapMax: config.marketCapMax,
     exclusionList: config.exclusionList,

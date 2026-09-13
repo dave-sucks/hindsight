@@ -60,7 +60,6 @@ import {
 import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
 import { positionBand, positionTotalCap } from "@/lib/agent/position-sizing";
-import { FEEDS, feedLabel } from "@/lib/universe/feeds";
 
 // ─── Form value shape ────────────────────────────────────────────────────────
 // Canonical shape both wrappers normalize into. The form is presentation-only
@@ -130,7 +129,6 @@ export type FormValues = {
   sectors: string[];
   industries: string[];
   themes: string[];
-  feeds: string[];
   marketCapMin: number | null;
   marketCapMax: number | null;
   exclusionList: string[];
@@ -967,19 +965,6 @@ function SettingsTab({
             values={values.themes}
             placeholder="Free text — e.g. AI infrastructure, GLP-1, EV transition"
             onChange={(next) => onChange("themes", next)}
-          />
-        </FieldGroup>
-
-        <FieldGroup
-          label="Feeds"
-          tooltip="Firm-aggregate firehoses (earnings calendar, top movers). Subscribed analysts get the full feed in their morning brief."
-        >
-          <EnumChipsCombobox
-            values={values.feeds}
-            options={FEEDS as readonly string[]}
-            placeholder="Add a feed…"
-            renderItem={feedLabel}
-            onChange={(next) => onChange("feeds", next)}
           />
         </FieldGroup>
 

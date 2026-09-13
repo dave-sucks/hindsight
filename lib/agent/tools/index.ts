@@ -5,8 +5,7 @@
  * createResearchTools() assembles them for the unified route and crons.
  *
  * Pull tools for firm aggregates (get_earnings_calendar, get_market_movers)
- * complement the subscription path (`AgentConfig.feeds`): subscribed analysts
- * get the firehose routed automatically; any analyst can pull on-demand.
+ * are how any analyst reads the calendar and the movers, on demand.
  */
 
 import type { AlpacaCredentials } from "@/lib/alpaca";
