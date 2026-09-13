@@ -133,3 +133,15 @@ describe("planHorizonRules — the holdings", () => {
     ]);
   });
 });
+
+describe("the plan reads in plain words", () => {
+  it("the beat-and-fade rule names its conditions, not a count", () => {
+    const { predicateSentence } = jest.requireActual("./format");
+    expect(
+      predicateSentence({
+        kind: "AND",
+        predicates: [{ kind: "EARNINGS_BEAT" }, { kind: "PRICE_MOVE_PCT", pct: 3, direction: "DOWN", window: "1D" }],
+      }),
+    ).not.toMatch(/All of \d/);
+  });
+});

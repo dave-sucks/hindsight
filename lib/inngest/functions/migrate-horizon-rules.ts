@@ -123,6 +123,16 @@ export const migrateHorizonRules = inngest.createFunction(
         });
       }
 
+      // A named stock only needs to be held on SOME account; "not held" on
+      // an account that never owned it is not a finding.
+      const loosenedSomewhere = new Set(
+        report.flatMap((r) => r.theses.filter((c) => c.loosened.length).map((c) => c.ticker.toUpperCase())),
+      );
+      for (const r of report) {
+        r.warnings = r.warnings.filter(
+          (w) => !(w.endsWith("not held — nothing to loosen.") && loosenedSomewhere.has(w.split(":")[0])),
+        );
+      }
       return { dryRun, loosen, report };
     });
   },

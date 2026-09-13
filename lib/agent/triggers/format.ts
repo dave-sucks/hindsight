@@ -24,6 +24,8 @@ import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
  *   EARNINGS_BEAT ≥3%            → "Earnings beat ≥3%"
  *   NEAR_SMA 50 2%               → "Within 2% of the 50-day"
  */
+const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+
 export function predicateSentence(p: TriggerPredicate): string {
   switch (p.kind) {
     case "PRICE_BELOW":
@@ -78,10 +80,12 @@ export function predicateSentence(p: TriggerPredicate): string {
         : `${p.min}–${p.max} days after the report`;
     case "REVIEW_CADENCE":
       return `Every ${p.days} days since the last review`;
+    // Say the conditions, not how many there are — "Any earnings beat and
+    // price down 3% today" is a rule someone can read on Settings.
     case "AND":
-      return `All of ${p.predicates.length} conditions`;
+      return p.predicates.map((x, i) => (i ? lowerFirst(predicateSentence(x)) : predicateSentence(x))).join(" and ");
     case "OR":
-      return `Any of ${p.predicates.length} conditions`;
+      return p.predicates.map((x, i) => (i ? lowerFirst(predicateSentence(x)) : predicateSentence(x))).join(" or ");
   }
 }
 

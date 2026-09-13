@@ -222,15 +222,18 @@ function predicateKindValue(p: TriggerPredicate): {
         kind: "review every",
         value: p.days != null ? plural(p.days, "day") : null,
       };
+    // Composites name their conditions ("earnings beat and down 3% 1D"),
+    // not a count — an account rule on Settings has to be readable.
     case "AND":
-      return {
-        kind: "all of",
-        value: `${p.predicates?.length ?? 0} predicates`,
-      };
     case "OR":
       return {
-        kind: "any of",
-        value: `${p.predicates?.length ?? 0} predicates`,
+        kind: (p.predicates ?? [])
+          .map((x) => {
+            const kv = predicateKindValue(x);
+            return kv.value ? `${kv.kind} ${kv.value}` : kv.kind;
+          })
+          .join(p.kind === "AND" ? " and " : " or "),
+        value: null,
       };
     default:
       return { kind: predicateSentence(p), value: null };
@@ -296,9 +299,9 @@ function predicateDescription(p: TriggerPredicate): string {
     case "REVIEW_CADENCE":
       return `The agent reviews this name every ${p.days} days, counting from its last real review.`;
     case "AND":
-      return `Composite: ALL of ${(p.predicates ?? []).length} sub-predicates must be true.`;
+      return `Fires when all of these are true: ${(p.predicates ?? []).map(predicateDescription).join(" ")}`;
     case "OR":
-      return `Composite: ANY of ${(p.predicates ?? []).length} sub-predicates triggers.`;
+      return `Fires when any of these is true: ${(p.predicates ?? []).map(predicateDescription).join(" ")}`;
     default:
       return p.kind;
   }
