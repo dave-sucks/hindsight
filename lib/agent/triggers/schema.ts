@@ -215,12 +215,6 @@ export const triggerSchema = z.object({
     .describe(
       "Account/analyst rules only: the thesis horizons this rule applies to. Omit for every horizon. Ignored on a thesis's own trigger.",
     ),
-  fireOnMatch: z
-    .boolean()
-    .optional()
-    .describe(
-      "ENTER only: fire on the first check where the condition is already true (a buy-now level the price is past), instead of waiting for it to cross. Ignored on other actions.",
-    ),
   fireMode: z
     .enum(["TACTICAL", "DIRECT"])
     .optional()

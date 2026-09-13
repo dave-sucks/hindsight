@@ -355,15 +355,8 @@ export function shouldFire(
   //   close gives composites and VS_SMA the crossing for free; entries
   //   that don't read the price can't cross and keep firing on match. No
   //   prevClose ⇒ level semantics (the read-side snapshots).
-  //
-  //   `fireOnMatch` (a buy-now rung, DAV-247) skips the crossing for its
-  //   FIRST fire: the level is already behind the price by design, and on a
-  //   flat or down day the crossing would never come. Once it has fired it
-  //   is an ordinary ENTER again.
-  const firstFireOnMatch = trigger.fireOnMatch === true && trigger.lastFiredAt == null;
   if (
     trigger.action === "ENTER" &&
-    !firstFireOnMatch &&
     ctx.latestQuote?.prevClose != null &&
     ctx.latestQuote.prevClose > 0 &&
     readsPrice(trigger.predicate)

@@ -542,7 +542,7 @@ dated catalyst is.
 | Relative strength vs SPY / group | **No** | Compute; screen input; `RS_VS_SPY` predicate |
 | Setup recognition | **No** — the writer is asked for four prices with no pattern | Setup catalog; `setup_id` on the thesis |
 | Entry: level + volume + close basis | Level only, intraday only | `basis: close`, `VOLUME_RATIO`, `NEW_HIGH`, `GAP_UP`, `NEAR_SMA`, composed with `AND` (which exists) |
-| Entry: buy now | **Forbidden** | `entry_kind: NOW` → a buy trigger at the live price that fires on the next check (`fireOnMatch`); same approval path as every buy |
+| Entry: buy now | **Forbidden** | No separate option: an entry price at or near the current price is the ordinary buy trigger; same approval path as every buy |
 | Entry: chase limit | No | Plan-sanity flag `ENTRY_CHASED` (> 5% past pivot) |
 | Entry: days since / to earnings | "Reports within N days" built (#621, `EARNINGS_WITHIN`); "N days after the print" not yet | `EARNINGS_SINCE {min,max}` on the same calendar |
 | Stop: structure + ATR check | ATR check exists as an after-the-fact flag; no structure in the writer's data | Price-structure module; writer rule |

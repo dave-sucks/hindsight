@@ -132,8 +132,6 @@ export interface Setup {
     confirmation: string[];
     /** Max % past the level a buy may be placed; null = no chase rule. */
     chaseLimitPct: number | null;
-    /** The condition may already be true today → a buy-now plan (entry_kind NOW). */
-    buyNowNormal: boolean;
     text: string;
   };
   stop: {
@@ -221,7 +219,6 @@ export const SETUPS: Setup[] = [
         `No more than ${CHASE_LIMIT_PCT}% past the pivot`,
       ],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      buyNowNormal: false,
       text: `Close above the pivot on ${BREAKOUT_VOLUME_RATIO}× volume, not more than ${CHASE_LIMIT_PCT}% past it.`,
     },
     stop: {
@@ -276,7 +273,6 @@ export const SETUPS: Setup[] = [
       },
       confirmation: ["Range expands upward out of the flag", "Price above the 10- and 20-day"],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      buyNowNormal: false,
       text: "Close above the flag high on volume.",
     },
     stop: {
@@ -328,7 +324,6 @@ export const SETUPS: Setup[] = [
       },
       confirmation: ["The gap holds (day 2 closes above the gap-day midpoint)", "Volume stays heavy"],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      buyNowNormal: true,
       text: "A close above the gap-day high, or a day-2 hold above the gap-day midpoint.",
     },
     stop: {
@@ -374,8 +369,7 @@ export const SETUPS: Setup[] = [
       },
       confirmation: ["Gap held", "Surprise and guidance confirmed from the release or transcript"],
       chaseLimitPct: PEAD_MAX_RUN_PAST_GAP_PCT,
-      buyNowNormal: true,
-      text: "Days 1–3 after the print, above the gap-day low — usually already true, so usually a buy-now plan.",
+      text: "Days 1–3 after the print, above the gap-day low — usually already true, so the entry is set at the current price.",
     },
     stop: {
       structure: ["the gap-day low", `−${TRADE_STOP_MAX_PCT}% from entry`],
@@ -433,7 +427,6 @@ export const SETUPS: Setup[] = [
       },
       confirmation: ["The reversal: a close above the prior day's high after touching the average"],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      buyNowNormal: false,
       text: `Within ${PULLBACK_NEAR_SMA_PCT}% of the rising 20- or 50-day, then a close above the prior day's high. This is the entry for a stock that never dips 10%.`,
     },
     stop: {
@@ -473,7 +466,6 @@ export const SETUPS: Setup[] = [
       },
       confirmation: ["Buy the close"],
       chaseLimitPct: null,
-      buyNowNormal: true,
       text: `Above the 200-day with RSI(2) under ${RSI2_ENTRY_BELOW}; buy the close.`,
     },
     stop: {
@@ -510,7 +502,6 @@ export const SETUPS: Setup[] = [
       entryVia: ["BASE_BREAKOUT", "MOMENTUM_FLAG", "MA_PULLBACK"],
       confirmation: [],
       chaseLimitPct: null,
-      buyNowNormal: false,
       text: "A screen: it says which names; D1/D2/D5 say when. As a condition: PCT_FROM_52W_HIGH ≤ 5 and RS_VS_SPY 3M > 0.",
     },
     stop: { structure: [], maxPct: null, minAtr: MIN_STOP_ATR, text: "From the entry setup used." },
@@ -541,7 +532,6 @@ export const SETUPS: Setup[] = [
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
       confirmation: ["Never the day before the event"],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      buyNowNormal: false,
       text: "A technical entry (D1 or D5 shape) inside the window, never the day before.",
     },
     stop: {
@@ -578,7 +568,6 @@ export const SETUPS: Setup[] = [
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
       confirmation: [],
       chaseLimitPct: null,
-      buyNowNormal: false,
       text: "A screen and a conviction input; the entry is a D1 or D5 condition. As a wake: INSIDER_CLUSTER (≥ 3 open-market buyers within 30 days) → REVIEW, with the buyers named on the fire.",
     },
     stop: {
@@ -609,7 +598,6 @@ export const SETUPS: Setup[] = [
       entryVia: ["PEAD", "MA_PULLBACK"],
       confirmation: [],
       chaseLimitPct: null,
-      buyNowNormal: false,
       text: "A screen and D4's third confirmation — but no plan we hold serves estimate history (Finnhub /stock/eps-estimate refuses; probed 2026-09-11), so there is no revision number to read and no trigger kind for it. Cite a revision only from a source you actually read.",
     },
     stop: { structure: [], maxPct: null, minAtr: MIN_STOP_ATR, text: "From the entry setup used." },
@@ -656,8 +644,7 @@ export const SETUPS: Setup[] = [
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
       confirmation: ["Thesis intact; volume matters less than for a trade"],
       chaseLimitPct: null,
-      buyNowNormal: true,
-      text: "Whichever comes first: a base breakout, a reclaim of the 50-day, or a pullback that holds the 50-day. A stock at new highs on a working thesis is working, not extended; with no pullback in 30 days of uptrend, take the breakout. Buy now when one is already true.",
+      text: "Whichever comes first: a base breakout, a reclaim of the 50-day, or a pullback that holds the 50-day. A stock at new highs on a working thesis is working, not extended; with no pullback in 30 days of uptrend, take the breakout. When one is already true, set the entry at the current price.",
     },
     stop: {
       structure: ["a named thesis invalidation"],
@@ -692,7 +679,6 @@ export const SETUPS: Setup[] = [
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
       confirmation: [],
       chaseLimitPct: null,
-      buyNowNormal: false,
       text: "A screen and a regime input. (A group-rank trigger kind is not in the plan yet.)",
     },
     stop: { structure: [], maxPct: null, minAtr: MIN_STOP_ATR, text: "From the entry setup used." },

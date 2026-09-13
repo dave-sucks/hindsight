@@ -69,12 +69,6 @@ newest row next to the live quote; a snapshot older than 5 days is ignored
 `GAP_UP` also read today's consolidated volume (one batched Alpaca call, ~16
 minutes delayed — Finnhub quotes carry no volume).
 
-**`fireOnMatch`** (a field on the trigger, ENTER only): the rung fires on its
-first check where the condition is true, even if it was already true at the
-prior close. It is the buy-now rung — an ENTER otherwise waits for the
-crossing, which a level the price is already past never produces on a flat or
-down day. After the first fire it is an ordinary ENTER.
-
 **Deleted 2026-09-11 (DAV-247):** `SIGNAL_TYPE`, `GUIDANCE_CHANGE`, `FILING`.
 They needed the signal router, which has been off since 2026-05-31, and could
 never fire. A migration stripped them from every stored ladder (207 rungs
