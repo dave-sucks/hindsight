@@ -13,6 +13,8 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import { loadAccountRisk } from "@/lib/agent/load-account-risk";
+import { heatLine } from "@/lib/agent/portfolio-risk";
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices, getAccount } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -56,6 +58,11 @@ type PortfolioContextData = {
   capitalSummary: CapitalSummary | null;
   summaryLines: string[];
   tickers: { ticker: string; tag: string; summary: string }[];
+  /**
+   * Account-wide book lines (DAV-251): open risk vs the 6% cap, the regime.
+   * Inputs for the run's judgment, never gates. Absent when unreadable.
+   */
+  book?: { openRiskPct: number | null; lines: string[] };
 };
 
 export const getPortfolioContext = defineTool({
@@ -243,13 +250,27 @@ export const getPortfolioContext = defineTool({
       };
     });
 
+    // Account-wide book lines — open risk across every seat, and the regime.
+    const risk = await loadAccountRisk({
+      accountId: ctx.accountId,
+      environment: runEnvironment,
+      creds,
+    }).catch(() => null);
+    const bookLines = [
+      ...(risk?.open && risk.equity ? [heatLine(risk.open, risk.equity)] : []),
+      ...(risk?.regime ? [risk.regime.line] : []),
+    ];
+
     return {
-      summary: `Portfolio: ${openPositions.length} open position${openPositions.length !== 1 ? "s" : ""}${capitalSummary ? ` | ${capitalSummary.deployedPct}% deployed | $${capitalSummary.buyingPower.toFixed(0)} buying power` : ""}`,
+      summary:
+        `Portfolio: ${openPositions.length} open position${openPositions.length !== 1 ? "s" : ""}${capitalSummary ? ` | ${capitalSummary.deployedPct}% deployed | $${capitalSummary.buyingPower.toFixed(0)} buying power` : ""}` +
+        (bookLines.length ? ` | ${bookLines.join(" ")}` : ""),
       data: {
         positions: positionDetails,
         capitalSummary,
-        summaryLines,
+        summaryLines: [...summaryLines, ...bookLines],
         tickers,
+        book: { openRiskPct: risk?.open ? Math.round(risk.open.riskPct * 10) / 10 : null, lines: bookLines },
       },
       sources: [],
     };
