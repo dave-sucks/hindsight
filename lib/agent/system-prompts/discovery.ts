@@ -74,6 +74,11 @@ export interface DiscoveryPromptArgs {
    * a fresh dated catalyst is a lead, not a used-up name.
    */
   bookBlock?: string | null;
+  /**
+   * This seat's closed-trade record by setup (DAV-248), one data line each.
+   * Which patterns have paid is evidence for which to look for this week.
+   */
+  setupRecord?: string[];
 }
 
 export function buildDiscoverySystemPrompt(args: DiscoveryPromptArgs): string {
@@ -200,7 +205,11 @@ which surfaced candidates fit your edge — not for you to re-filter.
   Market cap:   ${capMin} – ${capMax}
   Hard exclusions: ${exclusions}
   Already covered (the tools hide these): ${existingList}
-${args.bookBlock ? `\n${args.bookBlock}\n` : ""}
+${args.bookBlock ? `\n${args.bookBlock}\n` : ""}${
+  args.setupRecord?.length
+    ? `\nYOUR RECORD BY SETUP (closed trades since 2026-05-27)\n${args.setupRecord.map((l) => `  ${l}`).join("\n")}\n`
+    : ""
+}
 
 ═══════════════════════════════════════════════════════════════════
 SCOPE — what this run IS and IS NOT

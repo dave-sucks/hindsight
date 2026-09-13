@@ -188,7 +188,9 @@ export async function approveProposal(
           // proposal estimate; reconcile-orders corrects it to the real fill.
           ...(qtyEdited ? { quantity: effectiveQty, initialQty: effectiveQty } : {}),
           ...(effectiveTarget !== order.position.targetPrice ? { targetPrice: effectiveTarget } : {}),
-          ...(effectiveStop !== order.position.stopLoss ? { stopLoss: effectiveStop } : {}),
+          ...(effectiveStop !== order.position.stopLoss
+            ? { stopLoss: effectiveStop, initialStop: effectiveStop }
+            : {}),
         },
       });
     }

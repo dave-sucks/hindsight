@@ -12,6 +12,7 @@
 // new WATCHING theses are ready in time for Monday morning's daily
 // run to pick them up via the per-thesis review loop.
 
+import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs } from "ai";
@@ -225,9 +226,16 @@ export const discoveryRun = inngest.createFunction(
           formatBookContextBlock(await getBookContext({ analystId: config.id })) ||
           null;
 
+        const setupRecord = await loadScorecardLines({
+          accountId: config.accountId,
+          analystId: config.id,
+          environment: (config.tradingEnvironment as string | null) ?? "PAPER",
+        });
+
         const systemPrompt = buildDiscoverySystemPrompt({
           money,
           bookBlock,
+          setupRecord,
           config: {
             name: config.name,
             // FULL analystPrompt — never truncate. This is the analyst's

@@ -557,6 +557,8 @@ export const placeTrade = defineTool({
             avgCost: args.entry_price,
             targetPrice: args.target_price,
             stopLoss: args.stop_loss,
+            // The risk taken — never moves; the scorecard's R (DAV-248).
+            initialStop: args.stop_loss,
             // Per-thesis triggers (lib/agent/triggers/*) own ALL exit logic now.
             // The stop EXIT trigger (PRICE_BELOW from the horizon defaults) and
             // any added Target-Price / Movement-Amount EXIT fire via the trigger
