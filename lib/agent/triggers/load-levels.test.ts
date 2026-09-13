@@ -155,7 +155,7 @@ describe("resolveThesisLadder", () => {
     ).toBe(true);
   });
 
-  it("lets an account rule override a code default, and an analyst rule override the account", () => {
+  it("resolves an account rule, and lets an analyst rule override the account", () => {
     const base = { triggers: [], triggerState: {}, status: "HOLDING", horizon: "TARGET" };
 
     const acct = resolveThesisLadder(base, {

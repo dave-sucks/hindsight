@@ -58,11 +58,10 @@ export interface Trigger {
    *   THESIS  — stored on this thesis. Editable here. Solid pill.
    *   ANALYST — an analyst standing rule, shared by all its theses.
    *   ACCOUNT — an account standing rule, shared by every analyst.
-   *   DEFAULT — a code constant. Read-only everywhere.
    *
    * Absent ⇒ treat as THESIS (a payload from before the cascade).
    */
-  level?: "THESIS" | "ANALYST" | "ACCOUNT" | "DEFAULT";
+  level?: "THESIS" | "ANALYST" | "ACCOUNT";
   /**
    * `level !== "THESIS"`. Drives the dotted border and the read-only
    * popover: an inherited rung is edited at the level that owns it, not
@@ -76,10 +75,10 @@ export interface Trigger {
    * The rung this one displaced, if any. Makes an override legible: a
    * dashed border only ever explains levels nothing has overridden, so
    * without this a `+20% from entry` rung looks identical whether it
-   * replaced the +10% default or was invented from scratch.
+   * replaced the account's +10% rule or was invented from scratch.
    */
   overrides?: {
-    level: "THESIS" | "ANALYST" | "ACCOUNT" | "DEFAULT";
+    level: "THESIS" | "ANALYST" | "ACCOUNT";
     predicate: TriggerPredicate;
   };
 }

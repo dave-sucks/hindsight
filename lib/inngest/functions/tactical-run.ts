@@ -159,7 +159,7 @@ export const tacticalRun = inngest.createFunction(
       if (!analystId) return null;
 
       // Look the fired rung up in the RESOLVED ladder, not the stored
-      // column. An inherited rung (analyst / account / code default) is
+      // column. An inherited rung (analyst / account) is
       // not in `thesis.triggers` at all, so a raw-column lookup returns
       // null and this run bails — the fire event would be consumed and
       // silently do nothing. That is precisely the decorative-rung

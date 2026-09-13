@@ -156,7 +156,7 @@ export async function ensureAccountStandingRules(accountId: string): Promise<num
  * backfill. Returns the code constants so its holdings keep their
  * protection rather than silently running bare.
  *
- * This is NOT a cascade level: it never renders as "app default" and a
+ * This is NOT a cascade level: its rules resolve as ACCOUNT rules, and a
  * seeded account never reaches it. If you see the warning, that account
  * needs seeding.
  */

@@ -112,7 +112,6 @@ export async function GET(
       thesis: [],
       analyst: rulesForHorizon(analystRules, h),
       account: rulesForHorizon(accountRules, h),
-      defaults: [],
       // Own rungs solid + editable; everything below dashed + read-only.
       // Without this every level renders its OWN rules as inherited and the
       // page can't edit the thing it exists to edit.

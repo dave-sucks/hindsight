@@ -52,7 +52,7 @@ export function parseLevelTriggers(raw: unknown, label: string): Trigger[] {
  * 200 theses per tick and must not issue a query per thesis.
  *
  * Analysts not found (or a thesis whose research run has no analyst) map
- * to empty levels, so resolution degrades to thesis + code defaults.
+ * to empty levels, so resolution degrades to the thesis's own triggers.
  */
 export async function loadLevelSources(
   analystIds: string[],
@@ -155,7 +155,7 @@ export interface ThesisLadderRow {
  *
  * `sources` comes from `loadLevelSources` keyed by the thesis's analyst;
  * pass `undefined` for a thesis with no analyst owner and it resolves
- * against the code defaults alone.
+ * against its own triggers alone.
  */
 export function resolveThesisLadder(
   thesis: ThesisLadderRow,
@@ -168,12 +168,8 @@ export function resolveThesisLadder(
     thesis: parseLevelTriggers(thesis.triggers, label),
     analyst: rulesForHorizon(analyst, h),
     account: rulesForHorizon(account, h),
-    // No DEFAULT level any more — the constant rungs are seeded onto the
-    // account as editable rules (lib/agent/triggers/seed-account), so the
-    // cascade bottoms out at ACCOUNT. `state` still gates the
-    // position-scoped kinds, which are meaningless without a position at
-    // ANY level.
-    defaults: [],
+    // `state` gates the position-scoped kinds, which are meaningless
+    // without a position at any level.
     state: thesisStateFor(thesis.status),
     direction: thesis.direction ?? null,
     // resolveLadder only wants the cooldown stamp; `side` is the

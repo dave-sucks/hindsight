@@ -107,8 +107,7 @@ export function LevelTriggersSection({
 
   // Only this level's own rules render. The analyst tab's inherited rules
   // are the account's, edited one screen up; the account is the bottom of
-  // the cascade and inherits nothing (the code defaults stopped being a
-  // runtime level on 2026-08-16).
+  // the cascade and inherits nothing.
   const groupProps = {
     direction: null,
     held: true,

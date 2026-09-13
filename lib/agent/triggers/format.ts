@@ -182,7 +182,7 @@ export function fireModeLabel(
  * when the caller knows it.
  */
 export function levelScopeLabel(
-  level: "THESIS" | "ANALYST" | "ACCOUNT" | "DEFAULT" | undefined,
+  level: "THESIS" | "ANALYST" | "ACCOUNT" | undefined,
   analystName?: string | null,
 ): string {
   switch (level) {
@@ -192,8 +192,6 @@ export function levelScopeLabel(
         : "Set on this analyst — applies to every thesis it covers";
     case "ACCOUNT":
       return "Set account-wide — applies to every analyst";
-    case "DEFAULT":
-      return "Applies automatically to every holding — not configured";
     case "THESIS":
     default:
       return "Set on this thesis";
@@ -202,18 +200,15 @@ export function levelScopeLabel(
 
 /**
  * Short label for the level chip on an inherited rung's popover.
- * "Default" reads as the honest answer to "who set this?" — nobody did.
  */
 export function levelBadgeLabel(
-  level: "THESIS" | "ANALYST" | "ACCOUNT" | "DEFAULT" | undefined,
+  level: "THESIS" | "ANALYST" | "ACCOUNT" | undefined,
 ): string {
   switch (level) {
     case "ANALYST":
       return "Analyst";
     case "ACCOUNT":
       return "Account";
-    case "DEFAULT":
-      return "Automatic";
     case "THESIS":
     default:
       return "This thesis";

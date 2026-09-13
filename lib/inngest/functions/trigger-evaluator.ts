@@ -392,11 +392,10 @@ function evaluateThesisTriggers<T extends Trigger>(args: {
  * Two destinations, keyed off where the rung LIVES:
  *   - THESIS-level rungs are stored on this row, so `lastFiredAt` is
  *     stamped inline on the rung, as it always has been.
- *   - INHERITED rungs (analyst / account / code default) are shared —
+ *   - INHERITED rungs (analyst / account) are shared —
  *     one analyst rung serves every thesis under that analyst — so their
  *     fire time goes in this thesis's `triggerState` map instead.
- *     Stamping them inline is impossible (a code default isn't stored
- *     anywhere) and stamping the shared row would put every sibling
+ *     Stamping the shared row would put every sibling
  *     thesis into cooldown on a trigger that never fired for them.
  */
 async function stampLastFiredAt(args: {

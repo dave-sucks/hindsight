@@ -116,7 +116,7 @@ export async function GET(
   }
 
   // The ladder actually in force: this thesis's own rungs plus everything
-  // it inherits from its analyst, the account, and the code defaults —
+  // it inherits from its analyst and the account —
   // one rung per bucket, most-specific level wins. Each carries `level` +
   // `inherited` so the sheet can render inherited rungs dotted and
   // read-only. Same resolver the 5-minute evaluator uses, so what the
