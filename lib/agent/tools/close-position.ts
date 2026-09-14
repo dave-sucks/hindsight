@@ -14,6 +14,7 @@ import {
 } from "@/lib/agent/triggers/enforce-close-reason";
 import { prisma } from "@/lib/prisma";
 import { getAccount } from "@/lib/alpaca";
+import { recordProposalRunEvent } from "@/lib/proposals/maybe-await-approval";
 
 export const closePosition = defineTool({
   description:
@@ -210,6 +211,13 @@ export const closePosition = defineTool({
       // flow (Alpaca submit + fill polling + ThesisUpdate CLOSED) when the
       // user clicks Approve. See docs/plans/TRADE_AS_PROPOSAL.md.
       if (outcome.kind === "proposed") {
+        await recordProposalRunEvent({
+          runId: ctx.runId,
+          type: "position_close_proposed",
+          ticker,
+          orderId: outcome.proposal.orderId,
+          title: `Proposed closing ${position.direction} ${ticker}`,
+        });
         return {
           summary: `Close proposed: $${ticker}`,
           data: {

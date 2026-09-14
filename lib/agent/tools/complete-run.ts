@@ -20,9 +20,10 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import {
-  detectNarrationHits,
+  CREDITED_RUN_EVENT_TYPES,
+  detectSummaryHits,
   findGaps,
-  type NarrationHit,
+  type RunSummaryPayload,
   type ToolCallEvent,
 } from "@/lib/agent/narration-gate";
 
@@ -776,12 +777,6 @@ async function runCompleteRunPreflight(
 // attempt because the position_closed event now exists. Self-correction is
 // the default path, not a permanent FAIL.
 
-type RankedPickReasoning = { ticker?: unknown; reasoning?: unknown };
-type RunSummaryPayload = {
-  decision_rationale?: unknown;
-  ranked_picks?: unknown;
-};
-
 async function checkNarrationExecutionGap(
   runId: string,
 ): Promise<PreflightFailure | null> {
@@ -795,49 +790,16 @@ async function checkNarrationExecutionGap(
       select: { payload: true },
     });
     if (!summaryEvent?.payload) return null;
-    const payload = summaryEvent.payload as RunSummaryPayload;
-    const decisionRationale =
-      typeof payload.decision_rationale === "string"
-        ? payload.decision_rationale
-        : "";
-    const rankedPicks: RankedPickReasoning[] = Array.isArray(payload.ranked_picks)
-      ? (payload.ranked_picks as RankedPickReasoning[])
-      : [];
-
-    const knownTickers = new Set<string>();
-    for (const p of rankedPicks) {
-      if (typeof p.ticker === "string" && p.ticker.length > 0) {
-        knownTickers.add(p.ticker.toUpperCase());
-      }
-    }
-    if (knownTickers.size === 0 && !decisionRationale) return null;
-
-    const hits: NarrationHit[] = [];
-    if (decisionRationale) {
-      hits.push(
-        ...detectNarrationHits(
-          decisionRationale,
-          "rationale",
-          undefined,
-          knownTickers,
-        ),
-      );
-    }
-    for (const p of rankedPicks) {
-      if (typeof p.reasoning !== "string" || !p.reasoning) continue;
-      const ticker = typeof p.ticker === "string" ? p.ticker : undefined;
-      hits.push(
-        ...detectNarrationHits(p.reasoning, "pick_reasoning", ticker, knownTickers),
-      );
-    }
+    const hits = detectSummaryHits(summaryEvent.payload as RunSummaryPayload);
     if (hits.length === 0) return null;
 
     // Tool-call events for the entire run — gives credit for post-narration
-    // close_position / manage_position calls (the production 5/22 case).
+    // close_position / manage_position calls (the production 5/22 case),
+    // including a LIVE sell that is a proposal awaiting approval.
     const events = await prisma.runEvent.findMany({
       where: {
         runId,
-        type: { in: ["position_closed", "position_modified"] },
+        type: { in: CREDITED_RUN_EVENT_TYPES },
       },
       select: { type: true, payload: true },
     });

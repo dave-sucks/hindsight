@@ -17,7 +17,7 @@
  */
 
 import { z } from "zod";
-import { triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { editTriggerOpSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 
 const scoringDimSchema = z.object({
@@ -92,16 +92,7 @@ export const thesisDecisionSchema = z.object({
     .optional()
     .describe("REFRESH ONLY. Triggers to add: { predicate, action, rationale, cooldownDays? }. Adding where one exists in the same bucket edits that one."),
   edit_triggers: z
-    .array(
-      z.object({
-        id: z.string(),
-        level: z.number().optional(),
-        pct: z.number().optional(),
-        days: z.number().int().optional(),
-        action: z.string().optional(),
-        rationale: z.string().optional(),
-      }),
-    )
+    .array(editTriggerOpSchema)
     .optional()
     .describe("REFRESH ONLY. Edit a trigger by the id shown in EXISTING THESIS. A level / pct / days change REQUIRES rationale."),
   remove_trigger_ids: z

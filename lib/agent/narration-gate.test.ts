@@ -1,4 +1,10 @@
-import { detectNarrationHits, findGaps, type ToolCallEvent } from "./narration-gate";
+import {
+  CREDITED_RUN_EVENT_TYPES,
+  detectNarrationHits,
+  detectSummaryHits,
+  findGaps,
+  type ToolCallEvent,
+} from "./narration-gate";
 
 const KNOWN = (tickers: string[]) => new Set(tickers.map((t) => t.toUpperCase()));
 
@@ -294,5 +300,81 @@ describe("findGaps", () => {
       { type: "position_closed", symbol: "INTC" },
     ];
     expect(findGaps(hits, events)).toHaveLength(0);
+  });
+});
+
+// ─── 2026-09-11 production summaries (DAV-259) ───────────────────────────────
+// The first record_run_summary of two LIVE daily runs, verbatim. Both were
+// refused by complete_run; none of the five refusals was true. SRRK and PBH had
+// real close_position calls (proposals awaiting approval, which wrote no
+// position_closed event); SMMT and MU were a verb in the neighbouring sentence;
+// MIRM was "sell-side". The agents then rewrote the summaries until the words
+// were gone — SRRK's final line read "no new sizing today" on the day it
+// proposed selling SRRK.
+
+const CATALYST_0911 = {
+  decision_rationale:
+    "Adjusted one held catalyst position and refreshed two watched catalyst files. SRRK was the key action: despite the intact approval story, price remained below the $56.40 protective floor at ~$55.67 for a repeated fourth breach sequence, so I re-proposed the STOP exit rather than let a pre-PDUFA hold absorb more binary risk. SMMT remains a HOLD: the position is +18.5%, the stock is still ~18% above both the 20- and 50-day averages with RSI 64.9, and the November PDUFA thesis remains intact after the recent Jefferies upgrade; no candidate today beat that existing exposure enough to justify rotation. MIRM remains WATCH with fresh research: its approval case still scores as promising, but the stock is only barely above the 20-day and still 6.6% below the 50-day with just 15 days to PDUFA, so the $103 reclaim trigger still does the work. PRAX remains WATCH as well: the refresh worker failed, but fresh market data showed price still well below the $367 reclaim, below the 20-day, and on low volume, so there was no justified live entry. No new candidate cleared the bar to use idle cash today; the meaningful action was risk control on SRRK and upkeep on dated catalyst files.",
+  ranked_picks: [
+    { ticker: "SMMT", reasoning: "High-conviction PDUFA hold; trend still strong after OS catalyst" },
+    { ticker: "MIRM", reasoning: "Approval thesis intact, but still waiting for $103 reclaim" },
+    { ticker: "PRAX", reasoning: "Dual-PDUFA setup lives, but tape still below reclaim trigger" },
+    { ticker: "SRRK", reasoning: "Price remains below floor; protective exit re-proposed" },
+  ],
+};
+
+const PEAD_0911 = {
+  decision_rationale:
+    "Adjusted one holding and reaffirmed another. PBH had deteriorated to a 3/10 composite (trend 1, relative strength 0, entry quality 1, catalyst freshness 1) and, more importantly, was trading below the $47.50 hard stop with price below both the 20-day and 50-day averages; I proposed an EXIT rather than override a failed PEAD drift. MU remains the stronger hold at 9/10 (trend 3, relative strength 3, entry quality 1, catalyst freshness 2): despite a -4.9% day, it is still above the 20-day and 50-day averages, the beat rate is 4/4, and there is no guidance break, so I kept the current $969 floor. No new watchlist candidate was actionable enough to beat cash today because the quiet watch names did not fire their entry conditions, and this process should not chase day-of or off-plan moves. This was an ADJUST run, not an ADD run: one protective exit proposal, one hold review, no fresh entries.",
+  ranked_picks: [
+    { ticker: "MU", reasoning: "Down day, but structure and earnings-upgrade cycle still intact" },
+    { ticker: "PBH", reasoning: "Below stop; PEAD drift failed and momentum broke" },
+  ],
+};
+
+const gapTickers = (payload: typeof CATALYST_0911, events: ToolCallEvent[]) =>
+  findGaps(detectSummaryHits(payload), events).map((g) => g.ticker).sort();
+
+describe("2026-09-11 LIVE summaries (DAV-259)", () => {
+  it("a proposed sell counts as the tool firing — Catalyst passes on its first complete_run", () => {
+    expect(gapTickers(CATALYST_0911, [{ type: "position_close_proposed", symbol: "SRRK" }])).toEqual([]);
+  });
+
+  it("a proposed sell counts as the tool firing — PEAD passes on its first complete_run", () => {
+    expect(gapTickers(PEAD_0911, [{ type: "position_close_proposed", symbol: "PBH" }])).toEqual([]);
+  });
+
+  it("with no sell at all, only the stock that was actually narrated is flagged (SRRK, not SMMT)", () => {
+    expect(gapTickers(CATALYST_0911, [])).toEqual(["SRRK"]);
+  });
+
+  it("PEAD's EXIT belongs to PBH's sentence — MU in the next sentence is not flagged", () => {
+    expect(gapTickers(PEAD_0911, [])).not.toContain("MU");
+  });
+
+  it("'sell-side' is the analyst community, not a sale", () => {
+    const hits = detectNarrationHits(
+      "I reviewed SMMT and kept the holding unchanged, and the recent sell-side tone improved after the Jefferies upgrade. I refreshed MIRM and kept it on watch.",
+      "rationale",
+      undefined,
+      KNOWN(["SMMT", "MIRM"]),
+    );
+    expect(hits.filter((h) => h.expectedTool === "close_position")).toEqual([]);
+  });
+
+  it("a price inside a sentence doesn't split it — the verb still finds its stock", () => {
+    const hits = detectNarrationHits(
+      "$SRRK stayed below the $56.40 floor at ~$55.67, so we are selling.",
+      "rationale",
+      undefined,
+      KNOWN(["SRRK"]),
+    );
+    expect(hits.map((h) => h.ticker)).toEqual(["SRRK"]);
+  });
+
+  it("complete_run reads exactly the event types findGaps credits", () => {
+    expect(CREDITED_RUN_EVENT_TYPES.sort()).toEqual(
+      ["position_close_proposed", "position_closed", "position_modified", "position_modify_proposed"].sort(),
+    );
   });
 });
