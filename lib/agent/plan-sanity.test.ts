@@ -47,47 +47,25 @@ describe("computePlanSanity — the CAPR shape (buy level far from the tape)", (
   });
 });
 
-describe("computePlanSanity — a buy level sitting ON the price", () => {
-  // Until 2026-09-02 the thesis writer was instructed to set the entry to
-  // "the current price reference from the data block", so the plan's buy
-  // condition was true the day it was written. These are the live rows.
-  it("flags TOST — buy $35.15 against a $35.16 tape", () => {
-    const flags = computePlanSanity({
-      ...base,
-      entryPrice: 35.15,
-      currentPrice: 35.16,
-    });
-    expect(flags.map((f) => f.kind)).toEqual(["ENTRY_AT_PRICE"]);
-    expect(flags[0].text).toContain("this plan has no entry");
+describe("computePlanSanity — a buy at the price is how buying now is written (2026-09-14)", () => {
+  // TOST and ISRG used to be flagged ENTRY_AT_PRICE. Dave's ruling: there is
+  // no buy-now option — buying now IS an entry at or near the price — so a
+  // level on the tape is not a defect.
+  it("does not flag TOST — buy $35.15 against a $35.16 tape", () => {
+    expect(computePlanSanity({ ...base, entryPrice: 35.15, currentPrice: 35.16 })).toHaveLength(0);
   });
+});
 
-  it("flags ISRG — sitting on its own buy level since August", () => {
-    const flags = computePlanSanity({
-      ...base,
-      entryPrice: 401.23,
-      currentPrice: 401.29,
-    });
-    expect(flags.map((f) => f.kind)).toEqual(["ENTRY_AT_PRICE"]);
+describe("computePlanSanity — a buy level nobody has re-priced in four weeks", () => {
+  const now = new Date("2026-09-14T14:00:00Z");
+  it("flags ENTRY_STALE at 28 days", () => {
+    const flags = computePlanSanity({ ...base, entryPrice: 102, currentPrice: 100, lastLadderEditAt: new Date("2026-08-17T14:00:00Z"), now });
+    expect(flags.map((f) => f.kind)).toEqual(["ENTRY_STALE"]);
+    expect(flags[0].text).toContain("28 days ago");
   });
-
-  it("says nothing about a real breakout level or a real pullback level", () => {
-    // CSCO: buy $116.10 against a $111.04 tape. NOW: buy $130 against $132.51.
-    expect(
-      computePlanSanity({ ...base, entryPrice: 116.1, currentPrice: 111.04 }),
-    ).toHaveLength(0);
-    expect(
-      computePlanSanity({ ...base, entryPrice: 130, currentPrice: 132.51 }),
-    ).toHaveLength(0);
-  });
-
-  it("mirrors on a SHORT", () => {
-    const flags = computePlanSanity({
-      ...base,
-      direction: "SHORT",
-      entryPrice: 100,
-      currentPrice: 100.1,
-    });
-    expect(flags.map((f) => f.kind)).toEqual(["ENTRY_AT_PRICE"]);
+  it("says nothing at 27 days, or with no edit date", () => {
+    expect(computePlanSanity({ ...base, entryPrice: 102, currentPrice: 100, lastLadderEditAt: new Date("2026-08-18T14:00:00Z"), now })).toHaveLength(0);
+    expect(computePlanSanity({ ...base, entryPrice: 102, currentPrice: 100, now })).toHaveLength(0);
   });
 });
 

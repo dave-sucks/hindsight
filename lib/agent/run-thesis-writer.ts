@@ -41,6 +41,7 @@
  */
 
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
+import { setupsForSeat, type Setup } from "@/lib/agent/knowledge/setups";
 import { generateText, stepCountIs, tool } from "ai";
 import type { ModelMessage } from "ai";
 import { z } from "zod";
@@ -303,6 +304,8 @@ export interface WriterResearchPromptOpts {
    * absent → no block.
    */
   setupRecord?: string[];
+  /** The setups this seat writes on (setupsForSeat) — the prompt lists them. */
+  setups?: Setup[];
   /** P1-35: this analyst sold this ticker within the last 14 days. */
   priorExit?: {
     exitPrice: number | null;
@@ -389,8 +392,12 @@ decision by the orchestrator — you are writing the research and the plan.`;
     there is no position.
   • The ENTER rung follows the level: PRICE_ABOVE(entry_price) for a
     breakout above the tape, PRICE_BELOW(entry_price) for a pullback
-    below it (mirror for SHORT). Urgency is conviction (STRONG +
-    variant view), never a buy level parked on today's price.
+    below it (mirror for SHORT). A setup already true today is an entry
+    at or a few cents past the live price.
+  • A chart condition from the setup's entry rule that isn't a price
+    (NEAR_SMA for a pullback, EARNINGS_SINCE for PEAD day 1–3, GAP_UP)
+    can be added as its own ENTER trigger next to the price level —
+    whichever comes true first wakes the buy decision.
   • Most theses need NO custom triggers — omit the field and the
     horizon-default template (entry/stop/review) is applied for you.
   • Setting an existing priced plan DOWN on a refresh (levels no longer
@@ -437,9 +444,28 @@ rationale — the next daily run executes it, not you.
 `
     : "";
 
+  const setups = opts.setups ?? [];
+  const setupsBlock = setups.length
+    ? `
+═══════════════════════════════════════════════════════════════════
+YOUR SETUPS — every LONG/SHORT plan is written on one of these
+═══════════════════════════════════════════════════════════════════
+${setups
+  .map(
+    (s) => `${s.id} — ${s.name}
+  ${s.summary}
+  Entry: ${s.entry.text}
+  Stop: ${s.stop.text}
+  Target: ${s.target.text}
+  Time: ${s.time.text}`,
+  )
+  .join("\n\n")}
+`
+    : "";
+
   return `You are ${opts.analystName}, writing one deep-research thesis on $${T}.
 
-${opts.analystPrompt ? `Your strategy:\n${opts.analystPrompt}\n` : ""}
+${opts.analystPrompt ? `Your strategy:\n${opts.analystPrompt}\n` : ""}${setupsBlock}
 WHY YOU WERE DISPATCHED
 ${opts.reason}
 
@@ -493,8 +519,10 @@ headers are dropped research):
    One paragraph naming specific firms/analysts and their actions.
 
    ## Insider & Technical
-   One paragraph — insider activity (names if available) + chart setup
-   (levels, RSI, trend).
+   One paragraph — open-market insider buying (the Insider Activity
+   block) + the chart from the Price structure block: which of YOUR
+   SETUPS it is, and the numbers it gives (pivot, moving average,
+   swing low, ATR).
 
    Ground rules for the note:
    • The GROUND-TRUTH DATA block in the user message is authoritative for
@@ -519,10 +547,25 @@ every field; the judgment rules:
      SHORT: (entry−target)/(stop−entry). Below 2:1 the tool rejects:
      tighten the stop to a REAL technical level, raise the target to a
      CITED level, or go PASS. Never fabricate levels to clear the gate.
-   • entry_price is WHERE YOU'D BUY IN — a price the stock has NOT
-     reached: above the live price for a breakout you want confirmed,
-     below it for a pullback you want to pay. It BECOMES the buy
-     trigger. Never park it on today's price to satisfy the schema.
+   • SETUP FIRST. Name the setup (setup_id) from YOUR SETUPS, then take
+     every number from its rules and the Price structure block — never a
+     round number, never a feel:
+       – entry_price: the level the setup's entry rule gives (the base
+         pivot for a breakout, the moving average for a pullback). It
+         BECOMES the buy trigger. When the setup's condition is already
+         true today, set it at or a few cents past the live price — that
+         is how you buy now; it fires on the first tick through it and
+         becomes the ordinary approval-gated proposal. A breakout wants
+         entry_on_close: true (an intraday poke fails about half the
+         time). Never more than the setup's chase limit past its pivot.
+       – stop_loss: under the structure the setup names, at least its
+         minimum ATR from entry. stop_basis says which structure and how
+         many ATR, with the numbers.
+       – target_price: the setup's target rule (measured move, prior
+         high, R multiple), ≥ 2R. target_basis says which, with the
+         numbers.
+     If no setup fits the chart, the answer is PASS or an unpriced view
+     — not a plan with invented levels.
    • NO LEVEL WORTH WAITING FOR YET (the entry window opens later, the
      setup hasn't formed, you want to price it after the print) → omit
      ALL THREE of entry/target/stop. The thesis stays LONG/SHORT and
@@ -552,13 +595,9 @@ every field; the judgment rules:
          ? `\n   • your record by setup (closed trades since 2026-05-27):\n${opts.setupRecord.map((l) => `       ${l}`).join("\n")}`
          : ""
      }
-   • entryQuality on a COMPOUNDER horizon: a stock at or near its highs on a
-     working thesis is NOT a 0. Score the entry on whether the thesis is
-     CONFIRMED (breakout above a base, reclaim of the 50-day, or a pullback
-     to the 50-day), not on distance from the high. "Extended" is a
-     trader's word; for a multi-year hold it just means working. Scoring
-     every strong stock 0 here is how this seat watched MSFT go $418 → $497
-     for four months without buying.
+   • entryQuality scores the setup's own entry rule: 2 = its condition is
+     true today (inside the chase limit), 1 = within a few percent of it,
+     0 = not formed. Never distance from the 52-week high by itself.
 
 ${triggerBlock}
 ${earningsTriggerBlock}
@@ -774,6 +813,7 @@ export async function writerResearchPhase(
       }
     }
 
+    const seatSetups = setupsForSeat(analyst.name);
     const systemPrompt = buildWriterResearchPrompt({
       analystName: analyst.name,
       analystPrompt: analyst.analystPrompt,
@@ -785,6 +825,7 @@ export async function writerResearchPhase(
       runDate: new Date().toISOString().slice(0, 10),
       promotionContext: args.promotionContext ?? null,
       priorExit,
+      setups: seatSetups,
       setupRecord: await loadScorecardLines({
         accountId: analyst.accountId,
         analystId: analyst.id,
@@ -824,6 +865,8 @@ Write the research note now, then call submit_thesis.`;
           existingTargetPrice: existingThesis?.targetPrice ?? null,
           // P1-35 prior-exit acknowledgment.
           priorExit,
+          setups: seatSetups,
+          chart: pullOutput.pull?.chart ?? null,
         });
         if (!v.ok) {
           console.log(
@@ -1167,6 +1210,10 @@ export async function writerPersistPhase(
           entry_price: d.entry_price,
           target_price: d.target_price,
           stop_loss: d.stop_loss,
+          setup_id: d.direction === "PASS" ? undefined : d.setup_id,
+          stop_basis: d.stop_basis,
+          target_basis: d.target_basis,
+          entry_on_close: d.entry_on_close,
           // The price the research was done at. record_thesis reads the buy
           // level's side (pullback vs breakout) off it when its own quote
           // fails — and refuses rather than guesses when both are missing.
@@ -1259,6 +1306,10 @@ export async function writerPersistPhase(
           entry_price: d.direction === "PASS" ? undefined : d.entry_price,
           target_price: d.direction === "PASS" ? undefined : d.target_price,
           stop_loss: d.direction === "PASS" ? undefined : d.stop_loss,
+          setup_id: d.direction === "PASS" ? undefined : d.setup_id,
+          stop_basis: d.direction === "PASS" ? undefined : d.stop_basis,
+          target_basis: d.direction === "PASS" ? undefined : d.target_basis,
+          entry_on_close: d.direction === "PASS" ? undefined : d.entry_on_close,
           horizon: d.horizon,
           catalyst_date: d.catalyst_date
             ? new Date(d.catalyst_date).toISOString()

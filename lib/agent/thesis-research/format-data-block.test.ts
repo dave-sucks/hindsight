@@ -99,9 +99,9 @@ describe("formatDataBlock — the chart, in dollars", () => {
     expect(formatDataBlock(inputs({ ...chart, volumeFeed: "iex" }))).toContain("IEX-only volume");
   });
 
-  it("still tells the writer an entry cannot be today's price (PR 4 changes this, not PR 1)", () => {
-    expect(out).toMatch(/price the stock has NOT reached/i);
-    expect(out).toMatch(/Today's price is not an entry/i);
+  it("tells the writer the levels are where its setup prices come from — and a setup true today is an entry at the price (PR 4)", () => {
+    expect(out).toMatch(/the levels your setup's entry, stop and target come from/i);
+    expect(out).not.toMatch(/Today's price is not an entry/i);
   });
 
   it("says the chart is unavailable when there are no bars", () => {

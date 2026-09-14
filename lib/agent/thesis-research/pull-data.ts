@@ -95,6 +95,8 @@ export interface ThesisPullResult {
   pullErrors: string[];
   /** Live quote price, when the stock pull succeeded — used by decision validation. */
   currentPrice: number | null;
+  /** The chart numbers the writer's plan is checked against in-loop (DAV-249). */
+  chart: { atr14: number | null; pivot: number | null; brokenOut: boolean | null };
   /** Company name / exchange passthrough for record_thesis card data. */
   companyName: string | null;
   exchange: string | null;
@@ -233,6 +235,11 @@ export async function pullThesisData(
     rawDataBlock,
     pullErrors,
     currentPrice: sd?.quote?.price ?? sd?.technicals?.price ?? null,
+    chart: {
+      atr14: sd?.technicals?.atr14?.dollars ?? null,
+      pivot: sd?.technicals?.base?.pivot ?? null,
+      brokenOut: sd?.technicals?.base?.brokenOut ?? null,
+    },
     companyName: sd?.company?.name ?? null,
     exchange: sd?.company?.exchange ?? null,
     pulledAt: pulledAt.toISOString(),

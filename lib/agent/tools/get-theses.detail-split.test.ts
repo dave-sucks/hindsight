@@ -230,11 +230,11 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     expect(res.data.quiet_theses).toHaveLength(0);
   });
 
-  it("a buy level sitting on the live price is a flagged plan, not a hidden one", async () => {
-    // This row used to be FULL because the resolver read it as the writer's
-    // "buy at market" shape. It is a plan with no entry — the shape the
-    // synthesis prompt asked for until 2026-09-02 — so it now arrives as a
-    // plan-sanity flag the run must resolve rather than an order to fill.
+  it("a buy level on the live price is not flagged for being there — a 40-day-old one is flagged stale", async () => {
+    // Until 2026-09-14 this row was flagged ENTRY_AT_PRICE. A buy at or near
+    // the price is how buying now is written (no buy-now option), so that
+    // flag is gone. The fixture's plan is 40 days old, so the stale-entry
+    // flag is what arrives — proving watches now get their last edit date.
     mockGetLatestPrices.mockResolvedValue({ BUYNOW: 100 });
     mockThesisFindMany.mockResolvedValue([
       thesisRow({ id: "t_buynow", ticker: "BUYNOW", entryPrice: 100 }),
@@ -245,11 +245,7 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     expect(res.data.theses).toHaveLength(1);
     expect(res.data.theses[0].ticker).toBe("BUYNOW");
     expect(res.data.theses[0].resolved?.actionability).toBe("WAIT_FOR_TRIGGER");
-    expect(
-      res.data.theses[0].resolved?.planSanity?.map(
-        (f: { kind: string }) => f.kind,
-      ),
-    ).toContain("ENTRY_AT_PRICE");
+    expect(res.data.theses[0].resolved?.planSanity?.map((f: { kind: string }) => f.kind)).toEqual(["ENTRY_STALE"]);
     expect(res.data.quiet_theses).toHaveLength(0);
   });
 

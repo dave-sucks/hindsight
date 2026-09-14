@@ -36,7 +36,7 @@ import { MIN_RISK_REWARD, riskReward } from "@/lib/agent/thesis-shape";
 export type PlanSanityFlag = {
   kind:
     | "ENTRY_FAR_FROM_PRICE"
-    | "ENTRY_AT_PRICE"
+    | "ENTRY_STALE"
     | "TARGET_ALREADY_PASSED"
     | "STOP_ALREADY_BREACHED"
     | "STOP_INSIDE_NOISE"
@@ -62,12 +62,13 @@ export const ENTRY_DISTANCE_FLAG_PCT = 10;
 // alarm.
 
 /**
- * The other end of the same question: a buy level ON the tape is a buy
- * condition already true, so it fires the day it's written and forever
- * after. TOST $35.15 vs a $35.16 tape, ISRG $401.23 vs $401.29. Half a
- * percent is inside a spread — tighter than that is one number twice.
+ * A priced watch whose plan nobody has touched in this many calendar days
+ * (~20 trading days) — the buy hasn't come and the chart it was priced
+ * off has moved on. The run re-prices it from today's chart, or sets it
+ * down. (The old ENTRY_AT_PRICE flag is gone, 2026-09-14: a buy at or near
+ * the price is how buying now is written.)
  */
-export const ENTRY_AT_PRICE_PCT = 0.5;
+export const ENTRY_STALE_DAYS = 28;
 
 const fmt = (n: number) =>
   `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -89,6 +90,9 @@ export function computePlanSanity(args: {
   composite?: number | null;
   /** The analyst's minimum confidence to trade, 0–100. Optional. */
   minConfidence?: number | null;
+  /** When the plan's levels were last written. Optional; absent ⇒ no staleness check. */
+  lastLadderEditAt?: Date | null;
+  now?: Date;
 }): PlanSanityFlag[] {
   const {
     status,
@@ -100,6 +104,8 @@ export function computePlanSanity(args: {
     dayRangePct,
     composite,
     minConfidence,
+    lastLadderEditAt,
+    now,
   } = args;
   if (status !== "WATCHING") return [];
   if (direction !== "LONG" && direction !== "SHORT") return [];
@@ -121,13 +127,17 @@ export function computePlanSanity(args: {
             : `A level this far ${rel} the tape is a plan the price has left behind. `) +
           `Re-anchor it to current structure, state in one sentence why it's deliberately parked there, or stop watching.`,
       });
-    } else if (Math.abs(distPct) < ENTRY_AT_PRICE_PCT) {
+    }
+  }
+
+  if (entryPrice != null && entryPrice > 0 && lastLadderEditAt && now) {
+    const days = Math.floor((now.getTime() - lastLadderEditAt.getTime()) / 86_400_000);
+    if (days >= ENTRY_STALE_DAYS) {
       flags.push({
-        kind: "ENTRY_AT_PRICE",
+        kind: "ENTRY_STALE",
         text:
-          `The buy level ${fmt(entryPrice)} is the live price ${fmt(currentPrice)} — this plan has no entry. ` +
-          `A buy condition that is already true fires the day it's written and re-fires forever, so nothing here is ever waiting for anything. ` +
-          `Move it to a level the stock has not reached (a breakout above the tape, or a pullback below it), buy it now with place_trade if it is genuinely worth owning at this price, or stop watching.`,
+          `The buy level ${fmt(entryPrice)} was set ${days} days ago and hasn't filled — the chart it was priced from has moved on. ` +
+          `Re-price it from today's Price structure (the setup's rule, today's numbers), or set the plan down.`,
       });
     }
   }

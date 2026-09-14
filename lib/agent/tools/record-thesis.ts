@@ -6,6 +6,7 @@
  */
 
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
+import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
 import { stampWrittenPrice } from "@/lib/agent/triggers/written-price";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { z } from "zod";
@@ -89,15 +90,19 @@ const thesisFields = z.object({
       "2-4 key risks. Legacy shape — V2 agents prefer `bear_case: { bullets: [{ text, citation }] }`.",
     ),
   entry_price: z.number().optional().describe(
-    "WHERE YOU'D BUY IN — a price the stock has NOT reached, never the current quote. " +
-    "The ENTER trigger reads the SIDE from where you put this level relative to the tape, so say what you mean: " +
-    "set it BELOW the current price for a pullback you want to buy (fires when price comes back down to it), or ABOVE the current price for a breakout you want confirmed first (fires when price clears it). " +
-    "A level AT the current quote is a buy condition already true. If you want to buy now, call place_trade. " +
+    "WHERE YOU'D BUY IN — the level the setup's entry rule gives (the base pivot for a breakout, the 50-day for a pullback). " +
+    "The ENTER trigger reads the SIDE from where you put this level relative to the tape: " +
+    "BELOW the current price is a pullback you want to buy (fires when price comes back down to it), ABOVE it is a breakout you want confirmed first (fires when price clears it). " +
+    "When the setup's condition is already true today, set the entry at or a few cents past the current price — that is how you buy now: it fires on the first tick through it and becomes the ordinary approval-gated proposal. " +
     "A priced plan needs all three of entry/target/stop (2:1 floor). If there is NO level worth waiting for YET (entry window opens later, setup not formed), omit all three — the thesis stays LONG/SHORT + WATCHING on its review wakes and is priced later. PASS is for a view the research doesn't support. " +
     "Also include for PASS to enable shadow tracking."
   ),
   target_price: z.number().optional().describe("Price target. Required with entry_price."),
   stop_loss: z.number().optional().describe("Stop-loss price. Required with entry_price."),
+  setup_id: z.enum(SETUP_IDS).optional().describe("The setup this plan is written on (read_knowledge_library topic:\"setup\"). Stored on the thesis; the scorecard groups results by it."),
+  stop_basis: z.string().max(240).optional().describe("Why the stop is where it is, with the chart number it sits under (\"under the base low $207.25, 1.6 ATR from entry\"). Becomes the floor trigger's sentence."),
+  target_basis: z.string().max(240).optional().describe("Why the target is where it is (\"measured move: base depth added to the pivot\", \"prior high $236.54\"). Becomes the target trigger's sentence."),
+  entry_on_close: z.boolean().optional().describe("true = the buy fires only on a CLOSE past entry_price, not an intraday poke (breakouts: intraday crosses fail about half the time)."),
   current_price: z.number().optional().describe(
     "The live price you researched at (get_stock_data's quote). Pass it whenever you set entry_price: " +
     "it decides which SIDE of the price the buy level sits on. A fresh quote is tried first and this is the fallback; " +
@@ -1163,6 +1168,8 @@ export const recordThesis = defineTool({
         status: effectiveStatusForTriggers,
         currentPrice: quoteForEntrySide,
         source: "AGENT",
+        notes: { floor: args.stop_basis, target: args.target_basis },
+        entryBasis: args.entry_on_close ? "close" : undefined,
         mintId: () => randomUUID(),
       });
       // Every buy trigger carries the price it was written at, so a level set
@@ -1293,6 +1300,7 @@ export const recordThesis = defineTool({
         modelUsed: "gpt-4o",
         // ── Durable-state fields (PR 1) ─────────────────────────────────
         horizon: args.horizon ?? null,
+        setupId: args.setup_id ?? null,
         coreBelief: args.core_belief ?? null,
         keyAssumptions: args.key_assumptions ?? [],
         invalidationConds: args.invalidation_conditions ?? [],
