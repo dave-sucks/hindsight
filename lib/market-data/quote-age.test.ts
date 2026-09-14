@@ -15,7 +15,8 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 
 const NOW = new Date("2026-09-14T13:30:25Z"); // Mon 09:30:25 ET
 const FRIDAY_CLOSE_T = Math.floor(new Date("2026-09-11T20:00:00Z").getTime() / 1000);
-const etnQuote = { c: 425.37, pc: 409.15, t: FRIDAY_CLOSE_T };
+// DAV-261's production values: priceAtTime $425.41, pc $409.15, t = Friday 16:00.
+const etnQuote = { c: 425.41, pc: 409.15, t: FRIDAY_CLOSE_T };
 
 const etnBuy: Trigger = {
   id: "etn-buy",
@@ -23,6 +24,7 @@ const etnBuy: Trigger = {
   action: "ENTER",
   rationale: "Buy on a clean breakout above the recent repair range near $418.",
   source: "AGENT",
+  lastFiredAt: "2026-09-11T13:45:00.000Z",
 };
 const etnFloor: Trigger = { id: "etn-floor", predicate: { kind: "PRICE_BELOW", level: 430 }, action: "EXIT", rationale: "floor", source: "AGENT" };
 
@@ -50,9 +52,15 @@ describe("ETN at 09:30 on 2026-09-14 — Friday's close served as today's price"
     expect(shouldFire(etnFloor, { ...ctxFor(etnQuote), latestQuote: { ...ctxFor(etnQuote).latestQuote, price: 404 } }).fires).toBe(true);
   });
 
-  it("once a fresh quote arrives the buy is judged normally", () => {
-    const fresh = { c: 419, pc: 425.37, t: Math.floor(NOW.getTime() / 1000) - 60 };
-    expect(staleForTrading(fresh, NOW)).toBe(false);
+  it("an add on the same stale quote waits too", () => {
+    const add: Trigger = { ...etnBuy, id: "etn-add", action: "ADD", predicate: { kind: "PRICE_MOVE_PCT", pct: 3, direction: "UP", window: "1D" } };
+    expect(shouldFire(add, ctxFor(etnQuote))).toEqual({ fires: false, reason: "stale-quote" });
+  });
+
+  it("the live quote that morning ($404.86, prior close $425.37) doesn't fire either — no crossing", () => {
+    const live = { c: 404.86, pc: 425.37, t: Math.floor(NOW.getTime() / 1000) };
+    expect(staleForTrading(live, NOW)).toBe(false);
+    expect(shouldFire(etnBuy, ctxFor(live)).fires).toBe(false);
   });
 });
 
@@ -65,7 +73,7 @@ describe("readPrice — the words", () => {
   it("a stale quote during market hours says how old it is", () => {
     const r = readPrice({ ticker: "ETN", quote: etnQuote, now: NOW });
     expect(r.live).toBe(false);
-    expect(r.warning).toMatch(/^Live price for \$ETN is not current: \$425\.37 printed Fri, 09\/11, 4:00 PM ET/);
+    expect(r.warning).toMatch(/^Live price for \$ETN is not current: \$425\.41 printed Fri, 09\/11, 4:00 PM ET \(66 hours ago\)/);
   });
 
   it("outside market hours the last print is simply the last price — no alarm", () => {

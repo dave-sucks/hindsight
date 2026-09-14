@@ -75,6 +75,7 @@ export function readPrice(opts: {
     const fresh = age != null && age <= STALE_QUOTE_MS;
     if (open && !fresh) {
       const mins = age != null ? Math.round(age / 60_000) : null;
+      const ago = mins == null ? null : mins >= 120 ? `${Math.round(mins / 60)} hours` : `${mins} minutes`;
       return {
         price: c,
         asOf: asOf?.toISOString() ?? null,
@@ -82,8 +83,8 @@ export function readPrice(opts: {
         live: false,
         warning:
           `Live price for $${ticker} is not current: $${c} printed ${asOf ? etStamp(asOf) + " ET" : "at an unknown time"}` +
-          `${mins != null ? ` (${mins} minutes ago)` : ""}. Treat it, and every distance measured from it, as unconfirmed.`,
-        warningShort: `Price is ${mins != null ? `${mins} min` : "of unknown age"} old — $${c}${asOf ? ` at ${etStamp(asOf)}` : ""}`,
+          `${ago ? ` (${ago} ago)` : ""}. Treat it, and every distance measured from it, as unconfirmed.`,
+        warningShort: `Price is ${ago ?? "of unknown age"} old — $${c}${asOf ? ` at ${etStamp(asOf)}` : ""}`,
       };
     }
     return { price: c, asOf: asOf?.toISOString() ?? null, ageMinutes: age != null ? Math.round(age / 60_000) : null, live: open && fresh, warning: null, warningShort: null };

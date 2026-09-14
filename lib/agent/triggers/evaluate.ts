@@ -73,7 +73,7 @@ export interface EvaluationContext {
     prevClose?: number;
     /**
      * The market is open and this quote isn't from the last 15 minutes
-     * (lib/market-data/quote-age). A buy never fires on it; a sell or review
+     * (lib/market-data/quote-age). A buy or add never fires on it; a sell or review
      * still does — skipping a stop is the worse failure. DAV-261.
      */
     stale?: boolean;
@@ -373,7 +373,10 @@ export function shouldFire(
   // A buy never fires on a quote that isn't today's price: at 09:30 Finnhub
   // still reported ETN's Friday close as "now" and Thursday's as the prior
   // close, so Friday's crossing counted twice (2026-09-14, DAV-261).
-  if (trigger.action === "ENTER" && ctx.latestQuote?.stale) return { fires: false, reason: "stale-quote" };
+  // An ADD is a buy too.
+  if ((trigger.action === "ENTER" || trigger.action === "ADD") && ctx.latestQuote?.stale) {
+    return { fires: false, reason: "stale-quote" };
+  }
 
   const baseline =
     trigger.action === "ENTER" && ctx.latestQuote?.prevClose != null && ctx.latestQuote.prevClose > 0
