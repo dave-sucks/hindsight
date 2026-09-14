@@ -17,7 +17,7 @@
 
 import { applyTriggerOps } from "./ops";
 import { shouldFire } from "./evaluate";
-import { stampWrittenPrice } from "./written-price";
+import { freshQuotePrice, stampWrittenPrice } from "./written-price";
 import type { Trigger } from "./types";
 
 const floor: Trigger = { id: "floor", predicate: { kind: "PRICE_BELOW", level: 470 }, action: "EXIT", rationale: "Floor under the August low.", source: "AGENT" };
@@ -106,5 +106,19 @@ describe("stampWrittenPrice — only the server sets it", () => {
   it("never stamps a sell or review", () => {
     const sell: Trigger = { id: "s", predicate: { kind: "PRICE_BELOW", level: 90 }, action: "EXIT", rationale: "floor", writtenPrice: 95, writtenAt: now.toISOString() };
     expect(stampWrittenPrice([], [sell], 99, now)[0].writtenPrice).toBeUndefined();
+  });
+});
+
+describe("freshQuotePrice — the stamp never takes a stale or agent-typed price", () => {
+  const now = new Date("2026-09-14T13:30:25Z"); // 09:30:25 ET Monday
+  it("ETN at 9:30 on 09-14: Finnhub still shows Friday's $425 close — no stamp", () => {
+    const fridayClose = Math.floor(new Date("2026-09-11T20:00:00Z").getTime() / 1000);
+    expect(freshQuotePrice({ c: 425.37, t: fridayClose }, now)).toBeNull();
+  });
+  it("a quote printed two minutes ago stamps", () => {
+    expect(freshQuotePrice({ c: 404.1, t: Math.floor(now.getTime() / 1000) - 120 }, now)).toBe(404.1);
+  });
+  it("no timestamp, no stamp", () => {
+    expect(freshQuotePrice({ c: 404.1 }, now)).toBeNull();
   });
 });

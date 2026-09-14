@@ -18,6 +18,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
+import { freshQuotePrice } from "@/lib/agent/triggers/written-price";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import {
@@ -252,8 +253,7 @@ async function runPrincipalOp(
           (op.op === "edit" && op.action === "ENTER");
   let writtenPrice: number | null = null;
   if (touchesBuy) {
-    const q = await getStockQuote(thesis.ticker).catch(() => null);
-    writtenPrice = q && Number.isFinite(q.c) && q.c > 0 ? q.c : null;
+    writtenPrice = freshQuotePrice(await getStockQuote(thesis.ticker).catch(() => null), new Date());
   }
   const applied = applyTriggerOps({
     stored: thesis.triggers,

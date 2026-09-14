@@ -40,6 +40,7 @@ import {
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
 import { pinsToKeepProtection } from "@/lib/agent/triggers/ratchet";
+import { freshQuotePrice } from "@/lib/agent/triggers/written-price";
 import {
   acceptedOps,
   applyTriggerOps,
@@ -1100,6 +1101,10 @@ export const updateThesis = defineTool({
           // analyst wrote "buy the pullback to $203" and the row stored
           // "buy above $203" against a $258 tape.
           currentPrice: resolvedPriceAtTime,
+          // The stamp takes only a fresh server quote — never price_at_time.
+          writtenPrice: await getStockQuote(existing.ticker)
+            .then((q) => freshQuotePrice(q, new Date()))
+            .catch(() => null),
           now: new Date(),
           mintId: () => randomUUID(),
         });
