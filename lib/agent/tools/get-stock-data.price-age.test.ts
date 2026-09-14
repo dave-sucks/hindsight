@@ -68,4 +68,13 @@ describe("NVDA, 2026-09-14 chat — the live quote was rate-limited", () => {
     const out = await run();
     expect(out.data.tickers[0].summary.startsWith("⚠ Live price unavailable — using Fri, 09/11 close $218.29")).toBe(true);
   });
+
+  it("the row carries the chart numbers the agent was handed, from the same result", async () => {
+    const out = await run();
+    const t = out.data.technicals;
+    const row: string = out.data.tickers[0].summary;
+    expect(row).toContain(`50-day $${t.sma.d50.value.toFixed(2)}`);
+    expect(row).toContain(`200-day $${t.sma.d200.value.toFixed(2)}`);
+    expect(row).toContain("volume 0.44× normal today");
+  });
 });

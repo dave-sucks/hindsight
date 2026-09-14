@@ -270,6 +270,22 @@ export const getStockData = defineTool({
     if (companyData?.name) tickerSummaryParts.push(companyData.name);
     if (metaParts.length > 0) tickerSummaryParts.push(metaParts.join(" · "));
     if (techData?.verdict) tickerSummaryParts.push(techData.verdict);
+    // The chart numbers the agent was handed, on the row — the same object it
+    // reads, so the row is proof of what it saw.
+    if (techData) {
+      const $ = (n: number) => `$${n.toFixed(2)}`;
+      const vs = (m: { value: number; pctFromPrice: number } | null | undefined, label: string) =>
+        m ? `${label} ${$(m.value)} (${m.pctFromPrice >= 0 ? "+" : ""}${m.pctFromPrice.toFixed(1)}%)` : null;
+      const chart = [
+        vs(techData.sma.d50, "50-day"),
+        vs(techData.sma.d200, "200-day"),
+        techData.base && !techData.base.brokenOut ? `base breakout ${$(techData.base.pivot)}` : null,
+        techData.swings.lastLow ? `swing low ${$(techData.swings.lastLow.price)}` : null,
+        techData.atr14 ? `moves ${$(techData.atr14.dollars)}/day` : null,
+        techData.today?.volumeVsAvg20 != null ? `volume ${techData.today.volumeVsAvg20}× normal today` : null,
+      ].filter(Boolean);
+      if (chart.length) tickerSummaryParts.push(chart.join(" · "));
+    }
 
     // ── Universe check (informational) ──────────────────────────────────
     // If the analyst has a Universe fence, check whether this ticker falls
