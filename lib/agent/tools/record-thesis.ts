@@ -6,7 +6,8 @@
  */
 
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
-import { freshQuotePrice, stampWrittenPrice } from "@/lib/agent/triggers/written-price";
+import { stampWrittenPrice } from "@/lib/agent/triggers/written-price";
+import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";

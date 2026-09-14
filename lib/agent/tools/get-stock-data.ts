@@ -18,6 +18,7 @@ import {
   type PriceStructure,
 } from "@/lib/market-data/price-structure";
 import { getBenchmarkBars, CHART_SESSIONS } from "@/lib/market-data/benchmark-bars";
+import { readPrice } from "@/lib/market-data/quote-age";
 import type { NewsItem } from "@/lib/agent/tool-types";
 import { checkUniverse } from "@/lib/agent/universe";
 import type { UniverseCheck } from "@/lib/agent/universe";
@@ -156,6 +157,7 @@ export const getStockData = defineTool({
           } | null;
         })
       | null = null;
+    let lastBar: { price: number; date: string } | null = null;
     if (doTechnicals) {
       const sectorEtf = sectorEtfFor((profile?.finnhubIndustry as string | undefined) ?? null);
       const [own, spy, sector] = await Promise.all([
@@ -166,6 +168,8 @@ export const getStockData = defineTool({
         getBenchmarkBars("SPY", ctx.alpacaCreds).catch(() => undefined),
         sectorEtf ? getBenchmarkBars(sectorEtf, ctx.alpacaCreds).catch(() => undefined) : undefined,
       ]);
+      const tail = own?.bars.at(-1);
+      if (tail) lastBar = { price: tail.close, date: tail.date };
       const structure = own
         ? computePriceStructure({
             bars: own.bars,
@@ -219,8 +223,13 @@ export const getStockData = defineTool({
       return `$${n.toLocaleString()}`;
     };
 
+    // How old the price is, in words when it isn't live (lib/market-data/
+    // quote-age). A failed quote used to leave the chart measured from the
+    // last close with nothing said — NVDA 2026-09-14 read as above its
+    // 50-day while it was trading below it.
+    const priceReading = readPrice({ ticker, quote, quoteError: quoteResult.error, lastClose: lastBar, now: new Date() });
     const quoteData = quote && quote.c
-      ? { price: quote.c, change: quote.d ?? 0, changePct: quote.dp ?? 0, high: quote.h, low: quote.l, open: quote.o, prevClose: quote.pc }
+      ? { price: quote.c, change: quote.d ?? 0, changePct: quote.dp ?? 0, high: quote.h, low: quote.l, open: quote.o, prevClose: quote.pc, asOf: priceReading.asOf, ageMinutes: priceReading.ageMinutes, live: priceReading.live }
       : null;
     const companyData = profile && profile.name
       ? { name: profile.name as string, sector: (profile.finnhubIndustry as string) ?? "", marketCap: profile.marketCapitalization ? (profile.marketCapitalization as number) * 1_000_000 : null, exchange: (profile.exchange as string) ?? "", country: (profile.country as string) ?? "" }
@@ -234,6 +243,7 @@ export const getStockData = defineTool({
 
     // ── Summary ────────────────────────────────────────────────────────────
     const sParts: string[] = [];
+    if (priceReading.warning) sParts.push(`⚠ ${priceReading.warning}`);
     if (companyData?.name) sParts.push(`${ticker} — ${companyData.name}`);
     else sParts.push(ticker);
     if (quoteData) sParts.push(`$${quoteData.price} (${fPct(quoteData.changePct)})`);
@@ -256,6 +266,7 @@ export const getStockData = defineTool({
     if (recentNews.length > 0) sParts.push(`${recentNews.length} news`);
 
     const tickerSummaryParts: string[] = [];
+    if (priceReading.warningShort) tickerSummaryParts.push(`⚠ ${priceReading.warningShort}`);
     if (companyData?.name) tickerSummaryParts.push(companyData.name);
     if (metaParts.length > 0) tickerSummaryParts.push(metaParts.join(" · "));
     if (techData?.verdict) tickerSummaryParts.push(techData.verdict);
@@ -312,6 +323,7 @@ export const getStockData = defineTool({
         ".",
       data: {
         ...(priorCoverageNote ? { priorCoverage: priorCoverageNote } : {}),
+        ...(priceReading.warning ? { priceWarning: priceReading.warning } : {}),
         quote: quoteData,
         company: companyData,
         financials: financialsData,

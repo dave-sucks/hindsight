@@ -10,6 +10,7 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { finnhub } from "@/lib/agent/research-helpers";
 import { sma } from "@/lib/market-data/price-structure";
 import { getBars } from "@/lib/alpaca";
+import { readPrice, type PriceReading } from "@/lib/market-data/quote-age";
 import type { MacroEvent } from "@/lib/discovery/types";
 
 function formatShortDate(iso: string) {
@@ -34,6 +35,8 @@ export const getMarketContext = defineTool({
     const fiveDaysForward = new Date(Date.now() + 5 * 86400_000).toISOString().slice(0, 10);
 
     const allSymbols = ["SPY", ...SECTOR_ETFS];
+    // How old SPY's price is, in words when it isn't live (quote-age).
+    const spyQuote: { reading: PriceReading | null } = { reading: null };
     // SPY candle via Alpaca (Finnhub /stock/candle is paid-only since
     // 2024). Same feed=iex story as get-stock-data — see A1 PR.
     const spyBarsStart = new Date(Date.now() - 30 * 86400_000)
@@ -45,6 +48,7 @@ export const getMarketContext = defineTool({
           allSymbols.map(async (sym) => {
             const res = await finnhub(`/quote?symbol=${sym}`, 2);
             const d = res.data as Record<string, number> | null;
+            if (sym === "SPY") spyQuote.reading = readPrice({ ticker: "SPY", quote: d, quoteError: res.error, now: new Date() });
             if (d && typeof d.c === "number" && d.c > 0) {
               return { symbol: sym, price: d.c, changesPercentage: d.dp ?? 0, dayHigh: d.h ?? d.c, dayLow: d.l ?? d.c };
             }
@@ -148,7 +152,15 @@ export const getMarketContext = defineTool({
       .sort((a, b) => b.changePct - a.changePct);
 
     const fPct = (n: number | null | undefined) => n != null ? `${n >= 0 ? "+" : ""}${n.toFixed(2)}%` : "";
-    const summaryParts: string[] = [];
+    const spyReading = spyQuote.reading;
+    const warnings: string[] = [];
+    if (spyReading?.warning) warnings.push(spyReading.warning);
+    if (vixLevel === null) warnings.push("VIX unavailable (both quotes failed) — the regime below was classified without it.");
+    if (sectors.length < SECTOR_ETFS.length) {
+      warnings.push(`Only ${sectors.length} of ${SECTOR_ETFS.length} sector ETF quotes came back — the sector ranking is partial.`);
+    }
+    const trendAsOf = " (daily closes)";
+    const summaryParts: string[] = warnings.map((w) => `⚠ ${w}`);
     if (spyData) summaryParts.push(`SPY $${spyData.price} (${fPct(spyData.changesPercentage)})`);
     if (vixLevel !== null) summaryParts.push(`VIX ${vixLevel.toFixed(1)}`);
     summaryParts.push(`Regime: ${regime}`);
@@ -159,21 +171,26 @@ export const getMarketContext = defineTool({
       summary: summaryParts.join(". ") + ".",
       data: {
         spy: spyData
-          ? { price: spyData.price, changePct: spyData.changesPercentage, dayHigh: spyData.dayHigh, dayLow: spyData.dayLow }
+          ? { price: spyData.price, changePct: spyData.changesPercentage, dayHigh: spyData.dayHigh, dayLow: spyData.dayLow, asOf: spyReading?.asOf ?? null, ageMinutes: spyReading?.ageMinutes ?? null, live: spyReading?.live ?? false }
           : null,
+        ...(warnings.length > 0 ? { warnings } : {}),
         vix: vixLevel !== null ? { level: vixLevel, changePct: vixChangePct } : null,
         regime,
         spyTrend: spyTrend
-          ? { sma20: spyTrend.sma_20, position: spyTrend.position, pctFromSma: spyTrend.pct_from_sma }
+          ? { sma20: spyTrend.sma_20, position: spyTrend.position, pctFromSma: spyTrend.pct_from_sma, measuredFrom: "daily closes" }
           : null,
         sectors,
         macroEvents: macroEventsToday,
         earningsDensity,
         ...(errors.length > 0 ? { apiErrors: errors } : {}),
         // Tool UI renders the summary; raw market data lives on data for downstream consumers
-        tickers: spyData
-          ? [{ ticker: "SPY", summary: `$${spyData.price} (${fPct(spyData.changesPercentage)})${spyTrend ? `, ${spyTrend.position} SMA-20 by ${fPct(spyTrend.pct_from_sma)}` : ""}` }]
-          : [],
+        tickers: [
+          ...(spyData
+            ? [{ ticker: "SPY", summary: `${spyReading?.warningShort ? `⚠ ${spyReading.warningShort} · ` : ""}$${spyData.price} (${fPct(spyData.changesPercentage)})${spyTrend ? `, ${spyTrend.position} SMA-20 by ${fPct(spyTrend.pct_from_sma)}${trendAsOf}` : ""}` }]
+            : spyReading?.warningShort
+              ? [{ ticker: "SPY", summary: `⚠ ${spyReading.warningShort}` }]
+              : []),
+        ],
       },
       sources: [
         { provider: "Finnhub", title: "SPY Real-Time Quote", url: "https://finnhub.io/docs/api/quote" },

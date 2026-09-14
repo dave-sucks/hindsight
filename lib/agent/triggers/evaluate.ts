@@ -67,7 +67,17 @@ export interface EvaluationContext {
    * don't carry it and so keep level semantics — they answer "is the
    * condition true now", which is the right question for a snapshot.
    */
-  latestQuote?: { price: number; changePct: number; prevClose?: number };
+  latestQuote?: {
+    price: number;
+    changePct: number;
+    prevClose?: number;
+    /**
+     * The market is open and this quote isn't from the last 15 minutes
+     * (lib/market-data/quote-age). A buy never fires on it; a sell or review
+     * still does — skipping a stop is the worse failure. DAV-261.
+     */
+    stale?: boolean;
+  };
 
   /**
    * This ticker's most recently reported quarter, when it reported inside
@@ -336,7 +346,7 @@ export function evaluateTrigger(
 export function shouldFire(
   trigger: Trigger,
   ctx: EvaluationContext,
-): { fires: boolean; reason: "match" | "no-match" | "no-crossing" | "cooldown" } {
+): { fires: boolean; reason: "match" | "no-match" | "no-crossing" | "stale-quote" | "cooldown" } {
   const matched = evaluateTrigger(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };
 
@@ -360,6 +370,11 @@ export function shouldFire(
   //   A buy written after that close is measured from the price it was
   //   written at instead, until the next close — otherwise a level set on a
   //   down day is dead on arrival (./written-price).
+  // A buy never fires on a quote that isn't today's price: at 09:30 Finnhub
+  // still reported ETN's Friday close as "now" and Thursday's as the prior
+  // close, so Friday's crossing counted twice (2026-09-14, DAV-261).
+  if (trigger.action === "ENTER" && ctx.latestQuote?.stale) return { fires: false, reason: "stale-quote" };
+
   const baseline =
     trigger.action === "ENTER" && ctx.latestQuote?.prevClose != null && ctx.latestQuote.prevClose > 0
       ? crossingBaseline(trigger, ctx.latestQuote.prevClose, ctx.now)

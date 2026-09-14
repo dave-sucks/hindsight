@@ -141,27 +141,5 @@ export async function finnhub(
   }
 }
 
-// ── Quote freshness ─────────────────────────────────────────────────────────
-
-/**
- * Age of a Finnhub quote in milliseconds, from its `t` field (unix seconds),
- * or null when the payload carries no usable timestamp.
- *
- * Every Finnhub /quote response has carried `t` all along and nothing read it,
- * which is why the 2026-08-14 stale-price bug was invisible for weeks: a
- * day-old quote is structurally identical to a live one. Callers on the
- * trading path should log (or refuse to act on) an implausible age rather
- * than silently scoring triggers against it.
- */
-export function quoteAgeMs(
-  quote: { t?: unknown } | null | undefined,
-  now = Date.now(),
-): number | null {
-  const t = quote?.t;
-  if (typeof t !== "number" || !Number.isFinite(t) || t <= 0) return null;
-  return now - t * 1000;
-}
-
-/** Quotes older than this during market hours mean something is wrong. */
-export const STALE_QUOTE_THRESHOLD_MS = 15 * 60 * 1000;
+// Quote freshness lives in lib/market-data/quote-age.ts (one place for buys, chat and research).
 

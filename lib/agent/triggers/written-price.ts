@@ -9,21 +9,6 @@
 import { priorSessionCloseAt } from "@/lib/market-hours";
 import type { Trigger } from "./types";
 
-/**
- * The only price a stamp may come from: a quote the server fetched itself,
- * printed within the last 15 minutes. Never a price an agent typed, never a
- * stale quote (at 9:30 Finnhub still reports Friday's close as "now" — the
- * ETN 2026-09-14 shape). Outside market hours this is null, which is right:
- * the next prior close is the price the level was written at anyway.
- */
-export function freshQuotePrice(
-  quote: { c?: number; t?: number } | null | undefined,
-  now: Date,
-): number | null {
-  if (!quote || !(typeof quote.c === "number" && quote.c > 0) || typeof quote.t !== "number") return null;
-  return now.getTime() - quote.t * 1000 <= 15 * 60 * 1000 ? quote.c : null;
-}
-
 /** The price to evaluate "was it already true?" at. Null = no baseline (level semantics). */
 export function crossingBaseline(
   trigger: Pick<Trigger, "writtenPrice" | "writtenAt">,
