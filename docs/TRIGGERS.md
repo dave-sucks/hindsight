@@ -69,12 +69,6 @@ newest row next to the live quote; a snapshot older than 5 days is ignored
 `GAP_UP` also read today's consolidated volume (one batched Alpaca call, ~16
 minutes delayed — Finnhub quotes carry no volume).
 
-**`fireOnMatch`** (a field on the trigger, ENTER only): the rung fires on its
-first check where the condition is true, even if it was already true at the
-prior close. It is the buy-now rung — an ENTER otherwise waits for the
-crossing, which a level the price is already past never produces on a flat or
-down day. After the first fire it is an ordinary ENTER.
-
 **Deleted 2026-09-11 (DAV-247):** `SIGNAL_TYPE`, `GUIDANCE_CHANGE`, `FILING`.
 They needed the signal router, which has been off since 2026-05-31, and could
 never fire. A migration stripped them from every stored ladder (207 rungs
@@ -264,7 +258,13 @@ level the price was already past (TOST $35.15 against a $35.16 tape; PLTR,
 16 buy fires in 30 days). The same predicate evaluated at the prior close
 decides the crossing, so composites and `VS_SMA` get it for free; entries
 that don't read the price (time, daily move) can't cross and keep firing on
-match. A plan the price has left behind is `planSanity`'s job to surface to
+match. **A buy written after the prior close is measured from the price it
+was written at** (`writtenPrice`/`writtenAt`, server-stamped by
+`applyTriggerOps` and `record_thesis`; `lib/agent/triggers/written-price.ts`)
+until the next close: otherwise "buy above $100.05" set at $100 on a day the
+stock closed $103 yesterday is already true at that close and never fires that
+day. There is no buy-now option — buying now is an entry price at or near the
+current price, and this is what makes that work on a down day. A plan the price has left behind is `planSanity`'s job to surface to
 the daily run, not the cron's job to propose. Read-side snapshots (the daily
 run's `TRIGGER_MATCHING_NOW`, the resolver's `ENTER_FIRED`) carry no prior
 close and keep level semantics — "is the condition true now" is the right

@@ -208,18 +208,22 @@ export const triggerSchema = z.object({
       "Don't re-fire this trigger more than once per N days. OMIT to use the per-predicate-kind default (EARNINGS_BEAT/MISS: 7, PRICE_* and chart kinds: 1, REVIEW_CADENCE: matches the cadence) — that's the right answer in almost every case. The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT.",
     ),
   lastFiredAt: z.string().datetime().optional(),
+  writtenPrice: z
+    .number()
+    .positive()
+    .optional()
+    .describe("Server-stamped on a buy trigger when it is written. Do not set — any supplied value is overwritten."),
+  writtenAt: z
+    .string()
+    .datetime()
+    .optional()
+    .describe("Server-stamped with writtenPrice. Do not set."),
   horizons: z
     .array(z.enum(["TRADE", "TARGET", "CATALYST", "COMPOUNDER"]))
     .min(1)
     .optional()
     .describe(
       "Account/analyst rules only: the thesis horizons this rule applies to. Omit for every horizon. Ignored on a thesis's own trigger.",
-    ),
-  fireOnMatch: z
-    .boolean()
-    .optional()
-    .describe(
-      "ENTER only: fire on the first check where the condition is already true (a buy-now level the price is past), instead of waiting for it to cross. Ignored on other actions.",
     ),
   fireMode: z
     .enum(["TACTICAL", "DIRECT"])

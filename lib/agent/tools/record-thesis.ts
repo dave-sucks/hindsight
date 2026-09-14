@@ -6,6 +6,7 @@
  */
 
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
+import { freshQuotePrice, stampWrittenPrice } from "@/lib/agent/triggers/written-price";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
@@ -1060,10 +1061,12 @@ export const recordThesis = defineTool({
       // $57.08 price on 2026-09-09 (quote failed, three writers in parallel),
       // a buy that could only fire after a dip below and a re-cross.
       let quoteForEntrySide: number | null = null;
+      let freshForStamp: number | null = null;
       if (args.direction !== "PASS") {
         try {
           const q = await getStockQuote(args.ticker);
           if (q && Number.isFinite(q.c) && q.c > 0) quoteForEntrySide = q.c;
+          freshForStamp = freshQuotePrice(q, new Date());
         } catch {
           /* handled below — the caller's price, or a refusal */
         }
@@ -1161,7 +1164,14 @@ export const recordThesis = defineTool({
         source: "AGENT",
         mintId: () => randomUUID(),
       });
-      mergedTriggers = applyTriggerCooldownDefaults(levelled.triggers);
+      // Every buy trigger carries the price it was written at, so a level set
+      // on a down day isn't judged against yesterday's close (./written-price).
+      mergedTriggers = stampWrittenPrice(
+        [],
+        applyTriggerCooldownDefaults(levelled.triggers),
+        freshForStamp,
+        new Date(),
+      );
       const derivedLevelColumns = levelled.columns;
 
       // The re-stamp that used to sit here is gone (DAV-209). It re-added a

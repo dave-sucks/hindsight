@@ -220,17 +220,18 @@ or PASS → fill the plan from the setup's rules and the chart's numbers →
 submit. `submit_thesis` gains:
 
 - `setup_id` (required for LONG/SHORT; persisted).
-- `entry_kind`: `NOW` (condition true today and inside the chase limit) |
-  `CONDITIONAL` | `UNPRICED`. **The "never the current price" rule and
-  the `ENTRY_AT_PRICE` flag are deleted.** A `NOW` plan is stored as an
-  ENTER trigger at the live price with `fireOnMatch: true` — one new
-  trigger field meaning "standing-order semantics for the first fire"
-  (the crossing rule would otherwise never fire a level the price is
-  already past on a down day). It fires on the next five-minute check and
-  produces the same approval-gated proposal as every other buy. **There is
-  no path from the writer to a proposal.** The discovery prompt's
+- **No buy-now option** (Dave, 2026-09-13 — ruled more than once). Buying
+  now is an entry price at or near the current price; it becomes the
+  ordinary buy trigger and produces the same approval-gated proposal as
+  every other buy. **The "never the current price" rule and the
+  `ENTRY_AT_PRICE` flag are deleted.** The `fireOnMatch` field #630 added
+  for this was deleted unused (no stored trigger ever carried it). **There
+  is no path from the writer to a proposal.** The discovery prompt's
   "immediate-buy exception" (wait for the writer, then `place_trade`) is
-  the same second path and is deleted in PR 9.
+  a second path and is deleted in PR 9.
+  A buy written after the prior close measures its crossing from the price
+  it was written at (#641), so an entry a few cents past the current price
+  fires on the first tick through it, up day or down.
 - `entry_condition`: the filled predicate template — `AND[PRICE_ABOVE
   pivot close, VOLUME_RATIO 1.5]`, `NEAR_SMA 50 + reversal`, `DAYS_SINCE_
   EARNINGS 1..3`, `GAP_UP …` — not a bare number. `entry_price` stays as
@@ -389,10 +390,10 @@ run in parallel.
 | # | PR | Blocked by | Adds | Deletes | Acceptance proof | Size |
 |---|---|---|---|---|---|---|
 | 1 | **The chart** — `lib/market-data/price-structure.ts`, one-year bars, SPY/sector bars, data-block "Price structure", `get_stock_data.technicals` | — | the 2.3 inputs; tests on synthetic bars | the 90-day bar window; the hand-rolled SMA/RSI in `get-stock-data.ts` | a MSFT writer run's data block shows the 200-day, ATR, pivot, base and RS in dollars/percent | 3 |
-| 2 | **Triggers that fire** — daily indicator snapshot + evaluator; `basis: close`; `VOLUME_RATIO`, `NEW_HIGH`, `NEAR_SMA`, `PCT_FROM_52W_HIGH`, `RS_VS_SPY`, `GAP_UP`, 5D/20D moves; real RSI; VS_SMA fires; `fireOnMatch`; **delete** the three dead kinds with a ladder sweep | 1 | snapshot table + 06:30 job; predicates; popover + `describePredicate` for each | `GUIDANCE_CHANGE`, `FILING`, `SIGNAL_TYPE`, the RSI stub; the swept rungs (count in the PR) | GD's and SYK's VS_SMA buys evaluate on production; a test proves `AND[PRICE_ABOVE close, VOLUME_RATIO]` fires once on the close; a query shows zero dead-kind rungs on the book | 4 |
+| 2 | **Triggers that fire** — daily indicator snapshot + evaluator; `basis: close`; `VOLUME_RATIO`, `NEW_HIGH`, `NEAR_SMA`, `PCT_FROM_52W_HIGH`, `RS_VS_SPY`, `GAP_UP`, 5D/20D moves; real RSI; VS_SMA fires; **delete** the three dead kinds with a ladder sweep | 1 | snapshot table + 06:30 job; predicates; popover + `describePredicate` for each | `GUIDANCE_CHANGE`, `FILING`, `SIGNAL_TYPE`, the RSI stub; the swept rungs (count in the PR) | GD's and SYK's VS_SMA buys evaluate on production; a test proves `AND[PRICE_ABOVE close, VOLUME_RATIO]` fires once on the close; a query shows zero dead-kind rungs on the book | 4 |
 | 7 | **Sell rules per horizon** — per-horizon DEFAULT ladders in the cascade; the compounder template wired; partial-profit, 8-week, time-limit and beat-and-fade rungs; a migration for the held names on Dave's list | 2 (ATR trails); Dave's list (§6) | horizon-keyed defaults; the migration script | `standingProtectionTriggers` as the single seed; the one-horizon `seedAccount` | ASML/CEG/WST carry 15/25 not 8; a TARGET trail is max(3 ATR, 12%); the declined-sell count over the following two weeks, from the database | 3 |
 | 3 | **Setup catalog** — `lib/agent/knowledge/setups.ts` (D1–D12 as data with trigger templates), served by `read_knowledge_library`; `Thesis.setupId` | — (defaults = playbook numbers unless §6 changes them) | catalog + column + tests | — | catalog unit-tested for shape; every template predicate is a kind that exists after PR 2 | 1 |
-| 4 | **The writer** — setup-driven plan; `entry_kind` with `fireOnMatch`; `entry_condition`; stop/target bases validated in-loop vs ATR; risk-based share suggestion; dispatch carries `setup_id` + screen row. Rebases on #621's earnings block and keeps it | 1, 3, **#621 closed** | schema fields, persist path, prompt rewrite | "never the current price" (prompt + schema + data block); `ENTRY_AT_PRICE`; hand-authored signal rungs; the fixed-level ENTER template as the only shape | a PEAD writer run on a fresh beat-and-raise stores a `fireOnMatch` buy at the live price; a breakout thesis stores a composed close+volume entry; DOCU/FIVE/HPE re-dispatched as the live proof | 5 |
+| 4 | **The writer** — setup-driven plan (no buy-now option — an entry at or near the current price); `entry_condition`; stop/target bases validated in-loop vs ATR; risk-based share suggestion; dispatch carries `setup_id` + screen row. Rebases on #621's earnings block and keeps it | 1, 3, **#621 closed** | schema fields, persist path, prompt rewrite | "never the current price" (prompt + schema + data block); `ENTRY_AT_PRICE`; hand-authored signal rungs; the fixed-level ENTER template as the only shape | a PEAD writer run on a fresh beat-and-raise stores a buy at or near the live price; a breakout thesis stores a composed close+volume entry; DOCU/FIVE/HPE re-dispatched as the live proof | 5 |
 | 5 | **The daily run** — fired-buy law as a flag (`ENTRY_RAISED_AWAY`); book-health block; cash duty; regime as input; `ENTRY_CHASED` / `ENTRY_STALE`; setup-aware review. Rebases on #621's earnings section and keeps it | 2, 4 | `get_portfolio_context` block; plan-sanity flags; prompt | the "retune as an equal answer" paragraph; the per-horizon data-discipline block; the conviction→dollar table | a run with a fired ENTER either proposes or sets down; a level raise with no structure shows as `ENTRY_RAISED_AWAY` the next day; **no new refusal** | 3 |
 | 8 | **Sizing** — `riskPct` (one setting), `sharesForRisk`, heat/industry/theme constants, regime input; proposal lines | 2 | one setting + formula + proposal text | the conviction dollar picker as the primary path | a STRONG buy with a 14% stop on a $100k book proposes ~$9k with the risk line in the proposal; **no new refusal** | 2 |
 | 6 | **The tactical run** — per-setup confirmation; template re-ladder; same-bucket fire collapse | 4 | prompt + tactical-run | the horizon volume table | SRRK-shape double fire → one run; a breakout fire past the chase limit passes with the reason | 2 |

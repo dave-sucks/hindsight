@@ -37,6 +37,7 @@ import { isDirectEligiblePredicate } from "./types";
 import { triggerBucket } from "./bucket";
 import { predicateSentence } from "./format";
 import { applyTriggerCooldownDefaults } from "./defaults";
+import { stampWrittenPrice } from "./written-price";
 import { validateEnterTriggerRequired } from "./enter-guard";
 import {
   canonicalLevels,
@@ -96,6 +97,10 @@ export interface ApplyTriggerOpsInput {
   actor: "AGENT" | "PRINCIPAL" | "SYSTEM";
   /** Live quote — decides which side a re-levelled buy trigger compares on. */
   currentPrice?: number | null;
+  /** Stamped on buy triggers this call writes (./written-price). Defaults to `currentPrice`. */
+  writtenPrice?: number | null;
+  /** The write time stamped with it. Defaults to now. */
+  now?: Date;
   mintId: () => string;
 }
 
@@ -450,8 +455,16 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
   }
 
+  const changed = results.some((r) => r.ok);
   return {
-    triggers: results.some((r) => r.ok) ? applyTriggerCooldownDefaults(stored) : stored,
+    triggers: changed
+      ? stampWrittenPrice(
+          input.stored,
+          applyTriggerCooldownDefaults(stored),
+          input.writtenPrice !== undefined ? input.writtenPrice : currentPrice,
+          input.now ?? new Date(),
+        )
+      : stored,
     results,
   };
 }

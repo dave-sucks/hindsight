@@ -411,7 +411,6 @@ function formatSetupText(entry: NonNullable<SetupEntry>): string {
   if (entry.entry.entryVia?.length) lines.push(`  Entered via: ${entry.entry.entryVia.join(", ")}`);
   entry.entry.confirmation.forEach((c) => lines.push(`  Confirm: ${c}`));
   if (entry.entry.chaseLimitPct != null) lines.push(`  Chase limit: ${entry.entry.chaseLimitPct}% past the level`);
-  lines.push(`  Buy-now is the normal case: ${entry.entry.buyNowNormal ? "yes" : "no"}`);
   lines.push("");
   lines.push(`Stop: ${entry.stop.text}`);
   lines.push(`Target: ${entry.target.text}`);

@@ -1058,22 +1058,6 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
     });
   });
 
-  it("fireOnMatch: a buy-now rung fires on its first check though nothing crossed (DAV-247)", () => {
-    // Written at $171 with the price already past its level; a flat day.
-    const buyNow: Trigger = { ...enterRung, fireOnMatch: true };
-    expect(shouldFire(buyNow, at(171, day1, 170))).toMatchObject({ fires: true, reason: "match" });
-  });
-
-  it("fireOnMatch: once fired, it is an ordinary ENTER again (crossing + cooldown)", () => {
-    const fired: Trigger = { ...enterRung, fireOnMatch: true, lastFiredAt: day1.toISOString() };
-    expect(shouldFire(fired, at(172, day2, 171)).reason).toBe("no-crossing");
-  });
-
-  it("fireOnMatch does nothing on a sell", () => {
-    const sell: Trigger = { ...exitRung, fireOnMatch: true };
-    expect(shouldFire(sell, at(390, day1, 391)).fires).toBe(true);
-  });
-
   it("a close-basis ENTER crosses on the close pass: above today, not at yesterday's close", () => {
     const closeRung: Trigger = {
       ...enterRung,

@@ -1,4 +1,5 @@
 import {
+  priorSessionCloseAt,
   etWeekday,
   etWeekdayName,
   isAnalystScheduledToday,
@@ -87,5 +88,25 @@ describe("isTradingDay", () => {
   it("uses the Eastern date, not UTC", () => {
     // 01:00 UTC Tue 09-08 is still 21:00 ET Mon 09-07 — Labor Day.
     expect(isTradingDay(atIso("2026-09-08T01:00:00Z"))).toBe(false);
+  });
+});
+
+
+describe("priorSessionCloseAt — the close a quote's prevClose refers to", () => {
+  const iso = (d: Date) => d.toISOString();
+  it("a normal Tuesday → Monday 16:00 ET", () => {
+    expect(iso(priorSessionCloseAt(new Date("2026-09-15T15:00:00Z")))).toBe("2026-09-14T20:00:00.000Z");
+  });
+  it("the Tuesday after Labor Day → the Friday before", () => {
+    expect(iso(priorSessionCloseAt(new Date("2026-09-08T14:30:00Z")))).toBe("2026-09-04T20:00:00.000Z");
+  });
+  it("a Monday → Friday", () => {
+    expect(iso(priorSessionCloseAt(new Date("2026-09-14T15:00:00Z")))).toBe("2026-09-11T20:00:00.000Z");
+  });
+  it("a Saturday reads Friday's session → Thursday's close", () => {
+    expect(iso(priorSessionCloseAt(new Date("2026-09-12T15:00:00Z")))).toBe("2026-09-10T20:00:00.000Z");
+  });
+  it("winter time: 16:00 EST is 21:00 UTC", () => {
+    expect(iso(priorSessionCloseAt(new Date("2026-12-02T15:00:00Z")))).toBe("2026-12-01T21:00:00.000Z");
   });
 });

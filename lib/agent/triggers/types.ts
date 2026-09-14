@@ -226,16 +226,9 @@ export type Trigger = {
   cooldownDays?: number;
   /** Set by the trigger evaluator; read for cooldown gating. */
   lastFiredAt?: string; // ISO timestamp
-  /**
-   * ENTER only: fire on the first check where the condition is true, even
-   * if it was already true at the prior close. An ENTER otherwise fires on
-   * the CROSSING of its level (DAV-229), so a buy-now plan — a level the
-   * price is already past — would never fire on a flat or down day. After
-   * the first fire the rung behaves like any other ENTER (crossing +
-   * cooldown). Written by the buy-now path (PR 4); ignored on every other
-   * action. DAV-247.
-   */
-  fireOnMatch?: boolean;
+  /** ENTER only, server-stamped: the live price when written (./written-price). */
+  writtenPrice?: number;
+  writtenAt?: string; // ISO timestamp
   /**
    * ACCOUNT / ANALYST rules only: the thesis horizons this rule applies to
    * (DAV-250). Absent = every horizon. A TRADE position and a COMPOUNDER
