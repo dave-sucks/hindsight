@@ -275,7 +275,7 @@ export async function getStockProfile(symbol: string): Promise<StockProfile | nu
 // right shape: per-instance, seconds-long, dropped on cold start — it damps
 // bursts without any way to survive to the next morning. It also collapses
 // concurrent callers for the same symbol (the in-flight map), which matters
-// because `/api/quotes` is polled every 30s by every open tab and the two
+// because `/api/quotes` is hit by every open tab and quote row, and the two
 // `Promise.all` fan-outs over `getStockQuote` (lib/alpaca.ts, complete-run.ts)
 // are unthrottled. Keep this TTL in SECONDS. See CLAUDE.md → recurring bugs.
 const QUOTE_TTL_MS = 10_000;

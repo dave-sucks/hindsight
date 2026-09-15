@@ -92,7 +92,7 @@ test("cannot serve a day-old quote even from a long-lived instance", async () =>
 });
 
 test("collapses concurrent callers for one symbol to a single upstream call", async () => {
-  // /api/quotes is polled every 30s by every open tab, and two unthrottled
+  // /api/quotes is hit by every open tab and quote row, and two unthrottled
   // Promise.all fan-outs call this. Without coalescing, N callers = N calls
   // against Finnhub's 60/min limit.
   const f = mockFetch();

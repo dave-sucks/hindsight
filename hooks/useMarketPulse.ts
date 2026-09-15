@@ -11,7 +11,11 @@ export interface TickerQuote {
 }
 
 const BASE_TICKERS = ["SPY", "QQQ", "IWM", "BTC-USD"];
-const POLL_INTERVAL_MS = 30_000;
+// Every symbol here is a Finnhub call on the same 60/min key the 5-minute
+// trigger check needs. At 30 s in every open tab, this strip starved the check
+// (2026-09-15: ~29 of ~35 stocks rate-limited on the 10:00 pass). So: every
+// two minutes, and never while the tab is hidden.
+const POLL_INTERVAL_MS = 120_000;
 const FLASH_DURATION_MS = 400;
 
 // Crypto tickers delivered by Finnhub free-plan WebSocket
@@ -27,8 +31,9 @@ function toFinnhubSymbol(symbol: string): string {
  * Live market quotes.
  *
  * Strategy:
- * - REST polling via /api/quotes always runs on mount for ALL tickers
- *   (SPY/QQQ/IWM data only comes from REST — Finnhub free WS doesn't stream them)
+ * - REST polling via /api/quotes for ALL tickers, every two minutes, only while
+ *   the tab is visible (SPY/QQQ/IWM data only comes from REST — Finnhub free
+ *   WS doesn't stream them)
  * - WebSocket is opened (if NEXT_PUBLIC_FINNHUB_API_KEY is set) but only
  *   supplementsquotes for crypto symbols (BINANCE:BTCUSDT, BINANCE:ETHUSDT)
  *   and any open-trade tickers that happen to stream on the free tier
@@ -38,6 +43,8 @@ export function useMarketPulse(openTradeTickers: string[] = []) {
   const [quotes, setQuotes] = useState<Record<string, TickerQuote>>({});
   const wsRef = useRef<WebSocket | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastPollRef = useRef(0);
+  const onVisibleRef = useRef<(() => void) | null>(null);
 
   const allTickers = [...new Set([...BASE_TICKERS, ...openTradeTickers])];
   const tickersKey = allTickers.join(",");
@@ -59,6 +66,9 @@ export function useMarketPulse(openTradeTickers: string[] = []) {
       if (pollTimerRef.current) return;
 
       const poll = async () => {
+        // A hidden tab spends the trigger check's quote budget for nothing.
+        if (document.visibilityState === "hidden") return;
+        lastPollRef.current = Date.now();
         try {
           const res = await fetch(`/api/quotes?symbols=${tickers.join(",")}`);
           const data = await res.json();
@@ -89,8 +99,24 @@ export function useMarketPulse(openTradeTickers: string[] = []) {
         }
       };
 
-      poll(); // immediate first fetch
-      pollTimerRef.current = setInterval(poll, POLL_INTERVAL_MS);
+      poll(); // immediate first fetch (skipped if the tab opened hidden)
+      // A tick right after a return-to-tab refresh is skipped, so a tab never
+      // refreshes twice in a row.
+      pollTimerRef.current = setInterval(() => {
+        if (Date.now() - lastPollRef.current >= POLL_INTERVAL_MS / 2) poll();
+      }, POLL_INTERVAL_MS);
+
+      // Coming back to the tab refreshes once, only if the data is due.
+      const onVisible = () => {
+        if (
+          document.visibilityState === "visible" &&
+          Date.now() - lastPollRef.current >= POLL_INTERVAL_MS
+        ) {
+          poll();
+        }
+      };
+      document.addEventListener("visibilitychange", onVisible);
+      onVisibleRef.current = onVisible;
     },
     [applyFlash]
   );
@@ -99,6 +125,10 @@ export function useMarketPulse(openTradeTickers: string[] = []) {
     if (pollTimerRef.current) {
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
+    }
+    if (onVisibleRef.current) {
+      document.removeEventListener("visibilitychange", onVisibleRef.current);
+      onVisibleRef.current = null;
     }
   }, []);
 
