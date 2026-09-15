@@ -5,9 +5,10 @@ import { getStockQuote } from "@/lib/actions/finnhub.actions";
 // Used as fallback when Finnhub WebSocket is unavailable (markets closed, rate limit)
 //
 // Goes through `getStockQuote` rather than fetching Finnhub inline. This route
-// is polled every 30s by `useMarketPulse` on every open tab, so an inline
-// uncached fetch here would multiply upstream calls by the number of tabs and
-// blow Finnhub's 60/min limit. `getStockQuote`'s short in-memory cache +
+// is polled by `useMarketPulse` (every 2 min per visible tab) and hit by every
+// `useTickerQuote` row on a page render, so an inline uncached fetch here would
+// multiply upstream calls by the number of tabs and rows and blow Finnhub's
+// 60/min limit. `getStockQuote`'s short in-memory cache +
 // in-flight coalescing collapse that back to one call per symbol per ~10s,
 // while still never touching the persistent Data Cache (see CLAUDE.md →
 // "NEVER put a live quote in the Next.js Data Cache").

@@ -100,7 +100,11 @@ export function useMarketPulse(openTradeTickers: string[] = []) {
       };
 
       poll(); // immediate first fetch (skipped if the tab opened hidden)
-      pollTimerRef.current = setInterval(poll, POLL_INTERVAL_MS);
+      // A tick right after a return-to-tab refresh is skipped, so a tab never
+      // refreshes twice in a row.
+      pollTimerRef.current = setInterval(() => {
+        if (Date.now() - lastPollRef.current >= POLL_INTERVAL_MS / 2) poll();
+      }, POLL_INTERVAL_MS);
 
       // Coming back to the tab refreshes once, only if the data is due.
       const onVisible = () => {
