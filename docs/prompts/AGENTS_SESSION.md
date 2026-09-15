@@ -23,7 +23,7 @@ session reviews both lanes.
 5. `docs/prompts/QB_SESSION.md` §3 (settled rulings) and §4 (how your PRs are reviewed).
 6. Linear project **Agent Rebuild**.
 
-## 3. Where the rebuild stands (2026-09-14)
+## 3. Where the rebuild stands (2026-09-15)
 
 **Merged:** the chart and daily indicator snapshot; triggers that fire
 (close-basis levels, volume, near/through moving averages, gaps, new highs,
@@ -32,17 +32,21 @@ size by risk (`riskPct`, proposal lines for open risk and market regime);
 the scorecard by setup; insider buying as input and trigger kind; the fixes
 to all of the above; the buy-now flag deleted and a down-day buy level no
 longer dead on arrival; price age decided in one place (buys wait on a
-stale quote, research says so in words).
+stale quote, research says so in words); **the writer** (`#644`: picks a
+setup and prices the plan from the chart); **sell rules on each analyst**
+(`#645`: the horizon layer deleted).
 
-**Open:**
-- **The writer** (`#644`): picks a setup and prices the plan from the chart. Review it against §5 before asking Dave to merge; after merge, re-dispatch DOCU, FIVE and HPE as the live proof.
-- **Sell rules move to each analyst** (`#645`): deletes the horizon layer and its migration job. Seat style lives in analyst trigger rules; the account keeps only rules every analyst shares. One-off rule changes on live stocks go through the popover's own functions, never a custom job.
+**Open, from the previous session — read `AGENT_REBUILD.md` §7 first:**
+- **#644's live proof hasn't run.** Re-dispatch DOCU, FIVE and HPE on Dave's go.
+- **The seats' sell rules are not yet the playbook's.** What's live was set by copying old numbers, not from Parts E5/E6/F. Catalyst's −10% review is wrong for that seat. Beat-and-down-3% and the Compounder's ±15% reviews were lost with #645. Redo them in one reviewed pass with Dave, through the popover's own functions.
+- **Trigger vocabulary the playbook needs and nobody has built (yours):** an event-date trigger off `Thesis.catalystDate`; a days-held trigger; two-condition triggers in the Add Trigger dialog.
+- **Held stocks still carry stamped copies of the old account rules** (8% sell, +10/−12 reviews), which beat their analyst's rules.
 
 **Not built — in this order:**
 1. **Live quotes from Alpaca.** Keep Finnhub for fundamentals, earnings and filings. Probe the feed with a mid-cap (SMMT), not a mega-cap. The trigger check gets first claim on the quote budget.
 2. **The tactical run (PR 6).** Confirm a fire by its setup (a breakout needs a close and 1.5× volume; a pullback needs the level to hold; an earnings gap needs the gap to hold). One run when two sell triggers fire together. **After a buy, write the stock's own exit triggers from its setup** — the widening trail for volatile stocks, the eight-week hold for fast winners, "not working after N days", a beat that sells off. Selling is the thinnest part of the rebuild; this is where it becomes setup-specific.
 3. **The daily run (PR 5).** A fired buy is a decision: buy, or set the plan down with a reason; raising the buy level above the price to avoid buying is flagged, never refused. Chased entries and stale buy levels flagged. Idle cash, open risk and the market regime are inputs to the decision.
-4. **Discovery as screens, in chat (PR 9).** Numeric screens chat can run. **And chat's triage becomes setup-aware:** every candidate is named with its setup and the chart numbers behind it, using the same catalog the writer uses. Chat is Dave's discovery door; the weekly cron stays off.
+4. **Discovery as screens, in chat (PR 9).** Numeric screens chat can run. Keep the principal chat's earnings-discovery guidance in `modes.ts` and `get_earnings_calendar(window:"reported")` working. **And chat's triage becomes setup-aware:** every candidate is named with its setup and the chart numbers behind it, using the same catalog the writer uses. Chat is Dave's discovery door; the weekly cron stays off.
 5. **Analyst templates seed analyst trigger rules** from the setups that seat may run (after PR 5).
 
 ## 4. Dave's rulings you must not reopen
