@@ -131,19 +131,8 @@ export interface DecisionValidationOpts {
   existingStatus?: string | null;
   /** Live price from the pull phase, when available. */
   currentPrice?: number | null;
-  /** Existing thesis target on refresh — feeds the goalpost-guard mirror. */
+  /** Existing thesis target on refresh — a priced row can't be left silently priced. */
   existingTargetPrice?: number | null;
-  /**
-   * P1-35 (#524): set when this analyst sold this ticker within the last
-   * 14 days. record_thesis refuses a mint at/above the exit price without
-   * an explicit acknowledgment — required here so the repair happens
-   * in-loop instead of failing the run at persist.
-   */
-  priorExit?: {
-    exitPrice: number | null;
-    daysAgo: number;
-    closeReason: string | null;
-  } | null;
   /** The setups this seat may write on (setupsForSeat). Absent = no setup check. */
   setups?: Setup[];
   /** Chart numbers from the pull, for the stop-distance and chase checks. */
@@ -159,12 +148,12 @@ export interface DecisionValidationResult {
 }
 
 /**
- * Pure Layer-1 pre-validation of a submit_thesis call. Mirrors the gates
- * record_thesis / update_thesis enforce at persist time so the model gets
- * its rejection INSIDE the research loop — where a repair costs one cheap
- * step — instead of at the persist boundary where V1 paid ~3 minutes per
- * bounce. The persist-side gates still run afterwards; this is the fast
- * first line, not a replacement.
+ * The writer's own rules for a submit_thesis call: what a decision must say
+ * (belief, conviction, setup, the stop and target reasons, the chart checks).
+ * The save's rules are NOT copied here — the submit step runs record_thesis /
+ * update_thesis itself in check-only mode right after this
+ * (checkDecisionAgainstSave in run-thesis-writer.ts). A copy drifted twice:
+ * PRAX 09-11, FIVE and DOCU 09-15.
  */
 export function validateThesisDecision(
   input: ThesisDecisionInput,
@@ -331,26 +320,6 @@ export function validateThesisDecision(
     }
   }
 
-  // ── Persist-gate mirrors (review finding #4) ────────────────────────
-  // These reproduce update_thesis/record_thesis gates IN the loop so the
-  // model repairs for one step instead of the whole run dying at persist.
-  if (directional && opts.mode === "refresh") {
-    // Goalpost guard mirror (update-thesis.ts "Goalpost-moving guard"):
-    // raising the target on a WATCHING thesis whose live price has already
-    // crossed the OLD target is moving the bar instead of acting.
-    if (
-      opts.existingStatus === "WATCHING" &&
-      d.target_price != null &&
-      opts.existingTargetPrice != null &&
-      d.target_price > opts.existingTargetPrice &&
-      opts.currentPrice != null &&
-      opts.currentPrice >= opts.existingTargetPrice
-    ) {
-      errors.push(
-        `target_price: the live price (${opts.currentPrice}) has already crossed the stored target (${opts.existingTargetPrice}) — raising the target now would be rejected by the goalpost gate. Keep target_price ≤ ${opts.existingTargetPrice}; note the re-rating case in the rationale and let the orchestrator decide entry.`,
-      );
-    }
-  }
   if (d.direction === "PASS" && d.triggers !== undefined && (d.triggers as unknown[]).length > 0) {
     errors.push("triggers: a PASS decision cannot carry triggers — omit the field entirely.");
   }
@@ -366,20 +335,6 @@ export function validateThesisDecision(
     if ((e.level !== undefined || e.pct !== undefined || e.days !== undefined) && !e.rationale?.trim()) {
       errors.push(`edit_triggers[${e.id}]: a level / pct / days change requires a rationale — the sentence moves with the number.`);
     }
-  }
-
-  // ── P1-35: recently-sold acknowledgment mirror (#524, in-loop) ───────
-  if (
-    opts.mode === "mint" &&
-    directional &&
-    opts.priorExit?.exitPrice != null &&
-    d.entry_price != null &&
-    d.entry_price >= opts.priorExit.exitPrice &&
-    !(d.prior_exit_acknowledgment && d.prior_exit_acknowledgment.trim().length > 0)
-  ) {
-    errors.push(
-      `prior_exit_acknowledgment: required — this analyst SOLD this ticker ${opts.priorExit.daysAgo} day(s) ago at $${opts.priorExit.exitPrice}${opts.priorExit.closeReason ? ` (${opts.priorExit.closeReason})` : ""}, and your entry_price (${d.entry_price}) is at/above that exit. Supply one line that engages with the sale (why this is a new setup, not a re-buy of the dip just sold), or set entry below the exit price.`,
-    );
   }
 
   // ── Triggers (optional — omission means horizon defaults) ───────────

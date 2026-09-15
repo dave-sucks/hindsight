@@ -373,33 +373,6 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
     expect(v.errors.join(" ")).toContain("PASS decision cannot carry triggers");
   });
 
-  it("goalpost mirror: rejects a target raise on WATCHING when price already crossed the old target", () => {
-    const v = validateThesisDecision(
-      { ...validLong, target_price: 140 },
-      {
-        mode: "refresh",
-        existingStatus: "WATCHING",
-        currentPrice: 132,
-        existingTargetPrice: 130,
-      },
-    );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("goalpost");
-  });
-
-  it("goalpost mirror: allows a target raise while price is still below the old target", () => {
-    const v = validateThesisDecision(
-      { ...validLong, target_price: 140, stop_loss: 84 },
-      {
-        mode: "refresh",
-        existingStatus: "WATCHING",
-        currentPrice: 101,
-        existingTargetPrice: 130,
-      },
-    );
-    expect(v.ok).toBe(true);
-  });
-
   it("a refresh on a thesis with no triggers may omit triggers — zero is legal (DAV-209)", () => {
     const v = validateThesisDecision({ ...validLong, triggers: undefined }, {
       mode: "refresh",
@@ -424,59 +397,6 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
       },
       { mode: "refresh", existingStatus: "WATCHING", currentPrice: 90, existingTargetPrice: 130 },
     );
-    expect(v.ok).toBe(true);
-  });
-});
-
-describe("validateThesisDecision — P1-35 prior-exit acknowledgment mirror", () => {
-  const soldOpts = {
-    ...mintOpts,
-    priorExit: { exitPrice: 95, daysAgo: 3, closeReason: "STOP" },
-  };
-
-  it("requires the acknowledgment when entry is at/above a ≤14d exit", () => {
-    // validLong entry 100 ≥ exit 95.
-    const v = validateThesisDecision(validLong, soldOpts);
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("prior_exit_acknowledgment");
-  });
-
-  it("accepts with a genuine acknowledgment", () => {
-    const v = validateThesisDecision(
-      {
-        ...validLong,
-        prior_exit_acknowledgment:
-          "Stopped out at $95 on the trail; re-entering only above the reclaimed breakout at $100 — new structure, not a dip re-buy.",
-      },
-      soldOpts,
-    );
-    expect(v.ok).toBe(true);
-  });
-
-  it("no acknowledgment needed below the exit price", () => {
-    const v = validateThesisDecision(
-      { ...validLong, entry_price: 90, target_price: 115, stop_loss: 84 },
-      soldOpts,
-    );
-    expect(v.ok).toBe(true);
-  });
-
-  it("PASS decisions skip the gate (institutional memory is welcome)", () => {
-    const v = validateThesisDecision(
-      { direction: "PASS", rationale: "Sold it three days ago; nothing has changed since the exit.", horizon: "TARGET" },
-      soldOpts,
-    );
-    expect(v.ok).toBe(true);
-  });
-
-  it("refresh mode never requires the ack (gate is mint-only)", () => {
-    const v = validateThesisDecision(validLong, {
-      mode: "refresh",
-      existingStatus: "WATCHING",
-      currentPrice: 101,
-      existingTargetPrice: 130,
-      priorExit: { exitPrice: 95, daysAgo: 3, closeReason: "STOP" },
-    });
     expect(v.ok).toBe(true);
   });
 });

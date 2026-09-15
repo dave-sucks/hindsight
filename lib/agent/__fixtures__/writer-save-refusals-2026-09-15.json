@@ -1,0 +1,334 @@
+{
+  "_source": "Production thesis-writer refresh runs, 2026-09-15 (PEAD Specialist). The submit_thesis input each model sent, and the stored thesis row it refreshed. FIVE's save refused stop_basis/target_basis over 240 chars; DOCU's save refused a target with no buy level. Both passed the writer's own check.",
+  "FIVE": {
+    "runId": "cmu30r2go0001sky7p4gx7cgp",
+    "submit": {
+      "conviction": "MEDIUM",
+      "conviction_rationale": "The PEAD signal is intact \u2014 four clean beats, volume-confirmed gap, and guidance raised \u2014 but today's intraday breach of the gap-day low ($236.95) with no buying volume and a cluster of insider sales days after the print keeps me off HIGH conviction. The drift is alive but the setup is showing cracks at the floor.",
+      "core_belief": "FIVE drifts from the current ~$237 level toward the 1.272 Fibonacci extension at $288.57 within 60 days of the September 2 Q3 FY2026 earnings print as a clean +18.4% EPS beat and a raised Q4 guidance (EPS $1.01\u2013$1.13 vs. $0.86 consensus) pulls institutional buyers through the base pivot at $263.88.",
+      "direction": "LONG",
+      "edit_triggers": [
+        {
+          "action": "REVIEW",
+          "days": 7,
+          "id": "d1c10a94-5d87-438c-ae94-f94a6601338e",
+          "rationale": "Keeping 7-day review cadence unchanged \u2014 gap-day low proximity makes weekly check-ins the right cadence to monitor whether the drift resumes or the stop approaches."
+        }
+      ],
+      "entry_on_close": false,
+      "entry_price": 236.57,
+      "horizon": "TARGET",
+      "invalidation_conditions": [
+        "A daily close below $226.80 \u2014 the mechanical stop \u2014 confirms the earnings gap has filled and the drift is over, not a temporary shakeout",
+        "A guidance cut or material downward revision to FY2026 EPS estimates at any point before the Q4 print, reversing the beat-and-raise signal that initiated the thesis"
+      ],
+      "key_assumptions": [
+        "The September 3 earnings gap holds as a floor \u2014 a sustained close below $226.80 (the gap-day structural low zone) invalidates the PEAD drift thesis entirely",
+        "Sell-side estimate revisions continue upward in the 30-60 day post-print window following the Q3 +18.4% EPS beat and raised Q4 guidance, pulling institutional accumulation through the base pivot at $263.88"
+      ],
+      "rationale": "The PEAD thesis is being stress-tested today: price at $236.57 has touched the gap-day low zone intraday (session low $236.12 vs. gap-day low $236.95), the up/down volume ratio over 20 sessions is a bearish 0.65, and a Loop Capital downgrade to Hold at $250 plus a cluster of insider sales on September 4 have added overhang. The stop at $226.80 remains structurally valid \u2014 it sits near the 38.2% Fibonacci retracement at $229.20, approximately 1 ATR below current price, and above the rising 50-day SMA at $224.67. The core drift signal (four consecutive clean beats, +18.4% Q3 surprise, raised Q4 guidance, volume-confirmed gap) is intact and the thesis is not wrong yet \u2014 but conviction is honestly MEDIUM given the gap-day low pressure and absence of insider buying. Holding; the stop does the work if the thesis breaks.",
+      "scoring": {
+        "catalystFreshness": {
+          "note": "Q3 FY2026 print on Sep 2 was 13 days ago: +18.4% EPS beat, raised Q4 guidance (EPS $1.01-$1.13 vs $0.86 consensus), 2.4x volume on the gap day. Goldman Sachs conference today extends the catalyst window. All four PEAD signal criteria met at the print.",
+          "score": 2
+        },
+        "entryQuality": {
+          "note": "PEAD condition was true at the gap (Sep 3); we are now in day 9 post-print and price has pulled back to the gap-day low, putting us at the edge of the valid drift entry window. Not a fresh setup entry, but not broken either \u2014 score 1 for marginal proximity.",
+          "score": 1
+        },
+        "relativeStrength": {
+          "note": "vs SPY: 1M +5.4pts, 3M +23.2pts, 6M +3.8pts; vs XLY: 3M +29.0pts. Exceptional RS across timeframes, ranking 2/4 in the peer composite.",
+          "score": 3
+        },
+        "trendStrength": {
+          "note": "Trend Template 8/8; all four key moving averages (20/50/150/200-day) are rising and price is above all of them except the 20-day after today's pullback. Basing structure over a rising 200-day SMA at $210.74.",
+          "score": 3
+        }
+      },
+      "setup_id": "PEAD",
+      "stop_basis": "Under the 38.2% Fibonacci retracement of the last up-leg at $229.20 and the existing plan stop \u2014 $226.80 is 1.0 ATR ($9.91) below current price and represents the structural floor where the PEAD thesis is invalidated by a gap fill toward the 50-day SMA at $224.67.",
+      "stop_loss": 226.8,
+      "target_basis": "1.272 Fibonacci extension of the $173.10 (2026-07-08) to $263.88 (2026-08-24) up-leg projects to $288.57; this also aligns with the high-end analyst price target range and is \u22652R from entry ($236.57 entry, $226.80 stop = $9.77 risk; target distance = $52.00 = 5.3R).",
+      "target_price": 288.57
+    },
+    "thesis": {
+      "id": "cmtu9n9v8000504l5zfq8ogf8",
+      "ticker": "FIVE",
+      "status": "HOLDING",
+      "direction": "LONG",
+      "entryPrice": 248.05,
+      "targetPrice": 290,
+      "stopLoss": 226.8,
+      "horizon": "TARGET",
+      "triggers": [
+        {
+          "id": "b744d9ff-040f-4202-bb24-bf8a755e45f1",
+          "action": "REVIEW",
+          "source": "DEFAULT",
+          "predicate": {
+            "kind": "PRICE_BELOW",
+            "level": 226.8
+          },
+          "rationale": "Price dropped to support level $226.8. Better entry, or thesis weakening?",
+          "cooldownDays": 1
+        },
+        {
+          "id": "61f6eac8-ad64-4ebc-874d-15b8d30530c4",
+          "action": "REVIEW",
+          "source": "DEFAULT",
+          "predicate": {
+            "kind": "EARNINGS_BEAT"
+          },
+          "rationale": "Beat \u2014 possible entry catalyst. Validate before INITIATE.",
+          "cooldownDays": 7
+        },
+        {
+          "id": "a5829ca5-aada-4e02-8ec9-f13be8371be9",
+          "action": "REVIEW",
+          "source": "DEFAULT",
+          "predicate": {
+            "kind": "EARNINGS_MISS",
+            "minSurprisePct": 3
+          },
+          "rationale": "Miss \u2014 entry conditions worsening. Consider removing.",
+          "cooldownDays": 7
+        },
+        {
+          "id": "68053d3a-4af8-40f1-a3c0-55eaef5a2638",
+          "action": "EXIT",
+          "source": "DEFAULT",
+          "predicate": {
+            "kind": "PRICE_BELOW",
+            "level": 226.8
+          },
+          "rationale": "Floor \u2014 sell if the price drops to $226.80. Below this the plan is wrong.",
+          "cooldownDays": 1
+        },
+        {
+          "id": "95ed9c1a-af81-4339-89fc-6516d76a40a7",
+          "action": "REVIEW",
+          "source": "DEFAULT",
+          "predicate": {
+            "kind": "PRICE_ABOVE",
+            "level": 290
+          },
+          "rationale": "Target $290.00 \u2014 decide here: take it, trim it, or raise the target.",
+          "cooldownDays": 1
+        },
+        {
+          "id": "d1c10a94-5d87-438c-ae94-f94a6601338e",
+          "action": "REVIEW",
+          "source": "DEFAULT",
+          "predicate": {
+            "days": 7,
+            "kind": "REVIEW_CADENCE"
+          },
+          "rationale": "Look at this every 7 days, counting from the last real review.",
+          "cooldownDays": 7
+        },
+        {
+          "id": "bd8209e3-57e3-4def-87c5-42d73e7363f1",
+          "action": "ADD",
+          "source": "DEFAULT",
+          "predicate": {
+            "pct": 7,
+            "kind": "PRICE_MOVE_PCT",
+            "window": "1D",
+            "direction": "UP"
+          },
+          "rationale": "Up 7% in a day \u2014 strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.",
+          "cooldownDays": 3
+        },
+        {
+          "id": "069d4884-d272-4723-bb74-82cf3617531f",
+          "action": "ADD",
+          "source": "DEFAULT",
+          "predicate": {
+            "pct": 7,
+            "kind": "PRICE_MOVE_PCT",
+            "window": "1D",
+            "direction": "DOWN"
+          },
+          "rationale": "Down 7% in a day \u2014 evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add \u2014 hold, trim, or exit. Approval-gated.",
+          "cooldownDays": 3
+        },
+        {
+          "id": "7c90efc0-ed63-4210-8317-7fd52596c056",
+          "action": "REVIEW",
+          "source": "DEFAULT",
+          "predicate": {
+            "pct": 10,
+            "kind": "GAIN_FROM_ENTRY",
+            "direction": "UP"
+          },
+          "rationale": "Up 10% from entry \u2014 gain milestone checkpoint. Re-underwrite at the new price: raise the floor to lock the gain in, and arm the next milestone.",
+          "cooldownDays": 7
+        },
+        {
+          "id": "f2f1b7b1-bb6e-4141-b997-5ef2c5f1bdd4",
+          "action": "EXIT",
+          "source": "DEFAULT",
+          "predicate": {
+            "pct": 8,
+            "kind": "TRAILING_FROM_HIGH"
+          },
+          "rationale": "Gave back 8% from the high \u2014 mechanical gain ratchet. Bank the gain instead of round-tripping it (the IONS lesson: +17% became a loss because no level was ever re-earned).",
+          "cooldownDays": 0
+        },
+        {
+          "id": "8a0321c1-81ea-48f5-aba7-9a93f9c337ae",
+          "action": "REVIEW",
+          "source": "DEFAULT",
+          "predicate": {
+            "pct": 12,
+            "kind": "GAIN_FROM_ENTRY",
+            "direction": "DOWN"
+          },
+          "rationale": "Down 12% from entry \u2014 loser attention. Decide hold-vs-cut deliberately, before the hard stop decides for us.",
+          "cooldownDays": 7
+        }
+      ],
+      "triggerState": {}
+    }
+  },
+  "DOCU": {
+    "runId": "cmu30r1yb0000sky73ag2fwv5",
+    "submit": {
+      "add_triggers": [
+        {
+          "action": "REVIEW",
+          "cooldownDays": 5,
+          "predicate": {
+            "kind": "PRICE_BELOW",
+            "level": 67.28
+          },
+          "rationale": "Pullback to the September 4 gap-day midpoint ($67.28) \u2014 this is the next viable PEAD entry zone that could restore 2:1 R/R. Evaluate entering with stop at $64.16 (gap-day low) and target $78.30 (1.272 Fib extension)."
+        }
+      ],
+      "conviction": "MEDIUM",
+      "conviction_rationale": "The PEAD signal was clean \u2014 beat, raise, 2.5\u00d7 gap volume \u2014 but the drift has already run 11 sessions and the stock is above all early-mover sell-side targets. No entry at $72.87 clears 2:1 R/R. I'm still bullish on the direction but honest that the setup's best entry has passed; I'll wait for a pullback.",
+      "core_belief": "DOCU re-tests its $86.65 52-week high within 60 days of the September 3 print as the 17 remaining HOLD-rated analysts are forced to revise targets above the current price, driven by a confirmed beat-and-raise, IAM adoption reaching 25,000+ customers, and $215M/quarter buyback execution \u2014 but a new entry requires a pullback to the gap-day midpoint ($67.28) to restore 2:1 R/R.",
+      "direction": "LONG",
+      "edit_triggers": [
+        {
+          "action": "REVIEW",
+          "id": "d516a881-b59c-45fe-8897-0720fe8687df",
+          "level": 76,
+          "rationale": "Target $76 is now within 4% of current price \u2014 review whether to set a new higher target at the 52-week high $86.65 or exit the WATCHING thesis if no pullback entry materializes."
+        }
+      ],
+      "horizon": "TARGET",
+      "invalidation_conditions": [
+        "Stock closes below the September 4 gap-day low at $64.16 on elevated volume \u2014 a filled gap invalidates the PEAD setup entirely",
+        "Q4 FY2026 guidance is cut at the next earnings print, reversing the beat-and-raise signal that created the thesis"
+      ],
+      "key_assumptions": [
+        "Q3 FY2026 guidance raise is durable \u2014 Q4 revenue lands $825M\u2013$829M without a warning, validating the FY2026 8% growth trajectory",
+        "IAM platform adoption continues to expand beyond 25,000 customers, translating into visible net retention improvement by Q4 FY2026"
+      ],
+      "rationale": "The PEAD drift thesis called correctly \u2014 DOCU has moved from ~$64 at the September 3 print to $72.87 today, 11 sessions later, on a clean beat-and-raise with 2.5\u00d7 gap volume. The drift happened; we didn't capture it because the buy trigger at $62.50 was never hit and the stock went straight up. No new entry clears 2:1 R/R from here: stop at the gap-day low ($64.16) puts risk at $8.74/share, requiring a target above $90 \u2014 above the 52-week high. The thesis stays LONG/WATCHING, the $62.50 buy and $57.50 floor triggers are removed as stale, and a pullback to the gap midpoint ($67.28) would be the next viable entry. The 17 HOLD-rated analysts still below the current price are the upgrade fuel for a continued drift toward $86.65.",
+      "remove_trigger_ids": [
+        "c731f8e3-0aba-4cb6-8630-883ae293899a",
+        "cd5070b2-f002-4899-bd48-4c45806a30fd",
+        "85cba008-4f4a-46a9-92eb-b152195d51ed"
+      ],
+      "scoring": {
+        "catalystFreshness": {
+          "note": "September 3 beat-and-raise is 12 days old \u2014 still within the 30-60 day PEAD drift window. Guidance raise and IAM acceleration are the live catalysts.",
+          "score": 2
+        },
+        "entryQuality": {
+          "note": "PEAD entry window (days 1\u20133 post-print, above gap-day low) has closed; stock is 11 sessions post-print and $2.47 above the gap-day high. No setup condition is true today at a level that clears 2:1 R/R.",
+          "score": 0
+        },
+        "relativeStrength": {
+          "note": "vs SPY: 1M +11pts, 3M +52.3pts, 6M +33.4pts. Dominant institutional-grade RS.",
+          "score": 3
+        },
+        "trendStrength": {
+          "note": "Uptrend above the 200-day. Trend Template 6/8 \u2014 failing on 150-day above 200-day and 200-day rising for at least a month.",
+          "score": 2
+        }
+      },
+      "setup_id": "PEAD"
+    },
+    "thesis": {
+      "id": "cmtu9lfhw000004i575f6xyig",
+      "ticker": "DOCU",
+      "status": "WATCHING",
+      "direction": "LONG",
+      "entryPrice": 62.5,
+      "targetPrice": 76,
+      "stopLoss": 57.5,
+      "horizon": "TARGET",
+      "triggers": [
+        {
+          "id": "c731f8e3-0aba-4cb6-8630-883ae293899a",
+          "action": "ENTER",
+          "source": "DEFAULT",
+          "predicate": {
+            "kind": "PRICE_BELOW",
+            "level": 62.5
+          },
+          "rationale": "Buy level \u2014 start the position when the price comes back down to $62.50.",
+          "cooldownDays": 1
+        },
+        {
+          "id": "cd5070b2-f002-4899-bd48-4c45806a30fd",
+          "action": "REVIEW",
+          "source": "DEFAULT",
+          "predicate": {
+            "kind": "PRICE_BELOW",
+            "level": 57.5
+          },
+          "rationale": "Price dropped to support level $57.5. Better entry, or thesis weakening?",
+          "cooldownDays": 1
+        },
+        {
+          "id": "05da8147-8aa7-415e-92dc-0dff5f8b228f",
+          "action": "REVIEW",
+          "source": "DEFAULT",
+          "predicate": {
+            "kind": "EARNINGS_BEAT"
+          },
+          "rationale": "Beat \u2014 possible entry catalyst. Validate before INITIATE.",
+          "cooldownDays": 7
+        },
+        {
+          "id": "8956c980-d3f1-4c72-88cf-e3fcd5ebf1df",
+          "action": "REVIEW",
+          "source": "DEFAULT",
+          "predicate": {
+            "kind": "EARNINGS_MISS",
+            "minSurprisePct": 3
+          },
+          "rationale": "Miss \u2014 entry conditions worsening. Consider removing.",
+          "cooldownDays": 7
+        },
+        {
+          "id": "85cba008-4f4a-46a9-92eb-b152195d51ed",
+          "action": "EXIT",
+          "source": "DEFAULT",
+          "predicate": {
+            "kind": "PRICE_BELOW",
+            "level": 57.5
+          },
+          "rationale": "Floor $57.5 \u2014 below this the setup is wrong, so the plan comes off rather than waiting to be bought.",
+          "cooldownDays": 1
+        },
+        {
+          "id": "d516a881-b59c-45fe-8897-0720fe8687df",
+          "action": "REVIEW",
+          "source": "DEFAULT",
+          "predicate": {
+            "kind": "PRICE_ABOVE",
+            "level": 76
+          },
+          "rationale": "Target $76 reached before we bought \u2014 the move happened without us, so the entry is stale.",
+          "cooldownDays": 1
+        }
+      ],
+      "triggerState": {}
+    }
+  }
+}

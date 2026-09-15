@@ -726,6 +726,8 @@ export interface WriterResearchPhaseOutput {
   threadMessages: unknown[];
   /** The user prompt (data block + task) for the replay thread. */
   userPrompt: string;
+  /** The research system prompt — the save-time retry resubmits under it. */
+  systemPrompt?: string;
   stepCount: number;
   toolCallCount: number;
   submitAttempts: number;
@@ -849,42 +851,32 @@ Write the research note now, then call submit_thesis.`;
     let acceptedRR: number | null = null;
     let submitAttempts = 0;
 
-    const submitThesisTool = tool({
-      description:
-        "Submit your final thesis decision. Call ONCE after the research note is fully written. " +
-        "If the result lists validation errors, fix exactly those fields and call again.",
-      inputSchema: thesisDecisionSchema,
-      execute: async (raw: z.infer<typeof thesisDecisionSchema>) => {
-        submitAttempts++;
-        const v = validateThesisDecision(raw, {
-          mode: args.mode,
-          existingStatus: existingThesis?.status ?? null,
-          currentPrice,
-          // Persist-gate mirrors (goalpost + zero-trigger) need the
-          // existing row's shape — see decision.ts review-finding-#4 block.
-          existingTargetPrice: existingThesis?.targetPrice ?? null,
-          // P1-35 prior-exit acknowledgment.
-          priorExit,
-          setups: seatSetups,
-          chart: pullOutput.pull?.chart ?? null,
-        });
-        if (!v.ok) {
-          console.log(
-            `[thesis-writer] submit_thesis attempt ${submitAttempts} rejected ticker=${T}: ${v.errors.length} error(s)`,
-          );
-          return {
-            accepted: false,
-            errors: v.errors,
-            instruction:
-              "Fix exactly these fields and call submit_thesis again. Do NOT rewrite the research note.",
-          };
-        }
-        accepted = v.decision!;
-        acceptedRR = v.riskReward ?? null;
-        return {
-          accepted: true,
-          instruction: "Decision accepted and recorded. STOP — do not write anything further.",
-        };
+    // The save's own check, run in check-only mode from the submit step.
+    const saveCtx = await buildWriterToolCtx(args, analyst);
+    const submitThesisTool = makeSubmitThesisTool({
+      ticker: T,
+      validate: {
+        mode: args.mode,
+        existingStatus: existingThesis?.status ?? null,
+        currentPrice,
+        // Persist-gate mirrors (goalpost + zero-trigger) need the
+        // existing row's shape — see decision.ts review-finding-#4 block.
+        existingTargetPrice: existingThesis?.targetPrice ?? null,
+        setups: seatSetups,
+        chart: pullOutput.pull?.chart ?? null,
+      },
+      check: (d) =>
+        checkDecisionAgainstSave({
+          args,
+          pull: pullOutput.pull,
+          decision: d,
+          ctx: saveCtx,
+          existingDirection: existingThesis?.direction ?? null,
+        }),
+      onAttempt: () => ++submitAttempts,
+      onAccept: (d, rr) => {
+        accepted = d;
+        acceptedRR = rr;
       },
     });
 
@@ -1007,6 +999,7 @@ Write the research note now, then call submit_thesis.`;
       riskReward: finalRR,
       threadMessages: capturedMessages as unknown[],
       userPrompt,
+      systemPrompt,
       stepCount,
       toolCallCount,
       submitAttempts,
@@ -1163,6 +1156,333 @@ async function executeThroughSchema(
   })) as PersistToolEnvelope;
 }
 
+/** The save call a decision becomes — one builder for the check and the save. */
+export interface WriterSaveCall {
+  toolName: "record_thesis" | "update_thesis";
+  toolArgs: Record<string, unknown>;
+}
+
+/**
+ * Build the record_thesis (mint) / update_thesis (refresh) args for a
+ * decision. The submit step's check and the real save both call this, so
+ * the args the check approves are the args the save receives.
+ */
+export function buildWriterSaveCall(
+  args: RunThesisWriterArgs,
+  pull: WriterPullPhaseOutput["pull"],
+  d: ValidatedThesisDecision,
+  sectionArgs: SectionArgs,
+  existingDirection: string | null,
+): WriterSaveCall {
+  const T = args.ticker.toUpperCase();
+  if (args.mode === "mint") {
+    return {
+      toolName: "record_thesis",
+      toolArgs: {
+        ticker: T,
+        company_name: pull?.companyName ?? undefined,
+        exchange: pull?.exchange ?? undefined,
+        direction: d.direction,
+        // Writer mints are always entry-gated coverage; PASS derives its
+        // own terminal state inside record_thesis.
+        status: d.direction === "PASS" ? undefined : "WATCHING",
+        reasoning_summary: d.rationale,
+        entry_price: d.entry_price,
+        target_price: d.target_price,
+        stop_loss: d.stop_loss,
+        setup_id: d.direction === "PASS" ? undefined : d.setup_id,
+        stop_basis: d.stop_basis,
+        target_basis: d.target_basis,
+        entry_on_close: d.entry_on_close,
+        // The price the research was done at. record_thesis reads the buy
+        // level's side (pullback vs breakout) off it when its own quote
+        // fails — and refuses rather than guesses when both are missing.
+        current_price: pull?.currentPrice ?? undefined,
+        horizon: d.horizon,
+        catalyst_date: d.catalyst_date ? new Date(d.catalyst_date).toISOString() : undefined,
+        scoring: d.scoring,
+        conviction: d.conviction,
+        conviction_rationale: d.conviction_rationale,
+        variant_view: d.variant_view,
+        core_belief: d.core_belief,
+        key_assumptions: d.key_assumptions,
+        invalidation_conditions: d.invalidation_conditions,
+        // PASS theses cannot carry triggers (record_thesis gate) — the
+        // validator rejects this too; strip defensively.
+        triggers:
+          d.direction === "PASS"
+            ? undefined
+            : args.reviewCadenceDays
+              ? [
+                  ...(d.triggers ?? []),
+                  {
+                    predicate: { kind: "REVIEW_CADENCE", days: args.reviewCadenceDays },
+                    action: "REVIEW",
+                    rationale: `Look at this every ${args.reviewCadenceDays} day(s), from the last review.`,
+                  },
+                ]
+              : d.triggers,
+        // P1-35: pass the model's engagement with a recent sale through
+        // to record_thesis's recently-sold gate.
+        acknowledge_prior_exit: d.prior_exit_acknowledgment,
+        source_kind: "WEB_SEARCH",
+        source_rationale: args.reason.slice(0, 300),
+        research_data: pull?.rawDataBlock,
+        ...sectionArgs,
+      },
+    };
+  }
+  // Role split (docs/THESIS_ARCHITECTURE.md §0): the writer refreshes
+  // research; it NEVER changes direction or status. A changed view is
+  // flagged in the rationale for the orchestrator to act on.
+  const directionFlag =
+    existingDirection && d.direction !== existingDirection
+      ? ` ⚠ Writer's refreshed view is ${d.direction} vs stored ${existingDirection} — orchestrator should re-evaluate direction.`
+      : "";
+  // Held refresh: protective levels only tighten (the 2026-08-16 ruling). A
+  // looser stop is refused as its own op inside update_thesis and the rest
+  // of the refresh lands (DAV-242).
+  const pass = d.direction === "PASS";
+  return {
+    toolName: "update_thesis",
+    toolArgs: {
+      thesis_id: args.existingThesisId,
+      rationale: `${d.rationale}${directionFlag}`,
+      // Always supplied: the P0-1 gate refuses price moves when the belief
+      // text happens to be unchanged; the writer's judgment on why lives in
+      // the decision rationale.
+      structural_unchanged_reason: d.rationale,
+      entry_price: pass ? undefined : d.entry_price,
+      target_price: pass ? undefined : d.target_price,
+      stop_loss: pass ? undefined : d.stop_loss,
+      setup_id: pass ? undefined : d.setup_id,
+      stop_basis: pass ? undefined : d.stop_basis,
+      target_basis: pass ? undefined : d.target_basis,
+      entry_on_close: pass ? undefined : d.entry_on_close,
+      horizon: d.horizon,
+      catalyst_date: d.catalyst_date ? new Date(d.catalyst_date).toISOString() : undefined,
+      scoring: d.scoring,
+      conviction: d.conviction,
+      conviction_rationale: d.conviction_rationale,
+      variant_view: d.variant_view,
+      core_belief: d.core_belief,
+      key_assumptions: d.key_assumptions,
+      invalidation_conditions: d.invalidation_conditions,
+      add_triggers: d.add_triggers,
+      edit_triggers: d.edit_triggers,
+      remove_trigger_ids: d.remove_trigger_ids,
+      price_at_time: pull?.currentPrice ?? undefined,
+      research_data: pull?.rawDataBlock,
+      ...sectionArgs,
+    },
+  };
+}
+
+/** How a save (or a check-only save) came back. */
+export interface WriterSaveOutcome {
+  /** Row id the save wrote (always null for a check-only call). */
+  thesisId: string | null;
+  /** A check-only call that would have saved. */
+  wouldSave: boolean;
+  /** Why it didn't save, in the save's own words. */
+  error: string | null;
+  /** A refusal or schema miss the model can fix — not a crash. */
+  fixable: boolean;
+}
+
+/**
+ * Read a record_thesis / update_thesis envelope. Shared by the check and the
+ * save so "refused" means the same thing in both.
+ */
+export function readWriterSaveResult(
+  toolName: WriterSaveCall["toolName"],
+  res: PersistToolEnvelope | { __schemaError: string },
+): WriterSaveOutcome {
+  if ("__schemaError" in res) {
+    return { thesisId: null, wouldSave: false, error: res.__schemaError, fixable: true };
+  }
+  if (res.ok === false) {
+    // The tool threw (e.g. a Prisma error). defineTool's envelope carries the
+    // message at the top level, not in `data`. Not the model's to fix.
+    return { thesisId: null, wouldSave: false, error: `${toolName} failed: ${res.error ?? res.summary ?? "unknown"}`, fixable: false };
+  }
+  const data = res?.data ?? {};
+  if (data.dry_run === true) return { thesisId: null, wouldSave: true, error: null, fixable: false };
+  if (toolName === "record_thesis") {
+    if (typeof data.thesis_id === "string" && data.thesis_id) {
+      return { thesisId: data.thesis_id, wouldSave: false, error: null, fixable: false };
+    }
+    return { thesisId: null, wouldSave: false, error: `record_thesis refused: ${String(data.note ?? data.error ?? res?.summary ?? "unknown")}`, fixable: true };
+  }
+  if (data.ok === false) {
+    return { thesisId: null, wouldSave: false, error: `update_thesis refused: ${String(data.message ?? data.error ?? res?.summary ?? "unknown")}`, fixable: true };
+  }
+  // update_thesis said ok; the caller proves it with the audit row.
+  return { thesisId: null, wouldSave: false, error: null, fixable: false };
+}
+
+/**
+ * The writer's own check IS the save: run the exact args through
+ * record_thesis / update_thesis in check-only mode (ctx.dryRun) — the same
+ * input schema, trigger ops, plan check and status rules — and stop before
+ * the write. Sections are left out: they're built by the server from the
+ * note, not chosen by the model, and the save-time retry covers them.
+ */
+export async function checkDecisionAgainstSave(input: {
+  args: RunThesisWriterArgs;
+  pull: WriterPullPhaseOutput["pull"];
+  decision: ValidatedThesisDecision;
+  ctx: ToolContext;
+  existingDirection: string | null;
+}): Promise<WriterSaveOutcome> {
+  const call = buildWriterSaveCall(input.args, input.pull, input.decision, {}, input.existingDirection);
+  const checkCtx: ToolContext = { ...input.ctx, dryRun: true };
+  const toolInstance = call.toolName === "record_thesis" ? recordThesis(checkCtx) : updateThesis(checkCtx);
+  try {
+    return readWriterSaveResult(call.toolName, await executeThroughSchema(toolInstance, call.toolName, call.toolArgs));
+  } catch (err) {
+    return { thesisId: null, wouldSave: false, error: err instanceof Error ? err.message : String(err), fixable: false };
+  }
+}
+
+/** How many times the submit step hands a save refusal back before letting the save speak. */
+const SAVE_CHECK_REFUSALS_BEFORE_PASS = 2;
+
+/**
+ * The submit_thesis tool: the decision's own rules, then the save's check.
+ * Used by the research loop and by the one save-time retry.
+ */
+export function makeSubmitThesisTool(opts: {
+  validate: Parameters<typeof validateThesisDecision>[1];
+  check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>;
+  onAccept: (d: ValidatedThesisDecision, riskReward: number | null) => void;
+  onAttempt: () => number;
+  ticker: string;
+}) {
+  let saveRefusals = 0;
+  return tool({
+    description:
+      "Submit your final thesis decision. Call ONCE after the research note is fully written. " +
+      "If the result lists validation errors, fix exactly those fields and call again.",
+    inputSchema: thesisDecisionSchema,
+    execute: async (raw: z.infer<typeof thesisDecisionSchema>) => {
+      const attempt = opts.onAttempt();
+      const v = validateThesisDecision(raw, opts.validate);
+      if (!v.ok) {
+        console.log(
+          `[thesis-writer] submit_thesis attempt ${attempt} rejected ticker=${opts.ticker}: ${v.errors.length} error(s)`,
+        );
+        return {
+          accepted: false,
+          errors: v.errors,
+          instruction: "Fix exactly these fields and call submit_thesis again. Do NOT rewrite the research note.",
+        };
+      }
+      if (saveRefusals < SAVE_CHECK_REFUSALS_BEFORE_PASS) {
+        const saved = await opts.check(v.decision!);
+        if (!saved.wouldSave && saved.fixable && saved.error) {
+          saveRefusals++;
+          console.log(
+            `[thesis-writer] submit_thesis attempt ${attempt} refused by the save check ticker=${opts.ticker}: ${saved.error}`,
+          );
+          return {
+            accepted: false,
+            errors: [`The save refused this decision — ${saved.error}`],
+            instruction: "Fix exactly what the save refused and call submit_thesis again. Do NOT rewrite the research note.",
+          };
+        }
+      }
+      opts.onAccept(v.decision!, v.riskReward ?? null);
+      return {
+        accepted: true,
+        instruction: "Decision accepted and recorded. STOP — do not write anything further.",
+      };
+    },
+  });
+}
+
+/** Save-time retry budget: the model sees the refusal and resubmits, once. */
+const SAVE_RETRY_TIMEOUT_MS = 120_000;
+const SAVE_RETRY_MAX_STEPS = 3;
+
+/**
+ * The one save-time retry: the save refused a decision the check passed
+ * (server-built sections, or the world moved between check and save). Show
+ * the model its decision and the refusal, let it resubmit through the same
+ * submit tool, and return the new decision — or null.
+ */
+async function resubmitAfterRefusal(input: {
+  args: RunThesisWriterArgs;
+  pullOutput: WriterPullPhaseOutput;
+  research: WriterResearchPhaseOutput;
+  analyst: WriterAnalyst;
+  existing: WriterExistingThesis | null;
+  ctx: ToolContext;
+  previous: ValidatedThesisDecision;
+  refusal: string;
+}): Promise<ValidatedThesisDecision | null> {
+  const { args, pullOutput, research, analyst, existing } = input;
+  if (!research.systemPrompt) return null;
+  const T = args.ticker.toUpperCase();
+  let accepted: ValidatedThesisDecision | null = null;
+  let attempts = 0;
+  const submit = makeSubmitThesisTool({
+    ticker: T,
+    validate: {
+      mode: args.mode,
+      existingStatus: existing?.status ?? null,
+      currentPrice: pullOutput.pull?.currentPrice ?? null,
+      existingTargetPrice: existing?.targetPrice ?? null,
+      setups: setupsForSeat(analyst.name),
+      chart: pullOutput.pull?.chart ?? null,
+    },
+    check: (d) =>
+      checkDecisionAgainstSave({
+        args,
+        pull: pullOutput.pull,
+        decision: d,
+        ctx: input.ctx,
+        existingDirection: existing?.direction ?? null,
+      }),
+    onAttempt: () => ++attempts,
+    onAccept: (d) => {
+      accepted = d;
+    },
+  });
+  const modeConfig = MODES["thesis-writer"];
+  const model =
+    modeConfig.provider === "anthropic"
+      ? anthropic(modeConfig.model as Parameters<typeof anthropic>[0])
+      : openai(modeConfig.model);
+  try {
+    await generateText({
+      model,
+      system: research.systemPrompt,
+      messages: [
+        { role: "user", content: research.userPrompt },
+        { role: "assistant", content: research.noteText || "(research note)" },
+        {
+          role: "user",
+          content:
+            `You submitted this decision:\n${JSON.stringify(input.previous)}\n\n` +
+            `The save refused it: ${input.refusal}\n\n` +
+            "Call submit_thesis again with the decision fixed so the save accepts it. Change only what the refusal names. Do not rewrite the note.",
+        },
+      ],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tools: { submit_thesis: submit } as any,
+      stopWhen: [stepCountIs(SAVE_RETRY_MAX_STEPS), () => accepted !== null],
+      abortSignal: AbortSignal.timeout(SAVE_RETRY_TIMEOUT_MS),
+    });
+  } catch (err) {
+    console.warn(
+      `[thesis-writer] save retry failed ticker=${T} child=${args.childRunId}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+  return accepted;
+}
+
 export async function writerPersistPhase(
   args: RunThesisWriterArgs,
   pullOutput: WriterPullPhaseOutput,
@@ -1178,7 +1498,7 @@ export async function writerPersistPhase(
 
     // ── Persist the thesis through the existing Layer-1 gates ──────────
     if (research.ok && research.decision && analyst) {
-      const d = research.decision;
+      let d = research.decision;
       const sections = parseIntoSections(research.noteText);
       const sectionArgs = sectionArgsFrom(sections);
       const ctx = await buildWriterToolCtx(args, analyst);
@@ -1192,84 +1512,7 @@ export async function writerPersistPhase(
           select: { id: true },
           orderBy: { createdAt: "desc" },
         });
-        if (priorMint) {
-          thesisId = priorMint.id;
-        }
-      }
-
-      if (args.mode === "mint" && thesisId === null) {
-        const toolArgs: Record<string, unknown> = {
-          ticker: T,
-          company_name: pullOutput.pull?.companyName ?? undefined,
-          exchange: pullOutput.pull?.exchange ?? undefined,
-          direction: d.direction,
-          // Writer mints are always entry-gated coverage; PASS derives its
-          // own terminal state inside record_thesis.
-          status: d.direction === "PASS" ? undefined : "WATCHING",
-          reasoning_summary: d.rationale,
-          entry_price: d.entry_price,
-          target_price: d.target_price,
-          stop_loss: d.stop_loss,
-          setup_id: d.direction === "PASS" ? undefined : d.setup_id,
-          stop_basis: d.stop_basis,
-          target_basis: d.target_basis,
-          entry_on_close: d.entry_on_close,
-          // The price the research was done at. record_thesis reads the buy
-          // level's side (pullback vs breakout) off it when its own quote
-          // fails — and refuses rather than guesses when both are missing.
-          current_price: pullOutput.pull?.currentPrice ?? undefined,
-          horizon: d.horizon,
-          catalyst_date: d.catalyst_date
-            ? new Date(d.catalyst_date).toISOString()
-            : undefined,
-          scoring: d.scoring,
-          conviction: d.conviction,
-          conviction_rationale: d.conviction_rationale,
-          variant_view: d.variant_view,
-          core_belief: d.core_belief,
-          key_assumptions: d.key_assumptions,
-          invalidation_conditions: d.invalidation_conditions,
-          // PASS theses cannot carry triggers (record_thesis gate) — the
-          // validator rejects this too; strip defensively.
-          triggers:
-            d.direction === "PASS"
-              ? undefined
-              : args.reviewCadenceDays
-                ? [
-                    ...(d.triggers ?? []),
-                    {
-                      predicate: {
-                        kind: "REVIEW_CADENCE",
-                        days: args.reviewCadenceDays,
-                      },
-                      action: "REVIEW",
-                      rationale: `Look at this every ${args.reviewCadenceDays} day(s), from the last review.`,
-                    },
-                  ]
-                : d.triggers,
-          // P1-35: pass the model's engagement with a recent sale through
-          // to record_thesis's recently-sold gate.
-          acknowledge_prior_exit: d.prior_exit_acknowledgment,
-          source_kind: "WEB_SEARCH",
-          source_rationale: args.reason.slice(0, 300),
-          research_data: pullOutput.pull?.rawDataBlock,
-          ...sectionArgs,
-        };
-        const res = await executeThroughSchema(recordThesis(ctx), "record_thesis", toolArgs);
-        if ("__schemaError" in res) {
-          persistError = res.__schemaError;
-        } else if (res.ok === false) {
-          // The tool threw (e.g. a Prisma error). defineTool's envelope
-          // carries the message at the top level, not in `data`.
-          persistError = `record_thesis failed: ${res.error ?? res.summary ?? "unknown"}`;
-        } else {
-          const data = res?.data ?? {};
-          if (typeof data.thesis_id === "string" && data.thesis_id) {
-            thesisId = data.thesis_id;
-          } else {
-            persistError = `record_thesis refused: ${String(data.note ?? data.error ?? res?.summary ?? "unknown")}`;
-          }
-        }
+        if (priorMint) thesisId = priorMint.id;
       } else if (args.existingThesisId) {
         // Same retry-idempotency for refresh: a prior attempt's audit row
         // means the update already landed — don't write it twice.
@@ -1277,87 +1520,62 @@ export async function writerPersistPhase(
           where: { runId: args.childRunId, thesisId: args.existingThesisId },
           select: { thesisId: true },
         });
-        if (priorTouch) {
-          thesisId = priorTouch.thesisId;
-        }
+        if (priorTouch) thesisId = priorTouch.thesisId;
       }
 
-      if (args.mode === "refresh" && args.existingThesisId && thesisId === null) {
-        const existing = await loadExistingThesis(args.existingThesisId);
-        // Role split (docs/THESIS_ARCHITECTURE.md §0): the writer refreshes
-        // research; it NEVER changes direction or status. A changed view is
-        // flagged in the rationale for the orchestrator to act on.
-        const directionFlag =
-          existing?.direction && d.direction !== existing.direction
-            ? ` ⚠ Writer's refreshed view is ${d.direction} vs stored ${existing.direction} — orchestrator should re-evaluate direction.`
-            : "";
-        // Held refresh: protective levels only tighten (the 2026-08-16
-        // ruling). A looser stop is refused as its own op inside
-        // update_thesis and the rest of the refresh lands — nothing to
-        // clamp here any more (DAV-242; SMMT 2026-09-08 lost a whole
-        // refresh to that one number under the old all-or-nothing write).
-        const toolArgs: Record<string, unknown> = {
-          thesis_id: args.existingThesisId,
-          rationale: `${d.rationale}${directionFlag}`,
-          // Always supplied: the P0-1 gate refuses price moves when the
-          // belief text happens to be unchanged; the writer's judgment on
-          // why lives in the decision rationale.
-          structural_unchanged_reason: d.rationale,
-          entry_price: d.direction === "PASS" ? undefined : d.entry_price,
-          target_price: d.direction === "PASS" ? undefined : d.target_price,
-          stop_loss: d.direction === "PASS" ? undefined : d.stop_loss,
-          setup_id: d.direction === "PASS" ? undefined : d.setup_id,
-          stop_basis: d.direction === "PASS" ? undefined : d.stop_basis,
-          target_basis: d.direction === "PASS" ? undefined : d.target_basis,
-          entry_on_close: d.direction === "PASS" ? undefined : d.entry_on_close,
-          horizon: d.horizon,
-          catalyst_date: d.catalyst_date
-            ? new Date(d.catalyst_date).toISOString()
-            : undefined,
-          scoring: d.scoring,
-          conviction: d.conviction,
-          conviction_rationale: d.conviction_rationale,
-          variant_view: d.variant_view,
-          core_belief: d.core_belief,
-          key_assumptions: d.key_assumptions,
-          invalidation_conditions: d.invalidation_conditions,
-          add_triggers: d.add_triggers,
-          edit_triggers: d.edit_triggers,
-          remove_trigger_ids: d.remove_trigger_ids,
-          price_at_time: pullOutput.pull?.currentPrice ?? undefined,
-          research_data: pullOutput.pull?.rawDataBlock,
-          ...sectionArgs,
-        };
-        const res = await executeThroughSchema(updateThesis(ctx), "update_thesis", toolArgs);
-        if ("__schemaError" in res) {
-          persistError = res.__schemaError;
-        } else if (res.ok === false) {
-          // The tool threw (e.g. a Prisma error). defineTool's envelope
-          // carries the message at the top level, not in `data`. 2026-09-08:
-          // every update_thesis failed on a dropped column and this path
-          // fell through to the audit-row check below, which then defaulted
-          // to the existing id — so the run logged "Thesis persisted" and
-          // was marked COMPLETE with nothing saved (ABT, DAV-231).
-          persistError = `update_thesis failed: ${res.error ?? res.summary ?? "unknown"}`;
-        } else {
-          const data = res?.data ?? {};
-          if (data.ok === false) {
-            persistError = `update_thesis refused: ${String(data.message ?? data.error ?? res?.summary ?? "unknown")}`;
-          } else {
-            // The audit row is the proof — a missing row means nothing was
-            // saved, whatever the envelope said. Never default to the
-            // existing id here.
-            const touch = await prisma.thesisUpdate.findFirst({
-              where: { runId: args.childRunId, thesisId: args.existingThesisId },
-              select: { thesisId: true },
-            });
-            if (touch) {
-              thesisId = touch.thesisId;
-            } else {
-              persistError = `update_thesis returned ok but wrote no audit row for ${args.existingThesisId} — nothing was saved`;
-            }
+      const existing =
+        args.mode === "refresh" && args.existingThesisId
+          ? await loadExistingThesis(args.existingThesisId)
+          : null;
+
+      const saveOnce = async (decision: ValidatedThesisDecision): Promise<WriterSaveOutcome> => {
+        const call = buildWriterSaveCall(args, pullOutput.pull, decision, sectionArgs, existing?.direction ?? null);
+        const toolInstance = call.toolName === "record_thesis" ? recordThesis(ctx) : updateThesis(ctx);
+        const outcome = readWriterSaveResult(call.toolName, await executeThroughSchema(toolInstance, call.toolName, call.toolArgs));
+        if (call.toolName === "update_thesis" && !outcome.error && args.existingThesisId) {
+          // The audit row is the proof — a missing row means nothing was
+          // saved, whatever the envelope said. Never default to the existing
+          // id here (ABT 2026-09-08, DAV-231).
+          const touch = await prisma.thesisUpdate.findFirst({
+            where: { runId: args.childRunId, thesisId: args.existingThesisId },
+            select: { thesisId: true },
+          });
+          return touch
+            ? { ...outcome, thesisId: touch.thesisId }
+            : { ...outcome, error: `update_thesis returned ok but wrote no audit row for ${args.existingThesisId} — nothing was saved`, fixable: false };
+        }
+        return outcome;
+      };
+
+      const canSave = args.mode === "mint" || !!args.existingThesisId;
+      if (thesisId === null && canSave) {
+        let outcome = await saveOnce(d);
+
+        // ── One retry: hand the refusal back to the model ───────────────
+        if (!outcome.thesisId && outcome.fixable && outcome.error) {
+          await writePhaseEvent(
+            args.childRunId,
+            "Save refused — retrying once",
+            outcome.error,
+            { ticker: T, mode: args.mode },
+          );
+          const retried = await resubmitAfterRefusal({
+            args,
+            pullOutput,
+            research,
+            analyst,
+            existing,
+            ctx,
+            previous: d,
+            refusal: outcome.error,
+          });
+          if (retried) {
+            d = retried;
+            outcome = await saveOnce(d);
           }
         }
+        thesisId = outcome.thesisId;
+        persistError = outcome.thesisId ? null : outcome.error ?? "unknown";
       }
 
       await writePhaseEvent(
