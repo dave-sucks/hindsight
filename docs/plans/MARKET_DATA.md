@@ -114,8 +114,8 @@ The data is two vendor calls, each with a fixed shape:
   date window). Per company: report date, before/after the bell, EPS
   estimate, EPS actual (null until reported), revenue estimate and actual,
   fiscal quarter. Verified live: actuals land the same evening.
-- **The movers lists** (FMP: top gainers, top losers, most active). Per
-  stock: price, % change, volume.
+- **The movers lists** (Alpaca's screener: top gainers, top losers, most
+  active — FMP was removed 2026-09-08). Per stock: price, % change, volume.
 
 Both are read *fresh* every time they're needed and held in memory for one
 pass — exactly how the trigger evaluator already treats quotes. Nothing is
@@ -159,12 +159,11 @@ for the whole market, matches it against your names, and evaluates:
   Same call, one new trigger type. Fires once per approaching report, at
   the first open inside the window; the activity row carries the date,
   the bell, and the street estimate.
-- **Guidance up / down, filings, news** — *cannot* be computed from a
-  calendar. Parked with DAV-196. (Filings via SEC EDGAR is plausibly cheap
-  and separate; not scoped here.)
-- **Volume** — "trading 3× its average" — computable from the quote plus a
-  daily average the system already fetches for other reasons. *Later, if
-  wanted.* The lifecycle doc has flagged it before.
+- **Guidance up / down, news** — *cannot* be computed from a calendar.
+  Parked with DAV-196. Filings are planned separately, in
+  `docs/plans/SEC_FILINGS.md`.
+- **Volume** — "trading 3× its average." *Built by the agent rebuild
+  (#630)* as `VOLUME_RATIO`, off the daily indicator snapshot.
 
 None of these ever trade by themselves. Every earnings-type trigger wakes an
 analyst or lands in tomorrow's review; the "close it without asking" fast
@@ -184,14 +183,19 @@ trader watches, in order:
 3. **The reaction:** a beat that gaps *down* is the real information — the
    market wanted more. A miss that holds flat means it was priced in. This
    is the **daily-move trigger you already have**, and the combination is
-   what matters: *beat AND down 5% on the day* → something is wrong with
-   the story. Composite triggers already express that.
+   what matters: *beat AND down on the day* → something is wrong with the
+   story. The trigger model can hold that as one two-condition trigger, and
+   the agent rebuild carries it as an analyst rule. The Add Trigger dialog
+   shows two-condition triggers but can't build one by hand yet — that's
+   the rebuild's.
 4. **Day two and three:** does it follow through or fade? Price triggers
    again — the trail-from-high and gain-from-entry ones.
 
 So the trigger set for earnings is: a warning before, arithmetic on the
-print, and the existing price triggers for the reaction. That's complete.
-Nothing here needs news.
+report, and price triggers for the reaction. Nothing here needs news. What
+it doesn't cover is the sell side of a trade over time — a trigger on a
+thesis's event date, or on days held. Those are trigger vocabulary, and the
+agent rebuild owns them.
 
 ---
 
@@ -216,7 +220,10 @@ same two calls, deterministically:
 > ≥ 3% on the report day · market cap > $2B · not on any analyst's book
 
 That list is typically 5–15 names. Hand *that* to the discovery run, not the
-900. It's arithmetic, costs no AI, and it is exactly the funnel the PEAD seat
+900. **The agent rebuild builds this screen** (its discovery-by-screens PR),
+reading this calendar module as-is. Until then — and after — the chat does
+it by hand with `get_earnings_calendar(window: "reported")`, which is how
+IOT was found on 2026-09-13 and bought the next day. It's arithmetic, costs no AI, and it is exactly the funnel the PEAD seat
 runs by hand every Wednesday and Friday via Grok prompts
 (`docs/discovery-prep/2026-09-02-PEAD.md`). The same shape works for a
 momentum screen (section 6).
@@ -297,10 +304,11 @@ That is the "something is happening here" list. Hand it to discovery. The
 analyst's job becomes "which of these ten has a reason," not "which of these
 three hundred is even a real company."
 
-Two honest caveats. First, *tracking up* over days needs a close series
-(the 5-day / 30-day moves) that the 5-minute evaluator was never given —
-which is why those trigger windows were deleted. A daily screen can have it;
-an intraday trigger shouldn't pretend to. Second, chasing a gainers list is
+The agent rebuild builds this screen too, alongside the earnings one.
+
+Two honest caveats. First, *tracking up* over days needs a close series.
+The rebuild added one (#630): the 5-day and 20-day moves read the daily
+indicator snapshot, so those trigger windows exist again. Second, chasing a gainers list is
 how retail loses money; the screen's thresholds (cap, volume, above-trend)
 are what separate momentum from a pump. The thresholds should be yours.
 
@@ -324,7 +332,7 @@ are what separate momentum from a pump. The thresholds should be yours.
 | Earnings beat / miss triggers off the calendar | **In — built, #621** | First fire 2026-09-30 (MU). |
 | Fire carries the numbers into the audit row and tactical kickoff | **In — built, #621** | |
 | Cut the newsletter webhook | **Done — #625** | Route is inert. **Stop the Resend forward** — that part is yours. |
-| Delete `AgentConfig.feeds` | **Next — needs your go** | A deletion. Offsets #621's line count. |
+| Delete `AgentConfig.feeds` | **Half done — #637** | Code and schema no longer use it. The column drop is the second PR, not yet opened. |
 | Drop `read_signals` and the `feeds` gate from discovery | **Done — #625** | Two pull tools every week. |
 | Detach the builder / editor from the inbox tools | **Later, medium** | ~15 hard-rule sites across two prompts. Not an allowlist flip. |
 | Earnings-within-N-days trigger | **In — built, #621** | `EARNINGS_WITHIN`, 1–14 days. In the add dialog as "Earnings". |
@@ -332,17 +340,18 @@ are what separate momentum from a pump. The thresholds should be yours.
 | Tiny estimates can't score | **In — built, #621** | Under $0.05 EPS the surprise is null in code — no trigger fires on it, no prompt has to say "ignore it". |
 | Earnings block on the thesis sheet (live, not stored) | **In — built, #621** | Next report + last four quarters. |
 | `/earnings` page and the stock page's Earnings tab | **In — built, #621** | Week of day boxes; a day's reporters with the figures; per-stock quarters and latest report. Live, not stored. |
-| `get_earnings_calendar(window: "reported")` for the agent | **In — built, #621** | "Do discovery off this week's earnings" is one call. |
+| `get_earnings_calendar(window: "reported")` for the agent | **In — built, #621** | "Do discovery off this week's earnings" is one call. Reads in the page's order: real companies first, then the biggest surprise. First use 2026-09-13 → IOT. |
 | **Earnings is not opt-in** — account rules: heads-up 3 days before, review on any beat or miss, on every held and watched name | **In — built, #621** | A standing wake, not a clock. Overridable per name; deletable in settings. Existing accounts get it once at the next morning run. |
 | Thesis writer knows the earnings kinds, and when a thesis wants its own | **In — built, #621** | Never ENTER on a beat by itself. |
 | The earnings playbook in the daily run and the tactical run | **In — built, #621** | Heads-up = sizing; both-lines beat → raise; EPS-beat-revenue-miss → nothing; beat-but-down → read the call; miss → wrong vs early. |
 | Next report date onto the thesis row (`catalystDate`) | **Not doing** | Would be a stored copy of the calendar. The live "earnings on your book this week" line and the sheet's live block cover it. |
 | Daily-run opening context: "earnings on your book this week" | **In — built, #621** | Who reports in the next 7 days, who reported in the last 3 with the figures. |
 | Daily-run opening context: "on today's most-active list" | **Later, small** | One line off the movers call. |
-| Post-earnings discovery screen (the PEAD funnel, computed) | **Later, medium** | Deterministic; replaces hand-written Grok prompts for that seat. |
-| Momentum discovery screen (movers + volume + trend + cap) | **Later, medium** | Same shape. Thresholds are yours. |
-| Volume trigger for held names | **Later, if wanted** | Cheap once a daily average is on the quote path. |
-| SEC filings trigger via EDGAR | **Later, separate** | Plausibly cheap; not scoped. |
+| Post-earnings discovery screen (the PEAD funnel, computed) | **The rebuild's** | Its discovery-by-screens PR. Chat discovery off the calendar stays alongside it. |
+| Momentum discovery screen (movers + volume + trend + cap) | **The rebuild's** | Same PR. Thresholds are yours. |
+| Volume trigger | **Built — #630** | `VOLUME_RATIO`, by the rebuild. |
+| Event-date trigger, days-held trigger, two-condition triggers in the dialog | **The rebuild's** | Trigger vocabulary. `Thesis.catalystDate` already exists; nothing reads it as a trigger yet. |
+| SEC filings trigger via EDGAR | **Planned — `SEC_FILINGS.md`** | Same shape as earnings. Trigger shape signed off by the rebuild; four decisions are yours. |
 | Guidance / news / sentiment triggers | **Parked — DAV-196** | Needs a news layer. Not this. |
 | Movers as trigger conditions | **Not doing** | Your own price trigger is strictly better. |
 | Monitor ROI crediting, `/intelligence` page, signal fallback in the evaluator | **Dormant — leave** | Costs nothing; deletes with DAV-196's outcome. |
