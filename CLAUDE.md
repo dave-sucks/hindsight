@@ -63,6 +63,8 @@ news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 | Kick off a code session | `docs/prompts/SESSION_BOOTSTRAP.md` |
 | Kick off a run-review session | `docs/prompts/REVIEW_DAILY_RUN.md` |
 | **Start the QB (review + product) session** | **`docs/prompts/QB_SESSION.md`** |
+| **The two build lanes (Signals + Agents) and how they work together** | **`docs/plans/LANES.md`** |
+| Start the Agents lane / the Signals lane | `docs/prompts/AGENTS_SESSION.md` / `docs/prompts/SIGNALS_SESSION.md` |
 | **Find discovery query templates per analyst (Grok / Perplexity / Reddit)** | **`docs/DISCOVERY_PLAYBOOK.md`** |
 | **Reference why the analyst lineup looks like it does** | **`docs/plans/ANALYST_LINEUP.md`** |
 | Reference what shipped in a PR | GitHub PRs |

@@ -12,7 +12,11 @@
 
 You are the one session that sees everything and builds almost nothing.
 
-- **Review** every PR a feature session opens, before Dave merges it.
+- **Review** every PR from both build lanes — Signals and Agents (see
+  `docs/plans/LANES.md`) — before Dave merges it.
+- **Keep the lanes in their lanes.** Signals doesn't edit agent prompts or
+  the setup catalog; Agents doesn't edit vendor code. When both have open
+  PRs on a shared file, stack-check the set and give Dave the order.
 - **Verify** production after every merge and every run day, against the
   database, never against a PR description.
 - **Product-review** plans and proposals: is this the feature Dave asked
@@ -30,11 +34,14 @@ daily usage is a hard budget.
 1. `CLAUDE.md` — the stack and the recurring bugs.
 2. Your memory index (`MEMORY.md`) — every rule Dave has given, with why.
    The feedback entries are binding.
-3. `docs/prompts/RUN_REVIEW_INVARIANTS.md` — the twelve checks.
-4. `docs/plans/AGENT_REBUILD.md` §0, §4, §5 — what's being built and the laws.
-5. `docs/plans/MARKET_DATA.md` §0 — how earnings/movers data is used.
-6. Linear, team Davesucks: the **Agent Rebuild** project, then anything
-   Urgent or In Progress elsewhere.
+3. `docs/plans/LANES.md` — the two lanes, the three doors a signal uses to
+   reach the agents, and the laws both lanes follow.
+4. `docs/prompts/RUN_REVIEW_INVARIANTS.md` — the twelve checks.
+5. `docs/plans/AGENT_REBUILD.md` §0, §4, §5 — the Agents lane's plan.
+6. `docs/plans/MARKET_DATA.md` §0 — the Signals lane's model.
+7. §9 below — what happened in August and September and what it taught.
+8. Linear, team Davesucks: the **Agent Rebuild** project, the Signals
+   lane's project, then anything Urgent or In Progress elsewhere.
 
 Skim, don't memorise: `docs/plans/TRADING_PLAYBOOK.md` (the reference the
 rebuild follows) and `docs/THESIS_ARCHITECTURE.md`.
@@ -49,15 +56,20 @@ rebuild follows) and `docs/THESIS_ARCHITECTURE.md`.
 | Buy triggers fire on the crossing | A sell or review trigger is a standing order that asks again every day its condition holds. Re-proposing a breached stop daily is by design; Dave can move it from the reject flow. |
 | 2:1 on a plan we don't own | Enforced for agents on every path. Ordering applies to everyone; the ratio never refuses Dave. |
 | Archive means never again | A refused level or a dead plan sets the plan down and keeps the stock. |
-| Sizing is three dollar settings | Smallest trade, largest trade, most in one stock. The rebuild adds exactly one more: `riskPct`. |
+| Sizing is by risk inside three dollar limits | Shares = risk dollars ÷ distance to the stop, at `riskPct` (1%) × conviction, clamped between smallest and largest trade. Open risk and market regime are proposal lines. A seat whose smallest equals its largest trade can't vary size. |
+| Sell rules live on each analyst | Seat style is the analyst's own trigger rules; the account keeps only rules every analyst shares (earnings wakes, review cadence). The per-horizon account layer is deleted. One-off rule changes on live stocks go through the popover's own functions, never a custom job. |
 | No new refusals | Judgment goes in the proposal Dave approves or in a visible flag, never in a tool that fails the run. |
-| Buy now goes through a trigger | A trigger at the live price that fires on the next check. One path for money. |
+| There is no buy-now option | Buying now is an entry price at or near the current price. A new or edited buy level measures its crossing from the price when it was written, so it isn't dead on a down day. The run that decides to buy can call `place_trade`. |
 | The vendor is the store | Prices, earnings, movers are read live. Only what the system *did* is written down. |
-| FMP is gone | Finnhub for statements, Alpaca for movers. Never probe a vendor with a mega-cap. |
-| Discovery is manual for now | Dave runs it by chat. Do not raise the paused cron. |
+| FMP is gone; Finnhub is alive | Finnhub serves quotes, statements, earnings and filings on one key at about 60 calls a minute, shared by the trigger check, writers, chat and reviews — the trigger check has first claim, and reviews never spend it during market hours. Movers come from Alpaca; live quotes are moving to Alpaca. Never probe a vendor with a mega-cap. |
+| Every price carries its age | Buys wait on a quote older than 15 minutes; sells don't. A failed or stale source is said in words to the agent and on the row. |
+| Discovery is manual by design | Dave runs it by chat. Never investigate or report the missing weekly run. |
 | No hand data fixes | A wrong row gets a code fix and a regression test. |
 | Column drops are two PRs | Schema and code first; `DROP COLUMN IF EXISTS` after that is live. |
-| No stacked PRs | Rebase onto main right after any merge. |
+| No stacked PRs | Rebase onto main right after any merge. PRs clean on main can still conflict with each other — stack-check the set before giving Dave an order. |
+| Nothing merges without Dave's click | Nor Inngest re-syncs or production events. |
+| Fixes carry a production-replay test | Built from the real input that broke, shown failing on main — or the PR goes back. |
+| No ticket ids in docs PR titles or bodies | They link and move the issue. |
 
 ## 4. Reviewing a PR
 
@@ -126,25 +138,27 @@ watch," "clock"). Explain numbers in dollars. Lead with the answer. Needs-Dave
 items are one line at the end. When he's wrong, say so with the evidence;
 when you're wrong, say so first.
 
-## 7. What's in flight on 2026-09-11
+## 7. What's in flight on 2026-09-14
 
-**Agent Rebuild** (Linear project; order 1 → 2 → 7 → 3 → 4 → 5 → 8 → 6 → 9 → 11 → 10):
+**Agents lane** (brief: `docs/prompts/AGENTS_SESSION.md`; a fresh session
+from 09-14):
 
-| Done | Next | Later |
+| Merged | Open | Next, in order |
 |---|---|---|
-| DAV-243 the chart (#628) | DAV-250 sell rules per horizon | DAV-253 the daily run, DAV-254 the tactical run |
-| DAV-244 the setup catalog (#629) | DAV-251 sizing by risk | DAV-255 discovery by screens |
-| DAV-247 triggers that fire | DAV-249 the writer (gated on DAV-246) | DAV-248 scorecard, DAV-252 insider + revisions |
+| Chart + daily snapshot; triggers that fire (dead kinds deleted); setup catalog; size by risk; scorecard by setup; insider buying; the fixes to all of these; buy-now flag deleted + down-day buy levels; price age | The writer (#644); sell rules to analysts (#645) | Live quotes from Alpaca → tactical run with setup-specific exits → daily run as portfolio manager → screens + setup-aware triage in chat → analyst templates seed analyst rules |
 
-**Earnings V1** is shipped (#621, #625, #627): beat/miss/within-N-days
-triggers off the calendar, account-level earnings wakes on every name, an
-Earnings page. First real fire expected around MU's report at the end of
-September — verify it lands as one Activity line with the numbers on it.
+**Signals lane** (brief: `docs/prompts/SIGNALS_SESSION.md`): earnings is
+live end to end (beat, miss, within-N-days, since-N-days kinds; account
+earnings wakes; Earnings page). First real fire expected around MU's report
+at the end of September — verify it lands as one Activity line with the
+numbers. SEC filings and further signals are this lane's roadmap; each new
+kind ships whole and reaches the agents through `LANES.md` §2.
 
-**Other open tickets:** DAV-256 (the five-minute "Executing" lag after an
-approval — small, worth doing), DAV-240 (watch stocks we sold), DAV-228
-(triage before dispatch), DAV-210 (shrink the two thesis tools), DAV-196
-(signals design, parked).
+**Exit test log:** 0 of 2 clean run days (09-11 and 09-14 both failed).
+
+**Other open tickets:** the approval "Executing" lag after a fill, watching
+stocks we sold, triage before dispatch, shrinking the two thesis tools,
+news signals (parked).
 
 ## 8. The exit test for "the cleanup is over"
 
@@ -152,3 +166,22 @@ Two consecutive run days where all twelve invariants pass and the review
 produces no new bug ticket. After that, the QB's default answer to "is
 something wrong?" is "no, here's the check," and feature work is the only
 work.
+
+## 9. What happened, and what it taught (2026-08-20 → 2026-09-14)
+
+Three weeks, roughly #558–#645. Every lesson below cost a day or real money.
+Hunt for the same shape in every PR.
+
+| What happened | What it taught |
+|---|---|
+| Buy triggers re-fired every day while true; MSFT's fired six times and its level was raised each time | Buys fire on the crossing; a fired buy is a decision, not a retune |
+| The 2:1 rule ran on one of three write paths, then skipped trigger-only edits (ETN stored at 0.75:1) | Ask what *other* path writes the same thing |
+| Sessions reported the "soft watch" shipped; every priced watch still carried a forced review clock, and a second time trigger duplicated it | Verify in the database; delete a duplicate concept in one PR and grep it gone |
+| A migration dropped a column still in the schema; every thesis save failed for four hours while the writer logged "Thesis persisted" | Two-PR column drops; a status line must be unable to say "fine" when the step failed |
+| FMP refused 26 of 28 book names for weeks while pulls logged "all sources ok" | Empty is not ok; probe vendors with a mid-cap |
+| Replace-all trigger edits lost ASML's target, double-spawned SMMT, left two buy triggers on a stock and stale trigger sentences | Triggers change one at a time through one write path (#617) |
+| The "done" trigger rewrite shipped two new bugs (a refused save reported as done; runs deleting their own sales from summaries) | Fix PRs need a test replayed from the real production case |
+| A buy fired at the open on Friday's price (ETN); a chat reasoned from Friday's close after the shared quote key hit its limit (NVDA) | Every price carries its age; buys wait on stale quotes; the quote budget is shared |
+| An approved order read "Executing" for five minutes after it filled | What the screen says and what happened must be the same thing |
+| The QB's findings sent Dave ten issues a day and wore him down | Two buckets only: breaks the loop, costs money. Everything else goes to Linear quietly |
+| Proposals kept adding gates, flags, settings and second paths | Delete before adding; no new refusals; one path for money; plain words |
