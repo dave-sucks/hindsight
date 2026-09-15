@@ -21,13 +21,12 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import {
   applyTriggerCooldownDefaults,
   defaultTriggersForHorizon,
-  horizonStandingRules,
+  accountStandingRules,
   mergeTriggers,
   type ThesisShape,
 } from "./defaults";
-import { rulesForHorizon } from "./load-levels";
 import { accountSeedTriggers } from "./seed-account";
-import { levelTriggersArraySchema } from "./schema";
+import { triggersArraySchema } from "./schema";
 import { triggerBucket } from "./bucket";
 import type { Trigger } from "./types";
 
@@ -231,7 +230,7 @@ const HELD_HORIZONS = ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const;
  * the thesis. A thesis-level rung beats any account rule in its bucket, so
  * stamping them froze every holding on one TARGET ladder (an 8% trail sell
  * on compounders whose mandate forbids it). They are account rules now, one
- * set per horizon — see the horizonStandingRules block below.
+ * rules on the analyst (its Triggers tab).
  */
 describe("defaultTriggersForHorizon — HELD carries only the thesis's own levels", () => {
   const CONSTANT_KINDS = new Set(["GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH", "PRICE_MOVE_PCT"]);
@@ -266,97 +265,18 @@ describe("defaultTriggersForHorizon — HELD carries only the thesis's own level
   });
 });
 
-describe("horizonStandingRules — one sell ladder per horizon (DAV-250)", () => {
-  const rules = horizonStandingRules();
-  const shape = (h: (typeof HELD_HORIZONS)[number]) =>
-    rulesForHorizon(rules, h).map((t) => [t.predicate, t.action]);
-  const trail = (pct: number, extra: object = {}) => ({ kind: "TRAILING_FROM_HIGH", pct, ...extra });
-  const gain = (pct: number, direction: "UP" | "DOWN") => ({ kind: "GAIN_FROM_ENTRY", pct, direction });
-  const move = (direction: "UP" | "DOWN") => ({ kind: "PRICE_MOVE_PCT", pct: 7, direction, window: "1D" });
-
-  it("TRADE: +7% add, +8% review, 8% trail sell, −7% sell, beat-and-fade review — no pullback add", () => {
-    expect(shape("TRADE")).toEqual([
-      [move("UP"), "ADD"],
-      [gain(8, "UP"), "REVIEW"],
-      [trail(8), "EXIT"],
-      [gain(7, "DOWN"), "EXIT"],
-      [expect.objectContaining({ kind: "AND" }), "REVIEW"],
+describe("accountStandingRules — the account carries adds, never sell rules", () => {
+  it("is the +7% and −7% add prompts and nothing else", () => {
+    const rules = accountStandingRules();
+    expect(rules.map((t) => [t.action, t.predicate])).toEqual([
+      ["ADD", { kind: "PRICE_MOVE_PCT", pct: 7, direction: "UP", window: "1D" }],
+      ["ADD", { kind: "PRICE_MOVE_PCT", pct: 7, direction: "DOWN", window: "1D" }],
     ]);
+    expect(rules.some((t) => t.action === "EXIT")).toBe(false);
   });
 
-  it("TARGET: the 12% trail only arms once the position has been up 10%", () => {
-    expect(shape("TARGET")).toEqual([
-      [move("UP"), "ADD"],
-      [move("DOWN"), "ADD"],
-      [gain(10, "UP"), "REVIEW"],
-      [trail(12, { armAtGainPct: 10 }), "EXIT"],
-      [gain(12, "DOWN"), "REVIEW"],
-      [expect.objectContaining({ kind: "AND" }), "REVIEW"],
-    ]);
-  });
-
-  it("CATALYST: no percentage sell — the event is the exit and the thesis carries the stop", () => {
-    expect(shape("CATALYST")).toEqual([
-      [move("UP"), "ADD"],
-      [move("DOWN"), "ADD"],
-      [gain(10, "DOWN"), "REVIEW"],
-    ]);
-  });
-
-  it("COMPOUNDER: a 15% give-back and the 200-day are questions; 25% is the only automatic sale", () => {
-    expect(shape("COMPOUNDER")).toEqual([
-      [move("UP"), "ADD"],
-      [move("DOWN"), "ADD"],
-      [gain(15, "UP"), "REVIEW"],
-      [trail(15), "REVIEW"],
-      [{ kind: "VS_SMA", period: 200, direction: "BELOW" }, "REVIEW"],
-      [trail(25), "EXIT"],
-      [gain(15, "DOWN"), "REVIEW"],
-    ]);
-    const exits = rulesForHorizon(rules, "COMPOUNDER").filter((t) => t.action === "EXIT");
-    expect(exits).toHaveLength(1);
-    expect(exits[0].predicate).toEqual(trail(25));
-  });
-
-  it("every sell rule is a terminal EXIT with the cooldown opt-out", () => {
-    for (const t of rules.filter((r) => r.action === "EXIT")) expect(t.cooldownDays).toBe(0);
-  });
-
-  it("the account seed fits under the level cap, with room to add", () => {
-    expect(levelTriggersArraySchema.safeParse(accountSeedTriggers()).success).toBe(true);
-    expect(accountSeedTriggers().length).toBeLessThanOrEqual(24);
-  });
-
-  it("cooldown defaults fill the gain REVIEW rungs with the 7d latch", () => {
-    const filled = applyTriggerCooldownDefaults(rulesForHorizon(rules, "TARGET"));
-    const up = filled.find((t) => t.predicate.kind === "GAIN_FROM_ENTRY" && t.predicate.direction === "UP")!;
-    expect(up.cooldownDays).toBe(7);
-  });
-
-  it("mints fresh ids on every call", () => {
-    const a = horizonStandingRules();
-    const b = horizonStandingRules();
-    for (let i = 0; i < a.length; i++) expect(a[i].id).not.toBe(b[i].id);
-  });
-});
-
-describe("rulesForHorizon — a horizon rule beats an every-horizon rule in the same bucket", () => {
-  const every: Trigger = {
-    id: "every",
-    predicate: { kind: "TRAILING_FROM_HIGH", pct: 6 },
-    action: "EXIT",
-    rationale: "every horizon",
-  };
-  const compounder: Trigger = { ...every, id: "c", predicate: { kind: "TRAILING_FROM_HIGH", pct: 25 }, horizons: ["COMPOUNDER"] };
-
-  it("the compounder gets its own 25%, not the tighter every-horizon 6%", () => {
-    expect(rulesForHorizon([every, compounder], "COMPOUNDER").map((t) => t.id)).toEqual(["c"]);
-  });
-  it("other horizons keep the every-horizon rule", () => {
-    expect(rulesForHorizon([every, compounder], "TRADE").map((t) => t.id)).toEqual(["every"]);
-  });
-  it("a thesis of another horizon never sees a scoped rule", () => {
-    expect(rulesForHorizon([compounder], "TARGET")).toEqual([]);
+  it("the account seed fits the trigger cap", () => {
+    expect(triggersArraySchema.safeParse(accountSeedTriggers()).success).toBe(true);
   });
 });
 

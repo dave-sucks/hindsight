@@ -9,7 +9,8 @@
  *
  * They are now DATA. A new account is seeded with them as ordinary
  * account rules — same shape, same pills, fully editable — and the code
- * templates become the seed, not a runtime layer.
+ * templates become the seed, not a runtime layer. Since 2026-09-14 the
+ * account seed carries no sell rules: those live on each analyst.
  *
  * ## Seeded vs deliberately empty
  *
@@ -21,7 +22,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { horizonStandingRules, reviewCadenceTrigger } from "./defaults";
+import { accountStandingRules, reviewCadenceTrigger } from "./defaults";
 import { triggerBucket } from "./bucket";
 import type { Trigger } from "./types";
 
@@ -80,10 +81,8 @@ export function accountSeedTriggers(): Trigger[] {
     // HORIZON_REVIEW_DAYS table used; a CATALYST or TRADE thesis overrides
     // it with a tighter one through the ordinary cascade.
     reviewCadenceTrigger(7),
-    // The sell rules, one set per horizon (DAV-250) — a trade's 8% trail
-    // and a compounder's 25% catastrophe line live side by side, each
-    // applying only to theses of its horizon.
-    ...horizonStandingRules(),
+    // The add prompts. Sell rules live on each analyst, not the account.
+    ...accountStandingRules(),
     ...earningsStandingTriggers(),
   ].map((t) => ({
     ...t,
@@ -165,5 +164,5 @@ export function unseededAccountFallback(accountId: string): Trigger[] {
     `[trigger-levels] account=${accountId} has no seeded standing rules — ` +
       `falling back to the code constants. Run seedAccountTriggers().`,
   );
-  return horizonStandingRules();
+  return accountStandingRules();
 }

@@ -13,15 +13,10 @@ import { accountSeedTriggers } from "./seed-account";
 import { triggerBucket } from "./bucket";
 
 describe("accountSeedTriggers", () => {
-  it("carries a sell ladder for every horizon (DAV-250)", () => {
+  it("carries the add prompts and no sell rule — sell rules live on each analyst", () => {
     const seed = accountSeedTriggers();
-    for (const h of ["TRADE", "TARGET", "COMPOUNDER"] as const) {
-      expect(
-        seed.some((t) => t.action === "EXIT" && t.predicate.kind === "TRAILING_FROM_HIGH" && t.horizons?.includes(h)),
-      ).toBe(true);
-    }
-    // No sell rule applies to every horizon — each one names its horizon.
-    expect(seed.filter((t) => t.action === "EXIT" && !t.horizons?.length)).toEqual([]);
+    expect(seed.filter((t) => t.action === "ADD")).toHaveLength(2);
+    expect(seed.filter((t) => t.action === "EXIT")).toEqual([]);
   });
 
   it("carries the earnings rules — a look before the report and a look on it", () => {
@@ -45,11 +40,8 @@ describe("accountSeedTriggers", () => {
     expect(a.every((t) => !t.id.startsWith("default:"))).toBe(true);
   });
 
-  it("emits one rule per bucket per horizon, so each horizon resolves without self-collision", () => {
+  it("emits one rung per bucket so it resolves without self-collision", () => {
     const seed = accountSeedTriggers();
-    for (const h of ["TRADE", "TARGET", "CATALYST", "COMPOUNDER"] as const) {
-      const mine = seed.filter((t) => !t.horizons?.length || t.horizons.includes(h));
-      expect(new Set(mine.map(triggerBucket)).size).toBe(mine.length);
-    }
+    expect(new Set(seed.map(triggerBucket)).size).toBe(seed.length);
   });
 });

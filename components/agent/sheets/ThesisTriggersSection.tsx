@@ -1003,16 +1003,10 @@ export function AddTriggerDialog({
   held,
   endpointBase,
   allowAbsolutePrice = true,
-  horizons,
   onChanged,
 }: {
   held: boolean;
   endpointBase: string;
-  /**
-   * Account/analyst levels: the horizons the new rule applies to — the
-   * group it was added from (DAV-250). Omitted = every horizon.
-   */
-  horizons?: string[];
   /**
    * False at the account/analyst levels: an absolute dollar level means
    * nothing applied across every ticker, so the "$ Price" criterion is
@@ -1197,7 +1191,6 @@ export function AddTriggerDialog({
           // don't post a DIRECT the user never saw. Backend still coerces, but
           // the request should match the UI.
           fireMode: showFireMode ? fireMode : undefined,
-          horizons,
         }),
       });
       if (!res.ok) {

@@ -23,10 +23,6 @@
  */
 
 import { randomUUID } from "node:crypto";
-import {
-  COMPOUNDER_CATASTROPHE_PCT,
-  COMPOUNDER_GIVEBACK_REVIEW_PCT,
-} from "@/lib/agent/knowledge/setups";
 import type { Trigger, TriggerPredicate } from "./types";
 import { triggerBucket } from "./bucket";
 
@@ -126,103 +122,19 @@ function scaleInOnPullbackTrigger(): Trigger {
   };
 }
 
-// ── Standing sell rules by horizon (DAV-250) ────────────────────────────
+// ── Account-wide standing rules ──────────────────────────────────────────
 //
-// These used to be stamped onto every thesis at mint and again at the buy
-// fill — one TARGET ladder (8% trail sell) for every holding on every seat,
-// and a thesis-level rung beats any account rule, so nothing above it could
-// ever govern. ASML/CEG/WST carried an automatic 8% sale their compounder
-// mandate forbids; winners were sold 7–17 points off their peaks.
-//
-// Now they are ACCOUNT rules, one set per horizon (Trigger.horizons), seeded
-// from here and edited in the same trigger popover as everything else. A
-// held thesis carries only what is its own — the floor, the target, the
-// catalyst exit, its review clock — and inherits its horizon's sell rules.
-// Numbers: TRADING_PLAYBOOK.md E5/F, blessed on DAV-245.
+// What every holding on the account gets: the +7% / −7% add prompts. Sell
+// rules are NOT here and are NOT stamped onto theses at mint or fill — a
+// thesis rung beats every rule above it, so a stamped copy froze one 8%
+// sell onto every holding (ASML/CEG/WST, 2026-09-08). An analyst's own
+// sell rules live on the analyst (its Triggers tab), where its style is.
 
-type H = "TRADE" | "TARGET" | "CATALYST" | "COMPOUNDER";
-
-function rule(
-  horizons: H[] | undefined,
-  predicate: TriggerPredicate,
-  action: Trigger["action"],
-  rationale: string,
-  cooldownDays?: number,
-): Trigger {
-  return {
-    id: createId(),
-    predicate,
-    action,
-    rationale,
-    ...(cooldownDays != null ? { cooldownDays } : {}),
-    ...(horizons ? { horizons } : {}),
-    source: "DEFAULT",
-  };
-}
-
-/** A beat the market sold: the strongest fade signal in earnings (playbook D4). */
-const beatAndFade = (horizons: H[]): Trigger =>
-  rule(
-    horizons,
-    {
-      kind: "AND",
-      predicates: [
-        { kind: "EARNINGS_BEAT" },
-        { kind: "PRICE_MOVE_PCT", pct: 3, direction: "DOWN", window: "1D" },
-      ],
-    },
-    "REVIEW",
-    "Beat and the stock fell 3%+ — the market wanted more. On a trade this is a review-or-exit, not a hold.",
-    7,
-  );
-
-/**
- * Every standing sell rule an account is seeded with, horizon-scoped.
- * Fresh ids per call.
- */
-export function horizonStandingRules(): Trigger[] {
+/** The account's universal add prompts. Fresh ids per call. */
+export function accountStandingRules(): Trigger[] {
   return [
-    // ── Every horizon ─────────────────────────────────────────────────
     { ...scaleInOnStrengthTrigger(), source: "DEFAULT" },
-    // Short-horizon trades exit on weakness; they don't average into a dip.
-    // One rule per horizon, so each is edited in its own horizon's group.
-    ...(["TARGET", "CATALYST", "COMPOUNDER"] as const).map(
-      (h): Trigger => ({ ...scaleInOnPullbackTrigger(), horizons: [h], source: "DEFAULT" }),
-    ),
-
-    // ── TRADE — tight: a trade is right fast or it's wrong ─────────────
-    rule(["TRADE"], { kind: "GAIN_FROM_ENTRY", pct: 8, direction: "UP" }, "REVIEW",
-      "Up 8% on a trade — take a partial or raise the stop to breakeven."),
-    rule(["TRADE"], { kind: "TRAILING_FROM_HIGH", pct: 8 }, "EXIT",
-      "Gave back 8% from the high — the trade's trail.", 0),
-    rule(["TRADE"], { kind: "GAIN_FROM_ENTRY", pct: 7, direction: "DOWN" }, "EXIT",
-      "Down 7% from entry — a trade that's wrong by this much is wrong. Cut it.", 0),
-    beatAndFade(["TRADE"]),
-
-    // ── TARGET — room to work, then a trail tied to the chart ──────────
-    rule(["TARGET"], { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" }, "REVIEW",
-      "Up 10% from entry — re-underwrite: raise the floor under real structure and arm the next milestone."),
-    rule(["TARGET"], { kind: "TRAILING_FROM_HIGH", pct: 12, armAtGainPct: 10 }, "EXIT",
-      "Gave back 12% from the high, once the position had been up 10% — bank the run.", 0),
-    rule(["TARGET"], { kind: "GAIN_FROM_ENTRY", pct: 12, direction: "DOWN" }, "REVIEW",
-      "Down 12% from entry — decide hold-vs-cut deliberately, before the floor decides for us."),
-    beatAndFade(["TARGET"]),
-
-    // ── CATALYST — the event is the exit; the thesis carries the stop ──
-    rule(["CATALYST"], { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "DOWN" }, "REVIEW",
-      "Down 10% into the catalyst — is the run-up broken, or is the event still the thesis?"),
-
-    // ── COMPOUNDER — only a named invalidation sells; price asks ───────
-    rule(["COMPOUNDER"], { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "UP" }, "REVIEW",
-      "Up 15% — check the business is doing what we said; trims only at valuation extremes."),
-    rule(["COMPOUNDER"], { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_GIVEBACK_REVIEW_PCT }, "REVIEW",
-      `Gave back ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% from the high. A question, not a sale: is the reason we bought still true?`, 7),
-    rule(["COMPOUNDER"], { kind: "VS_SMA", period: 200, direction: "BELOW" }, "REVIEW",
-      "Below the 200-day — the long trend is in question. Review the business, not the chart."),
-    rule(["COMPOUNDER"], { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_CATASTROPHE_PCT }, "EXIT",
-      `Gave back ${COMPOUNDER_CATASTROPHE_PCT}% from the high — the catastrophe line for a multi-year hold. The review at ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% should have acted long before this.`, 0),
-    rule(["COMPOUNDER"], { kind: "GAIN_FROM_ENTRY", pct: 15, direction: "DOWN" }, "REVIEW",
-      "Down 15% from entry — has the thesis broken, or only the price?"),
+    { ...scaleInOnPullbackTrigger(), source: "DEFAULT" },
   ];
 }
 

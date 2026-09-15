@@ -15,7 +15,6 @@ import { parseTriggersResilient } from "./schema";
 import { resolveLadder, type ResolvedTrigger } from "./levels";
 import type { Horizon, ThesisState } from "./defaults";
 import type { Trigger } from "./types";
-import { triggerBucket } from "./bucket";
 import { unseededAccountFallback } from "./seed-account";
 
 /** The two stored levels above a thesis, for one analyst. */
@@ -118,24 +117,6 @@ export function horizonFor(horizon: string | null): Horizon {
     : "TARGET";
 }
 
-/**
- * The account/analyst rules that apply to a thesis of horizon `h` (DAV-250).
- * One account carries a trade's sell rules and a compounder's side by side;
- * each thesis inherits its own. A rule with no `horizons` applies to every
- * horizon — unless the same level also has a rule for this horizon in the
- * same bucket, which is the more specific statement and wins regardless of
- * which is tighter.
- */
-export function rulesForHorizon(rules: Trigger[], h: Horizon): Trigger[] {
-  const scoped = rules.filter((t) => t.horizons?.includes(h));
-  const scopedBuckets = new Set(scoped.map(triggerBucket));
-  return rules.filter((t) =>
-    t.horizons?.length
-      ? t.horizons.includes(h)
-      : !scopedBuckets.has(triggerBucket(t)),
-  );
-}
-
 /** The thesis columns resolution needs. Keep selects in sync with this. */
 export interface ThesisLadderRow {
   triggers: unknown;
@@ -163,11 +144,10 @@ export function resolveThesisLadder(
   label = "thesis",
 ): ResolvedTrigger[] {
   const { analyst, account } = sources ?? EMPTY_SOURCES;
-  const h = horizonFor(thesis.horizon);
   return resolveLadder({
     thesis: parseLevelTriggers(thesis.triggers, label),
-    analyst: rulesForHorizon(analyst, h),
-    account: rulesForHorizon(account, h),
+    analyst,
+    account,
     // `state` gates the position-scoped kinds, which are meaningless
     // without a position at any level.
     state: thesisStateFor(thesis.status),
