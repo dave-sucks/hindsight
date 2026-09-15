@@ -361,8 +361,12 @@ function TriggerPill({
   // One treatment for both per the 2026-08-05 design
   // call: a dashed border. The popover names which level it is.
   const inherited = trigger.inherited ?? false;
+  // Controlled so a successful save or delete can close it. Uncontrolled, the
+  // popover stayed open after a save with its input disabled, so a second
+  // edit (IOT stop $41.40 → $41.50, 2026-09-15) never left the browser.
+  const [open, setOpen] = useState(false);
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
           <div
@@ -407,6 +411,7 @@ function TriggerPill({
         analystId={analystId}
         endpointBase={endpointBase}
         onChanged={onChanged}
+        onDone={() => setOpen(false)}
       />
     </Popover>
   );
@@ -454,6 +459,7 @@ function TriggerPopoverContent({
   analystId,
   endpointBase,
   onChanged,
+  onDone,
 }: {
   trigger: Trigger;
   direction: "LONG" | "SHORT" | null;
@@ -470,6 +476,8 @@ function TriggerPopoverContent({
    */
   endpointBase: string;
   onChanged?: () => void;
+  /** Close the popover — called after a saved value or a delete. */
+  onDone?: () => void;
 }) {
   const field = editableTriggerField(
     trigger.predicate as unknown as SharedTriggerPredicate,
@@ -557,7 +565,9 @@ function TriggerPopoverContent({
         },
       );
       if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+      setPending(false);
       onChanged?.();
+      onDone?.();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
       setPending(false);
@@ -574,6 +584,8 @@ function TriggerPopoverContent({
         body: JSON.stringify({ fireMode: next }),
       });
       if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+      // Stays open (the price may be edited next), but usable again.
+      setPending(false);
       onChanged?.();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -589,7 +601,9 @@ function TriggerPopoverContent({
         method: "DELETE",
       });
       if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+      setPending(false);
       onChanged?.();
+      onDone?.();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
       setPending(false);
