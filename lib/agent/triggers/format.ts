@@ -15,6 +15,7 @@
  */
 
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
+import { FORM_NAMES, ITEM_NAMES } from "@/lib/market-data/sec-events";
 
 /**
  * One sentence describing what the predicate evaluates. Used in pills
@@ -80,6 +81,8 @@ export function predicateSentence(p: TriggerPredicate): string {
       return p.min === p.max
         ? `${p.min} day${p.min === 1 ? "" : "s"} after the report`
         : `${p.min}–${p.max} days after the report`;
+    case "SEC_EVENT":
+      return secEventSentence(p);
     case "REVIEW_CADENCE":
       return `Every ${p.days} days since the last review`;
     // Say the conditions, not how many there are — "Any earnings beat and
@@ -235,4 +238,16 @@ export function actionGroupLabel(action: string, held?: boolean): string {
     default:
       return "Review if";
   }
+}
+
+/** "A serious SEC filing" / "An SEC filing: acquisition or sale completed (2.01)". */
+function secEventSentence(p: Extract<TriggerPredicate, { kind: "SEC_EVENT" }>): string {
+  const named = [
+    ...(p.items ?? []).map((i) => `${ITEM_NAMES[i] ?? "item"} (${i})`),
+    ...(p.forms ?? []).map((f) => FORM_NAMES[f] ?? f),
+  ];
+  const tier = p.tier === "RED" ? "A serious SEC filing" : p.tier === "MATERIAL" ? "A material SEC filing" : null;
+  if (tier && named.length) return `${tier}, or ${named.join(" or ")}`;
+  if (tier) return tier;
+  return `An SEC filing: ${named.join(" or ")}`;
 }

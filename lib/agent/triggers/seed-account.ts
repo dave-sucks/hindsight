@@ -68,11 +68,38 @@ export function earningsStandingTriggers(): Trigger[] {
 }
 
 /**
- * Accounts seeded before this date never got the earnings rules. One-time
- * top-up: `ensureAccountStandingRules` adds them and bumps the seed stamp,
- * so a later deletion by the principal sticks.
+ * SEC filings are not opt-in either (principal ruling 2026-09-15). One rule:
+ * a material filing — or anything serious — on a held or watched name wakes
+ * a review. A red filing on a stock we own goes to a tactical run the same
+ * day; the evaluator decides that from the filing, so there is no second
+ * rule to keep in step. Costs nothing until a company files.
+ * See docs/plans/SEC_FILINGS.md §4.
  */
-const EARNINGS_RULES_SINCE = new Date("2026-09-10T00:00:00Z");
+export function secFilingStandingTriggers(): Trigger[] {
+  return [
+    {
+      id: "seed:sec-material",
+      predicate: { kind: "SEC_EVENT", tier: "MATERIAL" },
+      action: "REVIEW",
+      rationale:
+        "Filed something material with the SEC — read the filing first; the code says what happened, not whether it's good. A restatement or bankruptcy breaks the numbers; an officer leaving or a deal can change the story.",
+      source: "DEFAULT",
+    },
+  ];
+}
+
+/** The standing wakes every account carries: earnings and SEC filings. */
+function standingWakeTriggers(): Trigger[] {
+  return [...earningsStandingTriggers(), ...secFilingStandingTriggers()];
+}
+
+/**
+ * Accounts seeded before this date are missing a standing wake — the
+ * earnings rules (2026-09-10) or the filing rule (2026-09-15). One-time
+ * top-up: `ensureAccountStandingRules` adds what's missing and bumps the
+ * seed stamp, so a later deletion by the principal sticks.
+ */
+const STANDING_RULES_SINCE = new Date("2026-09-15T00:00:00Z");
 
 export function accountSeedTriggers(): Trigger[] {
   return [
@@ -83,7 +110,7 @@ export function accountSeedTriggers(): Trigger[] {
     reviewCadenceTrigger(7),
     // The add prompts. Sell rules live on each analyst, not the account.
     ...accountStandingRules(),
-    ...earningsStandingTriggers(),
+    ...standingWakeTriggers(),
   ].map((t) => ({
     ...t,
     // Fresh ids: these are real stored rows now, not the synthetic
@@ -115,9 +142,9 @@ export async function seedAccountTriggers(accountId: string): Promise<boolean> {
 }
 
 /**
- * Bring an already-seeded account up to the current standing set — today,
- * the earnings rules. Runs at the top of every morning run and is a no-op
- * once the seed stamp is past `EARNINGS_RULES_SINCE`, which is what keeps
+ * Bring an already-seeded account up to the current standing set — the
+ * earnings and filing wakes. Runs at the top of every morning run and is a
+ * no-op once the seed stamp is past `STANDING_RULES_SINCE`, which is what keeps
  * it from resurrecting a rule the principal deleted: added once, stamped,
  * never again. Unseeded accounts go through the normal seed. Returns how
  * many rules were added.
@@ -131,11 +158,11 @@ export async function ensureAccountStandingRules(accountId: string): Promise<num
   if (account.triggersSeededAt == null) {
     return (await seedAccountTriggers(accountId)) ? accountSeedTriggers().length : 0;
   }
-  if (account.triggersSeededAt >= EARNINGS_RULES_SINCE) return 0;
+  if (account.triggersSeededAt >= STANDING_RULES_SINCE) return 0;
 
   const current = Array.isArray(account.triggers) ? (account.triggers as unknown as Trigger[]) : [];
   const have = new Set(current.map(triggerBucket));
-  const missing = earningsStandingTriggers()
+  const missing = standingWakeTriggers()
     .filter((t) => !have.has(triggerBucket(t)))
     .map((t) => ({ ...t, id: globalThis.crypto.randomUUID() }));
 

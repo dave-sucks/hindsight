@@ -32,6 +32,7 @@ type PredicateShape =
   | { kind: "EARNINGS_MISS"; minSurprisePct?: number }
   | { kind: "EARNINGS_WITHIN"; days: number }
   | { kind: "EARNINGS_SINCE"; min: number; max: number }
+  | { kind: "SEC_EVENT"; tier?: "RED" | "MATERIAL"; items?: string[]; forms?: string[] }
   | { kind: "REVIEW_CADENCE"; days: number }
   | { kind: "AND"; predicates: PredicateShape[] }
   | { kind: "OR"; predicates: PredicateShape[] };
@@ -136,6 +137,19 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
         max: z.number().int().min(0).max(5),
       })
       .refine((p) => p.min <= p.max, { message: "min must be ≤ max" }),
+    z
+      .object({
+        kind: z.literal("SEC_EVENT"),
+        // "At least": MATERIAL matches red filings too.
+        tier: z.enum(["RED", "MATERIAL"]).optional(),
+        // 8-K item codes, e.g. ["2.01"] for a completed acquisition.
+        items: z.array(z.string().min(4).max(5)).max(20).optional(),
+        // Forms that are an event by themselves, e.g. ["SCHEDULE 13D"].
+        forms: z.array(z.string().min(1).max(20)).max(10).optional(),
+      })
+      .refine((p) => p.tier != null || (p.items?.length ?? 0) > 0 || (p.forms?.length ?? 0) > 0, {
+        message: "SEC_EVENT needs a tier, item codes or forms",
+      }),
     z.object({
       kind: z.literal("REVIEW_CADENCE"),
       days: z.number().int().positive().max(365),
@@ -208,6 +222,11 @@ export const triggerSchema = z.object({
       "Don't re-fire this trigger more than once per N days. OMIT to use the per-predicate-kind default (EARNINGS_BEAT/MISS: 7, PRICE_* and chart kinds: 1, REVIEW_CADENCE: matches the cadence) — that's the right answer in almost every case. The value 0 ('fire every evaluation') is RESERVED for terminal EXIT triggers ONLY; passing 0 on any other action creates a 5-minute trigger-evaluator infinite loop the instant the predicate latches true (NVDA 2026-06-02 cost ~$10–15 before manual hotfix). The runtime overrides 0 with the per-kind default on every action ≠ EXIT.",
     ),
   lastFiredAt: z.string().datetime().optional(),
+  firedFilings: z
+    .array(z.string())
+    .max(50)
+    .optional()
+    .describe("Evaluator-stamped on a filing trigger: the filings it has fired on. Do not set."),
   writtenPrice: z
     .number()
     .positive()

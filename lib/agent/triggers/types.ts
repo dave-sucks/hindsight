@@ -154,6 +154,20 @@ export type TriggerPredicate =
   // is known. Fires once per report (30-day cooldown). Bounded above by
   // the evaluator's lookback (EARNINGS_LOOKBACK_DAYS).
   | { kind: "EARNINGS_SINCE"; min: number; max: number }
+  // "This company filed something with the SEC." Keyed on the 8-K item code
+  // or the form — the code IS the event (`5.02` an officer leaving, `4.02`
+  // a restatement) — never on "a 10-Q was filed", which is why the old
+  // FILING kind never meant anything. `tier` is "at least": MATERIAL
+  // matches red too. `items` / `forms` name one event, for a thesis that
+  // waits on it. Read live off EDGAR once per evaluator pass; one fire per
+  // filing, keyed on the filing's ID (`firedFilings`), not a cooldown —
+  // filings cluster. Never trades by itself. docs/plans/SEC_FILINGS.md.
+  | {
+      kind: "SEC_EVENT";
+      tier?: "RED" | "MATERIAL";
+      items?: string[];
+      forms?: string[];
+    }
 
   // ── Time-based — housekeeping or periodic worker ──────────────────────
   // "Look at this again every N days", counted from when it was last
@@ -226,6 +240,8 @@ export type Trigger = {
   cooldownDays?: number;
   /** Set by the trigger evaluator; read for cooldown gating. */
   lastFiredAt?: string; // ISO timestamp
+  /** SEC_EVENT only, evaluator-stamped: the filing IDs this trigger has fired on. */
+  firedFilings?: string[];
   /** ENTER only, server-stamped: the live price when written (./written-price). */
   writtenPrice?: number;
   writtenAt?: string; // ISO timestamp

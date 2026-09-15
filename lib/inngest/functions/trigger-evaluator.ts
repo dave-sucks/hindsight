@@ -69,6 +69,14 @@ import { getTodaySessionBars } from "@/lib/alpaca";
 import { ensureIndicatorSnapshots } from "@/lib/market-data/ensure-snapshots";
 import { describeChartFire } from "@/lib/agent/triggers/chart-context";
 import { describeCluster, insiderCluster } from "@/lib/market-data/insider-cluster";
+import { fetchBookFilings, type BookFilings } from "@/lib/market-data/sec-filings";
+import {
+  describeFiling,
+  filingNeedsSameDayLook,
+  filingsBehindFire,
+  rememberFired,
+  secEventLeaves,
+} from "@/lib/market-data/sec-events";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -133,6 +141,7 @@ function isPriceSidePredicate(p: TriggerPredicate): boolean {
     case "EARNINGS_MISS":
     case "EARNINGS_WITHIN":
     case "EARNINGS_SINCE":
+    case "SEC_EVENT":
       return true;
     case "AND":
     case "OR":
@@ -169,6 +178,11 @@ function needsUpcomingEarnings(p: TriggerPredicate): boolean {
     default:
       return false;
   }
+}
+
+/** Does this predicate read SEC filings? Drives the one EDGAR call. */
+function needsFilings(p: TriggerPredicate): boolean {
+  return secEventLeaves(p).length > 0;
 }
 
 /** Does this predicate read the daily indicator snapshot? Drives the load. */
@@ -401,6 +415,8 @@ async function stampLastFiredAt(args: {
   firedTriggerIds: string[];
   /** Rungs inherited from a level above — stamped into `triggerState`. */
   firedInheritedTriggerIds: string[];
+  /** SEC_EVENT fires: trigger id → the filing IDs it just fired on. */
+  firedFilings?: Map<string, string[]>;
   now: Date;
 }): Promise<void> {
   if (
@@ -419,13 +435,24 @@ async function stampLastFiredAt(args: {
 
     const current = parseTriggers(row.triggers, args.thesisId);
     const stampSet = new Set(args.firedTriggerIds);
-    const next = current.map((t) =>
-      stampSet.has(t.id) ? { ...t, lastFiredAt: stampedAt } : t,
-    );
+    const next = current.map((t) => {
+      if (!stampSet.has(t.id)) return t;
+      const filings = args.firedFilings?.get(t.id);
+      return {
+        ...t,
+        lastFiredAt: stampedAt,
+        ...(filings?.length ? { firedFilings: rememberFired(t.firedFilings, filings) } : {}),
+      };
+    });
 
     const state = parseTriggerState(row.triggerState);
     for (const id of args.firedInheritedTriggerIds) {
-      state[id] = { ...state[id], firedAt: stampedAt };
+      const filings = args.firedFilings?.get(id);
+      state[id] = {
+        ...state[id],
+        firedAt: stampedAt,
+        ...(filings?.length ? { firedFilings: rememberFired(state[id]?.firedFilings, filings) } : {}),
+      };
     }
 
     await tx.thesis.update({
@@ -850,6 +877,26 @@ export const triggerEvaluator = inngest.createFunction(
           })
         : { reported: new Map(), upcoming: new Map() };
 
+      // Watched SEC filings for every name carrying a filing trigger, in ONE
+      // EDGAR search call (no Finnhub). A failed read names itself and those
+      // triggers wait — the lookback plus the fired-filing memory means the
+      // next pass loses nothing.
+      const filingTickers = Array.from(
+        new Set(
+          candidates
+            .filter((c) => c.ladder.some((t) => needsFilings(t.predicate)))
+            .map((c) => c.thesis.ticker),
+        ),
+      );
+      const filingsRead: BookFilings = filingTickers.length
+        ? await fetchBookFilings({ tickers: filingTickers, now })
+        : { byTicker: new Map() };
+      if (filingsRead.error) {
+        console.error(
+          `[trigger-evaluator] SEC filings unavailable — filing triggers not evaluated this pass: ${filingsRead.error}`,
+        );
+      }
+
       const events: FiringEvent[] = [];
       for (const { thesis, analystId, ladder: triggers } of candidates) {
         // Non-null by the filter above; narrowed for the FiringEvent below.
@@ -890,6 +937,8 @@ export const triggerEvaluator = inngest.createFunction(
           // EARNINGS_WITHIN reads this — the next scheduled report, when
           // one is inside the lookahead.
           upcomingEarnings: earnings.upcoming.get(thesis.ticker) ?? null,
+          // SEC_EVENT reads this — the name's watched filings in the lookback.
+          filings: filingsRead.byTicker.get(thesis.ticker) ?? null,
           // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read the open position's
           // entry cost + water mark; absent (WATCHING) → they return false.
           position: posInfo
@@ -911,9 +960,20 @@ export const triggerEvaluator = inngest.createFunction(
         });
 
         if (fires.length === 0) continue;
+        // The filings behind each filing fire, read before the stamp
+        // remembers them.
+        const tickerFilings = filingsRead.byTicker.get(thesis.ticker);
+        const filingsByTrigger = new Map(
+          fires
+            .map((t) => [t.id, filingsBehindFire(t, tickerFilings)] as const)
+            .filter(([, f]) => f.length > 0),
+        );
         await stampLastFiredAt({
           thesisId: thesis.id,
           ...splitFiresByLevel(fires),
+          firedFilings: new Map(
+            Array.from(filingsByTrigger, ([id, f]) => [id, f.map((x) => x.accession)] as const),
+          ),
           now,
         });
         for (const t of fires) {
@@ -935,8 +995,11 @@ export const triggerEvaluator = inngest.createFunction(
           const report = earnings.reported.get(thesis.ticker);
           // An insider cluster names its buyers on the audit row (DAV-252).
           const snapBuys = indicators.get(thesis.ticker)?.insiderBuys;
-          const firedContext =
-            t.predicate.kind === "INSIDER_CLUSTER" && snapBuys
+          // A filing fire names each filing, in words, with its link.
+          const firedFilingList = filingsByTrigger.get(t.id);
+          const firedContext = firedFilingList
+            ? firedFilingList.map(describeFiling).join(" ")
+            : t.predicate.kind === "INSIDER_CLUSTER" && snapBuys
               ? describeCluster(insiderCluster(snapBuys, t.predicate.days, now))
               : needsUpcomingEarnings(t.predicate)
                 ? upcoming
@@ -996,7 +1059,11 @@ export const triggerEvaluator = inngest.createFunction(
           // the price that fired it) and skip the tactical spawn. The daily
           // run picks it up via needsAction=TRIGGER_FIRED. ENTER/EXIT/stop
           // triggers still spawn a tactical. See OPENAI_COST_REDUCTION.md #2.
-          if (action === "REVIEW") {
+          // The one exception: a red filing on a stock we own wakes a tactical
+          // run today (principal ruling 2026-09-15, SEC_FILINGS.md §4).
+          const sameDayFiling =
+            firedFilingList != null && filingNeedsSameDayLook(firedFilingList, thesis.status);
+          if (action === "REVIEW" && !sameDayFiling) {
             await writeThesisUpdate({
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",
@@ -1054,6 +1121,8 @@ export const __test__ = {
   isClosePassTick,
   needsEarningsData,
   needsUpcomingEarnings,
+  needsFilings,
+  stampLastFiredAt,
   isSignalSidePredicate,
   parseTriggers,
   evaluateThesisTriggers,

@@ -431,6 +431,8 @@ export const ADDABLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"]> = ne
   "GAP_UP",
   "RSI",
   "INSIDER_CLUSTER",
+  // A filing — reads EDGAR, no position needed, legal on a watch or a holding.
+  "SEC_EVENT",
 ]);
 
 /** Kinds that evaluate off the open position (avgCost / peakPrice). With no

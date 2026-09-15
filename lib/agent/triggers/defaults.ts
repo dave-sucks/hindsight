@@ -654,6 +654,10 @@ function defaultTriggersForHorizonInner(
  */
 export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
   switch (p.kind) {
+    case "SEC_EVENT":
+      // No cooldown: one fire per FILING (firedFilings), and filings cluster —
+      // NVDA filed three 8-Ks in 17 days; a cooldown would swallow two.
+      return 0;
     case "EARNINGS_BEAT":
     case "EARNINGS_MISS":
       return 7;

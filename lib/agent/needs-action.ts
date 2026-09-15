@@ -263,6 +263,10 @@ export function describePredicate(p: TriggerPredicate): string {
       return `reports within ${p.days}d`;
     case "EARNINGS_SINCE":
       return `${p.min}–${p.max}d after the report`;
+    case "SEC_EVENT":
+      return p.tier
+        ? `${p.tier === "RED" ? "serious" : "material"} SEC filing`
+        : `SEC filing (${[...(p.items ?? []), ...(p.forms ?? [])].join(", ")})`;
     case "AND":
       return `(${p.predicates.map(describePredicate).join(" AND ")})`;
     case "OR":
