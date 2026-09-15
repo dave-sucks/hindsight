@@ -69,7 +69,15 @@ export type TriggerOp =
     }
   | { op: "remove"; id: string }
   /** A plan level as an op — resolves to add / edit / remove on the slot's trigger. */
-  | { op: "level"; slot: LevelSlot; price: number | null };
+  | {
+      op: "level";
+      slot: LevelSlot;
+      price: number | null;
+      /** Why the level is where it is ("under the base low, 1.8 ATR") — becomes the trigger's sentence. */
+      rationale?: string;
+      /** "close" = fires only on the day's close (a buy that wants the close to confirm). */
+      basis?: "intraday" | "close";
+    };
 
 export interface TriggerOpResult {
   op: "add" | "edit" | "remove";
@@ -218,7 +226,12 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
    */
   const doEdit = (
     op: Extract<TriggerOp, { op: "edit" }>,
-    meta: { slotForText?: LevelSlot; viaLevel?: boolean; kind?: "PRICE_ABOVE" | "PRICE_BELOW" } = {},
+    meta: {
+      slotForText?: LevelSlot;
+      viaLevel?: boolean;
+      kind?: "PRICE_ABOVE" | "PRICE_BELOW";
+      basis?: "intraday" | "close";
+    } = {},
   ) => {
     const { slotForText } = meta;
     const target = stored.find((t) => t.id === op.id);
@@ -284,8 +297,14 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       if (wanted.field === "level" && slot === "ENTRY" && !tapeKnown && !meta.kind) {
         predicate = { kind: target.predicate.kind as "PRICE_ABOVE" | "PRICE_BELOW", level: wanted.value };
       }
-      // Moving the number never changes when it fires (DAV-247 review).
+      // Moving the number never changes when it fires (DAV-247 review) —
+      // unless the caller says when it fires.
       if (wanted.field === "level") predicate = withBasisOf(target.predicate, predicate);
+    }
+    if (meta.basis && (predicate.kind === "PRICE_ABOVE" || predicate.kind === "PRICE_BELOW")) {
+      const { basis: _old, ...rest } = predicate;
+      void _old;
+      predicate = meta.basis === "close" ? { ...rest, basis: "close" } : rest;
     }
     const action = op.action ?? target.action;
     let rationale = op.rationale?.trim() || target.rationale;
@@ -324,6 +343,9 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       }
       parts.push(line);
     }
+    const basisOf = (p: TriggerPredicate) => (p as { basis?: string }).basis ?? "intraday";
+    if (basisOf(predicate) !== basisOf(target.predicate))
+      parts.push(`${name}: ${basisOf(predicate) === "close" ? "fires on the close" : "fires intraday"}`);
     if (op.action && op.action !== target.action)
       parts.push(`${name}: ${target.action.toLowerCase()} → ${op.action.toLowerCase()}`);
     if (op.fireMode && op.fireMode !== (target.fireMode ?? "TACTICAL"))
@@ -400,7 +422,11 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     commit(next, { op: "add", id, ok: true, text });
   };
 
-  const doLevel = (slot: LevelSlot, price: number | null) => {
+  const doLevel = (
+    slot: LevelSlot,
+    price: number | null,
+    extra: { rationale?: string; basis?: "intraday" | "close" } = {},
+  ) => {
     // A buy level on a stock we own would re-arm a purchase (the 2026-05-19
     // shape: 35 of 36 buy tactical runs were on names already held).
     if (slot === "ENTRY" && held) {
@@ -423,15 +449,24 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         const b = (best.predicate as { level?: number }).level ?? 0;
         return (long ? a > b : a < b) ? t : best;
       });
-      return doEdit({ op: "edit", id: keep.id, level: price }, { slotForText: slot, viaLevel: true });
+      return doEdit(
+        { op: "edit", id: keep.id, level: price, ...(extra.rationale?.trim() ? { rationale: extra.rationale.trim() } : {}) },
+        { slotForText: slot, viaLevel: true, basis: extra.basis },
+      );
     }
-    const predicate = predicateFor(slot, price, direction, currentPrice);
+    const sided = predicateFor(slot, price, direction, currentPrice);
+    const predicate = extra.basis === "close" ? { ...sided, basis: "close" as const } : sided;
     const directional = direction === "LONG" || direction === "SHORT";
     const action: TriggerAction =
       slot === "ENTRY" ? (directional ? "ENTER" : "REVIEW") : slot === "FLOOR" ? "EXIT" : "REVIEW";
     const id = mintId();
     const text = `${SLOT_LABEL[slot]} set: ${money(price)}`;
-    const fresh: Trigger = { id, predicate, action, rationale: rationaleFor(slot, price, direction, held, predicate.kind) };
+    const fresh: Trigger = {
+      id,
+      predicate,
+      action,
+      rationale: extra.rationale?.trim() || rationaleFor(slot, price, direction, held, predicate.kind),
+    };
     const next = [...stored, { ...fresh, source: stamp(fresh) }];
     const blocked = ratchetReason(next);
     if (blocked) return refuse("add", id, text, blocked);
@@ -450,7 +485,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         doRemove(op.id);
         break;
       case "level":
-        doLevel(op.slot, op.price);
+        doLevel(op.slot, op.price, { rationale: op.rationale, basis: op.basis });
         break;
     }
   }

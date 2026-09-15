@@ -19,6 +19,8 @@ import { prisma } from "@/lib/prisma";
 import { inngest } from "@/lib/inngest/client";
 import { DISPATCH_CAP } from "@/lib/agent/system-prompts/discovery";
 
+import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
+
 export const dispatchThesisResearch = defineTool({
   description:
     "Dispatch a thesis-writer sub-agent to write or refresh a deep-research thesis on one " +
@@ -53,6 +55,15 @@ export const dispatchThesisResearch = defineTool({
         "Why this dispatch is happening (e.g. 'User asked for a fresh thesis on $F via " +
           "Principal Chat'). Persisted on the child run's parameters for traceability.",
       ),
+    setup_id: z
+      .enum(SETUP_IDS)
+      .optional()
+      .describe("The setup you think this is (read_knowledge_library topic:\"setup\"). The writer checks it against the chart; omit to let it choose."),
+    screen_row: z
+      .string()
+      .max(400)
+      .optional()
+      .describe("The numbers that put this name in front of you, one line (\"reported 09-10, EPS +22% vs est, revenue +6%, gapped 9% on 3.1× volume, holding above the gap-day low $41.20\")."),
     promotion_context: z
       .object({
         paperTenureDays: z.number().nullable(),
@@ -307,6 +318,16 @@ export const dispatchThesisResearch = defineTool({
     // mode is intentionally a String column on ResearchRun (not a Prisma
     // enum) so new values like "THESIS_WRITER" don't need a migration. See
     // docs/plans/THESIS_RESEARCH_V2.md §7.
+    // The suggested setup and the screen numbers ride in the reason, so the
+    // writer's "WHY YOU WERE DISPATCHED" block shows them (DAV-249).
+    const reason = [
+      args.reason,
+      args.setup_id ? `Suggested setup: ${args.setup_id} — check it against the chart; pick another or PASS if it doesn't fit.` : null,
+      args.screen_row ? `Numbers: ${args.screen_row}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
     const childRun = await prisma.researchRun.create({
       data: {
         userId: analyst.userId,
@@ -332,7 +353,7 @@ export const dispatchThesisResearch = defineTool({
           ticker: T,
           mode: args.mode,
           existingThesisId: args.existing_thesis_id ?? null,
-          reason: args.reason,
+          reason,
           parentRunId: resolvedParentRunId ?? null,
           dispatchedAt: new Date().toISOString(),
           promotionContext: effectivePromotionContext ?? null,
@@ -372,7 +393,7 @@ export const dispatchThesisResearch = defineTool({
         analystId: analyst.id,
         mode: args.mode,
         existingThesisId: args.existing_thesis_id ?? null,
-        reason: args.reason,
+        reason,
         parentRunId: resolvedParentRunId ?? null,
         forceWatchingMint: args.mode === "mint",
         promotionContext: effectivePromotionContext ?? null,

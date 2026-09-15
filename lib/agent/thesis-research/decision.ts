@@ -19,6 +19,7 @@
 import { z } from "zod";
 import { editTriggerOpSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
+import { SETUP_IDS, type Setup } from "@/lib/agent/knowledge/setups";
 
 const scoringDimSchema = z.object({
   score: z.number(),
@@ -36,7 +37,14 @@ export const thesisDecisionSchema = z.object({
   horizon: z
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
     .describe("Exit policy + trigger template. CATALYST requires catalyst_date."),
-  entry_price: z.number().optional().describe("The price you'd BUY at — a level the stock has NOT reached: above the live price for a breakout you want confirmed, below it for a pullback you want to pay. Never the current price. A priced plan needs all three of entry/target/stop; a directional view with NO level worth waiting for yet omits all three (the thesis stays LONG/SHORT + WATCHING on its review wakes, and is priced later)."),
+  setup_id: z
+    .enum(SETUP_IDS)
+    .optional()
+    .describe("The setup this plan is written on — one of YOUR SETUPS in the prompt. Required for LONG/SHORT."),
+  entry_price: z.number().optional().describe("The price you'd BUY at, from your setup's entry rule and the Price structure numbers: the base pivot for a breakout, the moving average for a pullback. When the setup's condition is already true today, the entry is at or a few cents past the live price — that is how a buy-now plan is written. A priced plan needs all three of entry/target/stop; a directional view with NO level worth waiting for yet omits all three (the thesis stays LONG/SHORT + WATCHING on its review wakes, and is priced later)."),
+  entry_on_close: z.boolean().optional().describe("true = the buy fires only on a CLOSE past entry_price (breakouts — an intraday poke fails about half the time)."),
+  stop_basis: z.string().optional().describe("Required on a priced plan: the structure the stop sits under and its distance in ATR, with the numbers (\"under the base low $207.25 — 1.6 ATR below entry\")."),
+  target_basis: z.string().optional().describe("Required on a priced plan: which rule produced the target, with the numbers (\"measured move: 11.7% base depth added to the $234.76 pivot\", \"prior high $236.54\")."),
   target_price: z.number().optional().describe("Take-profit level. Required with entry_price."),
   stop_loss: z.number().optional().describe("Where the thesis breaks. Required with entry_price."),
   catalyst_date: z.string().optional().describe("ISO date. Required when horizon=CATALYST."),
@@ -136,6 +144,10 @@ export interface DecisionValidationOpts {
     daysAgo: number;
     closeReason: string | null;
   } | null;
+  /** The setups this seat may write on (setupsForSeat). Absent = no setup check. */
+  setups?: Setup[];
+  /** Chart numbers from the pull, for the stop-distance and chase checks. */
+  chart?: { atr14: number | null; pivot: number | null; brokenOut: boolean | null } | null;
 }
 
 export interface DecisionValidationResult {
@@ -216,6 +228,44 @@ export function validateThesisDecision(
       } else {
         riskReward = shape.riskReward;
       }
+    }
+  }
+
+  // ── The setup and how its numbers were derived (DAV-249) ─────────────
+  // In-loop, like the 2:1 floor: the writer repairs in one step. Nothing
+  // downstream refuses on these.
+  const setup = d.setup_id && opts.setups ? opts.setups.find((s) => s.id === d.setup_id) : undefined;
+  if (directional && opts.setups) {
+    if (!d.setup_id) {
+      errors.push(`setup_id: required for LONG/SHORT — pick the setup this plan is written on: ${opts.setups.map((s) => s.id).join(", ")}. If none fits, PASS.`);
+    } else if (!setup) {
+      errors.push(`setup_id: ${d.setup_id} isn't one of this seat's setups (${opts.setups.map((s) => s.id).join(", ")}). Pick one of those or PASS.`);
+    }
+  }
+  if (directional && priced && entry != null && stop != null && entry > 0 && stop > 0) {
+    if (opts.setups && (!d.stop_basis || d.stop_basis.trim().length < 10)) {
+      errors.push("stop_basis: required on a priced plan — the structure the stop sits under and its distance in ATR, with the numbers.");
+    }
+    if (opts.setups && (!d.target_basis || d.target_basis.trim().length < 10)) {
+      errors.push("target_basis: required on a priced plan — which rule produced the target (measured move, prior high, R multiple), with the numbers.");
+    }
+    const atr = opts.chart?.atr14;
+    const dist = Math.abs(entry - stop);
+    if (!held && setup && atr != null && atr > 0 && dist < setup.stop.minAtr * atr) {
+      errors.push(
+        `stop_loss: $${stop} is ${(dist / atr).toFixed(2)} ATR from the $${entry} entry (ATR $${atr.toFixed(2)}). ${setup.name} needs the stop at least ${setup.stop.minAtr} ATR away — inside that it sells on an ordinary day's movement. Put it under real structure at least $${(setup.stop.minAtr * atr).toFixed(2)} from entry, or PASS.`,
+      );
+    }
+    if (!held && setup?.stop.maxPct != null && d.horizon === "TRADE" && (dist / entry) * 100 > setup.stop.maxPct) {
+      errors.push(
+        `stop_loss: $${stop} is ${((dist / entry) * 100).toFixed(1)}% from entry; a TRADE on ${setup.name} caps the stop at ${setup.stop.maxPct}%. If structure needs a wider stop, the position is smaller — not the stop wider. Tighten it, or use a longer horizon.`,
+      );
+    }
+    const pivot = opts.chart?.pivot;
+    if (!held && setup?.entry.chaseLimitPct != null && pivot != null && pivot > 0 && d.direction === "LONG" && entry > pivot * (1 + setup.entry.chaseLimitPct / 100)) {
+      errors.push(
+        `entry_price: $${entry} is ${(((entry - pivot) / pivot) * 100).toFixed(1)}% past the base pivot $${pivot.toFixed(2)}; ${setup.name}'s chase limit is ${setup.entry.chaseLimitPct}%. Buy within the limit, write the plan on a pullback setup, or PASS.`,
+      );
     }
   }
 

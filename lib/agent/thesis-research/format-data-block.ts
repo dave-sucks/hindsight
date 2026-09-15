@@ -351,9 +351,8 @@ function buildPriceStructure(s: StockDataInput): string {
   }
 
   lines.push(
-    `(These are real levels you can anchor an entry, target or stop to. ` +
-      `An entry must be a price the stock has NOT reached — a pullback BELOW the tape ` +
-      `or a breakout ABOVE it. Today's price is not an entry.)`,
+    `(These are the levels your setup's entry, stop and target come from. ` +
+      `A setup already true today is an entry at or a few cents past the live price.)`,
   );
   return lines.join("\n");
 }

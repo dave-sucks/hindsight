@@ -49,6 +49,7 @@ jest.mock("@/lib/agent/tools/update-thesis", () => ({
   updateThesis: jest.fn(),
 }));
 
+import { setupsForSeat } from "@/lib/agent/knowledge/setups";
 import {
   buildWriterResearchPrompt,
   runThesisWriterAgent,
@@ -425,5 +426,33 @@ describe("sectionArgsFrom — citation objects, not strings", () => {
       domain: "e.com",
     });
     expect(bull.bullets[1].citation).toBeUndefined();
+  });
+});
+
+describe("buildWriterResearchPrompt — setup first (DAV-249)", () => {
+  const prompt = buildWriterResearchPrompt({
+    ...baseOpts,
+    mode: "mint",
+    existingThesis: null,
+    analystName: "PEAD Specialist",
+    setups: setupsForSeat("PEAD Specialist"),
+  });
+
+  it("lists the seat's setups with their entry, stop and target rules", () => {
+    expect(prompt).toContain("YOUR SETUPS — every LONG/SHORT plan is written on one of these");
+    expect(prompt).toMatch(/^PEAD — /m);
+    expect(prompt).toMatch(/^MA_PULLBACK — /m);
+    expect(prompt).not.toMatch(/^BASE_BREAKOUT — /m);
+  });
+
+  it("buying now is an entry at the price — the old rule is gone", () => {
+    expect(prompt).toContain("that\n         is how you buy now");
+    expect(prompt).not.toMatch(/has NOT\s+reached/);
+    expect(prompt).not.toContain("never a buy level parked on today's price");
+    expect(prompt).not.toContain("MSFT go $418 → $497");
+  });
+
+  it("a renamed seat still gets setups, never none", () => {
+    expect(setupsForSeat("Some New Seat").length).toBeGreaterThan(0);
   });
 });

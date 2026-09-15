@@ -636,12 +636,13 @@ export const getTheses = defineTool({
     // complete and no match exists, the ladder was born with the thesis →
     // anchor to thesis.createdAt.
     const lastLadderEditAtByThesisId = new Map<string, Date>();
+    // Held rows for ladder health; priced watches for the stale-entry flag.
     const holdingIds = theses
-      .filter((t) => t.status === "HOLDING")
+      .filter((t) => t.status === "HOLDING" || (t.status === "WATCHING" && t.entryPrice != null))
       .map((t) => t.id);
     if (holdingIds.length > 0) {
       try {
-        const scanTake = Math.min(40 * holdingIds.length, 300);
+        const scanTake = Math.min(40 * holdingIds.length, 600);
         const auditRows = await prisma.thesisUpdate.findMany({
           where: {
             thesisId: { in: holdingIds },
@@ -667,7 +668,7 @@ export const getTheses = defineTool({
         }
         if (!scanTruncated) {
           for (const t of theses) {
-            if (t.status === "HOLDING" && !matched.has(t.id)) {
+            if (holdingIds.includes(t.id) && !matched.has(t.id)) {
               lastLadderEditAtByThesisId.set(t.id, t.createdAt);
             }
           }

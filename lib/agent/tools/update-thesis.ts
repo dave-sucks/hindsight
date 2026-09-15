@@ -40,6 +40,7 @@ import {
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
 import { pinsToKeepProtection } from "@/lib/agent/triggers/ratchet";
+import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import {
   acceptedOps,
@@ -204,11 +205,19 @@ const updateSchema = z.object({
     .describe("The target — edits the target trigger (adds one if none, null removes it). One change, one activity line."),
   stop_loss: z.number().nullable().optional()
     .describe("The floor — edits the sell-below trigger (adds one if none, null removes it). On a held stock it may only tighten."),
+  setup_id: z.enum(SETUP_IDS).optional()
+    .describe("The setup this plan is written on. Stored on the thesis; the scorecard groups results by it."),
+  stop_basis: z.string().max(240).optional()
+    .describe("Why the stop is where it is, with the chart number (\"under the base low $207.25, 1.6 ATR from entry\"). Sent with stop_loss, it becomes the floor trigger's sentence."),
+  target_basis: z.string().max(240).optional()
+    .describe("Why the target is where it is. Sent with target_price, it becomes the target trigger's sentence."),
+  entry_on_close: z.boolean().optional()
+    .describe("With entry_price: true = the buy fires only on a close past it; false = intraday."),
   entry_price: z.number().nullable().optional()
     .describe(
-      "WHERE YOU'D BUY IN — edits the buy trigger (adds one if none, null removes it). A price the stock has NOT reached, never the current quote. " +
+      "WHERE YOU'D BUY IN — edits the buy trigger (adds one if none, null removes it). The level the setup's entry rule gives. " +
       "The side follows the level: BELOW the current quote is a pullback you want to buy, ABOVE it is a breakout you want confirmed first — the buy trigger is rewritten to match, so you only have to pick the number. " +
-      "A level AT the quote is a buy condition that is already true and re-fires every cooldown until someone removes it; if you want to buy now, call place_trade. " +
+      "When the setup's condition is already true today, set it at or a few cents past the current price — that is how you buy now: it fires on the first tick through it. " +
       "REQUIRED when promoting an unresearched seed to LONG/SHORT. Not editable on a held stock — there the entry is the fill."
     ),
 
@@ -355,6 +364,7 @@ const updateSchema = z.object({
 });
 
 type UpdatePatch = Partial<{
+  setupId: string | null;
   // P1-24: `LONG | SHORT | null` only. A PASS patch writes `null` here and
   // carries the pass fact on status=PASSED (the column no longer stores
   // 'PASS' or 'PENDING').
@@ -883,9 +893,11 @@ export const updateThesis = defineTool({
         cooldownDays: e.cooldown_days,
       })),
       ...(args.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
-      ...(args.entry_price !== undefined ? [{ op: "level" as const, slot: "ENTRY" as const, price: args.entry_price }] : []),
-      ...(args.stop_loss !== undefined ? [{ op: "level" as const, slot: "FLOOR" as const, price: args.stop_loss }] : []),
-      ...(args.target_price !== undefined ? [{ op: "level" as const, slot: "TARGET" as const, price: args.target_price }] : []),
+      ...(args.entry_price !== undefined
+        ? [{ op: "level" as const, slot: "ENTRY" as const, price: args.entry_price, ...(args.entry_on_close !== undefined ? { basis: args.entry_on_close ? ("close" as const) : ("intraday" as const) } : {}) }]
+        : []),
+      ...(args.stop_loss !== undefined ? [{ op: "level" as const, slot: "FLOOR" as const, price: args.stop_loss, rationale: args.stop_basis }] : []),
+      ...(args.target_price !== undefined ? [{ op: "level" as const, slot: "TARGET" as const, price: args.target_price, rationale: args.target_basis }] : []),
     ];
 
     // A held stock inherits its horizon's sell rules (DAV-250), so a horizon
@@ -1046,6 +1058,7 @@ export const updateThesis = defineTool({
       patch.variantView =
         args.variant_view.trim().length === 0 ? null : args.variant_view;
     if (args.horizon !== undefined) patch.horizon = args.horizon;
+    if (args.setup_id !== undefined) patch.setupId = args.setup_id;
     if (args.catalyst_date !== undefined)
       patch.catalystDate = args.catalyst_date ? new Date(args.catalyst_date) : null;
     // next_review_at is gone (DAV-195 L7). Review cadence is a trigger:

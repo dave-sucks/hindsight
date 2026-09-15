@@ -705,6 +705,16 @@ export const SEAT_SETUPS: Record<string, SetupId[]> = {
   "Catalyst Event PM": ["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"],
 };
 
+/**
+ * The setups a seat may write on. A name not in SEAT_SETUPS (a renamed or
+ * new seat) gets the whole catalog rather than none — a rename must never
+ * silently empty the writer's choices.
+ */
+export function setupsForSeat(seatName: string | null | undefined): Setup[] {
+  const ids = seatName ? SEAT_SETUPS[seatName] : undefined;
+  return ids?.length ? SETUPS.filter((s) => ids.includes(s.id)) : SETUPS;
+}
+
 // ── Lookups ───────────────────────────────────────────────────────────────
 
 export function getSetup(id: string): Setup | undefined {

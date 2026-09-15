@@ -271,10 +271,9 @@ export function buildResolvedEnvelope(args: {
   } else {
     // There used to be a second ENTER_NOW branch here: no ENTER trigger and
     // an entry within 1% of the price was read as the writer saying "buy at
-    // market". A buy level is a price we have NOT reached, so that shape is
-    // no longer authorable on either write path, and reading it as an
-    // instruction laundered a defective plan into one. Rows in that state
-    // still surface — they keep their review clock.
+    // market". A buy at the price is an ordinary buy trigger now (it fires on
+    // the first tick through it), so there is nothing to infer from the
+    // distance — the trigger decides. Rows keep their review clock.
     actionability = "WAIT_FOR_TRIGGER";
   }
 
@@ -316,6 +315,8 @@ export function buildResolvedEnvelope(args: {
     dayRangePct: thesis.dayRangePct ?? null,
     composite: getThesisComposite({ scoring: thesis.scoring }),
     minConfidence: thesis.minConfidence ?? null,
+    lastLadderEditAt: thesis.lastLadderEditAt ?? null,
+    now,
   });
 
   return {

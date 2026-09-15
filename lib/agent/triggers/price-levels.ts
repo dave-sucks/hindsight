@@ -235,6 +235,10 @@ export function applyLevelArgs(args: {
   /** The resolved analyst/account levels above this thesis. */
   inherited?: ResolvedTrigger[];
   levels: { entry?: number | null; target?: number | null; floor?: number | null };
+  /** Why each level is where it is — becomes that trigger's sentence. */
+  notes?: { entry?: string; target?: string; floor?: string };
+  /** "close" = the buy fires only on the day's close. */
+  entryBasis?: "intraday" | "close";
   direction: string | null;
   status?: string | null;
   avgCost?: number | null;
@@ -244,7 +248,7 @@ export function applyLevelArgs(args: {
   mintId: () => string;
 }): { triggers: Trigger[]; columns: CanonicalLevels["columns"] } {
   const { stored, inherited, levels, direction, status, avgCost,
-    currentPrice, source, mintId } = args;
+    currentPrice, source, mintId, notes, entryBasis } = args;
   let triggers = stored;
 
   for (const [slot, price] of [
@@ -266,6 +270,8 @@ export function applyLevelArgs(args: {
       source,
       status === "HOLDING",
       currentPrice,
+      slot === "ENTRY" ? notes?.entry : slot === "FLOOR" ? notes?.floor : notes?.target,
+      slot === "ENTRY" ? entryBasis : undefined,
     );
   }
 
@@ -320,12 +326,16 @@ function setLevel(
   source?: Trigger["source"],
   held: boolean = true,
   currentPrice?: number | null,
+  note?: string,
+  basis?: "intraday" | "close",
 ): Trigger[] {
   const occupies = (t: Trigger): boolean => levelSlotOf(t, direction) === slot;
 
   if (price == null) return stored.filter((t) => !occupies(t));
 
-  const fresh = predicateFor(slot, price, direction, currentPrice);
+  const sided = predicateFor(slot, price, direction, currentPrice);
+  const fresh = basis === "close" ? { ...sided, basis: "close" as const } : sided;
+  const said = note?.trim() || null;
 
   const matches = stored.filter(occupies);
   if (matches.length > 0) {
@@ -344,7 +354,7 @@ function setLevel(
     // Moving the number never changes WHEN it fires: a "closes above $X"
     // level stays a close-basis level (DAV-247 review — the rebuild used to
     // drop `basis`, turning a close confirmation into an intraday poke).
-    const predicate = withBasisOf(keep.predicate, fresh);
+    const predicate = basis ? fresh : withBasisOf(keep.predicate, fresh);
     return stored
       .filter((t) => !occupies(t) || t.id === keep.id)
       .map((t) => {
@@ -356,8 +366,9 @@ function setLevel(
         // $969 floor sat on MU for two weeks); when the old number isn't in
         // the text, the template sentence. Unchanged number → untouched.
         const before = priceOf(t);
-        const rationale =
-          t.predicate.kind !== predicate.kind
+        const rationale = said
+          ? said
+          : t.predicate.kind !== predicate.kind
             ? rationaleFor(slot, price, direction, held, predicate.kind)
             : before != null && before !== price
               ? (moveNumberInText(t.rationale, "level", before, price) ??
@@ -394,7 +405,7 @@ function setLevel(
           : slot === "FLOOR"
             ? "EXIT"
             : "REVIEW",
-      rationale: rationaleFor(slot, price, direction, held, fresh.kind),
+      rationale: said ?? rationaleFor(slot, price, direction, held, fresh.kind),
       ...(source ? { source } : {}),
     },
   ];
@@ -513,8 +524,8 @@ function predicatePrice(
 }
 
 /**
- * A buy level is a price we have NOT reached, and which side of the tape it
- * sits on says which shape the analyst meant: above the price is a breakout
+ * Which side of the tape a buy level sits on says which shape the analyst
+ * meant: above the price is a breakout
  * they want confirmed first, below it a pullback they want to pay. One rule
  * for both directions — a short entry above the tape is a rally to sell
  * into, below it a breakdown. No quote (or a level sitting exactly ON the
