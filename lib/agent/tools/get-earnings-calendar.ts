@@ -5,8 +5,8 @@
  * date to be ready for.
  * `window: "reported"` — who reported in the LAST N days, with actual vs
  * estimate and the surprise. The discovery input: "do discovery off this
- * week's earnings" means this call, `scope: "universe"`, sorted so the
- * biggest beats come first.
+ * week's earnings" means this call, `scope: "universe"`, in the /earnings
+ * page's reading order: real companies first, then the biggest surprise.
  *
  * Reads through lib/market-data/earnings-calendar — the same shared call
  * the /earnings page and the trigger evaluator use. No signal, no router.
@@ -18,7 +18,7 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { fetchCalendarRows } from "@/lib/market-data/earnings-calendar";
+import { compareRows, fetchCalendarRows } from "@/lib/market-data/earnings-calendar";
 import type { EarningsReport as EarningsRow } from "@/lib/agent/triggers/earnings";
 
 const money = (n: number) =>
@@ -28,7 +28,7 @@ export const getEarningsCalendar = defineTool({
   description:
     "The earnings calendar, forward or back. `window: \"upcoming\"` (default): who reports in the next N days. " +
     "`window: \"reported\"`: who reported in the LAST N days, with EPS and revenue actual vs estimate and the surprise %, " +
-    "biggest beats first — use this for earnings-driven discovery (\"find names off this week's reports\"). " +
+    "real companies first, then the biggest surprise — use this for earnings-driven discovery (\"find names off this week's reports\"). " +
     "Three scopes: `scope: \"all\"` = the full firm calendar; `scope: \"universe\"` = names NOT already in your coverage " +
     "(the discovery set); `scope: \"coverage\"` = ONLY watchlist + open-position names (your book). Default is `coverage`. " +
     "For one ticker's history and beat rate use get_earnings_data instead.",
@@ -145,10 +145,16 @@ export const getEarningsCalendar = defineTool({
     // presence is a weak but cheap proxy for "covered enough to be a
     // real candidate" — companies without estimates are typically
     // micro-caps with no analyst coverage.
+    //
+    // Reported rows read in the /earnings page's order (compareRows): your
+    // names, then real companies (≥ $100M expected revenue), then the biggest
+    // surprise. Surprise alone put a $5M company "missing by 374%" first and
+    // pushed IOT below the visible cut on 2026-09-13.
+    const byReadingOrder = compareRows(coverageSet);
     const sorted = [...filtered]
       .sort((a, b) =>
         window === "reported"
-          ? Math.abs(b.surprisePct ?? 0) - Math.abs(a.surprisePct ?? 0)
+          ? byReadingOrder(a, b)
           : a.reportDate.localeCompare(b.reportDate),
       )
       .filter((r) => (scope === "universe" ? r.epsEstimate != null : true));
