@@ -13,6 +13,11 @@
 > file compressed the fix to "let the writer say buy now"; that was one
 > item of thirty. This version is the full map.
 >
+> **Progress (2026-09-15):** PRs 1, 2, 3, 4, 8, 10 (insider only) and 11 are
+> merged; PR 7 is half done (see §7); PRs 5, 6 and 9 are not started. §7 is
+> the progress report, the problems found while building, and what's left —
+> read it before §4.
+>
 > **Status:** final after Dave's line-by-line review (2026-09-10). Section 1
 > is what's wrong, stage by stage, with the evidence. Section 2 is what each
 > stage becomes. Section 3 is the trigger vocabulary. Section 4 is the PR list
@@ -285,14 +290,20 @@ re-priced, converted to NOW, or set down.
 
 ### 2.6 The sell side → per horizon, per setup
 
-Replace the single account ladder with per-horizon DEFAULT ladders in the
-cascade that already exists, and wire the compounder template:
+> **Superseded in part (2026-09-14, Dave's ruling):** these rules live on
+> each **analyst's own trigger rules** (the analyst level of the cascade),
+> not as a horizon layer on the account. #638 built the horizon layer; #645
+> deleted it. The table below is still the target content per seat's style;
+> §7 lists what is actually live.
+
+Replace the single account ladder with per-seat sell rules, and wire the
+compounder template:
 
 | Horizon | Rungs |
 |---|---|
 | TRADE | +8% review; partial-sell rung at 2R; trail = close under the 10/20-day or 3 ATR chandelier (sell, DIRECT-eligible); −7% sell; 20-day no-progress review |
 | TARGET | +10% review; partial at 2R (optional per setup); after +10%: max(3 ATR, 12–15%) trail; −12% review; 8-week-rule flag when +20% inside 3 weeks (hold, don't sell the partial) |
-| CATALYST | structural stop; exit at event / T+30 (exists); −10% review; run-up variant: sell 1–2 weeks before |
+| CATALYST | structural stop; exit at event / T+30 (**not buildable yet** — no trigger reads `Thesis.catalystDate`; see §7); run-up variant: sell 1–2 weeks before |
 | COMPOUNDER | +15% review; 15% give-back **review**; close < 200-day review; **25% sell**; −15% review; 60-day business checkpoint |
 
 #621 already seeds three account-level earnings rules on every held and
@@ -349,11 +360,13 @@ earnings calendar. Then:
 | `GAP_UP {minPct, minVolRatio}` | earnings/news gap | snapshot | new |
 | `RSI {period: 2\|14, …}` | real computation | snapshot | fix the stub |
 | `EARNINGS_WITHIN {days}` | pre-print heads-up ("reports within N days") | #621 calendar | **built, #621** |
-| `EARNINGS_SINCE {min,max}` | PEAD's entry window ("1–3 days after the print") | same calendar (`reportDate`) | requested from the #621 session; else PR 2 |
+| `EARNINGS_SINCE {min,max}` | PEAD's entry window ("1–3 days after the print") | same calendar (`reportDate`) | **built, #621** |
 | `EARNINGS_BEAT/MISS {minSurprisePct?}` | reported EPS vs estimate | #621 calendar | **built, #621** |
-| `INSIDER_CLUSTER {minBuyers, days}` | | daily Form-4 job | new, later |
-| `ESTIMATE_REVISION {direction, days}` | | vendor-dependent | later |
-| `AND` / `OR` | | | exists — finally used |
+| `INSIDER_CLUSTER {minBuyers, days}` | | daily Form-4 job | **built, #634** |
+| `ESTIMATE_REVISION {direction, days}` | | vendor-dependent | no vendor — not added |
+| `AND` / `OR` | | | exists in the model and evaluator; **the Add Trigger dialog can't build one** (§7) |
+| *event date* `{daysBefore\|daysAfter}` off `Thesis.catalystDate` | Catalyst's "the event is the exit" and T+30 | thesis field | **not built — needed** (§7) |
+| *days held* `{days}` (with `AND` on gain, for "no progress in N days") | the E6 time limits | position open date | **not built — needed** (§7) |
 
 **Deleted in PR 2, not parked:** `GUIDANCE_CHANGE`, `FILING`, `SIGNAL_TYPE`
 (and any `TIME_ELAPSED` remnant) — they cannot fire and will not until a
@@ -464,9 +477,9 @@ rules session; then Dave's click. Nothing else.
 4. The held-name migration list in PR 7 (lowering a trail is your act).
    Blocks PR 7's migration step only; the defaults ship regardless.
 
-**This week, no code:** lower the ASML/CEG/WST trails to 15% yourself
-until PR 7; decide MSFT (buy now or set down); sell or move the floor on
-SRRK and MU; keep discovery paused until PR 9.
+**Done since:** ASML/CEG/WST's own 8% sell removed (09-14; the Compounder's
+25% governs them); smallest trade lowered on each analyst (09-14); CEG's
+8%-rule sale rejected. Discovery stays manual by design — chat is the door.
 
 **Coordination with #621 (the market-data session):** it owns the earnings
 calendar module, the three earnings trigger kinds, the account earnings
@@ -479,3 +492,88 @@ tiny estimate" rule from prompt prose into `surprisePct` itself.
 **Not in this plan:** news tiers (D13) stay parked with the Signals
 project; PDUFA calendars have no vendor; statistical proof of any seat's
 edge needs the scorecard and months.
+
+---
+
+## 7. Progress, problems found, and what's left (2026-09-15)
+
+### Merged
+
+| PR | Ticket | What landed | Where |
+|---|---|---|---|
+| 1 The chart | DAV-243 | one year of bars, averages, ATR, pivot/base, RS vs SPY (#628, fixes #636) | `lib/market-data/price-structure.ts` |
+| 2 Triggers that fire | DAV-247 | indicator snapshot; VOLUME_RATIO, NEW_HIGH, NEAR_SMA, VS_SMA, PCT_FROM_52W_HIGH, RS_VS_SPY, GAP_UP, RSI, 5D/20D, close basis; dead kinds deleted (#630) | `lib/agent/triggers/`, `lib/market-data/indicator-snapshot.ts` |
+| 3 Setup catalog | DAV-244 | twelve setups, seat → setup map (#629) | `lib/agent/knowledge/setups.ts` |
+| 4 The writer | DAV-249 | `setup_id`, `stop_basis`/`target_basis`, `entry_on_close`, ATR/max-%/chase checks, `ENTRY_STALE` (#644) | `lib/agent/thesis-research/decision.ts`, `run-thesis-writer.ts` |
+| 8 Sizing by risk | DAV-251 | `riskPct`, conviction multipliers, heat cap, proposal lines (#632) | `lib/agent/position-sizing.ts` |
+| 10 Insider buying | DAV-252 | Form-4 cluster job + `INSIDER_CLUSTER` (#634). Estimate revisions: no vendor | `insider-cluster.ts` (Signals lane now owns it) |
+| 11 Scorecard by setup | DAV-248 | per-setup R, win rate, give-back (#633); fills in from #644 onward | scorer + /performance |
+| — Buy-now flag deleted | — | `fireOnMatch` gone; a buy written after the prior close measures its crossing from the price it was written at (#641) | `lib/agent/triggers/written-price.ts` |
+| — DEFAULT level deleted | — | cascade is thesis > analyst > account (#640) | `lib/agent/triggers/levels.ts` |
+| — Price age | DAV-261 | one place decides how old a price is; buys wait on a stale quote; research says so in words (#643) | `lib/market-data/quote-age.ts` |
+
+### Half done — PR 7, sell rules (DAV-250)
+
+- **Landed:** a buy no longer stamps sell rules onto the stock (#638);
+  `armAtGainPct` (a trail that arms once up X%); the horizon layer #638 added
+  was deleted by #645 on Dave's ruling — seat style lives on analyst rules.
+- **Live rules (set 09-14 through the popover's functions):** account — ±7%
+  day adds, 7-day review, earnings heads-up/beat/miss. PEAD — sell 12% off
+  the high once up 10%, reviews at +10% / −12%. Catalyst — review at −10%.
+  Compounder — review 15% off the high, sell 25% off the high, review below
+  the 200-day. NVDA and IOT carry their own 8% sell.
+- **Lost with #645, not re-added:** beat-and-down-3% review (was TRADE/TARGET);
+  the Compounder's +15% / −15% from entry reviews.
+- **Never built:** partial sale at 2R, the 8-week hold, the E6 time limits,
+  the ATR trail.
+
+### Not started
+
+- **PR 5 — the daily run** (DAV-253).
+- **PR 6 — the tactical run** (DAV-254). Also takes the breakout volume
+  check left out of #644 and writing a stock's own exit rules from its setup
+  after a buy.
+- **PR 9 — discovery by screens** (DAV-255). **Changed scope:** a chat tool
+  only, the Sunday cron stays off (discovery is manual by design). **Guard:**
+  the principal chat's earnings-discovery guidance in `lib/agent/modes.ts`
+  and `get_earnings_calendar(window:"reported")` must keep working — only the
+  discovery run's own prompt may change. MARKET_DATA.md's post-earnings and
+  momentum screens are this PR's (the Signals lane handed them over).
+- **DAV-264 — live quotes from Alpaca.** Probe with SMMT first.
+
+### Problems found while building (open)
+
+1. **The seats' sell rules weren't derived from this playbook.** Catalyst's
+   −10% review is not in Part E/F; its real rule (the event is the exit, out
+   by T+30) can't be written. Redo each seat's rules from E5/E6/F in one
+   reviewed pass, with Dave.
+2. **No event-date trigger.** `Thesis.catalystDate` exists, the writer sets
+   it, the run context reads it — no trigger reads it. Agents lane.
+3. **No days-held trigger.** `REVIEW_CADENCE` counts from the last review,
+   not from the buy. The E6 time limits need it. Agents lane.
+4. **The Add Trigger dialog can't build a two-condition trigger.** Code and
+   stored defaults can; a hand-built one can't.
+5. **Held stocks still carry stamped copies of the old account rules**
+   (8% sell, +10 / −12 reviews) from before #638. A stock's own rule beats
+   its analyst's, so PEAD's 12%-armed trail never applies to FIVE or MU.
+6. **The account's ±7% add includes a 7% down day on every stock** — against
+   "never average down" for trades.
+7. **Account-wide reviews:** the recommendation to put +10% / −12% reviews
+   and the 8% sell back on the account (analysts override where their style
+   differs) is awaiting Dave.
+8. **The writer's chart checks skip silently when no chart loads.** Say so in
+   the result (a line, not a refusal).
+9. **The tactical run reads yesterday's close when the live price fails**
+   (DAV-265, CEG 09-14).
+10. **#644's live proof hasn't run:** re-dispatch DOCU, FIVE, HPE (Dave's go).
+
+### Coordination with the Signals lane (settled 09-15)
+
+- The Signals lane owns vendor data and the kinds that read it (earnings,
+  SEC filings — DAV-266 / #639, insider). **All other trigger vocabulary is
+  the Agents lane's:** event date, days held, the dialog's two-condition
+  builder.
+- The SEC filing kind (`SEC_EVENT`) is signed off by this lane on shape; its
+  four decisions are Dave's. It fires through the existing evaluator into
+  the tactical run — no second run path.
+

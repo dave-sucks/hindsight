@@ -138,14 +138,14 @@ watch," "clock"). Explain numbers in dollars. Lead with the answer. Needs-Dave
 items are one line at the end. When he's wrong, say so with the evidence;
 when you're wrong, say so first.
 
-## 7. What's in flight on 2026-09-14
+## 7. What's in flight on 2026-09-15
 
 **Agents lane** (brief: `docs/prompts/AGENTS_SESSION.md`; a fresh session
 from 09-14):
 
 | Merged | Open | Next, in order |
 |---|---|---|
-| Chart + daily snapshot; triggers that fire (dead kinds deleted); setup catalog; size by risk; scorecard by setup; insider buying; the fixes to all of these; buy-now flag deleted + down-day buy levels; price age | The writer (#644); sell rules to analysts (#645) | Live quotes from Alpaca → tactical run with setup-specific exits → daily run as portfolio manager → screens + setup-aware triage in chat → analyst templates seed analyst rules |
+| Chart + daily snapshot; triggers that fire (dead kinds deleted); setup catalog; size by risk; scorecard by setup; insider buying; the fixes to all of these; buy-now flag deleted + down-day buy levels; price age; the writer (#644); sell rules to analysts (#645) | None. Unrun: #644's live proof (DOCU/FIVE/HPE). Open problems: `AGENT_REBUILD.md` §7 | Seat sell rules redone from the playbook (with Dave) → live quotes from Alpaca → tactical run with setup-specific exits (needs event-date and days-held triggers) → daily run as portfolio manager → screens + setup-aware triage in chat → analyst templates seed analyst rules |
 
 **Signals lane** (brief: `docs/prompts/SIGNALS_SESSION.md`): earnings is
 live end to end (beat, miss, within-N-days, since-N-days kinds; account
