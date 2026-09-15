@@ -48,6 +48,7 @@ An invalid trigger is dropped at evaluation, so the gate rejects it up front.
 | `EARNINGS_BEAT` / `EARNINGS_MISS` | Earnings surprise — reported EPS vs estimate, read off the Finnhub calendar on the cron (one firm-wide call per pass; `triggers/earnings.ts`). Fires at the first open after the report, once per report (3-day lookback inside the 7-day cooldown). The audit row carries the figures. | `minSurprisePct?` |
 | `EARNINGS_WITHIN` | The heads-up **before** a report: "this stock reports within N days." Same calendar call, 14-day lookahead. Fires once per approaching report (30-day cooldown). The audit row carries the date, bell, and estimates. | `days` (1–14) |
 | `EARNINGS_SINCE` | The window **after** a report: "reported between min and max days ago" (0 = the report day). The post-report drift entry window, once the reaction is known. Same calendar, 5-day lookback. Fires once per report (30-day cooldown). | `min`, `max` (0–5) |
+| `SEC_EVENT` | The company filed something with the SEC. Keyed on the 8-K item code or the form, never "a 10-Q was filed". `tier` is "at least" (MATERIAL matches serious too); `items` / `forms` name one event. Read live off EDGAR — one search call per pass for every name carrying a filing trigger, 4-day lookback. **One fire per filing** (the filing IDs are remembered on the trigger, or in `triggerState` for an inherited rule); no cooldown, because filings cluster. A serious filing on a HOLDING spawns a tactical run the same day; everything else goes to the next daily review. The tier table is `lib/market-data/sec-events.ts`. | `tier` (RED / MATERIAL), `items` (8-K codes), `forms` |
 | `REVIEW_CADENCE` | N days since the last actual review (`lastReviewedAt`) | `days` |
 | `AND` / `OR` | Composite | `predicates[]` |
 
@@ -145,6 +146,7 @@ sharing the pure `evaluateTrigger` in `triggers/evaluate.ts`:
 | `VOLUME_RATIO` / `GAP_UP` | ✅ (snapshot + today's volume) | — | ❌ (no volume on that path) |
 | `PRICE_ABOVE` / `PRICE_BELOW` `basis:"close"` | ✅ **close pass only** (16:20–16:34 ET) | — | ✅ (read as a plain level) |
 | **`EARNINGS_BEAT` / `EARNINGS_MISS` / `EARNINGS_WITHIN` / `EARNINGS_SINCE`** | ✅ **fires** (calendar) | ✅ (beat/miss only, if a signal ever carries a surprise) | — |
+| **`SEC_EVENT`** | ✅ **fires** (EDGAR) | — | — |
 | `REVIEW_CADENCE` | ✅ | — | ✅ |
 
 **The Movement-Amount nuance (read this):** a **daily** (`1D`) `PRICE_MOVE_PCT`

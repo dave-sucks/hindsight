@@ -157,8 +157,9 @@ export interface EarningsDataData {
 
 /** get_sec_filings → data */
 export interface SecFilingsData {
-  filings: { type: string; date: string; description: string }[];
+  filings: { type: string; date: string; description: string; items: string[]; tier: "RED" | "MATERIAL" | "CONTEXT"; url: string }[];
   count: number;
+  error?: string;
 }
 
 /** read_signals → data */

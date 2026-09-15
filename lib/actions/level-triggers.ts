@@ -69,6 +69,9 @@ export const LEVEL_ELIGIBLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"
     "RS_VS_SPY",
     "GAP_UP",
     "INSIDER_CLUSTER",
+    // "A material SEC filing" means the same on every ticker; a biotech
+    // analyst's "other events (8.01)" rule is a standing rule too.
+    "SEC_EVENT",
   ]);
 
 export interface LevelTriggerContext {

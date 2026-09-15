@@ -113,6 +113,12 @@ export interface LadderLevels {
    */
   triggerState?: Record<string, string | null | undefined>;
   /**
+   * The same per-thesis bookkeeping for a filing trigger (SEC_EVENT): the
+   * filings an INHERITED rung has already fired on for this thesis.
+   * Thesis-level rungs keep `firedFilings` inline.
+   */
+  firedFilingsState?: Record<string, string[] | undefined>;
+  /**
    * Which level the caller is rendering FROM. Everything below it is
    * inherited; rungs at this level are owned and editable.
    *
@@ -313,7 +319,15 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
         ? (input.triggerState?.[t.id] ?? undefined)
         : t.lastFiredAt;
 
-      out.push({ ...t, lastFiredAt: lastFiredAt ?? undefined, level, inherited });
+      const firedFilings = inherited ? input.firedFilingsState?.[t.id] : t.firedFilings;
+
+      out.push({
+        ...t,
+        lastFiredAt: lastFiredAt ?? undefined,
+        ...(firedFilings?.length ? { firedFilings } : {}),
+        level,
+        inherited,
+      });
     }
   }
 

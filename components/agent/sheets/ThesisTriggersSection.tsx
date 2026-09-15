@@ -108,6 +108,7 @@ import {
   levelScopeLabel,
   levelBadgeLabel,
 } from "@/lib/agent/triggers/format";
+import { FORM_NAMES, ITEM_NAMES } from "@/lib/market-data/sec-events";
 import {
   isDirectEligiblePredicate,
   type TriggerPredicate as SharedTriggerPredicate,
@@ -217,6 +218,15 @@ function predicateKindValue(p: TriggerPredicate): {
         kind: "after the report",
         value: p.min != null && p.max != null ? (p.min === p.max ? plural(p.min, "day") : `${p.min}–${p.max} days`) : null,
       };
+    case "SEC_EVENT":
+      return {
+        kind: "sec filing",
+        value: p.tier
+          ? p.tier === "RED"
+            ? "serious"
+            : "material"
+          : [...(p.items ?? []).map((i) => `${i} ${ITEM_NAMES[i] ?? ""}`.trim()), ...(p.forms ?? []).map((f) => FORM_NAMES[f] ?? f)].join(", "),
+      };
     case "REVIEW_CADENCE":
       return {
         kind: "review every",
@@ -298,6 +308,12 @@ function predicateDescription(p: TriggerPredicate): string {
       return `Fires once when the next earnings report is ${p.days} day${p.days === 1 ? "" : "s"} away or closer — the heads-up to size for it.`;
     case "EARNINGS_SINCE":
       return `Fires once when the last earnings report is ${p.min}–${p.max} days old — the window to act on the reaction.`;
+    case "SEC_EVENT":
+      return p.tier === "RED"
+        ? "Fires once per filing when the company files something serious with the SEC — a restatement, bankruptcy, delisting notice, auditor change or late report. On a stock we own it wakes an agent the same day."
+        : p.tier === "MATERIAL"
+          ? "Fires once per filing when the company files something material with the SEC — an officer leaving, a major deal, layoffs, a write-down, new shares or bonds, an activist stake — or anything serious."
+          : `Fires once per filing when the company files ${predicateSentence(p).replace(/^An SEC filing: /, "")}. Read the filing — the code says what happened, not whether it's good.`;
     case "REVIEW_CADENCE":
       return `The agent reviews this name every ${p.days} days, counting from its last real review.`;
     case "AND":
@@ -905,7 +921,29 @@ export function TriggerGroups({
 //   snapshot, legal on a watch or a holding.
 // All fire through the same evaluator → trigger pipeline as every trigger.
 
-type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL" | "CADENCE" | "EARNINGS" | "CHART";
+type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL" | "CADENCE" | "EARNINGS" | "FILING" | "CHART";
+
+// Filing → one SEC event, or a tier of them. The code is the event; the
+// tier table is lib/market-data/sec-events.
+const FILING_OPTIONS: ReadonlyArray<{ v: string; l: string }> = [
+  { v: "tier:MATERIAL", l: "Any material filing" },
+  { v: "tier:RED", l: "Only serious filings" },
+  { v: "item:5.02", l: "Officer leaving or joining" },
+  { v: "item:1.01", l: "Major agreement signed" },
+  { v: "item:2.01", l: "Acquisition completed" },
+  { v: "item:2.05", l: "Restructuring or layoffs" },
+  { v: "item:3.02", l: "Shares sold privately" },
+  { v: "item:8.01", l: "Other events (where FDA outcomes land)" },
+  { v: "form:SCHEDULE 13D", l: "Activist stake" },
+  { v: "form:424B5", l: "Shares or bonds offered" },
+];
+
+function filingPredicate(v: string): Record<string, unknown> {
+  const [type, code] = [v.slice(0, v.indexOf(":")), v.slice(v.indexOf(":") + 1)];
+  if (type === "tier") return { kind: "SEC_EVENT", tier: code };
+  if (type === "item") return { kind: "SEC_EVENT", items: [code] };
+  return { kind: "SEC_EVENT", forms: [code] };
+}
 
 type ChartKind =
   | "NEAR_SMA"
@@ -1029,6 +1067,7 @@ export function AddTriggerDialog({
   const [moveWindow, setMoveWindow] = useState<"1D" | "5D" | "20D">("1D");
   const [chartKind, setChartKind] = useState<ChartKind>("NEAR_SMA");
   const [chartParam, setChartParam] = useState<string>("50");
+  const [filingEvent, setFilingEvent] = useState<string>("tier:MATERIAL");
   const [fireMode, setFireMode] = useState<"TACTICAL" | "DIRECT">("DIRECT");
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1045,6 +1084,8 @@ export function AddTriggerDialog({
   /** Day-valued criteria: integer input, "days" suffix, no direction. */
   const isDays = isCadence || isEarnings;
   const isChart = criterion === "CHART";
+  // A filing has no number to type — the event is the whole condition.
+  const isFiling = criterion === "FILING";
   const chartParams = isChart ? chartParamOptions(chartKind) : null;
   const chartTakesValue = isChart && chartHasValue(chartKind);
   const chartDirectional = isChart && (chartKind === "VS_SMA" || chartKind === "RSI");
@@ -1074,6 +1115,7 @@ export function AddTriggerDialog({
     ...(held ? ([{ v: "GAIN", l: "% Gain" }, { v: "TRAIL", l: "% Trail" }] as const) : ([] as const)),
     { v: "CADENCE", l: "Agent Watch" },
     { v: "EARNINGS", l: "Earnings" },
+    { v: "FILING", l: "Filing" },
     { v: "CHART", l: "Chart" },
   ];
 
@@ -1095,7 +1137,7 @@ export function AddTriggerDialog({
     if (criterion === "GAIN") setDir("UP");
     else if (criterion === "MOVE") setDir("DOWN");
     else if (criterion === "PRICE") setDir("BELOW");
-    if (criterion === "CADENCE" || criterion === "EARNINGS") setAction("REVIEW");
+    if (criterion === "CADENCE" || criterion === "EARNINGS" || criterion === "FILING") setAction("REVIEW");
     if (criterion === "CHART") setDir("ABOVE");
   }, [criterion]);
 
@@ -1124,7 +1166,7 @@ export function AddTriggerDialog({
         (chartKind !== "NEAR_SMA" || num <= 10) &&
         (chartKind !== "INSIDER_CLUSTER" || (Number.isInteger(num) && num <= 10)))
     : null;
-  const valid = chartValid ?? (
+  const valid = isFiling ? true : chartValid ?? (
     val.trim() !== "" &&
     Number.isFinite(num) &&
     num > 0 &&
@@ -1163,7 +1205,9 @@ export function AddTriggerDialog({
           return { kind: "INSIDER_CLUSTER", minBuyers: num, days: Number(chartParam) };
       }
     };
-    const predicate = isChart
+    const predicate = isFiling
+      ? filingPredicate(filingEvent)
+      : isChart
       ? chartPredicate()
       : isEarnings
       ? { kind: "EARNINGS_WITHIN", days: num }
@@ -1325,6 +1369,27 @@ export function AddTriggerDialog({
           </ButtonGroup>
         ) : null}
 
+        {isFiling ? (
+          <Select
+            value={filingEvent}
+            onValueChange={(v) => {
+              if (typeof v === "string") setFilingEvent(v);
+            }}
+            disabled={pending}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue>{FILING_OPTIONS.find((o) => o.v === filingEvent)?.l ?? ""}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {FILING_OPTIONS.map((o) => (
+                <SelectItem key={o.v} value={o.v}>
+                  {o.l}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
+
         {/* When: a price level can wait for the close; a move has a window. */}
         {criterion === "PRICE" || isMove ? (
           <Select
@@ -1370,7 +1435,7 @@ export function AddTriggerDialog({
             [ Above ▾ | $ ____ ]  ·  [ Up ▾ | ____ % ]. Trailing from high
             has no direction (orientation follows the thesis direction), so
             the group collapses to the % input alone. */}
-        {isChart && !chartTakesValue && !chartDirectional ? null : (
+        {isFiling || (isChart && !chartTakesValue && !chartDirectional) ? null : (
         <ButtonGroup className="w-full">
           {isTrail || isDays || (isChart && !chartDirectional) ? null : (
             <Select
@@ -1439,7 +1504,9 @@ export function AddTriggerDialog({
         )}
 
         <p className="text-xs text-muted-foreground">
-          {isChart
+          {isFiling
+            ? predicateDescription(filingPredicate(filingEvent) as unknown as TriggerPredicate)
+            : isChart
             ? chartHelp(chartKind, chartParam, dir)
             : isEarnings
             ? "Fires once when the next earnings report is this many days away — the heads-up to decide whether to hold through it, trim, or wait. Beat and miss are separate triggers the analyst sets."

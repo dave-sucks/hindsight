@@ -5,9 +5,10 @@
 > writer and discovery read it, and where you see it in the app. The same
 > shape as earnings (`docs/plans/MARKET_DATA.md` §0a).
 >
-> **Status:** proposal, written 2026-09-12. Nothing built. Four decisions for
-> the principal at the end (§9). Two things here touch the agent rebuild's
-> territory and need that session's agreement first (§7).
+> **Status (2026-09-15):** the trigger is built — see §10 for what landed,
+> what's next in this lane, and what went to the Agents lane as tickets.
+> Written 2026-09-12. The four decisions in §9 are ruled; the rebuild signed
+> off on the trigger shape.
 
 ---
 
@@ -272,3 +273,42 @@ a page), larger on the playbook.
 3. **The biotech/catalyst analyst rule** for `8.01` / `7.01`. *(Recommended:
    yes, only on those seats.)*
 4. **A real contact email** for SEC's User-Agent requirement. Which address?
+
+**Ruled 2026-09-15:** 1 yes, 2 yes, 3 yes (on the biotech and catalyst seats
+only). 4 is open: the address goes in `SEC_CONTACT_EMAIL`; until it's set
+the reader sends the old address.
+
+---
+
+## 10. What was built, and what's left
+
+**Built** (this lane, one PR):
+
+- `lib/market-data/sec-events.ts` — the tier table in code, the plain names,
+  matching a trigger, the fired-filing memory, the same-day rule.
+- `lib/market-data/sec-filings.ts` — the EDGAR reader: one search call for
+  the book, the ticker list held for a day, one retry on EDGAR's
+  intermittent 500, and a failed read that says so.
+- `SEC_EVENT` whole: type, schema, evaluator, sentence, pill, the **Filing**
+  choice in the Add Trigger dialog, legal as an analyst or account rule.
+- One account rule, not two: `SEC_EVENT {tier: MATERIAL} → REVIEW`. The
+  evaluator decides urgency from the filing itself — a red filing on a
+  holding goes to a tactical run today — so there's no second rule to keep
+  in step with the first.
+- `get_sec_filings` reads the same reader: item codes in words, tier, link;
+  the writer's data block shows the same lines and names a failed read.
+
+**Measured live, the 32 names on the book, last 90 days:** 92 watched filings
+on 31 names; 25 material, 1 red (PRAX, auditor change, Jul 2 — a watch). About
+two review wakes a week. In the 4 days before this landed: one material
+(BMRN, officer change, Sep 14).
+
+**Next in this lane:** the stock page's Filings tab and the thesis sheet line
+(§8); activist-stake discovery in the chat through the tool (whole-market
+mode).
+
+**To the Agents lane, as tickets** (they own the prompts, the analyst rules
+and dispatch): the per-event playbook in the daily run, tactical run and
+writer (§5); the "filings on your book since the last run" line; the
+biotech/catalyst analyst rule for `8.01` / `7.01`; the red-flag check before
+the writer is dispatched (§6).

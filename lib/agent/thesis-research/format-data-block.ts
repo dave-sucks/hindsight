@@ -148,7 +148,9 @@ interface PeersInput {
 }
 
 interface FilingsInput {
-  filings: { type: string; date: string; description: string }[];
+  filings: { type: string; date: string; description: string; tier?: string }[];
+  /** Set when EDGAR couldn't be read — said in words, never as "no filings". */
+  error?: string;
 }
 
 export interface DataBlockInputs {
@@ -603,10 +605,12 @@ function buildPeers(p: PeersInput | null, targetTicker: string): string {
 }
 
 function buildFilings(f: FilingsInput | null): string {
-  if (!f || f.filings.length === 0) return "(no recent SEC filings)";
+  if (!f) return "(SEC filings not pulled)";
+  if (f.error) return `(SEC filings unavailable — ${f.error})`;
+  if (f.filings.length === 0) return "(no watched SEC filings in 90 days)";
   return f.filings
     .slice(0, 12)
-    .map((r) => `${r.date} — ${r.type}: ${r.description}`)
+    .map((r) => `${r.date} — ${r.description}${r.tier && r.tier !== "CONTEXT" ? ` [${r.tier === "RED" ? "serious" : "material"}]` : ""}`)
     .join("\n");
 }
 

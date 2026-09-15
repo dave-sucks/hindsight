@@ -36,6 +36,7 @@ import {
   type IndicatorSnapshot,
 } from "@/lib/market-data/indicator-snapshot";
 import { insiderCluster } from "@/lib/market-data/insider-cluster";
+import { unfiredMatches, type SecFiling } from "@/lib/market-data/sec-events";
 
 // ── EvaluationContext ─────────────────────────────────────────────────
 
@@ -101,6 +102,19 @@ export interface EvaluationContext {
    * a report, off the same calendar call as `earnings`. Absent → false.
    */
   upcomingEarnings?: EarningsReport | null;
+
+  /**
+   * This ticker's watched SEC filings inside the evaluator's lookback,
+   * newest first. Read by SEC_EVENT. Absent → false.
+   */
+  filings?: SecFiling[] | null;
+
+  /**
+   * The filing IDs the trigger being evaluated has already fired on. Set by
+   * `shouldFire` from the trigger itself — a context is per thesis, this is
+   * per trigger — so one filing wakes a trigger once.
+   */
+  firedFilings?: readonly string[];
 
   /**
    * The daily indicator snapshot for this ticker (completed sessions through
@@ -301,6 +315,10 @@ export function evaluateTrigger(
       return since >= predicate.min && since <= predicate.max;
     }
 
+    case "SEC_EVENT":
+      // A matching filing this trigger hasn't fired on yet.
+      return unfiredMatches(predicate, ctx.filings, ctx.firedFilings).length > 0;
+
     // ── Time-based ────────────────────────────────────────────────────
     case "REVIEW_CADENCE": {
       // Counted from the last actual review. A thesis nobody has looked at
@@ -347,6 +365,8 @@ export function shouldFire(
   trigger: Trigger,
   ctx: EvaluationContext,
 ): { fires: boolean; reason: "match" | "no-match" | "no-crossing" | "stale-quote" | "cooldown" } {
+  // A filing trigger reads its own fired-filing memory; nothing else does.
+  if (trigger.firedFilings?.length) ctx = { ...ctx, firedFilings: trigger.firedFilings };
   const matched = evaluateTrigger(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };
 

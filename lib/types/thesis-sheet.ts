@@ -31,6 +31,10 @@ export interface TriggerPredicate {
   withinDays?: number;
   /** INSIDER_CLUSTER — distinct open-market buyers needed. */
   minBuyers?: number;
+  /** SEC_EVENT — a tier ("at least"), 8-K item codes, or forms. */
+  tier?: "RED" | "MATERIAL";
+  items?: string[];
+  forms?: string[];
   /** EARNINGS_SINCE — days after the report, inclusive. */
   min?: number;
   max?: number;

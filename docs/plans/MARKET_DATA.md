@@ -351,7 +351,7 @@ are what separate momentum from a pump. The thresholds should be yours.
 | Momentum discovery screen (movers + volume + trend + cap) | **The rebuild's** | Same PR. Thresholds are yours. |
 | Volume trigger | **Built — #630** | `VOLUME_RATIO`, by the rebuild. |
 | Event-date trigger, days-held trigger, two-condition triggers in the dialog | **The rebuild's** | Trigger vocabulary. `Thesis.catalystDate` already exists; nothing reads it as a trigger yet. |
-| SEC filings trigger via EDGAR | **Planned — `SEC_FILINGS.md`** | Same shape as earnings. Trigger shape signed off by the rebuild; four decisions are yours. |
+| SEC filings trigger via EDGAR (`SEC_EVENT`) | **Built** | Account rule on every held and watched name; red on a holding wakes a tactical run the same day. Stock Filings tab and sheet line are next. See `SEC_FILINGS.md` §10. |
 | Guidance / news / sentiment triggers | **Parked — DAV-196** | Needs a news layer. Not this. |
 | Movers as trigger conditions | **Not doing** | Your own price trigger is strictly better. |
 | Monitor ROI crediting, `/intelligence` page, signal fallback in the evaluator | **Dormant — leave** | Costs nothing; deletes with DAV-196's outcome. |
