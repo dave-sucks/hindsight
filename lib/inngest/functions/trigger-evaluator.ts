@@ -41,11 +41,8 @@
 import { randomUUID } from "node:crypto";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import {
-  finnhub,
-  quoteAgeMs,
-  STALE_QUOTE_THRESHOLD_MS,
-} from "@/lib/agent/research-helpers";
+import { finnhub } from "@/lib/agent/research-helpers";
+import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import {
@@ -774,15 +771,14 @@ export const triggerEvaluator = inngest.createFunction(
           if (!q || typeof q.c !== "number" || q.c <= 0) {
             return [ticker, null] as const;
           }
-          // Observability only — this does NOT suppress firing. A stale price
-          // is fail-unsafe in both directions (act on it and a stop fires at
-          // the wrong level; skip it and the stop doesn't fire at all), so the
-          // evaluator still scores the quote and we make the staleness loud
-          // instead. See the 2026-08-14 stale-quote bug.
-          const age = quoteAgeMs(q);
-          if (age != null && age > STALE_QUOTE_THRESHOLD_MS) {
+          // A stale quote still scores sells and reviews — skipping a stop is
+          // the worse failure — but a buy never fires on it (shouldFire reads
+          // `stale`; DAV-261). See lib/market-data/quote-age.
+          const stale = staleForTrading(q, new Date());
+          if (stale) {
+            const age = quoteAgeMs(q);
             console.warn(
-              `[trigger-evaluator] STALE QUOTE ${ticker}: ${Math.round(age / 60_000)}min old (price ${q.c}) — evaluating anyway`,
+              `[trigger-evaluator] STALE QUOTE ${ticker}: ${age != null ? Math.round(age / 60_000) + "min old" : "no timestamp"} (price ${q.c}) — sells evaluate, buys wait`,
             );
           }
           // Daily % change vs prior close. Prefer Finnhub's `dp`, but fall back
@@ -803,7 +799,7 @@ export const triggerEvaluator = inngest.createFunction(
             typeof q.pc === "number" && q.pc > 0 ? q.pc : undefined;
           // Today's regular-session open — GAP_UP reads it.
           const open = typeof q.o === "number" && q.o > 0 ? q.o : null;
-          return [ticker, { price: q.c, changePct, prevClose, open }] as const;
+          return [ticker, { price: q.c, changePct, prevClose, open, stale }] as const;
         }),
       );
       const quoteByTicker = new Map(quoteResults);
@@ -877,7 +873,7 @@ export const triggerEvaluator = inngest.createFunction(
                 prevClose: prevForClose,
               }
             : quote
-              ? { price: quote.price, changePct: quote.changePct, prevClose: quote.prevClose }
+              ? { price: quote.price, changePct: quote.changePct, prevClose: quote.prevClose, stale: quote.stale }
               : undefined;
 
         const posInfo = openedAtByThesisId.get(thesis.id);

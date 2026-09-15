@@ -40,7 +40,7 @@ import {
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
 import { pinsToKeepProtection } from "@/lib/agent/triggers/ratchet";
-import { freshQuotePrice } from "@/lib/agent/triggers/written-price";
+import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import {
   acceptedOps,
   applyTriggerOps,

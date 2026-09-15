@@ -18,6 +18,7 @@ import {
   type PriceStructure,
 } from "@/lib/market-data/price-structure";
 import { getBenchmarkBars, CHART_SESSIONS } from "@/lib/market-data/benchmark-bars";
+import { readPrice } from "@/lib/market-data/quote-age";
 import type { NewsItem } from "@/lib/agent/tool-types";
 import { checkUniverse } from "@/lib/agent/universe";
 import type { UniverseCheck } from "@/lib/agent/universe";
@@ -156,6 +157,7 @@ export const getStockData = defineTool({
           } | null;
         })
       | null = null;
+    let lastBar: { price: number; date: string } | null = null;
     if (doTechnicals) {
       const sectorEtf = sectorEtfFor((profile?.finnhubIndustry as string | undefined) ?? null);
       const [own, spy, sector] = await Promise.all([
@@ -166,6 +168,8 @@ export const getStockData = defineTool({
         getBenchmarkBars("SPY", ctx.alpacaCreds).catch(() => undefined),
         sectorEtf ? getBenchmarkBars(sectorEtf, ctx.alpacaCreds).catch(() => undefined) : undefined,
       ]);
+      const tail = own?.bars.at(-1);
+      if (tail) lastBar = { price: tail.close, date: tail.date };
       const structure = own
         ? computePriceStructure({
             bars: own.bars,
@@ -219,8 +223,13 @@ export const getStockData = defineTool({
       return `$${n.toLocaleString()}`;
     };
 
+    // How old the price is, in words when it isn't live (lib/market-data/
+    // quote-age). A failed quote used to leave the chart measured from the
+    // last close with nothing said — NVDA 2026-09-14 read as above its
+    // 50-day while it was trading below it.
+    const priceReading = readPrice({ ticker, quote, quoteError: quoteResult.error, lastClose: lastBar, now: new Date() });
     const quoteData = quote && quote.c
-      ? { price: quote.c, change: quote.d ?? 0, changePct: quote.dp ?? 0, high: quote.h, low: quote.l, open: quote.o, prevClose: quote.pc }
+      ? { price: quote.c, change: quote.d ?? 0, changePct: quote.dp ?? 0, high: quote.h, low: quote.l, open: quote.o, prevClose: quote.pc, asOf: priceReading.asOf, ageMinutes: priceReading.ageMinutes, live: priceReading.live }
       : null;
     const companyData = profile && profile.name
       ? { name: profile.name as string, sector: (profile.finnhubIndustry as string) ?? "", marketCap: profile.marketCapitalization ? (profile.marketCapitalization as number) * 1_000_000 : null, exchange: (profile.exchange as string) ?? "", country: (profile.country as string) ?? "" }
@@ -234,6 +243,7 @@ export const getStockData = defineTool({
 
     // ── Summary ────────────────────────────────────────────────────────────
     const sParts: string[] = [];
+    if (priceReading.warning) sParts.push(`⚠ ${priceReading.warning}`);
     if (companyData?.name) sParts.push(`${ticker} — ${companyData.name}`);
     else sParts.push(ticker);
     if (quoteData) sParts.push(`$${quoteData.price} (${fPct(quoteData.changePct)})`);
@@ -256,9 +266,26 @@ export const getStockData = defineTool({
     if (recentNews.length > 0) sParts.push(`${recentNews.length} news`);
 
     const tickerSummaryParts: string[] = [];
+    if (priceReading.warningShort) tickerSummaryParts.push(`⚠ ${priceReading.warningShort}`);
     if (companyData?.name) tickerSummaryParts.push(companyData.name);
     if (metaParts.length > 0) tickerSummaryParts.push(metaParts.join(" · "));
     if (techData?.verdict) tickerSummaryParts.push(techData.verdict);
+    // The chart numbers the agent was handed, on the row — the same object it
+    // reads, so the row is proof of what it saw.
+    if (techData) {
+      const $ = (n: number) => `$${n.toFixed(2)}`;
+      const vs = (m: { value: number; pctFromPrice: number } | null | undefined, label: string) =>
+        m ? `${label} ${$(m.value)} (${m.pctFromPrice >= 0 ? "+" : ""}${m.pctFromPrice.toFixed(1)}%)` : null;
+      const chart = [
+        vs(techData.sma.d50, "50-day"),
+        vs(techData.sma.d200, "200-day"),
+        techData.base && !techData.base.brokenOut ? `base breakout ${$(techData.base.pivot)}` : null,
+        techData.swings.lastLow ? `swing low ${$(techData.swings.lastLow.price)}` : null,
+        techData.atr14 ? `moves ${$(techData.atr14.dollars)}/day` : null,
+        techData.today?.volumeVsAvg20 != null ? `volume ${techData.today.volumeVsAvg20}× normal today` : null,
+      ].filter(Boolean);
+      if (chart.length) tickerSummaryParts.push(chart.join(" · "));
+    }
 
     // ── Universe check (informational) ──────────────────────────────────
     // If the analyst has a Universe fence, check whether this ticker falls
@@ -312,6 +339,7 @@ export const getStockData = defineTool({
         ".",
       data: {
         ...(priorCoverageNote ? { priorCoverage: priorCoverageNote } : {}),
+        ...(priceReading.warning ? { priceWarning: priceReading.warning } : {}),
         quote: quoteData,
         company: companyData,
         financials: financialsData,

@@ -18,7 +18,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
-import { freshQuotePrice } from "@/lib/agent/triggers/written-price";
+import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { editableTriggerField } from "@/lib/agent/triggers/editable";
 import {

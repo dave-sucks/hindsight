@@ -17,7 +17,8 @@
 
 import { applyTriggerOps } from "./ops";
 import { shouldFire } from "./evaluate";
-import { freshQuotePrice, stampWrittenPrice } from "./written-price";
+import { stampWrittenPrice } from "./written-price";
+import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import type { Trigger } from "./types";
 
 const floor: Trigger = { id: "floor", predicate: { kind: "PRICE_BELOW", level: 470 }, action: "EXIT", rationale: "Floor under the August low.", source: "AGENT" };
