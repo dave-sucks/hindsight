@@ -145,14 +145,13 @@ describe("resolveThesisLadder", () => {
       { analyst: [], account: accountSeedTriggers() },
     );
 
-    // The standing minimums now arrive from the ACCOUNT level — they are
-    // seeded rows, not a code layer.
+    // The account's seeded rules arrive from the ACCOUNT level — seeded
+    // rows, not a code layer. Sell rules are the analyst's, not here.
     expect(ladder.length).toBeGreaterThan(0);
     expect(ladder.every((t) => t.inherited)).toBe(true);
     expect(ladder.every((t) => t.level === "ACCOUNT")).toBe(true);
-    expect(
-      ladder.some((t) => t.predicate.kind === "TRAILING_FROM_HIGH"),
-    ).toBe(true);
+    expect(ladder.some((t) => t.action === "ADD")).toBe(true);
+    expect(ladder.some((t) => t.action === "EXIT")).toBe(false);
   });
 
   it("resolves an account rule, and lets an analyst rule override the account", () => {

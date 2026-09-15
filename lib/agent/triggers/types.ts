@@ -230,14 +230,6 @@ export type Trigger = {
   writtenPrice?: number;
   writtenAt?: string; // ISO timestamp
   /**
-   * ACCOUNT / ANALYST rules only: the thesis horizons this rule applies to
-   * (DAV-250). Absent = every horizon. A TRADE position and a COMPOUNDER
-   * inherit different sell rules from the same account — each horizon's set
-   * is edited in the same trigger popover as every other rule. Ignored on a
-   * thesis-level rung (it already belongs to one thesis).
-   */
-  horizons?: ("TRADE" | "TARGET" | "CATALYST" | "COMPOUNDER")[];
-  /**
    * How a fired trigger is acted on:
    *   TACTICAL — fan out `app/thesis.trigger.fired` → a GPT-5.5 tactical run
    *              evaluates and decides. The default; every trigger written

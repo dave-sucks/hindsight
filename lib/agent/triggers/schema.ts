@@ -218,13 +218,6 @@ export const triggerSchema = z.object({
     .datetime()
     .optional()
     .describe("Server-stamped with writtenPrice. Do not set."),
-  horizons: z
-    .array(z.enum(["TRADE", "TARGET", "CATALYST", "COMPOUNDER"]))
-    .min(1)
-    .optional()
-    .describe(
-      "Account/analyst rules only: the thesis horizons this rule applies to. Omit for every horizon. Ignored on a thesis's own trigger.",
-    ),
   fireMode: z
     .enum(["TACTICAL", "DIRECT"])
     .optional()
@@ -262,13 +255,6 @@ export const triggersArraySchema = z
   .describe(
     "Structured triggers attached to this thesis. Each is a (predicate, action, rationale) tuple the router evaluates deterministically. Capped at 20 per thesis to keep the matching loop bounded.",
   );
-
-/**
- * An account's or analyst's standing rules. Larger cap than a thesis: since
- * DAV-250 the account holds one sell ladder per horizon (four of them) plus
- * the rules every horizon shares — 20 on a fresh seed.
- */
-export const levelTriggersArraySchema = z.array(triggerSchema).max(48);
 
 /**
  * One edit to an existing trigger, by id. The ONE shape for every caller that

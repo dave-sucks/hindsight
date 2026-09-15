@@ -19,7 +19,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { levelTriggersArraySchema } from "@/lib/agent/triggers/schema";
+import { triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { editableTriggerField, withEditedValue } from "@/lib/agent/triggers/editable";
 import { predicateSentence } from "@/lib/agent/triggers/format";
 import { isDirectEligiblePredicate } from "@/lib/agent/triggers/types";
@@ -140,7 +140,7 @@ async function resolveTarget(
  * only the new rung and silently delete every existing one.
  */
 function parseOrRefuse(raw: unknown, label: string): Trigger[] {
-  const parsed = levelTriggersArraySchema.safeParse(raw ?? []);
+  const parsed = triggersArraySchema.safeParse(raw ?? []);
   if (!parsed.success) {
     throw new ThesisEditError(
       "INVALID",
@@ -161,8 +161,6 @@ function assertLevelEligible(predicate: TriggerPredicate): void {
 export interface LevelTriggerAddInput {
   action: TriggerAction;
   predicate: TriggerPredicate;
-  /** The horizons this rule applies to; omitted/empty = every horizon (DAV-250). */
-  horizons?: Trigger["horizons"];
   fireMode?: "TACTICAL" | "DIRECT";
   rationale?: string;
   cooldownDays?: number;
@@ -178,40 +176,33 @@ export async function addLevelTrigger(
   const target = await resolveTarget(level, ownerId, ctx);
   const existing = await target.read();
 
-  // One rule per bucket per horizon at a given level — a second "trail X%"
-  // for the same horizons would be dead weight (resolution keeps one and
-  // silently drops the rest), so refuse it with an explanation instead.
-  // A trade's trail and a compounder's trail are different rules (DAV-250).
-  const horizons = input.horizons?.length ? Array.from(new Set(input.horizons)).sort() : undefined;
-  const scopeKey = (h: Trigger["horizons"]) => (h?.length ? [...h].sort().join(",") : "*");
+  // One rung per bucket at a given level — a second "trail X%" here would
+  // be dead weight (resolveLadder keeps the first and silently drops the
+  // rest), so refuse it with an explanation instead.
   const candidateBucket = triggerBucket({
     predicate: input.predicate,
     action: input.action,
   });
-  const overlaps = (h: Trigger["horizons"]) =>
-    scopeKey(h) === scopeKey(horizons) ||
-    (!!h?.length && !!horizons && h.some((x) => horizons.includes(x)));
-  if (existing.some((t) => triggerBucket(t) === candidateBucket && overlaps(t.horizons))) {
+  if (existing.some((t) => triggerBucket(t) === candidateBucket)) {
     throw new ThesisEditError(
       "INVALID",
-      `A "${predicateSentence(input.predicate)}" rule already exists for ${horizons ? horizons.join(", ").toLowerCase() : "every horizon"} at this level — edit that one instead of adding a second.`,
+      `A "${predicateSentence(input.predicate)}" rule already exists at this level — edit that one instead of adding a second.`,
     );
   }
 
   // DIRECT (act with no agent) stays restricted to deterministic EXITs,
   // exactly as on the thesis. There's no position to check here, so the
   // predicate gate is the whole gate.
-  const built = buildPrincipalTrigger({
+  const created = buildPrincipalTrigger({
     ...input,
     defaultRationale: `${predicateSentence(input.predicate)} — standing rule set by the principal.`,
     allowDirect:
       input.action === "EXIT" && isDirectEligiblePredicate(input.predicate.kind),
   });
-  const created: Trigger = horizons ? { ...built, horizons } : built;
 
   const next = [...existing, created];
-  if (!levelTriggersArraySchema.safeParse(next).success) {
-    throw new ThesisEditError("INVALID", "That would exceed the 48-rule cap.");
+  if (!triggersArraySchema.safeParse(next).success) {
+    throw new ThesisEditError("INVALID", "That would exceed the 20-trigger cap.");
   }
   await target.write(next);
   return created;

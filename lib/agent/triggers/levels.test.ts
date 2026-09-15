@@ -5,8 +5,7 @@ import {
   LEVEL_PRECEDENCE,
   splitFiresByLevel,
 } from "./levels";
-import { horizonStandingRules } from "./defaults";
-import { resolveThesisLadder, rulesForHorizon } from "./load-levels";
+import { resolveThesisLadder } from "./load-levels";
 import { triggerBucket } from "./bucket";
 import type { Trigger } from "./types";
 
@@ -255,46 +254,25 @@ describe("resolveLadder — override annotation", () => {
   });
 });
 
-describe("account sell rules resolve per horizon (DAV-250)", () => {
-  const account = horizonStandingRules();
+describe("analyst sell rules reach its held stocks (2026-09-14)", () => {
+  const compounder: Trigger[] = [
+    { id: "c25", predicate: { kind: "TRAILING_FROM_HIGH", pct: 25 }, action: "EXIT", rationale: "catastrophe line" },
+  ];
+  const sources = { analyst: compounder, account: [] };
 
-  it("each horizon's set resolves without self-collision", () => {
-    for (const h of ["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const) {
-      const mine = rulesForHorizon(account, h);
-      expect(new Set(mine.map(triggerBucket)).size).toBe(mine.length);
-      expect(resolveLadder({ thesis: [], account: mine })).toHaveLength(mine.length);
-    }
+  it("a held compounder inherits its analyst's 25% sale", () => {
+    const sell = resolveThesisLadder({ triggers: [], status: "HOLDING", horizon: "COMPOUNDER" }, sources)
+      .filter((t) => t.action === "EXIT")
+      .map((t) => t.id);
+    expect(sell).toEqual(["c25"]);
   });
 
-  it("a held compounder inherits the 25% sale, a held trade the 8% one", () => {
-    const sources = { analyst: [], account };
-    const sell = (horizon: string) =>
-      resolveThesisLadder({ triggers: [], status: "HOLDING", horizon }, sources)
-        .filter((t) => t.action === "EXIT" && t.predicate.kind === "TRAILING_FROM_HIGH")
-        .map((t) => (t.predicate.kind === "TRAILING_FROM_HIGH" ? t.predicate.pct : null));
-    expect(sell("COMPOUNDER")).toEqual([25]);
-    expect(sell("TRADE")).toEqual([8]);
-    expect(sell("CATALYST")).toEqual([]);
-  });
-
-  it("a thesis-level rule still beats its horizon's account rule", () => {
-    const own = [
-      { id: "own", predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 }, action: "EXIT", rationale: "pinned" },
-    ];
-    const ladder = resolveThesisLadder(
-      { triggers: own, status: "HOLDING", horizon: "COMPOUNDER" },
-      { analyst: [], account },
-    );
-    const trail = ladder.filter((t) => t.action === "EXIT" && t.predicate.kind === "TRAILING_FROM_HIGH");
-    expect(trail.map((t) => t.id)).toEqual(["own"]);
-  });
-
-  it("a watched name inherits none of them (position-scoped)", () => {
-    const ladder = resolveThesisLadder(
-      { triggers: [], status: "WATCHING", horizon: "TRADE" },
-      { analyst: [], account },
-    );
-    expect(ladder.filter((t) => t.action === "EXIT" || t.action === "ADD")).toEqual([]);
+  it("the stock's own rule still beats the analyst's", () => {
+    const own: Trigger[] = [{ id: "own8", predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 }, action: "EXIT", rationale: "pinned" }];
+    const sell = resolveThesisLadder({ triggers: own, status: "HOLDING", horizon: "COMPOUNDER" }, sources)
+      .filter((t) => t.action === "EXIT")
+      .map((t) => t.id);
+    expect(sell).toEqual(["own8"]);
   });
 });
 
