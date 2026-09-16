@@ -183,7 +183,7 @@ export const TEAMS: Team[] = [
     title: "Analyst Builder",
     phase: "build",
     summary:
-      "A guided interview that turns the edge you want to hunt into a working analyst, grounded in the actual signal pipeline before anything gets written.",
+      "A guided interview that turns the edge you want to hunt into a working analyst, with every ticker on its watchlist checked against the live market before anything gets written.",
     icon: Sparkles,
     model: "GPT-4o",
     schedule: "On demand",
@@ -211,9 +211,9 @@ export const TEAMS: Team[] = [
     title: "Intelligence Pipeline",
     phase: "signals",
     summary:
-      "The signal-gathering pipeline. Sweeps the market, monitors portfolio + watchlist tickers, checks tracked sources, and routes every finding into each analyst's universe.",
+      "Retired 2026-09-15. The jobs that swept the market, monitored the book, crawled tracked sources and routed every finding to an analyst are deleted. The signals they wrote are kept, read-only.",
     icon: Radar,
-    schedule: "6:30–7:30 AM ET weekdays",
+    schedule: "Retired — nothing runs",
   },
 
   // ─── 2b. Trigger Evaluator ─────────────────────────────────────────────
@@ -222,9 +222,9 @@ export const TEAMS: Team[] = [
     title: "Trigger Evaluator",
     phase: "signals",
     summary:
-      "Checks every active thesis's structured predicates against fresh prices and just-arrived signals. Fires thesis.trigger.fired when one hits — that's what wakes a tactical run.",
+      "Checks every holding's and watch's conditions against fresh prices, the morning chart numbers and the earnings calendar. Fires thesis.trigger.fired when one hits — that's what wakes a tactical run.",
     icon: Bell,
-    schedule: "Hourly during market hours + on signal.routed",
+    schedule: "Every 5 min during market hours, plus a close pass at 16:20 ET",
     promptSource: "lib/agent/triggers/evaluate.ts",
   },
 
@@ -390,16 +390,16 @@ export const TOOL_REGISTRY: RegistryTool[] = [
   {
     name: "read_signals",
     category: "intelligence",
-    summary: "Signals routed to this analyst by the signal router. Returns three buckets — portfolioSignals, watchlistSignals, discoverySignals — each with signalId for thesis provenance. Reading flips route status PENDING → READ.",
+    summary: "Signals routed to an analyst by the retired signal router, in three buckets — portfolio, watchlist, discovery. On no agent since 2026-09-15; kept in the codebase so the history stays reachable.",
     providers: ["internal"],
-    agents: ["agent", "discovery"],
+    agents: [],
   },
   {
     name: "read_artifact",
     category: "intelligence",
-    summary: "Full extracted article content behind a signal — clean markdown from Firecrawl.",
+    summary: "Full extracted article content behind a signal — clean markdown from Firecrawl. On no agent since 2026-09-15; kept in the codebase.",
     providers: ["internal"],
-    agents: ["agent", "tactical", "discovery"],
+    agents: [],
   },
   {
     name: "get_theses",
@@ -409,23 +409,9 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     agents: ["agent", "tactical", "discovery"],
   },
   {
-    name: "read_analyst_inbox_stats",
-    category: "intelligence",
-    summary: "30-day rollup of this analyst's routing — top tickers, sectors, themes, dead themes, signal distribution, hot unwatched tickers. Grounds editor fence/archetype changes in real inbox data.",
-    providers: ["internal"],
-    agents: ["editor"],
-  },
-  {
     name: "read_knowledge_library",
     category: "intelligence",
     summary: "Browses strategy archetypes (playbooks), vetted research sources, and signal-type taxonomy. Mandatory before suggest_config in builder/editor.",
-    providers: ["internal"],
-    agents: ["builder", "editor"],
-  },
-  {
-    name: "discover_signals_for_fence",
-    category: "intelligence",
-    summary: "Runs a live query against real signals matching a proposed universe (sectors + industries + themes + tickers). Returns frequency-ranked tickers for watchlist seeding and validates that the fence actually produces routes.",
     providers: ["internal"],
     agents: ["builder", "editor"],
   },
@@ -474,7 +460,7 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     category: "research",
     summary: "Firm-wide earnings calendar for the next N days. scope:\"coverage\" intersects with watchlist + positions (your book); scope:\"universe\" returns the calendar MINUS already-covered tickers (the discovery set); scope:\"all\" returns the full firehose. Pull-tool counterpart to the EARNINGS_CALENDAR feed subscription. Per-ticker history → get_earnings_data instead.",
     providers: ["finnhub"],
-    agents: ["agent"],
+    agents: ["agent", "builder", "editor"],
     resources: [{ source: "finnhub", title: "Firm earnings calendar", description: "Next N days of upcoming earnings, with ticker / report date / BMO|AMC / EPS estimate.", type: "api", endpointOrPath: "/calendar/earnings?from={today}&to={+Nd}", exampleOutput: "NVDA 2026-05-21 AMC · est $0.84 · …", notes: ["Default 7d window", "scope:\"coverage\" intersects with watchlist + positions; scope:\"universe\" excludes them (discovery)"] }],
   },
   {
@@ -482,7 +468,7 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     category: "research",
     summary: "Today's market movers — gainers, losers, or most-active. scope:\"coverage\" intersects with watchlist + positions; scope:\"universe\" returns the top-list MINUS already-covered tickers (the discovery set); scope:\"all\" returns the full top-list. Pull-tool counterpart to the MARKET_MOVERS_* feed subscriptions.",
     providers: ["fmp"],
-    agents: ["agent"],
+    agents: ["agent", "builder", "editor"],
     resources: [
       { source: "fmp", title: "Gainers", description: "Top stocks by % gain today.", type: "api", endpointOrPath: "/stock_market/gainers" },
       { source: "fmp", title: "Losers", description: "Top stocks by % loss today.", type: "api", endpointOrPath: "/stock_market/losers" },

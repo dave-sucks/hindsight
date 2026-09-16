@@ -6,7 +6,7 @@ summary: Guided interview that turns a trading edge into a working analyst — g
 
 You describe the strategy you want to run. The Builder asks a handful of focused questions, picks the closest archetype from the playbook library, checks that the universe actually produces signals today, and outputs a complete analyst config as a side-panel diff you can review and accept.
 
-Nothing gets written until the fence is validated against real routing data. Watchlist tickers come exclusively from that validation — the Builder never invents them.
+Nothing gets written until the fence is checked against real names on today's tape. Watchlist tickers come from that check or from the user — the Builder never invents them.
 
 ## Step 1: Ask
 
@@ -31,10 +31,12 @@ get_market_context?provider=finnhub — regime check before sizing the universe
 
 ## Step 4: Validate the fence
 
-Before writing anything, the Builder runs the proposed universe against 30 days of real routed signals. Zero signals means the fence is too narrow — it widens and re-validates. Watchlist tickers come only from the frequency-ranked output of this step.
+Before writing anything, the Builder pulls today's movers or the earnings calendar and checks a few of the names against the proposed universe. If nothing real fits, the fence is too narrow — it says so and widens it with you. Watchlist tickers come only from names that passed that check, or names you gave it.
 
 ```reads
-discover_signals_for_fence — validates sectors/industries/themes/tickers against real routes
+get_market_movers?provider=alpaca — today's movers, the watchlist seed for price-driven strategies
+get_earnings_calendar?provider=finnhub — who reports next, the watchlist seed for catalyst strategies
+get_stock_data?provider=finnhub — checks a candidate's sector, industry and market cap against the fence
 get_stock_data?provider=finnhub — spot-checks on any candidate tickers
 ```
 

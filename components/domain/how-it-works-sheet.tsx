@@ -10,7 +10,6 @@ import {
   SheetContent,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipTrigger,
@@ -23,8 +22,6 @@ import {
   exportWorkflowAsMarkdown,
   type TeamId,
 } from "@/lib/agent/workflow-registry";
-import { CoverageTab } from "@/components/intelligence/coverage-tab";
-import type { CoverageData } from "@/components/intelligence/coverage-strip";
 
 // ── Copy button ────────────────────────────────────────────────────────────
 
@@ -63,19 +60,10 @@ export type FlowType = TeamId;
 interface HowItWorksSheetProps {
   flow: FlowType;
   children: React.ReactNode;
-  /** Optional coverage data — when provided, surfaces a second "Coverage" tab. */
-  coverage?: CoverageData | null;
-  coverageDays?: number;
 }
 
-export function HowItWorksSheet({
-  flow,
-  children,
-  coverage,
-  coverageDays = 7,
-}: HowItWorksSheetProps) {
+export function HowItWorksSheet({ flow, children }: HowItWorksSheetProps) {
   const team = getTeam(flow);
-  const hasCoverage = coverage !== undefined;
 
   return (
     <Sheet>
@@ -100,22 +88,7 @@ export function HowItWorksSheet({
 
         {/* Content */}
         <div className="px-4 pb-6">
-          {hasCoverage ? (
-            <Tabs defaultValue="how">
-              <TabsList>
-                <TabsTrigger value="how">How it works</TabsTrigger>
-                <TabsTrigger value="coverage">Coverage</TabsTrigger>
-              </TabsList>
-              <TabsContent value="how" className="pt-4">
-                <TeamSheetContent team={team} />
-              </TabsContent>
-              <TabsContent value="coverage" className="pt-4">
-                <CoverageTab data={coverage ?? null} days={coverageDays} />
-              </TabsContent>
-            </Tabs>
-          ) : (
-            <TeamSheetContent team={team} />
-          )}
+          <TeamSheetContent team={team} />
         </div>
       </SheetContent>
     </Sheet>

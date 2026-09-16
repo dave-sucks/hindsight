@@ -1,22 +1,15 @@
 // ── Trigger Evaluator ─────────────────────────────────────────────────────
-// Two paths sharing one consumer (the pure `evaluateTrigger` function in
-// lib/agent/triggers/evaluate.ts):
+// One cron, one consumer (the pure `evaluateTrigger` function in
+// lib/agent/triggers/evaluate.ts): every 5 min during US market hours it
+// walks every HOLDING/WATCHING thesis, pulls the latest Finnhub quote and
+// evaluates the ladder. Since 2026-09-02 it also pulls the firm-wide
+// earnings calendar (one call for the whole batch) and evaluates
+// EARNINGS_BEAT / EARNINGS_MISS off reported EPS vs estimate. See
+// lib/agent/triggers/earnings.ts and docs/plans/EARNINGS_AND_MOVERS.md.
+// (A second, signal-driven path consumed `app/signal.routed`; it went with
+// the signal router, 2026-09-15.)
 //
-//   1. Signal-driven  — consumes `app/signal.routed`, evaluates each
-//                       active+watching thesis on the signal's tickers
-//                       against the signal's signal-side predicates.
-//   2. Cron-driven    — every 5 min during US market hours, walks every
-//                       ACTIVE thesis with non-empty triggers[], pulls
-//                       latest Finnhub quote, evaluates price-side
-//                       predicates. Since 2026-09-02 it also pulls the
-//                       firm-wide earnings calendar (one call for the whole
-//                       batch) and evaluates EARNINGS_BEAT / EARNINGS_MISS
-//                       off reported EPS vs estimate — those used to need a
-//                       routed signal and so had never fired. See
-//                       lib/agent/triggers/earnings.ts and
-//                       docs/plans/EARNINGS_AND_MOVERS.md.
-//
-// Both paths emit `app/thesis.trigger.fired` on match. The `lastFiredAt`
+// A match emits `app/thesis.trigger.fired`. The `lastFiredAt`
 // cooldown stamp prevents same-trigger re-fires within cooldownDays. ENTER
 // rungs additionally fire only on the CROSSING of their level (price past
 // it now, not at the prior close) — see shouldFire, DAV-229.
@@ -251,20 +244,6 @@ function isClosePassTick(now: Date): boolean {
   return isTradingDay(now) && minutes >= 16 * 60 + 20 && minutes < 16 * 60 + 35;
 }
 
-/** Predicate kinds that require a Signal in the context. */
-function isSignalSidePredicate(p: TriggerPredicate): boolean {
-  switch (p.kind) {
-    case "EARNINGS_BEAT":
-    case "EARNINGS_MISS":
-      return true;
-    case "AND":
-    case "OR":
-      return p.predicates.some(isSignalSidePredicate);
-    default:
-      return false;
-  }
-}
-
 /**
  * P1-14 — resolve the paired open Position's `openedAt` per ACTIVE thesis.
  *
@@ -349,7 +328,6 @@ async function buildPositionOpenedAtMap(
 interface FiringEvent {
   thesisId: string;
   triggerId: string;
-  signalId?: string;
   analystId: string;
   ticker: string;
   action: Trigger["action"];
@@ -364,10 +342,9 @@ interface FiringEvent {
   /** The fire in words — what a co-fired trigger says on the run it folds into. */
   sentence?: string;
   /**
-   * The quote that fired the predicate, when the evaluating path had one
-   * (the price cron always does; signal-driven fires don't fetch quotes).
-   * Consumed by tactical-run to stamp priceAtTime on the TRIGGER_FIRED
-   * audit row — without it those rows have no price in the Activity tab.
+   * The quote that fired the predicate. Consumed by tactical-run to stamp
+   * priceAtTime on the TRIGGER_FIRED audit row — without it those rows
+   * have no price in the Activity tab.
    */
   firedPrice?: number | null;
   /**
@@ -407,8 +384,8 @@ function evaluateThesisTriggers<T extends Trigger>(args: {
 /**
  * Persist fire bookkeeping for a thesis in a single transaction.
  * Re-reads the row inside the tx so concurrent stamps don't trample each
- * other on non-overlapping triggers (e.g. signal-driven and cron firing
- * on the same thesis at the same time).
+ * other on non-overlapping triggers (e.g. an intraday tick and the close
+ * pass firing on the same thesis).
  *
  * Two destinations, keyed off where the rung LIVES:
  *   - THESIS-level rungs are stored on this row, so `lastFiredAt` is
@@ -485,7 +462,6 @@ export const triggerEvaluator = inngest.createFunction(
     retries: 1,
   },
   [
-    { event: "app/signal.routed" },
     // Bumped from */15 to */5 on 2026-05-07 to support DAY analysts.
     // Day-traders set absolute PRICE_ABOVE/PRICE_BELOW entry triggers on
     // intraday levels — at 15 min cadence the breakout has often failed
@@ -497,216 +473,8 @@ export const triggerEvaluator = inngest.createFunction(
     // within the 200-unique-ticker cap and Finnhub paid-tier rate limits.
     { cron: "TZ=America/New_York */5 9-16 * * 1-5" },
   ],
-  async ({ event, step }) => {
-    const isSignalDriven = event?.name === "app/signal.routed";
+  async ({ step }) => {
     const now = new Date();
-
-    // ── Signal-driven path ────────────────────────────────────────────
-    if (isSignalDriven) {
-      type Payload = { signalId: string; analystIds: string[]; tickers: string[] };
-      const payload = (event?.data ?? {}) as Partial<Payload>;
-      if (!payload.signalId || !payload.analystIds || payload.analystIds.length === 0) {
-        return { skipped: "missing-payload", path: "signal-driven" };
-      }
-
-      const fires = await step.run("evaluate-signal", async () => {
-        const signal = await prisma.signal.findUnique({
-          where: { id: payload.signalId },
-          select: {
-            id: true,
-            type: true,
-            sentiment: true,
-            urgency: true,
-            tickers: true,
-            dataPayload: true,
-          },
-        });
-        if (!signal) return [] as FiringEvent[];
-
-        // Load active+watching theses across the routed analysts that
-        // cover any of the signal's tickers.
-        const theses = await prisma.thesis.findMany({
-          where: {
-            // enabled:true — never fire triggers for a disabled analyst. The
-            // signal path is already scoped to router-supplied analystIds (the
-            // router filters enabled), but we filter here too for defense in
-            // depth against a mid-flight disable. See OPENAI_COST_REDUCTION.md.
-            researchRun: {
-              agentConfigId: { in: payload.analystIds },
-              agentConfig: { enabled: true },
-            },
-            status: { in: ["HOLDING", "WATCHING"] },
-            ticker: { in: signal.tickers },
-            // No `triggers: { not: [] }` filter — since the cascade landed,
-            // a thesis with an empty own-array can still carry analyst /
-            // account / default rungs. Filtering on the stored column here
-            // would make every inherited rung unfireable on exactly the
-            // theses that have nothing of their own.
-          },
-          select: {
-            id: true,
-            ticker: true,
-            status: true,
-            direction: true,
-            triggers: true,
-            triggerState: true,
-            horizon: true,
-            createdAt: true,
-            lastReviewedAt: true,
-            catalystDate: true,
-            researchRun: { select: { agentConfigId: true } },
-          },
-        });
-
-        // ACCOUNT + ANALYST levels for every analyst in this batch, one
-        // query. Resolution happens per thesis below.
-        const levelSources = await loadLevelSources(
-          theses.map((t) => t.researchRun.agentConfigId).filter((id): id is string => !!id),
-        );
-
-        // For held theses, elapsed time measures from the
-        // paired position's openedAt, not the thesis row's createdAt. Look
-        // up the open Position per (analyst, ticker) once for the ACTIVE
-        // theses in this batch.
-        const openedAtByThesisId = await buildPositionOpenedAtMap(theses);
-
-        // Pull the earnings surprise off Signal.dataPayload if the producer
-        // stamped it — best-effort; the calendar is the real source.
-        const dp = (signal.dataPayload ?? {}) as Record<string, unknown>;
-        const ctxSignal = {
-          type: signal.type,
-          sentiment: signal.sentiment,
-          urgency: signal.urgency,
-          tickers: signal.tickers,
-          earningsSurprisePct: typeof dp.surprisePct === "number" ? dp.surprisePct : undefined,
-        };
-
-        const events: FiringEvent[] = [];
-        for (const thesis of theses) {
-          // Skip theses whose research run isn't tied to an agent config —
-          // tactical-run can't dispatch without an analyst owner.
-          const analystId = thesis.researchRun.agentConfigId;
-          if (!analystId) continue;
-
-          const triggers = resolveThesisLadder(
-            thesis,
-            levelSources.get(analystId),
-            `thesis=${thesis.id}`,
-          );
-          if (triggers.length === 0) continue;
-
-          const posInfo = openedAtByThesisId.get(thesis.id);
-          const ctx: EvaluationContext = {
-            signal: ctxSignal,
-            position: posInfo ? { avgCost: posInfo.avgCost, peakPrice: posInfo.peakPrice, openedAt: posInfo.openedAt } : null,
-            thesis: {
-              createdAt: thesis.createdAt,
-              lastReviewedAt: thesis.lastReviewedAt ?? null,
-              catalystDate: thesis.catalystDate ?? null,
-            },
-            now,
-          };
-
-          const { fires } = evaluateThesisTriggers({
-            thesisId: thesis.id,
-            triggers,
-            ctx,
-            predicateFilter: isSignalSidePredicate,
-          });
-
-          if (fires.length === 0) continue;
-          await stampLastFiredAt({
-            thesisId: thesis.id,
-            ...splitFiresByLevel(fires),
-            now,
-          });
-          for (const t of fires) {
-            // REVIEW-batching: a REVIEW trigger means "re-evaluate this
-            // thesis," not "act now" — it converts to a trade ~4-8% of the
-            // time, so it does not warrant a dedicated GPT-5 tactical run.
-            // Instead write the TRIGGER_FIRED audit row HERE (tactical-run.ts
-            // used to write it on spawn) so the next daily run surfaces it as
-            // needsAction=TRIGGER_FIRED and reviews it in-batch — which can
-            // still buy / sell / stop-watch / mark-reviewed. The daily run is
-            // needsAction-gated (it skips unflagged theses), so this write is
-            // load-bearing: without it a transient REVIEW that no longer
-            // matches by morning would be silently dropped. BREAKING-urgency
-            // reviews still spawn (a real catalyst can't wait for tomorrow);
-            // ENTER/EXIT always spawn. See OPENAI_COST_REDUCTION.md #2.
-            const action = effectiveTriggerAction(t, {
-              status: thesis.status,
-              direction: thesis.direction,
-            });
-            if (action === "DEMOTE") {
-              const outcome = await demoteThesisPlan({
-                thesisId: thesis.id,
-                reason:
-                  t.action === "EXIT"
-                    ? `the floor broke before we ever bought it, so the plan's premise is gone.`
-                    : `it reached the target without us, so the entry is stale.`,
-                triggerId: t.id,
-              });
-              // See the cron path: a refused demotion must not swallow the fire.
-              if (!outcome.demoted) {
-                await writeThesisUpdate({
-                  thesisId: thesis.id,
-                  type: "TRIGGER_FIRED",
-                  // held=false: we're in the DEMOTE branch, so this thesis is
-                  // un-held — an EXIT here reads "take the plan down", not
-                  // "exit position" (DAV-226).
-                  summary: `${describeTriggerFire(t, false)} — deferred to the next daily review`,
-                  rationale:
-                    `${t.rationale} There was no priced plan left to set down, ` +
-                    `so this is a look rather than a change.`,
-                  triggerId: t.id,
-                  signalIds: [signal.id],
-                  runId: null,
-                });
-              }
-              continue;
-            }
-            const deferToDaily =
-              action === "REVIEW" && ctxSignal.urgency !== "BREAKING";
-            if (deferToDaily) {
-              await writeThesisUpdate({
-                thesisId: thesis.id,
-                type: "TRIGGER_FIRED",
-                summary: `${describeTriggerFire(t)} — deferred to the next daily review`,
-                rationale: t.rationale,
-                triggerId: t.id,
-                signalIds: [signal.id],
-                runId: null,
-              });
-              continue;
-            }
-            events.push({
-              thesisId: thesis.id,
-              triggerId: t.id,
-              signalId: signal.id,
-              analystId,
-              ticker: thesis.ticker,
-              action,
-              predicateKind: t.predicate.kind,
-            });
-          }
-        }
-        return events;
-      });
-
-      // Fan out one event per firing.
-      for (const f of fires) {
-        await step.sendEvent(`fired-${f.thesisId}-${f.triggerId}`, {
-          name: "app/thesis.trigger.fired",
-          data: f,
-        });
-      }
-
-      return {
-        path: "signal-driven",
-        signalId: payload.signalId,
-        firings: fires.length,
-      };
-    }
 
     // ── Cron path (intraday price reactivity) ──────────────────────────
     // Only evaluate price predicates during the regular session. The cron
@@ -715,8 +483,6 @@ export const triggerEvaluator = inngest.createFunction(
     // erratic, so a "down X% on the day" trigger can fire on a pre-market print
     // (observed: a 1% movement trigger fired at 9:00 AM). Gate on isMarketOpen()
     // (9:30–16:00 ET, holiday-aware) — the same guard price-monitor already
-    // uses. The signal-driven path above is intentionally NOT gated: news
-    // doesn't keep market hours.
     const session = await step.run("check-market-hours", async () =>
       isMarketOpen() ? "INTRADAY" : isClosePassTick(new Date()) ? "CLOSE" : null,
     );
@@ -730,19 +496,17 @@ export const triggerEvaluator = inngest.createFunction(
       // day-traders especially, the morning playbook mints WATCHING
       // theses with PRICE_ABOVE/PRICE_BELOW entry triggers; without
       // cron-path evaluation those triggers would never fire intraday.
-      // The 200-ticker cap below still bounds the loop. Signal-router
-      // continues to handle signal-side predicates on both statuses.
+      // The 200-ticker cap below still bounds the loop.
       const theses = await prisma.thesis.findMany({
         where: {
           // enabled:true — kill the zombie: a disabled analyst's HOLDING/
           // WATCHING thesis must not fire intraday triggers. This was the
           // EV Catalyst (ON) tactical that kept firing daily post-disable.
-          // The cron path (unlike the signal path) had no enabled gate.
           // See OPENAI_COST_REDUCTION.md.
           researchRun: { agentConfig: { enabled: true } },
           status: { in: ["HOLDING", "WATCHING"] },
-          // No `triggers: { not: [] }` filter — see the signal path. A
-          // thesis with an empty own-array can still carry analyst /
+          // No `triggers: { not: [] }` filter. A thesis with an
+          // empty own-array can still carry analyst /
           // account / default rungs, and those are exactly the standing
           // protection minimums we must never skip. The empty-ladder
           // filter now happens after resolution, below.
@@ -800,8 +564,8 @@ export const triggerEvaluator = inngest.createFunction(
         candidates.map((c) => c.thesis),
       );
 
-      // Cap unique tickers per tick to bound Finnhub calls. 200 mirrors
-      // the signal-router cap. Theses past the cap defer to the next tick.
+      // Cap unique tickers per tick to bound Finnhub calls. Theses past
+      // the cap defer to the next tick.
       const uniqueTickers = Array.from(
         new Set(candidates.map((c) => c.thesis.ticker)),
       ).slice(0, 200);
@@ -939,7 +703,6 @@ export const triggerEvaluator = inngest.createFunction(
 
         const posInfo = openedAtByThesisId.get(thesis.id);
         const ctx: EvaluationContext = {
-          // No signal on this path.
           latestQuote,
           session,
           indicators: indicators.get(thesis.ticker) ?? null,
@@ -1054,7 +817,7 @@ export const triggerEvaluator = inngest.createFunction(
               await writeThesisUpdate({
                 thesisId: thesis.id,
                 type: "TRIGGER_FIRED",
-                // held=false: DEMOTE branch ⇒ un-held (see the signal path).
+                // held=false: DEMOTE branch ⇒ un-held.
                 summary: `${describeTriggerFire(t, false)} — deferred to the next daily review`,
                 rationale:
                   `${t.rationale} There was no priced plan left to set down, ` +
@@ -1068,8 +831,8 @@ export const triggerEvaluator = inngest.createFunction(
             continue;
           }
 
-          // REVIEW-batching (see the signal path for the full rationale).
-          // Cron-path REVIEWs carry no signal/urgency, so every REVIEW defers
+          // REVIEW-batching (a REVIEW converts to a trade ~4-8% of the time).
+          // REVIEWs carry no urgency here, so every REVIEW defers
           // to the daily run: write the TRIGGER_FIRED audit row (stamped with
           // the price that fired it) and skip the tactical spawn. The daily
           // run picks it up via needsAction=TRIGGER_FIRED. ENTER/EXIT/stop
@@ -1140,7 +903,6 @@ export const __test__ = {
   needsUpcomingEarnings,
   needsFilings,
   stampLastFiredAt,
-  isSignalSidePredicate,
   parseTriggers,
   evaluateThesisTriggers,
   evaluateTrigger,

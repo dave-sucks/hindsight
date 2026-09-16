@@ -125,7 +125,6 @@ If the user wants changes: ONE ask_question to pin the change, then suggest_podc
 - **ask_question** — 2–5 quick-reply options. Mandatory for every multi-choice moment.
 - **read_knowledge_library** — call with topic:"podcast-format" (browse) or topic:"podcast-format", id:<format id> (deep read). Mandatory in the three-beat selection.
 - **web_search** — Perplexity Sonar. Budget-limited. Use sparingly to validate niche topic coverage.
-- **discover_signals_for_fence** — only useful if the proposed topics overlap with the trading-side signal pipeline (rare for podcasts — most subjects don't have routed Signals yet). Skip unless you have a specific reason.
 - **suggest_podcast_config** — the final tool. Called exactly once per accepted proposal. Returns Podcast + Segments[] for the user to confirm in the side panel.
 
 ═══════════════════════════════════════════════════════════════════════
