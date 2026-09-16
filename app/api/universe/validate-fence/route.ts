@@ -11,9 +11,9 @@ import { getAccountId } from "@/lib/auth/account";
 // POST /api/universe/validate-fence
 // Body: { sectors?, industries?, themes?, lookbackDays? }
 // Returns { count } — how many signals in the last N days would have
-// matched this fence. Mirrors discover_signals_for_fence's match semantics
-// (OR within dim, AND across — empty dim = no filter) but runs without the
-// tool envelope so the Editor panel can call it post-apply for validation.
+// matched this fence (OR within dim, AND across — empty dim = no filter).
+// Counts the kept Signal history only; nothing adds to it since the
+// producers were deleted 2026-09-15, so a recent window reads zero.
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

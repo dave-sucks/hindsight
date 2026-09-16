@@ -88,7 +88,17 @@ news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 - TradingView Lightweight Charts for price charts
 - Recharts for performance/analytics charts
 
-## Architecture — Agent + Intelligence Pipeline
+## Architecture — the agent and what feeds it
+
+**There is no live news pipeline.** The Signals producers — the market sweep,
+portfolio/watchlist monitor, domain monitor, the signal router, their cleanup
+cron and the newsletter extraction — were deleted 2026-09-15. The tables and
+rows are **kept**: `Signal`, `Monitor`, `AnalystSignalRoute`, `SignalBatch`,
+`Artifact` are readable on `/intelligence` (read-only) and via `read_database`,
+but nothing adds to them. `read_signals` / `read_artifact` stay in the
+codebase and on **no** mode's allowlist. Outside facts reach an agent through a
+trigger kind the five-minute check can evaluate, or a data field the agent
+pulls mid-run — see `docs/plans/LANES.md` §2.
 
 ### The Agent (what the "Run" button and morning cron both use)
 - User clicks "Run" → POST /api/research/agent-run creates ResearchRun
@@ -104,8 +114,9 @@ news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 
 ## Universe (the analyst's discovery fence)
 The "Universe" is the set of fields on AgentConfig that define what the
-analyst will look at. Used by signal routing (filter signals into the
-inbox) and by the agent (which discovery candidates are in-scope).
+analyst will look at — which discovery candidates are in scope, and which
+names the builder/editor may put on a watchlist. (The signal router also
+filtered on it until it was deleted 2026-09-15.)
 
 Universe fields on AgentConfig:
 - `markets` — ["US_EQUITIES", "CRYPTO", "ETFS"]
@@ -117,11 +128,12 @@ Universe fields on AgentConfig:
 - `exclusionList` — tickers/industries always skipped (hard reject)
 - `tickerUniverse` — DIRECTED-mode seed list (separate concept, kept as-is)
 
-Match semantics (signal routing): empty array / null numeric = no filter
+Match semantics: empty array / null numeric = no filter
 on that dimension. AND across dimensions, OR within. exclusionList wins.
 See docs/AGENT_OVERHAUL_PLAN.md → Workstream B for the full spec.
 
-Routing output on AnalystSignalRoute (populated by Workstream A):
+Routing output on AnalystSignalRoute (history — the router that wrote these
+rows is deleted; `/intelligence` still labels them):
 - `routeReasonCode` — "DISCOVERY" | "WATCHLIST" | "POSITION" | "DIRECT_TICKER"
   | "SECTOR_MATCH" | "INDUSTRY_MATCH" | "THEME_MATCH" | "CROSS_ANALYST"
   | "FIRM_AGGREGATE_FEED" (historical — the feeds subscription was deleted
@@ -129,35 +141,28 @@ Routing output on AnalystSignalRoute (populated by Workstream A):
 - `matchedUniverse` Json — { sectors, industries, themes, inWatchlist,
   inPositions, fromAnalystId?, feed? }
 
-### How firm-aggregate signals reach an analyst
-Firm aggregates (earnings calendar, market movers) reach analysts two ways:
+### How firm-wide facts reach an analyst
+`get_earnings_calendar` and `get_market_movers` are pull tools any analyst can
+call mid-run (`scope:"universe"` = names it doesn't already cover;
+`scope:"all"` = the full firehose). There is no push path: the router is
+deleted, and the `AgentConfig.feeds` subscription went 2026-09-11. Don't
+re-add either. The builder and editor seed a watchlist from these two tools
+plus `get_stock_data`.
 
-1. **Universe-intersection push** — the aggregate's tickers intersect with the
-   analyst's watchlist + open positions (router-side): "3 of your watchlist
-   names are on today's most-active list."
-
-2. **On-demand pull tools** — `get_earnings_calendar`, `get_market_movers`. Any
-   analyst can call them mid-run. Use `scope:"universe"` to fence to watchlist
-   + positions; `scope:"all"` for the full firehose.
-
-The subscription path (`AgentConfig.feeds`, a Universe dimension that routed
-the whole firehose) was deleted 2026-09-11: routing has been paused since
-2026-05-31 and nothing set it. Don't re-add a subscription field — the pull
-tools cover the intent.
-
-### V3 Intelligence Pipeline (background, pre-run)
-- 4 Inngest jobs run 6:30–7:30 AM ET before analysts wake up
-- Firm market sweep: Perplexity Sonar + Alpaca screener movers + Finnhub earnings
-- Portfolio/watchlist monitor: Sonar per-ticker searches
-- Domain monitor: domain-filtered Sonar + Firecrawl extraction
-- Signal router: scores and routes signals to analysts; emits
-  `app/signal.routed` for the trigger evaluator to consume
-- Morning brief generator was DELETED in PR 3 — agent reads durable
-  state directly via `read_signals` + `get_theses(include_history: true)`
-- Trigger evaluator (separate cadence): runs every 5 min during regular
-  US market hours (gated on `isMarketOpen()`) + on `app/signal.routed`,
+### What runs before the analysts wake up
+- **06:25 ET — vendor probe.** Every market-data endpoint probed with a mid-cap
+  book name; emails when a source is empty or erroring.
+- **06:30 ET — indicator snapshot.** The chart numbers every trigger reads,
+  into `TickerIndicators`.
+- **08:00 ET — the Daily Run**, per analyst. It reads durable state directly
+  via `get_theses(include_history: true)`; there is no inbox.
+- The **trigger evaluator** is the other clock: every 5 min during regular US
+  market hours (gated on `isMarketOpen()`) plus a close pass at 16:20 ET; it
   fires `app/thesis.trigger.fired` when a thesis predicate matches, which
-  wakes a tactical run. See `docs/TRIGGERS.md`.
+  wakes a tactical run. See `docs/TRIGGERS.md`. (Its `app/signal.routed`
+  path was deleted with the router.)
+- The 6:30–7:30 intelligence jobs (sweep, portfolio monitor, domain monitor,
+  router) and the 11 PM `pipeline-cleanup` are **deleted** (2026-09-15).
 
 ### Data Sources
 - Finnhub: quotes, candles, earnings calendar, company metrics,
@@ -242,8 +247,9 @@ tools cover the intent.
 - /performance — accuracy reports, win rate charts
 - /stocks — stock search
 - /stocks/[symbol] — TradingView chart + stock detail
-- /intelligence — intelligence dashboard (signals, monitors, briefs,
-  activity, manual job triggers)
+- /intelligence — read-only view of the kept signal history (Findings +
+  Health). No pipeline trigger, no monitor editing — the jobs are deleted.
+  /intelligence/ingest is the paste-a-thesis path.
 - /agent-workflow — visual "How Hindsight Works" guide
 - /settings — app settings
 
@@ -259,12 +265,15 @@ tools cover the intent.
 - /api/research/trigger — Inngest manual trigger
 - /api/chat/run-followup — post-run discussion with trade tools
 - /api/agent-activity — dashboard activity stream
-- /api/intelligence/* — signals, monitors, briefs, activity CRUD
+- /api/intelligence/* — read-only signal history (signals, batches, routes,
+  health) + sync-health + thesis-ingest. email-ingest is a 200-and-drop stub
+  so Resend stops retrying. The trigger, monitors and coverage routes are
+  deleted.
 - /api/quotes — Finnhub quote fallback
 - /api/stocks/search — Finnhub symbol search
 - /api/inngest — Inngest webhook handler
 
-## Agent Tools — 23 trading tools (lib/agent/tools/)
+## Agent Tools — 21 trading tools (lib/agent/tools/)
 Each tool is defined in its own file using `defineTool()` from
 `lib/agent/define-tool.ts`. The factory wraps execute() in timing/
 logging/try-catch and returns a `ToolResult<T>` envelope with a `ui`
@@ -274,13 +283,14 @@ podcast-only tools (`read_past_transcripts`, `suggest_podcast_config`,
 trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 
 ### Intelligence Tools (read pre-gathered data)
-1. read_signals — signals routed by background discovery jobs
-2. read_artifact — full extracted article/document behind a signal
+1–2. read_signals / read_artifact — the signal inbox and its article reader.
+   **In the codebase, on no mode's allowlist** since 2026-09-15 (the router
+   that filled the inbox is deleted). Kept so the history stays reachable.
 3. get_theses — read the analyst's durable thesis library (default HOLDING+WATCHING; include_history=true for the activity log)
 4. get_portfolio_context — open positions, exposure, available buying power, recent fills
 5. web_search — live Perplexity Sonar search (budget-limited)
    NOTE: read_morning_brief was DELETED in PR 3 — agent reads
-   durable state directly via read_signals + get_theses
+   durable state directly via get_theses
 
 ### Research Tools (live data validation)
 6. get_market_context — SPY/VIX/sector ETFs, macro events, regime
@@ -311,8 +321,12 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
 ### Builder/Editor-only Tools
 19. read_knowledge_library — strategy archetypes, source catalog, signal types
 20. ask_question — structured 2-5 quick-reply interview, one call per turn
-21. discover_signals_for_fence — validate a proposed sectors/industries/themes/tickers fence against the past 30d of routed signals
-22. read_analyst_inbox_stats — 30-day routing rollup for THIS analyst (top tickers, dead themes, hot unwatched tickers)
+    NOTE: `discover_signals_for_fence`, `read_analyst_inbox_stats` and the
+    principal's `list_monitors` were deleted 2026-09-15. The first two read
+    routed signals; with routing gone they returned zero, and the prompts
+    treated zero as a hard stop, so the builder refused every fence. The
+    builder/editor now seed and check a fence with `get_market_movers` +
+    `get_earnings_calendar` + `get_stock_data`.
 23. suggest_config — emit the full proposed analyst config as a side-panel diff
 
 ## How to Add a New Agent Tool
@@ -383,17 +397,17 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
 - AgentConfigCard — analyst config summary
 
 ## Inngest Crons (lib/inngest/functions/)
-### Intelligence Pipeline (6:30–7:30 AM ET Mon-Fri)
-- firm-market-sweep.ts — 6:30 AM, Sonar + Alpaca screener movers + earnings
-- portfolio-watchlist-monitor.ts — 7:00 AM, per-ticker Sonar
-- domain-monitor.ts — 7:15 AM, domain Sonar + Firecrawl
-- signal-router.ts — 7:30 AM, routes signals + emits app/signal.routed
-- (morning-brief-generator.ts was DELETED in PR 3 — agent reads
-  durable state directly via read_signals + get_theses)
+### Pre-market (Mon-Fri)
+- vendor-probe.ts — 6:25 AM, market-data health
+- indicator-snapshot.ts — 6:30 AM, the chart numbers every trigger reads
+- (firm-market-sweep, portfolio-watchlist-monitor, domain-monitor,
+  signal-router, pipeline-cleanup and backfill-signal-fingerprint were
+  DELETED 2026-09-15. Their tables are kept. Re-sync Inngest after the
+  deploy so they leave the dashboard.)
 ### Reactivity (PR 2)
-- trigger-evaluator.ts — hourly during market hours + on
-  app/signal.routed; fires app/thesis.trigger.fired when a thesis
-  predicate matches
+- trigger-evaluator.ts — every 5 min during market hours plus a close pass
+  at 16:20 ET; fires app/thesis.trigger.fired when a thesis predicate
+  matches
 - tactical-run.ts — event-driven, consumes app/thesis.trigger.fired,
   spawns a focused single-thesis agent (~15 steps)
 ### Agent + Trading
@@ -543,8 +557,8 @@ it with a ticker chip as if it were a traded security.
 5. GPT-5.5 (temperature 0.2) follows the per-thesis review flow with
    Phase-0 check-in:
    Phase 0: Portfolio check-in (injected context, no tools)
-   Stage 1 — Orient: read_signals (today buckets: portfolio / watchlist
-     / discovery), get_theses(include_history: true), read_artifact, web_search
+   Stage 1 — Orient: get_theses(include_history: true),
+     get_portfolio_context, get_market_context, web_search
    Stage 2 — Per-thesis review: for every active + watching thesis,
      decide: trigger fired / new evidence → research + update_thesis;
      scheduled review due → research + update_thesis; nothing changed →
@@ -625,16 +639,13 @@ it with a ticker chip as if it were a traded security.
 - **Fix:** PR #270 deprecated the V1 builder (`buildV2SystemPrompt` — misnamed) and made route.ts call `buildDailyRunSystemPromptV2` unconditionally. The `useV2Prompt` flag is no longer read; column stays for migration cleanup.
 - (History: the GAPS files were deleted 2026-09-15; see git history.)
 
-**Aggregates in the router** (`lib/inngest/functions/firm-market-sweep.ts`, `lib/inngest/functions/signal-router.ts`)
-- Aggregate signals (`Signal.aggregateType` populated) carry empty `sectors`/`industries` by design — they're firm-wide. Routing them through the news-signal fence (sector/industry match) silently drops everything; that's the bug that #163/#164/#165/#166 chased. They reach an analyst only through ticker overlap with its watchlist/positions (or an owned monitor). The `feeds` subscription dimension was deleted 2026-09-11.
-- The `aggregate-novelty-skip` carve-out from #164 stays: the ticker-overlap path would otherwise be crushed by 7d route-history novelty.
+**The router's aggregate bug, for whoever rebuilds a routing layer** (router deleted 2026-09-15; in git history)
+- Firm-wide aggregate signals carried empty `sectors`/`industries` by design, so routing them through the news-signal fence silently dropped every one — the bug #163/#164/#165/#166 chased. Whatever replaces routing, a firm-wide fact must not be matched on dimensions it structurally can't carry.
 
 - FMP historical-price-full may 403 on legacy plan (affects
   technical analysis for small-cap/ADR tickers)
 - Old analysts created before V3 may need V3 infra backfill
   (source packs, intelligence queries, intelligence policy)
-- read_signals returns 0 for analysts without routed signals
-  (fallback queries by sector/watchlist exist but not verified)
 - Morning brief tool UI shows counts but not full briefing content
 
 (Most other items previously here are now tracked in
@@ -697,15 +708,15 @@ When you spot something new, file it there — not here.)
   or /api/agent/editor
 - components/analysts/AnalystDetailClient.tsx — analyst detail 2-col
 
-### Intelligence Pipeline
-- lib/intelligence/sonar.ts — Perplexity Sonar API client
-- lib/intelligence/firecrawl.ts — Firecrawl extraction client
-- lib/intelligence/signals.ts — signal creation + dedup utilities
-- lib/intelligence/types.ts — intelligence type definitions
-- lib/inngest/functions/firm-market-sweep.ts — daily sweep
-- lib/inngest/functions/portfolio-watchlist-monitor.ts — ticker monitor
-- lib/inngest/functions/domain-monitor.ts — domain monitor
-- lib/inngest/functions/signal-router.ts — signal routing
+### What's left of the intelligence code
+- lib/intelligence/sonar.ts — Perplexity Sonar client (behind `web_search`)
+- lib/intelligence/types.ts — shared types, incl. IntelligencePolicy (the
+  router's attention weights were removed from it 2026-09-15)
+- lib/agent/tools/read-signals.ts, read-artifact.ts — kept, unlisted
+- app/(root)/intelligence/page.tsx — read-only signal history
+- (firecrawl.ts, signals.ts, data-payload-extractor.ts, trading-day.ts,
+  email-signal-extractor.ts, urgent-trigger.ts and the four pipeline
+  functions were deleted 2026-09-15.)
 - lib/inngest/functions/morning-brief-generator.ts — brief generation
 
 ### Inngest Crons

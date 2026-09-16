@@ -67,7 +67,7 @@ const GROUPS: Record<GroupId, { label: string; fields: FieldSpec[] }> = {
     fields: [
       { key: "domainMonitorProposal", label: "Domain Sources" },
       { key: "intelligenceQueries", label: "Search Queries" },
-      { key: "intelligencePolicy", label: "Signal Attention" },
+      { key: "intelligencePolicy", label: "Intelligence Policy" },
     ],
   },
   prompt: {
@@ -123,16 +123,12 @@ function formatValue(key: FieldKey, val: unknown): string {
   }
   if (key === "intelligencePolicy" && val && typeof val === "object") {
     const p = val as Record<string, number | boolean | undefined>;
-    const parts: string[] = [
-      `H ${Math.round(((p.holdingsAttention as number | undefined) ?? 0) * 100)}%`,
-      `W ${Math.round(((p.watchlistAttention as number | undefined) ?? 0) * 100)}%`,
-      `D ${Math.round(((p.discoveryAttention as number | undefined) ?? 0) * 100)}%`,
-    ];
+    const parts: string[] = [];
     if (p.maxSignalsPerRun != null) parts.push(`max ${p.maxSignalsPerRun} signals`);
     if (p.maxArtifactReads != null) parts.push(`${p.maxArtifactReads} artifacts`);
     if (p.allowLiveSearch != null) parts.push(p.allowLiveSearch ? "live-search on" : "live-search off");
     if (p.liveSearchBudget != null) parts.push(`live-search ${p.liveSearchBudget}`);
-    return parts.join(" · ");
+    return parts.length === 0 ? "—" : parts.join(" · ");
   }
 
   // Generic array of primitives (sectors, industries, themes, exclusionList)

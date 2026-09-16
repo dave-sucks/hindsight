@@ -794,9 +794,6 @@ interface BuilderConfig {
     reason: string;
   }>;
   intelligencePolicy?: {
-    holdingsAttention: number;
-    watchlistAttention: number;
-    discoveryAttention: number;
     maxSignalsPerRun?: number;
     maxArtifactReads?: number;
     allowLiveSearch?: boolean;
@@ -869,9 +866,6 @@ export async function createAnalystFromBuilder(
   const intelligencePolicy: IntelligencePolicy = {
     ...DEFAULT_INTELLIGENCE_POLICY,
     ...(policyInput ? {
-      holdingsAttention: policyInput.holdingsAttention,
-      watchlistAttention: policyInput.watchlistAttention,
-      discoveryAttention: policyInput.discoveryAttention,
       ...(policyInput.maxSignalsPerRun != null ? { maxSignalsPerRun: policyInput.maxSignalsPerRun } : {}),
       ...(policyInput.maxArtifactReads != null ? { maxArtifactReads: policyInput.maxArtifactReads } : {}),
       ...(policyInput.allowLiveSearch != null ? { allowLiveSearch: policyInput.allowLiveSearch } : {}),
@@ -1113,7 +1107,7 @@ export async function createAnalystFromBuilder(
   // The seat's rules from the playbook, on its Triggers tab from day one (DAV-280).
   await seedAnalystTriggers(analyst.id);
 
-  console.log(`[analyst] Created analyst id=${analyst.id} name="${name}" policy.holdingsAttn=${intelligencePolicy.holdingsAttention} policy.discoveryAttn=${intelligencePolicy.discoveryAttention}`);
+  console.log(`[analyst] Created analyst id=${analyst.id} name="${name}" policy.liveSearchBudget=${intelligencePolicy.liveSearchBudget}`);
   revalidatePath("/analysts");
   return { id: analyst.id };
 }
@@ -1659,9 +1653,6 @@ export async function updateAnalystFromBuilder(
     const policyInput = data.intelligencePolicy;
     updateData.intelligencePolicy = {
       ...DEFAULT_INTELLIGENCE_POLICY,
-      holdingsAttention: policyInput.holdingsAttention,
-      watchlistAttention: policyInput.watchlistAttention,
-      discoveryAttention: policyInput.discoveryAttention,
       ...(policyInput.maxSignalsPerRun != null ? { maxSignalsPerRun: policyInput.maxSignalsPerRun } : {}),
       ...(policyInput.maxArtifactReads != null ? { maxArtifactReads: policyInput.maxArtifactReads } : {}),
       ...(policyInput.allowLiveSearch != null ? { allowLiveSearch: policyInput.allowLiveSearch } : {}),

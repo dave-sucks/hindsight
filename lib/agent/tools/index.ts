@@ -46,8 +46,6 @@ import { completeRun } from "./complete-run";
 import { getPortfolioContext } from "./get-portfolio-context";
 import { readKnowledgeLibrary } from "./read-knowledge-library";
 import { askQuestion } from "./ask-question";
-import { discoverSignalsForFence } from "./discover-signals-for-fence";
-import { readAnalystInboxStats } from "./read-analyst-inbox-stats";
 import { writeSegmentTranscript } from "./write-segment-transcript";
 import { readPastTranscripts } from "./read-past-transcripts";
 // Principal-chat cross-cutting read tools
@@ -55,7 +53,6 @@ import { listAnalysts } from "./list-analysts";
 import { readAnalystConfig } from "./read-analyst-config";
 import { listRuns } from "./list-runs";
 import { readRun } from "./read-run";
-import { listMonitors } from "./list-monitors";
 import { readAccuracyReports } from "./read-accuracy-reports";
 import { listPositionsAll } from "./list-positions-all";
 import { listThesesAll } from "./list-theses-all";
@@ -189,6 +186,9 @@ export function createResearchTools(
     // THESIS_RESEARCH_V2 — Phase 1.
     dispatch_thesis_research: dispatchThesisResearch(newCtx),
     wait_for_thesis_refresh: waitForThesisRefresh(newCtx),
+    // On no mode's allowlist since 2026-09-15 — the router that filled the
+    // inbox is gone. Kept registered so the signal history stays reachable
+    // if a mode ever lists them again.
     read_signals: readSignals(newCtx),
     read_artifact: readArtifact(newCtx),
     web_search: webSearch(newCtx),
@@ -204,8 +204,6 @@ export function createResearchTools(
     complete_run: completeRun(newCtx),
     read_knowledge_library: readKnowledgeLibrary(newCtx),
     ask_question: askQuestion(newCtx),
-    discover_signals_for_fence: discoverSignalsForFence(newCtx),
-    read_analyst_inbox_stats: readAnalystInboxStats(newCtx),
     // Podcast feature — see docs/PODCAST_PLAN.md.
     write_segment_transcript: writeSegmentTranscript(newCtx),
     read_past_transcripts: readPastTranscripts(newCtx),
@@ -216,7 +214,6 @@ export function createResearchTools(
     read_analyst_config: readAnalystConfig(newCtx),
     list_runs: listRuns(newCtx),
     read_run: readRun(newCtx),
-    list_monitors: listMonitors(newCtx),
     read_accuracy_reports: readAccuracyReports(newCtx),
     list_positions_all: listPositionsAll(newCtx),
     list_theses_all: listThesesAll(newCtx),
@@ -269,8 +266,6 @@ export { recordRunSummary } from "./record-run-summary";
 export { completeRun } from "./complete-run";
 export { readKnowledgeLibrary } from "./read-knowledge-library";
 export { askQuestion } from "./ask-question";
-export { discoverSignalsForFence } from "./discover-signals-for-fence";
-export { readAnalystInboxStats } from "./read-analyst-inbox-stats";
 export { writeSegmentTranscript } from "./write-segment-transcript";
 export { readPastTranscripts } from "./read-past-transcripts";
 export { suggestPodcastConfigTool } from "./suggest-podcast-config";
@@ -280,7 +275,6 @@ export { listAnalysts } from "./list-analysts";
 export { readAnalystConfig } from "./read-analyst-config";
 export { listRuns } from "./list-runs";
 export { readRun } from "./read-run";
-export { listMonitors } from "./list-monitors";
 export { readAccuracyReports } from "./read-accuracy-reports";
 export { listPositionsAll } from "./list-positions-all";
 export { listThesesAll } from "./list-theses-all";

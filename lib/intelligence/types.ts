@@ -185,11 +185,9 @@ export interface IntelligencePolicy {
   preferredSourceCategories: SourceCategory[];  // e.g. ["SECTOR", "COMPANY"] — boost these
   excludedSourceCategories: SourceCategory[];   // e.g. ["SOCIAL"] — never surface these
 
-  // Attention weighting — 0-1 floats controlling how signals are prioritized
-  // These feed into the signal router's relevance scoring.
-  holdingsAttention: number;       // weight for signals about current open positions
-  watchlistAttention: number;      // weight for signals about watchlist tickers
-  discoveryAttention: number;      // weight for new-opportunity signals (no existing position/watch)
+  // (holdings / watchlist / discovery attention weights fed the signal
+  // router's scoring. Removed with the router 2026-09-15; old rows may still
+  // carry the keys in their JSON, and this parser simply ignores them.)
 
   // Live search permissions — controls whether the agent can do real-time searches
   allowLiveSearch: boolean;        // default true — can the agent call live search tools?
@@ -200,15 +198,12 @@ export interface IntelligencePolicy {
   minSourceQuality: number;        // default 2 — minimum source quality score (1-5) to surface
 }
 
-/** Sensible defaults for new analysts — balanced attention, moderate budgets. */
+/** Sensible defaults for new analysts — moderate budgets. */
 export const DEFAULT_INTELLIGENCE_POLICY: IntelligencePolicy = {
   maxSignalsPerRun: 50,
   maxArtifactReads: 5,
   preferredSourceCategories: [],
   excludedSourceCategories: [],
-  holdingsAttention: 0.4,
-  watchlistAttention: 0.35,
-  discoveryAttention: 0.25,
   allowLiveSearch: true,
   liveSearchBudget: 5,
   minUrgency: "LOW",
@@ -227,9 +222,6 @@ export function parseIntelligencePolicy(raw: unknown): IntelligencePolicy {
     maxArtifactReads: typeof obj.maxArtifactReads === "number" ? obj.maxArtifactReads : DEFAULT_INTELLIGENCE_POLICY.maxArtifactReads,
     preferredSourceCategories: Array.isArray(obj.preferredSourceCategories) ? obj.preferredSourceCategories as SourceCategory[] : DEFAULT_INTELLIGENCE_POLICY.preferredSourceCategories,
     excludedSourceCategories: Array.isArray(obj.excludedSourceCategories) ? obj.excludedSourceCategories as SourceCategory[] : DEFAULT_INTELLIGENCE_POLICY.excludedSourceCategories,
-    holdingsAttention: typeof obj.holdingsAttention === "number" ? obj.holdingsAttention : DEFAULT_INTELLIGENCE_POLICY.holdingsAttention,
-    watchlistAttention: typeof obj.watchlistAttention === "number" ? obj.watchlistAttention : DEFAULT_INTELLIGENCE_POLICY.watchlistAttention,
-    discoveryAttention: typeof obj.discoveryAttention === "number" ? obj.discoveryAttention : DEFAULT_INTELLIGENCE_POLICY.discoveryAttention,
     allowLiveSearch: typeof obj.allowLiveSearch === "boolean" ? obj.allowLiveSearch : DEFAULT_INTELLIGENCE_POLICY.allowLiveSearch,
     liveSearchBudget: typeof obj.liveSearchBudget === "number" ? obj.liveSearchBudget : DEFAULT_INTELLIGENCE_POLICY.liveSearchBudget,
     minUrgency: (["LOW", "MEDIUM", "HIGH", "BREAKING"] as const).includes(obj.minUrgency as SignalUrgency) ? obj.minUrgency as SignalUrgency : DEFAULT_INTELLIGENCE_POLICY.minUrgency,

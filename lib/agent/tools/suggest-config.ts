@@ -79,14 +79,12 @@ function normalizeSuggestConfig(input: unknown): unknown {
   if (isDayOnly) {
     // Day-traders should ship with an EMPTY watchlist. The whole point of
     // the strategy is "screen today's tape, find today's setups." A
-    // pre-seeded watchlist anchors the morning run — read_signals returns
-    // routes biased toward those tickers, the agent's mental model
-    // converges on familiar names, and the playbook ends up trading the
-    // same tickers other analysts already cover. Observed in production
-    // 2026-05-07: builder seeded MU+AMD on the day-trader's watchlist via
-    // discover_signals_for_fence output; the morning run's inbox came back
-    // 6/8 watchlist-matched, agent picked AMD/MU/SMCI (all already covered
-    // by other analysts) and skipped fresh movers like JOBY/MARA/IREN.
+    // pre-seeded watchlist anchors the morning run: the agent's mental
+    // model converges on familiar names and the playbook ends up trading
+    // the same tickers other analysts already cover. Observed in production
+    // 2026-05-07 — the builder seeded MU+AMD on a day-trader's watchlist,
+    // the run came back 6/8 watchlist-matched, and the agent picked
+    // AMD/MU/SMCI (all already covered) over fresh movers like JOBY/IREN.
     // Force-empty here regardless of what the builder agent passed.
     cfg.watchlist = [];
   }
@@ -245,14 +243,14 @@ const rawConfigSchema = z.object({
         .max(6),
     })
     .optional()
-    .describe("Domain monitors: 4-6 websites the intelligence pipeline monitors daily."),
+    .describe("Domain monitors: 4-6 websites worth watching for this strategy. Recorded on the analyst — nothing crawls them today (the domain cron was deleted 2026-09-15)."),
   intelligenceQueries: z
     .array(
       z.object({
         query: z
           .string()
           .describe(
-            "A DISCOVERY query that finds NEW tickers matching the analyst's Universe. Examples: 'breakout tech stocks this week small cap', 'emerging EV companies 2026 production ramp', 'AI infrastructure under-the-radar plays'. DO NOT write per-ticker queries like 'NVIDIA supply chain news' or '$NVDA AI accelerator updates' — per-ticker coverage is FREE and AUTOMATIC via portfolio-watchlist-monitor for every position and watchlist item. Per-ticker queries here are redundant spend."
+            "A DISCOVERY query that finds NEW tickers matching the analyst's Universe. Examples: 'breakout tech stocks this week small cap', 'emerging EV companies 2026 production ramp', 'AI infrastructure under-the-radar plays'. DO NOT write per-ticker queries like 'NVIDIA supply chain news' or '$NVDA AI accelerator updates'. Recorded on the analyst, not executed — the crons that ran these were deleted 2026-09-15."
           )
           .refine(
             (q) => !/\$[A-Z]{1,5}\b/.test(q),
@@ -270,20 +268,19 @@ const rawConfigSchema = z.object({
     .max(5)
     .optional()
     .describe(
-      "Discovery search monitors: 3-5 queries the system searches daily via Perplexity Sonar to find NEW tickers. Per-ticker news coverage is handled automatically by portfolio-watchlist-monitor — do NOT duplicate it here."
+      "Discovery search monitors: 3-5 queries describing how NEW tickers should be hunted. Recorded on the analyst as a statement of intent — nothing runs them today (the search crons were deleted 2026-09-15)."
     ),
+  // The holdings / watchlist / discovery attention weights left this object
+  // with the signal router they fed (2026-09-15).
   intelligencePolicy: z
     .object({
-      holdingsAttention: z.number().min(0).max(1),
-      watchlistAttention: z.number().min(0).max(1),
-      discoveryAttention: z.number().min(0).max(1),
       maxSignalsPerRun: z.number().min(10).max(100).optional(),
       maxArtifactReads: z.number().min(2).max(20).optional(),
       allowLiveSearch: z.boolean().optional(),
       liveSearchBudget: z.number().min(0).max(20).optional(),
     })
     .optional()
-    .describe("Intelligence policy — attention weights should sum to ~1.0."),
+    .describe("Intelligence policy — the live-search budget for this analyst's runs."),
   // Session 3: Universe — the fence for discovery routing. Tickers/signals
   // matching this Universe surface as new-ticker candidates in the morning
   // brief even when they're not in watchlist/positions. Distinct from the

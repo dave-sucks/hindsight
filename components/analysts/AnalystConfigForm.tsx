@@ -83,9 +83,6 @@ export type FormQuery = {
 };
 
 export type FormPolicy = {
-  holdingsAttention?: number;
-  watchlistAttention?: number;
-  discoveryAttention?: number;
   maxSignalsPerRun?: number;
   allowLiveSearch?: boolean;
 };
@@ -131,7 +128,7 @@ export type FormValues = {
   // Notifications — owner email opt-out, live across every email path.
   emailAlerts?: boolean;
 
-  // Signal attention (read-only — set by Builder)
+  // Intelligence policy (read-only — set by Builder)
   intelligencePolicy?: FormPolicy | null;
 
   // Universe
@@ -443,7 +440,7 @@ function MonitorsTab({
     <div className="flex flex-col">
       <Section
         label="Sources"
-        tooltip="Websites monitored daily by Perplexity Sonar + Firecrawl. Add a domain or use the AI chat."
+        tooltip="Websites recorded for this strategy. Nothing crawls them — the domain job was deleted on 2026-09-15."
       >
         <div className="flex flex-col gap-1">
           {values.sources.map((s, i) => (
@@ -481,22 +478,9 @@ function MonitorsTab({
 
       <Section
         label="Search Queries"
-        tooltip="Daily Sonar queries that route results to this analyst. Add a query or use the AI chat."
+        tooltip="Discovery queries recorded for this strategy. Nothing runs them — the search jobs were deleted on 2026-09-15."
       >
         <div className="flex flex-col gap-1">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <div className="flex items-center gap-2 text-sm border-b border-border pb-1 last:border-0 cursor-default min-h-8">
-                  <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="flex-1 truncate">Positions and Watchlist</span>
-                </div>
-              }
-            />
-            <TooltipContent side="left">
-              Built-in. Every run queries each held position for latest news and catalysts, and each watchlist ticker for setups within this analyst's strategy.
-            </TooltipContent>
-          </Tooltip>
           {values.searchQueries.map((q, i) => (
             <div
               key={q.id ?? `${q.query}-${i}`}
@@ -523,10 +507,6 @@ function MonitorsTab({
         </div>
       </Section>
 
-      <p className="px-3 py-3 text-[11px] text-muted-foreground/60 leading-relaxed">
-        Plus any signal that hits this analyst&apos;s Universe fence
-        (Sectors / Industries / Themes / Feeds) is routed here automatically.
-      </p>
     </div>
   );
 }
@@ -708,12 +688,6 @@ function SettingsTab({
   onChange: FormChangeHandler;
 }) {
   const policy = values.intelligencePolicy;
-
-  const holdings = clampShare(policy?.holdingsAttention);
-  const watchlist = clampShare(policy?.watchlistAttention);
-  const discovery = clampShare(policy?.discoveryAttention);
-  const total = holdings + watchlist + discovery;
-  const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
 
   return (
     <div className="flex flex-col">
@@ -941,37 +915,6 @@ function SettingsTab({
             maxPositionTotal={values.maxPositionTotal}
             riskPct={values.riskPct}
           />
-        )}
-
-        {/* Signal attention — same label style as the rows above */}
-        {policy && total > 0 && (
-          <div className="flex flex-col gap-2 pt-2">
-            <RowLabel
-              label="Signal attention"
-              tooltip="How the signal router splits the analyst's daily signal budget across holdings, watchlist, and new discovery."
-            />
-            <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div style={{ width: `${pct(holdings)}%` }} className="bg-positive" />
-              <div style={{ width: `${pct(watchlist)}%` }} className="bg-positive/40" />
-              <div
-                style={{ width: `${pct(discovery)}%` }}
-                className="bg-muted-foreground/50"
-              />
-            </div>
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              <LegendDot className="bg-positive" label="Holdings" pct={pct(holdings)} />
-              <LegendDot
-                className="bg-positive/40"
-                label="Watchlist"
-                pct={pct(watchlist)}
-              />
-              <LegendDot
-                className="bg-muted-foreground/50"
-                label="Discovery"
-                pct={pct(discovery)}
-              />
-            </div>
-          </div>
         )}
       </Section>
 
@@ -1487,28 +1430,4 @@ function MarketCapRange({
   );
 }
 
-// ─── Signal-attention legend dot ─────────────────────────────────────────────
-
-function LegendDot({
-  className,
-  label,
-  pct,
-}: {
-  className: string;
-  label: string;
-  pct: number;
-}) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <span className={cn("h-1.5 w-1.5 rounded-full", className)} />
-      <span>{label}</span>
-      <span className="tabular-nums">{pct}%</span>
-    </span>
-  );
-}
-
-function clampShare(n: number | undefined): number {
-  if (typeof n !== "number" || !Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(1, n));
-}
 
