@@ -2,11 +2,11 @@
 
 > **What this is:** known fragility and code smells **outside the
 > thesis architecture rework**. Active work on the thesis rework lives
-> in [`GAPS.md`](./GAPS.md). What shipped lives in GitHub PRs.
+> in Linear (team Davesucks). What shipped lives in GitHub PRs.
 >
 > **The distinguishing question:** *if we ignore this for 6 months,
 > does the product break?* If yes → it's an active gap; goes to
-> GAPS.md. If no → it's tech debt; goes here.
+> Linear. If no → it's tech debt; goes here.
 >
 > Items here should be ≤ a dozen at any time. If the file grows past
 > that, we've stopped being honest about what's actually a gap.
@@ -147,7 +147,7 @@ covers more entry points (CI, new clones, worktree creation).
 
 - Spotted a code smell that's not tied to the thesis architecture
   rework? Add it here with a "why not urgent" justification.
-- Spotted something that IS tied to the thesis rework? → GAPS.md.
+- Spotted something that IS tied to the thesis rework? → Linear.
 - Closed something? Delete it from here. GitHub PR is the record.
 - Don't add items just because they exist; only add items you'd
   actually fix one day. This isn't a venting file.

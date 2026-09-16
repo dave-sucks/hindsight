@@ -1,3 +1,7 @@
+> **Frozen 2026-08-18.** Linear (team Davesucks) is the tracker. Kept for the
+> standing rulings and history; some links below point at plans deleted in the
+> 2026-09-15 docs prune (they're in git history).
+
 > # ⚠️ FROZEN — TRACKING MOVED TO LINEAR (2026-08-18)
 > The roadmap sprint this file drove is complete: Tier 1 lanes 1/2/4 merged, Tier 3 shipped,
 > P1-30 closed. Remaining work now lives in **Linear** (team Davesucks): projects
