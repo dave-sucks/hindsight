@@ -16,18 +16,28 @@ const mockThesisUpdate = jest.fn().mockResolvedValue({});
 const mockPositionFindFirst = jest.fn().mockResolvedValue(null);
 const mockThesisUpdateFindFirst = jest.fn().mockResolvedValue(null);
 const mockWriteThesisUpdate = jest.fn().mockResolvedValue(undefined);
+const mockRecordGateRejection = jest.fn().mockResolvedValue(undefined);
+const mockGetStockQuote = jest.fn().mockResolvedValue(null);
+const mockThesisCreate = jest.fn();
+const mockThesisCount = jest.fn().mockResolvedValue(0);
 
 jest.mock("@/lib/prisma", () => ({
   prisma: {
-    thesis: { findUnique: mockThesisFindUnique, findFirst: jest.fn().mockResolvedValue(null), update: mockThesisUpdate },
+    thesis: {
+      findUnique: mockThesisFindUnique,
+      findFirst: jest.fn().mockResolvedValue(null),
+      update: mockThesisUpdate,
+      create: mockThesisCreate,
+      count: mockThesisCount,
+    },
+    agentConfig: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
+    analystSignalRoute: { findMany: jest.fn().mockResolvedValue([]) },
     position: { findFirst: mockPositionFindFirst },
     thesisUpdate: { findFirst: mockThesisUpdateFindFirst },
     gateRejection: { create: jest.fn() },
   },
 }));
-jest.mock("@/lib/actions/finnhub.actions", () => ({
-  getStockQuote: jest.fn().mockResolvedValue(null),
-}));
+jest.mock("@/lib/actions/finnhub.actions", () => ({ getStockQuote: mockGetStockQuote }));
 jest.mock("@/lib/agent/thesis-updates", () => ({
   writeThesisUpdate: mockWriteThesisUpdate,
   diffThesisFields: jest.fn().mockReturnValue({}),
@@ -40,11 +50,17 @@ jest.mock("@/lib/agent/triggers/load-levels", () => ({
   horizonFor: () => "TARGET",
 }));
 jest.mock("@/lib/agent/thesis-research/pull-data", () => ({ pullThesisData: jest.fn() }));
+jest.mock("@/lib/agent/gate-rejections", () => ({
+  recordGateRejection: mockRecordGateRejection,
+  detectGateRejection: jest.requireActual("@/lib/agent/gate-rejections").detectGateRejection,
+}));
 
 import rawFixtures from "@/lib/agent/__fixtures__/writer-save-refusals-2026-09-15.json";
 import { setupsForSeat } from "@/lib/agent/knowledge/setups";
 import { validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
-import { checkDecisionAgainstSave, makeSubmitThesisTool, type RunThesisWriterArgs } from "./run-thesis-writer";
+import { buildWriterSaveCall, checkDecisionAgainstSave, makeSubmitThesisTool, type RunThesisWriterArgs } from "./run-thesis-writer";
+import { updateThesis } from "@/lib/agent/tools/update-thesis";
+import { prisma } from "@/lib/prisma";
 import type { ToolContext } from "@/lib/agent/tool-context";
 
 /** The production rows as read from JSON; the submit is what the model sent. */
@@ -64,7 +80,8 @@ const ctx = {
   analystId: PEAD,
   runMode: "THESIS_WRITER",
   groupId: (phase: string) => phase,
-  calledTickers: new Map(),
+  // The pull phase called get_stock_data for the ticker, as the writer ctx records.
+  calledTickers: new Map([["DOCU", new Set(["get_stock_data"])], ["FIVE", new Set(["get_stock_data"])]]),
   signalsByTicker: new Map(),
 } as unknown as ToolContext;
 
@@ -266,5 +283,89 @@ describe("FIVE 2026-09-15 — the same decision with the explanations cut to fit
     expect(outcome.error).toBeNull();
     expect(outcome.wouldSave).toBe(true);
     expect(mockThesisUpdate).not.toHaveBeenCalled();
+    // The run already pulled the price — a check on a refresh spends no quote
+    // of its own. The shared key is the trigger check's first.
+    expect(mockGetStockQuote).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("a check writes nothing anyone reads later", () => {
+  const fx = fixtures.DOCU;
+
+  it("a refused check leaves the refusal ledger empty — the ledger is the run-day record of real refusals", async () => {
+    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
+    const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
+    const outcome = await checkDecisionAgainstSave({
+      args: writerArgs(fx, "DOCU"),
+      pull: null,
+      decision: v.decision as ValidatedThesisDecision,
+      ctx,
+      existingDirection: "LONG",
+    });
+    expect(outcome.wouldSave).toBe(false);
+    expect(mockRecordGateRejection).not.toHaveBeenCalled();
+  });
+
+  it("a real refused save still writes its refusal receipt", async () => {
+    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
+    const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
+    const call = buildWriterSaveCall(writerArgs(fx, "DOCU"), null, v.decision as ValidatedThesisDecision, {}, "LONG");
+    const saveTool = updateThesis(ctx) as unknown as { execute: (a: unknown, o: unknown) => Promise<unknown> };
+    await saveTool.execute(call.toolArgs, { toolCallId: "real-save", messages: [] });
+    expect(mockRecordGateRejection).toHaveBeenCalledTimes(1);
+    expect(mockThesisUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("a new thesis (mint) is checked the same way", () => {
+  const fx = fixtures.DOCU;
+  const mintArgs = { ...writerArgs(fx, "DOCU"), mode: "mint" as const, existingThesisId: null };
+  const mintOpts = { ...validateOpts(fx, "DOCU"), mode: "mint" as const, existingStatus: null, existingTargetPrice: null };
+  // DOCU's decision as a mint: levels priced, no trigger-edit ops.
+  const mintDecision = {
+    ...fx.submit,
+    entry_price: 67.28,
+    stop_loss: 64.16,
+    target_price: 78.3,
+    stop_basis: "Under the September 4 gap-day low $64.16 — 1.1 ATR below the $67.28 entry.",
+    target_basis: "1.272 extension of the gap leg = $78.30, 3.5R on a $3.12 risk.",
+    add_triggers: undefined,
+    edit_triggers: undefined,
+    remove_trigger_ids: undefined,
+  };
+
+  it("would save, and creates nothing while checking", async () => {
+    const v = validateThesisDecision(mintDecision, mintOpts);
+    expect(v.ok).toBe(true);
+    const outcome = await checkDecisionAgainstSave({
+      args: mintArgs,
+      pull: { currentPrice: livePrice.DOCU } as never,
+      decision: v.decision as ValidatedThesisDecision,
+      ctx,
+      existingDirection: null,
+    });
+    expect(outcome).toMatchObject({ wouldSave: true, error: null });
+    expect(mockThesisCreate).not.toHaveBeenCalled();
+    expect(mockWriteThesisUpdate).not.toHaveBeenCalled();
+    expect(mockRecordGateRejection).not.toHaveBeenCalled();
+  });
+
+  it("a mint the save would refuse is refused at the check, in the save's words, with nothing created", async () => {
+    // The same name is already covered — record_thesis sends the writer to
+    // update_thesis rather than minting a second row.
+    (prisma.thesis.findFirst as jest.Mock).mockResolvedValue({ id: fx.thesis.id, direction: "LONG", status: "WATCHING" });
+    const v = validateThesisDecision(mintDecision, mintOpts);
+    const outcome = await checkDecisionAgainstSave({
+      args: mintArgs,
+      pull: { currentPrice: livePrice.DOCU } as never,
+      decision: v.decision as ValidatedThesisDecision,
+      ctx,
+      existingDirection: null,
+    });
+    expect(outcome.wouldSave).toBe(false);
+    expect(outcome.error).toMatch(/update_thesis/);
+    expect(mockThesisCreate).not.toHaveBeenCalled();
+    expect(mockRecordGateRejection).not.toHaveBeenCalled();
   });
 });

@@ -1110,9 +1110,13 @@ export const updateThesis = defineTool({
           // "buy above $203" against a $258 tape.
           currentPrice: resolvedPriceAtTime,
           // The stamp takes only a fresh server quote — never price_at_time.
-          writtenPrice: await getStockQuote(existing.ticker)
-            .then((q) => freshQuotePrice(q, new Date()))
-            .catch(() => null),
+          // A check-only call throws the stamp away, so it doesn't spend a
+          // quote on it: the shared key is the trigger check's first.
+          writtenPrice: ctx.dryRun
+            ? null
+            : await getStockQuote(existing.ticker)
+                .then((q) => freshQuotePrice(q, new Date()))
+                .catch(() => null),
           now: new Date(),
           mintId: () => randomUUID(),
         });
