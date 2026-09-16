@@ -99,3 +99,48 @@ describe("buildTacticalSystemPrompt — tracked peak on trail fires (DAV-186)", 
     expect(prompt).toContain("tracked peak $62.70");
   });
 });
+
+describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, the fired price (DAV-254, DAV-265)", () => {
+  const stop: Trigger = { id: "stop-969", predicate: { kind: "PRICE_BELOW", level: 969 }, action: "EXIT", rationale: "Stop." };
+  const trail: Trigger = { id: "trail-8", predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 }, action: "EXIT", rationale: "Trail." };
+
+  it("names the setup's own confirmation and deletes the horizon volume table", () => {
+    const prompt = buildTacticalSystemPrompt(makeArgs({ thesis: { ...makeArgs().thesis, setupId: "PEAD" } }));
+    expect(prompt).toContain("THE SETUP THIS PLAN WAS WRITTEN ON");
+    expect(prompt).toContain("PEAD — Post-earnings drift (TARGET)");
+    expect(prompt).toContain("Confirm a buy by: Gap held; Surprise and guidance confirmed");
+    expect(prompt).toContain("(b) **The setup's own confirmation.**");
+    expect(prompt).not.toContain("Volume — horizon-conditional");
+    expect(prompt).not.toContain("COMPOUNDER horizon:** volume is irrelevant");
+  });
+
+  it("with no setup recorded it says so and confirms on the price holding", () => {
+    const prompt = buildTacticalSystemPrompt(makeArgs({ thesis: { ...makeArgs().thesis, setupId: null } }));
+    expect(prompt).toContain("(none recorded — a plan from before setups were named");
+  });
+
+  it("MU 09-14: a stop and a trail that fired together are both marked and the run decides once", () => {
+    const prompt = buildTacticalSystemPrompt(
+      makeArgs({
+        trigger: stop,
+        thesis: { ...makeArgs().thesis, ticker: "MU", allTriggers: [stop, trail] },
+        fired: { price: 964.2, coFired: [{ triggerId: "trail-8", predicateKind: "TRAILING_FROM_HIGH", sentence: "Trailing 8% from high — exit position" }] },
+      }),
+    );
+    expect(prompt).toContain("→ FIRED: EXIT");
+    expect(prompt).toContain("→ ALSO FIRED: EXIT");
+    expect(prompt).toContain("Two protective triggers fired together");
+  });
+
+  it("CEG 09-14: the fired price is the price to act on when the tool's quote fails", () => {
+    const prompt = buildTacticalSystemPrompt(makeArgs({ fired: { price: 264.91, coFired: [] } }));
+    expect(prompt).toContain("It fired at $264.91.");
+    expect(prompt).toContain("act on the fired price above, never on yesterday's");
+  });
+
+  it("the re-ladder duty points at the setup's Manage line, not a prose list", () => {
+    const prompt = buildTacticalSystemPrompt(makeArgs({ thesis: { ...makeArgs().thesis, setupId: "PEAD" } }));
+    expect(prompt).toContain("using THE SETUP block's Manage line");
+    expect(prompt).not.toContain("Set levels like an analyst");
+  });
+});

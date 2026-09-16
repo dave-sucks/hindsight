@@ -147,6 +147,14 @@ export interface Setup {
   riskMultiplier: number;
   sizing: string;
   trail: Partial<Record<Horizon, string>>;
+  /**
+   * What a fill writes onto the stock as its own exits (lib/agent/triggers/
+   * setup-exits.ts) — the setup's rules, not the seat's style (the trail
+   * lives on the analyst): a partial sale at this many R, and the
+   * beat-the-market-sold review (a beat with the stock down 3% on the day).
+   * The time limit is `time.tradingDays`, counted from the buy.
+   */
+  manage: { partialAtR: number | null; beatAndFadeReview: boolean };
   time: { tradingDays: number | null; text: string };
   failureSigns: string[];
   /** The playbook's paragraph, condensed. */
@@ -238,6 +246,7 @@ export const SETUPS: Setup[] = [
       TARGET: "After +10%: max(3 ATR, 12–15%) under the high, or a close under the 50-day.",
       COMPOUNDER: "No automatic sale under 25%; a 15% give-back and a close under the 200-day are reviews.",
     },
+    manage: { partialAtR: 2, beatAndFadeReview: true },
     time: {
       tradingDays: 20,
       text: "No progress in 10–20 sessions = a failed breakout; exit or re-set. If it gains 20% within 3 weeks of the breakout, hold at least 8 weeks (O'Neil's 8-week rule) instead of selling the partial.",
@@ -288,6 +297,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4); 0.25–1% of account at risk.",
     trail: { TRADE: "Close under the 10-day (aggressive) or 20-day (patient)." },
+    manage: { partialAtR: null, beatAndFadeReview: true },
     time: { tradingDays: 5, text: "If it hasn't moved in 3–5 sessions, it's wrong; exit." },
     failureSigns: ["No follow-through in 3–5 days", "Closes back inside the flag"],
     summary:
@@ -339,6 +349,7 @@ export const SETUPS: Setup[] = [
       TRADE: "Close under the 10- or 20-day.",
       TARGET: "After +10%: max(3 ATR, 12–15%) under the high, or a close under the 21-day EMA.",
     },
+    manage: { partialAtR: null, beatAndFadeReview: true },
     time: { tradingDays: 5, text: "Partial at 3–5 sessions; the trail decides the rest." },
     failureSigns: ["The gap fills", "Closes below the gap-day midpoint", "Volume fades on day 2"],
     summary:
@@ -387,6 +398,7 @@ export const SETUPS: Setup[] = [
       TARGET: "After +10%: max(3 ATR, 12–15%) under the high.",
       TRADE: "Close under the 20-day.",
     },
+    manage: { partialAtR: 2, beatAndFadeReview: true },
     time: {
       tradingDays: 60,
       text: "Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
@@ -443,6 +455,7 @@ export const SETUPS: Setup[] = [
       COMPOUNDER: "No automatic sale under 25%; a 15% give-back and a close under the 200-day are reviews.",
       CATALYST: "The structural stop until the event.",
     },
+    manage: { partialAtR: null, beatAndFadeReview: true },
     time: { tradingDays: 10, text: "10 sessions to reclaim the prior high, else review." },
     failureSigns: ["Closes below the 50-day on heavy volume", "The pullback comes on rising volume"],
     summary:
@@ -481,6 +494,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4). Best used as a scale-in rule on a held compounder.",
     trail: { TRADE: `Close above the 5-day average or RSI(2) > ${RSI2_EXIT_ABOVE}.` },
+    manage: { partialAtR: null, beatAndFadeReview: false },
     time: { tradingDays: 5, text: "Snaps back within 1–5 sessions or it's out." },
     failureSigns: ["Closes below the 200-day"],
     summary:
@@ -509,6 +523,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "From the entry setup used.",
     trail: {},
+    manage: { partialAtR: null, beatAndFadeReview: false },
     time: { tradingDays: null, text: "From the entry setup used." },
     failureSigns: ["Relative strength rolls over"],
     summary:
@@ -547,6 +562,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: BINARY_RISK_MULTIPLIER,
     sizing: `Half the normal risk (DAV-245 ruling 2). If a −50% gap would cost more than ${BINARY_MAX_GAP_LOSS_PCT}% of equity, the position is too big.`,
     trail: { CATALYST: "The structural stop until the event; the event is the exit." },
+    manage: { partialAtR: null, beatAndFadeReview: false },
     time: { tradingDays: null, text: "The event, or T+30." },
     failureSigns: ["Run-up stalls inside the window", "Negative read-across from a peer's decision"],
     summary:
@@ -580,6 +596,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
     trail: {},
+    manage: { partialAtR: null, beatAndFadeReview: false },
     time: { tradingDays: null, text: "6–12 months for the effect; the entry setup's clock for the trade." },
     failureSigns: ["Insiders sell into the rally"],
     summary:
@@ -605,6 +622,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "From the entry setup used.",
     trail: {},
+    manage: { partialAtR: null, beatAndFadeReview: false },
     time: { tradingDays: null, text: "From the entry setup used." },
     failureSigns: ["Revisions turn down"],
     summary: "Rising estimates extend post-earnings drift; the Zacks Rank in one line.",
@@ -658,7 +676,8 @@ export const SETUPS: Setup[] = [
     trail: {
       COMPOUNDER: `No automatic sale under ${COMPOUNDER_CATASTROPHE_PCT}%; a ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% give-back and a close under the 200-day are reviews.`,
     },
-    time: { tradingDays: null, text: "A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop." },
+    manage: { partialAtR: null, beatAndFadeReview: false },
+    time: { tradingDays: 60, text: "A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop." },
     failureSigns: ["The named invalidation happens", "Guidance cut", "Margin break"],
     summary:
       "A business bought at conviction size and held through volatility, entered on confirmation rather than hope, sold only when the story breaks.",
@@ -686,6 +705,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: `From the entry setup used; at most ${MAX_NAMES_PER_INDUSTRY} names per industry group.`,
     trail: {},
+    manage: { partialAtR: null, beatAndFadeReview: false },
     time: { tradingDays: null, text: "From the entry setup used." },
     failureSigns: ["The group turns Lagging — a review for every name in it"],
     summary: "Stocks move in groups and leadership rotates; three longs in one group are one bet.",

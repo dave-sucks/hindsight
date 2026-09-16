@@ -62,6 +62,8 @@ interface FiredPayload {
    * instead of spending a step fetching what fired it.
    */
   firedContext?: string | null;
+  /** Other protective triggers that fired with this one on the same pass (DAV-254). */
+  coFired?: Array<{ triggerId: string; predicateKind: string; sentence: string }>;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -263,6 +265,7 @@ export const tacticalRun = inngest.createFunction(
           ticker: thesis.ticker,
           direction: thesis.direction,
           horizon: thesis.horizon,
+          setupId: thesis.setupId ?? null,
           coreBelief: thesis.coreBelief,
           keyAssumptions: thesis.keyAssumptions,
           invalidationConds: thesis.invalidationConds,
@@ -459,6 +462,23 @@ export const tacticalRun = inngest.createFunction(
       const summary = signal
         ? `${baseSentence} (signal: "${signal.headline.slice(0, 100)}")`
         : baseSentence;
+      // A co-fired protective trigger gets its own audit row — the record
+      // says both fired — but shares this one run.
+      for (const co of fired.coFired ?? []) {
+        const coTrigger = findTriggerById(thesis.allTriggers as Trigger[], co.triggerId);
+        await prisma.thesisUpdate.create({
+          data: {
+            thesisId: thesis.id,
+            type: "TRIGGER_FIRED",
+            summary: `${co.sentence} — folded into the same run`,
+            rationale: coTrigger?.rationale ?? co.sentence,
+            triggerId: co.triggerId,
+            signalIds: [],
+            runId: run.id,
+            priceAtTime: fired.firedPrice ?? null,
+          },
+        });
+      }
       await prisma.thesisUpdate.create({
         data: {
           thesisId: thesis.id,
@@ -674,6 +694,7 @@ export const tacticalRun = inngest.createFunction(
           ticker: thesis.ticker,
           direction: thesis.direction,
           horizon: thesis.horizon,
+          setupId: thesis.setupId,
           coreBelief: thesis.coreBelief,
           keyAssumptions: thesis.keyAssumptions,
           invalidationConds: thesis.invalidationConds,
@@ -692,6 +713,7 @@ export const tacticalRun = inngest.createFunction(
         position,
         recentUpdates: thesis.updates,
         latestDigest,
+        fired: { price: fired.firedPrice ?? null, coFired: fired.coFired ?? [] },
       });
 
       // Build the kickoff message so the chat replay shows WHY this run
@@ -706,8 +728,11 @@ export const tacticalRun = inngest.createFunction(
         : "";
       // The numbers behind an earnings fire, when the evaluator sent them.
       const contextSuffix = fired.firedContext ? ` ${fired.firedContext}` : "";
+      const coFiredSuffix = fired.coFired?.length
+        ? ` Also fired on the same pass: ${fired.coFired.map((c) => c.sentence).join("; ")} — one decision covers both.`
+        : "";
       const userPrompt =
-        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${signalSuffix} ` +
+        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${coFiredSuffix}${signalSuffix} ` +
         `Validate, decide, act if warranted, then close out via update_thesis. ` +
         `You are running unattended — no human will respond. Every turn must call a tool; ` +
         `text-only turns terminate the run as FAILED.`;

@@ -377,3 +377,17 @@ describe("sectorEtfFor", () => {
     expect(sectorEtfFor(null)).toBeNull();
   });
 });
+
+describe("priceIsLive — a missing quote is said, not presented as now (DAV-265)", () => {
+  // CEG 2026-09-14: a rate-limited quote left Friday's close $284.75 as
+  // `price` and the tactical run approved an add on it while CEG traded $265.
+  const stock = barsFrom(line(260, 100, 0.5));
+  it("with no live price the chart measures from the last close and says so", () => {
+    const ps = computePriceStructure({ bars: stock, price: null })!;
+    expect(ps.priceIsLive).toBe(false);
+    expect(ps.price).toBe(ps.lastClose);
+  });
+  it("with a live price the flag is true", () => {
+    expect(computePriceStructure({ bars: stock, price: stock[stock.length - 1].close * 0.9 })!.priceIsLive).toBe(true);
+  });
+});

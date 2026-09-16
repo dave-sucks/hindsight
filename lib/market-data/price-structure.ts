@@ -115,6 +115,13 @@ export interface PriceStructure {
   bars: number;
   /** Live price when given, else the last close. */
   price: number;
+  /**
+   * False when no live price was given, so `price` IS `lastClose` and every
+   * distance below is measured from yesterday. Said out loud because a
+   * failed quote used to come back as a confident `price` (CEG 2026-09-14:
+   * a 429 left $284.75 in this field while CEG traded $265; DAV-265).
+   */
+  priceIsLive: boolean;
   lastClose: number;
   sma: {
     d20: MovingAverage | null;
@@ -598,6 +605,7 @@ export function computePriceStructure(input: PriceStructureInput): PriceStructur
     asOf: bars[bars.length - 1].date,
     bars: bars.length,
     price: round2(price),
+    priceIsLive: !!(input.price && input.price > 0),
     lastClose: round2(lastClose),
     sma: { d20, d50, d150, d200 },
     ema: { d10: e10 != null ? round2(e10) : null, d21: e21 != null ? round2(e21) : null },
