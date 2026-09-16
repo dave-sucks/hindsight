@@ -111,3 +111,19 @@ describe("formatDataBlock — the chart, in dollars", () => {
     expect(none).toContain("Current: $35.16");
   });
 });
+
+describe("formatDataBlock — the last report's date (HPE 2026-09-15)", () => {
+  // The per-quarter table carries no report dates, so the writer could not
+  // tell that HPE's print was 13 days old and wrote it as a day-1–3 drift.
+  it("says when the last report was and how many days ago", () => {
+    const out = formatDataBlock({ ...inputs(null), lastReport: { date: "2026-09-02", daysAgo: 13 } });
+    expect(out).toContain("Last report: 2026-09-02, 13 days ago (the report day is 0 — a drift entry is days 1–3).");
+  });
+  it("says none, or that the call failed — never a failure shown as none", () => {
+    expect(formatDataBlock({ ...inputs(null), lastReport: null })).toContain("Last report: none on the calendar in the last 100 days.");
+    expect(formatDataBlock({ ...inputs(null), lastReport: { failed: true } })).toContain("Last report: unknown — the calendar call failed");
+  });
+  it("prints nothing about it when the caller didn't ask", () => {
+    expect(formatDataBlock(inputs(null))).not.toContain("Last report:");
+  });
+});
