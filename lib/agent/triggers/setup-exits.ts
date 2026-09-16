@@ -5,8 +5,7 @@
  * Three rules, all from the catalog entry, none from the seat:
  *   • the time limit — "not working after N days" / the 60-day business
  *     checkpoint — as a day count from the buy (the review-cadence trigger's
- *     counting-from choice, #655; written here once that is on main),
- *     always a review, never a time stop;
+ *     counting-from choice, #655), always a review, never a time stop;
  *   • a partial sale at N R — the setup's `manage.partialAtR`, as a TRIM at
  *     the gain that equals N times the stop distance;
  *   • the beat-the-market-sold review — a beat with the stock down 3% on
@@ -35,11 +34,19 @@ export function setupExitTriggers(input: {
   const { setup, entry, stop } = input;
   const out: Trigger[] = [];
 
-  // The time limit ("not working after N days", the 60-day checkpoint) is a
-  // day count from the buy — the counting-from choice on the review-cadence
-  // trigger (#655). Written here once that field is on main; on today's
-  // schema it would be stripped to a plain review clock, which is worse
-  // than absent.
+  // The time limit — "not working after N days", the 60-day business
+  // checkpoint — as a day count from the buy (#655). Always a review: the
+  // playbook says exit OR re-set, and that is a decision, not a stop.
+  if (setup.time.tradingDays != null && setup.time.tradingDays > 0) {
+    out.push({
+      id: input.mintId(),
+      predicate: { kind: "REVIEW_CADENCE", days: setup.time.tradingDays, from: "BUY" },
+      action: "REVIEW",
+      rationale: `${setup.time.tradingDays} days after the buy — ${setup.time.text}`,
+      cooldownDays: setup.time.tradingDays,
+      source: "DEFAULT",
+    });
+  }
 
   if (setup.manage.partialAtR != null && stop != null && entry > 0 && stop > 0 && stop !== entry) {
     const distPct = (Math.abs(entry - stop) / entry) * 100;
