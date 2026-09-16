@@ -489,3 +489,34 @@ describe("validateEnterTriggerRequired", () => {
     ).toEqual({ ok: true });
   });
 });
+
+describe("the held-name notes name the ops that exist (DAV-262)", () => {
+  // CEG tactical run, 2026-09-14 09:35:39: the ENTER-on-held refusal told the
+  // agent to "pass that array" — the whole-list argument DAV-242 deleted — and
+  // called the holding "ACTIVE", a status P1-24 deleted.
+  const held = (triggers: Trigger[]) =>
+    validateEnterTriggerRequired({ direction: "LONG", status: "HOLDING", triggers, targetPrice: 300 });
+
+  it("a buy trigger on a stock we own: remove it by id with remove_trigger_ids", () => {
+    const r = held([
+      { id: "buy-ceg-1", predicate: { kind: "PRICE_ABOVE", level: 280 }, action: "ENTER", rationale: "buy" },
+      { id: "floor-ceg", predicate: { kind: "PRICE_BELOW", level: 220 }, action: "EXIT", rationale: "floor" },
+    ]);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.note).toContain('remove_trigger_ids: ["buy-ceg-1"]');
+    expect(r.note).toMatch(/already own/);
+    expect(r.note).not.toMatch(/pass that array|ACTIVE thesis|triggers\[\]|defaultTriggersForHorizon/);
+  });
+
+  it("no sell trigger on a stock we own: add one with add_triggers", () => {
+    const r = held([
+      { id: "review-ceg", predicate: { kind: "REVIEW_CADENCE", days: 7 }, action: "REVIEW", rationale: "look" },
+    ]);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.note).toContain("add_triggers");
+    expect(r.note).toMatch(/automated stop-loss/);
+    expect(r.note).not.toMatch(/pass that array|ACTIVE thesis|triggers\[\]|defaultTriggersForHorizon/);
+  });
+});

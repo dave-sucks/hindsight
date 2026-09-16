@@ -185,8 +185,9 @@ export function validateThesisShape(
         `R/R floor: ${rr.toFixed(2)}:1 is below the mandatory ${args.minRiskReward}:1 minimum ` +
         `(${formula} with entry=$${entry}, target=$${target}, stop=$${stop}). ` +
         `Tighten the stop to a REAL technical level, raise the target to a CITED level, ` +
-        `or — if no level makes the math work — set direction to PASS, or set the plan down ` +
-        `(resend triggers with the levels removed and keep a REVIEW wake). Never fabricate a level to clear the floor.`,
+        `or — if no level makes the math work — set direction to PASS, or set the plan down: ` +
+        `remove the buy, floor and target by id with remove_trigger_ids (the name stays in view with no plan). ` +
+        `Never fabricate a level to clear the floor.`,
     };
   }
   return { ok: true, riskReward: rr };

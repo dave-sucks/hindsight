@@ -2,7 +2,7 @@
  * Trigger-shape guard — symmetric correctness for WATCHING and ACTIVE theses.
  *
  * Used by both `record_thesis` (mint-time) and `update_thesis` (refresh-time)
- * to enforce that the triggers[] array matches the thesis's state. Two
+ * to enforce that the resulting trigger list matches the thesis's state. Two
  * mirror-image structural rules:
  *
  *   WATCHING (no position yet) — a thesis carrying a PLAN LEVEL (a floor or
@@ -93,9 +93,14 @@ export function validateEnterTriggerRequired(
   }
 
   // ── ACTIVE-side checks ─────────────────────────────────────────────────
-  // Symmetric to the WATCHING checks below. An ACTIVE thesis has an open
-  // Alpaca position — the trigger array MUST carry EXIT (the automated
+  // Symmetric to the WATCHING checks below. A held (HOLDING) thesis has an
+  // open Alpaca position — the trigger list MUST carry EXIT (the automated
   // stop-loss path) and MUST NOT carry ENTER (already in the position).
+  //
+  // The notes name the ops that exist — add_triggers / remove_trigger_ids
+  // (DAV-242) — and say "a stock we own", never the deleted ACTIVE status or
+  // the deleted whole-list `triggers` argument (DAV-262: the CEG tactical run
+  // was told to send the whole list on 2026-09-14).
   //
   // Production evidence: backfill 2026-05-26. The thesis-writer's
   // WATCHING-only prompt produced WATCHING-shape triggers on every ACTIVE
@@ -109,16 +114,14 @@ export function validateEnterTriggerRequired(
         ok: false,
         reason: "enter-actions-on-active",
         note:
-          `Your triggers[] array contains ${enterOffenders.length} ENTER action(s) ` +
-          `on an ACTIVE thesis. ACTIVE means we already own the position — ENTER ` +
-          `triggers fire on entry conditions but there's nothing to enter. The ` +
-          `trigger evaluator would spawn orphan tactical ENTER runs that fail ` +
-          `cleanly ("already in position") but generate noisy production logs.` +
-          `\n\nFix: remove the ENTER trigger(s). For a held position use EXIT ` +
-          `(stop-loss / target exit), TRIM (partial exit), ADD (scale in), ` +
-          `MOVE_STOP (trail stop), or REVIEW (re-evaluate without auto-acting). ` +
-          `The canonical shape is defaultTriggersForHorizon(horizon, prices, "HELD") ` +
-          `— pass that array and the gate is satisfied.`,
+          `This is a stock we already own, and the plan would still carry ` +
+          `${enterOffenders.length} buy trigger(s) (action ENTER). A buy can't fire on a ` +
+          `position we hold — the 5-minute check would only start runs that end ` +
+          `"already in position".` +
+          `\n\nFix: remove the buy trigger(s) by id — remove_trigger_ids: [${enterOffenders
+            .map((t) => `"${t.id}"`)
+            .join(", ")}]. A stock we own carries sells (EXIT), partial sales (TRIM), ` +
+          `adds (ADD), stop moves (MOVE_STOP) and reviews (REVIEW); add those with add_triggers.`,
       };
     }
     const hasExit = args.triggers.some((t) => t.action === "EXIT");
@@ -127,16 +130,12 @@ export function validateEnterTriggerRequired(
         ok: false,
         reason: "missing-exit-trigger-on-active",
         note:
-          `An ACTIVE thesis MUST carry at least one EXIT trigger — that's the ` +
-          `automated stop-loss path. Without it, the trigger evaluator has no ` +
-          `way to fire a tactical EXIT run when price hits the stop, and the ` +
-          `position is exposed to manual oversight only (hourly price-monitor ` +
-          `cron).\n\nFix: add a trigger with action: "EXIT" and a price predicate ` +
-          `(PRICE_BELOW for LONG positions at stop_loss, PRICE_ABOVE for SHORT ` +
-          `positions at stop_loss). For TRADE-horizon theses, also add an EXIT ` +
-          `on target_price (auto-take-profit). The default HELD template at ` +
-          `defaultTriggersForHorizon(horizon, prices, "HELD") produces the ` +
-          `canonical shape — pass that array and the gate is satisfied.`,
+          `A stock we own must carry at least one sell trigger (action EXIT) — that's the ` +
+          `automated stop-loss path. Without it nothing sells the position when the ` +
+          `price breaks the stop; the hourly price check is the only thing watching it.` +
+          `\n\nFix: add one with add_triggers — action "EXIT" with a price predicate ` +
+          `(PRICE_BELOW at the stop for a LONG position, PRICE_ABOVE at the stop for a ` +
+          `SHORT), or set stop_loss, which is the same edit on the floor trigger.`,
       };
     }
     return { ok: true };
