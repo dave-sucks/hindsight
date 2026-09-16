@@ -44,6 +44,7 @@ import { prisma } from "@/lib/prisma";
 import { finnhub } from "@/lib/agent/research-helpers";
 import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
+import { collapseProtectiveFires, type CoFired } from "@/lib/agent/triggers/co-fire";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import {
   describeEarningsReport,
@@ -353,6 +354,15 @@ interface FiringEvent {
   ticker: string;
   action: Trigger["action"];
   predicateKind: TriggerPredicate["kind"];
+  /**
+   * Other protective triggers on the same thesis that fired on this same
+   * pass (a stop and a trail in the same minute). Folded into ONE run —
+   * the tactical run decides once with both in view (MU 2026-09-14: two
+   * runs, one sale, one folded; DAV-254). See triggers/co-fire.
+   */
+  coFired?: CoFired[];
+  /** The fire in words — what a co-fired trigger says on the run it folds into. */
+  sentence?: string;
   /**
    * The quote that fired the predicate, when the evaluating path had one
    * (the price cron always does; signal-driven fires don't fetch quotes).
@@ -1095,10 +1105,12 @@ export const triggerEvaluator = inngest.createFunction(
             predicateKind: t.predicate.kind,
             firedPrice: latestQuote?.price ?? null,
             firedContext,
+            sentence: describeTriggerFire(t),
           });
         }
       }
-      return events;
+      // Two protective fires on one thesis in one pass → one run (DAV-254).
+      return collapseProtectiveFires(events, (e) => e.sentence ?? e.predicateKind);
     });
 
     for (const f of cronFires) {

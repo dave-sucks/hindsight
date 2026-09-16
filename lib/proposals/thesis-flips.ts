@@ -35,6 +35,8 @@ import {
   type TriggerOp,
 } from "@/lib/agent/triggers/ops";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { setupExitTriggers } from "@/lib/agent/triggers/setup-exits";
+import { getSetup } from "@/lib/agent/knowledge/setups";
 
 /**
  * Promote the WATCHING / PROMOTED thesis on (analystId, ticker) to HOLDING,
@@ -144,6 +146,7 @@ export async function armHeldLadderOnFill(opts: {
         id: true,
         direction: true,
         horizon: true,
+        setupId: true,
         catalystDate: true,
         triggers: true,
       },
@@ -165,11 +168,25 @@ export async function armHeldLadderOnFill(opts: {
           "HELD",
         )
       : [];
+    // The stock's own exits from the setup it was bought on (DAV-254): the
+    // time limit counted from this buy, a partial at N R, the beat-the-
+    // market-sold review. Seat style (the trail) stays on the analyst.
+    const setup = watchingThesis.setupId ? getSetup(watchingThesis.setupId) : undefined;
+    const setupExits = setup
+      ? setupExitTriggers({
+          setup,
+          horizon,
+          entry: opts.fillPrice,
+          stop: opts.stopLoss,
+          mintId: () => randomUUID(),
+        })
+      : [];
     const ops: TriggerOp[] = [
       ...stored.filter((t) => t.action === "ENTER").map((t) => ({ op: "remove" as const, id: t.id })),
       { op: "level", slot: "FLOOR", price: opts.stopLoss },
       { op: "level", slot: "TARGET", price: opts.targetPrice },
       ...heldTemplate.map((t) => ({ op: "add" as const, trigger: t })),
+      ...setupExits.map((t) => ({ op: "add" as const, trigger: t })),
     ];
     // A template trigger whose bucket the analyst already filled is left
     // alone: the add would become an edit of theirs, and the fill must not
