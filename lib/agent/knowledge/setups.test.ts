@@ -161,3 +161,30 @@ describe("read_knowledge_library — topic 'setup'", () => {
     expect(String(r.data.hint)).toContain("BASE_BREAKOUT");
   });
 });
+
+describe("the pullback is a plan the writer can write (HPE 2026-09-15)", () => {
+  it("the pullback template is the arm alone — no level nothing re-sets", () => {
+    const p = getSetup("MA_PULLBACK")!;
+    expect(templatePlaceholders(p.entry.template)).toEqual([]);
+    expect(describeTemplate(p.entry.template)).toBe(
+      "OR[NEAR_SMA(20-day, within 2%), NEAR_SMA(50-day, within 2%)]",
+    );
+    expect(Object.keys(PLACEHOLDERS)).not.toContain("{priorDayHigh}");
+    for (const s of SETUPS) expect(templatePlaceholders(s.entry.template)).not.toContain("{priorDayHigh}");
+  });
+
+  it("the reversal is the tactical run's confirmation, and the stop has a rule before the pullback low prints", () => {
+    const p = getSetup("MA_PULLBACK")!;
+    expect(p.entry.confirmation.some((c) => c.includes("close above the prior day's high"))).toBe(true);
+    expect(p.stop.structure).toEqual([
+      "the pullback's swing low, once it has printed",
+      "until then, 1 ATR under the average being bought",
+    ]);
+  });
+
+  it("PEAD carries its window as data, and only PEAD does", () => {
+    expect(getSetup("PEAD")!.entry.windowDays).toEqual([1, 3]);
+    expect(getSetup("PEAD")!.entry.text).toContain("written on the pullback setup");
+    expect(SETUPS.filter((s) => s.entry.windowDays).map((s) => s.id)).toEqual(["PEAD"]);
+  });
+});

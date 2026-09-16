@@ -169,6 +169,15 @@ export interface DataBlockInputs {
    * DAV-252.
    */
   insiderCluster?: string | null;
+  /**
+   * The last report's date and how many days ago it was, from the earnings
+   * calendar. The per-quarter table has no report dates (the EPS history
+   * endpoint doesn't carry them), so without this line the writer cannot
+   * tell whether a drift window is open — HPE 2026-09-15 was written as
+   * PEAD 13 days after the print. Undefined → not printed; null → "none
+   * in the last 100 days"; { failed } → said so, never shown as none.
+   */
+  lastReport?: { date: string; daysAgo: number } | { failed: true } | null;
 }
 
 /**
@@ -479,12 +488,24 @@ function buildFinancials(f: FinancialsInput | null): string {
   return lines.join("\n");
 }
 
-function buildEarnings(e: EarningsHistoryInput | null): string {
-  if (!e) return "(earnings history unavailable)";
-  if (e.history.length === 0) {
-    return `(no earnings history${e.errors?.length ? ` — ${e.errors.join("; ")}` : ""})`;
-  }
+function buildEarnings(
+  e: EarningsHistoryInput | null,
+  lastReport?: { date: string; daysAgo: number } | { failed: true } | null,
+): string {
   const lines: string[] = [];
+  if (lastReport !== undefined) {
+    lines.push(
+      lastReport == null
+        ? "Last report: none on the calendar in the last 100 days."
+        : "failed" in lastReport
+          ? "Last report: unknown — the calendar call failed, so the day count since the report is not available."
+          : `Last report: ${lastReport.date}, ${lastReport.daysAgo} day${lastReport.daysAgo === 1 ? "" : "s"} ago (the report day is 0 — a drift entry is days 1–3).`,
+    );
+  }
+  if (!e) return [...lines, "(earnings history unavailable)"].join("\n");
+  if (e.history.length === 0) {
+    return [...lines, `(no earnings history${e.errors?.length ? ` — ${e.errors.join("; ")}` : ""})`].join("\n");
+  }
   if (e.beatRatePct != null) {
     lines.push(
       `Beat rate: ${e.beatRatePct}% (${e.beats}/${e.beats + e.misses} clean outcomes across ${e.history.length}q)`,
@@ -668,7 +689,7 @@ Pulled ${pulledStr} — use these numbers as ground truth.
 
   sections.push(`## Financials, Annual + Forward Estimates\n\n${buildFinancials(inputs.financials)}`);
 
-  sections.push(`## Earnings History\n\n${buildEarnings(inputs.earningsHistory)}`);
+  sections.push(`## Earnings History\n\n${buildEarnings(inputs.earningsHistory, inputs.lastReport)}`);
 
   sections.push(`## Analyst Coverage\n\n${buildAnalystCoverage(inputs.analystCoverage)}`);
 

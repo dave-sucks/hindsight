@@ -135,8 +135,17 @@ export interface DecisionValidationOpts {
   existingTargetPrice?: number | null;
   /** The setups this seat may write on (setupsForSeat). Absent = no setup check. */
   setups?: Setup[];
-  /** Chart numbers from the pull, for the stop-distance and chase checks. */
-  chart?: { atr14: number | null; pivot: number | null; brokenOut: boolean | null } | null;
+  /** Chart numbers from the pull, for the stop-distance, chase and window checks. */
+  chart?: {
+    atr14: number | null;
+    pivot: number | null;
+    brokenOut: boolean | null;
+    /** The 20- and 50-day averages, for naming the pullback plan when a windowed setup no longer applies. */
+    sma20?: { value: number; rising: boolean } | null;
+    sma50?: { value: number; rising: boolean } | null;
+    /** Days since the last report (the report day is 0); null when the calendar has none. */
+    daysSinceReport?: number | null;
+  } | null;
 }
 
 export interface DecisionValidationResult {
@@ -230,6 +239,32 @@ export function validateThesisDecision(
     } else if (!setup) {
       errors.push(`setup_id: ${d.setup_id} isn't one of this seat's setups (${opts.setups.map((s) => s.id).join(", ")}). Pick one of those or PASS.`);
     }
+  }
+  // A setup with a window, chosen after the window closed, does not apply.
+  // Said in-loop with the plan that does apply — the pullback — priced from
+  // the chart. HPE 2026-09-15: PEAD 13 days after the print; the drift
+  // rules could place no stop, so the plan went unpriced with a review at
+  // the very level a pullback plan would buy.
+  const window = setup?.entry.windowDays;
+  const since = opts.chart?.daysSinceReport;
+  if (directional && !held && setup && window && since != null && since > window[1]) {
+    const pullback = opts.setups?.find((s) => s.id === "MA_PULLBACK");
+    const candidates = [
+      { label: "20-day", ma: opts.chart?.sma20 },
+      { label: "50-day", ma: opts.chart?.sma50 },
+    ];
+    const averages = candidates
+      .filter((c) => c.ma != null && c.ma.rising)
+      .map((c) => `$${c.ma!.value.toFixed(2)} (the rising ${c.label})`);
+    const atr = opts.chart?.atr14;
+    const next = pullback
+      ? averages.length
+        ? ` Write it on MA_PULLBACK: buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints, target the prior high at ≥ 2R — or PASS with the reason.`
+        : " Write it on MA_PULLBACK (buy at a rising 20- or 50-day, stop 1 ATR under it) if the trend allows — or PASS with the reason."
+      : " Pick a setup that applies, or PASS with the reason.";
+    errors.push(
+      `setup_id: ${setup.name} applies days ${window[0]}–${window[1]} after the report; the last report was ${since} days ago, so it no longer does.${next}`,
+    );
   }
   if (directional && priced && entry != null && stop != null && entry > 0 && stop > 0) {
     if (opts.setups && (!d.stop_basis || d.stop_basis.trim().length < 10)) {

@@ -132,6 +132,14 @@ export interface Setup {
     confirmation: string[];
     /** Max % past the level a buy may be placed; null = no chase rule. */
     chaseLimitPct: number | null;
+    /**
+     * Days after the report inside which this entry applies — the same
+     * count the EARNINGS_SINCE kind evaluates (the report day is 0). Past
+     * the last day the setup no longer applies and the writer is told so
+     * (HPE 2026-09-15: written as PEAD 13 days after the print, with no
+     * plan the drift rules could price).
+     */
+    windowDays?: [number, number];
     text: string;
   };
   stop: {
@@ -163,7 +171,6 @@ export const PLACEHOLDERS: Record<Placeholder, string> = {
   "{gapDayHigh}": "chart.gaps[0].high — day-1 high of the gap",
   "{gapDayMid}": "chart.gaps[0].mid — the gap-day midpoint (a hold above it on day 2 is the entry)",
   "{gapDayLow}": "chart.gaps[0].low — the gap-day low, the market's own line",
-  "{priorDayHigh}": "the last completed session's high — re-set by the daily run each day the arm holds",
   "{swingLow}": "chart.swings.lastLow.price",
   "{entry}": "the entry level this plan uses",
 };
@@ -369,7 +376,8 @@ export const SETUPS: Setup[] = [
       },
       confirmation: ["Gap held", "Surprise and guidance confirmed from the release or transcript"],
       chaseLimitPct: PEAD_MAX_RUN_PAST_GAP_PCT,
-      text: "Days 1–3 after the print, above the gap-day low — usually already true, so the entry is set at the current price.",
+      windowDays: PEAD_ENTRY_WINDOW,
+      text: `Days ${PEAD_ENTRY_WINDOW[0]}–${PEAD_ENTRY_WINDOW[1]} after the print, above the gap-day low — usually already true, so the entry is set at the current price. After day ${PEAD_ENTRY_WINDOW[1]} the drift entry is gone; a name still worth owning in an uptrend is written on the pullback setup (MA_PULLBACK).`,
     },
     stop: {
       structure: ["the gap-day low", `−${TRADE_STOP_MAX_PCT}% from entry`],
@@ -412,28 +420,33 @@ export const SETUPS: Setup[] = [
       "The pullback comes on below-average volume (healthy), not above (distribution)",
     ],
     entry: {
+      // The arm. The buy level itself is the average, written as the plan's
+      // entry price; the reversal is the tactical run's confirmation, not a
+      // stored condition. A stored "close above the prior day's high" needs
+      // a level something re-sets every day, and nothing did — the writer
+      // had an entry it could not store (HPE 2026-09-15).
       template: {
-        kind: "AND",
+        kind: "OR",
         predicates: [
-          {
-            kind: "OR",
-            predicates: [
-              { kind: "NEAR_SMA", period: 20, withinPct: PULLBACK_NEAR_SMA_PCT },
-              { kind: "NEAR_SMA", period: 50, withinPct: PULLBACK_NEAR_SMA_PCT },
-            ],
-          },
-          { kind: "PRICE_ABOVE", level: "{priorDayHigh}", basis: "close" },
+          { kind: "NEAR_SMA", period: 20, withinPct: PULLBACK_NEAR_SMA_PCT },
+          { kind: "NEAR_SMA", period: 50, withinPct: PULLBACK_NEAR_SMA_PCT },
         ],
       },
-      confirmation: ["The reversal: a close above the prior day's high after touching the average"],
+      confirmation: [
+        "The reversal: a close above the prior day's high after touching the average — the tactical run checks this on the fire",
+        "The pullback came on below-average volume",
+      ],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      text: `Within ${PULLBACK_NEAR_SMA_PCT}% of the rising 20- or 50-day, then a close above the prior day's high. This is the entry for a stock that never dips 10%.`,
+      text: `Within ${PULLBACK_NEAR_SMA_PCT}% of the rising 20- or 50-day. The buy level is the average itself; the tactical run confirms the touch held (a close above the prior day's high). This is the entry for a stock that never dips 10%.`,
     },
     stop: {
-      structure: ["the pullback's swing low"],
+      structure: [
+        "the pullback's swing low, once it has printed",
+        "until then, 1 ATR under the average being bought",
+      ],
       maxPct: null,
       minAtr: MIN_STOP_ATR,
-      text: "Under the pullback's swing low, at least 1 ATR from entry. A close below the 50-day on volume invalidates.",
+      text: "Under the pullback's swing low once it has printed; until then, 1 ATR under the average being bought (the 20-day for a 20-day pullback). At least 1 ATR from entry. A close below the 50-day on volume invalidates.",
     },
     target: { minR: MIN_REWARD_RISK, text: "The prior high first (a partial), then the measured move." },
     riskMultiplier: 1,
@@ -631,13 +644,7 @@ export const SETUPS: Setup[] = [
               { kind: "VOLUME_RATIO", min: BREAKOUT_VOLUME_RATIO },
             ],
           },
-          {
-            kind: "AND",
-            predicates: [
-              { kind: "NEAR_SMA", period: 50, withinPct: PULLBACK_NEAR_SMA_PCT },
-              { kind: "PRICE_ABOVE", level: "{priorDayHigh}", basis: "close" },
-            ],
-          },
+          { kind: "NEAR_SMA", period: 50, withinPct: PULLBACK_NEAR_SMA_PCT },
           { kind: "VS_SMA", period: 50, direction: "ABOVE" },
         ],
       },
