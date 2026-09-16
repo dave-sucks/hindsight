@@ -149,6 +149,8 @@ export interface EvaluationContext {
   position?: {
     avgCost?: number | null;
     peakPrice?: number | null;
+    /** When the position opened — the anchor for a day count `from: "BUY"`. */
+    openedAt?: Date | null;
   } | null;
 
   /** Thesis fields needed by time-based predicates. */
@@ -160,6 +162,11 @@ export interface EvaluationContext {
      * never-reviewed thesis due immediately.
      */
     lastReviewedAt?: Date | null;
+    /**
+     * The thesis's own event date (Thesis.catalystDate) — the anchor for a
+     * day count `from: "EVENT"`. Absent/null → that count is false.
+     */
+    catalystDate?: Date | null;
     /**
      * "LONG" | "SHORT" | null — orients GAIN_FROM_ENTRY and
      * TRAILING_FROM_HIGH (a SHORT's gain is a price DROP; its peak is the
@@ -321,11 +328,35 @@ export function evaluateTrigger(
 
     // ── Time-based ────────────────────────────────────────────────────
     case "REVIEW_CADENCE": {
-      // Counted from the last actual review. A thesis nobody has looked at
-      // yet is due immediately — that is correct for a fresh watch item and
-      // is how an unresearched seed asks for its first read.
-      const last = ctx.thesis.lastReviewedAt ?? ctx.thesis.createdAt;
-      return (ctx.now.getTime() - last.getTime()) / 86_400_000 >= predicate.days;
+      const dayMs = 86_400_000;
+      switch (predicate.from ?? "LAST_REVIEW") {
+        case "BUY": {
+          // N days after the position opened. False until held — a watch
+          // can carry "out after 20 days" ahead of the fill; it starts
+          // counting on the fill.
+          const opened = ctx.position?.openedAt;
+          if (!opened) return false;
+          return (ctx.now.getTime() - opened.getTime()) / dayMs >= predicate.days;
+        }
+        case "EVENT": {
+          // N days before or after the thesis's own event date. "Before"
+          // is true from N days out until the date; after the date it is
+          // over. "After" is true from N days past the date on.
+          const event = ctx.thesis.catalystDate;
+          if (!event) return false;
+          const daysUntil = (event.getTime() - ctx.now.getTime()) / dayMs;
+          return (predicate.side ?? "AFTER") === "BEFORE"
+            ? daysUntil >= 0 && daysUntil <= predicate.days
+            : -daysUntil >= predicate.days;
+        }
+        default: {
+          // Counted from the last actual review. A thesis nobody has looked
+          // at yet is due immediately — that is correct for a fresh watch
+          // item and is how an unresearched seed asks for its first read.
+          const last = ctx.thesis.lastReviewedAt ?? ctx.thesis.createdAt;
+          return (ctx.now.getTime() - last.getTime()) / dayMs >= predicate.days;
+        }
+      }
     }
 
     // ── Composition ───────────────────────────────────────────────────

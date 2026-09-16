@@ -1154,3 +1154,57 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
     expect(shouldFire(fired, at(130, day1, 127)).reason).toBe("cooldown");
   });
 });
+
+describe("REVIEW_CADENCE — counting from the buy or the thesis's event date (one trigger, three anchors)", () => {
+  // Replayed from the book on 2026-09-16: MU bought 2026-07-17 20:51 UTC
+  // (PEAD Specialist, TARGET); SRRK's event date 2026-09-30 (Catalyst
+  // Event PM); AGIO's 2026-11-01. On main `from` and `side` are stripped by
+  // the schema and the rung reads as a plain review clock.
+  const MU_OPENED = new Date("2026-07-17T20:51:25.540Z");
+  const SRRK_EVENT = new Date("2026-09-30T04:00:00.000Z");
+  const AGIO_EVENT = new Date("2026-11-01T04:00:00.000Z");
+
+  it("60 days after the buy: MU on 09-15 is day 60 — fires; on 09-14 it does not", () => {
+    const sixty: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 60, from: "BUY" };
+    const at = (iso: string) =>
+      makeCtx({
+        now: new Date(iso),
+        position: { avgCost: 895.935, peakPrice: 1101, openedAt: MU_OPENED },
+        thesis: { createdAt: THESIS_CREATED, lastReviewedAt: new Date("2026-09-14T17:40:38Z") },
+      });
+    expect(evaluateTrigger(sixty, at("2026-09-15T21:00:00Z"))).toBe(true);
+    expect(evaluateTrigger(sixty, at("2026-09-14T21:00:00Z"))).toBe(false);
+  });
+
+  it("a count from the buy is false on a watch — it starts counting at the fill", () => {
+    const twenty: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 20, from: "BUY" };
+    expect(evaluateTrigger(twenty, makeCtx({ now: new Date("2026-09-16T00:00:00Z"), position: null }))).toBe(false);
+  });
+
+  it("3 days before the event: SRRK fires from 09-27 through the date, not before, not after", () => {
+    const before: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 3, from: "EVENT", side: "BEFORE" };
+    const at = (iso: string) =>
+      makeCtx({ now: new Date(iso), thesis: { createdAt: THESIS_CREATED, catalystDate: SRRK_EVENT } });
+    expect(evaluateTrigger(before, at("2026-09-26T14:00:00Z"))).toBe(false);
+    expect(evaluateTrigger(before, at("2026-09-27T14:00:00Z"))).toBe(true);
+    expect(evaluateTrigger(before, at("2026-09-30T02:00:00Z"))).toBe(true);
+    expect(evaluateTrigger(before, at("2026-10-01T14:00:00Z"))).toBe(false);
+  });
+
+  it("30 days after the event: AGIO fires on 12-01, not on 11-30", () => {
+    const after: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 30, from: "EVENT", side: "AFTER" };
+    const at = (iso: string) =>
+      makeCtx({ now: new Date(iso), thesis: { createdAt: THESIS_CREATED, catalystDate: AGIO_EVENT } });
+    expect(evaluateTrigger(after, at("2026-11-30T14:00:00Z"))).toBe(false);
+    expect(evaluateTrigger(after, at("2026-12-01T14:00:00Z"))).toBe(true);
+  });
+
+  it("no event date on the thesis: an event count never fires; the review clock is untouched", () => {
+    const before: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 3, from: "EVENT", side: "BEFORE" };
+    expect(evaluateTrigger(before, makeCtx({ now: new Date("2026-09-28T14:00:00Z") }))).toBe(false);
+    const clock: TriggerPredicate = { kind: "REVIEW_CADENCE", days: 7 };
+    expect(
+      evaluateTrigger(clock, makeCtx({ thesis: { createdAt: THESIS_CREATED, lastReviewedAt: new Date(NOW.getTime() - 8 * 86_400_000) } })),
+    ).toBe(true);
+  });
+});

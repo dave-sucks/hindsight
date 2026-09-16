@@ -471,7 +471,24 @@ function addedTriggerRationale(
   // A clock is a schedule, not a condition — "Review when every 7 days since
   // the last review" is not a sentence.
   if (predicate.kind === "REVIEW_CADENCE") {
-    return `Look at this every ${predicate.days} day(s), from the last review (set by principal).`;
+    const from = predicate.from ?? "LAST_REVIEW";
+    if (from === "LAST_REVIEW") {
+      return `Look at this every ${predicate.days} day(s), from the last review (set by principal).`;
+    }
+    const when =
+      from === "BUY"
+        ? `${predicate.days} day(s) after the buy`
+        : `${predicate.days} day(s) ${(predicate.side ?? "AFTER") === "BEFORE" ? "before" : "after"} the event date on the thesis`;
+    switch (action) {
+      case "EXIT":
+        return `Sell ${when} if still held (set by principal).`;
+      case "ADD":
+        return `Consider adding ${when} (set by principal).`;
+      case "TRIM":
+        return `Trim ${when} (set by principal).`;
+      default:
+        return `Review ${when} (set by principal).`;
+    }
   }
   const cond = predicateSentence(predicate).toLowerCase();
   switch (action) {

@@ -7,7 +7,7 @@
  * triggers included — were discarded on every read. No error, no alert.
  */
 
-import { parseTriggersResilient, triggersArraySchema } from "./schema";
+import { parseTriggersResilient, triggerPredicateSchema, triggersArraySchema } from "./schema";
 
 const good = {
   id: "t1",
@@ -70,5 +70,17 @@ describe("parseTriggersResilient", () => {
     for (const raw of [null, undefined, "nope", 42]) {
       expect(parseTriggersResilient(raw).triggers).toEqual([]);
     }
+  });
+});
+
+describe("REVIEW_CADENCE keeps its counting-from choice through the schema", () => {
+  it("'sell 30 days after the buy' survives the parse as a count from the buy — on main it came back as a review clock", () => {
+    const parsed = triggerPredicateSchema.parse({ kind: "REVIEW_CADENCE", days: 30, from: "BUY" });
+    expect(parsed).toEqual({ kind: "REVIEW_CADENCE", days: 30, from: "BUY" });
+    const before = triggerPredicateSchema.parse({ kind: "REVIEW_CADENCE", days: 3, from: "EVENT", side: "BEFORE" });
+    expect(before).toEqual({ kind: "REVIEW_CADENCE", days: 3, from: "EVENT", side: "BEFORE" });
+  });
+  it("a plain review clock parses as before", () => {
+    expect(triggerPredicateSchema.parse({ kind: "REVIEW_CADENCE", days: 7 })).toEqual({ kind: "REVIEW_CADENCE", days: 7 });
   });
 });
