@@ -239,15 +239,15 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
     ]);
   });
 
-  it("the plan from its own rationale passes as a pullback: buy $64.50, stop $61.52, target $82.96", () => {
+  it("the plan from its own rationale passes as a pullback: buy $64.50, stop $61.50, target $82.96", () => {
     const v = validateThesisDecision(
       {
         ...docu,
         setup_id: "MA_PULLBACK",
         entry_price: 64.5,
-        stop_loss: 61.52,
+        stop_loss: 61.5,
         target_price: 82.96,
-        stop_basis: "1 ATR ($2.98) under the rising 20-day $64.50 until the pullback low prints",
+        stop_basis: "1 ATR ($2.98) under the rising 20-day $64.50 until the pullback low prints — $3.00 below entry",
         target_basis: "1.272 extension of the June–September leg, $82.96; 6.2R",
         remove_trigger_ids: undefined,
         add_triggers: undefined,
@@ -255,6 +255,6 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
       opts,
     );
     expect(v.errors).toEqual([]);
-    expect(v.riskReward).toBeCloseTo(6.19, 1);
+    expect(v.riskReward).toBeCloseTo(6.15, 1);
   });
 });
