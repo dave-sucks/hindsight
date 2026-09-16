@@ -57,6 +57,13 @@ export function predicateKey(p: TriggerPredicate): string {
     case "EARNINGS_WITHIN":
     case "EARNINGS_SINCE":
       return p.kind;
+    case "SEC_EVENT":
+      // A tier rule overrides the tier rule above it; a rule naming one
+      // event (a completed acquisition) adds to the tier wake, never
+      // silences it.
+      return p.tier
+        ? `${p.kind}:tier`
+        : `${p.kind}:${[...(p.items ?? []), ...(p.forms ?? [])].sort().join("|")}`;
     case "REVIEW_CADENCE":
       return p.kind;
     case "AND":

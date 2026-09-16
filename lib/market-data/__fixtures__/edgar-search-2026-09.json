@@ -1,0 +1,16 @@
+{
+  "_comment": "Real EDGAR full-text search hits, fetched 2026-09-15 (efts.sec.gov/LATEST/search-index), trimmed to the fields the reader uses. The last hit is constructed: MU's filing again as its exhibit document, to prove one filing is one row.",
+  "hits": {
+    "total": { "value": 7, "relation": "eq" },
+    "hits": [
+      { "_id": "0001045810-26-000078:nvda-20260902.htm", "_source": { "ciks": ["0001045810"], "form": "8-K", "root_forms": ["8-K"], "items": ["8.01"], "adsh": "0001045810-26-000078", "file_date": "2026-09-03" } },
+      { "_id": "0001104659-26-101067:tm2624017d1_8k.htm", "_source": { "ciks": ["0000723125"], "form": "8-K", "root_forms": ["8-K"], "items": ["5.02", "9.01"], "adsh": "0001104659-26-101067", "file_date": "2026-08-26" } },
+      { "_id": "0001045810-26-000073:nvda-20260826.htm", "_source": { "ciks": ["0001045810"], "form": "8-K", "root_forms": ["8-K"], "items": ["2.02", "9.01"], "adsh": "0001045810-26-000073", "file_date": "2026-08-26" } },
+      { "_id": "0001045810-26-000069:nvda-20260817.htm", "_source": { "ciks": ["0001045810"], "form": "8-K", "root_forms": ["8-K"], "items": ["1.01", "2.03", "7.01"], "adsh": "0001045810-26-000069", "file_date": "2026-08-17" } },
+      { "_id": "0001493152-26-038853:form8-k.htm", "_source": { "ciks": ["0001414767"], "form": "8-K", "root_forms": ["8-K"], "items": ["4.01", "4.02", "9.01"], "adsh": "0001493152-26-038853", "file_date": "2026-08-18" } },
+      { "_id": "0001683168-26-007134:magmagnnt10q.htm", "_source": { "ciks": ["0001949864"], "form": "NT 10-Q", "root_forms": ["NT 10-Q"], "items": [], "adsh": "0001683168-26-007134", "file_date": "2026-09-15" } },
+      { "_id": "0002082289-26-000012:primary_doc.xml", "_source": { "ciks": ["0001436126", "0002082289"], "form": "SCHEDULE 13D/A", "root_forms": ["SCHEDULE 13D"], "items": [], "adsh": "0002082289-26-000012", "file_date": "2026-09-14" } },
+      { "_id": "0001104659-26-101067:tm2624017d1_ex99-1.htm", "_source": { "ciks": ["0000723125"], "form": "8-K", "root_forms": ["8-K"], "items": ["5.02", "9.01"], "adsh": "0001104659-26-101067", "file_date": "2026-08-26" } }
+    ]
+  }
+}

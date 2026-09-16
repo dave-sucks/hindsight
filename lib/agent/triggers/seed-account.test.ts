@@ -32,6 +32,12 @@ describe("accountSeedTriggers", () => {
     ).toBe(true);
   });
 
+  it("carries the SEC filing wake — one rule, a review, never a trade", () => {
+    const sec = accountSeedTriggers().filter((t) => t.predicate.kind === "SEC_EVENT");
+    expect(sec).toHaveLength(1);
+    expect(sec[0]).toMatchObject({ predicate: { kind: "SEC_EVENT", tier: "MATERIAL" }, action: "REVIEW" });
+  });
+
   it("mints fresh ids per call — these are real stored rows now", () => {
     const a = accountSeedTriggers();
     const b = accountSeedTriggers();
