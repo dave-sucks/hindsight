@@ -9,10 +9,10 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import fixture from "@/lib/market-data/__fixtures__/edgar-search-2026-09.json";
 import { parseSearchHits } from "@/lib/market-data/sec-filings";
 
-const read = { byTicker: new Map(), error: undefined as string | undefined };
+const read = { symbol: "MU", filings: [] as ReturnType<typeof parseSearchHits>, error: undefined as string | undefined, days: 90 };
 jest.mock("@/lib/market-data/sec-filings", () => ({
   ...jest.requireActual("@/lib/market-data/sec-filings"),
-  fetchBookFilings: jest.fn(async () => read),
+  getFilingsForSymbol: jest.fn(async () => read),
 }));
 
 import { getSecFilings } from "./get-sec-filings";
@@ -25,7 +25,7 @@ const run = async (): Promise<any> =>
 
 describe("get_sec_filings", () => {
   it("names MU's Aug 26 8-K as an officer change, material, with its link", async () => {
-    read.byTicker = new Map([["MU", parseSearchHits(fixture.hits.hits, new Map([["0000723125", "MU"]]))]]);
+    read.filings = parseSearchHits(fixture.hits.hits, new Map([["0000723125", "MU"]]));
     read.error = undefined;
     const out = await run();
     expect(out.ok).toBe(true);
@@ -41,7 +41,7 @@ describe("get_sec_filings", () => {
   });
 
   it("says EDGAR was unavailable — never 'no filings' — when the read failed", async () => {
-    read.byTicker = new Map();
+    read.filings = [];
     read.error = "EDGAR search returned 429";
     const out = await run();
     expect(out.summary).toBe('SEC filings unavailable for $MU — EDGAR search returned 429. This is not "nothing filed".');

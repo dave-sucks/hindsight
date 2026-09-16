@@ -303,9 +303,15 @@ on 31 names; 25 material, 1 red (PRAX, auditor change, Jul 2 — a watch). About
 two review wakes a week. In the 4 days before this landed: one material
 (BMRN, officer change, Sep 14).
 
-**Next in this lane:** the stock page's Filings tab and the thesis sheet line
-(§8); activist-stake discovery in the chat through the tool (whole-market
-mode).
+**Built next** (second PR): the stock page's **Filings** tab (90 days, the
+event in words, a Serious / Material label, the document link) and the
+thesis sheet's **Filings** line (serious and material filings of the last
+month). One reader behind both and `get_sec_filings`: `getFilingsForSymbol`.
+A failed EDGAR read says so on both. The link prefers the filing over an
+exhibit.
+
+**Still open in this lane:** activist-stake discovery in the chat through the
+tool (whole-market mode); the `/earnings` page's Filings toggle (later).
 
 **To the Agents lane, as tickets** (they own the prompts, the analyst rules
 and dispatch): the per-event playbook in the daily run, tactical run and

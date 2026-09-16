@@ -93,14 +93,25 @@ interface EftsHit {
 }
 
 /**
+ * Is this document an exhibit rather than the filing itself? EDGAR names
+ * them `..._ex99-1.htm`, `ex-101.htm`, `exhibit991.htm`.
+ */
+function isExhibit(doc: string): boolean {
+  return /(^|[_\-])ex(hibit)?[-_]?\d/i.test(doc);
+}
+
+/**
  * Turn one EDGAR search page into filings for the companies asked about.
- * EDGAR returns one hit per document; the accession dedupes them. A filing
- * that names two book companies (a 13D filed by one on the other) is listed
- * under each.
+ * EDGAR returns one hit per matching document, so a filing can appear more
+ * than once; the accession dedupes it, and the link prefers the filing
+ * itself over an exhibit. (Measured 2026-09-15 on the book's last 90 days:
+ * all 92 filings came back as a single document, so this is a safety net,
+ * not a fix for something seen in the wild.) A filing that names two book
+ * companies (a 13D filed by one on the other) is listed under each.
  */
 export function parseSearchHits(hits: EftsHit[], tickerByCik: Map<string, string>): SecFiling[] {
-  const out: SecFiling[] = [];
-  const seen = new Set<string>();
+  const byKey = new Map<string, { filing: SecFiling; doc: string }>();
+  const order: string[] = [];
   for (const h of hits) {
     const s = h._source;
     const accession = s.adsh ?? h._id.split(":")[0];
@@ -112,22 +123,28 @@ export function parseSearchHits(hits: EftsHit[], tickerByCik: Map<string, string
       const ticker = tickerByCik.get(cik);
       if (!ticker || !accession || !s.file_date) continue;
       const key = `${cik}:${accession}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({
-        accession,
-        cik,
-        ticker,
-        form,
-        rootForm,
-        items,
-        filedDate: s.file_date,
-        tier: classifyFiling({ rootForm, form, items }),
-        url: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accession.replace(/-/g, "")}/${doc}`,
+      const held = byKey.get(key);
+      // Same filing seen again: keep it once, and link the filing itself
+      // rather than one of its exhibits.
+      if (held && !(isExhibit(held.doc) && !isExhibit(doc))) continue;
+      if (!held) order.push(key);
+      byKey.set(key, {
+        doc,
+        filing: {
+          accession,
+          cik,
+          ticker,
+          form,
+          rootForm,
+          items,
+          filedDate: s.file_date,
+          tier: classifyFiling({ rootForm, form, items }),
+          url: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accession.replace(/-/g, "")}/${doc}`,
+        },
       });
     }
   }
-  return out;
+  return order.map((k) => byKey.get(k)!.filing);
 }
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
@@ -222,4 +239,37 @@ export async function fetchBookFilings(opts: {
     byTicker.set(f.ticker, list);
   }
   return { byTicker };
+}
+
+/**
+ * One company's watched filings — the stock page's Filings tab, the thesis
+ * sheet's filings line, and `get_sec_filings` all read this. Includes the
+ * periodic reports (10-K / 10-Q) for context, which the evaluator's read
+ * doesn't need.
+ */
+export const SYMBOL_FILING_FORMS = [...WATCHED_FORMS, "10-K", "10-Q"];
+
+export interface SymbolFilings {
+  symbol: string;
+  /** Newest first. Empty when the company filed nothing watched in the window. */
+  filings: SecFiling[];
+  /** Why nothing could be read, in words. Absent when the read worked. */
+  error?: string;
+  /** How many days back this covers. */
+  days: number;
+}
+
+export async function getFilingsForSymbol(
+  symbol: string,
+  opts: { days?: number; now?: Date } = {},
+): Promise<SymbolFilings> {
+  const days = opts.days ?? 90;
+  const S = symbol.toUpperCase();
+  const read = await fetchBookFilings({
+    tickers: [S],
+    now: opts.now ?? new Date(),
+    lookbackDays: days,
+    forms: SYMBOL_FILING_FORMS,
+  });
+  return { symbol: S, filings: read.byTicker.get(S) ?? [], error: read.error, days };
 }
