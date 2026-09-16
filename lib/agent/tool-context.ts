@@ -197,6 +197,18 @@ export interface ToolContext {
    * corrected sale label explains itself without a code read (DAV-192).
    */
   protectiveExitTriggerLabel?: string;
+
+  /**
+   * Check only: record_thesis / update_thesis run every check they run on a
+   * real save — the input schema, the trigger ops, the plan check, the
+   * status and belief rules — and return just before the first write, with
+   * `data.dry_run: true` when the save would land. The thesis writer calls
+   * this from its submit step so its own check IS the save's check: a field
+   * or rule added to the save can't be missing from the writer (PRAX 09-11,
+   * FIVE and DOCU 09-15 — the writer's form accepted what the save refused).
+   * Refusals in a check-only call are not logged as gate rejections.
+   */
+  dryRun?: boolean;
 }
 
 /** Create a ToolContext from plain options (adds the groupId method). */

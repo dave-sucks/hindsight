@@ -128,7 +128,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
 
           // DAV-219 — one row per refusal, detected from the envelope so no
           // gate needs its own wiring. recordGateRejection never throws.
-          if (options.gateLog) {
+          if (options.gateLog && !ctx.dryRun) {
             const rejection = detectGateRejection(result.data);
             if (rejection) {
               await recordGateRejection({
@@ -161,7 +161,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
           // DAV-219 — a crash is not a gate, but "the agent gave up because
           // the tool threw" belongs in the same ledger, distinguishable by
           // the __exception__ tag.
-          if (options.gateLog) {
+          if (options.gateLog && !ctx.dryRun) {
             await recordGateRejection({
               tool: options.gateLog,
               gateCode: "__exception__",

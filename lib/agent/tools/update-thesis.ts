@@ -436,6 +436,20 @@ export function setDownInstruction(stored: Trigger[], direction: string | null):
   return `To set the plan down, remove all of them in one call: remove_trigger_ids: [${ids}] (${words}).`;
 }
 
+/**
+ * What a check-only call (`ctx.dryRun`) returns when the save would land.
+ * Carries the per-op results, refusals included: a save lands the rest of
+ * the call when one trigger edit is refused, so "it saved" alone would hide
+ * an edit the writer meant to make. The writer's check reads these.
+ */
+function dryRunPassed(ticker: string, triggerOps: TriggerOpResult[]) {
+  return {
+    summary: `Check only: the update on $${ticker} would save.`,
+    data: { ok: true, dry_run: true, trigger_ops: triggerOps },
+    sources: [],
+  };
+}
+
 export const updateThesis = defineTool({
   description:
     "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief). " +
@@ -1101,9 +1115,13 @@ export const updateThesis = defineTool({
           // "buy above $203" against a $258 tape.
           currentPrice: resolvedPriceAtTime,
           // The stamp takes only a fresh server quote — never price_at_time.
-          writtenPrice: await getStockQuote(existing.ticker)
-            .then((q) => freshQuotePrice(q, new Date()))
-            .catch(() => null),
+          // A check-only call throws the stamp away, so it doesn't spend a
+          // quote on it: the shared key is the trigger check's first.
+          writtenPrice: ctx.dryRun
+            ? null
+            : await getStockQuote(existing.ticker)
+                .then((q) => freshQuotePrice(q, new Date()))
+                .catch(() => null),
           now: new Date(),
           mintId: () => randomUUID(),
         });
@@ -1314,6 +1332,7 @@ export const updateThesis = defineTool({
     // the review clock; the cadence is a trigger now and it reads this stamp.
     const patchKeyCount = Object.keys(patch).length;
     if (patchKeyCount === 0) {
+      if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults);
       const reviewedAt = new Date();
       await prisma.thesis.update({
         where: { id: existing.id },
@@ -1483,6 +1502,9 @@ export const updateThesis = defineTool({
         sources: [],
       };
     }
+
+    // Check-only call: every refusal above has had its chance.
+    if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults);
 
     // Apply.
     try {

@@ -1689,6 +1689,15 @@ export const recordThesis = defineTool({
       // status, triggers, and the DB row never disagree.
       const effectiveStatus = effectiveStatusForTriggers;
 
+      // Check-only call (ctx.dryRun): every refusal above has had its chance.
+      if (ctx.dryRun) {
+        return {
+          summary: `Check only: the thesis on $${args.ticker} would save.`,
+          data: { thesis_id: null, status: "DRY_RUN_OK" as const, dry_run: true, ticker: args.ticker },
+          sources: [],
+        };
+      }
+
       let thesis;
       try {
         thesis = await prisma.thesis.create({
