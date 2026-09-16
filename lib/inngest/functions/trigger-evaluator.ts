@@ -543,6 +543,7 @@ export const triggerEvaluator = inngest.createFunction(
             horizon: true,
             createdAt: true,
             lastReviewedAt: true,
+            catalystDate: true,
             researchRun: { select: { agentConfigId: true } },
           },
         });
@@ -587,9 +588,11 @@ export const triggerEvaluator = inngest.createFunction(
           const posInfo = openedAtByThesisId.get(thesis.id);
           const ctx: EvaluationContext = {
             signal: ctxSignal,
+            position: posInfo ? { avgCost: posInfo.avgCost, peakPrice: posInfo.peakPrice, openedAt: posInfo.openedAt } : null,
             thesis: {
               createdAt: thesis.createdAt,
               lastReviewedAt: thesis.lastReviewedAt ?? null,
+              catalystDate: thesis.catalystDate ?? null,
             },
             now,
           };
@@ -744,6 +747,7 @@ export const triggerEvaluator = inngest.createFunction(
           horizon: true,
           createdAt: true,
           lastReviewedAt: true,
+          catalystDate: true,
           researchRun: { select: { agentConfigId: true } },
         },
       });
@@ -942,11 +946,12 @@ export const triggerEvaluator = inngest.createFunction(
           // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read the open position's
           // entry cost + water mark; absent (WATCHING) → they return false.
           position: posInfo
-            ? { avgCost: posInfo.avgCost, peakPrice: posInfo.peakPrice }
+            ? { avgCost: posInfo.avgCost, peakPrice: posInfo.peakPrice, openedAt: posInfo.openedAt }
             : null,
           thesis: {
             createdAt: thesis.createdAt,
             lastReviewedAt: thesis.lastReviewedAt ?? null,
+            catalystDate: thesis.catalystDate ?? null,
             direction: thesis.direction,
           },
           now,

@@ -33,7 +33,7 @@ type PredicateShape =
   | { kind: "EARNINGS_WITHIN"; days: number }
   | { kind: "EARNINGS_SINCE"; min: number; max: number }
   | { kind: "SEC_EVENT"; tier?: "RED" | "MATERIAL"; items?: string[]; forms?: string[] }
-  | { kind: "REVIEW_CADENCE"; days: number }
+  | { kind: "REVIEW_CADENCE"; days: number; from?: "LAST_REVIEW" | "BUY" | "EVENT"; side?: "BEFORE" | "AFTER" }
   | { kind: "AND"; predicates: PredicateShape[] }
   | { kind: "OR"; predicates: PredicateShape[] };
 
@@ -153,6 +153,13 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
     z.object({
       kind: z.literal("REVIEW_CADENCE"),
       days: z.number().int().positive().max(365),
+      // Counting from: the last review (the review clock, repeating), the
+      // buy (a time limit on a held position: "sell 20 days after the buy
+      // if still held"), or the thesis's own event date ("review 3 days
+      // before the FDA date"). The event date is the one stored on the
+      // thesis (catalystDate) — never typed here.
+      from: z.enum(["LAST_REVIEW", "BUY", "EVENT"]).optional(),
+      side: z.enum(["BEFORE", "AFTER"]).optional(),
     }),
     z.object({
       kind: z.literal("AND"),

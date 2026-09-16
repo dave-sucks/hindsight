@@ -84,7 +84,11 @@ export function predicateSentence(p: TriggerPredicate): string {
     case "SEC_EVENT":
       return secEventSentence(p);
     case "REVIEW_CADENCE":
-      return `Every ${p.days} days since the last review`;
+      return (p.from ?? "LAST_REVIEW") === "BUY"
+        ? `${p.days} day${p.days === 1 ? "" : "s"} after the buy`
+        : p.from === "EVENT"
+          ? `${p.days} day${p.days === 1 ? "" : "s"} ${(p.side ?? "AFTER") === "BEFORE" ? "before" : "after"} the event date`
+          : `Every ${p.days} days since the last review`;
     // Say the conditions, not how many there are — "Any earnings beat and
     // price down 3% today" is a rule someone can read on Settings.
     case "AND":

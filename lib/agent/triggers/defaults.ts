@@ -238,7 +238,8 @@ export function resolvedCadenceDays(
     // of the most-called tool in the app. One bad trigger must not fail an
     // otherwise valid thesis update — it just doesn't supply the cadence.
     const kind = t?.predicate?.kind;
-    if (kind === "REVIEW_CADENCE") {
+    const from = (t?.predicate as { from?: unknown } | undefined)?.from ?? "LAST_REVIEW";
+    if (kind === "REVIEW_CADENCE" && from === "LAST_REVIEW") {
       const days = (t.predicate as { days?: unknown }).days;
       if (typeof days === "number" && days > 0) return days;
     }
