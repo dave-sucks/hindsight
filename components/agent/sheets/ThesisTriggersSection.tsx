@@ -980,28 +980,26 @@ type ChartKind =
   | "RS_VS_SPY"
   | "INSIDER_CLUSTER";
 
-type CountFrom = "LAST_REVIEW" | "BUY" | "EVENT_BEFORE" | "EVENT_AFTER";
+type CountFrom = "LAST_REVIEW" | "BUY" | "EVENT";
+/** The day count's anchor — a button group, like the price row's Above / Below. */
 const COUNT_FROM_OPTIONS: ReadonlyArray<{ v: CountFrom; l: string }> = [
-  { v: "LAST_REVIEW", l: "From the last review, repeating" },
-  { v: "BUY", l: "After the buy" },
-  { v: "EVENT_BEFORE", l: "Before the thesis's event date" },
-  { v: "EVENT_AFTER", l: "After the thesis's event date" },
+  { v: "LAST_REVIEW", l: "Recurring" },
+  { v: "BUY", l: "After buy" },
+  { v: "EVENT", l: "Event date" },
 ];
 
-/** The sentence under the day-count row: what you built, in plain words. */
-function countFromHelp(from: CountFrom, action: string, val: string, held: boolean): string {
+/** The sentence under the day-count row: what you built, days first. */
+function countFromHelp(from: CountFrom, side: "BEFORE" | "AFTER", action: string, val: string, held: boolean): string {
   const n = val.trim() === "" ? "N" : val.trim();
   const verb =
-    action === "EXIT" ? (held ? "Sells" : "Sets the plan down") : action === "ADD" ? "Considers adding" : action === "TRIM" ? "Trims" : "Reviews";
+    action === "EXIT" ? (held ? "sells" : "sets the plan down") : action === "ADD" ? "considers adding" : action === "TRIM" ? "trims" : "reviews";
   switch (from) {
     case "BUY":
-      return `${verb} ${n} days after the buy, if still held. A watch carries it until the fill; the count starts then.`;
-    case "EVENT_BEFORE":
-      return `${verb} ${n} days before the event date stored on the thesis (the FDA decision, the deal close). No event date on the thesis means it never fires.`;
-    case "EVENT_AFTER":
-      return `${verb} ${n} days after the event date stored on the thesis. No event date on the thesis means it never fires.`;
+      return `${n} days after the buy: ${verb} if still held. A watch carries it until the fill; the count starts then.`;
+    case "EVENT":
+      return `${n} days ${side === "BEFORE" ? "before" : "after"} the event date on the thesis (the FDA decision, the deal close): ${verb}. No event date on the thesis means it never fires.`;
     default:
-      return `The agent reviews this name every ${n} days, counting from its last real review. Without it, nothing reviews the name until another trigger fires.`;
+      return `${n} days, recurring: the agent reviews this name every ${n} days from its last real review. Without it, nothing reviews the name until another trigger fires.`;
   }
 }
 
@@ -1120,6 +1118,7 @@ export function AddTriggerDialog({
   // Counting from — one day-count trigger, three anchors: the last review
   // (the review clock, repeating), the buy, or the thesis's own event date.
   const [countFrom, setCountFrom] = useState<CountFrom>("LAST_REVIEW");
+  const [eventSide, setEventSide] = useState<"BEFORE" | "AFTER">("BEFORE");
   const [fireMode, setFireMode] = useState<"TACTICAL" | "DIRECT">("DIRECT");
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1273,7 +1272,7 @@ export function AddTriggerDialog({
         ? { kind: "REVIEW_CADENCE", days: num }
         : countFrom === "BUY"
           ? { kind: "REVIEW_CADENCE", days: num, from: "BUY" }
-          : { kind: "REVIEW_CADENCE", days: num, from: "EVENT", side: countFrom === "EVENT_BEFORE" ? "BEFORE" : "AFTER" }
+          : { kind: "REVIEW_CADENCE", days: num, from: "EVENT", side: eventSide }
       : isGain
       ? { kind: "GAIN_FROM_ENTRY", pct: num, direction: dir }
       : isTrail
@@ -1564,6 +1563,46 @@ export function AddTriggerDialog({
         </ButtonGroup>
         )}
 
+        {/* Day count: which date it counts from — a button group like the
+            price row's Above / Below; Event date adds a before / after. */}
+        {isCadence ? (
+          <div className="flex items-center gap-2">
+            <div className="flex flex-1 items-center gap-0.5 rounded-md border p-0.5">
+              {COUNT_FROM_OPTIONS.map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setCountFrom(o.v)}
+                  disabled={pending}
+                  className={cn(
+                    "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                    countFrom === o.v ? "bg-muted text-foreground font-medium" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {o.l}
+                </button>
+              ))}
+            </div>
+            {countFrom === "EVENT" ? (
+              <Select
+                value={eventSide}
+                onValueChange={(v) => {
+                  if (v === "BEFORE" || v === "AFTER") setEventSide(v);
+                }}
+                disabled={pending}
+              >
+                <SelectTrigger aria-label="Before or after the event date">
+                  <SelectValue>{eventSide === "BEFORE" ? "Before" : "After"}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BEFORE">Before</SelectItem>
+                  <SelectItem value="AFTER">After</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
+          </div>
+        ) : null}
+
         <p className="text-xs text-muted-foreground">
           {isFiling
             ? predicateDescription(filingPredicate(filingEvent) as unknown as TriggerPredicate)
@@ -1572,7 +1611,7 @@ export function AddTriggerDialog({
             : isEarnings
             ? "Fires once when the next earnings report is this many days away — the heads-up to decide whether to hold through it, trim, or wait. Beat and miss are separate triggers the analyst sets."
             : isCadence
-            ? countFromHelp(countFrom, action, val, held)
+            ? countFromHelp(countFrom, eventSide, action, val, held)
             : isGain
             ? `Fires when the position is ${dir === "UP" ? "up" : "down"} this much from entry (avg cost) — cumulative, not a single day.`
             : isTrail
