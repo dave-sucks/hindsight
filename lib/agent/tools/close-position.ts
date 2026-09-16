@@ -9,11 +9,13 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
 import {
+  collapseCloseReason,
   enforceCloseReason,
   withCloseAuditNote,
 } from "@/lib/agent/triggers/enforce-close-reason";
 import { prisma } from "@/lib/prisma";
 import { getAccount } from "@/lib/alpaca";
+import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { recordProposalRunEvent } from "@/lib/proposals/maybe-await-approval";
 
 export const closePosition = defineTool({
@@ -79,26 +81,17 @@ export const closePosition = defineTool({
     // called it. `enforced.beliefSurvived` keeps THESIS_INVALIDATED honest on
     // its own axis (see enforce-close-reason.ts). For daily runs and judgment
     // EXIT triggers (earnings/signals) the field is undefined, so a genuinely
-    // discretionary close keeps its own tag.
-    const enforced = enforceCloseReason({
-      declared: args.reason,
-      protective: ctx.protectiveExitReason,
-      triggerLabel: ctx.protectiveExitTriggerLabel,
-      beliefSurvived: args.belief_survived,
-    });
-    // The model's own words for this exit, for narration + audit strings.
-    const intent = enforced.declared;
+    // discretionary close keeps its own tag — unless it claims a level the
+    // tape never reached (DAV-263, below, once the position and its plan are
+    // in hand).
+    //
     // closeOpenPosition (and Position.closeReason) only store
     // TARGET | STOP | TIME | MANUAL. The two judgment codes collapse to
     // MANUAL. close_position is the ONLY tool that sells a whole position
     // (DAV-220 removed manage_position's full_close), so this mapping is the
-    // single place a full exit gets its stored label.
-    const reason: "TARGET" | "STOP" | "MANUAL" = enforced.stored;
-    if (enforced.corrected) {
-      console.info(
-        `[tool] close_position sale-label auto-corrected for ${ticker}: ${enforced.declared} → ${enforced.stored}`,
-      );
-    }
+    // single place a full exit gets its stored label. The two early returns
+    // below never store anything; they echo the collapsed declaration.
+    const declaredStored = collapseCloseReason(args.reason);
     try {
       // ── PROMOTED guard (P1-21) ─────────────────────────────────────────
       // A PROMOTED thesis was an ACTIVE paper position that the user just
@@ -128,7 +121,7 @@ export const closePosition = defineTool({
             data: {
               success: false,
               ticker,
-              reason: reason,
+              reason: declaredStored,
               status: "FAILED" as const,
               message: msg,
               tickers: [{ ticker, tag: "Promoted", summary: msg, actionIcon: "failed" }],
@@ -167,13 +160,50 @@ export const closePosition = defineTool({
           data: {
             success: true,
             ticker,
-            reason: reason,
+            reason: declaredStored,
             status: "NO_POSITION" as const,
             message: noPosMsg,
             tickers: [{ ticker, tag: "N/A", summary: noPosMsg, actionIcon: "failed" }],
           },
           sources: [],
         };
+      }
+
+      // ── The plan and the tape, for the label (DAV-263) ─────────────────
+      // A close no protective fire woke keeps the agent's label only when the
+      // tape backs it: SRRK 2026-09-14 08:00 was stored "TARGET" at $55.41
+      // with the target at $65 and the stop at $56.40. The thesis columns are
+      // the plan as it stands (the ladder's read model); the position's own
+      // levels are the fallback for a row from before the thesis carried
+      // them. One quote; its age doesn't matter for "was the level reached",
+      // and no quote means no correction — a correction never guesses.
+      const heldThesis = ctx.analystId
+        ? await prisma.thesis.findFirst({
+            where: { ticker, status: "HOLDING", researchRun: { agentConfigId: ctx.analystId } },
+            select: { targetPrice: true, stopLoss: true },
+          })
+        : null;
+      const quote = await getStockQuote(ticker).catch(() => null);
+      const enforced = enforceCloseReason({
+        declared: args.reason,
+        protective: ctx.protectiveExitReason,
+        triggerLabel: ctx.protectiveExitTriggerLabel,
+        beliefSurvived: args.belief_survived,
+        levels: {
+          direction: position.direction as "LONG" | "SHORT",
+          price: quote?.c != null && quote.c > 0 ? quote.c : null,
+          targetPrice:
+            heldThesis?.targetPrice != null ? Number(heldThesis.targetPrice) : position.targetPrice ?? null,
+          stopLoss: heldThesis?.stopLoss != null ? Number(heldThesis.stopLoss) : position.stopLoss ?? null,
+        },
+      });
+      // The model's own words for this exit, for narration + audit strings.
+      const intent = enforced.declared;
+      const reason: "TARGET" | "STOP" | "MANUAL" = enforced.stored;
+      if (enforced.corrected) {
+        console.info(
+          `[tool] close_position sale-label auto-corrected for ${ticker}: ${enforced.declared} → ${enforced.stored}`,
+        );
       }
 
       const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
@@ -421,7 +451,7 @@ export const closePosition = defineTool({
         data: {
           success: false,
           ticker,
-          reason: reason,
+          reason: declaredStored,
           status: "FAILED" as const,
           message: msg,
           tickers: [{ ticker, tag: "Failed", summary: msg, actionIcon: "failed" }],
