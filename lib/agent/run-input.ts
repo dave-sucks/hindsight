@@ -26,6 +26,7 @@ import {
 } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
+import { filingsOnBook } from "@/lib/agent/filings-on-book";
 import { describeEarningsReport, fetchEarningsWindow } from "@/lib/agent/triggers/earnings";
 import {
   loadLevelSources,
@@ -207,6 +208,15 @@ export interface RunInput {
   earnings: {
     reportingSoon: Array<{ ticker: string; date: string; hour: string | null }>;
     justReported: Array<{ ticker: string; date: string; summary: string }>;
+  };
+  // Serious and material filings on the book in the last 7 days, read off
+  // EDGAR at run start (one call over the book's tickers; DAV-269). The
+  // filing triggers do the waking — this is so the run sees the week whole.
+  // `error` set when EDGAR couldn't be read: said in words, never "nothing
+  // filed".
+  filings: {
+    recent: Array<{ ticker: string; date: string; tier: "serious" | "material"; summary: string; url: string }>;
+    error?: string;
   };
   intelligencePolicy: IntelligencePolicy;
 }
@@ -787,6 +797,24 @@ export async function buildRunInput(
     console.error("[buildRunInput] earnings week failed (non-fatal):", err);
   }
 
+  // Filings on the book this week — fail-soft; a failed read is said.
+  let filings: RunInput["filings"] = { recent: [] };
+  try {
+    const book = Array.from(
+      new Set<string>([
+        ...symbols.map((t) => t.toUpperCase()),
+        ...watchlistItems.map((w) => String(w.symbol).toUpperCase()),
+      ]),
+    );
+    if (book.length > 0) {
+      const { fetchBookFilings } = await import("@/lib/market-data/sec-filings");
+      const read = await fetchBookFilings({ tickers: book, now: new Date(), lookbackDays: 7 });
+      filings = filingsOnBook(read);
+    }
+  } catch (err) {
+    filings = { recent: [], error: `EDGAR couldn't be read: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
   let triggersMatchingNow: RunInput["triggersMatchingNow"] = [];
   try {
     const { evaluateLiveTriggerMatches } = await import(
@@ -933,6 +961,8 @@ export async function buildRunInput(
     triggersMatchingNow,
     latestDigest,
     earnings,
+    filings,
     intelligencePolicy,
   };
 }
+

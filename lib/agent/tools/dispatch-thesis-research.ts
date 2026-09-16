@@ -14,6 +14,7 @@
  */
 
 import { z } from "zod";
+import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { inngest } from "@/lib/inngest/client";
@@ -320,10 +321,26 @@ export const dispatchThesisResearch = defineTool({
     // docs/plans/THESIS_RESEARCH_V2.md §7.
     // The suggested setup and the screen numbers ride in the reason, so the
     // writer's "WHY YOU WERE DISPATCHED" block shows them (DAV-249).
+    // The red-flag check before a writer is sent (DAV-269, SEC plan §6): a
+    // serious filing in the last 90 days — restatement, bankruptcy,
+    // delisting notice, auditor change, late report — is shown, in the
+    // reason and on the row. A line, never a refusal. Fail-open: a failed
+    // EDGAR read says so.
+    const redFlag = await (async () => {
+      try {
+        const { fetchBookFilings } = await import("@/lib/market-data/sec-filings");
+        const read = await fetchBookFilings({ tickers: [T], now: new Date(), lookbackDays: 90 });
+        if (read.error) return `Red-flag check: EDGAR couldn't be read (${read.error}).`;
+        return redFlagLine(read.byTicker.get(T) ?? []);
+      } catch (err) {
+        return `Red-flag check: EDGAR couldn't be read (${err instanceof Error ? err.message : String(err)}).`;
+      }
+    })();
     const reason = [
       args.reason,
       args.setup_id ? `Suggested setup: ${args.setup_id} — check it against the chart; pick another or PASS if it doesn't fit.` : null,
       args.screen_row ? `Numbers: ${args.screen_row}` : null,
+      redFlag,
     ]
       .filter(Boolean)
       .join("\n");
@@ -425,6 +442,7 @@ export const dispatchThesisResearch = defineTool({
             tag,
             text: `Worker spawned for ${analyst.name} · child run ${childRun.id.slice(0, 8)}…`,
           },
+          ...(redFlag ? [{ kind: "generic" as const, text: redFlag }] : []),
           {
             kind: "generic" as const,
             text:
@@ -437,3 +455,18 @@ export const dispatchThesisResearch = defineTool({
     };
   },
 });
+
+/**
+ * The serious filings on a candidate in the last 90 days, in one line —
+ * shown before a writer is dispatched so discovery can't mint a thesis on a
+ * company that just told the SEC its books are wrong. Null when clean.
+ * Pure; exported for the test (PRAX's 2026-07-02 auditor change).
+ */
+export function redFlagLine(
+  filings: Array<{ tier: string; filedDate: string; form: string; rootForm: string; items: string[]; url: string }>,
+): string | null {
+  const red = filings.filter((f) => f.tier === "RED").sort((a, b) => b.filedDate.localeCompare(a.filedDate));
+  if (red.length === 0) return null;
+  const lines = red.slice(0, 3).map((f) => `${describeFilingEvent(f)} filed ${f.filedDate} (${f.url})`);
+  return `RED FLAG — a serious filing in the last 90 days: ${lines.join("; ")}. Read it before trusting the numbers; say in the thesis what it means.`;
+}

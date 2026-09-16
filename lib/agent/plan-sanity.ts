@@ -32,11 +32,13 @@
  */
 
 import { MIN_RISK_REWARD, riskReward } from "@/lib/agent/thesis-shape";
+import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 
 export type PlanSanityFlag = {
   kind:
     | "ENTRY_FAR_FROM_PRICE"
     | "ENTRY_STALE"
+    | "ENTRY_RAISED_AWAY"
     | "TARGET_ALREADY_PASSED"
     | "STOP_ALREADY_BREACHED"
     | "STOP_INSIDE_NOISE"
@@ -92,6 +94,11 @@ export function computePlanSanity(args: {
   minConfidence?: number | null;
   /** When the plan's levels were last written. Optional; absent ⇒ no staleness check. */
   lastLadderEditAt?: Date | null;
+  /**
+   * The buy level's moves away from the price in the last 30 days with no
+   * structure cited (lib/agent/entry-raises). Optional; absent ⇒ no check.
+   */
+  entryRaisesAway?: EntryRaiseAway[] | null;
   now?: Date;
 }): PlanSanityFlag[] {
   const {
@@ -105,6 +112,7 @@ export function computePlanSanity(args: {
     composite,
     minConfidence,
     lastLadderEditAt,
+    entryRaisesAway,
     now,
   } = args;
   if (status !== "WATCHING") return [];
@@ -140,6 +148,22 @@ export function computePlanSanity(args: {
           `Re-price it from today's Price structure (the setup's rule, today's numbers), or set the plan down.`,
       });
     }
+  }
+
+  // The MSFT shape: a fired buy answered by moving the level out of reach,
+  // with no chart structure named. Not refused anywhere — said here, with
+  // the count, so the pattern is loud.
+  if (entryRaisesAway && entryRaisesAway.length > 0) {
+    const n = entryRaisesAway.length;
+    const moves = entryRaisesAway
+      .map((r) => `${r.date}: ${r.from != null ? `${fmt(r.from)} → ` : ""}${fmt(r.to)} with the stock at ${fmt(r.price)}`)
+      .join("; ");
+    flags.push({
+      kind: "ENTRY_RAISED_AWAY",
+      text:
+        `The buy level was moved ${isLong ? "above" : "below"} the price ${n === 1 ? "once" : `${n} times`} in the last 30 days with no structure cited (${moves}). ` +
+        `A fired buy has two answers: buy it, or set the plan down and say why. A re-priced level names the structure it sits on — a pivot, an average, a swing — or it is the buy being avoided.`,
+    });
   }
 
   if (targetPrice != null && targetPrice > 0) {

@@ -25,6 +25,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
 import { computePlanSanity, type PlanSanityFlag } from "@/lib/agent/plan-sanity";
+import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 
 // ── Public types ──────────────────────────────────────────────────────
 
@@ -133,6 +134,8 @@ export interface ResolverThesisInput {
    * then omits daysSinceLadderEdit.
    */
   lastLadderEditAt?: Date | null;
+  /** The buy level's moves away from the price, no structure cited (DAV-253). */
+  entryRaisesAway?: EntryRaiseAway[] | null;
   triggers: unknown; // Json column; parsed via triggersArraySchema by caller
   catalystDate: Date | null;
   createdAt: Date;
@@ -316,6 +319,7 @@ export function buildResolvedEnvelope(args: {
     composite: getThesisComposite({ scoring: thesis.scoring }),
     minConfidence: thesis.minConfidence ?? null,
     lastLadderEditAt: thesis.lastLadderEditAt ?? null,
+    entryRaisesAway: thesis.entryRaisesAway ?? null,
     now,
   });
 

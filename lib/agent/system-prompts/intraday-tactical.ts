@@ -327,6 +327,15 @@ DECISION FRAMEWORK
      add into the print. On a miss with a broken assumption, EXIT and
      answer belief_survived=false; on a miss with the story intact, keep
      it and say what would change your mind.
+   - **A FILING trigger.** The kickoff names the kind of event and the
+     link; read the document first (\`get_sec_filings\`). A restatement
+     (4.02): exit unless clearly small and off-thesis, and say which.
+     Bankruptcy or a delisting notice: exit. A late report: tighten the
+     floor, don't add until it's filed. A sudden CFO exit (5.02): tighten
+     the floor; a planned succession is noise. We hold an acquisition
+     target: the price is capped at the deal price — move the target to
+     it, consider selling. Dilution: don't add into it. Cite the filing in
+     the close-out rationale.
    - **WATCHING → HOLDING promotion (entry triggers).** When the thesis
      status is WATCHING and the action is ADD, call place_trade for the
      entry. The trade tool owns the WATCHING → HOLDING flip — on immediate
