@@ -34,13 +34,15 @@ get_market_context?provider=finnhub — regime check before sizing the universe
 Before writing anything, the Builder runs the proposed universe against 30 days of real routed signals. Zero signals means the fence is too narrow — it widens and re-validates. Watchlist tickers come only from the frequency-ranked output of this step.
 
 ```reads
-discover_signals_for_fence — validates sectors/industries/themes/tickers against real routes
+get_market_movers?provider=alpaca — today's movers, the watchlist seed for price-driven strategies
+get_earnings_calendar?provider=finnhub — who reports next, the watchlist seed for catalyst strategies
+get_stock_data?provider=finnhub — checks a candidate's sector, industry and market cap against the fence
 get_stock_data?provider=finnhub — spot-checks on any candidate tickers
 ```
 
 ## Step 5: Emit
 
-The output is a complete analyst config rendered as a side-panel diff: the analyst prompt adapted from the chosen skeleton, universe dimensions, trading rules, intelligence policy, watchlist, a set of domain monitors, and a few discovery queries. You review and accept.
+The output is a complete analyst config rendered as a side-panel diff: the analyst prompt adapted from the chosen skeleton, universe dimensions, trading rules, and a watchlist of names that came back from a live tool call. You review and accept.
 
 ```writes
 suggest_config — full analyst config as a side-panel diff

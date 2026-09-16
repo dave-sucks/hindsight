@@ -3,10 +3,9 @@
 /**
  * ToolUIRenderer — ui: "tool-ui"
  *
- * The ONE generic renderer. Every list-shaped tool (morning brief, signals,
- * stock data, earnings, options flow, SEC filings, market context, artifact
- * reads, web search, trades, watchlist edits, knowledge library, inbox stats,
- * run completion, etc.) routes here.
+ * The ONE generic renderer. Every list-shaped tool (stock data, earnings,
+ * the calendar, movers, SEC filings, market context, web search, trades,
+ * knowledge library, run completion, etc.) routes here.
  *
  * Contract: tool returns `data.items: ToolUIItem[]`. This renderer wraps
  * them in a collapsible ToolProgress, mapping each item to either
@@ -179,8 +178,6 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
  * progressLabel. Keep these short; the per-tool progressLabel is preferred.
  */
 const TOOL_LABELS: Record<string, string> = {
-  read_signals: "Signals",
-  read_artifact: "Reading article",
   web_search: "Web search",
   get_portfolio_context: "Current portfolio",
   complete_run: "Completing run",

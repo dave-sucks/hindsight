@@ -1,15 +1,14 @@
 /**
  * Intraday Tactical system prompt.
  *
- * Spawned when a structured trigger fires (signal-driven via the
- * intelligence pipeline, or price-driven via the 15-min cron in
+ * Spawned when a structured trigger fires (the 5-min cron in
  * trigger-evaluator.ts). Single-thesis, single-decision scope. The
  * agent's job: validate the trigger fired correctly, then either do
  * the declared action, override with reasoning, or pass.
  *
  * Why a separate prompt: the daily run prompt is about walking the
  * book and deciding per-thesis. The tactical prompt is about ONE
- * (thesis, trigger, signal/quote) tuple — the budget, scope, and
+ * (thesis, trigger, quote) tuple — the budget, scope, and
  * tool path are all narrower.
  */
 
@@ -47,15 +46,6 @@ interface TacticalPromptArgs {
     allTriggers: Trigger[];
   };
   trigger: Trigger;
-  signal: {
-    id: string;
-    type: string;
-    sentiment: string;
-    urgency: string;
-    headline: string;
-    summary: string;
-    sourceUrls: string[];
-  } | null;
   position: {
     quantity: number;
     avgCost: number;
@@ -86,7 +76,7 @@ interface TacticalPromptArgs {
 }
 
 export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
-  const { analyst, thesis, trigger, signal, position, recentUpdates, latestDigest } = args;
+  const { analyst, thesis, trigger, position, recentUpdates, latestDigest } = args;
 
   const predicateSummary = describePredicate(trigger.predicate);
 
@@ -138,16 +128,8 @@ export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
         .join("\n")
     : "  (no prior updates)";
 
-  const signalSection = signal
-    ? `
-SIGNAL THAT FIRED (id: ${signal.id}):
-  type: ${signal.type}, sentiment: ${signal.sentiment}, urgency: ${signal.urgency}
-  headline: ${signal.headline}
-  summary: ${signal.summary}
-  sources: ${signal.sourceUrls.slice(0, 3).join(", ") || "(none)"}
-`
-    : `
-PATH: price/time predicate fired from the 15-min cron — no signal payload.
+  const pathSection = `
+PATH: the predicate fired on the 5-minute check.
   Check the latest quote and any recent news on $${thesis.ticker} via get_stock_data.
 `;
 
@@ -256,18 +238,15 @@ TRIGGER THAT FIRED (id: ${trigger.id})
   predicate: ${predicateSummary}
   declared action: ${trigger.action}
   rationale you wrote when you set it: "${trigger.rationale}"${trailingPeakBlock}
-${signalSection}
+${pathSection}
 ═══════════════════════════════════════════════════════════════════
 DECISION FRAMEWORK
 ═══════════════════════════════════════════════════════════════════
 
 1. Validate the predicate fired correctly.
    - Pull fresh data with get_stock_data($${thesis.ticker}).
-   - If signal-driven: read the signal evidence; does it actually validate
-     the predicate, or did it match by accident (e.g. EARNINGS_BEAT trigger
-     matched a stale "expected" signal)?
-   - If price/time-driven: confirm the price level / move actually holds
-     right now, not just at the moment the cron sampled.
+   - Confirm the price level / move / reported figure actually holds right
+     now, not just at the moment the cron sampled.
 
 2. If validation HOLDS:
    - Default: execute the declared action (${trigger.action}). REVIEW means
@@ -354,7 +333,7 @@ DECISION FRAMEWORK
            accumulation, neither of which is decision-relevant. Skip the
            volume gate entirely; confirm with gates (a) and (c) and act
            if both pass. The trigger fired on a live quote — that's the
-           signal you have.
+           evidence you have.
 
      If any APPLICABLE gate fails, do NOT place_trade. update_thesis(REVIEWED)
      with the specific gate that failed. "Volume too low" is only a valid
@@ -466,7 +445,6 @@ TOOLS
     get_market_context     — only if regime matters for the call.
     get_sec_filings        — when a filing bears on the call.
     web_search             — last resort. Budget-limited.
-    read_artifact          — full text of the signal source if signal-driven.
     get_theses             — for context on adjacent thesis state.
 
   Action:

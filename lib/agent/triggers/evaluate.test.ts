@@ -6,7 +6,7 @@
  */
 
 import { evaluateTrigger, shouldFire } from "./evaluate";
-import type { EvaluationContext, EvaluationContextSignal } from "./evaluate";
+import type { EvaluationContext } from "./evaluate";
 import type { EarningsReport } from "./earnings";
 import type { Trigger, TriggerPredicate } from "./types";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
@@ -18,18 +18,6 @@ function makeCtx(partial: Partial<EvaluationContext> = {}): EvaluationContext {
   return {
     thesis: { createdAt: THESIS_CREATED, lastReviewedAt: null },
     now: NOW,
-    ...partial,
-  };
-}
-
-function makeSignal(
-  partial: Partial<EvaluationContextSignal> = {},
-): EvaluationContextSignal {
-  return {
-    type: "NEWS",
-    sentiment: "NEUTRAL",
-    urgency: "MEDIUM",
-    tickers: ["NVDA"],
     ...partial,
   };
 }
@@ -466,63 +454,13 @@ describe("evaluateTrigger", () => {
     });
   });
 
-  describe("EARNINGS_BEAT", () => {
-    it("fires on positive surprise meeting minSurprisePct", () => {
-      const predicate: TriggerPredicate = {
-        kind: "EARNINGS_BEAT",
-        minSurprisePct: 5,
-      };
-      const ctx = makeCtx({
-        signal: makeSignal({ type: "EARNINGS", earningsSurprisePct: 8 }),
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
-    });
-
-    it("does not fire when surprise is negative (a miss, not a beat)", () => {
-      const predicate: TriggerPredicate = { kind: "EARNINGS_BEAT" };
-      const ctx = makeCtx({
-        signal: makeSignal({ type: "EARNINGS", earningsSurprisePct: -3 }),
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
-    });
-
-    it("does not fire when surprise pct missing on EARNINGS signal", () => {
-      const predicate: TriggerPredicate = { kind: "EARNINGS_BEAT" };
-      const ctx = makeCtx({
-        signal: makeSignal({ type: "EARNINGS" }),
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
-    });
-  });
-
-  describe("EARNINGS_MISS", () => {
-    it("fires on negative surprise meeting absolute minSurprisePct", () => {
-      const predicate: TriggerPredicate = {
-        kind: "EARNINGS_MISS",
-        minSurprisePct: 3,
-      };
-      const ctx = makeCtx({
-        signal: makeSignal({ type: "EARNINGS", earningsSurprisePct: -5 }),
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
-    });
-
-    it("does not fire when surprise is positive (a beat, not a miss)", () => {
-      const predicate: TriggerPredicate = { kind: "EARNINGS_MISS" };
-      const ctx = makeCtx({
-        signal: makeSignal({ type: "EARNINGS", earningsSurprisePct: 2 }),
-      });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
-    });
-  });
-
-  // ── Earnings off the calendar (the source that actually works) ───────
+  // ── Earnings off the calendar ─────────────────────────────────────────
   //
-  // These predicates were signal-only until 2026-09-02 and had therefore
-  // never fired: routing has been down since May, and no producer ever
-  // stamped a surprise figure onto a Signal even when it was up. They now
-  // read `ctx.earnings` — reported EPS against estimate, straight off the
-  // published calendar. See ./earnings and docs/plans/EARNINGS_AND_MOVERS.md.
+  // These predicates waited on a routed signal until 2026-09-02 and had
+  // therefore never fired: no producer ever stamped a surprise figure onto
+  // one. They read `ctx.earnings` — reported EPS against estimate, straight
+  // off the published calendar. See ./earnings and
+  // docs/plans/EARNINGS_AND_MOVERS.md.
 
   describe("earnings from the calendar", () => {
     function report(partial: Partial<EarningsReport> = {}): EarningsReport {
@@ -541,7 +479,7 @@ describe("evaluateTrigger", () => {
       };
     }
 
-    it("fires EARNINGS_BEAT off a reported beat, with no signal at all", () => {
+    it("fires EARNINGS_BEAT off a reported beat", () => {
       const predicate: TriggerPredicate = { kind: "EARNINGS_BEAT" };
       expect(evaluateTrigger(predicate, makeCtx({ earnings: report() }))).toBe(
         true,
@@ -585,28 +523,6 @@ describe("evaluateTrigger", () => {
         evaluateTrigger({ kind: "EARNINGS_BEAT" }, makeCtx({ earnings: null })),
       ).toBe(false);
       expect(evaluateTrigger({ kind: "EARNINGS_BEAT" }, makeCtx())).toBe(false);
-    });
-
-    it("prefers the calendar over a signal that disagrees", () => {
-      // The calendar is arithmetic against a published estimate; a signal's
-      // figure is whatever a producer put on the row. When both are present
-      // the arithmetic wins.
-      const ctx = makeCtx({
-        earnings: report({ surprisePct: -6 }),
-        signal: makeSignal({ type: "EARNINGS", earningsSurprisePct: 10 }),
-      });
-      expect(evaluateTrigger({ kind: "EARNINGS_BEAT" }, ctx)).toBe(false);
-      expect(evaluateTrigger({ kind: "EARNINGS_MISS" }, ctx)).toBe(true);
-    });
-
-    it("still honours a signal when the calendar has nothing", () => {
-      // A restored router keeps working; the calendar is simply the source
-      // that works today.
-      const ctx = makeCtx({
-        earnings: null,
-        signal: makeSignal({ type: "EARNINGS", earningsSurprisePct: 9 }),
-      });
-      expect(evaluateTrigger({ kind: "EARNINGS_BEAT" }, ctx)).toBe(true);
     });
 
     // ── The heads-up BEFORE a report ─────────────────────────────────

@@ -46,7 +46,6 @@ export const evaluateTrade = inngest.createFunction(
                   // thesisBullets → bullCase, signalTypes dropped.
                   snapshot: true,
                   bullCase: true,
-                  sourceSignalIds: true,
                   coreBelief: true,
                   keyAssumptions: true,
                   invalidationConds: true,
@@ -115,8 +114,7 @@ Close reason: ${position.closeReason ?? "MANUAL"}
 Hold duration: ${holdDays} days
 ${thesis ? (() => {
   // PR-9: extract narrative from the new flat columns for the evaluator
-  // prompt. signalTypes was dropped (derivable from sourceSignalIds);
-  // omitted from the prompt entirely.
+  // prompt. signalTypes was dropped; omitted from the prompt entirely.
   const reasoning = getThesisSnapshotText(thesis);
   const bullets = getThesisBullCaseBullets(thesis);
   const parts: string[] = [];
@@ -150,69 +148,13 @@ Write an honest post-trade evaluation. Was the BELIEF correct (each assumption, 
       });
     });
 
-    // Step 4: Walk Thesis → Signal → Monitor and update per-monitor ROI counters.
-    // Credits/debits every Monitor whose signal informed this thesis with a
-    // win/loss and recomputes successScore. Historical theses with empty
-    // sourceSignalIds or signals with null monitorId skip silently.
-    const monitorUpdate = await step.run("update-monitor-outcomes", async () => {
-      const signalIds = thesis?.sourceSignalIds ?? [];
-      if (signalIds.length === 0) {
-        return { skipped: true, reason: "no-source-signals" };
-      }
+    // Step 4 used to walk Thesis → Signal → Monitor and credit each monitor
+    // that sourced the trade with a win or a loss. Deleted 2026-09-15 with
+    // the rest of the Signals machinery: nothing routes a signal any more,
+    // so no thesis written since carries a sourceSignalId to walk, and the
+    // ROI counters it maintained were only ever read by a monitors page
+    // that is also gone.
 
-      const signals = await prisma.signal.findMany({
-        where: { id: { in: signalIds } },
-        select: { monitorId: true },
-      });
-
-      const monitorIds = Array.from(
-        new Set(signals.map((s) => s.monitorId).filter((id): id is string => !!id))
-      );
-
-      if (monitorIds.length === 0) {
-        return { skipped: true, reason: "no-monitor-linked-signals" };
-      }
-
-      const outcome = position.outcome;
-      const isWin = outcome === "WIN";
-      const isLoss = outcome === "LOSS";
-      const now = new Date();
-
-      const updated: Array<{ monitorId: string; successScore: number; tradesSourced: number }> = [];
-
-      // Per-monitor update — recompute successScore from the new totals inside
-      // a transaction so concurrent closes don't stomp each other.
-      for (const monitorId of monitorIds) {
-        const result = await prisma.$transaction(async (tx) => {
-          const bumped = await tx.monitor.update({
-            where: { id: monitorId },
-            data: {
-              tradesSourced: { increment: 1 },
-              winsSourced: { increment: isWin ? 1 : 0 },
-              lossesSourced: { increment: isLoss ? 1 : 0 },
-              lastOutcomeAt: now,
-            },
-            select: {
-              tradesSourced: true,
-              winsSourced: true,
-              lossesSourced: true,
-            },
-          });
-          const successScore = bumped.tradesSourced > 0
-            ? (bumped.winsSourced - bumped.lossesSourced) / bumped.tradesSourced
-            : null;
-          await tx.monitor.update({
-            where: { id: monitorId },
-            data: { successScore },
-          });
-          return { successScore: successScore ?? 0, tradesSourced: bumped.tradesSourced };
-        });
-        updated.push({ monitorId, ...result });
-      }
-
-      return { monitorsUpdated: updated.length, details: updated };
-    });
-
-    return { positionId, evaluated: true, monitorUpdate };
+    return { positionId, evaluated: true };
   }
 );

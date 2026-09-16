@@ -48,14 +48,14 @@ const citationSchema = z.object({
     .optional()
     .nullable()
     .describe(
-      "If this claim came from a signal returned by read_signals, its signalId. Otherwise null/omit.",
+      "Legacy field from the routed-signal era. Leave null/omit — nothing produces signals any more.",
     ),
   artifactId: z
     .string()
     .optional()
     .nullable()
     .describe(
-      "If this claim came from an artifact returned by read_artifact, its artifactId. Otherwise null/omit.",
+      "Legacy field from the routed-signal era. Leave null/omit — nothing extracts artifacts any more.",
     ),
 });
 

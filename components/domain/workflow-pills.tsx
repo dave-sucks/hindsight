@@ -255,9 +255,9 @@ function ToolPillInline({
 //   condition : optional free text after an em-dash or hyphen.
 //
 // Examples (all valid):
-//   read_signals
-//   get_earnings_calendar?provider=finnhub — gated by EARNINGS_CALENDAR feed
-//   get_market_movers?provider=fmp — gated by MARKET_MOVERS_* feeds
+//   get_theses
+//   get_earnings_calendar?provider=finnhub — universe-fenced
+//   get_market_movers?provider=alpaca — universe-fenced
 //   place_trade?provider=alpaca — only on immediate-buy path
 
 export interface ParsedFlowLine {

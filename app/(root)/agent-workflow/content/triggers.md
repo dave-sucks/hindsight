@@ -68,9 +68,11 @@ Say an analyst buys a name at **$74** and sets a floor at **$65** on day one.
 
 The old way — floor at $65, "reviewed, no changes" three mornings in a row, then a crash fires the *day-one* floor for a loss on a trade that had been up 17% — is exactly what re-laddering exists to prevent.
 
-## Two paths, one job
+## One clock
 
-The evaluator watches on two clocks. **Prices** get checked every five minutes during market hours (fresh quotes for every held and watched name, including each name's daily % change). **News** wakes it the instant the [Intelligence Pipeline](agent:intelligence) routes a matching signal — earnings, guidance, a filing. Either way the output is the same: an audit row, and either a staged proposal or a [Tactical Run](agent:tactical).
+The evaluator runs every five minutes during market hours and once more just after the close. Each pass pulls a fresh quote for every held and watched name, and reads the morning's chart numbers and the earnings calendar next to it — so a price level, a moving average, a give-back off the high, a beat or a miss, and "reports within three days" are all conditions it can answer on the same tick. The output is always the same: an audit row, and either a staged proposal or a [Tactical Run](agent:tactical).
+
+There is no news path. Predicates that waited on a routed news signal — a filing, a guidance change, a signal type — never fired in their entire existence and were deleted; a condition that can't be checked today doesn't get to sit on a thesis pretending to protect it.
 
 ## Cooldowns — so one move doesn't nag you all day
 

@@ -14,13 +14,11 @@ Plain-text orientation — no tools. The agent acknowledges its open positions a
 
 ## Step 2: Orient
 
-Read everything gathered since the last run. Signals come back in three buckets: portfolio names, watchlist names, and new discovery candidates. Each signal carries an ID that gets wired into any thesis update for provenance.
+Read the book as it stands. The thesis library comes back split: the full rows for every name with something to answer for today — a trigger fired, a review due, research gone stale — and a one-line roster of everything the trigger check already cleared.
 
 ```reads
-read_signals — today's signals in three buckets: portfolio, watchlist, discovery
 get_theses — full thesis library: HOLDING, WATCHING, and PROMOTED theses with recent update history and research excerpts
 get_portfolio_context — live P&L, days held, distance from peak, exit levels
-read_artifact — full article content behind any signal worth a deep read
 web_search?provider=perplexity — live search, sparingly, within the per-run budget
 get_market_context?provider=finnhub — SPY, VIX, sector ETFs, macro events, regime
 ```
@@ -51,7 +49,7 @@ The only opt-out is `update_thesis(change_status: "WATCHING")` to defer re-entry
 
 ```writes
 update_thesis — every thesis touched gets one audit row (UPDATED, REVIEWED, STATUS_CHANGED, or CLOSED)
-record_thesis — net-new coverage or direction flip only; requires source_kind + source_signal_ids
+record_thesis — net-new coverage or direction flip only; requires source_kind + source_rationale
 place_trade?provider=alpaca — new entry, or re-entering a PROMOTED thesis live
 close_position?provider=alpaca — full exit with realized P&L and reason
 manage_position?provider=alpaca — partial close, target/stop update, trail, or scale-in

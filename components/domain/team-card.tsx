@@ -34,8 +34,6 @@ import { TOOL_REGISTRY, getTeam } from "@/lib/agent/workflow-registry";
 const TEAM_LABELS: Partial<Record<TeamId, string>> = {
   builder:      "Builder",
   agent:        "Research Agent",
-  intelligence: "Intel Pipeline",
-  briefing:     "Briefing Agent",
   evaluation:   "Evaluation",
 };
 

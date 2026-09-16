@@ -1,11 +1,11 @@
 /**
  * get_market_movers — pull tool for today's biggest movers.
  *
- * The firm-market-sweep cron writes one aggregate Signal per category
- * (gainers, losers, most actives) per day from Alpaca's stock screener
- * (FMP removed 2026-09-08 — see lib/market-data/alpaca-screener.ts). This
- * tool is how any analyst reads them — the feeds subscription that once
- * routed them automatically was deleted 2026-09-11.
+ * Reads the gainers / losers / most-actives lists straight off Alpaca's
+ * stock screener (FMP removed 2026-09-08 — see
+ * lib/market-data/alpaca-screener.ts). A pull tool is the whole story now:
+ * the cron that once turned these into routed signals, and the feeds
+ * subscription that pushed them at an analyst, are both deleted.
  *
  * Renders via the generic ToolUIRenderer (`ui: "tool-ui"`). Each mover
  * becomes a ticker row item with the % change in the tag and price in the

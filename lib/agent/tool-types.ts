@@ -50,53 +50,7 @@ export interface SourceRef {
   url: string;
 }
 
-/**
- * routeReasonCode — canonical routing enum set by signal-router.ts.
- * Shared contract with the B workstream (UNIVERSE_HANDOFF.md):
- *   POSITION        — ticker is in the analyst's open positions
- *   WATCHLIST       — ticker is on the analyst's watchlist
- *   DIRECT_TICKER   — explicit ticker allowlist hit (DIRECTED mode)
- *   DISCOVERY       — matched multiple universe dimensions (sector + industry/theme)
- *   INDUSTRY_MATCH  — matched universe.industries only
- *   SECTOR_MATCH    — matched universe.sectors only
- *   THEME_MATCH     — matched universe.themes only
- *   CROSS_ANALYST   — routed from a peer analyst (penalty applied)
- */
-export type RouteReasonCode =
-  | "POSITION"
-  | "WATCHLIST"
-  | "DIRECT_TICKER"
-  | "DISCOVERY"
-  | "INDUSTRY_MATCH"
-  | "SECTOR_MATCH"
-  | "THEME_MATCH"
-  | "CROSS_ANALYST"
-  // Aggregate routes — populated when Signal.aggregateType is set (earnings
-  // calendar, market movers). Aggregates bypass the news-signal universe
-  // fence and match via ticker overlap with watchlist/positions.
-  // FIRM_AGGREGATE_FEED is historical (the AgentConfig.feeds subscription
-  // was deleted 2026-09-11). See lib/inngest/functions/signal-router.ts.
-  | "FIRM_AGGREGATE_FEED"
-  | "AGGREGATE_TICKER_MATCH";
-
-/**
- * matchedUniverse — JSON payload persisted on AnalystSignalRoute explaining
- * which universe dimensions matched. Populated by signal-router.ts.
- */
-export interface MatchedUniverse {
-  sectors?: string[];
-  industries?: string[];
-  themes?: string[];
-  inWatchlist?: boolean;
-  inPositions?: boolean;
-  fromAnalystId?: string;
-  marketCap?: number | null;
-  // Populated for aggregate routes — the canonical FEEDS value from
-  // Signal.aggregateType (e.g. "EARNINGS_CALENDAR", "MARKET_MOVERS_GAINERS").
-  feed?: string;
-}
-
-/** Signal item — shared shape for read_signals and web_search results */
+/** One web_search result. */
 export interface SignalItem {
   headline: string;
   summary: string;
@@ -105,18 +59,8 @@ export interface SignalItem {
   sentiment: string; // BULLISH | BEARISH | NEUTRAL | MIXED
   urgency: string; // LOW | MEDIUM | HIGH | BREAKING
   sources: SourceRef[];
-  // Signal-specific (present in read_signals, absent in web_search)
-  signalId?: string;
   type?: string;
   freshness?: string;
-  relevanceScore?: number;
-  routeReason?: string;
-  artifactId?: string | null;
-  // Session 3: canonical routing code + universe-match payload (read_signals only).
-  routeReasonCode?: RouteReasonCode;
-  matchedUniverse?: MatchedUniverse | null;
-  // Cross-analyst provenance — populated when routeReasonCode === "CROSS_ANALYST".
-  crossAnalystSource?: string | null;
 }
 
 // ─── Per-Tool Data Types ────────────────────────────────────────────────────
@@ -159,43 +103,6 @@ export interface EarningsDataData {
 export interface SecFilingsData {
   filings: { type: string; date: string; description: string }[];
   count: number;
-}
-
-/** read_signals → data */
-export interface SignalsToolData {
-  count: number;
-  fallback?: boolean;
-  fallbackReason?: string;
-  policyApplied?: {
-    maxSignals: number;
-    minUrgency: string;
-    minSourceQuality: number;
-    excludedCategories: string[];
-  };
-  // Flat list — kept for legacy renderers and sorting by urgency.
-  signals: SignalItem[];
-  // Session 3: segmented view. Same signals, split by routeReasonCode.
-  // Aggregate routes (FIRM_AGGREGATE_FEED / AGGREGATE_TICKER_MATCH) bucket
-  // by matchedUniverse.inPositions/inWatchlist when set, otherwise discovery.
-  //   portfolioSignals  — POSITION | (aggregate + inPositions)
-  //   watchlistSignals  — WATCHLIST | (aggregate + inWatchlist, no position)
-  //   discoverySignals  — DISCOVERY | SECTOR_MATCH | INDUSTRY_MATCH | THEME_MATCH
-  //                       | DIRECT_TICKER | CROSS_ANALYST | (aggregate with no
-  //                       ticker overlap — the subscribed firehose itself)
-  portfolioSignals: SignalItem[];
-  watchlistSignals: SignalItem[];
-  discoverySignals: SignalItem[];
-  // Guidance text to surface directly to the agent when discovery is empty.
-  discoveryNote?: string;
-}
-
-/** read_artifact → data */
-export interface ArtifactToolData {
-  title: string;
-  url: string;
-  publishedAt: string | null;
-  contentSummary: string | null;
-  contentMarkdown: string | null;
 }
 
 /** web_search → data */

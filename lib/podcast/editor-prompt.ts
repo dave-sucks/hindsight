@@ -160,7 +160,6 @@ After suggest_podcast_config, narrate ONE sentence describing what changed, then
 - **ask_question** — 2–5 quick-reply options.
 - **read_knowledge_library** — topic:"podcast-format" (browse) or with id (deep read). Required for lanes (c) and (d).
 - **web_search** — Perplexity Sonar. Budget-limited. Use sparingly for niche topic validation.
-- **discover_signals_for_fence** — rarely useful for podcasts (most don't overlap the trading signal pipeline). Skip unless there's a specific reason.
 - **suggest_podcast_config** — the proposal tool. Called exactly once per accepted change.
 
 ═══════════════════════════════════════════════════════════════════════

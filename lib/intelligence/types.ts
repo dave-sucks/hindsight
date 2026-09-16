@@ -4,7 +4,7 @@
 //   - Background intelligence jobs (Inngest functions)
 //   - Sonar API response parsing
 //   - Signal creation/routing utilities
-//   - Runtime tools (read_morning_brief, read_signals)
+//   - The agent's live search budget (web_search)
 //   - Intelligence config UI
 
 // ── Enums (string unions matching Prisma schema) ────────────────────────────
@@ -174,12 +174,11 @@ export const SONAR_SIGNAL_SCHEMA = {
 // Stored as JSON on AgentConfig.intelligencePolicy.
 
 export interface IntelligencePolicy {
-  // Discovery budget — caps how much the agent reads per run.
-  // 30 was too low (TMT had 165 routes, agent saw 20), 100 was over-generous.
-  // 50 balances "see the full useful slice of your day" with context budget.
-  // read_signals' HARD_LIMIT = 75 acts as a secondary ceiling.
-  maxSignalsPerRun: number;        // default 50 — max signals to surface via read_signals
-  maxArtifactReads: number;        // default 5 — full article reads per run
+  // Historical, from the routed-signal era. Nothing reads these two any
+  // more — the inbox and the artifact reader were deleted 2026-09-15. They
+  // stay on the stored policy JSON so old AgentConfig rows still parse.
+  maxSignalsPerRun: number;
+  maxArtifactReads: number;
 
   // Source category preferences — steer what types of intelligence get priority
   preferredSourceCategories: SourceCategory[];  // e.g. ["SECTOR", "COMPANY"] — boost these

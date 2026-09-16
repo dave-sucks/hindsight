@@ -17,7 +17,7 @@ The Editor silently decides which of four lanes applies: a question that just ne
 For fence changes and archetype shifts, the Editor pulls 30 days of this analyst's actual routing history before suggesting anything. That shows which themes are getting signals, which are dead, and which tickers keep showing up but aren't on the watchlist yet.
 
 ```reads
-read_analyst_inbox_stats — 30-day routing rollup: top tickers, dead themes, hot unwatched names
+get_market_movers?provider=alpaca — real names moving today, to check a proposed fence against
 ```
 
 ## Step 3: Pin down ambiguity
@@ -33,7 +33,7 @@ ask_question — one call per turn; multiple questions bundled via steps[]
 If the universe is changing, the Editor runs the proposed dimensions against real signal data. Zero routes means the fence is too narrow. New watchlist tickers come only from the frequency-ranked output — never invented.
 
 ```reads
-discover_signals_for_fence — validates the new universe against 30 days of real routes
+get_stock_data?provider=finnhub — confirms a candidate's sector, industry and market cap land inside the proposed fence
 read_knowledge_library — re-reads the current archetype skeleton for consistency; full three-beat selection for archetype shifts
 get_stock_data?provider=finnhub — spot-checks any candidate tickers
 ```

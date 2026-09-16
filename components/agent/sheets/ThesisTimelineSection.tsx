@@ -143,6 +143,8 @@ const FILTERS: Array<{ value: TimelineFilter; label: string }> = [
 ];
 
 const SOURCE_LABELS: Record<string, string> = {
+  // History: nothing has minted a ROUTED_SIGNAL thesis since routing was
+  // switched off, but old rows still render through this map.
   ROUTED_SIGNAL: "a routed signal",
   WEB_SEARCH: "web search",
   WATCHLIST_REVIEW: "a watchlist review",

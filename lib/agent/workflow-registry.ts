@@ -95,13 +95,11 @@ export interface SubStep {
 export type TeamId =
   | "builder"
   | "editor"
-  | "intelligence"
   | "triggers"
   | "discovery"
   | "agent"
   | "tactical"
   | "thesis-writer"
-  | "briefing"
   | "evaluation";
 
 export interface Team {
@@ -183,7 +181,7 @@ export const TEAMS: Team[] = [
     title: "Analyst Builder",
     phase: "build",
     summary:
-      "A guided interview that turns the edge you want to hunt into a working analyst, grounded in the actual signal pipeline before anything gets written.",
+      "A guided interview that turns the edge you want to hunt into a working analyst, with every ticker on its watchlist checked against the live market before anything gets written.",
     icon: Sparkles,
     model: "GPT-4o",
     schedule: "On demand",
@@ -205,26 +203,15 @@ export const TEAMS: Team[] = [
     promptSource: "lib/agent/modes.ts → EDITOR_SYSTEM_PROMPT",
   },
 
-  // ─── 2. Intelligence Pipeline ──────────────────────────────────────────
-  {
-    id: "intelligence",
-    title: "Intelligence Pipeline",
-    phase: "signals",
-    summary:
-      "The signal-gathering pipeline. Sweeps the market, monitors portfolio + watchlist tickers, checks tracked sources, and routes every finding into each analyst's universe.",
-    icon: Radar,
-    schedule: "6:30–7:30 AM ET weekdays",
-  },
-
   // ─── 2b. Trigger Evaluator ─────────────────────────────────────────────
   {
     id: "triggers",
     title: "Trigger Evaluator",
     phase: "signals",
     summary:
-      "Checks every active thesis's structured predicates against fresh prices and just-arrived signals. Fires thesis.trigger.fired when one hits — that's what wakes a tactical run.",
+      "Checks every holding's and watch's conditions against fresh prices, the morning chart numbers and the earnings calendar. Fires thesis.trigger.fired when one hits — that's what wakes a tactical run.",
     icon: Bell,
-    schedule: "Hourly during market hours + on signal.routed",
+    schedule: "Every 5 min during market hours, plus a close pass at 16:20 ET",
     promptSource: "lib/agent/triggers/evaluate.ts",
   },
 
@@ -234,7 +221,7 @@ export const TEAMS: Team[] = [
     title: "Discovery Run",
     phase: "run",
     summary:
-      "Per analyst: scans the past week's discovery signals, scores the top 2-3 candidates, mints up to 5 new WATCHING theses. The cadence safety net for new coverage.",
+      "Per analyst: scans the movers and the earnings calendar for names inside the fence, scores the top 2-3 candidates, mints new WATCHING theses. Dormant — discovery runs through the principal chat today.",
     icon: Search,
     model: "GPT-4o",
     schedule: "Sundays 9 AM ET (weekly)",
@@ -288,7 +275,7 @@ export const TEAMS: Team[] = [
     title: "Evaluation & Tracking",
     phase: "track",
     summary:
-      "Watches positions hourly. Evaluates each closed trade and credits the source monitor (win/loss). Snapshots EOD prices. Scores weekly accuracy. /intelligence (Health) surfaces pipeline drift.",
+      "Watches positions hourly. Evaluates each closed trade against the belief it was written on. Snapshots EOD prices. Scores weekly accuracy. The Health page surfaces Alpaca↔DB drift.",
     icon: BarChart3,
     schedule: "Hourly / EOD / Weekly + on every close",
   },
@@ -308,7 +295,6 @@ export const PAGE_TEAM_MAP: Record<string, TeamId> = {
   "/runs": "agent",
   "/trades": "agent",
   "/performance": "evaluation",
-  "/intelligence": "intelligence",
 };
 
 /**
@@ -386,21 +372,7 @@ export interface RegistryTool {
 }
 
 export const TOOL_REGISTRY: RegistryTool[] = [
-  // ── Intelligence (Stage 1 — read pre-gathered data) ──────────────────
-  {
-    name: "read_signals",
-    category: "intelligence",
-    summary: "Signals routed to this analyst by the signal router. Returns three buckets — portfolioSignals, watchlistSignals, discoverySignals — each with signalId for thesis provenance. Reading flips route status PENDING → READ.",
-    providers: ["internal"],
-    agents: ["agent", "discovery"],
-  },
-  {
-    name: "read_artifact",
-    category: "intelligence",
-    summary: "Full extracted article content behind a signal — clean markdown from Firecrawl.",
-    providers: ["internal"],
-    agents: ["agent", "tactical", "discovery"],
-  },
+  // ── Intelligence (Stage 1 — durable state + reference + live search) ──
   {
     name: "get_theses",
     category: "intelligence",
@@ -409,23 +381,9 @@ export const TOOL_REGISTRY: RegistryTool[] = [
     agents: ["agent", "tactical", "discovery"],
   },
   {
-    name: "read_analyst_inbox_stats",
-    category: "intelligence",
-    summary: "30-day rollup of this analyst's routing — top tickers, sectors, themes, dead themes, signal distribution, hot unwatched tickers. Grounds editor fence/archetype changes in real inbox data.",
-    providers: ["internal"],
-    agents: ["editor"],
-  },
-  {
     name: "read_knowledge_library",
     category: "intelligence",
-    summary: "Browses strategy archetypes (playbooks), vetted research sources, and signal-type taxonomy. Mandatory before suggest_config in builder/editor.",
-    providers: ["internal"],
-    agents: ["builder", "editor"],
-  },
-  {
-    name: "discover_signals_for_fence",
-    category: "intelligence",
-    summary: "Runs a live query against real signals matching a proposed universe (sectors + industries + themes + tickers). Returns frequency-ranked tickers for watchlist seeding and validates that the fence actually produces routes.",
+    summary: "Browses strategy archetypes (playbooks), vetted research sources, and the setup catalog. Mandatory before suggest_config in builder/editor.",
     providers: ["internal"],
     agents: ["builder", "editor"],
   },
@@ -508,7 +466,7 @@ export const TOOL_REGISTRY: RegistryTool[] = [
   {
     name: "record_thesis",
     category: "action",
-    summary: "Mints a NEW thesis (LONG/SHORT). Use this only for fundamentally new coverage or a direction flip. For refinements to an existing thesis (raise target, tighten stop, mark invalidated) use update_thesis instead. Requires source_kind; ROUTED_SIGNAL requires source_signal_ids validated against today's route pool. THESIS_RESEARCH_V2: accepts research_data + research_sections from the thesis-writer agent — they persist on Thesis.researchData / researchSections / researchUpdatedAt.",
+    summary: "Mints a NEW thesis (LONG/SHORT). Use this only for fundamentally new coverage or a direction flip. For refinements to an existing thesis (raise target, tighten stop, mark invalidated) use update_thesis instead. Requires source_kind + source_rationale. THESIS_RESEARCH_V2: accepts research_data + research_sections from the thesis-writer agent — they persist on Thesis.researchData / researchSections / researchUpdatedAt.",
     providers: ["internal"],
     agents: ["agent", "discovery", "thesis-writer"],
   },

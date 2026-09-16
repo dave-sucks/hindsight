@@ -1,6 +1,6 @@
 // ── Tactical Run ──────────────────────────────────────────────────────────
 // Consumes `app/thesis.trigger.fired` events emitted by trigger-evaluator.
-// One event = one (thesis, trigger, signal?) tuple = one focused agent run.
+// One event = one (thesis, trigger) pair = one focused agent run.
 //
 // Scope is deliberately narrow:
 //   • Single ticker (thesis.ticker)
@@ -47,12 +47,11 @@ import {
 interface FiredPayload {
   thesisId: string;
   triggerId: string;
-  signalId?: string;
   analystId: string;
   ticker: string;
   action: Trigger["action"];
   predicateKind: string;
-  /** Quote that fired the predicate (price-cron fires only; see evaluator). */
+  /** Quote that fired the predicate (see evaluator). */
   firedPrice?: number | null;
   /**
    * The facts behind the fire, when the predicate had any beyond price —
@@ -127,7 +126,7 @@ export const tacticalRun = inngest.createFunction(
     }
     const fired = payload as FiredPayload;
 
-    // ── Load thesis + trigger + signal + position ─────────────────────
+    // ── Load thesis + trigger + position ──────────────────────────────
     // Note on step.run: Inngest JSON-serializes the return value, so Dates
     // come out as ISO strings on the other side. We pre-compute everything
     // we need in numeric / string form here.
@@ -173,7 +172,7 @@ export const tacticalRun = inngest.createFunction(
       const trigger = findTriggerById(ladder, fired.triggerId);
       if (!trigger) return null;
 
-      const [agentConfig, signal, position] = await Promise.all([
+      const [agentConfig, position] = await Promise.all([
         prisma.agentConfig.findUnique({
           where: { id: analystId },
           select: {
@@ -192,20 +191,6 @@ export const tacticalRun = inngest.createFunction(
             maxPositionTotal: true,
           },
         }),
-        fired.signalId
-          ? prisma.signal.findUnique({
-              where: { id: fired.signalId },
-              select: {
-                id: true,
-                type: true,
-                sentiment: true,
-                urgency: true,
-                headline: true,
-                summary: true,
-                sourceUrls: true,
-              },
-            })
-          : Promise.resolve(null),
         prisma.position.findFirst({
           where: {
             analystId: fired.analystId,
@@ -284,7 +269,6 @@ export const tacticalRun = inngest.createFunction(
         },
         trigger,
         agentConfig,
-        signal,
         position: position
           ? {
               id: position.id,
@@ -301,7 +285,7 @@ export const tacticalRun = inngest.createFunction(
     if (!ctx) {
       return { skipped: "context-not-loadable", thesisId: fired.thesisId };
     }
-    const { thesis, trigger, agentConfig, signal, position } = ctx;
+    const { thesis, trigger, agentConfig, position } = ctx;
 
     // ── Suppress redundant close runs while an exit is already queued ────────
     // EXIT/TRIM triggers carry cooldownDays:0 ("fire every tick") because the
@@ -371,7 +355,7 @@ export const tacticalRun = inngest.createFunction(
     // ── Suppress duplicate buy-checks on the same trigger (GAPS P1-37) ──────
     // When a stock crosses its buy price and the analyst examines it and
     // decides NOT to buy, the trigger stays armed — and every subsequent fire
-    // (5-min evaluator tick, routed signal, a second overlapping trigger)
+    // (5-min evaluator tick, a second overlapping trigger)
     // wakes ANOTHER full GPT-5.5 session that re-reads the same thesis and
     // reaches the same "no" (CAPR ~5×, CEG 4× over 2026-07-20→21 — ~9 wasted
     // runs in two days, every one blocked by the same below-bar conviction
@@ -432,7 +416,6 @@ export const tacticalRun = inngest.createFunction(
             triggeredBy: "trigger-fired",
             thesisId: thesis.id,
             triggerId: trigger.id,
-            signalId: signal?.id ?? null,
             ticker: thesis.ticker,
             action: trigger.action,
             predicateKind: fired.predicateKind,
@@ -455,10 +438,7 @@ export const tacticalRun = inngest.createFunction(
       // Persist a human-readable sentence — same format the sheet's
       // banner renders. Old SCREAMING_SNAKE_CASE summaries were
       // unreadable ("REVIEW trigger matched: PRICE_BELOW (price/time)").
-      const baseSentence = describeTriggerFire(trigger as Trigger);
-      const summary = signal
-        ? `${baseSentence} (signal: "${signal.headline.slice(0, 100)}")`
-        : baseSentence;
+      const summary = describeTriggerFire(trigger as Trigger);
       await prisma.thesisUpdate.create({
         data: {
           thesisId: thesis.id,
@@ -471,7 +451,7 @@ export const tacticalRun = inngest.createFunction(
             ? `${trigger.rationale} ${fired.firedContext}`
             : trigger.rationale,
           triggerId: trigger.id,
-          signalIds: signal ? [signal.id] : [],
+          signalIds: [],
           runId: run.id,
           // The quote that fired the predicate — rides in on the event so
           // the Activity tab's price stamps aren't cron-fires-only.
@@ -493,7 +473,7 @@ export const tacticalRun = inngest.createFunction(
     // The predicate-kind gate is defensive: applyTriggerAdd /
     // applyTriggerFireModeChange already refuse DIRECT on a non-deterministic
     // EXIT, but a stale/agent-written trigger could still carry it. A
-    // judgment-bearing exit (earnings, signal) must fall through to the agent,
+    // judgment-bearing exit (an earnings fire, say) must fall through to the agent,
     // not be auto-closed by directExitReason's STOP fallback.
     if (
       trigger.fireMode === "DIRECT" &&
@@ -569,7 +549,6 @@ export const tacticalRun = inngest.createFunction(
         runId: run.id,
         thesisId: thesis.id,
         triggerId: trigger.id,
-        signalId: signal?.id ?? null,
         ticker: thesis.ticker,
         action: trigger.action,
         fireMode: "DIRECT" as const,
@@ -594,8 +573,8 @@ export const tacticalRun = inngest.createFunction(
       // price re-crosses the level. We can't trust the LLM to tag STOP, so we
       // deterministically precompute the reason from the fired predicate and
       // thread it into the tool context; close_position uses it in place of
-      // the model-chosen reason. Non-protective EXIT triggers (earnings,
-      // signals, etc.) leave this undefined → the agent's own MANUAL/STOP tag
+      // the model-chosen reason. Non-protective EXIT triggers (an earnings
+      // fire, say) leave this undefined → the agent's own MANUAL/STOP tag
       // stands and genuinely discretionary MANUAL closes stay on cooldown.
       const protectiveExitReason =
         (trigger as Trigger).action === "EXIT"
@@ -688,7 +667,6 @@ export const tacticalRun = inngest.createFunction(
           allTriggers: thesis.allTriggers,
         },
         trigger,
-        signal,
         position,
         recentUpdates: thesis.updates,
         latestDigest,
@@ -701,13 +679,10 @@ export const tacticalRun = inngest.createFunction(
       // via step.run which Inngest types as unknown.
       const triggerTyped = trigger as Trigger;
       const fireSentence = describeTriggerFire(triggerTyped);
-      const signalSuffix = signal
-        ? ` Signal: "${(signal as { headline: string }).headline.slice(0, 120)}"`
-        : "";
       // The numbers behind an earnings fire, when the evaluator sent them.
       const contextSuffix = fired.firedContext ? ` ${fired.firedContext}` : "";
       const userPrompt =
-        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix}${signalSuffix} ` +
+        `Tactical run on $${(thesis as { ticker: string }).ticker}. ${fireSentence}.${contextSuffix} ` +
         `Validate, decide, act if warranted, then close out via update_thesis. ` +
         `You are running unattended — no human will respond. Every turn must call a tool; ` +
         `text-only turns terminate the run as FAILED.`;
@@ -958,7 +933,6 @@ export const tacticalRun = inngest.createFunction(
       runId: run.id,
       thesisId: thesis.id,
       triggerId: trigger.id,
-      signalId: signal?.id ?? null,
       ticker: thesis.ticker,
       action: trigger.action,
       ...outcome,

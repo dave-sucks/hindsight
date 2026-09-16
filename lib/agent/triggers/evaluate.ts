@@ -1,13 +1,11 @@
 /**
  * Trigger predicate evaluator — the dual-consumer pure function.
  *
- * Called from three different paths, all sharing this evaluator:
+ * Called from two different paths, both sharing this evaluator:
  *
- *   1. Signal-router (PR 2)         — when a Signal is created, evaluate
- *                                     signal-side predicates against it.
- *   2. 15-min price cron (PR 2)     — for active theses, pull latest quote
+ *   1. 5-min price cron (PR 2)      — for active theses, pull latest quote
  *                                     and evaluate price/time predicates.
- *   3. Daily run inline (PR 3)      — agent calls evaluateTrigger against
+ *   2. Daily run inline (PR 3)      — agent calls evaluateTrigger against
  *                                     fresh get_stock_data output before
  *                                     deciding per-thesis what to do.
  *
@@ -39,24 +37,7 @@ import { insiderCluster } from "@/lib/market-data/insider-cluster";
 
 // ── EvaluationContext ─────────────────────────────────────────────────
 
-export interface EvaluationContextSignal {
-  /** mirrors Signal.type */
-  type: string;
-  /** mirrors Signal.sentiment ("BULLISH" | "BEARISH" | "NEUTRAL" | "MIXED") */
-  sentiment: string;
-  /** mirrors Signal.urgency */
-  urgency: string;
-  /** mirrors Signal.tickers */
-  tickers: string[];
-
-  /** Earnings surprise pct a producer stamped on an EARNINGS signal, when known. */
-  earningsSurprisePct?: number;
-}
-
 export interface EvaluationContext {
-  /** Present on the signal-driven path. Undefined on cron / daily-inline. */
-  signal?: EvaluationContextSignal;
-
   /**
    * Latest quote — present on cron and daily-inline paths.
    *
@@ -83,15 +64,14 @@ export interface EvaluationContext {
    * This ticker's most recently reported quarter, when it reported inside
    * the evaluator's lookback window. Read by EARNINGS_BEAT / EARNINGS_MISS.
    *
-   * This is the source that works today. The signal-side path below stayed
-   * dark for months because no producer ever stamped a surprise figure onto
-   * a Signal; the calendar carries reported EPS against estimate directly,
-   * so beat/miss is arithmetic with nothing in between. See ./earnings and
+   * Beat/miss used to wait on a routed signal and stayed dark for months
+   * because no producer ever stamped a surprise figure onto one. The
+   * calendar carries reported EPS against estimate directly, so beat/miss
+   * is arithmetic with nothing in between. See ./earnings and
    * docs/plans/EARNINGS_AND_MOVERS.md.
    *
    * Absent (didn't report, or the caller doesn't do earnings) → those
-   * predicates fall back to `signal`, and then to false. A missed trigger,
-   * never a crash.
+   * predicates are false. A missed trigger, never a crash.
    */
   earnings?: EarningsReport | null;
 
@@ -435,21 +415,13 @@ function readsPrice(p: TriggerPredicate): boolean {
 }
 
 /**
- * The reported surprise percentage for this ticker, from whichever source
- * the caller supplied. Positive = beat, negative = miss, null = we don't
- * know (nothing reported, or an estimate we can't compute a percentage
- * against).
- *
- * Calendar first. It is the arithmetic — reported EPS against the published
- * estimate — whereas a signal's figure is whatever a producer stamped onto
- * the row, and in practice no producer ever stamped one. The signal branch
- * stays so that a restored router still works, not because it currently
- * carries anything.
+ * The reported surprise percentage for this ticker — reported EPS against
+ * the published estimate, off the calendar. Positive = beat, negative =
+ * miss, null = we don't know (nothing reported, or an estimate we can't
+ * compute a percentage against).
  */
 function reportedSurprisePct(ctx: EvaluationContext): number | null {
-  if (ctx.earnings?.surprisePct != null) return ctx.earnings.surprisePct;
-  if (ctx.signal?.type === "EARNINGS") return ctx.signal.earningsSurprisePct ?? null;
-  return null;
+  return ctx.earnings?.surprisePct ?? null;
 }
 
 function evaluatePriceMovePct(

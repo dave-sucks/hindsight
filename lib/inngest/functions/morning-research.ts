@@ -102,8 +102,8 @@ export const morningResearch = inngest.createFunction(
         // morning-cron invocations from running CONCURRENTLY, but doesn't
         // prevent a second invocation from running SEQUENTIALLY after the
         // first completes. The function also subscribes to
-        // `app/research.run.manual` events (urgent-trigger on email signals,
-        // manual UI runs via /api/research/trigger), which can fire mid-cron
+        // `app/research.run.manual` events (manual UI runs via
+        // /api/research/trigger), which can fire mid-cron
         // OR shortly after — producing a second MORNING_PLAN row for the same
         // analyst the same day.
         //
@@ -250,11 +250,6 @@ export const morningResearch = inngest.createFunction(
           minConfidence: config.minConfidence,
           alpacaCreds,
           runEnvironment,
-          // Fix #6 (V2). Narrows read_signals to portfolio + watchlist
-          // buckets only — Daily Run shouldn't act on discovery candidates
-          // (that's the Sunday Discovery cron's job). V1 had a different
-          // expectation; V1 path is deprecated as of 2026-05-16.
-          dailyRunOnly: true,
         });
         const allowlist = MODES["research-run"].toolAllowlist;
         const tools = allowlist
@@ -325,8 +320,8 @@ export const morningResearch = inngest.createFunction(
             tools,
             // strictJsonSchema forces OpenAI to reject tool calls whose arguments
             // don't match the Zod-derived JSON Schema. Without this, the model
-            // can invent parameters (observed: passing bucket="DISCOVERY" on
-            // read_signals even after bucket was removed from the schema) that
+            // can invent parameters (observed: passing a `bucket` argument
+            // that had been removed from a tool's schema) that
             // Zod silently strips, leaving the transcript misleading.
             providerOptions: {
               openai: {
@@ -524,8 +519,8 @@ export const morningResearch = inngest.createFunction(
             );
           }
 
-          // Premature-exit violation: agent loaded data tools (read_signals
-          // / get_portfolio_context / get_theses) and stopped without
+          // Premature-exit violation: agent loaded the data tools
+          // (get_portfolio_context / get_theses) and stopped without
           // emitting any action tool. Captures the 2026-05-07 prose-
           // termination shape — three Step-1 tool calls returned, the
           // model wrote a markdown thesis-by-thesis review, then the
@@ -991,7 +986,7 @@ export const morningResearch = inngest.createFunction(
                 system: systemPrompt,
                 prompt:
                   `The prior attempt at your morning run produced zero tool calls before timing out. Start NOW. ` +
-                  `Your first action this turn is read_signals, get_portfolio_context, and get_theses in parallel — no narration before the tool calls. ` +
+                  `Your first action this turn is get_portfolio_context and get_theses in parallel — no narration before the tool calls. ` +
                   `Then proceed with your normal playbook.`,
                 tools,
                 // Same cache route as the main loop — the retry replays the same prefix.

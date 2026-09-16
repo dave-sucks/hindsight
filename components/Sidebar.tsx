@@ -17,7 +17,7 @@ import {
   Sun,
   Moon,
   Workflow,
-  SatelliteDish,
+  Activity,
   Sparkles,
   Mic,
   MessageCircle,
@@ -74,12 +74,12 @@ const MAIN_NAV = [
     : []),
   { href: '/earnings', label: 'Earnings', icon: CalendarDays, tooltip: 'Who reports this week, and how it went' },
   { href: '/runs', label: 'Runs', icon: PlayCircle, tooltip: 'Research sessions' },
-  { href: '/intelligence', label: 'Intelligence', icon: SatelliteDish, tooltip: 'Signals, monitors, briefs' },
 ];
 
 const PORTFOLIO_NAV = [
   { href: '/trades', label: 'Trades', icon: ArrowLeftRight, tooltip: 'Paper trades and P&L' },
   { href: '/performance', label: 'Performance', icon: BarChart3, tooltip: 'Win rate and accuracy' },
+  { href: '/health', label: 'Health', icon: Activity, tooltip: 'Alpaca against the database' },
 ];
 
 export default function AppSidebar({

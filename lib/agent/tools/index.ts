@@ -29,8 +29,6 @@ import { dispatchThesisResearch } from "./dispatch-thesis-research";
 // THESIS_LIFECYCLE_FIX Phase 2 — polling wait for a dispatched refresh
 // to land before the parent agent proceeds.
 import { waitForThesisRefresh } from "./wait-for-thesis-refresh";
-import { readSignals } from "./read-signals";
-import { readArtifact } from "./read-artifact";
 import { webSearch } from "./web-search";
 import { twitterSearch } from "./twitter-search";
 import { recordThesis } from "./record-thesis";
@@ -44,8 +42,6 @@ import { completeRun } from "./complete-run";
 import { getPortfolioContext } from "./get-portfolio-context";
 import { readKnowledgeLibrary } from "./read-knowledge-library";
 import { askQuestion } from "./ask-question";
-import { discoverSignalsForFence } from "./discover-signals-for-fence";
-import { readAnalystInboxStats } from "./read-analyst-inbox-stats";
 import { writeSegmentTranscript } from "./write-segment-transcript";
 import { readPastTranscripts } from "./read-past-transcripts";
 // Principal-chat cross-cutting read tools
@@ -53,7 +49,6 @@ import { listAnalysts } from "./list-analysts";
 import { readAnalystConfig } from "./read-analyst-config";
 import { listRuns } from "./list-runs";
 import { readRun } from "./read-run";
-import { listMonitors } from "./list-monitors";
 import { readAccuracyReports } from "./read-accuracy-reports";
 import { listPositionsAll } from "./list-positions-all";
 import { listThesesAll } from "./list-theses-all";
@@ -91,10 +86,8 @@ interface ToolCtx {
   /** Snapshot of ResearchRun.environment — see ToolContext.runEnvironment. */
   runEnvironment?: "PAPER" | "LIVE";
   intelligencePolicy?: IntelligencePolicy;
-  /** Restrict read_signals to discoverySignals bucket only (discovery cron). */
+  /** Discovery cron: clamp record_thesis mints to WATCHING coverage. */
   discoveryOnly?: boolean;
-  /** Hide discoverySignals from read_signals (daily-run V2 cron). */
-  dailyRunOnly?: boolean;
   /**
    * Chat-dispatched thesis-writer marker. P1-24: a record_thesis mint is
    * always WATCHING regardless (HOLDING is execution-owned, set by
@@ -155,18 +148,11 @@ export function createResearchTools(
     existing.add("get_stock_data");
     calledTickers.set(key, existing);
   }
-  // In-run signal tracker — read_signals populates TICKER → {signalId, ...}
-  // for every ticker on every routed signal it returned. record_thesis reads
-  // it to soft-nudge the agent toward ROUTED_SIGNAL provenance when the
-  // chain is available — the Monitor ROI tracer needs sourceSignalIds to
-  // credit the producing monitor (VISION Pillar 5).
-  const signalsByTicker = new Map<string, Set<string>>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const newCtx: any = {
     ...ctx,
     groupId: (phase: string) => phase,
     calledTickers,
-    signalsByTicker,
   };
 
   const toolsBase = {
@@ -185,8 +171,6 @@ export function createResearchTools(
     // THESIS_RESEARCH_V2 — Phase 1.
     dispatch_thesis_research: dispatchThesisResearch(newCtx),
     wait_for_thesis_refresh: waitForThesisRefresh(newCtx),
-    read_signals: readSignals(newCtx),
-    read_artifact: readArtifact(newCtx),
     web_search: webSearch(newCtx),
     twitter_search: twitterSearch(newCtx),
     record_thesis: recordThesis(newCtx),
@@ -200,8 +184,6 @@ export function createResearchTools(
     complete_run: completeRun(newCtx),
     read_knowledge_library: readKnowledgeLibrary(newCtx),
     ask_question: askQuestion(newCtx),
-    discover_signals_for_fence: discoverSignalsForFence(newCtx),
-    read_analyst_inbox_stats: readAnalystInboxStats(newCtx),
     // Podcast feature — see docs/PODCAST_PLAN.md.
     write_segment_transcript: writeSegmentTranscript(newCtx),
     read_past_transcripts: readPastTranscripts(newCtx),
@@ -212,7 +194,6 @@ export function createResearchTools(
     read_analyst_config: readAnalystConfig(newCtx),
     list_runs: listRuns(newCtx),
     read_run: readRun(newCtx),
-    list_monitors: listMonitors(newCtx),
     read_accuracy_reports: readAccuracyReports(newCtx),
     list_positions_all: listPositionsAll(newCtx),
     list_theses_all: listThesesAll(newCtx),
@@ -248,8 +229,6 @@ export { getPeersWithMetrics } from "./get-peers-with-metrics";
 export { dispatchThesisResearch } from "./dispatch-thesis-research";
 // THESIS_LIFECYCLE_FIX Phase 2.
 export { waitForThesisRefresh } from "./wait-for-thesis-refresh";
-export { readSignals } from "./read-signals";
-export { readArtifact } from "./read-artifact";
 export { webSearch } from "./web-search";
 export { twitterSearch } from "./twitter-search";
 export { recordThesis } from "./record-thesis";
@@ -263,8 +242,6 @@ export { recordRunSummary } from "./record-run-summary";
 export { completeRun } from "./complete-run";
 export { readKnowledgeLibrary } from "./read-knowledge-library";
 export { askQuestion } from "./ask-question";
-export { discoverSignalsForFence } from "./discover-signals-for-fence";
-export { readAnalystInboxStats } from "./read-analyst-inbox-stats";
 export { writeSegmentTranscript } from "./write-segment-transcript";
 export { readPastTranscripts } from "./read-past-transcripts";
 export { suggestPodcastConfigTool } from "./suggest-podcast-config";
@@ -274,7 +251,6 @@ export { listAnalysts } from "./list-analysts";
 export { readAnalystConfig } from "./read-analyst-config";
 export { listRuns } from "./list-runs";
 export { readRun } from "./read-run";
-export { listMonitors } from "./list-monitors";
 export { readAccuracyReports } from "./read-accuracy-reports";
 export { listPositionsAll } from "./list-positions-all";
 export { listThesesAll } from "./list-theses-all";

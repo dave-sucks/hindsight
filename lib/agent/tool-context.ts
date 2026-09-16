@@ -90,25 +90,11 @@ export interface ToolContext {
   intelligencePolicy?: IntelligencePolicy;
 
   /**
-   * When true, read_signals returns ONLY the discoverySignals bucket and
-   * zeroes out portfolioSignals + watchlistSignals. Used by the weekly
-   * discovery cron to keep the agent focused on net-new candidates only —
-   * the prompt was asking the LLM to mentally filter, but the chat
-   * rendering of "all three buckets in one flat list" looked like noise
-   * about already-covered names and the agent still acted on the wrong
-   * signals. Set in lib/inngest/functions/discovery-run.ts.
+   * The weekly discovery cron. Clamps record_thesis mints to net-new
+   * WATCHING coverage — discovery finds names, the daily run manages the
+   * book. Set in lib/inngest/functions/discovery-run.ts.
    */
   discoveryOnly?: boolean;
-
-  /**
-   * Mirror of discoveryOnly for the Daily Run (Fix #6). When true,
-   * read_signals zeroes out the discoverySignals bucket and returns
-   * portfolio + watchlist signals only. Daily's job is to MANAGE the
-   * existing book; new-coverage candidates are the Discovery cron's
-   * responsibility. Set in lib/inngest/functions/morning-research.ts
-   * when the V2 prompt is enabled.
-   */
-  dailyRunOnly?: boolean;
 
   /**
    * Chat-dispatched thesis-writer mints clamp to WATCHING. P1-24: a
@@ -125,15 +111,11 @@ export interface ToolContext {
 
   /**
    * Full set of tickers this analyst already covers — ACTIVE + WATCHING
-   * theses, plus watchlist, plus open positions. Used by:
-   *   • read_signals discoveryOnly path: "discovery" means signals on
-   *     tickers NOT in this set (was incorrectly using routeReasonCode
-   *     buckets which silently dropped AGGREGATE_TICKER_MATCH routes on
-   *     watchlist names into the watchlist bucket and then hid them).
-   *   • get_market_movers / get_earnings_calendar scope:"universe":
-   *     "universe" means the full firm firehose minus this set (was
-   *     incorrectly intersecting WITH watchlist+positions which is the
-   *     opposite of discovery semantics).
+   * theses, plus watchlist, plus open positions. Used by
+   * get_market_movers / get_earnings_calendar scope:"universe": "universe"
+   * means the full firm firehose minus this set (it was incorrectly
+   * intersecting WITH watchlist+positions, which is the opposite of
+   * discovery semantics).
    *
    * Populated by lib/inngest/functions/discovery-run.ts. Daily/manual
    * runs leave undefined → tools fall back to watchlist ∪ positionTickers.
@@ -161,17 +143,6 @@ export interface ToolContext {
    * createResearchTools().
    */
   calledTickers?: Map<string, Set<string>>;
-
-  /**
-   * In-run signal tracker. Maps TICKER (uppercase) → set of signalIds that
-   * were returned by read_signals for that ticker in this run. Drives the
-   * provenance soft-nudge in record_thesis: when the agent picks
-   * source_kind=WEB_SEARCH for a ticker that had matching routed signals,
-   * we know read_signals informed the thesis and the trade-evaluator's
-   * monitor-credit chain just lost its hook. Skipping the citation kills
-   * the Pillar 5 self-improvement loop. Populated by read_signals.
-   */
-  signalsByTicker?: Map<string, Set<string>>;
 
   /**
    * Deterministic close reason for a protective/price EXIT tactical run

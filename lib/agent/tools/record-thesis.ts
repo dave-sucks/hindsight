@@ -117,7 +117,7 @@ const thesisFields = z.object({
   // `confidence_score`, `signal_types`, `sources_used` args removed in
   // PR-9 (2026-05-21) — the columns are dropped from the DB.
   // Confidence ⇒ `scoring.composite` (the /10 setup grade is the single
-  // conviction number). Signal types ⇒ derivable from `source_signal_ids`.
+  // conviction number). Signal types were dropped with the news pipeline.
   // Sources ⇒ per-section citations inside the 9 narrative columns.
   // Renamed from `fundamentals` (2026-05-23) to free that name for the V2
   // narrative section below — the two were unrelated things with the same
@@ -147,16 +147,18 @@ const thesisFields = z.object({
     .describe("Structured stock metrics from get_stock_data — populates the Data tab in the inline thesis card. Distinct from the V2 `fundamentals` narrative section below."),
   parent_thesis_id: z.string().optional()
     .describe("ID of the prior thesis being updated or invalidated. Links thesis chain."),
-  // V3 Session 3 — forcing-function trio.
+  // V3 Session 3 — forcing-function pair.
   // source_kind is optional at the Zod layer so the agent can't tank an
   // entire run by forgetting the field — execute() infers a fallback
   // from context. When the agent DOES pass it, the cross-field rule in
-  // superRefine below still enforces the per-kind shape, and the
-  // execute()-level existence check still verifies ROUTED_SIGNAL IDs
-  // against AnalystSignalRoute for this analyst.
+  // superRefine below still enforces the per-kind shape.
+  //
+  // ROUTED_SIGNAL left the enum on 2026-09-15 with the Signals machinery:
+  // nothing routes a signal any more, so there is no id an agent could
+  // honestly cite. Existing rows keep the stored value — this is the
+  // agent's input surface, not the column's domain.
   source_kind: z
     .enum([
-      "ROUTED_SIGNAL",
       "WEB_SEARCH",
       "WATCHLIST_REVIEW",
       "POSITION_REVIEW",
@@ -166,13 +168,7 @@ const thesisFields = z.object({
     ])
     .optional()
     .describe(
-      "Where this thesis came from. ROUTED_SIGNAL = informed by a signal from read_signals (requires non-empty source_signal_ids). WEB_SEARCH = came from a live web_search call only. WATCHLIST_REVIEW = triggered by reviewing your own watchlist. POSITION_REVIEW = triggered by reviewing an open position. USER_ADDED/BUILDER_SEED/EDITOR_SEED are reserved for non-agent code paths (UI manual add, analyst-creation, editor chat) and should not be passed by the agent."
-    ),
-  source_signal_ids: z
-    .array(z.string())
-    .default([])
-    .describe(
-      "signalId values from read_signals that informed this thesis. MUST be non-empty when source_kind is ROUTED_SIGNAL. Persisted so trade-evaluator can credit the originating monitors when the position closes."
+      "Where this thesis came from. WEB_SEARCH = came from a live web_search call. WATCHLIST_REVIEW = triggered by reviewing your own watchlist. POSITION_REVIEW = triggered by reviewing an open position. USER_ADDED/BUILDER_SEED/EDITOR_SEED are reserved for non-agent code paths (UI manual add, analyst-creation, editor chat) and should not be passed by the agent."
     ),
   source_rationale: z
     .string()
@@ -447,17 +443,7 @@ const thesisFields = z.object({
 export const thesisSchema = thesisFields.superRefine((val, ctx) => {
   // If source_kind is absent the inference fallback in execute()
   // handles it — don't reject here.
-  if (val.source_kind === "ROUTED_SIGNAL") {
-    if (!val.source_signal_ids || val.source_signal_ids.length === 0) {
-      ctx.addIssue({
-        code: "custom",
-        message:
-          "source_signal_ids must be non-empty when source_kind is ROUTED_SIGNAL. Cite the signalId values from read_signals that informed this thesis — or change source_kind to WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW if no routed signal was involved.",
-        path: ["source_signal_ids"],
-      });
-    }
-  } else if (val.source_kind) {
-    // Explicit non-ROUTED_SIGNAL kind: rationale required.
+  if (val.source_kind) {
     if (!val.source_rationale || val.source_rationale.trim().length === 0) {
       ctx.addIssue({
         code: "custom",
@@ -496,7 +482,6 @@ export const recordThesis = defineTool({
       // seed thesis to a real view, the path is
       // update_thesis(thesis_id, direction: "LONG"|"SHORT"|"PASS", ...).
 
-      const sourceSignalIds = Array.from(new Set(args.source_signal_ids ?? []));
       const sourceRationale = args.source_rationale?.trim() ?? "";
 
       // Provenance gate: every thesis must declare WHERE the idea came from.
@@ -506,16 +491,16 @@ export const recordThesis = defineTool({
       // run" argument doesn't apply anymore — we have a retry path in
       // morning-research.ts that recovers FAILED theses. Reject here and
       // make the agent fix the call.
-      if (!args.source_kind && sourceSignalIds.length === 0 && sourceRationale.length === 0) {
+      if (!args.source_kind && sourceRationale.length === 0) {
         console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — no provenance provided (no source_kind, no source_signal_ids, no source_rationale).`
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — no provenance provided (no source_kind, no source_rationale).`
         );
         return {
           summary: `Thesis rejected for ${args.ticker}: no provenance provided.`,
           data: {
             thesis_id: null,
             status: "FAILED" as const,
-            note: "Every record_thesis call MUST declare provenance. Add EITHER source_signal_ids (non-empty array of IDs from today's read_signals output) with source_kind=ROUTED_SIGNAL, OR source_rationale (one-line explanation like 'Reviewed position after price alert' or 'Identified via 52-week-high discovery monitor') with source_kind=WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW. Retry with the correct shape.",
+            note: "Every record_thesis call MUST declare provenance. Add source_rationale (a one-line explanation like 'Reviewed position after price alert' or 'Surfaced on today's most-actives and it fits the fence') together with source_kind=WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW. Retry with the correct shape.",
           },
           sources: [],
         };
@@ -597,91 +582,14 @@ export const recordThesis = defineTool({
         }
       }
 
-      // Inference fallback (only fires when agent provided at least SOME
-      // provenance but missed source_kind). Infers from what's present:
-      //   - signal_ids present → ROUTED_SIGNAL
-      //   - rationale present → WEB_SEARCH (conservative default)
-      const inferredSourceKind =
-        args.source_kind ??
-        (sourceSignalIds.length > 0 ? "ROUTED_SIGNAL" : "WEB_SEARCH");
+      // Inference fallback — only fires when the agent gave a rationale but
+      // missed source_kind. WEB_SEARCH is the conservative default.
+      const inferredSourceKind = args.source_kind ?? "WEB_SEARCH";
 
       if (!args.source_kind) {
         console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — source_kind missing, inferred=${inferredSourceKind} from signal_ids=${sourceSignalIds.length} rationale_len=${sourceRationale.length}. Agent prompt compliance issue.`
+          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} — source_kind missing, inferred=WEB_SEARCH from rationale_len=${sourceRationale.length}. Agent prompt compliance issue.`
         );
-      }
-
-      // Provenance soft-nudge — Monitor ROI tracer hook (VISION Pillar 5).
-      // When the agent picks non-ROUTED_SIGNAL provenance for a ticker that
-      // appeared in this run's read_signals output, the chain
-      //   Thesis.sourceSignalIds → Signal.monitorId → Monitor
-      // loses its hook and the trade-evaluator can't credit the source
-      // monitor on close. We log loud, append a hint to the success message,
-      // but do NOT reject — a hard gate would risk a regression and the
-      // thesis itself is fine. The fix is a prompt-level expectation; this
-      // gives us telemetry on how often the agent ignores it AND reminds
-      // the agent in-context for the rest of the run.
-      let provenanceNudge: string | null = null;
-      if (
-        inferredSourceKind !== "ROUTED_SIGNAL" &&
-        ctx.signalsByTicker &&
-        ctx.analystId
-      ) {
-        const tickerKey = args.ticker.toUpperCase();
-        const matchingSignals = ctx.signalsByTicker.get(tickerKey);
-        if (matchingSignals && matchingSignals.size > 0) {
-          const sample = Array.from(matchingSignals).slice(0, 3);
-          console.warn(
-            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} provenance=${inferredSourceKind} ` +
-              `but read_signals returned ${matchingSignals.size} matching signal(s) this run (e.g. ${sample.join(", ")}). ` +
-              `Monitor ROI credit chain broken — agent should pass source_kind=ROUTED_SIGNAL with these IDs.`,
-          );
-          provenanceNudge =
-            `Note: read_signals returned ${matchingSignals.size} signal${matchingSignals.size === 1 ? "" : "s"} on $${args.ticker} this run ` +
-            `(IDs: ${sample.join(", ")}${matchingSignals.size > sample.length ? ", …" : ""}). ` +
-            `Next time, pass source_kind:"ROUTED_SIGNAL" + source_signal_ids:[those IDs] so the trade-evaluator can credit the source monitor on close.`;
-        }
-      }
-
-      // Forcing function: when the call claims (or infers) ROUTED_SIGNAL
-      // provenance, every signalId must belong to this analyst's routed
-      // inbox for today (ET trading day). Rejecting out-of-pool IDs prevents
-      // the agent from satisfying the Zod non-empty check by fabricating
-      // strings.
-      if (inferredSourceKind === "ROUTED_SIGNAL" && sourceSignalIds.length > 0) {
-        if (!ctx.analystId) {
-          return {
-            summary: `Thesis rejected for ${args.ticker}: source_kind=ROUTED_SIGNAL requires an analyst context, which is missing for this run.`,
-            data: {
-              thesis_id: null,
-              status: "FAILED" as const,
-              note: "Cannot validate source_signal_ids without an analystId. Use source_kind=WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW with a source_rationale instead, or retry from an analyst-scoped run.",
-            },
-            sources: [],
-          };
-        }
-        const todayStart = etTradingDayDate();
-        const validRoutes = await prisma.analystSignalRoute.findMany({
-          where: {
-            analystId: ctx.analystId,
-            signalId: { in: sourceSignalIds },
-            routedAt: { gte: todayStart },
-          },
-          select: { signalId: true },
-        });
-        const validIds = new Set(validRoutes.map((r) => r.signalId));
-        const missing = sourceSignalIds.filter((id) => !validIds.has(id));
-        if (missing.length > 0) {
-          return {
-            summary: `Thesis rejected for ${args.ticker}: ${missing.length} source_signal_ids not in today's routed inbox.`,
-            data: {
-              thesis_id: null,
-              status: "FAILED" as const,
-              note: `Invalid signalIds for ROUTED_SIGNAL: ${missing.join(", ")}. Every id must come from today's read_signals output for this analyst. Call read_signals and cite IDs from its result, or change source_kind to WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW with a source_rationale if this thesis did not actually rely on a routed signal.`,
-            },
-            sources: [],
-          };
-        }
       }
 
       // Relative-ordering gate. The shape rule depends on direction:
@@ -1287,7 +1195,6 @@ export const recordThesis = defineTool({
         // dropped from the zod schema in PR-4 (was a token waste, agents
         // routinely confused it with `horizon`). Column drops in PR-5.
         holdDuration: holdDurationFromHorizon(args.horizon),
-        sourceSignalIds,
         sourceKind: inferredSourceKind,
         sourceRationale: sourceRationale.length > 0 ? sourceRationale : null,
         scoring: scoring ?? undefined,
@@ -1436,7 +1343,6 @@ export const recordThesis = defineTool({
                     `    stop_loss: <new>,\n` +
                     `    scoring: { trendStrength: { score, note }, ... },\n` +
                     `    snapshot: { text: "<refreshed>", citations: [] },\n` +
-                    `    signal_ids: [<from today's read_signals>],\n` +
                     `  })\n` +
                     `If you reviewed and nothing actually changed, call update_thesis with ONLY thesis_id + rationale — that writes a REVIEWED entry and counts as the required thesis touch for this run. ` +
                     `record_thesis is reserved for new coverage on a NEW ticker or direction flips (LONG ↔ SHORT). Do NOT retry record_thesis on ${args.ticker} — it will reject again.`,
@@ -1709,7 +1615,7 @@ export const recordThesis = defineTool({
         // unknown column/argument from the V2/V3 schema additions. The previous
         // catch matched errMsg.includes("status") which matched almost ANY
         // Prisma error (most error messages contain the word "status"), silently
-        // stripping sourceSignalIds / sourceKind / sourceRationale from every
+        // stripping sourceKind / sourceRationale from every
         // thesis regardless of the real error cause. That's why 100% of theses
         // Apr 23-24 showed sourceKind=null — the fallback was eating real
         // errors.
@@ -1719,7 +1625,6 @@ export const recordThesis = defineTool({
           // Prisma validation-error shapes vary across versions; catch the
           // variants that name a specific new column:
           (errMsg.includes("parentThesisId") && errMsg.includes("does not exist")) ||
-          (errMsg.includes("sourceSignalIds") && errMsg.includes("does not exist")) ||
           (errMsg.includes("sourceKind") && errMsg.includes("does not exist")) ||
           (errMsg.includes("sourceRationale") && errMsg.includes("does not exist")) ||
           (errMsg.includes("researchData") && errMsg.includes("does not exist")) ||
@@ -1737,7 +1642,6 @@ export const recordThesis = defineTool({
               `Full error: ${errMsg}`
           );
           const {
-            sourceSignalIds: _ids,
             sourceKind: _kind,
             sourceRationale: _rationale,
             // PR 1 durable-state columns — also strip if Prisma client is
@@ -1763,7 +1667,6 @@ export const recordThesis = defineTool({
             insiderTechnical: _itech,
             ...fallbackData
           } = coreData;
-          void _ids;
           void _kind;
           void _rationale;
           void _horizon;
@@ -1815,7 +1718,7 @@ export const recordThesis = defineTool({
         type: "CREATED",
         summary: createdSummary,
         rationale: narrativeText,
-        signalIds: sourceSignalIds,
+        signalIds: [],
         runId: ctx.runId,
         priceAtTime: args.entry_price ?? null,
       });
@@ -1878,23 +1781,6 @@ export const recordThesis = defineTool({
       // Watchlist-collapse: this thesis IS the watchlist row (when
       // status='WATCHING'). No mirror table to sync.
 
-      // V3 Session 3 — flip any cited routes to ACTED_ON. Scoped by analystId
-      // so one analyst citing a signal doesn't close out a peer's inbox entry.
-      // Non-fatal: if this fails the thesis is still saved, we just lose the
-      // status flip for that run.
-      if (ctx.analystId && sourceSignalIds.length > 0) {
-        try {
-          await prisma.analystSignalRoute.updateMany({
-            where: {
-              analystId: ctx.analystId,
-              signalId: { in: sourceSignalIds },
-            },
-            data: { status: "ACTED_ON" },
-          });
-        } catch (routeErr) {
-          console.warn("[tool] record_thesis: ACTED_ON route flip failed:", routeErr);
-        }
-      }
 
       // Persist RunEvent
       if (ctx.runId) {
@@ -1960,12 +1846,10 @@ export const recordThesis = defineTool({
         summary:
           `Thesis recorded: ${args.direction} ${args.ticker} (${effectiveStatus.toLowerCase()}` +
           (scoringComposite != null ? `, composite ${scoringComposite}/10` : "") +
-          `)` +
-          (provenanceNudge ? ` — ${provenanceNudge}` : ""),
+          `)`,
         data: {
           thesis_id: thesis.id,
           status: effectiveStatus,
-          ...(provenanceNudge ? { provenance_nudge: provenanceNudge } : {}),
           // P1-35 Half B: when this ticker was sold by this analyst in the
           // last 14 days, the exit context rides along (and the new row was
           // auto-chained to the sold thesis) so the agent's narration and any
