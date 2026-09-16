@@ -454,6 +454,7 @@ ${setups
   .map(
     (s) => `${s.id} — ${s.name}
   ${s.summary}
+  Needs: ${s.preconditions.join("; ")}
   Entry: ${s.entry.text}
   Stop: ${s.stop.text}
   Target: ${s.target.text}
@@ -566,6 +567,14 @@ every field; the judgment rules:
          numbers.
      If no setup fits the chart, the answer is PASS or an unpriced view
      — not a plan with invented levels.
+   • A SETUP HAS A WINDOW AND PRECONDITIONS (its Needs line). When the
+     window has closed or the stop it names can't be placed, the next
+     setup on your list is the plan: a stock past its drift window in an
+     uptrend is written on MA_PULLBACK — buy at the rising 20- or 50-day,
+     stop 1 ATR under it until the pullback low prints, target the prior
+     high. A REVIEW at the price you would buy is a plan you did not
+     write: make it the buy, or PASS and say why the stock isn't buyable
+     there.
    • NO LEVEL WORTH WAITING FOR YET (the entry window opens later, the
      setup hasn't formed, you want to price it after the print) → omit
      ALL THREE of entry/target/stop. The thesis stays LONG/SHORT and

@@ -10,6 +10,8 @@
 
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { describeCluster, fetchOpenMarketBuys, insiderCluster } from "@/lib/market-data/insider-cluster";
+import { fetchCalendarRows } from "@/lib/market-data/earnings-calendar";
+import { daysUntilReport } from "@/lib/agent/triggers/earnings";
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 import {
   formatDataBlock,
@@ -96,7 +98,15 @@ export interface ThesisPullResult {
   /** Live quote price, when the stock pull succeeded — used by decision validation. */
   currentPrice: number | null;
   /** The chart numbers the writer's plan is checked against in-loop (DAV-249). */
-  chart: { atr14: number | null; pivot: number | null; brokenOut: boolean | null };
+  chart: {
+    atr14: number | null;
+    pivot: number | null;
+    brokenOut: boolean | null;
+    sma20: { value: number; rising: boolean } | null;
+    sma50: { value: number; rising: boolean } | null;
+    /** Days since the last report on the calendar (the report day is 0); null when there is none or the call failed. */
+    daysSinceReport: number | null;
+  };
   /** Company name / exchange passthrough for record_thesis card data. */
   companyName: string | null;
   exchange: string | null;
@@ -201,8 +211,29 @@ export async function pullThesisData(
   const buys = await fetchOpenMarketBuys(T).catch(() => null);
   const clusterLine = buys ? describeCluster(insiderCluster(buys, 30)) : null;
 
+  // The last report's date — one Finnhub calendar call, fail-open. The EPS
+  // history above carries no report dates, so without this the writer can't
+  // tell whether a drift window is open (HPE 2026-09-15 was written as PEAD
+  // 13 days after the print). Counted the way the EARNINGS_SINCE trigger
+  // counts it, so the check and the trigger agree.
+  const lastReport = await fetchCalendarRows({
+    symbol: T,
+    from: new Date(pulledAt.getTime() - 100 * 86_400_000).toISOString().slice(0, 10),
+    to: pulledAt.toISOString().slice(0, 10),
+  })
+    .then((rows) => {
+      const reported = rows
+        .filter((r) => r.epsActual != null)
+        .sort((a, b) => b.reportDate.localeCompare(a.reportDate));
+      const r = reported[0];
+      return r ? { date: r.reportDate, daysAgo: -daysUntilReport(r, pulledAt) } : null;
+    })
+    .catch((): { failed: true } => ({ failed: true }));
+  const daysSinceReport = lastReport && "daysAgo" in lastReport ? lastReport.daysAgo : null;
+
   const rawDataBlock = formatDataBlock({
     insiderCluster: clusterLine,
+    lastReport,
     ticker: T,
     pulledAt,
     stockData: stockBlockInput,
@@ -239,6 +270,13 @@ export async function pullThesisData(
       atr14: sd?.technicals?.atr14?.dollars ?? null,
       pivot: sd?.technicals?.base?.pivot ?? null,
       brokenOut: sd?.technicals?.base?.brokenOut ?? null,
+      sma20: sd?.technicals?.sma.d20
+        ? { value: sd.technicals.sma.d20.value, rising: sd.technicals.sma.d20.slope === "RISING" }
+        : null,
+      sma50: sd?.technicals?.sma.d50
+        ? { value: sd.technicals.sma.d50.value, rising: sd.technicals.sma.d50.slope === "RISING" }
+        : null,
+      daysSinceReport,
     },
     companyName: sd?.company?.name ?? null,
     exchange: sd?.company?.exchange ?? null,
