@@ -59,6 +59,8 @@ describe("the setup catalog", () => {
     expect(s.sizing.length).toBeGreaterThan(0);
     expect(s.time.text.length).toBeGreaterThan(0);
     expect(s.failureSigns.length).toBeGreaterThan(0);
+    expect(typeof s.manage.beatAndFadeReview).toBe("boolean");
+    expect(s.manage.partialAtR === null || s.manage.partialAtR > 0).toBe(true);
   });
 
   it("every ENTRY setup has a condition and a trail for each of its horizons", () => {

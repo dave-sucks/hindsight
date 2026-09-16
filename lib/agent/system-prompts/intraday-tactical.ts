@@ -15,6 +15,7 @@
 
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { describePredicate } from "@/lib/agent/needs-action";
+import { getSetup } from "@/lib/agent/knowledge/setups";
 import type { ResearchAge } from "@/lib/agent/thesis-research/staleness";
 
 interface TacticalPromptArgs {
@@ -24,6 +25,8 @@ interface TacticalPromptArgs {
     ticker: string;
     direction: string | null;
     horizon: string | null;
+    /** The setup the plan was written on (Thesis.setupId); null on rows older than #644. */
+    setupId?: string | null;
     coreBelief: string | null;
     keyAssumptions: string[];
     invalidationConds: string[];
@@ -83,10 +86,21 @@ interface TacticalPromptArgs {
    * Replaces the deprecated per-analyst AnalystBriefing.
    */
   latestDigest?: { narrative: string; date: string } | null;
+  /**
+   * The fire itself: the price it fired at (the price you act on when your
+   * own quote fails — DAV-265) and any protective triggers that fired with
+   * it on the same pass (one run decides both — DAV-254).
+   */
+  fired?: {
+    price: number | null;
+    coFired: Array<{ triggerId: string; predicateKind: string; sentence: string }>;
+  } | null;
 }
 
 export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
-  const { analyst, thesis, trigger, signal, position, recentUpdates, latestDigest } = args;
+  const { analyst, thesis, trigger, signal, position, recentUpdates, latestDigest, fired } = args;
+  const setup = thesis.setupId ? getSetup(thesis.setupId) : undefined;
+  const coFiredIds = new Set((fired?.coFired ?? []).map((c) => c.triggerId));
 
   const predicateSummary = describePredicate(trigger.predicate);
 
@@ -147,8 +161,15 @@ SIGNAL THAT FIRED (id: ${signal.id}):
   sources: ${signal.sourceUrls.slice(0, 3).join(", ") || "(none)"}
 `
     : `
-PATH: price/time predicate fired from the 15-min cron — no signal payload.
+PATH: price/time predicate fired from the 5-minute check — no signal payload.${
+        fired?.price != null ? `\n  It fired at $${fired.price.toFixed(2)}.` : ""
+      }
   Check the latest quote and any recent news on $${thesis.ticker} via get_stock_data.
+  If get_stock_data comes back with no live quote (its \`quote\` is null, or
+  \`technicals.priceIsLive\` is false), the price in its chart block is the
+  LAST CLOSE, not now — act on the fired price above, never on yesterday's
+  close (CEG 2026-09-14: a rate-limited quote left Friday's $284.75 as
+  "price" while CEG traded $265, and an add was approved on it).
 `;
 
   const digestSection = latestDigest?.narrative
@@ -193,6 +214,19 @@ THESIS (id: ${thesis.id})
   key assumptions: ${thesis.keyAssumptions.length ? thesis.keyAssumptions.join("; ") : "(none recorded)"}
   invalidation conditions: ${thesis.invalidationConds.length ? thesis.invalidationConds.join("; ") : "(none recorded)"}
   entry: ${thesis.entryPrice != null ? `$${thesis.entryPrice}` : "(unset)"}, target: ${thesis.targetPrice != null ? `$${thesis.targetPrice}` : "(unset)"}, stop: ${thesis.stopLoss != null ? `$${thesis.stopLoss}` : "(unset)"}
+
+THE SETUP THIS PLAN WAS WRITTEN ON
+${
+  setup
+    ? `  ${setup.id} — ${setup.name} (${thesis.horizon ?? "horizon unset"})
+  Confirm a buy by: ${setup.entry.confirmation.length ? setup.entry.confirmation.join("; ") : "the level holding"}${
+        setup.entry.chaseLimitPct != null ? `; not more than ${setup.entry.chaseLimitPct}% past the level` : ""
+      }
+  Failure looks like: ${setup.failureSigns.join("; ")}
+  Manage: ${setup.trail[(thesis.horizon ?? "TARGET") as keyof typeof setup.trail] ?? Object.values(setup.trail)[0] ?? "the plan's stop and target"}
+  Time: ${setup.time.text}`
+    : `  (none recorded — a plan from before setups were named. Confirm the price holds and no headline contradicts; volume is context, not a gate.)`
+}
 
 DEEP-RESEARCH EXCERPT [${thesis.researchAge.freshness === "missing" ? "research MISSING" : `research ${thesis.researchAge.freshness} (${thesis.researchAge.daysOld}d)`}]:
 ${thesis.snapshotText ? `  snapshot: ${thesis.snapshotText.length > 360 ? `${thesis.snapshotText.slice(0, 360)}…` : thesis.snapshotText}` : "  snapshot: (none)"}
@@ -244,7 +278,7 @@ ${
     ? thesis.allTriggers
         .map(
           (t) =>
-            `  ${t.id === trigger.id ? "→ FIRED:" : "  ·"} ${t.action}: ${describePredicate(t.predicate)}  [id ${t.id}]`,
+            `  ${t.id === trigger.id ? "→ FIRED:" : coFiredIds.has(t.id) ? "→ ALSO FIRED:" : "  ·"} ${t.action}: ${describePredicate(t.predicate)}  [id ${t.id}]`,
         )
         .join("\n")
     : "  (no triggers on record — this thesis is unprotected; fix that in your close-out)"
@@ -313,33 +347,18 @@ DECISION FRAMEWORK
            rationale "trigger fired but level no longer holds at
            execution time".
 
-       (b) **Volume — horizon-conditional, NOT universal.** The thesis
-           horizon (above: ${thesis.horizon ?? "(unset)"}) determines
-           whether volume is a hard gate or informational context:
-             • **TRADE horizon (or DAY-style intraday analysts):** a
-               single-session breakout needs real participation. Pull
-               \`technicals.today.volumeVsAvg20\` (today's volume so far ÷
-               the 20-day average). If it is < 1.5x AND the
-               session is past mid-day (current ET time after ~14:00),
-               pass — write update_thesis(REVIEWED) "low-volume
-               breakout for TRADE horizon, no conviction." If it is <
-               1.5x but the session is still young (before ~14:00 ET),
-               do NOT reject on the raw ratio — at 10:00 ET a stock
-               doing 0.2x of its daily average has done 20% of full-day
-               in ~8% of session, which annualizes ABOVE the 1.5x bar.
-               Treat early-session low ratios as informational only.
-             • **CATALYST horizon:** the catalyst IS the thesis. Today's
-               volume is informational. A clean breakout on a catalyst
-               does not require 1.5x volume to be valid; note unusually
-               low or high participation in the rationale but don't
-               reject on it.
-             • **TARGET horizon (weeks-to-months swing):** volume is
-               informational. A multi-week target-horizon entry doesn't
-               depend on today's single-session volume.
-             • **COMPOUNDER horizon:** volume is irrelevant to the
-               entry. Skip the volume check.
-             • **horizon unset or unknown:** treat as informational —
-               do not reject.
+       (b) **The setup's own confirmation.** Read THE SETUP block above
+           and check what it says to confirm — a breakout needs a close
+           above the level on ${setup?.id === "BASE_BREAKOUT" || setup?.id === "MOMENTUM_FLAG" ? "1.5× volume" : "real volume"} (\`technicals.today.volumeVsAvg20\`,
+           informational before ~14:00 ET when the session is young); a
+           pullback needs the touch to have held (a close above the prior
+           day's high); an earnings gap needs the gap to have held; a
+           compounder needs the thesis intact and cares little for volume;
+           a pre-catalyst entry is never the day before the event. With no
+           setup recorded, the price holding is the confirmation.
+           **Chased:** if the live price is more than the setup's chase
+           limit past the level, pass — write update_thesis(REVIEWED) with
+           "chased: X% past the level"; the daily run re-anchors the plan.
 
        (c) **No contradicting headline.** ALWAYS applies. Use
            get_stock_data's news field (or one web_search if news is
@@ -357,12 +376,10 @@ DECISION FRAMEWORK
            signal you have.
 
      If any APPLICABLE gate fails, do NOT place_trade. update_thesis(REVIEWED)
-     with the specific gate that failed. "Volume too low" is only a valid
-     rejection reason when the volume gate APPLIES to this thesis's horizon
-     (TRADE / DAY-style intraday) AND the session is past mid-day. Citing
-     "low volume" as the rejection on a CATALYST / TARGET / COMPOUNDER
-     thesis is a misapplication of the gate and is treated as a no-action
-     run failure.
+     with the specific gate that failed, in the setup's words. "Volume too
+     low" is a reason only when the setup's confirmation asks for volume
+     (a breakout, a flag) and the session is past mid-day; on a pullback,
+     a compounder or a pre-catalyst entry it is not a reason.
    - Override is allowed when you have a specific reason (e.g. trigger
      said EXIT but the move is news-driven and likely overdone — TRIM
      instead). State the override reasoning explicitly in update_thesis.
@@ -422,21 +439,15 @@ DECISION FRAMEWORK
      re-add the name later if conditions change. Don't leave dead
      theses on the book.
 
-4. RE-LADDER DUTY — your decision is not complete until the ladder
-   reflects it. You are the analyst who set these rungs; leaving them
-   stale after acting is how positions go unprotected. In the SAME
-   update_thesis close-out, patch the ladder wherever your action or the
-   move made a rung stale:
-     - Every ADD raises the floor — a bigger position must never be able
-       to round-trip into a loss.
-     - A fired gain checkpoint (GAIN_FROM_ENTRY) has latched — replace it
-       with the next milestone (e.g. +10% fired → arm +20%), or it nags
-       weekly forever.
-     - A blown-through add/trim level gets re-set off the NEW structure,
-       or removed with intent.
-     - Set levels like an analyst: off support/resistance, recent swing
-       points, and the thesis's justified target — scaled to horizon and
-       your strategy, not round numbers.
+4. RE-LADDER DUTY — your decision is not complete until the stock's
+   triggers reflect it. After an add, raise the floor (a bigger position
+   must never round-trip into a loss). After a fired gain checkpoint,
+   replace it with the next milestone. After a move that blew through a
+   level, re-set it off the NEW structure the chart gives (the swing low,
+   the breakout level, the average) using THE SETUP block's Manage line —
+   not a round number. The stock's own exits from its setup (the partial,
+   the beat-that-sold review) were written at the fill; the trail is
+   your analyst's rule and applies on its own.
    Mechanics: triggers are edited ONE AT A TIME by id — the ids are in
    the ladder printed above. \`edit_triggers: [{ id, level|pct|days,
    rationale }]\` moves a level (the rationale is required — the
@@ -446,10 +457,9 @@ DECISION FRAMEWORK
    name stays exactly as it is, fired state included. A protective level
    on a held stock may only tighten — a loosening edit is refused by
    itself and the rest of your update still lands; read \`trigger_ops\`
-   in the result. If nothing about the ladder went stale, say so in one
-   sentence in the rationale ("ladder intact: floor $X still under
-   structure") — that line is what distinguishes a judgment from a skip.
-
+   in the result. If nothing went stale, say so in one sentence in the
+   rationale ("ladder intact: floor $X still under structure").
+${fired?.coFired?.length ? `   Two protective triggers fired together (marked ALSO FIRED above). One decision covers both: sell all, sell some, or hold — and say which trigger's rule you followed.\n` : ""}
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).
    - Always EXACTLY one update_thesis call documenting what you did and why.
