@@ -436,11 +436,16 @@ export function setDownInstruction(stored: Trigger[], direction: string | null):
   return `To set the plan down, remove all of them in one call: remove_trigger_ids: [${ids}] (${words}).`;
 }
 
-/** What a check-only call (`ctx.dryRun`) returns when the save would land. */
-function dryRunPassed(ticker: string) {
+/**
+ * What a check-only call (`ctx.dryRun`) returns when the save would land.
+ * Carries the per-op results, refusals included: a save lands the rest of
+ * the call when one trigger edit is refused, so "it saved" alone would hide
+ * an edit the writer meant to make. The writer's check reads these.
+ */
+function dryRunPassed(ticker: string, triggerOps: TriggerOpResult[]) {
   return {
     summary: `Check only: the update on $${ticker} would save.`,
-    data: { ok: true, dry_run: true },
+    data: { ok: true, dry_run: true, trigger_ops: triggerOps },
     sources: [],
   };
 }
@@ -1327,7 +1332,7 @@ export const updateThesis = defineTool({
     // the review clock; the cadence is a trigger now and it reads this stamp.
     const patchKeyCount = Object.keys(patch).length;
     if (patchKeyCount === 0) {
-      if (ctx.dryRun) return dryRunPassed(existing.ticker);
+      if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults);
       const reviewedAt = new Date();
       await prisma.thesis.update({
         where: { id: existing.id },
@@ -1499,7 +1504,7 @@ export const updateThesis = defineTool({
     }
 
     // Check-only call: every refusal above has had its chance.
-    if (ctx.dryRun) return dryRunPassed(existing.ticker);
+    if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults);
 
     // Apply.
     try {

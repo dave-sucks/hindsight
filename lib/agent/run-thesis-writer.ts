@@ -871,7 +871,9 @@ Write the research note now, then call submit_thesis.`;
           pull: pullOutput.pull,
           decision: d,
           ctx: saveCtx,
-          existingDirection: existingThesis?.direction ?? null,
+          existing: existingThesis
+            ? { direction: existingThesis.direction, status: existingThesis.status }
+            : null,
         }),
       onAttempt: () => ++submitAttempts,
       onAccept: (d, rr) => {
@@ -1172,7 +1174,7 @@ export function buildWriterSaveCall(
   pull: WriterPullPhaseOutput["pull"],
   d: ValidatedThesisDecision,
   sectionArgs: SectionArgs,
-  existingDirection: string | null,
+  existing: { direction: string | null; status: string | null } | null,
 ): WriterSaveCall {
   const T = args.ticker.toUpperCase();
   if (args.mode === "mint") {
@@ -1236,9 +1238,14 @@ export function buildWriterSaveCall(
   // research; it NEVER changes direction or status. A changed view is
   // flagged in the rationale for the orchestrator to act on.
   const directionFlag =
-    existingDirection && d.direction !== existingDirection
-      ? ` ⚠ Writer's refreshed view is ${d.direction} vs stored ${existingDirection} — orchestrator should re-evaluate direction.`
+    existing?.direction && d.direction !== existing.direction
+      ? ` ⚠ Writer's refreshed view is ${d.direction} vs stored ${existing.direction} — orchestrator should re-evaluate direction.`
       : "";
+  // On a stock we own, the entry is the fill — update_thesis refuses an edit
+  // to it and lands the rest of the call. The writer's own rules still make
+  // it state all three levels on a priced row, so it always sent one and the
+  // refusal was never heard (FIVE, 2026-09-15). Don't send it.
+  const held = existing?.status === "HOLDING";
   // Held refresh: protective levels only tighten (the 2026-08-16 ruling). A
   // looser stop is refused as its own op inside update_thesis and the rest
   // of the refresh lands (DAV-242).
@@ -1252,13 +1259,13 @@ export function buildWriterSaveCall(
       // text happens to be unchanged; the writer's judgment on why lives in
       // the decision rationale.
       structural_unchanged_reason: d.rationale,
-      entry_price: pass ? undefined : d.entry_price,
+      entry_price: pass || held ? undefined : d.entry_price,
       target_price: pass ? undefined : d.target_price,
       stop_loss: pass ? undefined : d.stop_loss,
       setup_id: pass ? undefined : d.setup_id,
       stop_basis: pass ? undefined : d.stop_basis,
       target_basis: pass ? undefined : d.target_basis,
-      entry_on_close: pass ? undefined : d.entry_on_close,
+      entry_on_close: pass || held ? undefined : d.entry_on_close,
       horizon: d.horizon,
       catalyst_date: d.catalyst_date ? new Date(d.catalyst_date).toISOString() : undefined,
       scoring: d.scoring,
@@ -1307,7 +1314,28 @@ export function readWriterSaveResult(
     return { thesisId: null, wouldSave: false, error: `${toolName} failed: ${res.error ?? res.summary ?? "unknown"}`, fixable: false };
   }
   const data = res?.data ?? {};
-  if (data.dry_run === true) return { thesisId: null, wouldSave: true, error: null, fixable: false };
+  if (data.dry_run === true) {
+    // A save lands the rest of the call when one trigger edit is refused, and
+    // reports that edit by id. The run ends at the save, so the writer never
+    // hears it: the thesis text says one thing and the trigger says another
+    // until some later run reads the stock. The check hands it back while the
+    // writer still has its research (Dave's ruling, 2026-09-15).
+    const refused = (Array.isArray(data.trigger_ops) ? data.trigger_ops : []).filter(
+      (op): op is { id?: string; text?: string; reason?: string } =>
+        !!op && typeof op === "object" && (op as { ok?: boolean }).ok === false,
+    );
+    if (refused.length > 0) {
+      return {
+        thesisId: null,
+        wouldSave: false,
+        fixable: true,
+        error: `${toolName} would save, but ${refused.length} trigger change${refused.length === 1 ? "" : "s"} would be refused: ${refused
+          .map((op) => `${op.text ?? op.id ?? "trigger"} — ${op.reason ?? "refused"}`)
+          .join(" · ")}`,
+      };
+    }
+    return { thesisId: null, wouldSave: true, error: null, fixable: false };
+  }
   if (toolName === "record_thesis") {
     if (typeof data.thesis_id === "string" && data.thesis_id) {
       return { thesisId: data.thesis_id, wouldSave: false, error: null, fixable: false };
@@ -1333,9 +1361,9 @@ export async function checkDecisionAgainstSave(input: {
   pull: WriterPullPhaseOutput["pull"];
   decision: ValidatedThesisDecision;
   ctx: ToolContext;
-  existingDirection: string | null;
+  existing: { direction: string | null; status: string | null } | null;
 }): Promise<WriterSaveOutcome> {
-  const call = buildWriterSaveCall(input.args, input.pull, input.decision, {}, input.existingDirection);
+  const call = buildWriterSaveCall(input.args, input.pull, input.decision, {}, input.existing);
   const checkCtx: ToolContext = { ...input.ctx, dryRun: true };
   const toolInstance = call.toolName === "record_thesis" ? recordThesis(checkCtx) : updateThesis(checkCtx);
   try {
@@ -1442,7 +1470,7 @@ async function resubmitAfterRefusal(input: {
         pull: pullOutput.pull,
         decision: d,
         ctx: input.ctx,
-        existingDirection: existing?.direction ?? null,
+        existing: existing ? { direction: existing.direction, status: existing.status } : null,
       }),
     onAttempt: () => ++attempts,
     onAccept: (d) => {
@@ -1529,7 +1557,13 @@ export async function writerPersistPhase(
           : null;
 
       const saveOnce = async (decision: ValidatedThesisDecision): Promise<WriterSaveOutcome> => {
-        const call = buildWriterSaveCall(args, pullOutput.pull, decision, sectionArgs, existing?.direction ?? null);
+        const call = buildWriterSaveCall(
+          args,
+          pullOutput.pull,
+          decision,
+          sectionArgs,
+          existing ? { direction: existing.direction, status: existing.status } : null,
+        );
         const toolInstance = call.toolName === "record_thesis" ? recordThesis(ctx) : updateThesis(ctx);
         const outcome = readWriterSaveResult(call.toolName, await executeThroughSchema(toolInstance, call.toolName, call.toolArgs));
         if (call.toolName === "update_thesis" && !outcome.error && args.existingThesisId) {

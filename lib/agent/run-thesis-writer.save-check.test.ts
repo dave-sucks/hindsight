@@ -160,7 +160,7 @@ describe("FIVE 2026-09-15 — stop and target explanations over the save's limit
       pull: null,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existingDirection: "LONG",
+      existing: { direction: "LONG", status: fx.thesis.status },
     });
     expect(outcome.wouldSave).toBe(false);
     expect(outcome.fixable).toBe(true);
@@ -186,7 +186,7 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
       pull: null,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existingDirection: "LONG",
+      existing: { direction: "LONG", status: fx.thesis.status },
     });
     expect(outcome.wouldSave).toBe(false);
     expect(outcome.fixable).toBe(true);
@@ -209,7 +209,7 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
       pull: null,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existingDirection: "LONG",
+      existing: { direction: "LONG", status: fx.thesis.status },
     });
     expect(outcome).toMatchObject({ wouldSave: true, error: null });
     expect(mockThesisUpdate).not.toHaveBeenCalled();
@@ -226,7 +226,7 @@ describe("submit_thesis runs the save check", () => {
       ticker: "DOCU",
       validate: validateOpts(fx, "DOCU"),
       check: (d) =>
-        checkDecisionAgainstSave({ args: writerArgs(fx, "DOCU"), pull: null, decision: d, ctx, existingDirection: "LONG" }),
+        checkDecisionAgainstSave({ args: writerArgs(fx, "DOCU"), pull: null, decision: d, ctx, existing: { direction: "LONG", status: fx.thesis.status } }),
       onAttempt: () => ++attempts,
       onAccept,
     }) as unknown as { execute: (raw: unknown) => Promise<{ accepted: boolean; errors?: string[] }> };
@@ -278,7 +278,7 @@ describe("FIVE 2026-09-15 — the same decision with the explanations cut to fit
       pull: { currentPrice: livePrice.FIVE } as never,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existingDirection: "LONG",
+      existing: { direction: "LONG", status: fx.thesis.status },
     });
     expect(outcome.error).toBeNull();
     expect(outcome.wouldSave).toBe(true);
@@ -301,7 +301,7 @@ describe("a check writes nothing anyone reads later", () => {
       pull: null,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existingDirection: "LONG",
+      existing: { direction: "LONG", status: fx.thesis.status },
     });
     expect(outcome.wouldSave).toBe(false);
     expect(mockRecordGateRejection).not.toHaveBeenCalled();
@@ -310,7 +310,7 @@ describe("a check writes nothing anyone reads later", () => {
   it("a real refused save still writes its refusal receipt", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
-    const call = buildWriterSaveCall(writerArgs(fx, "DOCU"), null, v.decision as ValidatedThesisDecision, {}, "LONG");
+    const call = buildWriterSaveCall(writerArgs(fx, "DOCU"), null, v.decision as ValidatedThesisDecision, {}, { direction: "LONG", status: "WATCHING" });
     const saveTool = updateThesis(ctx) as unknown as { execute: (a: unknown, o: unknown) => Promise<unknown> };
     await saveTool.execute(call.toolArgs, { toolCallId: "real-save", messages: [] });
     expect(mockRecordGateRejection).toHaveBeenCalledTimes(1);
@@ -343,7 +343,7 @@ describe("a new thesis (mint) is checked the same way", () => {
       pull: { currentPrice: livePrice.DOCU } as never,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existingDirection: null,
+      existing: null,
     });
     expect(outcome).toMatchObject({ wouldSave: true, error: null });
     expect(mockThesisCreate).not.toHaveBeenCalled();
@@ -361,11 +361,68 @@ describe("a new thesis (mint) is checked the same way", () => {
       pull: { currentPrice: livePrice.DOCU } as never,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existingDirection: null,
+      existing: null,
     });
     expect(outcome.wouldSave).toBe(false);
     expect(outcome.error).toMatch(/update_thesis/);
     expect(mockThesisCreate).not.toHaveBeenCalled();
     expect(mockRecordGateRejection).not.toHaveBeenCalled();
+  });
+});
+
+describe("a save that lands but refuses one trigger edit", () => {
+  const fx = fixtures.FIVE;
+  // FIVE is held, so its protective levels only move toward more protection.
+  // Widening the 8% trailing sell to 12% is refused on its own; the rest of
+  // the call still lands, and the run ends before anyone reads the refusal.
+  const widenTheTrail = {
+    ...fx.submit,
+    stop_basis: "Under the 38.2% retracement $229.20 — 1.0 ATR below price.",
+    target_basis: "1.272 extension of the $173.10 → $263.88 leg = $288.57.",
+    edit_triggers: [
+      {
+        id: "f2f1b7b1-bb6e-4141-b997-5ef2c5f1bdd4",
+        pct: 12,
+        rationale: "More room off the high while the drift works.",
+      },
+    ],
+  };
+
+  it("is handed back to the writer, in the save's words, instead of reading as a clean save", async () => {
+    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
+    mockPositionFindFirst.mockResolvedValue({ avgCost: 248.05 });
+    const v = validateThesisDecision(widenTheTrail, validateOpts(fx, "FIVE"));
+    expect(v.ok).toBe(true);
+    const outcome = await checkDecisionAgainstSave({
+      args: writerArgs(fx, "FIVE"),
+      pull: { currentPrice: livePrice.FIVE } as never,
+      decision: v.decision as ValidatedThesisDecision,
+      ctx,
+      existing: { direction: "LONG", status: fx.thesis.status },
+    });
+    expect(outcome.wouldSave).toBe(false);
+    expect(outcome.fixable).toBe(true);
+    expect(outcome.error).toMatch(/would be refused/);
+    expect(outcome.error).toMatch(/protect/i);
+    expect(mockThesisUpdate).not.toHaveBeenCalled();
+  });
+
+  it("the same call through the real save still lands the rest — behaviour outside the check is unchanged", async () => {
+    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
+    mockPositionFindFirst.mockResolvedValue({ avgCost: 248.05 });
+    const v = validateThesisDecision(widenTheTrail, validateOpts(fx, "FIVE"));
+    const call = buildWriterSaveCall(
+      writerArgs(fx, "FIVE"),
+      { currentPrice: livePrice.FIVE } as never,
+      v.decision as ValidatedThesisDecision,
+      {},
+      { direction: "LONG", status: fx.thesis.status },
+    );
+    const saveTool = updateThesis(ctx) as unknown as {
+      execute: (a: unknown, o: unknown) => Promise<{ data?: { trigger_ops?: Array<{ ok: boolean }> } }>;
+    };
+    const res = await saveTool.execute(call.toolArgs, { toolCallId: "real-save", messages: [] });
+    expect(mockThesisUpdate).toHaveBeenCalledTimes(1);
+    expect(res.data?.trigger_ops?.some((op) => op.ok === false)).toBe(true);
   });
 });
