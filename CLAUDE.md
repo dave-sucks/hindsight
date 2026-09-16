@@ -54,7 +54,7 @@ news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 | **The trigger CONCEPTUAL model (condition·action·mode·timing; what is/isn't a trigger)** | **`docs/plans/TRIGGER_MODEL.md`** |
 | **Trigger authority + visibility contract (who sets which level, when; what wakes an agent)** | **`docs/plans/TRIGGER_LIFECYCLE.md`** |
 | **Why the trigger ladder exists (conviction management: press winners / protect gains)** | **`docs/plans/THESIS_GAME_PLAN.md`** |
-| Add an open item on the thesis architecture rework | `docs/GAPS.md` |
+| Track open work (issues, not markdown) | Linear — team Davesucks |
 | Note a code smell outside the rework | `docs/TECH_DEBT.md` |
 | Spec a big multi-PR plan | `docs/plans/<NAME>.md` |
 | Write a daily run review | `docs/run-reviews/<YYYY-MM-DD>.md` |
@@ -69,7 +69,7 @@ news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 | Reference what shipped in a PR | GitHub PRs |
 | Onboard a fresh session to the codebase | `CLAUDE.md` |
 
-**Rule:** when an item in `GAPS.md` closes, **move it** to a "Done since" section in the same file (not strike-through inline). When the file's open list grows past one screen, move stale items to `TECH_DEBT.md` or close them.
+**Rule:** open work lives in Linear (team Davesucks), one issue per cause. `docs/GAPS.md` and its history files were deleted 2026-09-15 — they're in git history. Code smells outside current work still go in `docs/TECH_DEBT.md`. Written output (run reviews, audits, discovery prep) goes in the folders above; prune anything older than about a month unless it's marked a reference.
 
 ## Stack — DO NOT DEVIATE
 - Next.js App Router, TypeScript
@@ -598,7 +598,7 @@ it with a ticker chip as if it were a traded security.
 - **What it looks like:** the agent narrates "I'll close $X" / "exit $X" / "sell $X" in prose inside its run-summary or update_thesis rationale, then never calls `close_position`. The narration→execution gate at `record-run-summary.ts` catches the prose-vs-tool-call mismatch and marks the run FAILED.
 - **Occurrence pattern:** 1 run failed this way on 2026-05-20 (EV Catalyst, ON), then **3 runs on 2026-05-22** (Catalyst Event Raider on MRVL+OKTA both attempts; Secular Theme on SMTC). Frequency is increasing as the agents actually start trading (post-PR #307); they're hitting the gap on close-out, not on entry.
 - **Same family as the prose-termination bug below** — agent narrates intent, fails to follow through with the tool call. Different surface: that bug terminates the loop after Step-1 data tools; this one fails the close-out preflight.
-- **Filed as `docs/GAPS.md` P0-12.** Has a draft fix path there (prompt-side tighten "narrating 'close X' without a close_position tool call is a run failure" in the V2 daily-run prompt's tool-call discipline block, plus a retry-from-rationale shape in `morning-research.ts`).
+- **Filed in Linear.** A draft fix path was written in the old GAPS file (git history) (prompt-side tighten "narrating 'close X' without a close_position tool call is a run failure" in the V2 daily-run prompt's tool-call discipline block, plus a retry-from-rationale shape in `morning-research.ts`).
 - **If you see a run with `Narration without tool call` in RunEvent.title** and the message mentions "close" / "exit" / "sell" — this is the bug. Don't try to patch the gate to be more lenient; the gate is correct, the agent's tool-call discipline is the problem.
 
 **Prose-termination after Step 1's parallel data tools** (`lib/agent/system-prompt.ts`, `lib/inngest/functions/morning-research.ts`)
@@ -623,7 +623,7 @@ it with a ticker chip as if it were a traded security.
 **V1/V2 prompt dispatch only honored in cron, not in route.ts** — ~~ACTIVE BUG~~ **RESOLVED 2026-05-16 (PR #270)**
 - Historical context: `app/api/agent/[mode]/route.ts:232` always called the V1 prompt builder while `morning-research.ts` correctly read `config.useV2Prompt`. The UI "Run" button served the 600-line legacy prompt while the 8 AM cron used V2 — silent drift between the two surfaces.
 - **Fix:** PR #270 deprecated the V1 builder (`buildV2SystemPrompt` — misnamed) and made route.ts call `buildDailyRunSystemPromptV2` unconditionally. The `useV2Prompt` flag is no longer read; column stays for migration cleanup.
-- See `GAPS_HISTORY.md` → "Migrated from GAPS.md as part of this consolidation" → P0-11.
+- (History: the GAPS files were deleted 2026-09-15; see git history.)
 
 **Aggregates in the router** (`lib/inngest/functions/firm-market-sweep.ts`, `lib/inngest/functions/signal-router.ts`)
 - Aggregate signals (`Signal.aggregateType` populated) carry empty `sectors`/`industries` by design — they're firm-wide. Routing them through the news-signal fence (sector/industry match) silently drops everything; that's the bug that #163/#164/#165/#166 chased. They reach an analyst only through ticker overlap with its watchlist/positions (or an owned monitor). The `feeds` subscription dimension was deleted 2026-09-11.
@@ -638,12 +638,10 @@ it with a ticker chip as if it were a traded security.
 - Morning brief tool UI shows counts but not full briefing content
 
 (Most other items previously here are now tracked in
-`docs/GAPS.md` (active thesis-architecture work) or
-`docs/TECH_DEBT.md` (orthogonal fragility). When you spot something
-new, file it there — not here.)
+Linear (open work) or `docs/TECH_DEBT.md` (orthogonal fragility).
+When you spot something new, file it there — not here.)
 
 ## Active multi-PR plans
-- **`docs/plans/legacy/MORNING_RUN_V2_DESIGN.md`** — Daily-run prompt rewrite + `needsAction` tool field + mode allowlist locking. All 7 fixes shipped 2026-05-13; archived as build history. The live thesis reference is `docs/THESIS_ARCHITECTURE.md`.
 - **`docs/THESIS_ARCHITECTURE.md`** — **The live reference for the thesis system.** Read this before touching anything thesis-related. Documents the end-to-end lifecycle (state machine + 9 canonical scenarios), legal `(direction, status)` pairs, producers + gates, consumers, and the 5-bucket run-summary derivation.
 
 ### Recently closed

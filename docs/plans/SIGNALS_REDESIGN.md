@@ -37,7 +37,7 @@ but **0 `AnalystSignalRoute` rows in 14 days** and **0 signal-side trigger
 fires out of 232 total fires**.
 
 The cause is **not** a code bug. It's **PR #361 (2026-06-01, "kill the noise
-pipeline")** — see `docs/plans/DISCOVERY_OVERHAUL.md` "Shipped 2026-05-31 →
+pipeline")** — see the discovery-overhaul plan (deleted 2026-09-15; in git history) "Shipped 2026-05-31 →
 Operational (no code)":
 
 1. **NOW-1** paused four Inngest functions **in the Inngest dashboard**
@@ -439,7 +439,7 @@ up before anything is deleted.
 | 0 | **Hygiene + confirmation** | DB/dashboard check of §0's assumptions (pause states, monitor rows, signal provenance). Wire `extractDataPayload` into email-ingest (`createSignal` call site in the route) so EARNINGS/FILING emails carry `dataPayload`. Decide the tactical `read_signals` question (Q7). | XS |
 | 1 | **Book-router** | New thin Inngest fn (new id, re-sync the app — rename-ghost gotcha): consumes `intelligence/route-signals` + a daily cron; routes signals whose tickers ∈ {OPEN positions ∪ WATCHING theses} per enabled analyst as POSITION/WATCHLIST `AnalystSignalRoute` rows; emits `app/signal.routed` with the existing new-routes-only dedup semantics (steal the `existingRouteKeys` pattern from `signal-router.ts:511` — it prevents the 10×-tactical refire storm). `signal-router` stays paused. **This alone reconnects email signals → SIGNAL_TYPE rungs → tactical, and restarts monitor-ROI data.** | S |
 | 2 | **Earnings-actuals producer** | Finnhub `/calendar/earnings` post-close (≈5 PM ET) + pre-open (≈8 AM, before the daily run) crons over book tickers → `Signal(type=EARNINGS, dataPayload:{surprisePct, guidanceDirection?})`, own `Monitor` row, fires `intelligence/route-signals`. Lights `EARNINGS_BEAT`/`EARNINGS_MISS`/`GUIDANCE_CHANGE`. | S-M |
-| 3 | **EDGAR 8-K/Form-4 producer** | Per the MEDIUM-1 spec in `DISCOVERY_OVERHAUL.md` (atom poll, item taxonomy, Form-4 cluster detector), book-scoped for now (drop the spec's discovery-routing branch while discovery is parked). Lights `FILING`. | M |
+| 3 | **EDGAR 8-K/Form-4 producer** | Per the MEDIUM-1 spec in the deleted discovery-overhaul plan (git history) (atom poll, item taxonomy, Form-4 cluster detector), book-scoped for now (drop the spec's discovery-routing branch while discovery is parked). Lights `FILING`. | M |
 | 4 | **Monitor-ROI extension** | `trade-evaluator.ts` step `update-monitor-outcomes`: additionally collect `signalIds` from the position's thesis `ThesisUpdate(type=TRIGGER_FIRED)` rows during the hold window and credit those monitors too (separate counters or a `role` tag — sourcing vs. management credit — decide in-PR). | S |
 | 5 | **Deletions** | Delete `domain-monitor.ts`, `firecrawl.ts`, `read_artifact` tool + renderer wiring; delete the Sonar monitor loop from `firm-market-sweep.ts` and the whole `portfolio-watchlist-monitor.ts`; keep the FMP-movers/earnings-calendar aggregate steps ONLY if some surface still reads them (the pull tools don't need them) — otherwise delete the fn and its dashboard entry; archive `signal-router.ts` (git history keeps the universe-fence machinery for a future discovery rebuild). Update CLAUDE.md's "V3 Intelligence Pipeline" section — it describes a dead pipeline today. | M |
 | 6 | **Prompt touch (with care)** | Daily-run prompt: the Stage-1 note already promises "structured material-event coverage moving to per-thesis triggers" — after PR 2-3, add one line telling the agent TRIGGER_FIRED news rungs arrive via `needsAction` (already true via REVIEW-batching). Tactical prompt: news-fire framing (the §5 frames in THESIS_GAME_PLAN already cover checkpoint semantics). Honor the stage-header landmines in CLAUDE.md. | S |
@@ -451,7 +451,7 @@ Sunday discovery cron.
 
 Discovery reconnection (for the record, not for now): when/if discovery is
 rebuilt, the same structured producers gain an out-of-book branch (the
-dual-role pattern from `DISCOVERY_V2.md` §3) and route to whatever discovery
+dual-role pattern from the deleted discovery-v2 plan §3 (git history)) and route to whatever discovery
 surface exists then. Nothing in C forecloses it; the archived router is the
 starting point if universe-fencing is wanted again.
 
@@ -479,8 +479,8 @@ Each with a recommended default. This section powers the design session.
 ## See also
 
 - `docs/plans/TRIGGER_LIFECYCLE.md` §6 — the framing this doc expands.
-- `docs/GAPS.md` P1-34 — the tracked gap.
+- Linear (team Davesucks) — the tracked gap; `GAPS.md` was deleted 2026-09-15.
 - `docs/plans/THESIS_GAME_PLAN.md` — the trigger spine this design serves.
-- `docs/plans/DISCOVERY_OVERHAUL.md` — the kill decision that severed routing (NOW-1/2/3) + the MEDIUM-1/2/3 producer specs this doc draws on.
+- The discovery-overhaul plan (deleted 2026-09-15, in git history) — the kill decision that severed routing + the producer specs this doc draws on.
 - `docs/TRIGGERS.md` — the firing matrix (which predicate fires on which path).
 - `docs/VISION.md` Pillars 1 + 5 — discovery (parked) and the learning loop (reattached by PR 4).

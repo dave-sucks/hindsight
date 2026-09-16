@@ -32,7 +32,7 @@ flight.
 
 Read these in order:
 
-1. [`docs/GAPS.md`](../GAPS.md) — **start at the "Done since" section** to catch up
+1. Linear (team Davesucks) — recently closed issues, to catch up
    on system changes since the last review. The rubric below assumes the current
    state of the system; if you're reviewing runs from before a "Done since" entry,
    apply the old rules for that day and note the transition. Then read the open
@@ -95,9 +95,9 @@ For each thesis the run touched (look at `ThesisUpdate WHERE runId = X` joined t
 7. **Writer-quality (per dispatched THESIS_WRITER child run today) — NEW for [PR #360](https://github.com/dave-sucks/hindsight/pull/360):**
    - **`conviction` set?** STRONG / HIGH / MEDIUM / LOW. Required for LONG/SHORT theses. NULL on a directional thesis written today = writer regression.
    - **`variantView` present for STRONG / HIGH?** Layer-1 gate requires it (`record_thesis` + `update_thesis`). Quote it if vapor (e.g., "consensus is wrong about valuation" with no specific number) — gate caught field-presence, not substance.
-   - **`convictionRationale` is judgment, not math restatement** ([P1-11](../GAPS.md)). Read the string. "I really like this setup, June 3 is the catalyst, here's why I trust the print…" is the target shape. "Composite 7/10, R/R 2.5:1, post-print drift looks strong" is math-rationale regression — flag with ticker + verbatim quote. If >2 in a single review read like math-restatement, the prompt isn't holding and we go to the `wouldBuyWithOwnMoney` fallback.
+   - **`convictionRationale` is judgment, not math restatement** ([P1-11]). Read the string. "I really like this setup, June 3 is the catalyst, here's why I trust the print…" is the target shape. "Composite 7/10, R/R 2.5:1, post-print drift looks strong" is math-rationale regression — flag with ticker + verbatim quote. If >2 in a single review read like math-restatement, the prompt isn't holding and we go to the `wouldBuyWithOwnMoney` fallback.
    - **`targetSizePct` set on directional theses?** Required after #360. NULL = writer regression.
-   - **Sonar date sanity** ([P1-5 MRVL hallucination](../GAPS.md)): does any of {`recentCatalysts`, `latestEarnings`, `catalystsAndEvents`, `convictionRationale`, `coreBelief`} claim a catalyst PRINTED (beat / missed / raised guide) when the next earnings date is in the future? That's the writer hallucinating analyst estimates as actuals. Cross-check against the run's `catalystDate` column and against Finnhub's earnings calendar for ground truth.
+   - **Sonar date sanity** ([P1-5 MRVL hallucination]): does any of {`recentCatalysts`, `latestEarnings`, `catalystsAndEvents`, `convictionRationale`, `coreBelief`} claim a catalyst PRINTED (beat / missed / raised guide) when the next earnings date is in the future? That's the writer hallucinating analyst estimates as actuals. Cross-check against the run's `catalystDate` column and against Finnhub's earnings calendar for ground truth.
    - **`backfilled from composite on 2026-05-31` rationale**: theses with this string are V4 backfill, not writer-attested. Don't grade them on rationale quality; do flag if the agent acted on a backfilled thesis without a refresh dispatch (the backfilled rationale is a placeholder, not the writer's view).
 
 ### B. PROMOTED-specific checks
@@ -115,7 +115,7 @@ Apply per PROMOTED thesis on the live analyst's book today:
 3. **Agent cited paper context in narration?** Read the run's `update_thesis` rationale + `record_run_summary` text for the PROMOTED ticker. Did the agent explicitly weigh paper tenure / paper P&L / review count in the re-enter / downgrade / invalidate decision? "PROMOTED, $X paper P&L over N days, M reviews → re-enter at $..." is the shape we expect. Generic "this looks good" is not.
 4. **PROMOTED → HOLDING flip clean?** If any PROMOTED thesis flipped to HOLDING via `place_trade` today: confirm the `ThesisUpdate(type='STATUS_CHANGED')` row exists with `tradeId` populated. The `place_trade` atomic flip ([lib/agent/tools/place-trade.ts](../../lib/agent/tools/place-trade.ts)) handles this — missing audit row is a bug.
 5. **PROMOTED → WATCHING / RETIRED?** If downgraded: the rationale should cite either paper context ("paper return was −$X over N days, conviction was weaker than the tenure suggests") OR fresh evidence ("new SEC filing breaks the bull case"). Pure narration-rewrites without a concrete reason are a quality failure on a live book.
-6. **Orphan tactical EXIT runs** ([ex-P1-21, closed via PR #333 PROMOTED-aware triggers](../GAPS.md)): a PROMOTED thesis carries no paired Position (paper position was force-closed at promotion). A tactical run spawned from a PROMOTED-thesis `PRICE_BELOW(stop)` trigger that tries to `close_position` will error out — there's no position to close. Count these. Pre-fix rows: search for `mode='INTRADAY_TACTICAL' AND parameters->>'predicateKind'='PRICE_BELOW' AND ResearchRun.status='FAILED'` with the failure cite naming `close_position`. Should be zero post-#333; flag any that surface.
+6. **Orphan tactical EXIT runs** ([ex-P1-21, closed via PR #333 PROMOTED-aware triggers]): a PROMOTED thesis carries no paired Position (paper position was force-closed at promotion). A tactical run spawned from a PROMOTED-thesis `PRICE_BELOW(stop)` trigger that tries to `close_position` will error out — there's no position to close. Count these. Pre-fix rows: search for `mode='INTRADAY_TACTICAL' AND parameters->>'predicateKind'='PRICE_BELOW' AND ResearchRun.status='FAILED'` with the failure cite naming `close_position`. Should be zero post-#333; flag any that surface.
 
 ### C. Dispatch behavior check
 
@@ -133,7 +133,7 @@ For each MORNING_PLAN run:
    - **Old gate-recovery flow is gone.** Don't look for `place_trade` returning `data.note='research is missing' / 'days stale'` anymore — that gate was deleted. The new failure mode is "agent acted on stale research without dispatching a refresh" — see Section A6.
 4. **Acted on stale research without dispatching?** Cross-check: for every `update_thesis` / `place_trade` / `close_position` / `manage_position` call today, look up `Thesis.researchUpdatedAt` at the time. If past horizon threshold (Section A6) AND no preceding `dispatch_thesis_research(refresh)` for that thesis in this run, flag it. Higher bar on LIVE-analyst PROMOTED rows than on PAPER WATCHING rows.
 5. **Cross-analyst dedup landed cleanly?** If two analysts ran near-simultaneously and both touched the same ticker, the second `dispatch_thesis_research` should have been refused. If both dispatches went through and produced two THESIS_WRITER child runs for the same ticker on the same day, the dedup didn't fire — note ticker + both parent run IDs.
-6. **THESIS_WRITER fail-mode:** the parent should NOT hang if the child fails. PR #287 wrapped THESIS_WRITER in try/catch and PRINCIPAL_CHAT's path was filed as P1-19. If a parent run is `status=RUNNING` for >15min with a `FAILED` child dispatch, that's the P1-19 shape — note it. **Also check for the 2026-05-31 Secular Compounder 5/5 FAILUREs pattern** ([P1-12](../GAPS.md)): if ALL writer dispatches in a single analyst's run failed with similar provider errors (rate limit / context-too-long), that's the token-exhaustion shape, not a code bug.
+6. **THESIS_WRITER fail-mode:** the parent should NOT hang if the child fails. PR #287 wrapped THESIS_WRITER in try/catch and PRINCIPAL_CHAT's path was filed as P1-19. If a parent run is `status=RUNNING` for >15min with a `FAILED` child dispatch, that's the P1-19 shape — note it. **Also check for the 2026-05-31 Secular Compounder 5/5 FAILUREs pattern** ([P1-12]): if ALL writer dispatches in a single analyst's run failed with similar provider errors (rate limit / context-too-long), that's the token-exhaustion shape, not a code bug.
 
 ### D. The "moved but wasn't traded" check
 
@@ -143,7 +143,7 @@ agentConfigId = X AND status IN ('HOLDING','WATCHING','PROMOTED')`):
 1. **Pull today's price action** via `getStockQuote` or `Position.closePrice` at EOD, plus intraday high/low. Acceptable source: any Finnhub or Alpaca snapshot taken between run start and EOD.
 2. **HOLDING positions, price moved ≥3% intraday?** Confirm the thesis was reviewed in the run via `ThesisUpdate WHERE thesisId = X AND runId = <today's morning runId>`. No update row = the agent skipped a meaningful move. Flag.
 3. **WATCHING / PROMOTED, price crossed `entryPrice` or any ENTER trigger level?** Confirm `place_trade` was called (or a tactical run was scheduled and converted). If neither: pull the agent's documented reason from `update_thesis.rationale` or `record_run_summary.decision_rationale`.
-4. **Goalpost-moving check.** [GAPS MRVL reference](../GAPS.md) — a documented anti-pattern: agent raises the target on a WATCHING thesis when price is already at or above the OLD target instead of trading. Symptom: `update_thesis` with `target` edit, ticker price ≥ old target. Flag with ticker + old target + new target + price.
+4. **Goalpost-moving check.** [GAPS MRVL reference] — a documented anti-pattern: agent raises the target on a WATCHING thesis when price is already at or above the OLD target instead of trading. Symptom: `update_thesis` with `target` edit, ticker price ≥ old target. Flag with ticker + old target + new target + price.
 5. **Document the agent's reason VERBATIM** when a non-trade is questionable. "Agent didn't trade NVDA despite ENTER trigger conditions met at 14:23 ET (price $185.30 crossed entry $185.00). Stated reason: 'wait for tomorrow's CPI print before committing'" — quote it. The pattern matters more than any one instance.
 
 ### E. Trigger sanity check
@@ -388,7 +388,7 @@ Apply per morning run (and cross-reference the day's tactical runs):
 
 4. **Were protective exits tagged correctly (STOP vs MANUAL)?** A protective
    close must carry the right `closeReason` — a mis-tag has a real cost. The
-   P1-28 cooldown carve-out (#445, [`docs/GAPS.md`](../GAPS.md)) exempts
+   P1-28 cooldown carve-out (#445, `Linear`) exempts
    `closeReason ∈ {STOP, TARGET}` from re-fire dampening; a floor/trail exit
    mis-tagged as a discretionary MANUAL close can therefore get **suppressed**
    as a re-alert (or, inverted, a discretionary exit mis-tagged STOP dodges the

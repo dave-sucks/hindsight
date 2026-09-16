@@ -4,7 +4,7 @@
 >
 > Today (2026-05-07) the answer is **partially yes, mostly no**. This document describes the answer we're working toward.
 
-This is the source of truth for **what Hindsight is supposed to be**. For what it actually does today, read [`/agent-workflow`](../app/(root)/agent-workflow/page.tsx) (the interactive page, driven by [`lib/agent/workflow-registry.ts`](../lib/agent/workflow-registry.ts)). For the gap between the two, read [`GAPS.md`](./GAPS.md).
+This is the source of truth for **what Hindsight is supposed to be**. For what it actually does today, read [`/agent-workflow`](../app/(root)/agent-workflow/page.tsx) (the interactive page, driven by [`lib/agent/workflow-registry.ts`](../lib/agent/workflow-registry.ts)). For open work, read Linear (team Davesucks).
 
 ---
 
@@ -188,4 +188,4 @@ We'll know we're done when:
 7. A 6-month TARGET hold survives a -2% intraday move without panic-closing.
 8. A 14-day TRADE that's compounding can be promoted to TARGET via `update_thesis` rather than force-closed.
 
-That's the bar. Everything in [`GAPS.md`](./GAPS.md) is the path to clearing it.
+That's the bar. The open work in Linear is the path to clearing it.

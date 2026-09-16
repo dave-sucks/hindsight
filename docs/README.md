@@ -1,60 +1,46 @@
-# Hindsight — Docs
+# docs — what's here
 
-## Evergreen (design doctrine — read first)
+Pruned 2026-09-15: the superseded plans, one-off session handoffs and run
+reviews older than August were deleted (they live in git history). **Linear,
+team Davesucks, is the tracker** — issues, not markdown, hold open work.
 
-- [VISION.md](./VISION.md) — product north star
-- [PRINCIPLES.md](./PRINCIPLES.md) — agent design rules (three-layer principle: tool gates / tool result shape / prompt)
+## Start a session
 
-## Live state (current system reference)
+| Session | File |
+|---|---|
+| The QB (reviews both build lanes, verifies production) | `prompts/QB_SESSION.md` |
+| The Agents lane (setups, prompts, entries, sizing, selling) | `prompts/AGENTS_SESSION.md` |
+| The Signals lane (earnings, filings, insider buying, movers) | `prompts/SIGNALS_SESSION.md` |
+| Any other coding session | `prompts/SESSION_BOOTSTRAP.md` |
+| **How the two lanes divide the work** | `plans/LANES.md` |
 
-- [THESIS_ARCHITECTURE.md](./THESIS_ARCHITECTURE.md) — how the thesis system works today (state machine, producers, gates, lifecycle). **Current with the trigger ladder** (§1a living-ladder reality, verified 2026-07-17).
-- [TRIGGERS.md](./TRIGGERS.md) — **canonical for trigger mechanics**: predicate catalog (incl. the `GAIN_FROM_ENTRY` / `TRAILING_FROM_HIGH` gain-protection predicates), the standing protection minimums, the cron-vs-signal firing matrix, fire modes (TACTICAL/DIRECT), cooldown, editing surfaces. Current with the ladder (#477/#490).
-- [/agent-workflow](../app/(root)/agent-workflow/page.tsx) in the app — runtime registry (driven by `lib/agent/workflow-registry.ts`)
+## Live reference — read before changing the system
 
-## Trackers (the deltas)
+- `THESIS_ARCHITECTURE.md` — the thesis lifecycle, states and gates.
+- `TRIGGERS.md` — every trigger kind, what fires it, on which path.
+- `plans/TRIGGER_MODEL.md` · `plans/TRIGGER_LIFECYCLE.md` · `plans/THESIS_GAME_PLAN.md` — the trigger system's shape, authority contract, and why it exists.
+- `plans/STATUS_TAXONOMY.md` — the status vocabulary.
+- `PRINCIPLES.md` — the three-layer rule for where a fix belongs.
+- `VISION.md` — the product north star.
+- `plans/PROD_DEPLOYMENT_PLAN.md` — deploys, migrations, the two-PR column drop.
+- `TECH_DEBT.md` — known fragility outside current work.
 
-- [GAPS.md](./GAPS.md) — open P0/P1/P2 in the thesis architecture rework
-- [TECH_DEBT.md](./TECH_DEBT.md) — fragility outside the rework
-- [GAPS_HISTORY.md](./GAPS_HISTORY.md) — archive of closed items
+## The current build
 
-## Plans (project-scoped, finite lifespan)
+- `plans/AGENT_REBUILD.md` — the Agents lane's plan, stage by stage (§7 is the live progress report).
+- `plans/TRADING_PLAYBOOK.md` — how disciplined traders work; the source for the setup catalog.
+- `plans/MARKET_DATA.md` · `plans/EARNINGS_AND_MOVERS.md` · `plans/SEC_FILINGS.md` — the Signals lane's model and roadmap.
+- `plans/SIGNALS_REDESIGN.md` — news, parked.
+- `plans/ANALYST_LINEUP.md` — why the seats look like they do.
+- `DISCOVERY_PLAYBOOK.md` — discovery query templates per analyst.
 
-### The Trigger Game Plan (shipped 2026-07-12 — the conceptual spine for the ladder)
+## Routines
 
-- [plans/TRIGGER_MODEL.md](./plans/TRIGGER_MODEL.md) — the trigger conceptual model (`condition·action·mode·timing`; what is/isn't a trigger) + the two verified reference grids. **Current.**
-- [plans/TRIGGER_LIFECYCLE.md](./plans/TRIGGER_LIFECYCLE.md) — authority + visibility contract (who sets which level, when; what wakes an agent). **Current.**
-- [plans/THESIS_GAME_PLAN.md](./plans/THESIS_GAME_PLAN.md) — why the ladder exists (conviction management: press winners / protect gains; the IONS motivating failure). **Current.**
-- [plans/SIGNALS_REDESIGN.md](./plans/SIGNALS_REDESIGN.md) — the paused-signals rethink (GAPS P1-34; design-ready, not built). **Current.**
+- `prompts/RUN_REVIEW_INVARIANTS.md` — the twelve checks, run first every review.
+- `prompts/REVIEW_DAILY_RUN.md` · `prompts/REVIEW_ANALYSTS.md` · `prompts/REVIEW_DISCOVERY_RUN.md` · `prompts/DISCOVERY_PREP.md` · `prompts/INGEST_THESIS.md`.
+- Written output: `run-reviews/`, `analyst-quality/`, `discovery-reviews/`, `discovery-prep/`, `audits/`. Each has a `TEMPLATE.md` where one exists. Keep the recent ones; delete anything older than about a month unless it's marked a reference.
 
-### Reference-grade (complete, kept as living reference)
+## Frozen
 
-- [plans/STATUS_TAXONOMY.md](./plans/STATUS_TAXONOMY.md) — the P1-24 status/direction contract (complete; THESIS_ARCHITECTURE §P1-24 summarizes it)
-- [plans/ANALYST_LINEUP.md](./plans/ANALYST_LINEUP.md) — why the analyst roster looks like it does
-
-### Open
-
-- [plans/DISCOVERY_V2.md](./plans/DISCOVERY_V2.md) — discovery operating model + signal-source catalog
-- [plans/DISCOVERY_OVERHAUL.md](./plans/DISCOVERY_OVERHAUL.md) — discovery overhaul to-do list (NOW / SOON / MEDIUM / LATER)
-- [plans/PROD_DEPLOYMENT_PLAN.md](./plans/PROD_DEPLOYMENT_PLAN.md) — per-analyst paper→live promotion
-- [plans/TEAM_ACCESS_PLAN.md](./plans/TEAM_ACCESS_PLAN.md) — team access rollout
-- [plans/TRADE_ALERTS_PLAN.md](./plans/TRADE_ALERTS_PLAN.md) — trade alert notifications
-- (Shipped/superseded plans go to [plans/legacy/](./plans/legacy) — e.g. the daily-run V2 rewrite, the scale-into-winners pair, conviction-expression, trade-as-proposal.)
-
-## Recurring work templates
-
-- [run-reviews/TEMPLATE.md](./run-reviews/TEMPLATE.md) + `YYYY-MM-DD.md` files — daily morning run post-mortems
-- [discovery-reviews/TEMPLATE.md](./discovery-reviews/TEMPLATE.md) + `YYYY-MM-DD-TICKER.md` files — pre-run expectations + post-run comparison
-
-## Session kickoff prompts
-
-- [prompts/SESSION_BOOTSTRAP.md](./prompts/SESSION_BOOTSTRAP.md) — what to read before touching code
-- [prompts/REVIEW_DAILY_RUN.md](./prompts/REVIEW_DAILY_RUN.md) — bootstrap prompt for a daily run review session
-- [prompts/REVIEW_DISCOVERY_RUN.md](./prompts/REVIEW_DISCOVERY_RUN.md) — bootstrap prompt for a discovery run review session
-
-## Reference
-
-- [INTELLIGENCE.md](./INTELLIGENCE.md) — V3 intelligence pipeline architecture (Sonar, Firecrawl, signal router, monitors). **Historical** — the V3 signal-routing pipeline is parked; current thinking is [plans/SIGNALS_REDESIGN.md](./plans/SIGNALS_REDESIGN.md) + GAPS P1-34.
-
-## Archive
-
-- [legacy/](./legacy) — historical plans, session handoffs, closed workstream docs
+`plans/FIX_ROADMAP.md` is history from before Linear. Some of its links point
+at plans that have since been deleted.

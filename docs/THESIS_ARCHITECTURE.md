@@ -1,6 +1,6 @@
 # Hindsight — Thesis Architecture
 
-> **What this is:** the live reference for how the system works. The 5 roles + the thesis lifecycle + how research stays fresh. **Read this first** before touching anything in the agent or thesis system. For target state, read [`VISION.md`](./VISION.md). For what's broken right now, read [`GAPS.md`](./GAPS.md).
+> **What this is:** the live reference for how the system works. The 5 roles + the thesis lifecycle + how research stays fresh. **Read this first** before touching anything in the agent or thesis system. For target state, read [`VISION.md`](./VISION.md). For what's open right now, read Linear (team Davesucks).
 >
 > **Last verified:** 2026-07-17 (P1-24 status-taxonomy contract — clean model below; §1a living-ladder reality added after the Trigger Game Plan shipped 2026-07-12).
 
@@ -694,8 +694,8 @@ The principle: **the system was fundamentally sound, not fundamentally broken.**
 - [`plans/TRIGGER_LIFECYCLE.md`](./plans/TRIGGER_LIFECYCLE.md) — trigger authority + visibility contract (who sets which level, when; what wakes an agent)
 - [`plans/THESIS_GAME_PLAN.md`](./plans/THESIS_GAME_PLAN.md) — why the trigger ladder exists (conviction management; the IONS motivating failure)
 - [`VISION.md`](./VISION.md) Pillar 2 — what "thesis quality" is supposed to look like
-- [`GAPS.md`](./GAPS.md) — the open punch list
+- Open work lives in Linear (team Davesucks), not in a markdown punch list.
 - [`PRINCIPLES.md`](./PRINCIPLES.md) — the three-layer principle (tool gates / tool result shape / prompt as judgment only) that drives where each invariant lives
-- [`plans/MORNING_RUN_V2_DESIGN.md`](./plans/legacy/MORNING_RUN_V2_DESIGN.md) — the V2 prompt rewrite that applied the three-layer principle to the daily run
-- [`legacy/WATCHLIST_COLLAPSE_PLAN.md`](./legacy/WATCHLIST_COLLAPSE_PLAN.md) — the implementation plan for the 2026-05-13 collapse (closed; this doc supersedes it)
+- [`plans/MORNING_RUN_V2_DESIGN.md`](git history) — the V2 prompt rewrite that applied the three-layer principle to the daily run
+- [`legacy/WATCHLIST_COLLAPSE_PLAN.md`](git history) — the implementation plan for the 2026-05-13 collapse (closed; this doc supersedes it)
 - [`/agent-workflow`](../app/(root)/agent-workflow/page.tsx) — the live operational view, driven by [`workflow-registry.ts`](../lib/agent/workflow-registry.ts)
