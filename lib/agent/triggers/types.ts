@@ -170,7 +170,30 @@ export type TriggerPredicate =
   // a clock about US, and the daily run looking at the thesis satisfies it
   // even if it concludes nothing changed. If the run skips it or crashes,
   // nothing is stamped and it stays due.
-  | { kind: "REVIEW_CADENCE"; days: number }
+  //
+  // The same rung counts from two other dates (2026-09-16, one trigger,
+  // three "counting from" choices — not three kinds):
+  //   from: "BUY"   — N days after the position opened; fires once the
+  //                    count is reached (the playbook's time limits: "out
+  //                    after 20 days with no progress", the 60-day
+  //                    business checkpoint). False until held.
+  //   from: "EVENT" — N days before (side: "BEFORE") or after (side:
+  //                    "AFTER") the thesis's own catalystDate — the FDA
+  //                    decision, the deal close. The date is read off the
+  //                    thesis, never typed into the trigger, so it can't
+  //                    drift from the one the thesis carries. False with
+  //                    no event date.
+  //   from absent / "LAST_REVIEW" — the review clock above.
+  // Recurring vs once is the cooldown's job: the default cooldown equals
+  // `days`, so a BUY/EVENT review re-asks every N days after it first
+  // fires, and an EXIT is the usual standing order.
+  | {
+      kind: "REVIEW_CADENCE";
+      days: number;
+      from?: "LAST_REVIEW" | "BUY" | "EVENT";
+      /** EVENT only. Default AFTER. */
+      side?: "BEFORE" | "AFTER";
+    }
 
   // ── Composition ───────────────────────────────────────────────────────
   | { kind: "AND"; predicates: TriggerPredicate[] }

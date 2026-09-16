@@ -219,7 +219,12 @@ function predicateKindValue(p: TriggerPredicate): {
       };
     case "REVIEW_CADENCE":
       return {
-        kind: "review every",
+        kind:
+          (p.from ?? "LAST_REVIEW") === "BUY"
+            ? "after the buy"
+            : p.from === "EVENT"
+              ? `${(p.side ?? "AFTER") === "BEFORE" ? "before" : "after"} the event`
+              : "review every",
         value: p.days != null ? plural(p.days, "day") : null,
       };
     // Composites name their conditions ("earnings beat and down 3% 1D"),
@@ -299,7 +304,11 @@ function predicateDescription(p: TriggerPredicate): string {
     case "EARNINGS_SINCE":
       return `Fires once when the last earnings report is ${p.min}–${p.max} days old — the window to act on the reaction.`;
     case "REVIEW_CADENCE":
-      return `The agent reviews this name every ${p.days} days, counting from its last real review.`;
+      return (p.from ?? "LAST_REVIEW") === "BUY"
+        ? `Fires ${p.days} days after the buy, if still held — a time limit on the position.`
+        : p.from === "EVENT"
+          ? `Fires ${p.days} days ${(p.side ?? "AFTER") === "BEFORE" ? "before" : "after"} the event date stored on the thesis.`
+          : `The agent reviews this name every ${p.days} days, counting from its last real review.`;
     case "AND":
       return `Fires when all of these are true: ${(p.predicates ?? []).map(predicateDescription).join(" ")}`;
     case "OR":
@@ -503,7 +512,8 @@ function TriggerPopoverContent({
   // On an un-held thesis an EXIT fire takes the plan down instead of
   // selling (effectiveTriggerAction), and the label says so.
   const fieldLabel =
-    trigger.predicate.kind === "REVIEW_CADENCE"
+    trigger.predicate.kind === "REVIEW_CADENCE" &&
+    (trigger.predicate.from ?? "LAST_REVIEW") === "LAST_REVIEW"
       ? "Agent Watch"
       : `${actionGroupLabel(trigger.action, held)} ${kindLabel}`;
 
@@ -932,6 +942,31 @@ type ChartKind =
   | "RS_VS_SPY"
   | "INSIDER_CLUSTER";
 
+type CountFrom = "LAST_REVIEW" | "BUY" | "EVENT_BEFORE" | "EVENT_AFTER";
+const COUNT_FROM_OPTIONS: ReadonlyArray<{ v: CountFrom; l: string }> = [
+  { v: "LAST_REVIEW", l: "From the last review, repeating" },
+  { v: "BUY", l: "After the buy" },
+  { v: "EVENT_BEFORE", l: "Before the thesis's event date" },
+  { v: "EVENT_AFTER", l: "After the thesis's event date" },
+];
+
+/** The sentence under the day-count row: what you built, in plain words. */
+function countFromHelp(from: CountFrom, action: string, val: string, held: boolean): string {
+  const n = val.trim() === "" ? "N" : val.trim();
+  const verb =
+    action === "EXIT" ? (held ? "Sells" : "Sets the plan down") : action === "ADD" ? "Considers adding" : action === "TRIM" ? "Trims" : "Reviews";
+  switch (from) {
+    case "BUY":
+      return `${verb} ${n} days after the buy, if still held. A watch carries it until the fill; the count starts then.`;
+    case "EVENT_BEFORE":
+      return `${verb} ${n} days before the event date stored on the thesis (the FDA decision, the deal close). No event date on the thesis means it never fires.`;
+    case "EVENT_AFTER":
+      return `${verb} ${n} days after the event date stored on the thesis. No event date on the thesis means it never fires.`;
+    default:
+      return `The agent reviews this name every ${n} days, counting from its last real review. Without it, nothing reviews the name until another trigger fires.`;
+  }
+}
+
 const CHART_KIND_OPTIONS: ReadonlyArray<{ v: ChartKind; l: string }> = [
   { v: "NEAR_SMA", l: "Near an average" },
   { v: "VS_SMA", l: "Above / below an average" },
@@ -1043,6 +1078,9 @@ export function AddTriggerDialog({
   const [moveWindow, setMoveWindow] = useState<"1D" | "5D" | "20D">("1D");
   const [chartKind, setChartKind] = useState<ChartKind>("NEAR_SMA");
   const [chartParam, setChartParam] = useState<string>("50");
+  // Counting from — one day-count trigger, three anchors: the last review
+  // (the review clock, repeating), the buy, or the thesis's own event date.
+  const [countFrom, setCountFrom] = useState<CountFrom>("LAST_REVIEW");
   const [fireMode, setFireMode] = useState<"TACTICAL" | "DIRECT">("DIRECT");
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1112,6 +1150,11 @@ export function AddTriggerDialog({
     if (criterion === "CADENCE" || criterion === "EARNINGS") setAction("REVIEW");
     if (criterion === "CHART") setDir("ABOVE");
   }, [criterion]);
+  // The review clock is always a review; a count from the buy or the event
+  // date can sell, add or trim ("sell 30 days after the buy if still held").
+  useEffect(() => {
+    if (countFrom === "LAST_REVIEW") setAction("REVIEW");
+  }, [countFrom]);
 
   // A chart condition's second choice defaults to its usual one.
   useEffect(() => {
@@ -1182,7 +1225,11 @@ export function AddTriggerDialog({
       : isEarnings
       ? { kind: "EARNINGS_WITHIN", days: num }
       : isCadence
-      ? { kind: "REVIEW_CADENCE", days: num }
+      ? countFrom === "LAST_REVIEW"
+        ? { kind: "REVIEW_CADENCE", days: num }
+        : countFrom === "BUY"
+          ? { kind: "REVIEW_CADENCE", days: num, from: "BUY" }
+          : { kind: "REVIEW_CADENCE", days: num, from: "EVENT", side: countFrom === "EVENT_BEFORE" ? "BEFORE" : "AFTER" }
       : isGain
       ? { kind: "GAIN_FROM_ENTRY", pct: num, direction: dir }
       : isTrail
@@ -1339,6 +1386,28 @@ export function AddTriggerDialog({
           </ButtonGroup>
         ) : null}
 
+        {/* Counting from — the day count's anchor. */}
+        {isCadence ? (
+          <Select
+            value={countFrom}
+            onValueChange={(v) => {
+              if (typeof v === "string") setCountFrom(v as CountFrom);
+            }}
+            disabled={pending}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue>{COUNT_FROM_OPTIONS.find((o) => o.v === countFrom)?.l ?? ""}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {COUNT_FROM_OPTIONS.map((o) => (
+                <SelectItem key={o.v} value={o.v}>
+                  {o.l}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
+
         {/* When: a price level can wait for the close; a move has a window. */}
         {criterion === "PRICE" || isMove ? (
           <Select
@@ -1458,7 +1527,7 @@ export function AddTriggerDialog({
             : isEarnings
             ? "Fires once when the next earnings report is this many days away — the heads-up to decide whether to hold through it, trim, or wait. Beat and miss are separate triggers the analyst sets."
             : isCadence
-            ? "The agent reviews this name every N days, counting from its last real review. Without it, nothing reviews the name until another trigger fires."
+            ? countFromHelp(countFrom, action, val, held)
             : isGain
             ? `Fires when the position is ${dir === "UP" ? "up" : "down"} this much from entry (avg cost) — cumulative, not a single day.`
             : isTrail

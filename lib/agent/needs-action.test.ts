@@ -921,3 +921,34 @@ describe("computeNeedsAction — RESEARCH_STALE", () => {
     expect(result).toBeNull();
   });
 });
+
+describe("computeNeedsAction — a day count from the buy is not the review clock", () => {
+  // "Review 60 days after the buy" is an ordinary trigger: it fires through
+  // the evaluator and arrives as TRIGGER_FIRED. It must not make the row
+  // REVIEW_DUE on its own, and it must not be mistaken for a review cadence.
+  const SIXTY_AFTER_BUY: Trigger = {
+    id: "trig-sixty",
+    predicate: { kind: "REVIEW_CADENCE", days: 60, from: "BUY" },
+    action: "REVIEW",
+    rationale: "The 60-day business checkpoint.",
+    cooldownDays: 60,
+  };
+  it("a watch with only a buy-count review and no clock is quiet", () => {
+    const result = computeNeedsAction({
+      thesis: { ...baseThesis, status: "WATCHING", triggers: [SIXTY_AFTER_BUY], lastReviewedAt: lookedAt(90) },
+      latestUpdate: null,
+      latestQuote: null,
+      now,
+    });
+    expect(result).toBeNull();
+  });
+  it("the review clock next to it still decides REVIEW_DUE", () => {
+    const result = computeNeedsAction({
+      thesis: { ...baseThesis, status: "HOLDING", triggers: [SIXTY_AFTER_BUY, CADENCE_7D], lastReviewedAt: lookedAt(8) },
+      latestUpdate: null,
+      latestQuote: null,
+      now,
+    });
+    expect(result?.kind).toBe("REVIEW_DUE");
+  });
+});

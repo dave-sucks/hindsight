@@ -254,7 +254,11 @@ export function describePredicate(p: TriggerPredicate): string {
     case "INSIDER_CLUSTER":
       return `≥ ${p.minBuyers} insiders bought on the open market within ${p.days}d`;
     case "REVIEW_CADENCE":
-      return `due for review (every ${p.days}d)`;
+      return (p.from ?? "LAST_REVIEW") === "BUY"
+        ? `${p.days}d after the buy`
+        : p.from === "EVENT"
+          ? `${p.days}d ${(p.side ?? "AFTER") === "BEFORE" ? "before" : "after"} the event date`
+          : `due for review (every ${p.days}d)`;
     case "EARNINGS_BEAT":
       return `earnings beat${p.minSurprisePct ? ` ≥ ${p.minSurprisePct}%` : ""}`;
     case "EARNINGS_MISS":
@@ -507,8 +511,13 @@ export function computeNeedsAction(
   // so a review coming due later today has to be caught now or it waits a
   // whole day.
   const REVIEW_DUE_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
+  // Only the review clock decides REVIEW_DUE. A day count from the buy or
+  // the event date is an ordinary trigger: it fires through the evaluator
+  // and arrives as TRIGGER_FIRED.
   const cadence = thesis.triggers.find(
-    (t) => t.predicate.kind === "REVIEW_CADENCE",
+    (t) =>
+      t.predicate.kind === "REVIEW_CADENCE" &&
+      (t.predicate.from ?? "LAST_REVIEW") === "LAST_REVIEW",
   );
   if (cadence?.predicate.kind === "REVIEW_CADENCE") {
     const lastLooked = thesis.lastReviewedAt ?? thesis.createdAt;
