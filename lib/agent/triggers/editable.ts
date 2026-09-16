@@ -44,9 +44,15 @@ export function editableTriggerField(
       return { label: "Trail %", value: p.pct, suffix: "%", min: 1, step: 0.5 };
     case "REVIEW_CADENCE":
       // Agent Watch — days between the agent's reviews. Editable here so it
-      // lives in the same popover as every other trigger (DAV-225).
+      // lives in the same popover as every other trigger (DAV-225). A count
+      // from the buy or the event date edits the same number.
       return {
-        label: "Review every",
+        label:
+          (p.from ?? "LAST_REVIEW") === "BUY"
+            ? "Days after the buy"
+            : p.from === "EVENT"
+              ? `Days ${(p.side ?? "AFTER") === "BEFORE" ? "before" : "after"} the event`
+              : "Review every",
         value: p.days,
         suffix: "days",
         min: 1,

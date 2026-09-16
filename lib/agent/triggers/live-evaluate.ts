@@ -100,6 +100,7 @@ export async function evaluateLiveTriggerMatches({
       horizon: true,
       createdAt: true,
       lastReviewedAt: true,
+      catalystDate: true,
     },
   });
 
@@ -204,11 +205,12 @@ export async function evaluateLiveTriggerMatches({
         // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read entry cost + water
         // mark from the open position; WATCHING rows get null → false.
         position: posInfo
-          ? { avgCost: posInfo.avgCost, peakPrice: posInfo.peakPrice }
+          ? { avgCost: posInfo.avgCost, peakPrice: posInfo.peakPrice, openedAt: posInfo.openedAt }
           : null,
         thesis: {
           createdAt: thesis.createdAt,
           lastReviewedAt: thesis.lastReviewedAt ?? null,
+          catalystDate: thesis.catalystDate ?? null,
           direction: thesis.direction,
         },
         now,

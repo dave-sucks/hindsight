@@ -58,7 +58,11 @@ export function predicateKey(p: TriggerPredicate): string {
     case "EARNINGS_SINCE":
       return p.kind;
     case "REVIEW_CADENCE":
-      return p.kind;
+      // The review clock is one bucket (the cascade overrides it as one
+      // intent); a count from the buy or the event date is its own.
+      return (p.from ?? "LAST_REVIEW") === "LAST_REVIEW"
+        ? p.kind
+        : `${p.kind}:${p.from}:${p.from === "EVENT" ? (p.side ?? "AFTER") : ""}`;
     case "AND":
     case "OR":
       return `${p.kind}:${p.predicates.map(predicateKey).sort().join("|")}`;

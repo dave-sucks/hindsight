@@ -23,6 +23,7 @@ import {
   defaultTriggersForHorizon,
   accountStandingRules,
   mergeTriggers,
+  resolvedCadenceDays,
   type ThesisShape,
 } from "./defaults";
 import { accountSeedTriggers } from "./seed-account";
@@ -349,5 +350,22 @@ describe("triggerBucket — ENTER on a price level is one bucket", () => {
 
     expect(triggerBucket(breakout)).toBe(triggerBucket(dip));
     expect(mergeTriggers([dip], [breakout]).filter((t) => t.action === "ENTER")).toHaveLength(1);
+  });
+});
+
+describe("resolvedCadenceDays — only the review clock counts", () => {
+  it("a count from the buy or the event date does not set the review cadence", () => {
+    expect(
+      resolvedCadenceDays([
+        { predicate: { kind: "REVIEW_CADENCE", days: 60, from: "BUY" } },
+        { predicate: { kind: "REVIEW_CADENCE", days: 3, from: "EVENT", side: "BEFORE" } },
+      ]),
+    ).toBeNull();
+    expect(
+      resolvedCadenceDays([
+        { predicate: { kind: "REVIEW_CADENCE", days: 60, from: "BUY" } },
+        { predicate: { kind: "REVIEW_CADENCE", days: 7 } },
+      ]),
+    ).toBe(7);
   });
 });
