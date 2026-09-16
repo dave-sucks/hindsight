@@ -313,6 +313,21 @@ exhibit.
 **Still open in this lane:** activist-stake discovery in the chat through the
 tool (whole-market mode); the `/earnings` page's Filings toggle (later).
 
+**Known gap — a row says what KIND of event, not what happened.** SEC's data
+has no headline or summary: a filing is a form, item codes, a date and its
+documents. So ABT's Aug 20 row reads "press release (7.01), other events
+(8.01)" when the filing is about the infant-formula lawsuit. What happened is
+only in the documents. Checked 2026-09-16 on four real filings: the HTML
+title is blank or useless (`bmrn-20260910`), so a "headline" means the first
+real sentence of the attached press release (good — MU: "announced the
+promotion of two senior executives…") or of the 8-K item text (clunky —
+BMRN, PRAX). Cost if built: no money; two extra free SEC requests per
+filing, fetched once and kept (filings never change), never inside the
+5-minute trigger check except for a filing that fired. The risk is quality
+on the item-text cases; a cheap model tidying each sentence once is the
+fallback. Parked by the principal 2026-09-16 — not ticketed. The same line
+would reach the agents through `get_sec_filings`.
+
 **To the Agents lane, as tickets** (they own the prompts, the analyst rules
 and dispatch): the per-event playbook in the daily run, tactical run and
 writer (§5); the "filings on your book since the last run" line; the
