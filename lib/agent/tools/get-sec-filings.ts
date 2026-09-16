@@ -12,11 +12,8 @@
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { fetchBookFilings } from "@/lib/market-data/sec-filings";
-import { describeFilingEvent, WATCHED_FORMS, type SecFiling } from "@/lib/market-data/sec-events";
-
-/** The watched events, plus the periodic reports for context. */
-const TOOL_FORMS = [...WATCHED_FORMS, "10-K", "10-Q"];
+import { getFilingsForSymbol } from "@/lib/market-data/sec-filings";
+import { describeFilingEvent, type SecFiling } from "@/lib/market-data/sec-events";
 
 const TIER_WORD: Record<SecFiling["tier"], string> = {
   RED: "serious",
@@ -48,8 +45,8 @@ export const getSecFilings = defineTool({
       title: `${T} EDGAR filings`,
       url: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${T}&owner=include&count=40`,
     };
-    const read = await fetchBookFilings({ tickers: [T], now: new Date(), lookbackDays: window, forms: TOOL_FORMS });
-    const list = read.byTicker.get(T) ?? [];
+    const read = await getFilingsForSymbol(T, { days: window });
+    const list = read.filings;
 
     if (read.error) {
       const text = `SEC filings unavailable for $${T} — ${read.error}. This is not "nothing filed".`;

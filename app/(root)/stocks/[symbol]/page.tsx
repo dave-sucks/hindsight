@@ -30,6 +30,7 @@ import {
 import { getAnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { getStockInfo } from "@/lib/actions/stock-info";
 import { StockEarningsSection } from "@/components/earnings/StockEarningsSection";
+import { StockFilingsSection } from "@/components/filings/StockFilingsSection";
 import { StockIdentityHeader } from "@/components/domain/stock-identity-header";
 import { PriceChange } from "@/components/ui/price-change";
 import { getWatchlistStatusForSymbol } from "@/lib/actions/watchlist.actions";
@@ -239,6 +240,7 @@ export default async function StockDetailPage({ params }: Props) {
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="financials">Financials</TabsTrigger>
               <TabsTrigger value="earnings">Earnings</TabsTrigger>
+              <TabsTrigger value="filings">Filings</TabsTrigger>
               <TabsTrigger value="news">News</TabsTrigger>
               <TabsTrigger value="theses">Theses</TabsTrigger>
             </TabsList>
@@ -330,6 +332,12 @@ export default async function StockDetailPage({ params }: Props) {
                 next date. Same data the trigger evaluator reads. */}
             <TabsContent value="earnings" className="mt-4">
               <StockEarningsSection symbol={upperSymbol} />
+            </TabsContent>
+
+            {/* Live off EDGAR when the tab renders — what the company told
+                the SEC, with the 8-K item code named in plain words. */}
+            <TabsContent value="filings" className="mt-4 max-w-3xl">
+              <StockFilingsSection symbol={upperSymbol} />
             </TabsContent>
 
             {/* ── FINANCIALS ───────────────────────────────────────── */}

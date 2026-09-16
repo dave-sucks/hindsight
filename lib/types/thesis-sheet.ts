@@ -384,6 +384,37 @@ export interface EarningsResponse {
   }>;
 }
 
+/**
+ * The filings layer (GET /api/theses/:id/filings and
+ * /api/stocks/:symbol/filings) — what the company told the SEC, read live
+ * off EDGAR. `error` is set when EDGAR couldn't be read, which is never the
+ * same thing as "nothing filed".
+ */
+export interface FilingsResponse {
+  symbol: string;
+  filings: FilingEntry[];
+  error?: string;
+  days: number;
+}
+
+/** One filing — the serialized `SecFiling` from lib/market-data/sec-events. */
+export interface FilingEntry {
+  accession: string;
+  ticker: string;
+  /** As filed: "8-K", "8-K/A", "NT 10-Q", "SCHEDULE 13D/A". */
+  form: string;
+  /** The form without an amendment suffix. */
+  rootForm: string;
+  /** 8-K item codes; empty for other forms. */
+  items: string[];
+  /** YYYY-MM-DD */
+  filedDate: string;
+  /** How urgent a look it deserves. */
+  tier: "RED" | "MATERIAL" | "CONTEXT";
+  /** The document on sec.gov. */
+  url: string;
+}
+
 /** One calendar row — the serialized `EarningsReport` from lib/agent/triggers/earnings. */
 export interface EarningsCalendarEntry {
   symbol: string;

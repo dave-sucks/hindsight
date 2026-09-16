@@ -59,7 +59,8 @@ import {
   type ResearchCitation,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import type { StockCandle } from "@/lib/actions/finnhub.actions";
-import type { EarningsResponse } from "@/lib/types/thesis-sheet";
+import type { EarningsResponse, FilingsResponse } from "@/lib/types/thesis-sheet";
+import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -753,6 +754,56 @@ function EarningsBlock({ data }: { data: EarningsResponse }) {
   );
 }
 
+// ── FilingsBlock ───────────────────────────────────────────────────────
+// What this company told the SEC in the last month, live off EDGAR when the
+// sheet opens — the serious and material filings only, since the routine
+// ones (earnings results, press releases, exhibits) are noise on a sheet.
+// One line, each filing linked. Renders nothing when there are none, and
+// says so plainly when EDGAR couldn't be read — "no filings" would be a
+// different claim. See docs/plans/SEC_FILINGS.md §8.
+
+function FilingsBlock({ data }: { data: FilingsResponse }) {
+  const worthALook = data.filings.filter((f) => f.tier !== "CONTEXT");
+  if (!data.error && worthALook.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
+        Filings
+      </p>
+      {data.error ? (
+        <p className="text-sm text-muted-foreground">SEC filings unavailable — {data.error}.</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+          {worthALook.slice(0, 4).map((f, i) => (
+            <span key={f.accession} className="inline-flex items-center gap-1.5">
+              {i > 0 && <span className="text-muted-foreground/40">·</span>}
+              <span className="text-muted-foreground tabular-nums">
+                {new Date(`${f.filedDate}T00:00:00Z`).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  timeZone: "UTC",
+                })}
+              </span>
+              <a
+                href={f.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "font-medium underline-offset-4 hover:underline",
+                  f.tier === "RED" ? "text-red-500" : "text-foreground",
+                )}
+              >
+                {describeFilingEvent(f)}
+              </a>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── TradeStructureBlock ───────────────────────────────────────────────
 // Compact single-row block of trade-shape mechanics: next review (with
 // the absolute date in tooltip), max hold (TRADE horizon only — see
@@ -1228,6 +1279,9 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
   // Earnings layer — own region, never gates the paint, no skeleton (the
   // block simply appears when the vendor answers; absence is a valid state).
   const [earnings, setEarnings] = useState<EarningsResponse | null>(null);
+  // Filings layer — same treatment as earnings: its own region, no skeleton,
+  // absent is a valid state.
+  const [filings, setFilings] = useState<FilingsResponse | null>(null);
   const [candles, setCandles] = useState<StockCandle[] | null>(null);
   const [candlesLoading, setCandlesLoading] = useState(true);
   const [coverage, setCoverage] = useState<AnalystCoverageData | null>(null);
@@ -1248,6 +1302,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
     setCandles(null);
     setCoverage(null);
     setEarnings(null);
+    setFilings(null);
     setQuoteLoading(true);
     setCandlesLoading(true);
     setCoverageLoading(true);
@@ -1262,6 +1317,24 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       .then((r) => (r.ok ? r.json() : null))
       .then((json: EarningsResponse | null) => {
         if (!cancelled) setEarnings(json);
+      })
+      .catch(() => {
+        /* absent block is the failure state */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [thesis_id]);
+
+  // Filings layer — the serious and material filings of the last month,
+  // live off EDGAR. Fails soft: a vendor miss leaves the block absent.
+  useEffect(() => {
+    if (!thesis_id) return;
+    let cancelled = false;
+    fetch(`/api/theses/${thesis_id}/filings`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: FilingsResponse | null) => {
+        if (!cancelled) setFilings(json);
       })
       .catch(() => {
         /* absent block is the failure state */
@@ -1691,6 +1764,8 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           trade-shape mechanics because "reports in 3 days" is a sizing
           fact, the same class of thing as Next review. */}
       {earnings ? <EarningsBlock data={earnings} /> : null}
+
+      {filings ? <FilingsBlock data={filings} /> : null}
 
       {/* ── Variant View (Conviction Expression v4) ─────────── */}
       {/* The writer's contrarian take — "consensus thinks X, I think Y."
