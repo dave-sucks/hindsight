@@ -41,6 +41,8 @@ import {
   buildSupersessionMap,
   type ResolvedEnvelope,
 } from "@/lib/agent/resolved-thesis";
+import { entryRaisesAway, type EntryRaiseAway } from "@/lib/agent/entry-raises";
+import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { isLadderEditUpdate } from "@/lib/agent/ladder-health";
 import {
   getThesisBearCaseBullets,
@@ -352,6 +354,7 @@ export const getTheses = defineTool({
         // whether to dispatch a refresh before trading (Phase 2). The
         // heavy section blobs below stay gated.
         researchUpdatedAt: true,
+        setupId: true,
         // Deep-research artifacts — opt in via include_research. PR-9
         // flattened `researchSections` blob into 9 first-class columns;
         // selecting all of them by name. snapshot/bullCase/bearCase are
@@ -636,6 +639,7 @@ export const getTheses = defineTool({
     // complete and no match exists, the ladder was born with the thesis →
     // anchor to thesis.createdAt.
     const lastLadderEditAtByThesisId = new Map<string, Date>();
+    const entryRaisesByThesisId = new Map<string, EntryRaiseAway[]>();
     // Held rows for ladder health; priced watches for the stale-entry flag.
     const holdingIds = theses
       .filter((t) => t.status === "HOLDING" || (t.status === "WATCHING" && t.entryPrice != null))
@@ -655,16 +659,29 @@ export const getTheses = defineTool({
             type: true,
             timestamp: true,
             fieldChanges: true,
+            priceAtTime: true,
+            rationale: true,
           },
         });
         const scanTruncated = auditRows.length >= scanTake;
         const matched = new Set<string>();
+        const rowsByThesis = new Map<string, typeof auditRows>();
         for (const r of auditRows) {
+          rowsByThesis.set(r.thesisId, [...(rowsByThesis.get(r.thesisId) ?? []), r]);
           if (matched.has(r.thesisId)) continue;
           if (isLadderEditUpdate(r.type, r.fieldChanges)) {
             lastLadderEditAtByThesisId.set(r.thesisId, r.timestamp);
             matched.add(r.thesisId);
           }
+        }
+        // The buy level's moves away from the price, no structure cited —
+        // the same rows, read once more (DAV-253, the MSFT shape).
+        for (const t of theses) {
+          if (t.status !== "WATCHING") continue;
+          const rows = rowsByThesis.get(t.id);
+          if (!rows?.length) continue;
+          const raises = entryRaisesAway({ direction: t.direction, updates: rows, now: new Date() });
+          if (raises.length) entryRaisesByThesisId.set(t.id, raises);
         }
         if (!scanTruncated) {
           for (const t of theses) {
@@ -930,6 +947,7 @@ export const getTheses = defineTool({
             avgCost: avgCostByThesisId.get(t.id) ?? null,
             peakPrice: peakPriceByThesisId.get(t.id) ?? null,
             lastLadderEditAt: lastLadderEditAtByThesisId.get(t.id) ?? null,
+            entryRaisesAway: entryRaisesByThesisId.get(t.id) ?? null,
             triggers: t.triggers,
             catalystDate: t.catalystDate,
             createdAt: t.createdAt,
@@ -1046,6 +1064,11 @@ export const getTheses = defineTool({
         // rows; `triggerDetail` shows trigger state vs current price;
         // `supersededBy` flags rows killed by a newer sister thesis.
         resolved: resolvedByThesisId.get(t.id) ?? null,
+        // The setup the plan was written on, compact (DAV-253): a held
+        // name's review runs its setup's checklist — failure signs, the
+        // horizon's manage rule, the time limit — instead of the horizon
+        // glossary. Null on rows written before setups were named.
+        setup: setupChecklist(t.setupId, t.horizon),
         // Agent must see freshness of the deep research without doing date
         // math. Horizon-tuned per STALE_DAYS_BY_HORIZON. Soft input to the
         // agent's REVIEW decision — no Layer-1 gate keys off it.

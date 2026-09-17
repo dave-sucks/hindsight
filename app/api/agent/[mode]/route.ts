@@ -280,6 +280,7 @@ export async function POST(
             triggersMatchingNow: [],
             latestDigest: null,
             earnings: { reportingSoon: [], justReported: [] },
+            filings: { recent: [] },
             intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
           });
 
