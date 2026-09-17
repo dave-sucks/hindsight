@@ -9,7 +9,7 @@ import {
   PlayCircle,
   ArrowLeftRight,
   BarChart3,
-  CalendarDays,
+  CalendarDays, TrendingUp,
   Settings,
   LogOut,
   ChevronsUpDown,
@@ -73,6 +73,7 @@ const MAIN_NAV = [
     ? [{ href: '/podcasts', label: 'Podcasts', icon: Mic, tooltip: 'AI-generated podcasts (PoC)' }]
     : []),
   { href: '/earnings', label: 'Earnings', icon: CalendarDays, tooltip: 'Who reports this week, and how it went' },
+  { href: '/movers', label: 'Movers', icon: TrendingUp, tooltip: "Today's gainers, losers and most-active stocks" },
   { href: '/runs', label: 'Runs', icon: PlayCircle, tooltip: 'Research sessions' },
   { href: '/intelligence', label: 'Intelligence', icon: SatelliteDish, tooltip: 'Signals, monitors, briefs' },
 ];

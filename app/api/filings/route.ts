@@ -1,18 +1,17 @@
 /**
- * GET /api/earnings?date=YYYY-MM-DD
+ * GET /api/filings?date=YYYY-MM-DD
  *
- * One day's reporters with the numbers, plus counts for the week around
- * it — the data behind the /earnings page. Live from the vendor on every
- * request (cached 5 minutes upstream); nothing stored. Scoped to the
- * requesting user's book so our names sort first and each row knows which
- * analysts already cover it.
+ * The week of SEC filings around a date — your book's filings, then the
+ * material and serious filings of listed companies across the market — with
+ * per-day counts. The data behind the Filings view on /earnings. Live off
+ * EDGAR, held five minutes per week; nothing stored.
  */
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
-import { getEarningsDay } from "@/lib/market-data/earnings-calendar";
 import { getBookCoverage } from "@/lib/actions/book-coverage";
+import { getFilingsWeek } from "@/lib/market-data/sec-filings";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -25,13 +24,9 @@ export async function GET(req: Request) {
   const accountId = await getAccountId(user.id);
   if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
 
-  const url = new URL(req.url);
-  const date = url.searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
+  const date = new URL(req.url).searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
   if (!DAY.test(date)) return NextResponse.json({ error: "Bad date" }, { status: 400 });
 
-  // The book: every held or watched name, with the analysts on it.
   const coveredBy = await getBookCoverage(accountId);
-
-  const view = await getEarningsDay({ date, coveredBy });
-  return NextResponse.json(view);
+  return NextResponse.json(await getFilingsWeek({ date, coveredBy }));
 }

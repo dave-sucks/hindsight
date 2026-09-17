@@ -347,6 +347,9 @@ are what separate momentum from a pump. The thresholds should be yours.
 | Next report date onto the thesis row (`catalystDate`) | **Not doing** | Would be a stored copy of the calendar. The live "earnings on your book this week" line and the sheet's live block cover it. |
 | Daily-run opening context: "earnings on your book this week" | **In — built, #621** | Who reports in the next 7 days, who reported in the last 3 with the figures. |
 | Daily-run opening context: "on today's most-active list" | **Later, small** | One line off the movers call. |
+| `/movers` page and the dashboard movers card | **Built — working, look pending** | Gainers / Losers / Active off Alpaca's screener; names from SEC's list; price and move from the screener (most-actives: one IEX snapshot call); volume from today's SIP bar, ~16 min behind (the plan refuses fresher SIP). Under-$5 names dropped. No 5D/1M/6M columns. |
+| Stock page: volume vs its 20-day average, and insider buying | **Built — working, look pending** | The same reads VOLUME_RATIO and INSIDER_CLUSTER fire on. Insider lines of one Form 4 are now added up (AMH: 6,000 shares, not 100). |
+| `/earnings` → Filings | **Built — working, look pending** | The week's filings: your book, then listed material/serious filings. See `SEC_FILINGS.md`. |
 | Post-earnings discovery screen (the PEAD funnel, computed) | **The rebuild's** | Its discovery-by-screens PR. Chat discovery off the calendar stays alongside it. |
 | Momentum discovery screen (movers + volume + trend + cap) | **The rebuild's** | Same PR. Thresholds are yours. |
 | Volume trigger | **Built — #630** | `VOLUME_RATIO`, by the rebuild. |

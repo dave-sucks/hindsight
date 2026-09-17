@@ -329,8 +329,11 @@ The chat's guidance line for "discovery off activist stakes" is the Agents
 lane's (ticketed). SEC's company list is shared, day-cached, with
 `get_insider_activity`.
 
-**Still open in this lane:** the `/earnings` page's Filings toggle (DAV-278,
-with `/movers` and insider buying and volume on the stock page).
+**Built fourth:** the `/earnings` page's **Earnings | Filings** toggle —
+the same week strip; a week of filings is one fetch (your book's watched
+filings, then listed material and serious filings), held five minutes, so
+clicking between days doesn't search again. Working; the look is the design
+session's.
 
 **Known gap — a row says what KIND of event, not what happened.** SEC's data
 has no headline or summary: a filing is a form, item codes, a date and its
