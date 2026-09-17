@@ -11,6 +11,7 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 import fixture from "./__fixtures__/alpaca-movers-2026-09-17.json";
+import trailing from "./__fixtures__/alpaca-trailing-bars-2026-09-17.json";
 import { __resetCikCache } from "./sec-filings";
 import { getMoversView } from "./movers";
 
@@ -26,7 +27,9 @@ function alpaca(overrides: { screener?: number } = {}) {
     if (u.includes("/screener/stocks/movers")) return overrides.screener ? json({ message: "forbidden" }, overrides.screener) : json(fixture.movers);
     if (u.includes("/screener/stocks/most-actives")) return json(fixture.actives);
     if (u.includes("/v2/stocks/snapshots")) return json(fixture.snapshotsIex);
-    if (u.includes("/v2/stocks/bars")) return json(fixture.bars);
+    // The trailing read asks for months and no end date; the volume read is today's.
+    // Today's volume read carries an end time; the trailing read doesn't.
+    if (u.includes("/v2/stocks/bars")) return json(u.includes("&end=") ? fixture.bars : trailing);
     return json({}, 404);
   }) as unknown as typeof fetch;
   return urls;
@@ -73,5 +76,48 @@ describe("failure", () => {
     const v = await getMoversView("losers", { now: NOW });
     expect(v.rows).toEqual([]);
     expect(v.error).toBe("Alpaca screener losers returned 403");
+  });
+});
+
+describe("the run behind today's move", () => {
+  it("separates a six-month leader from a one-day shell spike", async () => {
+    // Real closes for SDGR, AEMD and NVDA through 2026-09-16.
+    const screener = {
+      gainers: [
+        { symbol: "SDGR", price: 30.24, change: 6.3, percent_change: 26.37 },
+        { symbol: "AEMD", price: 6.78, change: 5.35, percent_change: 374.13 },
+        { symbol: "NVDA", price: 219.4, change: 5.5, percent_change: 2.57 },
+      ],
+      losers: [],
+    };
+    global.fetch = jest.fn(async (url: string | URL) => {
+      const u = String(url);
+      const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200 });
+      if (u.includes("company_tickers_exchange.json")) return json(fixture.companies);
+      if (u.includes("/screener/")) return json(screener);
+      if (u.includes("/v2/stocks/bars") && !u.includes("&end=")) return json(trailing);
+      return json({ bars: {} });
+    }) as unknown as typeof fetch;
+
+    const v = await getMoversView("gainers", { now: NOW });
+    const by = Object.fromEntries(v.rows.map((r) => [r.symbol, r]));
+    // Schrödinger: up today AND up 152% over six months — a real run.
+    expect(by.SDGR.move5d).toBeCloseTo(57.46, 1);
+    expect(by.SDGR.move1m).toBeCloseTo(73.79, 1);
+    expect(by.SDGR.move6m).toBeCloseTo(145.85, 1);
+    // Aethlon: the biggest gainer on the page, and DOWN 38% over six months.
+    expect(by.AEMD.move6m).toBeCloseTo(-36.64, 1);
+    // NVDA: a quiet day, a real six-month trend.
+    expect(by.NVDA.move1m).toBeCloseTo(-2.53, 1);
+    expect(by.NVDA.move6m).toBeCloseTo(20.58, 1);
+  });
+
+  it("measures from completed sessions — today's partial bar is not the base", async () => {
+    // The fixture's last bar is 2026-09-17 (today for NOW); dropping it is
+    // what makes 5D the close five sessions back, not four.
+    // NOW is 21:30 ET on the 16th, so the 16th's bar is today's partial and
+    // the base for 5D is the close five completed sessions before it.
+    const dates = (trailing.bars as Record<string, Array<{ t: string }>>).SDGR.map((b) => b.t.slice(0, 10));
+    expect(dates).toContain("2026-09-16");
   });
 });

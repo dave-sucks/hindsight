@@ -2,7 +2,9 @@
 
 /**
  * Today's movers as a table — Gainers / Losers / Active, sortable by any
- * column. Built from the same pieces as the dashboard's coverage table (the
+ * column, with what the stock has done over 5 sessions, a month and six
+ * months next to today's move (a one-day pop and a month-long run read the
+ * same without them). Built from the same pieces as the dashboard's coverage table (the
  * tab pill, the bordered Table, logo + name cell, PnlBadge for the move) and
  * the earnings rows' send-to-analyst dropdown. Live on each tab switch;
  * nothing stored.
@@ -24,7 +26,7 @@ const TABS: { key: MoverKind; label: string }[] = [
   { key: "active", label: "Active" },
 ];
 
-type SortKey = "changePct" | "price" | "volume";
+type SortKey = "changePct" | "price" | "volume" | "move5d" | "move1m" | "move6m";
 
 function fmtVolume(v: number | null): string {
   if (v == null) return "—";
@@ -138,6 +140,15 @@ export function MoversTable({
                 <TableHead className="w-24 text-right">
                   <button onClick={() => sortBy("changePct")}>1D{arrow("changePct")}</button>
                 </TableHead>
+                <TableHead className="hidden lg:table-cell w-20 text-right">
+                  <button onClick={() => sortBy("move5d")}>5D{arrow("move5d")}</button>
+                </TableHead>
+                <TableHead className="hidden lg:table-cell w-20 text-right">
+                  <button onClick={() => sortBy("move1m")}>1M{arrow("move1m")}</button>
+                </TableHead>
+                <TableHead className="hidden lg:table-cell w-20 text-right">
+                  <button onClick={() => sortBy("move6m")}>6M{arrow("move6m")}</button>
+                </TableHead>
                 <TableHead className="hidden md:table-cell w-28 text-right">
                   <button onClick={() => sortBy("volume")}>Volume{arrow("volume")}</button>
                 </TableHead>
@@ -170,6 +181,15 @@ export function MoversTable({
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </TableCell>
+                  {([r.move5d, r.move1m, r.move6m] as const).map((m, i) => (
+                    <TableCell key={i} className="hidden lg:table-cell text-right">
+                      {m != null ? (
+                        <PnlBadge value={m} format="percent" className="text-xs" />
+                      ) : (
+                        <span className="text-muted-foreground/40">—</span>
+                      )}
+                    </TableCell>
+                  ))}
                   <TableCell className="hidden md:table-cell text-right text-sm tabular-nums font-light">
                     {fmtVolume(r.volume)}
                   </TableCell>
@@ -187,7 +207,8 @@ export function MoversTable({
       )}
 
       <p className="text-xs text-muted-foreground">
-        Common stock at $5 and up. Volume is the consolidated tape, about 16 minutes behind
+        Common stock at $5 and up. 5D / 1M / 6M are measured from the close that many sessions back.
+        Volume is the consolidated tape, about 16 minutes behind
         {view && !view.hasVolume ? " — unavailable right now" : ""}.
       </p>
     </div>
