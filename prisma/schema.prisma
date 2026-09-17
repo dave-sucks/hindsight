@@ -1056,6 +1056,13 @@ model Order {
   @@index([userId])
   @@index([status, createdAt])
   @@index([thesisId])
+  // Also in the database, from raw SQL: "Order_one_sent_close_per_position" —
+  // at most one PENDING intent=CLOSE order per position (migration
+  // 20260917120000). Prisma can't declare it without the partialIndexes
+  // preview, which would wrongly make positionId a unique lookup, so
+  // `prisma migrate diff --to-schema` proposes `DROP INDEX
+  // "Order_one_sent_close_per_position"` — delete that line from any
+  // generated migration.
 }
 
 /// Persisted snapshot of an Alpaca↔DB sync invariant check.
