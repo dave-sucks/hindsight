@@ -39,8 +39,10 @@ import {
 } from "@/lib/proposals/thesis-flips";
 import {
   cancelOrphanedSellProposals,
+  lockPositionBuys,
   lockPositionSales,
-} from "@/lib/proposals/cancel-sibling-proposals";
+} from "@/lib/proposals/position-lock";
+import { positionTotalCap } from "@/lib/agent/position-sizing";
 
 export interface ProposalApprovalResult {
   ok: true;
@@ -80,7 +82,8 @@ export class ProposalExecutionError extends Error {
     | "ALPACA_UNCERTAIN"
     | "UNKNOWN_INTENT"
     | "SALE_UNDER_WAY"
-    | "NOTHING_HELD";
+    | "NOTHING_HELD"
+    | "NO_ROOM_IN_POSITION";
   retryable: boolean;
   constructor(code: ProposalExecutionError["code"], message: string, retryable = false) {
     super(message);
@@ -196,6 +199,45 @@ export async function approveProposal(
   const isSale = intent === "CLOSE" || intent === "PARTIAL_CLOSE";
   const staged = await prisma.$transaction(async (tx) => {
     let submitQty = effectiveQty;
+    if (intent === "ADD") {
+      // The "most in one stock" limit was checked when this add was queued.
+      // Two adds that each fit then can stop fitting once one is sent, so the
+      // room left is measured again here, under the lock (DAV-283).
+      const buys = await lockPositionBuys(tx, order.position.id, orderId);
+      const analyst = buys.analystId
+        ? await tx.agentConfig.findUnique({
+            where: { id: buys.analystId },
+            select: { maxPositionSize: true, maxPositionTotal: true },
+          })
+        : null;
+      const cap = positionTotalCap({
+        maxPositionSize: analyst?.maxPositionSize ?? undefined,
+        maxPositionTotal: analyst?.maxPositionTotal ?? undefined,
+      });
+      const room = cap - buys.heldValue - buys.sentValue;
+      const fits = buys.price > 0 ? Math.floor(room / buys.price) : 0;
+      if (fits < 1) {
+        const cancelled = await tx.order.updateMany({
+          where: { id: orderId, status: "AWAITING_APPROVAL" },
+          data: {
+            status: "CANCELLED",
+            alpacaConfirmedAt: promotedAt,
+            rejectionMessage: `Auto-cancelled — ${order.symbol} is already at the most this analyst may hold in one stock ($${cap.toFixed(0)}).`,
+          },
+        });
+        if (cancelled.count === 0) {
+          throw new ProposalExecutionError("NOT_AWAITING", `Order ${orderId} is no longer AWAITING_APPROVAL`);
+        }
+        return {
+          kind: "cancelled" as const,
+          cancelled: {
+            code: "NO_ROOM_IN_POSITION" as const,
+            message: `${order.symbol} is already at the most this analyst may hold in one stock ($${cap.toFixed(0)}) — the add was cancelled, nothing was bought.`,
+          },
+        };
+      }
+      submitQty = Math.min(effectiveQty, fits);
+    }
     if (isSale) {
       const sales = await lockPositionSales(tx, order.position.id, orderId);
       const underWay = intent === "CLOSE" ? (sales.sentClose ?? sales.sentTrim) : sales.sentClose;
@@ -218,7 +260,13 @@ export async function approveProposal(
         if (cancelled.count === 0) {
           throw new ProposalExecutionError("NOT_AWAITING", `Order ${orderId} is no longer AWAITING_APPROVAL`);
         }
-        return { nothingHeld: true as const };
+        return {
+          kind: "cancelled" as const,
+          cancelled: {
+            code: "NOTHING_HELD" as const,
+            message: `No ${order.symbol} shares are left to sell — the proposal was cancelled.`,
+          },
+        };
       }
     }
     const flipped = await tx.order.updateMany({
@@ -259,16 +307,15 @@ export async function approveProposal(
         priceAt: order.position.avgCost,
       },
     });
-    return { nothingHeld: false as const, submitQty };
+    return { kind: "go" as const, submitQty };
   });
-  if (staged.nothingHeld) {
-    throw new ProposalExecutionError(
-      "NOTHING_HELD",
-      `No ${order.symbol} shares are left to sell — the proposal was cancelled.`,
-    );
+  if (staged.kind === "cancelled") {
+    throw new ProposalExecutionError(staged.cancelled.code, staged.cancelled.message);
   }
   const { submitQty } = staged;
-  const resized = isSale && submitQty !== order.quantity;
+  // A resize is what the room left forced, not what the principal edited.
+  const resized = submitQty !== effectiveQty;
+  const resizeNote = isSale ? "the shares left to sell" : "the room left in this stock";
 
   // 2. Submit to Alpaca using the SAME idempotencyKey stored at proposal
   //    time. If this call fails uncertainly (network/5xx), the Order stays
@@ -404,8 +451,8 @@ export async function approveProposal(
     await writeThesisUpdate({
       thesisId: await findRelatedThesisId(order.position.analystId, order.position.symbol),
       type: "PROPOSAL_APPROVED",
-      summary: `Approved ${intent} on ${order.symbol}${qtyEdited ? ` (edited ${order.quantity}→${effectiveQty} sh)` : ""}${resized ? ` (${order.quantity}→${submitQty} sh — the shares left to sell)` : ""} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
-      rationale: `User approved the ${intent} proposal${qtyEdited ? `, resizing ${order.quantity}→${effectiveQty} shares` : ""}${resized ? `; sold ${submitQty} of the ${order.quantity} shares proposed, the shares left to sell at approval` : ""}. Alpaca order id ${alpacaOrderId}.`,
+      summary: `Approved ${intent} on ${order.symbol}${qtyEdited ? ` (edited ${order.quantity}→${effectiveQty} sh)` : ""}${resized ? ` (${effectiveQty}→${submitQty} sh — ${resizeNote})` : ""} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
+      rationale: `User approved the ${intent} proposal${qtyEdited ? `, resizing ${order.quantity}→${effectiveQty} shares` : ""}${resized ? `; ${isSale ? "sold" : "bought"} ${submitQty} of the ${effectiveQty} shares proposed — ${resizeNote} at approval` : ""}. Alpaca order id ${alpacaOrderId}.`,
       fieldChanges: {
         proposal: {
           from: { orderId, status: "AWAITING_APPROVAL", quantity: order.quantity },

@@ -1,6 +1,6 @@
 /**
- * Sell orders on one position — whether a sale is already under way, and
- * clearing the sell proposals a sale makes moot.
+ * The position lock, and what it protects: how much of a position can still
+ * be sold or bought, and the sell proposals a sale makes moot.
  *
  * SMMT 2026-09-15 (LIVE): the $17.40 floor and the 8% trail fired on the same
  * check and two runs each staged a full 450-share close 180 ms apart — the old
@@ -27,12 +27,19 @@ type TransactionClient = Omit<
  * A trim is a plain market sell (closePositionPartial), same as a full close,
  * so either one sized past what is held opens a short on a margin account.
  */
+export async function lockPositionRow(
+  tx: TransactionClient,
+  positionId: string,
+): Promise<void> {
+  await tx.$queryRaw`SELECT 1 FROM "Position" WHERE id = ${positionId} FOR NO KEY UPDATE`;
+}
+
 export async function lockPositionSales(
   tx: TransactionClient,
   positionId: string,
   exceptOrderId?: string,
 ) {
-  await tx.$queryRaw`SELECT 1 FROM "Position" WHERE id = ${positionId} FOR NO KEY UPDATE`;
+  await lockPositionRow(tx, positionId);
   const position = await tx.position.findUnique({
     where: { id: positionId },
     select: { status: true, quantity: true },
@@ -112,4 +119,43 @@ export async function cancelOrphanedSellProposals(
     );
     return 0;
   }
+}
+
+/**
+ * Under the position lock: what this analyst already has in this stock — the
+ * value held plus the buys already sent to Alpaca and not yet filled — and the
+ * price to size a further buy at. The "most in one stock" limit is checked
+ * against this at approval, because two adds queued while both fit can stop
+ * fitting once one of them is sent (DAV-283).
+ */
+export async function lockPositionBuys(
+  tx: TransactionClient,
+  positionId: string,
+  exceptOrderId?: string,
+) {
+  await lockPositionRow(tx, positionId);
+  const position = await tx.position.findUnique({
+    where: { id: positionId },
+    select: { status: true, quantity: true, avgCost: true, analystId: true },
+  });
+  // Adds only: a position's own opening buy is already in its share count,
+  // so counting that order too would charge the same shares twice.
+  const sent = await tx.order.findMany({
+    where: {
+      positionId,
+      status: "PENDING",
+      intent: "ADD",
+      ...(exceptOrderId ? { id: { not: exceptOrderId } } : {}),
+    },
+    select: { quantity: true },
+  });
+  const price = position?.avgCost ?? 0;
+  const held = position && position.status !== "CLOSED" ? position.quantity : 0;
+  const sentShares = sent.reduce((n, o) => n + o.quantity, 0);
+  return {
+    price,
+    analystId: position?.analystId ?? null,
+    heldValue: held * price,
+    sentValue: sentShares * price,
+  };
 }

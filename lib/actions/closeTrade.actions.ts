@@ -22,7 +22,7 @@ import {
 import {
   cancelOrphanedSellProposals,
   lockPositionSales,
-} from "@/lib/proposals/cancel-sibling-proposals";
+} from "@/lib/proposals/position-lock";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";

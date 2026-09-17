@@ -20,8 +20,6 @@
  * blocks a second transaction until the first ends.
  */
 
-type Row = Record<string, unknown>;
-
 const POSITION_ID = "cmtiwz2ua000704l7l0z60jfl";
 const THESIS_ID = "cmtc1kp7o000l04ikm6kf9h1b";
 const ACCOUNT_ID = "34f5c589-e216-4afe-9ee8-613c13f300e7";
@@ -32,135 +30,9 @@ const FLOOR_RATIONALE =
 const TRAIL_RATIONALE =
   "If $SMMT gives back 8% from the high after this breakout, protect the gain rather than let momentum fully unwind.";
 
-const db = {
-  orders: [] as Row[],
-  positions: new Map<string, Row>(),
-  events: [] as Row[],
-  account: {} as Row,
-  /** One-shot: runs the moment something reads the account's approval settings. */
-  onAccountRead: null as (() => Promise<unknown>) | null,
-};
-
-function matches(row: Row, where: Row = {}): boolean {
-  return Object.entries(where).every(([key, cond]) => {
-    const value = row[key];
-    if (cond && typeof cond === "object" && !(cond instanceof Date)) {
-      const c = cond as { in?: unknown[]; not?: unknown };
-      if (c.in) return c.in.includes(value);
-      if ("not" in c) return value !== c.not;
-    }
-    return value === cond;
-  });
-}
-
-let seq = 0;
-const orderModel = {
-  findFirst: async ({ where }: { where: Row }) => {
-    const hit = db.orders.find((o) => matches(o, where));
-    return hit ? { ...hit } : null;
-  },
-  findMany: async ({ where }: { where: Row }) =>
-    db.orders.filter((o) => matches(o, where)).map((o) => ({ ...o })),
-  findUnique: async ({ where }: { where: { id: string } }) => {
-    const hit = db.orders.find((o) => o.id === where.id);
-    return hit
-      ? { ...hit, position: { ...db.positions.get(hit.positionId as string) } }
-      : null;
-  },
-  create: async ({ data }: { data: Row }) => {
-    const row = { id: `order-${++seq}`, createdAt: new Date(), ...data };
-    db.orders.push(row);
-    return { ...row };
-  },
-  update: async ({ where, data }: { where: { id: string }; data: Row }) => {
-    const row = db.orders.find((o) => o.id === where.id)!;
-    Object.assign(row, data);
-    return { ...row };
-  },
-  updateMany: async ({ where, data }: { where: Row; data: Row }) => {
-    const hits = db.orders.filter((o) => matches(o, where));
-    hits.forEach((o) => Object.assign(o, data));
-    return { count: hits.length };
-  },
-};
-const positionModel = {
-  findUniqueOrThrow: async ({ where }: { where: { id: string } }) => ({
-    ...db.positions.get(where.id)!,
-  }),
-  findUnique: async ({ where }: { where: { id: string } }) => {
-    const hit = db.positions.get(where.id);
-    return hit ? { ...hit } : null;
-  },
-  findFirst: async ({ where }: { where: Row }) => {
-    const hit = [...db.positions.values()].find((p) => matches(p, where));
-    return hit ? { ...hit, analyst: { name: "Secular Compounder" } } : null;
-  },
-  update: async ({ where, data }: { where: { id: string }; data: Row }) => {
-    const row = db.positions.get(where.id)!;
-    for (const [key, value] of Object.entries(data)) {
-      const dec = (value as { decrement?: number } | null)?.decrement;
-      row[key] = dec != null ? (row[key] as number) - dec : value;
-    }
-    return { ...row };
-  },
-};
-const recordEvent = async ({ data }: { data: Row }) => {
-  db.events.push(data);
-  return data;
-};
-
-// Row locks: position id → promise that resolves when the holder's tx ends.
-const rowLocks = new Map<string, Promise<void>>();
-
-function makeTx(held: Map<string, () => void>) {
-  return {
-    $queryRaw: async (_sql: TemplateStringsArray, positionId: string) => {
-      if (held.has(positionId)) return [];
-      while (rowLocks.has(positionId)) await rowLocks.get(positionId);
-      let release!: () => void;
-      rowLocks.set(positionId, new Promise<void>((r) => (release = r)));
-      held.set(positionId, () => {
-        rowLocks.delete(positionId);
-        release();
-      });
-      return [];
-    },
-    order: orderModel,
-    position: positionModel,
-    positionEvent: { create: recordEvent },
-    positionManagementAction: { create: recordEvent },
-    runEvent: { create: recordEvent },
-    tradeDecision: { create: recordEvent },
-  };
-}
-
 jest.mock("@/lib/prisma", () => ({
-  prisma: {
-    account: {
-      findUnique: async () => {
-        const hook = db.onAccountRead;
-        db.onAccountRead = null;
-        await hook?.();
-        return { ...db.account };
-      },
-    },
-    order: orderModel,
-    position: positionModel,
-    positionEvent: { create: recordEvent },
-    runEvent: { create: recordEvent },
-    gateRejection: { create: recordEvent },
-    thesis: { findFirst: async () => ({ id: THESIS_ID }), findUnique: async () => null },
-    researchRun: { findUnique: async () => null },
-    agentConfig: { findUnique: async () => ({ emailAlerts: false }) },
-    $transaction: async (cb: (tx: unknown) => Promise<unknown>) => {
-      const held = new Map<string, () => void>();
-      try {
-        return await cb(makeTx(held));
-      } finally {
-        held.forEach((release) => release());
-      }
-    },
-  },
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  prisma: require("./__fixtures__/position-db").prismaFake,
 }));
 
 const mockPlaceMarketOrder = jest.fn();
@@ -196,6 +68,7 @@ jest.mock("@/lib/emails/recipients", () => ({ getEmailRecipients: async () => []
 jest.mock("@/lib/emails/trade-closed", () => ({ tradeClosedHtml: () => "" }));
 jest.mock("@/lib/email-suppression", () => ({ isInsideMorningBatch: () => false }));
 
+import { db, resetDb, type Row } from "./__fixtures__/position-db";
 import { closeOpenPosition } from "@/lib/actions/closeTrade.actions";
 import { managePosition } from "@/lib/agent/tools/manage-position";
 import type { ToolContext } from "@/lib/agent/tool-context";
@@ -235,32 +108,25 @@ const openCloses = (status: string) =>
 
 beforeEach(() => {
   jest.clearAllMocks();
-  seq = 0;
-  db.orders = [];
-  db.events = [];
-  db.onAccountRead = null;
-  db.account = { requireApprovalSellsLive: true, requireApprovalBuysLive: true };
-  db.positions = new Map([
-    [
-      POSITION_ID,
-      {
-        id: POSITION_ID,
-        accountId: ACCOUNT_ID,
-        userId: ACCOUNT_ID,
-        analystId: "cmmmh0wxu000004js7yoyzvlf",
-        symbol: "SMMT",
-        direction: "LONG",
-        status: "OPEN",
-        environment: "LIVE",
-        quantity: 450,
-        avgCost: 14.35,
-        stopLoss: 17.4,
-        targetPrice: 26,
-        peakPrice: 18.725,
-        openedAt: new Date("2026-09-01T21:15:27.803Z"),
-      },
-    ],
-  ]);
+  resetDb(
+    {
+      id: POSITION_ID,
+      accountId: ACCOUNT_ID,
+      userId: ACCOUNT_ID,
+      analystId: "cmmmh0wxu000004js7yoyzvlf",
+      symbol: "SMMT",
+      direction: "LONG",
+      status: "OPEN",
+      environment: "LIVE",
+      quantity: 450,
+      avgCost: 14.35,
+      stopLoss: 17.4,
+      targetPrice: 26,
+      peakPrice: 18.725,
+      openedAt: new Date("2026-09-01T21:15:27.803Z"),
+    },
+    { thesisId: THESIS_ID },
+  );
   mockPlaceMarketOrder.mockImplementation(async (o: { clientOrderId: string }) => ({
     id: `alpaca-${o.clientOrderId}`,
   }));
