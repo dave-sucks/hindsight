@@ -29,6 +29,7 @@ import { prisma } from "@/lib/prisma";
 import {
   placeMarketOrder,
   closePositionPartial,
+  getLatestPrice,
   type AlpacaCredentials,
 } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -197,6 +198,16 @@ export async function approveProposal(
   //    AWAITING_APPROVAL, so two clicks on one proposal can't both submit.
   const promotedAt = new Date();
   const isSale = intent === "CLOSE" || intent === "PARTIAL_CLOSE";
+
+  // An add buys at what the stock costs now, and adds go to winners — so the
+  // room left in it is measured at the live price, not at what the shares we
+  // already own cost us. One read, before the transaction; a quote that fails
+  // falls back to average cost and never refuses the trade (DAV-283).
+  let livePrice: number | null = null;
+  if (intent === "ADD") {
+    livePrice = await getLatestPrice(order.symbol, creds).catch(() => null);
+    if (livePrice == null || !Number.isFinite(livePrice) || livePrice <= 0) livePrice = null;
+  }
   const staged = await prisma.$transaction(async (tx) => {
     let submitQty = effectiveQty;
     if (intent === "ADD") {
@@ -214,8 +225,11 @@ export async function approveProposal(
         maxPositionSize: analyst?.maxPositionSize ?? undefined,
         maxPositionTotal: analyst?.maxPositionTotal ?? undefined,
       });
-      const room = cap - buys.heldValue - buys.sentValue;
-      const fits = buys.price > 0 ? Math.floor(room / buys.price) : 0;
+      // Held shares at cost (as the limit is checked when the add is queued),
+      // shares still being bought at what they will cost.
+      const price = livePrice ?? buys.costPrice;
+      const room = cap - buys.heldValue - buys.sentShares * price;
+      const fits = price > 0 ? Math.floor(room / price) : 0;
       if (fits < 1) {
         const cancelled = await tx.order.updateMany({
           where: { id: orderId, status: "AWAITING_APPROVAL" },

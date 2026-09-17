@@ -123,10 +123,14 @@ export async function cancelOrphanedSellProposals(
 
 /**
  * Under the position lock: what this analyst already has in this stock — the
- * value held plus the buys already sent to Alpaca and not yet filled — and the
- * price to size a further buy at. The "most in one stock" limit is checked
- * against this at approval, because two adds queued while both fit can stop
- * fitting once one of them is sent (DAV-283).
+ * value of the shares held, at cost, and the shares in adds already sent to
+ * Alpaca and not yet filled. The "most in one stock" limit is checked against
+ * this at approval, because two adds queued while both fit can stop fitting
+ * once one of them is sent (DAV-283).
+ *
+ * Held shares are valued at cost, the way the limit is checked when an add is
+ * queued. Shares still being bought are the caller's to value — at the live
+ * price, which is what they will actually cost.
  */
 export async function lockPositionBuys(
   tx: TransactionClient,
@@ -149,13 +153,12 @@ export async function lockPositionBuys(
     },
     select: { quantity: true },
   });
-  const price = position?.avgCost ?? 0;
+  const costPrice = position?.avgCost ?? 0;
   const held = position && position.status !== "CLOSED" ? position.quantity : 0;
-  const sentShares = sent.reduce((n, o) => n + o.quantity, 0);
   return {
-    price,
+    costPrice,
     analystId: position?.analystId ?? null,
-    heldValue: held * price,
-    sentValue: sentShares * price,
+    heldValue: held * costPrice,
+    sentShares: sent.reduce((n, o) => n + o.quantity, 0),
   };
 }

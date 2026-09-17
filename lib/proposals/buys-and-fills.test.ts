@@ -22,12 +22,13 @@ jest.mock("@/lib/prisma", () => ({
 }));
 
 const mockPlaceMarketOrder = jest.fn();
+const mockGetLatestPrice = jest.fn();
 jest.mock("@/lib/alpaca", () => ({
   placeMarketOrder: (...a: unknown[]) => mockPlaceMarketOrder(...a),
   closePositionPartial: jest.fn(),
   getOrder: jest.fn(),
   getOrderByClientOrderId: jest.fn(),
-  getLatestPrice: async () => 14.35,
+  getLatestPrice: (...a: unknown[]) => mockGetLatestPrice(...a),
   cancelOrder: jest.fn(),
 }));
 jest.mock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => undefined }));
@@ -87,6 +88,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   resetDb(openPosition());
   mockPlaceMarketOrder.mockImplementation(async () => ({ id: `alpaca-${Math.random()}` }));
+  mockGetLatestPrice.mockResolvedValue(14.35); // flat: live price = average cost
 });
 
 describe("DAV-283 — an add fits the most this analyst may hold in one stock", () => {
@@ -130,6 +132,32 @@ describe("DAV-283 — an add fits the most this analyst may hold in one stock", 
     // 450 shares held at $14.35 and its opening order still PENDING: the room
     // left is $3,542.50, not nothing.
     db.orders.push(order("open-1", "OPEN", 450, "PENDING"), order("add-1", "ADD", 100));
+
+    await approveProposal("add-1", ACCOUNT_ID);
+
+    expect(mockPlaceMarketOrder.mock.calls[0][0].qty).toBe(100);
+  });
+
+  it("a stock up 25% is added at what it costs now, not what we paid", async () => {
+    // The QB's example: $10,000 limit, 60 sh held at $100 ($6,000 at cost),
+    // price now $125, two $4,000 adds queued (32 shares each).
+    resetDb(openPosition({ quantity: 60, avgCost: 100 }));
+    mockGetLatestPrice.mockResolvedValue(125);
+    db.orders.push(order("add-1", "ADD", 32), order("add-2", "ADD", 32));
+
+    await approveProposal("add-1", ACCOUNT_ID);
+    const second = await approveProposal("add-2", ACCOUNT_ID).catch((e) => e);
+
+    // First buys 32 sh = $4,000; that fills the room, so the second is cancelled.
+    const bought = mockPlaceMarketOrder.mock.calls.reduce((n, c) => n + c[0].qty * 125, 0);
+    expect(mockPlaceMarketOrder.mock.calls.map((c) => c[0].qty)).toEqual([32]);
+    expect(6_000 + bought).toBeLessThanOrEqual(10_000);
+    expect(second).toMatchObject({ code: "NO_ROOM_IN_POSITION" });
+  });
+
+  it("a quote that fails falls back to average cost — the add is still sent", async () => {
+    mockGetLatestPrice.mockRejectedValue(new Error("quote unavailable"));
+    db.orders.push(order("add-1", "ADD", 100));
 
     await approveProposal("add-1", ACCOUNT_ID);
 
