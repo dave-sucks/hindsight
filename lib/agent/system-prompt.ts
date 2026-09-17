@@ -183,7 +183,7 @@ export function buildDailyRunSystemPromptV2(
       [
         "## Regime and cash",
         `Cash is $${Math.round(cash).toLocaleString()}${cashPct != null ? ` (${cashPct}% of equity)` : ""}. \`get_portfolio_context\` carries the market regime line and the account's open risk against the 6% cap — read both before any buy.`,
-        "- **RISK_ON:** full size. **CAUTION** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this regime — say so on the row rather than buying one. **RISK_OFF** (SPY under its 200-day): only event-driven and mean-reversion entries; everything else waits.",
+        "- **RISK_ON:** full size. **CAUTION** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this regime — say so on the row rather than buying one. **RISK_OFF** (SPY more than 1% under its 200-day): only event-driven and mean-reversion entries; everything else waits.",
         `- **Cash duty.** Cash above 25% of equity, a watch name at its buy level${atBuy.length ? ` (today: ${atBuy.join(", ")})` : ""}, and RISK_ON: act on it, or write one sentence in the run summary saying why not. Idle cash with a live setup is a decision, not a quiet day.`,
       ].join("\n"),
     );
