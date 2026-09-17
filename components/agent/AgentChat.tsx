@@ -22,6 +22,7 @@ import type { HindsightComposerFeatures } from "@/components/assistant-ui/hindsi
 import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
 import { ToolUICallbacksProvider } from "@/components/assistant-ui/tool-uis";
 import { useAutoSend } from "@/hooks/useAutoSend";
+import { useSavedAnswerRecovery } from "@/hooks/useSavedAnswerRecovery";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -253,13 +254,31 @@ export function AgentChat({
   // Only send override when it differs from the mode default
   if (selectedModel !== defaultModel) body.modelOverride = selectedModel;
 
+  // The saved thread, reloaded after the connection dropped mid-answer
+  // (useSavedAnswerRecovery). A new key remounts the runtime seeded with it —
+  // the same path a resumed chat takes. The session id lives above the
+  // remount, so the next turn still writes to the same chat.
+  const [recovered, setRecovered] = useState<{ messages: UIMessage[]; key: number } | null>(null);
+  const handleRecovered = useCallback((saved: UIMessage[]) => {
+    setRecovered((prev) => ({ messages: saved, key: (prev?.key ?? 0) + 1 }));
+  }, []);
+
   return (
-    <ChatRuntime api={api} body={body} messages={messages}>
+    <ChatRuntime
+      key={recovered?.key ?? 0}
+      api={api}
+      body={body}
+      messages={recovered?.messages ?? messages}
+    >
       <AgentChatInner
         mode={mode}
+        runId={runId}
+        chatSessionId={sessionIdRef.current}
+        onRecovered={handleRecovered}
         analystId={analystId}
         analystName={analystName}
-        autoStart={autoStart}
+        // A reloaded chat already has its opening message — never send it again.
+        autoStart={recovered ? false : autoStart}
         headerAction={headerAction}
         sources={sources}
         theses={theses}
@@ -267,7 +286,7 @@ export function AgentChat({
         currentConfig={currentConfig}
         composerSlot={composerSlot}
         principalScope={principalScope}
-        initialPrompt={initialPrompt}
+        initialPrompt={recovered ? undefined : initialPrompt}
         onConfigSuggested={onConfigSuggested}
         onPodcastConfigSuggested={onPodcastConfigSuggested}
         onMutatingChange={onMutatingChange}
@@ -282,6 +301,9 @@ export function AgentChat({
 
 interface InnerProps {
   mode: AgentMode;
+  runId?: string;
+  chatSessionId: string | null;
+  onRecovered: (messages: UIMessage[]) => void;
   analystId?: string;
   analystName?: string;
   autoStart?: boolean;
@@ -305,6 +327,9 @@ interface InnerProps {
 
 function AgentChatInner({
   mode,
+  runId,
+  chatSessionId,
+  onRecovered,
   analystId,
   analystName,
   autoStart,
@@ -327,6 +352,15 @@ function AgentChatInner({
 
   // research-run: auto-send "Run" to kick off the agent
   useAutoSend({ message: autoStart ? "Run" : initialPrompt, delay: autoStart ? 500 : 300 });
+
+  // Principal chat saves every turn by chatSessionId, so a dropped
+  // connection can be recovered from the saved thread.
+  useSavedAnswerRecovery({
+    enabled: mode === "principal",
+    runId,
+    chatSessionId,
+    onRecovered,
+  });
 
   const handleConfirmConfig = useCallback(
     (config: AgentConfigData) => {
