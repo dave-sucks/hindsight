@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { seedAnalystTriggers } from "@/lib/agent/triggers/seed-analyst";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -746,6 +747,8 @@ export async function createAnalystFromWizard(
       weeklyDigestEnabled: true,
     },
   });
+  // The seat's rules from the playbook, on its Triggers tab from day one (DAV-280).
+  await seedAnalystTriggers(analyst.id);
 
   return { id: analyst.id };
 }
@@ -1099,6 +1102,8 @@ export async function createAnalystFromBuilder(
 
     return newAnalyst;
   });
+  // The seat's rules from the playbook, on its Triggers tab from day one (DAV-280).
+  await seedAnalystTriggers(analyst.id);
 
   console.log(`[analyst] Created analyst id=${analyst.id} name="${name}" policy.holdingsAttn=${intelligencePolicy.holdingsAttention} policy.discoveryAttn=${intelligencePolicy.discoveryAttention}`);
   revalidatePath("/analysts");
