@@ -39,6 +39,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
 import { cn } from "@/lib/utils";
 import { AnalystConsensusWidget } from "@/components/domain/analyst-consensus";
+import { getInsiderBuying, getStockVolume } from "@/lib/market-data/stock-activity";
 import {
   ExternalLink,
 } from "lucide-react";
@@ -107,6 +108,71 @@ async function NewsTab({ symbol }: { symbol: string }) {
           {i < news.length - 1 && <Separator />}
         </div>
       ))}
+    </div>
+  );
+}
+
+// Volume against its 20-day average and open-market insider buying — the
+// same reads the VOLUME_RATIO and INSIDER_CLUSTER triggers fire on, so this
+// section and the triggers can't disagree. Live; a failed read says so.
+function fmtShares(n: number | null): string {
+  if (n == null) return "—";
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return String(n);
+}
+
+async function ActivitySection({ symbol }: { symbol: string }) {
+  const [volume, insiders] = await Promise.all([getStockVolume(symbol), getInsiderBuying(symbol)]);
+  const buys = insiders.last90?.buys ?? [];
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Volume</p>
+        {volume.error ? (
+          <p className="text-sm text-muted-foreground">Volume unavailable — {volume.error}.</p>
+        ) : (
+          <div className="grid grid-cols-3 gap-x-4 gap-y-2 py-3 border-y">
+            <StatCell label="Today" value={fmtShares(volume.today)} />
+            <StatCell label="20-day avg" value={fmtShares(volume.avg20)} />
+            <StatCell label="Vs average" value={volume.ratio != null ? `${volume.ratio.toFixed(2)}×` : "—"} />
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Insider buying</p>
+        {insiders.error ? (
+          <p className="text-sm text-muted-foreground">Insider buying unavailable — {insiders.error}.</p>
+        ) : buys.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No open-market insider buying in the last 90 days.</p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              {insiders.last90!.buyers} insider{insiders.last90!.buyers === 1 ? "" : "s"} bought in the last 90 days
+              {insiders.last30 ? `, ${insiders.last30.buyers} in the last 30` : ""}
+              {(insiders.last30?.buyers ?? 0) >= 3 ? " — a cluster." : "."}
+              {insiders.last90!.lowestPrice != null ? ` Lowest price paid $${insiders.last90!.lowestPrice.toFixed(2)}.` : ""}
+            </p>
+            <div className="rounded-lg border overflow-hidden bg-card">
+              {buys.slice(0, 8).map((b, i) => (
+                <div
+                  key={`${b.name}-${b.date}-${i}`}
+                  className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border/40 last:border-0 text-sm"
+                >
+                  <span className="truncate">{b.name}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {new Date(`${b.date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}
+                    {" · "}
+                    {b.shares.toLocaleString()} sh{b.price > 0 ? ` @ $${b.price.toFixed(2)}` : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -283,6 +349,11 @@ export default async function StockDetailPage({ params }: Props) {
                 <StatCell label="EPS" value={eps ? fmt(eps) : "—"} />
                 <StatCell label="Div Yield" value={divYield ? `${fmt(divYield)}%` : "—"} />
               </div>
+
+              {/* Volume + insider buying — own Suspense so the page paints first. */}
+              <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+                <ActivitySection symbol={upperSymbol} />
+              </Suspense>
 
               {/* Latest Thesis */}
               {(() => {

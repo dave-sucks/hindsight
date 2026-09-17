@@ -12,15 +12,14 @@ const rows = [
   { name: "Zanganeh Mahkam", change: 3810000, transactionDate: "2026-06-12", transactionCode: "P", transactionPrice: 13.12, isDerivative: false, id: "a" },
   { name: "DUGGAN ROBERT W", change: 3810000, transactionDate: "2026-06-12", transactionCode: "P", transactionPrice: 13.12, isDerivative: false, id: "b" },
   { name: "Soni Manmeet Singh", change: 25000, transactionDate: "2026-06-04", transactionCode: "P", transactionPrice: 14.43, isDerivative: false, id: "c" },
-  // Not buying: a grant, an option exercise, a sale, a duplicate filing id.
+  // Not buying: a grant, an option exercise, a sale.
   { name: "Grant Person", change: 50000, transactionDate: "2026-06-10", transactionCode: "A", transactionPrice: 0, isDerivative: false, id: "d" },
   { name: "Option Person", change: 10000, transactionDate: "2026-06-10", transactionCode: "M", transactionPrice: 5, isDerivative: true, id: "e" },
   { name: "Seller", change: -20000, transactionDate: "2026-06-11", transactionCode: "S", transactionPrice: 14, isDerivative: false, id: "f" },
-  { name: "Zanganeh Mahkam", change: 3810000, transactionDate: "2026-06-12", transactionCode: "P", transactionPrice: 13.12, isDerivative: false, id: "a" },
 ];
 
 describe("openMarketBuys", () => {
-  it("keeps open-market purchases only, one per filing, newest first", () => {
+  it("keeps open-market purchases only, one per person per filing per day, newest first", () => {
     const buys = openMarketBuys(rows);
     expect(buys.map((b) => b.name)).toEqual(["Zanganeh Mahkam", "DUGGAN ROBERT W", "Soni Manmeet Singh"]);
   });
@@ -76,5 +75,27 @@ describe("INSIDER_CLUSTER — the trigger kind", () => {
   it("the schema accepts it and bounds it", () => {
     expect(triggerPredicateSchema.safeParse({ kind: "INSIDER_CLUSTER", minBuyers: 3, days: 30 }).success).toBe(true);
     expect(triggerPredicateSchema.safeParse({ kind: "INSIDER_CLUSTER", minBuyers: 3, days: 120 }).success).toBe(false);
+  });
+});
+
+describe("AMH, a filing with several purchase lines (real Finnhub reply, 2026-09-17)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const amh = require("./__fixtures__/finnhub-insiders-AMH-2026-09-17.json").data;
+
+  it("adds a filing's lines up — Corrigan bought 6,000 shares on Aug 24, not 100", () => {
+    const buys = openMarketBuys(amh);
+    const aug24 = buys.find((b) => b.name === "CORRIGAN JACK E" && b.date === "2026-08-24")!;
+    // SEC's Form 4 (0001227454-26-000012): 1000 + 700 + 1800 + 2000 + 200 + 200 + 100.
+    expect(aug24.shares).toBe(6000);
+    expect(aug24.lowPrice).toBe(22.35);
+    expect(aug24.price).toBeCloseTo(22.418, 2);
+    expect(buys).toHaveLength(4);
+  });
+
+  it("the lowest price paid is the lowest line, and the buyer count is unchanged", () => {
+    const c = insiderCluster(openMarketBuys(amh), 90, new Date("2026-09-17T01:30:00Z"));
+    expect(c.buyers).toBe(2);
+    expect(c.netShares).toBe(15_000);
+    expect(c.lowestPrice).toBe(22.35);
   });
 });

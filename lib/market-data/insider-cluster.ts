@@ -23,8 +23,12 @@ export interface InsiderBuy {
   name: string;
   /** YYYY-MM-DD, the transaction date. */
   date: string;
+  /** Every purchase line of this filing on this day, added up. */
   shares: number;
+  /** The share-weighted average price of those lines. */
   price: number;
+  /** The lowest price among those lines — the playbook's stop reference. Absent on snapshots written before 2026-09-17. */
+  lowPrice?: number;
 }
 
 /** How far back the snapshot keeps buys — the longest window a trigger may ask about. */
@@ -40,23 +44,33 @@ interface FinnhubInsiderRow {
   id?: string;
 }
 
-/** Keep only open-market purchases; one row per filing id. */
+/**
+ * Open-market purchases, one per person per filing per day. Finnhub returns
+ * one row per line of the Form 4 — a single filing often reports several
+ * purchases (AMH, 2026-08-24: Jack Corrigan, seven lines, 6,000 shares, two
+ * of them an identical 200 @ $22.35 — checked against the filing on SEC).
+ * Those lines are added up, never deduplicated: an identical line is a
+ * second purchase, not a repeat.
+ */
 export function openMarketBuys(rows: FinnhubInsiderRow[]): InsiderBuy[] {
-  const seen = new Set<string>();
-  const out: InsiderBuy[] = [];
+  const byKey = new Map<string, { buy: InsiderBuy; cost: number; priced: number }>();
   for (const r of rows) {
     if (r.transactionCode !== "P" || r.isDerivative || !(Number(r.change) > 0) || !r.name || !r.transactionDate) continue;
-    const key = r.id ?? `${r.name}|${r.transactionDate}|${r.change}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      name: r.name,
-      date: r.transactionDate.slice(0, 10),
-      shares: Number(r.change),
-      price: Number(r.transactionPrice) || 0,
-    });
+    const date = r.transactionDate.slice(0, 10);
+    const key = `${r.id ?? ""}|${r.name}|${date}`;
+    const shares = Number(r.change);
+    const price = Number(r.transactionPrice) || 0;
+    const held = byKey.get(key) ?? { buy: { name: r.name, date, shares: 0, price: 0 }, cost: 0, priced: 0 };
+    held.buy.shares += shares;
+    if (price > 0) {
+      held.cost += shares * price;
+      held.priced += shares;
+      held.buy.lowPrice = held.buy.lowPrice == null ? price : Math.min(held.buy.lowPrice, price);
+    }
+    held.buy.price = held.priced > 0 ? Math.round((held.cost / held.priced) * 1000) / 1000 : 0;
+    byKey.set(key, held);
   }
-  return out.sort((a, b) => b.date.localeCompare(a.date));
+  return [...byKey.values()].map((v) => v.buy).sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export async function fetchOpenMarketBuys(
@@ -86,7 +100,7 @@ export function insiderCluster(buys: InsiderBuy[], days: number, now: Date = new
   const since = new Date(now.getTime() - days * 86_400_000).toISOString().slice(0, 10);
   const inWindow = buys.filter((b) => b.date >= since);
   const names = Array.from(new Set(inWindow.map((b) => b.name)));
-  const prices = inWindow.map((b) => b.price).filter((p) => p > 0);
+  const prices = inWindow.map((b) => b.lowPrice ?? b.price).filter((p) => p > 0);
   return {
     buyers: names.length,
     names,

@@ -102,3 +102,54 @@ export async function getAlpacaMovers(
     return { data: null, error: msg };
   }
 }
+
+// ── Snapshots: price, the day's move and volume for a list ──────────────────
+
+export interface MoverSnapshot {
+  price: number | null;
+  prevClose: number | null;
+  /** Always null — see getMoverSnapshots. */
+  volume: number | null;
+}
+
+interface SnapshotBody {
+  latestTrade?: { p?: number };
+  dailyBar?: { c?: number; v?: number };
+  prevDailyBar?: { c?: number };
+}
+
+/**
+ * Price and prior close for up to 100 symbols in one call, on the IEX feed:
+ * our plan refuses SIP snapshots newer than 15 minutes ("subscription does
+ * not permit querying recent SIP data", 2026-09-17), and a snapshot's volume
+ * is only ever read from SIP — so volume is always null here; callers take
+ * it from today's delayed SIP bar (getTodaySessionBars).
+ */
+export async function getMoverSnapshots(
+  symbols: string[],
+  creds?: AlpacaCredentials,
+): Promise<{ bySymbol: Map<string, MoverSnapshot>; error?: string }> {
+  const bySymbol = new Map<string, MoverSnapshot>();
+  const h = headers(creds);
+  if (!h) return { bySymbol, error: "Alpaca credentials are not set" };
+  if (symbols.length === 0) return { bySymbol };
+  try {
+    const res = await fetch(
+      `https://data.alpaca.markets/v2/stocks/snapshots?symbols=${encodeURIComponent(symbols.slice(0, 100).join(","))}&feed=iex`,
+      { headers: h, cache: "no-store", signal: AbortSignal.timeout(10_000) },
+    );
+    if (!res.ok) return { bySymbol, error: `Alpaca snapshots returned ${res.status}` };
+    const body = (await res.json()) as Record<string, SnapshotBody | null>;
+    for (const [symbol, s] of Object.entries(body)) {
+      if (!s) continue;
+      bySymbol.set(symbol.toUpperCase(), {
+        price: s.latestTrade?.p ?? s.dailyBar?.c ?? null,
+        prevClose: s.prevDailyBar?.c ?? null,
+        volume: null,
+      });
+    }
+    return { bySymbol };
+  } catch (err) {
+    return { bySymbol, error: `Alpaca snapshots failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}

@@ -51,6 +51,7 @@ import {
 import { TradeRow as SharedTradeRow } from '@/components/ui/trade-row';
 import CoverageTable from '@/components/dashboard/CoverageTable';
 import PinnedPanel from '@/components/dashboard/PinnedPanel';
+import MoversPanel from '@/components/dashboard/MoversPanel';
 import type { CoverageData } from '@/lib/actions/coverage.actions';
 import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
@@ -1402,6 +1403,8 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
                 regardless of what the agents proposed today. Below proposals
                 (those are time-sensitive), above the digest. */}
             <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
+            {/* Today's movers — below your own names, above the digest. */}
+            <MoversPanel />
             <DigestPreviewCard digest={digest} />
           </div>
 

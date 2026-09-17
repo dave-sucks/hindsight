@@ -467,3 +467,97 @@ export async function getFilingsForSymbol(
   });
   return { symbol: S, filings: read.byTicker.get(S) ?? [], error: read.error, days };
 }
+
+// ── The filings calendar (/earnings → Filings) ──────────────────────────────
+
+export interface FilingsDayRow extends FoundFiling {
+  /** Analysts holding or watching this company. */
+  analystIds: string[];
+}
+
+export interface FilingsWeekView {
+  /** The Sunday that starts the week. */
+  weekStart: string;
+  /** Sun..Sat, each with how many rows it has. */
+  days: Array<{ date: string; count: number }>;
+  /**
+   * The week's filings, grouped by the page per day: every watched filing on
+   * your book (routine ones too), then the material and serious filings of
+   * listed companies across the market. Your names first, serious first,
+   * newest first.
+   */
+  rows: FilingsDayRow[];
+  /** EDGAR had more market filings than one read takes. */
+  truncated: boolean;
+  error?: string;
+}
+
+const LISTED = new Set(["Nasdaq", "NYSE", "CBOE"]);
+const weekCache = new Map<string, { at: number; view: FilingsWeekView }>();
+const WEEK_CACHE_MS = 5 * 60_000;
+
+/**
+ * One week of filings for a person to read — the same search as the tool.
+ * A week is two EDGAR reads (the book, all watched forms; the market,
+ * material or serious) and is held for five minutes so clicking between
+ * days doesn't search again.
+ */
+export async function getFilingsWeek(opts: {
+  date: string;
+  coveredBy: Map<string, string[]>;
+  now?: Date;
+}): Promise<FilingsWeekView> {
+  const day = new Date(`${opts.date}T00:00:00Z`);
+  const sunday = new Date(day.getTime() - day.getUTCDay() * DAY_MS);
+  const weekStart = isoDay(sunday);
+  const dates = Array.from({ length: 7 }, (_, i) => isoDay(new Date(sunday.getTime() + i * DAY_MS)));
+  const book = [...opts.coveredBy.keys()];
+  const now = opts.now ?? new Date();
+  const cacheKey = `${weekStart}|${book.sort().join(",")}`;
+  const hit = weekCache.get(cacheKey);
+  if (hit && now.getTime() - hit.at < WEEK_CACHE_MS) return hit.view;
+
+  // "Now" for the search is the week's Saturday, or today if sooner; the
+  // window reaches back to its Sunday.
+  const saturday = new Date(sunday.getTime() + 6 * DAY_MS);
+  const until = saturday < now ? saturday : now;
+  const days = Math.max(0, Math.round((until.getTime() - sunday.getTime()) / DAY_MS));
+  const empty: FilingsWeekView = { weekStart, days: dates.map((date) => ({ date, count: 0 })), rows: [], truncated: false };
+  if (sunday > now) return empty;
+
+  const [mine, market] = await Promise.all([
+    book.length
+      ? searchFilings({ tickers: book, defaultForms: SYMBOL_FILING_FORMS, days, now: until, includeAmendments: true })
+      : Promise.resolve(null),
+    searchFilings({ tier: "MATERIAL", days, now: until }),
+  ]);
+  const error = mine?.error ?? market.error;
+  if (error) return { ...empty, error };
+
+  const rows = new Map<string, FilingsDayRow>();
+  for (const f of mine?.filings ?? []) {
+    rows.set(`${f.ticker}:${f.accession}`, { ...f, analystIds: opts.coveredBy.get(f.ticker) ?? [] });
+  }
+  for (const f of market.filings) {
+    const key = `${f.ticker}:${f.accession}`;
+    if (rows.has(key) || !f.exchange || !LISTED.has(f.exchange)) continue;
+    rows.set(key, { ...f, analystIds: opts.coveredBy.get(f.ticker) ?? [] });
+  }
+  const tierRank = { RED: 0, MATERIAL: 1, CONTEXT: 2 } as const;
+  const sorted = [...rows.values()]
+    .filter((r) => dates.includes(r.filedDate))
+    .sort(
+      (a, b) =>
+        Number(b.analystIds.length > 0) - Number(a.analystIds.length > 0) ||
+        tierRank[a.tier] - tierRank[b.tier] ||
+        b.filedDate.localeCompare(a.filedDate),
+    );
+  const view: FilingsWeekView = {
+    weekStart,
+    days: dates.map((date) => ({ date, count: sorted.filter((r) => r.filedDate === date).length })),
+    rows: sorted,
+    truncated: market.truncated,
+  };
+  weekCache.set(cacheKey, { at: now.getTime(), view });
+  return view;
+}
