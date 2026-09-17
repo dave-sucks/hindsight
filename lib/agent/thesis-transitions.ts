@@ -235,7 +235,7 @@ export function checkTerminateWithoutClose(
         quantity: pos.quantity,
       },
       message:
-        `$${input.ticker} has an open ${pos.direction} position (${pos.quantity} sh) backed by this ACTIVE thesis. ` +
+        `$${input.ticker} has an open ${pos.direction} position (${pos.quantity} sh) backed by this thesis — a stock we own. ` +
         `Terminating the thesis (${action}) without closing the position creates a zombie — open position with no live thesis to manage it. ` +
         `Correct sequence: call \`close_position\` first to exit Alpaca (which also flips the thesis status), then retry \`update_thesis(thesis_id, change_status: "${action}", rationale: "...")\` if you want a separate audit row. ` +
         `If the position should stay open (just refining the thesis), drop change_status and pass the fields you want to change instead.`,

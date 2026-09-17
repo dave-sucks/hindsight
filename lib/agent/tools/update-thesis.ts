@@ -340,7 +340,7 @@ const updateSchema = z.object({
         "Holding and sold are NOT settable here — they're tool-owned account facts. WATCHING → HOLDING happens automatically when your buy fills (place_trade); HOLDING → retired-sold when your sell fills (close_position) — on the fill, or on the user's approval for a live proposal. Call those tools; the thesis status flips itself. " +
         "WATCHING = PROMOTED → WATCHING only. The legal opt-out path when you decide not to re-enter a just-promoted thesis on the first live run. The conviction stays in the library; the analyst will re-evaluate on subsequent runs. " +
         "INVALIDATED = the belief broke; we no longer believe the thesis (use this when concrete evidence disproves the view — it retires the thesis with reason INVALIDATED). Not allowed on PROMOTED — use WATCHING. " +
-        "ARCHIVED = walked away from coverage without evidence-based invalidation (e.g. agent or user removed it from the watchlist — it retires the thesis with reason DROPPED). Off the watchlist; visible on the stock page as institutional memory. Use it ONLY when you never want this name back. To stop paying for a name, or to shelve a plan that does not work, keep it WATCHING and resend triggers without the plan levels and clock — that costs nothing and the name stays in view. (A researched-and-declined PASS is NOT this — pass direction: \"PASS\", which lands status=PASSED.) " +
+        "ARCHIVED = walked away from coverage without evidence-based invalidation (e.g. agent or user removed it from the watchlist — it retires the thesis with reason DROPPED). Off the watchlist; visible on the stock page as institutional memory. Use it ONLY when you never want this name back. To stop paying for a name, or to shelve a plan that does not work, keep it WATCHING and set the plan down — remove the buy, floor and target by id with remove_trigger_ids (and the review cadence too, if it should have no clock) — that costs nothing and the name stays in view. (A researched-and-declined PASS is NOT this — pass direction: \"PASS\", which lands status=PASSED.) " +
         "For direction flips or completely new beliefs, use record_thesis with parent_thesis_id instead.",
     ),
 
@@ -1163,10 +1163,11 @@ export const updateThesis = defineTool({
               data: {
                 ok: false,
                 error: check.error,
-                message:
-                  check.error === "missing_enter_trigger"
-                    ? `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim()
-                    : check.message,
+                // Both refusals offer "set the plan down" as an exit; name the
+                // exact ids so the agent doesn't guess (DAV-258 for the half
+                // plan, DAV-262 for the 2:1 floor — MSFT 2026-09-14 was told
+                // to send the whole list again, an argument that no longer exists).
+                message: `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim(),
                 trigger_ops: notApplied(opResults, check.error),
               },
               sources: [],
