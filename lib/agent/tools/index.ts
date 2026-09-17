@@ -16,6 +16,7 @@ import { getStockData } from "./get-stock-data";
 import { getEarningsData } from "./get-earnings-data";
 import { getEarningsCalendar } from "./get-earnings-calendar";
 import { getMarketMovers } from "./get-market-movers";
+import { runScreenTool } from "./run-screen";
 import { getSecFilings } from "./get-sec-filings";
 // THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
 // See docs/plans/THESIS_RESEARCH_V2.md §3.
@@ -175,6 +176,7 @@ export function createResearchTools(
     get_earnings_data: getEarningsData(newCtx),
     get_earnings_calendar: getEarningsCalendar(newCtx),
     get_market_movers: getMarketMovers(newCtx),
+    run_screen: runScreenTool(newCtx),
     get_sec_filings: getSecFilings(newCtx),
     // THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
     get_financials_deep: getFinancialsDeep(newCtx),
@@ -237,6 +239,7 @@ export { getStockData } from "./get-stock-data";
 export { getEarningsData } from "./get-earnings-data";
 export { getEarningsCalendar } from "./get-earnings-calendar";
 export { getMarketMovers } from "./get-market-movers";
+export { runScreenTool } from "./run-screen";
 export { getSecFilings } from "./get-sec-filings";
 // THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
 export { getFinancialsDeep } from "./get-financials-deep";

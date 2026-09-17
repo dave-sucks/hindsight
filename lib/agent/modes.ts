@@ -278,6 +278,8 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_earnings_data",
       "get_earnings_calendar",
       "get_market_movers",
+      // The computed candidate lists (DAV-255) — one setup, the numbers.
+      "run_screen",
       "get_market_context",
       "get_sec_filings",
       "web_search",
@@ -293,14 +295,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "record_thesis",
       // Phase 2 — deep-research dispatch for WATCHING-worthy survivors only.
       "dispatch_thesis_research",
-      // Phase 2 (LIFECYCLE_FIX) — wait for a dispatched refresh to land
-      // before the immediate-buy flow proceeds to place_trade. Discovery's
-      // hot-catalyst path: dispatch_thesis_research(mint) → wait_for_thesis_refresh
-      // → place_trade in the same run (the worker stamps researchUpdatedAt
-      // so the place_trade staleness gate clears).
-      "wait_for_thesis_refresh",
-      // Optional starter trade for high-conviction picks
-      "place_trade",
       // Finalize
       "record_run_summary",
       "complete_run",
@@ -436,6 +430,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_earnings_data",
       "get_earnings_calendar",
       "get_market_movers",
+      "run_screen",
       "get_sec_filings",
       "web_search",
       // Grok Live Search over X — handle-attributed posts. SOON-1b in
@@ -812,7 +807,8 @@ When in batched-discovery mode, DO NOT default to \`dispatch_thesis_research\` p
    • Operator-pasted research → extract candidates yourself: ticker + 1-sentence attribution + claim. Narrate what you read; don't dump every line of the paste.
    • "Today's movers" → \`get_market_movers\` with \`scope:"universe"\` (universe-fences against this analyst's coverage; pulls the gainers/losers/actives minus already-held names).
    • "What's worth watching" / "today's setups" → \`get_market_movers\` + \`get_earnings_calendar\` (\`scope:"universe"\`).
-   • "Discovery off recent earnings" / "who reported this week" / "earnings plays" → \`get_earnings_calendar(window:"reported", days:N, scope:"universe")\` — who reported in the last N days with EPS and revenue vs the street, biggest beats first, minus the book. Read it in this order: both lines beat and guidance up first; an EPS beat on a revenue miss is cost not demand; a beat the stock is DOWN on means the market wanted more (check the reaction with \`get_stock_data\`); tiny estimates are already blanked. Then \`dispatch_thesis_research(mode:"mint")\` on the ones worth a thesis — pass \`screen_row\` with the numbers that made the cut (surprise, revenue, the gap and its volume) and \`setup_id: "PEAD"\` when it reported within 3 sessions and held the gap — and say why the rest aren't. Upcoming reports on the book → the same tool with the default window.
+   • "Find me setups" / "discovery" / "what's a pullback candidate" → \`run_screen(setup)\` — a computed list of 5–15 names with the numbers for one setup (PEAD, EPISODIC_PIVOT, MA_PULLBACK, BASE_BREAKOUT), minus the book, every rejection named. Triage those rows, then \`dispatch_thesis_research(mode:"mint", setup_id, screen_row)\` on the ones worth a thesis. \`scope:"book"\` screens what we already watch or hold.
+   • "Discovery off recent earnings" / "who reported this week" / "earnings plays" → \`run_screen(setup:"PEAD", days:N)\` for the computed list, or \`get_earnings_calendar(window:"reported", days:N, scope:"universe")\` to read the whole calendar — who reported in the last N days with EPS and revenue vs the street, biggest beats first, minus the book. Read it in this order: both lines beat and guidance up first; an EPS beat on a revenue miss is cost not demand; a beat the stock is DOWN on means the market wanted more (check the reaction with \`get_stock_data\`); tiny estimates are already blanked. Then \`dispatch_thesis_research(mode:"mint")\` on the ones worth a thesis — pass \`screen_row\` with the numbers that made the cut (surprise, revenue, the gap and its volume) and \`setup_id: "PEAD"\` when it reported within 3 sessions and held the gap — and say why the rest aren't. Upcoming reports on the book → the same tool with the default window.
    • "Find similar to $X" → \`get_stock_data($X)\` for peers, then optionally \`web_search\` / \`twitter_search\` for thematic neighbors; the candidate set is the resulting peer + neighbor list.
 
 2. **Triage narration (1-2 sentences per name).** Walk the pool out loud. For each candidate worth a closer look, write a one-or-two-sentence read of why it caught your eye and what you'd need to verify. For obvious junk (penny stocks, ETFs, off-edge industries, already-covered names), narrate the dismissal inline — no thesis row for these, just one sentence in your reply ("Dismissing $XYZ: ETF, off-edge"). Skip-without-thesis-row is for triage-stage rejects; PASS-record is for candidates you researched and decided against.
