@@ -10,6 +10,11 @@
  * approveProposal checked only the order's own status, so approving both
  * before the first fill would have sent a second whole-position market sell.
  *
+ * DAV-282 (second block): every sale sells only what is still held. A full
+ * close is a market sell of the share count it carries and so is a trim — a
+ * count from before a trim filled sells shares that are gone (a short on a
+ * margin account).
+ *
  * The fake database below keeps rows in memory and models the one Postgres
  * behavior the fix relies on: `SELECT … FOR NO KEY UPDATE` on a Position row
  * blocks a second transaction until the first ends.
@@ -32,6 +37,8 @@ const db = {
   positions: new Map<string, Row>(),
   events: [] as Row[],
   account: {} as Row,
+  /** One-shot: runs the moment something reads the account's approval settings. */
+  onAccountRead: null as (() => Promise<unknown>) | null,
 };
 
 function matches(row: Row, where: Row = {}): boolean {
@@ -80,9 +87,21 @@ const positionModel = {
   findUniqueOrThrow: async ({ where }: { where: { id: string } }) => ({
     ...db.positions.get(where.id)!,
   }),
+  findUnique: async ({ where }: { where: { id: string } }) => {
+    const hit = db.positions.get(where.id);
+    return hit ? { ...hit } : null;
+  },
+  findFirst: async ({ where }: { where: Row }) => {
+    const hit = [...db.positions.values()].find((p) => matches(p, where));
+    return hit ? { ...hit, analyst: { name: "Secular Compounder" } } : null;
+  },
   update: async ({ where, data }: { where: { id: string }; data: Row }) => {
-    Object.assign(db.positions.get(where.id)!, data);
-    return { ...db.positions.get(where.id)! };
+    const row = db.positions.get(where.id)!;
+    for (const [key, value] of Object.entries(data)) {
+      const dec = (value as { decrement?: number } | null)?.decrement;
+      row[key] = dec != null ? (row[key] as number) - dec : value;
+    }
+    return { ...row };
   },
 };
 const recordEvent = async ({ data }: { data: Row }) => {
@@ -110,16 +129,27 @@ function makeTx(held: Map<string, () => void>) {
     position: positionModel,
     positionEvent: { create: recordEvent },
     positionManagementAction: { create: recordEvent },
+    runEvent: { create: recordEvent },
+    tradeDecision: { create: recordEvent },
   };
 }
 
 jest.mock("@/lib/prisma", () => ({
   prisma: {
-    account: { findUnique: async () => ({ ...db.account }) },
+    account: {
+      findUnique: async () => {
+        const hook = db.onAccountRead;
+        db.onAccountRead = null;
+        await hook?.();
+        return { ...db.account };
+      },
+    },
     order: orderModel,
     position: positionModel,
     positionEvent: { create: recordEvent },
-    thesis: { findFirst: async () => ({ id: THESIS_ID }) },
+    runEvent: { create: recordEvent },
+    gateRejection: { create: recordEvent },
+    thesis: { findFirst: async () => ({ id: THESIS_ID }), findUnique: async () => null },
     researchRun: { findUnique: async () => null },
     agentConfig: { findUnique: async () => ({ emailAlerts: false }) },
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) => {
@@ -167,9 +197,17 @@ jest.mock("@/lib/emails/trade-closed", () => ({ tradeClosedHtml: () => "" }));
 jest.mock("@/lib/email-suppression", () => ({ isInsideMorningBatch: () => false }));
 
 import { closeOpenPosition } from "@/lib/actions/closeTrade.actions";
+import { managePosition } from "@/lib/agent/tools/manage-position";
+import type { ToolContext } from "@/lib/agent/tool-context";
 import { approveProposal } from "./execute";
 
-function closeOrder(id: string, status: string, rationale: string, intent = "CLOSE"): Row {
+function closeOrder(
+  id: string,
+  status: string,
+  rationale: string,
+  intent = "CLOSE",
+  quantity = intent === "CLOSE" ? 450 : 100,
+): Row {
   return {
     id,
     positionId: POSITION_ID,
@@ -178,7 +216,7 @@ function closeOrder(id: string, status: string, rationale: string, intent = "CLO
     symbol: "SMMT",
     side: "SELL",
     orderType: "MARKET",
-    quantity: intent === "CLOSE" ? 450 : 100,
+    quantity,
     status,
     intent,
     idempotencyKey: `idem-${id}`,
@@ -200,6 +238,7 @@ beforeEach(() => {
   seq = 0;
   db.orders = [];
   db.events = [];
+  db.onAccountRead = null;
   db.account = { requireApprovalSellsLive: true, requireApprovalBuysLive: true };
   db.positions = new Map([
     [
@@ -332,5 +371,140 @@ describe("SMMT 2026-09-15 — two sell rules on one trigger check", () => {
     expect(outcome).toMatchObject({ kind: "closed", fillStatus: "FILLED" });
     expect(mockPlaceMarketOrder).toHaveBeenCalledTimes(1);
     expect(db.orders.find((o) => o.id === FLOOR_ORDER)!.status).toBe("CANCELLED");
+  });
+});
+
+const position = () => db.positions.get(POSITION_ID)!;
+const trim = (args: { pct: number }) =>
+  (
+    managePosition({
+      runId: "run-trim",
+      userId: ACCOUNT_ID,
+      accountId: ACCOUNT_ID,
+      analystId: "cmmmh0wxu000004js7yoyzvlf",
+      runEnvironment: "LIVE",
+      alpacaCreds: { keyId: "k", secretKey: "s" },
+      groupId: (phase: string) => phase,
+    } as unknown as ToolContext) as unknown as {
+      execute: (a: unknown) => Promise<{ data: Record<string, unknown> }>;
+    }
+  ).execute({ symbol: "SMMT", action: "partial_close", close_pct: args.pct, reason: "take some off" });
+
+describe("DAV-282 — a sale sells only what is still held", () => {
+  it("an approved full close sells the 350 shares left after a 100-share trim filled, not the 450 it was queued at", async () => {
+    db.orders.push(closeOrder("trim-filled", "FILLED", "trim", "PARTIAL_CLOSE", 100));
+    position().quantity = 350;
+    db.orders.push(closeOrder(FLOOR_ORDER, "AWAITING_APPROVAL", FLOOR_RATIONALE));
+
+    await approveProposal(FLOOR_ORDER, ACCOUNT_ID);
+
+    expect(mockPlaceMarketOrder).toHaveBeenCalledTimes(1);
+    expect(mockPlaceMarketOrder.mock.calls[0][0]).toMatchObject({ symbol: "SMMT", qty: 350, side: "sell" });
+    expect(db.orders.find((o) => o.id === FLOOR_ORDER)!.quantity).toBe(350);
+  });
+
+  it("a close approved after trims sold every share is cancelled with a plain reason, not sent", async () => {
+    position().quantity = 0;
+    db.orders.push(closeOrder(FLOOR_ORDER, "AWAITING_APPROVAL", FLOOR_RATIONALE));
+
+    await expect(approveProposal(FLOOR_ORDER, ACCOUNT_ID)).rejects.toMatchObject({ code: "NOTHING_HELD" });
+
+    const floor = db.orders.find((o) => o.id === FLOOR_ORDER)!;
+    expect(floor.status).toBe("CANCELLED");
+    expect(floor.rejectionMessage).toBe("Auto-cancelled — no SMMT shares are left to sell.");
+    expect(mockPlaceMarketOrder).not.toHaveBeenCalled();
+  });
+
+  it("a trim approved while another trim is sent sells no more than is left", async () => {
+    db.orders.push(
+      closeOrder("trim-sent", "PENDING", "trim", "PARTIAL_CLOSE", 300),
+      closeOrder("trim-waiting", "AWAITING_APPROVAL", "trim", "PARTIAL_CLOSE", 300),
+    );
+
+    await approveProposal("trim-waiting", ACCOUNT_ID);
+
+    expect(mockClosePositionPartial).toHaveBeenCalledTimes(1);
+    expect(mockClosePositionPartial.mock.calls[0][1]).toBe(150);
+  });
+
+  it("with approval off, a trim while a full close is sent sends nothing", async () => {
+    db.account = { requireApprovalSellsLive: false };
+    db.orders.push(closeOrder(FLOOR_ORDER, "PENDING", FLOOR_RATIONALE));
+
+    const result = await trim({ pct: 30 });
+
+    expect(result.data).toMatchObject({ success: true, status: "NO_POSITION" });
+    expect(String(result.data.message)).toContain(FLOOR_ORDER);
+    expect(mockClosePositionPartial).not.toHaveBeenCalled();
+    expect(db.orders).toHaveLength(1);
+  });
+
+  it("with approval off, a trim sizes from the shares held under the lock, not the count it read first", async () => {
+    db.account = { requireApprovalSellsLive: false };
+    // Another 100-share sale fills right after the tool reads the position.
+    db.onAccountRead = async () => {
+      position().quantity = 350;
+    };
+    mockGetOrder.mockResolvedValue({ status: "filled", filled_avg_price: "18.10" });
+
+    const result = await trim({ pct: 30 });
+
+    expect(mockClosePositionPartial.mock.calls[0][1]).toBe(105);
+    expect(result.data).toMatchObject({ status: "PARTIAL_CLOSE", closedQty: 105, remainingQty: 245 });
+    expect(position().quantity).toBe(245);
+  });
+
+  it("a trim on a position that went flat after the tool read it says nothing is left", async () => {
+    db.account = { requireApprovalSellsLive: false };
+    db.onAccountRead = async () => {
+      position().quantity = 0;
+    };
+
+    const result = await trim({ pct: 30 });
+
+    expect(result.data).toMatchObject({ success: true, status: "NO_POSITION" });
+    expect(mockClosePositionPartial).not.toHaveBeenCalled();
+    expect(db.orders).toHaveLength(0);
+  });
+
+  it("with approval off, a full close while a 100-share trim is sent sells only the other 350", async () => {
+    db.account = { requireApprovalSellsLive: false };
+    db.orders.push(closeOrder("trim-sent", "PENDING", "trim", "PARTIAL_CLOSE", 100));
+    mockGetOrder.mockResolvedValue({ status: "filled", filled_avg_price: "17.30", filled_at: "2026-09-15T16:50:00Z" });
+
+    const outcome = await closeOpenPosition(POSITION_ID, "STOP", undefined, "price_monitor", FLOOR_RATIONALE);
+
+    expect(outcome).toMatchObject({ kind: "closed", fillStatus: "FILLED" });
+    expect(mockPlaceMarketOrder).toHaveBeenCalledTimes(1);
+    expect(mockPlaceMarketOrder.mock.calls[0][0]).toMatchObject({ qty: 350 });
+  });
+
+  it("with approval on, a trim is created already waiting — a close approved while it is queued is not refused", async () => {
+    db.orders.push(closeOrder(FLOOR_ORDER, "AWAITING_APPROVAL", FLOOR_RATIONALE));
+    let approval: Promise<unknown> = Promise.resolve();
+    db.onAccountRead = async () => {
+      approval = approveProposal(FLOOR_ORDER, ACCOUNT_ID);
+      await approval.catch(() => undefined);
+    };
+
+    await trim({ pct: 30 });
+
+    await expect(approval).resolves.toMatchObject({ ok: true, intent: "CLOSE" });
+    expect(mockPlaceMarketOrder).toHaveBeenCalledTimes(1);
+    expect(mockClosePositionPartial).not.toHaveBeenCalled();
+    expect(db.orders.filter((o) => o.intent === "PARTIAL_CLOSE" && o.status === "AWAITING_APPROVAL")).toHaveLength(0);
+  });
+
+  it("if Alpaca refuses an approved close, its twin is still there to approve", async () => {
+    db.orders.push(
+      closeOrder(FLOOR_ORDER, "AWAITING_APPROVAL", FLOOR_RATIONALE),
+      closeOrder(TRAIL_ORDER, "AWAITING_APPROVAL", TRAIL_RATIONALE),
+    );
+    mockPlaceMarketOrder.mockRejectedValueOnce(Object.assign(new Error("insufficient qty"), { statusCode: 403 }));
+
+    await expect(approveProposal(FLOOR_ORDER, ACCOUNT_ID)).rejects.toMatchObject({ code: "ALPACA_REJECTED" });
+
+    expect(db.orders.find((o) => o.id === FLOOR_ORDER)!.status).toBe("REJECTED");
+    expect(db.orders.find((o) => o.id === TRAIL_ORDER)!.status).toBe("AWAITING_APPROVAL");
   });
 });

@@ -36,10 +36,13 @@ const mockTransaction = jest.fn(async (cb: (tx: unknown) => unknown) =>
     order: {
       create: mockOrderCreate,
       update: mockOrderUpdate,
-      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
-    position: { update: mockPositionUpdateTx },
+    position: {
+      update: mockPositionUpdateTx,
+      findUnique: jest.fn().mockResolvedValue({ status: "OPEN", quantity: 10 }),
+    },
     positionEvent: { create: mockPositionEventCreate },
     positionManagementAction: { create: mockPositionManagementActionCreate },
   }),
@@ -133,7 +136,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockPositionFindUniqueOrThrow.mockResolvedValue({ ...OPEN_POSITION });
   mockThesisFindFirst.mockResolvedValue({ ...ACTIVE_THESIS });
-  mockOrderCreate.mockResolvedValue({ id: "order-1" });
+  mockOrderCreate.mockResolvedValue({ id: "order-1", quantity: 10 });
   mockPlaceMarketOrder.mockResolvedValue({ id: "alpaca-1" });
   // Immediate fill on first poll.
   mockGetOrder.mockResolvedValue({

@@ -40,8 +40,11 @@ jest.mock("@/lib/actions/api-keys.actions", () => ({
   resolveAlpacaCredentials: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("@/lib/proposals/maybe-await-approval", () => ({
+  approvalRequired: jest.fn().mockResolvedValue(false),
   maybeAwaitApproval: mockMaybeAwaitApproval,
   awaitingApprovalEnvelope: jest.fn().mockReturnValue({}),
+  notifyProposalPending: jest.fn(),
+  PROPOSAL_TTL_MS: 24 * 60 * 60 * 1000,
 }));
 jest.mock("@/lib/proposals/execute", () => ({
   findRelatedThesisId: mockFindRelatedThesisId,
@@ -106,12 +109,16 @@ describe("manage_position — plan changes write the thesis history row (DAV-198
     // Run the tx callback against the same mocked delegates.
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
-        position: { update: jest.fn().mockResolvedValue({}) },
+        position: {
+          update: jest.fn().mockResolvedValue({}),
+          findUnique: jest.fn().mockResolvedValue({ status: "OPEN", quantity: 10 }),
+        },
         positionEvent: { create: jest.fn().mockResolvedValue({}) },
         positionManagementAction: { create: jest.fn().mockResolvedValue({}) },
         runEvent: { create: jest.fn().mockResolvedValue({}) },
         tradeDecision: { create: jest.fn().mockResolvedValue({}) },
-        order: { update: mockOrderUpdate },
+        order: { create: mockOrderCreate, update: mockOrderUpdate, findMany: jest.fn().mockResolvedValue([]) },
+        $queryRaw: jest.fn().mockResolvedValue([]),
       }),
     );
   });
@@ -182,7 +189,7 @@ describe("manage_position — plan changes write the thesis history row (DAV-198
 
   it("a filled partial close writes the trim to the thesis timeline", async () => {
     mockPositionFindFirst.mockResolvedValueOnce(makeOpenPosition());
-    mockOrderCreate.mockResolvedValueOnce({ id: "order_1" });
+    mockOrderCreate.mockResolvedValueOnce({ id: "order_1", quantity: 3 });
     (closePositionPartial as jest.Mock).mockResolvedValueOnce({ id: "alp_1" });
     (getOrder as jest.Mock).mockResolvedValueOnce({
       status: "filled",

@@ -174,10 +174,10 @@ export function notifyProposalPending(orderId: string): void {
 
 /**
  * Decides whether the tool should stop here and wait for human approval, for
- * the tools that create their order first (place_trade, manage_position). A
- * full close does not come through here: closeOpenPosition asks
- * approvalRequired first and creates its order already staged, in the same
- * locked transaction as its "is a sale already under way" check.
+ * the buys that create their order first (place_trade, manage_position's
+ * add). Sales do not come through here: closeOpenPosition and the trim path
+ * ask approvalRequired first and create the order already staged, in the same
+ * locked transaction that sizes it (lockPositionSales).
  *
  * Returns null when no approval is needed → tool continues to Alpaca submit
  * as it always has.
@@ -200,8 +200,8 @@ export async function maybeAwaitApproval(
   //
   // So the cross-day cooldown is gone: every exit the agent decides on now
   // surfaces. The remaining, still-correct suppression layers stay in place:
-  //   • one full close at a time per position (closeOpenPosition, under a row
-  //     lock) — prevents same-tick twins, not cross-day reminders.
+  //   • one full close at a time per position (closeOpenPosition, under the
+  //     position lock) — prevents same-tick twins, not cross-day reminders.
   //   • #381 tactical snooze (tactical-run.ts): skips re-SPAWNING a tactical run
   //     within 4h of a pending/rejected close — saves GPT cost, still ~1 alert/run.
   //
@@ -212,10 +212,10 @@ export async function maybeAwaitApproval(
 
   const expiresAt = new Date(Date.now() + PROPOSAL_TTL_MS);
 
-  // Flip the just-created rows to the awaiting-approval state. For ADDs /
-  // PARTIAL_CLOSE the Position is an existing OPEN holding — leave its status
-  // alone; only OPEN-intent proposals flip Position to PENDING_APPROVAL
-  // because the position isn't a real holding yet.
+  // Flip the just-created rows to the awaiting-approval state. For an ADD the
+  // Position is an existing OPEN holding — leave its status alone; only
+  // OPEN-intent proposals flip Position to PENDING_APPROVAL because the
+  // position isn't a real holding yet.
   await prisma.$transaction(async (tx) => {
     if (args.intent === "OPEN") {
       await tx.position.update({
