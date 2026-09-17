@@ -1,32 +1,42 @@
 /**
- * get-sec-filings.test.ts — what the agent reads. The old tool listed
- * "8-K, Aug 26" with no idea it was MU's officer change, and reported any
- * failure as "No recent filings".
+ * get-sec-filings.test.ts — what the agent reads about one company. The old
+ * tool listed "8-K, Aug 26" with no idea it was MU's officer change, and
+ * reported any failure as "No recent filings".
  */
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 import fixture from "@/lib/market-data/__fixtures__/edgar-search-2026-09.json";
-import { parseSearchHits } from "@/lib/market-data/sec-filings";
-
-const read = { symbol: "MU", filings: [] as ReturnType<typeof parseSearchHits>, error: undefined as string | undefined, days: 90 };
-jest.mock("@/lib/market-data/sec-filings", () => ({
-  ...jest.requireActual("@/lib/market-data/sec-filings"),
-  getFilingsForSymbol: jest.fn(async () => read),
-}));
-
+import { __resetCikCache, __setRetryDelay } from "@/lib/market-data/sec-filings";
 import { getSecFilings } from "./get-sec-filings";
 import type { ToolContext } from "@/lib/agent/tool-context";
+
+const companies = {
+  fields: ["cik", "name", "ticker", "exchange"],
+  data: [[723125, "MICRON TECHNOLOGY INC", "MU", "Nasdaq"]],
+};
+
+function edgar(search: () => Response) {
+  global.fetch = jest.fn(async (url: string | URL) =>
+    String(url).includes("company_tickers_exchange.json")
+      ? new Response(JSON.stringify(companies), { status: 200 })
+      : search(),
+  ) as unknown as typeof fetch;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const run = async (): Promise<any> =>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (getSecFilings({ runId: "r", userId: "u", accountId: "a", groupId: (p: string) => p } as unknown as ToolContext) as any).execute({ symbol: "mu" });
 
-describe("get_sec_filings", () => {
+beforeEach(() => {
+  __resetCikCache();
+  __setRetryDelay(0);
+});
+
+describe("get_sec_filings, one company", () => {
   it("names MU's Aug 26 8-K as an officer change, material, with its link", async () => {
-    read.filings = parseSearchHits(fixture.hits.hits, new Map([["0000723125", "MU"]]));
-    read.error = undefined;
+    edgar(() => new Response(JSON.stringify(fixture), { status: 200 }));
     const out = await run();
     expect(out.ok).toBe(true);
     expect(out.data.filings[0]).toMatchObject({
@@ -41,10 +51,9 @@ describe("get_sec_filings", () => {
   });
 
   it("says EDGAR was unavailable — never 'no filings' — when the read failed", async () => {
-    read.filings = [];
-    read.error = "EDGAR search returned 429";
+    edgar(() => new Response("rate limited", { status: 429 }));
     const out = await run();
-    expect(out.summary).toBe('SEC filings unavailable for $MU — EDGAR search returned 429. This is not "nothing filed".');
+    expect(out.summary).toMatch(/^SEC filings unavailable — EDGAR search returned 429\. This is not "nothing filed"\./);
     expect(out.data.error).toBe("EDGAR search returned 429");
   });
 });

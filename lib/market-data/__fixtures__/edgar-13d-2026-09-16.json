@@ -1,0 +1,2695 @@
+{
+ "_comment": "Real EDGAR data fetched 2026-09-16: the first page (100 hits) of SCHEDULE 13D filings from 2026-08-17 to 2026-09-16, trimmed to the fields the reader uses, and the rows of SEC's company_tickers_exchange.json for every CIK named on that page.",
+ "search": {
+  "hits": {
+   "total": {
+    "value": 442,
+    "relation": "eq"
+   },
+   "hits": [
+    {
+     "_id": "0001493152-26-042907:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001583771",
+       "0002154680"
+      ],
+      "display_names": [
+       "Hepion Pharmaceuticals, Inc.  (HEPA, CTRVP)  (CIK 0001583771)",
+       "KI Holdings, Ltd.  (CIK 0002154680)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001493152-26-042907",
+      "file_date": "2026-09-16"
+     }
+    },
+    {
+     "_id": "0001361570-26-000020:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001773383",
+       "0001361570"
+      ],
+      "display_names": [
+       "Dynatrace, Inc.  (DT)  (CIK 0001773383)",
+       "PICTET ASSET MANAGEMENT SA  (CIK 0001361570)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001361570-26-000020",
+      "file_date": "2026-09-16"
+     }
+    },
+    {
+     "_id": "0001193125-26-392929:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001844971",
+       "0002154781"
+      ],
+      "display_names": [
+       "Vulcan Infrastructure & Power Inc.  (VIP, GREEL)  (CIK 0001844971)",
+       "MIG REF II INFR, LLC  (CIK 0002154781)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-392929",
+      "file_date": "2026-09-16"
+     }
+    },
+    {
+     "_id": "0000902664-26-003832:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0000812011",
+       "0001317904"
+      ],
+      "display_names": [
+       "VAIL RESORTS INC  (MTN)  (CIK 0000812011)",
+       "Oasis Management Co Ltd.  (CIK 0001317904)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000902664-26-003832",
+      "file_date": "2026-09-16"
+     }
+    },
+    {
+     "_id": "0002106590-26-000003:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0002019793",
+       "0002106590"
+      ],
+      "display_names": [
+       "XCF Global, Inc.  (SAFX)  (CIK 0002019793)",
+       "GL Part SPV II, LLC  (CIK 0002106590)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0002106590-26-000003",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001870412-26-000003:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001239188",
+       "0001870412"
+      ],
+      "display_names": [
+       "GENERAL STEEL HOLDINGS INC  (CIK 0001239188)",
+       "Alternative Liquidity Index LP  (CIK 0001870412)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001870412-26-000003",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001829126-26-010121:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001822523",
+       "0001200461"
+      ],
+      "display_names": [
+       "Advanced Flower Capital Inc.  (AFCG)  (CIK 0001822523)",
+       "TANNENBAUM LEONARD M  (CIK 0001200461)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001829126-26-010121",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001749723-26-000139:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001749723",
+       "0001124460"
+      ],
+      "display_names": [
+       "New Fortress Energy Inc.  (NFE, NFEGP)  (CIK 0001749723)",
+       "EDENS WESLEY R  (CIK 0001124460)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001749723-26-000139",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001738048-26-000069:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001755237",
+       "0001738048"
+      ],
+      "display_names": [
+       "Korsana Biosciences, Inc.  (CYCN, KRSA)  (CIK 0001755237)",
+       "Venrock Healthcare Capital Partners III, L.P.  (CIK 0001738048)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001738048-26-000069",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001493152-26-042803:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001828972",
+       "0002136301"
+      ],
+      "display_names": [
+       "BuzzFeed, Inc.  (BZFD, BZFDW)  (CIK 0001828972)",
+       "Allen Family Digital, LLC  (CIK 0002136301)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001493152-26-042803",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001398344-26-017023:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001574085",
+       "0001765296"
+      ],
+      "display_names": [
+       "Braemar Hotels & Resorts Inc.  (BHR, BHR-PB, BHR-PD)  (CIK 0001574085)",
+       "Al Shams Investments LTD  (CIK 0001765296)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001398344-26-017023",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001398344-26-017012:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001494582",
+       "0001618333"
+      ],
+      "display_names": [
+       "BOSTON OMAHA Corp  (BOC)  (CIK 0001494582)",
+       "MAGNOLIA CAPITAL FUND, LP  (CIK 0001618333)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001398344-26-017012",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001213900-26-100263:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0002112446",
+       "0002127273"
+      ],
+      "display_names": [
+       "JATT II Acquisition Corp.  (JATT)  (CIK 0002112446)",
+       "JATT Ventures II L.P.  (CIK 0002127273)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001213900-26-100263",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001213900-26-100250:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001610853",
+       "0002079712"
+      ],
+      "display_names": [
+       "Solana Co  (HSDT)  (CIK 0001610853)",
+       "Morehead Daniel Wayne  (CIK 0002079712)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001213900-26-100250",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001213900-26-100121:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001739174",
+       "0001787518"
+      ],
+      "display_names": [
+       "Tessera Defense & Homeland Security Inc.  (HLSQ, PHGE)  (CIK 0001739174)",
+       "T3 Defense Inc.  (CIK 0001787518)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001213900-26-100121",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001213900-26-100114:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001661053",
+       "0001982476"
+      ],
+      "display_names": [
+       "enVVeno Medical Corp  (NVNO)  (CIK 0001661053)",
+       "Braeden Lichti  (CIK 0001982476)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001213900-26-100114",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001213900-26-100103:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001676047",
+       "0001707265"
+      ],
+      "display_names": [
+       "NutriBand Inc.  (NTRB, NTRBW)  (CIK 0001676047)",
+       "Sheridan Gareth  (CIK 0001707265)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001213900-26-100103",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001193125-26-392265:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0002067955",
+       "0001599858"
+      ],
+      "display_names": [
+       "Diameter Dynamic Credit Fund  (CIK 0002067955)",
+       "Michael & Susan Dell Foundation  (CIK 0001599858)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-392265",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001193125-26-392095:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001841408",
+       "0001867755"
+      ],
+      "display_names": [
+       "Dave Inc./DE  (DAVE, DAVEW)  (CIK 0001841408)",
+       "Wilk Jason  (CIK 0001867755)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-392095",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001193125-26-391292:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001850235",
+       "0001985487"
+      ],
+      "display_names": [
+       "D-MARKET Electronic Services & Trading  (HEPS)  (CIK 0001850235)",
+       "Joint Stock Co Kaspi.kz  (CIK 0001985487)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-391292",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001178913-26-004509:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001024672",
+       "0001764804"
+      ],
+      "display_names": [
+       "ELTEK LTD  (ELTK)  (CIK 0001024672)",
+       "Nistec Golan Ltd.  (CIK 0001764804)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001178913-26-004509",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001124465-26-000003:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001749723",
+       "0001124465"
+      ],
+      "display_names": [
+       "New Fortress Energy Inc.  (NFE, NFEGP)  (CIK 0001749723)",
+       "NARDONE RANDAL A  (CIK 0001124465)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001124465-26-000003",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001104659-26-108028:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0000928054",
+       "0001881487"
+      ],
+      "display_names": [
+       "FLOTEK INDUSTRIES INC/CN/  (FTK)  (CIK 0000928054)",
+       "ProFrac Holding Corp.  (CIK 0001881487)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001104659-26-108028",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001104659-26-108019:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001641614",
+       "0002101417"
+      ],
+      "display_names": [
+       "CPI Card Group Inc.  (PMTS)  (CIK 0001641614)",
+       "Tricor Pacific Capital Inc.  (CIK 0002101417)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001104659-26-108019",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001099910-26-000264:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001512922",
+       "0001553209"
+      ],
+      "display_names": [
+       "PetVivo Holdings, Inc.  (PETV)  (CIK 0001512922)",
+       "A.L. Sarroff Fund, LLC  (CIK 0001553209)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001099910-26-000264",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0001062993-26-004967:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0002066836",
+       "0002127816"
+      ],
+      "display_names": [
+       "Conexeu Sciences Inc.  (CNXU)  (CIK 0002066836)",
+       "Sharpe Jeffrey Nathan  (CIK 0002127816)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001062993-26-004967",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0000921895-26-002550:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0000896493",
+       "0001212502"
+      ],
+      "display_names": [
+       "Hyperscale Data, Inc.  (GPUS, GPUS-PD)  (CIK 0000896493)",
+       "AULT MILTON C III  (CIK 0001212502)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000921895-26-002550",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0000921895-26-002548:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001319947",
+       "0001589943"
+      ],
+      "display_names": [
+       "Designer Brands Inc.  (DBI)  (CIK 0001319947)",
+       "Stone House Capital Management, LLC  (CIK 0001589943)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000921895-26-002548",
+      "file_date": "2026-09-15"
+     }
+    },
+    {
+     "_id": "0002082289-26-000012:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001436126",
+       "0002082289"
+      ],
+      "display_names": [
+       "Mistras Group, Inc.  (MG)  (CIK 0001436126)",
+       "Foglia Stephanie Athena  (CIK 0002082289)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0002082289-26-000012",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0001662991-26-000155:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001662991",
+       "0001864990"
+      ],
+      "display_names": [
+       "Sezzle Inc.  (SEZL)  (CIK 0001662991)",
+       "Youakim Charles  (CIK 0001864990)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001662991-26-000155",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0001493152-26-042523:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001964314",
+       "0002141431"
+      ],
+      "display_names": [
+       "JBDI Holdings Ltd  (JBDI)  (CIK 0001964314)",
+       "Siow Kim Lian  (CIK 0002141431)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001493152-26-042523",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0001193125-26-390907:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001844971",
+       "0001880358"
+      ],
+      "display_names": [
+       "Vulcan Infrastructure & Power Inc.  (VIP, GREEL)  (CIK 0001844971)",
+       "Atlas Capital Resources (A9) LP  (CIK 0001880358)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-390907",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0001193125-26-390857:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0002081043",
+       "0001845711"
+      ],
+      "display_names": [
+       "AtaiBeckley Inc.  (ATAI)  (CIK 0002081043)",
+       "Apeiron Investment Group Ltd.  (CIK 0001845711)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-390857",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0001193125-26-390634:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001871983",
+       "0001437107"
+      ],
+      "display_names": [
+       "Anghami Inc  (ANGH, ANGHW)  (CIK 0001871983)",
+       "Warner Bros. Discovery, Inc.  (CIK 0001437107)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-390634",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0001193125-26-390005:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0000886977",
+       "0000922898"
+      ],
+      "display_names": [
+       "METHANEX CORP  (MEOH)  (CIK 0000886977)",
+       "M&G INVESTMENT MANAGEMENT LTD  (CIK 0000922898)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-390005",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0001104659-26-107266:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001871983",
+       "0002018653"
+      ],
+      "display_names": [
+       "Anghami Inc  (ANGH, ANGHW)  (CIK 0001871983)",
+       "OSN Streaming Ltd  (CIK 0002018653)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001104659-26-107266",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0000950142-26-002546:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001997296",
+       "0001660525"
+      ],
+      "display_names": [
+       "Medicus Pharma Ltd.  (MDCX, MDCXW)  (CIK 0001997296)",
+       "Bokhari Raza  (CIK 0001660525)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000950142-26-002546",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0000950142-26-002544:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001712189",
+       "0001771172"
+      ],
+      "display_names": [
+       "Target Hospitality Corp.  (TH)  (CIK 0001712189)",
+       "TDR Capital II Investments LP  (CIK 0001771172)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000950142-26-002544",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0000905148-26-004169:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001840776",
+       "0001096343"
+      ],
+      "display_names": [
+       "Hagerty, Inc.  (HGTY)  (CIK 0001840776)",
+       "MARKEL GROUP INC.  (CIK 0001096343)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000905148-26-004169",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0000769317-26-000007:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0000811922",
+       "0000769317"
+      ],
+      "display_names": [
+       "ABERDEEN GOVERNMENT MARKETS INCOME FUND  (MGF)  (CIK 0000811922)",
+       "SIT INVESTMENT ASSOCIATES INC  (CIK 0000769317)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000769317-26-000007",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0002028403-26-000015:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001956166",
+       "0002028403"
+      ],
+      "display_names": [
+       "PMA Graphene Technology Group Inc.  (PMA)  (CIK 0001956166)",
+       "Lam Chi Ming  (CIK 0002028403)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0002028403-26-000015",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001976454-26-000003:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001927719",
+       "0001976454"
+      ],
+      "display_names": [
+       "Freightos Ltd  (CRGO, CRGOW)  (CIK 0001927719)",
+       "Schreiber Zvi  (CIK 0001976454)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001976454-26-000003",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001640334-26-001508:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001673475",
+       "0001713173"
+      ],
+      "display_names": [
+       "GPO Plus, Inc.  (GPOX)  (CIK 0001673475)",
+       "Pojunis Brett H.  (CIK 0001713173)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001640334-26-001508",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001493152-26-042453:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001872292",
+       "0002149815"
+      ],
+      "display_names": [
+       "Rainmaker Worldwide Inc.  (RAKR)  (CIK 0001872292)",
+       "Moore Ryan Dennis  (CIK 0002149815)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001493152-26-042453",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001493152-26-042451:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001872292",
+       "0002043413"
+      ],
+      "display_names": [
+       "Rainmaker Worldwide Inc.  (RAKR)  (CIK 0001872292)",
+       "Skinner Michael A.  (CIK 0002043413)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001493152-26-042451",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001493152-26-042393:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0002069785",
+       "0001715783"
+      ],
+      "display_names": [
+       "Gloo Holdings, Inc.  (GLOO)  (CIK 0002069785)",
+       "Grace & Mercy Foundation, Inc.  (CIK 0001715783)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001493152-26-042393",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001493152-26-042291:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001964314",
+       "0002143923"
+      ],
+      "display_names": [
+       "JBDI Holdings Ltd  (JBDI)  (CIK 0001964314)",
+       "E U Holdings Pte. Ltd.  (CIK 0002143923)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001493152-26-042291",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001231919-26-001165:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001808805",
+       "0001725721"
+      ],
+      "display_names": [
+       "Nautilus Biotechnology, Inc.  (NAUT)  (CIK 0001808805)",
+       "AH Bio Fund II, L.P.  (CIK 0001725721)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001231919-26-001165",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001214659-26-011604:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001017303",
+       "0001386979"
+      ],
+      "display_names": [
+       "TRANSACT TECHNOLOGIES INC  (TACT)  (CIK 0001017303)",
+       "Gillman Charles M  (CIK 0001386979)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001214659-26-011604",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001213900-26-098957:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001574565",
+       "0001749628"
+      ],
+      "display_names": [
+       "Evogene Ltd.  (EVGN)  (CIK 0001574565)",
+       "L.I.A. Pure Capital Ltd  (CIK 0001749628)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001213900-26-098957",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001193125-26-389485:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001571996",
+       "0001418226"
+      ],
+      "display_names": [
+       "Dell Technologies Inc.  (DELL)  (CIK 0001571996)",
+       "Silver Lake Group, L.L.C.  (CIK 0001418226)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-389485",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001193125-26-389440:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001562401",
+       "0001322750"
+      ],
+      "display_names": [
+       "American Homes 4 Rent  (AMH, AMH-PG, AMH-PH)  (CIK 0001562401)",
+       "GUSTAVSON TAMARA HUGHES  (CIK 0001322750)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-389440",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001193125-26-389436:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001562401",
+       "0000935808"
+      ],
+      "display_names": [
+       "American Homes 4 Rent  (AMH, AMH-PG, AMH-PH)  (CIK 0001562401)",
+       "HUGHES B WAYNE ET AL  (CIK 0000935808)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-389436",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001193125-26-389425:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001468327",
+       "0001963997"
+      ],
+      "display_names": [
+       "Rent the Runway, Inc.  (RENT)  (CIK 0001468327)",
+       "Nexus Capital Management LP  (CIK 0001963997)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-389425",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001193125-26-389424:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001468327",
+       "0002093646"
+      ],
+      "display_names": [
+       "Rent the Runway, Inc.  (RENT)  (CIK 0001468327)",
+       "STORY3 Capital Partners, LLC  (CIK 0002093646)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-389424",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001193125-26-389423:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001468327",
+       "0002093897"
+      ],
+      "display_names": [
+       "Rent the Runway, Inc.  (RENT)  (CIK 0001468327)",
+       "CHS US Investments LLC  (CIK 0002093897)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-389423",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001193125-26-389417:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001755237",
+       "0001802528"
+      ],
+      "display_names": [
+       "Korsana Biosciences, Inc.  (CYCN)  (CIK 0001755237)",
+       "Fairmount Funds Management LLC  (CIK 0001802528)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-389417",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001193125-26-388890:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0002128462",
+       "0002153072"
+      ],
+      "display_names": [
+       "Three Lions Acquisition Corp.  (TLAC, TLACU)  (CIK 0002128462)",
+       "Three Lions Sponsor, LLC  (CIK 0002153072)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-388890",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001193125-26-388676:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001425450",
+       "0001719228"
+      ],
+      "display_names": [
+       "ORTHOPEDIATRICS CORP  (KIDS)  (CIK 0001425450)",
+       "Squadron Capital LLC  (CIK 0001719228)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-388676",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001178913-26-004496:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001574565",
+       "0000919590"
+      ],
+      "display_names": [
+       "Evogene Ltd.  (EVGN)  (CIK 0001574565)",
+       "RECANATI LEON  (CIK 0000919590)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001178913-26-004496",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001104659-26-107182:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001798562",
+       "0001878772"
+      ],
+      "display_names": [
+       "TMC the metals Co Inc.  (TMC, TMCWW)  (CIK 0001798562)",
+       "Barron Gerard  (CIK 0001878772)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001104659-26-107182",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0001104659-26-107138:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001840776",
+       "0001899295"
+      ],
+      "display_names": [
+       "Hagerty, Inc.  (HGTY)  (CIK 0001840776)",
+       "Hagerty Holding Corp.  (CIK 0001899295)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001104659-26-107138",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0000947871-26-000861:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001970622",
+       "0002147668"
+      ],
+      "display_names": [
+       "USA Rare Earth, Inc.  (USAR)  (CIK 0001970622)",
+       "VB (Rare Earths) Ltd  (CIK 0002147668)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000947871-26-000861",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0000930413-26-002879:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001434754",
+       "0001454685"
+      ],
+      "display_names": [
+       "SAFE BULKERS, INC.  (SB, SB-PC, SB-PD)  (CIK 0001434754)",
+       "Vorini Holdings Inc.  (CIK 0001454685)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000930413-26-002879",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0000929638-26-003501:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0002097545",
+       "0000014661"
+      ],
+      "display_names": [
+       "AMG BBH Asset-Backed Credit Fund, LLC  (CIK 0002097545)",
+       "BROWN BROTHERS HARRIMAN & CO  (CIK 0000014661)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000929638-26-003501",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0000921895-26-002536:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0000101984",
+       "0001970265"
+      ],
+      "display_names": [
+       "UNIVERSAL ELECTRONICS INC  (UEIC)  (CIK 0000101984)",
+       "TORO 18 HOLDINGS LLC  (CIK 0001970265)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000921895-26-002536",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0000902664-26-003795:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001854270",
+       "0002060465"
+      ],
+      "display_names": [
+       "Senti Biosciences Holdings, Inc.  (SNTI)  (CIK 0001854270)",
+       "Celadon Partners SPV 24  (CIK 0002060465)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000902664-26-003795",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0000898427-26-000010:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001547546",
+       "0000898427"
+      ],
+      "display_names": [
+       "Lument Finance Trust, Inc.  (LFT, LFT-PA)  (CIK 0001547546)",
+       "AXA S.A.  (CIK 0000898427)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000898427-26-000010",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0000895345-26-000408:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001844971",
+       "0001850901"
+      ],
+      "display_names": [
+       "Vulcan Infrastructure & Power Inc.  (VIP, GREEL)  (CIK 0001844971)",
+       "Conversant Capital LLC  (CIK 0001850901)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000895345-26-000408",
+      "file_date": "2026-09-11"
+     }
+    },
+    {
+     "_id": "0002009659-26-000004:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001521945",
+       "0002009659"
+      ],
+      "display_names": [
+       "Prospect Floating Rate & Alternative Income Fund, Inc.  (CIK 0001521945)",
+       "John & Daria Barry Foundation  (CIK 0002009659)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0002009659-26-000004",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0001829126-26-010004:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001757715",
+       "0001932843"
+      ],
+      "display_names": [
+       "Aterian, Inc.  (ATER)  (CIK 0001757715)",
+       "Lazar David E.  (CIK 0001932843)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001829126-26-010004",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0001493152-26-042264:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0000930245",
+       "0001487588"
+      ],
+      "display_names": [
+       "Agassi Sports Entertainment Corp.  (AASP)  (CIK 0000930245)",
+       "Askew James M.  (CIK 0001487588)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001493152-26-042264",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0001493152-26-042257:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001254699",
+       "0001278951"
+      ],
+      "display_names": [
+       "QVC Group, Inc.  (QVCG)  (CIK 0001254699)",
+       "GOLDENTREE ASSET MANAGEMENT LP  (CIK 0001278951)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001493152-26-042257",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0001231919-26-001160:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001689375",
+       "0001609492"
+      ],
+      "display_names": [
+       "Entrada Therapeutics, Inc.  (TRDA)  (CIK 0001689375)",
+       "MPM BioVentures 2014, L.P.  (CIK 0001609492)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001231919-26-001160",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0001214659-26-011560:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001141964",
+       "0001900113"
+      ],
+      "display_names": [
+       "PUBLIC CO MANAGEMENT CORP  (PCMC)  (CIK 0001141964)",
+       "REPOSITORY SERVICES LLC  (CIK 0001900113)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001214659-26-011560",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0001213900-26-098817:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001667313",
+       "0001607914"
+      ],
+      "display_names": [
+       "Zedge, Inc.  (ZDGE)  (CIK 0001667313)",
+       "JONAS MICHAEL C  (CIK 0001607914)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001213900-26-098817",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0001193125-26-387898:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001831096",
+       "0001308057"
+      ],
+      "display_names": [
+       "Great Elm Group, Inc.  (GEG, GEGGL)  (CIK 0001831096)",
+       "LONG BALL PARTNERS LLC  (CIK 0001308057)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-387898",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0001193125-26-387838:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0000703604",
+       "0000310051"
+      ],
+      "display_names": [
+       "Distribution Solutions Group, Inc.  (DSGR)  (CIK 0000703604)",
+       "KING LUTHER CAPITAL MANAGEMENT CORP  (CIK 0000310051)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-387838",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0001193125-26-387494:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001850235",
+       "0001985487"
+      ],
+      "display_names": [
+       "D-MARKET Electronic Services & Trading  (HEPS)  (CIK 0001850235)",
+       "Joint Stock Co Kaspi.kz  (CIK 0001985487)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-387494",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0001104659-26-106563:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001936804",
+       "0002008673"
+      ],
+      "display_names": [
+       "SunCar Technology Group Inc.  (SDA, SDAWW)  (CIK 0001936804)",
+       "KMBP Holdings Ltd  (CIK 0002008673)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001104659-26-106563",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0000947871-26-000860:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0002131524",
+       "0001055951"
+      ],
+      "display_names": [
+       "Braveheart Bio, Inc.  (BRVE)  (CIK 0002131524)",
+       "ORBIMED ADVISORS LLC  (CIK 0001055951)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000947871-26-000860",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0000921895-26-002530:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001326380",
+       "0001767470"
+      ],
+      "display_names": [
+       "GameStop Corp.  (GME, GME-WT)  (CIK 0001326380)",
+       "Cohen Ryan  (CIK 0001767470)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000921895-26-002530",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0000898432-26-000703:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001467761",
+       "0002101596"
+      ],
+      "display_names": [
+       "FiEE, Inc.  (FIEE)  (CIK 0001467761)",
+       "Elements Corporate Services Ltd  (CIK 0002101596)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000898432-26-000703",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0000807249-26-000083:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0000921671",
+       "0000807249"
+      ],
+      "display_names": [
+       "GABELLI MULTIMEDIA TRUST INC.  (GGT, GGT-PE, GGT-PG)  (CIK 0000921671)",
+       "GAMCO INVESTORS, INC. ET AL  (CIK 0000807249)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0000807249-26-000083",
+      "file_date": "2026-09-10"
+     }
+    },
+    {
+     "_id": "0001628280-26-061143:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001759774",
+       "0001777089"
+      ],
+      "display_names": [
+       "Postal Realty Trust, Inc.  (PSTL)  (CIK 0001759774)",
+       "Spodek Andrew  (CIK 0001777089)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001628280-26-061143",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001493152-26-042035:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001864055",
+       "0002152924"
+      ],
+      "display_names": [
+       "Abits Group Inc  (ABTS)  (CIK 0001864055)",
+       "ARC Group International Ltd  (CIK 0002152924)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001493152-26-042035",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001493152-26-041924:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001938570",
+       "0001568078"
+      ],
+      "display_names": [
+       "Blue Laser Fusion, Inc.  (CIK 0001938570)",
+       "Ogawa Richard  (CIK 0001568078)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001493152-26-041924",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001361570-26-000019:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001773383",
+       "0001361570"
+      ],
+      "display_names": [
+       "Dynatrace, Inc.  (DT)  (CIK 0001773383)",
+       "PICTET ASSET MANAGEMENT SA  (CIK 0001361570)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001361570-26-000019",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001213900-26-098515:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001938570",
+       "0002002106"
+      ],
+      "display_names": [
+       "Blue Laser Fusion, Inc.  (CIK 0001938570)",
+       "Lucius Partners LLC  (CIK 0002002106)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001213900-26-098515",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001213900-26-098514:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001938570",
+       "0002002106"
+      ],
+      "display_names": [
+       "Blue Laser Fusion, Inc.  (CIK 0001938570)",
+       "Lucius Partners LLC  (CIK 0002002106)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001213900-26-098514",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001213900-26-098417:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001838987",
+       "0001183967"
+      ],
+      "display_names": [
+       "SunPower Inc.  (SPWR, SPWRW)  (CIK 0001838987)",
+       "Rodgers Thurman J  (CIK 0001183967)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001213900-26-098417",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001213900-26-098398:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0002092967",
+       "0001885408"
+      ],
+      "display_names": [
+       "Fort Technology Inc  (FRTT)  (CIK 0002092967)",
+       "Nexera Technologies Ltd  (CIK 0001885408)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001213900-26-098398",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001193125-26-386157:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001938570",
+       "0001412382"
+      ],
+      "display_names": [
+       "Blue Laser Fusion, Inc.  (CIK 0001938570)",
+       "Rudy Paul  (CIK 0001412382)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-386157",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001193125-26-385846:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001938570",
+       "0002139902"
+      ],
+      "display_names": [
+       "Blue Laser Fusion, Inc.  (CIK 0001938570)",
+       "Nakamura Shuji  (CIK 0002139902)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001193125-26-385846",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001178913-26-004462:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001577445",
+       "0001321178"
+      ],
+      "display_names": [
+       "Odysight.ai Inc.  (ODYS)  (CIK 0001577445)",
+       "Arkin Moshe  (CIK 0001321178)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001178913-26-004462",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001104659-26-106446:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001500435",
+       "0001610500"
+      ],
+      "display_names": [
+       "GoPro, Inc.  (GPRO)  (CIK 0001500435)",
+       "Woodman Nicholas  (CIK 0001610500)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001104659-26-106446",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001104659-26-106437:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001767582",
+       "0001740904"
+      ],
+      "display_names": [
+       "Luckin Coffee Inc.  (LKNCY)  (CIK 0001767582)",
+       "Centurium Capital Partners 2018, L.P.  (CIK 0001740904)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001104659-26-106437",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001104659-26-106410:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0000866829",
+       "0002152953"
+      ],
+      "display_names": [
+       "HORNBECK OFFSHORE SERVICES, INC.  (HLX, HOS)  (CIK 0000866829)",
+       "ASOF HOS GP, LLC  (CIK 0002152953)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001104659-26-106410",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001104659-26-106376:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001875609",
+       "0002152744"
+      ],
+      "display_names": [
+       "Swvl Holdings Corp  (SWVL, SWVLW)  (CIK 0001875609)",
+       "Ali Abdalla  (CIK 0002152744)"
+      ],
+      "form": "SCHEDULE 13D",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001104659-26-106376",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001104659-26-106327:primary_doc.xml",
+     "_source": {
+      "ciks": [
+       "0001060391",
+       "0001052192"
+      ],
+      "display_names": [
+       "REPUBLIC SERVICES, INC.  (RSG)  (CIK 0001060391)",
+       "CASCADE INVESTMENT, L.L.C.  (CIK 0001052192)"
+      ],
+      "form": "SCHEDULE 13D/A",
+      "root_forms": [
+       "SCHEDULE 13D"
+      ],
+      "items": [],
+      "adsh": "0001104659-26-106327",
+      "file_date": "2026-09-09"
+     }
+    }
+   ]
+  }
+ },
+ "companies": {
+  "fields": [
+   "cik",
+   "name",
+   "ticker",
+   "exchange"
+  ],
+  "data": [
+   [
+    1571996,
+    "Dell Technologies Inc.",
+    "DELL",
+    "NYSE"
+   ],
+   [
+    1437107,
+    "Warner Bros. Discovery, Inc.",
+    "WBD",
+    "Nasdaq"
+   ],
+   [
+    1060391,
+    "REPUBLIC SERVICES, INC.",
+    "RSG",
+    "NYSE"
+   ],
+   [
+    1096343,
+    "MARKEL GROUP INC.",
+    "MKL",
+    "NYSE"
+   ],
+   [
+    1985487,
+    "Joint Stock Co Kaspi.kz",
+    "KSPI",
+    "Nasdaq"
+   ],
+   [
+    1773383,
+    "Dynatrace, Inc.",
+    "DT",
+    "NYSE"
+   ],
+   [
+    1562401,
+    "American Homes 4 Rent",
+    "AMH",
+    "NYSE"
+   ],
+   [
+    1326380,
+    "GameStop Corp.",
+    "GME",
+    "NYSE"
+   ],
+   [
+    1767582,
+    "Luckin Coffee Inc.",
+    "LKNCY",
+    "OTC"
+   ],
+   [
+    812011,
+    "VAIL RESORTS INC",
+    "MTN",
+    "NYSE"
+   ],
+   [
+    886977,
+    "METHANEX CORP",
+    "MEOH",
+    "Nasdaq"
+   ],
+   [
+    1840776,
+    "Hagerty, Inc.",
+    "HGTY",
+    "NYSE"
+   ],
+   [
+    1841408,
+    "Dave Inc./DE",
+    "DAVE",
+    "Nasdaq"
+   ],
+   [
+    1662991,
+    "Sezzle Inc.",
+    "SEZL",
+    "Nasdaq"
+   ],
+   [
+    1970622,
+    "USA Rare Earth, Inc.",
+    "USAR",
+    "Nasdaq"
+   ],
+   [
+    866829,
+    "HORNBECK OFFSHORE SERVICES, INC.",
+    "HOS",
+    "NYSE"
+   ],
+   [
+    2131524,
+    "Braveheart Bio, Inc.",
+    "BRVE",
+    "Nasdaq"
+   ],
+   [
+    1798562,
+    "TMC the metals Co Inc.",
+    "TMC",
+    "Nasdaq"
+   ],
+   [
+    1712189,
+    "Target Hospitality Corp.",
+    "TH",
+    "Nasdaq"
+   ],
+   [
+    703604,
+    "Distribution Solutions Group, Inc.",
+    "DSGR",
+    "Nasdaq"
+   ],
+   [
+    928054,
+    "FLOTEK INDUSTRIES INC/CN/",
+    "FTK",
+    "NYSE"
+   ],
+   [
+    1881487,
+    "ProFrac Holding Corp.",
+    "ACDC",
+    "Nasdaq"
+   ],
+   [
+    1850235,
+    "D-MARKET Electronic Services & Trading",
+    "HEPS",
+    "Nasdaq"
+   ],
+   [
+    1759774,
+    "Postal Realty Trust, Inc.",
+    "PSTL",
+    "NYSE"
+   ],
+   [
+    1434754,
+    "SAFE BULKERS, INC.",
+    "SB",
+    "NYSE"
+   ],
+   [
+    1436126,
+    "Mistras Group, Inc.",
+    "MG",
+    "NYSE"
+   ],
+   [
+    1425450,
+    "ORTHOPEDIATRICS CORP",
+    "KIDS",
+    "Nasdaq"
+   ],
+   [
+    1494582,
+    "BOSTON OMAHA Corp",
+    "BOC",
+    "NYSE"
+   ],
+   [
+    1319947,
+    "Designer Brands Inc.",
+    "DBI",
+    "NYSE"
+   ],
+   [
+    2069785,
+    "Gloo Holdings, Inc.",
+    "GLOO",
+    "Nasdaq"
+   ],
+   [
+    1500435,
+    "GoPro, Inc.",
+    "GPRO",
+    "Nasdaq"
+   ],
+   [
+    1689375,
+    "Entrada Therapeutics, Inc.",
+    "TRDA",
+    "Nasdaq"
+   ],
+   [
+    1641614,
+    "CPI Card Group Inc.",
+    "PMTS",
+    "Nasdaq"
+   ],
+   [
+    1956166,
+    "PMA Graphene Technology Group Inc.",
+    "PMA",
+    "Nasdaq"
+   ],
+   [
+    921671,
+    "GABELLI MULTIMEDIA TRUST INC.",
+    "GGT",
+    "NYSE"
+   ],
+   [
+    2019793,
+    "XCF Global, Inc.",
+    "SAFX",
+    "Nasdaq"
+   ],
+   [
+    1875609,
+    "Swvl Holdings Corp",
+    "SWVL",
+    "Nasdaq"
+   ],
+   [
+    1574085,
+    "Braemar Hotels & Resorts Inc.",
+    "BHR",
+    "NYSE"
+   ],
+   [
+    1610853,
+    "Solana Co",
+    "HSDT",
+    "Nasdaq"
+   ],
+   [
+    1808805,
+    "Nautilus Biotechnology, Inc.",
+    "NAUT",
+    "Nasdaq"
+   ],
+   [
+    2066836,
+    "Conexeu Sciences Inc.",
+    "CNXU",
+    "Nasdaq"
+   ],
+   [
+    2112446,
+    "JATT II Acquisition Corp.",
+    "JATT",
+    "Nasdaq"
+   ],
+   [
+    1749723,
+    "New Fortress Energy Inc.",
+    "NFE",
+    "Nasdaq"
+   ],
+   [
+    1828972,
+    "BuzzFeed, Inc.",
+    "BZFD",
+    "Nasdaq"
+   ],
+   [
+    1676047,
+    "NutriBand Inc.",
+    "NTRB",
+    "Nasdaq"
+   ],
+   [
+    1822523,
+    "Advanced Flower Capital Inc.",
+    "AFCG",
+    "Nasdaq"
+   ],
+   [
+    1468327,
+    "Rent the Runway, Inc.",
+    "RENT",
+    "Nasdaq"
+   ],
+   [
+    1838987,
+    "SunPower Inc.",
+    "SPWR",
+    "Nasdaq"
+   ],
+   [
+    930245,
+    "Agassi Sports Entertainment Corp.",
+    "AASP",
+    "OTC"
+   ],
+   [
+    1831096,
+    "Great Elm Group, Inc.",
+    "GEG",
+    "Nasdaq"
+   ],
+   [
+    101984,
+    "UNIVERSAL ELECTRONICS INC",
+    "UEIC",
+    "Nasdaq"
+   ],
+   [
+    1927719,
+    "Freightos Ltd",
+    "CRGO",
+    "Nasdaq"
+   ],
+   [
+    1577445,
+    "Odysight.ai Inc.",
+    "ODYS",
+    "Nasdaq"
+   ],
+   [
+    1936804,
+    "SunCar Technology Group Inc.",
+    "SDA",
+    "Nasdaq"
+   ],
+   [
+    1017303,
+    "TRANSACT TECHNOLOGIES INC",
+    "TACT",
+    "Nasdaq"
+   ],
+   [
+    1024672,
+    "ELTEK LTD",
+    "ELTK",
+    "Nasdaq"
+   ],
+   [
+    1667313,
+    "Zedge, Inc.",
+    "ZDGE",
+    "NYSE"
+   ],
+   [
+    1547546,
+    "Lument Finance Trust, Inc.",
+    "LFT",
+    "NYSE"
+   ],
+   [
+    1467761,
+    "FiEE, Inc.",
+    "FIEE",
+    "Nasdaq"
+   ],
+   [
+    1844971,
+    "Vulcan Infrastructure & Power Inc.",
+    "VIP",
+    "Nasdaq"
+   ],
+   [
+    1871983,
+    "Anghami Inc",
+    "ANGH",
+    "Nasdaq"
+   ],
+   [
+    1512922,
+    "PetVivo Holdings, Inc.",
+    "PETV",
+    "OTC"
+   ],
+   [
+    896493,
+    "Hyperscale Data, Inc.",
+    "GPUS",
+    "NYSE"
+   ],
+   [
+    2092967,
+    "Fort Technology Inc",
+    "FRTT",
+    "Nasdaq"
+   ],
+   [
+    1757715,
+    "Aterian, Inc.",
+    "ATER",
+    "Nasdaq"
+   ],
+   [
+    1964314,
+    "JBDI Holdings Ltd",
+    "JBDI",
+    "Nasdaq"
+   ],
+   [
+    1997296,
+    "Medicus Pharma Ltd.",
+    "MDCX",
+    "Nasdaq"
+   ],
+   [
+    1854270,
+    "Senti Biosciences Holdings, Inc.",
+    "SNTI",
+    "Nasdaq"
+   ],
+   [
+    1787518,
+    "T3 Defense Inc.",
+    "DFNS",
+    "Nasdaq"
+   ],
+   [
+    1141964,
+    "PUBLIC CO MANAGEMENT CORP",
+    "PCMC",
+    "OTC"
+   ],
+   [
+    1661053,
+    "enVVeno Medical Corp",
+    "NVNO",
+    "Nasdaq"
+   ],
+   [
+    1574565,
+    "Evogene Ltd.",
+    "EVGN",
+    "Nasdaq"
+   ],
+   [
+    1583771,
+    "Hepion Pharmaceuticals, Inc.",
+    "HEPA",
+    "OTC"
+   ],
+   [
+    1864055,
+    "Abits Group Inc",
+    "ABTS",
+    "Nasdaq"
+   ],
+   [
+    1673475,
+    "GPO Plus, Inc.",
+    "GPOX",
+    "OTC"
+   ],
+   [
+    1885408,
+    "Nexera Technologies Ltd",
+    "NEXR",
+    "Nasdaq"
+   ],
+   [
+    1872292,
+    "Rainmaker Worldwide Inc.",
+    "RAKR",
+    "OTC"
+   ],
+   [
+    811922,
+    "ABERDEEN GOVERNMENT MARKETS INCOME FUND",
+    "MGF",
+    "NYSE"
+   ],
+   [
+    1739174,
+    "BiomX Inc.",
+    "HLSQ",
+    "NYSE"
+   ],
+   [
+    1755237,
+    "Korsana Biosciences, Inc.",
+    "KRSA",
+    "Nasdaq"
+   ],
+   [
+    2128462,
+    "Three Lions Acquisition Corp.",
+    "TLAC",
+    null
+   ],
+   [
+    921671,
+    "GABELLI MULTIMEDIA TRUST INC.",
+    "GGT-PE",
+    "NYSE"
+   ],
+   [
+    1434754,
+    "SAFE BULKERS, INC.",
+    "SB-PC",
+    "NYSE"
+   ],
+   [
+    1755237,
+    "Korsana Biosciences, Inc.",
+    "CYCN",
+    "Nasdaq"
+   ],
+   [
+    1739174,
+    "BiomX Inc.",
+    "PHGE",
+    "NYSE"
+   ],
+   [
+    896493,
+    "Hyperscale Data, Inc.",
+    "GPUS-PD",
+    "NYSE"
+   ],
+   [
+    921671,
+    "GABELLI MULTIMEDIA TRUST INC.",
+    "GGT-PG",
+    "NYSE"
+   ],
+   [
+    1254699,
+    "QVC Group, Inc.",
+    "QVCG",
+    "Nasdaq"
+   ],
+   [
+    1326380,
+    "GameStop Corp.",
+    "GME-WT",
+    "NYSE"
+   ],
+   [
+    1434754,
+    "SAFE BULKERS, INC.",
+    "SB-PD",
+    "NYSE"
+   ],
+   [
+    1547546,
+    "Lument Finance Trust, Inc.",
+    "LFT-PA",
+    "NYSE"
+   ],
+   [
+    1562401,
+    "American Homes 4 Rent",
+    "AMH-PG",
+    "NYSE"
+   ],
+   [
+    1562401,
+    "American Homes 4 Rent",
+    "AMH-PH",
+    "NYSE"
+   ],
+   [
+    1574085,
+    "Braemar Hotels & Resorts Inc.",
+    "BHR-PB",
+    "NYSE"
+   ],
+   [
+    1574085,
+    "Braemar Hotels & Resorts Inc.",
+    "BHR-PD",
+    "NYSE"
+   ],
+   [
+    1583771,
+    "Hepion Pharmaceuticals, Inc.",
+    "CTRVP",
+    "OTC"
+   ],
+   [
+    1676047,
+    "NutriBand Inc.",
+    "NTRBW",
+    "Nasdaq"
+   ],
+   [
+    1749723,
+    "New Fortress Energy Inc.",
+    "NFEGP",
+    "Nasdaq"
+   ],
+   [
+    1787518,
+    "T3 Defense Inc.",
+    "DFNSW",
+    "Nasdaq"
+   ],
+   [
+    1798562,
+    "TMC the metals Co Inc.",
+    "TMCWW",
+    "Nasdaq"
+   ],
+   [
+    1828972,
+    "BuzzFeed, Inc.",
+    "BZFDW",
+    "Nasdaq"
+   ],
+   [
+    1831096,
+    "Great Elm Group, Inc.",
+    "GEGGL",
+    "Nasdaq"
+   ],
+   [
+    1838987,
+    "SunPower Inc.",
+    "SPWRW",
+    "Nasdaq"
+   ],
+   [
+    1841408,
+    "Dave Inc./DE",
+    "DAVEW",
+    "Nasdaq"
+   ],
+   [
+    1844971,
+    "Vulcan Infrastructure & Power Inc.",
+    "GREEL",
+    "Nasdaq"
+   ],
+   [
+    1871983,
+    "Anghami Inc",
+    "ANGHW",
+    "Nasdaq"
+   ],
+   [
+    1875609,
+    "Swvl Holdings Corp",
+    "SWVLW",
+    "Nasdaq"
+   ],
+   [
+    1885408,
+    "Nexera Technologies Ltd",
+    "NEXRW",
+    "Nasdaq"
+   ],
+   [
+    1927719,
+    "Freightos Ltd",
+    "CRGOW",
+    "Nasdaq"
+   ],
+   [
+    1936804,
+    "SunCar Technology Group Inc.",
+    "SDAWW",
+    "Nasdaq"
+   ],
+   [
+    1997296,
+    "Medicus Pharma Ltd.",
+    "MDCXW",
+    "Nasdaq"
+   ],
+   [
+    2128462,
+    "Three Lions Acquisition Corp.",
+    "TLACU",
+    "Nasdaq"
+   ]
+  ]
+ }
+}

@@ -23,24 +23,34 @@ export const ITEM_NAMES: Record<string, string> = {
   "1.01": "major agreement signed",
   "1.02": "major agreement ended",
   "1.03": "bankruptcy or receivership",
+  "1.04": "mine safety shutdown",
+  "1.05": "cybersecurity incident",
   "2.01": "acquisition or sale completed",
   "2.02": "earnings results",
   "2.03": "new debt",
+  "2.04": "debt accelerated",
   "2.05": "restructuring or layoffs",
   "2.06": "asset write-down",
   "3.01": "delisting notice",
   "3.02": "shares sold privately",
+  "3.03": "shareholder rights changed",
   "4.01": "auditor change",
   "4.02": "past financials can't be relied on",
+  "5.01": "change in control",
   "5.02": "officer or director leaving or joining",
+  "5.03": "bylaws or fiscal year changed",
+  "5.04": "benefit-plan trading halted",
+  "5.05": "ethics code changed",
+  "5.06": "shell company status changed",
   "5.07": "shareholder vote",
+  "5.08": "director nominations",
   "7.01": "press release",
   "8.01": "other events",
   "9.01": "exhibits",
 };
 
-const RED_ITEMS = new Set(["4.02", "1.03", "3.01", "4.01"]);
-const MATERIAL_ITEMS = new Set(["5.02", "1.01", "1.02", "2.01", "2.05", "2.06", "3.02"]);
+export const RED_ITEMS = new Set(["4.02", "1.03", "3.01", "4.01"]);
+export const MATERIAL_ITEMS = new Set(["5.02", "1.01", "1.02", "2.01", "2.05", "2.06", "3.02"]);
 
 /** Forms that are an event by themselves (no item codes). */
 export const FORM_NAMES: Record<string, string> = {
@@ -50,8 +60,8 @@ export const FORM_NAMES: Record<string, string> = {
   "424B5": "shares or bonds offered",
   "S-3": "registration to sell shares or bonds",
 };
-const RED_FORMS = new Set(["NT 10-K", "NT 10-Q"]);
-const MATERIAL_FORMS = new Set(["SCHEDULE 13D", "424B5", "S-3"]);
+export const RED_FORMS = new Set(["NT 10-K", "NT 10-Q"]);
+export const MATERIAL_FORMS = new Set(["SCHEDULE 13D", "424B5", "S-3"]);
 
 /** The forms the evaluator asks EDGAR for. 8-K covers 8-K/A. */
 export const WATCHED_FORMS = ["8-K", ...RED_FORMS, ...MATERIAL_FORMS];
@@ -75,7 +85,7 @@ export interface SecFiling {
   url: string;
 }
 
-const TIER_RANK: Record<FilingTier, number> = { CONTEXT: 0, MATERIAL: 1, RED: 2 };
+export const TIER_RANK: Record<FilingTier, number> = { CONTEXT: 0, MATERIAL: 1, RED: 2 };
 
 /**
  * The tier of one filing. An amended 8-K carries its items like the
@@ -179,4 +189,55 @@ export function filingsBehindFire(
  */
 export function filingNeedsSameDayLook(filings: SecFiling[], thesisStatus: string): boolean {
   return thesisStatus === "HOLDING" && filings.some((f) => f.tier === "RED");
+}
+
+/** At least this tier: MATERIAL admits serious filings too. */
+export function atLeastTier(f: Pick<SecFiling, "tier">, tier: "RED" | "MATERIAL" | undefined): boolean {
+  return !tier || TIER_RANK[f.tier] >= TIER_RANK[tier];
+}
+
+/**
+ * An amendment is paperwork on an event already counted — except an amended
+ * 8-K, which carries its items like the original (restatements are often
+ * filed as 8-K/A).
+ */
+export function isCountedAmendment(f: Pick<SecFiling, "form" | "rootForm">): boolean {
+  return f.form.endsWith("/A") && f.rootForm !== "8-K";
+}
+
+/**
+ * What to ask EDGAR for, from what the caller named. Item codes only exist
+ * on 8-Ks, and EDGAR can't filter by them — but a text search for
+ * "Item 4.02" narrows a month of ~4,250 8-Ks to the handful that carry it,
+ * so item codes become one 8-K search with that text, and the codes are
+ * checked again on our side (the text also matches filings that merely
+ * mention an item). A tier on its own becomes its item codes plus its
+ * forms; next to named forms or codes it only filters.
+ */
+export function planSearch(opts: {
+  forms?: string[];
+  items?: string[];
+  tier?: "RED" | "MATERIAL";
+}): { itemSearch?: { items: string[] }; formSearch?: { forms: string[] } } {
+  const forms = new Set((opts.forms ?? []).map((f) => f.trim().toUpperCase()).filter(Boolean));
+  const items = new Set(opts.items ?? []);
+  // Named forms or codes ARE the search; a tier then only filters the
+  // results. A tier alone becomes the search.
+  if (opts.tier && forms.size === 0 && items.size === 0) {
+    for (const i of RED_ITEMS) items.add(i);
+    for (const f of RED_FORMS) forms.add(f);
+    if (opts.tier === "MATERIAL") {
+      for (const i of MATERIAL_ITEMS) items.add(i);
+      for (const f of MATERIAL_FORMS) forms.add(f);
+    }
+  }
+  const out: { itemSearch?: { items: string[] }; formSearch?: { forms: string[] } } = {};
+  if (items.size) {
+    out.itemSearch = { items: [...items].sort() };
+    // 8-Ks are covered by the item search; asking for all of them too would
+    // swamp it.
+    forms.delete("8-K");
+  }
+  if (forms.size) out.formSearch = { forms: [...forms].sort() };
+  return out;
 }

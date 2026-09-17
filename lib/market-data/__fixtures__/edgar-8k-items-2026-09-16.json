@@ -1,0 +1,1153 @@
+{
+ "_comment": "Real EDGAR data fetched 2026-09-16: an 8-K text search for \"Item 4.02\" OR \"Item 1.03\", 2026-08-17 to 2026-09-16 (all 49 hits), trimmed, and SEC's company-list rows for every CIK named.",
+ "search": {
+  "hits": {
+   "total": {
+    "value": 49,
+    "relation": "eq"
+   },
+   "hits": [
+    {
+     "_id": "0001493152-26-038853:form8-k.htm",
+     "_source": {
+      "ciks": [
+       "0001414767"
+      ],
+      "display_names": [
+       "Netcapital Inc.  (NCPL, NCPLW)  (CIK 0001414767)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "4.01",
+       "4.02",
+       "9.01"
+      ],
+      "adsh": "0001493152-26-038853",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001493152-26-041986:form8-k.htm",
+     "_source": {
+      "ciks": [
+       "0001331421"
+      ],
+      "display_names": [
+       "SDR Drone, Inc.  (SDCO)  (CIK 0001331421)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "4.02",
+       "9.01"
+      ],
+      "adsh": "0001493152-26-041986",
+      "file_date": "2026-09-09"
+     }
+    },
+    {
+     "_id": "0001575872-26-000605:ncl124_8ka.htm",
+     "_source": {
+      "ciks": [
+       "0001923780"
+      ],
+      "display_names": [
+       "Northann Corp.  (NCL)  (CIK 0001923780)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "4.01",
+       "4.02",
+       "9.01"
+      ],
+      "adsh": "0001575872-26-000605",
+      "file_date": "2026-08-24"
+     }
+    },
+    {
+     "_id": "0001193125-26-393238:buru-20260916.htm",
+     "_source": {
+      "ciks": [
+       "0001814215"
+      ],
+      "display_names": [
+       "Nuburu, Inc.  (BURU, BURUD, BURUW)  (CIK 0001814215)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "4.02"
+      ],
+      "adsh": "0001193125-26-393238",
+      "file_date": "2026-09-16"
+     }
+    },
+    {
+     "_id": "0001683168-26-006537:nocera_8k.htm",
+     "_source": {
+      "ciks": [
+       "0001756180"
+      ],
+      "display_names": [
+       "NOCERA, INC.  (NCRA)  (CIK 0001756180)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "4.02"
+      ],
+      "adsh": "0001683168-26-006537",
+      "file_date": "2026-08-17"
+     }
+    },
+    {
+     "_id": "0001213900-26-095265:ea0303565-8k_breeze2.htm",
+     "_source": {
+      "ciks": [
+       "0002095443"
+      ],
+      "display_names": [
+       "Breeze Acquisition Corp. II  (BREZ, BREZR)  (CIK 0002095443)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "4.02"
+      ],
+      "adsh": "0001213900-26-095265",
+      "file_date": "2026-08-31"
+     }
+    },
+    {
+     "_id": "0001213900-26-097802:ea0304695-8k_synergy.htm",
+     "_source": {
+      "ciks": [
+       "0001562733"
+      ],
+      "display_names": [
+       "Synergy CHC Corp.  (SNYR)  (CIK 0001562733)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "1.03",
+       "5.02"
+      ],
+      "adsh": "0001213900-26-097802",
+      "file_date": "2026-09-08"
+     }
+    },
+    {
+     "_id": "0001753926-26-001687:g085921_8k.htm",
+     "_source": {
+      "ciks": [
+       "0001590695"
+      ],
+      "display_names": [
+       "TWINLAB CONSOLIDATED HOLDINGS, INC.  (CIK 0001590695)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "1.01",
+       "1.03",
+       "2.01",
+       "2.04",
+       "2.06",
+       "7.01",
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001753926-26-001687",
+      "file_date": "2026-09-02"
+     }
+    },
+    {
+     "_id": "0001104659-26-105905:tm2624942d1_8k.htm",
+     "_source": {
+      "ciks": [
+       "0001001233"
+      ],
+      "display_names": [
+       "SANGAMO THERAPEUTICS, INC  (SGMOQ)  (CIK 0001001233)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "1.03",
+       "2.01",
+       "7.01",
+       "9.01"
+      ],
+      "adsh": "0001104659-26-105905",
+      "file_date": "2026-09-08"
+     }
+    },
+    {
+     "_id": "0001575872-26-000605:ncl124_ex16-1.htm",
+     "_source": {
+      "ciks": [
+       "0001923780"
+      ],
+      "display_names": [
+       "Northann Corp.  (NCL)  (CIK 0001923780)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "4.01",
+       "4.02",
+       "9.01"
+      ],
+      "adsh": "0001575872-26-000605",
+      "file_date": "2026-08-24"
+     }
+    },
+    {
+     "_id": "0001104659-26-102570:tm2624233d1_8k.htm",
+     "_source": {
+      "ciks": [
+       "0001720893"
+      ],
+      "display_names": [
+       "BioXcel Therapeutics, Inc.  (BTAI)  (CIK 0001720893)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "1.01",
+       "1.03"
+      ],
+      "adsh": "0001104659-26-102570",
+      "file_date": "2026-08-28"
+     }
+    },
+    {
+     "_id": "0001193125-26-374328:d116527d8k.htm",
+     "_source": {
+      "ciks": [
+       "0001001233"
+      ],
+      "display_names": [
+       "SANGAMO THERAPEUTICS, INC  (SGMOQ)  (CIK 0001001233)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "1.01",
+       "1.03",
+       "9.01"
+      ],
+      "adsh": "0001193125-26-374328",
+      "file_date": "2026-08-28"
+     }
+    },
+    {
+     "_id": "0001171843-26-005702:f8k_082126.htm",
+     "_source": {
+      "ciks": [
+       "0000883107"
+      ],
+      "display_names": [
+       "SOLESENCE, INC.  (SLSN)  (CIK 0000883107)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "4.02",
+       "9.01"
+      ],
+      "adsh": "0001171843-26-005702",
+      "file_date": "2026-08-21"
+     }
+    },
+    {
+     "_id": "0001493152-26-039804:form8-k.htm",
+     "_source": {
+      "ciks": [
+       "0001166708"
+      ],
+      "display_names": [
+       "Brownie's Marine Group, Inc  (BWMG)  (CIK 0001166708)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "4.02"
+      ],
+      "adsh": "0001493152-26-039804",
+      "file_date": "2026-08-24"
+     }
+    },
+    {
+     "_id": "0001193125-26-389901:cmbmf-20260911.htm",
+     "_source": {
+      "ciks": [
+       "0001738177"
+      ],
+      "display_names": [
+       "Cambium Networks Corp  (CMBMF)  (CIK 0001738177)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "1.03",
+       "2.05",
+       "5.02",
+       "9.01"
+      ],
+      "adsh": "0001193125-26-389901",
+      "file_date": "2026-09-14"
+     }
+    },
+    {
+     "_id": "0001539497-26-002375:exh99_3-gsmcmlpa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002375",
+      "file_date": "2026-08-28"
+     }
+    },
+    {
+     "_id": "0001539497-26-002375:exh99_2-crefimlpa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002375",
+      "file_date": "2026-08-28"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh99_3-gsmcmlpa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002375:exh99_4-bmomlpa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002375",
+      "file_date": "2026-08-28"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh99_1-gaccmlpa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh99_5-barclaysmlpa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002375:exh99_1-gaccmlpa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002375",
+      "file_date": "2026-08-28"
+     }
+    },
+    {
+     "_id": "0001539497-26-002375:exh99_5-barclaysmlpa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002375",
+      "file_date": "2026-08-28"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh99_2-crefimlpa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh99_4-bmomlpa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002284:exh4_1-2026m1psa.htm",
+     "_source": {
+      "ciks": [
+       "0002145996"
+      ],
+      "display_names": [
+       "D2-Natixis Multifamily Mortgage Trust 2026-M1  (CIK 0002145996)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002284",
+      "file_date": "2026-08-17"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh4_4-5c42psa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002300:exh4_2-c36psa.htm",
+     "_source": {
+      "ciks": [
+       "0002063009"
+      ],
+      "display_names": [
+       "BMO 2026-C15 Mortgage Trust  (CIK 0002063009)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002300",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002365:exh4_1-c36psa.htm",
+     "_source": {
+      "ciks": [
+       "0002145539"
+      ],
+      "display_names": [
+       "Morgan Stanley Bank of America Merrill Lynch Trust 2026-C36  (CIK 0002145539)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002365",
+      "file_date": "2026-08-26"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh4_7-5c8psa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002300:exh4_3-bnk52psa.htm",
+     "_source": {
+      "ciks": [
+       "0002063009"
+      ],
+      "display_names": [
+       "BMO 2026-C15 Mortgage Trust  (CIK 0002063009)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002300",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh4_6-5c9psa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002442:exh4_1-bnk52psa.htm",
+     "_source": {
+      "ciks": [
+       "0002138709"
+      ],
+      "display_names": [
+       "BANK 2026-BNK52  (CIK 0002138709)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002442",
+      "file_date": "2026-09-02"
+     }
+    },
+    {
+     "_id": "0001539497-26-002320:exh4_1-5yr24psa.htm",
+     "_source": {
+      "ciks": [
+       "0002148771"
+      ],
+      "display_names": [
+       "BANK5 2026-5YR24  (CIK 0002148771)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002320",
+      "file_date": "2026-08-20"
+     }
+    },
+    {
+     "_id": "0001539497-26-002449:exh4_1-5yr23psa.htm",
+     "_source": {
+      "ciks": [
+       "0002140978"
+      ],
+      "display_names": [
+       "BANK5 2026-5YR23  (CIK 0002140978)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002449",
+      "file_date": "2026-09-03"
+     }
+    },
+    {
+     "_id": "0001539497-26-002320:exh4_2-5yr23psa.htm",
+     "_source": {
+      "ciks": [
+       "0002148771"
+      ],
+      "display_names": [
+       "BANK5 2026-5YR24  (CIK 0002148771)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002320",
+      "file_date": "2026-08-20"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh4_3-bmarkv20psa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh4_5-bmarkv22psa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh4_2-5c15psa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002300:exh4_4-b43psa.htm",
+     "_source": {
+      "ciks": [
+       "0002063009"
+      ],
+      "display_names": [
+       "BMO 2026-C15 Mortgage Trust  (CIK 0002063009)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002300",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002437:exh4_1-5c16psa.htm",
+     "_source": {
+      "ciks": [
+       "0002128774"
+      ],
+      "display_names": [
+       "BMO 2026-5C15 Mortgage Trust  (CIK 0002128774)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "1.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002437",
+      "file_date": "2026-09-01"
+     }
+    },
+    {
+     "_id": "0001539497-26-002300:exh4_5-bmoc14psa.htm",
+     "_source": {
+      "ciks": [
+       "0002063009"
+      ],
+      "display_names": [
+       "BMO 2026-C15 Mortgage Trust  (CIK 0002063009)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002300",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002300:exh4_1c15psa.htm",
+     "_source": {
+      "ciks": [
+       "0002063009"
+      ],
+      "display_names": [
+       "BMO 2026-C15 Mortgage Trust  (CIK 0002063009)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002300",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002402:exh4_1c15psa.htm",
+     "_source": {
+      "ciks": [
+       "0002063009"
+      ],
+      "display_names": [
+       "BMO 2026-C15 Mortgage Trust  (CIK 0002063009)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002402",
+      "file_date": "2026-08-31"
+     }
+    },
+    {
+     "_id": "0001539497-26-002368:exh4_1-5c16psa.htm",
+     "_source": {
+      "ciks": [
+       "0002136643"
+      ],
+      "display_names": [
+       "BMO 2026-5C16 Mortgage Trust  (CIK 0002136643)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002368",
+      "file_date": "2026-08-26"
+     }
+    },
+    {
+     "_id": "0001539497-26-002452:exh4_1-c15psa.htm",
+     "_source": {
+      "ciks": [
+       "0002145539"
+      ],
+      "display_names": [
+       "Morgan Stanley Bank of America Merrill Lynch Trust 2026-C36  (CIK 0002145539)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "1.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002452",
+      "file_date": "2026-09-03"
+     }
+    },
+    {
+     "_id": "0001539497-26-002293:exh4_1v23psa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "8.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002293",
+      "file_date": "2026-08-18"
+     }
+    },
+    {
+     "_id": "0001539497-26-002375:exh4_1-v23psa.htm",
+     "_source": {
+      "ciks": [
+       "0002148615"
+      ],
+      "display_names": [
+       "Benchmark 2026-V23 Mortgage Trust  (CIK 0002148615)"
+      ],
+      "form": "8-K/A",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002375",
+      "file_date": "2026-08-28"
+     }
+    },
+    {
+     "_id": "0001539497-26-002450:exh4_1-v23psa.htm",
+     "_source": {
+      "ciks": [
+       "0002136643"
+      ],
+      "display_names": [
+       "BMO 2026-5C16 Mortgage Trust  (CIK 0002136643)"
+      ],
+      "form": "8-K",
+      "root_forms": [
+       "8-K"
+      ],
+      "items": [
+       "1.01",
+       "9.01"
+      ],
+      "adsh": "0001539497-26-002450",
+      "file_date": "2026-09-03"
+     }
+    }
+   ]
+  }
+ },
+ "companies": {
+  "fields": [
+   "cik",
+   "name",
+   "ticker",
+   "exchange"
+  ],
+  "data": [
+   [
+    1331421,
+    "SDR Drone, Inc.",
+    "SDCO",
+    "OTC"
+   ],
+   [
+    1001233,
+    "SANGAMO THERAPEUTICS, INC",
+    "SGMOQ",
+    "OTC"
+   ],
+   [
+    883107,
+    "SOLESENCE, INC.",
+    "SLSN",
+    "Nasdaq"
+   ],
+   [
+    1814215,
+    "Nuburu, Inc.",
+    "BURU",
+    null
+   ],
+   [
+    1923780,
+    "Northann Corp.",
+    "NCL",
+    null
+   ],
+   [
+    1756180,
+    "NOCERA, INC.",
+    "NCRA",
+    "Nasdaq"
+   ],
+   [
+    1414767,
+    "Netcapital Inc.",
+    "NCPL",
+    "Nasdaq"
+   ],
+   [
+    1738177,
+    "Cambium Networks Corp",
+    "CMBMF",
+    "OTC"
+   ],
+   [
+    1562733,
+    "Synergy CHC Corp.",
+    "SNYR",
+    "Nasdaq"
+   ],
+   [
+    2095443,
+    "Breeze Acquisition Corp. II",
+    "BREZ",
+    "Nasdaq"
+   ],
+   [
+    1166708,
+    "Brownie's Marine Group, Inc",
+    "BWMG",
+    "OTC"
+   ],
+   [
+    1720893,
+    "BioXcel Therapeutics, Inc.",
+    "BTAI",
+    "Nasdaq"
+   ],
+   [
+    1414767,
+    "Netcapital Inc.",
+    "NCPLW",
+    "Nasdaq"
+   ],
+   [
+    1720893,
+    "BioXcel Therapeutics, Inc.",
+    "BTAIQ",
+    "OTC"
+   ],
+   [
+    1814215,
+    "Nuburu, Inc.",
+    "BURUD",
+    "OTC"
+   ],
+   [
+    1814215,
+    "Nuburu, Inc.",
+    "BURUW",
+    "OTC"
+   ],
+   [
+    2095443,
+    "Breeze Acquisition Corp. II",
+    "BREZR",
+    "Nasdaq"
+   ]
+  ]
+ }
+}
