@@ -70,6 +70,22 @@ export interface EnforceCloseReasonArgs {
   triggerLabel?: string;
   /** The model's `belief_survived` attestation, when the tool collects one. */
   beliefSurvived?: boolean | null;
+  /**
+   * The plan and the tape at a close NO protective fire woke (DAV-263). A
+   * declared TARGET has to have been reached (LONG: price ≥ target, SHORT:
+   * price ≤ target) and a declared STOP has to have been broken (LONG:
+   * price ≤ stop, SHORT: price ≥ stop); otherwise the sale is the agent's
+   * judgment and is stored MANUAL with an audit note. SRRK 2026-09-14 08:00:
+   * "TARGET" at $55.41 with the target at $65 and the stop at $56.40 — the
+   * record said a target was hit when nothing was. Absent, or with no price,
+   * the declared label stands: a correction never guesses.
+   */
+  levels?: {
+    direction: "LONG" | "SHORT";
+    price: number | null;
+    targetPrice: number | null;
+    stopLoss: number | null;
+  };
 }
 
 export interface EnforcedCloseReason {
@@ -94,8 +110,29 @@ export interface EnforcedCloseReason {
  * their own and land as MANUAL — unchanged from before this helper; both
  * close tools already did exactly this.
  */
-function collapse(declared: DeclaredCloseReason): StoredCloseReason {
+export function collapseCloseReason(declared: DeclaredCloseReason): StoredCloseReason {
   return declared === "TARGET" || declared === "STOP" ? declared : "MANUAL";
+}
+
+/**
+ * Does the tape back a declared TARGET or STOP? Null when the claim can't be
+ * judged (no price), otherwise the plain-words reason it doesn't hold.
+ */
+function levelClaimFailure(
+  declared: "TARGET" | "STOP",
+  levels: NonNullable<EnforceCloseReasonArgs["levels"]>,
+): string | null {
+  const { direction, price, targetPrice, stopLoss } = levels;
+  if (price == null) return null;
+  const fmt = (n: number) => `$${n.toFixed(2)}`;
+  if (declared === "TARGET") {
+    if (targetPrice == null) return `the plan carries no target to have reached (price ${fmt(price)})`;
+    const reached = direction === "LONG" ? price >= targetPrice : price <= targetPrice;
+    return reached ? null : `the price (${fmt(price)}) never reached the ${fmt(targetPrice)} target`;
+  }
+  if (stopLoss == null) return `the plan carries no stop to have broken (price ${fmt(price)})`;
+  const broken = direction === "LONG" ? price <= stopLoss : price >= stopLoss;
+  return broken ? null : `the price (${fmt(price)}) is on the safe side of the ${fmt(stopLoss)} stop`;
 }
 
 /**
@@ -114,8 +151,25 @@ export function enforceCloseReason(
     declared === "THESIS_INVALIDATED" ? false : args.beliefSurvived;
 
   if (!protective) {
+    // No protective fire: the agent's label stands unless it claims a level
+    // the tape says was never reached (DAV-263).
+    const failure =
+      (declared === "TARGET" || declared === "STOP") && args.levels
+        ? levelClaimFailure(declared, args.levels)
+        : null;
+    if (failure) {
+      return {
+        stored: "MANUAL",
+        declared,
+        corrected: true,
+        auditNote:
+          `Sale label auto-corrected ${declared} → MANUAL: ${failure}, so this is recorded ` +
+          `as a discretionary exit rather than a ${declared.toLowerCase()}.`,
+        beliefSurvived,
+      };
+    }
     return {
-      stored: collapse(declared),
+      stored: collapseCloseReason(declared),
       declared,
       corrected: false,
       auditNote: null,

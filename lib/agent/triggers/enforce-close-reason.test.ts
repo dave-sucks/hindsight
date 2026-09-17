@@ -179,3 +179,56 @@ describe("withCloseAuditNote", () => {
     expect(withCloseAuditNote("   ", e)).toBe(e.auditNote);
   });
 });
+
+describe("enforceCloseReason — a judgment close that claims a level the tape never reached (DAV-263)", () => {
+  // SRRK, Catalyst Event PM daily run, 2026-09-14 08:00:31: close_position(reason: "TARGET")
+  // at $55.41 with the target at $65 and the stop at $56.40. No protective fire
+  // woke the run. The Order was stored TARGET — "target hit" for a sale that was
+  // the agent's judgment ("the catalyst we owned has already happened").
+  const srrk = { direction: "LONG" as const, price: 55.41, targetPrice: 65, stopLoss: 56.4 };
+
+  it("SRRK: TARGET at $55.41 against a $65 target is stored MANUAL, with the note saying why", () => {
+    const e = enforceCloseReason({ declared: "TARGET", levels: srrk });
+    expect(e.stored).toBe("MANUAL");
+    expect(e.corrected).toBe(true);
+    expect(e.auditNote).toContain("TARGET → MANUAL");
+    expect(e.auditNote).toContain("$55.41");
+    expect(e.auditNote).toContain("$65.00 target");
+  });
+
+  it("a STOP claimed while the price sits above the stop is MANUAL too", () => {
+    const e = enforceCloseReason({ declared: "STOP", levels: { ...srrk, price: 58 } });
+    expect(e.stored).toBe("MANUAL");
+    expect(e.auditNote).toContain("safe side of the $56.40 stop");
+  });
+
+  it("a TARGET the tape reached, or a STOP it broke, keeps its label with no note", () => {
+    expect(enforceCloseReason({ declared: "TARGET", levels: { ...srrk, price: 66 } })).toMatchObject({ stored: "TARGET", corrected: false, auditNote: null });
+    expect(enforceCloseReason({ declared: "STOP", levels: { ...srrk, price: 55.41 } })).toMatchObject({ stored: "STOP", corrected: false, auditNote: null });
+    // SHORT: the target is below the entry, the stop above.
+    expect(enforceCloseReason({ declared: "TARGET", levels: { direction: "SHORT", price: 40, targetPrice: 42, stopLoss: 60 } })).toMatchObject({ stored: "TARGET", corrected: false });
+    expect(enforceCloseReason({ declared: "STOP", levels: { direction: "SHORT", price: 61, targetPrice: 42, stopLoss: 60 } })).toMatchObject({ stored: "STOP", corrected: false });
+  });
+
+  it("no price means no correction — the declared label stands", () => {
+    expect(enforceCloseReason({ declared: "TARGET", levels: { ...srrk, price: null } })).toMatchObject({ stored: "TARGET", corrected: false, auditNote: null });
+  });
+
+  it("a plan with no target can't have hit one", () => {
+    const e = enforceCloseReason({ declared: "TARGET", levels: { ...srrk, targetPrice: null } });
+    expect(e.stored).toBe("MANUAL");
+    expect(e.auditNote).toContain("no target");
+  });
+
+  it("MANUAL and the judgment codes are untouched by the levels", () => {
+    for (const declared of ["MANUAL", "RISK_MANAGEMENT", "THESIS_INVALIDATED"] as const) {
+      expect(enforceCloseReason({ declared, levels: srrk })).toMatchObject({ stored: "MANUAL", corrected: false });
+    }
+  });
+
+  it("a protective fire still wins over the levels", () => {
+    const e = enforceCloseReason({ declared: "TARGET", protective: "STOP", triggerLabel: TRAIL, levels: srrk });
+    expect(e.stored).toBe("STOP");
+    expect(e.auditNote).toContain("TARGET → STOP");
+  });
+});
