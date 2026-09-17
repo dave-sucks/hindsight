@@ -18,6 +18,7 @@
  */
 
 import type { TriggerPredicate } from "@/lib/agent/triggers/types";
+import { applySetupOverride, type SetupOverrides } from "./setup-overrides";
 
 // ── The numbers (DAV-245 ruling 1: playbook defaults accepted) ───────────
 
@@ -737,15 +738,18 @@ export const SEAT_SETUPS: Record<string, SetupId[]> = {
  * new seat) gets the whole catalog rather than none — a rename must never
  * silently empty the writer's choices.
  */
-export function setupsForSeat(seatName: string | null | undefined): Setup[] {
+export function setupsForSeat(seatName: string | null | undefined, overrides?: SetupOverrides): Setup[] {
   const ids = seatName ? SEAT_SETUPS[seatName] : undefined;
-  return ids?.length ? SETUPS.filter((s) => ids.includes(s.id)) : SETUPS;
+  const list = ids?.length ? SETUPS.filter((s) => ids.includes(s.id)) : SETUPS;
+  return overrides ? list.map((s) => applySetupOverride(s, overrides[s.id])) : list;
 }
 
 // ── Lookups ───────────────────────────────────────────────────────────────
 
-export function getSetup(id: string): Setup | undefined {
-  return SETUPS.find((s) => s.id === id.toUpperCase());
+/** The catalog entry, with an account's playbook numbers laid over it when given (DAV-273). */
+export function getSetup(id: string, overrides?: SetupOverrides): Setup | undefined {
+  const s = SETUPS.find((x) => x.id === id.toUpperCase());
+  return s && overrides ? applySetupOverride(s, overrides[s.id]) : s;
 }
 
 export function setupIndex(): { id: SetupId; code: string; name: string; role: Setup["role"]; horizons: Horizon[] }[] {

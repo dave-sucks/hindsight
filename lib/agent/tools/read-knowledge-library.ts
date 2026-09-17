@@ -16,6 +16,7 @@
  */
 
 import { z } from "zod";
+import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { defineTool } from "@/lib/agent/define-tool";
 import {
   getArchetype,
@@ -82,7 +83,7 @@ export const readKnowledgeLibrary = defineTool({
       : "Looking at trusted research sources";
   },
 
-  execute: async (args) => {
+  execute: async (args, ctx) => {
     const { topic, id } = args;
 
     // Preview N names inline in the summary so the reader can see what's
@@ -153,7 +154,7 @@ export const readKnowledgeLibrary = defineTool({
           sources: [],
         };
       }
-      const entry = getSetup(id);
+      const entry = getSetup(id, await loadSetupOverrides(ctx.accountId));
       if (!entry) {
         return {
           summary: `Unknown setup: ${id}`,

@@ -16,6 +16,7 @@
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { describePredicate } from "@/lib/agent/needs-action";
 import { getSetup } from "@/lib/agent/knowledge/setups";
+import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import type { ResearchAge } from "@/lib/agent/thesis-research/staleness";
 
 interface TacticalPromptArgs {
@@ -95,11 +96,13 @@ interface TacticalPromptArgs {
     price: number | null;
     coFired: Array<{ triggerId: string; predicateKind: string; sentence: string }>;
   } | null;
+  /** The account's playbook numbers laid over the catalog (DAV-273). */
+  setupOverrides?: SetupOverrides | null;
 }
 
 export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
   const { analyst, thesis, trigger, signal, position, recentUpdates, latestDigest, fired } = args;
-  const setup = thesis.setupId ? getSetup(thesis.setupId) : undefined;
+  const setup = thesis.setupId ? getSetup(thesis.setupId, args.setupOverrides ?? undefined) : undefined;
   const coFiredIds = new Set((fired?.coFired ?? []).map((c) => c.triggerId));
 
   const predicateSummary = describePredicate(trigger.predicate);

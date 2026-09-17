@@ -43,6 +43,7 @@ import {
 } from "@/lib/agent/resolved-thesis";
 import { entryRaisesAway, type EntryRaiseAway } from "@/lib/agent/entry-raises";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
+import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { isLadderEditUpdate } from "@/lib/agent/ladder-health";
 import {
   getThesisBearCaseBullets,
@@ -1051,6 +1052,7 @@ export const getTheses = defineTool({
       needsAction: null,
     }));
 
+    const setupOverrides = await loadSetupOverrides(ctx.accountId);
     const enriched = fullTheses.map((t) => {
       // Resolved ladder, not the stored column — see quietRows above.
       const triggerCount = (ladderByThesisId.get(t.id) ?? []).length;
@@ -1068,7 +1070,7 @@ export const getTheses = defineTool({
         // name's review runs its setup's checklist — failure signs, the
         // horizon's manage rule, the time limit — instead of the horizon
         // glossary. Null on rows written before setups were named.
-        setup: setupChecklist(t.setupId, t.horizon),
+        setup: setupChecklist(t.setupId, t.horizon, setupOverrides),
         // Agent must see freshness of the deep research without doing date
         // math. Horizon-tuned per STALE_DAYS_BY_HORIZON. Soft input to the
         // agent's REVIEW decision — no Layer-1 gate keys off it.

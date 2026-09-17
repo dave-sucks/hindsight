@@ -22,6 +22,7 @@ import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
+import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { describeTriggerFire, predicateSentence } from "@/lib/agent/triggers/format";
 import { MODES } from "@/lib/agent/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
@@ -685,7 +686,9 @@ export const tacticalRun = inngest.createFunction(
         );
       }
 
+      const setupOverrides = await loadSetupOverrides(agentConfig.accountId);
       const systemPrompt = buildTacticalSystemPrompt({
+        setupOverrides,
         analyst: { name: agentConfig.name, mandate: agentConfig.analystPrompt },
         thesis: {
           id: thesis.id,

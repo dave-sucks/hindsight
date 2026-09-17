@@ -66,6 +66,15 @@ model Account {
   // silently resurrect the defaults on the next read.
   triggersSeededAt DateTime?
 
+  // ── The playbook's numbers, as settings (DAV-273) ─────────────────────
+  // Per-setup overrides of the setup catalog's numbers (lib/agent/knowledge/
+  // setups.ts): { [setupId]: { stopMaxPct, minAtr, chaseLimitPct, targetMinR,
+  // partialAtR, beatAndFadeReview, timeTradingDays, riskMultiplier } }.
+  // Edited on /settings/playbook; read by the writer, the fill, the tactical
+  // run and the daily run through getSetup(id, overrides). Empty = the
+  // catalog as written. The catalog is the default, never the store.
+  setupOverrides Json @default("{}")
+
   memberships AccountMembership[]
   invites     AccountInvite[]
 }

@@ -42,6 +42,7 @@
 
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { setupsForSeat, type Setup } from "@/lib/agent/knowledge/setups";
+import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { generateText, stepCountIs, tool } from "ai";
 import type { ModelMessage } from "ai";
 import { z } from "zod";
@@ -824,7 +825,8 @@ export async function writerResearchPhase(
       }
     }
 
-    const seatSetups = setupsForSeat(analyst.name);
+    // The playbook's numbers as this account set them (DAV-273).
+    const seatSetups = setupsForSeat(analyst.name, await loadSetupOverrides(analyst.accountId));
     const systemPrompt = buildWriterResearchPrompt({
       analystName: analyst.name,
       analystPrompt: analyst.analystPrompt,
@@ -1470,7 +1472,7 @@ async function resubmitAfterRefusal(input: {
       existingStatus: existing?.status ?? null,
       currentPrice: pullOutput.pull?.currentPrice ?? null,
       existingTargetPrice: existing?.targetPrice ?? null,
-      setups: setupsForSeat(analyst.name),
+      setups: setupsForSeat(analyst.name, await loadSetupOverrides(analyst.accountId)),
       chart: pullOutput.pull?.chart ?? null,
     },
     check: (d) =>
