@@ -15,6 +15,9 @@ export interface SetupChecklist {
   manage: string | null;
   /** The time limit, in words. */
   time: string;
+  /** What the fill wrote onto the stock from this setup: a partial at this many R, the beat-that-sold review. */
+  partialAtR: number | null;
+  beatAndFadeReview: boolean;
 }
 
 export function setupChecklist(setupId: string | null | undefined, horizon: string | null | undefined): SetupChecklist | null {
@@ -28,5 +31,7 @@ export function setupChecklist(setupId: string | null | undefined, horizon: stri
     failureSigns: s.failureSigns,
     manage: (h && s.trail[h]) ?? Object.values(s.trail)[0] ?? null,
     time: s.time.text,
+    partialAtR: s.manage.partialAtR,
+    beatAndFadeReview: s.manage.beatAndFadeReview,
   };
 }
