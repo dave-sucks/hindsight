@@ -310,8 +310,27 @@ month). One reader behind both and `get_sec_filings`: `getFilingsForSymbol`.
 A failed EDGAR read says so on both. The link prefers the filing over an
 exhibit.
 
-**Still open in this lane:** activist-stake discovery in the chat through the
-tool (whole-market mode); the `/earnings` page's Filings toggle (later).
+**Built third — one search, any question.** `get_sec_filings` is one tool
+over one search (`searchFilings`): WHERE — one company, several, the book
+(holdings + watches), the whole market, or the market minus the book;
+WHAT — any EDGAR form, any 8-K item code, or a tier; WHEN — any window up to
+a year. EDGAR can't filter by item code, so item codes become one 8-K text
+search ("Item 4.02" OR …) and the codes are checked again on our side (the
+text also matches filings that only mention an item). A tier alone becomes
+its codes plus its forms; next to named forms it only filters. Market-wide
+results are listed companies only (SEC's `company_tickers_exchange.json`
+gives the exchange), capped at 10 pages per search with the cap said in
+words. New 13Ds come back grouped with who took the stake; everything else
+is a plain list. The evaluator's book read and the stock page's read are
+calls to the same search. Live 2026-09-17, 8 shapes, 0.2–4.2 s each — e.g.
+the book's material filings this week (BMRN officer change, VST offering),
+70 companies with a new 13D in 30 days, 3 listed restatements in 30 days.
+The chat's guidance line for "discovery off activist stakes" is the Agents
+lane's (ticketed). SEC's company list is shared, day-cached, with
+`get_insider_activity`.
+
+**Still open in this lane:** the `/earnings` page's Filings toggle (DAV-278,
+with `/movers` and insider buying and volume on the stock page).
 
 **Known gap — a row says what KIND of event, not what happened.** SEC's data
 has no headline or summary: a filing is a form, item codes, a date and its

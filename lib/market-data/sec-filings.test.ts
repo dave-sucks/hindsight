@@ -6,9 +6,13 @@
 import fixture from "./__fixtures__/edgar-search-2026-09.json";
 import { __resetCikCache, __setRetryDelay, fetchBookFilings } from "./sec-filings";
 
+// SEC's company_tickers_exchange.json shape, real rows.
 const tickerList = {
-  "0": { cik_str: 723125, ticker: "MU" },
-  "1": { cik_str: 1045810, ticker: "NVDA" },
+  fields: ["cik", "name", "ticker", "exchange"],
+  data: [
+    [1045810, "NVIDIA CORP", "NVDA", "Nasdaq"],
+    [723125, "MICRON TECHNOLOGY INC", "MU", "Nasdaq"],
+  ],
 };
 
 function mockFetch(search: () => Response) {
@@ -16,7 +20,7 @@ function mockFetch(search: () => Response) {
   global.fetch = jest.fn(async (url: string | URL) => {
     const u = String(url);
     calls.push(u);
-    if (u.includes("company_tickers.json")) return new Response(JSON.stringify(tickerList), { status: 200 });
+    if (u.includes("company_tickers_exchange.json")) return new Response(JSON.stringify(tickerList), { status: 200 });
     return search();
   }) as unknown as typeof fetch;
   return calls;
@@ -63,6 +67,6 @@ describe("fetchBookFilings", () => {
       throw new Error("ECONNRESET");
     }) as unknown as typeof fetch;
     const read = await fetchBookFilings({ tickers: ["MU"], now: new Date() });
-    expect(read.error).toBe("SEC's ticker list couldn't be reached");
+    expect(read.error).toBe("SEC's company list couldn't be reached");
   });
 });

@@ -6,32 +6,19 @@
  * with no specific names or dollar amounts get to be replaced by real data:
  * who sold, when, how much, what % of holdings, vs the 6-month pattern.
  *
- * Uses SEC EDGAR Form 4 directly (free, no key required). Same User-Agent
- * pattern as get_sec_filings.
+ * Uses SEC EDGAR Form 4 directly (free, no key required). The User-Agent
+ * and the day-cached company list come from lib/market-data/sec-filings.
  */
 
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import { loadCompanyList, secUserAgent } from "@/lib/market-data/sec-filings";
 
-const SEC_USER_AGENT = "Hindsight Research Bot research@hindsight.app";
+const SEC_USER_AGENT = secUserAgent();
 
+/** The company's CIK, off SEC's day-cached company list. */
 async function getCIK(ticker: string): Promise<string | null> {
-  try {
-    const res = await fetch("https://www.sec.gov/files/company_tickers.json", {
-      headers: { "User-Agent": SEC_USER_AGENT, Accept: "application/json" },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as Record<string, { cik_str: number; ticker: string }>;
-    for (const entry of Object.values(data)) {
-      if (entry.ticker.toUpperCase() === ticker.toUpperCase()) {
-        return String(entry.cik_str).padStart(10, "0");
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return (await loadCompanyList())?.byTicker.get(ticker.toUpperCase())?.cik ?? null;
 }
 
 interface SecForm4Index {
