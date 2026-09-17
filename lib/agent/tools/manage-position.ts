@@ -45,7 +45,7 @@ import {
   PROPOSAL_TTL_MS,
   recordProposalRunEvent,
 } from "@/lib/proposals/maybe-await-approval";
-import { lockPositionSales } from "@/lib/proposals/cancel-sibling-proposals";
+import { lockPositionSales } from "@/lib/proposals/position-lock";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import {

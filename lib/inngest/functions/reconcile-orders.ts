@@ -34,7 +34,10 @@ import {
   type AlpacaOrder,
 } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { cancelOrphanedSellProposals } from "@/lib/proposals/cancel-sibling-proposals";
+import {
+  cancelOrphanedSellProposals,
+  lockPositionRow,
+} from "@/lib/proposals/position-lock";
 
 const FIVE_MIN_CRON = "TZ=America/New_York */5 4-19 * * 1-5";
 
@@ -269,6 +272,11 @@ async function applyFillByIntent(
     });
     if (updated.count === 0) return false;
 
+    // Take the position lock before reading it: this job and the agent's own
+    // tools both apply fills, and a plain read-then-write loses one of two
+    // fills that land together — the share count then reads high and the next
+    // full close sells shares that are gone (DAV-283).
+    await lockPositionRow(tx, order.positionId);
     const position = await tx.position.findUnique({
       where: { id: order.positionId },
     });
@@ -368,7 +376,7 @@ async function applyFillByIntent(
         const sign = partialPnl >= 0 ? "+" : "";
         await tx.position.update({
           where: { id: position.id },
-          data: { quantity: newQty },
+          data: { quantity: { decrement: fillQty } },
         });
         await tx.positionEvent.create({
           data: {
@@ -389,9 +397,11 @@ async function applyFillByIntent(
           newTotal > 0
             ? (position.avgCost * position.quantity + fillPrice * fillQty) / newTotal
             : position.avgCost;
+        // Under the lock, so `position` is the live row: the new average is
+        // computed from it and the share count grows by the fill.
         await tx.position.update({
           where: { id: position.id },
-          data: { quantity: newTotal, avgCost: newAvg },
+          data: { quantity: { increment: fillQty }, avgCost: newAvg },
         });
         await tx.positionEvent.create({
           data: {
@@ -540,3 +550,7 @@ async function markOrderRejectedAndCancelPosition(
 ): Promise<void> {
   await markOrderTerminalAndMaybeCancelPosition(order, "REJECTED", `rejected (${reasonText})`);
 }
+
+// Re-export for tests that exercise the fill application directly, without
+// standing up Inngest (same pattern as trigger-evaluator's __test__).
+export const __test__ = { applyFillByIntent };
