@@ -38,8 +38,8 @@ import {
   closeThesisOnApproval,
 } from "@/lib/proposals/thesis-flips";
 import {
-  cancelSellProposals,
-  findSaleUnderWay,
+  cancelOrphanedSellProposals,
+  lockPositionSales,
 } from "@/lib/proposals/cancel-sibling-proposals";
 
 export interface ProposalApprovalResult {
@@ -79,7 +79,8 @@ export class ProposalExecutionError extends Error {
     | "ALPACA_REJECTED"
     | "ALPACA_UNCERTAIN"
     | "UNKNOWN_INTENT"
-    | "SALE_UNDER_WAY";
+    | "SALE_UNDER_WAY"
+    | "NOTHING_HELD";
   retryable: boolean;
   constructor(code: ProposalExecutionError["code"], message: string, retryable = false) {
     super(message);
@@ -182,27 +183,42 @@ export async function approveProposal(
   //    moment on. For closes/adds/partial-closes the Position stays OPEN
   //    and only the Order flips.
   //
-  //    A sale takes the position lock first: a full close already submitted
-  //    refuses any other sale, and a submitted trim refuses a full close —
-  //    either pair sells shares that are already sold (SMMT 2026-09-15 had
-  //    two 450-share close proposals on a 450-share position). The flip only
-  //    lands on a row still AWAITING_APPROVAL, so two clicks on one proposal
-  //    can't both submit. Approving a full close cancels the other sell
-  //    proposals on the position here, not after the fill.
+  //    A sale takes the position lock first: a full close already sent
+  //    refuses any other sale, and a sent trim refuses a full close — either
+  //    pair sells shares that are already sold (SMMT 2026-09-15 had two
+  //    450-share close proposals on a 450-share position). A sale then sells
+  //    only what is still held: a full close the shares held now, a trim no
+  //    more than is held and not already in a sent trim — a trim may have
+  //    filled since the proposal was queued (DAV-282). Nothing left → the
+  //    proposal is cancelled, not sent. The flip only lands on a row still
+  //    AWAITING_APPROVAL, so two clicks on one proposal can't both submit.
   const promotedAt = new Date();
   const isSale = intent === "CLOSE" || intent === "PARTIAL_CLOSE";
-  await prisma.$transaction(async (tx) => {
+  const staged = await prisma.$transaction(async (tx) => {
+    let submitQty = effectiveQty;
     if (isSale) {
-      const underWay = await findSaleUnderWay(tx, order.position.id, {
-        statuses: ["PENDING"],
-        intents: intent === "CLOSE" ? ["CLOSE", "PARTIAL_CLOSE"] : ["CLOSE"],
-        exceptOrderId: orderId,
-      });
+      const sales = await lockPositionSales(tx, order.position.id, orderId);
+      const underWay = intent === "CLOSE" ? (sales.sentClose ?? sales.sentTrim) : sales.sentClose;
       if (underWay) {
         throw new ProposalExecutionError(
           "SALE_UNDER_WAY",
           `A ${underWay.intent === "CLOSE" ? "close" : "trim"} of ${order.symbol} is already submitted (order ${underWay.id}) — not sending another sell until it resolves.`,
         );
+      }
+      submitQty = intent === "CLOSE" ? sales.held : Math.min(order.quantity, sales.sellable);
+      if (submitQty <= 0) {
+        const cancelled = await tx.order.updateMany({
+          where: { id: orderId, status: "AWAITING_APPROVAL" },
+          data: {
+            status: "CANCELLED",
+            alpacaConfirmedAt: promotedAt,
+            rejectionMessage: `Auto-cancelled — no ${order.symbol} shares are left to sell.`,
+          },
+        });
+        if (cancelled.count === 0) {
+          throw new ProposalExecutionError("NOT_AWAITING", `Order ${orderId} is no longer AWAITING_APPROVAL`);
+        }
+        return { nothingHeld: true as const };
       }
     }
     const flipped = await tx.order.updateMany({
@@ -210,21 +226,13 @@ export async function approveProposal(
       data: {
         status: "PENDING",
         alpacaSubmittedAt: promotedAt,
-        ...(qtyEdited ? { quantity: effectiveQty } : {}),
+        ...(submitQty !== order.quantity ? { quantity: submitQty } : {}),
       },
     });
     if (flipped.count === 0) {
       throw new ProposalExecutionError(
         "NOT_AWAITING",
         `Order ${orderId} is no longer AWAITING_APPROVAL`,
-      );
-    }
-    if (intent === "CLOSE") {
-      await cancelSellProposals(
-        tx,
-        order.position.id,
-        orderId,
-        `close ${orderId} on this position was approved`,
       );
     }
     if (intent === "OPEN" && order.position.status === "PENDING_APPROVAL") {
@@ -247,11 +255,20 @@ export async function approveProposal(
       data: {
         positionId: order.position.id,
         eventType: intent === "OPEN" ? "OPENED" : "PRICE_CHECK",
-        description: `Proposal approved by user ${actorUserId}; submitting ${intent} to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)}).`,
+        description: `Proposal approved by user ${actorUserId}; submitting ${intent} of ${submitQty} shares to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)}).`,
         priceAt: order.position.avgCost,
       },
     });
+    return { nothingHeld: false as const, submitQty };
   });
+  if (staged.nothingHeld) {
+    throw new ProposalExecutionError(
+      "NOTHING_HELD",
+      `No ${order.symbol} shares are left to sell — the proposal was cancelled.`,
+    );
+  }
+  const { submitQty } = staged;
+  const resized = isSale && submitQty !== order.quantity;
 
   // 2. Submit to Alpaca using the SAME idempotencyKey stored at proposal
   //    time. If this call fails uncertainly (network/5xx), the Order stays
@@ -264,7 +281,7 @@ export async function approveProposal(
     if (intent === "PARTIAL_CLOSE") {
       const ap = await closePositionPartial(
         order.symbol,
-        effectiveQty,
+        submitQty,
         side,
         creds,
         order.idempotencyKey,
@@ -275,7 +292,7 @@ export async function approveProposal(
       const ap = await placeMarketOrder(
         {
           symbol: order.symbol,
-          qty: effectiveQty,
+          qty: submitQty,
           side,
           clientOrderId: order.idempotencyKey,
         },
@@ -324,6 +341,17 @@ export async function approveProposal(
     where: { id: orderId },
     data: { alpacaOrderId, alpacaConfirmedAt: new Date() },
   });
+
+  // 3.2. Alpaca accepted a full close — the other sell proposals on this
+  //      position are moot. Only now: had Alpaca refused, they'd still be the
+  //      principal's to approve. Until this point the lock already refuses them.
+  if (intent === "CLOSE") {
+    await cancelOrphanedSellProposals(
+      order.position.id,
+      orderId,
+      `a full close of this position (order ${orderId}) was approved and sent`,
+    );
+  }
 
   // 3.5. Flip the thesis lifecycle right here at approve-time so the agent's
   //      next run sees a consistent view. The non-proposal path (inline
@@ -376,8 +404,8 @@ export async function approveProposal(
     await writeThesisUpdate({
       thesisId: await findRelatedThesisId(order.position.analystId, order.position.symbol),
       type: "PROPOSAL_APPROVED",
-      summary: `Approved ${intent} on ${order.symbol}${qtyEdited ? ` (edited ${order.quantity}→${effectiveQty} sh)` : ""} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
-      rationale: `User approved the ${intent} proposal${qtyEdited ? `, resizing ${order.quantity}→${effectiveQty} shares` : ""}. Alpaca order id ${alpacaOrderId}.`,
+      summary: `Approved ${intent} on ${order.symbol}${qtyEdited ? ` (edited ${order.quantity}→${effectiveQty} sh)` : ""}${resized ? ` (${order.quantity}→${submitQty} sh — the shares left to sell)` : ""} — submitted to Alpaca (idem=${order.idempotencyKey!.slice(0, 8)})`,
+      rationale: `User approved the ${intent} proposal${qtyEdited ? `, resizing ${order.quantity}→${effectiveQty} shares` : ""}${resized ? `; sold ${submitQty} of the ${order.quantity} shares proposed, the shares left to sell at approval` : ""}. Alpaca order id ${alpacaOrderId}.`,
       fieldChanges: {
         proposal: {
           from: { orderId, status: "AWAITING_APPROVAL", quantity: order.quantity },
@@ -385,8 +413,9 @@ export async function approveProposal(
             orderId,
             status: "APPROVED",
             intent,
-            quantity: effectiveQty,
-            ...(qtyEdited ? { proposedQuantity: order.quantity, edited: true } : {}),
+            quantity: submitQty,
+            ...(qtyEdited || resized ? { proposedQuantity: order.quantity } : {}),
+            ...(qtyEdited ? { edited: true } : {}),
             approvedAt: promotedAt.toISOString(),
             approvedBy: actorUserId,
             alpacaOrderId,

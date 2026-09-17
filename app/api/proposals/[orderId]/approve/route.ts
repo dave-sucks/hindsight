@@ -80,6 +80,7 @@ export async function POST(
         err.code === "NOT_FOUND" ? 404 :
         err.code === "NOT_AWAITING" ? 409 :
         err.code === "SALE_UNDER_WAY" ? 409 :
+        err.code === "NOTHING_HELD" ? 409 :
         err.code === "EXPIRED" ? 410 :
         err.code === "ALPACA_REJECTED" ? 422 :
         // 202 Accepted — submit was uncertain; reconcile will resolve.

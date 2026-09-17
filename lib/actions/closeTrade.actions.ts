@@ -21,7 +21,7 @@ import {
 } from "@/lib/proposals/maybe-await-approval";
 import {
   cancelOrphanedSellProposals,
-  findSaleUnderWay,
+  lockPositionSales,
 } from "@/lib/proposals/cancel-sibling-proposals";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
@@ -221,14 +221,19 @@ export async function closeOpenPosition(
   //    locked, so the "is a sale already under way" check and the create are
   //    one step (SMMT 2026-09-15: two fires 180 ms apart each staged a
   //    450-share close past a plain read). A proposal already waiting blocks a
-  //    second proposal; a close already submitted blocks everything. Position
-  //    stays OPEN — we don't mark it CLOSED until Alpaca fills.
+  //    second proposal; a close already sent blocks everything. A close sent
+  //    now sells what is held and not already in a sent trim; a proposal is
+  //    sized again when it is approved (DAV-282). Position stays OPEN — we
+  //    don't mark it CLOSED until Alpaca fills.
   const created = await prisma.$transaction(async (tx) => {
-    const underWay = await findSaleUnderWay(tx, positionId, {
-      statuses: needsApproval ? ["AWAITING_APPROVAL", "PENDING"] : ["PENDING"],
-      intents: ["CLOSE"],
-    });
+    const sales = await lockPositionSales(tx, positionId);
+    const underWay = sales.sentClose ?? (needsApproval ? sales.waitingClose : null);
     if (underWay) return { kind: "under_way" as const, existing: underWay };
+    const quantity = needsApproval ? sales.held : sales.sellable;
+    if (quantity <= 0) {
+      if (sales.sentTrim) return { kind: "under_way" as const, existing: sales.sentTrim };
+      throw new Error(`Position ${positionId} holds no shares to sell`);
+    }
 
     const ord = await tx.order.create({
       data: {
@@ -238,7 +243,7 @@ export async function closeOpenPosition(
         symbol: position.symbol,
         side: closeSide.toUpperCase(),
         orderType: "MARKET",
-        quantity: position.quantity,
+        quantity,
         status: needsApproval ? "AWAITING_APPROVAL" : "PENDING",
         ...(needsApproval ? { expiresAt, rationale } : {}),
         alpacaOrderId: null,
@@ -304,6 +309,7 @@ export async function closeOpenPosition(
     };
   }
   const order = created.order;
+  const saleQty = order.quantity;
 
   if (needsApproval) {
     notifyProposalPending(order.id);
@@ -319,7 +325,7 @@ export async function closeOpenPosition(
     const alpacaOrder = await placeMarketOrder(
       {
         symbol: position.symbol,
-        qty: position.quantity,
+        qty: saleQty,
         side: closeSide,
         clientOrderId: idempotencyKey,
       },
@@ -452,10 +458,10 @@ export async function closeOpenPosition(
   // 4b. Filled — finalize the Position CLOSED with the real Alpaca price.
   const realizedPnl =
     position.direction === "LONG"
-      ? (closePrice - position.avgCost) * position.quantity
-      : (position.avgCost - closePrice) * position.quantity;
+      ? (closePrice - position.avgCost) * saleQty
+      : (position.avgCost - closePrice) * saleQty;
 
-  const positionCost = position.avgCost * position.quantity;
+  const positionCost = position.avgCost * saleQty;
   const outcome: "WIN" | "LOSS" | "BREAKEVEN" =
     realizedPnl > 0.01 * positionCost
       ? "WIN"
@@ -471,7 +477,7 @@ export async function closeOpenPosition(
       data: {
         status: "FILLED",
         filledPrice: closePrice,
-        filledQty: position.quantity,
+        filledQty: saleQty,
         filledAt: finalFilledAt,
       },
     });
@@ -510,7 +516,7 @@ export async function closeOpenPosition(
         source,
         reason: generatedReason,
         fillPrice: closePrice,
-        fillQty: position.quantity,
+        fillQty: saleQty,
         alpacaOrderId,
       },
     });
@@ -626,7 +632,7 @@ export async function closeOpenPosition(
       const html = tradeClosedHtml({
         ticker: position.symbol,
         direction: position.direction as "LONG" | "SHORT",
-        qty: position.quantity,
+        qty: saleQty,
         entryPrice: position.avgCost,
         closePrice,
         currentPrice: closePrice,

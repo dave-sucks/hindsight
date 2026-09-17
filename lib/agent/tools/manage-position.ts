@@ -38,10 +38,14 @@ import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { isExcluded } from "@/lib/agent/universe";
 import type { ToolUIItem } from "@/lib/agent/tool-result";
 import {
+  approvalRequired,
   maybeAwaitApproval,
   awaitingApprovalEnvelope,
+  notifyProposalPending,
+  PROPOSAL_TTL_MS,
   recordProposalRunEvent,
 } from "@/lib/proposals/maybe-await-approval";
+import { lockPositionSales } from "@/lib/proposals/cancel-sibling-proposals";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import {
@@ -290,9 +294,54 @@ export const managePosition = defineTool({
         // ── PARTIAL CLOSE ───────────────────────────────────────────────────
         case "partial_close": {
           const pct = args.close_pct ?? 50;
-          const closeQty = Math.max(1, Math.floor(position.quantity * (pct / 100)));
+          const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
+          const idempotencyKey = randomUUID();
+          const placedAt = new Date();
+          const expiresAt = new Date(placedAt.getTime() + PROPOSAL_TTL_MS);
 
-          if (closeQty >= position.quantity) {
+          // Trade-as-Proposal: sells flow through requireApprovalSells{Live,Paper}.
+          // On, the trim is created already AWAITING_APPROVAL and we return
+          // before Alpaca; off, it is sent below.
+          const needsApproval = await approvalRequired({
+            accountId: ctx.accountId,
+            intent: "PARTIAL_CLOSE",
+            environment: position.environment as "PAPER" | "LIVE",
+          });
+
+          // 1. DB tx under the position lock (DAV-282): a trim is a market
+          //    sell, so it never sells past what is held and not already in a
+          //    sent trim, and never alongside a sent full close. The position
+          //    itself is not touched until the fill.
+          const staged = await prisma.$transaction(async (tx) => {
+            const sales = await lockPositionSales(tx, position.id);
+            const nothingLeft = { kind: "nothing_left" as const, sentClose: sales.sentClose };
+            if (sales.sentClose || sales.held <= 0) return nothingLeft;
+            const wanted = Math.max(1, Math.floor(sales.held * (pct / 100)));
+            if (wanted >= sales.held) return { kind: "whole" as const };
+            const quantity = Math.min(wanted, sales.sellable);
+            if (quantity <= 0) return nothingLeft;
+            const created = await tx.order.create({
+              data: {
+                positionId: position.id,
+                userId: ctx.userId,
+                environment: position.environment,
+                symbol: ticker,
+                side: closeSide.toUpperCase(),
+                orderType: "MARKET",
+                quantity,
+                status: needsApproval ? "AWAITING_APPROVAL" : "PENDING",
+                ...(needsApproval ? { expiresAt, rationale: args.reason } : {}),
+                alpacaOrderId: null,
+                idempotencyKey,
+                intent: "PARTIAL_CLOSE",
+                thesisId: auditThesisId,
+                createdAt: placedAt,
+              },
+            });
+            return { kind: "created" as const, order: created, held: sales.held };
+          });
+
+          if (staged.kind === "whole") {
             return {
               summary: `Partial close would exit entire position — use close_position instead`,
               data: {
@@ -303,74 +352,59 @@ export const managePosition = defineTool({
               sources: [],
             };
           }
+          if (staged.kind === "nothing_left") {
+            const why = staged.sentClose
+              ? `a full close of ${ticker} is already sent (order ${staged.sentClose.id})`
+              : `every ${ticker} share is already in a sent sell`;
+            return {
+              summary: `Nothing left to trim: ${ticker}`,
+              data: {
+                success: true, ticker, action: args.action, status: "NO_POSITION" as const,
+                message: `No trim sent — ${why}.`,
+                tickers: [{ ticker, tag: "Selling", summary: `No trim — ${why}`, actionIcon: "hold" }],
+              },
+              sources: [],
+            };
+          }
+          const { order, held } = staged;
+          const closeQty = order.quantity;
 
-          const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
-
-          const idempotencyKey = randomUUID();
-          const placedAt = new Date();
-
-          // 1. DB tx — create PENDING order, do not mutate Position yet.
-          const order = await prisma.order.create({
-            data: {
-              positionId: position.id,
-              userId: ctx.userId,
-              environment: position.environment,
-              symbol: ticker,
-              side: closeSide.toUpperCase(),
-              orderType: "MARKET",
-              quantity: closeQty,
-              status: "PENDING",
-              alpacaOrderId: null,
-              idempotencyKey,
-              intent: "PARTIAL_CLOSE",
-              thesisId: auditThesisId,
-              createdAt: placedAt,
-            },
-          });
-
-          // ── Trade-as-Proposal seam ──
-          // Sells flow through requireApprovalSells{Live,Paper}. When on,
-          // maybeAwaitApproval flips Order → AWAITING_APPROVAL + sends
-          // email; we return early before reaching Alpaca. When off,
-          // null is returned and the partial-close submit runs as today.
-          {
-            const awaiting = await maybeAwaitApproval({
-              accountId: ctx.accountId,
-              positionId: position.id,
+          if (needsApproval) {
+            notifyProposalPending(order.id);
+            const awaiting = {
+              state: "awaiting_approval" as const,
               orderId: order.id,
-              intent: "PARTIAL_CLOSE",
-              environment: position.environment as "PAPER" | "LIVE",
+              positionId: position.id,
+              expiresAt,
               rationale: args.reason,
+            };
+            await recordProposalRunEvent({
+              runId: ctx.runId,
+              type: "position_modify_proposed",
+              ticker,
+              orderId: order.id,
+              title: `Proposed trimming ${ticker} ${pct}%`,
             });
-            if (awaiting?.state === "awaiting_approval") {
-              await recordProposalRunEvent({
-                runId: ctx.runId,
-                type: "position_modify_proposed",
-                ticker,
-                orderId: awaiting.orderId,
-                title: `Proposed trimming ${ticker} ${pct}%`,
-              });
-              return {
-                summary: `Partial close proposed: ${ticker} (-${pct}%)`,
-                data: {
-                  success: true, ticker, action: args.action, status: "PROPOSED" as const,
-                  closedQty: closeQty,
-                  remainingQty: position.quantity - closeQty,
-                  fillPrice: position.avgCost,
-                  partialPnl: 0,
-                  tickers: [],
-                  ...awaitingApprovalEnvelope({
-                    awaiting,
-                    ticker,
-                    direction: position.direction as "LONG" | "SHORT",
-                    intent: "PARTIAL_CLOSE",
-                    shares: closeQty,
-                    estimatedPrice: position.avgCost,
-                  }),
-                },
-                sources: [],
-              };
-            }
+            return {
+              summary: `Partial close proposed: ${ticker} (-${pct}%)`,
+              data: {
+                success: true, ticker, action: args.action, status: "PROPOSED" as const,
+                closedQty: closeQty,
+                remainingQty: held - closeQty,
+                fillPrice: position.avgCost,
+                partialPnl: 0,
+                tickers: [],
+                ...awaitingApprovalEnvelope({
+                  awaiting,
+                  ticker,
+                  direction: position.direction as "LONG" | "SHORT",
+                  intent: "PARTIAL_CLOSE",
+                  shares: closeQty,
+                  estimatedPrice: position.avgCost,
+                }),
+              },
+              sources: [],
+            };
           }
 
           // 2. Submit to Alpaca with client_order_id = idempotencyKey.
@@ -413,7 +447,7 @@ export const managePosition = defineTool({
               data: {
                 success: true, ticker, action: args.action, status: "PARTIAL_CLOSE" as const,
                 closedQty: closeQty,
-                remainingQty: position.quantity - closeQty,
+                remainingQty: held - closeQty,
                 fillPrice: position.avgCost,
                 partialPnl: 0,
                 message: `Partial close submitted but status uncertain (${msg}). Reconcile cron will resolve.`,
@@ -458,7 +492,7 @@ export const managePosition = defineTool({
               data: {
                 success: true, ticker, action: args.action, status: "PARTIAL_CLOSE" as const,
                 closedQty: closeQty,
-                remainingQty: position.quantity - closeQty,
+                remainingQty: held - closeQty,
                 fillPrice: lastPrice,
                 partialPnl: 0,
                 message: `Partial close submitted (${closeQty} shares of ${ticker}) — awaiting Alpaca fill.`,
@@ -469,16 +503,17 @@ export const managePosition = defineTool({
           }
 
           // 4b. Filled — finalize the partial close.
-          const newQty = position.quantity - closeQty;
+          const newQty = held - closeQty;
           const partialPnl = position.direction === "LONG"
             ? (fillPrice - position.avgCost) * closeQty
             : (position.avgCost - fillPrice) * closeQty;
           const pnlSign = partialPnl >= 0 ? "+" : "";
 
           await prisma.$transaction(async (tx) => {
+            // Decrement, not set: another sale may have landed since `held` was read.
             await tx.position.update({
               where: { id: position.id },
-              data: { quantity: newQty },
+              data: { quantity: { decrement: closeQty } },
             });
 
             await tx.order.update({
@@ -495,7 +530,7 @@ export const managePosition = defineTool({
               data: {
                 positionId: position.id,
                 eventType: "PARTIAL_CLOSE",
-                description: `Partial close: sold ${closeQty} of ${position.quantity} shares (${pct}%) at $${fillPrice!.toFixed(2)}. P&L on portion: ${pnlSign}$${partialPnl.toFixed(2)}. Remaining: ${newQty} shares.`,
+                description: `Partial close: sold ${closeQty} of ${held} shares (${pct}%) at $${fillPrice!.toFixed(2)}. P&L on portion: ${pnlSign}$${partialPnl.toFixed(2)}. Remaining: ${newQty} shares.`,
                 priceAt: fillPrice!,
                 pnlAt: partialPnl,
               },
@@ -507,7 +542,7 @@ export const managePosition = defineTool({
                 runId: ctx.runId ?? null,
                 actionType: "PARTIAL_CLOSE",
                 source: "agent",
-                prevQty: position.quantity,
+                prevQty: held,
                 newQty,
                 reason: args.reason,
                 alpacaOrderId,
@@ -522,7 +557,7 @@ export const managePosition = defineTool({
                   runId: ctx.runId,
                   type: "position_modified",
                   title: `Partial close: ${ticker}`,
-                  message: `Sold ${closeQty} of ${position.quantity} shares (${pct}%) at $${fillPrice!.toFixed(2)}. ${pnlSign}$${partialPnl.toFixed(2)} realized. ${newQty} shares remain.`,
+                  message: `Sold ${closeQty} of ${held} shares (${pct}%) at $${fillPrice!.toFixed(2)}. ${pnlSign}$${partialPnl.toFixed(2)} realized. ${newQty} shares remain.`,
                   payload: { ticker, action: "partial_close", closeQty, newQty, fillPrice, partialPnl, pct } as object,
                 },
               });
@@ -550,11 +585,11 @@ export const managePosition = defineTool({
             await writeThesisUpdate({
               thesisId: auditThesisId,
               type: "UPDATED",
-              summary: `Trimmed ${ticker} ${pct}% — sold ${closeQty} of ${position.quantity} shares at $${fillPrice.toFixed(2)} (${pnlSign}$${partialPnl.toFixed(2)})`,
+              summary: `Trimmed ${ticker} ${pct}% — sold ${closeQty} of ${held} shares at $${fillPrice.toFixed(2)} (${pnlSign}$${partialPnl.toFixed(2)})`,
               rationale: args.reason,
               fieldChanges: {
                 position: {
-                  from: `${position.quantity} shares`,
+                  from: `${held} shares`,
                   to: `${newQty} shares`,
                 },
               },
