@@ -14,7 +14,15 @@ import { inngest } from "@/lib/inngest/client";
 import { sendEmail } from "@/lib/email";
 import { getEmailRecipients } from "@/lib/emails/recipients";
 import { tradeClosedHtml } from "@/lib/emails/trade-closed";
-import { maybeAwaitApproval } from "@/lib/proposals/maybe-await-approval";
+import {
+  approvalRequired,
+  notifyProposalPending,
+  PROPOSAL_TTL_MS,
+} from "@/lib/proposals/maybe-await-approval";
+import {
+  cancelOrphanedSellProposals,
+  findSaleUnderWay,
+} from "@/lib/proposals/cancel-sibling-proposals";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -58,25 +66,9 @@ export interface ProposalCreatedSummary {
  * via intersection so post-narrow code keeps using outcome.realizedPnl /
  * outcome.closePrice / etc. without restructuring.
  */
-/**
- * Returned when a discretionary CLOSE was suppressed by the rejected-exit
- * cooldown (P1-28): the user recently rejected this same exit and nothing
- * material changed, so we neither propose nor execute. Non-fatal — the
- * caller surfaces a "did not re-propose" result so the run's narration gate
- * stays satisfied (a tool call happened; it just produced no order).
- */
-export interface ProposalSuppressedSummary {
-  positionId: string;
-  lastUnapprovedOutcome: "REJECTED" | "EXPIRED";
-  lastUnapprovedAt: Date;
-  cooldownUntil: Date;
-  unapprovedExitCount: number;
-}
-
 export type CloseOpenPositionOutcome =
   | (ClosedPositionResult & { kind: "closed" })
-  | { kind: "proposed"; proposal: ProposalCreatedSummary }
-  | { kind: "suppressed"; suppressed: ProposalSuppressedSummary };
+  | { kind: "proposed"; proposal: ProposalCreatedSummary };
 
 /** Who triggered the close — determines audit trail source label.
  *
@@ -204,8 +196,40 @@ export async function closeOpenPosition(
       )
     : null;
 
-  // 1. DB tx — create PENDING closing Order. Position stays OPEN.
-  const order = await prisma.$transaction(async (tx) => {
+  // ── Trade-as-Proposal ──
+  // Every AUTONOMOUS close routes through human approval: "agent" AND the
+  // price-monitor trailing-stop cron ("price_monitor"). Only a manual UI
+  // click ("user") bypasses — the human is literally clicking the button,
+  // so it is self-approved. When the Account's sell toggle for this
+  // environment is on, the order is created already AWAITING_APPROVAL and we
+  // return before Alpaca; off, the close auto-executes as before.
+  //
+  // DO NOT narrow this back to `source === "agent"`. That bug auto-executed
+  // a live trailing-stop sell (MRVL, 2026-06-05) despite
+  // requireApprovalSellsLive=true — a compliance/pre-clearance violation.
+  const needsApproval =
+    source !== "user" &&
+    (await approvalRequired({
+      accountId: position.accountId,
+      intent: "CLOSE",
+      environment: positionEnvironment,
+    }));
+  const rationale = auditReason ?? `Automated ${reason} exit — ${position.symbol}`;
+  const expiresAt = new Date(placedAt.getTime() + PROPOSAL_TTL_MS);
+
+  // 1. DB tx — one full close at a time per position. The position row is
+  //    locked, so the "is a sale already under way" check and the create are
+  //    one step (SMMT 2026-09-15: two fires 180 ms apart each staged a
+  //    450-share close past a plain read). A proposal already waiting blocks a
+  //    second proposal; a close already submitted blocks everything. Position
+  //    stays OPEN — we don't mark it CLOSED until Alpaca fills.
+  const created = await prisma.$transaction(async (tx) => {
+    const underWay = await findSaleUnderWay(tx, positionId, {
+      statuses: needsApproval ? ["AWAITING_APPROVAL", "PENDING"] : ["PENDING"],
+      intents: ["CLOSE"],
+    });
+    if (underWay) return { kind: "under_way" as const, existing: underWay };
+
     const ord = await tx.order.create({
       data: {
         positionId,
@@ -215,7 +239,8 @@ export async function closeOpenPosition(
         side: closeSide.toUpperCase(),
         orderType: "MARKET",
         quantity: position.quantity,
-        status: "PENDING",
+        status: needsApproval ? "AWAITING_APPROVAL" : "PENDING",
+        ...(needsApproval ? { expiresAt, rationale } : {}),
         alpacaOrderId: null,
         idempotencyKey,
         intent: "CLOSE",
@@ -239,58 +264,53 @@ export async function closeOpenPosition(
       data: {
         positionId,
         eventType: "PRICE_CHECK",
-        description: `Close order submitted (${reason}). Awaiting Alpaca fill (idem=${idempotencyKey.slice(0, 8)}).`,
+        description: needsApproval
+          ? `Close proposed (${reason}). Awaiting approval (idem=${idempotencyKey.slice(0, 8)}).`
+          : `Close order submitted (${reason}). Awaiting Alpaca fill (idem=${idempotencyKey.slice(0, 8)}).`,
       },
     });
 
-    return ord;
+    return { kind: "created" as const, order: ord };
   });
 
-  // ── Trade-as-Proposal seam ──
-  // Every AUTONOMOUS close routes through human approval: "agent" AND the
-  // price-monitor trailing-stop cron ("price_monitor"). Only a manual UI
-  // click ("user") bypasses — the human is literally clicking the button,
-  // so it is self-approved. When the Account's sell toggle for this
-  // environment is on, maybeAwaitApproval flips the Order to
-  // AWAITING_APPROVAL + sends email; we return early before Alpaca. When
-  // it is off, it returns null and the close auto-executes as before.
-  //
-  // DO NOT narrow this back to `source === "agent"`. That bug auto-executed
-  // a live trailing-stop sell (MRVL, 2026-06-05) despite
-  // requireApprovalSellsLive=true — a compliance/pre-clearance violation.
-  if (source !== "user") {
-    const awaiting = await maybeAwaitApproval({
-      accountId: position.accountId,
-      positionId,
-      orderId: order.id,
-      intent: "CLOSE",
-      environment: positionEnvironment,
-      rationale: auditReason ?? `Automated ${reason} exit — ${position.symbol}`,
-    });
-    if (awaiting?.state === "suppressed_recent_rejection") {
-      return {
-        kind: "suppressed" as const,
-        suppressed: {
-          positionId,
-          lastUnapprovedOutcome: awaiting.lastUnapprovedOutcome,
-          lastUnapprovedAt: awaiting.lastUnapprovedAt,
-          cooldownUntil: awaiting.cooldownUntil,
-          unapprovedExitCount: awaiting.unapprovedExitCount,
-        },
-      };
-    }
-    if (awaiting) {
+  // A sale is already under way on this position — fold into it. Success-
+  // shaped, not an error: a thrown error would fail the calling run's
+  // narration gate for a close that is, in fact, happening.
+  if (created.kind === "under_way") {
+    const { existing } = created;
+    if (existing.status === "AWAITING_APPROVAL") {
       return {
         kind: "proposed" as const,
         proposal: {
           positionId,
-          orderId: awaiting.orderId,
-          expiresAt: awaiting.expiresAt,
-          rationale: awaiting.rationale,
-          idempotencyKey,
+          orderId: existing.id,
+          expiresAt: existing.expiresAt ?? expiresAt,
+          rationale: existing.rationale,
+          idempotencyKey: existing.idempotencyKey ?? "",
         },
       };
     }
+    return {
+      kind: "closed" as const,
+      positionId,
+      orderId: existing.id,
+      alpacaOrderId: null,
+      closePrice: 0,
+      realizedPnl: 0,
+      outcome: "BREAKEVEN",
+      fillStatus: "PENDING",
+      placedAt,
+      filledAt: null,
+    };
+  }
+  const order = created.order;
+
+  if (needsApproval) {
+    notifyProposalPending(order.id);
+    return {
+      kind: "proposed" as const,
+      proposal: { positionId, orderId: order.id, expiresAt, rationale, idempotencyKey },
+    };
   }
 
   // 2. Submit to Alpaca with client_order_id = idempotencyKey.
@@ -540,7 +560,6 @@ export async function closeOpenPosition(
   // 4d. Void any stale sell proposals on this now-closed position. The agent
   //     may have proposed a stop-close (Order→AWAITING_APPROVAL) that this
   //     direct fill just made moot. Fail-soft; never blocks the committed fill.
-  const { cancelOrphanedSellProposals } = await import("@/lib/proposals/cancel-sibling-proposals");
   await cancelOrphanedSellProposals(positionId, order.id);
 
   // 5. Post-close side effects (non-fatal).

@@ -47,15 +47,9 @@ describe("detectGateRejection — the three rejection protocols", () => {
 });
 
 describe("detectGateRejection — the app working is NOT a gate", () => {
-  it("SUPPRESSED decline-cooldown holds ride success:true and are ignored", () => {
-    // close_position's P1-28 shape: the user said no recently; the tool
-    // holds. That is a working feature, never a rejection row.
+  it("NO_POSITION no-ops ride success:true and are ignored", () => {
     expect(
-      detectGateRejection({
-        success: true,
-        status: "SUPPRESSED",
-        unapprovedExitCount: 3,
-      }),
+      detectGateRejection({ success: true, status: "NO_POSITION" }),
     ).toBeNull();
   });
 

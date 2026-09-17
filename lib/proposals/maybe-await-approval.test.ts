@@ -1,14 +1,8 @@
 /**
- * maybe-await-approval.test.ts — dedup guard for duplicate CLOSE proposals.
- *
- * 2026-06-02 MRVL: two REVIEW triggers ($215 + $270) fired on the same
- * evaluator tick while MRVL sat at ~$281 (above both). Each fire spawned a
- * tactical run that independently decided to close, and each close created
- * an AWAITING_APPROVAL order on the same position — the user had to reject
- * the same close twice (1.3s apart). These tests pin the fix: a second
- * pending full-CLOSE on a position folds into the first instead of staging
- * a twin, and the fold is success-shaped (returns the existing proposal),
- * not an error.
+ * maybe-await-approval.test.ts — the approval gate for tools that create their
+ * order first (place_trade, manage_position). The one-close-per-position fold
+ * that used to live here moved into closeOpenPosition, under a row lock — see
+ * one-close-per-position.test.ts.
  */
 
 const mockAccountFindUnique = jest.fn();
@@ -46,7 +40,6 @@ jest.mock("@/lib/emails/proposal-pending", () => ({
 import {
   maybeAwaitApproval,
   ApprovalGateAccountUnresolvedError,
-  UNAPPROVED_EXIT_COOLDOWN_DAYS,
   type AwaitingApprovalResult,
 } from "./maybe-await-approval";
 
@@ -90,46 +83,14 @@ beforeEach(() => {
   mockOrderFindMany.mockResolvedValue([]);
 });
 
-describe("maybeAwaitApproval — duplicate CLOSE dedup", () => {
-  it("folds a 2nd pending CLOSE on the same position into the existing proposal", async () => {
-    const existingExpiry = new Date("2026-06-03T16:47:32.595Z");
-    mockOrderFindFirst.mockResolvedValue({
-      id: "order-existing",
-      expiresAt: existingExpiry,
-      rationale: "first close",
-    });
-
-    const result = await maybeAwaitApproval(baseArgs());
-
-    // Returns the EXISTING proposal, not the just-created twin.
-    expect(result).not.toBeNull();
-    expect(awaiting(result).orderId).toBe("order-existing");
-    expect(awaiting(result).expiresAt).toBe(existingExpiry);
-    expect(awaiting(result).rationale).toBe("first close");
-
-    // The just-created duplicate is tombstoned, not left dangling.
-    expect(mockOrderUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "order-new" },
-        data: expect.objectContaining({ status: "REJECTED" }),
-      }),
-    );
-
-    // It folds BEFORE the stage transaction + email — no twin proposal,
-    // no second "proposal pending" email.
-    expect(mockTransaction).not.toHaveBeenCalled();
-    expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
-  });
-
-  it("stages normally when there is no existing pending CLOSE", async () => {
-    mockOrderFindFirst.mockResolvedValue(null);
-
+describe("maybeAwaitApproval — staging", () => {
+  it("stages the just-created order when approval is on", async () => {
     const result = await maybeAwaitApproval(baseArgs());
 
     // Stages the just-created order as the proposal.
     expect(awaiting(result).orderId).toBe("order-new");
     expect(mockTransaction).toHaveBeenCalledTimes(1);
-    // The just-created order is flipped to AWAITING_APPROVAL (not REJECTED).
+    // The just-created order is flipped to AWAITING_APPROVAL.
     expect(mockOrderUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "order-new" },
@@ -139,13 +100,13 @@ describe("maybeAwaitApproval — duplicate CLOSE dedup", () => {
     expect(mockSendProposalPendingEmail).toHaveBeenCalledWith("order-new");
   });
 
-  it("does NOT dedup PARTIAL_CLOSE — scale-outs can legitimately stack", async () => {
+  it("stages a PARTIAL_CLOSE — scale-outs can legitimately stack", async () => {
     const result = await maybeAwaitApproval({
       ...baseArgs(),
       intent: "PARTIAL_CLOSE",
     });
 
-    // The CLOSE-only dedup query is never even run for a trim.
+    // No "is a sale already under way" read here — trims stack.
     expect(mockOrderFindFirst).not.toHaveBeenCalled();
     expect(awaiting(result).orderId).toBe("order-new");
     expect(mockTransaction).toHaveBeenCalledTimes(1);
@@ -160,8 +121,7 @@ describe("maybeAwaitApproval — duplicate CLOSE dedup", () => {
     const result = await maybeAwaitApproval(baseArgs());
 
     expect(result).toBeNull();
-    // Never reaches the dedup query or the stage transaction.
-    expect(mockOrderFindFirst).not.toHaveBeenCalled();
+    // Never reaches the stage transaction.
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 });
@@ -211,7 +171,7 @@ describe("maybeAwaitApproval — NO cross-day exit suppression (P1-39 emergency)
   });
 
   it("re-stages a MANUAL judgment close after a recent decline (the bug that silenced MU/CYTK)", async () => {
-    // Previously this returned suppressed_recent_rejection and went dark. Now the
+    // Previously a cooldown swallowed this exit and went dark. Now the
     // agent's judgment exit always reaches the principal.
     mockOrderFindFirst.mockResolvedValue(null);
     mockOrderFindUnique.mockResolvedValue({ closeReason: "MANUAL", closeSource: "agent" });
@@ -227,19 +187,6 @@ describe("maybeAwaitApproval — NO cross-day exit suppression (P1-39 emergency)
     expect(mockSendProposalPendingEmail).toHaveBeenCalledWith("order-new");
   });
 
-  it("never returns suppressed_recent_rejection for any CLOSE", async () => {
-    mockOrderFindFirst.mockResolvedValue(null);
-    mockOrderFindMany.mockResolvedValue([
-      { id: "r1", status: "REJECTED", expiresAt: new Date(Date.now() - 1000), rejectionMessage: "no" },
-      { id: "e1", status: "EXPIRED", expiresAt: new Date(Date.now() - 1000), rejectionMessage: null },
-    ]);
-
-    const result = await maybeAwaitApproval(baseArgs());
-
-    expect(result?.state).not.toBe("suppressed_recent_rejection");
-    expect(awaiting(result).orderId).toBe("order-new");
-  });
-
   it("still stages a PARTIAL_CLOSE normally", async () => {
     mockOrderFindMany.mockResolvedValue([
       { id: "order-expired", status: "EXPIRED", expiresAt: new Date(), rejectionMessage: null },
@@ -248,7 +195,6 @@ describe("maybeAwaitApproval — NO cross-day exit suppression (P1-39 emergency)
     const result = await maybeAwaitApproval({ ...baseArgs(), intent: "PARTIAL_CLOSE" });
 
     expect(awaiting(result).orderId).toBe("order-new");
-    expect(UNAPPROVED_EXIT_COOLDOWN_DAYS).toBeGreaterThan(0); // const retained, now unused
   });
 });
 

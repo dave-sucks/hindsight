@@ -49,50 +49,15 @@ export interface AwaitingApprovalResult {
 }
 
 /**
- * Returned when a discretionary CLOSE proposal is suppressed because the user
- * recently saw this same exit proposal and did NOT approve it — whether they
- * explicitly rejected it OR ignored it to expiry (P1-28). This gate targets
- * re-proposal ACROSS DAYS (e.g. MU was re-proposed on 5 distinct days
- * 06-09→06-16, each prior card rejected or left to expire). Same-DAY duplicate
- * bursts are a different problem already handled by the dedup block below.
- * Because the user mostly ignores cards to expiry rather than clicking Reject,
- * the cooldown arms off both outcomes. The just-created Order is tombstoned;
- * the tool surfaces this as a clean,
- * non-fatal "did not re-propose" result (NOT an error — a thrown error would
- * fail the run's narration gate). The agent also reads `unapprovedExitCount`
- * on the thesis via get_theses; this gate is the Layer-1 backstop.
- */
-export interface SuppressedRecentRejectionResult {
-  state: "suppressed_recent_rejection";
-  positionId: string;
-  /** The most recent unapproved proposal (rejected or expired) that armed it. */
-  lastUnapprovedOrderId: string;
-  /** How that proposal resolved. */
-  lastUnapprovedOutcome: "REJECTED" | "EXPIRED";
-  lastUnapprovedAt: Date;
-  /** Discretionary re-proposal is gated until this instant. */
-  cooldownUntil: Date;
-  /** Count of recent staged closes you saw and didn't approve (rejected + ignored). */
-  unapprovedExitCount: number;
-}
-
-/**
- * Days a recent UNAPPROVED close proposal (rejected OR ignored-to-expiry)
- * suppresses a discretionary re-proposal of the same exit (P1-28).
- */
-export const UNAPPROVED_EXIT_COOLDOWN_DAYS = 5;
-
-/**
- * Rejection messages written by the system (dedup fold, P1-28 suppression),
- * NOT by a user. Excluded from "did the user decline this exit" reads so a
- * systemic tombstone never counts as a decline or arms the cooldown.
+ * Rejection messages the system wrote on older rows (the retired duplicate-
+ * close fold and exit cooldown), NOT by a user. Excluded from "did the user
+ * decline this exit" reads so a systemic tombstone never counts as a decline.
  */
 const SYSTEMIC_REJECTION_PREFIXES = ["Duplicate close", "Suppressed —"] as const;
 
 /**
- * True when this REJECTED order is a systemic tombstone (dedup / cooldown),
- * not a user rejection. Used by both the L1 cooldown gate here and the L2
- * unapprovedExitCount surfacing in get_theses — keep the two in sync.
+ * True when this REJECTED order is a systemic tombstone, not a user
+ * rejection. Read by get_theses (unapprovedExitCount) and held-through-context.
  */
 export function isSystemicRejection(rejectionMessage: string | null): boolean {
   if (!rejectionMessage) return false;
@@ -134,28 +99,21 @@ export class ApprovalGateAccountUnresolvedError extends Error {
 }
 
 /**
- * Decides whether the tool should stop here and wait for human approval.
- *
- * Reads the toggle column matching (intent direction × environment):
+ * Does this trade need the principal's approval? Reads the toggle column
+ * matching (intent direction × environment):
  *   OPEN / ADD            → requireApprovalBuys{Live,Paper}
  *   CLOSE / PARTIAL_CLOSE → requireApprovalSells{Live,Paper}
  *
  * So PAPER can auto-execute (toggle off) while LIVE requires review
  * (toggle on) — the split the disclosure requirement needs.
  *
- * Returns null when no approval is needed → tool continues to Alpaca submit
- * as it always has.
- * Returns an AwaitingApprovalResult when approval is needed → tool returns
- * the envelope verbatim and never reaches the Alpaca call.
  * THROWS ApprovalGateAccountUnresolvedError when the Account row can't be
  * resolved AND environment==='LIVE' → fail CLOSED, the trade is refused
- * before Alpaca (GAPS P1-19). PAPER keeps the legacy fail-open (returns null).
+ * before Alpaca (GAPS P1-19). PAPER keeps the legacy fail-open (false).
  */
-export async function maybeAwaitApproval(
-  args: MaybeAwaitApprovalArgs,
-): Promise<
-  AwaitingApprovalResult | SuppressedRecentRejectionResult | null
-> {
+export async function approvalRequired(
+  args: Pick<MaybeAwaitApprovalArgs, "accountId" | "intent" | "environment">,
+): Promise<boolean> {
   const account = await prisma.account.findUnique({
     where: { id: args.accountId },
     select: {
@@ -173,84 +131,64 @@ export async function maybeAwaitApproval(
   // cannot prove the trade is pre-cleared.
   //
   // LIVE is money/compliance-bound: the only safe outcome is to refuse the
-  // trade BEFORE it reaches Alpaca. Returning null here (the old behavior)
-  // meant "no approval required → submit the order" — i.e. a LIVE trade would
-  // auto-execute with NO approval on a phantom account. That is the
-  // fail-OPEN bug GAPS P1-19 / incident #390 (2026-06-05) closes. We throw a
-  // typed error every caller surfaces as a refused trade.
+  // trade BEFORE it reaches Alpaca. Answering "no approval needed" here (the
+  // old behavior) meant a LIVE trade would auto-execute with NO approval on a
+  // phantom account. That is the fail-OPEN bug GAPS P1-19 / incident #390
+  // (2026-06-05) closes. We throw a typed error every caller surfaces as a
+  // refused trade.
   //
-  // PAPER is not compliance-bound, so we keep the legacy fail-open (return
-  // null → the tool auto-executes the paper order as it always has).
+  // PAPER is not compliance-bound, so we keep the legacy fail-open (the tool
+  // auto-executes the paper order as it always has).
   if (!account) {
     if (args.environment === "LIVE") {
       throw new ApprovalGateAccountUnresolvedError(args.accountId, args.intent);
     }
-    return null;
+    return false;
   }
 
   const isRiskIncreasing = args.intent === "OPEN" || args.intent === "ADD";
   const isLive = args.environment === "LIVE";
-  const need = isRiskIncreasing
+  return isRiskIncreasing
     ? isLive
       ? account.requireApprovalBuysLive
       : account.requireApprovalBuysPaper
     : isLive
       ? account.requireApprovalSellsLive
       : account.requireApprovalSellsPaper;
-  if (!need) return null;
+}
 
-  // ── Dedup: at most one pending full-CLOSE proposal per position ──────────
-  // Two triggers firing on the same thesis in one evaluator tick spawn two
-  // tactical runs that each independently decide to close, each creating an
-  // AWAITING_APPROVAL order on the same position (MRVL 2026-06-02 — the user
-  // had to reject the same close twice, 1.3s apart). A full close is terminal
-  // and idempotent: a second pending close is ALWAYS redundant, so fold this
-  // call into the existing proposal instead of staging a twin.
-  //
-  // Scope is deliberately CLOSE-only. PARTIAL_CLOSE (scale-out) and ADD/OPEN
-  // have legitimate stacking cases — gating them here would be the kind of
-  // over-aggressive refusal GAPS P1-2 is trying to remove.
-  //
-  // Returns the EXISTING proposal's envelope (success-shaped, NOT an error)
-  // so the second tactical run renders the same card and completes its
-  // close-out contract cleanly — a thrown error would fail the run's
-  // narration gate and mark it FAILED.
-  //
-  // Race note: the realistic tactical-run spawn gap is ~1s, so a findFirst
-  // before the flip is adequate. A partial unique index on (positionId)
-  // WHERE intent='CLOSE' AND status='AWAITING_APPROVAL' would make it airtight
-  // against truly-simultaneous fires — tracked as a follow-up.
-  if (args.intent === "CLOSE") {
-    const existingClose = await prisma.order.findFirst({
-      where: {
-        positionId: args.positionId,
-        intent: "CLOSE",
-        status: "AWAITING_APPROVAL",
-        id: { not: args.orderId },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, expiresAt: true, rationale: true },
-    });
-    if (existingClose?.expiresAt) {
-      // Tombstone this call's just-created order so it doesn't linger as a
-      // second PENDING/AWAITING row. Reuse REJECTED (a known status) with a
-      // systemic message that distinguishes it from a user rejection.
-      await prisma.order.update({
-        where: { id: args.orderId },
-        data: {
-          status: "REJECTED",
-          rejectionMessage: `Duplicate close — folded into pending proposal ${existingClose.id}`,
-        },
-      });
-      return {
-        state: "awaiting_approval" as const,
-        orderId: existingClose.id,
-        positionId: args.positionId,
-        expiresAt: existingClose.expiresAt,
-        rationale: existingClose.rationale,
-      };
-    }
-  }
+/** How long a proposal waits for the principal before it expires. */
+export const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Tell the principal a proposal is waiting. Fire-and-forget — call it after
+ * the transaction that staged the order commits (both helpers read the row).
+ */
+export function notifyProposalPending(orderId: string): void {
+  // The helper resolves OWNER email + skips on emailAlerts off.
+  void sendProposalPendingEmail(orderId);
+  // Same event, phone/desktop channel — no-ops unless NTFY_TOPIC is set. Email
+  // is easy to miss; this is the high-signal nudge that a review is waiting.
+  void sendProposalPendingPush(orderId);
+}
+
+/**
+ * Decides whether the tool should stop here and wait for human approval, for
+ * the tools that create their order first (place_trade, manage_position). A
+ * full close does not come through here: closeOpenPosition asks
+ * approvalRequired first and creates its order already staged, in the same
+ * locked transaction as its "is a sale already under way" check.
+ *
+ * Returns null when no approval is needed → tool continues to Alpaca submit
+ * as it always has.
+ * Returns an AwaitingApprovalResult when approval is needed → tool returns
+ * the envelope verbatim and never reaches the Alpaca call.
+ * THROWS ApprovalGateAccountUnresolvedError (see approvalRequired).
+ */
+export async function maybeAwaitApproval(
+  args: MaybeAwaitApprovalArgs,
+): Promise<AwaitingApprovalResult | null> {
+  if (!(await approvalRequired(args))) return null;
 
   // ── Cross-day exit suppression REMOVED (P1-39 emergency, 2026-08-10) ────────
   // The P1-28 cooldown used to refuse re-staging a discretionary CLOSE within 5
@@ -262,8 +200,8 @@ export async function maybeAwaitApproval(
   //
   // So the cross-day cooldown is gone: every exit the agent decides on now
   // surfaces. The remaining, still-correct suppression layers stay in place:
-  //   • #379 dedup (above): folds a duplicate CLOSE while one is still
-  //     AWAITING_APPROVAL — prevents same-tick twins, not cross-day reminders.
+  //   • one full close at a time per position (closeOpenPosition, under a row
+  //     lock) — prevents same-tick twins, not cross-day reminders.
   //   • #381 tactical snooze (tactical-run.ts): skips re-SPAWNING a tactical run
   //     within 4h of a pending/rejected close — saves GPT cost, still ~1 alert/run.
   //
@@ -272,12 +210,12 @@ export async function maybeAwaitApproval(
   // alerts track a live line instead of a stale one. That is the follow-on build;
   // see docs/plans/PROPOSAL_FATIGUE.md. This change just stops the bleeding.
 
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + PROPOSAL_TTL_MS);
 
   // Flip the just-created rows to the awaiting-approval state. For ADDs /
-  // CLOSE / PARTIAL_CLOSE the Position is an existing OPEN holding — leave
-  // its status alone; only OPEN-intent proposals flip Position to
-  // PENDING_APPROVAL because the position isn't a real holding yet.
+  // PARTIAL_CLOSE the Position is an existing OPEN holding — leave its status
+  // alone; only OPEN-intent proposals flip Position to PENDING_APPROVAL
+  // because the position isn't a real holding yet.
   await prisma.$transaction(async (tx) => {
     if (args.intent === "OPEN") {
       await tx.position.update({
@@ -295,11 +233,7 @@ export async function maybeAwaitApproval(
     });
   });
 
-  // Fire-and-forget — the helper resolves OWNER email + skips on emailAlerts off.
-  void sendProposalPendingEmail(args.orderId);
-  // Same event, phone/desktop channel — no-ops unless NTFY_TOPIC is set. Email
-  // is easy to miss; this is the high-signal nudge that a review is waiting.
-  void sendProposalPendingPush(args.orderId);
+  notifyProposalPending(args.orderId);
 
   return {
     state: "awaiting_approval" as const,

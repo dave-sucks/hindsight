@@ -64,7 +64,7 @@ function classifyAlpacaError(err: unknown): "rejected" | "uncertain" {
   return "uncertain";
 }
 
-type ManagePositionStatus = "NO_POSITION" | "CLOSED" | "PARTIAL_CLOSE" | "ADDED" | "UPDATED" | "FAILED" | "PROPOSED" | "SUPPRESSED";
+type ManagePositionStatus = "NO_POSITION" | "CLOSED" | "PARTIAL_CLOSE" | "ADDED" | "UPDATED" | "FAILED" | "PROPOSED";
 
 interface ManagePositionTicker {
   ticker: string;
@@ -102,9 +102,6 @@ interface ManagePositionData {
   newStopLoss?: number | null;
   trailPct?: number;
   portfolioUpdate?: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number };
-  // P1-28 suppressed-close branch.
-  unapprovedExitCount?: number;
-  cooldownUntil?: string;
 }
 
 type ManagePositionReturn = { summary: string; data: ManagePositionData; sources: never[] };
@@ -345,8 +342,6 @@ export const managePosition = defineTool({
               environment: position.environment as "PAPER" | "LIVE",
               rationale: args.reason,
             });
-            // PARTIAL_CLOSE is never subject to the P1-28 CLOSE-only cooldown,
-            // so awaiting is only ever awaiting_approval | null here.
             if (awaiting?.state === "awaiting_approval") {
               await recordProposalRunEvent({
                 runId: ctx.runId,
@@ -706,7 +701,6 @@ export const managePosition = defineTool({
               environment: position.environment as "PAPER" | "LIVE",
               rationale: args.reason,
             });
-            // ADD is risk-increasing, never subject to the CLOSE cooldown.
             if (awaiting?.state === "awaiting_approval") {
               await recordProposalRunEvent({
                 runId: ctx.runId,

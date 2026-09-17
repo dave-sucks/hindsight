@@ -330,11 +330,9 @@ export const tacticalRun = inngest.createFunction(
             OR: [
               { status: "AWAITING_APPROVAL" },
               // A PENDING close is already submitted to Alpaca and awaiting
-              // fill (or reconcile). Re-firing — especially a cooldownDays:0
-              // DIRECT exit on an auto-execute book whose fill didn't land in
-              // the 5s poll — would submit a SECOND market sell and over-close.
-              // closeOpenPosition has no same-position pending guard, so we
-              // suppress here; reconcile-orders resolves the PENDING order.
+              // fill (or reconcile). closeOpenPosition would fold a second
+              // close into it (under a row lock); this read only saves the
+              // run. reconcile-orders resolves the PENDING order.
               { status: "PENDING" },
               {
                 status: "REJECTED",
