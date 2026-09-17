@@ -202,6 +202,18 @@ export const SETUP_IDS = [
 ] as const;
 export type SetupId = (typeof SETUP_IDS)[number];
 
+/**
+ * What a review stores when it looked and no catalog setup fits the stock
+ * (DAV-285). The reason is the review's own sentence on the Activity line.
+ * Every reader treats it as "no setup": getSetup returns nothing for it.
+ */
+export const NO_SETUP_FITS = "NONE";
+
+/** True when the row carries a catalog setup (not null, not "no setup fits"). */
+export function isNamedSetup(id: string | null | undefined): id is SetupId {
+  return !!id && (SETUP_IDS as readonly string[]).includes(id);
+}
+
 const trendTemplate =
   "Trend Template passes (chart.trendTemplate — price above a rising 150/200-day, 50-day above both, within 25% of the 52-week high, 30%+ off the low, beating SPY)";
 

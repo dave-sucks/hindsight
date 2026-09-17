@@ -42,7 +42,7 @@ import {
   type ResolvedEnvelope,
 } from "@/lib/agent/resolved-thesis";
 import { entryRaisesAway, type EntryRaiseAway } from "@/lib/agent/entry-raises";
-import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
+import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { isLadderEditUpdate } from "@/lib/agent/ladder-health";
 import {
@@ -356,6 +356,9 @@ export const getTheses = defineTool({
         // heavy section blobs below stay gated.
         researchUpdatedAt: true,
         setupId: true,
+        // The analyst's name picks which setups a row with none may choose
+        // from (DAV-285) — read off the row, not a second query.
+        researchRun: { select: { agentConfig: { select: { name: true } } } },
         // Deep-research artifacts — opt in via include_research. PR-9
         // flattened `researchSections` blob into 9 first-class columns;
         // selecting all of them by name. snapshot/bullCase/bearCase are
@@ -1071,6 +1074,10 @@ export const getTheses = defineTool({
         // horizon's manage rule, the time limit — instead of the horizon
         // glossary. Null on rows written before setups were named.
         setup: setupChecklist(t.setupId, t.horizon, setupOverrides),
+        // No setup named yet (DAV-285): the ask and the seat's choices, so
+        // the next review names one instead of never.
+        nameTheSetup: nameTheSetup(t, t.researchRun?.agentConfig?.name ?? null, setupOverrides),
+        researchRun: undefined,
         // Agent must see freshness of the deep research without doing date
         // math. Horizon-tuned per STALE_DAYS_BY_HORIZON. Soft input to the
         // agent's REVIEW decision — no Layer-1 gate keys off it.
