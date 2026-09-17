@@ -178,6 +178,8 @@ export async function loadChatThread(
   analystId: string | null;
   analystName: string | null;
   threadJson: string;
+  /** When the thread was last written — the end of the chat's latest turn. */
+  savedAt: Date;
 } | null> {
   const run = await prisma.researchRun.findFirst({
     where: {
@@ -193,7 +195,7 @@ export async function loadChatThread(
         where: { role: "thread" },
         orderBy: { createdAt: "desc" },
         take: 1,
-        select: { content: true },
+        select: { content: true, createdAt: true },
       },
     },
   });
@@ -207,7 +209,30 @@ export async function loadChatThread(
     analystId: run.agentConfig?.id ?? null,
     analystName: run.agentConfig?.name ?? null,
     threadJson: threadRow.content,
+    savedAt: threadRow.createdAt,
   };
+}
+
+/**
+ * The chat a browser session is writing to. A fresh chat never learns its
+ * runId — the route finds the run by the client-minted chatSessionId it was
+ * created with (see app/api/agent/[mode]/route.ts) — so this is how the page
+ * finds its own saved thread after a dropped connection.
+ */
+export async function findChatRunIdBySession(
+  chatSessionId: string,
+  userId: string,
+): Promise<string | null> {
+  const run = await prisma.researchRun.findFirst({
+    where: {
+      userId,
+      mode: "PRINCIPAL_CHAT",
+      parameters: { path: ["chatSessionId"], equals: chatSessionId },
+    },
+    orderBy: { startedAt: "desc" },
+    select: { id: true },
+  });
+  return run?.id ?? null;
 }
 
 /**
