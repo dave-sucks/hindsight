@@ -37,6 +37,7 @@ import {
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { setupExitTriggers } from "@/lib/agent/triggers/setup-exits";
 import { getSetup } from "@/lib/agent/knowledge/setups";
+import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 
 /**
  * Promote the WATCHING / PROMOTED thesis on (analystId, ticker) to HOLDING,
@@ -147,6 +148,7 @@ export async function armHeldLadderOnFill(opts: {
         direction: true,
         horizon: true,
         setupId: true,
+        accountId: true,
         catalystDate: true,
         triggers: true,
       },
@@ -171,7 +173,9 @@ export async function armHeldLadderOnFill(opts: {
     // The stock's own exits from the setup it was bought on (DAV-254): the
     // time limit counted from this buy, a partial at N R, the beat-the-
     // market-sold review. Seat style (the trail) stays on the analyst.
-    const setup = watchingThesis.setupId ? getSetup(watchingThesis.setupId) : undefined;
+    const setup = watchingThesis.setupId
+      ? getSetup(watchingThesis.setupId, await loadSetupOverrides(watchingThesis.accountId))
+      : undefined;
     const setupExits = setup
       ? setupExitTriggers({
           setup,

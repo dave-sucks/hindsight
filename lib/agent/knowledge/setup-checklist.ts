@@ -5,6 +5,7 @@
  */
 
 import { getSetup, type Horizon } from "./setups";
+import type { SetupOverrides } from "./setup-overrides";
 
 export interface SetupChecklist {
   id: string;
@@ -20,9 +21,13 @@ export interface SetupChecklist {
   beatAndFadeReview: boolean;
 }
 
-export function setupChecklist(setupId: string | null | undefined, horizon: string | null | undefined): SetupChecklist | null {
+export function setupChecklist(
+  setupId: string | null | undefined,
+  horizon: string | null | undefined,
+  overrides?: SetupOverrides,
+): SetupChecklist | null {
   if (!setupId) return null;
-  const s = getSetup(setupId);
+  const s = getSetup(setupId, overrides);
   if (!s) return null;
   const h = (horizon ?? null) as Horizon | null;
   return {
