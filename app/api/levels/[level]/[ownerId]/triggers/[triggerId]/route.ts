@@ -52,7 +52,7 @@ export async function PATCH(
   const auth = await authorize(level);
   if (auth.error) return auth.error;
 
-  let body: { value?: unknown; fireMode?: unknown };
+  let body: { value?: unknown; fireMode?: unknown; part?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -89,6 +89,7 @@ export async function PATCH(
       triggerId,
       body.value,
       ctx,
+      Number.isInteger(body.part) && (body.part as number) >= 0 ? (body.part as number) : null,
     );
     return Response.json({ ok: true, trigger });
   } catch (err) {

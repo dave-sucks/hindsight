@@ -62,6 +62,8 @@ export type TriggerOp =
       level?: number;
       pct?: number;
       days?: number;
+      /** On a two-condition (AND / OR) trigger: which condition's number, 0-based. */
+      part?: number;
       action?: TriggerAction;
       fireMode?: "TACTICAL" | "DIRECT";
       rationale?: string;
@@ -237,7 +239,13 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const target = stored.find((t) => t.id === op.id);
     if (!target) return refuse("edit", op.id, `Edit trigger ${op.id}`, notStored(op.id));
 
-    const current = numberOf(target.predicate);
+    // A two-condition trigger's number lives on one of its conditions.
+    const composite = target.predicate.kind === "AND" || target.predicate.kind === "OR" ? target.predicate : null;
+    const child = composite && op.part != null ? composite.predicates[op.part] : undefined;
+    if (op.part != null && !child) {
+      return refuse("edit", op.id, `Edit trigger ${op.id}`, `This trigger has no condition ${op.part + 1}.`);
+    }
+    const current = numberOf(child ?? target.predicate);
     const wanted =
       op.level !== undefined
         ? ({ field: "level", value: op.level } as const)
@@ -254,7 +262,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
           "edit",
           op.id,
           `Edit ${name}`,
-          `This trigger has no editable \`${wanted.field}\` — it is ${predicateSentence(target.predicate)}.`,
+          `This trigger has no editable \`${wanted.field}\` — it is ${predicateSentence(child ?? target.predicate)}.`,
         );
       }
       if (!(wanted.value > 0) || !Number.isFinite(wanted.value)) {
@@ -282,7 +290,14 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
 
     let predicate = target.predicate;
-    if (wanted && current) {
+    if (wanted && current && composite && child) {
+      predicate = {
+        ...composite,
+        predicates: composite.predicates.map((c, i) =>
+          i === op.part ? ({ ...c, [wanted.field]: wanted.value } as TriggerPredicate) : c,
+        ),
+      };
+    } else if (wanted && current) {
       const slot = levelSlotOf(target, direction);
       // A buy level's side comes from the tape when there is one (a level
       // under the price is a pullback, over it a breakout); otherwise from

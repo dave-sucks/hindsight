@@ -40,6 +40,7 @@ export async function PATCH(
   let body: {
     value?: unknown;
     fireMode?: unknown;
+    part?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -73,7 +74,8 @@ export async function PATCH(
         { status: 400 },
       );
     }
-    const result = await applyTriggerValueEdit(id, triggerId, body.value, editCtx);
+    const part = Number.isInteger(body.part) && (body.part as number) >= 0 ? (body.part as number) : null;
+    const result = await applyTriggerValueEdit(id, triggerId, body.value, editCtx, part);
     return Response.json(result);
   } catch (err) {
     if (err instanceof ThesisEditError) {

@@ -78,11 +78,44 @@ export function editableTriggerField(
   }
 }
 
+/** One editable number on a trigger. `part` is the condition's place in a two-condition trigger, null on a plain one. */
+export interface EditableTriggerPart extends EditableTriggerField {
+  part: number | null;
+}
+
+/**
+ * Every number a person can edit on a trigger (DAV-281). A plain trigger has
+ * at most one. A two-condition trigger ("beat AND down 3% on the day") has
+ * one per condition that carries a number, each addressed by its place.
+ */
+export function editableTriggerParts(p: TriggerPredicate): EditableTriggerPart[] {
+  if (p.kind === "AND" || p.kind === "OR") {
+    return p.predicates.flatMap((c, part) => {
+      const f = c.kind === "AND" || c.kind === "OR" ? null : editableTriggerField(c);
+      return f ? [{ ...f, part }] : [];
+    });
+  }
+  const f = editableTriggerField(p);
+  return f ? [{ ...f, part: null }] : [];
+}
+
+/** Which edit-op field carries this kind's number. */
+export function editOpFieldFor(kind: TriggerPredicate["kind"]): "level" | "pct" | "days" {
+  if (kind === "PRICE_ABOVE" || kind === "PRICE_BELOW") return "level";
+  if (kind === "REVIEW_CADENCE" || kind === "EARNINGS_WITHIN") return "days";
+  return "pct";
+}
+
 /** Return a copy of the predicate with its editable value replaced. No-op for non-editable kinds. */
 export function withEditedValue(
   p: TriggerPredicate,
   value: number,
+  part?: number | null,
 ): TriggerPredicate {
+  if (p.kind === "AND" || p.kind === "OR") {
+    if (part == null) return p;
+    return { ...p, predicates: p.predicates.map((c, i) => (i === part ? withEditedValue(c, value) : c)) };
+  }
   switch (p.kind) {
     case "PRICE_ABOVE":
     case "PRICE_BELOW":

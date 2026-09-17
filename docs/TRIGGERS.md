@@ -52,6 +52,8 @@ An invalid trigger is dropped at evaluation, so the gate rejects it up front.
 | `REVIEW_CADENCE` | A day count with a **counting from** choice. Default (`from` absent or `LAST_REVIEW`): N days since the last actual review (`lastReviewedAt`) — the review clock, repeating. `from: BUY`: N days after the position opened, false until held (the playbook's time limits: "sell 20 days after the buy if still held"). `from: EVENT` with `side: BEFORE\|AFTER`: N days before or after the thesis's own `catalystDate` (the FDA decision, the deal close) — read off the thesis, never typed into the trigger. Cooldown defaults to `days`, so a BUY/EVENT review re-asks every N days once reached; an EXIT is the usual standing order. | `days`, `from?`, `side?` |
 | `AND` / `OR` | Composite | `predicates[]` |
 
+**Two conditions by hand.** The Add Trigger dialog takes a second condition ("And also…", the same pickers) and posts `AND` of the two — "earnings beat AND down 3% on the day → review", the way the playbook writes it. A day count can't be one of the two (it is a schedule, not a condition). The popover edits either condition's number: the edit carries `part`, the condition's place, through `ops.ts` on a stock and `withEditedValue` on an account or analyst rule. Agents write `AND` / `OR` of any shape; the two-plain-conditions rule (`two-conditions.ts`) is only what a hand may post.
+
 The UI mints **Target Price** (`PRICE_ABOVE`/`PRICE_BELOW`, intraday or at
 the close), **Movement Amount** (`PRICE_MOVE_PCT`, today / 5 / 20 sessions),
 the held-only **Gain / Trail** pair, the **Agent Watch** clock

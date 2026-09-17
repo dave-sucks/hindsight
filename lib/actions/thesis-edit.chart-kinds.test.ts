@@ -7,7 +7,8 @@
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { ADDABLE_PREDICATE_KINDS, buildPrincipalTrigger } from "./thesis-edit";
+import { ADDABLE_PREDICATE_KINDS, applyTriggerAdd, buildPrincipalTrigger } from "./thesis-edit";
+import { addLevelTrigger } from "./level-triggers";
 import { LEVEL_ELIGIBLE_PREDICATE_KINDS } from "./level-triggers";
 import type { TriggerPredicate } from "@/lib/agent/triggers/types";
 
@@ -57,5 +58,37 @@ describe("the Add-trigger dialog's chart conditions", () => {
         allowDirect: false,
       }),
     ).toThrow(/Invalid trigger/);
+  });
+
+  // DAV-281 — "a beat the market sold", the trigger a PEAD fill writes, built
+  // by hand. On main both write paths stop at the first line: the sheet says
+  // "can't be added from the sheet (got AND)", the level says it is
+  // "specific to one thesis".
+  const BEAT_THE_MARKET_SOLD: TriggerPredicate = {
+    kind: "AND",
+    predicates: [{ kind: "EARNINGS_BEAT" }, { kind: "PRICE_MOVE_PCT", pct: 3, direction: "DOWN", window: "1D" }],
+  };
+  const ctx = { userId: "u1", accountId: "a1", actorUserId: "u1" } as never;
+
+  it("a beat and a miss are conditions the dialog can post, on a stock and as a standing rule", () => {
+    for (const k of ["EARNINGS_BEAT", "EARNINGS_MISS"] as const) {
+      expect(ADDABLE_PREDICATE_KINDS.has(k)).toBe(true);
+      expect(LEVEL_ELIGIBLE_PREDICATE_KINDS.has(k)).toBe(true);
+    }
+    const t = buildPrincipalTrigger({ action: "REVIEW", predicate: BEAT_THE_MARKET_SOLD, defaultRationale: "test", allowDirect: false });
+    expect(t.predicate).toEqual(BEAT_THE_MARKET_SOLD);
+  });
+
+  it("the sheet's add path lets the pair past its kind check (it fails later only because this test has no database)", async () => {
+    await expect(applyTriggerAdd("t1", { action: "REVIEW", predicate: BEAT_THE_MARKET_SOLD }, ctx)).rejects.not.toThrow(/can't be added/);
+  });
+
+  it("the account / analyst add path lets the pair past its eligibility check", async () => {
+    await expect(addLevelTrigger("ACCOUNT", "a1", { action: "REVIEW", predicate: BEAT_THE_MARKET_SOLD }, ctx)).rejects.not.toThrow(/specific to one thesis|can't be added/);
+  });
+
+  it("a pair holding a price level is still refused as a standing rule", async () => {
+    const p: TriggerPredicate = { kind: "AND", predicates: [{ kind: "EARNINGS_BEAT" }, { kind: "PRICE_BELOW", level: 96 }] };
+    await expect(addLevelTrigger("ACCOUNT", "a1", { action: "REVIEW", predicate: p }, ctx)).rejects.toThrow(/PRICE_BELOW/);
   });
 });
