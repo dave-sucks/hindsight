@@ -32,7 +32,13 @@ const mockAgentConfigFindUnique = jest.fn().mockResolvedValue({ emailAlerts: fal
 
 const mockTransaction = jest.fn(async (cb: (tx: unknown) => unknown) =>
   cb({
-    order: { create: mockOrderCreate, update: mockOrderUpdate },
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    order: {
+      create: mockOrderCreate,
+      update: mockOrderUpdate,
+      findFirst: jest.fn().mockResolvedValue(null),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
     position: { update: mockPositionUpdateTx },
     positionEvent: { create: mockPositionEventCreate },
     positionManagementAction: { create: mockPositionManagementActionCreate },
@@ -74,10 +80,12 @@ jest.mock("@/lib/alpaca", () => ({
   cancelOrder: jest.fn(),
 }));
 
-// ── Approval gate — null = approval OFF, so the close executes ──────────────
-const mockMaybeAwaitApproval = jest.fn();
+// ── Approval gate — false = approval OFF, so the close executes ─────────────
+const mockApprovalRequired = jest.fn();
 jest.mock("@/lib/proposals/maybe-await-approval", () => ({
-  maybeAwaitApproval: (...a: unknown[]) => mockMaybeAwaitApproval(...a),
+  approvalRequired: (...a: unknown[]) => mockApprovalRequired(...a),
+  notifyProposalPending: jest.fn(),
+  PROPOSAL_TTL_MS: 24 * 60 * 60 * 1000,
 }));
 
 // ── Side-effect modules (non-fatal; stub to no-ops) ─────────────────────────
@@ -134,7 +142,7 @@ beforeEach(() => {
     filled_at: "2026-06-05T15:00:00Z",
   });
   // approval OFF by default → close executes (the desync-prone path).
-  mockMaybeAwaitApproval.mockResolvedValue(null);
+  mockApprovalRequired.mockResolvedValue(false);
 });
 
 describe("closeOpenPosition — P1-18 paired-thesis flip", () => {
@@ -201,12 +209,8 @@ describe("closeOpenPosition — P1-18 paired-thesis flip", () => {
   });
 
   it("#390 interaction: an AWAITING_APPROVAL proposal does NOT flip the thesis here", async () => {
-    // approval ON → maybeAwaitApproval stages a proposal and returns early.
-    mockMaybeAwaitApproval.mockResolvedValue({
-      orderId: "order-1",
-      expiresAt: new Date("2026-06-06T15:00:00Z"),
-      rationale: "Automated STOP exit — NVDA",
-    });
+    // approval ON → the close is created as a proposal and returns early.
+    mockApprovalRequired.mockResolvedValue(true);
 
     const result = await closeOpenPosition(
       "pos-1",

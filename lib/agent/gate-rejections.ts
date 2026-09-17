@@ -27,9 +27,9 @@
  *   2. `{ status: "FAILED", note | message }`    — record_thesis, place_trade
  *   3. `{ success: false, status, message }`     — manage_position, close_position
  *
- * Deliberately NOT recorded: SUPPRESSED / NO_POSITION / PROPOSED results
- * (`success: true` shapes) — a decline-cooldown hold or an idempotent no-op
- * is the app working, not a gate firing. The wrapper's own catch path IS
+ * Deliberately NOT recorded: NO_POSITION / PROPOSED results (`success: true`
+ * shapes) — a staged proposal or an idempotent no-op is the app working, not
+ * a gate firing. The wrapper's own catch path IS
  * recorded, tagged `__exception__`, so "the agent gave up because the tool
  * crashed" and "because a gate refused" are distinguishable in one query.
  *
@@ -51,7 +51,7 @@ export interface DetectedRejection {
 /**
  * Classify a tool result's `data` payload. Returns null for anything that
  * isn't a refusal — including success shapes that merely carry a status
- * field (SUPPRESSED, NO_POSITION, PROPOSED all ride `success: true`).
+ * field (NO_POSITION, PROPOSED both ride `success: true`).
  */
 export function detectGateRejection(data: unknown): DetectedRejection | null {
   if (typeof data !== "object" || data === null) return null;
@@ -65,8 +65,8 @@ export function detectGateRejection(data: unknown): DetectedRejection | null {
   if (d.ok === true) return null;
 
   // Protocol 3 — manage/close_position: { success: false, ... }.
-  // `success: true` shapes (SUPPRESSED cooldown holds, NO_POSITION no-ops)
-  // are the app working, never a gate.
+  // `success: true` shapes (proposals, NO_POSITION no-ops) are the app
+  // working, never a gate.
   if (d.success === true) return null;
   if (d.success === false) {
     const code =

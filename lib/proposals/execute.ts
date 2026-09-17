@@ -37,6 +37,10 @@ import {
   promoteThesisOnApproval,
   closeThesisOnApproval,
 } from "@/lib/proposals/thesis-flips";
+import {
+  cancelSellProposals,
+  findSaleUnderWay,
+} from "@/lib/proposals/cancel-sibling-proposals";
 
 export interface ProposalApprovalResult {
   ok: true;
@@ -74,7 +78,8 @@ export class ProposalExecutionError extends Error {
     | "EXPIRED"
     | "ALPACA_REJECTED"
     | "ALPACA_UNCERTAIN"
-    | "UNKNOWN_INTENT";
+    | "UNKNOWN_INTENT"
+    | "SALE_UNDER_WAY";
   retryable: boolean;
   constructor(code: ProposalExecutionError["code"], message: string, retryable = false) {
     super(message);
@@ -176,8 +181,52 @@ export async function approveProposal(
   //    portfolio queries, and the heartbeat all see a real holding from this
   //    moment on. For closes/adds/partial-closes the Position stays OPEN
   //    and only the Order flips.
+  //
+  //    A sale takes the position lock first: a full close already submitted
+  //    refuses any other sale, and a submitted trim refuses a full close —
+  //    either pair sells shares that are already sold (SMMT 2026-09-15 had
+  //    two 450-share close proposals on a 450-share position). The flip only
+  //    lands on a row still AWAITING_APPROVAL, so two clicks on one proposal
+  //    can't both submit. Approving a full close cancels the other sell
+  //    proposals on the position here, not after the fill.
   const promotedAt = new Date();
+  const isSale = intent === "CLOSE" || intent === "PARTIAL_CLOSE";
   await prisma.$transaction(async (tx) => {
+    if (isSale) {
+      const underWay = await findSaleUnderWay(tx, order.position.id, {
+        statuses: ["PENDING"],
+        intents: intent === "CLOSE" ? ["CLOSE", "PARTIAL_CLOSE"] : ["CLOSE"],
+        exceptOrderId: orderId,
+      });
+      if (underWay) {
+        throw new ProposalExecutionError(
+          "SALE_UNDER_WAY",
+          `A ${underWay.intent === "CLOSE" ? "close" : "trim"} of ${order.symbol} is already submitted (order ${underWay.id}) — not sending another sell until it resolves.`,
+        );
+      }
+    }
+    const flipped = await tx.order.updateMany({
+      where: { id: orderId, status: "AWAITING_APPROVAL" },
+      data: {
+        status: "PENDING",
+        alpacaSubmittedAt: promotedAt,
+        ...(qtyEdited ? { quantity: effectiveQty } : {}),
+      },
+    });
+    if (flipped.count === 0) {
+      throw new ProposalExecutionError(
+        "NOT_AWAITING",
+        `Order ${orderId} is no longer AWAITING_APPROVAL`,
+      );
+    }
+    if (intent === "CLOSE") {
+      await cancelSellProposals(
+        tx,
+        order.position.id,
+        orderId,
+        `close ${orderId} on this position was approved`,
+      );
+    }
     if (intent === "OPEN" && order.position.status === "PENDING_APPROVAL") {
       await tx.position.update({
         where: { id: order.position.id },
@@ -194,14 +243,6 @@ export async function approveProposal(
         },
       });
     }
-    await tx.order.update({
-      where: { id: orderId },
-      data: {
-        status: "PENDING",
-        alpacaSubmittedAt: promotedAt,
-        ...(qtyEdited ? { quantity: effectiveQty } : {}),
-      },
-    });
     await tx.positionEvent.create({
       data: {
         positionId: order.position.id,
