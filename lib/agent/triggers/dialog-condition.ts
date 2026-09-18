@@ -37,6 +37,8 @@ export interface DialogCondition {
   chartKind: ChartKind;
   chartParam: string;
   filingEvent: string;
+  /** TRAIL only: "or N ATR, whichever is wider" — blank = the percent alone (DAV-294). */
+  atrMultiple: string;
   countFrom: CountFrom;
   earningsWhen: EarningsWhen;
 }
@@ -52,6 +54,7 @@ export function defaultCondition(criterion: AddCriterion): DialogCondition {
       chartKind: "NEAR_SMA",
       chartParam: "50",
       filingEvent: "tier:MATERIAL",
+      atrMultiple: "",
       countFrom: "LAST_REVIEW",
       earningsWhen: "WITHIN",
     },
@@ -132,9 +135,12 @@ export function conditionValid(c: DialogCondition): boolean {
     case "MOVE":
       // A move is a fraction of the price — 100% or more is nonsense.
       return filled && num > 0 && num < 100;
-    case "TRAIL":
+    case "TRAIL": {
       // Zod floors the trail at 1% (under that it re-fires on noise).
+      const mult = c.atrMultiple.trim();
+      if (mult !== "" && !(Number(mult) > 0 && Number(mult) <= 10)) return false;
       return filled && num >= 1 && num < 100;
+    }
     default:
       // A price, or a gain from entry (which CAN exceed 100).
       return filled && num > 0;
@@ -190,8 +196,14 @@ export function conditionPredicate(c: DialogCondition): Record<string, unknown> 
           : { kind: "REVIEW_CADENCE", days: num, from: "EVENT", side: c.countFrom === "EVENT_BEFORE" ? "BEFORE" : "AFTER" };
     case "GAIN":
       return { kind: "GAIN_FROM_ENTRY", pct: num, direction: c.dir };
-    case "TRAIL":
-      return { kind: "TRAILING_FROM_HIGH", pct: num };
+    case "TRAIL": {
+      const mult = c.atrMultiple.trim() === "" ? null : Number(c.atrMultiple);
+      return {
+        kind: "TRAILING_FROM_HIGH",
+        pct: num,
+        ...(mult != null && Number.isFinite(mult) && mult > 0 ? { atrMultiple: mult } : {}),
+      };
+    }
     case "MOVE":
       return { kind: "PRICE_MOVE_PCT", pct: num, direction: c.dir, window: c.moveWindow };
     case "PRICE":
