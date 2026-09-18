@@ -8,6 +8,11 @@
  * whole momentum screen, so every row carries its 5-session, 1-month and
  * 6-month move too.
  *
+ * The clock is pinned to that evening: the trailing read measures from
+ * COMPLETED sessions, so which bar counts as "today" decides every number
+ * below. Without the pin these assertions quietly change meaning at
+ * midnight.
+ *
  * The fixture keeps 136 daily bars per name — enough for the 126-session
  * read — for exactly the names the screener's $5 floor lets through. Three
  * of them (KATT, TEMC, USDE) are young listings with too little history for
@@ -56,9 +61,19 @@ const bySymbol = (out: any, symbol: string) => out.data.rows.find((r: { symbol: 
 const rowFor = (out: any, symbol: string) => out.data.items.find((i: { ticker?: string }) => i.ticker === symbol);
 
 beforeEach(() => {
+  // 2026-09-17, 19:30 ET — after that session's close, before the next one.
+  // The trailing read measures from COMPLETED sessions, so which bar counts
+  // as "today" decides every number below; unpinned, these assertions
+  // quietly change meaning at midnight.
+  jest.useFakeTimers({ doNotFake: ["nextTick", "queueMicrotask"] });
+  jest.setSystemTime(new Date("2026-09-17T23:30:00.000Z"));
   __resetCikCache();
   process.env.ALPACA_API_KEY = "k";
   process.env.ALPACA_API_SECRET = "s";
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 describe("get_market_movers", () => {
