@@ -102,8 +102,8 @@ export const morningResearch = inngest.createFunction(
         // morning-cron invocations from running CONCURRENTLY, but doesn't
         // prevent a second invocation from running SEQUENTIALLY after the
         // first completes. The function also subscribes to
-        // `app/research.run.manual` events (urgent-trigger on email signals,
-        // manual UI runs via /api/research/trigger), which can fire mid-cron
+        // `app/research.run.manual` events (manual UI runs via
+        // /api/research/trigger), which can fire mid-cron
         // OR shortly after — producing a second MORNING_PLAN row for the same
         // analyst the same day.
         //
@@ -991,7 +991,7 @@ export const morningResearch = inngest.createFunction(
                 system: systemPrompt,
                 prompt:
                   `The prior attempt at your morning run produced zero tool calls before timing out. Start NOW. ` +
-                  `Your first action this turn is read_signals, get_portfolio_context, and get_theses in parallel — no narration before the tool calls. ` +
+                  `Your first action this turn is get_portfolio_context and get_theses in parallel — no narration before the tool calls. ` +
                   `Then proceed with your normal playbook.`,
                 tools,
                 // Same cache route as the main loop — the retry replays the same prefix.

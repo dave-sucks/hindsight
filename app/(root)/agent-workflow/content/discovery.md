@@ -10,12 +10,11 @@ The agent can't touch coverage it already holds — the [Daily Run](agent:agent)
 
 ## Step 1: Read
 
-Pull the discovery surfaces in one parallel turn. Which tools run is gated by the analyst's feed subscriptions — no force-pulling a firehose the analyst didn't opt into.
+Pull the discovery surfaces in one parallel turn. Both are firm-wide and fenced to names the analyst doesn't already cover.
 
 ```reads
-read_signals — always; pulls this week's discovery-bucket signals, auto-excluding already-covered tickers
-get_market_movers?provider=fmp — only for analysts subscribed to a MARKET_MOVERS_* feed
-get_earnings_calendar?provider=finnhub — only for analysts subscribed to the EARNINGS_CALENDAR feed
+get_market_movers?provider=alpaca — today's gainers, losers and most-actives, minus names already covered
+get_earnings_calendar?provider=finnhub — who reports over the window, minus names already covered
 ```
 
 ## Step 1.5: Triage

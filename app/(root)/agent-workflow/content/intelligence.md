@@ -1,8 +1,10 @@
 ---
 id: intelligence
 title: Intelligence Pipeline
-summary: Four background jobs run between 6:30 and 7:30 AM ET — sweeping the market, monitoring your portfolio and watchlist, crawling tracked domains — then a router scores and assigns every signal to the analysts who should see it.
+summary: Retired. Four background jobs used to sweep the market, monitor the book and crawl tracked domains, then a router assigned every signal to the analysts who should see it. The jobs and the router were deleted on 2026-09-15; the signals they wrote are kept, read-only.
 ---
+
+> **Retired 2026-09-15.** Everything below describes how the pipeline worked while it ran. None of these jobs run now. The `Signal` rows they produced are kept and readable on /intelligence, but nothing adds to them and no analyst reads them.
 
 Your analysts wake up to signals, not to raw noise. The intelligence pipeline runs before the market opens and does the work of finding, filtering, and routing everything worth looking at. Each job produces structured `Signal` rows. The router's job is to match those rows against each analyst's universe and decide who sees what.
 

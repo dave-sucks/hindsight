@@ -22,8 +22,7 @@ get_theses — the firing thesis with its full update history
 get_earnings_data?provider=finnhub — if the trigger is earnings-related
 get_market_context?provider=finnhub — regime check before acting
 get_sec_filings?provider=sec — if the trigger references an 8-K or insider filing
-read_artifact — full article content behind the firing signal
-web_search?provider=perplexity — only when the firing signal doesn't fully explain the setup
+web_search?provider=perplexity — only when the fired condition doesn't fully explain the setup
 dispatch_thesis_research — refresh stale or missing research before a trade action
 wait_for_thesis_refresh — blocks until the refresh child run completes
 ```

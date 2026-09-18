@@ -48,14 +48,14 @@ const citationSchema = z.object({
     .optional()
     .nullable()
     .describe(
-      "If this claim came from a signal returned by read_signals, its signalId. Otherwise null/omit.",
+      "The id of a routed signal behind this claim. Segments no longer read signals, so leave null/omit.",
     ),
   artifactId: z
     .string()
     .optional()
     .nullable()
     .describe(
-      "If this claim came from an artifact returned by read_artifact, its artifactId. Otherwise null/omit.",
+      "The id of an extracted article behind this claim. Segments no longer read artifacts, so leave null/omit.",
     ),
 });
 

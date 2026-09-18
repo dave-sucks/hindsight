@@ -166,13 +166,13 @@ const thesisFields = z.object({
     ])
     .optional()
     .describe(
-      "Where this thesis came from. ROUTED_SIGNAL = informed by a signal from read_signals (requires non-empty source_signal_ids). WEB_SEARCH = came from a live web_search call only. WATCHLIST_REVIEW = triggered by reviewing your own watchlist. POSITION_REVIEW = triggered by reviewing an open position. USER_ADDED/BUILDER_SEED/EDITOR_SEED are reserved for non-agent code paths (UI manual add, analyst-creation, editor chat) and should not be passed by the agent."
+      "Where this thesis came from. ROUTED_SIGNAL = informed by a routed signal (requires non-empty source_signal_ids; only a mode that can read the signal inbox has those — no agent mode does today). WEB_SEARCH = came from a live web_search call only. WATCHLIST_REVIEW = triggered by reviewing your own watchlist. POSITION_REVIEW = triggered by reviewing an open position. USER_ADDED/BUILDER_SEED/EDITOR_SEED are reserved for non-agent code paths (UI manual add, analyst-creation, editor chat) and should not be passed by the agent."
     ),
   source_signal_ids: z
     .array(z.string())
     .default([])
     .describe(
-      "signalId values from read_signals that informed this thesis. MUST be non-empty when source_kind is ROUTED_SIGNAL. Persisted so trade-evaluator can credit the originating monitors when the position closes."
+      "Routed-signal ids that informed this thesis. MUST be non-empty when source_kind is ROUTED_SIGNAL; leave empty otherwise. Persisted so trade-evaluator can credit the originating monitors when the position closes."
     ),
   source_rationale: z
     .string()
@@ -515,7 +515,7 @@ export const recordThesis = defineTool({
           data: {
             thesis_id: null,
             status: "FAILED" as const,
-            note: "Every record_thesis call MUST declare provenance. Add EITHER source_signal_ids (non-empty array of IDs from today's read_signals output) with source_kind=ROUTED_SIGNAL, OR source_rationale (one-line explanation like 'Reviewed position after price alert' or 'Identified via 52-week-high discovery monitor') with source_kind=WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW. Retry with the correct shape.",
+            note: "Every record_thesis call MUST declare provenance. Add source_rationale (a one-line explanation like 'Reviewed position after price alert' or 'Surfaced on today's most-actives and it fits the fence') with source_kind=WEB_SEARCH / WATCHLIST_REVIEW / POSITION_REVIEW. Retry with the correct shape.",
           },
           sources: [],
         };
@@ -1436,7 +1436,6 @@ export const recordThesis = defineTool({
                     `    stop_loss: <new>,\n` +
                     `    scoring: { trendStrength: { score, note }, ... },\n` +
                     `    snapshot: { text: "<refreshed>", citations: [] },\n` +
-                    `    signal_ids: [<from today's read_signals>],\n` +
                     `  })\n` +
                     `If you reviewed and nothing actually changed, call update_thesis with ONLY thesis_id + rationale — that writes a REVIEWED entry and counts as the required thesis touch for this run. ` +
                     `record_thesis is reserved for new coverage on a NEW ticker or direction flips (LONG ↔ SHORT). Do NOT retry record_thesis on ${args.ticker} — it will reject again.`,

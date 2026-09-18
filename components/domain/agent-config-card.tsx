@@ -57,9 +57,6 @@ export type AgentConfigData = {
     reason: string;
   }>;
   intelligencePolicy?: {
-    holdingsAttention: number;
-    watchlistAttention: number;
-    discoveryAttention: number;
     maxSignalsPerRun?: number;
     maxArtifactReads?: number;
     allowLiveSearch?: boolean;
