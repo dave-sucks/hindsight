@@ -219,6 +219,15 @@ export function evaluateTrigger(
       const gainPct = isLong
         ? ((ctx.latestQuote.price - avg) / avg) * 100
         : ((avg - ctx.latestQuote.price) / avg) * 100;
+      // A big winner is not trimmed (DAV-294, playbook F). Once the
+      // position's tracked peak has run this far off the buy, the partial
+      // sale is off for good and the trail manages the position. Reads the
+      // same water mark the trail does, so it needs no memory of its own.
+      if (predicate.skipIfPeakGainPct != null && ctx.position?.peakPrice != null) {
+        const peak = ctx.position.peakPrice;
+        const peakGain = isLong ? ((peak - avg) / avg) * 100 : ((avg - peak) / avg) * 100;
+        if (peakGain >= predicate.skipIfPeakGainPct) return false;
+      }
       return predicate.direction === "UP"
         ? gainPct >= predicate.pct
         : gainPct <= -predicate.pct;

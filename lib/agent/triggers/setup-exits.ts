@@ -18,7 +18,7 @@
  * (the analyst chose one) is left alone by the caller.
  */
 
-import type { Setup, Horizon } from "@/lib/agent/knowledge/setups";
+import { BIG_WINNER_PEAK_GAIN_PCT, type Setup, type Horizon } from "@/lib/agent/knowledge/setups";
 import type { Trigger } from "./types";
 import type { TriggerOp } from "./ops";
 import { triggerBucket } from "./bucket";
@@ -35,6 +35,9 @@ export function setupExitTriggers(input: {
 }): Trigger[] {
   const { setup, entry, stop } = input;
   const out: Trigger[] = [];
+  // The big-winner rule is a trade/target idea; a compounder never trims on
+  // a gain milestone and a catalyst exits on its event.
+  const bigWinnerApplies = input.horizon === "TRADE" || input.horizon === "TARGET";
 
   // The time limit — "not working after N days", the 60-day business
   // checkpoint — as a day count from the buy (#655). Always a review: the
@@ -50,15 +53,29 @@ export function setupExitTriggers(input: {
     });
   }
 
+  // The partial sale at N R — and the one thing that turns it off. A stock
+  // that has already run BIG_WINNER_PEAK_GAIN_PCT off the buy is a likely
+  // big winner: the playbook holds it and lets the trail manage it rather
+  // than cutting it in half (DAV-294, Part F). Only where the partial lives
+  // at all, so a compounder and a catalyst are untouched.
   if (setup.manage.partialAtR != null && stop != null && entry > 0 && stop > 0 && stop !== entry) {
     const distPct = (Math.abs(entry - stop) / entry) * 100;
     const pct = Math.round(setup.manage.partialAtR * distPct * 10) / 10;
     if (pct > 0) {
       out.push({
         id: input.mintId(),
-        predicate: { kind: "GAIN_FROM_ENTRY", pct, direction: "UP" },
+        predicate: {
+          kind: "GAIN_FROM_ENTRY",
+          pct,
+          direction: "UP",
+          ...(bigWinnerApplies ? { skipIfPeakGainPct: BIG_WINNER_PEAK_GAIN_PCT } : {}),
+        },
         action: "TRIM",
-        rationale: `Up ${pct}% from entry — ${setup.manage.partialAtR}R on a ${distPct.toFixed(1)}% stop. ${setup.target.text}`,
+        rationale:
+          `Up ${pct}% from entry — ${setup.manage.partialAtR}R on a ${distPct.toFixed(1)}% stop. ${setup.target.text}` +
+          (bigWinnerApplies
+            ? ` Off for good once the stock has run ${BIG_WINNER_PEAK_GAIN_PCT}% off the buy: a winner that big is held and managed on the trail, not cut in half.`
+            : ""),
         cooldownDays: 7,
         source: "DEFAULT",
       });

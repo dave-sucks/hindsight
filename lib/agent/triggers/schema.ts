@@ -17,7 +17,7 @@ type PredicateShape =
   | { kind: "PRICE_ABOVE"; level: number; basis?: "intraday" | "close" }
   | { kind: "PRICE_BELOW"; level: number; basis?: "intraday" | "close" }
   | { kind: "PRICE_MOVE_PCT"; pct: number; direction: "UP" | "DOWN"; window: "1D" | "5D" | "20D" }
-  | { kind: "GAIN_FROM_ENTRY"; pct: number; direction: "UP" | "DOWN" }
+  | { kind: "GAIN_FROM_ENTRY"; pct: number; direction: "UP" | "DOWN"; skipIfPeakGainPct?: number }
   | { kind: "TRAILING_FROM_HIGH"; pct: number; armAtGainPct?: number; atrMultiple?: number }
   | { kind: "VS_SMA"; period: 20 | 50 | 150 | 200; direction: "ABOVE" | "BELOW" }
   | { kind: "NEAR_SMA"; period: 20 | 50 | 150 | 200; withinPct: number }
@@ -56,6 +56,9 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
     }),
     z.object({
       kind: z.literal("GAIN_FROM_ENTRY"),
+      // A big winner is not trimmed: once the position's peak has run this
+      // far off the buy, this rung is off for good (DAV-294, playbook F).
+      skipIfPeakGainPct: z.number().positive().max(500).optional(),
       pct: z.number().positive(),
       direction: z.enum(["UP", "DOWN"]),
     }),

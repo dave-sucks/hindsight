@@ -38,9 +38,10 @@ export function predicateSentence(p: TriggerPredicate): string {
         ? `Price ${p.direction === "UP" ? "up" : "down"} ${p.pct}% today`
         : `Price ${p.direction === "UP" ? "up" : "down"} ${p.pct}% over ${p.window === "5D" ? "5 sessions" : "20 sessions"}`;
     case "GAIN_FROM_ENTRY":
-      return p.direction === "UP"
-        ? `Up ${p.pct}% from entry`
-        : `Down ${p.pct}% from entry`;
+      return (
+        (p.direction === "UP" ? `Up ${p.pct}% from entry` : `Down ${p.pct}% from entry`) +
+        (p.skipIfPeakGainPct ? ` (off once it has run ${p.skipIfPeakGainPct}%)` : "")
+      );
     case "TRAILING_FROM_HIGH":
       // Same vocabulary as the trigger editor ("Trailing from high") — the
       // feed once said "Gives back X% from the high" and read as a trigger
