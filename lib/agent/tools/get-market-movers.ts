@@ -16,6 +16,8 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { getAlpacaMovers, type MoverRow } from "@/lib/market-data/alpaca-screener";
+import { fetchClosesBatch, trailingMoves } from "@/lib/market-data/movers";
+import { loadCompanyList } from "@/lib/market-data/sec-filings";
 
 const MOVER_PATHS: Record<"gainers" | "losers" | "active", { label: string }> = {
   gainers: { label: "Top gainers" },
@@ -26,6 +28,8 @@ const MOVER_PATHS: Record<"gainers" | "losers" | "active", { label: string }> = 
 export const getMarketMovers = defineTool({
   description:
     "Pull today's market movers (Alpaca screener) — gainers, losers, or most actives. " +
+    "Every row also carries what the stock has done over 5 sessions, a month and six months, so a one-day pop reads " +
+    "differently from a name that has been climbing (the momentum-leader screen is the top names by 1-, 3- and 6-month return). " +
     "Three scopes: `scope: \"all\"` returns the full firehose; `scope: \"universe\"` returns " +
     "movers that are NOT already in your coverage (active/watching theses ∪ watchlist ∪ open " +
     "positions) — the discovery set; `scope: \"coverage\"` returns ONLY movers among your " +
@@ -155,6 +159,33 @@ export const getMarketMovers = defineTool({
     const visible = sorted.slice(0, VISIBLE_CAP);
     const remaining = sorted.length - visible.length;
 
+    // The run behind today's move — one batched daily-bars call for the whole
+    // list. Today's % alone can't tell a shell's one-day pop from a leader
+    // that has been climbing for a month, which is the distinction the
+    // momentum setups are screened on.
+    const [closes, companies] = await Promise.all([
+      fetchClosesBatch(sorted.map((r) => r.symbol.toUpperCase()), new Date()),
+      // The screener returns symbols only; SEC's day-cached list names them.
+      loadCompanyList(),
+    ]);
+    const runOf = (row: MoverRow) =>
+      row.price != null
+        ? trailingMoves(closes.get(row.symbol.toUpperCase()), row.price)
+        : { move5d: null, move1m: null, move6m: null };
+    const fmtPct = (n: number | null) => (n == null ? null : `${n >= 0 ? "+" : ""}${n.toFixed(0)}%`);
+    const runText = (row: MoverRow) => {
+      const run = runOf(row);
+      const parts: string[] = [];
+      for (const [span, value] of [
+        ["5D", fmtPct(run.move5d)],
+        ["1M", fmtPct(run.move1m)],
+        ["6M", fmtPct(run.move6m)],
+      ] as Array<[string, string | null]>) {
+        if (value) parts.push(`${span} ${value}`);
+      }
+      return parts.length ? ` · ${parts.join(" · ")}` : "";
+    };
+
     const fenceNote =
       scope === "coverage"
         ? coverageSet.size > 0
@@ -184,7 +215,7 @@ export const getMarketMovers = defineTool({
         kind: "ticker",
         ticker: row.symbol,
         tag: `${sign}${pct.toFixed(2)}%`,
-        text: `${row.name ?? ""}${priceText}`.trim() || `Today's ${args.type}`,
+        text: `${row.name ?? companies?.byTicker.get(row.symbol.toUpperCase())?.name ?? row.symbol}${priceText}${runText(row)}`,
       });
     }
 
@@ -201,7 +232,7 @@ export const getMarketMovers = defineTool({
         type: args.type,
         scope,
         count: sorted.length,
-        rows: sorted,
+        rows: sorted.map((row) => ({ ...row, ...runOf(row) })),
       },
       sources: [
         {

@@ -59,7 +59,7 @@ const TRAILING_CALENDAR_DAYS = 300;
  * closes are fine here — this is percent moves, not volume — and the bar
  * cap is raised so 50 symbols × 6 months fit in one page.
  */
-async function fetchClosesBatch(symbols: string[], now: Date): Promise<Map<string, number[]>> {
+export async function fetchClosesBatch(symbols: string[], now: Date): Promise<Map<string, number[]>> {
   const out = new Map<string, number[]>();
   const keyId = process.env.ALPACA_API_KEY;
   const secretKey = process.env.ALPACA_API_SECRET;
@@ -91,6 +91,26 @@ async function fetchClosesBatch(symbols: string[], now: Date): Promise<Map<strin
   return out;
 }
 
+/**
+ * The run behind today's move: % from the close 5 / 21 / 126 completed
+ * sessions back to the current price — the same measure the 5D/20D triggers
+ * use. A name with fewer sessions than that gets null rather than a number
+ * measured off its first day of trading.
+ */
+export function trailingMoves(
+  closes: number[] | undefined,
+  price: number,
+): { move5d: number | null; move1m: number | null; move6m: number | null } {
+  const history = { closes: closes ?? [] } as Parameters<typeof movePctOverSessions>[0];
+  const move = (sessions: number) =>
+    history.closes.length > sessions ? movePctOverSessions(history, price, sessions) : null;
+  return {
+    move5d: move(TRAILING_SESSIONS.move5d),
+    move1m: move(TRAILING_SESSIONS.move1m),
+    move6m: move(TRAILING_SESSIONS.move6m),
+  };
+}
+
 export async function getMoversView(
   kind: MoverKind,
   opts: { coveredBy?: Map<string, string[]>; top?: number; now?: Date } = {},
@@ -119,10 +139,6 @@ export async function getMoversView(
     const changePct = r.percentChange ?? (price != null && prev ? ((price - prev) / prev) * 100 : null);
     if (price == null || price < MIN_PRICE) continue;
     const company = companies?.byTicker.get(symbol);
-    // The same "% from the close N sessions back" the 5D/20D triggers use.
-    const history = { closes: closes.get(symbol) ?? [] } as Parameters<typeof movePctOverSessions>[0];
-    const move = (sessions: number) =>
-      history.closes.length > sessions ? movePctOverSessions(history, price, sessions) : null;
     rows.push({
       symbol,
       name: company?.name ?? null,
@@ -131,9 +147,7 @@ export async function getMoversView(
       change,
       changePct,
       volume: bars[symbol]?.volume ?? r.volume ?? null,
-      move5d: move(TRAILING_SESSIONS.move5d),
-      move1m: move(TRAILING_SESSIONS.move1m),
-      move6m: move(TRAILING_SESSIONS.move6m),
+      ...trailingMoves(closes.get(symbol), price),
       analystIds: opts.coveredBy?.get(symbol) ?? [],
     });
   }
