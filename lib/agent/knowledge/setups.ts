@@ -732,27 +732,18 @@ export const SETUPS: Setup[] = [
   },
 ];
 
-// ── Seat map (DAV-245 ruling 3) ───────────────────────────────────────────
+// ── The analyst's setups (DAV-280) ────────────────────────────────────────
 
 /**
- * Which setups each live seat may run, by AgentConfig.name. No TRADE seat
- * (D2) exists and the plan does not create one. Consumed by PR 4 (the
- * writer offers only these) and PR 9 (the screens).
+ * The setups an analyst may write on: `AgentConfig.setupIds`, a setting on
+ * the analyst (the builder proposes it, the analyst page edits it). An
+ * analyst with none chosen gets the whole catalog rather than nothing — a
+ * blank setting must never silently empty the writer's choices. Unknown ids
+ * (a setup since removed) are ignored.
  */
-export const SEAT_SETUPS: Record<string, SetupId[]> = {
-  "PEAD Specialist": ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"],
-  "Secular Compounder": ["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"],
-  "Catalyst Event PM": ["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"],
-};
-
-/**
- * The setups a seat may write on. A name not in SEAT_SETUPS (a renamed or
- * new seat) gets the whole catalog rather than none — a rename must never
- * silently empty the writer's choices.
- */
-export function setupsForSeat(seatName: string | null | undefined, overrides?: SetupOverrides): Setup[] {
-  const ids = seatName ? SEAT_SETUPS[seatName] : undefined;
-  const list = ids?.length ? SETUPS.filter((s) => ids.includes(s.id)) : SETUPS;
+export function setupsForAnalyst(setupIds: readonly string[] | null | undefined, overrides?: SetupOverrides): Setup[] {
+  const chosen = (setupIds ?? []).filter(isNamedSetup);
+  const list = chosen.length ? chosen.map((id) => SETUPS.find((s) => s.id === id)!) : SETUPS;
   return overrides ? list.map((s) => applySetupOverride(s, overrides[s.id])) : list;
 }
 

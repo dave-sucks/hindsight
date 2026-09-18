@@ -4,7 +4,7 @@
  * setup it was bought on, instead of a horizon glossary.
  */
 
-import { getSetup, isNamedSetup, setupsForSeat, NO_SETUP_FITS, type Horizon } from "./setups";
+import { getSetup, isNamedSetup, setupsForAnalyst, NO_SETUP_FITS, type Horizon } from "./setups";
 import type { SetupOverrides } from "./setup-overrides";
 
 export interface SetupChecklist {
@@ -57,7 +57,8 @@ export interface NameTheSetup {
  */
 export function nameTheSetup(
   row: { setupId: string | null | undefined; status: string | null; entryPrice: unknown },
-  seatName: string | null | undefined,
+  /** The analyst's own setups (`AgentConfig.setupIds`); none chosen = the whole catalog. */
+  analystSetupIds: readonly string[] | null | undefined,
   overrides?: SetupOverrides,
 ): NameTheSetup | null {
   if (isNamedSetup(row.setupId) || row.setupId === NO_SETUP_FITS) return null;
@@ -67,6 +68,6 @@ export function nameTheSetup(
     ask: held
       ? `This stock has no setup named. On this review, name the one it was bought on from the chart and the thesis: update_thesis(setup_id). That also writes the setup's own exits onto the stock. If none fits, setup_id "NONE" and say why in the rationale.`
       : `This plan has no setup named. On this review, name the one its buy price is written on: update_thesis(setup_id). If none fits, setup_id "NONE" and say why in the rationale.`,
-    choose: setupsForSeat(seatName, overrides).map((s) => ({ id: s.id, name: s.name, when: s.summary })),
+    choose: setupsForAnalyst(analystSetupIds, overrides).map((s) => ({ id: s.id, name: s.name, when: s.summary })),
   };
 }

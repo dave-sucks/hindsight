@@ -1,6 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { seedAnalystTriggers } from "@/lib/agent/triggers/seed-analyst";
+import { isNamedSetup } from "@/lib/agent/knowledge/setups";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -63,6 +65,8 @@ export interface AnalystConfig {
    * cron is independent — intraday reactivity fires every day regardless.
    */
   runDaysOfWeek: number[];
+  /** The setups this analyst runs, catalog ids; the first is its signature setup (DAV-280). */
+  setupIds: string[];
   /** Owner email opt-out for this analyst (new trades, fills, approval requests). */
   emailAlerts: boolean;
   createdAt: Date;
@@ -536,6 +540,7 @@ export async function getAnalystDetail(
     dailyLossLimit: config.dailyLossLimit,
     scheduleTime: config.scheduleTime,
     runDaysOfWeek: (config.runDaysOfWeek as number[] | undefined) ?? [1, 2, 3, 4, 5],
+    setupIds: (config.setupIds as string[] | undefined) ?? [],
     emailAlerts: config.emailAlerts,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
@@ -746,6 +751,8 @@ export async function createAnalystFromWizard(
       weeklyDigestEnabled: true,
     },
   });
+  // The seat's rules from the playbook, on its Triggers tab from day one (DAV-280).
+  await seedAnalystTriggers(analyst.id);
 
   return { id: analyst.id };
 }
@@ -758,6 +765,8 @@ interface BuilderConfig {
   description?: string;
   directionBias: "LONG" | "SHORT" | "BOTH";
   holdDurations: ("DAY" | "SWING" | "POSITION")[];
+  /** The setups this analyst runs (DAV-280); the first is its signature setup. */
+  setupIds?: string[];
   sectors: string[];
   signalTypes: string[];
   minConfidence: number;
@@ -828,6 +837,7 @@ export async function createAnalystFromBuilder(
     ? data.directionBias
     : "BOTH";
   const holdDurs = Array.isArray(data.holdDurations) ? data.holdDurations : ["SWING"];
+  const setupIds = Array.from(new Set((data.setupIds ?? []).filter(isNamedSetup)));
   const sectors = Array.isArray(data.sectors) ? data.sectors : [];
   const signals = Array.isArray(data.signalTypes) ? data.signalTypes : [];
   const capTier = (["LARGE", "MID", "SMALL"] as const).includes(data.minMarketCapTier as "LARGE" | "MID" | "SMALL")
@@ -939,6 +949,7 @@ export async function createAnalystFromBuilder(
         minConfidence: minConf,
           dailyLossLimit: 300,
         holdDurations: holdDurs,
+        setupIds,
         directionBias: bias,
         signalTypes: signals,
         minMarketCapTier: capTier,
@@ -1099,6 +1110,8 @@ export async function createAnalystFromBuilder(
 
     return newAnalyst;
   });
+  // The seat's rules from the playbook, on its Triggers tab from day one (DAV-280).
+  await seedAnalystTriggers(analyst.id);
 
   console.log(`[analyst] Created analyst id=${analyst.id} name="${name}" policy.holdingsAttn=${intelligencePolicy.holdingsAttention} policy.discoveryAttn=${intelligencePolicy.discoveryAttention}`);
   revalidatePath("/analysts");
@@ -1138,6 +1151,8 @@ type UpdatableField =
   // Per-analyst daily-run days (ISO weekdays 1=Mon..5=Fri). Read by the
   // morning-research cron gate (lib/inngest/functions/morning-research.ts).
   | "runDaysOfWeek"
+  // ── The setups this analyst runs (DAV-280) — catalog ids, first = signature.
+  | "setupIds"
   // ── Notifications ────────────────────────────────────────
   // Read at runtime by every email path (daily-run-digest, proposal-pending,
   // place-trade open-email, closeTrade close-email, maybe-await-approval).
@@ -1202,6 +1217,10 @@ export async function updateAnalystField(
       ),
     ).sort((a, b) => a - b);
     storedValue = days;
+  } else if (field === "setupIds" && Array.isArray(value)) {
+    // Catalog ids only, in the order chosen (the first is the signature
+    // setup whose rules seed the Triggers tab). Empty = the whole catalog.
+    storedValue = Array.from(new Set((value as unknown[]).filter((v): v is string => typeof v === "string" && isNamedSetup(v))));
   } else if (field === "riskPct") {
     // % of equity at risk per trade. Bounded to a sane band so a typo (10
     // instead of 1.0) can't size a buy at ten times the intended risk.

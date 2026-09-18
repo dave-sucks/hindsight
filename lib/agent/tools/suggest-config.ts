@@ -8,6 +8,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
+import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
 import { GICS_INDUSTRIES_BY_SECTOR, type GicsSector } from "@/lib/universe/gics";
 
 // z.enum needs a non-empty tuple literal; derive one from the canonical lists.
@@ -115,6 +116,15 @@ const rawConfigSchema = z.object({
     .array(z.enum(["DAY", "SWING", "POSITION"]))
     .min(1)
     .describe("DAY = close same day, SWING = hold 2-10 days, POSITION = hold weeks+"),
+  // The playbook patterns this analyst writes plans on (DAV-280). Read them
+  // with read_knowledge_library(topic:"setup"). The FIRST is the analyst's
+  // signature setup: its sell rules seed the analyst's Triggers tab.
+  setupIds: z
+    .array(z.enum(SETUP_IDS))
+    .optional()
+    .describe(
+      "The setups (buy patterns) this analyst runs, from read_knowledge_library(topic:'setup'). Put the signature setup FIRST — its sell rules become the analyst's standing rules. One to four ids. Omit = the whole playbook.",
+    ),
   // Session A: sectors are enumerated against the canonical GICS Title Case
   // list. The agent literally cannot propose an unknown value — no more
   // SCREAMING_SNAKE or "Tech" strings sneaking back into AgentConfig.

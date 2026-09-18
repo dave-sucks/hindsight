@@ -56,7 +56,7 @@ jest.mock("@/lib/agent/gate-rejections", () => ({
 }));
 
 import rawFixtures from "@/lib/agent/__fixtures__/writer-save-refusals-2026-09-15.json";
-import { setupsForSeat } from "@/lib/agent/knowledge/setups";
+import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { buildWriterSaveCall, checkDecisionAgainstSave, makeSubmitThesisTool, type RunThesisWriterArgs } from "./run-thesis-writer";
 import { updateThesis } from "@/lib/agent/tools/update-thesis";
@@ -136,7 +136,7 @@ function validateOpts(fx: Fx, ticker: keyof typeof livePrice) {
     existingStatus: fx.thesis.status,
     currentPrice: livePrice[ticker],
     existingTargetPrice: fx.thesis.targetPrice,
-    setups: setupsForSeat("PEAD Specialist"),
+    setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
     chart: null,
   };
 }

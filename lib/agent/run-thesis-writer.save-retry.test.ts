@@ -50,7 +50,7 @@ jest.mock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: j
 import rawFixtures from "@/lib/agent/__fixtures__/writer-save-refusals-2026-09-15.json";
 import { prisma } from "@/lib/prisma";
 import { validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
-import { setupsForSeat } from "@/lib/agent/knowledge/setups";
+import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { writerPersistPhase, type WriterResearchPhaseOutput } from "./run-thesis-writer";
 
 /** The production rows as read from JSON; the submit is what the model sent. */
@@ -116,7 +116,7 @@ function research(): WriterResearchPhaseOutput {
     existingStatus: "HOLDING",
     currentPrice: 236.57,
     existingTargetPrice: fx.thesis.targetPrice,
-    setups: setupsForSeat("PEAD Specialist"),
+    setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
     chart: null,
   });
   return {

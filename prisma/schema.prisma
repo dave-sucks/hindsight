@@ -609,6 +609,11 @@ model AgentConfig {
   // rung in the same bucket. Empty array = inherit from the account.
   // Resolution lives in lib/agent/triggers/levels.
   triggers               Json                 @default("[]")
+  // ── The setups this analyst runs (DAV-280) ─────────────────────────────
+  // Catalog ids (lib/agent/knowledge/setups). The writer prices a plan by
+  // one of these; the first is the analyst's signature setup, whose rules
+  // the template writes onto its Triggers tab. Empty = the whole catalog.
+  setupIds               String[]             @default([])
   priceCheckFreq         String               @default("HOURLY")
   weekendMode            Boolean              @default(false)
   graduationWinRate      Float                @default(0.65)

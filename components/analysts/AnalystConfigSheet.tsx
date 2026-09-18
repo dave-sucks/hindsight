@@ -63,6 +63,7 @@ export function AnalystConfigSheet({
     maxPositionTotal: config.maxPositionTotal,
     riskPct: config.riskPct,
     runDaysOfWeek: config.runDaysOfWeek,
+    setupIds: config.setupIds,
     emailAlerts: config.emailAlerts,
     intelligencePolicy: (config.intelligencePolicy as FormValues["intelligencePolicy"]) ?? null,
     sectors: config.sectors,
