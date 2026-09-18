@@ -53,7 +53,21 @@ import {
   Trash2,
   SlidersHorizontal,
 } from "lucide-react";
-import { editableTriggerField } from "@/lib/agent/triggers/editable";
+import { editableTriggerParts } from "@/lib/agent/triggers/editable";
+import {
+  chartHasValue,
+  conditionForcesReview,
+  conditionPredicate,
+  conditionValid,
+  defaultCondition,
+  dialogPredicate,
+  patchCondition,
+  type AddCriterion,
+  type ChartKind,
+  type CountFrom,
+  type DialogCondition,
+  type EarningsWhen,
+} from "@/lib/agent/triggers/dialog-condition";
 import { cn } from "@/lib/utils";
 
 // The thesis-sheet contract types (the /triggers payload shape) live in
@@ -504,9 +518,17 @@ function TriggerPopoverContent({
   /** Close the popover — called after a saved value or a delete. */
   onDone?: () => void;
 }) {
-  const field = editableTriggerField(
-    trigger.predicate as unknown as SharedTriggerPredicate,
-  );
+  // A plain trigger has one editable number at most. A two-condition one
+  // ("beat AND down 3% on the day") has one per condition that carries a
+  // number; `partIdx` is which of them the input is showing (DAV-281).
+  const parts = editableTriggerParts(trigger.predicate as unknown as SharedTriggerPredicate);
+  const [partIdx, setPartIdx] = useState(0);
+  const field = parts[Math.min(partIdx, Math.max(parts.length - 1, 0))] ?? null;
+  /** The condition the number belongs to — the trigger's own, or one of its two. */
+  const subject: TriggerPredicate =
+    field?.part != null && (trigger.predicate.kind === "AND" || trigger.predicate.kind === "OR")
+      ? ((trigger.predicate.predicates ?? [])[field.part] ?? trigger.predicate)
+      : trigger.predicate;
   // `editable` already arrives false for an inherited rung (TriggerPill
   // ANDs it), so the value input, fire-mode control and delete button are
   // all read-only here without further gating.
@@ -537,10 +559,9 @@ function TriggerPopoverContent({
   // → leading direction + trailing "%"; time-based → leading calendar icon
   // (read-only). Trailing-from-high has no direction (the give-back is
   // orientation-aware by thesis direction), so it gets the plain % input.
-  const pk = trigger.predicate.kind;
   const moveDir =
-    pk === "PRICE_MOVE_PCT" || pk === "GAIN_FROM_ENTRY"
-      ? trigger.predicate.direction === "UP"
+    subject.kind === "PRICE_MOVE_PCT" || subject.kind === "GAIN_FROM_ENTRY"
+      ? subject.direction === "UP"
         ? "Up"
         : "Down"
       : null;
@@ -587,7 +608,7 @@ function TriggerPopoverContent({
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ value: parsed }),
+          body: JSON.stringify({ value: parsed, ...(field?.part != null ? { part: field.part } : {}) }),
         },
       );
       if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
@@ -693,6 +714,30 @@ function TriggerPopoverContent({
             </Select>
           </ButtonGroup>
         ) : (
+          <>
+          {/* Two conditions with a number each: pick which one the input edits. */}
+          {canEdit && parts.length > 1 ? (
+            <Select
+              value={String(partIdx)}
+              onValueChange={(v) => {
+                if (typeof v === "string") setPartIdx(Number(v));
+              }}
+              disabled={pending}
+            >
+              <SelectTrigger size="sm" className="w-full" aria-label="Which condition">
+                <SelectValue>{predicateSentence(subject)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {parts.map((f, i) => (
+                  <SelectItem key={i} value={String(i)}>
+                    {predicateSentence(
+                      (trigger.predicate as { predicates: TriggerPredicate[] }).predicates[f.part ?? 0],
+                    )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
           <InputGroup>
             {leadingText ? (
               <InputGroupAddon>
@@ -718,6 +763,7 @@ function TriggerPopoverContent({
               </InputGroupAddon>
             ) : null}
           </InputGroup>
+          </>
         )}
       </div>
 
@@ -945,8 +991,6 @@ export function TriggerGroups({
 //   snapshot, legal on a watch or a holding.
 // All fire through the same evaluator → trigger pipeline as every trigger.
 
-type AddCriterion = "PRICE" | "MOVE" | "GAIN" | "TRAIL" | "CADENCE" | "EARNINGS" | "FILING" | "CHART";
-
 // Filing → one SEC event, or a tier of them. The code is the event; the
 // tier table is lib/market-data/sec-events.
 const FILING_OPTIONS: ReadonlyArray<{ v: string; l: string }> = [
@@ -962,25 +1006,6 @@ const FILING_OPTIONS: ReadonlyArray<{ v: string; l: string }> = [
   { v: "form:424B5", l: "Shares or bonds offered" },
 ];
 
-function filingPredicate(v: string): Record<string, unknown> {
-  const [type, code] = [v.slice(0, v.indexOf(":")), v.slice(v.indexOf(":") + 1)];
-  if (type === "tier") return { kind: "SEC_EVENT", tier: code };
-  if (type === "item") return { kind: "SEC_EVENT", items: [code] };
-  return { kind: "SEC_EVENT", forms: [code] };
-}
-
-type ChartKind =
-  | "NEAR_SMA"
-  | "VS_SMA"
-  | "NEW_HIGH"
-  | "PCT_FROM_52W_HIGH"
-  | "VOLUME_RATIO"
-  | "GAP_UP"
-  | "RSI"
-  | "RS_VS_SPY"
-  | "INSIDER_CLUSTER";
-
-type CountFrom = "LAST_REVIEW" | "BUY" | "EVENT_AFTER" | "EVENT_BEFORE";
 /** The day count's anchor — the select after the days, like the % Move row's Up / Down. */
 const COUNT_FROM_OPTIONS: ReadonlyArray<{ v: CountFrom; l: string }> = [
   { v: "LAST_REVIEW", l: "Recurring" },
@@ -1055,11 +1080,6 @@ function chartParamOptions(k: ChartKind): ReadonlyArray<{ v: string; l: string }
   }
 }
 
-/** Does this chart condition take a number from the input? */
-function chartHasValue(k: ChartKind): boolean {
-  return k !== "VS_SMA" && k !== "NEW_HIGH";
-}
-
 /** One line under the chart condition saying exactly when it fires. */
 function chartHelp(k: ChartKind, param: string, dir: string): string {
   switch (k) {
@@ -1086,55 +1106,51 @@ function chartHelp(k: ChartKind, param: string, dir: string): string {
   }
 }
 
-export function AddTriggerDialog({
-  held,
-  endpointBase,
-  allowAbsolutePrice = true,
-  onChanged,
-}: {
-  held: boolean;
-  endpointBase: string;
-  /**
-   * False at the account/analyst levels: an absolute dollar level means
-   * nothing applied across every ticker, so the "$ Price" criterion is
-   * withheld. `addLevelTrigger` refuses it server-side regardless.
-   */
-  allowAbsolutePrice?: boolean;
-  onChanged?: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [action, setAction] = useState<string>("EXIT");
-  const [criterion, setCriterion] = useState<AddCriterion>(
-    // "$ Price" is withheld at the account/analyst levels, so the first
-    // legal criterion there is a % move.
-    allowAbsolutePrice ? "PRICE" : "MOVE",
-  );
-  const [dir, setDir] = useState<string>("BELOW"); // ABOVE/BELOW · UP/DOWN
-  const [val, setVal] = useState("");
-  // PRICE: intraday cross or the day's close. MOVE: today / 5 / 20 sessions.
-  const [basis, setBasis] = useState<"intraday" | "close">("intraday");
-  const [moveWindow, setMoveWindow] = useState<"1D" | "5D" | "20D">("1D");
-  const [chartKind, setChartKind] = useState<ChartKind>("NEAR_SMA");
-  const [chartParam, setChartParam] = useState<string>("50");
-  const [filingEvent, setFilingEvent] = useState<string>("tier:MATERIAL");
-  // Counting from — one day-count trigger, three anchors: the last review
-  // (the review clock, repeating), the buy, or the thesis's own event date.
-  const [countFrom, setCountFrom] = useState<CountFrom>("LAST_REVIEW");
-  const [fireMode, setFireMode] = useState<"TACTICAL" | "DIRECT">("DIRECT");
-  const [pending, setPending] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+/** The Earnings row's select, after the number — same shape as the day count's. */
+const EARNINGS_WHEN_OPTIONS: ReadonlyArray<{ v: EarningsWhen; l: string }> = [
+  { v: "WITHIN", l: "Before the report" },
+  { v: "BEAT", l: "Beat by at least" },
+  { v: "MISS", l: "Miss by at least" },
+];
 
+/**
+ * One condition's pickers: the criterion tabs, its selects, the number, and
+ * the sentence saying when it fires. The dialog renders it once, or twice
+ * ("and also…") — the same pickers both times (DAV-281).
+ */
+function ConditionFields({
+  cond,
+  onPatch,
+  label,
+  held,
+  allowAbsolutePrice,
+  allowSchedule,
+  action,
+  pending,
+  onRemove,
+}: {
+  cond: DialogCondition;
+  onPatch: (patch: Partial<DialogCondition>) => void;
+  label: string;
+  held: boolean;
+  allowAbsolutePrice: boolean;
+  /** False on the second condition: a day count is a schedule, not a condition. */
+  allowSchedule: boolean;
+  action: string;
+  pending: boolean;
+  onRemove?: () => void;
+}) {
+  const { criterion, dir, val, basis, moveWindow, chartKind, chartParam, filingEvent, countFrom, earningsWhen } = cond;
   const isMove = criterion === "MOVE";
   const isGain = criterion === "GAIN";
   const isTrail = criterion === "TRAIL";
   // Agent Watch — a review schedule in days, so no direction and no $ or %.
-  // Adding one is what makes a plain watch an Agent Watch.
   const isCadence = criterion === "CADENCE";
-  // Earnings heads-up — days before the next report, so no direction and
-  // no $ or %. Same input shape as the review clock.
   const isEarnings = criterion === "EARNINGS";
+  /** A beat or a miss: the number is a surprise %, and blank means any. */
+  const isResult = isEarnings && earningsWhen !== "WITHIN";
   /** Day-valued criteria: integer input, "days" suffix, no direction. */
-  const isDays = isCadence || isEarnings;
+  const isDays = isCadence || (isEarnings && !isResult);
   const isChart = criterion === "CHART";
   // A filing has no number to type — the event is the whole condition.
   const isFiling = criterion === "FILING";
@@ -1153,19 +1169,16 @@ export function AddTriggerDialog({
             ? "insiders"
             : "%";
   /** %-valued criteria share the % input adornment + 0.5 step. */
-  const isPct = isMove || isGain || isTrail;
-  const showFireMode = action === "EXIT" && held;
+  const isPct = isMove || isGain || isTrail || isResult;
 
   // Criterion options — the position-scoped kinds (gain from entry, trailing
   // from high) only exist on a held thesis (no position → the predicate
   // evaluates false forever), so un-held keeps the original two.
   const criterionOptions: ReadonlyArray<{ v: AddCriterion; l: string }> = [
-    ...(allowAbsolutePrice
-      ? ([{ v: "PRICE", l: "$ Price" }] as const)
-      : ([] as const)),
+    ...(allowAbsolutePrice ? ([{ v: "PRICE", l: "$ Price" }] as const) : ([] as const)),
     { v: "MOVE", l: held || !allowAbsolutePrice ? "% Move" : "% Movement" },
     ...(held ? ([{ v: "GAIN", l: "% Gain" }, { v: "TRAIL", l: "% Trail" }] as const) : ([] as const)),
-    { v: "CADENCE", l: "Agent Watch" },
+    ...(allowSchedule ? ([{ v: "CADENCE", l: "Agent Watch" }] as const) : ([] as const)),
     { v: "EARNINGS", l: "Earnings" },
     { v: "FILING", l: "Filing" },
     { v: "CHART", l: "Chart" },
@@ -1182,29 +1195,331 @@ export function AddTriggerDialog({
           { v: "BELOW", l: "Below" },
         ];
 
-  // Keep `dir` valid for the selected criterion (price uses ABOVE/BELOW,
-  // movement/gain use UP/DOWN — gain defaults UP, the milestone case).
-  // Reset to a sensible default on criterion switch. TRAIL has no direction.
-  useEffect(() => {
-    if (criterion === "GAIN") setDir("UP");
-    else if (criterion === "MOVE") setDir("DOWN");
-    else if (criterion === "PRICE") setDir("BELOW");
-    if (criterion === "CADENCE" || criterion === "EARNINGS" || criterion === "FILING") setAction("REVIEW");
-    if (criterion === "CHART") setDir("ABOVE");
-  }, [criterion]);
-  // The review clock is always a review; a count from the buy or the event
-  // date can sell, add or trim ("sell 30 days after the buy if still held").
-  useEffect(() => {
-    if (countFrom === "LAST_REVIEW") setAction("REVIEW");
-  }, [countFrom]);
+  return (
+    <>
+        {/* Criterion — full-width segmented tabs (graph date-range style) */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {label}
+            </span>
+            {onRemove ? (
+              <Button variant="ghost" size="sm" onClick={onRemove} disabled={pending}>
+                Remove
+              </Button>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-0.5 rounded-md border p-0.5">
+            {criterionOptions.map((o) => (
+              <button
+                key={o.v}
+                type="button"
+                onClick={() => onPatch({ criterion: o.v })}
+                disabled={pending}
+                className={cn(
+                  "flex-1 rounded px-2 py-1 text-xs transition-colors",
+                  criterion === o.v
+                    ? "bg-muted text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {o.l}
+              </button>
+            ))}
+          </div>
+        </div>
 
-  // A chart condition's second choice defaults to its usual one.
+        {/* Chart condition — which chart reading, and its second choice
+            (which average / which window) when it has one. */}
+        {isChart ? (
+          <ButtonGroup className="w-full">
+            <Select
+              value={chartKind}
+              onValueChange={(v) => {
+                if (typeof v === "string") onPatch({ chartKind: v as ChartKind });
+              }}
+              disabled={pending}
+            >
+              <SelectTrigger>
+                <SelectValue>{CHART_KIND_OPTIONS.find((o) => o.v === chartKind)?.l ?? ""}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {CHART_KIND_OPTIONS.map((o) => (
+                  <SelectItem key={o.v} value={o.v}>
+                    {o.l}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {chartParams ? (
+              <Select
+                value={chartParam}
+                onValueChange={(v) => {
+                  if (typeof v === "string") onPatch({ chartParam: v });
+                }}
+                disabled={pending}
+              >
+                <SelectTrigger>
+                  <SelectValue>{chartParams.find((o) => o.v === chartParam)?.l ?? ""}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {chartParams.map((o) => (
+                    <SelectItem key={o.v} value={o.v}>
+                      {o.l}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+          </ButtonGroup>
+        ) : null}
+
+        {isFiling ? (
+          <Select
+            value={filingEvent}
+            onValueChange={(v) => {
+              if (typeof v === "string") onPatch({ filingEvent: v });
+            }}
+            disabled={pending}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue>{FILING_OPTIONS.find((o) => o.v === filingEvent)?.l ?? ""}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {FILING_OPTIONS.map((o) => (
+                <SelectItem key={o.v} value={o.v}>
+                  {o.l}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
+
+        {/* When: a price level can wait for the close; a move has a window. */}
+        {criterion === "PRICE" || isMove ? (
+          <Select
+            value={criterion === "PRICE" ? basis : moveWindow}
+            onValueChange={(v) => {
+              if (typeof v !== "string") return;
+              if (criterion === "PRICE") onPatch({ basis: v as "intraday" | "close" });
+              else onPatch({ moveWindow: v as "1D" | "5D" | "20D" });
+            }}
+            disabled={pending}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue>
+                {criterion === "PRICE"
+                  ? basis === "close"
+                    ? "At the close"
+                    : "Any time in the day"
+                  : moveWindow === "1D"
+                    ? "Today"
+                    : moveWindow === "5D"
+                      ? "Over 5 sessions"
+                      : "Over 20 sessions"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {criterion === "PRICE" ? (
+                <>
+                  <SelectItem value="intraday">Any time in the day</SelectItem>
+                  <SelectItem value="close">At the close</SelectItem>
+                </>
+              ) : (
+                <>
+                  <SelectItem value="1D">Today</SelectItem>
+                  <SelectItem value="5D">Over 5 sessions</SelectItem>
+                  <SelectItem value="20D">Over 20 sessions</SelectItem>
+                </>
+              )}
+            </SelectContent>
+          </Select>
+        ) : null}
+
+        {/* Direction select + value input as one full-width button group:
+            [ Above ▾ | $ ____ ]  ·  [ Up ▾ | ____ % ]. Trailing from high
+            has no direction (orientation follows the thesis direction), so
+            the group collapses to the % input alone. A day count and an
+            earnings row put the number first, then their select. */}
+        {isFiling || (isChart && !chartTakesValue && !chartDirectional) ? null : (
+        <ButtonGroup className="w-full">
+          {isTrail || isDays || isEarnings || (isChart && !chartDirectional) ? null : (
+            <Select
+              value={dir}
+              onValueChange={(v) => {
+                if (typeof v === "string") onPatch({ dir: v });
+              }}
+              disabled={pending}
+            >
+              <SelectTrigger>
+                <SelectValue>
+                  {dirOptions.find((o) => o.v === dir)?.l ?? ""}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {dirOptions.map((o) => (
+                  <SelectItem key={o.v} value={o.v}>
+                    {o.l}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {isChart && !chartTakesValue ? null : (
+          <InputGroup>
+            {isPct || isDays || isChart ? null : (
+              <InputGroupAddon>
+                <InputGroupText>$</InputGroupText>
+              </InputGroupAddon>
+            )}
+            <InputGroupInput
+              type="number"
+              inputMode="decimal"
+              value={val}
+              min={isTrail || isDays ? 1 : isChart && chartKind === "RS_VS_SPY" ? undefined : 0}
+              max={isEarnings && !isResult ? 14 : undefined}
+              step={isDays || (isChart && (chartKind === "RSI" || chartKind === "INSIDER_CLUSTER")) ? 1 : isPct || isChart ? 0.5 : 0.01}
+              placeholder={
+                isChart
+                  ? chartKind === "VOLUME_RATIO"
+                    ? "1.5"
+                    : chartKind === "RSI"
+                      ? "30"
+                      : chartKind === "GAP_UP"
+                        ? "8"
+                        : chartKind === "RS_VS_SPY"
+                          ? "0"
+                          : chartKind === "PCT_FROM_52W_HIGH"
+                            ? "5"
+                            : chartKind === "INSIDER_CLUSTER"
+                              ? "3"
+                              : "2"
+                  : isResult ? "any" : isEarnings ? "3" : isCadence ? "7" : isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"
+              }
+              onChange={(e) => onPatch({ val: e.target.value })}
+              disabled={pending}
+            />
+            {isPct || isDays || (isChart && chartUnit) ? (
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>{isDays ? "days" : isChart ? chartUnit : "%"}</InputGroupText>
+              </InputGroupAddon>
+            ) : null}
+          </InputGroup>
+          )}
+          {isCadence ? (
+            <Select
+              value={countFrom}
+              onValueChange={(v) => {
+                if (typeof v === "string") onPatch({ countFrom: v as CountFrom });
+              }}
+              disabled={pending}
+            >
+              <SelectTrigger aria-label="Counting from">
+                <SelectValue>{COUNT_FROM_OPTIONS.find((o) => o.v === countFrom)?.l ?? ""}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {COUNT_FROM_OPTIONS.map((o) => (
+                  <SelectItem key={o.v} value={o.v}>
+                    {o.l}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          {isEarnings ? (
+            <Select
+              value={earningsWhen}
+              onValueChange={(v) => {
+                if (typeof v === "string") onPatch({ earningsWhen: v as EarningsWhen, val: "" });
+              }}
+              disabled={pending}
+            >
+              <SelectTrigger aria-label="Which earnings event">
+                <SelectValue>{EARNINGS_WHEN_OPTIONS.find((o) => o.v === earningsWhen)?.l ?? ""}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {EARNINGS_WHEN_OPTIONS.map((o) => (
+                  <SelectItem key={o.v} value={o.v}>
+                    {o.l}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+        </ButtonGroup>
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          {isFiling
+            ? predicateDescription(conditionPredicate(cond) as unknown as TriggerPredicate)
+            : isChart
+            ? chartHelp(chartKind, chartParam, dir)
+            : isResult
+            ? `Fires when the company reports ${earningsWhen === "BEAT" ? "a beat" : "a miss"}${val.trim() === "" ? "" : ` of at least ${val.trim()}%`} on EPS against the street. Leave the number blank for any ${earningsWhen === "BEAT" ? "beat" : "miss"}.`
+            : isEarnings
+            ? "Fires once when the next earnings report is this many days away — the heads-up to decide whether to hold through it, trim, or wait."
+            : isCadence
+            ? countFromHelp(countFrom, action, val, held)
+            : isGain
+            ? `Fires when the position is ${dir === "UP" ? "up" : "down"} this much from entry (avg cost) — cumulative, not a single day.`
+            : isTrail
+              ? "Fires when price gives back this much from its high since entry. The high ratchets up as the position runs."
+              : isMove
+                ? moveWindow === "1D"
+                  ? `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much on the day (vs prior close).`
+                  : `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much from its close ${moveWindow === "5D" ? "5" : "20"} sessions ago.`
+                : basis === "close"
+                  ? `Fires when the day closes ${dir === "ABOVE" ? "above" : "below"} your price — checked once, after the close. An intraday poke through the level doesn't count.`
+                  : `Fires when the last quote crosses ${dir === "ABOVE" ? "above" : "below"} your price.`}
+        </p>
+    </>
+  );
+}
+
+export function AddTriggerDialog({
+  held,
+  endpointBase,
+  allowAbsolutePrice = true,
+  onChanged,
+}: {
+  held: boolean;
+  endpointBase: string;
+  /**
+   * False at the account/analyst levels: an absolute dollar level means
+   * nothing applied across every ticker, so the "$ Price" criterion is
+   * withheld. `addLevelTrigger` refuses it server-side regardless.
+   */
+  allowAbsolutePrice?: boolean;
+  onChanged?: () => void;
+}) {
+  // "$ Price" is withheld at the account/analyst levels, so the first legal
+  // criterion there is a % move.
+  const firstCriterion: AddCriterion = allowAbsolutePrice ? "PRICE" : "MOVE";
+  const [open, setOpen] = useState(false);
+  const [action, setAction] = useState<string>("EXIT");
+  const [first, setFirst] = useState<DialogCondition>(() => defaultCondition(firstCriterion));
+  // "And also…" — a second condition; the trigger fires when both hold
+  // ("earnings beat AND down 3% on the day", the way the playbook writes it).
+  const [second, setSecond] = useState<DialogCondition | null>(null);
+  const [fireMode, setFireMode] = useState<"TACTICAL" | "DIRECT">("DIRECT");
+  const [pending, setPending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // A two-condition exit is a judgment call, so it wakes a run rather than
+  // selling by itself — the control is only shown for a single condition.
+  const showFireMode = action === "EXIT" && held && !second;
+
+  // A schedule, a heads-up, a filing and insider buying can only be reviews.
+  const forcesReview = conditionForcesReview(first) || (second != null && conditionForcesReview(second));
   useEffect(() => {
-    const opts = chartParamOptions(chartKind);
-    setChartParam(opts ? (chartKind === "NEAR_SMA" || chartKind === "VS_SMA" ? "50" : chartKind === "RS_VS_SPY" ? "3M" : opts[0].v) : "");
-    if (chartKind === "INSIDER_CLUSTER") setAction("REVIEW");
-    if (chartKind === "RSI") setDir("BELOW");
-  }, [chartKind]);
+    if (forcesReview) setAction("REVIEW");
+  }, [forcesReview]);
+
+  // A schedule stands alone — it can't take a second condition.
+  const canPair = !(first.criterion === "CADENCE");
+  useEffect(() => {
+    if (!canPair) setSecond(null);
+  }, [canPair]);
 
   // Default fire mode by action — EXIT → DIRECT, else TACTICAL. Mirrors the
   // server-side defaultFireModeForAction (can't import it here: defaults.ts
@@ -1213,78 +1528,13 @@ export function AddTriggerDialog({
     setFireMode(action === "EXIT" ? "DIRECT" : "TACTICAL");
   }, [action]);
 
-  const num = Number(val);
-  const chartValid = isChart
-    ? !chartTakesValue ||
-      (val.trim() !== "" &&
-        Number.isFinite(num) &&
-        (chartKind === "RS_VS_SPY" ? num > -100 : num > 0) &&
-        (chartKind !== "RSI" || num < 100) &&
-        (chartKind !== "NEAR_SMA" || num <= 10) &&
-        (chartKind !== "INSIDER_CLUSTER" || (Number.isInteger(num) && num <= 10)))
-    : null;
-  const valid = isFiling ? true : chartValid ?? (
-    val.trim() !== "" &&
-    Number.isFinite(num) &&
-    num > 0 &&
-    // Daily-move and trail are give-back/-move fractions — ≥100% is nonsense.
-    // Gain from entry CAN exceed 100 (up 150% from entry is a real milestone).
-    (!(isMove || isTrail) || num < 100) &&
-    // Zod floors the trail at 1% (sub-1% off the peak re-fires on noise).
-    (!isTrail || num >= 1) &&
-    (!isDays || Number.isInteger(num)) &&
-    // The calendar lookahead is 14 days — a longer heads-up can't be seen.
-    (!isEarnings || num <= 14));
+  const valid = conditionValid(first) && (second == null || conditionValid(second));
 
   async function save() {
     if (!valid) return;
     setPending(true);
     setErr(null);
-    const chartPredicate = (): Record<string, unknown> => {
-      switch (chartKind) {
-        case "NEAR_SMA":
-          return { kind: "NEAR_SMA", period: Number(chartParam), withinPct: num };
-        case "VS_SMA":
-          return { kind: "VS_SMA", period: Number(chartParam), direction: dir };
-        case "NEW_HIGH":
-          return { kind: "NEW_HIGH", window: chartParam };
-        case "PCT_FROM_52W_HIGH":
-          return { kind: "PCT_FROM_52W_HIGH", max: num };
-        case "VOLUME_RATIO":
-          return { kind: "VOLUME_RATIO", min: num };
-        case "GAP_UP":
-          return { kind: "GAP_UP", minPct: num, minVolRatio: 3 };
-        case "RSI":
-          return { kind: "RSI", period: Number(chartParam), threshold: num, direction: dir };
-        case "RS_VS_SPY":
-          return { kind: "RS_VS_SPY", window: chartParam, min: num };
-        case "INSIDER_CLUSTER":
-          return { kind: "INSIDER_CLUSTER", minBuyers: num, days: Number(chartParam) };
-      }
-    };
-    const predicate = isFiling
-      ? filingPredicate(filingEvent)
-      : isChart
-      ? chartPredicate()
-      : isEarnings
-      ? { kind: "EARNINGS_WITHIN", days: num }
-      : isCadence
-      ? countFrom === "LAST_REVIEW"
-        ? { kind: "REVIEW_CADENCE", days: num }
-        : countFrom === "BUY"
-          ? { kind: "REVIEW_CADENCE", days: num, from: "BUY" }
-          : { kind: "REVIEW_CADENCE", days: num, from: "EVENT", side: countFrom === "EVENT_BEFORE" ? "BEFORE" : "AFTER" }
-      : isGain
-      ? { kind: "GAIN_FROM_ENTRY", pct: num, direction: dir }
-      : isTrail
-        ? { kind: "TRAILING_FROM_HIGH", pct: num }
-        : isMove
-          ? { kind: "PRICE_MOVE_PCT", pct: num, direction: dir, window: moveWindow }
-          : {
-              kind: dir === "ABOVE" ? "PRICE_ABOVE" : "PRICE_BELOW",
-              level: num,
-              ...(basis === "close" ? { basis: "close" } : {}),
-            };
+    const predicate = dialogPredicate(first, second);
     try {
       const res = await fetch(endpointBase, {
         method: "POST",
@@ -1310,7 +1560,8 @@ export function AddTriggerDialog({
         throw new Error(msg);
       }
       setOpen(false);
-      setVal("");
+      setFirst((c) => ({ ...c, val: "" }));
+      setSecond(null);
       setErr(null);
       setPending(false);
       onChanged?.();
@@ -1360,251 +1611,38 @@ export function AddTriggerDialog({
           </Select>
         </div>
 
-        {/* Criterion — full-width segmented tabs (graph date-range style) */}
-        <div className="space-y-1">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Criterion
-          </span>
-          <div className="flex items-center gap-0.5 rounded-md border p-0.5">
-            {criterionOptions.map((o) => (
-              <button
-                key={o.v}
-                type="button"
-                onClick={() => setCriterion(o.v)}
-                disabled={pending}
-                className={cn(
-                  "flex-1 rounded px-2 py-1 text-xs transition-colors",
-                  criterion === o.v
-                    ? "bg-muted text-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {o.l}
-              </button>
-            ))}
-          </div>
-        </div>
+        <ConditionFields
+          cond={first}
+          onPatch={(patch) => setFirst((c) => patchCondition(c, patch))}
+          label="Criterion"
+          held={held}
+          allowAbsolutePrice={allowAbsolutePrice}
+          allowSchedule
+          action={action}
+          pending={pending}
+        />
 
-        {/* Chart condition — which chart reading, and its second choice
-            (which average / which window) when it has one. */}
-        {isChart ? (
-          <ButtonGroup className="w-full">
-            <Select
-              value={chartKind}
-              onValueChange={(v) => {
-                if (typeof v === "string") setChartKind(v as ChartKind);
-              }}
-              disabled={pending}
-            >
-              <SelectTrigger>
-                <SelectValue>{CHART_KIND_OPTIONS.find((o) => o.v === chartKind)?.l ?? ""}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {CHART_KIND_OPTIONS.map((o) => (
-                  <SelectItem key={o.v} value={o.v}>
-                    {o.l}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {chartParams ? (
-              <Select
-                value={chartParam}
-                onValueChange={(v) => {
-                  if (typeof v === "string") setChartParam(v);
-                }}
-                disabled={pending}
-              >
-                <SelectTrigger>
-                  <SelectValue>{chartParams.find((o) => o.v === chartParam)?.l ?? ""}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {chartParams.map((o) => (
-                    <SelectItem key={o.v} value={o.v}>
-                      {o.l}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
-          </ButtonGroup>
+        {second ? (
+          <ConditionFields
+            cond={second}
+            onPatch={(patch) => setSecond((c) => (c ? patchCondition(c, patch) : c))}
+            label="And also"
+            held={held}
+            allowAbsolutePrice={allowAbsolutePrice}
+            allowSchedule={false}
+            action={action}
+            pending={pending}
+            onRemove={() => setSecond(null)}
+          />
+        ) : canPair ? (
+          <Button variant="ghost" size="sm" onClick={() => setSecond(defaultCondition("MOVE"))} disabled={pending}>
+            <Plus className="size-3" />
+            And also…
+          </Button>
         ) : null}
-
-        {isFiling ? (
-          <Select
-            value={filingEvent}
-            onValueChange={(v) => {
-              if (typeof v === "string") setFilingEvent(v);
-            }}
-            disabled={pending}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue>{FILING_OPTIONS.find((o) => o.v === filingEvent)?.l ?? ""}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {FILING_OPTIONS.map((o) => (
-                <SelectItem key={o.v} value={o.v}>
-                  {o.l}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {second ? (
+          <p className="text-xs text-muted-foreground">Fires only when both are true at the same check.</p>
         ) : null}
-
-        {/* When: a price level can wait for the close; a move has a window. */}
-        {criterion === "PRICE" || isMove ? (
-          <Select
-            value={criterion === "PRICE" ? basis : moveWindow}
-            onValueChange={(v) => {
-              if (typeof v !== "string") return;
-              if (criterion === "PRICE") setBasis(v as "intraday" | "close");
-              else setMoveWindow(v as "1D" | "5D" | "20D");
-            }}
-            disabled={pending}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue>
-                {criterion === "PRICE"
-                  ? basis === "close"
-                    ? "At the close"
-                    : "Any time in the day"
-                  : moveWindow === "1D"
-                    ? "Today"
-                    : moveWindow === "5D"
-                      ? "Over 5 sessions"
-                      : "Over 20 sessions"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {criterion === "PRICE" ? (
-                <>
-                  <SelectItem value="intraday">Any time in the day</SelectItem>
-                  <SelectItem value="close">At the close</SelectItem>
-                </>
-              ) : (
-                <>
-                  <SelectItem value="1D">Today</SelectItem>
-                  <SelectItem value="5D">Over 5 sessions</SelectItem>
-                  <SelectItem value="20D">Over 20 sessions</SelectItem>
-                </>
-              )}
-            </SelectContent>
-          </Select>
-        ) : null}
-
-        {/* Direction select + value input as one full-width button group:
-            [ Above ▾ | $ ____ ]  ·  [ Up ▾ | ____ % ]. Trailing from high
-            has no direction (orientation follows the thesis direction), so
-            the group collapses to the % input alone. */}
-        {isFiling || (isChart && !chartTakesValue && !chartDirectional) ? null : (
-        <ButtonGroup className="w-full">
-          {isTrail || isDays || (isChart && !chartDirectional) ? null : (
-            <Select
-              value={dir}
-              onValueChange={(v) => {
-                if (typeof v === "string") setDir(v);
-              }}
-              disabled={pending}
-            >
-              <SelectTrigger>
-                <SelectValue>
-                  {dirOptions.find((o) => o.v === dir)?.l ?? ""}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {dirOptions.map((o) => (
-                  <SelectItem key={o.v} value={o.v}>
-                    {o.l}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {isChart && !chartTakesValue ? null : (
-          <InputGroup>
-            {isPct || isDays || isChart ? null : (
-              <InputGroupAddon>
-                <InputGroupText>$</InputGroupText>
-              </InputGroupAddon>
-            )}
-            <InputGroupInput
-              type="number"
-              inputMode="decimal"
-              value={val}
-              min={isTrail || isDays ? 1 : isChart && chartKind === "RS_VS_SPY" ? undefined : 0}
-              max={isEarnings ? 14 : undefined}
-              step={isDays || (isChart && (chartKind === "RSI" || chartKind === "INSIDER_CLUSTER")) ? 1 : isPct || isChart ? 0.5 : 0.01}
-              placeholder={
-                isChart
-                  ? chartKind === "VOLUME_RATIO"
-                    ? "1.5"
-                    : chartKind === "RSI"
-                      ? "30"
-                      : chartKind === "GAP_UP"
-                        ? "8"
-                        : chartKind === "RS_VS_SPY"
-                          ? "0"
-                          : chartKind === "PCT_FROM_52W_HIGH"
-                            ? "5"
-                            : chartKind === "INSIDER_CLUSTER"
-                              ? "3"
-                              : "2"
-                  : isEarnings ? "3" : isCadence ? "7" : isTrail ? "8" : isGain ? "10" : isMove ? "5" : "0.00"
-              }
-              onChange={(e) => setVal(e.target.value)}
-              disabled={pending}
-            />
-            {isPct || isDays || (isChart && chartUnit) ? (
-              <InputGroupAddon align="inline-end">
-                <InputGroupText>{isDays ? "days" : isChart ? chartUnit : "%"}</InputGroupText>
-              </InputGroupAddon>
-            ) : null}
-          </InputGroup>
-          )}
-          {isCadence ? (
-            <Select
-              value={countFrom}
-              onValueChange={(v) => {
-                if (typeof v === "string") setCountFrom(v as CountFrom);
-              }}
-              disabled={pending}
-            >
-              <SelectTrigger aria-label="Counting from">
-                <SelectValue>{COUNT_FROM_OPTIONS.find((o) => o.v === countFrom)?.l ?? ""}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {COUNT_FROM_OPTIONS.map((o) => (
-                  <SelectItem key={o.v} value={o.v}>
-                    {o.l}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
-        </ButtonGroup>
-        )}
-
-        <p className="text-xs text-muted-foreground">
-          {isFiling
-            ? predicateDescription(filingPredicate(filingEvent) as unknown as TriggerPredicate)
-            : isChart
-            ? chartHelp(chartKind, chartParam, dir)
-            : isEarnings
-            ? "Fires once when the next earnings report is this many days away — the heads-up to decide whether to hold through it, trim, or wait. Beat and miss are separate triggers the analyst sets."
-            : isCadence
-            ? countFromHelp(countFrom, action, val, held)
-            : isGain
-            ? `Fires when the position is ${dir === "UP" ? "up" : "down"} this much from entry (avg cost) — cumulative, not a single day.`
-            : isTrail
-              ? "Fires when price gives back this much from its high since entry. The high ratchets up as the position runs."
-              : isMove
-                ? moveWindow === "1D"
-                  ? `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much on the day (vs prior close).`
-                  : `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much from its close ${moveWindow === "5D" ? "5" : "20"} sessions ago.`
-                : basis === "close"
-                  ? `Fires when the day closes ${dir === "ABOVE" ? "above" : "below"} your price — checked once, after the close. An intraday poke through the level doesn't count.`
-                  : `Fires when the last quote crosses ${dir === "ABOVE" ? "above" : "below"} your price.`}
-        </p>
 
         {/* On fire (held EXIT only) — full width, our verbs */}
         {showFireMode ? (
@@ -1739,9 +1777,9 @@ export function ThesisTriggersSection({
           // are retuning THIS thesis's levels, and a rung you can't touch
           // from here is noise.
           !t.inherited &&
-          editableTriggerField(
+          editableTriggerParts(
             t.predicate as unknown as SharedTriggerPredicate,
-          ) != null,
+          ).length > 0,
       )
     : data.triggers;
 

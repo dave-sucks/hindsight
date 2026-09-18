@@ -20,7 +20,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { editableTriggerField, withEditedValue } from "@/lib/agent/triggers/editable";
+import { editableTriggerParts, withEditedValue } from "@/lib/agent/triggers/editable";
+import { addablePredicateProblem } from "@/lib/agent/triggers/two-conditions";
 import { predicateSentence } from "@/lib/agent/triggers/format";
 import { isDirectEligiblePredicate } from "@/lib/agent/triggers/types";
 import { triggerBucket } from "@/lib/agent/triggers/bucket";
@@ -72,6 +73,10 @@ export const LEVEL_ELIGIBLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"
     // "A material SEC filing" means the same on every ticker; a biotech
     // analyst's "other events (8.01)" rule is a standing rule too.
     "SEC_EVENT",
+    // A beat or a miss means the same on every ticker — and "a beat the
+    // market sold" (beat AND down 3% on the day) is a standing rule.
+    "EARNINGS_BEAT",
+    "EARNINGS_MISS",
   ]);
 
 export interface LevelTriggerContext {
@@ -154,6 +159,11 @@ function parseOrRefuse(raw: unknown, label: string): Trigger[] {
 }
 
 function assertLevelEligible(predicate: TriggerPredicate): void {
+  if (predicate.kind === "AND" || predicate.kind === "OR") {
+    const problem = addablePredicateProblem(predicate, (k) => LEVEL_ELIGIBLE_PREDICATE_KINDS.has(k));
+    if (problem) throw new ThesisEditError("INVALID", problem);
+    return;
+  }
   if (LEVEL_ELIGIBLE_PREDICATE_KINDS.has(predicate.kind)) return;
   throw new ThesisEditError(
     "INVALID",
@@ -217,6 +227,8 @@ export async function editLevelTriggerValue(
   triggerId: string,
   value: number,
   ctx: LevelTriggerContext,
+  /** On a two-condition trigger: which condition's number (0-based). */
+  part: number | null = null,
 ): Promise<Trigger> {
   if (!Number.isFinite(value) || value <= 0) {
     throw new ThesisEditError("INVALID", "value must be a positive number.");
@@ -230,13 +242,13 @@ export async function editLevelTriggerValue(
       `Trigger ${triggerId} not found at this level.`,
     );
   }
-  if (!editableTriggerField(found.predicate)) {
+  if (!editableTriggerParts(found.predicate).some((f) => f.part === part)) {
     throw new ThesisEditError("INVALID", "That trigger has no editable value.");
   }
 
   const updated: Trigger = {
     ...found,
-    predicate: withEditedValue(found.predicate, value),
+    predicate: withEditedValue(found.predicate, value, part),
   };
   await target.write(existing.map((t) => (t.id === triggerId ? updated : t)));
   return updated;

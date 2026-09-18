@@ -20,7 +20,8 @@ import { prisma } from "@/lib/prisma";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { editableTriggerField } from "@/lib/agent/triggers/editable";
+import { editableTriggerParts, editOpFieldFor } from "@/lib/agent/triggers/editable";
+import { addablePredicateProblem, plainConditions } from "@/lib/agent/triggers/two-conditions";
 import {
   applyTriggerCooldownDefaults,
   defaultFireModeForAction,
@@ -370,27 +371,33 @@ export async function applyTriggerValueEdit(
   triggerId: string,
   value: number,
   ctx: ThesisEditContext,
+  /** On a two-condition trigger: which condition's number (0-based). */
+  part: number | null = null,
 ): Promise<TriggerEditResult> {
   if (!Number.isFinite(value) || value <= 0) {
     throw new ThesisEditError("INVALID", "value must be a positive number.");
   }
+  const fieldOf = (p: TriggerPredicate) => editableTriggerParts(p).find((f) => f.part === part) ?? null;
+  const subjectOf = (p: TriggerPredicate) =>
+    (p.kind === "AND" || p.kind === "OR") && part != null ? (p.predicates[part] ?? p) : p;
   const outcome = await runPrincipalOp(
     thesisId,
     ctx,
     (thesis) => {
       const target = thesis.triggers.find((t) => t.id === triggerId);
-      const field = target ? editableTriggerField(target.predicate) : null;
+      const field = target ? fieldOf(target.predicate) : null;
       if (target && !field) {
         throw new ThesisEditError("INVALID", `Trigger ${triggerId} has no editable value.`);
       }
-      const kind = target?.predicate.kind;
-      return kind === "PRICE_ABOVE" || kind === "PRICE_BELOW"
-        ? { op: "edit", id: triggerId, level: value }
-        : { op: "edit", id: triggerId, pct: value };
+      // The op field follows the kind: a price is a level, a day count is
+      // days, the rest are a percent. (A day count used to be sent as a
+      // percent and was refused.)
+      const opField = target ? editOpFieldFor(subjectOf(target.predicate).kind) : "pct";
+      return { op: "edit", id: triggerId, [opField]: value, ...(part != null ? { part } : {}) };
     },
     (thesis) => {
       const target = thesis.triggers.find((t) => t.id === triggerId)!;
-      const label = editableTriggerField(target.predicate)?.label ?? "value";
+      const label = fieldOf(target.predicate)?.label ?? "value";
       return {
         summary: `Principal edited ${thesis.ticker} trigger — ${label} ${value}`,
         rationale: `[USER] Principal set ${label} = ${value} on the "${target.action}" trigger directly. Honor it; don't re-propose against it unless the thesis materially changes.`,
@@ -420,6 +427,10 @@ export const ADDABLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"]> = ne
   // The earnings heads-up — "this reports within N days." Reads the calendar,
   // no position needed, so it's legal on a watch as well as a holding.
   "EARNINGS_WITHIN",
+  // A beat or a miss at the report — the playbook's "a beat the market sold"
+  // is a beat AND down 3% on the day, so a hand has to be able to write one.
+  "EARNINGS_BEAT",
+  "EARNINGS_MISS",
   // The chart kinds (DAV-247) — read the daily snapshot, legal on a watch
   // or a holding.
   "VS_SMA",
@@ -513,18 +524,14 @@ export async function applyTriggerAdd(
   input: TriggerAddInput,
   ctx: ThesisEditContext,
 ): Promise<TriggerAddResult> {
-  if (!ADDABLE_PREDICATE_KINDS.has(input.predicate.kind)) {
-    throw new ThesisEditError(
-      "INVALID",
-      `That trigger kind can't be added from the sheet (got ${input.predicate.kind}).`,
-    );
-  }
+  const problem = addablePredicateProblem(input.predicate, (k) => ADDABLE_PREDICATE_KINDS.has(k));
+  if (problem) throw new ThesisEditError("INVALID", problem);
   let fireMode = input.fireMode ?? defaultFireModeForAction(input.action);
   const outcome = await runPrincipalOp(
     thesisId,
     ctx,
     (thesis) => {
-      if (POSITION_SCOPED_PREDICATE_KINDS.has(input.predicate.kind) && !thesis.position) {
+      if (plainConditions(input.predicate).some((c) => POSITION_SCOPED_PREDICATE_KINDS.has(c.kind)) && !thesis.position) {
         throw new ThesisEditError(
           "INVALID",
           "Gain-from-entry and trailing-from-high triggers measure off the open position — they can only be added to a held (HOLDING) thesis.",
