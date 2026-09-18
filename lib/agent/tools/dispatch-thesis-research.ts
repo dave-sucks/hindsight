@@ -22,6 +22,18 @@ import { DISPATCH_CAP } from "@/lib/agent/system-prompts/discovery";
 
 import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
 
+/** The longest screen row the writer's prompt carries. */
+export const SCREEN_ROW_MAX = 400;
+
+/** A long screen row is cut at the last whole word that fits, with "…". */
+export function trimScreenRow(row: string): string {
+  const s = row.trim();
+  if (s.length <= SCREEN_ROW_MAX) return s;
+  const cut = s.slice(0, SCREEN_ROW_MAX - 1);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > SCREEN_ROW_MAX / 2 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
 export const dispatchThesisResearch = defineTool({
   description:
     "Dispatch a thesis-writer sub-agent to write or refresh a deep-research thesis on one " +
@@ -60,9 +72,12 @@ export const dispatchThesisResearch = defineTool({
       .enum(SETUP_IDS)
       .optional()
       .describe("The setup you think this is (read_knowledge_library topic:\"setup\"). The writer checks it against the chart; omit to let it choose."),
+    // Seed context for the writer's prompt — nothing downstream depends on
+    // its length, so a long one is trimmed, never a reason to refuse the
+    // whole dispatch (LUXE 2026-09-17: a 400+ character row killed the call).
     screen_row: z
       .string()
-      .max(400)
+      .transform(trimScreenRow)
       .optional()
       .describe("The numbers that put this name in front of you, one line (\"reported 09-10, EPS +22% vs est, revenue +6%, gapped 9% on 3.1× volume, holding above the gap-day low $41.20\")."),
     promotion_context: z
