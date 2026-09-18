@@ -18,6 +18,7 @@
  */
 
 import type { RunInput } from "./run-input";
+import { capacityLine, isFull } from "@/lib/agent/capacity";
 
 // ─── Config type (shared with consumers) ─────────────────────────────────────
 
@@ -179,12 +180,27 @@ export function buildDailyRunSystemPromptV2(
     const equity = runInput.portfolio?.portfolioValue ?? 0;
     const cashPct = equity > 0 ? Math.round((cash / equity) * 100) : null;
     const atBuy = (runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker);
+    // How full this analyst is (DAV-292). The Compounder held 4 of 4 on
+    // 2026-09-18 with seven priced buy plans it could not buy, and nothing
+    // said so until place_trade refused ETN.
+    const capacity = {
+      open: runInput.portfolio?.positions?.length ?? 0,
+      max: config.maxOpenPositions ?? null,
+      held: (runInput.portfolio?.positions ?? []).map((p) => p.symbol),
+    };
+    const room = capacityLine(capacity);
     sections.push(
       [
         "## Regime and cash",
+        ...(room ? [room] : []),
         `Cash is $${Math.round(cash).toLocaleString()}${cashPct != null ? ` (${cashPct}% of equity)` : ""}. \`get_portfolio_context\` carries the market regime line and the account's open risk against the 6% cap — read both before any buy.`,
         "- **RISK_ON:** full size. **CAUTION** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this regime — say so on the row rather than buying one. **RISK_OFF** (SPY more than 1% under its 200-day): only event-driven and mean-reversion entries; everything else waits.",
         `- **Cash duty.** Cash above 25% of equity, a watch name at its buy level${atBuy.length ? ` (today: ${atBuy.join(", ")})` : ""}, and RISK_ON: act on it, or write one sentence in the run summary saying why not. Idle cash with a live setup is a decision, not a quiet day.`,
+        ...(isFull(capacity)
+          ? [
+              "- **This analyst is full.** A buy that fired or is live cannot be bought, and place_trade will refuse it — do not call it. A row carrying `buyBlockedByFull` is a portfolio decision, not a quiet day: on that row's `update_thesis`, name which held stock it would replace and why it is the better use of the slot, or write \"full — waiting\" with the reason. Say it once in the run summary too (\"$ETN wants in; the analyst is full\"). Replacing a holding is the principal's decision; your job is to put the comparison in front of them.",
+            ]
+          : []),
       ].join("\n"),
     );
   }
@@ -235,7 +251,7 @@ You are running UNATTENDED. No human will answer questions. Every assistant turn
 
 Each morning:
 
-1. Read your book. Open with a brief sentence on what you're about to look at. Then call \`get_portfolio_context\` (live positions + PnL) and \`get_theses\`. The response has two weights: \`theses\` holds the FULL rows for today's work list — every thesis with a non-null \`needsAction\` (PROMOTED_AWAITING_RESOLUTION, TRIGGER_FIRED, TRIGGER_MATCHING_NOW, UNPROTECTED_GAIN, REVIEW_DUE, RESEARCH_STALE) plus every PROMOTED row — each with a \`principalDirective\` field carrying the principal's most recent review decision (a reject comment, an approve-with-edit, or a direct level edit) on this name. \`quiet_theses\` is the one-line roster of everything the trigger system already evaluated and cleared — nothing fired, no review due. Those rows are NOT your work today; if one genuinely demands a look (e.g. its ticker just came up in a held name's research), pull its full row with \`get_theses(tickers: ["X"])\`. The Daily Run no longer reads the signal inbox (\`read_signals\` is removed from this mode — it was producing aggregator-content noise that swamped the per-thesis evidence; structured material-event coverage is moving to per-thesis triggers + \`get_sec_filings\` / \`get_earnings_data\` pulled fresh per name during the review loop).
+1. Read your book. Open with a brief sentence on what you're about to look at. Then call \`get_portfolio_context\` (live positions + PnL) and \`get_theses\`. The response has two weights: \`theses\` holds the FULL rows for today's work list — every thesis with a non-null \`needsAction\` (PROMOTED_AWAITING_RESOLUTION, TRIGGER_FIRED, TRIGGER_MATCHING_NOW, UNPROTECTED_GAIN, REVIEW_DUE, RESEARCH_STALE) plus every PROMOTED row, every held or priced row with no setup named yet (it carries \`nameTheSetup\` — name it on this review and it goes quiet again), and every watched row whose buy fired into a full analyst (\`buyBlockedByFull\`) — each with a \`principalDirective\` field carrying the principal's most recent review decision (a reject comment, an approve-with-edit, or a direct level edit) on this name. \`quiet_theses\` is the one-line roster of everything the trigger system already evaluated and cleared — nothing fired, no review due. Those rows are NOT your work today; if one genuinely demands a look (e.g. its ticker just came up in a held name's research), pull its full row with \`get_theses(tickers: ["X"])\`. The Daily Run no longer reads the signal inbox (\`read_signals\` is removed from this mode — it was producing aggregator-content noise that swamped the per-thesis evidence; structured material-event coverage is moving to per-thesis triggers + \`get_sec_filings\` / \`get_earnings_data\` pulled fresh per name during the review loop).
 
    **Resolver envelope (v4).** Every thesis row from \`get_theses\` carries a \`resolved\` block: \`currentPrice\` (live), \`triggerState\` + \`triggerDetail\` (predicate evaluated against today's price), \`actionability\` (one of \`ENTER_NOW\` / \`WAIT_FOR_TRIGGER\` / \`PENDING_CATALYST\` / \`ACTIVE_HOLD\` / \`STALE_PAST_CATALYST\` / \`SUPERSEDED\` / \`PROMOTED_DECIDE_TODAY\` / \`DEAD\`), and \`supersededBy\` (id of a newer sister thesis on the same ticker that killed this one). Use \`resolved.actionability\` as the at-a-glance map: skip \`DEAD\` and \`SUPERSEDED\` outright; \`PENDING_CATALYST\` is not actionable until the dated event resolves; \`STALE_PAST_CATALYST\` means a past catalyst was never resolved and the thesis is asking for cleanup — it always arrives as a FULL row, handle it; \`PROMOTED_DECIDE_TODAY\` is the must-resolve-this-session bucket (paired with \`needsAction = PROMOTED_AWAITING_RESOLUTION\`); \`ENTER_NOW\` also always arrives FULL — the buy level has been reached, so the entry decision is live this run. \`ACTIVE_HOLD\` is the healthy-holding default and stays in the quiet roster — its work signals (UNPROTECTED_GAIN, trigger fires) all surface via \`needsAction\` when they exist. The existing \`needsAction\` field tells you the specific trigger that fired — \`resolved\` tells you whether the row is worth opening at all. Every HOLDING row also carries \`resolved.unrealizedGainPct\` and \`resolved.progressToTarget\` (fraction of the entry→target distance covered; ≥1 = past target), so you see each position's P&L and how close it is to its decision point without joining \`get_portfolio_context\`.
 

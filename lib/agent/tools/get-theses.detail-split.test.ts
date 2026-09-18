@@ -94,6 +94,8 @@ function thesisRow(over: Record<string, unknown>) {
     entryPrice: 100,
     targetPrice: 130,
     stopLoss: 90,
+    // A setup is named: a priced row with none is work now (DAV-292).
+    setupId: "BASE_BREAKOUT",
     // No triggers → no cadence rung → nothing fires, no review due →
     // needsAction stays null → quiet row under "actionable".
     triggers: [],
@@ -412,3 +414,53 @@ describe("get_theses detail split — every other caller unchanged", () => {
     },
   );
 });
+
+// ── DAV-292 / DAV-286 — two inputs the run wasn't getting ──────────────────
+describe("get_theses — a stock with no setup named, and a buy that fired into a full analyst", () => {
+  it("PEAD 2026-09-18: MU, IOT and NVDA (held, no setup) arrive as full rows with the ask; FIVE (setup named) stays quiet", async () => {
+    // That morning the PEAD run saw its held names as index rows and wrote
+    // "the held names are all quiet, so I'm not going to manufacture work
+    // there." The ask only rode on full rows, so nobody was asked.
+    const held = (ticker: string, setupId: string | null) =>
+      thesisRow({ id: `t_${ticker}`, ticker, status: "HOLDING", setupId, researchRun: { agentConfig: { setupIds: ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"] } } });
+    mockThesisFindMany.mockResolvedValue([held("MU", null), held("IOT", null), held("NVDA", null), held("FIVE", "PEAD")]);
+    const res = await run(makeCtx("MORNING_PLAN"));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const full = res.data.theses as any[];
+    expect(full.map((t) => t.ticker).sort()).toEqual(["IOT", "MU", "NVDA"]);
+    for (const t of full) {
+      expect(t.nameTheSetup?.choose.map((c: { id: string }) => c.id)).toEqual(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((res.data.quiet_theses as any[]).map((t) => t.ticker)).toEqual(["FIVE"]);
+  });
+
+  it("Secular Compounder 2026-09-18: ETN's buy fired into 4 of 4 — the row carries the portfolio decision", async () => {
+    const ctx = { ...makeCtx("MORNING_PLAN"), maxOpenPositions: 4 } as ToolContext;
+    const holds = ["ABT", "ASML", "CEG", "WST"].map((ticker) =>
+      thesisRow({ id: `t_${ticker}`, ticker, status: "HOLDING", setupId: "COMPOUNDER_ACCUMULATION" }),
+    );
+    const fired = new Date(Date.now() - 3 * 3_600_000).toISOString();
+    const etn = thesisRow({
+      id: "t_ETN",
+      ticker: "ETN",
+      entryPrice: 418,
+      targetPrice: 480,
+      stopLoss: 395,
+      setupId: "COMPOUNDER_ACCUMULATION",
+      triggers: [{ id: "enter", action: "ENTER", predicate: { kind: "PRICE_ABOVE", level: 418 }, rationale: "Buy above $418.", lastFiredAt: fired, cooldownDays: 7 }],
+    });
+    const eme = thesisRow({ id: "t_EME", ticker: "EME", setupId: "COMPOUNDER_ACCUMULATION" });
+    mockThesisFindMany.mockResolvedValue([...holds, etn, eme]);
+    const res = await run(ctx);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = (res.data.theses as any[]).find((t) => t.ticker === "ETN");
+    expect(row).toBeDefined();
+    expect(row.buyBlockedByFull).toMatch(/this analyst is full \(4 of 4: \$ABT, \$ASML, \$CEG, \$WST\)/);
+    expect(row.buyBlockedByFull).toMatch(/which held stock \$ETN would replace/);
+    // A watched stock whose buy never fired is not the question.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((res.data.quiet_theses as any[]).map((t) => t.ticker)).toContain("EME");
+  });
+});
+

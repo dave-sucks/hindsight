@@ -231,6 +231,24 @@ export const tacticalRun = inngest.createFunction(
       ]);
       if (!agentConfig) return null;
 
+      // How full the analyst is, for a buy fire (DAV-292). ETN 2026-09-18:
+      // the run confirmed the buy by its setup, called place_trade and only
+      // then learned the analyst held 4 of 4. Counted the way place_trade
+      // counts. Fail-soft: no line is better than no run.
+      const capacity = await (async () => {
+        if (trigger.action !== "ENTER" && trigger.action !== "ADD") return null;
+        if (agentConfig.maxOpenPositions == null) return null;
+        try {
+          const rows = await prisma.position.findMany({
+            where: { analystId: fired.analystId, status: { in: ["OPEN", "PENDING_APPROVAL"] } },
+            select: { symbol: true },
+          });
+          return { open: rows.length, max: agentConfig.maxOpenPositions, held: rows.map((r) => r.symbol) };
+        } catch {
+          return null;
+        }
+      })();
+
       // Pre-compute daysHeld here so the step.run boundary doesn't hand
       // us a string and force runtime parsing.
       const daysHeld = position
@@ -288,6 +306,7 @@ export const tacticalRun = inngest.createFunction(
         },
         trigger,
         agentConfig,
+        capacity,
         signal,
         position: position
           ? {
@@ -715,6 +734,7 @@ export const tacticalRun = inngest.createFunction(
         recentUpdates: thesis.updates,
         latestDigest,
         fired: { price: fired.firedPrice ?? null, coFired: fired.coFired ?? [] },
+        capacity: ctx.capacity ?? null,
       });
 
       // Build the kickoff message so the chat replay shows WHY this run

@@ -48,3 +48,33 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).toContain("REVIEW from a FILING trigger");
   });
 });
+
+// DAV-292 — the run is told how full the analyst is. Replay: the Secular
+// Compounder on 2026-09-18 held ABT, ASML, CEG and WST against a limit of 4,
+// with ETN's buy live; the PEAD Specialist held 4 of 6.
+describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
+  const pos = (symbol: string) => ({ symbol, direction: "LONG", quantity: 10, avgCost: 100, currentPrice: 101, unrealizedPnl: 10, unrealizedPnlPct: 1, targetPrice: null });
+  const withBook = (symbols: string[]) =>
+    ({ ...runInput, portfolio: { ...(runInput as unknown as { portfolio: object }).portfolio, positions: symbols.map(pos) } }) as unknown as RunInput;
+
+  it("Compounder, 4 of 4: says it is full, what it holds, and what to do with a buy that fired", () => {
+    const p = buildDailyRunSystemPromptV2(
+      { name: "Secular Compounder", minConfidence: 70, maxPositionSize: 10000, minPositionSize: 4000, maxOpenPositions: 4 },
+      withBook(["ABT", "ASML", "CEG", "WST"]),
+    );
+    expect(p).toContain("Positions: 4 of 4 — this analyst is FULL.");
+    expect(p).toContain("It holds $ABT, $ASML, $CEG, $WST.");
+    expect(p).toContain("**This analyst is full.**");
+    expect(p).toContain("buyBlockedByFull");
+    expect(p).toContain("full — waiting");
+  });
+
+  it("PEAD, 4 of 6: says two are free and carries no full-analyst rule", () => {
+    const p = buildDailyRunSystemPromptV2(
+      { name: "PEAD Specialist", minConfidence: 70, maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
+      withBook(["FIVE", "IOT", "MU", "NVDA"]),
+    );
+    expect(p).toContain("Positions: 4 of 6 — 2 free.");
+    expect(p).not.toContain("**This analyst is full.**");
+  });
+});

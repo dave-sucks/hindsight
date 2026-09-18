@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { isNamedSetup } from "@/lib/agent/knowledge/setups";
+import { recordBuyBlockedByFull } from "@/lib/agent/record-buy-blocked";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
 import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
@@ -305,6 +306,11 @@ export const placeTrade = defineTool({
         });
         if (openCount >= ctx.maxOpenPositions) {
           const blockedMsg = `Trade blocked: this analyst already has ${openCount} open position${openCount !== 1 ? "s" : ""}, at its ${ctx.maxOpenPositions}-slot cap. Close something first.`;
+          // The same block as always — plus one line where a person looks
+          // (DAV-286: ISRG was blocked here twice with nothing on screen).
+          if (!ctx.dryRun) {
+            await recordBuyBlockedByFull({ ticker, analystId: effectiveAnalystId, open: openCount, max: ctx.maxOpenPositions, runId: ctx.runId });
+          }
           return {
             summary: `Trade blocked: $${ticker} — at max open positions`,
             data: {
