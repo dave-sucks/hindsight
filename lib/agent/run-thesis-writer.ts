@@ -581,9 +581,15 @@ every field; the judgment rules:
    • NO LEVEL WORTH WAITING FOR YET (the entry window opens later, the
      setup hasn't formed, you want to price it after the print) → omit
      ALL THREE of entry/target/stop. The thesis stays LONG/SHORT and
-     WATCHING on its review wakes and is priced when the time comes.
+     WATCHING and is priced when the time comes. It MUST carry the wake
+     that brings it back, in \`triggers\`: a REVIEW at the price you'd
+     look again, or a short day-count review. A watch has no review
+     clock unless you give it one, so a view saved with no entry, no
+     trigger and no review can never come back. "I want to price the
+     pullback rather than buy here" IS a level: write the pullback as
+     the buy (the rising 20- or 50-day, stop 1 ATR under it).
      Put the when ("price this after the January readout") in the
-     rationale; add a REVIEW trigger for it if a date or event names it.
+     rationale.
      PASS is for a view the research does not support — not for a view
      that isn't ready to price.
    • core_belief: ONE falsifiable sentence = outcome + timeframe +

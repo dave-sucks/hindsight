@@ -320,6 +320,9 @@ export function buildResolvedEnvelope(args: {
     minConfidence: thesis.minConfidence ?? null,
     lastLadderEditAt: thesis.lastLadderEditAt ?? null,
     entryRaisesAway: thesis.entryRaisesAway ?? null,
+    // The stock's own triggers — an inherited analyst or account rule is
+    // not a plan for this stock.
+    ownTriggerCount: thesis.parsedTriggers.filter((t) => ((t as { level?: string }).level ?? "THESIS") === "THESIS").length,
     now,
   });
 

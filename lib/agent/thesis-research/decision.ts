@@ -372,6 +372,30 @@ export function validateThesisDecision(
     }
   }
 
+  // A directional view with nothing on it can never come back (DAV-291).
+  // LUXE 2026-09-18: "I want to price a drift or pullback entry rather than
+  // buying now" — then saved LONG with no entry, no trigger and no review.
+  // A watch's horizon defaults carry no clock, so omitting `triggers` on an
+  // unpriced mint leaves zero wakes. Said here, in the writer's loop, with
+  // the level it said it was waiting for — never a refusal at the save.
+  if (directional && !held && !priced && opts.mode === "mint" && !((d.triggers as unknown[] | undefined)?.length)) {
+    const atr = opts.chart?.atr14;
+    const averages = [
+      { label: "20-day", ma: opts.chart?.sma20 },
+      { label: "50-day", ma: opts.chart?.sma50 },
+    ]
+      .filter((c) => c.ma != null && c.ma.rising)
+      .map((c) => `$${c.ma!.value.toFixed(2)} (the rising ${c.label})`);
+    const canPullback = opts.setups?.some((s) => s.id === "MA_PULLBACK") ?? false;
+    const plan =
+      canPullback && averages.length
+        ? `Price what you are waiting for: on MA_PULLBACK, buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints, target the prior high at ≥ 2R. `
+        : "Price the level you are waiting for (the pullback to a rising average, the gap-day low holding) with its stop and a target at ≥ 2R. ";
+    errors.push(
+      `levels: a ${d.direction} with no entry, no trigger and no review can never come back — nothing on the stock can fire. ${plan}If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({kind:"PRICE_BELOW", level}) or a short day count ({kind:"REVIEW_CADENCE", days}). Or PASS with the reason.`,
+    );
+  }
+
   // ── Triggers (optional — omission means horizon defaults) ───────────
   // On a refresh the same checks run on `add_triggers`: an added trigger is
   // a new trigger, so the action-set rules apply to it alone.
