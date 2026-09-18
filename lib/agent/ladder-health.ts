@@ -47,7 +47,7 @@
  * mark — mirroring lib/agent/triggers/evaluate.ts.
  */
 
-import { trailFireLevel } from "@/lib/agent/triggers/trail";
+import { effectiveTrailPct, trailFireLevel } from "@/lib/agent/triggers/trail";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 
 // ─── Tunable constants ───────────────────────────────────────────────────────
@@ -155,6 +155,14 @@ const fmtPct = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(1)}%`;
  * Non-price predicates (signals, RSI, SMA, time) and PRICE_MOVE_PCT (level
  * is relative to a prior close we don't have here) yield nothing.
  */
+/** The give-back actually in force, for the label — the written percent, or the range's. */
+function trailLabelPct(
+  p: Extract<import("@/lib/agent/triggers/types").TriggerPredicate, { kind: "TRAILING_FROM_HIGH" }>,
+  ctx: { peak: number; atr?: number | null },
+): number {
+  return effectiveTrailPct(p, { peak: ctx.peak, atr: ctx.atr });
+}
+
 function extractPriceRungs(
   predicate: TriggerPredicate,
   ctx: { isLong: boolean; avgCost: number; peak: number },
@@ -212,7 +220,7 @@ function extractPriceRungs(
           firesWhen: ctx.isLong ? "FALLS" : "RISES",
           price,
           isTrail: true,
-          label: `trail ${predicate.pct}% off ${fmtUsd(ctx.peak)} → ${fmtUsd(price)}`,
+          label: `trail ${trailLabelPct(predicate, ctx)}% off ${fmtUsd(ctx.peak)} → ${fmtUsd(price)}`,
         },
       ];
     }
@@ -238,11 +246,13 @@ export function computeLadderHealth(opts: {
   /** Position.peakPrice (high-water LONG / low-water SHORT); null → falls back to currentPrice. */
   peakPrice?: number | null;
   triggers: Trigger[];
+  /** The stock's ATR(14) from the daily snapshot — widens an atrMultiple trail (DAV-294). */
+  atr14?: number | null;
   /** When the ladder was last edited; null → daysSinceLadderEdit omitted. */
   lastLadderEditAt?: Date | null;
   now: Date;
 }): LadderHealth | null {
-  const { direction, avgCost, currentPrice, peakPrice, triggers, lastLadderEditAt, now } =
+  const { direction, avgCost, currentPrice, peakPrice, triggers, atr14, lastLadderEditAt, now } =
     opts;
   if (avgCost == null || avgCost <= 0) return null;
   if (currentPrice == null || currentPrice <= 0) return null;
@@ -260,7 +270,7 @@ export function computeLadderHealth(opts: {
     ? Math.max(rawPeak, currentPrice)
     : Math.min(rawPeak, currentPrice);
 
-  const ctx = { isLong, avgCost, peak };
+  const ctx = { isLong, avgCost, peak, atr: atr14 ?? null };
   const protectiveSide: ExtractedRung["firesWhen"] = isLong ? "FALLS" : "RISES";
 
   // ── Floors: EXIT rungs on the protective side, tightest (max locked gain) wins

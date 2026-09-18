@@ -16,7 +16,7 @@
  */
 
 import type { Trigger, TriggerAction, TriggerPredicate } from "@/lib/agent/triggers/types";
-import { COMPOUNDER_CATASTROPHE_PCT, COMPOUNDER_GIVEBACK_REVIEW_PCT, isNamedSetup, type SetupId } from "./setups";
+import { COMPOUNDER_CATASTROPHE_PCT, COMPOUNDER_GIVEBACK_REVIEW_PCT, TRAIL_ATR_MULTIPLE, isNamedSetup, type SetupId } from "./setups";
 
 export interface SeatRule {
   action: TriggerAction;
@@ -30,8 +30,8 @@ export interface SeatRule {
 const PEAD_RULES: SeatRule[] = [
   {
     action: "EXIT",
-    predicate: { kind: "TRAILING_FROM_HIGH", pct: 12, armAtGainPct: 10 },
-    rationale: "Gave back 12% from the high, once the position had been up 10% — bank the drift (E5, TARGET).",
+    predicate: { kind: "TRAILING_FROM_HIGH", pct: 12, armAtGainPct: 10, atrMultiple: TRAIL_ATR_MULTIPLE },
+    rationale: `Gave back 12% from the high — or ${TRAIL_ATR_MULTIPLE}× this stock's average daily range if that is wider — once the position had been up 10%. Bank the drift without being shaken out by a volatile name (E5, TARGET).`,
     fireMode: "DIRECT",
     cooldownDays: 0,
   },
@@ -84,8 +84,8 @@ const COMPOUNDER_RULES: SeatRule[] = [
   },
   {
     action: "EXIT",
-    predicate: { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_CATASTROPHE_PCT },
-    rationale: `Gave back ${COMPOUNDER_CATASTROPHE_PCT}% from the high — the catastrophe line for a multi-year hold, the only automatic sale.`,
+    predicate: { kind: "TRAILING_FROM_HIGH", pct: COMPOUNDER_CATASTROPHE_PCT, atrMultiple: TRAIL_ATR_MULTIPLE },
+    rationale: `Gave back ${COMPOUNDER_CATASTROPHE_PCT}% from the high — or ${TRAIL_ATR_MULTIPLE}× this stock's average daily range if that is wider — the catastrophe line for a multi-year hold, and the only automatic sale.`,
     fireMode: "DIRECT",
     cooldownDays: 0,
   },
