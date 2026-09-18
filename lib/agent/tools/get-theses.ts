@@ -356,9 +356,9 @@ export const getTheses = defineTool({
         // heavy section blobs below stay gated.
         researchUpdatedAt: true,
         setupId: true,
-        // The analyst's name picks which setups a row with none may choose
-        // from (DAV-285) — read off the row, not a second query.
-        researchRun: { select: { agentConfig: { select: { name: true } } } },
+        // The analyst's own setups are what a row with none may choose from
+        // (DAV-285, DAV-280) — read off the row, not a second query.
+        researchRun: { select: { agentConfig: { select: { setupIds: true } } } },
         // Deep-research artifacts — opt in via include_research. PR-9
         // flattened `researchSections` blob into 9 first-class columns;
         // selecting all of them by name. snapshot/bullCase/bearCase are
@@ -1076,7 +1076,7 @@ export const getTheses = defineTool({
         setup: setupChecklist(t.setupId, t.horizon, setupOverrides),
         // No setup named yet (DAV-285): the ask and the seat's choices, so
         // the next review names one instead of never.
-        nameTheSetup: nameTheSetup(t, t.researchRun?.agentConfig?.name ?? null, setupOverrides),
+        nameTheSetup: nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null, setupOverrides),
         researchRun: undefined,
         // Agent must see freshness of the deep research without doing date
         // math. Horizon-tuned per STALE_DAYS_BY_HORIZON. Soft input to the
