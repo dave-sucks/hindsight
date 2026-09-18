@@ -62,7 +62,8 @@ export async function loadClosedTrades(opts: {
       ...(opts.analystId ? { analystId: opts.analystId } : {}),
     },
     select: {
-      id: true, direction: true, avgCost: true, initialStop: true, closePrice: true, peakPrice: true,
+      id: true, symbol: true, direction: true, avgCost: true, initialStop: true, closePrice: true, peakPrice: true,
+      realizedPnl: true, closeReason: true,
       openedAt: true, closedAt: true, environment: true, analyst: { select: { name: true } },
     },
   });
@@ -70,6 +71,9 @@ export async function loadClosedTrades(opts: {
   return positions.map((p) => {
     const t = lookup(p.id);
     return {
+      symbol: p.symbol,
+      realizedPnl: p.realizedPnl,
+      closeReason: p.closeReason,
       setupId: t.setupId,
       horizon: t.horizon,
       analyst: p.analyst.name,

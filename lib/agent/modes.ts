@@ -431,6 +431,9 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_earnings_calendar",
       "get_market_movers",
       "run_screen",
+      // How the closed book actually did — win rate, R, give-back, realized
+      // dollars, by setup and by analyst (DAV-295). Read-only.
+      "read_trade_results",
       "get_sec_filings",
       "web_search",
       // Grok Live Search over X — handle-attributed posts. SOON-1b in
@@ -807,6 +810,7 @@ When in batched-discovery mode, DO NOT default to \`dispatch_thesis_research\` p
    • Operator-pasted research → extract candidates yourself: ticker + 1-sentence attribution + claim. Narrate what you read; don't dump every line of the paste.
    • "Today's movers" → \`get_market_movers\` with \`scope:"universe"\` (universe-fences against this analyst's coverage; pulls the gainers/losers/actives minus already-held names).
    • "What's worth watching" / "today's setups" → \`get_market_movers\` + \`get_earnings_calendar\` (\`scope:"universe"\`).
+   • "How have my trades done" / "how is the PEAD analyst doing" / "which setup is working" / "what did we sell last week" → \`read_trade_results\` — win rate, average R, days held, give-back from the peak and realized dollars, overall and by setup and by analyst, plus the last closes one by one. Filter with \`analyst\`, \`setup_id\` or \`days\`. It is realized TRADE P&L on closes since the seats were rebuilt (2026-05-27) — never call it the account's return, which counts deposits separately. Open positions are not results: read those with \`get_portfolio_context\`.
    • "Find me setups" / "discovery" / "what's a pullback candidate" → \`run_screen(setup)\` — a computed list of 5–15 names with the numbers for one setup (PEAD, EPISODIC_PIVOT, MA_PULLBACK, BASE_BREAKOUT), minus the book, every rejection named. Triage those rows, then \`dispatch_thesis_research(mode:"mint", setup_id, screen_row)\` on the ones worth a thesis. \`scope:"book"\` screens what we already watch or hold.
    • "Discovery off recent earnings" / "who reported this week" / "earnings plays" → \`run_screen(setup:"PEAD", days:N)\` for the computed list, or \`get_earnings_calendar(window:"reported", days:N, scope:"universe")\` to read the whole calendar — who reported in the last N days with EPS and revenue vs the street, biggest beats first, minus the book. Read it in this order: both lines beat and guidance up first; an EPS beat on a revenue miss is cost not demand; a beat the stock is DOWN on means the market wanted more (check the reaction with \`get_stock_data\`); tiny estimates are already blanked. Then \`dispatch_thesis_research(mode:"mint")\` on the ones worth a thesis — pass \`screen_row\` with the numbers that made the cut (surprise, revenue, the gap and its volume) and \`setup_id: "PEAD"\` when it reported within 3 sessions and held the gap — and say why the rest aren't. Upcoming reports on the book → the same tool with the default window.
    • "Discovery off activist stakes" / "who took a stake this month" → \`get_sec_filings(scope:"universe", days:30)\` — companies with a new 13D in the window, not already covered, each with who took the stake. EDGAR doesn't know company size and many are micro-caps: \`get_stock_data\` on the names worth sizing, read the 13D's stated purpose (the link is on the row), and only then \`dispatch_thesis_research\`. A stake is a conviction input like insider buying (D9), not a setup — the entry is still a base breakout or a pullback.

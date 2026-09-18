@@ -17,6 +17,12 @@
 import { getSetup, NO_SETUP_FITS } from "@/lib/agent/knowledge/setups";
 
 export interface ClosedTrade {
+  /** The ticker, for naming a trade in a list. */
+  symbol?: string;
+  /** Realized dollars on the close, as Alpaca recorded them. */
+  realizedPnl?: number | null;
+  /** "TARGET" | "STOP" | "TIME" | "MANUAL" | a thesis reason. */
+  closeReason?: string | null;
   setupId: string | null;
   horizon: string | null;
   analyst: string;
