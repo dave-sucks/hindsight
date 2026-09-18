@@ -103,11 +103,12 @@ function scaleInOnStrengthTrigger(): Trigger {
  * thesis damage (don't add — hold/trim/exit). ADD is held-only + TACTICAL +
  * approval-gated, so a fire is a proposal the agent only makes after that check.
  *
- * Omitted for TRADE horizon on purpose: short-horizon momentum trades exit on
- * weakness, they don't average into a dip. Strength-press applies to all
- * horizons; pullback-add is for the conviction holds (COMPOUNDER/TARGET/CATALYST).
+ * The Secular Compounder's own rule since the DAV-279 ruling (2026-09-17):
+ * a compounder averages into a market-wide dip; a trade and a catalyst
+ * position do not. It left the account's starting rules that day; the
+ * analyst templates (DAV-280) write it onto that seat.
  */
-function scaleInOnPullbackTrigger(): Trigger {
+export function scaleInOnPullbackTrigger(): Trigger {
   return {
     id: createId(),
     predicate: {
@@ -124,18 +125,16 @@ function scaleInOnPullbackTrigger(): Trigger {
 
 // ── Account-wide standing rules ──────────────────────────────────────────
 //
-// What every holding on the account gets: the +7% / −7% add prompts. Sell
+// What every holding on the account gets: the +7% add prompt. The −7% add
+// is the Compounder's own (DAV-279: a trade doesn't average down). Sell
 // rules are NOT here and are NOT stamped onto theses at mint or fill — a
 // thesis rung beats every rule above it, so a stamped copy froze one 8%
 // sell onto every holding (ASML/CEG/WST, 2026-09-08). An analyst's own
 // sell rules live on the analyst (its Triggers tab), where its style is.
 
-/** The account's universal add prompts. Fresh ids per call. */
+/** The account's universal add prompt. Fresh id per call. */
 export function accountStandingRules(): Trigger[] {
-  return [
-    { ...scaleInOnStrengthTrigger(), source: "DEFAULT" },
-    { ...scaleInOnPullbackTrigger(), source: "DEFAULT" },
-  ];
+  return [{ ...scaleInOnStrengthTrigger(), source: "DEFAULT" }];
 }
 
 /**

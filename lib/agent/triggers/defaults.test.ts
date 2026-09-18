@@ -22,6 +22,7 @@ import {
   applyTriggerCooldownDefaults,
   defaultTriggersForHorizon,
   accountStandingRules,
+  scaleInOnPullbackTrigger,
   mergeTriggers,
   resolvedCadenceDays,
   type ThesisShape,
@@ -267,13 +268,13 @@ describe("defaultTriggersForHorizon — HELD carries only the thesis's own level
 });
 
 describe("accountStandingRules — the account carries adds, never sell rules", () => {
-  it("is the +7% and −7% add prompts and nothing else", () => {
+  it("is the +7% add prompt and nothing else — the −7% add is the Compounder's own (DAV-279)", () => {
     const rules = accountStandingRules();
     expect(rules.map((t) => [t.action, t.predicate])).toEqual([
       ["ADD", { kind: "PRICE_MOVE_PCT", pct: 7, direction: "UP", window: "1D" }],
-      ["ADD", { kind: "PRICE_MOVE_PCT", pct: 7, direction: "DOWN", window: "1D" }],
     ]);
     expect(rules.some((t) => t.action === "EXIT")).toBe(false);
+    expect(scaleInOnPullbackTrigger().predicate).toEqual({ kind: "PRICE_MOVE_PCT", pct: 7, direction: "DOWN", window: "1D" });
   });
 
   it("the account seed fits the trigger cap", () => {

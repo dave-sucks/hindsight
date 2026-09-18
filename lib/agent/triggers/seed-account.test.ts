@@ -13,9 +13,11 @@ import { accountSeedTriggers } from "./seed-account";
 import { triggerBucket } from "./bucket";
 
 describe("accountSeedTriggers", () => {
-  it("carries the add prompts and no sell rule — sell rules live on each analyst", () => {
+  it("carries the up-7% add prompt and no sell rule — the down-7% add and the sell rules live on each analyst (DAV-279)", () => {
     const seed = accountSeedTriggers();
-    expect(seed.filter((t) => t.action === "ADD")).toHaveLength(2);
+    expect(seed.filter((t) => t.action === "ADD").map((t) => t.predicate)).toEqual([
+      { kind: "PRICE_MOVE_PCT", pct: 7, direction: "UP", window: "1D" },
+    ]);
     expect(seed.filter((t) => t.action === "EXIT")).toEqual([]);
   });
 

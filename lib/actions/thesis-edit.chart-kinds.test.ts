@@ -92,3 +92,10 @@ describe("the Add-trigger dialog's chart conditions", () => {
     await expect(addLevelTrigger("ACCOUNT", "a1", { action: "REVIEW", predicate: p }, ctx)).rejects.toThrow(/PRICE_BELOW/);
   });
 });
+
+// DAV-279 — the Catalyst seat's rules are day counts from the event date.
+describe("a day count as a standing rule", () => {
+  it("REVIEW_CADENCE is level-eligible, so 'review 10 days before the event date' can be an analyst rule", () => {
+    expect(LEVEL_ELIGIBLE_PREDICATE_KINDS.has("REVIEW_CADENCE")).toBe(true);
+  });
+});
