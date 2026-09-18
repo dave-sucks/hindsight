@@ -103,6 +103,8 @@ export interface LevelInputs {
   avgCost?: number | null;
   /** Position high-water mark, for placing a trail at a real price. */
   peakPrice?: number | null;
+  /** The stock's ATR(14) — widens an atrMultiple trail, so the column matches the evaluator (DAV-294). */
+  atr14?: number | null;
 }
 
 const ABSOLUTE = new Set<TriggerPredicate["kind"]>(["PRICE_ABOVE", "PRICE_BELOW"]);
@@ -128,7 +130,7 @@ const isLong = (d: string | null | undefined) => d !== "SHORT";
  *            `all` so tiered trims render as their own chart lines.
  */
 export function canonicalLevels(input: LevelInputs): CanonicalLevels {
-  const { triggers, direction, status, avgCost, peakPrice } = input;
+  const { triggers, direction, status, avgCost, peakPrice, atr14 } = input;
   const long = isLong(direction);
 
   const all: PriceLevel[] = [];
@@ -138,7 +140,7 @@ export function canonicalLevels(input: LevelInputs): CanonicalLevels {
     if (!absolute && !PROJECTED.has(kind)) continue;
     const side = levelSide(t.predicate, direction);
     if (side == null) continue;
-    const price = predicatePrice(t.predicate, { direction, avgCost, peakPrice });
+    const price = predicatePrice(t.predicate, { direction, avgCost, peakPrice, atr14 });
     // A projected level with no position state genuinely is not at a price.
     if (price == null || !Number.isFinite(price) || price <= 0) continue;
     all.push({
@@ -501,6 +503,7 @@ function predicatePrice(
     direction: string | null;
     avgCost?: number | null;
     peakPrice?: number | null;
+    atr14?: number | null;
   },
 ): number | null {
   const long = isLong(ctx.direction);
@@ -510,7 +513,7 @@ function predicatePrice(
       return p.level;
     case "TRAILING_FROM_HIGH":
       // Null until armed — an unarmed trail has no live line to draw.
-      return trailFireLevel(p, { peak: ctx.peakPrice, avgCost: ctx.avgCost, isLong: long });
+      return trailFireLevel(p, { peak: ctx.peakPrice, avgCost: ctx.avgCost, isLong: long, atr: ctx.atr14 });
     case "GAIN_FROM_ENTRY": {
       const avg = ctx.avgCost;
       if (avg == null || avg <= 0) return null;

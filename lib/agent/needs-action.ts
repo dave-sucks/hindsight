@@ -332,6 +332,8 @@ export interface NeedsActionInput {
      * — ladder-health falls back to the current price.
      */
     peakPrice?: number | null;
+    /** ATR(14) from the daily snapshot — widens an atrMultiple trail (DAV-294). */
+    atr14?: number | null;
     /**
      * Conviction context, frozen at promotion time. Surfaced into the
      * PROMOTED_AWAITING_RESOLUTION needsAction so the agent has the
@@ -461,6 +463,7 @@ export function computeNeedsAction(
       currentPrice: latestQuote?.price ?? null,
       peakPrice: thesis.peakPrice ?? null,
       triggers: thesis.triggers,
+      atr14: thesis.atr14 ?? null,
       lastLadderEditAt: null, // not needed for the flag; surfaced via get_theses
       now,
     });

@@ -231,7 +231,14 @@ export function evaluateTrigger(
       if (peak == null || peak <= 0 || ctx.latestQuote == null) return false;
       const isLong = ctx.thesis.direction !== "SHORT";
       // Null until armed (armAtGainPct, DAV-250) — see ./trail.
-      const trail = trailFireLevel(predicate, { peak, avgCost: ctx.position?.avgCost, isLong });
+      const trail = trailFireLevel(predicate, {
+        peak,
+        avgCost: ctx.position?.avgCost,
+        isLong,
+        // The stock's own range widens the give-back (DAV-294). Missing
+        // snapshot → the written percent, exactly as before.
+        atr: ctx.indicators?.atr14,
+      });
       if (trail == null) return false;
       return isLong
         ? ctx.latestQuote.price <= trail
