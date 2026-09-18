@@ -164,6 +164,11 @@ export function resolveThesisLadder(
         ([id, e]) => [id, e.firedFilings] as const,
       ),
     ),
+    firedReportsState: Object.fromEntries(
+      Object.entries(parseTriggerState(thesis.triggerState)).map(
+        ([id, e]) => [id, e.firedReports] as const,
+      ),
+    ),
   });
 }
 
@@ -183,6 +188,8 @@ export interface TriggerStateEntry {
   firedAt?: string;
   /** SEC_EVENT: the filing IDs this inherited rung has fired on for this thesis. */
   firedFilings?: string[];
+  /** EARNINGS_WITHIN: the report dates this inherited heads-up has fired for. */
+  firedReports?: string[];
 }
 
 /**
@@ -205,13 +212,22 @@ export function parseTriggerState(
       continue;
     }
     if (v && typeof v === "object" && !Array.isArray(v)) {
-      const e = v as { firedAt?: unknown; firedFilings?: unknown };
+      const e = v as { firedAt?: unknown; firedFilings?: unknown; firedReports?: unknown };
       const entry: TriggerStateEntry = {};
       if (typeof e.firedAt === "string") entry.firedAt = e.firedAt;
       if (Array.isArray(e.firedFilings)) {
         entry.firedFilings = e.firedFilings.filter((x): x is string => typeof x === "string");
       }
-      if (entry.firedAt !== undefined || entry.firedFilings !== undefined) out[k] = entry;
+      if (Array.isArray(e.firedReports)) {
+        entry.firedReports = e.firedReports.filter((x): x is string => typeof x === "string");
+      }
+      if (
+        entry.firedAt !== undefined ||
+        entry.firedFilings !== undefined ||
+        entry.firedReports !== undefined
+      ) {
+        out[k] = entry;
+      }
     }
   }
   return out;

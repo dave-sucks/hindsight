@@ -50,6 +50,8 @@ import {
   describeEarningsReport,
   describeUpcomingReport,
   fetchEarningsWindow,
+  reconcileUpcomingReport,
+  rememberReport,
   EARNINGS_LOOKAHEAD_DAYS,
 } from "@/lib/agent/triggers/earnings";
 import type { EarningsWindow } from "@/lib/agent/triggers/earnings";
@@ -427,6 +429,8 @@ async function stampLastFiredAt(args: {
   firedInheritedTriggerIds: string[];
   /** SEC_EVENT fires: trigger id → the filing IDs it just fired on. */
   firedFilings?: Map<string, string[]>;
+  /** Heads-up fires: trigger id → the report date it just fired for. */
+  firedReports?: Map<string, string>;
   now: Date;
 }): Promise<void> {
   if (
@@ -448,20 +452,24 @@ async function stampLastFiredAt(args: {
     const next = current.map((t) => {
       if (!stampSet.has(t.id)) return t;
       const filings = args.firedFilings?.get(t.id);
+      const report = args.firedReports?.get(t.id);
       return {
         ...t,
         lastFiredAt: stampedAt,
         ...(filings?.length ? { firedFilings: rememberFired(t.firedFilings, filings) } : {}),
+        ...(report ? { firedReports: rememberReport(t.firedReports, report) } : {}),
       };
     });
 
     const state = parseTriggerState(row.triggerState);
     for (const id of args.firedInheritedTriggerIds) {
       const filings = args.firedFilings?.get(id);
+      const report = args.firedReports?.get(id);
       state[id] = {
         ...state[id],
         firedAt: stampedAt,
         ...(filings?.length ? { firedFilings: rememberFired(state[id]?.firedFilings, filings) } : {}),
+        ...(report ? { firedReports: rememberReport(state[id]?.firedReports, report) } : {}),
       };
     }
 
@@ -938,6 +946,14 @@ export const triggerEvaluator = inngest.createFunction(
               : undefined;
 
         const posInfo = openedAtByThesisId.get(thesis.id);
+        // Which report date to believe. The calendar is the source that
+        // scales; the thesis's own catalyst date is the one a writer read off
+        // the company. Reconciled once here so the predicate that fires and
+        // the sentence that explains it can't disagree (DAV-293).
+        const upcomingRead = reconcileUpcomingReport(
+          earnings.upcoming.get(thesis.ticker),
+          thesis.catalystDate ?? null,
+        );
         const ctx: EvaluationContext = {
           // No signal on this path.
           latestQuote,
@@ -950,7 +966,7 @@ export const triggerEvaluator = inngest.createFunction(
           earnings: earnings.reported.get(thesis.ticker) ?? null,
           // EARNINGS_WITHIN reads this — the next scheduled report, when
           // one is inside the lookahead.
-          upcomingEarnings: earnings.upcoming.get(thesis.ticker) ?? null,
+          upcomingEarnings: upcomingRead.report,
           // SEC_EVENT reads this — the name's watched filings in the lookback.
           filings: filingsRead.byTicker.get(thesis.ticker) ?? null,
           // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read the open position's
@@ -989,6 +1005,12 @@ export const triggerEvaluator = inngest.createFunction(
           firedFilings: new Map(
             Array.from(filingsByTrigger, ([id, f]) => [id, f.map((x) => x.accession)] as const),
           ),
+          // A heads-up remembers the report it fired for, not just when.
+          firedReports: new Map(
+            fires
+              .filter((t) => needsUpcomingEarnings(t.predicate) && upcomingRead.report != null)
+              .map((t) => [t.id, upcomingRead.report!.reportDate] as const),
+          ),
           now,
         });
         for (const t of fires) {
@@ -1006,7 +1028,7 @@ export const triggerEvaluator = inngest.createFunction(
           // for a price/time trigger — the price is already stamped. A
           // heads-up carries the upcoming date + estimate; a beat/miss
           // carries the reported figures.
-          const upcoming = earnings.upcoming.get(thesis.ticker);
+          const upcoming = upcomingRead.report;
           const report = earnings.reported.get(thesis.ticker);
           // An insider cluster names its buyers on the audit row (DAV-252).
           const snapBuys = indicators.get(thesis.ticker)?.insiderBuys;
@@ -1018,7 +1040,7 @@ export const triggerEvaluator = inngest.createFunction(
               ? describeCluster(insiderCluster(snapBuys, t.predicate.days, now))
               : needsUpcomingEarnings(t.predicate)
                 ? upcoming
-                  ? describeUpcomingReport(upcoming, now)
+                  ? describeUpcomingReport(upcoming, now, upcomingRead.calendarDate)
                   : null
                 : report && needsEarningsData(t.predicate)
                   ? describeEarningsReport(report)

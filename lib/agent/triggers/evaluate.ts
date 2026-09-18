@@ -117,6 +117,12 @@ export interface EvaluationContext {
   firedFilings?: readonly string[];
 
   /**
+   * The report dates the heads-up being evaluated has already fired for.
+   * Same shape as `firedFilings`: per trigger, set by `shouldFire`.
+   */
+  firedReports?: readonly string[];
+
+  /**
    * The daily indicator snapshot for this ticker (completed sessions through
    * yesterday). Read by every chart kind. Absent → those kinds are false.
    */
@@ -398,6 +404,7 @@ export function shouldFire(
 ): { fires: boolean; reason: "match" | "no-match" | "no-crossing" | "stale-quote" | "cooldown" } {
   // A filing trigger reads its own fired-filing memory; nothing else does.
   if (trigger.firedFilings?.length) ctx = { ...ctx, firedFilings: trigger.firedFilings };
+  if (trigger.firedReports?.length) ctx = { ...ctx, firedReports: trigger.firedReports };
   const matched = evaluateTrigger(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };
 
@@ -449,7 +456,17 @@ export function shouldFire(
       ? trigger.cooldownDays
       : defaultCooldownDaysForPredicate(trigger.predicate);
 
-  if (effectiveCooldown > 0 && trigger.lastFiredAt != null) {
+  // A heads-up is once per REPORT, and the cooldown is how that is enforced
+  // inside one window — so a report this trigger has never fired for is not
+  // in cooldown, whatever the clock says. Without this, one fire against a
+  // wrong date eats the real heads-up: AIR fired for a phantom 2026-09-21
+  // and the 7-day cooldown ran past the true 09-29 window (DAV-293).
+  const reportDate = readsUpcomingReport(trigger.predicate)
+    ? (ctx.upcomingEarnings?.reportDate ?? null)
+    : null;
+  const unfiredReport = reportDate != null && !(trigger.firedReports ?? []).includes(reportDate);
+
+  if (effectiveCooldown > 0 && trigger.lastFiredAt != null && !unfiredReport) {
     const lastFired = new Date(trigger.lastFiredAt).getTime();
     const cooldownMs = effectiveCooldown * 86_400_000;
     if (ctx.now.getTime() - lastFired < cooldownMs) {
@@ -461,6 +478,13 @@ export function shouldFire(
 }
 
 // ── Internals ─────────────────────────────────────────────────────────
+
+/** Does this predicate read the next scheduled report? (The heads-up.) */
+function readsUpcomingReport(p: TriggerPredicate): boolean {
+  if (p.kind === "EARNINGS_WITHIN") return true;
+  if (p.kind === "AND" || p.kind === "OR") return p.predicates.some(readsUpcomingReport);
+  return false;
+}
 
 /** Does this predicate compare the quote's price to a level? */
 function readsPrice(p: TriggerPredicate): boolean {

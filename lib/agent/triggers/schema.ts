@@ -234,6 +234,11 @@ export const triggerSchema = z.object({
     .max(50)
     .optional()
     .describe("Evaluator-stamped on a filing trigger: the filings it has fired on. Do not set."),
+  firedReports: z
+    .array(z.string())
+    .max(8)
+    .optional()
+    .describe("Evaluator-stamped on an earnings heads-up: the report dates it has fired for. Do not set."),
   writtenPrice: z
     .number()
     .positive()
