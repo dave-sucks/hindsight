@@ -155,9 +155,12 @@ export const morningResearch = inngest.createFunction(
             status: "OPEN",
           },
         });
-        const slotsRemaining = Math.max(0, config.maxOpenPositions - openCount);
-        // Never skip the run — the agent should always research.
-        // slotsRemaining=0 just means it won't place new trades.
+        // Never skip the run — the agent should always research. A full
+        // analyst still reviews its book; it just cannot open a new
+        // position, which the prompt states in words and the tools enforce.
+        console.log(
+          `[morning-research] ${config.name}: ${openCount} of ${config.maxOpenPositions} positions open`,
+        );
 
         // Watchlist = WATCHING theses for this analyst (post-collapse).
         const watchlistSymbols = await getWatchlistSymbols(config.id);
@@ -202,7 +205,11 @@ export const morningResearch = inngest.createFunction(
           minConfidence: config.minConfidence,
           minPositionSize: Number(config.minPositionSize),
           maxPositionSize: Number(config.maxPositionSize),
-          maxOpenPositions: slotsRemaining, // Use remaining slots, not max
+          // The analyst's LIMIT, not what is left of it. The prompt states
+          // the room itself ("4 of 6 — 2 free") and the tools own the cap;
+          // handing it the remainder made a half-full analyst read as full
+          // and told it not to buy (DAV-292's book line, caught 2026-09-18).
+          maxOpenPositions: config.maxOpenPositions,
           watchlist: watchlistSymbols,
           exclusionList: config.exclusionList,
         };
