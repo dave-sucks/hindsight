@@ -77,6 +77,10 @@ export const LEVEL_ELIGIBLE_PREDICATE_KINDS: ReadonlySet<TriggerPredicate["kind"
     // market sold" (beat AND down 3% on the day) is a standing rule.
     "EARNINGS_BEAT",
     "EARNINGS_MISS",
+    // A day count means the same on every stock: "review 10 days before
+    // the event date", "sell 30 days after the buy if still held". The
+    // Catalyst seat's rules are written this way (DAV-279).
+    "REVIEW_CADENCE",
   ]);
 
 export interface LevelTriggerContext {
