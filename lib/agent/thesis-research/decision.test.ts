@@ -143,8 +143,20 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
     rationale: "Bullish into the January readout; entry to be priced after the data. Not a PASS.",
   };
 
-  it("mint: accepted with no levels and no triggers (horizon defaults supply the wakes)", () => {
+  it("mint: no levels AND no triggers is sent back — a watch's defaults carry no wake (LUXE 2026-09-18 saved with an empty trigger list)", () => {
     const v = validateThesisDecision(unpriced, mintOpts);
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toMatch(/can never come back/);
+  });
+
+  it("mint: accepted with no levels and the wake that brings it back", () => {
+    const v = validateThesisDecision(
+      {
+        ...unpriced,
+        triggers: [{ predicate: { kind: "REVIEW_CADENCE", days: 14 }, action: "REVIEW", rationale: "Price this after the January readout." }],
+      } as ThesisDecisionInput,
+      mintOpts,
+    );
     expect(v.ok).toBe(true);
     expect(v.riskReward).toBeUndefined();
   });

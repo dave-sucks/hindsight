@@ -36,6 +36,7 @@ import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 
 export type PlanSanityFlag = {
   kind:
+    | "NOTHING_CAN_WAKE"
     | "ENTRY_FAR_FROM_PRICE"
     | "ENTRY_STALE"
     | "ENTRY_RAISED_AWAY"
@@ -99,6 +100,11 @@ export function computePlanSanity(args: {
    * structure cited (lib/agent/entry-raises). Optional; absent ⇒ no check.
    */
   entryRaisesAway?: EntryRaiseAway[] | null;
+  /**
+   * How many triggers the stock carries of its OWN (not inherited from its
+   * analyst or the account). Optional; absent ⇒ no check.
+   */
+  ownTriggerCount?: number | null;
   now?: Date;
 }): PlanSanityFlag[] {
   const {
@@ -117,10 +123,22 @@ export function computePlanSanity(args: {
   } = args;
   if (status !== "WATCHING") return [];
   if (direction !== "LONG" && direction !== "SHORT") return [];
-  if (currentPrice == null || currentPrice <= 0) return [];
+
+  const flags: PlanSanityFlag[] = [];
+  // A directional watch with nothing of its own can never come back
+  // (DAV-291: LUXE 2026-09-18, and six more on the PEAD analyst's list that
+  // day). No buy price, no level to look again at, no review. The only
+  // things that can touch it are the account's generic wakes. Needs no
+  // live price, so it runs before the price guard.
+  if (args.ownTriggerCount === 0 && entryPrice == null) {
+    flags.push({
+      kind: "NOTHING_CAN_WAKE",
+      text: `${direction} with no buy price, no trigger and no review of its own: nothing can bring this stock back. Price the level you are waiting for (the pullback to a rising average, the base's pivot) with its stop and a target at 2:1 or better, or give it the wake that brings it back (a REVIEW at a price, or a short day-count review), or let it go.`,
+    });
+  }
+  if (currentPrice == null || currentPrice <= 0) return flags;
 
   const isLong = direction === "LONG";
-  const flags: PlanSanityFlag[] = [];
 
   if (entryPrice != null && entryPrice > 0) {
     const distPct = ((entryPrice - currentPrice) / currentPrice) * 100;
