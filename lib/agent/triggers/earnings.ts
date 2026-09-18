@@ -186,14 +186,79 @@ export function daysUntilReport(r: EarningsReport, now: Date): number {
  * the sentence carries what that decision needs: when, and what the
  * street expects.
  */
-export function describeUpcomingReport(r: EarningsReport, now: Date): string {
+export function describeUpcomingReport(
+  r: EarningsReport,
+  now: Date,
+  /** The calendar's own date, when it disagreed and was set aside (DAV-293). */
+  calendarDate?: string | null,
+): string {
   const days = daysUntilReport(r, now);
   const inDays =
     days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
   const parts = [`Reports ${r.reportDate}${bellLabel(r.hour)}, ${inDays}.`];
   if (r.epsEstimate != null) parts.push(` EPS est $${r.epsEstimate.toFixed(2)}.`);
   if (r.revenueEstimate != null) parts.push(` Revenue est ${money(r.revenueEstimate)}.`);
+  // Never assert one date when two sources disagree — the reader decides.
+  if (calendarDate && calendarDate !== r.reportDate) {
+    parts.push(` The calendar says ${calendarDate}; this is the thesis's own date.`);
+  }
   return parts.join("");
+}
+
+/**
+ * Which report date to believe when the calendar and the thesis disagree
+ * (DAV-293).
+ *
+ * The vendor's calendar is usually right and is the only source that scales
+ * — one call covers the market. But it is not always right: on 2026-09-17 it
+ * carried AIR reporting 2026-09-21 while AAR had announced the after-close
+ * of 2026-09-29, and the same vendor's per-symbol endpoint said AIR had no
+ * report scheduled at all. The heads-up fired on a print that wasn't
+ * happening. The thesis's `catalystDate` came from the writer reading the
+ * company's own announcement, so when the two disagree by more than a day,
+ * the thesis's date wins and the fire line carries both.
+ *
+ * This RECONCILES, it never ORIGINATES: with no calendar row there is no
+ * heads-up, however dated the thesis's catalyst is. A `catalystDate` is any
+ * catalyst — MIRM's is an FDA decision — and treating one as an earnings
+ * date would invent reports that were never scheduled.
+ *
+ * A day's difference is not disagreement: the calendar dates an after-close
+ * print on the day it happens and some sources date it the morning after.
+ */
+export const REPORT_DATE_TOLERANCE_DAYS = 1;
+
+export function reconcileUpcomingReport(
+  upcoming: EarningsReport | null | undefined,
+  catalystDate: Date | null | undefined,
+): { report: EarningsReport | null; calendarDate: string | null } {
+  if (!upcoming) return { report: null, calendarDate: null };
+  if (!catalystDate) return { report: upcoming, calendarDate: null };
+
+  const own = isoDay(catalystDate);
+  const apart = Math.abs(
+    (Date.parse(`${own}T00:00:00Z`) - Date.parse(`${upcoming.reportDate}T00:00:00Z`)) / 86_400_000,
+  );
+  if (!Number.isFinite(apart) || apart <= REPORT_DATE_TOLERANCE_DAYS) {
+    return { report: upcoming, calendarDate: null };
+  }
+  // The estimates still come from the calendar — only the date is disputed.
+  // The bell is the calendar's read of a date we no longer trust, so it goes.
+  return {
+    report: { ...upcoming, reportDate: own, hour: null },
+    calendarDate: upcoming.reportDate,
+  };
+}
+
+/** How many report dates a heads-up remembers firing for. Two years of quarters. */
+export const FIRED_REPORTS_KEPT = 8;
+
+/** Remember this report date as fired, newest last, capped. */
+export function rememberReport(
+  prior: readonly string[] | null | undefined,
+  reportDate: string,
+): string[] {
+  return [...(prior ?? []).filter((d) => d !== reportDate), reportDate].slice(-FIRED_REPORTS_KEPT);
 }
 
 /** YYYY-MM-DD for a Date, in UTC — the calendar's own date format. */

@@ -265,6 +265,14 @@ export type Trigger = {
   lastFiredAt?: string; // ISO timestamp
   /** SEC_EVENT only, evaluator-stamped: the filing IDs this trigger has fired on. */
   firedFilings?: string[];
+  /**
+   * EARNINGS_WITHIN only, evaluator-stamped: the report dates this heads-up
+   * has already fired for. A heads-up is once per REPORT, and the cooldown
+   * is what enforces that inside one window — so a fire for a different date
+   * is never in cooldown (DAV-293: a wrong calendar date fired the heads-up
+   * on 09-21 and the 7-day cooldown then swallowed the real one).
+   */
+  firedReports?: string[];
   /** ENTER only, server-stamped: the live price when written (./written-price). */
   writtenPrice?: number;
   writtenAt?: string; // ISO timestamp

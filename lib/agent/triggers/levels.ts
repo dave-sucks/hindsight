@@ -118,6 +118,8 @@ export interface LadderLevels {
    * Thesis-level rungs keep `firedFilings` inline.
    */
   firedFilingsState?: Record<string, string[] | undefined>;
+  /** Same, for an inherited heads-up's report-date memory. */
+  firedReportsState?: Record<string, string[] | undefined>;
   /**
    * Which level the caller is rendering FROM. Everything below it is
    * inherited; rungs at this level are owned and editable.
@@ -320,11 +322,13 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
         : t.lastFiredAt;
 
       const firedFilings = inherited ? input.firedFilingsState?.[t.id] : t.firedFilings;
+      const firedReports = inherited ? input.firedReportsState?.[t.id] : t.firedReports;
 
       out.push({
         ...t,
         lastFiredAt: lastFiredAt ?? undefined,
         ...(firedFilings?.length ? { firedFilings } : {}),
+        ...(firedReports?.length ? { firedReports } : {}),
         level,
         inherited,
       });
