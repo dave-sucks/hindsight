@@ -39,7 +39,9 @@ import {
 } from "@/lib/agent/triggers/load-levels";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
-import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
+import { SETUP_IDS, NO_SETUP_FITS, getSetup, isNamedSetup } from "@/lib/agent/knowledge/setups";
+import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
+import { heldSetupExitOps } from "@/lib/agent/triggers/setup-exits";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import {
   acceptedOps,
@@ -204,8 +206,8 @@ const updateSchema = z.object({
     .describe("The target — edits the target trigger (adds one if none, null removes it). One change, one activity line."),
   stop_loss: z.number().nullable().optional()
     .describe("The floor — edits the sell-below trigger (adds one if none, null removes it). On a held stock it may only tighten."),
-  setup_id: z.enum(SETUP_IDS).optional()
-    .describe("The setup this plan is written on. Stored on the thesis; the scorecard groups results by it."),
+  setup_id: z.enum([...SETUP_IDS, NO_SETUP_FITS]).optional()
+    .describe("The setup this plan is written on, from the row's `nameTheSetup.choose` or any catalog id. Stored on the thesis; the tactical run confirms by it, the scorecard groups by it. On a stock you hold, naming it also writes that setup's own exits onto the stock (the time limit counted from the real buy, the partial sale from the real cost and floor, the beat-the-market-sold review), one Activity line each; a trigger already there is left alone. \"NONE\" = you looked and no setup fits — say why in `rationale`."),
   stop_basis: z.string().max(240).optional()
     .describe("Why the stop is where it is, with the chart number (\"under the base low $207.25, 1.6 ATR from entry\"). Sent with stop_loss, it becomes the floor trigger's sentence."),
   target_basis: z.string().max(240).optional()
@@ -519,6 +521,7 @@ export const updateThesis = defineTool({
         convictionRationale: true,
         variantView: true,
         horizon: true,
+        setupId: true,
         catalystDate: true,
         triggers: true,
         // Per-thesis fire state for inherited rungs — read so a rung
@@ -1208,6 +1211,62 @@ export const updateThesis = defineTool({
           // derives from the buy trigger like the others.
           if (!held) patch.entryPrice = check.columns.entryPrice;
         }
+      }
+    }
+
+    // ── A held stock that just got its setup gets that setup's exits ─────
+    // (DAV-285). Only a fill wrote them, and 8 of the 9 held stocks were
+    // bought before setups were named. Same triggers the fill would have
+    // written, through the same ops core, after the agent's own ops so a
+    // bucket it just filled is left alone. They are not plan levels, so the
+    // columns and the plan check above are untouched — nothing is refused.
+    if (
+      args.setup_id !== undefined &&
+      args.setup_id !== existing.setupId &&
+      isNamedSetup(args.setup_id) &&
+      (patch.status ?? existing.status) === "HOLDING" &&
+      !isTerminalTransition &&
+      parseTriggersResilient(existing.triggers).dropped === 0
+    ) {
+      const setup = getSetup(args.setup_id, await loadSetupOverrides(ctx.accountId));
+      const base = (patch.triggers ?? parseTriggersResilient(existing.triggers).triggers) as Trigger[];
+      const position = ctx.analystId
+        ? await prisma.position.findFirst({
+            where: { analystId: ctx.analystId, symbol: existing.ticker, status: "OPEN" },
+            select: { avgCost: true },
+            orderBy: { openedAt: "desc" },
+          })
+        : null;
+      const stop = (patch.stopLoss ?? existing.stopLoss) as number | { toString(): string } | null;
+      const exitOps = setup
+        ? heldSetupExitOps({
+            setup,
+            horizon: (patch.horizon ?? existing.horizon) as string | null,
+            entry:
+              position?.avgCost != null
+                ? Number(position.avgCost)
+                : existing.entryPrice != null
+                  ? Number(existing.entryPrice)
+                  : null,
+            stop: stop != null ? Number(stop) : null,
+            direction: ("direction" in patch ? patch.direction : existing.direction) as string | null,
+            stored: base,
+            mintId: () => randomUUID(),
+          })
+        : [];
+      if (exitOps.length > 0) {
+        const written = applyTriggerOps({
+          stored: base,
+          inherited: inheritedLadder,
+          ops: exitOps,
+          direction: ("direction" in patch ? patch.direction : existing.direction) as string | null,
+          status: "HOLDING",
+          actor: "SYSTEM",
+          now: new Date(),
+          mintId: () => randomUUID(),
+        });
+        opResults.push(...written.results);
+        if (written.results.some((r) => r.ok)) patch.triggers = written.triggers as unknown as object;
       }
     }
 

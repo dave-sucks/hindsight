@@ -20,6 +20,8 @@
 
 import type { Setup, Horizon } from "@/lib/agent/knowledge/setups";
 import type { Trigger } from "./types";
+import type { TriggerOp } from "./ops";
+import { triggerBucket } from "./bucket";
 
 /** A beat the market sold: down at least this much on the day of the reaction. */
 export const BEAT_AND_FADE_DOWN_PCT = 3;
@@ -81,4 +83,40 @@ export function setupExitTriggers(input: {
   }
 
   return out;
+}
+
+/**
+ * The same exits, for a stock we already own whose review just named its
+ * setup (DAV-285). 29 of 32 stocks on the book were written before setups
+ * were named, so no fill ever wrote theirs. Entry is the real average cost,
+ * the stop is the floor in force, and the day count runs from the actual
+ * buy (the trigger reads the position's open date). A trigger already in
+ * the same bucket — the analyst or Dave chose one — is left alone.
+ */
+export function heldSetupExitOps(input: {
+  setup: Setup;
+  horizon: Horizon | string | null;
+  entry: number | null;
+  stop: number | null;
+  direction: string | null;
+  stored: Trigger[];
+  mintId: () => string;
+}): TriggerOp[] {
+  if (input.entry == null || !(input.entry > 0)) return [];
+  // The partial sale is N times the risk taken at the buy. A floor already
+  // raised past cost (MU 2026-09-17: cost $895.94, floor $969) is not that
+  // risk any more, so no partial is written from it — the time limit and the
+  // beat-the-market-sold review still are.
+  const riskSide =
+    input.stop != null && (input.direction === "SHORT" ? input.stop > input.entry : input.stop < input.entry);
+  const taken = new Set(input.stored.map(triggerBucket));
+  return setupExitTriggers({
+    setup: input.setup,
+    horizon: input.horizon,
+    entry: input.entry,
+    stop: riskSide ? input.stop : null,
+    mintId: input.mintId,
+  })
+    .filter((t) => !taken.has(triggerBucket(t)))
+    .map((trigger) => ({ op: "add" as const, trigger }));
 }

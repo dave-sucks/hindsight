@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { isNamedSetup } from "@/lib/agent/knowledge/setups";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
 import { PROPOSAL_RATIONALE_VOICE } from "@/lib/agent/proposal-rationale-voice";
@@ -506,7 +507,7 @@ export const placeTrade = defineTool({
       // stamps setupId) any CATALYST-horizon thesis.
       const binary =
         sizingThesis?.setupId === "PRE_CATALYST" ||
-        (sizingThesis?.setupId == null && sizingThesis?.horizon === "CATALYST");
+        (!isNamedSetup(sizingThesis?.setupId) && sizingThesis?.horizon === "CATALYST");
       const riskSized =
         accountRisk?.equity != null
           ? sizeByRisk({

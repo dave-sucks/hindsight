@@ -14,7 +14,7 @@
  * A trade with no readable entry stop counts in every column except R.
  */
 
-import { getSetup } from "@/lib/agent/knowledge/setups";
+import { getSetup, NO_SETUP_FITS } from "@/lib/agent/knowledge/setups";
 
 export interface ClosedTrade {
   setupId: string | null;
@@ -93,6 +93,7 @@ const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.l
 
 export function setupName(setupId: string | null): string {
   if (!setupId) return "Unlabelled";
+  if (setupId === NO_SETUP_FITS) return "No setup fits";
   return getSetup(setupId)?.name ?? setupId;
 }
 
