@@ -29,7 +29,7 @@ import {
   PULLBACK_NEAR_SMA_PCT,
 } from "@/lib/agent/knowledge/setups";
 
-export type ScreenSetup = "PEAD" | "EPISODIC_PIVOT" | "MA_PULLBACK" | "BASE_BREAKOUT";
+export type ScreenSetup = "PEAD" | "EPISODIC_PIVOT" | "MA_PULLBACK" | "BASE_BREAKOUT" | "MOMENTUM_FLAG";
 
 export interface ScreenInput {
   ticker: string;
@@ -39,6 +39,12 @@ export interface ScreenInput {
   report?: EarningsReport | null;
   /** Calendar days since the report (the report day is 0), when known. */
   daysSinceReport?: number | null;
+  /**
+   * Trailing returns over 1, 3 and 6 months (lib/market-data/movers).
+   * The momentum screen is about the run, not today's move, so it needs
+   * them; every other screen ignores them (DAV-287).
+   */
+  trailing?: { move1m: number | null; move3m: number | null; move6m: number | null } | null;
 }
 
 export interface ScreenRow {
@@ -60,6 +66,13 @@ export interface ScreenResult {
   passed: ScreenRow[];
   rejected: ScreenReject[];
 }
+
+/** D2: "already moved 30–100%+ in 1–3 months". The bar for "has run". */
+export const MOMENTUM_MIN_RUN_PCT = 30;
+/** D2: the daily range a momentum trade needs to pay for its risk. */
+export const MOMENTUM_MIN_ADR_PCT = 3;
+/** Further above its rising average than this is extended, not resting. */
+export const MOMENTUM_MAX_EXTENDED_PCT = 15;
 
 const pct = (n: number, d = 1) => `${n >= 0 ? "+" : ""}${n.toFixed(d)}%`;
 const $ = (n: number) => `$${n.toFixed(2)}`;
@@ -274,6 +287,89 @@ export function screenBaseBreakout(rows: ScreenInput[]): ScreenResult {
   return { passed, rejected };
 }
 
+/**
+ * D2 — a momentum leader resting. The stock has already run (that is the
+ * point: it is a leader), its daily range is wide enough to pay for the
+ * risk, and it is pulling back in an orderly way against a rising short
+ * average rather than breaking down.
+ *
+ * The one screen that is about the run rather than today's move: a stock up
+ * 200% over a month that is quiet today is invisible to every other pool we
+ * have (DAV-287). It is only as good as the universe it is handed — today's
+ * movers miss the quiet climbers, and the ranked universe is the Signals
+ * lane's half of this ticket.
+ */
+export function screenMomentum(rows: ScreenInput[]): ScreenResult {
+  const passed: ScreenRow[] = [];
+  const rejected: ScreenReject[] = [];
+  for (const r of rows) {
+    const setup = "MOMENTUM_FLAG" as const;
+    const s = r.structure;
+    if (!s) {
+      rejected.push({ ticker: r.ticker, setup, reason: "no chart" });
+      continue;
+    }
+    const run1m = r.trailing?.move1m ?? null;
+    const run3m = r.trailing?.move3m ?? null;
+    const best = Math.max(run1m ?? -Infinity, run3m ?? -Infinity);
+    if (!Number.isFinite(best)) {
+      rejected.push({ ticker: r.ticker, setup, reason: "no 1- or 3-month return to rank on" });
+      continue;
+    }
+    if (best < MOMENTUM_MIN_RUN_PCT) {
+      rejected.push({
+        ticker: r.ticker,
+        setup,
+        reason: `hasn't run: ${run1m != null ? `1M ${pct(run1m)}` : "1M ?"}, ${run3m != null ? `3M ${pct(run3m)}` : "3M ?"} — under the ${MOMENTUM_MIN_RUN_PCT}% bar`,
+      });
+      continue;
+    }
+    // A leader that is already broken is not a flag. The six-month number
+    // is the shell test: AEMD was +374% on the day and −38% over six months.
+    const run6m = r.trailing?.move6m ?? null;
+    if (run6m != null && run6m <= 0) {
+      rejected.push({ ticker: r.ticker, setup, reason: `up on the month but ${pct(run6m)} over six — a bounce in a downtrend, not a leader` });
+      continue;
+    }
+    if (s.verdict !== "UPTREND" && s.verdict !== "PULLBACK_IN_UPTREND") {
+      rejected.push({ ticker: r.ticker, setup, reason: `not in an uptrend (${s.verdict ?? "unknown"})` });
+      continue;
+    }
+    const adr = s.adr20Pct;
+    if (adr == null || adr < MOMENTUM_MIN_ADR_PCT) {
+      rejected.push({ ticker: r.ticker, setup, reason: `daily range ${adr != null ? `${adr.toFixed(1)}%` : "unknown"} — under the ${MOMENTUM_MIN_ADR_PCT}% a momentum trade needs to pay for its risk` });
+      continue;
+    }
+    // Resting against a rising short average is the flag. Far above it is
+    // extended — the chase rule would refuse the buy anyway.
+    const short = [
+      ["10-day", s.sma.d20],
+      ["20-day", s.sma.d20],
+      ["50-day", s.sma.d50],
+    ] as const;
+    const riding = short.find(([, m]) => m && m.slope === "RISING" && m.pctFromPrice <= MOMENTUM_MAX_EXTENDED_PCT);
+    if (!riding) {
+      const d20 = s.sma.d20 ? `${pct(s.sma.d20.pctFromPrice)} from the 20-day` : "no 20-day";
+      rejected.push({ ticker: r.ticker, setup, reason: `extended or not riding a rising average (${d20})` });
+      continue;
+    }
+    const [label, m] = riding;
+    const tt = s.trendTemplate ? `${s.trendTemplate.passed}/${s.trendTemplate.of}` : "?";
+    passed.push({
+      ticker: r.ticker,
+      setup,
+      score: best,
+      screenRow:
+        `up ${run1m != null ? pct(run1m) : "?"} over 1M, ${run3m != null ? pct(run3m) : "?"} over 3M` +
+        `${run6m != null ? `, ${pct(run6m)} over 6M` : ""}; ` +
+        `daily range ${adr.toFixed(1)}%; ${pct(m!.pctFromPrice)} from the rising ${label} ${$(m!.value)}; ` +
+        `Trend Template ${tt}; price ${$(s.price)}${s.atr14 ? `; ATR ${$(s.atr14.dollars)}` : ""}`,
+    });
+  }
+  passed.sort((a, b) => b.score - a.score);
+  return { passed, rejected };
+}
+
 export function runScreen(setup: ScreenSetup, rows: ScreenInput[]): ScreenResult {
   switch (setup) {
     case "PEAD":
@@ -284,5 +380,7 @@ export function runScreen(setup: ScreenSetup, rows: ScreenInput[]): ScreenResult
       return screenPullback(rows);
     case "BASE_BREAKOUT":
       return screenBaseBreakout(rows);
+    case "MOMENTUM_FLAG":
+      return screenMomentum(rows);
   }
 }

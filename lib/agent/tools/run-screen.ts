@@ -35,6 +35,22 @@ export const POOL_CAP = 40;
 /** Penny names never pass a seat's liquidity floor. */
 const PRICE_FLOOR = 5;
 
+/**
+ * 1-, 3- and 6-month returns from the closes we already have, measured the
+ * same way the 5D/20D triggers measure: N sessions back to the last close.
+ * Fewer sessions than the window → null, never a number measured off the
+ * stock's first day of trading.
+ */
+function trailingFromCloses(closes: number[], price: number | null) {
+  const last = price ?? closes[closes.length - 1] ?? null;
+  if (last == null || !(last > 0)) return null;
+  const at = (sessions: number) => {
+    const base = closes[closes.length - 1 - sessions];
+    return base != null && base > 0 ? ((last - base) / base) * 100 : null;
+  };
+  return { move1m: at(21), move3m: at(63), move6m: at(126) };
+}
+
 export const runScreenTool = defineTool({
   description:
     "A computed candidate list for one setup, with the numbers — how the analysts find stocks. " +
@@ -42,10 +58,11 @@ export const runScreenTool = defineTool({
     "`\"EPISODIC_PIVOT\"`: gapped up 8%+ on 3×+ volume in the last 10 sessions and held. " +
     "`\"MA_PULLBACK\"`: an uptrend beating SPY over 3 months, within 3% of its rising 20- or 50-day on light volume. " +
     "`\"BASE_BREAKOUT\"`: Trend Template, a tight base under a clear pivot. " +
+    "`\"MOMENTUM_FLAG\"`: already up 30%+ over a month or a quarter, still in an uptrend, wide daily range, resting on a rising average — the leader that has been climbing for weeks rather than the stock that moved today. " +
     "The pool is the calendar (earnings setups) or today's movers (chart setups), minus names already covered; `scope: \"book\"` screens your own watchlist and holdings instead. " +
     "Each candidate row carries its `screenRow` — pass it with `setup_id` into dispatch_thesis_research. Every name that failed is listed with the reason.",
   schema: z.object({
-    setup: z.enum(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK", "BASE_BREAKOUT"]),
+    setup: z.enum(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK", "BASE_BREAKOUT", "MOMENTUM_FLAG"]),
     scope: z
       .enum(["universe", "book"])
       .optional()
@@ -96,6 +113,15 @@ export const runScreenTool = defineTool({
         seen.add(t);
         pool.push({ ticker: t });
       }
+      if (setup === "MOMENTUM_FLAG" && scope !== "book") {
+        // The honest limit of this pool (DAV-287). Today's movers only
+        // contain a leader on the day it happens to move; a stock up 200%
+        // over a month that is quiet today cannot appear here. The ranked
+        // universe that fixes it is the Signals lane's half of the ticket.
+        notes.push(
+          "Pool: today's movers, so this finds leaders that are ALSO moving today. A leader resting quietly is not in this pool yet — the ranked universe is still to be built. Screening `scope:\"book\"` covers names you already watch.",
+        );
+      }
     }
 
     // ── The fence ────────────────────────────────────────────────────────
@@ -116,8 +142,10 @@ export const runScreenTool = defineTool({
     const inputs: ScreenInput[] = await Promise.all(
       pool.map(async (p) => {
         let structure: PriceStructure | null = null;
+        let closes: number[] = [];
         try {
           const own = await getDailyBars(p.ticker, CHART_SESSIONS, creds, now);
+          closes = own.bars.map((b) => b.close);
           structure = computePriceStructure({ bars: own.bars, price: null, spyBars: spy });
         } catch {
           structure = null;
@@ -127,6 +155,10 @@ export const runScreenTool = defineTool({
           structure,
           report: p.report ?? null,
           daysSinceReport: p.report ? -daysUntilReport(p.report, now) : null,
+          // The run, from the bars already fetched for the chart — no extra
+          // calls. The momentum screen ranks on these (DAV-287); every other
+          // screen ignores them.
+          trailing: trailingFromCloses(closes, structure?.price ?? null),
         };
       }),
     );
