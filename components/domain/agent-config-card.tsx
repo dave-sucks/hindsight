@@ -24,6 +24,8 @@ export type AgentConfigData = {
   analystPrompt: string;
   directionBias?: "LONG" | "SHORT" | "BOTH";
   holdDurations?: string[];
+  /** The setups this analyst runs (DAV-280); the first is its signature setup. */
+  setupIds?: string[];
   sectors?: string[];
   // ── Universe (B1) — mirror of AgentConfig shape ───────────────────
   industries?: string[];
@@ -90,6 +92,7 @@ export function AgentConfigCard({
   analystPrompt,
   directionBias = "BOTH",
   holdDurations = [],
+  setupIds = [],
   sectors = [],
   industries = [],
   themes = [],
@@ -166,7 +169,8 @@ export function AgentConfigCard({
           mono
         />
         <InfoRow label="Max Positions" value={String(maxOpenPositions)} mono />
-        <InfoRow label="Hold Duration" value={holdDurations.join(", ") || "—"} border={false} />
+        <InfoRow label="Hold Duration" value={holdDurations.join(", ") || "—"} />
+        <InfoRow label="Setups" value={setupIds.length ? setupIds.join(", ") : "Whole playbook"} border={false} />
       </div>
 
       {/* ── Universe (sectors / industries / themes / market cap) ────────── */}

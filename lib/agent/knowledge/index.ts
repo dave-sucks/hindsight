@@ -54,7 +54,7 @@ export {
 
 export {
   SETUPS,
-  SEAT_SETUPS,
+  setupsForAnalyst,
   getSetup,
   setupIndex,
   describeTemplate,

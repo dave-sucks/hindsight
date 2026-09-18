@@ -10,7 +10,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import {
   DELETED_KINDS,
   PLACEHOLDERS,
-  SEAT_SETUPS,
+  setupsForAnalyst,
   SETUPS,
   SETUP_IDS,
   describeTemplate,
@@ -115,12 +115,10 @@ describe("the setup catalog", () => {
     for (const s of SETUPS.filter((x) => x.id !== "PRE_CATALYST")) expect(s.riskMultiplier).toBe(1);
   });
 
-  it("the seat map is DAV-245 ruling 3, exactly", () => {
-    expect(SEAT_SETUPS).toEqual({
-      "PEAD Specialist": ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"],
-      "Secular Compounder": ["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"],
-      "Catalyst Event PM": ["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"],
-    });
+  it("an analyst's setups are its own setting, in its order; none chosen = the whole catalog; an unknown id is ignored (DAV-280)", () => {
+    expect(setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]).map((s) => s.id)).toEqual(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]);
+    expect(setupsForAnalyst([]).map((s) => s.id)).toEqual(SETUPS.map((s) => s.id));
+    expect(setupsForAnalyst(["GONE", "PRE_CATALYST"]).map((s) => s.id)).toEqual(["PRE_CATALYST"]);
   });
 
   it("describes a template in one line", () => {

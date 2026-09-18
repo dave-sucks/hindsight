@@ -49,7 +49,7 @@ jest.mock("@/lib/agent/tools/update-thesis", () => ({
   updateThesis: jest.fn(),
 }));
 
-import { setupsForSeat } from "@/lib/agent/knowledge/setups";
+import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import {
   buildWriterResearchPrompt,
   runThesisWriterAgent,
@@ -435,7 +435,7 @@ describe("buildWriterResearchPrompt — setup first (DAV-249)", () => {
     mode: "mint",
     existingThesis: null,
     analystName: "PEAD Specialist",
-    setups: setupsForSeat("PEAD Specialist"),
+    setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
   });
 
   it("lists the seat's setups with their entry, stop and target rules", () => {
@@ -452,7 +452,7 @@ describe("buildWriterResearchPrompt — setup first (DAV-249)", () => {
     expect(prompt).not.toContain("MSFT go $418 → $497");
   });
 
-  it("a renamed seat still gets setups, never none", () => {
-    expect(setupsForSeat("Some New Seat").length).toBeGreaterThan(0);
+  it("an analyst with no setups chosen still gets setups, never none", () => {
+    expect(setupsForAnalyst([]).length).toBeGreaterThan(0);
   });
 });

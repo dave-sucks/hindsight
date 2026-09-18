@@ -39,6 +39,7 @@ const GROUPS: Record<GroupId, { label: string; fields: FieldSpec[] }> = {
     fields: [
       { key: "directionBias", label: "Direction" },
       { key: "holdDurations", label: "Hold Duration" },
+      { key: "setupIds", label: "Setups" },
       { key: "minConfidence", label: "Min Confidence" },
       { key: "maxPositionSize", label: "Max Position Size" },
       { key: "maxOpenPositions", label: "Max Positions" },

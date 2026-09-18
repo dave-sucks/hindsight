@@ -2,23 +2,21 @@
  * seat-rules.ts — each seat's standing rules, from the playbook (DAV-280,
  * stage 8 of the rebuild).
  *
- * The rules a seat's analyst carries on its Triggers tab, derived from the
- * setups that seat runs (SEAT_SETUPS) and the playbook's E5 (the trail),
- * E6 (the time limit) and Part F (selling). A new analyst starts with
- * these instead of a blank tab; an existing one can be re-seeded from
- * them, shown as a diff first. Nothing here stamps onto a stock — this is
+ * The rules an analyst carries on its Triggers tab, from its signature
+ * setup — the first of `AgentConfig.setupIds` — and the playbook's E5 (the
+ * trail), E6 (the time limit) and Part F (selling), as ruled on DAV-279
+ * (2026-09-17). A new analyst starts with these instead of a blank tab; an
+ * existing one can be re-seeded from them, shown as a diff first. Nothing here stamps onto a stock — this is
  * the analyst level of the cascade only. The stock's own exits from its
  * setup (the partial, the beat-that-sold review, the time limit from the
  * buy) are written at the fill by lib/agent/triggers/setup-exits.ts.
  *
- * DRAFT until the sell-rules sitting with Dave (DAV-279) — that pass
- * decides what these say; DAV-273 makes the numbers editable in the app.
  * The account keeps only what every seat shares (the review clock, the
  * earnings and filing wakes, the up-7% add).
  */
 
 import type { Trigger, TriggerAction, TriggerPredicate } from "@/lib/agent/triggers/types";
-import { COMPOUNDER_CATASTROPHE_PCT, COMPOUNDER_GIVEBACK_REVIEW_PCT } from "./setups";
+import { COMPOUNDER_CATASTROPHE_PCT, COMPOUNDER_GIVEBACK_REVIEW_PCT, isNamedSetup, type SetupId } from "./setups";
 
 export interface SeatRule {
   action: TriggerAction;
@@ -65,6 +63,15 @@ const CATALYST_RULES: SeatRule[] = [
     rationale: "30 days after the event date on the thesis — the hold-through exit (T+30). If it's still held, say why.",
     cooldownDays: 30,
   },
+  {
+    // DAV-268 (Dave, 2026-09-15): FDA outcomes are usually filed as "other
+    // events" or a press release, which the account's material-tier wake
+    // treats as routine. A catalyst seat wakes on them; other seats would drown.
+    action: "REVIEW",
+    predicate: { kind: "SEC_EVENT", items: ["8.01", "7.01"] },
+    rationale: "An 'other events' or press-release filing — where FDA outcomes and trial readouts land. Read it before the market finishes pricing it.",
+    cooldownDays: 1,
+  },
 ];
 
 /** Compounder (COMPOUNDER): only a named invalidation sells; price alarms are reviews; one catastrophe line (D11, F). */
@@ -108,16 +115,23 @@ const COMPOUNDER_RULES: SeatRule[] = [
   },
 ];
 
-/** By AgentConfig.name — the same key SEAT_SETUPS uses. A seat not listed seeds nothing. */
-export const SEAT_STANDING_RULES: Record<string, SeatRule[]> = {
-  "PEAD Specialist": PEAD_RULES,
-  "Catalyst Event PM": CATALYST_RULES,
-  "Secular Compounder": COMPOUNDER_RULES,
+/** By signature setup. A setup not listed (a breakout, a pullback) carries no seat rules of its own. */
+export const SETUP_STANDING_RULES: Partial<Record<SetupId, SeatRule[]>> = {
+  PEAD: PEAD_RULES,
+  PRE_CATALYST: CATALYST_RULES,
+  COMPOUNDER_ACCUMULATION: COMPOUNDER_RULES,
 };
 
-/** The seat's rules as triggers with fresh ids, stamped DEFAULT (a template minted them). */
-export function seatStandingTriggers(seatName: string, mintId: () => string): Trigger[] {
-  return (SEAT_STANDING_RULES[seatName] ?? []).map((r) => ({
+/** The analyst's signature setup: the first of its setups. */
+export function signatureSetup(setupIds: readonly string[] | null | undefined): SetupId | null {
+  const first = (setupIds ?? []).find(isNamedSetup);
+  return first ?? null;
+}
+
+/** The analyst's rules as triggers with fresh ids, stamped DEFAULT (a template minted them). */
+export function analystStandingTriggers(setupIds: readonly string[] | null | undefined, mintId: () => string): Trigger[] {
+  const sig = signatureSetup(setupIds);
+  return ((sig && SETUP_STANDING_RULES[sig]) ?? []).map((r) => ({
     id: mintId(),
     action: r.action,
     predicate: r.predicate,

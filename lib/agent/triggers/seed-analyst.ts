@@ -13,14 +13,16 @@
 
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { seatStandingTriggers } from "@/lib/agent/knowledge/seat-rules";
+import { analystStandingTriggers, signatureSetup } from "@/lib/agent/knowledge/seat-rules";
+import { getSetup } from "@/lib/agent/knowledge/setups";
 import { parseLevelTriggers } from "./load-levels";
 import { triggerBucket } from "./bucket";
 import { predicateSentence, actionLabel } from "./format";
 import type { Trigger } from "./types";
 
 export interface ReseedDiff {
-  seatName: string;
+  /** The signature setup the template comes from, in words; null when the analyst has none with rules. */
+  setupName: string | null;
   /** The template has a rule this analyst lacks (by bucket). */
   toAdd: Trigger[];
   /** The analyst already has a rule in this bucket — kept as is, even if its number differs. */
@@ -30,8 +32,9 @@ export interface ReseedDiff {
 }
 
 /** Pure: the diff between the seat's template and what the analyst carries. */
-export function reseedDiff(seatName: string, existing: Trigger[], mintId: () => string = randomUUID): ReseedDiff {
-  const template = seatStandingTriggers(seatName, mintId);
+export function reseedDiff(setupIds: readonly string[], existing: Trigger[], mintId: () => string = randomUUID): ReseedDiff {
+  const template = analystStandingTriggers(setupIds, mintId);
+  const sig = signatureSetup(setupIds);
   const byBucket = new Map(existing.map((t) => [triggerBucket(t), t] as const));
   const templateBuckets = new Set(template.map(triggerBucket));
   const toAdd: Trigger[] = [];
@@ -42,7 +45,7 @@ export function reseedDiff(seatName: string, existing: Trigger[], mintId: () => 
     else toAdd.push(t);
   }
   const foreign = existing.filter((t) => !templateBuckets.has(triggerBucket(t)));
-  return { seatName, toAdd, present, foreign };
+  return { setupName: sig ? (getSetup(sig)?.name ?? sig) : null, toAdd, present, foreign };
 }
 
 /** One line per rule, for the dialog and the audit log. */
@@ -52,20 +55,20 @@ export function describeSeatRule(t: Trigger): string {
 
 /**
  * Seed a freshly created analyst. Writes only when the analyst has no rules
- * of its own yet and its seat has a template; a blank tab on an unknown
- * seat stays blank rather than guessing. Fail-soft: creation never fails
+ * of its own yet and its signature setup has a template; a blank tab on an
+ * analyst whose setups carry none stays blank rather than guessing. Fail-soft: creation never fails
  * because seeding did.
  */
 export async function seedAnalystTriggers(analystId: string): Promise<number> {
   try {
     const analyst = await prisma.agentConfig.findUnique({
       where: { id: analystId },
-      select: { id: true, name: true, triggers: true },
+      select: { id: true, setupIds: true, triggers: true },
     });
     if (!analyst) return 0;
     const existing = parseLevelTriggers(analyst.triggers, `analyst=${analystId}`);
     if (existing.length > 0) return 0;
-    const seeded = seatStandingTriggers(analyst.name, randomUUID);
+    const seeded = analystStandingTriggers(analyst.setupIds, randomUUID);
     if (seeded.length === 0) return 0;
     await prisma.agentConfig.update({
       where: { id: analystId },

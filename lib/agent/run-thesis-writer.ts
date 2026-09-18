@@ -41,7 +41,7 @@
  */
 
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
-import { setupsForSeat, type Setup } from "@/lib/agent/knowledge/setups";
+import { setupsForAnalyst, type Setup } from "@/lib/agent/knowledge/setups";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { generateText, stepCountIs, tool } from "ai";
 import type { ModelMessage } from "ai";
@@ -147,6 +147,7 @@ interface WriterAnalyst {
   userId: string;
   accountId: string;
   name: string;
+  setupIds: string[];
   analystPrompt: string | null;
   sectors: string[];
   industries: string[];
@@ -167,6 +168,7 @@ async function loadWriterAnalyst(analystId: string): Promise<WriterAnalyst | nul
       userId: true,
       accountId: true,
       name: true,
+      setupIds: true,
       analystPrompt: true,
       sectors: true,
       industries: true,
@@ -305,7 +307,7 @@ export interface WriterResearchPromptOpts {
    * absent → no block.
    */
   setupRecord?: string[];
-  /** The setups this seat writes on (setupsForSeat) — the prompt lists them. */
+  /** The setups this analyst writes on (setupsForAnalyst) — the prompt lists them. */
   setups?: Setup[];
   /** P1-35: this analyst sold this ticker within the last 14 days. */
   priorExit?: {
@@ -826,7 +828,7 @@ export async function writerResearchPhase(
     }
 
     // The playbook's numbers as this account set them (DAV-273).
-    const seatSetups = setupsForSeat(analyst.name, await loadSetupOverrides(analyst.accountId));
+    const seatSetups = setupsForAnalyst(analyst.setupIds, await loadSetupOverrides(analyst.accountId));
     const systemPrompt = buildWriterResearchPrompt({
       analystName: analyst.name,
       analystPrompt: analyst.analystPrompt,
@@ -1472,7 +1474,7 @@ async function resubmitAfterRefusal(input: {
       existingStatus: existing?.status ?? null,
       currentPrice: pullOutput.pull?.currentPrice ?? null,
       existingTargetPrice: existing?.targetPrice ?? null,
-      setups: setupsForSeat(analyst.name, await loadSetupOverrides(analyst.accountId)),
+      setups: setupsForAnalyst(analyst.setupIds, await loadSetupOverrides(analyst.accountId)),
       chart: pullOutput.pull?.chart ?? null,
     },
     check: (d) =>

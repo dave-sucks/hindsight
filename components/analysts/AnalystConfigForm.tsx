@@ -60,6 +60,7 @@ import {
 import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
 import { SECTORS, INDUSTRIES } from "@/lib/universe/canonical";
 import { positionBand, positionTotalCap } from "@/lib/agent/position-sizing";
+import { setupIndex } from "@/lib/agent/knowledge/setups";
 
 // ─── Form value shape ────────────────────────────────────────────────────────
 // Canonical shape both wrappers normalize into. The form is presentation-only
@@ -120,6 +121,12 @@ export type FormValues = {
   // Schedule — ISO weekdays (1=Mon..5=Fri) the daily morning run executes on.
   // Empty = every weekday (the cron reads empty defensively as "all weekdays").
   runDaysOfWeek?: number[];
+
+  // The setups this analyst runs (DAV-280) — catalog ids, in the order
+  // chosen. The first is its signature setup: its rules seed the Triggers
+  // tab. Empty = the whole catalog. Undefined = the builder preview, which
+  // has no such row.
+  setupIds?: string[];
 
   // Notifications — owner email opt-out, live across every email path.
   emailAlerts?: boolean;
@@ -764,6 +771,21 @@ function SettingsTab({
             </Select>
           </div>
 
+          {values.setupIds !== undefined && (
+            <>
+              <RowLabel
+                label="Setups"
+                tooltip="The playbook patterns this analyst may write a plan on. The first one chosen is its signature setup: its sell rules seed the Triggers tab. None chosen = the whole playbook."
+              />
+              <div className="justify-self-end">
+                <SetupsControl
+                  value={values.setupIds}
+                  onChange={(next) => onChange("setupIds", next)}
+                />
+              </div>
+            </>
+          )}
+
           {values.runDaysOfWeek !== undefined && (
             <>
               <RowLabel
@@ -1103,6 +1125,41 @@ function RunDaysControl({
             onCheckedChange={(checked) => toggle(day.iso, checked === true)}
           >
             {day.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// ─── Setups (DAV-280) ────────────────────────────────────────────────────────
+// The same checkbox menu as the run days. Order is the order chosen: the
+// first setup is the analyst's signature, whose rules seed its Triggers tab.
+const SETUP_CHOICES = setupIndex();
+
+function SetupsControl({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
+  const chosen = value.filter((id) => SETUP_CHOICES.some((s) => s.id === id));
+  const summary =
+    chosen.length === 0
+      ? "Whole playbook"
+      : chosen.map((id) => SETUP_CHOICES.find((s) => s.id === id)?.code ?? id).join(", ");
+  const toggle = (id: string, checked: boolean) => {
+    onChange(checked ? [...chosen.filter((x) => x !== id), id] : chosen.filter((x) => x !== id));
+  };
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="sm">
+            {summary}
+            <ChevronDownIcon className="text-muted-foreground" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="end">
+        {SETUP_CHOICES.map((s) => (
+          <DropdownMenuCheckboxItem key={s.id} checked={chosen.includes(s.id)} onCheckedChange={(checked) => toggle(s.id, checked === true)}>
+            {s.code} · {s.name}
           </DropdownMenuCheckboxItem>
         ))}
       </DropdownMenuContent>

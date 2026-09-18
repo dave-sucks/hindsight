@@ -27,17 +27,17 @@ async function load(level: string, ownerId: string) {
   if (level !== "analyst") return { error: new Response("Re-seeding is for analysts", { status: 404 }) };
   const analyst = await prisma.agentConfig.findUnique({
     where: { id: ownerId },
-    select: { id: true, name: true, accountId: true, triggers: true },
+    select: { id: true, name: true, setupIds: true, accountId: true, triggers: true },
   });
   if (!analyst) return { error: new Response("Not found", { status: 404 }) };
   if (analyst.accountId !== accountId) return { error: new Response("Forbidden", { status: 403 }) };
   const existing = parseLevelTriggers(analyst.triggers, `analyst=${ownerId}`);
-  return { user, accountId, analyst, diff: reseedDiff(analyst.name, existing) };
+  return { user, accountId, analyst, diff: reseedDiff(analyst.setupIds, existing) };
 }
 
 function shape(diff: ReturnType<typeof reseedDiff>) {
   return {
-    seatName: diff.seatName,
+    setupName: diff.setupName,
     known: diff.toAdd.length + diff.present.length > 0,
     toAdd: diff.toAdd.map((t) => ({ id: t.id, text: describeSeatRule(t), rationale: t.rationale })),
     present: diff.present.map((p) => ({ text: describeSeatRule(p.existing) })),

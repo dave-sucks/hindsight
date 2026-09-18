@@ -5,7 +5,7 @@
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { applySetupOverride, parseSetupOverrides, setupNumbers } from "./setup-overrides";
-import { getSetup, setupsForSeat } from "./setups";
+import { getSetup, setupsForAnalyst } from "./setups";
 import { setupExitTriggers } from "@/lib/agent/triggers/setup-exits";
 import { validateThesisDecision } from "@/lib/agent/thesis-research/decision";
 
@@ -35,9 +35,9 @@ describe("applySetupOverride", () => {
       conviction: "MEDIUM" as const, conviction_rationale: "Honest middle; the guide raise is real and the stop is under structure.",
     };
     const chart = { atr14: 5.5, pivot: null, brokenOut: null, daysSinceReport: 2 };
-    const asWritten = validateThesisDecision(decision, { mode: "mint", setups: setupsForSeat("PEAD Specialist"), chart });
+    const asWritten = validateThesisDecision(decision, { mode: "mint", setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]), chart });
     expect(asWritten.errors.some((e) => e.includes("caps the stop at 8%"))).toBe(true);
-    const widened = validateThesisDecision(decision, { mode: "mint", setups: setupsForSeat("PEAD Specialist", { PEAD: { stopMaxPct: 12 } }), chart });
+    const widened = validateThesisDecision(decision, { mode: "mint", setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"], { PEAD: { stopMaxPct: 12 } }), chart });
     expect(widened.errors).toEqual([]);
   });
   it("null clears a cap; a malformed row is dropped, the rest kept", () => {

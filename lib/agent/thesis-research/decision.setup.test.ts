@@ -12,9 +12,9 @@
  */
 
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
-import { setupsForSeat } from "@/lib/agent/knowledge/setups";
+import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 
-const PEAD_SEAT = setupsForSeat("PEAD Specialist");
+const PEAD_SEAT = setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]);
 const DOCU_CHART = { atr14: 2.94, pivot: null, brokenOut: null };
 
 const docu: ThesisDecisionInput = {
@@ -63,7 +63,7 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
 
   it("a setup this seat doesn't run is sent back with the seat's list", () => {
     const v = validateThesisDecision({ ...docu, setup_id: "BASE_BREAKOUT", stop_basis: "x".repeat(12), target_basis: "y".repeat(12) }, opts);
-    expect(v.errors[0]).toMatch(/^setup_id: BASE_BREAKOUT isn't one of this seat's setups \(EPISODIC_PIVOT, PEAD, MA_PULLBACK\)/);
+    expect(v.errors[0]).toMatch(/^setup_id: BASE_BREAKOUT isn't one of this seat's setups \(PEAD, EPISODIC_PIVOT, MA_PULLBACK\)/);
   });
 
   it("a stop inside one ordinary day's move is sent back with the numbers", () => {
@@ -88,7 +88,7 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
 describe("FIVE 2026-09-09 chart — the chase limit on a breakout", () => {
   // FIVE's base that day: pivot $263.88, not broken out (ATR $10.65).
   const chart = { atr14: 10.65, pivot: 263.88, brokenOut: false };
-  const seat = setupsForSeat("Secular Compounder");
+  const seat = setupsForAnalyst(["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"]);
   const breakout = {
     ...docu,
     horizon: "TARGET" as const,

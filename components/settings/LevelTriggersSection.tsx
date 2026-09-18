@@ -35,7 +35,7 @@ import {
 import type { Trigger } from "@/lib/types/thesis-sheet";
 
 interface ReseedDiffResponse {
-  seatName: string;
+  setupName: string | null;
   known: boolean;
   toAdd: Array<{ id: string; text: string; rationale: string }>;
   present: Array<{ text: string }>;
@@ -43,7 +43,7 @@ interface ReseedDiffResponse {
 }
 
 /**
- * Re-seed an analyst's rules from its seat's playbook template (DAV-280):
+ * Re-seed an analyst's rules from its signature setup's playbook template (DAV-280):
  * shows what would be added, what is already there, and what the template
  * doesn't know (kept), then adds only the missing ones.
  */
@@ -96,7 +96,7 @@ function ReseedDialog({ endpointBase, onChanged }: { endpointBase: string; onCha
         {err ? <p className="text-xs text-destructive">{err}</p> : null}
         {!diff && !err ? <p className="text-xs text-muted-foreground">Reading the seat&apos;s rules…</p> : null}
         {diff && !diff.known ? (
-          <p className="text-xs text-muted-foreground">No playbook template for this seat yet. Its rules are what you set here.</p>
+          <p className="text-xs text-muted-foreground">{diff.setupName ? `The playbook has no seat rules for ${diff.setupName} yet. This analyst's rules are what you set here.` : "This analyst has no setups chosen, so there is no template to seed from. Choose its setups on the analyst page first."}</p>
         ) : null}
         {diff?.known ? (
           <div className="space-y-3 text-sm">
