@@ -288,9 +288,15 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
       ) {
         continue;
       }
+      // Only the review CLOCK is opt-in on a watch. A day count from the
+      // thesis's event date ("review 10 days before the FDA decision") is
+      // an event wake, and a watched stock is exactly where it matters
+      // (DAV-290: MIRM, 8 days from its date, never woke). A count from the
+      // buy is false with no position, so it is harmless either way.
       if (
         dropInheritedCadence &&
         t.predicate.kind === "REVIEW_CADENCE" &&
+        (t.predicate.from ?? "LAST_REVIEW") === "LAST_REVIEW" &&
         level !== "THESIS"
       ) {
         continue;
