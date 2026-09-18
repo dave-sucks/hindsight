@@ -35,6 +35,7 @@ import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { getAccount, getOrder, getLatestPrice, closePositionPartial, placeMarketOrder } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { addPositionValue, addShareCount } from "@/lib/agent/tools/add-sizing";
 import { isExcluded } from "@/lib/agent/universe";
 import type { ToolUIItem } from "@/lib/agent/tool-result";
 import {
@@ -678,14 +679,25 @@ export const managePosition = defineTool({
             }
           }
 
+          // What the shares will actually cost: today's price, not the price
+          // we paid. On the approval path the order's share count is what
+          // Alpaca is sent, so sizing an add off the entry-era average cost
+          // spends more than asked on exactly the positions worth adding to
+          // — a winner up 25% would buy 25% more stock than the dollar
+          // figure on the approval card. Falls back to the average cost when
+          // the quote fails, which is the old behaviour and no worse.
+          const addPrice = await getLatestPrice(ticker, creds).catch(() => null);
+          const sizingPrice = addPrice != null && addPrice > 0 ? addPrice : position.avgCost;
+
           // ── Most in one stock (the analyst's third sizing setting) ─────
           // A held winner may grow, by adding, to the analyst's "most in one
           // stock" — a number the principal sets, not a hidden multiple.
+          // Valued at today's price, like the add itself.
           const totalCap = positionTotalCap({
             maxPositionSize: ctx.maxPositionSize,
             maxPositionTotal: ctx.maxPositionTotal,
           });
-          const currentValue = position.avgCost * position.quantity;
+          const currentValue = addPositionValue(position.quantity, sizingPrice);
           if (currentValue + notional > totalCap) {
             return {
               summary: `Add would exceed the most this analyst may hold in one stock`,
@@ -701,8 +713,9 @@ export const managePosition = defineTool({
           const idempotencyKey = randomUUID();
           const placedAt = new Date();
           const addSide: "buy" | "sell" = position.direction === "LONG" ? "buy" : "sell";
-          // Approximate share count for the PENDING row; corrected to real fill qty below.
-          const approxQty = Math.max(1, Math.floor(notional / position.avgCost));
+          // The share count the approval path actually submits, so it is
+          // sized at what the shares cost today.
+          const approxQty = addShareCount(notional, addPrice, position.avgCost);
 
           // 1. DB tx — create PENDING order, do not mutate Position yet.
           const order = await prisma.order.create({
