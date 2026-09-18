@@ -43,6 +43,7 @@ import {
 } from "@/lib/agent/resolved-thesis";
 import { entryRaisesAway, type EntryRaiseAway } from "@/lib/agent/entry-raises";
 import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
+import { buyBlockedByFull, type AnalystCapacity, type BuyBlockedByFull } from "@/lib/agent/capacity";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { isLadderEditUpdate } from "@/lib/agent/ladder-health";
 import {
@@ -995,9 +996,44 @@ export const getTheses = defineTool({
       "STALE_PAST_CATALYST",
       "PROMOTED_DECIDE_TODAY",
     ]);
+    // ── Two inputs the run wasn't getting (DAV-292, DAV-286) ────────────
+    // (1) A held or priced watched stock with no setup named. The ask rode
+    //     only on full rows, and a quiet stock is a one-line index entry —
+    //     so on 2026-09-18 the PEAD run saw its held names as "all quiet"
+    //     and MU, IOT and NVDA stayed unnamed. Naming it (or NONE) clears it.
+    // (2) A buy that fired into a full analyst. Read off the rows already
+    //     loaded — no extra query. Skipped on a ticker-filtered read, where
+    //     the held list is partial.
+    const tickerFiltered = !!(args.tickers && args.tickers.length > 0);
+    const heldTickers = theses.filter((t) => t.status === "HOLDING").map((t) => t.ticker);
+    const capacity: AnalystCapacity | null =
+      !tickerFiltered && ctx.maxOpenPositions != null
+        ? { open: heldTickers.length, max: ctx.maxOpenPositions, held: heldTickers }
+        : null;
+    const blockedByThesisId = new Map<string, BuyBlockedByFull>();
+    for (const t of theses) {
+      const own = Array.isArray(t.triggers) ? (t.triggers as unknown as Array<{ action?: string; lastFiredAt?: string }>) : [];
+      const na = needsActionByThesisId.get(t.id) ?? null;
+      const blocked = buyBlockedByFull(
+        {
+          ticker: t.ticker,
+          status: t.status,
+          enterLastFiredAt: own.find((x) => x.action === "ENTER")?.lastFiredAt ?? null,
+          enterLiveNow: na?.kind === "TRIGGER_MATCHING_NOW" && na.action === "ENTER",
+        },
+        capacity,
+        new Date(),
+      );
+      if (blocked) blockedByThesisId.set(t.id, blocked);
+    }
+    const setupAskFor = (t: (typeof theses)[number]) =>
+      nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null);
+
     const isFullDetail = (t: (typeof theses)[number]): boolean => {
       const directive = principalDirectiveByThesisId.get(t.id);
       return (
+        setupAskFor(t) !== null ||
+        blockedByThesisId.has(t.id) ||
         detailMode === "book" ||
         priceFetchFailed ||
         t.status === "PROMOTED" ||
@@ -1077,6 +1113,9 @@ export const getTheses = defineTool({
         // No setup named yet (DAV-285): the ask and the seat's choices, so
         // the next review names one instead of never.
         nameTheSetup: nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null, setupOverrides),
+        // Its buy fired (or is live) and the analyst is full: the portfolio
+        // decision, on the row (DAV-286). Null otherwise.
+        buyBlockedByFull: blockedByThesisId.get(t.id)?.text ?? null,
         researchRun: undefined,
         // Agent must see freshness of the deep research without doing date
         // math. Horizon-tuned per STALE_DAYS_BY_HORIZON. Soft input to the

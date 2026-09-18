@@ -144,3 +144,28 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
     expect(prompt).not.toContain("Set levels like an analyst");
   });
 });
+
+// DAV-292 — the tactical run reads how full the analyst is before it
+// researches. Replay: ETN, Secular Compounder, 2026-09-18 09:45 ET — the run
+// confirmed the buy by its setup, called place_trade, and only then learned
+// the analyst held 4 of 4.
+describe("buildTacticalSystemPrompt — the analyst's room on a buy fire", () => {
+  const thesis = { ...makeArgs().thesis, ticker: "ETN", setupId: "COMPOUNDER_ACCUMULATION" };
+  it("a full analyst: says so first, and the run is one update — no research, no place_trade", () => {
+    const prompt = buildTacticalSystemPrompt(makeArgs({ thesis, capacity: { open: 4, max: 4, held: ["ABT", "ASML", "CEG", "WST"] } }));
+    expect(prompt).toContain("THE ANALYST'S ROOM");
+    expect(prompt).toContain("Positions: 4 of 4 — this analyst is FULL.");
+    expect(prompt).toContain("READ THIS BEFORE YOU RESEARCH.");
+    expect(prompt).toContain('rationale starting "Buy fired into a full analyst (4 of 4)"');
+    expect(prompt).toContain("the weakest of $ABT, $ASML, $CEG, $WST");
+    expect(prompt.indexOf("THE ANALYST'S ROOM")).toBeLessThan(prompt.indexOf("THE SETUP THIS PLAN WAS WRITTEN ON"));
+  });
+  it("an analyst with room: the line only", () => {
+    const prompt = buildTacticalSystemPrompt(makeArgs({ thesis, capacity: { open: 4, max: 6, held: ["FIVE", "IOT", "MU", "NVDA"] } }));
+    expect(prompt).toContain("Positions: 4 of 6 — 2 free.");
+    expect(prompt).not.toContain("READ THIS BEFORE YOU RESEARCH.");
+  });
+  it("not a buy fire: no room block at all", () => {
+    expect(buildTacticalSystemPrompt(makeArgs({ thesis }))).not.toContain("THE ANALYST'S ROOM");
+  });
+});
