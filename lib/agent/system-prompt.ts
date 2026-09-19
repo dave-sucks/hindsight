@@ -183,10 +183,14 @@ export function buildDailyRunSystemPromptV2(
     // How full this analyst is (DAV-292). The Compounder held 4 of 4 on
     // 2026-09-18 with seven priced buy plans it could not buy, and nothing
     // said so until place_trade refused ETN.
+    // Counted the way place_trade counts: held positions PLUS buys awaiting
+    // approval, which have already taken their slot.
+    const queued = runInput.analyst?.pendingApprovalCount ?? 0;
     const capacity = {
-      open: runInput.portfolio?.positions?.length ?? 0,
+      open: (runInput.portfolio?.positions?.length ?? 0) + queued,
       max: config.maxOpenPositions ?? null,
       held: (runInput.portfolio?.positions ?? []).map((p) => p.symbol),
+      awaitingApproval: queued,
     };
     const room = capacityLine(capacity);
     sections.push(

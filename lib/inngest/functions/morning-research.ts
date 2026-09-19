@@ -17,6 +17,50 @@ import {
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
 
+/**
+ * The analyst's row as the daily-run prompt wants it.
+ *
+ * Exported and pure so the one thing that goes wrong here is testable. This
+ * used to pass `slotsRemaining` in `maxOpenPositions` ("Use remaining slots,
+ * not max") — harmless while nothing did arithmetic with it, then DAV-292's
+ * book line read it as the limit against the real open count and told a
+ * half-full analyst it was full. A test on the prompt alone passes with that
+ * bug restored, because the prompt was always handed a number by this name;
+ * the fault was here. The prompt states the room itself and the tools own
+ * the cap, so the prompt gets the LIMIT.
+ */
+export function promptConfigFromAnalyst(
+  config: {
+    name: string;
+    analystPrompt: string | null;
+    directionBias: string;
+    holdDurations: string[];
+    sectors: string[];
+    signalTypes: string[];
+    minConfidence: number;
+    minPositionSize: unknown;
+    maxPositionSize: unknown;
+    maxOpenPositions: number;
+    exclusionList: string[];
+  },
+  watchlistSymbols: string[],
+) {
+  return {
+    name: config.name,
+    analystPrompt: config.analystPrompt ?? undefined,
+    directionBias: config.directionBias,
+    holdDurations: config.holdDurations,
+    sectors: config.sectors,
+    signalTypes: config.signalTypes,
+    minConfidence: config.minConfidence,
+    minPositionSize: Number(config.minPositionSize),
+    maxPositionSize: Number(config.maxPositionSize),
+    maxOpenPositions: config.maxOpenPositions,
+    watchlist: watchlistSymbols,
+    exclusionList: config.exclusionList,
+  };
+}
+
 export const morningResearch = inngest.createFunction(
   {
     id: "morning-research",
@@ -155,9 +199,12 @@ export const morningResearch = inngest.createFunction(
             status: "OPEN",
           },
         });
-        const slotsRemaining = Math.max(0, config.maxOpenPositions - openCount);
-        // Never skip the run — the agent should always research.
-        // slotsRemaining=0 just means it won't place new trades.
+        // Never skip the run — the agent should always research. A full
+        // analyst still reviews its book; it just cannot open a new
+        // position, which the prompt states in words and the tools enforce.
+        console.log(
+          `[morning-research] ${config.name}: ${openCount} of ${config.maxOpenPositions} positions open`,
+        );
 
         // Watchlist = WATCHING theses for this analyst (post-collapse).
         const watchlistSymbols = await getWatchlistSymbols(config.id);
@@ -192,20 +239,7 @@ export const morningResearch = inngest.createFunction(
         console.log(`[morning-research] Starting agent run for ${config.name} (config=${config.id}, run=${run.id})`);
 
         // 2c. Build system prompt with structured run input
-        const agentConfig = {
-          name: config.name,
-          analystPrompt: config.analystPrompt ?? undefined,
-          directionBias: config.directionBias,
-          holdDurations: config.holdDurations,
-          sectors: config.sectors,
-          signalTypes: config.signalTypes,
-          minConfidence: config.minConfidence,
-          minPositionSize: Number(config.minPositionSize),
-          maxPositionSize: Number(config.maxPositionSize),
-          maxOpenPositions: slotsRemaining, // Use remaining slots, not max
-          watchlist: watchlistSymbols,
-          exclusionList: config.exclusionList,
-        };
+        const agentConfig = promptConfigFromAnalyst(config, watchlistSymbols);
 
         // Resolve per-user Alpaca credentials for this analyst's owner,
         // scoped to the run's environment (PAPER vs LIVE).

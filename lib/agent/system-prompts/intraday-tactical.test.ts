@@ -169,3 +169,15 @@ describe("buildTacticalSystemPrompt — the analyst's room on a buy fire", () =>
     expect(buildTacticalSystemPrompt(makeArgs({ thesis }))).not.toContain("THE ANALYST'S ROOM");
   });
 });
+
+// The capacity block is for a fire that would OPEN a position. Adding to a
+// stock the analyst already holds takes no slot (caught 2026-09-18).
+describe("buildTacticalSystemPrompt — a full analyst can still add to what it owns", () => {
+  it("says OPEN a new position, not any buy", () => {
+    const prompt = buildTacticalSystemPrompt(
+      makeArgs({ thesis: { ...makeArgs().thesis, ticker: "ETN" }, capacity: { open: 4, max: 4, held: ["ABT", "ASML", "CEG", "WST"] } }),
+    );
+    expect(prompt).toContain("cannot OPEN a new position");
+    expect(prompt).toContain("Adding to a stock it already holds is not capped");
+  });
+});
