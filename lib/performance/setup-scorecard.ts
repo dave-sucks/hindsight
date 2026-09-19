@@ -23,6 +23,8 @@ export interface ClosedTrade {
   realizedPnl?: number | null;
   /** "TARGET" | "STOP" | "TIME" | "MANUAL" | a thesis reason. */
   closeReason?: string | null;
+  /** The position was trimmed before its final close, so realizedPnl is only the last leg. */
+  trimmed?: boolean;
   setupId: string | null;
   horizon: string | null;
   analyst: string;

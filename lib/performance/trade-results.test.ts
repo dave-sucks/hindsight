@@ -93,3 +93,31 @@ describe("the closed book, 2026-09-18", () => {
     expect(line.r).toBe(2); // $5 of risk, $10 of move
   });
 });
+
+// QB review 2026-09-19 — three things this answer must not do.
+describe("the numbers cannot disagree with themselves", () => {
+  it("R comes from the one shared function, so the headline matches the per-setup line", () => {
+    const r = buildTradeResults(BOOK);
+    const pead = r.bySetup.find((s) => s.trades === 4);
+    // Both sides read lib/performance/setup-scorecard's tradeR.
+    expect(r.avgR).toBe(3.7);
+    expect(pead?.avgR).toBe(3.7);
+  });
+
+  it("a trimmed trade's dollars are named as the closing leg only, never summed silently", () => {
+    const trimmed = BOOK.map((t, i) => (i < 2 ? { ...t, trimmed: true } : t));
+    const r = buildTradeResults(trimmed);
+    expect(r.trimmedTrades).toBe(2);
+    const h = resultsHeadline(r, "since 2026-05-27", "PAPER");
+    expect(h).toContain("The dollars are the closing leg only: 2 of these were trimmed first");
+  });
+
+  it("with no trims the caveat is absent", () => {
+    expect(resultsHeadline(buildTradeResults(BOOK), "since 2026-05-27", "PAPER")).not.toContain("closing leg only");
+  });
+
+  it("the book is always said, and an empty window says it too", () => {
+    expect(resultsHeadline(buildTradeResults(BOOK), "since 2026-05-27", "PAPER")).toContain("on the paper book");
+    expect(resultsHeadline(buildTradeResults([]), "in the last 7 days", "LIVE")).toBe("No closed trades in the last 7 days on the live book.");
+  });
+});

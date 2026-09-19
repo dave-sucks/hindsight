@@ -10,7 +10,7 @@
  * costume, so this module never claims to.
  */
 
-import { buildScorecard, setupName, type ClosedTrade } from "./setup-scorecard";
+import { buildScorecard, setupName, tradeR, type ClosedTrade } from "./setup-scorecard";
 
 export interface TradeLine {
   symbol: string;
@@ -39,6 +39,12 @@ export interface TradeResults {
   realizedPnl: number | null;
   /** How many trades carried a realized figure — the sum means nothing without it. */
   realizedTrades: number;
+  /**
+   * Trades that were trimmed before the final close. `Position.realizedPnl`
+   * records only the closing leg, so the dollars above understate those by
+   * whatever the trims banked. Named rather than silently dropped.
+   */
+  trimmedTrades: number;
   bySetup: Array<{ setup: string; trades: number; winRatePct: number; avgR: number | null; avgHoldDays: number; avgGiveBackPts: number | null }>;
   byAnalyst: Array<{ analyst: string; trades: number; winRatePct: number; avgR: number | null }>;
   recent: TradeLine[];
@@ -47,12 +53,13 @@ export interface TradeResults {
 const gainPct = (t: ClosedTrade) =>
   t.direction === "SHORT" ? ((t.entry - t.close) / t.entry) * 100 : ((t.close - t.entry) / t.entry) * 100;
 
+// R is computed in exactly one place — lib/performance/setup-scorecard's
+// tradeR, the same function the /performance page and the scorecard use. A
+// second implementation here meant the headline and the per-setup line could
+// disagree inside one answer (QB review, 2026-09-19).
 const rOf = (t: ClosedTrade): number | null => {
-  if (t.initialStop == null || !(t.initialStop > 0)) return null;
-  const risk = Math.abs(t.entry - t.initialStop);
-  if (!(risk > 0)) return null;
-  const move = t.direction === "SHORT" ? t.entry - t.close : t.close - t.entry;
-  return Math.round((move / risk) * 10) / 10;
+  const r = tradeR(t);
+  return r == null ? null : Math.round(r * 10) / 10;
 };
 
 const days = (t: ClosedTrade) =>
@@ -93,6 +100,7 @@ export function buildTradeResults(trades: ClosedTrade[], recentLimit = 10): Trad
     avgHoldDays: trades.length ? Math.round(mean(trades.map(days)) as number) : 0,
     realizedPnl: withPnl.length ? Math.round(withPnl.reduce((a, t) => a + (t.realizedPnl as number), 0) * 100) / 100 : null,
     realizedTrades: withPnl.length,
+    trimmedTrades: trades.filter((t) => t.trimmed).length,
     // The same builder the /performance page uses, so the chat and the page
     // can never disagree about a win rate.
     bySetup: buildScorecard(trades.map((t) => ({ ...t, horizon: null, analyst: "", environment: "" })))
@@ -117,11 +125,12 @@ export function buildTradeResults(trades: ClosedTrade[], recentLimit = 10): Trad
   };
 }
 
-/** The headline, in one sentence. */
-export function resultsHeadline(r: TradeResults, windowLabel: string): string {
-  if (r.trades === 0) return `No closed trades ${windowLabel}.`;
+/** The headline, in one sentence. `book` is PAPER or LIVE — never left unsaid. */
+export function resultsHeadline(r: TradeResults, windowLabel: string, book?: string | null): string {
+  const scope = book ? ` on the ${book.toLowerCase()} book` : "";
+  if (r.trades === 0) return `No closed trades ${windowLabel}${scope}.`;
   const parts = [
-    `${r.trades} closed trade${r.trades === 1 ? "" : "s"} ${windowLabel}`,
+    `${r.trades} closed trade${r.trades === 1 ? "" : "s"} ${windowLabel}${scope}`,
     `${r.winRatePct}% win (${r.wins} of ${r.trades})`,
   ];
   if (r.avgR != null) parts.push(`${r.avgR >= 0 ? "+" : ""}${r.avgR}R average over the ${r.rTrades} with a readable entry stop`);
@@ -131,5 +140,9 @@ export function resultsHeadline(r: TradeResults, windowLabel: string): string {
       `${r.realizedPnl >= 0 ? "+" : "−"}$${Math.abs(r.realizedPnl).toLocaleString(undefined, { maximumFractionDigits: 2 })} realized on the ${r.realizedTrades} the broker priced`,
     );
   }
-  return `${parts.join(" · ")}. Realized trade P&L, not the account's return.`;
+  const caveat =
+    r.trimmedTrades > 0
+      ? ` The dollars are the closing leg only: ${r.trimmedTrades} of these ${r.trimmedTrades === 1 ? "was" : "were"} trimmed first, and what those trims banked is not counted.`
+      : "";
+  return `${parts.join(" · ")}. Realized trade P&L, not the account's return.${caveat}`;
 }

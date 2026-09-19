@@ -30,7 +30,7 @@ export const readTradeResultsTool = defineTool({
     "How the closed trades actually did: win rate, average R, days held, give-back from the peak, realized dollars — " +
     "overall, by setup, by analyst, and the most recent closes one by one. " +
     "Use it for 'how have my trades done', 'how is the PEAD analyst doing', 'which setup is working', " +
-    "'what did we sell last week'. Read-only. Covers closes since 2026-05-27 (the seats were rebuilt then; " +
+    "'what did we sell last week'. Read-only. Reports the run's own book (PAPER unless the run is LIVE) and says which. Covers closes since 2026-05-27 (the seats were rebuilt then; " +
     "earlier trades ran on configs that no longer exist). Realized TRADE P&L — not the account's return, " +
     "which is measured against deposits elsewhere.",
   schema: z.object({
