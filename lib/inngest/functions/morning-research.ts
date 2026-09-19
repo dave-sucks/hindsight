@@ -17,6 +17,50 @@ import {
 
 // ─── Inngest function ─────────────────────────────────────────────────────────
 
+/**
+ * The analyst's row as the daily-run prompt wants it.
+ *
+ * Exported and pure so the one thing that goes wrong here is testable. This
+ * used to pass `slotsRemaining` in `maxOpenPositions` ("Use remaining slots,
+ * not max") — harmless while nothing did arithmetic with it, then DAV-292's
+ * book line read it as the limit against the real open count and told a
+ * half-full analyst it was full. A test on the prompt alone passes with that
+ * bug restored, because the prompt was always handed a number by this name;
+ * the fault was here. The prompt states the room itself and the tools own
+ * the cap, so the prompt gets the LIMIT.
+ */
+export function promptConfigFromAnalyst(
+  config: {
+    name: string;
+    analystPrompt: string | null;
+    directionBias: string;
+    holdDurations: string[];
+    sectors: string[];
+    signalTypes: string[];
+    minConfidence: number;
+    minPositionSize: unknown;
+    maxPositionSize: unknown;
+    maxOpenPositions: number;
+    exclusionList: string[];
+  },
+  watchlistSymbols: string[],
+) {
+  return {
+    name: config.name,
+    analystPrompt: config.analystPrompt ?? undefined,
+    directionBias: config.directionBias,
+    holdDurations: config.holdDurations,
+    sectors: config.sectors,
+    signalTypes: config.signalTypes,
+    minConfidence: config.minConfidence,
+    minPositionSize: Number(config.minPositionSize),
+    maxPositionSize: Number(config.maxPositionSize),
+    maxOpenPositions: config.maxOpenPositions,
+    watchlist: watchlistSymbols,
+    exclusionList: config.exclusionList,
+  };
+}
+
 export const morningResearch = inngest.createFunction(
   {
     id: "morning-research",
@@ -195,24 +239,7 @@ export const morningResearch = inngest.createFunction(
         console.log(`[morning-research] Starting agent run for ${config.name} (config=${config.id}, run=${run.id})`);
 
         // 2c. Build system prompt with structured run input
-        const agentConfig = {
-          name: config.name,
-          analystPrompt: config.analystPrompt ?? undefined,
-          directionBias: config.directionBias,
-          holdDurations: config.holdDurations,
-          sectors: config.sectors,
-          signalTypes: config.signalTypes,
-          minConfidence: config.minConfidence,
-          minPositionSize: Number(config.minPositionSize),
-          maxPositionSize: Number(config.maxPositionSize),
-          // The analyst's LIMIT, not what is left of it. The prompt states
-          // the room itself ("4 of 6 — 2 free") and the tools own the cap;
-          // handing it the remainder made a half-full analyst read as full
-          // and told it not to buy (DAV-292's book line, caught 2026-09-18).
-          maxOpenPositions: config.maxOpenPositions,
-          watchlist: watchlistSymbols,
-          exclusionList: config.exclusionList,
-        };
+        const agentConfig = promptConfigFromAnalyst(config, watchlistSymbols);
 
         // Resolve per-user Alpaca credentials for this analyst's owner,
         // scoped to the run's environment (PAPER vs LIVE).

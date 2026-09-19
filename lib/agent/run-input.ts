@@ -54,6 +54,8 @@ export interface RunInput {
     minPositionSize: number;
     maxPositionSize: number;
     maxOpenPositions: number;
+    /** Buys awaiting approval — they have taken their slot already (place_trade counts them). */
+    pendingApprovalCount?: number;
   };
   portfolio: {
     cash: number;
@@ -229,6 +231,18 @@ export async function buildRunInput(
   alpacaCreds?: AlpacaCredentials,
 ): Promise<RunInput> {
   // ── Analyst config (REQUIRED — fail hard if missing) ───────────────
+  // Buys awaiting approval have committed their slot — place_trade counts
+  // them (status OPEN or PENDING_APPROVAL), so the prompt must too or it
+  // promises room the tool will refuse.
+  const pendingApprovalCount = await (async () => {
+    try {
+      return await prisma.position.count({
+        where: { analystId, userId, status: "PENDING_APPROVAL" },
+      });
+    } catch {
+      return 0;
+    }
+  })();
   const config = await prisma.agentConfig.findFirst({
     where: { id: analystId, userId },
   });
@@ -886,6 +900,7 @@ export async function buildRunInput(
       minPositionSize: Number(config.minPositionSize),
       maxPositionSize: Number(config.maxPositionSize),
       maxOpenPositions: config.maxOpenPositions,
+      pendingApprovalCount,
     },
     portfolio: {
       cash,
