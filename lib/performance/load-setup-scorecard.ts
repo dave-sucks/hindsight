@@ -62,14 +62,38 @@ export async function loadClosedTrades(opts: {
       ...(opts.analystId ? { analystId: opts.analystId } : {}),
     },
     select: {
-      id: true, direction: true, avgCost: true, initialStop: true, closePrice: true, peakPrice: true,
+      id: true, symbol: true, direction: true, avgCost: true, initialStop: true, closePrice: true, peakPrice: true,
+      realizedPnl: true, closeReason: true,
       openedAt: true, closedAt: true, environment: true, analyst: { select: { name: true } },
     },
   });
   const lookup = await thesisByPosition(positions.map((p) => p.id));
+  // Which of these were trimmed before their final close. Position.realizedPnl
+  // records only the closing leg, so a trimmed trade's dollars are incomplete
+  // and must be named as such rather than quietly summed.
+  const trimmedIds = new Set(
+    positions.length
+      ? (
+          await prisma.order
+            .findMany({
+              where: {
+                positionId: { in: positions.map((p) => p.id) },
+                intent: "PARTIAL_CLOSE",
+                status: "FILLED",
+              },
+              select: { positionId: true },
+            })
+            .catch(() => [])
+        ).map((o) => o.positionId)
+      : [],
+  );
   return positions.map((p) => {
     const t = lookup(p.id);
     return {
+      symbol: p.symbol,
+      realizedPnl: p.realizedPnl,
+      closeReason: p.closeReason,
+      trimmed: trimmedIds.has(p.id),
       setupId: t.setupId,
       horizon: t.horizon,
       analyst: p.analyst.name,
