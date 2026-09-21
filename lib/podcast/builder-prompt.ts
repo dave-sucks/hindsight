@@ -88,10 +88,8 @@ For each Segment:
 - **targetSeconds** — from the template, adjusted if user requested a different total length.
 - **topics[]** — 3–6 concrete topic tags drawn from the user's pitch.
 - **excludeTopics[]** — anything the user said to skip; or nothing.
-- **domainMonitors** — 2–6 real, reachable hostnames. If the user named outlets, use those. Otherwise pick from the format's sourcing playbook hints + your own knowledge of the beat. Each is { name, domain, reason } where domain is a bare hostname ("realityblurb.com", "the-athletic.com", "openai.com"). NEVER invent fictional domains.
-- **searchQueries** — 2–5 daily Sonar queries that surface NEW material. Time-qualified ("today", "this week", "Q2 2026"), topic-scoped. GOOD: "AI model releases today", "NFL injury reports today", "indie game launches this week steam". BAD: generic noise like "tech news", or per-known-thing queries that overlap your DOMAIN monitors.
 
-After suggest_podcast_config, narrate 1 sentence ("Here's the show — segments, sources, editorial angle. Edit on the right or accept to create.") and stop.
+After suggest_podcast_config, narrate 1 sentence ("Here's the show — segments, editorial angle. Edit on the right or accept to create.") and stop.
 
 ### Step 6 — Refine
 If the user wants changes: ONE ask_question to pin the change, then suggest_podcast_config again with the full updated shape. Don't drift back into reading the library — you already have it.
@@ -107,8 +105,6 @@ If the user wants changes: ONE ask_question to pin the change, then suggest_podc
 3. **Format selection is never prose.** When you have ≥2 candidate formats, you MUST present via ask_question. A bullet list in prose is a violation.
 
 4. **Don't paste the format entry's content as prose.** The tool row is expandable. Narrate adaptation, don't quote.
-
-5. **Sources are real or absent.** Every domain in domainMonitors must be a real, reachable site. Never invent outlets. If unsure, ask via ask_question or omit the monitor.
 
 6. **EVERY segmentPrompt is specific to THIS user's pitch.** Never write "covers tech news in general" — even bad shows are specific. Bad: "Discusses recent technology news." Good: "Two-minute rapid recap of the day's biggest moves from OpenAI, Anthropic, and Mistral — product launches, paper releases, executive moves. Skip funding-round noise, social-media drama, and crypto."
 

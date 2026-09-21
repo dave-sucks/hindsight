@@ -13,7 +13,7 @@
  */
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -124,14 +124,6 @@ function SegmentCard({ segment }: { segment: SegmentSummary }) {
             <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
               ~{minutes}m
             </span>
-            {(() => {
-              const total = segment.domainMonitors.length + segment.searchMonitors.length;
-              return total > 0 ? (
-                <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
-                  {total} monitor{total === 1 ? "" : "s"}
-                </span>
-              ) : null;
-            })()}
             {!segment.enabled && (
               <Badge variant="outline" className="text-[10px]">
                 Disabled
@@ -271,15 +263,6 @@ export default function PodcastDetailClient({
   );
   const runningCount = detail.segments.filter((s) => s.activeRunId).length;
   const hasAnyRunning = runningCount > 0;
-  const monitorCount = useMemo(
-    () =>
-      detail.segments.reduce(
-        (s, seg) => s + seg.domainMonitors.length + seg.searchMonitors.length,
-        0,
-      ),
-    [detail.segments],
-  );
-
   async function handleDelete() {
     setDeleteLoading(true);
     try {
@@ -341,7 +324,6 @@ export default function PodcastDetailClient({
                 {[
                   { label: "Segments", value: String(segmentCount) },
                   { label: "Transcripts", value: String(transcriptCount) },
-                  { label: "Monitors", value: String(monitorCount) },
                 ].map(({ label, value }) => (
                   <div
                     key={label}

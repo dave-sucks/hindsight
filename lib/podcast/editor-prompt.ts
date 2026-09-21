@@ -23,8 +23,6 @@ export interface EditorCurrentSegment {
   topics: string[];
   excludeTopics: string[];
   enabled: boolean;
-  domainMonitors: Array<{ name: string; domain: string }>;
-  searchMonitors: Array<{ name: string; query: string }>;
 }
 
 export interface EditorCurrentPodcast {
@@ -122,14 +120,12 @@ Required fields, every time:
 - **podcast.name + description + hostStyle + cadence** — current values unless the user changed them. Don't silently rewrite hostStyle on a numeric tweak.
 - **segments[]** — the FULL list, in the order they should appear. Carry every existing segment that isn't being removed. Use the existing segment id field where editing an existing one. New segments have no id (or "new-N"). Each segment includes:
   - **name**, **segmentPrompt**, **targetSeconds**, **topics**, **excludeTopics**
-  - **domainMonitors[]** — { name, domain, reason }. PRESERVE existing monitors unless the user asked to remove them. Adding new ones requires real domains.
-  - **searchQueries[]** — { query, reason }. Same preserve rule. Time-qualified, topic-scoped.
 
 For each lane:
 - Lane (a): you don't call suggest_podcast_config.
 - Lane (b): preserve EVERYTHING except the specific field(s) the user changed. If they said "rename Top Stories to Hot Off The Wire", that's the ONLY field that moves.
 - Lane (c): preserve segments not affected. Reorder via segments[] array order. Insert new segments with adapted prompts (write specific prompts, not "covers tech news in general").
-- Lane (d): rewrite the segments[] array using the new format's segment templates. ADAPT each template prompt to the existing topic + perspective. Preserve the user's source list (domainMonitors) where the new format can use them; explain in your summary sentence what got dropped and why.
+- Lane (d): rewrite the segments[] array using the new format's segment templates. ADAPT each template prompt to the existing topic + perspective; explain in your summary sentence what got dropped and why.
 
 After suggest_podcast_config, narrate ONE sentence describing what changed, then stop.
 
@@ -144,8 +140,6 @@ After suggest_podcast_config, narrate ONE sentence describing what changed, then
 3. **Lane (c/d) preserves segments not asked to be removed.** Silently dropping the user's segments because you "rebalanced" is a bug. If you genuinely think a segment should go, ask_question first.
 
 4. **Lane (d) requires the format library.** read_knowledge_library topic:"podcast-format" with the new format id MUST be called before suggest_podcast_config. Do not write a new format from memory.
-
-5. **Sources are real.** Every domain in domainMonitors must be a real, reachable site. Never invent outlets. PRESERVE the user's existing outlets unless they explicitly asked to drop them.
 
 6. **NO markdown headings. NO [1] [2] citations.** Chat only. Bold for emphasis if needed.
 
