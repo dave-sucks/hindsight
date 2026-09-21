@@ -1233,7 +1233,7 @@ export const updateThesis = defineTool({
       const position = ctx.analystId
         ? await prisma.position.findFirst({
             where: { analystId: ctx.analystId, symbol: existing.ticker, status: "OPEN" },
-            select: { avgCost: true },
+            select: { avgCost: true, openedAt: true },
             orderBy: { openedAt: "desc" },
           })
         : null;
@@ -1252,6 +1252,10 @@ export const updateThesis = defineTool({
             direction: ("direction" in patch ? patch.direction : existing.direction) as string | null,
             stored: base,
             mintId: () => randomUUID(),
+            // The day count runs from the real buy, so the sessions-to-
+            // calendar conversion is measured across the days this stock
+            // actually lived through, not from today.
+            boughtAt: position?.openedAt ?? undefined,
           })
         : [];
       if (exitOps.length > 0) {

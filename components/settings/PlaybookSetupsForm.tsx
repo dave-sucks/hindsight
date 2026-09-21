@@ -25,7 +25,7 @@ const NUMBER_FIELDS: Array<{ key: keyof SetupOverride; label: string; suffix: st
   { key: "chaseLimitPct", label: "Chase limit", suffix: "%", help: "Don't buy more than this far past the level. Blank = no chase rule.", nullable: true, step: 0.5 },
   { key: "targetMinR", label: "Target floor", suffix: "R", help: "The reward-to-risk a plan must clear.", nullable: false, step: 0.5 },
   { key: "partialAtR", label: "Partial sale at", suffix: "R", help: "A buy writes a trim at this many R on the stock. Blank = none.", nullable: true, step: 0.5 },
-  { key: "timeTradingDays", label: "Time limit", suffix: "days", help: "A buy writes a review this many days after it on the stock. Blank = none.", nullable: true, step: 1 },
+  { key: "timeTradingDays", label: "Time limit", suffix: "days", help: "A buy writes a review this long after it on the stock. Blank = none.", nullable: true, step: 1 },
   { key: "riskMultiplier", label: "Risk multiplier", suffix: "×", help: "Multiplies the risk per trade (0.5 for a binary event).", nullable: false, step: 0.25 },
 ];
 
@@ -101,7 +101,10 @@ function SetupCard({ setup, canEdit, onSaved }: { setup: PlaybookSetupView; canE
         {NUMBER_FIELDS.map((f) => (
           <div key={f.key} className="space-y-1">
             <Label htmlFor={`${setup.id}-${f.key}`}>
-              {f.label} <span className="text-xs text-muted-foreground">({f.suffix})</span>
+              {f.label}{" "}
+              <span className="text-xs text-muted-foreground">
+                ({f.key === "timeTradingDays" ? (setup.timeUnit === "SESSIONS" ? "sessions" : "calendar days") : f.suffix})
+              </span>
             </Label>
             <Input
               id={`${setup.id}-${f.key}`}
