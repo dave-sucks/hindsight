@@ -56,7 +56,6 @@ import {
   type ThesisResearchSections,
   type ResearchTextSection,
   type ResearchBulletSection,
-  type ResearchCitation,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import type { StockCandle } from "@/lib/actions/finnhub.actions";
 import type { EarningsResponse, FilingsResponse } from "@/lib/types/thesis-sheet";
@@ -65,8 +64,9 @@ import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AnalystConsensusWidget,
-  ResearchCitationChip,
+  researchCitationSources,
 } from "@/components/domain/analyst-consensus";
+import { SourceCitation } from "@/components/ai-elements/inline-citation";
 import { TradeStatement, type TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { buildTradeSentence } from "@/lib/trade-statement";
@@ -1189,8 +1189,8 @@ function ResearchSectionContent({
             <li key={i} className="flex gap-2">
               <span className="text-muted-foreground select-none">•</span>
               <span className="flex-1 whitespace-pre-wrap">
-                {bulletText}
-                {citation ? <ResearchCitationChip citation={citation} /> : null}
+                {bulletText}{" "}
+                <SourceCitation sources={researchCitationSources(citation ? [citation] : [])} />
               </span>
             </li>
           );
@@ -1200,21 +1200,14 @@ function ResearchSectionContent({
   }
   return (
     <p className="whitespace-pre-wrap">
-      {section.text}
-      {section.citations && section.citations.length > 0 ? (
-        <span className="ml-1 inline-flex flex-wrap gap-1">
-          {section.citations.map((c, i) => (
-            <ResearchCitationChip key={i} citation={c} />
-          ))}
-        </span>
-      ) : null}
+      {section.text}{" "}
+      <SourceCitation sources={researchCitationSources(section.citations)} />
     </p>
   );
 }
 
-// ResearchCitationChip + AnalystConsensusWidget moved to
-// components/domain/analyst-consensus.tsx — the ONE Street-view widget shared
-// with the stock page sidebar. Imported above.
+// AnalystConsensusWidget lives in components/domain/analyst-consensus.tsx —
+// the ONE Street-view widget shared with the stock page sidebar.
 
 // ─── ThesisSheetBody ──────────────────────────────────────────────────────────
 
@@ -1676,14 +1669,8 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           /triggers is in flight. */}
       {state.snapshot ? (
         <p className="text-sm leading-relaxed whitespace-pre-wrap">
-          {state.snapshot.text}
-          {state.snapshot.citations && state.snapshot.citations.length > 0 ? (
-            <span className="ml-1 inline-flex flex-wrap gap-1">
-              {state.snapshot.citations.map((c, i) => (
-                <ResearchCitationChip key={i} citation={c} />
-              ))}
-            </span>
-          ) : null}
+          {state.snapshot.text}{" "}
+          <SourceCitation sources={researchCitationSources(state.snapshot.citations)} />
         </p>
       ) : null}
 

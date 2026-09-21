@@ -60,6 +60,13 @@ export const EXECUTING_LABEL = "Executing";
 /** Tooltip line for a row in that state. */
 export const EXECUTING_TOOLTIP = "Sent to Alpaca — waiting for the fill";
 
+/** Status-dot tooltip for a row carrying a proposal — awaiting you, or in flight. */
+export function proposalTooltip(intent: string, executing = false): string {
+  if (executing) return EXECUTING_TOOLTIP;
+  const verb = intent === "OPEN" || intent === "ADD" ? "buy" : "exit";
+  return `Pending your approval — agent proposed this ${verb}`;
+}
+
 /**
  * Which order a trade-shaped row should describe, and whether it is already
  * in flight. An unapproved proposal outranks a submitted one: if the agent

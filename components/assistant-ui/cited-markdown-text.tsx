@@ -24,21 +24,7 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { cn } from "@/lib/utils";
 import { useSources } from "@/components/assistant-ui/message-sources-context";
-import { parseMarkers } from "@/components/chat/CitedText";
-import {
-  InlineCitation,
-  InlineCitationCard,
-  InlineCitationCardTrigger,
-  InlineCitationCardBody,
-  InlineCitationCarousel,
-  InlineCitationCarouselContent,
-  InlineCitationCarouselItem,
-  InlineCitationCarouselHeader,
-  InlineCitationCarouselIndex,
-  InlineCitationCarouselPrev,
-  InlineCitationCarouselNext,
-  InlineCitationSource,
-} from "@/components/ai-elements/inline-citation";
+import { SourceCitation } from "@/components/ai-elements/inline-citation";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { TickerChip, parseTickerMentions } from "@/components/chat/TickerChip";
 
@@ -62,24 +48,21 @@ function sourceUrl(s: SourceChipData): string {
   return PROVIDER_DOMAINS[key] ?? `https://${s.provider.toLowerCase().replace(/[^a-z]/g, "")}.com`;
 }
 
-function faviconFromUrl(url: string): string | null {
-  try {
-    return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`;
-  } catch {
-    return null;
+/** Split text on [N] citation markers. */
+function parseMarkers(
+  text: string,
+): ({ type: "text"; value: string } | { type: "citation"; index: number })[] {
+  const pattern = /\[(\d+)\]/g;
+  const segments: ({ type: "text"; value: string } | { type: "citation"; index: number })[] = [];
+  let lastEnd = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastEnd) segments.push({ type: "text", value: text.slice(lastEnd, match.index) });
+    segments.push({ type: "citation", index: parseInt(match[1], 10) });
+    lastEnd = match.index + match[0].length;
   }
-}
-
-function ProviderRow({ provider, url }: { provider: string; url: string }) {
-  const favicon = faviconFromUrl(url);
-  return (
-    <span className="flex items-center gap-2 mb-1">
-      {favicon && (
-        <img src={favicon} alt="" width={16} height={16} className="size-4 shrink-0 rounded-sm" />
-      )}
-      <span className="text-xs font-medium text-muted-foreground">{provider}</span>
-    </span>
-  );
+  if (lastEnd < text.length) segments.push({ type: "text", value: text.slice(lastEnd) });
+  return segments;
 }
 
 type GroupedSeg =
@@ -133,34 +116,16 @@ function processTextNode(
           </sup>,
         );
       } else {
-        const urls = citationSources.map(sourceUrl);
         result.push(
-          <InlineCitation key={`${keyPrefix}-c${i}`}>
-            <InlineCitationCard>
-              <InlineCitationCardTrigger sources={urls} />
-              <InlineCitationCardBody>
-                <InlineCitationCarousel>
-                  <InlineCitationCarouselHeader>
-                    <InlineCitationCarouselPrev />
-                    <InlineCitationCarouselNext />
-                    <InlineCitationCarouselIndex />
-                  </InlineCitationCarouselHeader>
-                  <InlineCitationCarouselContent>
-                    {citationSources.map((s, j) => (
-                      <InlineCitationCarouselItem key={j}>
-                        <ProviderRow provider={s.provider} url={sourceUrl(s)} />
-                        <InlineCitationSource
-                          title={s.title}
-                          url={s.url}
-                          description={s.excerpt}
-                        />
-                      </InlineCitationCarouselItem>
-                    ))}
-                  </InlineCitationCarouselContent>
-                </InlineCitationCarousel>
-              </InlineCitationCardBody>
-            </InlineCitationCard>
-          </InlineCitation>,
+          <SourceCitation
+            key={`${keyPrefix}-c${i}`}
+            sources={citationSources.map((s) => ({
+              url: sourceUrl(s),
+              title: s.title,
+              provider: s.provider,
+              excerpt: s.excerpt,
+            }))}
+          />,
         );
       }
       continue;

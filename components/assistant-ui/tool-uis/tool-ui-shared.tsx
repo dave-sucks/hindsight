@@ -2,20 +2,7 @@
 
 import { createContext, useContext } from "react";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
-import {
-  InlineCitation,
-  InlineCitationCard,
-  InlineCitationCardTrigger,
-  InlineCitationCardBody,
-  InlineCitationCarousel,
-  InlineCitationCarouselContent,
-  InlineCitationCarouselItem,
-  InlineCitationCarouselHeader,
-  InlineCitationCarouselIndex,
-  InlineCitationCarouselPrev,
-  InlineCitationCarouselNext,
-  InlineCitationSource,
-} from "@/components/ai-elements/inline-citation";
+import { SourceCitation } from "@/components/ai-elements/inline-citation";
 
 // ─── Context for passing callbacks into tool UIs ────────────────────────────
 
@@ -95,59 +82,18 @@ function sourceUrl(s: ToolSource): string {
   return PROVIDER_DOMAINS[key] ?? `https://${s.provider.toLowerCase().replace(/[^a-z]/g, "")}.com`;
 }
 
-function faviconFromUrl(url: string): string | null {
-  try {
-    return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`;
-  } catch {
-    return null;
-  }
-}
-
-function ProviderRow({ provider, url }: { provider: string; url: string }) {
-  const favicon = faviconFromUrl(url);
-  return (
-    <div className="flex items-center gap-2 mb-1">
-      {favicon && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={favicon} alt="" width={16} height={16} className="size-4 shrink-0 rounded-sm" />
-      )}
-      <span className="text-xs font-medium text-muted-foreground">{provider}</span>
-    </div>
-  );
-}
-
 export function SourceChips({ sources }: { sources: ToolSource[] }) {
   if (!sources.length) return null;
-  const urls = sources.map(sourceUrl);
-
   return (
     <div className="mt-1.5">
-      <InlineCitation>
-        <InlineCitationCard>
-          <InlineCitationCardTrigger sources={urls} />
-          <InlineCitationCardBody>
-            <InlineCitationCarousel>
-              <InlineCitationCarouselHeader>
-                <InlineCitationCarouselPrev />
-                <InlineCitationCarouselNext />
-                <InlineCitationCarouselIndex />
-              </InlineCitationCarouselHeader>
-              <InlineCitationCarouselContent>
-                {sources.map((s, i) => (
-                  <InlineCitationCarouselItem key={`${s.provider}-${i}`}>
-                    <ProviderRow provider={s.provider} url={urls[i]} />
-                    <InlineCitationSource
-                      title={s.title}
-                      url={s.url}
-                      description={s.excerpt}
-                    />
-                  </InlineCitationCarouselItem>
-                ))}
-              </InlineCitationCarouselContent>
-            </InlineCitationCarousel>
-          </InlineCitationCardBody>
-        </InlineCitationCard>
-      </InlineCitation>
+      <SourceCitation
+        sources={sources.map((s) => ({
+          url: sourceUrl(s),
+          title: s.title,
+          provider: s.provider,
+          excerpt: s.excerpt,
+        }))}
+      />
     </div>
   );
 }
