@@ -242,6 +242,38 @@ export function isTradingDay(now: Date = new Date()): boolean {
   );
 }
 
+/**
+ * How many calendar days it takes to get through `sessions` trading days,
+ * starting the day after `from`.
+ *
+ * A setup's short time limits are written in sessions — "no progress in 20
+ * sessions is a failed breakout" — but a trigger's day count from the buy is
+ * measured in calendar days. Multiplying by 7/5 is close, and wrong by a day
+ * around every holiday; this walks the real NYSE calendar the same
+ * `isTradingDay` the crons use, so Thanksgiving week and Good Friday are
+ * counted as the market actually keeps them.
+ *
+ * 20 sessions from Monday 2026-09-14 lands on 2026-10-12 — 28 calendar days,
+ * because Columbus Day is a session and nothing else intervenes. The same 20
+ * from 2026-11-20 takes 30, because of Thanksgiving and Christmas.
+ *
+ * Returns 0 for a count of zero or less. The walk is bounded: a run of days
+ * with no session in it stops at the cap and returns what it has, which is a
+ * review that fires a little early rather than a cron that never returns.
+ */
+export function sessionsToCalendarDays(sessions: number, from: Date = new Date()): number {
+  if (!Number.isFinite(sessions) || sessions <= 0) return 0;
+  const DAY = 86_400_000;
+  const cap = Math.ceil(sessions) * 3 + 30;
+  let counted = 0;
+  let days = 0;
+  while (counted < sessions && days < cap) {
+    days += 1;
+    if (isTradingDay(new Date(from.getTime() + days * DAY))) counted += 1;
+  }
+  return days;
+}
+
 /** 16:00 ET on the trading day before the current (or last) session — the close a quote's `prevClose` is. */
 export function priorSessionCloseAt(now: Date = new Date()): Date {
   const DAY = 86_400_000;

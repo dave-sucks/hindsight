@@ -30,6 +30,8 @@ export interface PlaybookSetupView {
   stopText: string;
   targetText: string;
   timeText: string;
+  /** What the time limit is counted in — sessions for the short clocks. */
+  timeUnit: "SESSIONS" | "CALENDAR";
   /** The numbers in force (the catalog's, with this account's overrides applied). */
   numbers: Required<SetupOverride>;
   /** The catalog's own numbers, for "reset to the playbook". */
@@ -69,6 +71,7 @@ function view(overrides: SetupOverrides): PlaybookSetupView[] {
       stopText: s.stop.text,
       targetText: s.target.text,
       timeText: s.time.text,
+      timeUnit: s.time.unit,
       numbers: setupNumbers(applied),
       defaults: setupNumbers(s),
       overridden: o ? (Object.keys(o) as Array<keyof SetupOverride>) : [],

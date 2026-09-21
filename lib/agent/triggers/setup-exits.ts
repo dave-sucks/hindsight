@@ -27,6 +27,7 @@ import {
 import type { Trigger } from "./types";
 import type { TriggerOp } from "./ops";
 import { triggerBucket } from "./bucket";
+import { sessionsToCalendarDays } from "@/lib/market-hours";
 
 /** A beat the market sold: down at least this much on the day of the reaction. */
 export const BEAT_AND_FADE_DOWN_PCT = 3;
@@ -37,6 +38,13 @@ export function setupExitTriggers(input: {
   entry: number;
   stop: number | null;
   mintId: () => string;
+  /**
+   * When the stock was bought — the anchor the time limit counts from, and
+   * the date the session-to-calendar conversion is measured across. A fill
+   * writing its own exits passes now; a review naming the setup on a stock
+   * already held passes the position's open date. Defaults to now.
+   */
+  boughtAt?: Date;
 }): Trigger[] {
   const { setup, entry, stop } = input;
   const out: Trigger[] = [];
@@ -44,16 +52,32 @@ export function setupExitTriggers(input: {
   // a gain milestone and a catalyst exits on its event.
   const bigWinnerApplies = input.horizon === "TRADE" || input.horizon === "TARGET";
 
-  // The time limit — "not working after N days", the 60-day business
+  // The time limit — "no progress in 20 sessions", the 60-day business
   // checkpoint — as a day count from the buy (#655). Always a review: the
   // playbook says exit OR re-set, and that is a decision, not a stop.
-  if (setup.time.tradingDays != null && setup.time.tradingDays > 0) {
+  //
+  // THE ONE CONVERSION. The catalog writes the short clocks in sessions and
+  // the checkpoints in calendar days; a REVIEW_CADENCE day count is always
+  // calendar. Counting the real NYSE calendar here is the difference between
+  // a breakout getting its 20 sessions and getting about 14 — the weekends
+  // inside the window used to be spent as if the market had been open.
+  // Never multiply by 7/5 anywhere else; convert here and say both units in
+  // the sentence so the next reader can see which is which.
+  if (setup.time.count != null && setup.time.count > 0) {
+    const sessions = setup.time.unit === "SESSIONS" ? setup.time.count : null;
+    const days =
+      sessions != null
+        ? sessionsToCalendarDays(sessions, input.boughtAt ?? new Date())
+        : setup.time.count;
     out.push({
       id: input.mintId(),
-      predicate: { kind: "REVIEW_CADENCE", days: setup.time.tradingDays, from: "BUY" },
+      predicate: { kind: "REVIEW_CADENCE", days, from: "BUY" },
       action: "REVIEW",
-      rationale: `${setup.time.tradingDays} days after the buy — ${setup.time.text}`,
-      cooldownDays: setup.time.tradingDays,
+      rationale:
+        (sessions != null
+          ? `${sessions} sessions after the buy — ${days} calendar days from this one`
+          : `${days} days after the buy`) + ` — ${setup.time.text}`,
+      cooldownDays: days,
       source: "DEFAULT",
     });
   }
@@ -130,6 +154,8 @@ export function heldSetupExitOps(input: {
   direction: string | null;
   stored: Trigger[];
   mintId: () => string;
+  /** The position's open date — what the day count is measured from. */
+  boughtAt?: Date;
 }): TriggerOp[] {
   if (input.entry == null || !(input.entry > 0)) return [];
   // The partial sale is N times the risk taken at the buy. A floor already
@@ -145,6 +171,7 @@ export function heldSetupExitOps(input: {
     entry: input.entry,
     stop: riskSide ? input.stop : null,
     mintId: input.mintId,
+    boughtAt: input.boughtAt,
   })
     .filter((t) => !taken.has(triggerBucket(t)))
     .map((trigger) => ({ op: "add" as const, trigger }));

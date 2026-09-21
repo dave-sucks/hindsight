@@ -32,7 +32,14 @@ export const setupOverrideSchema = z
     partialAtR: z.number().positive().max(10).nullable().optional(),
     /** The fill writes the beat-the-market-sold review. */
     beatAndFadeReview: z.boolean().optional(),
-    /** The fill writes a review this many days after the buy. Null = none. */
+    /**
+     * The fill writes a review this long after the buy. Null = none.
+     *
+     * The unit is the setup's own (`setup.time.unit`) — sessions for the
+     * short breakout clocks, calendar days for the 60-day checkpoints — and
+     * the settings screen says which beside the box. The stored key keeps
+     * its old name so accounts that already set one are not orphaned.
+     */
     timeTradingDays: z.number().int().positive().max(365).nullable().optional(),
     /** Multiplies the risk per trade (0.5 for a binary event). */
     riskMultiplier: z.number().positive().max(2).optional(),
@@ -74,7 +81,7 @@ export function applySetupOverride(setup: Setup, o: SetupOverride | undefined): 
       partialAtR: o.partialAtR !== undefined ? o.partialAtR : setup.manage.partialAtR,
       beatAndFadeReview: o.beatAndFadeReview ?? setup.manage.beatAndFadeReview,
     },
-    time: { ...setup.time, tradingDays: o.timeTradingDays !== undefined ? o.timeTradingDays : setup.time.tradingDays },
+    time: { ...setup.time, count: o.timeTradingDays !== undefined ? o.timeTradingDays : setup.time.count },
     riskMultiplier: o.riskMultiplier ?? setup.riskMultiplier,
   };
 }
@@ -88,7 +95,7 @@ export function setupNumbers(s: Setup): Required<SetupOverride> {
     targetMinR: s.target.minR,
     partialAtR: s.manage.partialAtR,
     beatAndFadeReview: s.manage.beatAndFadeReview,
-    timeTradingDays: s.time.tradingDays,
+    timeTradingDays: s.time.count,
     riskMultiplier: s.riskMultiplier,
   };
 }
