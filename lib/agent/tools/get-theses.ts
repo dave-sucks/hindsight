@@ -44,6 +44,7 @@ import {
 import { entryRaisesAway, type EntryRaiseAway } from "@/lib/agent/entry-raises";
 import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
 import { buyBlockedByFull, type AnalystCapacity, type BuyBlockedByFull } from "@/lib/agent/capacity";
+import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { isLadderEditUpdate } from "@/lib/agent/ladder-health";
 import {
@@ -758,6 +759,21 @@ export const getTheses = defineTool({
       );
     }
 
+    // ATR(14) per ticker, for a trail whose give-back widens with the stock's
+    // range (DAV-294). The SAME daily snapshot the evaluator reads, so the
+    // line the agent is shown is the line that sells. Fail-open: no snapshot
+    // → the written percent, which is what the evaluator will use too.
+    const atrByTicker = new Map<string, number>();
+    if (liveTheses.length > 0) {
+      try {
+        const snaps = await loadIndicatorSnapshots(liveTheses.map((t) => t.ticker.toUpperCase()));
+        for (const [ticker, snap] of snaps) {
+          if (snap.atr14 != null && snap.atr14 > 0) atrByTicker.set(ticker, snap.atr14);
+        }
+      } catch (err) {
+        console.warn("[get_theses] indicator snapshot load failed; trails read their written percent:", err);
+      }
+    }
     if (liveTheses.length > 0) {
       // Latest ThesisUpdate per thesis — one batched query.
       const latestUpdates = await prisma.thesisUpdate.findMany({
@@ -835,6 +851,7 @@ export const getTheses = defineTool({
               positionOpenedAt: positionOpenedAtByThesisId.get(t.id) ?? null,
               avgCost: avgCostByThesisId.get(t.id) ?? null,
               peakPrice: peakPriceByThesisId.get(t.id) ?? null,
+              atr14: atrByTicker.get(t.ticker.toUpperCase()) ?? null,
               targetPrice: t.targetPrice ?? null,
               paperTenureDays: t.paperTenureDays ?? null,
               paperRealizedPnl:
@@ -949,6 +966,7 @@ export const getTheses = defineTool({
             targetPrice: t.targetPrice ?? null,
             stopLoss: t.stopLoss ?? null,
             dayRangePct: dayRangePctByTicker[t.ticker.toUpperCase()] ?? null,
+            atr14: atrByTicker.get(t.ticker.toUpperCase()) ?? null,
             avgCost: avgCostByThesisId.get(t.id) ?? null,
             peakPrice: peakPriceByThesisId.get(t.id) ?? null,
             lastLadderEditAt: lastLadderEditAtByThesisId.get(t.id) ?? null,

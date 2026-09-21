@@ -40,6 +40,13 @@ export const MAX_NAMES_PER_INDUSTRY = 2;
 export const COMPOUNDER_CATASTROPHE_PCT = 25;
 /** A compounder giving back this much from its high opens a review. */
 export const COMPOUNDER_GIVEBACK_REVIEW_PCT = 15;
+
+/**
+ * Playbook E5: a trail is "the larger of 3× the stock's average daily range
+ * or the analyst's percent". A quiet name and a jumpy one should not wear
+ * the same give-back — MU's range is $50 a day, ABT's is $2.58 (DAV-294).
+ */
+export const TRAIL_ATR_MULTIPLE = 3;
 /** Binary catalysts (PDUFA, readouts) risk this share of normal (DAV-245 ruling 2). */
 export const BINARY_RISK_MULTIPLIER = 0.5;
 /** …and a −50% gap on one may not cost more than this % of equity. */

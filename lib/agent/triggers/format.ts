@@ -47,6 +47,7 @@ export function predicateSentence(p: TriggerPredicate): string {
       // type that doesn't exist in the builder.
       return (
         `Trailing ${p.pct}% from high` +
+        (p.atrMultiple ? ` or ${p.atrMultiple} ATR, whichever is wider` : "") +
         (p.armAtGainPct ? ` (once up ${p.armAtGainPct}%)` : "")
       );
     case "VS_SMA":

@@ -183,7 +183,7 @@ function predicateKindValue(p: TriggerPredicate): {
       // Give-back off the tracked peak — "Exit if · off the high · 8%".
       return {
         kind: p.armAtGainPct ? `off the high, once up ${p.armAtGainPct}%` : "off the high",
-        value: `${p.pct ?? "?"}%`,
+        value: `${p.pct ?? "?"}%${p.atrMultiple ? ` or ${p.atrMultiple} ATR` : ""}`,
       };
     case "VS_SMA":
       return {
@@ -290,7 +290,7 @@ function predicateDescription(p: TriggerPredicate): string {
         : `Fires when the position is down ${p.pct}% from entry (avg cost) — drawdown attention.`;
     case "TRAILING_FROM_HIGH":
       return (
-        `Fires when price gives back ${p.pct}% from its high since entry. The high ratchets up as the position runs.` +
+        `Fires when price gives back ${p.pct}%${p.atrMultiple ? ` — or ${p.atrMultiple}× this stock's average daily range, whichever is wider` : ""} from its high since entry. The high ratchets up as the position runs.` +
         (p.armAtGainPct
           ? ` Off until the position has been up ${p.armAtGainPct}% from entry — until then the floor governs.`
           : "")
@@ -1426,6 +1426,25 @@ function ConditionFields({
               </SelectContent>
             </Select>
           ) : null}
+          {isTrail ? (
+            <InputGroup>
+              <InputGroupInput
+                type="number"
+                inputMode="decimal"
+                value={cond.atrMultiple}
+                min={0}
+                max={10}
+                step={0.5}
+                placeholder="or 3"
+                aria-label="Or this many ATR"
+                onChange={(e) => onPatch({ atrMultiple: e.target.value })}
+                disabled={pending}
+              />
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>ATR</InputGroupText>
+              </InputGroupAddon>
+            </InputGroup>
+          ) : null}
           {isEarnings ? (
             <Select
               value={earningsWhen}
@@ -1463,7 +1482,7 @@ function ConditionFields({
             : isGain
             ? `Fires when the position is ${dir === "UP" ? "up" : "down"} this much from entry (avg cost) — cumulative, not a single day.`
             : isTrail
-              ? "Fires when price gives back this much from its high since entry. The high ratchets up as the position runs."
+              ? `Fires when price gives back this much from its high since entry${cond.atrMultiple.trim() ? `, or ${cond.atrMultiple.trim()}× this stock's average daily range if that is wider` : ""}. The high ratchets up as the position runs.`
               : isMove
                 ? moveWindow === "1D"
                   ? `Fires when the stock is ${dir === "UP" ? "up" : "down"} this much on the day (vs prior close).`

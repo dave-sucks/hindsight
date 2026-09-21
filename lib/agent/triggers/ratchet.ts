@@ -111,9 +111,17 @@ function weakens(prev: TriggerPredicate, next: TriggerPredicate): boolean {
     case "PRICE_ABOVE":
       return (next as { level: number }).level > prev.level || toCloseBasis(prev, next);
     case "TRAILING_FROM_HIGH": {
-      // A wider give-back, or arming later — each protects less.
-      const n = next as { pct: number; armAtGainPct?: number };
-      return n.pct > prev.pct || (n.armAtGainPct ?? 0) > (prev.armAtGainPct ?? 0);
+      // A wider give-back, arming later, or a bigger range multiple — each
+      // protects less. The multiple counts because it can only widen the
+      // trail (DAV-294): raising it moves the line further from the peak
+      // exactly as raising the percent does.
+      const n = next as { pct: number; armAtGainPct?: number; atrMultiple?: number };
+      const p = prev as { pct: number; armAtGainPct?: number; atrMultiple?: number };
+      return (
+        n.pct > p.pct ||
+        (n.armAtGainPct ?? 0) > (p.armAtGainPct ?? 0) ||
+        (n.atrMultiple ?? 0) > (p.atrMultiple ?? 0)
+      );
     }
     case "PRICE_MOVE_PCT":
     case "GAIN_FROM_ENTRY":

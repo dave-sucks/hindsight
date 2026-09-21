@@ -41,6 +41,8 @@ export interface TriggerPredicate {
   trailPct?: number;
   /** TRAILING_FROM_HIGH — off until the position has once been up this %. */
   armAtGainPct?: number;
+  /** TRAILING_FROM_HIGH — the give-back widens to this × the stock's ATR when that is wider (DAV-294). */
+  atrMultiple?: number;
   /** REVIEW_CADENCE — what the day count is counted from, and which side of the event date. */
   from?: "LAST_REVIEW" | "BUY" | "EVENT";
   side?: "BEFORE" | "AFTER";

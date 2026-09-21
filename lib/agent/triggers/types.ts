@@ -90,7 +90,7 @@ export type TriggerPredicate =
   // Optional (DAV-250): `armAtGainPct` keeps the trail off until the
   // position has once been up that much (a TARGET position isn't trailed
   // tight from day one). Where it fires: ./trail.
-  | { kind: "TRAILING_FROM_HIGH"; pct: number; armAtGainPct?: number }
+  | { kind: "TRAILING_FROM_HIGH"; pct: number; armAtGainPct?: number; atrMultiple?: number }
 
   // ── Chart-based — the live quote against the daily indicator snapshot ──
   // Every kind below reads lib/market-data/price-structure.ts numbers the

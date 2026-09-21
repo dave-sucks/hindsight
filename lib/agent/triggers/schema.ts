@@ -18,7 +18,7 @@ type PredicateShape =
   | { kind: "PRICE_BELOW"; level: number; basis?: "intraday" | "close" }
   | { kind: "PRICE_MOVE_PCT"; pct: number; direction: "UP" | "DOWN"; window: "1D" | "5D" | "20D" }
   | { kind: "GAIN_FROM_ENTRY"; pct: number; direction: "UP" | "DOWN" }
-  | { kind: "TRAILING_FROM_HIGH"; pct: number; armAtGainPct?: number }
+  | { kind: "TRAILING_FROM_HIGH"; pct: number; armAtGainPct?: number; atrMultiple?: number }
   | { kind: "VS_SMA"; period: 20 | 50 | 150 | 200; direction: "ABOVE" | "BELOW" }
   | { kind: "NEAR_SMA"; period: 20 | 50 | 150 | 200; withinPct: number }
   | { kind: "VOLUME_RATIO"; min: number }
@@ -61,6 +61,9 @@ export const triggerPredicateSchema: z.ZodType<PredicateShape> = z.lazy(() =>
     }),
     z.object({
       kind: z.literal("TRAILING_FROM_HIGH"),
+      // The stock's own range widens the give-back: the larger of pct and
+      // atrMultiple × ATR(14). It only ever widens (DAV-294, playbook E5).
+      atrMultiple: z.number().positive().max(10).optional(),
       // ≥1%: a sub-1% trail off the peak would re-fire on ordinary noise
       // every tick the moment the peak is set.
       pct: z.number().min(1),

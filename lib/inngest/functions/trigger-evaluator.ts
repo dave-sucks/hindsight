@@ -71,6 +71,7 @@ import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
 import { getTodaySessionBars } from "@/lib/alpaca";
 import { ensureIndicatorSnapshots } from "@/lib/market-data/ensure-snapshots";
 import { describeChartFire } from "@/lib/agent/triggers/chart-context";
+import { needsIndicators } from "@/lib/agent/triggers/indicator-needs";
 import { describeCluster, insiderCluster } from "@/lib/market-data/insider-cluster";
 import { fetchBookFilings, type BookFilings } from "@/lib/market-data/sec-filings";
 import {
@@ -189,27 +190,6 @@ function needsFilings(p: TriggerPredicate): boolean {
 }
 
 /** Does this predicate read the daily indicator snapshot? Drives the load. */
-function needsIndicators(p: TriggerPredicate): boolean {
-  switch (p.kind) {
-    case "VS_SMA":
-    case "NEAR_SMA":
-    case "VOLUME_RATIO":
-    case "NEW_HIGH":
-    case "PCT_FROM_52W_HIGH":
-    case "RS_VS_SPY":
-    case "GAP_UP":
-    case "RSI":
-    case "INSIDER_CLUSTER":
-      return true;
-    case "PRICE_MOVE_PCT":
-      return p.window !== "1D";
-    case "AND":
-    case "OR":
-      return p.predicates.some(needsIndicators);
-    default:
-      return false;
-  }
-}
 
 /** Does this predicate read today's session volume? Drives the Alpaca call. */
 function needsTodayVolume(p: TriggerPredicate): boolean {
