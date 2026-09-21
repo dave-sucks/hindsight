@@ -13,10 +13,13 @@
 > file compressed the fix to "let the writer say buy now"; that was one
 > item of thirty. This version is the full map.
 >
-> **Progress (2026-09-15):** PRs 1, 2, 3, 4, 8, 10 (insider only) and 11 are
-> merged; PR 7 is half done (see §7); PRs 5, 6 and 9 are not started. §7 is
-> the progress report, the problems found while building, and what's left —
-> read it before §4.
+> **Progress (2026-09-20): every PR in this plan is merged.** 1, 2, 3, 4,
+> 5, 6, 7, 8, 9, 10 and 11 all shipped, plus the work this plan did not
+> foresee: the playbook's numbers as editable settings, the existing book
+> moved onto setups, two-condition triggers by hand, analyst templates, and
+> the trail that widens with a stock's own range. §7 is the closing report —
+> what shipped, what was deliberately left, and what the build taught. Read
+> it before §4, which is now history rather than a work list.
 >
 > **Status:** final after Dave's line-by-line review (2026-09-10). Section 1
 > is what's wrong, stage by stage, with the evidence. Section 2 is what each
@@ -529,43 +532,68 @@ edge needs the scorecard and months.
 
 ### Not started
 
-- **PR 5 — the daily run** (DAV-253).
-- **PR 6 — the tactical run** (DAV-254). Also takes the breakout volume
-  check left out of #644 and writing a stock's own exit rules from its setup
-  after a buy.
-- **PR 9 — discovery by screens** (DAV-255). **Changed scope:** a chat tool
-  only, the Sunday cron stays off (discovery is manual by design). **Guard:**
-  the principal chat's earnings-discovery guidance in `lib/agent/modes.ts`
-  and `get_earnings_calendar(window:"reported")` must keep working — only the
-  discovery run's own prompt may change. MARKET_DATA.md's post-earnings and
-  momentum screens are this PR's (the Signals lane handed them over).
-- **DAV-264 — live quotes from Alpaca.** Probe with SMMT first.
+Nothing. PR 5 (the daily run), PR 6 (the tactical run) and PR 9 (discovery
+by screens) all shipped after this section was last written.
 
-### Problems found while building (open)
+### The problems this section used to list — all closed
 
-1. **The seats' sell rules weren't derived from this playbook.** Catalyst's
-   −10% review is not in Part E/F; its real rule (the event is the exit, out
-   by T+30) can't be written. Redo each seat's rules from E5/E6/F in one
-   reviewed pass, with Dave.
-2. **No event-date trigger.** `Thesis.catalystDate` exists, the writer sets
-   it, the run context reads it — no trigger reads it. Agents lane.
-3. **No days-held trigger.** `REVIEW_CADENCE` counts from the last review,
-   not from the buy. The E6 time limits need it. Agents lane.
-4. **The Add Trigger dialog can't build a two-condition trigger.** Code and
-   stored defaults can; a hand-built one can't.
-5. **Held stocks still carry stamped copies of the old account rules**
-   (8% sell, +10 / −12 reviews) from before #638. A stock's own rule beats
-   its analyst's, so PEAD's 12%-armed trail never applies to FIVE or MU.
-6. **The account's ±7% add includes a 7% down day on every stock** — against
-   "never average down" for trades.
-7. **Account-wide reviews:** the recommendation to put +10% / −12% reviews
-   and the 8% sell back on the account (analysts override where their style
-   differs) is awaiting Dave.
-8. **The writer's chart checks skip silently when no chart loads.** Say so in
-   the result (a line, not a refusal).
-9. **The tactical run reads yesterday's close when the live price fails**
-   (DAV-265, CEG 09-14).
-10. **#644's live proof hasn't run:** re-dispatch DOCU, FIVE, HPE (Dave's go).
+Every numbered problem from the 09-15 draft is resolved. Kept as a record of
+what building the plan surfaced, because the pattern repeats:
+
+1. Seat sell rules not derived from the playbook → redone seat by seat from
+   E5/E6/F, ruled by the QB and applied through the popover's own functions.
+2. No event-date trigger, and 3. no days-held trigger → shipped as ONE
+   trigger with a "counting from" choice (last review / the buy / the
+   thesis's event date) rather than two new kinds.
+4. The dialog couldn't build a two-condition trigger → it can now.
+5. Held stocks carrying stamped copies of the old account rules → the five
+   8% sells removed; a fill no longer stamps.
+6. The account's down-7% add applying to trades → moved to the Compounder,
+   whose style it actually suits.
+7. Account-wide reviews awaiting a ruling → ruled; the account keeps only
+   what is right for every stock.
+8. The writer's chart checks skipping silently → says so in the result.
+9. The tactical run reading yesterday's close on a failed quote → fixed.
+10. The writer's live proof → run (DOCU, FIVE, HPE), and it found the HPE
+    pullback bug, which was then fixed.
+
+### Deliberately left undone
+
+- **The eight-week hold for a fast winner.** The partial sale now switches
+  off for a stock up 20% within three weeks of the buy, and the trail
+  manages it. The eight-week *review* that should sit beside it is not
+  built: every day count from the buy shares one trigger bucket, so adding
+  it would silently replace the setup's own time limit. It needs the bucket
+  key to distinguish two day counts first — a trigger change in its own
+  right.
+- **Watching the stocks we sold**, and **shrinking the two thesis tools**.
+  Both carry their reasoning on their tickets.
+- **Live quotes from Alpaca** — waits on the principal's deposit.
+
+### What the build taught, for whoever reads this next
+
+- **An adversarial audit of already-shipped, already-reviewed work found
+  five real defects**, three of them in code merged the same day: a
+  half-full analyst told it was full, a stop ratchet reading a stale mirror
+  column, time limits counted in the wrong unit, a market calendar missing
+  a holiday and closing a real session, and an add proposal outliving its
+  position. Ordinary review missed all five. Adversarial review of shipped
+  work pays; a wide unverified sweep does not — roughly three quarters of
+  that audit's raw findings were refuted when challenged.
+- **A test that proves a helper is not a test that proves the wiring.**
+  Twice a fix shipped with a green test that passed against the unfixed
+  code, because the test exercised a new pure function the old code never
+  called. The check that catches it: revert the CALL SITE and confirm
+  something goes red.
+- **A number that reaches the model but not the evaluator is worse than no
+  number.** The range-widened trail was written as one shared function
+  precisely to avoid this, and still nearly shipped selling at one level
+  while the screen drew another — because the cron's gate decided which
+  stocks got the chart data at all, and the trail wasn't in it.
+- **The machinery is not the goal.** At the close of this plan the book had
+  four of nine holdings carrying a setup and sixteen buy triggers firing for
+  every four buys proposed. Building more will not move those; running it
+  and reading the result will.
 
 ### Coordination with the Signals lane (settled 09-15)
 
