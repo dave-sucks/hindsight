@@ -13,12 +13,19 @@
  */
 
 export interface AnalystCapacity {
-  /** Open positions plus buys waiting for approval — what place_trade counts. */
+  /**
+   * Open positions PLUS buys awaiting approval — the same rows place_trade
+   * counts (`status: { in: ["OPEN", "PENDING_APPROVAL"] }`). A queued buy has
+   * committed its slot: counting only the open ones told the run there was
+   * room for a name the tool would then refuse.
+   */
   open: number;
   /** The analyst's position limit; null = none set. */
   max: number | null;
   /** The stocks it holds, for "which one would it replace". */
   held: string[];
+  /** How many of `open` are buys still awaiting approval rather than held. */
+  awaitingApproval?: number;
 }
 
 export function isFull(c: AnalystCapacity | null | undefined): boolean {
@@ -29,10 +36,14 @@ export function isFull(c: AnalystCapacity | null | undefined): boolean {
 export function capacityLine(c: AnalystCapacity | null | undefined): string | null {
   if (!c || c.max == null) return null;
   const free = Math.max(0, c.max - c.open);
+  const queued = c.awaitingApproval ?? 0;
   const held = c.held.length ? ` It holds ${c.held.map((t) => `$${t}`).join(", ")}.` : "";
+  // A queued buy has taken its slot even though nothing is held yet; say so,
+  // or the line reads as though a slot is free that place_trade will refuse.
+  const waiting = queued > 0 ? ` ${queued} buy${queued === 1 ? "" : "s"} awaiting your approval already took ${queued === 1 ? "a slot" : "slots"}.` : "";
   return isFull(c)
-    ? `Positions: ${c.open} of ${c.max} — this analyst is FULL. place_trade will refuse any new buy until one closes.${held}`
-    : `Positions: ${c.open} of ${c.max} — ${free} free.${held}`;
+    ? `Positions: ${c.open} of ${c.max} — this analyst is FULL. place_trade will refuse any new buy until one closes.${held}${waiting}`
+    : `Positions: ${c.open} of ${c.max} — ${free} free.${held}${waiting}`;
 }
 
 export interface BuyBlockedByFull {

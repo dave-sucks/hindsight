@@ -225,7 +225,7 @@ ${
   capacityLine(args.capacity)
     ? `THE ANALYST'S ROOM\n  ${capacityLine(args.capacity)}${
         isFull(args.capacity)
-          ? `\n  READ THIS BEFORE YOU RESEARCH. This analyst cannot take a new position, so do not confirm the setup and do not call place_trade — it will be refused. Your whole run is ONE update_thesis on this thesis, rationale starting "Buy fired into a full analyst (${args.capacity!.open} of ${args.capacity!.max})": say in one or two sentences whether $${thesis.ticker} is a better use of a slot than the weakest of ${args.capacity!.held.map((t) => `$${t}`).join(", ")} and which one it would replace, or "full — waiting" with the reason. Leave the buy trigger as it is. That line is what the principal reads; replacing a holding is their decision.`
+          ? `\n  READ THIS BEFORE YOU RESEARCH. This analyst cannot OPEN a new position, so do not confirm the setup and do not call place_trade — it will be refused. (Adding to a stock it already holds is not capped and never reaches this block.) Your whole run is ONE update_thesis on this thesis, rationale starting "Buy fired into a full analyst (${args.capacity!.open} of ${args.capacity!.max})": say in one or two sentences whether $${thesis.ticker} is a better use of a slot than the weakest of ${args.capacity!.held.map((t) => `$${t}`).join(", ")} and which one it would replace, or "full — waiting" with the reason. Leave the buy trigger as it is. That line is what the principal reads; replacing a holding is their decision.`
           : ""
       }\n\n`
     : ""

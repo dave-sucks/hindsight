@@ -238,6 +238,11 @@ export const tacticalRun = inngest.createFunction(
       const capacity = await (async () => {
         if (trigger.action !== "ENTER" && trigger.action !== "ADD") return null;
         if (agentConfig.maxOpenPositions == null) return null;
+        // Only a fire that would OPEN a position is capped. Adding to a
+        // stock we already own takes no new slot, so a full analyst must
+        // still be able to press a winner or buy a pullback in a name it
+        // holds — the rules the seats were just given (DAV-279).
+        if (position) return null;
         try {
           const rows = await prisma.position.findMany({
             where: { analystId: fired.analystId, status: { in: ["OPEN", "PENDING_APPROVAL"] } },

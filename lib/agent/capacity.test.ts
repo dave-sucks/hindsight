@@ -52,3 +52,28 @@ describe("an analyst with room", () => {
     expect(capacityLine({ open: 3, max: null, held: [] })).toBeNull();
   });
 });
+
+// A buy awaiting approval has already taken its slot — place_trade counts
+// OPEN + PENDING_APPROVAL, so the run must too or it proposes into a slot the
+// tool will refuse (QB review, 2026-09-19).
+describe("a queued buy has taken its slot", () => {
+  it("PEAD with 4 held and 2 awaiting approval is full against a limit of 6", () => {
+    const c = { open: 6, max: 6, held: ["FIVE", "IOT", "MU", "NVDA"], awaitingApproval: 2 };
+    expect(isFull(c)).toBe(true);
+    expect(capacityLine(c)).toContain("Positions: 6 of 6 — this analyst is FULL.");
+    expect(capacityLine(c)).toContain("2 buys awaiting your approval already took slots.");
+  });
+
+  it("one queued buy is named in the singular, and room left still reads as room", () => {
+    const c = { open: 5, max: 6, held: ["FIVE", "IOT", "MU", "NVDA"], awaitingApproval: 1 };
+    expect(isFull(c)).toBe(false);
+    expect(capacityLine(c)).toContain("5 of 6 — 1 free");
+    expect(capacityLine(c)).toContain("1 buy awaiting your approval already took a slot.");
+  });
+
+  it("no queued buys reads exactly as before", () => {
+    expect(capacityLine({ open: 4, max: 6, held: ["FIVE"], awaitingApproval: 0 })).toBe(
+      "Positions: 4 of 6 — 2 free. It holds $FIVE.",
+    );
+  });
+});

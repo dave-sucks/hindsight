@@ -1006,9 +1006,28 @@ export const getTheses = defineTool({
     //     the held list is partial.
     const tickerFiltered = !!(args.tickers && args.tickers.length > 0);
     const heldTickers = theses.filter((t) => t.status === "HOLDING").map((t) => t.ticker);
+    // Counted the way place_trade counts: held PLUS awaiting approval, which
+    // have already taken their slot. Fail-soft to the held count.
+    const queuedBuys =
+      !tickerFiltered && ctx.maxOpenPositions != null && ctx.analystId
+        ? await (async () => {
+            try {
+              return await prisma.position.count({
+                where: { analystId: ctx.analystId, status: "PENDING_APPROVAL" },
+              });
+            } catch {
+              return 0;
+            }
+          })()
+        : 0;
     const capacity: AnalystCapacity | null =
       !tickerFiltered && ctx.maxOpenPositions != null
-        ? { open: heldTickers.length, max: ctx.maxOpenPositions, held: heldTickers }
+        ? {
+            open: heldTickers.length + queuedBuys,
+            max: ctx.maxOpenPositions,
+            held: heldTickers,
+            awaitingApproval: queuedBuys,
+          }
         : null;
     const blockedByThesisId = new Map<string, BuyBlockedByFull>();
     for (const t of theses) {
