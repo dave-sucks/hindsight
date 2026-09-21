@@ -16,10 +16,46 @@
 
 import type { UIMessage } from "ai";
 
-// We use a simple incrementing counter for IDs since these are replay-only
-let idCounter = 0;
-function genId() {
-  return `replay-${idCounter++}`;
+/**
+ * Ids for the messages the writer never gave one to.
+ *
+ * A minted id cannot reuse one already in the payload, because **a minted id
+ * comes back**: the agent route persists `[...clientUIMessages,
+ * ...responseModelMessages]`, and the client's messages carry whatever ids
+ * this file minted when the thread was last hydrated. So the stored thread
+ * accumulates real `replay-N` ids, and a counter restarting at zero on the
+ * next hydration hands `replay-0` to a NEW id-less message while an OLD one
+ * still holds it. assistant-ui then refuses the whole thread — "a message
+ * with the same id already exists in the parent tree" — and the chat renders
+ * an error instead of the conversation.
+ *
+ * Seen live 2026-09-21 on a resumed chat: messages 1–3 were stored carrying
+ * `replay-0`, `replay-1`, `replay-2` from an earlier hydration, and the last
+ * three turns had been appended as raw ModelMessages with no ids at all.
+ * Every reload reproduced it.
+ *
+ * Minting against the ids actually present fixes threads already in that
+ * state, which is why it happens here rather than only at the write path.
+ */
+function makeIdMinter(raw: unknown[]): () => string {
+  const taken = new Set<string>();
+  for (const rawMsg of raw) {
+    if (!rawMsg || typeof rawMsg !== "object") continue;
+    const msg = rawMsg as Record<string, unknown>;
+    if (typeof msg.id === "string") taken.add(msg.id);
+    // Tool call ids are minted from the same well and collide the same way.
+    const parts = Array.isArray(msg.parts) ? msg.parts : Array.isArray(msg.content) ? msg.content : [];
+    for (const part of parts as Record<string, unknown>[]) {
+      if (part && typeof part.toolCallId === "string") taken.add(part.toolCallId);
+    }
+  }
+  let n = 0;
+  return () => {
+    let id = `replay-${n++}`;
+    while (taken.has(id)) id = `replay-${n++}`;
+    taken.add(id);
+    return id;
+  };
 }
 
 /**
@@ -71,7 +107,7 @@ function makeToolPart(opts: {
  * can accept as initialMessages with proper tool parts.
  */
 export function convertPersistedToUIMessages(raw: unknown[]): UIMessage[] {
-  idCounter = 0;
+  const genId = makeIdMinter(raw);
   const result: UIMessage[] = [];
   // Track the current assistant UIMessage being built so we can attach
   // tool results from subsequent "tool" ModelMessages.
