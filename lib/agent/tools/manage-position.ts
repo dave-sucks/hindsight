@@ -31,6 +31,7 @@ import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { stopMoveWeakensProtection } from "@/lib/agent/triggers/ratchet";
+import { thesisFloorStop, stopToRatchetAgainst } from "@/lib/agent/triggers/floor-in-force";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { getAccount, getOrder, getLatestPrice, closePositionPartial, placeMarketOrder } from "@/lib/alpaca";
@@ -289,6 +290,38 @@ export const managePosition = defineTool({
       analystId != null
         ? await findRelatedThesisId(analystId, ticker).catch(() => null)
         : null;
+
+    // The stop the ratchet below is allowed to compare against (DAV-296).
+    //
+    // It has to be the thesis's own floor trigger — what actually fires, and
+    // what `moveThesisLevels` is about to rewrite — not `Position.stopLoss`.
+    // That column is a mirror no agent write path maintains: `update_thesis`
+    // raises the thesis floor and leaves the mirror behind, so a gate reading
+    // the mirror sees a tightening where the real floor is being lowered.
+    // Falls back to the column for a stock whose thesis has no typed floor.
+    const floorInForce = await (async () => {
+      if (!auditThesisId) return position.stopLoss != null ? Number(position.stopLoss) : null;
+      try {
+        const thesis = await prisma.thesis.findUnique({
+          where: { id: auditThesisId },
+          select: { direction: true, status: true, triggers: true },
+        });
+        const floor =
+          thesis && thesis.status === "HOLDING"
+            ? thesisFloorStop({
+                triggers: parseTriggersResilient(thesis.triggers).triggers as Trigger[],
+                direction: thesis.direction,
+                avgCost: position.avgCost != null ? Number(position.avgCost) : null,
+              })
+            : null;
+        return stopToRatchetAgainst({
+          thesisFloor: floor,
+          positionStopLoss: position.stopLoss != null ? Number(position.stopLoss) : null,
+        });
+      } catch {
+        return position.stopLoss != null ? Number(position.stopLoss) : null;
+      }
+    })();
 
     try {
       switch (args.action) {
@@ -991,11 +1024,11 @@ export const managePosition = defineTool({
             args.new_stop_loss != null &&
             stopMoveWeakensProtection({
               direction: position.direction,
-              oldStop: position.stopLoss != null ? Number(position.stopLoss) : null,
+              oldStop: floorInForce,
               newStop: args.new_stop_loss,
             })
           ) {
-            const oldStopFmt = Number(position.stopLoss).toFixed(2);
+            const oldStopFmt = Number(floorInForce).toFixed(2);
             console.warn(
               `[tool] manage_position update_targets REJECTED for ${ticker} — stop ${oldStopFmt} → ${args.new_stop_loss} moves the wrong way (protective-level ratchet).`,
             );
@@ -1110,7 +1143,8 @@ export const managePosition = defineTool({
 
         // ── MOVE STOP TO BREAKEVEN ────────────────────────────────────────────
         case "move_stop_to_breakeven": {
-          const prevStop = position.stopLoss;
+          // The floor in force, not the position's mirror column (DAV-296).
+          const prevStop = floorInForce;
           const newStop = position.avgCost;
 
           // Same ratchet as update_targets (DAV-201): "to breakeven" is a
