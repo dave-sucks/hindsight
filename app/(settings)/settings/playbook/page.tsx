@@ -21,16 +21,17 @@ export default async function PlaybookSettingsPage() {
   if (!accountId) redirect("/settings/profile");
 
   const settings = await getPlaybookSettings();
+  const changed = settings.setups.filter((s) => s.overridden.length > 0).length;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8 px-4 py-6">
+    <div className="mx-auto max-w-3xl space-y-8 px-4 py-6">
       <SettingsPageHeader
         title="Playbook"
-        description="The setups your analysts trade, with their numbers. The writer prices a plan by these, a buy writes the stock's own exits from them, and the tactical run confirms by them. Change a number and the next plan uses it."
+        description="The setups your analysts trade. Every plan is priced by these numbers, every buy writes its exits from them, and changing one changes the next plan."
       />
       <SettingsSection
         title="Setups"
-        description="The words are the playbook's. The numbers are yours to set; Reset puts the playbook's back."
+        description={`${settings.setups.length} setups${changed > 0 ? ` · ${changed} changed` : ""}. Open one to read it and set its numbers.`}
       >
         <PlaybookSetupsForm initial={settings.setups} canEdit={settings.canEdit} />
       </SettingsSection>
