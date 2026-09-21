@@ -1,6 +1,6 @@
 /**
  * The position lock, and what it protects: how much of a position can still
- * be sold or bought, and the sell proposals a sale makes moot.
+ * be sold or bought, and the proposals a sale makes moot.
  *
  * SMMT 2026-09-15 (LIVE): the $17.40 floor and the 8% trail fired on the same
  * check and two runs each staged a full 450-share close 180 ms apart — the old
@@ -70,14 +70,20 @@ export async function lockPositionSales(
 }
 
 /**
- * Cancel the still-AWAITING_APPROVAL sell proposals on a position that a sale
- * made moot — it closed by another path (the price-monitor cron, a tactical
- * run, the user; SMTC + MTSI, 2026-06-17), or Alpaca just accepted an approved
+ * Cancel the still-AWAITING_APPROVAL proposals on a position that a sale made
+ * moot — it closed by another path (the price-monitor cron, a tactical run,
+ * the user; SMTC + MTSI, 2026-06-17), or Alpaca just accepted an approved
  * full close of it.
+ *
+ * Adds are swept alongside sales (DAV-298). An add left in the queue after
+ * its position closed is worse than a stale sale: approving it buys shares at
+ * the broker that no position row covers, so they carry no stop, no trigger
+ * and no thesis, and every run, the book-health numbers and the scorecard are
+ * blind to them.
  *
  * Call this AFTER the sale is committed / accepted (fail-soft side effect — a
  * cleanup failure must not undo a real sale). Idempotent: a no-op when there
- * are no open sell proposals.
+ * are no open proposals to cancel.
  */
 export async function cancelOrphanedSellProposals(
   positionId: string,
@@ -91,7 +97,7 @@ export async function cancelOrphanedSellProposals(
         where: {
           positionId,
           status: "AWAITING_APPROVAL",
-          intent: { in: ["CLOSE", "PARTIAL_CLOSE"] },
+          intent: { in: ["CLOSE", "PARTIAL_CLOSE", "ADD"] },
           ...(exceptOrderId ? { id: { not: exceptOrderId } } : {}),
         },
         data: {
@@ -105,7 +111,7 @@ export async function cancelOrphanedSellProposals(
           data: {
             positionId,
             eventType: "PRICE_CHECK",
-            description: `Auto-cancelled ${count} pending sell proposal(s) — ${why}.`,
+            description: `Auto-cancelled ${count} pending proposal(s) — ${why}.`,
             priceAt: null,
           },
         });
@@ -157,6 +163,8 @@ export async function lockPositionBuys(
   const held = position && position.status !== "CLOSED" ? position.quantity : 0;
   return {
     costPrice,
+    /** OPEN / CLOSED / PENDING_APPROVAL — an add to anything but OPEN buys shares nothing tracks. */
+    status: position?.status ?? null,
     analystId: position?.analystId ?? null,
     heldValue: held * costPrice,
     sentShares: sent.reduce((n, o) => n + o.quantity, 0),

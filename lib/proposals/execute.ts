@@ -84,7 +84,8 @@ export class ProposalExecutionError extends Error {
     | "UNKNOWN_INTENT"
     | "SALE_UNDER_WAY"
     | "NOTHING_HELD"
-    | "NO_ROOM_IN_POSITION";
+    | "NO_ROOM_IN_POSITION"
+    | "POSITION_CLOSED";
   retryable: boolean;
   constructor(code: ProposalExecutionError["code"], message: string, retryable = false) {
     super(message);
@@ -215,6 +216,34 @@ export async function approveProposal(
       // Two adds that each fit then can stop fitting once one is sent, so the
       // room left is measured again here, under the lock (DAV-283).
       const buys = await lockPositionBuys(tx, order.position.id, orderId);
+      // The position this add belongs to has to still exist. A stop fires, a
+      // tactical run closes the stock, or Dave closes it by hand, and the add
+      // sits in the queue untouched — approving it later buys shares at the
+      // broker that no position row covers. Nothing would ever apply that
+      // fill: reconcile-orders skips an ADD whose position isn't OPEN, so the
+      // shares carry no stop, no trigger and no thesis, and every run, the
+      // book-health numbers and the scorecard are blind to them. The sale
+      // path already refuses on the same ground; this is that rule for buys.
+      if (buys.status !== "OPEN") {
+        const cancelled = await tx.order.updateMany({
+          where: { id: orderId, status: "AWAITING_APPROVAL" },
+          data: {
+            status: "CANCELLED",
+            alpacaConfirmedAt: promotedAt,
+            rejectionMessage: `Auto-cancelled — the ${order.symbol} position was closed before this add was approved.`,
+          },
+        });
+        if (cancelled.count === 0) {
+          throw new ProposalExecutionError("NOT_AWAITING", `Order ${orderId} is no longer AWAITING_APPROVAL`);
+        }
+        return {
+          kind: "cancelled" as const,
+          cancelled: {
+            code: "POSITION_CLOSED" as const,
+            message: `The ${order.symbol} position was closed before this add was approved — the proposal was cancelled, nothing was bought.`,
+          },
+        };
+      }
       const analyst = buys.analystId
         ? await tx.agentConfig.findUnique({
             where: { id: buys.analystId },
