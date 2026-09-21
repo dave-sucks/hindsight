@@ -47,6 +47,23 @@ export const COMPOUNDER_GIVEBACK_REVIEW_PCT = 15;
  * the same give-back — MU's range is $50 a day, ABT's is $2.58 (DAV-294).
  */
 export const TRAIL_ATR_MULTIPLE = 3;
+
+/**
+ * Playbook: "sell part into strength at +20–25%, unless the stock did +20%
+ * in ≤ 3 weeks — then hold". A stock that runs this far off the buy THAT
+ * FAST is a likely big winner: the partial sale at N R is off and the trail
+ * manages it from there. Cutting a winner in half is how a good year becomes
+ * an average one.
+ *
+ * Both halves are load-bearing. The size alone would switch the partial off
+ * for any name that ever touched +20% — including a six-month grind, which
+ * is an ordinary winner and exactly what the partial is for. On the book
+ * today SMMT ran 30.5% in 13 days (fast) while MU took 54 days to reach
+ * 15.5% (a grind).
+ */
+export const BIG_WINNER_PEAK_GAIN_PCT = 20;
+/** …and it has to have got there within this many days of the buy. */
+export const BIG_WINNER_PEAK_WITHIN_DAYS = 21;
 /** Binary catalysts (PDUFA, readouts) risk this share of normal (DAV-245 ruling 2). */
 export const BINARY_RISK_MULTIPLIER = 0.5;
 /** …and a −50% gap on one may not cost more than this % of equity. */

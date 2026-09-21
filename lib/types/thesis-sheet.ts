@@ -43,6 +43,10 @@ export interface TriggerPredicate {
   armAtGainPct?: number;
   /** TRAILING_FROM_HIGH — the give-back widens to this × the stock's ATR when that is wider (DAV-294). */
   atrMultiple?: number;
+  /** GAIN_FROM_ENTRY — off once the position has run this far off the buy… */
+  skipIfPeakGainPct?: number;
+  /** …within this many days of it (a big winner is fast; a grind is not). */
+  skipIfPeakWithinDays?: number;
   /** REVIEW_CADENCE — what the day count is counted from, and which side of the event date. */
   from?: "LAST_REVIEW" | "BUY" | "EVENT";
   side?: "BEFORE" | "AFTER";

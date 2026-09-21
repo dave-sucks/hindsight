@@ -20,7 +20,16 @@ describe("setupExitTriggers", () => {
       ["REVIEW", "AND"],
     ]);
     expect(out[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 60, from: "BUY" });
-    expect(out[1].predicate).toEqual({ kind: "GAIN_FROM_ENTRY", pct: 15.5, direction: "UP" });
+    // The partial carries the big-winner switch: once IOT has run 20% off
+    // the buy inside three weeks it is held and managed on the trail, not
+    // cut in half. A slower climb to the same gain is still de-risked.
+    expect(out[1].predicate).toEqual({
+      kind: "GAIN_FROM_ENTRY",
+      pct: 15.5,
+      direction: "UP",
+      skipIfPeakGainPct: 20,
+      skipIfPeakWithinDays: 21,
+    });
     expect(out[2].predicate).toEqual({
       kind: "AND",
       predicates: [
@@ -69,6 +78,9 @@ describe("heldSetupExitOps — a held stock whose review just named its setup", 
       kind: "GAIN_FROM_ENTRY",
       pct: pead.manage.partialAtR! * 6,
       direction: "UP",
+      // A big winner is not trimmed (DAV-294).
+      skipIfPeakGainPct: 20,
+      skipIfPeakWithinDays: 21,
     });
   });
 
