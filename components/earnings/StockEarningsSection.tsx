@@ -1,25 +1,18 @@
 "use client";
 
 /**
- * One company's earnings — the stock page's Earnings tab. Quarter chips
- * with the surprise, then the latest report as the same stat grid the
- * Financials tab uses (estimate · actual · verdict, and the tape's
- * reaction), then the next date. Live from the vendor; nothing stored.
+ * One company's earnings — the stock page's Earnings tab. The SAME
+ * EarningsCard the thesis sheet shows (next report + the EPS dot plot),
+ * plus the latest report's revenue/EPS grid on the quarters where the
+ * vendor still carries it. Live from the vendor; nothing stored.
  */
 
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EarningsCard, compactMoney } from "@/components/domain/earnings-card";
 import { cn } from "@/lib/utils";
 import { surprisePct } from "@/lib/agent/triggers/earnings";
 import type { EarningsResponse } from "@/lib/types/thesis-sheet";
-
-function money(n: number): string {
-  const a = Math.abs(n);
-  if (a >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (a >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  return `$${n.toFixed(0)}`;
-}
 
 function fmtDate(iso: string, opts: Intl.DateTimeFormatOptions = {}): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
@@ -97,28 +90,7 @@ export function StockEarningsSection({ symbol }: { symbol: string }) {
 
   return (
     <div className="space-y-4">
-      {/* Quarter chips — next first, then history newest → oldest */}
-      <div className="flex flex-wrap gap-1.5">
-        {data.next ? (
-          <Badge variant="outline" className="font-normal tabular-nums">
-            {data.next.year != null && data.next.quarter != null ? `Q${data.next.quarter} ${data.next.year}` : "Next"}
-            <span className="text-muted-foreground">· {fmtDate(data.next.reportDate, { year: undefined })}</span>
-          </Badge>
-        ) : null}
-        {data.recent.map((q) => (
-          <Badge key={q.period} variant="outline" className="font-normal tabular-nums">
-            {q.period.slice(0, 7)}
-            {q.surprisePct != null ? (
-              <span className={q.surprisePct >= 0 ? "text-positive" : "text-negative"}>
-                {q.surprisePct >= 0 ? "+" : "−"}
-                {Math.abs(q.surprisePct).toFixed(2)}%
-              </span>
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
-          </Badge>
-        ))}
-      </div>
+      <EarningsCard data={data} />
 
       {latest ? (
         <div className="space-y-3">
@@ -133,23 +105,14 @@ export function StockEarningsSection({ symbol }: { symbol: string }) {
           </div>
           {/* Same grid as the Financials tab: estimate · actual · verdict */}
           <div className="grid grid-cols-3 gap-x-4 gap-y-3 py-3 border-y">
-            <StatCell label="Revenue est" value={latest.revenueEstimate != null ? money(latest.revenueEstimate) : "—"} />
-            <StatCell label="Revenue" value={latest.revenueActual != null ? money(latest.revenueActual) : "—"} />
+            <StatCell label="Revenue est" value={latest.revenueEstimate != null ? compactMoney(latest.revenueEstimate) : "—"} />
+            <StatCell label="Revenue" value={latest.revenueActual != null ? compactMoney(latest.revenueActual) : "—"} />
             <StatCell label="Revenue surprise" value={rev!.text} className={rev!.className} />
             <StatCell label="EPS est" value={latest.epsEstimate != null ? `$${latest.epsEstimate.toFixed(2)}` : "—"} />
             <StatCell label="EPS" value={latest.epsActual != null ? `$${latest.epsActual.toFixed(2)}` : "—"} />
             <StatCell label="EPS surprise" value={eps!.text} className={eps!.className} />
           </div>
         </div>
-      ) : null}
-
-      {data.next ? (
-        <p className="text-xs text-muted-foreground tabular-nums">
-          Next report {fmtDate(data.next.reportDate, { weekday: "short" })}
-          {bell(data.next.hour) ? ` ${bell(data.next.hour)}` : ""}
-          {data.next.epsEstimate != null ? ` · street expects EPS $${data.next.epsEstimate.toFixed(2)}` : ""}
-          {data.next.revenueEstimate != null ? `, revenue ${money(data.next.revenueEstimate)}` : ""}.
-        </p>
       ) : null}
     </div>
   );
