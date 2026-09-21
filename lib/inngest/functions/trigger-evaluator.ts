@@ -266,6 +266,8 @@ interface PositionInfo {
   avgCost: number | null;
   /** For TRAILING_FROM_HIGH — price-monitor-maintained water mark. */
   peakPrice: number | null;
+  /** When that water mark was set — the big-winner switch needs the clock. */
+  peakAt: Date | null;
 }
 
 async function buildPositionOpenedAtMap(
@@ -303,6 +305,7 @@ async function buildPositionOpenedAtMap(
       openedAt: true,
       avgCost: true,
       peakPrice: true,
+      peakAt: true,
     },
     orderBy: { openedAt: "desc" },
   });
@@ -317,6 +320,7 @@ async function buildPositionOpenedAtMap(
         openedAt: p.openedAt,
         avgCost: p.avgCost,
         peakPrice: p.peakPrice,
+        peakAt: p.peakAt,
       });
     }
   }
@@ -586,7 +590,14 @@ export const triggerEvaluator = inngest.createFunction(
           const posInfo = openedAtByThesisId.get(thesis.id);
           const ctx: EvaluationContext = {
             signal: ctxSignal,
-            position: posInfo ? { avgCost: posInfo.avgCost, peakPrice: posInfo.peakPrice, openedAt: posInfo.openedAt } : null,
+            position: posInfo
+              ? {
+                  avgCost: posInfo.avgCost,
+                  peakPrice: posInfo.peakPrice,
+                  peakAt: posInfo.peakAt,
+                  openedAt: posInfo.openedAt,
+                }
+              : null,
             thesis: {
               createdAt: thesis.createdAt,
               lastReviewedAt: thesis.lastReviewedAt ?? null,
@@ -952,7 +963,12 @@ export const triggerEvaluator = inngest.createFunction(
           // GAIN_FROM_ENTRY + TRAILING_FROM_HIGH read the open position's
           // entry cost + water mark; absent (WATCHING) → they return false.
           position: posInfo
-            ? { avgCost: posInfo.avgCost, peakPrice: posInfo.peakPrice, openedAt: posInfo.openedAt }
+            ? {
+                avgCost: posInfo.avgCost,
+                peakPrice: posInfo.peakPrice,
+                peakAt: posInfo.peakAt,
+                openedAt: posInfo.openedAt,
+              }
             : null,
           thesis: {
             createdAt: thesis.createdAt,

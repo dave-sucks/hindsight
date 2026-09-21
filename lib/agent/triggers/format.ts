@@ -40,7 +40,11 @@ export function predicateSentence(p: TriggerPredicate): string {
     case "GAIN_FROM_ENTRY":
       return (
         (p.direction === "UP" ? `Up ${p.pct}% from entry` : `Down ${p.pct}% from entry`) +
-        (p.skipIfPeakGainPct ? ` (off once it has run ${p.skipIfPeakGainPct}%)` : "")
+        (p.skipIfPeakGainPct
+          ? p.skipIfPeakWithinDays
+            ? ` (off once it has run ${p.skipIfPeakGainPct}% within ${p.skipIfPeakWithinDays} days)`
+            : ` (off once it has run ${p.skipIfPeakGainPct}%)`
+          : "")
       );
     case "TRAILING_FROM_HIGH":
       // Same vocabulary as the trigger editor ("Trailing from high") — the

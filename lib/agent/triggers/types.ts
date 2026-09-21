@@ -78,7 +78,15 @@ export type TriggerPredicate =
   // Complements PRICE_MOVE_PCT, which only sees the single-day move —
   // this is what catches the quiet cumulative winner/bleeder (the IONS
   // +17%-then-loss failure; see docs/plans/THESIS_GAME_PLAN.md).
-  | { kind: "GAIN_FROM_ENTRY"; pct: number; direction: "UP" | "DOWN"; skipIfPeakGainPct?: number }
+  // skipIfPeakGainPct / skipIfPeakWithinDays: the big-winner switch. Set
+  // together — a run that big, that fast, turns this rung off for good.
+  | {
+      kind: "GAIN_FROM_ENTRY";
+      pct: number;
+      direction: "UP" | "DOWN";
+      skipIfPeakGainPct?: number;
+      skipIfPeakWithinDays?: number;
+    }
   // Give-back % off the position's tracked peak (Position.peakPrice —
   // high-water for LONG, low-water for SHORT, maintained by the price
   // monitor). The mechanical gain ratchet: the floor follows the high

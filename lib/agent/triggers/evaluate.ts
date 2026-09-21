@@ -157,6 +157,13 @@ export interface EvaluationContext {
     peakPrice?: number | null;
     /** When the position opened — the anchor for a day count `from: "BUY"`. */
     openedAt?: Date | null;
+    /**
+     * When that water mark was set, written alongside peakPrice by the price
+     * monitor. Read by the big-winner switch, which needs to tell a run that
+     * took two weeks from one that took six months. Absent → the switch
+     * can't prove the run was fast, so the partial stands.
+     */
+    peakAt?: Date | null;
   } | null;
 
   /** Thesis fields needed by time-based predicates. */
@@ -219,14 +226,15 @@ export function evaluateTrigger(
       const gainPct = isLong
         ? ((ctx.latestQuote.price - avg) / avg) * 100
         : ((avg - ctx.latestQuote.price) / avg) * 100;
-      // A big winner is not trimmed (DAV-294, playbook F). Once the
-      // position's tracked peak has run this far off the buy, the partial
-      // sale is off for good and the trail manages the position. Reads the
-      // same water mark the trail does, so it needs no memory of its own.
+      // A big winner is not trimmed (playbook: "+20% in ≤ 3 weeks — then
+      // hold"). Once the position's tracked peak has run that far off the
+      // buy THAT FAST, the partial sale is off for good and the trail
+      // manages the position. Reads the same water mark the trail does, so
+      // it needs no memory of its own.
       if (predicate.skipIfPeakGainPct != null && ctx.position?.peakPrice != null) {
         const peak = ctx.position.peakPrice;
         const peakGain = isLong ? ((peak - avg) / avg) * 100 : ((avg - peak) / avg) * 100;
-        if (peakGain >= predicate.skipIfPeakGainPct) return false;
+        if (peakGain >= predicate.skipIfPeakGainPct && peakWasFast(predicate, ctx)) return false;
       }
       return predicate.direction === "UP"
         ? gainPct >= predicate.pct
@@ -494,6 +502,33 @@ export function shouldFire(
 }
 
 // ── Internals ─────────────────────────────────────────────────────────
+
+/**
+ * Did the position reach its peak fast enough to count as a big winner?
+ *
+ * The playbook's rule is a run of 20% *in three weeks or less*. Without the
+ * clock the switch would read "never take a partial on anything that has
+ * ever been up 20%", which is a far wider change to selling than the rule —
+ * a six-month grind to +20% is an ordinary winner and the partial is exactly
+ * what it's for.
+ *
+ * Both dates come off the Position row: openedAt at the fill, peakAt written
+ * next to peakPrice by the price monitor. If either is missing we cannot
+ * prove the run was fast, so we say no and the partial stands — the failure
+ * direction is "de-risk a big winner", not "hold a stock through a rule we
+ * couldn't check".
+ */
+function peakWasFast(
+  predicate: Extract<TriggerPredicate, { kind: "GAIN_FROM_ENTRY" }>,
+  ctx: EvaluationContext,
+): boolean {
+  if (predicate.skipIfPeakWithinDays == null) return true;
+  const openedAt = ctx.position?.openedAt;
+  const peakAt = ctx.position?.peakAt;
+  if (openedAt == null || peakAt == null) return false;
+  const days = (peakAt.getTime() - openedAt.getTime()) / 86_400_000;
+  return days >= 0 && days <= predicate.skipIfPeakWithinDays;
+}
 
 /** Does this predicate read the next scheduled report? (The heads-up.) */
 function readsUpcomingReport(p: TriggerPredicate): boolean {

@@ -24,7 +24,13 @@ describe("applySetupOverride", () => {
     expect(out[0].predicate).toEqual({ kind: "REVIEW_CADENCE", days: 45, from: "BUY" });
     // The partial also carries the big-winner switch (DAV-294): a changed R
     // multiple changes the level, not the rule that a runner is not trimmed.
-    expect(out[1].predicate).toEqual({ kind: "GAIN_FROM_ENTRY", pct: 23.3, direction: "UP", skipIfPeakGainPct: 20 });
+    expect(out[1].predicate).toEqual({
+      kind: "GAIN_FROM_ENTRY",
+      pct: 23.3,
+      direction: "UP",
+      skipIfPeakGainPct: 20,
+      skipIfPeakWithinDays: 21,
+    });
   });
   it("a widened trade stop cap changes what the writer accepts", () => {
     const decision = {
