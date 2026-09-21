@@ -23,7 +23,6 @@ import {
   XIcon,
   BanIcon,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 
 // ── Action icon overlay (used by ToolProgressTickerItem for action tools) ──
 
@@ -202,37 +201,3 @@ export const ToolProgressTickerItem = memo(
 );
 ToolProgressTickerItem.displayName = "ToolProgressTickerItem";
 
-// ── Sources (uses Badge — matches InlineCitationCardTrigger style) ──────────
-
-export type ToolProgressSourcesProps = ComponentProps<"div"> & {
-  domains: string[];
-};
-
-export const ToolProgressSources = memo(
-  ({ className, domains, ...props }: ToolProgressSourcesProps) => {
-    if (domains.length === 0) return null;
-
-    return (
-      <div
-        className={cn("flex items-center gap-1.5 pt-1.5", className)}
-        {...props}
-      >
-        {domains.map((domain) => (
-          <Badge key={domain} variant="secondary" className="font-normal text-muted-foreground rounded-full gap-1">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`https://www.google.com/s2/favicons?sz=16&domain=${domain}`}
-              alt=""
-              width={12}
-              height={12}
-              className="size-3 shrink-0 rounded-sm"
-              loading="lazy"
-            />
-            {domain}
-          </Badge>
-        ))}
-      </div>
-    );
-  }
-);
-ToolProgressSources.displayName = "ToolProgressSources";

@@ -103,6 +103,7 @@ export default function PinnedPanel({
           // Held or recently sold — the trade row, exactly as the trades list
           // and the proposals rail render it.
           if (row && row.tradeState != null) {
+            const isOpen = row.tradeState === "OPEN";
             return (
               <TradeRow
                 key={ticker}
@@ -115,6 +116,13 @@ export default function PinnedPanel({
                 pnlPct={row.sincePct ?? 0}
                 status={tradeStatus(row)}
                 openedAt={row.anchorAt}
+                // anchorAt is the open date on a held row and the sale date on
+                // a sold one — the dot's hover line reads it as the same.
+                placedAt={isOpen ? row.anchorAt : undefined}
+                closedAt={isOpen ? undefined : row.anchorAt}
+                // A sell / trim / add waiting on you shows here as it does in
+                // the table below: amber dot and the verb before the ticker.
+                pendingProposal={row.pendingProposal ?? undefined}
                 thesisId={row.thesisId ?? undefined}
                 direction={direction ?? undefined}
               />

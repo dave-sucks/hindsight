@@ -156,6 +156,16 @@ export async function getCoverageData(
           take: 1,
           select: { id: true, status: true, intent: true, quantity: true, expiresAt: true },
         },
+        // The thesis this position was bought on. Fallback for when the
+        // by-ticker lookup below finds none in this environment — a LIVE
+        // position whose thesis was written by a PAPER run (CEG, 2026-09-11)
+        // otherwise had no thesis and its row opened /trades instead.
+        decisions: {
+          where: { thesisId: { not: null } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { thesisId: true },
+        },
       },
     }).catch(() => [] as never[]),
     prisma.thesis.findMany({
@@ -290,7 +300,7 @@ export async function getCoverageData(
       costBasis !== 0 && sinceDollar != null ? (sinceDollar / costBasis) * 100 : null;
     return {
       key: p.id,
-      thesisId: thesisIdByTicker.get(p.symbol) ?? null,
+      thesisId: thesisIdByTicker.get(p.symbol) ?? p.decisions[0]?.thesisId ?? null,
       ticker: p.symbol,
       direction: p.direction ?? null,
       analystName: p.analyst?.name ?? null,
