@@ -4,36 +4,143 @@
  * Includes US federal holiday list for the current year.
  */
 
-// US market holidays (NYSE observed) — update yearly
-const MARKET_HOLIDAYS_2026 = new Set([
-  "2026-01-01", // New Year's Day
-  "2026-01-19", // MLK Day
-  "2026-02-16", // Presidents' Day
-  "2026-04-03", // Good Friday
-  "2026-05-25", // Memorial Day
-  "2026-07-03", // Independence Day (observed)
-  "2026-09-07", // Labor Day
-  "2026-11-26", // Thanksgiving
-  "2026-11-27", // Black Friday (early close, treated as closed)
-  "2026-12-25", // Christmas
-]);
+// ── The NYSE calendar, computed ──────────────────────────────────────────
+//
+// This was two hand-kept sets, 2026 and 2027, and an empty set for every
+// other year. Three things were wrong with that, all of them silent:
+// Juneteenth (a full holiday since 2022) was in neither year; the day after
+// Thanksgiving was listed as a holiday though it is a real 9:30–13:00
+// session; and from 2028 every holiday read as an ordinary trading day.
+// A missing holiday means the evaluator runs all day on a dead tape; a
+// wrongly-listed one means nothing checks a stop for a whole session.
+//
+// The rules are fixed, so they are computed rather than typed in.
 
-const MARKET_HOLIDAYS_2027 = new Set([
-  "2027-01-01",
-  "2027-01-18",
-  "2027-02-15",
-  "2027-03-26",
-  "2027-05-31",
-  "2027-07-05",
-  "2027-09-06",
-  "2027-11-25",
-  "2027-12-24",
-]);
+/** Easter Sunday (Gregorian), Meeus/Jones/Butcher. */
+function easterSunday(year: number): { month: number; day: number } {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return { month, day };
+}
 
+const iso = (y: number, m: number, d: number) =>
+  `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+/** Day of week for a calendar date, 0=Sun … 6=Sat. Pure, no timezone. */
+function dow(y: number, m: number, d: number): number {
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/** The nth given weekday of a month, e.g. the 3rd Monday of January. */
+function nthWeekday(y: number, m: number, weekday: number, n: number): number {
+  const first = dow(y, m, 1);
+  return 1 + ((weekday - first + 7) % 7) + (n - 1) * 7;
+}
+
+/** The last given weekday of a month, e.g. the last Monday of May. */
+function lastWeekday(y: number, m: number, weekday: number): number {
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const last = dow(y, m, days);
+  return days - ((last - weekday + 7) % 7);
+}
+
+/**
+ * A fixed-date holiday's observed date. Saturday moves back to Friday,
+ * Sunday forward to Monday — except New Year's Day, which the NYSE simply
+ * does not observe when 1 January falls on a Saturday.
+ */
+function observed(y: number, m: number, d: number, isNewYear = false): string | null {
+  const w = dow(y, m, d);
+  if (w === 6) return isNewYear ? null : iso(y, m, d - 1);
+  if (w === 0) return iso(y, m, d + 1);
+  return iso(y, m, d);
+}
+
+/** Every full NYSE holiday in a year, as YYYY-MM-DD in Eastern Time. */
+export function marketHolidays(year: number): Set<string> {
+  const out = new Set<string>();
+  const add = (v: string | null) => {
+    if (v) out.add(v);
+  };
+  add(observed(year, 1, 1, true)); // New Year's Day
+  add(iso(year, 1, nthWeekday(year, 1, 1, 3))); // MLK Day — 3rd Monday
+  add(iso(year, 2, nthWeekday(year, 2, 1, 3))); // Presidents' Day — 3rd Monday
+  {
+    // Good Friday — two days before Easter Sunday.
+    const e = easterSunday(year);
+    const gf = new Date(Date.UTC(year, e.month - 1, e.day - 2));
+    add(iso(gf.getUTCFullYear(), gf.getUTCMonth() + 1, gf.getUTCDate()));
+  }
+  add(iso(year, 5, lastWeekday(year, 5, 1))); // Memorial Day — last Monday
+  // Juneteenth — a full NYSE holiday since 2022, and missing from both
+  // hand-kept years. 2026-06-19 is a Friday.
+  if (year >= 2022) add(observed(year, 6, 19));
+  add(observed(year, 7, 4)); // Independence Day
+  add(iso(year, 9, nthWeekday(year, 9, 1, 1))); // Labor Day — 1st Monday
+  add(iso(year, 11, nthWeekday(year, 11, 4, 4))); // Thanksgiving — 4th Thursday
+  add(observed(year, 12, 25)); // Christmas Day
+  return out;
+}
+
+/**
+ * Days the NYSE trades a shortened session, closing at 13:00 ET. These are
+ * TRADING days: the evaluator must run through the morning, and must stop
+ * at the early bell rather than scoring three more hours against a tape
+ * that has already closed.
+ */
+export function marketHalfDays(year: number): Set<string> {
+  const out = new Set<string>();
+  // The day after Thanksgiving.
+  const thanksgiving = nthWeekday(year, 11, 4, 4);
+  out.add(iso(year, 11, thanksgiving + 1));
+  // 3 July, when the 4th is itself the observed holiday and the 3rd trades.
+  if (dow(year, 7, 3) >= 1 && dow(year, 7, 3) <= 5 && dow(year, 7, 4) >= 1 && dow(year, 7, 4) <= 5) {
+    out.add(iso(year, 7, 3));
+  }
+  // Christmas Eve, when it falls Monday to Thursday.
+  const ce = dow(year, 12, 24);
+  if (ce >= 1 && ce <= 4) out.add(iso(year, 12, 24));
+  const holidays = marketHolidays(year);
+  for (const d of out) if (holidays.has(d)) out.delete(d);
+  return out;
+}
+
+const holidayCache = new Map<number, Set<string>>();
 function getHolidays(year: number): Set<string> {
-  if (year === 2026) return MARKET_HOLIDAYS_2026;
-  if (year === 2027) return MARKET_HOLIDAYS_2027;
-  return new Set();
+  let set = holidayCache.get(year);
+  if (!set) {
+    set = marketHolidays(year);
+    holidayCache.set(year, set);
+  }
+  return set;
+}
+
+const halfDayCache = new Map<number, Set<string>>();
+function getHalfDays(year: number): Set<string> {
+  let set = halfDayCache.get(year);
+  if (!set) {
+    set = marketHalfDays(year);
+    halfDayCache.set(year, set);
+  }
+  return set;
+}
+
+/** The hour the bell rings on a given ET date: 13:00 on a half day, else 16:00. */
+export function sessionCloseHour(ymd: string): number {
+  const year = parseInt(ymd.slice(0, 4), 10);
+  return getHalfDays(year).has(ymd) ? 13 : 16;
 }
 
 /**
@@ -187,10 +294,12 @@ export function isMarketOpen(now: Date = new Date()): boolean {
   const holidays = getHolidays(parseInt(parts.year, 10));
   if (holidays.has(dateStr)) return false;
 
-  // 9:30am – 4:00pm ET
+  // 9:30am ET to the bell — 16:00 normally, 13:00 on a half day. Without
+  // the half-day close the evaluator spent three hours scoring stops
+  // against a tape that had already shut.
   const totalMinutes = hour * 60 + minute;
   const marketOpen = 9 * 60 + 30; // 570
-  const marketClose = 16 * 60; // 960
+  const marketClose = sessionCloseHour(dateStr) * 60;
 
   return totalMinutes >= marketOpen && totalMinutes < marketClose;
 }
