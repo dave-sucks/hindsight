@@ -104,7 +104,7 @@ export const PODCAST_FORMATS: PodcastFormat[] = [
       },
       {
         name: "Deep Dive",
-        segmentPrompt: `Mid-episode beat. Pick ONE story or angle from today and unpack it for 2-3 minutes — context, who's involved, what's actually new vs hype, what to watch next. The angle matches the show's perspective: a gambling show treats injury news as edge; an NPR-style show treats it as context for fans. Use one extracted article (read_artifact) so the unpack is grounded.`,
+        segmentPrompt: `Mid-episode beat. Pick ONE story or angle from today and unpack it for 2-3 minutes — context, who's involved, what's actually new vs hype, what to watch next. The angle matches the show's perspective: a gambling show treats injury news as edge; an NPR-style show treats it as context for fans. Ground the unpack in one real source you pulled.`,
         targetSeconds: 180,
         monitorHints: [
           "Same monitors as Top Stories — Deep Dive picks from the routed pile",
@@ -198,7 +198,7 @@ Hard rule: NEVER invent fictional outlets. Every domain proposed must be a real,
       },
       {
         name: "Deep Dive",
-        segmentPrompt: `Long-form segment, 8-10 minutes. Pick ONE story or theme from the week and go deep — 3-5 sources, multiple angles, what's actually new vs noise, what listeners should expect next. The host has time here for a real argument or unpacking. Cite at least 2 read_artifact extractions.`,
+        segmentPrompt: `Long-form segment, 8-10 minutes. Pick ONE story or theme from the week and go deep — 3-5 sources, multiple angles, what's actually new vs noise, what listeners should expect next. The host has time here for a real argument or unpacking. Cite at least 2 real sources.`,
         targetSeconds: 540,
         monitorHints: [
           "Long-form DOMAIN monitors — outlets that publish substantive pieces (NYT magazine, The Atlantic, The Verge longreads, Stratechery, Variety features)",

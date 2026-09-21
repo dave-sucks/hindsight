@@ -111,24 +111,11 @@ function toFormValues(config: AgentConfigData): FormValues {
     typeof w === "string" ? w : w.symbol,
   );
 
-  const sources = config.domainMonitorProposal?.sources?.map((s) => ({
-    name: s.name,
-    domain: s.domain,
-    reason: s.reason,
-  })) ?? [];
-
-  const searchQueries = (config.intelligenceQueries ?? []).map((q) => ({
-    query: q.query,
-    reason: q.reason,
-  }));
-
   return {
     name: config.name ?? "",
     description: config.description ?? null,
     analystPrompt: config.analystPrompt ?? null,
     watchlist,
-    sources,
-    searchQueries,
     directionBias: config.directionBias ?? "BOTH",
     holdDurations: config.holdDurations ?? ["SWING"],
     minConfidence: config.minConfidence ?? 65,
@@ -173,10 +160,6 @@ function applyChange<K extends keyof FormValues>(
     case "watchlist":
       return { ...config, watchlist: value as string[] };
 
-    // Fields that don't exist on AgentConfigData are silently ignored — the
-    // form surfaces them but the panel's data model can't represent them.
-    case "sources":
-    case "searchQueries":
     default:
       return config;
   }

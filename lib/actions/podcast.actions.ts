@@ -32,24 +32,6 @@ export interface PodcastListItem {
   createdAt: Date;
 }
 
-// Domain + search monitor row shapes — mirror what AnalystConfigForm reads
-// off `domainMonitors` and `searchMonitors` from getAnalystDetail. Same Monitor
-// table, just split by Monitor.type for the UI.
-export interface SegmentDomainMonitorView {
-  id: string;
-  name: string;
-  domain: string;
-  category: string;
-  qualityScore: number;
-}
-
-export interface SegmentSearchMonitorView {
-  id: string;
-  name: string;
-  query: string;
-  category: string;
-}
-
 export interface SegmentSummary {
   id: string;
   name: string;
@@ -70,10 +52,6 @@ export interface SegmentSummary {
   /** ID of the currently-RUNNING run, if any. Used by the segment card to
    *  show a "View run" link so the user can navigate to the live run page. */
   activeRunId: string | null;
-  // Monitors split by type, mirror analyst (domainMonitors / searchMonitors).
-  // Both are Monitor rows scoped to this segment via podcastSegmentId.
-  domainMonitors: SegmentDomainMonitorView[];
-  searchMonitors: SegmentSearchMonitorView[];
 }
 
 export interface PodcastDetail {
@@ -181,10 +159,6 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
       segments: {
         orderBy: { orderIndex: "asc" },
         include: {
-          monitors: {
-            select: { id: true, name: true, type: true, config: true, category: true },
-            orderBy: { createdAt: "asc" },
-          },
           transcripts: {
             orderBy: { createdAt: "desc" },
             select: {
@@ -210,29 +184,6 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
   if (!podcast) return null;
 
   const segments: SegmentSummary[] = podcast.segments.map((s) => {
-    // Split Monitor rows by type — same shape AnalystConfigForm consumes
-    // off getAnalystDetail.{domainMonitors,searchMonitors}.
-    const domainMonitors: SegmentDomainMonitorView[] = [];
-    const searchMonitors: SegmentSearchMonitorView[] = [];
-    for (const m of s.monitors) {
-      const cfg = (m.config as Record<string, unknown> | null) ?? {};
-      if (m.type === "DOMAIN") {
-        domainMonitors.push({
-          id: m.id,
-          name: m.name,
-          domain: typeof cfg.domain === "string" ? cfg.domain : "",
-          category: m.category,
-          qualityScore: typeof cfg.qualityScore === "number" ? cfg.qualityScore : 3,
-        });
-      } else if (m.type === "SEARCH") {
-        searchMonitors.push({
-          id: m.id,
-          name: m.name,
-          query: typeof cfg.query === "string" ? cfg.query : "",
-          category: m.category,
-        });
-      }
-    }
     const t0 = s.transcripts[0];
     const latestTranscript: TranscriptCardData | null = t0
       ? {
@@ -264,8 +215,6 @@ export async function getPodcastDetail(id: string): Promise<PodcastDetail | null
       transcriptCount: s.transcripts.length,
       latestTranscript,
       activeRunId: s.runs[0]?.status === "RUNNING" ? s.runs[0].id : null,
-      domainMonitors,
-      searchMonitors,
     };
   });
 
@@ -313,12 +262,12 @@ export async function createPodcastFromBuilder(
       },
     });
 
-    // Create segments one-by-one so we can attach monitor rows by segment
+    // Create segments one-by-one so each keeps its order index
     // id. createMany doesn't return the inserted ids in Postgres without
     // an extra round-trip, so the loop pays for itself.
     for (let i = 0; i < config.segments.length; i++) {
       const s = config.segments[i];
-      const segment = await tx.podcastSegment.create({
+      await tx.podcastSegment.create({
         data: {
           podcastId: created.id,
           userId,
@@ -330,61 +279,13 @@ export async function createPodcastFromBuilder(
           orderIndex: i,
           topics: s.topics,
           excludeTopics: s.excludeTopics,
-          // `sources` column on PodcastSegment is dormant — domain hints
-          // belong on Monitor rows of type=DOMAIN. Empty array stays in DB
-          // for legacy column compatibility until a follow-up migration
+          // `sources` column on PodcastSegment is dormant. Empty array stays
+          // in DB for legacy column compatibility until a follow-up migration
           // drops it.
           sources: [],
         },
       });
 
-      // Domain monitors — Monitor rows of type=DOMAIN, mirror of
-      // createAnalystFromBuilder's domain-monitor block.
-      for (const m of s.domainMonitors) {
-        const domain = m.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
-        await tx.monitor.create({
-          data: {
-            accountId,
-            name: m.name,
-            type: "DOMAIN",
-            method: "perplexity_sonar",
-            config: {
-              domain,
-              url: `https://${domain}`,
-              qualityScore: 3,
-              reason: m.reason,
-            } as object,
-            scope: "PODCAST_SEGMENT",
-            podcastSegmentId: segment.id,
-            enabled: true,
-            builtIn: false,
-            origin: "BUILDER",
-            class: "UNIVERSE",
-            category: "THEMATIC",
-          },
-        });
-      }
-
-      // Search-query monitors — Monitor rows of type=SEARCH, mirror of
-      // createAnalystFromBuilder's intelligenceQueries block.
-      for (const q of s.searchQueries) {
-        await tx.monitor.create({
-          data: {
-            accountId,
-            name: q.query,
-            type: "SEARCH",
-            method: "perplexity_sonar",
-            config: { query: q.query, reason: q.reason } as object,
-            scope: "PODCAST_SEGMENT",
-            podcastSegmentId: segment.id,
-            enabled: true,
-            builtIn: false,
-            origin: "BUILDER",
-            class: "UNIVERSE",
-            category: "THEMATIC",
-          },
-        });
-      }
     }
 
     return created;
@@ -448,85 +349,6 @@ export async function updatePodcastVoice(
   voiceId: string | null,
 ) {
   return updatePodcastBasics(podcastId, { voiceId });
-}
-
-// ── Monitors on a segment ──────────────────────────────────────────────────
-// Reuses the Monitor table — same shape as analyst monitors. Two types:
-//   • DOMAIN: a website crawled by Sonar+Firecrawl (config.domain, qualityScore)
-//   • SEARCH: a Sonar query (config.query)
-// Mirrors createAnalystFromBuilder's monitor-row shape exactly so downstream
-// jobs (domain-monitor, search-query crons, signal-router) treat segment
-// monitors the same as analyst monitors once segment routing lands.
-
-type AddMonitorInput =
-  | { type: "DOMAIN"; name: string; domain: string; qualityScore?: number; reason?: string }
-  | { type: "SEARCH"; name?: string; query: string; reason?: string };
-
-export async function addSegmentMonitor(
-  segmentId: string,
-  input: AddMonitorInput,
-) {
-  const { accountId } = await requireAccount();
-  const seg = await prisma.podcastSegment.findFirst({
-    where: { id: segmentId, accountId },
-    select: { id: true, podcastId: true },
-  });
-  if (!seg) throw new Error("Segment not found");
-
-  if (input.type === "DOMAIN") {
-    const domain = input.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    await prisma.monitor.create({
-      data: {
-        accountId,
-        name: input.name || domain,
-        type: "DOMAIN",
-        method: "perplexity_sonar",
-        config: {
-          domain,
-          url: `https://${domain}`,
-          qualityScore: Math.min(5, Math.max(1, Math.round(input.qualityScore ?? 3))),
-          ...(input.reason ? { reason: input.reason } : {}),
-        } as object,
-        scope: "PODCAST_SEGMENT",
-        podcastSegmentId: seg.id,
-        origin: "USER",
-        class: "UNIVERSE",
-        category: "THEMATIC",
-      },
-    });
-  } else {
-    await prisma.monitor.create({
-      data: {
-        accountId,
-        name: input.name?.trim() || input.query,
-        type: "SEARCH",
-        method: "perplexity_sonar",
-        config: {
-          query: input.query,
-          ...(input.reason ? { reason: input.reason } : {}),
-        } as object,
-        scope: "PODCAST_SEGMENT",
-        podcastSegmentId: seg.id,
-        origin: "USER",
-        class: "UNIVERSE",
-        category: "THEMATIC",
-      },
-    });
-  }
-  revalidatePath(`/podcasts/${seg.podcastId}`);
-}
-
-export async function removeSegmentMonitor(monitorId: string) {
-  const user = await requireUser();
-  const monitor = await prisma.monitor.findFirst({
-    where: { id: monitorId },
-    include: { segment: { select: { id: true, podcastId: true, userId: true } } },
-  });
-  if (!monitor || !monitor.segment || monitor.segment.userId !== user.id) {
-    throw new Error("Monitor not found");
-  }
-  await prisma.monitor.delete({ where: { id: monitorId } });
-  revalidatePath(`/podcasts/${monitor.segment.podcastId}`);
 }
 
 // ── Delete ──────────────────────────────────────────────────────────────────
@@ -748,7 +570,7 @@ export async function createEpisodeFromTranscripts(
  * Contract: the proposal represents the FULL desired state. Segments are
  * matched by name (case-insensitive); existing-name segments get updated,
  * new-name segments get created, and existing segments missing from the
- * proposal get deleted (cascade-removes their monitors + transcripts).
+ * proposal get deleted (cascade-removes their transcripts).
  *
  * The editor system prompt enforces "preserve segments not asked to be
  * removed" so renames-with-content-moves should be rare. If the user
@@ -769,7 +591,6 @@ export async function updatePodcastFromEditor(
           id: true,
           name: true,
           orderIndex: true,
-          monitors: { select: { id: true, origin: true } },
         },
       },
     },
@@ -808,12 +629,8 @@ export async function updatePodcastFromEditor(
       const s = config.segments[i];
       const match = existingByName.get(norm(s.name));
 
-      let segmentId: string;
       if (match) {
-        // Update existing — preserve orderIndex from proposal order, update
-        // fields, then wipe + rebuild BUILDER-origin monitors. USER-origin
-        // monitors (added manually via the segment settings sheet) are
-        // preserved across editor passes.
+        // Update existing — preserve orderIndex from proposal order.
         await tx.podcastSegment.update({
           where: { id: match.id },
           data: {
@@ -824,13 +641,6 @@ export async function updatePodcastFromEditor(
             topics: s.topics,
             excludeTopics: s.excludeTopics,
             orderIndex: i,
-          },
-        });
-        segmentId = match.id;
-        await tx.monitor.deleteMany({
-          where: {
-            podcastSegmentId: segmentId,
-            origin: "BUILDER",
           },
         });
       } else {
@@ -848,53 +658,6 @@ export async function updatePodcastFromEditor(
             topics: s.topics,
             excludeTopics: s.excludeTopics,
             sources: [],
-          },
-        });
-        segmentId = created.id;
-      }
-
-      // Recreate domain + search monitors as BUILDER-origin rows. Mirror of
-      // createPodcastFromBuilder's monitor block. USER-origin monitors live
-      // alongside, untouched.
-      for (const m of s.domainMonitors) {
-        const domain = m.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
-        await tx.monitor.create({
-          data: {
-            accountId,
-            name: m.name,
-            type: "DOMAIN",
-            method: "perplexity_sonar",
-            config: {
-              domain,
-              url: `https://${domain}`,
-              qualityScore: 3,
-              reason: m.reason,
-            } as object,
-            scope: "PODCAST_SEGMENT",
-            podcastSegmentId: segmentId,
-            enabled: true,
-            builtIn: false,
-            origin: "BUILDER",
-            class: "UNIVERSE",
-            category: "THEMATIC",
-          },
-        });
-      }
-      for (const q of s.searchQueries) {
-        await tx.monitor.create({
-          data: {
-            accountId,
-            name: q.query,
-            type: "SEARCH",
-            method: "perplexity_sonar",
-            config: { query: q.query, reason: q.reason } as object,
-            scope: "PODCAST_SEGMENT",
-            podcastSegmentId: segmentId,
-            enabled: true,
-            builtIn: false,
-            origin: "BUILDER",
-            class: "UNIVERSE",
-            category: "THEMATIC",
           },
         });
       }

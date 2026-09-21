@@ -54,14 +54,6 @@ export function PodcastEditClient({
       targetSeconds: s.targetSeconds,
       topics: s.topics,
       excludeTopics: s.excludeTopics,
-      domainMonitors: s.domainMonitors.map((m) => ({
-        name: m.name,
-        domain: m.domain,
-      })),
-      searchMonitors: s.searchMonitors.map((m) => ({
-        name: m.name,
-        query: m.query,
-      })),
     })),
   };
 

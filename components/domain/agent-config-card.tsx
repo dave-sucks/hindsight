@@ -41,25 +41,7 @@ export type AgentConfigData = {
   minMarketCapTier?: string;
   watchlist?: (string | { symbol: string; reason?: string; priority?: string })[];
   exclusionList?: string[];
-  domainMonitorProposal?: {
-    name: string;
-    sources: Array<{
-      name: string;
-      domain: string;
-      category: string;
-      qualityScore: number;
-      reason: string;
-    }>;
-  };
-  intelligenceQueries?: Array<{
-    query: string;
-    category: string;
-    reason: string;
-  }>;
   intelligencePolicy?: {
-    holdingsAttention: number;
-    watchlistAttention: number;
-    discoveryAttention: number;
     maxSignalsPerRun?: number;
     maxArtifactReads?: number;
     allowLiveSearch?: boolean;

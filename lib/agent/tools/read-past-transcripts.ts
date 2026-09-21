@@ -24,7 +24,7 @@ export const readPastTranscripts = defineTool({
   description:
     "Read recent transcripts from THIS PODCAST's other segments so you don't repeat them and can build on follow-ups. " +
     "Returns the last lookbackDays (default 3) of transcripts across every segment under this podcast, ordered most-recent first. " +
-    "Call ONCE in Stage 1, after read_signals, to ground your editorial choices in what the show has already said.",
+    "Call ONCE in Stage 1, before you research, to ground your editorial choices in what the show has already said.",
   schema: z.object({
     lookbackDays: z
       .number()

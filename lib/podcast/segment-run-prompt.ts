@@ -92,12 +92,12 @@ ${continuityBlock}
 ═══════════════════════════════════════════════════════════════════════
 
 ### Stage 1 — Orient
-Call **read_signals** ONCE with no arguments. This returns the signals routed to this segment today — material your monitors and the topic-match router already pre-fetched. If it returns ≥3 relevant signals, lead with those.
+Start from a single web_search call rooted in your topic scope. Make the query concrete and time-bound (e.g. "indie game launches this week steam", "AI infrastructure funding rounds Q2 2026").
 
-If read_signals returns nothing or the routed material is thin, fall back to a single web_search call rooted in your topic scope. Make the query concrete and time-bound (e.g. "indie game launches this week steam", "AI infrastructure funding rounds Q2 2026"). One query is enough — don't burn the search budget on a fishing expedition.
+One query is enough — don't burn the search budget on a fishing expedition.
 
 ### Stage 1.5 — See what the show already covered
-Call **read_past_transcripts** ONCE (default lookback 3 days) right after read_signals. This returns recent transcripts from EVERY segment of THIS podcast — not just yours. Use it to:
+Call **read_past_transcripts** ONCE (default lookback 3 days) right after the search. This returns recent transcripts from EVERY segment of THIS podcast — not just yours. Use it to:
 - Avoid double-covering a story another segment just ran (the listener already heard it).
 - Pick up follow-up arcs ("the FDA decision the news segment teased on Monday lands today").
 - Match the show's voice — read a snippet of recent transcripts to stay consistent.
@@ -108,7 +108,6 @@ Skip nothing. If 0 transcripts come back, the show is new — pick fresh materia
 Triage the signals you got back from Stage 1 with the segment's editorial brief in mind. Pick the 1–3 stories that are the strongest fit — not the most signals, the strongest. Strongest means: in scope, fresh, defensible (multiple credible sources or a primary document), and matches the show's perspective.
 
 For each picked story:
-- Call **read_artifact** with the signal's artifactId to get the full extracted article.
 - If you need a second angle, call **web_search** ONCE with a specific follow-up query (not a fishing expedition).
 - If a claim involves a public company and you want a price/recent-news cross-check, call **get_stock_data** ONCE.
 
@@ -129,8 +128,8 @@ Call write_segment_transcript exactly once. The plainText field is your final sp
      quote: "the company announced a $5 billion Series F",
      startChar: 142,    // index in plainText where the claim starts
      endChar: 195,      // index in plainText where the claim ends
-     signalId: "..." | null,    // if this came from read_signals
-     artifactId: "..." | null   // if this came from read_artifact
+     signalId: "..." | null,    // leave null — segments no longer read signals
+     artifactId: "..." | null   // leave null — segments no longer read artifacts
    }]
   \`\`\`
 - **No fabricated facts.** If you didn't find a source for it, don't say it. The transcript will be voiced and published — every word needs to be defensible.

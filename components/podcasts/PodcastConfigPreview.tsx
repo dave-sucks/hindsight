@@ -131,8 +131,6 @@ export function PodcastConfigPreview({
           targetSeconds: 180,
           topics: [],
           excludeTopics: [],
-          domainMonitors: [],
-          searchQueries: [],
         },
       ],
     });
@@ -324,8 +322,7 @@ export function PodcastConfigPreview({
 // A collapsible card per segment. The header shows segment name + a duration
 // chip and a remove button. Expanded content is the canonical
 // SegmentConfigForm — same component the per-segment Settings sheet uses on
-// /podcasts/[id]. Monitor add/remove in this surface mutates the proposal in
-// place (no DB yet — that happens on Confirm). Field edits flow through the
+// /podcasts/[id]. Field edits flow through the
 // same SegmentFormChangeHandler shape SegmentConfigSheet uses for server
 // actions.
 
@@ -344,12 +341,7 @@ function SegmentRow({
 }) {
   const minutes = Math.round((segment.targetSeconds || 0) / 60);
 
-  // Adapt the proposal segment → SegmentFormValues. The proposal stores
-  // monitors as { name, domain, reason } / { query, reason }. The form
-  // expects { id, name, domain } / { id, name, query }. We use the array
-  // index as a stable id within this proposal — sufficient for the in-
-  // memory edit experience; real ids land on Confirm when the action
-  // creates Monitor rows.
+  // Adapt the proposal segment → SegmentFormValues.
   const values: SegmentFormValues = {
     name: segment.name,
     description: segment.description ?? null,
@@ -357,16 +349,6 @@ function SegmentRow({
     targetSeconds: segment.targetSeconds,
     topics: segment.topics ?? [],
     excludeTopics: segment.excludeTopics ?? [],
-    domainMonitors: (segment.domainMonitors ?? []).map((m, mi) => ({
-      id: `domain-${mi}`,
-      name: m.name,
-      domain: m.domain,
-    })),
-    searchMonitors: (segment.searchQueries ?? []).map((q, qi) => ({
-      id: `search-${qi}`,
-      name: q.query,
-      query: q.query,
-    })),
   };
 
   const handleChange: SegmentFormChangeHandler = (field, value) => {
@@ -389,43 +371,6 @@ function SegmentRow({
       case "excludeTopics":
         onUpdate({ excludeTopics: value as string[] });
         return;
-      // Monitor mutations land via the dedicated add/remove callbacks below,
-      // not through onChange.
-      case "domainMonitors":
-      case "searchMonitors":
-        return;
-    }
-  };
-
-  const handleAddDomain = ({ name, domain }: { name: string; domain: string }) => {
-    onUpdate({
-      domainMonitors: [
-        ...(segment.domainMonitors ?? []),
-        { name: name || domain, domain, reason: "" },
-      ],
-    });
-  };
-
-  const handleAddSearch = ({ query }: { name?: string; query: string }) => {
-    onUpdate({
-      searchQueries: [...(segment.searchQueries ?? []), { query, reason: "" }],
-    });
-  };
-
-  const handleRemoveMonitor = (monitorId: string) => {
-    if (monitorId.startsWith("domain-")) {
-      const idx = Number(monitorId.slice("domain-".length));
-      onUpdate({
-        domainMonitors: (segment.domainMonitors ?? []).filter((_, i) => i !== idx),
-      });
-      return;
-    }
-    if (monitorId.startsWith("search-")) {
-      const idx = Number(monitorId.slice("search-".length));
-      onUpdate({
-        searchQueries: (segment.searchQueries ?? []).filter((_, i) => i !== idx),
-      });
-      return;
     }
   };
 
@@ -460,15 +405,11 @@ function SegmentRow({
           {/* Fixed-height container so the inner Tabs + ScrollArea behave
               like the per-segment Sheet does (and like the analyst form
               behaves inside the analyst sheet). 480px feels right for the
-              right-rail panel — large enough to skim Sources + Queries
-              without expanding the whole panel. */}
+              right-rail panel. */}
           <div className="h-[480px]">
             <SegmentConfigForm
               values={values}
               onChange={handleChange}
-              onAddDomainMonitor={handleAddDomain}
-              onAddSearchMonitor={handleAddSearch}
-              onRemoveMonitor={handleRemoveMonitor}
               hideName
             />
           </div>

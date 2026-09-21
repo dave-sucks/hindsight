@@ -2,10 +2,7 @@
  * suggest_podcast_config — the podcast-builder analog of suggest_config.
  *
  * Returns the proposed Podcast + Segments[] for the side panel to preview
- * and confirm. Each segment carries its own monitor proposals (domain +
- * search) — same shape as suggest_config's domainMonitorProposal +
- * intelligenceQueries. createPodcastFromBuilder persists those as
- * Monitor rows scoped to the segment via podcastSegmentId.
+ * and confirm.
  *
  * Renders via ui: "podcast-config-preview" which fires
  * onPodcastConfigSuggested through ToolUICallbacks so the side panel
@@ -17,38 +14,6 @@
 import { tool } from "ai";
 import { z } from "zod";
 
-// Domain-monitor proposal — mirror of suggest_config's domainMonitorProposal
-// shape, simplified for podcasts (no qualityScore / category enums; we
-// default sensibly on the persistence side).
-const segmentDomainMonitorSchema = z.object({
-  name: z
-    .string()
-    .min(2)
-    .describe("Source name, e.g. 'TechCrunch' or 'The Verge'."),
-  domain: z
-    .string()
-    .min(3)
-    .describe(
-      "Bare domain — e.g. 'techcrunch.com'. No protocol, no path.",
-    ),
-  reason: z
-    .string()
-    .describe("Why this source matters for this segment's editorial brief."),
-});
-
-// Search-query proposal — mirror of intelligenceQueries shape.
-// Discovery-flavored: surface NEW material, not per-known-thing tracking.
-const segmentSearchQuerySchema = z.object({
-  query: z
-    .string()
-    .min(4)
-    .describe(
-      "A discovery query the pipeline runs daily via Perplexity Sonar to surface new material for this segment. Time-qualified, topic-scoped. Examples: 'indie game launches this week steam', 'AI infrastructure funding rounds Q2 2026'.",
-    ),
-  reason: z
-    .string()
-    .describe("Why this query matters for the segment's editorial scope."),
-});
 
 const segmentSchema = z.object({
   name: z
@@ -88,20 +53,6 @@ const segmentSchema = z.object({
     .default([])
     .describe(
       "Topics to skip even if in scope (e.g. ['crypto', 'rumor', 'leak']).",
-    ),
-  domainMonitors: z
-    .array(segmentDomainMonitorSchema)
-    .min(2)
-    .max(6)
-    .describe(
-      "2–6 sites the intelligence pipeline crawls daily for this segment. These get persisted as Monitor rows of type=DOMAIN scoped to the segment, exactly like analyst domain monitors.",
-    ),
-  searchQueries: z
-    .array(segmentSearchQuerySchema)
-    .min(2)
-    .max(5)
-    .describe(
-      "2–5 daily Sonar queries that find new material for this segment. Persisted as Monitor rows of type=SEARCH scoped to the segment.",
     ),
 });
 
