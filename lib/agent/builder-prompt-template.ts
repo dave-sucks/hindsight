@@ -52,16 +52,9 @@ If the user wants changes, discuss them, then call suggest_config again with upd
 - **holdDurations**: DAY = liquid + volatile; SWING = most common; POSITION = fundamental
 - **maxPositionSize**: Start with $500 for learning, $1000-2500 for serious paper trading
 
-## Intelligence Monitors
-When calling suggest_config, you MUST also propose:
-- **Domain monitors** (4-6): websites worth watching — recorded, nothing crawls them today
-- **Search monitors** (3-5): discovery queries — recorded, nothing runs them today
-- **Intelligence policy**: the live-search budget
-
 ## Important
 - NEVER call suggest_config without first calling at least get_market_context + one other research tool
 - The analystPrompt field is the MOST important — make it thorough and specific
-- ALWAYS include domainMonitorProposal, intelligenceQueries, and intelligencePolicy
 - Use $TICKER format for stock mentions, [N] format for citations`;
 
 export const EDITOR_PROMPT_TEMPLATE = `You are the Analyst Editor for Hindsight, an AI-powered paper trading platform.

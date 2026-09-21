@@ -959,8 +959,6 @@ Before writing a single line of the prompt, do the **three-beat playbook selecti
 2. **Present via ask_question.** Call \`ask_question\` with each candidate as an option — \`label\` = playbook name, \`description\` = the tagline from the index. Wait for the user's selection. NEVER present candidate playbooks as a prose bullet list.
 3. **Deep-read the chosen one.** Call \`read_knowledge_library\` with topic:"archetype", id:<chosen id>. The tool row is expandable so the user can read the playbook themselves — do NOT quote the skeleton back. Briefly note how you'll adapt it for this user, then move on.
 
-Optionally call with topic:"source" to anchor the domainMonitorProposal in real domains from the catalog.
-
 The archetype's \`promptSkeleton\` is a STARTING POINT for your analystPrompt — adapt it, don't copy it verbatim.
 
 ### Step 4 — Validate with real data (MANDATORY)
@@ -1021,12 +1019,6 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 - **maxPositionSize**: $500 learning, $1000–2500 serious paper.
 - **Universe fields** — sectors/industries/themes/marketCap define the discovery fence. Leaving a field empty = no filter on that axis. Use themes for the strategy's secular hypothesis; use industries when the edge is narrower than a whole sector.
 
-## Intelligence Monitors (also on suggest_config)
-- **domainMonitorProposal**: 4–6 real domains. Prefer ones you saw in read_knowledge_library source catalog.
-- **intelligenceQueries**: 3–5 DISCOVERY queries that describe how new tickers inside the Universe should be hunted. **These are recorded on the analyst, not executed** — the jobs that ran them were deleted 2026-09-15. Write them as a statement of intent, and never tell the user that news coverage happens on its own.
-  - GOOD examples: "breakout tech stocks this week small cap", "emerging EV companies 2026 production ramp", "AI infrastructure under-the-radar plays", "semiconductor equipment makers gaining share".
-  - BAD examples: "NVIDIA supply chain news", "$AMD earnings guidance", "Tesla battery updates" — per-ticker, not discovery.
-  - Every query must be discovery-flavored: no specific ticker name, includes a time qualifier ("this week"/"2026"/"recent"), aligns to at least one Universe dimension (sector/industry/theme). Schema rejects \`$TICKER\` patterns.
 - **intelligencePolicy**: only the live-search budget (\`allowLiveSearch\`, \`liveSearchBudget\`). The attention weights it used to carry fed the signal router, which is deleted.`;
 
 /**
@@ -1195,9 +1187,7 @@ For the \`analystPrompt\` field specifically:
 - Lane (c): weave a short change paragraph into the existing prompt. Preserve every paragraph that is not directly affected. Output the FULL document, not a diff.
 - Lane (d): rewrite the prompt, grounded in the archetype skeleton you just read. 3–5+ paragraphs covering edge, pattern, entry/exit, risk, and what to skip. Preserve anything about position sizing and exit discipline that was working.
 
-For optional fields (domainMonitorProposal, intelligenceQueries, intelligencePolicy): only include them when actually changing them.
-
-**intelligenceQueries guardrail:** If you propose \`intelligenceQueries\`, every query MUST be a DISCOVERY query — no specific ticker names. Per-ticker queries are rejected by the schema (\`$TICKER\` pattern refused). These queries are recorded on the analyst, not executed — nothing runs them today, so don't tell the user the analyst will be fed by them. GOOD: "emerging small-cap AI infrastructure plays 2026". BAD: "NVIDIA partnership updates" or "$AMD earnings guidance".
+For optional fields (intelligencePolicy): only include them when actually changing them.
 
 ═══════════════════════════════════════════════════════════════════════
 ## HARD RULES (violations waste the run — no exceptions)

@@ -3,21 +3,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { RefreshCw, Loader2, ScanSearch } from "lucide-react";
 
 import { SignalFeed } from "@/components/intelligence/signal-feed";
 import { HealthTab } from "@/components/intelligence/health-tab";
 import { HowItWorksSheet } from "@/components/domain/how-it-works-sheet";
-import {
-  IntelligenceShowcaseTrigger,
-  IntelligenceShowcaseButton,
-} from "@/components/domain/run-showcase-trigger";
 import type { Signal } from "@/components/intelligence/types";
 import type { HealthData } from "@/app/api/intelligence/health/route";
 
@@ -87,7 +78,6 @@ export default function IntelligencePage() {
 
   return (
     <TooltipProvider>
-      <IntelligenceShowcaseTrigger />
       <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto space-y-6">
         <Tabs
           defaultValue="findings"
@@ -100,7 +90,6 @@ export default function IntelligencePage() {
               <TabsTrigger value="health">Health</TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-1.5">
-              <IntelligenceShowcaseButton />
               <HowItWorksSheet flow="intelligence">
                 <ScanSearch className="h-4 w-4" />
               </HowItWorksSheet>

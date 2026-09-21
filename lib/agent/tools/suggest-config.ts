@@ -226,50 +226,6 @@ const rawConfigSchema = z.object({
     .array(z.string())
     .optional()
     .describe("Tickers to never trade."),
-  domainMonitorProposal: z
-    .object({
-      name: z.string().describe("Monitor group name, e.g. 'EV Industry Monitors'"),
-      sources: z
-        .array(
-          z.object({
-            name: z.string().describe("Source name, e.g. 'Electrek'"),
-            domain: z.string().describe("Source domain, e.g. 'electrek.co'"),
-            category: z.enum(["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"]),
-            qualityScore: z.number().min(1).max(5),
-            reason: z.string().describe("Why this source matters for this analyst's strategy"),
-          })
-        )
-        .min(4)
-        .max(6),
-    })
-    .optional()
-    .describe("Domain monitors: 4-6 websites worth watching for this strategy. Recorded on the analyst — nothing crawls them today (the domain cron was deleted 2026-09-15)."),
-  intelligenceQueries: z
-    .array(
-      z.object({
-        query: z
-          .string()
-          .describe(
-            "A DISCOVERY query that finds NEW tickers matching the analyst's Universe. Examples: 'breakout tech stocks this week small cap', 'emerging EV companies 2026 production ramp', 'AI infrastructure under-the-radar plays'. DO NOT write per-ticker queries like 'NVIDIA supply chain news' or '$NVDA AI accelerator updates'. Recorded on the analyst, not executed — the crons that ran these were deleted 2026-09-15."
-          )
-          .refine(
-            (q) => !/\$[A-Z]{1,5}\b/.test(q),
-            "Query must not contain $TICKER symbols — per-ticker monitoring is automatic."
-          ),
-        category: z.enum(["MARKET", "SECTOR", "THEMATIC", "EVENT"]),
-        reason: z
-          .string()
-          .describe(
-            "Why this DISCOVERY query matters. Explain what Universe dimension it surfaces new names for (e.g., 'finds semiconductor small-caps outside current watchlist')."
-          ),
-      })
-    )
-    .min(3)
-    .max(5)
-    .optional()
-    .describe(
-      "Discovery search monitors: 3-5 queries describing how NEW tickers should be hunted. Recorded on the analyst as a statement of intent — nothing runs them today (the search crons were deleted 2026-09-15)."
-    ),
   // The holdings / watchlist / discovery attention weights left this object
   // with the signal router they fed (2026-09-15).
   intelligencePolicy: z

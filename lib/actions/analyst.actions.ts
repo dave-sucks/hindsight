@@ -12,7 +12,7 @@ import { pickProposalOrder } from "@/lib/trade-status";
 import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { DEFAULT_INTELLIGENCE_POLICY } from "@/lib/intelligence/types";
-import type { SourceCategory, QueryCategory, IntelligencePolicy } from "@/lib/intelligence/types";
+import type { IntelligencePolicy } from "@/lib/intelligence/types";
 import {
   normalizeSectors,
   normalizeIndustries,
@@ -71,23 +71,7 @@ export interface AnalystConfig {
   emailAlerts: boolean;
   createdAt: Date;
   updatedAt: Date;
-  // V3 intelligence fields — populated from Monitor table + AgentConfig.intelligencePolicy
   intelligencePolicy: Record<string, unknown> | null;
-  domainMonitors: Array<{
-    id: string;
-    name: string;
-    domain: string;
-    category: string;
-    qualityScore: number;
-    enabled: boolean;
-  }>;
-  searchMonitors: Array<{
-    id: string;
-    name: string;
-    query: string;
-    category: string;
-    enabled: boolean;
-  }>;
 }
 
 export interface AnalystOpenTrade {
@@ -356,7 +340,7 @@ export async function getAnalystDetail(
   });
   if (!config) return null;
 
-  const [recentPositions, totalRuns, totalTheses, watchlistTheses, monitors] = await Promise.all([
+  const [recentPositions, totalRuns, totalTheses, watchlistTheses] = await Promise.all([
     // Last 20 positions attributed to this analyst
     prisma.position.findMany({
       where: { accountId, analystId },
@@ -419,19 +403,6 @@ export async function getAnalystDetail(
       select: { ticker: true },
       orderBy: { createdAt: "desc" },
     }),
-    // Load monitors (DOMAIN + SEARCH) for intelligence display
-    prisma.monitor.findMany({
-      where: { analystId },
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        config: true,
-        category: true,
-        enabled: true,
-      },
-      orderBy: { createdAt: "asc" },
-    }),
   ]);
 
   // Compute stats from all positions for this analyst.
@@ -482,34 +453,6 @@ export async function getAnalystDetail(
       ? (composites.reduce((s, c) => s + c, 0) / composites.length) * 10
       : null;
 
-  // Map monitors into typed arrays for UI display
-  const domainMonitors = monitors
-    .filter((m) => m.type === "DOMAIN")
-    .map((m) => {
-      const cfg = (m.config as Record<string, unknown>) ?? {};
-      return {
-        id: m.id,
-        name: m.name,
-        domain: (cfg.domain as string) ?? "",
-        category: m.category,
-        qualityScore: (cfg.qualityScore as number) ?? 3,
-        enabled: m.enabled,
-      };
-    });
-
-  const searchMonitors = monitors
-    .filter((m) => m.type === "SEARCH")
-    .map((m) => {
-      const cfg = (m.config as Record<string, unknown>) ?? {};
-      return {
-        id: m.id,
-        name: m.name,
-        query: (cfg.query as string) ?? m.name,
-        category: m.category,
-        enabled: m.enabled,
-      };
-    });
-
   // Map Prisma config (Json fields) → typed AnalystConfig
   const mappedConfig: AnalystConfig = {
     id: config.id,
@@ -545,8 +488,6 @@ export async function getAnalystDetail(
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
     intelligencePolicy: (config.intelligencePolicy as Record<string, unknown>) ?? null,
-    domainMonitors,
-    searchMonitors,
   };
 
   const mappedTrades: PositionWithThesis[] = recentPositions.map((p) => {
@@ -778,21 +719,6 @@ interface BuilderConfig {
   watchlist?: string[];
   exclusionList?: string[];
   // V3: Intelligence layer proposals from the builder
-  domainMonitorProposal?: {
-    name: string;
-    sources: Array<{
-      name: string;
-      domain: string;
-      category: string;
-      qualityScore: number;
-      reason: string;
-    }>;
-  };
-  intelligenceQueries?: Array<{
-    query: string;
-    category: string;
-    reason: string;
-  }>;
   intelligencePolicy?: {
     maxSignalsPerRun?: number;
     maxArtifactReads?: number;
@@ -914,9 +840,7 @@ export async function createAnalystFromBuilder(
       ? BigInt(Math.round(universe.marketCapMax))
       : null;
 
-  // ── Transactional creation: analyst + watchlist + monitors ──
-  // All intelligence setup is atomic — if monitor creation fails midway,
-  // the analyst still gets created but without a partial/broken intelligence setup.
+  // ── Transactional creation: analyst + watchlist ──
   const analyst = await prisma.$transaction(async (tx) => {
     // 1. Create the analyst config (core record)
     const newAnalyst = await tx.agentConfig.create({
@@ -1048,59 +972,6 @@ export async function createAnalystFromBuilder(
       );
     }
 
-    // 3. Create domain monitors from domain monitor proposal
-    if (data.domainMonitorProposal && data.domainMonitorProposal.sources.length > 0) {
-      const proposal = data.domainMonitorProposal;
-
-      for (const src of proposal.sources) {
-        const validCategory = (["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"] as const)
-          .includes(src.category as SourceCategory) ? src.category : "THEMATIC";
-        await tx.monitor.create({
-          data: {
-            accountId,
-            name: src.name,
-            type: "DOMAIN",
-            method: "perplexity_sonar",
-            config: {
-              domain: src.domain,
-              url: `https://${src.domain}`,
-              qualityScore: Math.min(5, Math.max(1, Math.round(src.qualityScore))),
-            },
-            scope: "ANALYST",
-            analystId: newAnalyst.id,
-            enabled: true,
-            builtIn: false,
-            origin: "BUILDER",
-            category: validCategory,
-          },
-        });
-      }
-      console.log(`[analyst] Created ${proposal.sources.length} domain monitors for analyst ${newAnalyst.id}`);
-    }
-
-    // 4. Create search monitors from intelligence queries
-    if (data.intelligenceQueries && data.intelligenceQueries.length > 0) {
-      for (const q of data.intelligenceQueries) {
-        const validCategory = (["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"] as const)
-          .includes(q.category as QueryCategory) ? q.category : "THEMATIC";
-        await tx.monitor.create({
-          data: {
-            accountId,
-            name: q.query,
-            type: "SEARCH",
-            method: "perplexity_sonar",
-            config: { query: q.query },
-            scope: "ANALYST",
-            analystId: newAnalyst.id,
-            enabled: true,
-            builtIn: false,
-            origin: "BUILDER",
-            category: validCategory,
-          },
-        });
-      }
-      console.log(`[analyst] Created ${data.intelligenceQueries.length} search monitors for analyst ${newAnalyst.id}`);
-    }
 
     return newAnalyst;
   });
@@ -1231,95 +1102,6 @@ export async function updateAnalystField(
   revalidatePath("/analysts");
 }
 
-// ── Analyst monitor add/remove ──────────────────────────────────────────────
-// Mirrors addSegmentMonitor / removeSegmentMonitor (lib/actions/podcast.actions.ts)
-// 1:1 — same shape, same Monitor table, same downstream cron path.
-// scope: "ANALYST" + analystId (vs PODCAST_SEGMENT + podcastSegmentId for segments).
-//
-// origin="USER" marks rows the user added directly via the settings sheet.
-// The BUILDER-rebuild path filters by origin to avoid clobbering them on
-// a config rewrite.
-
-type AddAnalystMonitorInput =
-  | { type: "DOMAIN"; name: string; domain: string; qualityScore?: number; reason?: string }
-  | { type: "SEARCH"; name?: string; query: string; reason?: string };
-
-export async function addAnalystMonitor(
-  analystId: string,
-  input: AddAnalystMonitorInput,
-) {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const accountId = await getAccountId(userId);
-  if (!accountId) throw new Error("No account");
-  const analyst = await prisma.agentConfig.findFirst({
-    where: { id: analystId, accountId },
-    select: { id: true },
-  });
-  if (!analyst) throw new Error("Analyst not found");
-
-  if (input.type === "DOMAIN") {
-    const domain = input.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    await prisma.monitor.create({
-      data: {
-        accountId,
-        name: input.name || domain,
-        type: "DOMAIN",
-        method: "perplexity_sonar",
-        config: {
-          domain,
-          url: `https://${domain}`,
-          qualityScore: Math.min(5, Math.max(1, Math.round(input.qualityScore ?? 3))),
-          ...(input.reason ? { reason: input.reason } : {}),
-        } as object,
-        scope: "ANALYST",
-        analystId: analyst.id,
-        enabled: true,
-        builtIn: false,
-        origin: "USER",
-        category: "THEMATIC",
-      },
-    });
-  } else {
-    await prisma.monitor.create({
-      data: {
-        accountId,
-        name: input.name?.trim() || input.query,
-        type: "SEARCH",
-        method: "perplexity_sonar",
-        config: {
-          query: input.query,
-          ...(input.reason ? { reason: input.reason } : {}),
-        } as object,
-        scope: "ANALYST",
-        analystId: analyst.id,
-        enabled: true,
-        builtIn: false,
-        origin: "USER",
-        category: "THEMATIC",
-      },
-    });
-  }
-  revalidatePath(`/analysts/${analyst.id}`);
-  revalidatePath("/analysts");
-}
-
-export async function removeAnalystMonitor(monitorId: string) {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const accountId = await getAccountId(userId);
-  if (!accountId) throw new Error("No account");
-  const monitor = await prisma.monitor.findFirst({
-    where: { id: monitorId, accountId },
-    select: { id: true, analystId: true },
-  });
-  if (!monitor) {
-    throw new Error("Monitor not found");
-  }
-  await prisma.monitor.delete({ where: { id: monitorId } });
-  if (monitor.analystId) revalidatePath(`/analysts/${monitor.analystId}`);
-  revalidatePath("/analysts");
-}
 
 // ── updateAnalystWatchlist (add/remove single symbol) ────────────────────────
 // Now thin wrappers around addWatchlistItem / removeWatchlistItem from
@@ -1665,76 +1447,6 @@ export async function updateAnalystFromBuilder(
     data: updateData,
   });
 
-  // Create domain monitors from domainMonitorProposal (replace existing BUILDER-origin monitors)
-  if (data.domainMonitorProposal && data.domainMonitorProposal.sources.length > 0) {
-    // Remove old builder-created domain monitors for this analyst
-    await prisma.monitor.deleteMany({
-      where: { analystId: id, type: "DOMAIN", origin: "BUILDER" },
-    });
-
-    for (const src of data.domainMonitorProposal.sources) {
-      const validCategory = (["MARKET", "SECTOR", "COMPANY", "THEMATIC", "SOCIAL", "EVENT"] as const)
-        .includes(src.category as SourceCategory) ? src.category : "THEMATIC";
-      await prisma.monitor.create({
-        data: {
-          accountId,
-          name: src.name,
-          type: "DOMAIN",
-          method: "perplexity_sonar",
-          config: {
-            domain: src.domain,
-            url: `https://${src.domain}`,
-            qualityScore: Math.min(5, Math.max(1, Math.round(src.qualityScore))),
-          },
-          scope: "ANALYST",
-          analystId: id,
-          enabled: true,
-          builtIn: false,
-          origin: "BUILDER",
-          category: validCategory,
-        },
-      });
-    }
-    console.log(`[analyst] Replaced domain monitors for analyst ${id}: ${data.domainMonitorProposal.sources.length} created`);
-  }
-
-  // Create search monitors from intelligenceQueries — full reset.
-  // A rebuild through the Editor is the user intentionally redefining the
-  // analyst's search queries from scratch, so we remove BOTH the previous
-  // BUILDER-origin monitors AND any BRIEFING_AGENT-origin rows that
-  // accumulated from the now-killed post-run auto-generator. Without this
-  // second delete, rebuilt analysts still show dozens of stale
-  // ticker-specific queries next to their clean new set of 5.
-  if (data.intelligenceQueries && data.intelligenceQueries.length > 0) {
-    await prisma.monitor.deleteMany({
-      where: {
-        analystId: id,
-        type: "SEARCH",
-        origin: { in: ["BUILDER", "BRIEFING_AGENT"] },
-      },
-    });
-
-    for (const q of data.intelligenceQueries) {
-      const validCategory = (["MARKET", "SECTOR", "TICKER", "THEMATIC", "EVENT"] as const)
-        .includes(q.category as QueryCategory) ? q.category : "THEMATIC";
-      await prisma.monitor.create({
-        data: {
-          accountId,
-          name: q.query,
-          type: "SEARCH",
-          method: "perplexity_sonar",
-          config: { query: q.query },
-          scope: "ANALYST",
-          analystId: id,
-          enabled: true,
-          builtIn: false,
-          origin: "BUILDER",
-          category: validCategory,
-        },
-      });
-    }
-    console.log(`[analyst] Replaced search monitors for analyst ${id}: ${data.intelligenceQueries.length} created (any BRIEFING_AGENT legacy rows also purged)`);
-  }
 
   revalidatePath(`/analysts/${id}`);
   revalidatePath("/analysts");

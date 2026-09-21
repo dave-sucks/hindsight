@@ -387,8 +387,6 @@ function AgentChatInner({
               minMarketCapTier: (config.minMarketCapTier ?? "LARGE") as "LARGE" | "MID" | "SMALL",
               watchlist: (config.watchlist ?? []) as string[],
               exclusionList: (config.exclusionList ?? []) as string[],
-              domainMonitorProposal: config.domainMonitorProposal,
-              intelligenceQueries: config.intelligenceQueries,
               intelligencePolicy: config.intelligencePolicy,
               universe: {
                 sectors: config.sectors,
@@ -436,8 +434,6 @@ function AgentChatInner({
               minMarketCapTier: config.minMarketCapTier as "LARGE" | "MID" | "SMALL",
               watchlist: config.watchlist as string[] | undefined,
               exclusionList: config.exclusionList as string[] | undefined,
-              domainMonitorProposal: config.domainMonitorProposal,
-              intelligenceQueries: config.intelligenceQueries,
               intelligencePolicy: config.intelligencePolicy,
               universe,
             });

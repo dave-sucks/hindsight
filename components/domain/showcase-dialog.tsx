@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/dialog";
 import { X } from "lucide-react";
 import { RunPreview } from "@/components/domain/run-preview";
-import { IntelligencePreview } from "@/components/domain/intelligence-preview";
 import { BuilderPreview } from "@/components/domain/builder-preview";
 
 // ── Showcase Dialog (reusable shell) ─────────────────────────────────────────
@@ -63,18 +62,6 @@ export function RunShowcaseDialog({ open, onOpenChange }: { open: boolean; onOpe
       preview={<RunPreview className="h-[340px] rounded-none" />}
       title="Analysts research on their own"
       subtitle="Each session reads your morning intelligence, validates opportunities with live market data, writes conviction theses, and places paper trades — all autonomously."
-    />
-  );
-}
-
-export function IntelligenceShowcaseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  return (
-    <ShowcaseDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      preview={<IntelligencePreview className="h-[340px] rounded-none" />}
-      title="Intelligence gathers overnight"
-      subtitle="Every morning, background jobs search the web, extract tracked domains, scan market movers and earnings, then synthesize everything into a personalized brief for each analyst."
     />
   );
 }

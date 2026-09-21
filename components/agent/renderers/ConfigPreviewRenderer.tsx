@@ -31,7 +31,7 @@ interface FieldSpec {
   label: string;
 }
 
-type GroupId = "trading" | "universe" | "monitors" | "prompt";
+type GroupId = "trading" | "universe" | "prompt";
 
 const GROUPS: Record<GroupId, { label: string; fields: FieldSpec[] }> = {
   trading: {
@@ -62,14 +62,6 @@ const GROUPS: Record<GroupId, { label: string; fields: FieldSpec[] }> = {
       { key: "watchlist", label: "Watchlist" },
     ],
   },
-  monitors: {
-    label: "Monitors",
-    fields: [
-      { key: "domainMonitorProposal", label: "Domain Sources" },
-      { key: "intelligenceQueries", label: "Search Queries" },
-      { key: "intelligencePolicy", label: "Intelligence Policy" },
-    ],
-  },
   prompt: {
     label: "Prompt",
     fields: [
@@ -94,31 +86,6 @@ function formatValue(key: FieldKey, val: unknown): string {
       .map((t) =>
         typeof t === "string" ? t : (t as { symbol: string }).symbol,
       )
-      .join(", ");
-  }
-  if (key === "intelligenceQueries" && Array.isArray(val)) {
-    if (val.length === 0) return "—";
-    return val
-      .map((q) =>
-        typeof q === "string"
-          ? q
-          : ((q as { query?: string }).query ?? ""),
-      )
-      .filter(Boolean)
-      .join(", ");
-  }
-  if (key === "domainMonitorProposal" && val && typeof val === "object") {
-    const sources = (val as { sources?: Array<Record<string, unknown>> })
-      .sources ?? [];
-    if (sources.length === 0) return "—";
-    return sources
-      .map(
-        (s) =>
-          (s.name as string | undefined) ??
-          (s.domain as string | undefined) ??
-          "",
-      )
-      .filter(Boolean)
       .join(", ");
   }
   if (key === "intelligencePolicy" && val && typeof val === "object") {
@@ -312,7 +279,6 @@ function EditorDiff({
     () => ({
       trading: diffsFor("trading", currentConfig, proposed),
       universe: diffsFor("universe", currentConfig, proposed),
-      monitors: diffsFor("monitors", currentConfig, proposed),
       prompt: diffsFor("prompt", currentConfig, proposed),
     }),
     [currentConfig, proposed],
@@ -321,14 +287,13 @@ function EditorDiff({
   const totalChanges =
     groupDiffs.trading.length +
     groupDiffs.universe.length +
-    groupDiffs.monitors.length +
     groupDiffs.prompt.length;
 
   // Which fields are approved. Default: everything selected.
   const allKeys = useMemo(
     () =>
       ([] as FieldKey[]).concat(
-        ...(["trading", "universe", "monitors", "prompt"] as const).map(
+        ...(["trading", "universe", "prompt"] as const).map(
           (g) => groupDiffs[g].map((d) => d.key),
         ),
       ),
@@ -407,7 +372,7 @@ function EditorDiff({
         <Tabs defaultValue={firstGroupWithChanges(groupDiffs)} className="p-0">
           <div className="px-3 pt-2">
             <TabsList>
-              {(["trading", "universe", "monitors", "prompt"] as const).map(
+              {(["trading", "universe", "prompt"] as const).map(
                 (g) => {
                   const n = groupDiffs[g].length;
                   return (
@@ -425,7 +390,7 @@ function EditorDiff({
             </TabsList>
           </div>
 
-          {(["trading", "universe", "monitors", "prompt"] as const).map((g) => (
+          {(["trading", "universe", "prompt"] as const).map((g) => (
             <TabsContent key={g} value={g} className="p-3">
               {groupDiffs[g].length === 0 ? (
                 <p className="text-xs text-muted-foreground">No changes.</p>
@@ -468,7 +433,7 @@ function EditorDiff({
 function firstGroupWithChanges(
   diffs: Record<GroupId, FieldDiff[]>,
 ): GroupId {
-  for (const g of ["trading", "universe", "monitors", "prompt"] as const) {
+  for (const g of ["trading", "universe", "prompt"] as const) {
     if (diffs[g].length > 0) return g;
   }
   return "trading";
