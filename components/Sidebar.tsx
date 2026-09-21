@@ -4,12 +4,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import {
+  CandlestickChart,
   LayoutDashboard,
   Bot,
   PlayCircle,
   ArrowLeftRight,
   BarChart3,
-  CalendarDays, TrendingUp,
   Settings,
   LogOut,
   ChevronsUpDown,
@@ -17,7 +17,6 @@ import {
   Sun,
   Moon,
   Workflow,
-  SatelliteDish,
   Sparkles,
   Mic,
   MessageCircle,
@@ -72,10 +71,8 @@ const MAIN_NAV = [
   ...(PODCASTS_ENABLED
     ? [{ href: '/podcasts', label: 'Podcasts', icon: Mic, tooltip: 'AI-generated podcasts (PoC)' }]
     : []),
-  { href: '/earnings', label: 'Earnings', icon: CalendarDays, tooltip: 'Who reports this week, and how it went' },
-  { href: '/movers', label: 'Movers', icon: TrendingUp, tooltip: "Today's gainers, losers and most-active stocks" },
+  { href: '/market', label: 'Market', icon: CandlestickChart, tooltip: 'Earnings, filings, movers and signals' },
   { href: '/runs', label: 'Runs', icon: PlayCircle, tooltip: 'Research sessions' },
-  { href: '/intelligence', label: 'Intelligence', icon: SatelliteDish, tooltip: 'Signals, monitors, briefs' },
 ];
 
 const PORTFOLIO_NAV = [
