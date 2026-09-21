@@ -127,3 +127,46 @@ describe("the ratchet counts the range multiple", () => {
     expect(protectiveRatchetViolations({ direction: "LONG", before, after: tighter, inherited: [] })).toEqual([]);
   });
 });
+
+/**
+ * The gate that decides which stocks the 5-minute pass loads a daily
+ * snapshot for. A range-widened trail reads ATR off that snapshot, so a
+ * stock whose ONLY chart rung is the trail has to be in this list — MU,
+ * FIVE, IOT, NVDA and SMMT all are exactly that shape on the live book.
+ * Without it the evaluator falls back to the written percent while the
+ * sheet, which looks the ATR up itself, draws the wider line: MU would show
+ * a sale at $884.57 and sell at $910.43 (QB review, 2026-09-19).
+ */
+describe("the evaluator loads the snapshot for a range-widened trail", () => {
+  it("a trail with a multiple needs indicators; a plain one does not", async () => {
+    const { needsIndicators } = await import("./indicator-needs");
+    expect(needsIndicators(PEAD_TRAIL)).toBe(true);
+    expect(needsIndicators({ kind: "TRAILING_FROM_HIGH", pct: 12, armAtGainPct: 10 })).toBe(false);
+  });
+
+  it("MU's ladder asks for a snapshot even though the trail is its only chart rung", async () => {
+    const { needsIndicators } = await import("./indicator-needs");
+    const MU_LADDER = [
+      { kind: "PRICE_BELOW", level: 969 },
+      { kind: "GAIN_FROM_ENTRY", pct: 10, direction: "UP" },
+      { kind: "REVIEW_CADENCE", days: 7 },
+      PEAD_TRAIL,
+    ] as const;
+    expect(MU_LADDER.some((p) => needsIndicators(p))).toBe(true);
+    expect(MU_LADDER.filter((p) => needsIndicators(p))).toHaveLength(1);
+  });
+
+  it("the evaluator and the sheet land on the same line for MU once the snapshot is loaded", () => {
+    const withAtr = trailFireLevel(PEAD_TRAIL, { peak: MU.peak, avgCost: MU.avgCost, isLong: true, atr: MU.atr });
+    const sheet = canonicalLevels({
+      triggers: [{ id: "trail", action: "EXIT", predicate: PEAD_TRAIL, rationale: "Trail.", level: "THESIS" as const, inherited: false }],
+      direction: "LONG",
+      status: "HOLDING",
+      avgCost: MU.avgCost,
+      peakPrice: MU.peak,
+      atr14: MU.atr,
+    });
+    expect(sheet.floor?.price).toBeCloseTo(withAtr as number, 4);
+    expect(withAtr).toBeCloseTo(884.57, 1);
+  });
+});
