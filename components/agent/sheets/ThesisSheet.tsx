@@ -853,21 +853,31 @@ const HORIZON_TOOLTIP: Record<string, string> = {
  *      is a flag nobody can test, so "nothing flagged" is stated, not implied.
  */
 function LatestNoteBlock({
+  status,
   latestUpdate,
   needsAction,
   planSanity,
   quoteLoading,
+  quoteFailed,
 }: {
+  status: string;
   latestUpdate: ThesisDossier["latestUpdate"];
   needsAction: NeedsAction | null;
   planSanity: { kind: string; text: string }[] | null;
   quoteLoading: boolean;
+  /** The live layer came back empty — we do not KNOW whether anything is flagged. */
+  quoteFailed: boolean;
 }) {
+  // Live rows only. On a sold, passed or dropped thesis the terminal banner
+  // at the top of the sheet already says what happened, and "nothing flagged
+  // for work" is meaningless on a stock nothing will work on.
+  const live = status === "WATCHING" || status === "HOLDING" || status === "PROMOTED";
   const reasons = [
     ...(needsAction ? [needsActionLine(needsAction)] : []),
     ...(planSanity ?? []).map((f) => f.text),
   ];
   const title = latestUpdate ? titleSegments(latestUpdate) : null;
+  if (!live || (!title && quoteFailed)) return null;
 
   return (
     <div className="space-y-2">
@@ -899,6 +909,13 @@ function LatestNoteBlock({
             </p>
           ))}
         </div>
+      ) : quoteFailed ? (
+        // The flags are computed against the live price. Without one we do
+        // not know whether this stock is flagged, and saying "nothing" would
+        // be a clean-looking answer to a question we could not ask.
+        <p className="text-sm text-muted-foreground">
+          Couldn&apos;t reach the live price, so the work flags couldn&apos;t be checked.
+        </p>
       ) : (
         <p className="text-sm text-muted-foreground">
           Nothing flagged for work right now.
@@ -1696,10 +1713,12 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       {/* Above the standing belief on purpose: the page should say what just
           happened, not only what the long-term claim is. */}
       <LatestNoteBlock
+        status={state.status}
         latestUpdate={state.latestUpdate}
         needsAction={quote?.needsAction ?? null}
         planSanity={resolved?.planSanity ?? null}
         quoteLoading={quoteLoading}
+        quoteFailed={!quoteLoading && quote == null}
       />
 
       {/* ── Core Belief headline ─────────────────────────────── */}
