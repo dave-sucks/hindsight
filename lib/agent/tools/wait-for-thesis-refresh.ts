@@ -37,8 +37,14 @@ import type { Horizon } from "@/lib/agent/horizon-policy";
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
+  getThesisComposite,
   getThesisSnapshotText,
 } from "@/lib/agent/thesis-narrative";
+import {
+  writerHandoff,
+  writerHandoffLine,
+  type WriterHandoff,
+} from "@/lib/agent/thesis-research/writer-handoff";
 
 const POLL_INTERVAL_MS = 2_000;
 
@@ -164,20 +170,41 @@ export const waitForThesisRefresh = defineTool({
       bullCase: string[];
       bearCase: string[];
       researchAge: ReturnType<typeof classifyResearchAge>;
+      /**
+       * The PLAN the refresh left, and the levels it moved (DAV-301). Without
+       * this the excerpt was prose only, and the run that commissioned the
+       * refresh deleted three levels it had never been shown.
+       */
+      wrote: WriterHandoff;
     } | null = null;
     if (thesisId) {
-      const thesis = await prisma.thesis.findUnique({
-        where: { id: thesisId },
-        select: {
-          id: true,
-          ticker: true,
-          snapshot: true,
-          bullCase: true,
-          bearCase: true,
-          researchUpdatedAt: true,
-          horizon: true,
-        },
-      });
+      const [thesis, writerUpdate] = await Promise.all([
+        prisma.thesis.findUnique({
+          where: { id: thesisId },
+          select: {
+            id: true,
+            ticker: true,
+            snapshot: true,
+            bullCase: true,
+            bearCase: true,
+            entryPrice: true,
+            targetPrice: true,
+            stopLoss: true,
+            scoring: true,
+            researchUpdatedAt: true,
+            horizon: true,
+          },
+        }),
+        // The writer's own audit row — the one-line list of what it changed,
+        // in its words, not a diff reconstructed here.
+        prisma.thesisUpdate
+          .findFirst({
+            where: { thesisId, runId: childRunId },
+            orderBy: { timestamp: "desc" },
+            select: { summary: true },
+          })
+          .catch(() => null),
+      ]);
       if (thesis) {
         thesisExcerpt = {
           thesisId: thesis.id,
@@ -189,6 +216,16 @@ export const waitForThesisRefresh = defineTool({
             thesis.researchUpdatedAt,
             thesis.horizon as Horizon | null,
           ),
+          wrote: writerHandoff({
+            ticker: thesis.ticker,
+            update: writerUpdate,
+            plan: {
+              entryPrice: thesis.entryPrice,
+              targetPrice: thesis.targetPrice ?? null,
+              stopLoss: thesis.stopLoss ?? null,
+              composite: getThesisComposite({ scoring: thesis.scoring }),
+            },
+          }),
         };
       }
     }
@@ -199,7 +236,7 @@ export const waitForThesisRefresh = defineTool({
       return {
         summary:
           ticker && thesisExcerpt
-            ? `$${ticker} refresh complete — research ${freshness} (${thesisExcerpt.researchAge.daysOld ?? 0}d). Proceed.`
+            ? `$${ticker} refresh complete. ${writerHandoffLine(thesisExcerpt.wrote)}`
             : `Refresh complete for child ${childRunId.slice(0, 8)}.`,
         data: {
           status: "COMPLETE" as const,
@@ -213,15 +250,19 @@ export const waitForThesisRefresh = defineTool({
                     kind: "ticker" as const,
                     ticker,
                     tag: `research ${freshness}`,
+                    // The plan, not a bullet count: the row shows the same
+                    // line the model receives (DAV-301).
                     text: thesisExcerpt
-                      ? `Refresh landed. snapshot + ${thesisExcerpt.bullCase.length} bull / ${thesisExcerpt.bearCase.length} bear bullets refreshed.`
+                      ? writerHandoffLine(thesisExcerpt.wrote)
                       : `Refresh landed (thesis row not loaded — possibly mid-mint).`,
                   },
                 ]
               : []),
             {
               kind: "generic" as const,
-              text: `Child run ${childRunId.slice(0, 8)} status=COMPLETE. Safe to proceed with place_trade / update_thesis.`,
+              text: thesisExcerpt
+                ? thesisExcerpt.wrote.instruction
+                : `Child run ${childRunId.slice(0, 8)} status=COMPLETE. Safe to proceed with place_trade / update_thesis.`,
             },
           ],
         },
