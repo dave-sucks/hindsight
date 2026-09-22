@@ -49,6 +49,7 @@ import { getSetup } from "@/lib/agent/knowledge/setups";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { isLadderEditUpdate } from "@/lib/agent/ladder-health";
+import { soldReview, RECENTLY_SOLD_WINDOW_DAYS, type SoldReview } from "@/lib/agent/sold-review";
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
@@ -1303,6 +1304,110 @@ export const getTheses = defineTool({
       };
     });
 
+    // ── The one look a sold stock gets (DAV-240) ────────────────────────
+    // A sale joins this run's work list once, with its own facts, and the run
+    // answers with the verbs it already has: keep watching with a re-entry
+    // level, keep watching on a cadence, keep watching with nothing, or let it
+    // go. Its own small query — a sold row is not part of the live book, and
+    // pulling RETIRED rows into the main read would drag every one of them
+    // through the resolver, the quote fetch and needsAction. Skipped on a
+    // ticker-filtered drill-down and for callers that asked for an explicit
+    // status scope. Fail-soft: the book still returns if this throws.
+    let soldToReview: Array<{ thesis_id: string; ticker: string; sold_on: string; days_ago: number; ask: string }> = [];
+    if (!tickerFiltered && !(args.status && args.status.length > 0) && ctx.analystId) {
+      try {
+        const since = new Date(resolverNow.getTime() - RECENTLY_SOLD_WINDOW_DAYS * 86_400_000);
+        const soldRows = await prisma.thesis.findMany({
+          where: {
+            userId: ctx.userId,
+            status: "RETIRED",
+            retiredReason: "SOLD",
+            closedAt: { gte: since },
+            researchRun: { agentConfigId: ctx.analystId },
+          },
+          orderBy: { closedAt: "desc" },
+          take: 20,
+          select: {
+            id: true,
+            ticker: true,
+            closedAt: true,
+            closeReason: true,
+            catalystDate: true,
+            updates: {
+              where: { type: { in: ["UPDATED", "REVIEWED", "STATUS_CHANGED"] } },
+              orderBy: { timestamp: "desc" },
+              take: 1,
+              select: { timestamp: true },
+            },
+          },
+        });
+        const soldPositions = soldRows.length
+          ? await prisma.position.findMany({
+              where: {
+                analystId: ctx.analystId,
+                symbol: { in: soldRows.map((r) => r.ticker) },
+                status: "CLOSED",
+                closedAt: { gte: since },
+              },
+              orderBy: { closedAt: "desc" },
+              select: {
+                symbol: true,
+                closePrice: true,
+                realizedPnl: true,
+                avgCost: true,
+                quantity: true,
+                // The attestation lives on the closing Order, not the
+                // Position — LIVE closes are approval-gated, so the agent
+                // attests when it proposes.
+                orders: {
+                  where: { intent: "CLOSE", status: "FILLED" },
+                  orderBy: { filledAt: "desc" },
+                  take: 1,
+                  select: { closeBeliefSurvived: true },
+                },
+              },
+            })
+          : [];
+        const posBySymbol = new Map(soldPositions.map((p) => [p.symbol, p]));
+        for (const r of soldRows) {
+          const pos = posBySymbol.get(r.ticker);
+          const cost = pos ? Number(pos.avgCost) * Number(pos.quantity) : 0;
+          const realized = pos?.realizedPnl != null ? Number(pos.realizedPnl) : null;
+          const review: SoldReview | null = soldReview({
+            ticker: r.ticker,
+            status: "RETIRED",
+            retiredReason: "SOLD",
+            closedAt: r.closedAt,
+            closeReason: r.closeReason,
+            exitPrice: pos?.closePrice != null ? Number(pos.closePrice) : null,
+            realizedPnl: realized,
+            realizedPnlPct: realized != null && cost > 0 ? (realized / cost) * 100 : null,
+            beliefSurvived: pos?.orders?.[0]?.closeBeliefSurvived ?? null,
+            catalystDate: r.catalystDate,
+            // The close's own bookkeeping lands in the same second as the
+            // close; only a row written AFTER it is an answer.
+            answered: !!(
+              r.updates[0] &&
+              r.closedAt &&
+              r.updates[0].timestamp.getTime() > r.closedAt.getTime() + 5_000
+            ),
+            now: resolverNow,
+          });
+          if (review) {
+            soldToReview.push({
+              thesis_id: r.id,
+              ticker: r.ticker,
+              sold_on: review.soldOn,
+              days_ago: review.daysAgo,
+              ask: review.text,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[get_theses] sold-review scan failed; the book still returns:", err);
+      }
+    }
+
     const activeCount = theses.filter(
       (t) => t.status === "HOLDING",
     ).length;
@@ -1320,9 +1425,13 @@ export const getTheses = defineTool({
               ? ` — ${enriched.length} actionable in full, ${quietRows.length} quiet as index rows`
               : ""
           }.`;
+    const summaryWithSold =
+      soldToReview.length > 0
+        ? `${summary} ${soldToReview.length} recently sold stock${soldToReview.length === 1 ? "" : "s"} (${soldToReview.map((x) => `$${x.ticker}`).join(", ")}) still need${soldToReview.length === 1 ? "s" : ""} a keep-watching-or-let-it-go decision.`
+        : summary;
 
     return {
-      summary,
+      summary: summaryWithSold,
       data: {
         count: theses.length,
         active: activeCount,
@@ -1341,6 +1450,9 @@ export const getTheses = defineTool({
                 `They need no touch this run. To read one in full: get_theses(tickers: ["<TICKER>"]).`,
             }
           : {}),
+        // Stocks sold in the last two weeks that no run has answered for
+        // yet (DAV-240). One look each, then they clear.
+        ...(soldToReview.length > 0 ? { sold_to_review: soldToReview } : {}),
         // ThesisCardData[] for ThesisCardRenderer — drives the
         // "Read theses" carousel in the chat (full-detail rows only).
         cards,

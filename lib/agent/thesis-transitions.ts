@@ -42,6 +42,8 @@ export interface TransitionInput {
   ticker: string;
   /** The thesis's stored status (P1-24 taxonomy). */
   currentStatus: string;
+  /** Why a RETIRED thesis was retired — SOLD / DROPPED / INVALIDATED / REPLACED. */
+  retiredReason?: string | null;
   /** The change_status arg — Zod has already narrowed it to the verb enum. */
   changeStatus: "INVALIDATED" | "ARCHIVED" | "WATCHING" | undefined;
   /** ToolContext.runMode ("THESIS_WRITER", "MORNING_PLAN", ...). */
@@ -246,10 +248,18 @@ export function checkTerminateWithoutClose(
 // ── The WATCHING opt-out rule ────────────────────────────────────────────
 
 /**
- * change_status: "WATCHING" is reserved for the PROMOTED → WATCHING
- * opt-out on the first live run. From any other status it's a category
- * error — the agent probably meant INVALIDATED, or should be calling
- * close_position.
+ * Two ways back to WATCHING:
+ *
+ *   • PROMOTED → WATCHING — the opt-out on the first live run.
+ *   • RETIRED(SOLD) → WATCHING — a stock we sold, put back on watch after
+ *     the review every sale now gets (DAV-240). A close only recycles by
+ *     itself on a TARGET exit or when the closing agent attested the belief
+ *     survived; everything else went terminal and was never looked at
+ *     again. 163 sold, 9 ever back. SMMT was sold on a protective stop
+ *     eight weeks before the catalyst it was bought for.
+ *
+ * From anywhere else it is still a category error — the agent probably
+ * meant INVALIDATED, or should be calling close_position.
  *
  * Checked where the verb is APPLIED (inside the change_status switch),
  * not with the early rules — moving it earlier would change which error
@@ -261,12 +271,13 @@ export function checkWatchingOptOut(
 ): TransitionViolation | null {
   if (input.changeStatus !== "WATCHING") return null;
   if (input.currentStatus === "PROMOTED") return null;
+  if (input.currentStatus === "RETIRED" && input.retiredReason === "SOLD") return null;
   return {
-    summary: `Refused WATCHING transition on $${input.ticker} — current status is ${input.currentStatus}, not PROMOTED.`,
+    summary: `Refused WATCHING transition on $${input.ticker} — current status is ${input.currentStatus}, not PROMOTED or a sold thesis.`,
     data: {
       error: "watching_transition_from_non_promoted",
       message:
-        `change_status: "WATCHING" is reserved for the PROMOTED → WATCHING opt-out path. This thesis is ${input.currentStatus}. ` +
+        `change_status: "WATCHING" puts back a thesis this analyst promoted (the first-live-run opt-out) or one it sold. This thesis is ${input.currentStatus}${input.retiredReason ? ` (${input.retiredReason})` : ""}. ` +
         `Did you mean change_status: "INVALIDATED" (kill the belief)? To exit an open position, call close_position.`,
     },
   };

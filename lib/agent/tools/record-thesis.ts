@@ -11,6 +11,7 @@ import { stampWrittenPrice } from "@/lib/agent/triggers/written-price";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import { RECENTLY_SOLD_WINDOW_DAYS } from "@/lib/agent/sold-review";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
@@ -1485,7 +1486,6 @@ export const recordThesis = defineTool({
       } | null = null;
       if (ctx.analystId) {
         try {
-          const RECENTLY_SOLD_WINDOW_DAYS = 14;
           const soldSibling = await prisma.thesis.findFirst({
             where: {
               ticker: args.ticker,

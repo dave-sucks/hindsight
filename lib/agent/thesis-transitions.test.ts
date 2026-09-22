@@ -173,7 +173,7 @@ describe("checkTerminateWithoutClose — the zombie-position rule", () => {
   });
 });
 
-describe("checkWatchingOptOut — WATCHING is reserved for the PROMOTED exit", () => {
+describe("checkWatchingOptOut — back to WATCHING from a promotion or a sale", () => {
   it.each(["WATCHING", "HOLDING"])(
     "refuses change_status WATCHING from %s",
     (status) => {
@@ -195,5 +195,26 @@ describe("checkWatchingOptOut — WATCHING is reserved for the PROMOTED exit", (
         input({ currentStatus: "WATCHING", changeStatus: "INVALIDATED" }),
       ),
     ).toBeNull();
+  });
+
+  // DAV-240. SMMT: RETIRED(SOLD) 2026-09-21 on a protective stop, eight weeks
+  // before the PDUFA it was bought for. The run that reviews the sale has to
+  // be able to put it back on watch — before this, it could not.
+  it("passes from a thesis this analyst SOLD", () => {
+    expect(
+      checkWatchingOptOut(
+        input({ currentStatus: "RETIRED", retiredReason: "SOLD", changeStatus: "WATCHING" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("…and only from a sale: dropped, invalidated and replaced stay terminal", () => {
+    for (const reason of ["DROPPED", "INVALIDATED", "REPLACED", null]) {
+      expect(
+        checkWatchingOptOut(
+          input({ currentStatus: "RETIRED", retiredReason: reason, changeStatus: "WATCHING" }),
+        )?.data.error,
+      ).toBe("watching_transition_from_non_promoted");
+    }
   });
 });
