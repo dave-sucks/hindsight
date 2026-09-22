@@ -138,27 +138,60 @@ watch," "clock"). Explain numbers in dollars. Lead with the answer. Needs-Dave
 items are one line at the end. When he's wrong, say so with the evidence;
 when you're wrong, say so first.
 
-## 7. What's in flight on 2026-09-15
+## 7. What's in flight on 2026-09-20
 
-**Agents lane** (brief: `docs/prompts/AGENTS_SESSION.md`; a fresh session
-from 09-14):
+**Both lanes are paused on features.** Everything the rebuild planned is
+merged. The system has not yet been *run* long enough to judge, and that —
+not more building — is the work now.
 
-| Merged | Open | Next, in order |
+**Agents lane** (brief: `docs/prompts/AGENTS_SESSION.md`). Every stage of
+`AGENT_REBUILD.md` has shipped: the chart, triggers that fire, the setup
+catalog, the writer, size by risk, the scorecard, the daily run as a
+portfolio manager, the tactical run confirming by setup, discovery by
+screens, analyst templates, the playbook's numbers as settings, the book
+moved onto setups, two-condition triggers by hand, and the trail that
+widens with a stock's own range. Nothing is open.
+
+**Signals lane** (brief: `docs/prompts/SIGNALS_SESSION.md`): earnings and
+SEC filings are live end to end and both have fired on real data. The
+filing proof landed 09-18 (BMRN, one review row per filing, named and
+linked). The earnings proof is the outstanding one — MU reports at the end
+of September; verify the heads-up and the beat/miss review carry the
+figures. Live quotes moving to Alpaca waits on Dave's deposit.
+
+**What the last weekend added, and why it matters to a reviewer.** An
+adversarial audit of the shipped work found five real defects in code that
+had passed ordinary review, three of them in work merged the same day: a
+half-full analyst told it was full, a stop ratchet reading a stale mirror
+column, setup time limits counted in the wrong unit, a market calendar
+missing Juneteenth and treating a real half-session as closed, and an add
+proposal that outlived its position. All are fixed. The lesson for this
+seat: **a PR passing review is not evidence the code is right, and the
+cheapest check is always production data.**
+
+**Exit test log:** 0 of 2 clean run days. 09-11, 09-14 and 09-18 all
+turned up new bugs. The next attempt starts with the 09-21 run.
+
+**What is deliberately NOT being built:** the eight-week hold (needs the
+trigger bucket key to tell two day counts from the buy apart), watching
+the stocks we sold, shrinking the two thesis tools, news signals. Each
+carries its reason on its ticket.
+
+**The weekly numbers.** Judging this system on realized P&L is not yet
+possible — too few closed trades carry a setup, and older trades ran under
+configs that no longer exist. What *is* measurable weekly, and what this
+seat reports every Friday:
+
+| | Baseline, 2026-09-20 | Where it should get to |
 |---|---|---|
-| Chart + daily snapshot; triggers that fire (dead kinds deleted); setup catalog; size by risk; scorecard by setup; insider buying; the fixes to all of these; buy-now flag deleted + down-day buy levels; price age; the writer (#644); sell rules to analysts (#645) | None. Unrun: #644's live proof (DOCU/FIVE/HPE). Open problems: `AGENT_REBUILD.md` §7 | Seat sell rules redone from the playbook (with Dave) → live quotes from Alpaca → tactical run with setup-specific exits (needs event-date and days-held triggers) → daily run as portfolio manager → screens + setup-aware triage in chat → analyst templates seed analyst rules |
+| Buy triggers fired → buys proposed (14d) | 16 → 4 | close to 1:1 |
+| Sell proposals declined or expired (30d) | 89% | under 40% |
+| Held stocks with a setup named | 4 of 9 | all of them |
+| Watched stocks carrying a buy plan | 9 of 24 | most of them |
+| Morning runs completed | 18 of 18 | unchanged |
 
-**Signals lane** (brief: `docs/prompts/SIGNALS_SESSION.md`): earnings is
-live end to end (beat, miss, within-N-days, since-N-days kinds; account
-earnings wakes; Earnings page). First real fire expected around MU's report
-at the end of September — verify it lands as one Activity line with the
-numbers. SEC filings and further signals are this lane's roadmap; each new
-kind ships whole and reaches the agents through `LANES.md` §2.
-
-**Exit test log:** 0 of 2 clean run days (09-11 and 09-14 both failed).
-
-**Other open tickets:** the approval "Executing" lag after a fill, watching
-stocks we sold, triage before dispatch, shrinking the two thesis tools,
-news signals (parked).
+The first row is the one that matters: it is the failure the rebuilt daily
+run was built to end, and it has not moved yet.
 
 ## 8. The exit test for "the cleanup is over"
 
