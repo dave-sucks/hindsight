@@ -248,6 +248,31 @@
   outline: none;
 }
 
+/* ── Streaming dot — one per reply ─────────────────────────────────────── */
+/* The pulsing ● is the markdown library's (@assistant-ui/react-markdown
+ * styles/dot.css, imported by cited-markdown-text.tsx). It marks the end of
+ * every markdown block whose status is "running", and a reply that goes
+ * text → tool → text → tool is several blocks in one message — so the
+ * library drew a dot under each one, and one on any block that came out
+ * empty (a text part with nothing in it, or one whose only content was the
+ * "Stage 2 —" scaffolding our renderer strips).
+ *
+ * The dot belongs where text is actually landing, the way Claude, Perplexity
+ * and Cursor do it: one, at the end. These rules take it off any block that
+ * has another block after it, and off any block with nothing in it. The
+ * library's own selectors are :where()-wrapped (zero specificity), so a
+ * plain class wins regardless of stylesheet order.
+ *
+ * The depth chain mirrors dot.css's own nesting: it places the dot on the
+ * last list item, so removing it needs the same last-child walk. */
+.aui-md:has(~ .aui-md)::after,
+.aui-md:has(~ .aui-md) > :last-child::after,
+.aui-md:has(~ .aui-md) > :last-child > :last-child::after,
+.aui-md:has(~ .aui-md) > :last-child > :last-child > :last-child::after,
+.aui-md:empty::after {
+  content: none;
+}
+
 /* ── Shimmer text — used by active CoT items while tools are running ───── */
 @keyframes shimmer-slide {
   0%   { background-position: 200% 0; }
