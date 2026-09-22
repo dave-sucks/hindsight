@@ -994,16 +994,20 @@ export const getTheses = defineTool({
     if (!isFull(capacity)) {
       for (const t of theses) {
         if (t.status !== "WATCHING") continue;
-        const own = Array.isArray(t.triggers)
-          ? (t.triggers as unknown as Array<{ action?: string; lastFiredAt?: string }>)
-          : [];
+        // The stock's OWN buy trigger, parsed — its predicate decides both
+        // the level and which way the price has to move to have left it
+        // behind (a LONG pullback buy is PRICE_BELOW). An inherited analyst
+        // or account rule is not this stock's buy plan.
+        const enter =
+          (ladderByThesisId.get(t.id) ?? []).find(
+            (x) => x.action === "ENTER" && ((x as { level?: string }).level ?? "THESIS") === "THESIS",
+          ) ?? null;
         const cur = resolverPriceMap[t.ticker];
         const crossing = spentBuyCrossing({
           status: t.status,
           direction: t.direction,
-          entryPrice: t.entryPrice,
           currentPrice: typeof cur === "number" && cur > 0 ? cur : null,
-          enterLastFiredAt: own.find((x) => x.action === "ENTER")?.lastFiredAt ?? null,
+          enter: enter ? { predicate: enter.predicate, lastFiredAt: enter.lastFiredAt ?? null } : null,
           chaseLimitPct: t.setupId
             ? (getSetup(t.setupId, setupOverrides)?.entry.chaseLimitPct ?? null)
             : null,

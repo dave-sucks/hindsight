@@ -201,16 +201,24 @@ export function computePlanSanity(args: {
   // lib/agent/buy-crossing.ts.
   if (spentBuyCrossing) {
     const c = spentBuyCrossing;
-    const past = `${c.pastPct.toFixed(1)}% past it`;
+    // Which side the price is on is the buy trigger's to say: a breakout buy
+    // is left behind when the price is ABOVE it, a pullback buy when the
+    // price is BELOW it. See lib/agent/buy-crossing.ts.
+    const past = `${c.pastPct.toFixed(1)}% ${c.crossing === "ABOVE" ? "above" : "below"} it`;
+    // A breakout level the price cleared becomes support beneath a new entry;
+    // a pullback level the price fell through becomes resistance above one.
+    const oldLevel = c.crossing === "ABOVE" ? "the old level becomes support" : "the old level becomes resistance";
+    const reAnchor = `re-anchor the buy to the current price — ${oldLevel} — with the stop and target that trade needs`;
     const chase = c.chaseLimitPct == null
-      ? `This setup has no chase rule, so it is still buyable at today's price: re-anchor the buy to the current price — the old level becomes support — with the stop and target that trade needs.`
+      ? `This setup has no chase rule, so it is still buyable at today's price: ${reAnchor}.`
       : c.insideChase
-        ? `This setup's chase limit is ${c.chaseLimitPct}% and the stock is ${past}, so it is still buyable at today's price: re-anchor the buy to the current price — the old level becomes support — with the stop and target that trade needs.`
-        : `This setup's chase limit is ${c.chaseLimitPct}% and the stock is ${past}, so buying here is a chase: re-price the buy to the pullback this setup waits for, with the stop and target that trade needs.`;
+        ? `This setup's chase limit is ${c.chaseLimitPct}% and the stock is ${past}, so it is still buyable at today's price: ${reAnchor}.`
+        : `This setup's chase limit is ${c.chaseLimitPct}% and the stock is ${past}, so buying here is a chase: re-price the buy to the level this setup waits for, with the stop and target that trade needs.`;
     flags.push({
       kind: "BUY_FIRED_UNANSWERED",
       text:
-        `The buy at ${fmt(c.level)} fired on ${c.firedAt} and this stock was never bought. It trades at ${fmt(currentPrice)} now, ${past}, ` +
+        `The buy at ${fmt(c.level)} — which fires when the price ${c.crossing === "ABOVE" ? "rises through" : "falls to"} it — fired on ${c.firedAt} and this stock was never bought. ` +
+        `It trades at ${fmt(currentPrice)} now, ${past}, ` +
         `so the buy cannot fire again — an ENTER fires on the crossing, and this one is spent. Nothing will act on this plan as written. ` +
         `${chase} If the move broke the setup instead, set the plan down and say what changed. Leaving the level where it is is not an answer.`,
     });
