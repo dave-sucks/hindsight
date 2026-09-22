@@ -42,6 +42,12 @@ import {
 } from "@/components/ui/tooltip";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { ThesisTimelineSection } from "@/components/agent/sheets/ThesisTimelineSection";
+import {
+  relativeTimestamp,
+  titleSegments,
+} from "@/components/agent/sheets/thesis-timeline-utils";
+import { needsActionLine } from "@/lib/agent/needs-action-line";
+import type { NeedsAction } from "@/lib/agent/needs-action";
 import { SendToAgentButton } from "@/components/stocks/SendToAgentButton";
 import {
   agentWatchDays,
@@ -830,11 +836,84 @@ const HORIZON_TOOLTIP: Record<string, string> = {
   COMPOUNDER: "Multi-year hold. Exits only when invalidation triggers fire — never auto-exits on time.",
 };
 
+/**
+ * What just happened, and whether this stock is flagged for work (DAV-304).
+ *
+ * Dave: "Right now I have my activity feed and I have my summary — so it
+ * doesn't appear like the thesis is updating even though it really is." On
+ * 2026-09-22 three analysts made 26 durable changes in one morning and none
+ * of it was visible without querying the database.
+ *
+ * Two lines, above the standing belief:
+ *   1. the most recent durable event, worded by the Activity tab's own
+ *      `titleSegments` so there is one grammar for both;
+ *   2. whether the run would pick this stock up today, and why — the
+ *      `needsAction` flag and the plan-sanity flags, both of which the server
+ *      has always computed and nothing has ever shown. A flag nobody can see
+ *      is a flag nobody can test, so "nothing flagged" is stated, not implied.
+ */
+function LatestNoteBlock({
+  latestUpdate,
+  needsAction,
+  planSanity,
+  quoteLoading,
+}: {
+  latestUpdate: ThesisDossier["latestUpdate"];
+  needsAction: NeedsAction | null;
+  planSanity: { kind: string; text: string }[] | null;
+  quoteLoading: boolean;
+}) {
+  const reasons = [
+    ...(needsAction ? [needsActionLine(needsAction)] : []),
+    ...(planSanity ?? []).map((f) => f.text),
+  ];
+  const title = latestUpdate ? titleSegments(latestUpdate) : null;
+
+  return (
+    <div className="space-y-2">
+      {title ? (
+        <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Latest
+          </span>
+          <span className="font-medium">{title.primary}</span>
+          {title.secondary ? (
+            <span className="text-muted-foreground">{title.secondary}</span>
+          ) : null}
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {relativeTimestamp(latestUpdate!.timestamp)}
+          </span>
+        </div>
+      ) : null}
+
+      {quoteLoading ? (
+        <Skeleton className="h-4 w-56" />
+      ) : reasons.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Flagged for work
+          </p>
+          {reasons.map((r, i) => (
+            <p key={i} className="text-sm text-muted-foreground">
+              {r}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Nothing flagged for work right now.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function TradeStructureBlock({
   state,
 }: {
   state: {
     horizon: string | null;
+    lastReviewedAt: string | null;
     reviewDueAt: string | null;
     analystName: string | null;
     resolved?: ResolvedEnvelope | null;
@@ -842,6 +921,7 @@ function TradeStructureBlock({
 }) {
   const hasAnalyst = state.analystName != null;
   const hasHorizon = state.horizon != null;
+  const hasLastReview = state.lastReviewedAt != null;
   const hasNextReview = state.reviewDueAt != null;
   // Conviction Expression v4 — actionability rollup. Lives in Trade
   // Structure (not as a top-of-sheet badge per principal feedback) —
@@ -849,7 +929,7 @@ function TradeStructureBlock({
   const hasStatus =
     state.resolved != null && state.resolved.actionability !== "DEAD";
 
-  if (!hasHorizon && !hasNextReview && !hasStatus && !hasAnalyst)
+  if (!hasHorizon && !hasLastReview && !hasNextReview && !hasStatus && !hasAnalyst)
     return null;
 
   const cells: { label: string; value: React.ReactNode; tooltip?: string }[] = [];
@@ -899,6 +979,15 @@ function TradeStructureBlock({
       label: "Horizon",
       value: state.horizon,
       tooltip: HORIZON_TOOLTIP[state.horizon!] ?? undefined,
+    });
+  }
+  // "When did anyone last look at this" — the other half of Next review, and
+  // the only stored answer to it (DAV-304).
+  if (hasLastReview) {
+    cells.push({
+      label: "Last reviewed",
+      value: fmtRelativeDate(state.lastReviewedAt!),
+      tooltip: new Date(state.lastReviewedAt!).toLocaleString(),
     });
   }
   if (hasNextReview) {
@@ -1602,6 +1691,16 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
         </TabsList>
 
         <TabsContent value={0} className="space-y-5">
+
+      {/* ── What just happened, and whether it needs work (DAV-304) ── */}
+      {/* Above the standing belief on purpose: the page should say what just
+          happened, not only what the long-term claim is. */}
+      <LatestNoteBlock
+        latestUpdate={state.latestUpdate}
+        needsAction={quote?.needsAction ?? null}
+        planSanity={resolved?.planSanity ?? null}
+        quoteLoading={quoteLoading}
+      />
 
       {/* ── Core Belief headline ─────────────────────────────── */}
       {/* The ONE durable claim — a falsifiable prediction (≤30 words) the

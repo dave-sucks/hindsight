@@ -68,6 +68,14 @@ export const evaluateTrade = inngest.createFunction(
       return { skipped: true, reason: "position-not-closed" };
     }
 
+    // Write it once. Two senders now ask for the write-up — the fill itself
+    // (closeTrade.actions, reconcile-orders) and the 5pm sweep as a backstop
+    // — so the "only once" rule lives here, at the one consumer, instead of
+    // each sender having to know what the others already sent (DAV-304).
+    if (position.agentEvaluation != null) {
+      return { skipped: true, reason: "already-evaluated" };
+    }
+
     const thesis = position.decisions[0]?.thesis;
 
     // Step 2: GPT-4o evaluation (direct call, no Railway dependency)
