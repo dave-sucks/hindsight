@@ -43,7 +43,9 @@ import {
 } from "@/lib/agent/resolved-thesis";
 import { entryRaisesAway, type EntryRaiseAway } from "@/lib/agent/entry-raises";
 import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
-import { buyBlockedByFull, type AnalystCapacity, type BuyBlockedByFull } from "@/lib/agent/capacity";
+import { buyBlockedByFull, isFull, type AnalystCapacity, type BuyBlockedByFull } from "@/lib/agent/capacity";
+import { spentBuyCrossing, type SpentBuyCrossing } from "@/lib/agent/buy-crossing";
+import { getSetup } from "@/lib/agent/knowledge/setups";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { isLadderEditUpdate } from "@/lib/agent/ladder-health";
@@ -646,6 +648,13 @@ export const getTheses = defineTool({
     // anchor to thesis.createdAt.
     const lastLadderEditAtByThesisId = new Map<string, Date>();
     const entryRaisesByThesisId = new Map<string, EntryRaiseAway[]>();
+    // The scanned rows per thesis. Read twice more below: for the buy levels
+    // moved away with no structure cited, and for the spent-crossing check
+    // (DAV-303), which asks whether a ladder edit landed AFTER the buy fired.
+    const rowsByThesis = new Map<
+      string,
+      Array<{ type: string; timestamp: Date; fieldChanges: unknown; priceAtTime: number | null; rationale: string | null }>
+    >();
     // Held rows for ladder health; priced watches for the stale-entry flag.
     const holdingIds = theses
       .filter((t) => t.status === "HOLDING" || (t.status === "WATCHING" && t.entryPrice != null))
@@ -671,7 +680,6 @@ export const getTheses = defineTool({
         });
         const scanTruncated = auditRows.length >= scanTake;
         const matched = new Set<string>();
-        const rowsByThesis = new Map<string, typeof auditRows>();
         for (const r of auditRows) {
           rowsByThesis.set(r.thesisId, [...(rowsByThesis.get(r.thesisId) ?? []), r]);
           if (matched.has(r.thesisId)) continue;
@@ -949,7 +957,63 @@ export const getTheses = defineTool({
       }
     }
 
+    const tickerFiltered = !!(args.tickers && args.tickers.length > 0);
+    const heldTickers = theses.filter((t) => t.status === "HOLDING").map((t) => t.ticker);
+    // Counted the way place_trade counts: held PLUS awaiting approval, which
+    // have already taken their slot. Fail-soft to the held count.
+    const queuedBuys =
+      !tickerFiltered && ctx.maxOpenPositions != null && ctx.analystId
+        ? await (async () => {
+            try {
+              return await prisma.position.count({
+                where: { analystId: ctx.analystId, status: "PENDING_APPROVAL" },
+              });
+            } catch {
+              return 0;
+            }
+          })()
+        : 0;
+    const capacity: AnalystCapacity | null =
+      !tickerFiltered && ctx.maxOpenPositions != null
+        ? {
+            open: heldTickers.length + queuedBuys,
+            max: ctx.maxOpenPositions,
+            held: heldTickers,
+            awaitingApproval: queuedBuys,
+          }
+        : null;
+    const setupOverrides = await loadSetupOverrides(ctx.accountId);
+
+    // ── A fired buy the price has left behind (DAV-303) ─────────────────
+    // Read off the audit rows already loaded for the ladder-edit scan — no
+    // extra query. Suppressed while the analyst is full: `buyBlockedByFull`
+    // owns the row on those days, and "re-anchor to today's price" is not a
+    // question worth asking a seat that cannot buy anything.
     const resolverNow = new Date();
+    const spentCrossingByThesisId = new Map<string, SpentBuyCrossing>();
+    if (!isFull(capacity)) {
+      for (const t of theses) {
+        if (t.status !== "WATCHING") continue;
+        const own = Array.isArray(t.triggers)
+          ? (t.triggers as unknown as Array<{ action?: string; lastFiredAt?: string }>)
+          : [];
+        const cur = resolverPriceMap[t.ticker];
+        const crossing = spentBuyCrossing({
+          status: t.status,
+          direction: t.direction,
+          entryPrice: t.entryPrice,
+          currentPrice: typeof cur === "number" && cur > 0 ? cur : null,
+          enterLastFiredAt: own.find((x) => x.action === "ENTER")?.lastFiredAt ?? null,
+          chaseLimitPct: t.setupId
+            ? (getSetup(t.setupId, setupOverrides)?.entry.chaseLimitPct ?? null)
+            : null,
+          updates: rowsByThesis.get(t.id) ?? [],
+          now: resolverNow,
+        });
+        if (crossing) spentCrossingByThesisId.set(t.id, crossing);
+      }
+    }
+
     const resolvedByThesisId = new Map<string, ResolvedEnvelope>();
     for (const t of theses) {
       const parsedTriggers = ladderByThesisId.get(t.id) ?? [];
@@ -971,6 +1035,7 @@ export const getTheses = defineTool({
             peakPrice: peakPriceByThesisId.get(t.id) ?? null,
             lastLadderEditAt: lastLadderEditAtByThesisId.get(t.id) ?? null,
             entryRaisesAway: entryRaisesByThesisId.get(t.id) ?? null,
+            spentBuyCrossing: spentCrossingByThesisId.get(t.id) ?? null,
             triggers: t.triggers,
             catalystDate: t.catalystDate,
             createdAt: t.createdAt,
@@ -1019,34 +1084,9 @@ export const getTheses = defineTool({
     //     only on full rows, and a quiet stock is a one-line index entry —
     //     so on 2026-09-18 the PEAD run saw its held names as "all quiet"
     //     and MU, IOT and NVDA stayed unnamed. Naming it (or NONE) clears it.
-    // (2) A buy that fired into a full analyst. Read off the rows already
-    //     loaded — no extra query. Skipped on a ticker-filtered read, where
+    // (2) A buy that fired into a full analyst, off the `capacity` counted
+    //     above — no extra query. Skipped on a ticker-filtered read, where
     //     the held list is partial.
-    const tickerFiltered = !!(args.tickers && args.tickers.length > 0);
-    const heldTickers = theses.filter((t) => t.status === "HOLDING").map((t) => t.ticker);
-    // Counted the way place_trade counts: held PLUS awaiting approval, which
-    // have already taken their slot. Fail-soft to the held count.
-    const queuedBuys =
-      !tickerFiltered && ctx.maxOpenPositions != null && ctx.analystId
-        ? await (async () => {
-            try {
-              return await prisma.position.count({
-                where: { analystId: ctx.analystId, status: "PENDING_APPROVAL" },
-              });
-            } catch {
-              return 0;
-            }
-          })()
-        : 0;
-    const capacity: AnalystCapacity | null =
-      !tickerFiltered && ctx.maxOpenPositions != null
-        ? {
-            open: heldTickers.length + queuedBuys,
-            max: ctx.maxOpenPositions,
-            held: heldTickers,
-            awaitingApproval: queuedBuys,
-          }
-        : null;
     const blockedByThesisId = new Map<string, BuyBlockedByFull>();
     for (const t of theses) {
       const own = Array.isArray(t.triggers) ? (t.triggers as unknown as Array<{ action?: string; lastFiredAt?: string }>) : [];
@@ -1128,7 +1168,6 @@ export const getTheses = defineTool({
       needsAction: null,
     }));
 
-    const setupOverrides = await loadSetupOverrides(ctx.accountId);
     const enriched = fullTheses.map((t) => {
       // Resolved ladder, not the stored column — see quietRows above.
       const triggerCount = (ladderByThesisId.get(t.id) ?? []).length;

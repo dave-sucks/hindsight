@@ -25,6 +25,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
 import { computePlanSanity, type PlanSanityFlag } from "@/lib/agent/plan-sanity";
+import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
 import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 
 // ── Public types ──────────────────────────────────────────────────────
@@ -138,6 +139,8 @@ export interface ResolverThesisInput {
   lastLadderEditAt?: Date | null;
   /** The buy level's moves away from the price, no structure cited (DAV-253). */
   entryRaisesAway?: EntryRaiseAway[] | null;
+  /** A fired buy the price has left behind, never bought and never answered (DAV-303). */
+  spentBuyCrossing?: SpentBuyCrossing | null;
   triggers: unknown; // Json column; parsed via triggersArraySchema by caller
   catalystDate: Date | null;
   createdAt: Date;
@@ -323,6 +326,7 @@ export function buildResolvedEnvelope(args: {
     minConfidence: thesis.minConfidence ?? null,
     lastLadderEditAt: thesis.lastLadderEditAt ?? null,
     entryRaisesAway: thesis.entryRaisesAway ?? null,
+    spentBuyCrossing: thesis.spentBuyCrossing ?? null,
     // The stock's own triggers — an inherited analyst or account rule is
     // not a plan for this stock.
     ownTriggerCount: thesis.parsedTriggers.filter((t) => ((t as { level?: string }).level ?? "THESIS") === "THESIS").length,

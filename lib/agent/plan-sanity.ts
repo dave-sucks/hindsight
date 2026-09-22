@@ -33,6 +33,7 @@
 
 import { MIN_RISK_REWARD, riskReward } from "@/lib/agent/thesis-shape";
 import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
+import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
 
 export type PlanSanityFlag = {
   kind:
@@ -40,6 +41,7 @@ export type PlanSanityFlag = {
     | "ENTRY_FAR_FROM_PRICE"
     | "ENTRY_STALE"
     | "ENTRY_RAISED_AWAY"
+    | "BUY_FIRED_UNANSWERED"
     | "TARGET_ALREADY_PASSED"
     | "STOP_ALREADY_BREACHED"
     | "STOP_INSIDE_NOISE"
@@ -101,6 +103,13 @@ export function computePlanSanity(args: {
    */
   entryRaisesAway?: EntryRaiseAway[] | null;
   /**
+   * A buy that fired, was never bought, and that the price has since left
+   * behind, so the crossing can never fire again (lib/agent/buy-crossing).
+   * Optional; absent ⇒ no check. Suppressed by the caller while the analyst
+   * is full — `buyBlockedByFull` owns the row on those days.
+   */
+  spentBuyCrossing?: SpentBuyCrossing | null;
+  /**
    * How many triggers the stock carries of its OWN (not inherited from its
    * analyst or the account). Optional; absent ⇒ no check.
    */
@@ -119,6 +128,7 @@ export function computePlanSanity(args: {
     minConfidence,
     lastLadderEditAt,
     entryRaisesAway,
+    spentBuyCrossing,
     now,
   } = args;
   if (status !== "WATCHING") return [];
@@ -181,6 +191,28 @@ export function computePlanSanity(args: {
       text:
         `The buy level was moved ${isLong ? "above" : "below"} the price ${n === 1 ? "once" : `${n} times`} in the last 30 days with no structure cited (${moves}). ` +
         `A fired buy has two answers: buy it, or set the plan down and say why. A re-priced level names the structure it sits on — a pivot, an average, a swing — or it is the buy being avoided.`,
+    });
+  }
+
+  // The ETN/ISRG shape: the buy fired, nothing bought it (both were refused
+  // at the position limit), and the price walked away from the level. A buy
+  // fires on the crossing, so the plan is now inert — and it clears none of
+  // the other flags, because the level sits just UNDER the tape. See
+  // lib/agent/buy-crossing.ts.
+  if (spentBuyCrossing) {
+    const c = spentBuyCrossing;
+    const past = `${c.pastPct.toFixed(1)}% past it`;
+    const chase = c.chaseLimitPct == null
+      ? `This setup has no chase rule, so it is still buyable at today's price: re-anchor the buy to the current price — the old level becomes support — with the stop and target that trade needs.`
+      : c.insideChase
+        ? `This setup's chase limit is ${c.chaseLimitPct}% and the stock is ${past}, so it is still buyable at today's price: re-anchor the buy to the current price — the old level becomes support — with the stop and target that trade needs.`
+        : `This setup's chase limit is ${c.chaseLimitPct}% and the stock is ${past}, so buying here is a chase: re-price the buy to the pullback this setup waits for, with the stop and target that trade needs.`;
+    flags.push({
+      kind: "BUY_FIRED_UNANSWERED",
+      text:
+        `The buy at ${fmt(c.level)} fired on ${c.firedAt} and this stock was never bought. It trades at ${fmt(currentPrice)} now, ${past}, ` +
+        `so the buy cannot fire again — an ENTER fires on the crossing, and this one is spent. Nothing will act on this plan as written. ` +
+        `${chase} If the move broke the setup instead, set the plan down and say what changed. Leaving the level where it is is not an answer.`,
     });
   }
 
