@@ -154,6 +154,29 @@ export async function GET(
     pendingProposal: ThesisPendingProposal | null;
   };
 
+  // The most recent durable event on this thesis, so the sheet can lead with
+  // what just happened instead of a belief written three weeks ago (DAV-304).
+  // The Activity tab's own fetch is lazy and only runs when you open the tab;
+  // this one row rides the first paint. Shaped as the timeline's own row type
+  // so `titleSegments` words it — one grammar, not a second one here.
+  const latestUpdateRow = await prisma.thesisUpdate
+    .findFirst({
+      where: { thesisId: thesis.id },
+      orderBy: { timestamp: "desc" },
+      select: {
+        id: true,
+        timestamp: true,
+        type: true,
+        summary: true,
+        rationale: true,
+        fieldChanges: true,
+        priceAtTime: true,
+        triggerId: true,
+        runId: true,
+      },
+    })
+    .catch(() => null);
+
   const atr14Value: number | null = await loadIndicatorSnapshots([thesis.ticker.toUpperCase()])
     .then((m) => m.get(thesis.ticker.toUpperCase())?.atr14 ?? null)
     .catch(() => null);
@@ -301,6 +324,29 @@ export async function GET(
       atr14: atr14Value,
     }),
     catalystDate: thesis.catalystDate,
+    // When an analyst last actually looked. Stored (schema:321) and, until
+    // DAV-304, never sent to the sheet — so "is this being reviewed?" was
+    // only answerable by querying the database.
+    lastReviewedAt: thesis.lastReviewedAt,
+    latestUpdate: latestUpdateRow
+      ? {
+          id: latestUpdateRow.id,
+          timestamp: latestUpdateRow.timestamp.toISOString(),
+          type: latestUpdateRow.type,
+          summary: latestUpdateRow.summary ?? "",
+          rationale: latestUpdateRow.rationale,
+          fieldChanges: (latestUpdateRow.fieldChanges ?? null) as Record<
+            string,
+            { from: unknown; to: unknown }
+          > | null,
+          priceAtTime: latestUpdateRow.priceAtTime,
+          positionAtTime: null,
+          triggerId: latestUpdateRow.triggerId,
+          signalIds: [],
+          runId: latestUpdateRow.runId,
+          tradeId: null,
+        }
+      : null,
     // Derived at read time from the last actual look + the cadence on the
     // resolved ladder (DAV-221). Null = no scheduled review.
     reviewDueAt: derivedNextReviewAt({

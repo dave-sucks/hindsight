@@ -11,6 +11,8 @@
  * sheet/rows/hooks consume it. Component files re-export for import paths.
  */
 
+import type { NeedsAction } from "@/lib/agent/needs-action";
+
 export interface TriggerPredicate {
   kind: string;
   level?: number;
@@ -152,6 +154,26 @@ export interface ThesisScoring {
   catalystFreshness?: ThesisScoringDim;
 }
 
+/**
+ * One ThesisUpdate row, in the shape the Activity tab's `TimelineUpdate`
+ * expects, so the header line and the timeline are worded by the same
+ * function. The fields the header never needs are sent as null/[].
+ */
+export interface ThesisLatestUpdate {
+  id: string;
+  timestamp: string;
+  type: string;
+  summary: string;
+  rationale: string | null;
+  fieldChanges: Record<string, { from: unknown; to: unknown }> | null;
+  priceAtTime: number | null;
+  positionAtTime: null;
+  triggerId: string | null;
+  signalIds: string[];
+  runId: string | null;
+  tradeId: string | null;
+}
+
 export interface ThesisDossier {
   thesisId: string;
   ticker: string;
@@ -190,6 +212,19 @@ export interface ThesisDossier {
    * there is no stored column). Null = no scheduled review.
    */
   reviewDueAt: string | null;
+  /**
+   * When an analyst last actually looked at this stock. Stored on the row and,
+   * until DAV-304, never sent here — "last reviewed / next due / flagged or
+   * not" is the review state the sheet now shows.
+   */
+  lastReviewedAt: string | null;
+  /**
+   * The most recent durable event — a review, a trigger fire, a sale, a level
+   * change. Leads the sheet so the page says what just happened, not only what
+   * the long-term belief is (DAV-304). Worded by the Activity tab's own
+   * `titleSegments`, so there is one grammar for both.
+   */
+  latestUpdate: ThesisLatestUpdate | null;
   triggers: Trigger[];
   /**
    * The analyst that owns this thesis. Lets the trigger section deep-link
@@ -270,6 +305,13 @@ export interface ResolvedEnvelope {
     | "DEAD";
   supersededBy: string | null;
   staleness: "FRESH" | "STALE";
+  /**
+   * The plan-sanity flags (DAV-188) — the arithmetic saying this plan
+   * contradicts the live tape. The server has always sent these; this type
+   * dropped them on the floor, which is why no screen has ever shown one
+   * (DAV-304).
+   */
+  planSanity?: { kind: string; text: string }[] | null;
   resolvedAt: string;
   quoteAgeMs: number | null;
 }
@@ -296,6 +338,12 @@ export interface QuoteResponse {
   // Price-dependent actionability envelope (see ResolvedEnvelope). Null when
   // the resolver couldn't run.
   resolved?: ResolvedEnvelope | null;
+  /**
+   * The work-list flag the daily run reads — why this stock is due attention
+   * today, or null when nothing is. Same pure function get_theses calls; the
+   * sheet words it with `needsActionLine` (DAV-304).
+   */
+  needsAction?: NeedsAction | null;
 }
 
 // `sourcesUsed` column is Json — agents write `[{provider, title, url}]`

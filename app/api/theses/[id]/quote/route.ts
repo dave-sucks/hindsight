@@ -28,6 +28,8 @@ import {
   buildResolvedEnvelope,
   buildSupersessionMap,
 } from "@/lib/agent/resolved-thesis";
+import { computeNeedsAction } from "@/lib/agent/needs-action";
+import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 export async function GET(
@@ -71,6 +73,14 @@ export async function GET(
       catalystDate: true,
       createdAt: true,
       scoring: true,
+      // needsAction inputs (DAV-304) — the same work-list flag the daily run
+      // reads, so the sheet can say whether this stock is flagged and why.
+      lastReviewedAt: true,
+      researchUpdatedAt: true,
+      paperTenureDays: true,
+      paperRealizedPnl: true,
+      paperReviewCount: true,
+      promotedAt: true,
       researchRun: { select: { agentConfigId: true, agentConfig: { select: { minConfidence: true } } } },
     },
   });
@@ -85,8 +95,15 @@ export async function GET(
   // the terminal-sibling supersession lookup (same-analyst scope), and the
   // open position (qty/avgCost for PnL + openedAt). Quote
   // failure is non-fatal — the sheet just omits the price line + PnL.
-  const [liveQuote, identity, terminalSiblings, openPosition] =
-    await Promise.all([
+  const [
+    liveQuote,
+    identity,
+    terminalSiblings,
+    openPosition,
+    latestUpdate,
+    pendingEntryCount,
+    atr14,
+  ] = await Promise.all([
       getStockQuote(thesis.ticker).catch(() => null),
       getStockInfo(thesis.ticker),
       prisma.thesis.findMany({
@@ -112,10 +129,35 @@ export async function GET(
                 status: "OPEN",
               },
               orderBy: { openedAt: "desc" },
-              select: { quantity: true, avgCost: true, openedAt: true },
+              select: { quantity: true, avgCost: true, openedAt: true, peakPrice: true },
             })
             .catch(() => null)
         : Promise.resolve(null),
+      // needsAction inputs that need their own read (DAV-304): the top-of-log
+      // row (TRIGGER_FIRED keys off it), whether a buy is already queued for
+      // approval, and the stock's ATR for a range-widened trail.
+      prisma.thesisUpdate
+        .findFirst({
+          where: { thesisId: thesis.id },
+          orderBy: { timestamp: "desc" },
+          select: { type: true, triggerId: true, timestamp: true },
+        })
+        .catch(() => null),
+      ownAnalystId
+        ? prisma.position
+            .count({
+              where: {
+                accountId,
+                analystId: ownAnalystId,
+                symbol: thesis.ticker,
+                status: "PENDING_APPROVAL",
+              },
+            })
+            .catch(() => 0)
+        : Promise.resolve(0),
+      loadIndicatorSnapshots([thesis.ticker.toUpperCase()])
+        .then((m) => m.get(thesis.ticker.toUpperCase())?.atr14 ?? null)
+        .catch(() => null),
     ]);
 
   const currentPrice =
@@ -185,6 +227,37 @@ export async function GET(
     now: new Date(),
   });
 
+  // The work-list flag itself (DAV-304). The same pure function get_theses
+  // hands the daily run — computed here so the sheet shows the flag a person
+  // can test, instead of it existing only inside a run that already ended.
+  const needsAction = computeNeedsAction({
+    thesis: {
+      id: thesis.id,
+      direction: thesis.direction,
+      status: thesis.status,
+      triggers: parsedTriggers,
+      createdAt: thesis.createdAt,
+      lastReviewedAt: thesis.lastReviewedAt,
+      researchUpdatedAt: thesis.researchUpdatedAt,
+      horizon: thesis.horizon,
+      positionOpenedAt: openPosition?.openedAt ?? null,
+      avgCost: openPosition ? Number(openPosition.avgCost) : null,
+      peakPrice: openPosition?.peakPrice != null ? Number(openPosition.peakPrice) : null,
+      atr14,
+      targetPrice: thesis.targetPrice ?? null,
+      paperTenureDays: thesis.paperTenureDays,
+      paperRealizedPnl:
+        thesis.paperRealizedPnl != null ? Number(thesis.paperRealizedPnl) : null,
+      paperReviewCount: thesis.paperReviewCount,
+      promotedAt: thesis.promotedAt,
+    },
+    latestUpdate,
+    latestQuote:
+      currentPrice != null ? { price: currentPrice, changePct: dayChangePct ?? 0 } : null,
+    now: new Date(),
+    hasPendingEntryProposal: pendingEntryCount > 0,
+  });
+
   return NextResponse.json({
     currentPrice,
     dayChange,
@@ -193,5 +266,6 @@ export async function GET(
     companyName: identity.companyName,
     exchange: identity.exchange,
     resolved,
+    needsAction,
   });
 }

@@ -701,3 +701,44 @@ describe("triggers filter keeps episodes intact", () => {
     expect(items.map((i) => i.kind)).toEqual(["group"]);
   });
 });
+
+// ── The sheet header leads with the latest note (DAV-304) ────────────────────
+// The header does not get its own grammar: it calls `titleSegments` on the one
+// most recent ThesisUpdate row, exactly as the timeline does for every row.
+// Replay: SMMT's real top-of-log row on 2026-09-21 — the +$1,157.94 sale —
+// and ETN's, the "full — waiting" review that changed nothing.
+describe("the most recent durable event, worded once", () => {
+  it("SMMT's sale reads as a sale", () => {
+    const smmt = row({
+      id: "cmube4bxw000204kxgvatmgdb",
+      type: "PROPOSAL_APPROVED",
+      timestamp: "2026-09-21T15:18:44.852Z",
+      summary: "Approved CLOSE on SMMT — submitted to Alpaca (idem=63d4c566)",
+      priceAtTime: null,
+      fieldChanges: {
+        proposal: {
+          from: { status: "AWAITING_APPROVAL", orderId: "cmubdn37i000d04jv1ky7jip0", quantity: 450 },
+          to: {
+            intent: "CLOSE",
+            status: "APPROVED",
+            orderId: "cmubdn37i000d04jv1ky7jip0",
+            quantity: 450,
+          },
+        },
+      },
+    });
+    expect(titleSegments(smmt)).toEqual({ primary: "Sold", secondary: "450 shares" });
+  });
+
+  it("ETN's review that changed nothing still says a run looked", () => {
+    const etn = row({
+      id: "cmub7cjb4002b04l8u3e4moti",
+      type: "UPDATED",
+      timestamp: "2026-09-21T12:09:10.336Z",
+      summary: "Updated ETN thesis",
+      priceAtTime: 424.77,
+      fieldChanges: {},
+    });
+    expect(titleSegments(etn).primary).toBe("Updated");
+  });
+});

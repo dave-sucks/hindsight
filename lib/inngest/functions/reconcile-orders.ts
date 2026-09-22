@@ -237,6 +237,42 @@ export const reconcileOrders = inngest.createFunction(
 );
 
 /**
+ * A sale gets its post-trade write-up the moment it fills (DAV-304).
+ *
+ * `trade/closed` is what wakes the evaluator, and until now only
+ * closeTrade.actions and the 5pm EOD sweep ever sent it. Every close that
+ * lands through the approval seam — the principal approves a proposal, the
+ * order goes to Alpaca, and THIS job applies the fill — waited for the
+ * sweep. SMMT sold 2026-09-21 at 11:18 ET for +$1,157.94 and its write-up
+ * appeared at 17:01, so for the rest of the trading day the best trade of
+ * the month read as a sale nobody had graded.
+ *
+ * Fires only when the fill actually closed the position, and only when no
+ * write-up exists yet. Fail-soft: a send that throws never turns a good
+ * fill into a reconcile error.
+ */
+async function maybeEvaluateClosedPosition(order: PendingOrderRow): Promise<void> {
+  if ((order.intent ?? (order.side === "BUY" ? "OPEN" : "CLOSE")) !== "CLOSE") return;
+  try {
+    const position = await prisma.position.findUnique({
+      where: { id: order.positionId },
+      select: {
+        status: true,
+        agentEvaluation: true,
+        events: { where: { eventType: "EVALUATED" }, select: { id: true }, take: 1 },
+      },
+    });
+    if (!position || position.status !== "CLOSED") return;
+    if (position.agentEvaluation != null || position.events.length > 0) return;
+    await inngest.send({ name: "trade/closed", data: { positionId: order.positionId } });
+  } catch (err) {
+    console.warn(
+      `[reconcile-orders] could not request the post-trade write-up for ${order.positionId}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/**
  * After a reconciled CLOSE fill, void any stale sell proposals the agent
  * staged on the same position (a daily-run stop-close proposal that this fill
  * just made moot). Only for full CLOSE intents — a PARTIAL_CLOSE leaves the
@@ -259,7 +295,7 @@ async function applyFillByIntent(
   fillQty: number,
   filledAt: Date,
 ): Promise<boolean> {
-  return prisma.$transaction(async (tx) => {
+  const handled = await prisma.$transaction(async (tx) => {
     const updated = await tx.order.updateMany({
       where: { id: order.id, status: "PENDING" },
       data: {
@@ -426,6 +462,12 @@ async function applyFillByIntent(
 
     return true;
   });
+
+  // Outside the transaction, so a write-up is only requested for a fill that
+  // actually committed (DAV-304). Here rather than at the two call sites
+  // above: one place that knows a fill landed.
+  if (handled) await maybeEvaluateClosedPosition(order);
+  return handled;
 }
 
 type TransactionClient = Omit<
@@ -553,4 +595,4 @@ async function markOrderRejectedAndCancelPosition(
 
 // Re-export for tests that exercise the fill application directly, without
 // standing up Inngest (same pattern as trigger-evaluator's __test__).
-export const __test__ = { applyFillByIntent };
+export const __test__ = { applyFillByIntent, maybeEvaluateClosedPosition };

@@ -51,13 +51,14 @@ export const eodEvaluation = inngest.createFunction(
       });
     });
 
-    if (openPositions.length === 0) {
-      return { openChecks: 0, closedEvaluations: 0 };
-    }
+    // An empty book still has to run Step 4. The last position closing during
+    // the day leaves nothing open at 5pm, and returning here skipped the very
+    // sweep that would have written its post-trade write-up (DAV-304).
 
     // Step 2: Batch-fetch current prices for all open tickers
     const prices = await step.run("fetch-eod-prices", async () => {
       const uniqueTickers = [...new Set(openPositions.map((p) => p.symbol))];
+      if (uniqueTickers.length === 0) return {} as Record<string, number>;
       try {
         const firstUserId = openPositions[0]?.userId;
         const creds = firstUserId ? await resolveAlpacaCredentials(firstUserId) ?? undefined : undefined;
