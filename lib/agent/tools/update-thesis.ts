@@ -401,11 +401,11 @@ type UpdatePatch = Partial<{
   lastReviewedAt: Date | null;
   triggers: object;
   status: string;
-  retiredReason: string;
+  retiredReason: string | null;
   invalidatedAt: Date;
   invalidReason: string;
-  closedAt: Date;
-  closeReason: string;
+  closedAt: Date | null;
+  closeReason: string | null;
   promotedAt: Date | null;
   // THESIS_RESEARCH_V2 Phase 1 — refresh path persistence.
   // PR-9: researchSections blob dropped; researchUpdatedAt is declared
@@ -608,6 +608,9 @@ export const updateThesis = defineTool({
       thesisId: args.thesis_id,
       ticker: existing.ticker,
       currentStatus: existing.status,
+      // A sold thesis may come back to watch (DAV-240); a dropped or
+      // invalidated one may not.
+      retiredReason: existing.retiredReason ?? null,
       changeStatus: args.change_status,
       runMode: ctx.runMode,
     };
@@ -1302,11 +1305,17 @@ export const updateThesis = defineTool({
       // STATUS_CHANGED so the audit log captures the from/to in fieldChanges.
       updateType = "STATUS_CHANGED";
     } else if (args.change_status === "WATCHING") {
-      // ── PROMOTED → WATCHING (only legal source) ─────────────────────────
-      // The opt-out path on the first live run. The analyst decides not to
-      // re-enter this name live; downgrade to WATCHING and let the next run
-      // re-evaluate. Conviction context fields (paperTenureDays / P&L /
-      // review count) stay on the row for reference; promotedAt clears.
+      // ── Back to WATCHING ────────────────────────────────────────────────
+      // Two legal sources:
+      //   • PROMOTED — the opt-out on the first live run. The analyst decides
+      //     not to re-enter this name live; the next run re-evaluates.
+      //     Conviction context (paperTenureDays / P&L / review count) stays
+      //     on the row for reference; promotedAt clears.
+      //   • RETIRED(SOLD) — a stock we sold, put back on watch after the one
+      //     review every sale now gets (DAV-240). The terminal stamps come
+      //     off so the row is an ordinary watch again: the five-minute check
+      //     already scores WATCHING rows, so a re-entry level fires with
+      //     nothing new built.
       const violation = checkWatchingOptOut(transitionInput);
       if (violation) {
         return {
@@ -1317,6 +1326,11 @@ export const updateThesis = defineTool({
       }
       patch.status = "WATCHING";
       patch.promotedAt = null;
+      if (existing.status === "RETIRED") {
+        patch.retiredReason = null;
+        patch.closedAt = null;
+        patch.closeReason = null;
+      }
       updateType = "STATUS_CHANGED";
     }
     // P1-24: the legacy WATCHING/PROMOTED → ACTIVE promotion path was removed
