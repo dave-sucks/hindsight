@@ -72,7 +72,8 @@ async function refreshSnapshot(environment: TradingEnvironment): Promise<void> {
   } catch {
     /* best-effort; the hourly cron will catch up */
   }
-  revalidatePath("/intelligence");
+  // The sync panel moved to /performance when /intelligence was folded away.
+  revalidatePath("/performance");
   revalidatePath("/trades");
 }
 
