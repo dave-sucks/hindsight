@@ -58,12 +58,21 @@ function reportWhen(iso: string, hour: string | null): string {
   return [date, bell, when].filter(Boolean).join(" · ");
 }
 
-/** "Q2 '26" from a fiscal period end (YYYY-MM-DD) or an explicit quarter/year. */
-function quarterLabel(period: string, quarter?: number | null, year?: number | null): string {
+/**
+ * "Q2 '26" — the company's own fiscal labelling, which is the only one that
+ * lines the columns up: NVDA's November report is the vendor's Q3 FY2027, and
+ * a quarter derived from the date would disagree with it. Without a fiscal
+ * label there is nothing to derive from (a report date is not its period —
+ * an October report is usually the September quarter), so the date is shown
+ * instead of a guess.
+ */
+function quarterLabel(iso: string, quarter: number | null, year: number | null): string {
   if (quarter != null && year != null) return `Q${quarter} '${String(year).slice(2)}`;
-  const [y, m] = period.split("-");
-  const q = Math.ceil(Number(m) / 3);
-  return `Q${q} '${y.slice(2)}`;
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 interface Column {
@@ -180,7 +189,7 @@ export function EarningsCard({
     .reverse()
     .map((q) => ({
       key: q.period,
-      label: quarterLabel(q.period),
+      label: quarterLabel(q.period, q.quarter, q.year),
       estimate: q.estimate,
       actual: q.actual,
       surprisePct: q.surprisePct,

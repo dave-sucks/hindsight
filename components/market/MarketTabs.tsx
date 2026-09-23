@@ -17,7 +17,6 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -49,7 +48,6 @@ export function MarketTabs({
   initialDate: string;
   initialKind: MoverKind;
 }) {
-  const router = useRouter();
   const [tab, setTab] = useState<MarketTab>(initialTab);
   const [signals, setSignals] = useState<Signal[] | null>(null);
   const [signalsLoading, setSignalsLoading] = useState(false);
@@ -68,10 +66,12 @@ export function MarketTabs({
     if (tab === "signals" && signals === null && !signalsLoading) loadSignals();
   }, [tab, signals, signalsLoading, loadSignals]);
 
-  // Keep the URL honest so a tab can be linked to and the back button works.
+  // Keep the URL honest so a tab can be linked to, without a router push:
+  // the tabs are already mounted, and a replace() would re-run the server
+  // page (and its analyst query) on every click.
   function select(next: MarketTab) {
     setTab(next);
-    router.replace(`/market?tab=${next}`, { scroll: false });
+    window.history.replaceState(null, "", `/market?tab=${next}`);
   }
 
   const blurb = MARKET_TABS.find((t) => t.value === tab)?.blurb ?? "";

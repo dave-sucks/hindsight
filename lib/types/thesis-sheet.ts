@@ -386,6 +386,9 @@ export interface EarningsResponse {
   recent: Array<{
     /** Fiscal period end, YYYY-MM-DD. */
     period: string;
+    /** The company's own fiscal labelling, when the vendor gives it. */
+    quarter: number | null;
+    year: number | null;
     actual: number | null;
     estimate: number | null;
     /** Positive = beat, negative = miss, null = not scorable. */

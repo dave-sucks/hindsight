@@ -197,6 +197,9 @@ interface HistoryRow {
   actual?: number | null;
   estimate?: number | null;
   surprisePercent?: number | null;
+  /** The company's own fiscal labelling — NVDA's Nov-2026 report is Q3 FY2027. */
+  quarter?: number | null;
+  year?: number | null;
 }
 
 /**
@@ -224,6 +227,8 @@ export async function getEarningsForSymbol(ticker: string, now = new Date()): Pr
     .filter((r) => r.period)
     .map((r) => ({
       period: r.period as string,
+      quarter: r.quarter ?? null,
+      year: r.year ?? null,
       actual: r.actual ?? null,
       estimate: r.estimate ?? null,
       surprisePct:
