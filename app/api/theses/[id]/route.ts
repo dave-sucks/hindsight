@@ -32,6 +32,7 @@ import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { pickProposalOrder } from "@/lib/trade-status";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
+import { HERO_UPDATE_TYPES } from "@/lib/thesis/latest-note";
 
 export async function GET(
   _req: Request,
@@ -161,7 +162,10 @@ export async function GET(
   // so `titleSegments` words it — one grammar, not a second one here.
   const latestUpdateRow = await prisma.thesisUpdate
     .findFirst({
-      where: { thesisId: thesis.id },
+      // Not simply the newest row: TRIGGER_FIRED is templated machine text
+      // and PROPOSAL_APPROVED is an order receipt, and between them they win
+      // the recency race on most stocks. See lib/thesis/latest-note.ts.
+      where: { thesisId: thesis.id, type: { in: [...HERO_UPDATE_TYPES] } },
       orderBy: { timestamp: "desc" },
       select: {
         id: true,

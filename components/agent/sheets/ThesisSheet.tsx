@@ -47,6 +47,7 @@ import {
   titleSegments,
 } from "@/components/agent/sheets/thesis-timeline-utils";
 import { needsActionLine } from "@/lib/agent/needs-action-line";
+import { latestNoteView } from "@/lib/thesis/latest-note";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import { SendToAgentButton } from "@/components/stocks/SendToAgentButton";
 import {
@@ -868,20 +869,26 @@ function LatestNoteBlock({
   /** The live layer came back empty — we do not KNOW whether anything is flagged. */
   quoteFailed: boolean;
 }) {
-  // Live rows only. On a sold, passed or dropped thesis the terminal banner
-  // at the top of the sheet already says what happened, and "nothing flagged
-  // for work" is meaningless on a stock nothing will work on.
-  const live = status === "WATCHING" || status === "HOLDING" || status === "PROMOTED";
   const reasons = [
     ...(needsAction ? [needsActionLine(needsAction)] : []),
     ...(planSanity ?? []).map((f) => f.text),
   ];
   const title = latestUpdate ? titleSegments(latestUpdate) : null;
-  if (!live || (!title && quoteFailed)) return null;
+  // The work-flag line is live-only — it is scored against a live price and
+  // means nothing on a stock the run will not pick up again. The note is not:
+  // a sale, a pass and a supersede each leave the one write-up explaining it.
+  const view = latestNoteView({
+    status,
+    hasNote: title != null,
+    hasReasons: reasons.length > 0,
+    quoteLoading,
+    quoteFailed,
+  });
+  if (!view) return null;
 
   return (
     <div className="space-y-2">
-      {title ? (
+      {view.showNote && title ? (
         <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Latest
@@ -896,9 +903,9 @@ function LatestNoteBlock({
         </div>
       ) : null}
 
-      {quoteLoading ? (
+      {view.flags === "hidden" ? null : view.flags === "loading" ? (
         <Skeleton className="h-4 w-56" />
-      ) : reasons.length > 0 ? (
+      ) : view.flags === "reasons" ? (
         <div className="space-y-1">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Flagged for work
@@ -909,7 +916,7 @@ function LatestNoteBlock({
             </p>
           ))}
         </div>
-      ) : quoteFailed ? (
+      ) : view.flags === "unchecked" ? (
         // The flags are computed against the live price. Without one we do
         // not know whether this stock is flagged, and saying "nothing" would
         // be a clean-looking answer to a question we could not ask.
