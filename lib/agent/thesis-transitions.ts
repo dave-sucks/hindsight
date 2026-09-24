@@ -69,9 +69,35 @@ interface TransitionRule {
   check(input: TransitionInput): TransitionViolation | null;
 }
 
+/**
+ * The two answers a sold stock is allowed on its post-sale review (DAV-240):
+ * back on watch, or let it go with a written reason (a rationale-only call,
+ * no status verb). Anything else on a terminal row is still history-editing.
+ */
+export function isSoldReviewWrite(input: TransitionInput): boolean {
+  if (input.currentStatus !== "RETIRED" || input.retiredReason !== "SOLD") return false;
+  return input.changeStatus === undefined || input.changeStatus === "WATCHING";
+}
+
 const EARLY_RULES: TransitionRule[] = [
   {
-    // A PASSED/RETIRED row is history. Nothing edits history.
+    // A PASSED/RETIRED row is history. Nothing edits history — with one
+    // opening, for the review every sale now gets (DAV-240).
+    //
+    // A sold stock arrives on the run's `sold_to_review` list and the prompt
+    // demands one of two answers: put it back on watch, or let it go with a
+    // written reason. Both are writes to a RETIRED row, so before DAV-308
+    // this rule refused both — `checkWatchingOptOut`'s RETIRED(SOLD)
+    // exemption sits 700 lines downstream and was unreachable in production.
+    // Its unit test passed because it calls that helper directly.
+    //
+    // Replay: SMMT, 2026-09-23 08:02:52 and 08:02:57 ET. The Catalyst Event
+    // PM was handed SMMT, tried twice to answer it, and was refused here
+    // both times.
+    //
+    // Only those two shapes open. INVALIDATED or ARCHIVED on a sold row is
+    // still history-editing, and DROPPED / INVALIDATED / REPLACED rows are
+    // not on anyone's review list.
     code: "terminal_status",
     check(i) {
       if (
@@ -81,6 +107,7 @@ const EARLY_RULES: TransitionRule[] = [
       ) {
         return null;
       }
+      if (isSoldReviewWrite(i)) return null;
       return {
         summary: `Thesis ${i.thesisId} is ${i.currentStatus}; can't update a terminal thesis.`,
         data: { error: "terminal_status", current_status: i.currentStatus },
