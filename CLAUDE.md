@@ -313,7 +313,7 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 14. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→HOLDING and writes STATUS_CHANGED audit row.
 15. close_position — close an existing open position fully; flips Thesis HOLDING→RETIRED (retiredReason=SOLD).
 16. manage_position — partial close, scale in/out, move stop, trail stop, adjust target.
-17. record_run_summary — persist run summary + ranked picks + decision rationale; runs the narration-gate verb→tool gate.
+17. record_run_summary — persist run summary + ranked picks + decision rationale. It does NOT run the narration→execution gate: that moved to complete_run's preflight on 2026-05-23 (P0-12), so an agent that self-corrects before the end of the run isn't marked FAILED for the attempt.
 18. complete_run — mark run COMPLETE (only allowed from RUNNING; FAILED status set by the narration-gate sticks).
 
 NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To add to a watchlist, mint a `Thesis(direction=null, status='WATCHING')`. To remove, call `update_thesis(change_status='ARCHIVED')` (input alias → lands status=RETIRED, retiredReason=DROPPED).
