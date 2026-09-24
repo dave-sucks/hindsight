@@ -19,6 +19,7 @@ import { getMarketMovers } from "./get-market-movers";
 import { runScreenTool } from "./run-screen";
 import { readTradeResultsTool } from "./read-trade-results";
 import { getSecFilings } from "./get-sec-filings";
+import { getCatalystCalendar } from "./get-catalyst-calendar";
 // THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
 // See docs/plans/THESIS_RESEARCH_V2.md §3.
 import { getFinancialsDeep } from "./get-financials-deep";
@@ -177,6 +178,7 @@ export function createResearchTools(
     run_screen: runScreenTool(newCtx),
     read_trade_results: readTradeResultsTool(newCtx),
     get_sec_filings: getSecFilings(newCtx),
+    get_catalyst_calendar: getCatalystCalendar(newCtx),
     // THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
     get_financials_deep: getFinancialsDeep(newCtx),
     get_analyst_coverage: getAnalystCoverage(newCtx),
@@ -241,6 +243,7 @@ export { getMarketMovers } from "./get-market-movers";
 export { runScreenTool } from "./run-screen";
 export { readTradeResultsTool } from "./read-trade-results";
 export { getSecFilings } from "./get-sec-filings";
+export { getCatalystCalendar } from "./get-catalyst-calendar";
 // THESIS_RESEARCH_V2 — Phase 1 deep-research data tools.
 export { getFinancialsDeep } from "./get-financials-deep";
 export { getAnalystCoverage } from "./get-analyst-coverage";

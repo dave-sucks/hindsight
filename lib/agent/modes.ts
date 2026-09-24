@@ -165,6 +165,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_earnings_calendar",
       "get_market_movers",
       "get_sec_filings",
+      "get_catalyst_calendar",
       // Write — manage existing book ONLY
       "update_thesis",
       "place_trade",
@@ -206,6 +207,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_stock_data",
       "get_earnings_data",
       "get_sec_filings",
+      "get_catalyst_calendar",
       // Live web search (budget-limited by intelligence policy)
       "web_search",
     ] as const,
@@ -284,6 +286,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "run_screen",
       "get_market_context",
       "get_sec_filings",
+      "get_catalyst_calendar",
       "web_search",
       // Grok Live Search over X — handle-attributed posts on a ticker /
       // theme / named handle. SOON-1b in DISCOVERY_OVERHAUL. The agent
@@ -360,6 +363,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_earnings_data",
       "get_market_context",
       "get_sec_filings",
+      "get_catalyst_calendar",
       "web_search",
       "get_theses",
       // Action
@@ -431,6 +435,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // dollars, by setup and by analyst (DAV-295). Read-only.
       "read_trade_results",
       "get_sec_filings",
+      "get_catalyst_calendar",
       "web_search",
       // Grok Live Search over X — handle-attributed posts. SOON-1b in
       // DISCOVERY_OVERHAUL. Sibling to web_search; agent picks based on
