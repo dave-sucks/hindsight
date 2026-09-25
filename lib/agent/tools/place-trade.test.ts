@@ -532,7 +532,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
     expect(callArgs.rationale.split("\n\n")[0]).toBe(tacticalEntryReason);
-    expect(callArgs.rationale).toMatch(/\n\nSized by the analyst/);
+    expect(callArgs.rationale).toMatch(/\n\nSized from the analyst's band by conviction/);
     // Critical anti-regression: the stale snapshot text must NOT have leaked
     // through.
     expect(callArgs.rationale).not.toMatch(/not actionable/i);
@@ -556,7 +556,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
     expect(callArgs.rationale.split("\n\n")[0]).toBe("Trigger validated: $NVTS broke above $29.50.");
-    expect(callArgs.rationale).toMatch(/\n\nSized by the analyst/);
+    expect(callArgs.rationale).toMatch(/\n\nSized from the analyst's band by conviction/);
   });
 
   it("falls back to thesis.snapshot when entry_rationale is absent (principal-chat one-shot path)", async () => {
@@ -578,7 +578,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
     expect(callArgs.rationale.split("\n\n")[0]).toBe(fallbackSnapshot);
-    expect(callArgs.rationale).toMatch(/\n\nSized by the analyst/);
+    expect(callArgs.rationale).toMatch(/\n\nSized from the analyst's band by conviction/);
   });
 
   it("falls back to snapshot when entry_rationale is an empty string", async () => {
@@ -599,7 +599,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
     expect(callArgs.rationale.split("\n\n")[0]).toBe(fallbackSnapshot);
-    expect(callArgs.rationale).toMatch(/\n\nSized by the analyst/);
+    expect(callArgs.rationale).toMatch(/\n\nSized from the analyst's band by conviction/);
   });
 
   it("falls back to snapshot when entry_rationale is whitespace-only", async () => {
@@ -620,7 +620,7 @@ describe("place_trade — Order.rationale source on OPEN proposals", () => {
     expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
     const callArgs = mockMaybeAwaitApproval.mock.calls[0][0];
     expect(callArgs.rationale.split("\n\n")[0]).toBe(fallbackSnapshot);
-    expect(callArgs.rationale).toMatch(/\n\nSized by the analyst/);
+    expect(callArgs.rationale).toMatch(/\n\nSized from the analyst's band by conviction/);
   });
 });
 
@@ -831,7 +831,7 @@ describe("place_trade — analyst_id ownership guard (P1-18)", () => {
  * agent's (commit real size or skip the name), and code never invents a
  * position size the agent didn't ask for — which matters on LIVE.
  */
-describe("place_trade — Guardrail 5b: minimum position size", () => {
+describe("place_trade — the analyst's rules size the buy, never the model (DAV-317)", () => {
   function primeGate(): void {
     mockThesisFindUnique.mockReset();
     mockPositionFindFirst.mockReset();
@@ -892,80 +892,64 @@ describe("place_trade — Guardrail 5b: minimum position size", () => {
     thesis_id: "thesis_hpe",
   };
 
-  it("rejects the $3,566 notional against a $7,000 floor (the HPE shape)", async () => {
+  it("inside a run, a notional the model typed is ignored and the buy is sized by the rules", async () => {
     primeGate();
 
     const result = await makeTool(
       makeCtx({ minPositionSize: 7000, maxPositionSize: 14000 }),
     ).execute({ ...baseArgs, notional: 3566 });
 
-    expect(result.data.success).toBe(false);
-    expect(result.data.status).toBe("FAILED");
-    expect(String(result.data.message)).toMatch(/below this analyst's smallest trade/i);
-    // The message names the floor and the band so the agent can re-size.
-    expect(String(result.data.message)).toMatch(/\$7,000/);
-    expect(String(result.data.message)).toMatch(/\$7,000–\$14,000/);
-    // REJECTED, not resized: nothing was submitted.
-    expect(mockMaybeAwaitApproval).not.toHaveBeenCalled();
-    expect(mockPlaceMarketOrder).not.toHaveBeenCalled();
+    // Not refused, not $3,566: the band by conviction (loadAccountRisk is
+    // mocked with no equity, so the risk formula can't run here).
+    expect(result.data.status).toBe("PROPOSED");
+    expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
+    const sizing = (result.data.sizing as string[]).join(" ");
+    expect(sizing).toMatch(/Sized from the analyst's band by conviction/);
+    expect(sizing).not.toMatch(/Sized by/);
   });
 
-  it("rejects a 1-share sliver priced off `shares` (the LITE shape)", async () => {
+  it("inside a run, a share count the model typed is ignored the same way", async () => {
     primeGate();
-    // Guardrail 4 (live price vs target/stop) runs first — quote the real
-    // LITE price so the run reaches the sizing band.
     mockGetLatestPrice.mockResolvedValue(922);
 
     const result = await makeTool(
       makeCtx({ minPositionSize: 10000, maxPositionSize: 15000 }),
-    ).execute({
-      ...baseArgs,
-      ticker: "LITE",
-      entry_price: 922,
-      target_price: 1100,
-      stop_loss: 800,
-      shares: 1, // $922 — the floor must apply to the shares path too
-    });
+    ).execute({ ...baseArgs, ticker: "LITE", entry_price: 922, target_price: 1100, stop_loss: 800, shares: 1 });
 
-    expect(result.data.success).toBe(false);
-    expect(String(result.data.message)).toMatch(/below this analyst's smallest trade/i);
-    expect(mockMaybeAwaitApproval).not.toHaveBeenCalled();
+    expect(result.data.status).toBe("PROPOSED");
+    expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized from the analyst's band by conviction/);
   });
 
-  it("lets an in-band notional through to the proposal path", async () => {
+  it("in the principal chat, the number is honored and an in-band size says so plainly", async () => {
     primeGate();
 
     const result = await makeTool(
-      makeCtx({ minPositionSize: 7000, maxPositionSize: 14000 }),
+      makeCtx({ runMode: "PRINCIPAL_CHAT", minPositionSize: 7000, maxPositionSize: 14000 }),
     ).execute({ ...baseArgs, notional: 9000 });
 
     expect(result.data.status).toBe("PROPOSED");
-    expect(mockMaybeAwaitApproval).toHaveBeenCalledTimes(1);
+    expect((result.data.sizing as string[]).join(" ")).toMatch(/^Sized by you: \$9,000\./);
   });
 
-  it("no floor configured → an undersized entry still goes through (back-compat)", async () => {
+  it("in the principal chat, a number below the smallest trade is honored with the line — not refused", async () => {
     primeGate();
 
     const result = await makeTool(
-      makeCtx({ maxPositionSize: 14000 }),
+      makeCtx({ runMode: "PRINCIPAL_CHAT", minPositionSize: 7000, maxPositionSize: 14000 }),
     ).execute({ ...baseArgs, notional: 3566 });
 
     expect(result.data.status).toBe("PROPOSED");
+    expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized by you: \$3,566 — below the analyst's smallest trade \(\$7,000\)/);
   });
 
-  it("still rejects above the largest trade, naming it", async () => {
+  it("in the principal chat, a number above the largest trade is honored with the line — not refused", async () => {
     primeGate();
 
     const result = await makeTool(
-      makeCtx({
-        minPositionSize: 2000,
-        maxPositionSize: 6000,
-        runEnvironment: "LIVE",
-      }),
+      makeCtx({ runMode: "PRINCIPAL_CHAT", minPositionSize: 2000, maxPositionSize: 6000, runEnvironment: "LIVE" }),
     ).execute({ ...baseArgs, notional: 9000 });
 
-    expect(result.data.success).toBe(false);
-    expect(String(result.data.message)).toMatch(/exceeds this analyst's largest trade/i);
-    expect(String(result.data.message)).toMatch(/\$6,000/);
+    expect(result.data.status).toBe("PROPOSED");
+    expect((result.data.sizing as string[]).join(" ")).toMatch(/Sized by you: \$9,000 — above the analyst's largest trade \(\$6,000\)/);
   });
 });

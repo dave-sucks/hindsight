@@ -37,6 +37,14 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
   description: string;
   /** Zod schema for input args */
   schema: TSchema;
+  /**
+   * The schema to hand THIS caller, when it differs by mode — the way
+   * `place_trade` has no size field inside a run (the analyst's rules size
+   * every buy) and keeps one in the principal chat. A field that isn't in
+   * the schema can't be guessed at: the model never sees it. `execute`
+   * still receives `z.infer<TSchema>`; an omitted field is simply absent.
+   */
+  schemaFor?: (ctx: ToolContext) => z.ZodTypeAny;
   /** Which UI renderer handles this tool's result */
   ui: ToolUI;
   /** Optional phase key — tools with the same groupId collapse in the UI */
@@ -95,10 +103,10 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
     // `$ZodType` internals, which TS can't unify with our generic
     // `z.ZodTypeAny` parameter at the factory boundary. Runtime behavior
     // is fine; cast is scoped to the tool() call-site only.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return tool<TSchema, ToolResult<TData>>({
       description: options.description,
-      inputSchema: options.schema as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      inputSchema: (options.schemaFor ? options.schemaFor(ctx) : options.schema) as any,
       execute: async (args): Promise<ToolResult<TData>> => {
         const t0 = Date.now();
         const resolvedGroupId = options.groupId

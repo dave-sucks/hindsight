@@ -144,6 +144,7 @@ export async function replayTool(
       getLatestPrices: jest.fn(async (syms: string[]) =>
         Object.fromEntries(syms.map((s) => [s, quotes[s?.toUpperCase?.() ?? s]]).filter(([, v]) => v != null)),
       ),
+      getLatestPrice: jest.fn(async (s: string) => quotes[s?.toUpperCase?.() ?? s] ?? null),
       getBars: jest.fn(async () => []),
       getAccount: jest.fn(async () => ({
         equity: "100000", cash: "40000", buying_power: "80000", portfolio_value: "100000",

@@ -44,6 +44,8 @@ jest.mock("@/lib/proposals/maybe-await-approval", () => ({
   PROPOSAL_TTL_MS: 24 * 60 * 60 * 1000,
 }));
 jest.mock("@/lib/proposals/execute", () => ({ findRelatedThesisId: jest.fn().mockResolvedValue(null) }));
+const mockLoadAccountRisk = jest.fn();
+jest.mock("@/lib/agent/load-account-risk", () => ({ loadAccountRisk: (...a: unknown[]) => mockLoadAccountRisk(...a), industryOf: jest.fn().mockResolvedValue(null) }));
 jest.mock("@/lib/agent/thesis-updates", () => ({ writeThesisUpdate: jest.fn().mockResolvedValue("tu_1") }));
 
 import { managePosition } from "./manage-position";
@@ -57,9 +59,10 @@ const SMMT = {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const tool = () =>
+const tool = (runMode = "PRINCIPAL_CHAT") =>
   managePosition({
     runId: "run_1", userId: "user_1", accountId: "account_1", analystId: "analyst_1",
+    runMode,
     alpacaCreds: { keyId: "k", secretKey: "s" },
     maxPositionSize: 50_000, maxPositionTotal: 200_000,
     groupId: (p: string) => p,
@@ -71,6 +74,7 @@ beforeEach(() => {
   mockOrderCreate.mockReset().mockImplementation(async ({ data }) => ({ id: "ord_1", ...data }));
   mockTransaction.mockReset().mockImplementation(async (fn) => (typeof fn === "function" ? fn({ position: { update: jest.fn() }, order: { update: jest.fn() }, positionEvent: { create: jest.fn() } }) : []));
   mockGetLatestPrice.mockReset().mockResolvedValue(18.0);
+  mockLoadAccountRisk.mockReset().mockResolvedValue({ equity: 100_000, holdings: [], open: null, regime: null });
 });
 
 const orderQty = () => {
@@ -80,7 +84,7 @@ const orderQty = () => {
 
 let lastResult: unknown = null;
 
-describe("add_to_position writes the order at today's price", () => {
+describe("add_to_position writes the order at today's price (the principal's own $5,000, from the chat)", () => {
   it("$5,000 into SMMT at $18.00 is 277 shares, not the 348 its $14.35 cost implies", async () => {
     lastResult = await tool().execute({ symbol: "SMMT", action: "add_to_position", add_notional: 5000, reason: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
     expect(orderQty()).toBe(277);
@@ -90,5 +94,20 @@ describe("add_to_position writes the order at today's price", () => {
     mockGetLatestPrice.mockRejectedValue(new Error("vendor down"));
     lastResult = await tool().execute({ symbol: "SMMT", action: "add_to_position", add_notional: 5000, reason: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
     expect(orderQty()).toBe(348);
+  });
+});
+
+describe("inside a run, the add is sized by the analyst's rules (DAV-317)", () => {
+  it("SMMT at $18.00 with a $12 floor: 1% of $100k × 0.75 (MEDIUM) over a $6 stop distance = 125 shares, halved for an add = 62", async () => {
+    lastResult = await tool("INTRADAY_TACTICAL").execute({ symbol: "SMMT", action: "add_to_position", add_notional: 5000, reason: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
+    expect(orderQty()).toBe(62);
+  });
+
+  it("with no equity reading, half the band by conviction — and the order still lands", async () => {
+    mockLoadAccountRisk.mockResolvedValue(null);
+    lastResult = await tool("MORNING_PLAN").execute({ symbol: "SMMT", action: "add_to_position", reason: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
+    // The band here is $0–$50,000 by conviction MEDIUM; half of it, in shares at $18.
+    expect(orderQty()).toBeGreaterThan(0);
+    expect(orderQty()).not.toBe(277);
   });
 });
