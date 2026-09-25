@@ -10,7 +10,7 @@
 // client's import.meta). The pure functions under test never touch it.
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { detectGateRejection, tickerFromArgs } from "./gate-rejections";
+import { detectGateRejection, thesisIdFromArgs, tickerFromArgs } from "./gate-rejections";
 
 describe("detectGateRejection — the three rejection protocols", () => {
   it("protocol 1 (update_thesis): { ok: false, error: code }", () => {
@@ -79,5 +79,21 @@ describe("tickerFromArgs", () => {
   it("null when neither exists", () => {
     expect(tickerFromArgs({ thesis_id: "abc" })).toBeNull();
     expect(tickerFromArgs(null)).toBeNull();
+  });
+});
+
+describe("tickerFromArgs / thesisIdFromArgs — what a refusal is filed under (2026-09-25)", () => {
+  it("reads the ticker off the summary when the args name a thesis, not a stock", () => {
+    expect(tickerFromArgs({ thesis_id: "t1" }, "Refused update on $GD — the resulting plan is invalid (invalid_thesis_shape).")).toBe("GD");
+  });
+  it("the args win over the summary", () => {
+    expect(tickerFromArgs({ ticker: "pltr" }, "Trade blocked: $NVDA")).toBe("PLTR");
+  });
+  it("no ticker anywhere is null, never a guess", () => {
+    expect(tickerFromArgs({ thesis_id: "t1" }, "complete_run refused: 3 thesises need action")).toBeNull();
+  });
+  it("carries the thesis id when the call named one", () => {
+    expect(thesisIdFromArgs({ thesis_id: "abc" })).toBe("abc");
+    expect(thesisIdFromArgs({ ticker: "GD" })).toBeNull();
   });
 });

@@ -282,6 +282,7 @@ export async function POST(
             earnings: { reportingSoon: [], justReported: [] },
             filings: { recent: [] },
             intelligencePolicy: DEFAULT_INTELLIGENCE_POLICY,
+            openRefusals: [],
           });
 
     } else if (agentMode === "builder") {

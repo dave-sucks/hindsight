@@ -526,11 +526,20 @@ model GateRejection {
   runId     String?
   analystId String?
   runMode   String?
+  /** The thesis the call named (update_thesis's thesis_id), when it named one. */
+  thesisId  String?
   createdAt DateTime @default(now())
+  /** When the same tool later landed on the same stock or thesis for this
+   *  analyst — the refusal was answered. Null = still open: the next run is
+   *  told about it, and the Activity feed shows it. */
+  resolvedAt DateTime?
+  /** "run:<runId>" — the run whose landed call answered it. */
+  resolvedBy String?
 
   @@index([tool, gateCode, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@index([runId])
+  @@index([analystId, resolvedAt, createdAt(sort: Desc)])
 }
 
 model AgentConfig {

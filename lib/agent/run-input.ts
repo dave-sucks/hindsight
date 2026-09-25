@@ -27,6 +27,7 @@ import {
 import type { Horizon } from "@/lib/agent/horizon-policy";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { filingsOnBook } from "@/lib/agent/filings-on-book";
+import { listOpenRefusalsForAnalyst, type OpenRefusal } from "@/lib/agent/gate-rejections";
 import { describeEarningsReport, fetchEarningsWindow } from "@/lib/agent/triggers/earnings";
 import {
   loadLevelSources,
@@ -221,6 +222,10 @@ export interface RunInput {
     error?: string;
   };
   intelligencePolicy: IntelligencePolicy;
+  // The analyst's refused tool calls from the last 7 days that were never
+  // redone (2026-09-25). Rendered as "Blocked last time — resolve today":
+  // a refusal is carried to the next run, never dropped.
+  openRefusals: OpenRefusal[];
 }
 
 // ─── Builder ─────────────────────────────────────────────────────────────────
@@ -873,6 +878,9 @@ export async function buildRunInput(
     console.error("[buildRunInput] FAILED latestDigest:", err);
   }
 
+  // 12b. Refused calls never redone — what the run is told to resolve.
+  const openRefusals = await listOpenRefusalsForAnalyst(config.id, 7);
+
   // 13. Intelligence policy
   const intelligencePolicy = parseIntelligencePolicy(
     (config as Record<string, unknown>).intelligencePolicy
@@ -914,6 +922,7 @@ export async function buildRunInput(
         utilizationPct,
       },
     },
+    openRefusals,
     watchlist,
     activeTheses: activeTheses.map((t) => {
       const composite = getThesisComposite(t);

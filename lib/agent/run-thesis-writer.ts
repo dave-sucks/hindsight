@@ -1722,8 +1722,31 @@ export async function writerPersistPhase(
     );
   }
 
-  // 4. Failure event (RunCard-compatible shape).
+  // 4. Failure event (RunCard-compatible shape) — and the ledger row. The
+  //    writer's own refusals (DYN, IBRX, BBIO on 09-25) never reached the
+  //    refusal ledger, so the Activity feed and the next run never heard
+  //    of them. A writer that ends with no thesis is a refused thesis save:
+  //    open until a save lands on the ticker for this analyst.
   if (finalStatus === "FAILED") {
+    try {
+      await prisma.gateRejection.create({
+        data: {
+          tool: "thesis_writer",
+          gateCode: "writer_failed",
+          summary: `Thesis research on $${T} produced no thesis (${args.mode})`,
+          detail: (persistError ?? research.error ?? "unknown").slice(0, 2000),
+          ticker: T,
+          thesisId: args.existingThesisId ?? null,
+          runId: args.childRunId,
+          analystId: args.analystId,
+          runMode: "THESIS_WRITER",
+          resolvedAt: null,
+          resolvedBy: null,
+        },
+      });
+    } catch {
+      /* the ledger is telemetry — never fails the writer */
+    }
     try {
       await prisma.runEvent.create({
         data: {
