@@ -124,6 +124,29 @@ one more turn instead of costing the principal the trade.
 
 ---
 
+## Every field the model can pass has a contract (2026-09-25)
+
+The question behind PLTR's lost buy and the writer's four lost theses was the same: for
+this field, who decides — the code or the model — and if the model, from what list, under
+which rule, stated where? `lib/agent/tools/field-contract.ts` answers it for every field
+on every write tool, one row each, and `field-contract.test.ts` holds the code to it:
+
+| Kind | Who decides | What the test checks |
+|---|---|---|
+| **COMPUTED** | The app. | The field is absent from the schema a run sees. The principal's chat may keep it. |
+| **CHOSEN** | The model, from a closed list. | The wire schema is an enum, const or boolean — never a free string. |
+| **JUDGED** | The model, under a rule the tools enforce. | The rule is named, and every prompt of a mode that offers the tool states it (a marker string). |
+| **IDENTITY** | A reference to something that exists. | Documented: a wrong one is refused by name. |
+| **TEXT** | The model's prose. | No length cap. |
+| **CARRIED** | The writer's research, copied through. | Documented. |
+
+A new field fails the suite until it has a row. That is the whole framework: nothing the
+model can type is unclassified, nothing the app should compute is typed by the model,
+nothing chosen is free text, and no rule is enforced that the prompt did not state. What
+happens after a refusal is the section above.
+
+---
+
 ## See also
 
 - [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md) — how the thesis lifecycle implements Layer 1 gates

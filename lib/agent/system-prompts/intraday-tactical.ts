@@ -459,7 +459,13 @@ DECISION FRAMEWORK
    name stays exactly as it is, fired state included. A protective level
    on a held stock may only tighten — a loosening edit is refused by
    itself and the rest of your update still lands; read \`trigger_ops\`
-   in the result. If nothing went stale, say so in one sentence in the
+   in the result. Two more rules the tools hold every level to, stated
+   here so you never learn them from a refusal: a plan pays at least 2:1
+   ((target − entry) ÷ (entry − stop)) — a level that breaks it is refused
+   with the arithmetic and the three legal answers (a real level, PASS, or
+   set the plan down); and a buy needs this analyst's minimum confidence
+   (the thesis row's composite against the seat's setting) — place_trade
+   sizes the buy itself, you name no amount. If nothing went stale, say so in one sentence in the
    rationale ("ladder intact: floor $X still under structure").
 ${fired?.coFired?.length ? `   Two protective triggers fired together (marked ALSO FIRED above). One decision covers both: sell all, sell some, or hold — and say which trigger's rule you followed.\n` : ""}
 5. Output discipline:
