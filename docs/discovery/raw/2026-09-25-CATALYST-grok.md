@@ -1,0 +1,47 @@
+# Catalyst Event PM — Grok, 2026-09-24
+
+> Raw scout output, verbatim, filed beside the prompts that produced it — the pairing the funnel needs.
+> Session: Catalyst Event PM, principal chat run `cmugdy75a000204jp3o79r11t`, 2026-09-24 evening ET.
+> Prompts: `docs/discovery-prep/2026-09-24-REFRAME.md` Part D and the session write-up `docs/discovery-reviews/2026-09-25-CATALYST.md`.
+
+## GROK paste 1 — cold sweep, status table
+
+```
+Grok pastings:
+Ticker / ProductOriginal / Current PDUFA (or decision)Date statusTypeNotes & handle coverage (Sep 2026)UNCY oxylanthanum carbonate (OLC)29 Jun 2026Moved / past (CRL issued ~30 Jun)Resubmission (2nd CRL; pure CMC/third-party manufacturing, no efficacy/safety issues)Confirmed negative outcome. Second manufacturing CRL after 2025 letter. Handles and others noted the inspection gap and Class II nature; limited fresh Sep talk beyond residual trading commentary.LNTH LNTH-2501 (Ga-68 edotreotide)29 Jun 2026Moved / past (CRL ~26–29 Jun)First (or near-first for the kit)Manufacturing deficiencies at third-party facility only; no clinical concerns. Outcome confirmed. Sparse Sep discussion from the core handles (mostly historical).SRRK apitegromab / Isembyld (SMA)30 Sep 2026Moved early (approved 11 Sep)Resubmission (prior facility CRL; proceeded with single fill-finish site after Catalent OAI)PDUFA stayed on calendar until early action. Heavily tracked pre-decision for manufacturing risk; post-approval notes appear in calendars. Core handles referenced the facility drop and unchanged target.CAPR deramiocel (DMD cardiomyopathy)22 Aug 2026 → 22 Nov 2026Moved later (3-month extension after major amendment / HOPE-3 data)Resubmission (prior July 2025 CRL on effectiveness + CMC)Extension confirmed after AdCom and additional data acceptance. Some handle coverage of the delay and open-label package; not the loudest Sep topic.OTLK bevacizumab-vikg / Lytenava (nAMD)29 Jul 2026Moved / past (early action ~24 Jul after Class 1 resubmission)Resubmission (multiple prior CRLs; FDR appeal path resolved substantial-evidence issues)Outcome delivered. Limited fresh Sep talk from the listed handles; more historical.RARE UX111 / FAYUVI (Sanfilippo type A)19 Sep 2026Moved early (approved ~17 Sep)Resubmission (prior CMC/facility CRL)Full (not accelerated) approval. @PDUFA_Pulse posted detailed post-approval label/logistics threads (anti-AAV9 testing, monitoring, treatment centers). Other calendars noted it. Active discussion.IONS zilganersen / Zanvastro (Alexander disease)22 Sep 2026Moved early (approved ~3 Sep)First approvalPriority review. Outcome confirmed. Calendar accounts logged it; core handles had lighter specific Sep commentary once decided.MIRM / INCY zilurgisertib (FOP)26 Sep 2026Confirmed (still upcoming)First approval (Priority Review)Primary endpoint missed (p=0.0986) but strong secondary volume reduction. @PDUFA_Pulse has multiple detailed threads this week on the split evidence and totality-of-evidence question. @BiopharmIQ and @Biopharma_Watch listing it as near-term catalyst with HF positioning notes. Highest current volume among the handles.BFRI Ameluz (sBCC expansion)28 Sep 2026Moved early (decided ~9 Sep)Supplemental (sNDA)Outcome delivered. Appears on @Biopharma_Watch catalyst lists; otherwise quieter.Elevar lirafugratinib / Lyrfigtu (FGFR2+ CCA)~25–27 Sep 2026Moved early (approved 23 Sep)First approval (Priority Review)Confirmed. Response-rate focused package. Limited specific handle commentary in the sampled posts; calendars updated.BMY Camzyos / mavacamten (adolescent oHCM)30 Sep 2026Confirmed (upcoming)Supplemental (label expansion)@BiopharmIQ flagged it alongside MIRM as back-to-back binary. Franchise extension; lower pure-biotech heat than the mid-caps.Egetis Emcitate / tiratricol (MCT8 deficiency)28 Sep 2026Confirmed (upcoming)First (or near-first)@PDUFA_Pulse posted today on the dual read (approval + potential PRV economics and 50% net-proceeds contract). Active.
+```
+
+## GROK paste 2 — verification of our list
+
+```
+Ticker,Your Type,PDUFA / Target,Market Cap,Date Status,Verified Type & Notes,Handle / Credible Coverage (Sep 2026)
+IBRX,SUPPLEMENTAL (label expansion),"Jan 6, 2027",$9.2B,Confirmed,Supplemental (sBLA for ANKTIVA + BCG in BCG-unresponsive NMIBC with papillary disease without CIS). Acceptance and exact date confirmed in May 2026 company release and FDA communication; no movement reported.,"Near-total silence from the listed handles this month. Calendar sites carry it; no predictive or timing commentary from @PDUFA_Pulse, @Biopharma_Watch, @BiopharmIQ, @SheffStation, @AndyBiotech, or @adamfeuerstein in recent samples. Silence is information."
+CORT,RESUBMISSION,"Dec 17, 2026",$12.8B,Confirmed,"Resubmission (hypercortisolism / endogenous Cushing’s NDA after Dec 2025 CRL; additional analyses requested, Class 2-style resubmission accepted, date set). Separate ovarian-cancer indication (relacorilant + nab-paclitaxel) was already approved earlier in 2026. Date has not moved.","@BiopharmIQ explicitly listed “$CORT: Relacorilant PDUFA, Dec. 17” in mid-Sep catalyst notes. Light but present. Other listed handles quiet on this specific date."
+PTCT,RESUBMISSION,~Mar 2027 (exact date not in filing),$5.2B,In doubt / approximate,"Your filing describes an NDA resubmission for sepiapterin with “PDUFA date of March 2027.” However, sepiapterin (Sephience) received full FDA approval in 2025 for PKU; no active March 2027 resubmission appears in current calendars or recent 8-Ks. Possible residual/confirmatory filing, different indication, or outdated reference. Exact date remains unconfirmed in public sources.",Silence from the listed handles. No Sep discussion of a March 2027 PTCT sepiapterin PDUFA.
+EXEL,EXTENDED,"Dec 3, 2026",$14.4B,Confirmed,First approval path for the combination (zanzalintinib + atezolizumab in pretreated mCRC). Date assigned on NDA acceptance and has held; appears on current December calendars as upcoming. No further extension reported.,Appears on general calendars. Minimal specific commentary from the core handles this month; not a high-volume discussion item.
+BBIO,FIRST APPROVAL (multi-product),"Nov 27, 2026",$13.0B,Confirmed,First approval (BBP-418 for LGMD2I/R9; Priority Review). Acceptance and exact date confirmed May 2026; no AdCom planned; date stable.,Light calendar inclusion. No dedicated predictive threads from the listed handles in Sep samples.
+SMMT,FIRST APPROVAL (single-asset),"Nov 14, 2026",$13.1B,Confirmed,First approval (ivonescimab + chemo in EGFRm NSCLC post-TKI; BLA based on HARMONi). Date set on acceptance and has not moved. Updated OS data still supportive.,Present on calendars. Limited handle-specific chatter this month beyond general catalyst lists.
+NUVB,FIRST APPROVAL (single-asset),"Jan 4, 2027",$2.0B,Confirmed,Supplemental (sNDA to update efficacy/DOR data for already-approved Ibtrozi/taletrectinib in ROS1+ NSCLC; fulfills post-marketing commitment). Not a pure first approval. Date stable.,Near silence from the listed handles. Calendar presence only.
+DYN,FIRST APPROVAL (single-asset),"Jan 21, 2027",$3.1B,Confirmed,"First approval path (z-rostudirsen / DYNE-251 for exon-51 DMD; Priority Review, accelerated-approval intent via dystrophin). Acceptance and date confirmed July 2026; stable.",Calendar inclusion. No notable Sep discussion from the core handles.
+COGT,FIRST APPROVAL (single-asset),"Nov 30, 2026",$5.5B,Confirmed,First approval path for the GIST combination (bezuclastinib + sunitinib post-imatinib; Priority Review). Date set on acceptance; no AdCom planned. (Separate NonAdvSM PDUFA is Dec 30.),@Biopharma_Watch referenced $COGT in late-Aug HF-holdings context. Otherwise light; appears on November calendars.
+```
+
+## GROK paste 3 — risk + crowding close-out
+
+```
+Last from this grok session, then i will share 2 from perplexity. Then i have 1 more grok one but i will do that after we do full dispatch to see if thewres anything interesting there if nothing else works well. 
+
+_____
+
+TICKER | date confirmed? (yes / doubt / moved) | first approval or supplemental | residual risk in one line | crowding (low / medium / high) | the best handle on it 
+
+**IBRX** | yes | supplemental | prior CMC CRL on original BLA + single-arm papillary extrapolation + Inlexzo competition | medium | no read  
+**CORT** | yes | resubmission | prior Dec 2025 CRL on this exact hypercortisolism NDA for more efficacy evidence | low | @BiopharmIQ  
+**PTCT** | doubt | resubmission | sepiapterin already approved 2025; March 2027 date appears residual or outdated | low | no read  
+**EXEL** | moved | first approval | dual-primary changes + missed non-liver-met OS subgroup; recent data request may push to Mar 2027 | medium | no read  
+**BBIO** | yes | first approval | ultra-rare first-in-class functional package with no AdCom but durability questions remain | high | no read  
+**SMMT** | yes | first approval | China-heavy HARMONi data + regional OS heterogeneity vs Keytruda benchmarks | high | no read  
+**NUVB** | yes | supplemental | pure label-update sNDA on already-approved asset; residual risk minimal | low | no read  
+**DYN** | yes | first approval | accelerated path on dystrophin surrogate + Sarepta Exondys/Elevidys competitive overhang | medium | no read  
+**COGT** | yes | first approval | higher-grade transaminase signal vs sunitinib monotherapy; no AdCom planned | medium | @Biopharma_Watch
+```
