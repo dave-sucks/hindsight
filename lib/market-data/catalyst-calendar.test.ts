@@ -96,3 +96,27 @@ describe("how far away it is", () => {
     expect(daysUntil("2026-09-20", now)).toBe(-4);
   });
 });
+
+describe("a date given as a month, and the bullet after it", () => {
+  // ANAB's 09-21 press release, verbatim. The FDA date is a month with no day;
+  // the next bullet is a court hearing with a full date. The first version read
+  // the court date as the FDA's (2026-09-24, caught live by the analyst).
+  const ANAB =
+    "Positive interim results from the pivotal AZUR-1 trial of Jemperli in untreated stage II/III dMMR/MSI-H locally advanced rectal cancer announced in July; FDA PDUFA action date of February 2027 with eligibility for expedited review through the National Priority Voucher program, which could result in an earlier FDA decision Litigation with GSK and Tesaro: trial held in July; post-trial hearing scheduled for October 20, 2026, with a judgement anticipated in Q4 2026 or Q1 2027";
+
+  it("reads 'February 2027' as the date, to the month — not the court hearing that follows", () => {
+    const found = findEventDate([{ name: "anab-ex99_1.htm", text: ANAB }], "PDUFA");
+    expect(found?.date).toBe("2027-02-01");
+    expect(found?.precision).toBe("month");
+    expect(found?.quote).not.toContain("October 20");
+  });
+
+  it("still reads a full date to the day", () => {
+    const found = findEventDate(
+      [{ name: "ex99-1.htm", text: "The FDA assigned a PDUFA target action date of December 3, 2026." }],
+      "PDUFA",
+    );
+    expect(found?.date).toBe("2026-12-03");
+    expect(found?.precision).toBe("day");
+  });
+});
