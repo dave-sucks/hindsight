@@ -147,14 +147,16 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-describe("FIVE 2026-09-15 — stop and target explanations over the save's limit", () => {
+describe("FIVE 2026-09-15 — stop and target explanations of 264 and 266 characters", () => {
   const fx = fixtures.FIVE;
 
-  it("passes the writer's own rules (the gap that threw the research away)", () => {
+  it("passes the writer's own rules", () => {
     expect(validateThesisDecision(fx.submit, validateOpts(fx, "FIVE")).ok).toBe(true);
   });
 
-  it("is refused by the save check, with the save's own reason, before anything is written", async () => {
+  it("passes the save check too — a long explanation is a detail, not a refusal (DAV-316)", async () => {
+    // The save used to refuse these against a 240-character cap on
+    // stop_basis / target_basis and the research was lost. The cap is gone.
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const v = validateThesisDecision(fx.submit, validateOpts(fx, "FIVE"));
     const outcome = await checkDecisionAgainstSave({
@@ -164,10 +166,7 @@ describe("FIVE 2026-09-15 — stop and target explanations over the save's limit
       ctx,
       existing: { direction: "LONG", status: fx.thesis.status },
     });
-    expect(outcome.wouldSave).toBe(false);
-    expect(outcome.fixable).toBe(true);
-    expect(outcome.error).toMatch(/stop_basis/);
-    expect(outcome.error).toMatch(/240/);
+    expect(outcome).toMatchObject({ wouldSave: true, error: null });
     expect(mockThesisUpdate).not.toHaveBeenCalled();
     expect(mockWriteThesisUpdate).not.toHaveBeenCalled();
   });

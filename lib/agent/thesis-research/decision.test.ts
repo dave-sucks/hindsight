@@ -10,6 +10,7 @@ import {
   validateThesisDecision,
   type ThesisDecisionInput,
 } from "./decision";
+import { modelEditTriggerOpSchema } from "@/lib/agent/triggers/model-schema";
 import { editTriggerOpSchema } from "@/lib/agent/triggers/schema";
 
 const validLong: ThesisDecisionInput = {
@@ -207,13 +208,14 @@ describe("validateThesisDecision — belief + conviction requirements (LONG/SHOR
     expect(all).toContain("invalidation_conditions");
   });
 
-  it("rejects STRONG/HIGH conviction without a variant view", () => {
+  it("STRONG/HIGH conviction without a variant view is stored as MEDIUM, with the reason — not refused", () => {
     const v = validateThesisDecision(
       { ...validLong, conviction: "STRONG", variant_view: undefined },
       mintOpts,
     );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("variant_view");
+    expect(v.ok).toBe(true);
+    expect(v.decision?.conviction).toBe("MEDIUM");
+    expect(v.decision?.notes?.join(" ")).toContain("Conviction stored as MEDIUM");
   });
 
   it("allows MEDIUM conviction without a variant view", () => {
@@ -278,13 +280,13 @@ describe("validateThesisDecision — horizon conditionals", () => {
 
 describe("validateThesisDecision — trigger action-set by position state", () => {
   const enterTrigger = {
-    predicate: { kind: "PRICE_ABOVE", level: 100 },
-    action: "ENTER",
+    predicate: { kind: "PRICE_ABOVE" as const, level: 100 },
+    action: "ENTER" as const,
     rationale: "breakout",
   };
   const exitTrigger = {
-    predicate: { kind: "PRICE_BELOW", level: 90 },
-    action: "EXIT",
+    predicate: { kind: "PRICE_BELOW" as const, level: 90 },
+    action: "EXIT" as const,
     rationale: "stop",
   };
 
@@ -312,8 +314,8 @@ describe("validateThesisDecision — trigger action-set by position state", () =
         add_triggers: [
           exitTrigger,
           {
-            predicate: { kind: "REVIEW_CADENCE", days: 7 },
-            action: "REVIEW",
+            predicate: { kind: "REVIEW_CADENCE" as const, days: 7 },
+            action: "REVIEW" as const,
             rationale: "scheduled hygiene",
           },
         ],
@@ -357,14 +359,14 @@ describe("validateThesisDecision — trigger action-set by position state", () =
     expect(v.errors.join(" ")).toContain("a mint has no existing triggers");
   });
 
-  it("malformed trigger shapes are reported as repairable errors, not thrown", () => {
+  it("a trigger the app cannot read is dropped with a note; the decision is not refused", () => {
     const v = validateThesisDecision(
-      { ...validLong, triggers: [{ nonsense: true }] },
+      { ...validLong, triggers: [{ nonsense: true } as never] },
       mintOpts,
     );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("triggers: invalid shape");
-    expect(v.errors.join(" ")).toContain("OMIT the triggers field");
+    expect(v.ok).toBe(true);
+    expect(v.decision?.triggers).toEqual([]);
+    expect(v.decision?.notes?.join(" ")).toContain("Dropped one trigger the app couldn't read");
   });
 });
 
@@ -440,7 +442,13 @@ describe("submit_thesis edit_triggers — the same form update_thesis saves (DAV
     expect(parsed.success).toBe(true);
   });
 
-  it("is the one shared edit form, not a copy that can drift", () => {
-    expect(thesisDecisionSchema.shape.edit_triggers.unwrap().element).toBe(editTriggerOpSchema);
+  it("the model-facing edit form and the save's edit form read the same op the same way", () => {
+    // Two schemas by design now: the model's is strict-clean (no numeric
+    // ranges, so the grammar compiler accepts it), the save's carries the
+    // ranges. They must agree on every real op — a drift is a PRAX 09-11.
+    expect(thesisDecisionSchema.shape.edit_triggers.unwrap().element).toBe(modelEditTriggerOpSchema);
+    const op = { id: PRAX_0911_EDIT.id, action: "REVIEW", days: 7, rationale: "Weekly into the PDUFA.", cooldown_days: 7 };
+    expect(modelEditTriggerOpSchema.parse(op)).toEqual(editTriggerOpSchema.parse(op));
+    expect(modelEditTriggerOpSchema.safeParse(PRAX_0911_EDIT).success).toBe(false);
   });
 });

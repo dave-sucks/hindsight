@@ -6,7 +6,7 @@
  *   • Field-presence gates (required-when-directional):
  *     - conviction tier required on LONG/SHORT
  *     - conviction_rationale required whenever conviction set
- *     - variant_view required for STRONG/HIGH
+ *     - STRONG/HIGH without variant_view is stored as MEDIUM (never refused)
  *   • Consistency gates (§3.5):
  *     - Gate A: STRONG requires composite ≥ 7
  *     - Gate B: STRONG/HIGH require entryQuality.score ≥ 2
@@ -119,7 +119,7 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
       expect(mockThesisCreate).not.toHaveBeenCalled();
     });
 
-    it("rejects STRONG without variant_view", async () => {
+    it("STRONG without variant_view is saved as MEDIUM, with the reason next to the rationale", async () => {
       const ctx = makeCtx();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const tool = recordThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
@@ -137,12 +137,13 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
         }),
       );
 
-      expect(result.data.status).toBe("FAILED");
-      expect(result.summary).toMatch(/STRONG conviction requires variant_view/i);
-      expect(mockThesisCreate).not.toHaveBeenCalled();
+      // The conviction gate did not fire. What is stored is proven through
+      // the real entry point in record-thesis.conviction-replay.test.ts —
+      // this harness's mocks stop short of the row.
+      expect(result.summary).not.toMatch(/requires variant_view/i);
     });
 
-    it("rejects HIGH without variant_view", async () => {
+    it("HIGH without variant_view is saved as MEDIUM too", async () => {
       const ctx = makeCtx();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const tool = recordThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
@@ -154,8 +155,7 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
         }),
       );
 
-      expect(result.data.status).toBe("FAILED");
-      expect(result.summary).toMatch(/HIGH conviction requires variant_view/i);
+      expect(result.summary).not.toMatch(/requires variant_view/i);
     });
 
     it("does NOT require variant_view for MEDIUM", async () => {

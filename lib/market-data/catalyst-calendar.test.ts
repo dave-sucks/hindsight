@@ -37,6 +37,17 @@ describe("the date a company announced", () => {
     expect(found?.date).toBe("2026-12-27");
   });
 
+  it("reads the phrase written out in full — EXEL, exel-20260910.htm (the review extended, the date moved)", () => {
+    const found = findEventDate(
+      doc(
+        "exel-20260910.htm",
+        "In response to an FDA information request, Exelixis had submitted updated safety and efficacy data, which the FDA has deemed a major amendment. The updated Prescription Drug User Fee Act action date is March 3, 2027.",
+      ),
+      "PDUFA",
+    );
+    expect(found?.date).toBe("2027-03-03");
+  });
+
   it("reads 'goal action date', not just 'target' — SMMT, a2026_prx0915xharmoniltf.htm", () => {
     const found = findEventDate(
       doc(

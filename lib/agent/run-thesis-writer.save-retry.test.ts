@@ -6,8 +6,10 @@
  * so the loop can't spin). When the real save refuses, the model sees the
  * refusal once and resubmits; the corrected decision is saved.
  *
- * Replay: FIVE's 2026-09-15 decision (stop/target explanations of 264/266
- * chars against the save's 240) reaching the save.
+ * Replay: DOCU's 2026-09-15 decision (the buy level removed, the $76
+ * review left behind — the save's plan rule refuses it) reaching the save.
+ * FIVE's original case (explanations over a 240-character cap) is no longer
+ * a refusal: the cap is gone (DAV-316).
  */
 
 const mockThesisFindUnique = jest.fn();
@@ -63,7 +65,7 @@ const fixtures = rawFixtures as unknown as Record<"FIVE" | "DOCU", {
 
 
 const PEAD = "cmnhxpjio000004jvox6kl6c7";
-const fx = fixtures.FIVE;
+const fx = fixtures.DOCU;
 const CHILD = "writer_child_run";
 
 const analystRow = {
@@ -104,28 +106,29 @@ const storedRow = {
   researchUpdatedAt: new Date(),
 };
 
-const shortened = {
+/** The fix the refusal asks for: take the $76 review off with the buy level. */
+const fixedPlan = {
   ...fx.submit,
-  stop_basis: "Under the 38.2% retracement $229.20 — $226.80 is 1.0 ATR ($9.91) below price; a gap fill toward the 50-day $224.67 breaks the drift.",
-  target_basis: "1.272 extension of the $173.10 → $263.88 leg = $288.57; 5.3R from $236.57 with a $9.77 risk.",
+  edit_triggers: [],
+  remove_trigger_ids: [...fx.submit.remove_trigger_ids, "d516a881-b59c-45fe-8897-0720fe8687df"],
 };
 
 function research(): WriterResearchPhaseOutput {
   const v = validateThesisDecision(fx.submit, {
     mode: "refresh",
-    existingStatus: "HOLDING",
-    currentPrice: 236.57,
+    existingStatus: fx.thesis.status,
+    currentPrice: 72.87,
     existingTargetPrice: fx.thesis.targetPrice,
     setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
     chart: null,
   });
   return {
     ok: true,
-    noteText: "## Snapshot\nFIVE drift note.",
+    noteText: "## Snapshot\nDOCU drift note.",
     decision: v.decision as ValidatedThesisDecision,
     riskReward: null,
     threadMessages: [],
-    userPrompt: "GROUND-TRUTH DATA — FIVE",
+    userPrompt: "GROUND-TRUTH DATA — DOCU",
     systemPrompt: "You are the PEAD Specialist.",
     stepCount: 3,
     toolCallCount: 1,
@@ -134,8 +137,8 @@ function research(): WriterResearchPhaseOutput {
   };
 }
 
-const pullOutput = { ok: true, pull: { currentPrice: 236.57 } } as never;
-const args = { childRunId: CHILD, analystId: PEAD, ticker: "FIVE", mode: "refresh" as const, existingThesisId: fx.thesis.id, reason: "Refresh under the new writer rules — live check." };
+const pullOutput = { ok: true, pull: { currentPrice: 72.87 } } as never;
+const args = { childRunId: CHILD, analystId: PEAD, ticker: "DOCU", mode: "refresh" as const, existingThesisId: fx.thesis.id, reason: "Refresh under the new writer rules — live check." };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -147,11 +150,11 @@ beforeEach(() => {
   );
 });
 
-it("FIVE: the save refuses once, the model resubmits with explanations that fit, and the thesis saves", async () => {
+it("DOCU: the save refuses once, the model resubmits with the plan set down whole, and the thesis saves", async () => {
   mockGenerateText.mockImplementation(async (opts: { messages: Array<{ content: string }>; tools: { submit_thesis: { execute: (a: unknown, o: unknown) => Promise<unknown> } } }) => {
     // The model is shown the refusal in the save's own words.
-    expect(opts.messages[2].content).toMatch(/stop_basis/);
-    await opts.tools.submit_thesis.execute(shortened, { toolCallId: "retry", messages: [] });
+    expect(opts.messages[2].content).toMatch(/no buy level/);
+    await opts.tools.submit_thesis.execute(fixedPlan, { toolCallId: "retry", messages: [] });
     return { text: "", response: { messages: [] } };
   });
 
@@ -166,13 +169,13 @@ it("FIVE: the save refuses once, the model resubmits with explanations that fit,
   expect(titles).toContain("Thesis persisted");
 });
 
-it("FIVE: a retry that doesn't fix it fails the run with the save's reason — one retry, not a loop", async () => {
+it("DOCU: a retry that doesn't fix it fails the run with the save's reason — one retry, not a loop", async () => {
   mockGenerateText.mockImplementation(async () => ({ text: "", response: { messages: [] } }));
 
   const result = await writerPersistPhase(args, pullOutput, research(), Date.now());
 
   expect(mockGenerateText).toHaveBeenCalledTimes(1);
   expect(result.status).toBe("FAILED");
-  expect(result.error).toMatch(/stop_basis/);
+  expect(result.error).toMatch(/no buy level/);
   expect(mockThesisUpdate).not.toHaveBeenCalled();
 });

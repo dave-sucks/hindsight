@@ -101,8 +101,8 @@ const thesisFields = z.object({
   target_price: z.number().optional().describe("Price target. Required with entry_price."),
   stop_loss: z.number().optional().describe("Stop-loss price. Required with entry_price."),
   setup_id: z.enum(SETUP_IDS).optional().describe("The setup this plan is written on (read_knowledge_library topic:\"setup\"). Stored on the thesis; the scorecard groups results by it."),
-  stop_basis: z.string().max(240).optional().describe("Why the stop is where it is, with the chart number it sits under (\"under the base low $207.25, 1.6 ATR from entry\"). Becomes the floor trigger's sentence."),
-  target_basis: z.string().max(240).optional().describe("Why the target is where it is (\"measured move: base depth added to the pivot\", \"prior high $236.54\"). Becomes the target trigger's sentence."),
+  stop_basis: z.string().optional().describe("Why the stop is where it is, with the chart number it sits under (\"under the base low $207.25, 1.6 ATR from entry\"). Becomes the floor trigger's sentence."),
+  target_basis: z.string().optional().describe("Why the target is where it is (\"measured move: base depth added to the pivot\", \"prior high $236.54\"). Becomes the target trigger's sentence."),
   entry_on_close: z.boolean().optional().describe("true = the buy fires only on a CLOSE past entry_price, not an intraday poke (breakouts: intraday crosses fail about half the time)."),
   current_price: z.number().optional().describe(
     "The live price you researched at (get_stock_data's quote). Pass it whenever you set entry_price: " +
@@ -277,8 +277,8 @@ const thesisFields = z.object({
   // ── Conviction Expression v4 (writer-side) ──────────────────────────
   // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Three new fields:
   //   conviction          — STRONG / HIGH / MEDIUM / LOW tier verdict
-  //   conviction_rationale — one-sentence justification (≤200 chars)
-  //   variant_view        — "consensus thinks X, I think Y" (≤300 chars)
+  //   conviction_rationale — the judgment in plain speech
+  //   variant_view        — "consensus thinks X, I think Y"
   // All three optional at the Zod layer; Layer-1 gates in execute()
   // enforce required-when-directional, variantView-on-STRONG/HIGH, and
   // the two consistency gates (Gate A: STRONG requires composite ≥ 7;
@@ -296,10 +296,9 @@ const thesisFields = z.object({
     ),
   conviction_rationale: z
     .string()
-    .max(400)
     .optional()
     .describe(
-      "WRITE IT LIKE YOU'RE TALKING TO A PERSON. Not 'composite 7/10, R/R 2.5:1, post-print drift setup' — that just restates the scoring fields and is useless. ≤400 chars. REQUIRED whenever conviction is set. Express the JUDGMENT, not the math.\n" +
+      "WRITE IT LIKE YOU'RE TALKING TO A PERSON. Not 'composite 7/10, R/R 2.5:1, post-print drift setup' — that just restates the scoring fields and is useless. REQUIRED whenever conviction is set. Express the JUDGMENT, not the math.\n" +
         "Good examples:\n" +
         "  STRONG: 'We should urgently buy this. The Trainium 3 ramp is a multi-quarter mispricing that the next print will start to expose. Real money, sized up.'\n" +
         "  HIGH: 'I really like this setup. Earnings is the catalyst and the consensus is too conservative. Not my biggest call this cycle but I want it in size.'\n" +
@@ -309,10 +308,9 @@ const thesisFields = z.object({
     ),
   variant_view: z
     .string()
-    .max(300)
     .optional()
     .describe(
-      "One sentence (≤300 chars) stating the writer's contrarian take: 'consensus expects X, I think Y, here's the falsifiable reason.' " +
+      "One sentence stating the writer's contrarian take: 'consensus expects X, I think Y, here's the falsifiable reason.' " +
         "REQUIRED when conviction is STRONG or HIGH (Layer-1) — every buy-side pitch framework requires a variant view for top-tier conviction. Optional on MEDIUM/LOW where consensus alignment is acceptable. " +
         "If you can't articulate a variant view for a STRONG/HIGH call, your tier is MEDIUM at best — don't claim STRONG/HIGH without one. " +
         "Example: 'Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3 program is being underweighted by 2 quarters of run-rate, putting Q4 FY2027 revenue 8% above consensus.'",
@@ -782,6 +780,11 @@ export const recordThesis = defineTool({
         };
       }
 
+      // What the save stores for conviction: the tier as sent, or one tier
+      // down with the reason, when a top-tier call came without its edge.
+      let storedConviction: string | null = args.conviction ?? null;
+      let storedConvictionNote: string | null = null;
+
       // ── Conviction Expression v4 — field-presence gates (§3) ──────────
       // Directional theses (LONG/SHORT) require conviction + rationale +
       // size. STRONG/HIGH additionally require variantView. PASS/PENDING
@@ -815,33 +818,25 @@ export const recordThesis = defineTool({
               thesis_id: null,
               status: "FAILED" as const,
               note:
-                `Whenever you set conviction, you must also pass conviction_rationale — one sentence (≤200 chars) explaining why this tier. ` +
+                `Whenever you set conviction, you must also pass conviction_rationale — a sentence or two explaining why this tier. ` +
                 `Example HIGH: "Composite 7/10, post-print PEAD setup, first day of drift, no analyst PT updates yet — R/R 2.6:1." ` +
                 `Example LOW: "Late-stage chase, RSI 73, volume below threshold."`,
             },
             sources: [],
           };
         }
+        // A top-tier call needs a variant view. Without one the tier is
+        // stored as MEDIUM with the reason next to it — a detail the app
+        // can fix is fixed by the app, never a refusal (DAV-316).
         if (
           (args.conviction === "STRONG" || args.conviction === "HIGH") &&
           (!args.variant_view || args.variant_view.trim().length === 0)
         ) {
+          storedConvictionNote = `Stored as MEDIUM: ${args.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`;
+          storedConviction = "MEDIUM";
           console.warn(
-            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — ${args.conviction} requires variant_view.`,
+            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} ${args.conviction} without variant_view — stored as MEDIUM.`,
           );
-          return {
-            summary: `Thesis rejected for ${args.ticker}: ${args.conviction} conviction requires variant_view.`,
-            data: {
-              thesis_id: null,
-              status: "FAILED" as const,
-              note:
-                `${args.conviction} conviction requires variant_view — what does consensus have wrong? ` +
-                `One sentence (≤300 chars): "consensus expects X, I think Y, here's the falsifiable reason." ` +
-                `Example: "Most analysts treat MRVL as #3 AI-silicon; AWS Trainium 3 is being underweighted by 2 quarters of run-rate, putting Q4 FY2027 revenue 8% above consensus." ` +
-                `If you can't articulate a variant view, downgrade to MEDIUM. Every buy-side pitch framework requires this for top-tier conviction.`,
-            },
-            sources: [],
-          };
         }
       }
 
@@ -1311,8 +1306,10 @@ export const recordThesis = defineTool({
         // STRONG/HIGH + the two consistency gates; by the time we reach
         // persistence the values are either valid for the directional
         // path or null for PASS/PENDING.
-        conviction: args.conviction ?? null,
-        convictionRationale: args.conviction_rationale ?? null,
+        conviction: storedConviction,
+        convictionRationale: storedConvictionNote
+          ? `${args.conviction_rationale ?? ""}\n\n[${storedConvictionNote}]`.trim()
+          : (args.conviction_rationale ?? null),
         variantView: args.variant_view ?? null,
         // mergedTriggers built and validated above the coreData literal.
         // Centralized so the ENTER-trigger guard can inspect the final
