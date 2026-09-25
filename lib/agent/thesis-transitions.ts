@@ -298,9 +298,12 @@ export function checkWatchingOptOut(
 ): TransitionViolation | null {
   if (input.changeStatus !== "WATCHING") return null;
   if (input.currentStatus === "PROMOTED") return null;
+  // Already watching: nothing to transition. update_thesis treats the verb
+  // as a no-op and lands the rest of the call (VST 2026-09-23).
+  if (input.currentStatus === "WATCHING") return null;
   if (input.currentStatus === "RETIRED" && input.retiredReason === "SOLD") return null;
   return {
-    summary: `Refused WATCHING transition on $${input.ticker} — current status is ${input.currentStatus}, not PROMOTED or a sold thesis.`,
+    summary: `Refused WATCHING transition on $${input.ticker} — current status is ${input.currentStatus}, not PROMOTED, WATCHING or a sold thesis.`,
     data: {
       error: "watching_transition_from_non_promoted",
       message:

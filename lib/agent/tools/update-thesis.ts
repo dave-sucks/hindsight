@@ -107,10 +107,9 @@ const updateSchema = z.object({
     ),
   structural_unchanged_reason: z
     .string()
-    .min(10)
     .optional()
     .describe(
-      "OPTIONAL escape hatch for substantive non-belief changes. Required when the patch changes confidence_score / target_price / stop_loss WITHOUT also changing core_belief / key_assumptions / invalidation_conditions. State explicitly why the underlying belief still holds (e.g. \"key_assumption #2 confirmed by today's earnings beat — raising target to reflect, belief unchanged\"). Without this OR a belief-field change, target/stop/confidence patches are rejected — the discipline gate forces the agent to either update the belief or articulate why it didn't.",
+      "Optional. When you move a level without changing the belief, one line on why the belief still holds — it is appended to the activity row. Nothing is refused without it.",
     ),
   signal_ids: z
     .array(z.string())
@@ -174,7 +173,7 @@ const updateSchema = z.object({
     .string()
     .optional()
     .describe(
-      "The durable claim — one sentence that captures WHAT you believe will happen and why. Diverges from reasoning_summary: core_belief is the underlying claim (rarely changes), reasoning_summary is the current-state framing (refreshed often). Touch this when the actual belief has shifted. If you're patching target/stop/confidence and the belief is unchanged, leave this alone and pass `structural_unchanged_reason` instead — the discipline gate enforces this.",
+      "The durable claim — one sentence that captures WHAT you believe will happen and why. Diverges from reasoning_summary: core_belief is the underlying claim (rarely changes), reasoning_summary is the current-state framing (refreshed often). Touch this when the actual belief has shifted. If you're moving a level and the belief is unchanged, leave this alone (and say why in the rationale, or in `structural_unchanged_reason`).",
     ),
   key_assumptions: z
     .array(z.string())
@@ -455,10 +454,9 @@ function dryRunPassed(ticker: string, triggerOps: TriggerOpResult[]) {
 export const updateThesis = defineTool({
   description:
     "Update an existing thesis durably. Pass thesis_id + the fields you want to change + a rationale explaining why. Every call writes one row to the thesis activity log so the change is auditable. Use this — not record_thesis — when you're refining an existing belief (raising the target after good news, tightening the stop, swapping in fresh triggers, marking the thesis invalidated). Use record_thesis only when the thesis fundamentally changes (direction flip, completely new core belief). " +
-    "Three hard-reject conditions to know about: " +
+    "Two hard-reject conditions to know about: " +
     "(1) goalpost-moving guard — refuses to raise targetPrice on a WATCHING thesis whose existing entry condition is currently met (price has crossed the old target — your job is to PROMOTE, not move the bar); " +
-    "(2) structural-belief discipline gate — patches that change confidence_score / target_price / stop_loss WITHOUT also touching core_belief / key_assumptions / invalidation_conditions are rejected unless `structural_unchanged_reason` is supplied. Either update the belief to reflect why the trade plan is moving, or state explicitly why the belief is intact; " +
-    "(3) protective-level ratchet — on a held stock, protective sell levels only move toward MORE protection. Lowering a stop, widening a trailing give-back, removing a protective sell trigger, or switching one from automatic to judgment-first is refused per trigger (the rest of the call still lands; every op comes back in `trigger_ops` with accepted/refused and why). Only the principal moves a safety line down. If you believe a level is wrong, keep it and say so in your rationale with the number you'd suggest.",
+    "(2) protective-level ratchet — on a held stock, protective sell levels only move toward MORE protection. Lowering a stop, widening a trailing give-back, removing a protective sell trigger, or switching one from automatic to judgment-first is refused per trigger (the rest of the call still lands; every op comes back in `trigger_ops` with accepted/refused and why). Only the principal moves a safety line down. If you believe a level is wrong, keep it and say so in your rationale with the number you'd suggest.",
   schema: updateSchema,
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
@@ -1304,6 +1302,10 @@ export const updateThesis = defineTool({
       // Existing ThesisUpdateType taxonomy doesn't have ARCHIVED. Use
       // STATUS_CHANGED so the audit log captures the from/to in fieldChanges.
       updateType = "STATUS_CHANGED";
+    } else if (args.change_status === "WATCHING" && existing.status === "WATCHING") {
+      // Already watching. The verb is a no-op and the rest of the call lands
+      // as an ordinary review — VST 2026-09-23 and PLTR 2026-09-23 were
+      // refused whole for this (watching_transition_from_non_promoted).
     } else if (args.change_status === "WATCHING") {
       // ── Back to WATCHING ────────────────────────────────────────────────
       // Two legal sources:
@@ -1517,69 +1519,20 @@ export const updateThesis = defineTool({
     const landedOps = acceptedOps(opResults);
     if (landedOps.length > 0) fieldChanges.triggerOps = { from: null, to: landedOps };
 
-    // ── Structural-unchanged-reason gate (P0-1) ──────────────────────────
-    // Substantive non-belief patches (target_price / stop_loss /
-    // confidence_score) without touching at least one belief field
-    // (core_belief / key_assumptions / invalidation_conditions) AND
-    // without `structural_unchanged_reason` are rejected.
-    //
-    // Why: audit Root Cause showed reasoning_summary + thesis_bullets get
-    // rewritten constantly while structural fields are touched on <6% of
-    // updates. The agent silently moves target/stop/confidence without
-    // ever interrogating whether the underlying belief still holds. The
-    // gate forces one of two outcomes:
-    //   (a) the belief HAS shifted → update at least one belief field, OR
-    //   (b) the belief HASN'T shifted → state explicitly why in
-    //       `structural_unchanged_reason` (e.g. "key_assumption #2
-    //       confirmed by today's earnings beat — raising target,
-    //       belief unchanged").
-    //
-    // Bypass conditions (gate doesn't apply):
-    //   - terminal transitions (INVALIDATED / CLOSED) — the patch is
-    //     paperwork on a dead thesis, belief is frozen by definition
-    //   - REVIEWED-only updates (empty patch) — handled separately above
-    //   - patches that don't touch any quant field — pure rationale
-    //     refreshes, narrative cleanups, signal_type re-tags
-    // (confidenceScore was dropped in PR-9 — the patch can't write it, so a
-    // check on it here was permanently false. Composite/scoring changes are
-    // deliberately NOT quant-gated: the thesis-writer refreshes scoring on
-    // every pass and gating it would refuse routine refreshes.)
-    const touchesQuant = !!(fieldChanges.targetPrice || fieldChanges.stopLoss);
-    const touchesBelief = !!(
-      fieldChanges.coreBelief ||
-      fieldChanges.keyAssumptions ||
-      fieldChanges.invalidationConds
-    );
+    // The structural-belief gate that lived here (P0-1) is gone. It refused
+    // any change to the target or the floor unless a belief field changed or
+    // `structural_unchanged_reason` was sent — and because levels are
+    // triggers, "setting the plan down" tripped it too: GD 2026-09-25 and
+    // ISRG 2026-09-23 were refused for removing their floor and target
+    // triggers, and each run got past it by copying its rationale into
+    // `structural_unchanged_reason`. A gate satisfied by repeating the
+    // sentence next to it is not a gate. A level change already carries
+    // its rationale; that is the record.
+    // The optional `structural_unchanged_reason` still lands on the audit
+    // row when the model sends one.
     const hasUnchangedReason =
       typeof args.structural_unchanged_reason === "string" &&
       args.structural_unchanged_reason.trim().length >= 10;
-    // The gate bypasses on a deliberate terminal transition — belief is
-    // frozen by definition. (The legacy ACTIVE-promotion bypass is gone; entry
-    // is place_trade, which doesn't route through this tool.)
-    const isStateTransition = isTerminalTransition;
-    if (
-      touchesQuant &&
-      !touchesBelief &&
-      !hasUnchangedReason &&
-      !isStateTransition
-    ) {
-      const changed = Object.keys(fieldChanges).filter((f) =>
-        ["confidenceScore", "targetPrice", "stopLoss"].includes(f),
-      );
-      return {
-        summary: `Refused update on $${existing.ticker} — quant change without belief change or justification.`,
-        data: {
-          ok: false,
-          error: "structural_belief_unchanged",
-          message:
-            `You're patching ${changed.join(", ")} on ${existing.ticker} without touching the underlying belief (core_belief / key_assumptions / invalidation_conditions). ` +
-            `The discipline rule: a substantive trade-plan change requires either (1) a corresponding belief update — refine an assumption, drop one that's been confirmed, add an invalidation condition that just became plausible — OR (2) an explicit \`structural_unchanged_reason\` (≥10 chars) stating why the underlying belief still holds. ` +
-            `Examples of (2): "key_assumption #2 (datacenter capex) confirmed by today's earnings beat — raising target to reflect, belief unchanged", or "tightening stop after price moved in our favor; assumptions and invalidation conditions still hold". ` +
-            `Retry with one of those.`,
-        },
-        sources: [],
-      };
-    }
 
     // Check-only call: every refusal above has had its chance.
     if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults);

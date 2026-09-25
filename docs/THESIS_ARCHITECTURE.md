@@ -516,7 +516,7 @@ The Thesis row has three logical sections: **durable belief**, **operational sta
 | `keyAssumptions`     | LONG/SHORT (≥2) | Falsifiable premises that must remain true. Generic prose insufficient. |
 | `invalidationConds`  | LONG/SHORT (≥2); PASS (≥1) | Concrete things that would prove the belief wrong. On PASS theses, double as flip-criteria. |
 
-The **structural-belief gate** (`record_thesis`) and the **structural-unchanged-reason gate** (`update_thesis`) enforce the discipline. Substantive non-belief patches without touching at least one belief field are rejected unless `structural_unchanged_reason` is supplied. PENDING and PASS are exempt from these gates.
+The **structural-belief gate** (`record_thesis`) enforces the three fields on a directional thesis. The `update_thesis` structural-unchanged-reason gate was deleted 2026-09-25: it refused any target or floor change — including setting a plan down, since levels are triggers — unless a belief field changed, and runs got past it by copying their rationale into `structural_unchanged_reason` (GD 2026-09-25, ISRG 2026-09-23). A level change carries its rationale; `structural_unchanged_reason` is optional and lands on the activity row when sent.
 
 ### Operational state — mutated freely
 
@@ -584,7 +584,6 @@ Gates:
 - **Zero-trigger guard** — review-only updates on theses with no triggers are rejected; agent must add triggers OR close via `change_status: 'INVALIDATED'` or `'ARCHIVED'`. PENDING is exempt (zero triggers is the expected state; promotion attaches them).
 - **Goalpost-moving guard** — refuses to raise `target_price` on a WATCHING thesis whose entry condition is currently met. Bypassed for `change_status: 'ACTIVE'` (legitimate target raise on promotion).
 - **Shape gate** — post-patch (entry, target, stop) satisfies direction-relative ordering. Uses the resulting direction (after `direction` patch) for the check.
-- **Structural-unchanged-reason gate** — patches that change confidence/target/stop without belief changes AND without `structural_unchanged_reason` are rejected. Bypassed on any `change_status` or `direction` transition.
 - **ACTIVE promotion requires** `existing.status === 'WATCHING'` and recomputed `target_price` + `stop_loss`.
 
 **PENDING → PASS auto-flips status to ARCHIVED and clears triggers** in the same patch.

@@ -174,15 +174,18 @@ describe("checkTerminateWithoutClose — the zombie-position rule", () => {
 });
 
 describe("checkWatchingOptOut — back to WATCHING from a promotion or a sale", () => {
-  it.each(["WATCHING", "HOLDING"])(
-    "refuses change_status WATCHING from %s",
-    (status) => {
-      const v = checkWatchingOptOut(
-        input({ currentStatus: status, changeStatus: "WATCHING" }),
-      );
-      expect(v?.data.error).toBe("watching_transition_from_non_promoted");
-    },
-  );
+  it("refuses change_status WATCHING from HOLDING — that is a sale, and close_position owns it", () => {
+    const v = checkWatchingOptOut(
+      input({ currentStatus: "HOLDING", changeStatus: "WATCHING" }),
+    );
+    expect(v?.data.error).toBe("watching_transition_from_non_promoted");
+  });
+
+  it("WATCHING → WATCHING is not a transition: passes, and the rest of the call lands", () => {
+    expect(
+      checkWatchingOptOut(input({ currentStatus: "WATCHING", changeStatus: "WATCHING" })),
+    ).toBeNull();
+  });
 
   it("passes from PROMOTED, and ignores every other verb", () => {
     expect(

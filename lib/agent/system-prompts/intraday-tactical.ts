@@ -399,8 +399,7 @@ DECISION FRAMEWORK
        far intraday, RSI not a blow-off). If confirmed and R/R to a justified
        target still holds: manage_position(add_to_position) — the tool caps the
        add at the 2× per-name ceiling — then update_thesis to raise the target
-       (supply structural_unchanged_reason, or edit the belief, to re-attest
-       conviction) and manage_position(move_stop_to_breakeven or update_targets)
+       and manage_position(move_stop_to_breakeven or update_targets)
        to raise the stop under the bigger position. If it's an exhaustion spike,
        do NOT add — hold or trim.
 
