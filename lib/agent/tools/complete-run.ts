@@ -21,11 +21,10 @@ import {
 } from "@/lib/agent/triggers/load-levels";
 import {
   CREDITED_RUN_EVENT_TYPES,
-  detectSummaryHits,
-  findGaps,
-  type RunSummaryPayload,
+  findUnbackedActions,
+  unbackedActionMessage,
   type ToolCallEvent,
-} from "@/lib/agent/narration-gate";
+} from "@/lib/agent/summary-action-check";
 
 export const completeRun = defineTool({
   description:
@@ -64,7 +63,7 @@ export const completeRun = defineTool({
 
       // Atomic: only transition RUNNING → COMPLETE. Was previously
       // `status: { not: "COMPLETE" }`, which clobbered FAILED status set
-      // by the record_run_summary narration→execution gate (or any other
+      // by an upstream gate (or any other
       // upstream terminal-state writer). RUNNING-only matches the
       // morning-research cron-level gate's transition shape.
       const completeResult = await prisma.researchRun.updateMany({
@@ -347,7 +346,7 @@ type PreflightFailure = {
   kind:
     | "no_run_summary"
     | "run_already_failed"
-    | "narration_execution_gap"
+    | "declared_action_unbacked"
     | "unaddressed_theses";
   shortReason: string;
   message: string;
@@ -401,7 +400,7 @@ async function runCompleteRunPreflight(
     }
   }
 
-  // 2) Did an upstream gate (narration gate) already mark this run FAILED?
+  // 2) Did an upstream gate already mark this run FAILED?
   //    Surface the failure reason in-conversation so the agent knows.
   const currentRun = await prisma.researchRun.findUnique({
     where: { id: runId },
@@ -423,19 +422,21 @@ async function runCompleteRunPreflight(
     };
   }
 
-  // 3) Narration→execution gap (P0-12, moved here from record_run_summary
+  // 3) Declared actions with no trade behind them (DAV-309; the check moved
+  //    here from record_run_summary in P0-12
   //    on 2026-05-23). Look at the MOST RECENT run_summary event's
-  //    rationale + ranked_picks reasoning. If any narrated close/exit/trim
-  //    verb references a ticker that never got a position_closed or
-  //    position_modified event THIS run, refuse complete_run with a message
-  //    asking the agent to call the missing tool. Self-corrected runs
-  //    (agent narrated then called the tool, in either order) pass.
+  //    ranked picks. A stock we HOLD that the run marked EXIT / REDUCE / ADD
+  //    with no matching close, trim or proposal this run refuses, and the
+  //    agent is told to make the call or correct the action word.
+  //    It reads the one-word action, never the prose — reading English for
+  //    it blocked eleven runs that had done the work (DAV-309).
+  //    Self-corrected runs (tool called before or after the summary) pass.
   //    Tactical exempt — record_run_summary isn't in its allowlist, so no
   //    run_summary event exists to scan against; the unaddressed_theses
   //    check below is the real backstop for tactical.
   if (!skipSummaryGate) {
-    const narrationFailure = await checkNarrationExecutionGap(runId);
-    if (narrationFailure) return narrationFailure;
+    const actionFailure = await checkDeclaredActions(runId, analystId);
+    if (actionFailure) return actionFailure;
   }
 
   // 4) Triggered/needsAction theses not addressed via update_thesis this run.
@@ -763,7 +764,7 @@ async function runCompleteRunPreflight(
   };
 }
 
-// ─── Narration → execution gate (P0-12, end-of-run) ─────────────────────────
+// ─── Declared actions vs what the run did (DAV-309, end-of-run) ────────────
 // Layer-1 soft refusal. Previously fired inside record_run_summary and marked
 // the run FAILED on the first record_run_summary call. That punished agents
 // that self-corrected — production 2026-05-22 Secular Theme narrated "EXIT
@@ -777,30 +778,51 @@ async function runCompleteRunPreflight(
 // attempt because the position_closed event now exists. Self-correction is
 // the default path, not a permanent FAIL.
 
-async function checkNarrationExecutionGap(
+async function checkDeclaredActions(
   runId: string,
+  analystId: string,
 ): Promise<PreflightFailure | null> {
   try {
-    // Use the MOST RECENT run_summary event — the agent may have called
-    // record_run_summary multiple times during the run and only the latest
-    // reflects current intent.
+    // The MOST RECENT run_summary — the agent may have called
+    // record_run_summary more than once and only the latest is its intent.
     const summaryEvent = await prisma.runEvent.findFirst({
       where: { runId, type: "run_summary" },
       orderBy: { createdAt: "desc" },
       select: { payload: true },
     });
     if (!summaryEvent?.payload) return null;
-    const hits = detectSummaryHits(summaryEvent.payload as RunSummaryPayload);
-    if (hits.length === 0) return null;
+    const payload = summaryEvent.payload as { ranked_picks?: unknown };
 
-    // Tool-call events for the entire run — gives credit for post-narration
-    // close_position / manage_position calls (the production 5/22 case),
-    // including a LIVE sell that is a proposal awaiting approval.
-    const events = await prisma.runEvent.findMany({
+    // Only a stock we hold can be exited, trimmed or added to.
+    const held = await prisma.position.findMany({
+      where: { analystId, status: { in: ["OPEN", "PENDING_APPROVAL"] } },
+      select: { symbol: true },
+    });
+
+    // What actually happened, from the ORDER — the durable record. Run events
+    // are not one: `position_closed` has not been written since 2026-08-01
+    // (105 close orders in that window, zero events), which is why the old
+    // prose gate refused runs that really had sold (SRRK 2026-09-14).
+    // AWAITING_APPROVAL counts — a LIVE sale is a proposal Dave approves.
+    const run = await prisma.researchRun.findUnique({
+      where: { id: runId },
+      select: { startedAt: true },
+    });
+    const orders = await prisma.order.findMany({
       where: {
-        runId,
-        type: { in: CREDITED_RUN_EVENT_TYPES },
+        intent: { in: ["CLOSE", "PARTIAL_CLOSE", "ADD"] },
+        status: { notIn: ["REJECTED", "CANCELLED", "EXPIRED"] },
+        ...(run?.startedAt ? { createdAt: { gte: run.startedAt } } : {}),
+        position: { analystId },
       },
+      select: { symbol: true, intent: true },
+    });
+
+    // Run events too, where they were written — the proposal path does, and
+    // reading both costs nothing. A call made AFTER the summary still counts
+    // (the 2026-05-22 self-correction case).
+    const events = await prisma.runEvent.findMany({
+      where: { runId, type: { in: CREDITED_RUN_EVENT_TYPES } },
       select: { type: true, payload: true },
     });
     const toolEvents: ToolCallEvent[] = [];
@@ -812,28 +834,25 @@ async function checkNarrationExecutionGap(
       const symbol = String(p.symbol ?? p.ticker ?? "").toUpperCase();
       if (symbol) toolEvents.push({ type: e.type, symbol });
     }
-    const gaps = findGaps(hits, toolEvents);
+
+    const gaps = findUnbackedActions({
+      picks: payload.ranked_picks,
+      heldTickers: held.map((h) => h.symbol),
+      orders,
+      events: toolEvents,
+    });
     if (gaps.length === 0) return null;
 
-    const gapList = gaps
-      .map(
-        (g) =>
-          `${g.ticker} narrated ${g.expectedTool} ("${g.verb}") with no tool call`,
-      )
-      .join("; ");
     return {
-      kind: "narration_execution_gap",
-      shortReason: `${gaps.length} narrated action${gaps.length > 1 ? "s" : ""} missing tool call`,
-      message:
-        `complete_run refused: ${gaps.length} ticker${gaps.length > 1 ? "s" : ""} narrated an action in record_run_summary without firing the matching tool (${gapList}). ` +
-        `Call the missing tool now (close_position / manage_position), then call complete_run again. ` +
-        `If the prose was wrong (you didn't actually intend to take that action), revise record_run_summary with corrected rationale and reasoning, then complete_run again.`,
+      kind: "declared_action_unbacked",
+      shortReason: `${gaps.length} declared action${gaps.length > 1 ? "s" : ""} with no trade behind ${gaps.length > 1 ? "them" : "it"}`,
+      message: `complete_run refused: ${unbackedActionMessage(gaps)}`,
     };
   } catch (err) {
     // Gate failure must never break complete_run. Fall through to the next
     // preflight (or to the happy-path COMPLETE transition).
     console.warn(
-      `[tool] complete_run narration gap check error (non-fatal):`,
+      `[tool] complete_run declared-action check error (non-fatal):`,
       err instanceof Error ? err.message : err,
     );
     return null;
