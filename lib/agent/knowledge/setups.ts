@@ -603,7 +603,7 @@ export const SETUPS: Setup[] = [
     horizons: ["CATALYST"],
     archetypes: ["CATALYST_EVENT"],
     preconditions: [
-      `A dated event ${CATALYST_WINDOW_DAYS[0]}–${CATALYST_WINDOW_DAYS[1]} days out (Thesis.catalystDate) — give it a REVIEW trigger counted from the event (REVIEW_CADENCE, from: "EVENT", side: "BEFORE") so the run opens the stock while there is still time to act, not on the day it resolves`,
+      `A dated event ${CATALYST_WINDOW_DAYS[0]}–${CATALYST_WINDOW_DAYS[1]} days out (Thesis.catalystDate) — the analyst's own event-date review already wakes the run before the date; do NOT write a copy of it on the thesis, a trigger on the thesis overrides the analyst's and freezes its number`,
       "A positive advisory-committee vote if one happened",
       "Cash runway past the decision",
       "Sub-$1B single-asset names: supplemental approvals and label expansions only",
