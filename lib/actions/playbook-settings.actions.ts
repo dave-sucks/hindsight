@@ -38,6 +38,12 @@ export interface PlaybookSetupView {
   defaults: Required<SetupOverride>;
   /** Which numbers this account changed. */
   overridden: Array<keyof SetupOverride>;
+  /** What has to be true before the setup is even a candidate. */
+  preconditions: string[];
+  /** What says it failed. */
+  failureSigns: string[];
+  /** How a winner is trailed, per horizon. */
+  trail: Array<{ horizon: string; text: string }>;
 }
 
 export interface PlaybookSettings {
@@ -72,6 +78,9 @@ function view(overrides: SetupOverrides): PlaybookSetupView[] {
       targetText: s.target.text,
       timeText: s.time.text,
       timeUnit: s.time.unit,
+      preconditions: s.preconditions,
+      failureSigns: s.failureSigns,
+      trail: Object.entries(s.trail).map(([horizon, text]) => ({ horizon, text: text as string })),
       numbers: setupNumbers(applied),
       defaults: setupNumbers(s),
       overridden: o ? (Object.keys(o) as Array<keyof SetupOverride>) : [],
