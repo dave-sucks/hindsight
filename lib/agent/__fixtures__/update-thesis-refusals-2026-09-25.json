@@ -1,0 +1,274 @@
+{
+  "_source": "Production runs: update_thesis calls refused with structural_belief_unchanged (GD, Compounder 2026-09-25 08:06) and watching_transition_from_non_promoted (PEAD 2026-09-23 08:01, Compounder 2026-09-23 08:04), with the thesis rows as they were.",
+  "COMPOUNDER_0925": {
+    "runId": "cmugwutp4000v04l85624q4ml",
+    "updateCalls": 13,
+    "refused": [
+      {
+        "error": "structural_belief_unchanged",
+        "input": {
+          "thesis_id": "cmqb2k3mz000a04l69hca1w1s",
+          "rationale": "GD stays on watch, but I am setting the plan down rather than forcing levels that no longer meet the 2:1 shape test. The old $315/$435 ladder does not pair honestly with a repaired-entry requirement after the breakdown; keep the defense thesis alive on review cadence and fresh downside wake only.",
+          "signal_ids": [],
+          "remove_trigger_ids": [
+            "e82b0485-8c62-4511-bd85-6bbe677f9e10",
+            "7201b75b-f7a5-4cff-814e-e9508df5d7c3"
+          ]
+        },
+        "message": "You're patching targetPrice, stopLoss on GD without touching the underlying belief (core_belief / key_assumptions / invalidation_conditions). The discipline rule: a substantive trade-plan change requires either (1) a corresponding belief update — refine an assumption, drop one that's been confirmed, add an invalidation condition that just became plausible — OR (2) an explicit `structural_unchanged_reason` (≥10 chars) stating why the underlying belief still holds. Examples of (2): \"key_assumption #2 (datacenter capex) confirmed by today's earnings beat — raising target to reflect, belief unchanged\", or \"tightening stop after price moved in our favor; assumptions and invalidation conditions still hold\". Retry with one of those.",
+        "thesis": {
+          "id": "cmqb2k3mz000a04l69hca1w1s",
+          "ticker": "GD",
+          "status": "WATCHING",
+          "direction": "LONG",
+          "horizon": "COMPOUNDER",
+          "setupId": "COMPOUNDER_ACCUMULATION",
+          "entryPrice": null,
+          "targetPrice": null,
+          "stopLoss": null,
+          "coreBelief": "GD compounds to $435+ over 36 months as the Virginia/Columbia-class delivery ramp and Electric Boat margin inflection drive double-digit EPS growth from a $16.85 2026 base, with the market re-rating the defense shipbuilding franchise from ~22x to ~25x forward earnings on record $136.5B backlog visibility through 2042.",
+          "keyAssumptions": [
+            "Electric Boat maintains or improves the 7.3% Marine operating margin through H2 2026 and into 2027 as workforce efficiency gains compound on the Columbia/Virginia ramp",
+            "U.S. Navy submarine procurement funding remains intact in FY2027 appropriations, consistent with the pattern of Congressional add-backs (e.g., $1.9B Virginia-class add in 2026 Consolidated Appropriations Act)"
+          ],
+          "invalidationConds": [
+            "Marine Systems operating margin declines sequentially for two consecutive quarters, signaling Electric Boat execution is deteriorating rather than inflecting",
+            "Management delivers two consecutive quarterly EPS misses and cuts full-year guidance, indicating the $136.5B backlog is converting slower than modeled",
+            "Congressional action reduces Virginia-class or Columbia-class annual procurement quantities by more than one hull per cycle"
+          ],
+          "conviction": "MEDIUM",
+          "variantView": "Consensus treats GD as a slow-growth defense stalwart; I think the multi-decade submarine backlog ($130B total, submarine-heavy) represents a demand floor that makes EPS acceleration over 2027-2029 materially above consensus as Electric Boat ramp rates improve.",
+          "triggers": [
+            {
+              "id": "34b9b336-1a5a-4edc-95fa-67d08d34d946",
+              "action": "REVIEW",
+              "source": "AGENT",
+              "predicate": {
+                "kind": "PRICE_BELOW",
+                "level": 315
+              },
+              "rationale": "The old $342 pullback zone has been lost. A review at $315 would represent a fresh leg lower closer to the 52-week low and is now the meaningful downside wake.",
+              "lastFiredAt": "2026-09-24T15:25:07.417Z",
+              "cooldownDays": 1
+            },
+            {
+              "id": "810428ae-401c-4e74-a53c-63b470268b6b",
+              "action": "REVIEW",
+              "source": "AGENT",
+              "predicate": {
+                "kind": "EARNINGS_BEAT",
+                "minSurprisePct": 3
+              },
+              "rationale": "A Q2 2026 EPS beat of 3%+ would confirm the Electric Boat margin recovery thesis. Review to consider entering if still watching.",
+              "cooldownDays": 7
+            },
+            {
+              "id": "0097ab43-1387-4ebd-9c5e-29cf8bda3646",
+              "action": "REVIEW",
+              "source": "AGENT",
+              "predicate": {
+                "kind": "EARNINGS_MISS"
+              },
+              "rationale": "Any earnings miss warrants a review to assess whether it reflects Electric Boat cost overruns, Gulfstream demand weakness, or only delivery timing.",
+              "cooldownDays": 7
+            },
+            {
+              "id": "9c3440f2-9963-4093-ba7a-a6e483678315",
+              "action": "REVIEW",
+              "source": "DEFAULT",
+              "predicate": {
+                "days": 30,
+                "kind": "REVIEW_CADENCE"
+              },
+              "rationale": "Look at this every 30 days, counting from the last real review.",
+              "cooldownDays": 30
+            },
+            {
+              "id": "973da0b6-b16a-43d0-8b57-6b6b65af9df7",
+              "action": "ENTER",
+              "source": "AGENT",
+              "predicate": {
+                "kind": "VS_SMA",
+                "period": 50,
+                "direction": "ABOVE"
+              },
+              "rationale": "Buy only when GD reclaims the 50-day average, which would show the pullback has ended and the market is again underwriting the submarine-margin inflection story.",
+              "cooldownDays": 1
+            }
+          ],
+          "catalystDate": null
+        }
+      }
+    ]
+  },
+  "PEAD_0923": {
+    "runId": "cmue1xmut000004jsnq1mbnxm",
+    "updateCalls": 6,
+    "refused": [
+      {
+        "error": "watching_transition_from_non_promoted",
+        "input": {
+          "thesis_id": "cmt0zqtsl000a04l5oj023qic",
+          "rationale": "PBH stays as institutional memory only, not as an active long setup. The original PEAD trade failed, the drift window is largely spent, and at 3/10 this is below my minimum confidence for any new entry. I am explicitly setting the plan down rather than carrying a watch that has no buy level, no wake, and no realistic path to action today.",
+          "structural_unchanged_reason": "The view is not improving; this is not a belief upgrade or a hidden re-entry. I am removing the active plan because the current setup no longer earns attention.",
+          "change_status": "WATCHING"
+        },
+        "message": "change_status: \"WATCHING\" puts back a thesis this analyst promoted (the first-live-run opt-out) or one it sold. This thesis is WATCHING. Did you mean change_status: \"INVALIDATED\" (kill the belief)? To exit an open position, call close_position.",
+        "thesis": {
+          "id": "cmt0zqtsl000a04l5oj023qic",
+          "ticker": "PBH",
+          "status": "RETIRED",
+          "direction": "LONG",
+          "horizon": "TARGET",
+          "setupId": null,
+          "entryPrice": null,
+          "targetPrice": null,
+          "stopLoss": null,
+          "coreBelief": "PBH holds above $47.50 through the closing PEAD window (~early October 2026) and recovers to $54–$56 on Barclays conference tone-setting and Q2 FY2027 pre-announcement optimism, with the $63 target deferred to a next-cycle thesis if Q2 beats.",
+          "keyAssumptions": [
+            "FY2027 guidance of $1,290–$1,315M revenue and $4.55–$4.65 adj. EPS remains intact through Q2 — management does not walk back the raised guide at Barclays or in any interim communication",
+            "Breathe Right and LaCorium integrations stay on track with no negative surprises flagged at the September 10 Barclays conference or in any pre-announcement filing"
+          ],
+          "invalidationConds": [
+            "Stock closes below $47.50 on any day — automated stop triggers exit regardless of news",
+            "Management lowers FY2027 revenue or EPS guide in any forum (Barclays, 8-K, pre-announcement), signaling the acquisition thesis is broken",
+            "Q2 FY2027 earnings are pre-announced or scheduled before the PEAD window closes and reveal an EPS miss vs. consensus"
+          ],
+          "conviction": "LOW",
+          "variantView": "Consensus expects PBH to stay range-bound on supply drag; I think the FY27 guide reset — $240M in new acquisition revenue plus record FCF — is an obvious re-rating unpriced at 12.7x. Falsifiable if Q2 FY27 delivers a guide cut.",
+          "triggers": [],
+          "catalystDate": null
+        }
+      }
+    ]
+  },
+  "COMPOUNDER_0923": {
+    "runId": "cmue20swo001k04js3qerbmhh",
+    "updateCalls": 14,
+    "refused": [
+      {
+        "error": "structural_belief_unchanged",
+        "input": {
+          "thesis_id": "cmsplh2ow000m04l74ho8iti0",
+          "rationale": "ISRG has repaired above the 20-day and 50-day, but this is still not a full long-term repair. Fresh tape shows price at $402.09, still below falling 150-day and 200-day averages, with the chart verdict still downtrend; after our prior 20.7% stop-out, I am not paying up 5% above the spent $383 trigger without a cleaner structural reclaim. I am setting the plan down rather than pretending this is a live buy.\n\n[Belief unchanged: The da Vinci 5 and installed-base thesis still stands, but this specific re-entry setup has not earned a second shot yet.]",
+          "trigger_id": "cf39ff35-5a15-43d4-a0f1-911cb5fd519b",
+          "remove_trigger_ids": [
+            "4838eee0-df9f-4af5-b8db-04f699da0ee4",
+            "69ff0914-0303-4468-968b-e143ad287ef8",
+            "3bb3978d-fdf2-4ba3-97f3-24119e10ce35"
+          ]
+        },
+        "message": "You're patching targetPrice, stopLoss on ISRG without touching the underlying belief (core_belief / key_assumptions / invalidation_conditions). The discipline rule: a substantive trade-plan change requires either (1) a corresponding belief update — refine an assumption, drop one that's been confirmed, add an invalidation condition that just became plausible — OR (2) an explicit `structural_unchanged_reason` (≥10 chars) stating why the underlying belief still holds. Examples of (2): \"key_assumption #2 (datacenter capex) confirmed by today's earnings beat — raising target to reflect, belief unchanged\", or \"tightening stop after price moved in our favor; assumptions and invalidation conditions still hold\". Retry with one of those.",
+        "thesis": {
+          "id": "cmsplh2ow000m04l74ho8iti0",
+          "ticker": "ISRG",
+          "status": "WATCHING",
+          "direction": "LONG",
+          "horizon": "COMPOUNDER",
+          "setupId": "COMPOUNDER_ACCUMULATION",
+          "entryPrice": null,
+          "targetPrice": null,
+          "stopLoss": null,
+          "coreBelief": "ISRG compounds to $530+ within 24 months as da Vinci 5 upgrade cycle drives installed-base expansion and instruments/accessories revenue sustains 15%+ growth, materially outpacing any near-term share erosion from JNJ Ottava.",
+          "keyAssumptions": [
+            "da Vinci 5 placements continue at 200+ units/quarter, expanding installed base toward 13,000+ systems by end of 2027 and sustaining 15%+ instruments/accessories revenue growth",
+            "JNJ Ottava adoption remains slow and phased due to limited initial indications, retraining requirements, and unknown per-procedure economics — ISRG maintains 70%+ share of robotic soft-tissue procedures through 2027",
+            "Aging-population tailwind sustains procedural volume growth at 13%–16% annually as minimally invasive surgery penetration rises in general surgery, urology, and gynecology",
+            "ISRG's adjusted gross margin trajectory continues toward 69%+ as da Vinci 5 mix improves and recurring revenue scales"
+          ],
+          "invalidationConds": [
+            "Procedure volume growth falls below 10% for two consecutive quarters, signaling structural demand erosion rather than cyclical softness",
+            "JNJ Ottava captures measurable share in a flagship category (prostatectomy, hysterectomy, or colorectal), defined as 10%+ of new placements in any single quarter",
+            "ISRG cuts full-year procedure growth guidance below 12% on two consecutive guidance updates",
+            "Adjusted gross margin declines year-over-year, indicating pricing pressure from competitive entrants",
+            "CFO or CEO departure combined with a change in capital-allocation priorities (e.g., large dilutive acquisition)"
+          ],
+          "conviction": "HIGH",
+          "variantView": "Consensus prices in Ottava as a structural threat; ISRG's 11,710-system installed base, 15,000+ da Vinci 5 trained surgeons, and 85% recurring revenue make the moat more durable than feared — the dV5 upgrade cycle is a multi-year earnings driver the market is discounting.",
+          "triggers": [
+            {
+              "id": "078ab38b-ccf7-4c6f-abac-f710b848259d",
+              "action": "REVIEW",
+              "source": "AGENT",
+              "predicate": {
+                "kind": "EARNINGS_BEAT"
+              },
+              "rationale": "Review whether earnings strength confirms da Vinci 5 placements, procedure growth, and margin trajectory.",
+              "cooldownDays": 7
+            },
+            {
+              "id": "a7cf315f-1e7e-46b1-9ba9-ede3d7bc1812",
+              "action": "REVIEW",
+              "source": "AGENT",
+              "predicate": {
+                "kind": "EARNINGS_MISS"
+              },
+              "rationale": "Review whether an earnings miss reflects temporary noise or a real break in procedure growth, margins, or placements.",
+              "cooldownDays": 7
+            },
+            {
+              "id": "027adead-ad6f-4ec1-92fa-a93c1270584d",
+              "action": "REVIEW",
+              "source": "DEFAULT",
+              "predicate": {
+                "days": 30,
+                "kind": "REVIEW_CADENCE"
+              },
+              "rationale": "Look at this every 30 days, counting from the last real review.",
+              "cooldownDays": 30
+            }
+          ],
+          "catalystDate": null
+        }
+      },
+      {
+        "error": "watching_transition_from_non_promoted",
+        "input": {
+          "thesis_id": "cmqb2ro9x000004jiado1yk0a",
+          "rationale": "VST's repeated below-200-day review still has not turned into a buyable setup, and the bigger issue now is plan hygiene: there is still no priced entry or active wake of its own while the score remains below my minimum. I am making that explicit by archiving the dead plan rungs already gone in substance and keeping the thesis only as a passive watch with no active trade structure.\n\n[Belief unchanged: The Helix and contracted-power idea remains worth following, but there is still no executable entry framework now.]",
+          "change_status": "WATCHING"
+        },
+        "message": "change_status: \"WATCHING\" puts back a thesis this analyst promoted (the first-live-run opt-out) or one it sold. This thesis is WATCHING. Did you mean change_status: \"INVALIDATED\" (kill the belief)? To exit an open position, call close_position.",
+        "thesis": {
+          "id": "cmqb2ro9x000004jiado1yk0a",
+          "ticker": "VST",
+          "status": "WATCHING",
+          "direction": "LONG",
+          "horizon": "COMPOUNDER",
+          "setupId": null,
+          "entryPrice": null,
+          "targetPrice": null,
+          "stopLoss": null,
+          "coreBelief": "VST compounds toward $210 over 18–24 months as Helix preferred-power status and long-dated AWS/Meta nuclear PPAs convert AI datacenter load growth into contracted EBITDA that lifts the 2027 baseline of $7.4–$7.8B (ex-Cogentrix/Meta) while multiple re-rates from ~8x toward 10–11x as earnings visibility improves.",
+          "keyAssumptions": [
+            "Vistra's 2026 adjusted EBITDA lands at or above the $7.2B midpoint of the $6.8–$7.6B guidance range, validating management's reaffirmation despite ERCOT softness",
+            "Helix Digital Infrastructure breaks ground on at least one AI datacenter site by mid-2027, with Vistra contracted power volume becoming quantifiable in public guidance",
+            "ERCOT forward power prices do not sustain a structural decline below current softened levels — i.e., load growth of 4–6% annually through 2030 absorbs incremental supply without prolonged price compression"
+          ],
+          "invalidationConds": [
+            "Two consecutive formal guidance cuts to the adjusted EBITDA range — not a single quarter miss but management explicitly lowering the annual band twice in succession, signaling structural demand erosion rather than timing",
+            "Helix Digital Infrastructure cancels or materially restructures such that Vistra is no longer the preferred power provider, eliminating the contracted AI-load thesis and the $1B investment value",
+            "VST breaks and closes below the 52-week low of $132.66 on material volume AND management issues a negative business update within 30 days, confirming the technical break reflects fundamental deterioration rather than sentiment overshoot",
+            "CFO Kristopher Moldovan departure within 12 months, given his centrality to the capital allocation and leverage management narrative through the Cogentrix integration"
+          ],
+          "conviction": "MEDIUM",
+          "variantView": "Consensus treats VST as a regulated-adjacent utility; I believe the Helix JV structurally transforms it into a contracted hyperscaler power platform, locking in multi-year load growth that is not yet in sell-side EBITDA models.",
+          "triggers": [
+            {
+              "id": "151baf10-d0da-4a61-8ad6-8fe86b552bb9",
+              "action": "REVIEW",
+              "source": "AGENT",
+              "predicate": {
+                "days": 30,
+                "kind": "REVIEW_CADENCE"
+              },
+              "rationale": "No buy plan yet, but VST still belongs in coverage. Revisit in 30 days or sooner if other wakes fire and decide whether business evidence or structure has improved enough to price a real entry.",
+              "cooldownDays": 30
+            }
+          ],
+          "catalystDate": null
+        }
+      }
+    ]
+  }
+}
