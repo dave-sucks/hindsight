@@ -254,8 +254,8 @@ export async function maybeAwaitApproval(
  */
 /**
  * Mark on the run that a trade tool fired and staged a proposal. complete_run's
- * narration check credits these (`CREDITED_RUN_EVENT_TYPES` in
- * lib/agent/narration-gate.ts). Without one, a LIVE sell — always a proposal —
+ * declared-action check credits these (`CREDITED_RUN_EVENT_TYPES` in
+ * lib/agent/summary-action-check.ts). Without one, a LIVE sell — always a proposal —
  * read as "said exit, never called the tool," and agents deleted true exits
  * from their run summaries to get past the check (DAV-259). Never fails the
  * trade tool.

@@ -414,7 +414,7 @@ export const morningResearch = inngest.createFunction(
                 // where `output` is our ToolResult<T> envelope. Legacy `result`
                 // field checked defensively.
                 // P0-9b: also catch data.success===false (record_run_summary FAILED
-                // narration-gate shape) and data.status==="FAILED" (complete_run
+                // summary-action-check shape) and data.status==="FAILED" (complete_run
                 // preflight rejection) — ok===false alone misses both.
                 const out = (r?.output ?? r?.result) as {
                   ok?: boolean;

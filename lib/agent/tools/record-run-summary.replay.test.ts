@@ -1,6 +1,6 @@
 /**
- * record-run-summary.replay.test.ts — the narration→execution gate, through
- * its real execute (DAV-311).
+ * record-run-summary.replay.test.ts — what this tool records, through its
+ * real execute (DAV-311).
  *
  * This gate is the one that catches an agent narrating "I'll close $X" and
  * never calling `close_position`. It has cost real runs — 2026-05-20 EV
@@ -43,7 +43,7 @@ const baseArgs = {
     "two drawdowns started. Holding everything and revisiting on the next scheduled review.",
 };
 
-describe("record_run_summary's narration gate runs on the real path", () => {
+describe("record_run_summary on the real path", () => {
   it("a clean HOLD summary is recorded", async () => {
     const { result, db } = await replayTool("record-run-summary", "recordRunSummary", {
       seed: {

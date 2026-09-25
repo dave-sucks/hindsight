@@ -14,11 +14,13 @@ import { prisma } from "@/lib/prisma";
 // gate (P1-13). complete_run's preflight (using computeNeedsAction)
 // is now the canonical structural check.
 //
-// The narration→execution gate that lived here moved to complete_run
+// The summary-vs-execution check that lived here moved to complete_run
 // preflight on 2026-05-23 (P0-12). Reason: firing mid-run on the
 // first record_run_summary attempt marked the run FAILED even when
 // the agent self-corrected with a real close_position call before
-// complete_run. Production case 2026-05-22 Secular Theme SMTC: gate
+// complete_run.
+// Since DAV-309 it reads each pick's one-word ACTION against the run's
+// orders, not the summary's prose. Production case 2026-05-22 Secular Theme SMTC: gate
 // fired at 08:15:53, agent closed at 08:17:30 for +$108, but run
 // was permanently FAILED. End-of-run check credits post-gate recovery.
 
@@ -274,7 +276,7 @@ export const recordRunSummary = defineTool({
       // happened to use a non-listed word. P1-13 in GAPS.md tracked this;
       // closed here.
 
-      // Narration → execution gate moved to complete_run preflight
+      // The summary-vs-execution check moved to complete_run preflight
       // on 2026-05-23 (P0-12). See header comment for the rationale.
 
       const deployedThisRun = actualDeployedLong + actualDeployedShort;

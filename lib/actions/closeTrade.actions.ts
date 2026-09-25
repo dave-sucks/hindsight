@@ -280,7 +280,7 @@ export async function closeOpenPosition(
 
   // A sale is already under way on this position — fold into it. Success-
   // shaped, not an error: a thrown error would fail the calling run's
-  // narration gate for a close that is, in fact, happening.
+  // declared-action check for a close that is, in fact, happening.
   if (created.kind === "under_way") {
     const { existing } = created;
     if (existing.status === "AWAITING_APPROVAL") {

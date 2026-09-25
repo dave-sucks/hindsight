@@ -79,10 +79,11 @@ describe("complete_run's preflight runs for real", () => {
     expect(result.summary).not.toMatch(/refused/i);
   });
 
-  // The narration→execution gate lives HERE, not in record_run_summary — it
+  // The summary-vs-execution check lives HERE, not in record_run_summary — it
   // moved on 2026-05-23 (P0-12) so an agent that self-corrects before the end
   // of the run is not marked FAILED for the attempt. Production: Secular
-  // Theme/SMTC, 2026-05-22, gate at 08:15:53, real close at 08:17:30.
+  // Theme/SMTC, 2026-05-22, check at 08:15:53, real close at 08:17:30.
+  // Since DAV-309 it reads the pick's ACTION, not the prose.
   it("a run that narrated a close it never made does not finish clean", async () => {
     const { result, db } = await replayTool("complete-run", "completeRun", {
       seed: {
