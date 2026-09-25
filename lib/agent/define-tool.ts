@@ -30,6 +30,7 @@ import {
   detectGateRejection,
   detailFromData,
   recordGateRejection,
+  resolveGateRejections,
 } from "./gate-rejections";
 import type { AgentMode } from "./modes";
 
@@ -145,6 +146,16 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
                 summary: result.summary,
                 detail: detailFromData(result.data),
                 args,
+                ctx,
+              });
+            } else {
+              // A landed call answers every open refusal of this tool on the
+              // same stock or thesis — this run's or an earlier one's. That
+              // is the only way a refusal closes: no phrase, no flag.
+              await resolveGateRejections({
+                tool: options.gateLog,
+                args,
+                summary: result.summary,
                 ctx,
               });
             }

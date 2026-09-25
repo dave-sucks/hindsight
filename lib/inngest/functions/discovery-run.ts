@@ -26,6 +26,8 @@ import {
   formatBookContextBlock,
 } from "@/lib/agent/context-bundle";
 import { MODES } from "@/lib/agent/modes";
+import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
+import { refusalNudge } from "@/lib/agent/refusal-carryover";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 
 export const discoveryRun = inngest.createFunction(
@@ -282,11 +284,76 @@ export const discoveryRun = inngest.createFunction(
             ),
           });
 
-          const toolCalls = steps.reduce(
+          let toolCalls = steps.reduce(
             (sum, s) => sum + (s.toolCalls?.length ?? 0),
             0,
           );
-          const elapsed = Date.now() - t0;
+          let elapsed = Date.now() - t0;
+
+          let responseMessages = response?.messages;
+          if (
+            !responseMessages ||
+            !Array.isArray(responseMessages) ||
+            responseMessages.length === 0
+          ) {
+            responseMessages = steps.flatMap((s) => {
+              const stepMsgs = (
+                s as unknown as { response?: { messages?: unknown[] } }
+              ).response?.messages;
+              return Array.isArray(stepMsgs) ? stepMsgs : [];
+            }) as typeof responseMessages;
+          }
+
+          // ── Refusal retry (2026-09-25) ───────────────────────────────────
+          // A refused call this run never redid (a PASS save, a mint the
+          // save refused) goes back to the model once, with its reason.
+          // What is still open afterwards is written on the run.
+          const openRefusals = await listOpenRefusalsForRun(run.id);
+          if (openRefusals.length > 0 && responseMessages.length > 0) {
+            console.warn(
+              `[discovery-run] ${config.name}: ${openRefusals.length} refused call(s) never redone — attempting refusal retry`,
+            );
+            try {
+              const refusalResp = await generateText({
+                model: openai(MODES["discovery"].model),
+                system: systemPrompt,
+                messages: [
+                  { role: "user", content: [{ type: "text", text: userPrompt }] },
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  ...(responseMessages as any[]),
+                  { role: "user", content: refusalNudge(openRefusals) },
+                ],
+                tools,
+                providerOptions: { openai: { strictJsonSchema: true } },
+                stopWhen: stepCountIs(8),
+                abortSignal: AbortSignal.timeout(120_000),
+              });
+              toolCalls += refusalResp.steps.reduce((s, x) => s + (x.toolCalls?.length ?? 0), 0);
+              elapsed = Date.now() - t0;
+              let refusalMessages = refusalResp.response?.messages;
+              if (!refusalMessages || !Array.isArray(refusalMessages) || refusalMessages.length === 0) {
+                refusalMessages = refusalResp.steps.flatMap((s) => {
+                  const stepMsgs = (s as unknown as { response?: { messages?: unknown[] } }).response?.messages;
+                  return Array.isArray(stepMsgs) ? stepMsgs : [];
+                }) as typeof refusalMessages;
+              }
+              if (refusalMessages && refusalMessages.length > 0) {
+                responseMessages = [
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  ...(responseMessages as any[]),
+                  { role: "user", content: `(refusal retry: ${openRefusals.length} refused call(s) were never redone)` },
+                  ...refusalMessages,
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ] as any[];
+              }
+            } catch (refusalErr) {
+              console.error(
+                `[discovery-run] refusal retry failed for ${config.name}:`,
+                refusalErr instanceof Error ? refusalErr.message : refusalErr,
+              );
+            }
+          }
+          await recordOpenRefusalsEvent(run.id, await listOpenRefusalsForRun(run.id));
 
           // Persist conversation messages so /runs/[id] can replay the chat.
           // Without this, every discovery run shows "No replay data
@@ -296,19 +363,6 @@ export const discoveryRun = inngest.createFunction(
               role: "user",
               content: [{ type: "text", text: userPrompt }],
             };
-            let responseMessages = response?.messages;
-            if (
-              !responseMessages ||
-              !Array.isArray(responseMessages) ||
-              responseMessages.length === 0
-            ) {
-              responseMessages = steps.flatMap((s) => {
-                const stepMsgs = (
-                  s as unknown as { response?: { messages?: unknown[] } }
-                ).response?.messages;
-                return Array.isArray(stepMsgs) ? stepMsgs : [];
-              }) as typeof responseMessages;
-            }
             const allMessages = [userMessage, ...responseMessages];
             const json = JSON.stringify(allMessages);
             await prisma.$transaction(async (tx) => {

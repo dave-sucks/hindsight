@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { describeRefusalTool } from "@/lib/agent/gate-rejections";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { createClient } from "@/lib/supabase/server";
 import { getAccount, getFundingActivities, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
@@ -1256,15 +1257,20 @@ export async function getDashboardData(
   try {
     const analystIds = dbAgentConfigs.map((a) => a.id);
     const analystNameById = new Map(dbAgentConfigs.map((a) => [a.id, a.name] as const));
+    // Every write tool, not only the buy (2026-09-25): a refused sale, add,
+    // thesis edit or thesis save that was never redone is as much a money
+    // finding as a refused buy. Only OPEN rows: a refusal the analyst
+    // answered (the same tool landed on the stock) is the app working.
     const blocked = await prisma.gateRejection.findMany({
       where: {
-        tool: "place_trade",
+        tool: { not: "complete_run" },
         analystId: { in: analystIds },
+        resolvedAt: null,
         createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
       },
       orderBy: { createdAt: "desc" },
       take: 20,
-      select: { id: true, ticker: true, summary: true, detail: true, analystId: true, createdAt: true },
+      select: { id: true, tool: true, ticker: true, summary: true, detail: true, analystId: true, createdAt: true },
     });
     for (const b of blocked) {
       if (!b.ticker) continue;
@@ -1275,7 +1281,7 @@ export async function getDashboardData(
         symbol: b.ticker,
         direction: null,
         timestamp: b.createdAt.toISOString(),
-        label: "Buy blocked",
+        label: `${describeRefusalTool(b.tool)} blocked`,
         source: "agent",
         reason: b.detail ?? b.summary,
         pnl: null,

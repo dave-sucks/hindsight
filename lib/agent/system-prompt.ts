@@ -19,6 +19,7 @@
 
 import type { RunInput } from "./run-input";
 import { capacityLine, isFull } from "@/lib/agent/capacity";
+import { blockedLastTimeSection } from "@/lib/agent/refusal-carryover";
 
 // ─── Config type (shared with consumers) ─────────────────────────────────────
 
@@ -207,6 +208,15 @@ export function buildDailyRunSystemPromptV2(
           : []),
       ].join("\n"),
     );
+  }
+
+  // ── Refused calls never redone (2026-09-25) ────────────────────────────
+  // PLTR's buy was refused on 09-25, the run ended COMPLETE, and nothing
+  // said the buy never happened. An open refusal is carried here until the
+  // same tool lands on the stock — a refusal is an input, never an ending.
+  {
+    const blocked = blockedLastTimeSection(runInput.openRefusals ?? []);
+    if (blocked) sections.push(blocked);
   }
 
   // ── Horizon glossary ───────────────────────────────────────────────────

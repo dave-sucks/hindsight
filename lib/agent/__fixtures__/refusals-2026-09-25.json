@@ -1,0 +1,33 @@
+{
+ "_": "GateRejection rows as written in production on 2026-09-25. PLTR: the Compounder's tactical run had its buy refused at 09:40 ET, closed out, and the run ended COMPLETE \u2014 the buy vanished. GD: the daily run's first edit was refused (2:1) and the second landed. Pulled 2026-09-25 with pg from GateRejection.",
+ "pltr_buy_refused": {
+  "id": "cmuh0d8u3000404l2iyhtpsgi",
+  "tool": "place_trade",
+  "gateCode": null,
+  "summary": "Trade blocked: $PLTR \u2014 exceeds largest trade",
+  "detail": "Trade blocked: requested $11,222 exceeds this analyst's largest trade ($10,000). Scale it down, or omit notional to size from the analyst's settings.",
+  "ticker": "PLTR",
+  "runId": "cmuh0czht000204l2vpmar22o",
+  "analystId": "cmmqxola3000004lbj7c11bfn",
+  "runMode": "INTRADAY_TACTICAL",
+  "createdAt": "2026-09-25T17:40:23.163Z"
+ },
+ "gd_edit_refused": {
+  "id": "cmugwvg4f000z04l86ygsa469",
+  "tool": "update_thesis",
+  "gateCode": "invalid_thesis_shape",
+  "summary": "Refused update on $GD \u2014 the resulting plan is invalid (invalid_thesis_shape).",
+  "detail": "R/R floor: 1.93:1 is below the mandatory 2:1 minimum ((target \u2212 entry) / (entry \u2212 stop) with entry=$356, target=$435, stop=$315). Tighten the stop to a REAL technical level, raise the target to a CITED level, or \u2014 if no level makes the math work \u2014 set direction to PASS, or set the plan down: remove the buy, floor and target by id with remove_trigger_ids (the name stays in view with no plan). Never fabricate a level to clear the floor. To set the plan down, remove all of them in one call: remove_trigger_ids: [\"e82b0485-8c62-4511-bd85-6bbe677f9e10\", \"7201b75b-f7a5-4cff-814e-e9508df5d7c3\"] (sell below $315, review above $435).",
+  "ticker": null,
+  "runId": "cmugwutp4000v04l85624q4ml",
+  "analystId": "cmmqxola3000004lbj7c11bfn",
+  "runMode": "MORNING_PLAN",
+  "createdAt": "2026-09-25T16:02:33.951Z"
+ },
+ "pltr_place_trade_args": {
+  "ticker": "PLTR",
+  "direction": "LONG",
+  "notional": 11222.36,
+  "shares": 58
+ }
+}

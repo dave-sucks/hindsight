@@ -275,7 +275,7 @@ const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; 
   // Trade-as-Proposal — see docs/plans/TRADE_AS_PROPOSAL.md
   PROPOSED: { label: 'Pending',        dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
   REJECTED: { label: 'Rejected',       dotClass: 'bg-muted-foreground/40',    tooltip: 'Proposal rejected — never executed' },
-  BLOCKED:  { label: 'Buy blocked',    dotClass: 'bg-negative',               tooltip: 'The analyst tried to buy and the trade was refused — read why, and buy by hand if you disagree' },
+  BLOCKED:  { label: 'Blocked',        dotClass: 'bg-negative',               tooltip: 'The analyst tried this and the app refused it, and it has not been redone — read why, and act by hand if you disagree' },
 };
 
 function getDecisionAction(item: ActivityFeedItem): string {
@@ -359,7 +359,10 @@ function pickToThesisRow(pick: RecentPick, candles?: StockCandle[]): ThesisRowDa
 
 function ActivityRow({ item }: { item: ActivityFeedItem }) {
   const actionKey = getDecisionAction(item);
-  const status = ACTIVITY_ACTION_STATUS[actionKey] ?? ACTIVITY_ACTION_STATUS.HOLD;
+  const meta = ACTIVITY_ACTION_STATUS[actionKey] ?? ACTIVITY_ACTION_STATUS.HOLD;
+  // A blocked row says which call was refused ("Sale blocked", "Thesis edit
+  // blocked") — the server names the tool; the generic word is the fallback.
+  const status = item.type === 'BLOCKED' && item.label ? { ...meta, label: item.label } : meta;
   // Trade-as-Proposal — render inline [Approve][Reject] when this row is
   // awaiting the user's decision. See docs/plans/TRADE_AS_PROPOSAL.md.
   const isProposed = item.type === 'PROPOSED' && item.orderId != null;
