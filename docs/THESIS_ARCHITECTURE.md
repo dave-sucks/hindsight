@@ -590,7 +590,7 @@ Gates:
 
 ### `place_trade` — opens an Alpaca position from a committed thesis
 
-Required: thesis_id (must be LONG or SHORT, never PENDING), direction, entry_price, target_price, stop_loss, share count or notional.
+Required: thesis_id (must be LONG or SHORT, never PENDING), direction, entry_price, target_price, stop_loss. No size: inside a run the tool sizes the buy by risk (the principal's chat may name a notional).
 
 Gates (in order):
 - **PENDING reject** — thesis_id pointing at a PENDING thesis is rejected with instructions to promote via `update_thesis` first.

@@ -88,7 +88,7 @@ export function formatMoneyContextBlock(m: MoneyContext): string {
         m.ceilingDollars != null
           ? ` to $${Math.round(m.ceilingDollars).toLocaleString()} ceiling`
           : ""
-      } — both ends enforced at trade time.`,
+      } — place_trade sizes every buy inside it by risk; you name no amount.`,
     );
     lines.push(
       "  • If conviction doesn't justify at least a full-floor position, the honest call is PASS — not a small size.",

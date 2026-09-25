@@ -157,7 +157,7 @@ YOUR CONFIG — what bounds your work this run
   Direction bias:    ${directionLabel}
   Hold style(s):     ${holdDurations}
   Min confidence:    ${minConf}%
-  Position size: ${minPosSize > 0 ? `$${minPosSize.toLocaleString()}\u2013$${maxPosSize.toLocaleString()} per entry (both ends enforced)` : `max $${maxPosSize.toLocaleString()}`}${
+  Position size: ${minPosSize > 0 ? `$${minPosSize.toLocaleString()}\u2013$${maxPosSize.toLocaleString()} per entry (place_trade sizes every buy inside this band by risk)` : `max $${maxPosSize.toLocaleString()}`}${
     args.money?.equityUSD != null
       ? `
   Account equity \u2248 $${Math.round(args.money.equityUSD).toLocaleString()} \u2014 a candidate you wouldn't commit at least the smallest trade to is a soft watch, a PASS, or a skip, not a dispatch.`
