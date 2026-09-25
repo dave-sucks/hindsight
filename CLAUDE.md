@@ -192,9 +192,13 @@ plus `get_stock_data`.
   `minPositionSize` (smallest trade — a normal buy), `maxPositionSize`
   (largest trade — a STRONG/HIGH conviction buy), `maxPositionTotal` (most
   in one stock — where adding to a winner stops; 0 = twice the largest
-  trade). The agent does not size trades: when `place_trade` gets no
-  `notional` it applies these by conviction (`entrySizeForConviction`), and
-  an explicit `notional` must sit inside the band. `realMaxPosition` (the
+  trade). The agent does not size trades: inside a run, `place_trade` and
+  `manage_position(add_to_position)` have no size field at all (the schema
+  is built per caller — `schemaFor` on `defineTool`) and the buy or add is
+  sized by risk (`sizeByRisk`: risk dollars ÷ distance to the stop, ×
+  conviction, clamped to the band; an add at half the entry's risk). Only
+  the principal's chat may name a `notional`, and it is honored as given,
+  with a line when it sits outside the band. `realMaxPosition` (the
   LIVE-only "promotion cap") and the hidden ×2 add multiple were deleted
   2026-09-08. All sizing math is `lib/agent/position-sizing.ts` — the tool
   gates and the Settings UI both call it, so the number on screen can't

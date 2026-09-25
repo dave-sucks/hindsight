@@ -29,6 +29,7 @@ import {
   sizeByRisk,
 } from "@/lib/agent/position-sizing";
 import { loadAccountRisk, industryOf } from "@/lib/agent/load-account-risk";
+import type { ToolContext } from "@/lib/agent/tool-context";
 import { heatLine, industryLine } from "@/lib/agent/portfolio-risk";
 import {
   getThesisComposite,
@@ -55,10 +56,18 @@ function classifyAlpacaError(err: unknown): "rejected" | "uncertain" {
   return "uncertain";
 }
 
-export const placeTrade = defineTool({
-  description:
-    "Place a paper trade on Alpaca. The trade will be executed immediately. Requires thesis_id from record_thesis. Will fail if any analyst already holds an open position in this ticker.",
-  schema: z.object({
+/** The principal's chat is the one caller that may name a dollar amount. */
+const isPrincipalChat = (ctx: ToolContext) => ctx.runMode === "PRINCIPAL_CHAT";
+
+/** "Sized by you: $11,222 — above the analyst's largest trade ($10,000)." */
+export function sizedByPrincipalLine(notional: number, band: { floor: number; ceiling: number | null }): string {
+  const $ = (n: number) => `$${Math.round(n).toLocaleString()}`;
+  if (band.ceiling != null && notional > band.ceiling) return `Sized by you: ${$(notional)} — above the analyst's largest trade (${$(band.ceiling)}).`;
+  if (band.floor > 0 && notional < band.floor) return `Sized by you: ${$(notional)} — below the analyst's smallest trade (${$(band.floor)}).`;
+  return `Sized by you: ${$(notional)}.`;
+}
+
+const placeTradeSchema = z.object({
     ticker: z.string(),
     company_name: z.string().optional().describe("Company name from get_stock_data"),
     exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
@@ -66,8 +75,11 @@ export const placeTrade = defineTool({
     entry_price: z.number().describe("The CURRENT quote — this is a market order, so this is what you expect to pay and what sizes the position. Unlike the thesis's buy level (a price we have not reached), here today's price is the right answer."),
     target_price: z.number(),
     stop_loss: z.number(),
-    notional: z.number().optional().describe("Dollar amount to invest (e.g. 5000 for $5,000). OMIT IT and the trade is sized by risk: the account loses about the analyst's risk per trade (% of equity, scaled by conviction) if the stop hits, kept between the analyst's smallest and largest trade. If you pass one it must sit inside that band."),
-    shares: z.number().optional().describe("Number of shares. Only use if you need a specific share count; prefer notional instead."),
+    // Principal chat only. Inside a run these two fields are not in the
+    // schema at all — the analyst's rules size every buy, and a size the
+    // model typed ($11,222 on PLTR, 2026-09-25) is what killed a fired buy.
+    notional: z.number().optional().describe("The dollar amount you want. Omit it and the buy is sized by the analyst's rules (risk per trade over the stop distance, inside its smallest / largest trade)."),
+    shares: z.number().optional().describe("A share count, if you want a specific one; prefer notional."),
     thesis_id: z.string().describe("REQUIRED — the thesis_id returned by record_thesis. Every trade must link to a thesis."),
     entry_rationale: z
       .string()
@@ -82,7 +94,15 @@ export const placeTrade = defineTool({
       .describe(
         "Principal-chat only: which analyst is placing the trade. Required when the run isn't already scoped to one analyst (e.g. /chat). Within an analyst run, leave undefined — the run's analyst is used.",
       ),
-  }),
+});
+
+export const placeTrade = defineTool({
+  description:
+    "Place a paper trade on Alpaca. The trade will be executed immediately. Requires thesis_id from record_thesis. Will fail if any analyst already holds an open position in this ticker.",
+  schema: placeTradeSchema,
+  // A run's model never sees a size field. The analyst's rules size the
+  // buy; there is one way to size a buy (DAV-317).
+  schemaFor: (ctx) => (isPrincipalChat(ctx) ? placeTradeSchema : placeTradeSchema.omit({ notional: true, shares: true })),
   ui: "tool-ui" as const,
   gateLog: "place_trade",
   groupId: "Executing",
@@ -415,79 +435,15 @@ export const placeTrade = defineTool({
         );
       }
 
-      // ── Guardrail 5: requested notional inside the analyst's band ──────
-      // Smallest trade to largest trade, both settings on the analyst,
-      // resolved by positionBand() (lib/agent/position-sizing.ts). Only
-      // checks when the model explicitly sized the trade; with no size the
-      // path below picks a point inside the band by conviction.
+      // The analyst's dollar limits: smallest trade to largest trade, both
+      // settings on the analyst (positionBand, lib/agent/position-sizing.ts).
+      // Nothing is refused for size any more: a run's model can't send one
+      // (the field isn't in its schema), and the principal's own number is
+      // honored with a line when it sits outside the band.
       const band = positionBand({
         minPositionSize: ctx.minPositionSize,
         maxPositionSize: ctx.maxPositionSize,
       });
-      {
-        const requestedNotional =
-          args.notional != null && args.notional > 0
-            ? args.notional
-            : args.shares != null && args.shares > 0
-              ? args.shares * args.entry_price
-              : null;
-
-        // 5a — too big.
-        if (
-          requestedNotional != null &&
-          band.ceiling != null &&
-          requestedNotional > band.ceiling
-        ) {
-          const blockedMsg = `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} exceeds this analyst's largest trade ($${band.ceiling.toLocaleString()}). Scale it down, or omit notional to size from the analyst's settings.`;
-          return {
-            summary: `Trade blocked: $${ticker} — exceeds largest trade`,
-            data: {
-              success: false,
-              ticker,
-              status: "FAILED" as const,
-              direction: args.direction,
-              message: blockedMsg,
-              tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
-            },
-            sources: [],
-          };
-        }
-
-        // 5b — too small. A position below the floor is a config failure, not a
-        // conviction signal: an analyst with a $14k ceiling opening $3.5k (HPE)
-        // or a 1-share $922 sliver (LITE) can't move the book either way. We
-        // REJECT rather than silently rounding up, so the sizing decision stays
-        // the agent's — it either commits real size or skips the name. Sized
-        // conviction below the floor belongs in a smaller-floor seat.
-        if (
-          requestedNotional != null &&
-          band.floor > 0 &&
-          requestedNotional < band.floor
-        ) {
-          const bandLabel =
-            band.ceiling != null
-              ? `$${band.floor.toLocaleString()}–$${band.ceiling.toLocaleString()}`
-              : `$${band.floor.toLocaleString()}+`;
-          const blockedMsg =
-            `Trade blocked: requested $${Math.round(requestedNotional).toLocaleString()} is below this analyst's smallest trade ($${band.floor.toLocaleString()}). ` +
-            (band.floorClampedByCeiling
-              ? `Its largest trade ($${band.ceiling?.toLocaleString()}) sits at or below its smallest, so every buy is sized exactly $${band.floor.toLocaleString()}. `
-              : `Its band is ${bandLabel}. `) +
-            `Either size the entry into the band or skip the name — a position this small can't move the book, and the analyst's own risk rules already assume full-size entries.`;
-          return {
-            summary: `Trade blocked: $${ticker} — below smallest trade`,
-            data: {
-              success: false,
-              ticker,
-              status: "FAILED" as const,
-              direction: args.direction,
-              message: blockedMsg,
-              tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
-            },
-            sources: [],
-          };
-        }
-      }
 
       // 1. Resolve qty — prefer notional (dollar amount), fall back to shares.
       // With no size from the agent, the risk rule decides (DAV-251):
@@ -532,14 +488,22 @@ export const placeTrade = defineTool({
       let resolvedShares: number | undefined;
       let resolvedNotional: number | undefined;
       const sizingNotes: string[] = [];
-      if (args.notional != null && args.notional > 0) {
-        resolvedNotional = args.notional;
-        // Compute shares for DB record (approximate — actual fill may differ)
-        resolvedShares = Math.max(1, Math.floor(args.notional / args.entry_price));
-        sizingNotes.push(`Sized by the analyst: $${Math.round(args.notional).toLocaleString()}.`);
-      } else if (args.shares != null && args.shares > 0) {
-        resolvedShares = args.shares;
-        sizingNotes.push(`Sized by the analyst: ${args.shares} shares.`);
+      // Only the principal's chat may name a size. A size a run's model
+      // passed anyway (an older prompt, a direct call) is ignored, not
+      // refused — the rules size the buy and the proposal says so.
+      const principalNotional =
+        isPrincipalChat(ctx) && args.notional != null && args.notional > 0
+          ? args.notional
+          : isPrincipalChat(ctx) && args.shares != null && args.shares > 0
+            ? args.shares * args.entry_price
+            : null;
+      if (principalNotional != null) {
+        resolvedNotional = args.notional != null && args.notional > 0 ? args.notional : undefined;
+        resolvedShares =
+          args.shares != null && args.shares > 0 && resolvedNotional == null
+            ? args.shares
+            : Math.max(1, Math.floor(principalNotional / args.entry_price));
+        sizingNotes.push(sizedByPrincipalLine(principalNotional, band));
       } else if (riskSized) {
         resolvedShares = riskSized.shares;
         resolvedNotional = riskSized.notional;

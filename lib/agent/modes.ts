@@ -629,7 +629,7 @@ This chat is pinned to one analyst. Every write tool (place_trade, close_positio
   } — this is a HARD fence. A name outside it cannot be traded by this seat, so it is not a candidate however good the setup reads. Nothing downstream rejects an out-of-band thesis for you: record_thesis has no market-cap check, so an out-of-band name minted here becomes a watchlist item that can never be acted on.
   • Watchlist: ${scope.watchlist.join(", ") || "(empty)"}
   • Exclusion list: ${scope.exclusionList.join(", ") || "(empty)"}
-  • Sizing: minConfidence ${scope.minConfidence} · maxPositionSize $${scope.maxPositionSize} · maxOpenPositions ${scope.maxOpenPositions}
+  • Sizing: minConfidence ${scope.minConfidence} · largest trade $${scope.maxPositionSize} · maxOpenPositions ${scope.maxOpenPositions}. Omit notional and place_trade sizes the buy by the analyst's rules; a notional the principal names is honored as given, with a line on the proposal when it sits outside the analyst's band.
 
 Analyst prompt (the strategy):
 \`\`\`

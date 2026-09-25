@@ -145,6 +145,13 @@ export const CONVICTION_RISK_MULTIPLIER: Record<string, number> = {
 /** In a CAUTION market new entries are half size (playbook Part C). */
 export const CAUTION_SIZE_MULTIPLIER = 0.5;
 
+/**
+ * An add is half the entry's risk-sized shares (O'Neil's pyramid: 50% of
+ * the position first, then 30%, then 20% — the first add is smaller than
+ * the entry). One constant, not a setting (DAV-317).
+ */
+export const ADD_RISK_FRACTION = 0.5;
+
 export type Regime = "RISK_ON" | "CAUTION" | "RISK_OFF";
 
 export interface RiskSizingInput {

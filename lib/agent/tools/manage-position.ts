@@ -37,6 +37,7 @@ import { prisma } from "@/lib/prisma";
 import { getAccount, getOrder, getLatestPrice, closePositionPartial, placeMarketOrder } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { addPositionValue, addShareCount } from "@/lib/agent/tools/add-sizing";
+import { loadAccountRisk } from "@/lib/agent/load-account-risk";
 import { isExcluded } from "@/lib/agent/universe";
 import type { ToolUIItem } from "@/lib/agent/tool-result";
 import {
@@ -50,9 +51,7 @@ import {
 import { lockPositionSales } from "@/lib/proposals/position-lock";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import {
-  positionTotalCap,
-} from "@/lib/agent/position-sizing";
+import { positionTotalCap, positionBand, sizeByRisk, entrySizeForConviction, ADD_RISK_FRACTION } from "@/lib/agent/position-sizing";
 
 /**
  * Classify an Alpaca submit error — same shape as place_trade / closeOpenPosition.
@@ -137,12 +136,13 @@ const schema = z.object({
     .optional()
     .describe("For partial_close: percentage of the position to exit (1–99)"),
 
-  // add_to_position
+  // add_to_position — principal chat only. Inside a run this field is not
+  // in the schema: the analyst's rules size the add (DAV-317).
   add_notional: z
     .number()
     .positive()
     .optional()
-    .describe("For add_to_position: dollar amount to add to the position"),
+    .describe("For add_to_position: the dollar amount you want to add. Omit it and the add is sized by the analyst's rules."),
 
   // update_targets
   new_target_price: z.number().positive().optional().describe("New target price"),
@@ -225,6 +225,8 @@ export const managePosition = defineTool({
     "target/stop updates, or adding to a winning position. " +
     "Every action is audit-logged with your reason.",
   schema,
+  // A run's model never sees a size field (DAV-317).
+  schemaFor: (ctx) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : schema.omit({ add_notional: true })),
   ui: "tool-ui" as const,
   gateLog: "manage_position",
   groupId: "Executing",
@@ -653,18 +655,11 @@ export const managePosition = defineTool({
 
         // ── ADD TO POSITION ──────────────────────────────────────────────────
         case "add_to_position": {
-          const notional = args.add_notional;
-          if (!notional) {
-            return {
-              summary: `add_notional required for add_to_position`,
-              data: {
-                success: false, ticker, action: args.action, status: "FAILED" as const,
-                message: "add_notional is required for add_to_position.",
-                tickers: [{ ticker, tag: "Failed", summary: "Missing add_notional", actionIcon: "failed" }],
-              },
-              sources: [],
-            };
-          }
+          // Only the principal's chat may name the add. A run's add — and a
+          // chat that names none — is sized by the analyst's rules below.
+          const principalNotional =
+            ctx.runMode === "PRINCIPAL_CHAT" && args.add_notional != null && args.add_notional > 0 ? args.add_notional : null;
+          let analystRiskPct: number | null = null;
 
           // ── PR #359 gate parity: exclusion + enabled ────────────────────
           // add_to_position is a buy that increases dollar exposure — must
@@ -692,8 +687,9 @@ export const managePosition = defineTool({
           if (ctx.analystId) {
             const analystEnabledCheck = await prisma.agentConfig.findUnique({
               where: { id: ctx.analystId },
-              select: { enabled: true, name: true },
+              select: { enabled: true, name: true, riskPct: true },
             });
+            analystRiskPct = analystEnabledCheck?.riskPct ?? null;
             if (analystEnabledCheck && !analystEnabledCheck.enabled) {
               const blockedMsg =
                 `Add blocked: analyst "${analystEnabledCheck.name}" is disabled — ` +
@@ -722,6 +718,51 @@ export const managePosition = defineTool({
           const addPrice = await getLatestPrice(ticker, creds).catch(() => null);
           const sizingPrice = addPrice != null && addPrice > 0 ? addPrice : position.avgCost;
 
+          // ── The add's size: the analyst's rules, one way (DAV-317) ─────
+          // An add is the entry rule at half the risk (O'Neil's pyramid:
+          // the first add is smaller than the entry), at today's price
+          // against the floor in force, capped by the largest trade. The
+          // smallest-trade floor is an entry rule and doesn't apply here.
+          // No usable floor or no equity reading: half the band by
+          // conviction, and the line says why.
+          let notional: number;
+          let addSizingLine: string;
+          if (principalNotional != null) {
+            notional = principalNotional;
+            addSizingLine = `Sized by you: $${Math.round(notional).toLocaleString()}.`;
+          } else {
+            const band = positionBand({ minPositionSize: ctx.minPositionSize, maxPositionSize: ctx.maxPositionSize });
+            const [accountRisk, convictionRow] = await Promise.all([
+              loadAccountRisk({ accountId: ctx.accountId, environment: position.environment as "PAPER" | "LIVE", creds }).catch(() => null),
+              auditThesisId ? prisma.thesis.findUnique({ where: { id: auditThesisId }, select: { conviction: true } }).catch(() => null) : Promise.resolve(null),
+            ]);
+            const floor = position.stopLoss != null ? Number(position.stopLoss) : null;
+            const sized =
+              accountRisk?.equity != null && floor != null
+                ? sizeByRisk({
+                    equity: accountRisk.equity,
+                    riskPct: analystRiskPct,
+                    conviction: convictionRow?.conviction ?? null,
+                    entry: sizingPrice,
+                    stop: floor,
+                    direction: position.direction === "SHORT" ? "SHORT" : "LONG",
+                    regime: accountRisk.regime?.regime ?? null,
+                    band: { floor: 0, ceiling: band.ceiling, floorClampedByCeiling: false },
+                  })
+                : null;
+            if (sized) {
+              const shares = Math.max(1, Math.floor(sized.shares * ADD_RISK_FRACTION));
+              notional = shares * sizingPrice;
+              addSizingLine = `Add sized by the rules at half the entry risk: ${sized.line} Half of that for an add → ${shares} shares ($${Math.round(notional).toLocaleString()}).`;
+            } else {
+              notional = Math.max(1, entrySizeForConviction({ conviction: convictionRow?.conviction ?? null, band }) * ADD_RISK_FRACTION);
+              addSizingLine =
+                `Add sized from the analyst's band by conviction, halved ($${Math.round(notional).toLocaleString()}) — ` +
+                (accountRisk?.equity == null ? "account equity unavailable" : "no floor in force on the position") +
+                ", so the risk rule couldn't run.";
+            }
+          }
+
           // ── Most in one stock (the analyst's third sizing setting) ─────
           // A held winner may grow, by adding, to the analyst's "most in one
           // stock" — a number the principal sets, not a hidden multiple.
@@ -731,6 +772,11 @@ export const managePosition = defineTool({
             maxPositionTotal: ctx.maxPositionTotal,
           });
           const currentValue = addPositionValue(position.quantity, sizingPrice);
+          if (principalNotional == null && currentValue + notional > totalCap && totalCap - currentValue >= sizingPrice) {
+            // A rule-sized add is trimmed to the room left, and says so.
+            notional = totalCap - currentValue;
+            addSizingLine += ` Trimmed to the room left under the most this analyst may hold in one stock ($${Math.round(totalCap).toLocaleString()}): $${Math.round(notional).toLocaleString()}.`;
+          }
           if (currentValue + notional > totalCap) {
             return {
               summary: `Add would exceed the most this analyst may hold in one stock`,
@@ -780,7 +826,7 @@ export const managePosition = defineTool({
               orderId: order.id,
               intent: "ADD",
               environment: position.environment as "PAPER" | "LIVE",
-              rationale: args.reason,
+              rationale: `${args.reason}\n\n${addSizingLine}`,
             });
             if (awaiting?.state === "awaiting_approval") {
               await recordProposalRunEvent({
