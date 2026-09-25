@@ -53,6 +53,8 @@ jest.mock("@/lib/agent/thesis-research/pull-data", () => ({ pullThesisData: jest
 jest.mock("@/lib/agent/gate-rejections", () => ({
   recordGateRejection: mockRecordGateRejection,
   detectGateRejection: jest.requireActual("@/lib/agent/gate-rejections").detectGateRejection,
+  detailFromData: jest.requireActual("@/lib/agent/gate-rejections").detailFromData,
+  resolveGateRejections: jest.fn(async () => undefined),
 }));
 
 import rawFixtures from "@/lib/agent/__fixtures__/writer-save-refusals-2026-09-15.json";

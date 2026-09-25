@@ -2,11 +2,9 @@
  * A refusal is never the end — the words that carry a refused call forward.
  * Rows are the real ones from 2026-09-25 (lib/agent/__fixtures__/refusals-2026-09-25.json).
  */
-jest.mock("@/lib/prisma", () => ({ prisma: {} }));
-
 import fixture from "./__fixtures__/refusals-2026-09-25.json";
 import { blockedLastTimeSection, describeRefusal, refusalLinesFor, refusalNudge } from "./refusal-carryover";
-import type { OpenRefusal } from "./gate-rejections";
+import type { OpenRefusal } from "./refusal-carryover";
 
 type FixtureRow = { id: string; tool: string; summary: string; detail: string | null; ticker: string | null; runId: string; createdAt: string };
 const row = (r: FixtureRow, extra: Partial<OpenRefusal> = {}): OpenRefusal => ({

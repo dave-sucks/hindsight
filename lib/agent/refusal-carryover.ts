@@ -11,9 +11,35 @@
  *
  * Nothing here is a magic phrase. A row closes only when the same tool
  * lands on the same stock or thesis — see resolveGateRejections.
+ *
+ * No database import here, on purpose: system-prompt.ts reads this file.
  */
 
-import { describeRefusalTool, type OpenRefusal } from "./gate-rejections";
+/** One open refusal, as the runs and the prompt read it. */
+export interface OpenRefusal {
+  id: string;
+  tool: string;
+  ticker: string | null;
+  thesisId: string | null;
+  summary: string;
+  detail: string | null;
+  runId: string | null;
+  createdAt: Date;
+}
+
+/** The tool's name in product words. */
+export function describeRefusalTool(tool: string): string {
+  switch (tool) {
+    case "place_trade": return "Buy";
+    case "close_position": return "Sale";
+    case "manage_position": return "Position change";
+    case "update_thesis": return "Thesis edit";
+    case "record_thesis": return "Thesis save";
+    case "thesis_writer": return "Thesis research";
+    case "complete_run": return "Run close";
+    default: return tool;
+  }
+}
 
 const reasonOf = (r: OpenRefusal): string => (r.detail ?? r.summary).replace(/\s+/g, " ").trim();
 

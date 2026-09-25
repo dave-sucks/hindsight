@@ -47,6 +47,9 @@
 
 import { prisma } from "@/lib/prisma";
 import type { ToolContext } from "./tool-context";
+import { describeRefusalTool, type OpenRefusal } from "./refusal-carryover";
+
+export { describeRefusalTool, type OpenRefusal };
 
 export interface DetectedRejection {
   /** Machine code when the gate supplied one; null for note-only shapes. */
@@ -198,18 +201,6 @@ export async function resolveGateRejections(opts: {
   }
 }
 
-/** One open refusal, as the runs and the prompt read it. */
-export interface OpenRefusal {
-  id: string;
-  tool: string;
-  ticker: string | null;
-  thesisId: string | null;
-  summary: string;
-  detail: string | null;
-  runId: string | null;
-  createdAt: Date;
-}
-
 const OPEN_SELECT = {
   id: true, tool: true, ticker: true, thesisId: true, summary: true, detail: true, runId: true, createdAt: true,
 } as const;
@@ -274,19 +265,5 @@ export async function recordOpenRefusalsEvent(runId: string, open: OpenRefusal[]
     });
   } catch (err) {
     console.warn("[gate-rejections] recordOpenRefusalsEvent failed:", err instanceof Error ? err.message : err);
-  }
-}
-
-/** The tool's name in product words. */
-export function describeRefusalTool(tool: string): string {
-  switch (tool) {
-    case "place_trade": return "Buy";
-    case "close_position": return "Sale";
-    case "manage_position": return "Position change";
-    case "update_thesis": return "Thesis edit";
-    case "record_thesis": return "Thesis save";
-    case "thesis_writer": return "Thesis research";
-    case "complete_run": return "Run close";
-    default: return tool;
   }
 }
