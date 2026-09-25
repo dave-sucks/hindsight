@@ -83,7 +83,32 @@ mechanics.
 
 ---
 
-## The Cursor parallel
+## A refusal is never the end (2026-09-25)
+
+Layer 1 says no. What happens next is the part every agent product gets right and Hindsight
+did not: PLTR's buy was refused on 2026-09-25, the tactical run closed out, ended COMPLETE, and
+nothing anywhere said the buy never happened. DYN, IBRX and BBIO's theses died the same way in
+the writer. A refusal that nobody acts on is work that vanished.
+
+The rule, in four parts, all mechanical:
+
+1. **The model cannot produce the wrong shape.** Strict tool schemas (OpenAI `strictJsonSchema`,
+   Anthropic `strict`), enums over free text, and no field the model can guess wrong — the buy
+   tool inside a run has no size field at all. A refusal over shape is a bug in the schema.
+2. **A refusal is an input.** The reason goes back to the model with the two legal answers:
+   correct the call, or make the call that records why it stands. Every run (daily, tactical,
+   discovery) checks its refusal ledger before it may end, and gives the model one more turn
+   for anything still open (`refusalNudge`).
+3. **Nothing is dropped.** Every refusal is a row in `GateRejection`, open until the same tool
+   lands on the same stock or thesis for that analyst — `resolveGateRejections`, from the
+   `defineTool` wrapper. No phrase, no flag closes it. An open row is written on the run
+   (`action_blocked`), told to the next daily run ("Blocked last time — resolve today"), and
+   shown on the Activity feed as "Buy blocked" / "Sale blocked" / "Thesis edit blocked".
+4. **The refusal message says what to do instead.** A gate that returns "no" without the next
+   legal move is half a gate.
+
+What this is not: a new gate. It adds no refusal. It makes every existing refusal cost the run
+one more turn instead of costing the principal the trade.
 
 **How Cursor handles "you must read a file before editing it":**
 
