@@ -178,6 +178,34 @@ export interface DataBlockInputs {
    * in the last 100 days"; { failed } → said so, never shown as none.
    */
   lastReport?: { date: string; daysAgo: number } | { failed: true } | null;
+  /**
+   * The dated event the company announced in its own filing (a PDUFA date
+   * from an 8-K), read from EDGAR. Undefined → not printed; null → none on
+   * file; { failed } → said so. The writer takes the event date from here.
+   */
+  catalystOnFile?:
+    | { kind: string; eventDate: string; daysAway: number | null; announcedDate: string; url: string; quote: string }
+    | { failed: true }
+    | null;
+}
+
+const CATALYST_KIND_LABEL: Record<string, string> = {
+  PDUFA: "FDA decision (PDUFA date)",
+  ADCOM: "FDA advisory committee",
+  READOUT: "Trial readout",
+};
+
+function buildEventOnFile(c: DataBlockInputs["catalystOnFile"]): string | null {
+  if (c === undefined) return null;
+  if (c === null) return "None on file: no dated FDA decision in the company's filings of the last ~13 months.";
+  if ("failed" in c) return "Unavailable: EDGAR could not be read for this pull — no event date on file to cite.";
+  const when =
+    c.daysAway == null ? "" : c.daysAway < 0 ? ` (${-c.daysAway} days ago)` : c.daysAway === 0 ? " (today)" : ` (in ${c.daysAway} days)`;
+  return (
+    `${CATALYST_KIND_LABEL[c.kind] ?? c.kind}: ${c.eventDate}${when} — announced ${c.announcedDate} in the company's own filing: "${c.quote}"\n` +
+    `${c.url}\n` +
+    `This is the event date (catalyst_date). A possible slip belongs in the risks, never in the date.`
+  );
 }
 
 /**
@@ -690,6 +718,9 @@ Pulled ${pulledStr} — use these numbers as ground truth.
   sections.push(`## Financials, Annual + Forward Estimates\n\n${buildFinancials(inputs.financials)}`);
 
   sections.push(`## Earnings History\n\n${buildEarnings(inputs.earningsHistory, inputs.lastReport)}`);
+
+  const eventOnFile = buildEventOnFile(inputs.catalystOnFile);
+  if (eventOnFile) sections.push(`## Event date on file\n\n${eventOnFile}`);
 
   sections.push(`## Analyst Coverage\n\n${buildAnalystCoverage(inputs.analystCoverage)}`);
 

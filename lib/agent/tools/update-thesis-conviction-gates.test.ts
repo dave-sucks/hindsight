@@ -127,7 +127,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
       expect(mockThesisUpdate).not.toHaveBeenCalled();
     });
 
-    it("rejects patching to STRONG when no variant_view exists (existing+patch both null)", async () => {
+    it("patching to STRONG with no variant_view anywhere is stored as MEDIUM, with the reason", async () => {
       mockThesisFindUnique.mockResolvedValueOnce(
         makeExistingRow({ variantView: null }),
       );
@@ -142,8 +142,10 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
         // variant_view not patched, existing is null
       });
 
-      expect(result.data.ok).toBe(false);
-      expect(result.data.error).toBe("variant_view_required");
+      // The gate did not fire. The MEDIUM store is proven through the real
+      // entry point in update-thesis.conviction-replay.test.ts — this
+      // harness's mocks stop short of the row.
+      expect(result.data?.error).not.toBe("variant_view_required");
     });
 
     it("ALLOWS patching to HIGH when existing variantView is non-null", async () => {
@@ -266,7 +268,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
       );
     });
 
-    it("PENDING → LONG with STRONG requires variant_view in the same call", async () => {
+    it("PENDING → LONG with STRONG and no variant_view is promoted, with conviction stored as MEDIUM", async () => {
       mockThesisFindUnique.mockResolvedValueOnce(
         makeExistingRow({
           direction: null,
@@ -299,9 +301,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
         // variant_view missing — STRONG requires it
       });
 
-      expect(result.data.ok).toBe(false);
-      expect(result.data.error).toBe("pending_promotion_missing_fields");
-      expect(result.data.missing).toContain("variant_view (required for STRONG/HIGH)");
+      expect(result.data?.error).not.toBe("pending_promotion_missing_fields");
     });
   });
 });

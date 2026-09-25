@@ -11,6 +11,7 @@
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { describeCluster, fetchOpenMarketBuys, insiderCluster } from "@/lib/market-data/insider-cluster";
 import { fetchCalendarRows } from "@/lib/market-data/earnings-calendar";
+import { searchCatalystEvents, type CatalystEvent } from "@/lib/market-data/catalyst-calendar";
 import { daysUntilReport } from "@/lib/agent/triggers/earnings";
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 import {
@@ -111,6 +112,34 @@ export interface ThesisPullResult {
   companyName: string | null;
   exchange: string | null;
   pulledAt: string;
+  /**
+   * The dated event the company itself announced (its PDUFA date, from its
+   * own 8-K), when EDGAR has one. The writer is shown it and the save uses
+   * it: EXEL 2026-09-25 stored a guessed 2027-03-03 against the filing's
+   * 2026-12-03 and would have slept through the decision. Null = none on
+   * file or EDGAR unreachable — said in the data block either way.
+   */
+  catalystOnFile: CatalystOnFile | null;
+}
+
+export interface CatalystOnFile {
+  kind: CatalystEvent["kind"];
+  /** YYYY-MM-DD. */
+  eventDate: string;
+  daysAway: number | null;
+  announcedDate: string;
+  url: string;
+  quote: string;
+}
+
+/** The event to show: the nearest one still ahead, else the most recent past one. */
+export function pickCatalystOnFile(events: CatalystEvent[]): CatalystOnFile | null {
+  const dated = events.filter((e): e is CatalystEvent & { eventDate: string } => e.eventDate != null);
+  if (dated.length === 0) return null;
+  const ahead = dated.filter((e) => (e.daysAway ?? 0) >= 0).sort((a, b) => (a.daysAway ?? 0) - (b.daysAway ?? 0));
+  const past = dated.filter((e) => (e.daysAway ?? 0) < 0).sort((a, b) => (b.daysAway ?? 0) - (a.daysAway ?? 0));
+  const e = ahead[0] ?? past[0];
+  return { kind: e.kind, eventDate: e.eventDate, daysAway: e.daysAway, announcedDate: e.announcedDate, url: e.url, quote: e.quote };
 }
 
 /**
@@ -141,6 +170,7 @@ export async function pullThesisData(
     earningsHistRes,
     peersRes,
     filingsRes,
+    catalystRes,
   ] = await Promise.allSettled([
     stockTool.execute({ ticker: T, include_technicals: true }, SUB_TOOL_OPTS),
     financialsTool.execute({ ticker: T }, SUB_TOOL_OPTS),
@@ -150,6 +180,9 @@ export async function pullThesisData(
     // peer_count 3 — see the 2026-05-18 data-block trim note in git history.
     peersTool.execute({ ticker: T, peer_count: 3 }, SUB_TOOL_OPTS),
     filingsTool.execute({ symbol: T }, SUB_TOOL_OPTS),
+    // The company's own dated event, fenced to this one filer: one EDGAR
+    // search and a filing or two, a second or so. Fail-open.
+    searchCatalystEvents({ now: pulledAt, tickers: [T], eventWindowDays: [-60, 400], announcedWithinDays: 400, maxFilings: 6 }),
   ]);
 
   const stockData =
@@ -178,6 +211,10 @@ export async function pullThesisData(
     filingsRes.status === "fulfilled"
       ? unwrap<DataBlockInputs["filings"]>(filingsRes.value)
       : null;
+  const catalystOnFile =
+    catalystRes.status === "fulfilled" && !catalystRes.value.error ? pickCatalystOnFile(catalystRes.value.events) : null;
+  const catalystLookupFailed =
+    catalystRes.status === "rejected" || (catalystRes.status === "fulfilled" && !!catalystRes.value.error);
 
   // Map get_stock_data's snapshot shape into the formatter's StockDataInput.
   const sd = stockData;
@@ -234,6 +271,7 @@ export async function pullThesisData(
   const rawDataBlock = formatDataBlock({
     insiderCluster: clusterLine,
     lastReport,
+    catalystOnFile: catalystLookupFailed ? { failed: true } : catalystOnFile,
     ticker: T,
     pulledAt,
     stockData: stockBlockInput,
@@ -281,5 +319,6 @@ export async function pullThesisData(
     companyName: sd?.company?.name ?? null,
     exchange: sd?.company?.exchange ?? null,
     pulledAt: pulledAt.toISOString(),
+    catalystOnFile,
   };
 }

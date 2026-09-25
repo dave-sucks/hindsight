@@ -869,11 +869,15 @@ Write the research note now, then call submit_thesis.`;
     let accepted: ValidatedThesisDecision | null = null;
     let acceptedRR: number | null = null;
     let submitAttempts = 0;
+    let lastRejected: { raw: unknown; errors: string[] } | null = null;
 
     // The save's own check, run in check-only mode from the submit step.
     const saveCtx = await buildWriterToolCtx(args, analyst);
     const submitThesisTool = makeSubmitThesisTool({
       ticker: T,
+      onReject: (raw, errors) => {
+        lastRejected = { raw, errors };
+      },
       validate: {
         mode: args.mode,
         existingStatus: existingThesis?.status ?? null,
@@ -913,8 +917,14 @@ Write the research note now, then call submit_thesis.`;
     const tools =
       modeConfig.provider === "anthropic"
         ? {
+            // The basic search, called directly. The 20260209 version runs
+            // its "dynamic filtering" through a code-execution tool that this
+            // loop never provides, so the model spent research steps calling
+            // a tool that couldn't exist ("unavailable tool 'code_execution'",
+            // 6 of 43 writer runs from 09-11, and every step it burned was a
+            // step the submit repair needed on 09-25). DAV-316.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            web_search: anthropic.tools.webSearch_20260209({ maxUses: WEB_SEARCH_MAX_USES }) as any,
+            web_search: anthropic.tools.webSearch_20250305({ maxUses: WEB_SEARCH_MAX_USES }) as any,
             submit_thesis: submitThesisTool,
           }
         : { submit_thesis: submitThesisTool };
@@ -1003,6 +1013,40 @@ Write the research note now, then call submit_thesis.`;
           `[thesis-writer] section repair failed (continuing with ${sectionCount} sections):`,
           repairErr instanceof Error ? repairErr.message : repairErr,
         );
+      }
+    }
+
+    // ── Decision repair: a refused submit is fixed, not abandoned ────────
+    // The loop can end on a refused submit_thesis with the research done
+    // and the decision one field off — the step budget spent (IBRX, BBIO,
+    // DYN on 2026-09-25: four of five catalyst dispatches lost that way).
+    // The refusal goes back to the model with the note it wrote, through
+    // the same submit tool, on its own budget. The Run Book promised this.
+    const rejected = lastRejected as { raw: unknown; errors: string[] } | null;
+    if ((accepted as ValidatedThesisDecision | null) === null && rejected && !loopError) {
+      await writePhaseEvent(
+        args.childRunId,
+        "Decision refused — repairing",
+        rejected.errors.join(" | "),
+        { ticker: T, submitAttempts },
+      );
+      const repaired = await resubmitWithFeedback({
+        args,
+        pullOutput,
+        systemPrompt,
+        userPrompt,
+        noteText,
+        analyst,
+        existing: existingThesis,
+        ctx: saveCtx,
+        previous: rejected.raw,
+        feedback: `submit_thesis refused it:\n- ${rejected.errors.join("\n- ")}`,
+      });
+      submitAttempts += repaired.attempts;
+      capturedMessages.push(...repaired.messages);
+      if (repaired.decision) {
+        accepted = repaired.decision;
+        acceptedRR = repaired.riskReward;
       }
     }
 
@@ -1196,6 +1240,14 @@ export function buildWriterSaveCall(
   existing: { direction: string | null; status: string | null } | null,
 ): WriterSaveCall {
   const T = args.ticker.toUpperCase();
+  // The event date is the company's, when it announced one. The writer
+  // sees it in the data block; if its decision still carries a different
+  // date, the filing's wins and the substitution is written on the stock
+  // (EXEL 2026-09-25: the note guessed a slipped 2027-03-03, the 8-K said
+  // 2026-12-03, and every review counted from the guess).
+  const eventDate = resolveEventDate(d, pull);
+  const notes = [...(d.notes ?? []), ...(eventDate.note ? [eventDate.note] : [])];
+  const rationale = notes.length ? `${d.rationale}\n\n${notes.map((n) => `[${n}]`).join("\n")}` : d.rationale;
   if (args.mode === "mint") {
     return {
       toolName: "record_thesis",
@@ -1207,7 +1259,7 @@ export function buildWriterSaveCall(
         // Writer mints are always entry-gated coverage; PASS derives its
         // own terminal state inside record_thesis.
         status: d.direction === "PASS" ? undefined : "WATCHING",
-        reasoning_summary: d.rationale,
+        reasoning_summary: rationale,
         entry_price: d.entry_price,
         target_price: d.target_price,
         stop_loss: d.stop_loss,
@@ -1220,7 +1272,7 @@ export function buildWriterSaveCall(
         // fails — and refuses rather than guesses when both are missing.
         current_price: pull?.currentPrice ?? undefined,
         horizon: d.horizon,
-        catalyst_date: d.catalyst_date ? new Date(d.catalyst_date).toISOString() : undefined,
+        catalyst_date: eventDate.iso,
         scoring: d.scoring,
         conviction: d.conviction,
         conviction_rationale: d.conviction_rationale,
@@ -1273,7 +1325,7 @@ export function buildWriterSaveCall(
     toolName: "update_thesis",
     toolArgs: {
       thesis_id: args.existingThesisId,
-      rationale: `${d.rationale}${directionFlag}`,
+      rationale: `${rationale}${directionFlag}`,
       // Always supplied: the P0-1 gate refuses price moves when the belief
       // text happens to be unchanged; the writer's judgment on why lives in
       // the decision rationale.
@@ -1286,7 +1338,7 @@ export function buildWriterSaveCall(
       target_basis: pass ? undefined : d.target_basis,
       entry_on_close: pass || held ? undefined : d.entry_on_close,
       horizon: d.horizon,
-      catalyst_date: d.catalyst_date ? new Date(d.catalyst_date).toISOString() : undefined,
+      catalyst_date: eventDate.iso,
       scoring: d.scoring,
       conviction: d.conviction,
       conviction_rationale: d.conviction_rationale,
@@ -1302,6 +1354,29 @@ export function buildWriterSaveCall(
       ...sectionArgs,
     },
   };
+}
+
+/**
+ * The catalyst date the save stores: the company's own, from its filing,
+ * when the plan is written on a dated event and the two disagree.
+ */
+export function resolveEventDate(
+  d: Pick<ValidatedThesisDecision, "catalyst_date" | "horizon" | "setup_id">,
+  pull: Pick<ThesisPullResult, "catalystOnFile"> | null | undefined,
+): { iso: string | undefined; note: string | null } {
+  const own = d.catalyst_date && !Number.isNaN(Date.parse(d.catalyst_date)) ? new Date(d.catalyst_date) : null;
+  const onFile = pull?.catalystOnFile ?? null;
+  const dated = d.horizon === "CATALYST" || d.setup_id === "PRE_CATALYST";
+  if (dated && onFile && (onFile.daysAway ?? 0) >= 0) {
+    const filed = new Date(`${onFile.eventDate}T00:00:00.000Z`);
+    if (!own || own.toISOString().slice(0, 10) !== onFile.eventDate) {
+      return {
+        iso: filed.toISOString(),
+        note: `Event date ${onFile.eventDate} taken from the company's own filing (${onFile.url})${own ? `; the note said ${own.toISOString().slice(0, 10)}` : ""}.`,
+      };
+    }
+  }
+  return { iso: own ? own.toISOString() : undefined, note: null };
 }
 
 /** How a save (or a check-only save) came back. */
@@ -1404,6 +1479,8 @@ export function makeSubmitThesisTool(opts: {
   check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>;
   onAccept: (d: ValidatedThesisDecision, riskReward: number | null) => void;
   onAttempt: () => number;
+  /** The last refused submit, kept so the repair step can hand it back. */
+  onReject?: (raw: unknown, errors: string[]) => void;
   ticker: string;
 }) {
   let saveRefusals = 0;
@@ -1412,6 +1489,11 @@ export function makeSubmitThesisTool(opts: {
       "Submit your final thesis decision. Call ONCE after the research note is fully written. " +
       "If the result lists validation errors, fix exactly those fields and call again.",
     inputSchema: thesisDecisionSchema,
+    // Grammar-constrained: the model cannot emit an input outside the
+    // schema — no invented trigger kind, no missing required field. The
+    // schema is built strict-clean in decision.ts / model-schema.ts. Only
+    // Anthropic's strict mode is meant here; OpenAI's has different rules.
+    strict: MODES["thesis-writer"].provider === "anthropic",
     execute: async (raw: z.infer<typeof thesisDecisionSchema>) => {
       const attempt = opts.onAttempt();
       const v = validateThesisDecision(raw, opts.validate);
@@ -1419,6 +1501,7 @@ export function makeSubmitThesisTool(opts: {
         console.log(
           `[thesis-writer] submit_thesis attempt ${attempt} rejected ticker=${opts.ticker}: ${v.errors.length} error(s)`,
         );
+        opts.onReject?.(raw, v.errors);
         return {
           accepted: false,
           errors: v.errors,
@@ -1432,6 +1515,7 @@ export function makeSubmitThesisTool(opts: {
           console.log(
             `[thesis-writer] submit_thesis attempt ${attempt} refused by the save check ticker=${opts.ticker}: ${saved.error}`,
           );
+          opts.onReject?.(raw, [`The save refused this decision — ${saved.error}`]);
           return {
             accepted: false,
             errors: [`The save refused this decision — ${saved.error}`],
@@ -1453,26 +1537,34 @@ const SAVE_RETRY_TIMEOUT_MS = 120_000;
 const SAVE_RETRY_MAX_STEPS = 3;
 
 /**
- * The one save-time retry: the save refused a decision the check passed
- * (server-built sections, or the world moved between check and save). Show
- * the model its decision and the refusal, let it resubmit through the same
- * submit tool, and return the new decision — or null.
+ * The one retry, for both refusals a decision can meet: the writer's own
+ * check at the end of the research loop (the step budget ran out on a
+ * refused submit), and the save (server-built sections, or the world moved
+ * between check and save). Show the model its decision and the refusal, let
+ * it resubmit through the same submit tool on a budget of its own, and
+ * return the accepted decision — or null.
  */
-async function resubmitAfterRefusal(input: {
+async function resubmitWithFeedback(input: {
   args: RunThesisWriterArgs;
   pullOutput: WriterPullPhaseOutput;
-  research: WriterResearchPhaseOutput;
+  systemPrompt: string | undefined;
+  userPrompt: string;
+  noteText: string;
   analyst: WriterAnalyst;
   existing: WriterExistingThesis | null;
   ctx: ToolContext;
-  previous: ValidatedThesisDecision;
-  refusal: string;
-}): Promise<ValidatedThesisDecision | null> {
-  const { args, pullOutput, research, analyst, existing } = input;
-  if (!research.systemPrompt) return null;
+  /** What the model sent, exactly. */
+  previous: unknown;
+  /** The refusal, in the refuser's own words. */
+  feedback: string;
+}): Promise<{ decision: ValidatedThesisDecision | null; riskReward: number | null; attempts: number; messages: ModelMessage[] }> {
+  const { args, pullOutput, analyst, existing } = input;
+  if (!input.systemPrompt) return { decision: null, riskReward: null, attempts: 0, messages: [] };
   const T = args.ticker.toUpperCase();
   let accepted: ValidatedThesisDecision | null = null;
+  let acceptedRR: number | null = null;
   let attempts = 0;
+  const messages: ModelMessage[] = [];
   const submit = makeSubmitThesisTool({
     ticker: T,
     validate: {
@@ -1492,8 +1584,9 @@ async function resubmitAfterRefusal(input: {
         existing: existing ? { direction: existing.direction, status: existing.status } : null,
       }),
     onAttempt: () => ++attempts,
-    onAccept: (d) => {
+    onAccept: (d, rr) => {
       accepted = d;
+      acceptedRR = rr;
     },
   });
   const modeConfig = MODES["thesis-writer"];
@@ -1502,18 +1595,18 @@ async function resubmitAfterRefusal(input: {
       ? anthropic(modeConfig.model as Parameters<typeof anthropic>[0])
       : openai(modeConfig.model);
   try {
-    await generateText({
+    const res = await generateText({
       model,
-      system: research.systemPrompt,
+      system: input.systemPrompt,
       messages: [
-        { role: "user", content: research.userPrompt },
-        { role: "assistant", content: research.noteText || "(research note)" },
+        { role: "user", content: input.userPrompt },
+        { role: "assistant", content: input.noteText || "(research note)" },
         {
           role: "user",
           content:
             `You submitted this decision:\n${JSON.stringify(input.previous)}\n\n` +
-            `The save refused it: ${input.refusal}\n\n` +
-            "Call submit_thesis again with the decision fixed so the save accepts it. Change only what the refusal names. Do not rewrite the note.",
+            `${input.feedback}\n\n` +
+            "Call submit_thesis again with the decision fixed so it is accepted. Change only what the refusal names. Do not rewrite the note.",
         },
       ],
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1521,13 +1614,14 @@ async function resubmitAfterRefusal(input: {
       stopWhen: [stepCountIs(SAVE_RETRY_MAX_STEPS), () => accepted !== null],
       abortSignal: AbortSignal.timeout(SAVE_RETRY_TIMEOUT_MS),
     });
+    messages.push(...((res?.response?.messages ?? []) as ModelMessage[]));
   } catch (err) {
     console.warn(
-      `[thesis-writer] save retry failed ticker=${T} child=${args.childRunId}:`,
+      `[thesis-writer] decision retry failed ticker=${T} child=${args.childRunId}:`,
       err instanceof Error ? err.message : err,
     );
   }
-  return accepted;
+  return { decision: accepted as ValidatedThesisDecision | null, riskReward: acceptedRR as number | null, attempts, messages };
 }
 
 export async function writerPersistPhase(
@@ -1612,18 +1706,20 @@ export async function writerPersistPhase(
             outcome.error,
             { ticker: T, mode: args.mode },
           );
-          const retried = await resubmitAfterRefusal({
+          const retried = await resubmitWithFeedback({
             args,
             pullOutput,
-            research,
+            systemPrompt: research.systemPrompt,
+            userPrompt: research.userPrompt,
+            noteText: research.noteText,
             analyst,
             existing,
             ctx,
             previous: d,
-            refusal: outcome.error,
+            feedback: `The save refused it: ${outcome.error}`,
           });
-          if (retried) {
-            d = retried;
+          if (retried.decision) {
+            d = retried.decision;
             outcome = await saveOnce(d);
           }
         }

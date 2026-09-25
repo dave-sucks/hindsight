@@ -17,7 +17,8 @@
  */
 
 import { z } from "zod";
-import { editTriggerOpSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
+import { modelEditTriggerOpSchema, modelTriggerSchema } from "@/lib/agent/triggers/model-schema";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 import { SETUP_IDS, type Setup } from "@/lib/agent/knowledge/setups";
 
@@ -26,7 +27,15 @@ const scoringDimSchema = z.object({
   note: z.string(),
 });
 
-/** Boundary schema for the submit_thesis tool call. Loose on purpose. */
+/**
+ * The submit_thesis tool's input schema. It is handed to the model in
+ * Anthropic strict mode, so the shape is enforced at generation time — a
+ * trigger kind that doesn't exist cannot be produced. That is also why it
+ * carries no string-length or numeric-range constraints: the grammar
+ * compiler doesn't support them, so every limit lives in words here and in
+ * the save (which trims or clamps rather than refusing). See
+ * lib/agent/triggers/model-schema.ts.
+ */
 export const thesisDecisionSchema = z.object({
   direction: z
     .enum(["LONG", "SHORT", "PASS"])
@@ -47,7 +56,10 @@ export const thesisDecisionSchema = z.object({
   target_basis: z.string().optional().describe("Required on a priced plan: which rule produced the target, with the numbers (\"measured move: 11.7% base depth added to the $234.76 pivot\", \"prior high $236.54\")."),
   target_price: z.number().optional().describe("Take-profit level. Required with entry_price."),
   stop_loss: z.number().optional().describe("Where the thesis breaks. Required with entry_price."),
-  catalyst_date: z.string().optional().describe("ISO date. Required when horizon=CATALYST."),
+  catalyst_date: z
+    .string()
+    .optional()
+    .describe("YYYY-MM-DD. Required when horizon=CATALYST. The date the company announced — a possible slip goes in the risks, never in the date. When the data block carries an event date on file, use it."),
   core_belief: z
     .string()
     .optional()
@@ -76,11 +88,11 @@ export const thesisDecisionSchema = z.object({
   conviction_rationale: z
     .string()
     .optional()
-    .describe("≤400 chars, written like you're talking to a person — the judgment, not the math. Required with conviction."),
+    .describe("A few sentences, written like you're talking to a person — the judgment, not the math. Required with conviction."),
   variant_view: z
     .string()
     .optional()
-    .describe("≤300 chars: 'consensus expects X, I think Y, falsifiable because Z'. Required for STRONG/HIGH."),
+    .describe("'Consensus expects X, I think Y, falsifiable because Z'. STRONG/HIGH conviction without one is stored as MEDIUM."),
   prior_exit_acknowledgment: z
     .string()
     .optional()
@@ -88,19 +100,19 @@ export const thesisDecisionSchema = z.object({
       "REQUIRED when this analyst SOLD this ticker within the last 14 days and your entry_price is at/above that exit price (the exit details are in your prompt). One line that genuinely engages with the sale — why this is a new setup, not a re-buy of the dip just sold. Omit when no recent sale applies.",
     ),
   triggers: z
-    .array(z.unknown())
+    .array(modelTriggerSchema)
     .optional()
     .describe(
       "MINT ONLY. Optional custom trigger ladder; omit to accept the horizon-default template (right answer for most theses). " +
-        "Shape per trigger: { predicate: {kind, ...params}, action, rationale, cooldownDays? }. On a refresh use add_triggers / edit_triggers / remove_trigger_ids instead.",
+        "On a refresh use add_triggers / edit_triggers / remove_trigger_ids instead.",
     ),
   // ── Refresh: triggers change one at a time (DAV-242) ─────────────────
   add_triggers: z
-    .array(z.unknown())
+    .array(modelTriggerSchema)
     .optional()
-    .describe("REFRESH ONLY. Triggers to add: { predicate, action, rationale, cooldownDays? }. Adding where one exists in the same bucket edits that one."),
+    .describe("REFRESH ONLY. Triggers to add. Adding where one exists in the same bucket edits that one."),
   edit_triggers: z
-    .array(editTriggerOpSchema)
+    .array(modelEditTriggerOpSchema)
     .optional()
     .describe("REFRESH ONLY. Edit a trigger by the id shown in EXISTING THESIS. A level / pct / days change REQUIRES rationale."),
   remove_trigger_ids: z
@@ -118,6 +130,12 @@ export interface ValidatedThesisDecision
   add_triggers?: z.infer<typeof triggersArraySchema>;
   /** Sum of the four scoring dimensions (present on LONG/SHORT). */
   composite?: number;
+  /**
+   * What the app fixed on the way in, in words — a conviction stored one
+   * tier down, a trigger it couldn't read. Appended to the saved rationale
+   * so the fix is visible on the stock, never silent (DAV-316).
+   */
+  notes?: string[];
 }
 
 export interface DecisionValidationOpts {
@@ -169,7 +187,10 @@ export function validateThesisDecision(
   opts: DecisionValidationOpts,
 ): DecisionValidationResult {
   const errors: string[] = [];
-  const d = input;
+  const notes: string[] = [];
+  // A shallow copy: the fixes below (a conviction stored one tier down)
+  // land on the decision that is saved, not on the model's argument object.
+  const d: ThesisDecisionInput = { ...input };
   const directional = d.direction === "LONG" || d.direction === "SHORT";
   const held = opts.mode === "refresh" && opts.existingStatus === "HOLDING";
 
@@ -341,17 +362,16 @@ export function validateThesisDecision(
     if (!d.conviction) {
       errors.push("conviction: required for LONG/SHORT — STRONG/HIGH/MEDIUM/LOW, your real view.");
     }
-    if (!d.conviction_rationale || d.conviction_rationale.trim().length < 20) {
-      errors.push("conviction_rationale: required, ≥20 chars, ≤400 — the judgment in plain speech, not a paraphrase of the scoring object.");
+    if (!d.conviction_rationale || d.conviction_rationale.trim().length === 0) {
+      errors.push("conviction_rationale: required — the judgment in plain speech, not a paraphrase of the scoring object.");
     }
-    if (d.conviction_rationale && d.conviction_rationale.length > 400) {
-      errors.push("conviction_rationale: over 400 chars — tighten it.");
-    }
+    // A top-tier call needs a variant view. Without one the tier is MEDIUM —
+    // stored that way with a note, not refused. Three catalyst theses were
+    // thrown away on 2026-09-25 over a 400-character rule; a detail the app
+    // can fix is fixed by the app (DAV-316).
     if ((d.conviction === "STRONG" || d.conviction === "HIGH") && (!d.variant_view || d.variant_view.trim().length < 10)) {
-      errors.push("variant_view: required for STRONG/HIGH conviction — 'consensus expects X, I think Y, falsifiable because Z'. If you can't articulate one, your tier is MEDIUM.");
-    }
-    if (d.variant_view && d.variant_view.length > 300) {
-      errors.push("variant_view: over 300 chars — tighten it.");
+      notes.push(`Conviction stored as MEDIUM: ${d.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`);
+      d.conviction = "MEDIUM";
     }
   }
 
@@ -403,17 +423,20 @@ export function validateThesisDecision(
   let parsedAdds: z.infer<typeof triggersArraySchema> | undefined;
   const supplied = opts.mode === "refresh" ? d.add_triggers : d.triggers;
   if (supplied !== undefined) {
-    const parsed = triggersArraySchema.safeParse(supplied);
-    if (!parsed.success) {
-      const issues = parsed.error.issues
-        .slice(0, 5)
-        .map((i) => `${i.path.join(".")}: ${i.message}`)
-        .join("; ");
-      errors.push(
-        `triggers: invalid shape — ${issues}. Each trigger is { predicate: {kind, ...}, action, rationale }. ` +
-          "Simplest fix: OMIT the triggers field entirely and accept the horizon-default template.",
-      );
-    } else {
+    // One trigger at a time. A rung the server schema can't read is fixed
+    // where the fix is obvious (an invented review kind with a day count is
+    // a review cadence) and otherwise dropped with a note; the rest of the
+    // ladder and the decision save. Under strict mode the model can't send
+    // an unknown kind at all — this is the OpenAI / non-strict path and the
+    // out-of-range values (a 500-day review) the grammar can't express.
+    const kept: z.infer<typeof triggersArraySchema> = [];
+    for (const item of supplied as unknown[]) {
+      const { trigger, note } = readOneTrigger(item);
+      if (trigger) kept.push(trigger);
+      if (note) notes.push(note);
+    }
+    const parsed = { success: true as const, data: kept };
+    {
       if (opts.mode === "refresh") parsedAdds = parsed.data;
       else parsedTriggers = parsed.data;
       // Action-set sanity by position state — mirrors the Layer-1 guards
@@ -454,6 +477,40 @@ export function validateThesisDecision(
           d.scoring.entryQuality.score +
           d.scoring.catalystFreshness.score
         : undefined,
+      notes: notes.length ? notes : undefined,
     },
   };
 }
+
+/**
+ * Read one model-authored trigger through the server schema. Returns the
+ * parsed trigger, or nothing plus a note saying what was fixed or dropped.
+ */
+export function readOneTrigger(item: unknown): { trigger: z.infer<typeof triggerSchema> | null; note: string | null } {
+  const direct = triggerSchema.safeParse(item);
+  if (direct.success) return { trigger: direct.data, note: null };
+
+  const obj = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
+  const pred = obj?.predicate && typeof obj.predicate === "object" ? (obj.predicate as Record<string, unknown>) : null;
+  const kind = typeof pred?.kind === "string" ? pred.kind : "(none)";
+
+  // An invented review kind with a day count ("REVIEW_AFTER_DAYS", IBRX
+  // 2026-09-25) means "look again in N days" — the review cadence.
+  if (pred && typeof pred.days === "number" && obj?.action === "REVIEW" && !KNOWN_KINDS.has(kind)) {
+    const days = Math.min(Math.max(Math.round(pred.days), 1), 365);
+    const asCadence = triggerSchema.safeParse({ ...obj, predicate: { kind: "REVIEW_CADENCE", days } });
+    if (asCadence.success) {
+      return { trigger: asCadence.data, note: `Trigger kind "${kind}" isn't one the app evaluates; saved as a review in ${days} days.` };
+    }
+  }
+
+  const issue = direct.error.issues[0];
+  const where = issue?.path?.length ? issue.path.join(".") : "shape";
+  return { trigger: null, note: `Dropped one trigger the app couldn't read (${where}: ${issue?.message ?? "invalid"}; kind ${kind}).` };
+}
+
+const KNOWN_KINDS = new Set([
+  "PRICE_ABOVE", "PRICE_BELOW", "PRICE_MOVE_PCT", "GAIN_FROM_ENTRY", "TRAILING_FROM_HIGH", "VS_SMA", "NEAR_SMA",
+  "VOLUME_RATIO", "NEW_HIGH", "PCT_FROM_52W_HIGH", "RS_VS_SPY", "GAP_UP", "RSI", "INSIDER_CLUSTER", "EARNINGS_BEAT",
+  "EARNINGS_MISS", "EARNINGS_WITHIN", "EARNINGS_SINCE", "SEC_EVENT", "REVIEW_CADENCE", "AND", "OR",
+]);

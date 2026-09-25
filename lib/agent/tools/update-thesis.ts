@@ -207,9 +207,9 @@ const updateSchema = z.object({
     .describe("The floor — edits the sell-below trigger (adds one if none, null removes it). On a held stock it may only tighten."),
   setup_id: z.enum([...SETUP_IDS, NO_SETUP_FITS]).optional()
     .describe("The setup this plan is written on, from the row's `nameTheSetup.choose` or any catalog id. Stored on the thesis; the tactical run confirms by it, the scorecard groups by it. On a stock you hold, naming it also writes that setup's own exits onto the stock (the time limit counted from the real buy, the partial sale from the real cost and floor, the beat-the-market-sold review), one Activity line each; a trigger already there is left alone. \"NONE\" = you looked and no setup fits — say why in `rationale`."),
-  stop_basis: z.string().max(240).optional()
+  stop_basis: z.string().optional()
     .describe("Why the stop is where it is, with the chart number (\"under the base low $207.25, 1.6 ATR from entry\"). Sent with stop_loss, it becomes the floor trigger's sentence."),
-  target_basis: z.string().max(240).optional()
+  target_basis: z.string().optional()
     .describe("Why the target is where it is. Sent with target_price, it becomes the target trigger's sentence."),
   entry_on_close: z.boolean().optional()
     .describe("With entry_price: true = the buy fires only on a close past it; false = intraday."),
@@ -235,17 +235,15 @@ const updateSchema = z.object({
     ),
   conviction_rationale: z
     .string()
-    .max(400)
     .optional()
     .describe(
-      "Updated rationale (≤400 chars). WRITE LIKE YOU'RE TALKING TO A PERSON — not 'composite 7/10, R/R 2.5:1'. Express the judgment, not the math. Required whenever you patch conviction.",
+      "Updated rationale. WRITE LIKE YOU'RE TALKING TO A PERSON — not 'composite 7/10, R/R 2.5:1'. Express the judgment, not the math. Required whenever you patch conviction.",
     ),
   variant_view: z
     .string()
-    .max(300)
     .optional()
     .describe(
-      "Update the writer's contrarian take (≤300 chars): 'consensus expects X, I think Y, here's why.' Required when patching conviction to STRONG/HIGH if existing.variantView is empty. Optional on MEDIUM/LOW.",
+      "Update the writer's contrarian take: 'consensus expects X, I think Y, here's why.' A patch to STRONG/HIGH with no variant view on the row is stored as MEDIUM.",
     ),
 
   // ── Direction (PENDING → LONG/SHORT/PASS promotion only) ─────────────
@@ -748,6 +746,9 @@ export const updateThesis = defineTool({
     // with parent_thesis_id so the audit trail captures the chain.
     //
     // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy).
+    // Set when a top-tier call arrives without its variant view: the tier
+    // is stored one down, with the reason next to the rationale.
+    let convictionDowngradeNote: string | null = null;
     if (args.direction) {
       if (!isUnresearchedSeed(existing.direction)) {
         return {
@@ -777,11 +778,13 @@ export const updateThesis = defineTool({
         // same writer-side fields record_thesis would have required.
         if (!args.conviction) missing.push("conviction (STRONG/HIGH/MEDIUM/LOW)");
         if (!args.conviction_rationale || args.conviction_rationale.trim().length === 0) missing.push("conviction_rationale");
+        // A top-tier call without its variant view is stored as MEDIUM
+        // with the reason — never refused (DAV-316).
         if (
           (args.conviction === "STRONG" || args.conviction === "HIGH") &&
           (!args.variant_view || args.variant_view.trim().length === 0)
         ) {
-          missing.push("variant_view (required for STRONG/HIGH)");
+          convictionDowngradeNote = `Stored as MEDIUM: ${args.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`;
         }
         if (missing.length > 0) {
           return {
@@ -850,7 +853,7 @@ export const updateThesis = defineTool({
               ok: false,
               error: "conviction_rationale_required",
               message:
-                `Whenever you patch \`conviction\`, you must also patch \`conviction_rationale\` (one sentence ≤200 chars explaining the new tier). ` +
+                `Whenever you patch \`conviction\`, you must also patch \`conviction_rationale\` (a sentence or two explaining the new tier). ` +
                 `Carrying over the prior rationale silently when changing the tier means the rationale stops matching the tier. Decide and document.`,
             },
             sources: [],
@@ -858,23 +861,14 @@ export const updateThesis = defineTool({
         }
       }
       // Coherence check 2: STRONG/HIGH needs a variantView, even if just
-      // carried over from the existing row.
+      // carried over from the existing row. Without one the tier is stored
+      // as MEDIUM with the reason next to it — a detail the app can fix is
+      // fixed by the app, never a refusal (DAV-316).
       if (
         (effectiveConviction === "STRONG" || effectiveConviction === "HIGH") &&
         (!effectiveVariantView || effectiveVariantView.trim().length === 0)
       ) {
-        return {
-          summary: `Refused update on $${existing.ticker} — ${effectiveConviction} conviction requires variant_view.`,
-          data: {
-            ok: false,
-            error: "variant_view_required",
-            message:
-              `${effectiveConviction} conviction requires variant_view — "consensus expects X, I think Y, here's why." ` +
-              `Pass variant_view in this call (≤300 chars), or downgrade conviction to MEDIUM. ` +
-              `Every buy-side pitch framework requires a variant view for top-tier conviction.`,
-          },
-          sources: [],
-        };
+        convictionDowngradeNote = `Stored as MEDIUM: ${effectiveConviction} needs a variant view (consensus expects X, I think Y) and none is on the row.`;
       }
 
       // Consistency gates (Gate A, Gate B) REMOVED 2026-05-31.
@@ -1042,6 +1036,10 @@ export const updateThesis = defineTool({
     if (args.conviction !== undefined) patch.conviction = args.conviction;
     if (args.conviction_rationale !== undefined)
       patch.convictionRationale = args.conviction_rationale;
+    if (convictionDowngradeNote) {
+      patch.conviction = "MEDIUM";
+      patch.convictionRationale = `${args.conviction_rationale ?? existing.convictionRationale ?? ""}\n\n[${convictionDowngradeNote}]`.trim();
+    }
     if (args.variant_view !== undefined)
       patch.variantView =
         args.variant_view.trim().length === 0 ? null : args.variant_view;
