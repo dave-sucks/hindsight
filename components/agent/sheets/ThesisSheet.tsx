@@ -15,6 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PriceTargetsBlock } from "@/components/domain/price-targets-block";
+import { EarningsCard } from "@/components/domain/earnings-card";
 import { ThesisChart } from "@/components/domain/thesis-chart";
 import {
   Collapsible,
@@ -63,7 +64,6 @@ import {
   type ThesisResearchSections,
   type ResearchTextSection,
   type ResearchBulletSection,
-  type ResearchCitation,
 } from "@/components/agent/sheets/ThesisTriggersSection";
 import type { StockCandle } from "@/lib/actions/finnhub.actions";
 import type { EarningsResponse, FilingsResponse } from "@/lib/types/thesis-sheet";
@@ -72,8 +72,9 @@ import type { AnalystCoverageData } from "@/lib/actions/analyst-coverage";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AnalystConsensusWidget,
-  ResearchCitationChip,
+  researchCitationSources,
 } from "@/components/domain/analyst-consensus";
+import { SourceCitation } from "@/components/ai-elements/inline-citation";
 import { TradeStatement, type TradeStatementGain } from "@/components/ui/trade-statement";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { buildTradeSentence } from "@/lib/trade-statement";
@@ -674,93 +675,6 @@ function ScoringGauge({ score, max }: { score: number; max: number }) {
 // with complete data. Each block renders iff its value is present — no
 // tri-state (`real : loading-skeleton : null`), no partial-paint window.
 
-// ── EarningsBlock ──────────────────────────────────────────────────────
-// The earnings layer, live from the vendor when the sheet opens — never
-// stored, like the price at the top of the sheet. Next report (date, bell,
-// street estimate) and the last few quarters as beat/miss. Same visual
-// language as Trade Structure below: one labelled row of cells. Renders
-// nothing when the vendor has nothing, so a ticker with no coverage
-// doesn't get an empty heading. What the system DID about a report lives
-// in the activity feed, not here. See docs/plans/MARKET_DATA.md §2.
-
-function fmtReportDate(iso: string, hour: string | null): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-  const n = new Date();
-  const todayUtc = Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
-  const days = Math.round((d.getTime() - todayUtc) / 86_400_000);
-  const rel = days === 0 ? "today" : days === 1 ? "tomorrow" : days > 0 ? `${days}d` : `${Math.abs(days)}d ago`;
-  const bell = hour === "bmo" ? " · before open" : hour === "amc" ? " · after close" : "";
-  return `${label} · ${rel}${bell}`;
-}
-
-function EarningsBlock({ data }: { data: EarningsResponse }) {
-  const hasNext = data.next != null;
-  const scored = data.recent.filter((q) => q.surprisePct != null).slice(0, 4);
-  if (!hasNext && scored.length === 0) return null;
-
-  const cells: { label: string; value: React.ReactNode; tooltip?: string }[] = [];
-  if (data.next) {
-    const est = data.next.epsEstimate;
-    cells.push({
-      label: "Next report",
-      value: fmtReportDate(data.next.reportDate, data.next.hour),
-      tooltip: est != null ? `Street expects EPS $${est.toFixed(2)}.` : undefined,
-    });
-  }
-  if (scored.length > 0) {
-    const beats = scored.filter((q) => (q.surprisePct as number) >= 0).length;
-    cells.push({
-      label: `Last ${scored.length}`,
-      value: (
-        <span className="inline-flex items-center gap-1.5">
-          {scored.map((q) => {
-            const pct = q.surprisePct as number;
-            const beat = pct >= 0;
-            return (
-              <span
-                key={q.period}
-                className={beat ? "text-emerald-500" : "text-red-500"}
-                title={`${q.period}: EPS ${q.actual != null ? `$${q.actual.toFixed(2)}` : "—"} vs ${q.estimate != null ? `$${q.estimate.toFixed(2)}` : "—"} est`}
-              >
-                {beat ? "+" : "−"}
-                {Math.abs(pct).toFixed(1)}%
-              </span>
-            );
-          })}
-        </span>
-      ),
-      tooltip: `Beat ${beats} of the last ${scored.length} quarters. Newest first; EPS vs the street estimate.`,
-    });
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground">
-        Earnings
-      </p>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
-        {cells.map((c, i) => (
-          <span key={c.label} className="inline-flex items-center gap-1.5">
-            {i > 0 && <span className="text-muted-foreground/40">·</span>}
-            <span className="text-muted-foreground">{c.label}</span>
-            {c.tooltip ? (
-              <Tooltip>
-                <TooltipTrigger render={<span className="font-medium tabular-nums cursor-default" />}>
-                  {c.value}
-                </TooltipTrigger>
-                <TooltipContent className="text-xs">{c.tooltip}</TooltipContent>
-              </Tooltip>
-            ) : (
-              <span className="font-medium tabular-nums">{c.value}</span>
-            )}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── FilingsBlock ───────────────────────────────────────────────────────
 // What this company told the SEC in the last month, live off EDGAR when the
 // sheet opens — the serious and material filings only, since the routine
@@ -1302,8 +1216,8 @@ function ResearchSectionContent({
             <li key={i} className="flex gap-2">
               <span className="text-muted-foreground select-none">•</span>
               <span className="flex-1 whitespace-pre-wrap">
-                {bulletText}
-                {citation ? <ResearchCitationChip citation={citation} /> : null}
+                {bulletText}{" "}
+                <SourceCitation sources={researchCitationSources(citation ? [citation] : [])} />
               </span>
             </li>
           );
@@ -1313,21 +1227,14 @@ function ResearchSectionContent({
   }
   return (
     <p className="whitespace-pre-wrap">
-      {section.text}
-      {section.citations && section.citations.length > 0 ? (
-        <span className="ml-1 inline-flex flex-wrap gap-1">
-          {section.citations.map((c, i) => (
-            <ResearchCitationChip key={i} citation={c} />
-          ))}
-        </span>
-      ) : null}
+      {section.text}{" "}
+      <SourceCitation sources={researchCitationSources(section.citations)} />
     </p>
   );
 }
 
-// ResearchCitationChip + AnalystConsensusWidget moved to
-// components/domain/analyst-consensus.tsx — the ONE Street-view widget shared
-// with the stock page sidebar. Imported above.
+// AnalystConsensusWidget lives in components/domain/analyst-consensus.tsx —
+// the ONE Street-view widget shared with the stock page sidebar.
 
 // ─── ThesisSheetBody ──────────────────────────────────────────────────────────
 
@@ -1801,14 +1708,8 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           /triggers is in flight. */}
       {state.snapshot ? (
         <p className="text-sm leading-relaxed whitespace-pre-wrap">
-          {state.snapshot.text}
-          {state.snapshot.citations && state.snapshot.citations.length > 0 ? (
-            <span className="ml-1 inline-flex flex-wrap gap-1">
-              {state.snapshot.citations.map((c, i) => (
-                <ResearchCitationChip key={i} citation={c} />
-              ))}
-            </span>
-          ) : null}
+          {state.snapshot.text}{" "}
+          <SourceCitation sources={researchCitationSources(state.snapshot.citations)} />
         </p>
       ) : null}
 
@@ -1888,7 +1789,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
       {/* Live from the vendor; next report + last quarters. Sits with the
           trade-shape mechanics because "reports in 3 days" is a sizing
           fact, the same class of thing as Next review. */}
-      {earnings ? <EarningsBlock data={earnings} /> : null}
+      {earnings ? <EarningsCard data={earnings} /> : null}
 
       {filings ? <FilingsBlock data={filings} /> : null}
 

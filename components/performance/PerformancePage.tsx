@@ -25,6 +25,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { TrendingUp, Trophy, Target, BarChart3 } from 'lucide-react';
+import { SystemHealthSection } from "@/components/performance/SystemHealthSection";
 
 // ─── Recharts dark theme constants ────────────────────────────────────────────
 const GRID_COLOR = 'var(--border)';
@@ -766,6 +767,9 @@ export default function PerformancePage({ data, scorecard = [] }: Props) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Moved here when /intelligence was folded into /market. */}
+      <SystemHealthSection />
     </div>
   );
 }

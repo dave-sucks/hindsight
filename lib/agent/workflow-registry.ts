@@ -308,7 +308,7 @@ export const PAGE_TEAM_MAP: Record<string, TeamId> = {
   "/runs": "agent",
   "/trades": "agent",
   "/performance": "evaluation",
-  "/intelligence": "intelligence",
+  "/market": "intelligence",
 };
 
 /**

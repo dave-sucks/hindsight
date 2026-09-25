@@ -19,8 +19,8 @@ import { formatCurrency } from "@/lib/format";
 import {
   getTradeStatusDisplay,
   shortAlpacaId,
+  proposalTooltip,
   EXECUTING_LABEL,
-  EXECUTING_TOOLTIP,
 } from "@/lib/trade-status";
 import type { TradeStatus } from "@/lib/mock-data/trades";
 import { useTickerQuote } from "@/hooks/useTickerQuote";
@@ -167,6 +167,35 @@ function RowMenu({ items }: { items: RowMenuItem[] }) {
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  );
+}
+
+// ── Status dot ───────────────────────────────────────────────────────────────
+// The dot after the ticker, with its hover line ("Opened Aug 13, 2:26 PM",
+// "Sold Sep 1, 1:48 PM", ...). Exported so the Coverage Table's name cell
+// renders the SAME dot and tooltip as every trade row, instead of a bare dot.
+
+export function StatusDot({
+  className,
+  label,
+  alpacaId,
+}: {
+  className: string;
+  label: string;
+  alpacaId?: string | null;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<span className={cn("h-1.5 w-1.5 rounded-full shrink-0 cursor-default", className)} />}
+      />
+      <TooltipContent side="top">
+        <div>
+          <div>{label}</div>
+          {alpacaId && <div className="opacity-60 font-mono text-[10px]">Alpaca {alpacaId}</div>}
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -328,11 +357,9 @@ export function TradeRow({
   const dayQuote = useTickerQuote(isPending && !isStalePrice ? ticker : undefined);
 
   const cfg = getTradeStatusDisplay(status);
-  const timeLabel = isExecuting
-    ? EXECUTING_TOOLTIP
-    : isAwaitingApproval
-      ? `Pending your approval — agent proposed this ${pendingProposal.intent === "OPEN" || pendingProposal.intent === "ADD" ? "buy" : "exit"}`
-      : cfg.timeLabel({ placedAt, filledAt, closedAt });
+  const timeLabel = isAwaitingApproval
+    ? proposalTooltip(pendingProposal.intent, isExecuting)
+    : cfg.timeLabel({ placedAt, filledAt, closedAt });
   const shortId = shortAlpacaId(alpacaOrderId);
   const priceSourceLabel = isOpen ? fmtPriceSource(priceSource, priceUpdatedAt) : null;
 
@@ -376,28 +403,15 @@ export function TradeRow({
             </span>
           )}
           <span className="text-sm font-medium">{ticker}</span>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full shrink-0 cursor-default",
-                    // Pending proposal — amber dot overrides whatever the
-                    // underlying status would normally show.
-                    isAwaitingApproval ? "bg-amber-500" : cfg.dotClass,
-                  )}
-                />
-              }
-            />
-            <TooltipContent side="top">
-              <div>
-                <div>{timeLabel}</div>
-                {shortId && (
-                  <div className="opacity-60 font-mono text-[10px]">Alpaca {shortId}</div>
-                )}
-              </div>
-            </TooltipContent>
-          </Tooltip>
+          <StatusDot
+            // Pending proposal — amber dot overrides whatever the underlying
+            // status would normally show. Same amber the Coverage Table uses.
+            className={
+              isAwaitingApproval ? getTradeStatusDisplay("PENDING").dotClass : cfg.dotClass
+            }
+            label={timeLabel}
+            alpacaId={shortId}
+          />
         </>
       }
       trailingTop={

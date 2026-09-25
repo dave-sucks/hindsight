@@ -24,7 +24,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { formatCurrency } from "@/lib/format";
-import { proposalSentence } from "@/lib/trade-status";
+import { proposalSentence, proposalTooltip } from "@/lib/trade-status";
+import { StatusDot } from "@/components/ui/trade-row";
 import { ProposalActions } from "@/components/proposals/ProposalActions";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
@@ -39,15 +40,29 @@ type MobileView = "lifetime" | "1d";
 const FLAT_BAND_PCT = 0.5;
 
 // ── Status dot ───────────────────────────────────────────────────────────────
-function statusDotClass(row: CoverageRow): string {
+// Colour + hover line, from the same display map and wording TradeRow uses,
+// so a name reads identically here and in the Pinned / Pending rails.
+function statusDot(row: CoverageRow): { className: string; label: string } {
   // A pending action outranks the row's own state — amber is the app-wide
   // "waiting on you" colour, and it's what makes proposals skimmable here.
-  if (row.pendingProposal) return getTradeStatusDisplay("PENDING").dotClass;
-  if (row.tradeState === "OPEN") return getTradeStatusDisplay("OPEN").dotClass;
-  if (row.tradeState === "CLOSED")
-    return getTradeStatusDisplay((row.sinceDollar ?? 0) >= 0 ? "CLOSED_WIN" : "CLOSED_LOSS").dotClass;
-  if (row.verdict != null) return "bg-muted-foreground/40";
-  return "bg-sky-500";
+  const pp = row.pendingProposal;
+  if (pp) {
+    return {
+      className: getTradeStatusDisplay("PENDING").dotClass,
+      label: proposalTooltip(pp.intent, pp.executing),
+    };
+  }
+  if (row.tradeState === "OPEN") {
+    const cfg = getTradeStatusDisplay("OPEN");
+    return { className: cfg.dotClass, label: cfg.timeLabel({ placedAt: row.anchorAt }) };
+  }
+  if (row.tradeState === "CLOSED") {
+    const cfg = getTradeStatusDisplay((row.sinceDollar ?? 0) >= 0 ? "CLOSED_WIN" : "CLOSED_LOSS");
+    return { className: cfg.dotClass, label: cfg.timeLabel({ closedAt: row.anchorAt }) };
+  }
+  const since = new Date(row.anchorAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (row.verdict != null) return { className: "bg-muted-foreground/40", label: `Passed ${since}` };
+  return { className: "bg-sky-500", label: `Watching since ${since}` };
 }
 
 // ── Plain % cell (1D/5D/30D momentum) ────────────────────────────────────────
@@ -84,7 +99,7 @@ function NameCell({ row }: { row: CoverageRow }) {
       <div className="flex flex-col min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-medium">{row.ticker}</span>
-          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDotClass(row))} />
+          <StatusDot {...statusDot(row)} />
         </div>
         {subhead && (
           <span
