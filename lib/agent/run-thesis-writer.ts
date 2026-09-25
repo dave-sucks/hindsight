@@ -1468,12 +1468,16 @@ export function makeSubmitThesisTool(opts: {
     description:
       "Submit your final thesis decision. Call ONCE after the research note is fully written. " +
       "If the result lists validation errors, fix exactly those fields and call again.",
+    // NOT strict, on purpose. Anthropic's strict mode compiles the schema
+    // into a grammar and refuses one with more than 24 optional parameters
+    // or 16 union-typed parameters; this schema has 119 and 121 (measured
+    // live 2026-09-25, req_011CfQt3ZckbsuNNd91wSWbL and
+    // req_011CfQtMV9NnoTrn4srRu4T9). Making every key required-and-nullable
+    // trades the first limit for the second. So the model reads the typed
+    // schema (every trigger kind by name), the validator coerces or drops
+    // what it still gets wrong with a note, and a refused decision is
+    // repaired once. That is the guarantee; a grammar is not available.
     inputSchema: thesisDecisionSchema,
-    // Grammar-constrained: the model cannot emit an input outside the
-    // schema — no invented trigger kind, no missing required field. The
-    // schema is built strict-clean in decision.ts / model-schema.ts. Only
-    // Anthropic's strict mode is meant here; OpenAI's has different rules.
-    strict: MODES["thesis-writer"].provider === "anthropic",
     execute: async (raw: z.infer<typeof thesisDecisionSchema>) => {
       const attempt = opts.onAttempt();
       const v = validateThesisDecision(raw, opts.validate);

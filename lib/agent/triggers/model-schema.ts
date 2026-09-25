@@ -1,27 +1,30 @@
 /**
- * model-schema.ts — the trigger shape the MODEL is handed, built to be
- * enforced at generation time.
+ * model-schema.ts — the trigger shape the MODEL is handed.
  *
- * The writer's submit_thesis tool runs in Anthropic strict mode: the tool's
- * JSON Schema is compiled into a grammar and the model cannot emit a token
- * that violates it. That is what makes an invented trigger kind impossible.
  * On 2026-09-25 the writer sent `REVIEW_AFTER_DAYS` on IBRX and BBIO — a kind
  * that does not exist — because `triggers` was typed `z.array(z.unknown())`
  * and the real kinds were listed in prose. Both runs were refused and the
- * research was thrown away (DAV-316).
+ * research was thrown away (DAV-316). This schema names every kind the
+ * evaluator has, as a typed union the model reads in the tool definition,
+ * and nothing else; the validator (decision.ts) coerces or drops what the
+ * model still gets wrong, with a note on the row, and never refuses.
+ *
+ * It is NOT sent in strict mode, and that was measured, not assumed.
+ * Anthropic's strict mode compiles the schema into a grammar and refuses
+ * one with more than 24 optional parameters or 16 union-typed parameters
+ * (nullable counts as a union). submit_thesis has 119 and 121 — twenty-odd
+ * top-level fields, an edit op, and the predicate union repeated six times.
+ * Both refusals came back from the API on 2026-09-25
+ * (req_011CfQt3ZckbsuNNd91wSWbL, req_011CfQtMV9NnoTrn4srRu4T9); the static
+ * keyword check had passed the schema. A grammar is for a small schema. For
+ * this one the guarantee is: typed kinds the model reads, coercion at the
+ * boundary, one repair turn. `model-schema.test.ts` pins the kind list.
  *
  * Why this is a second schema and not `triggerSchema` from ./schema.ts:
- * the grammar compiler supports a subset of JSON Schema. Not supported, and
- * a 400 on the whole request if present: `oneOf` (Zod emits it for
- * discriminatedUnion), recursion (`z.lazy`), `minimum` / `maximum` (Zod adds
- * them for `.int()`), `minLength` / `maxLength` / `pattern`, `maxItems`. So
- * this schema uses `z.union` (→ `anyOf`), plain `z.number()`, one level of
- * AND / OR nesting, and says every range in words. The server schema in
- * ./schema.ts still validates the values on the way in; anything out of
- * range is clamped or dropped with a note, never refused (decision.ts).
- *
- * `model-schema.strict.test.ts` converts this with the SDK's own converter
- * and fails on any unsupported keyword, so the contract can't drift.
+ * that one uses `discriminatedUnion` and `.int()` ranges and recursion,
+ * which read badly in a tool definition; this one is `z.union`, plain
+ * numbers, one level of AND / OR, and says every range in words. The server
+ * schema still validates the values on the way in.
  */
 
 import { z } from "zod";
@@ -142,44 +145,3 @@ export const modelEditTriggerOpSchema = z.object({
 
 export type ModelTrigger = z.infer<typeof modelTriggerSchema>;
 export type ModelEditTriggerOp = z.infer<typeof modelEditTriggerOpSchema>;
-
-/**
- * Keywords the grammar compiler rejects. `assertStrictCompatible` walks a
- * JSON Schema and names the first one it finds — used by the test and by
- * nothing at runtime.
- */
-const UNSUPPORTED_KEYWORDS = new Set([
-  "oneOf",
-  "minimum",
-  "maximum",
-  "exclusiveMinimum",
-  "exclusiveMaximum",
-  "multipleOf",
-  "minLength",
-  "maxLength",
-  "pattern",
-  "maxItems",
-  "uniqueItems",
-  "$ref",
-]);
-
-export function findStrictViolations(schema: unknown, path = "$"): string[] {
-  const out: string[] = [];
-  const walk = (node: unknown, at: string) => {
-    if (Array.isArray(node)) {
-      node.forEach((n, i) => walk(n, `${at}[${i}]`));
-      return;
-    }
-    if (!node || typeof node !== "object") return;
-    const obj = node as Record<string, unknown>;
-    for (const key of Object.keys(obj)) {
-      if (UNSUPPORTED_KEYWORDS.has(key)) out.push(`${at}.${key}`);
-      if (key === "minItems" && typeof obj[key] === "number" && (obj[key] as number) > 1) out.push(`${at}.minItems=${obj[key]}`);
-      if (key === "type" && obj[key] === "object" && obj.additionalProperties !== false) out.push(`${at}.additionalProperties`);
-      const child = obj[key];
-      if (child && typeof child === "object") walk(child, `${at}.${key}`);
-    }
-  };
-  walk(schema, path);
-  return out;
-}
