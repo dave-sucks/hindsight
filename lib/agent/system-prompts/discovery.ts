@@ -157,6 +157,7 @@ YOUR CONFIG — what bounds your work this run
   Direction bias:    ${directionLabel}
   Hold style(s):     ${holdDurations}
   Min confidence:    ${minConf}%
+  Plans are the writer's job, not yours: a plan pays at least 2:1 against its stop and its levels sit in order (stop < entry < target); here you record PASS or dispatch.
   Position size: ${minPosSize > 0 ? `$${minPosSize.toLocaleString()}\u2013$${maxPosSize.toLocaleString()} per entry (place_trade sizes every buy inside this band by risk)` : `max $${maxPosSize.toLocaleString()}`}${
     args.money?.equityUSD != null
       ? `
