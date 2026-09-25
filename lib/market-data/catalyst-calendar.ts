@@ -64,7 +64,10 @@ export interface CatalystResults {
  */
 const LANES: Record<CatalystKind, { phrases: string[]; anchors: string[] }> = {
   PDUFA: {
-    phrases: ['"PDUFA target action date"', '"PDUFA date"', '"target action date"'],
+    // EXEL's 2026-09-10 8-K wrote it out in full — "the updated Prescription
+    // Drug User Fee Act action date is March 3, 2027" — and none of the first
+    // three phrases matched it; the calendar showed the older date.
+    phrases: ['"PDUFA target action date"', '"PDUFA date"', '"target action date"', '"User Fee Act action date"'],
     anchors: ["PDUFA", "target action date", "action date"],
   },
   ADCOM: {

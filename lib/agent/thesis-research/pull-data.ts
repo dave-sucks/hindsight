@@ -11,7 +11,8 @@
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { describeCluster, fetchOpenMarketBuys, insiderCluster } from "@/lib/market-data/insider-cluster";
 import { fetchCalendarRows } from "@/lib/market-data/earnings-calendar";
-import { searchCatalystEvents, type CatalystEvent } from "@/lib/market-data/catalyst-calendar";
+import { searchCatalystEvents } from "@/lib/market-data/catalyst-calendar";
+import { pickCatalystOnFile, type CatalystOnFile } from "./catalyst-on-file";
 import { daysUntilReport } from "@/lib/agent/triggers/earnings";
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 import {
@@ -114,33 +115,16 @@ export interface ThesisPullResult {
   pulledAt: string;
   /**
    * The dated event the company itself announced (its PDUFA date, from its
-   * own 8-K), when EDGAR has one. The writer is shown it and the save uses
-   * it: EXEL 2026-09-25 stored a guessed 2027-03-03 against the filing's
-   * 2026-12-03 and would have slept through the decision. Null = none on
-   * file or EDGAR unreachable — said in the data block either way.
+   * own 8-K), when EDGAR has one. The writer is shown it; the save fills a
+   * missing date from it and records a disagreement, never overwrites (EXEL
+   * 2026-09-25: the writer's March 3, 2027 was the newer filing, the
+   * calendar's December 3 the older). Null = none on file or EDGAR
+   * unreachable — said in the data block either way.
    */
   catalystOnFile: CatalystOnFile | null;
 }
 
-export interface CatalystOnFile {
-  kind: CatalystEvent["kind"];
-  /** YYYY-MM-DD. */
-  eventDate: string;
-  daysAway: number | null;
-  announcedDate: string;
-  url: string;
-  quote: string;
-}
-
-/** The event to show: the nearest one still ahead, else the most recent past one. */
-export function pickCatalystOnFile(events: CatalystEvent[]): CatalystOnFile | null {
-  const dated = events.filter((e): e is CatalystEvent & { eventDate: string } => e.eventDate != null);
-  if (dated.length === 0) return null;
-  const ahead = dated.filter((e) => (e.daysAway ?? 0) >= 0).sort((a, b) => (a.daysAway ?? 0) - (b.daysAway ?? 0));
-  const past = dated.filter((e) => (e.daysAway ?? 0) < 0).sort((a, b) => (b.daysAway ?? 0) - (a.daysAway ?? 0));
-  const e = ahead[0] ?? past[0];
-  return { kind: e.kind, eventDate: e.eventDate, daysAway: e.daysAway, announcedDate: e.announcedDate, url: e.url, quote: e.quote };
-}
+export { pickCatalystOnFile, type CatalystOnFile } from "./catalyst-on-file";
 
 /**
  * Run the 7 parallel structured pulls and format the data block.

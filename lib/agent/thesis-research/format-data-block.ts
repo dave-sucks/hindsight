@@ -204,7 +204,7 @@ function buildEventOnFile(c: DataBlockInputs["catalystOnFile"]): string | null {
   return (
     `${CATALYST_KIND_LABEL[c.kind] ?? c.kind}: ${c.eventDate}${when} — announced ${c.announcedDate} in the company's own filing: "${c.quote}"\n` +
     `${c.url}\n` +
-    `This is the event date (catalyst_date). A possible slip belongs in the risks, never in the date.`
+    `Use this as the event date (catalyst_date) unless a NEWER company statement moved it — a moved date is announced again, later, and the newest announcement is the date; cite that source. A possible slip belongs in the risks, never in the date.`
   );
 }
 

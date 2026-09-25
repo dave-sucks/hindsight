@@ -71,6 +71,7 @@ import {
   type ValidatedThesisDecision,
 } from "@/lib/agent/thesis-research/decision";
 import { recordThesis } from "@/lib/agent/tools/record-thesis";
+import { resolveEventDate } from "@/lib/agent/thesis-research/catalyst-on-file";
 import { updateThesis } from "@/lib/agent/tools/update-thesis";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { describeTrigger } from "@/lib/agent/triggers/ops";
@@ -1356,28 +1357,7 @@ export function buildWriterSaveCall(
   };
 }
 
-/**
- * The catalyst date the save stores: the company's own, from its filing,
- * when the plan is written on a dated event and the two disagree.
- */
-export function resolveEventDate(
-  d: Pick<ValidatedThesisDecision, "catalyst_date" | "horizon" | "setup_id">,
-  pull: Pick<ThesisPullResult, "catalystOnFile"> | null | undefined,
-): { iso: string | undefined; note: string | null } {
-  const own = d.catalyst_date && !Number.isNaN(Date.parse(d.catalyst_date)) ? new Date(d.catalyst_date) : null;
-  const onFile = pull?.catalystOnFile ?? null;
-  const dated = d.horizon === "CATALYST" || d.setup_id === "PRE_CATALYST";
-  if (dated && onFile && (onFile.daysAway ?? 0) >= 0) {
-    const filed = new Date(`${onFile.eventDate}T00:00:00.000Z`);
-    if (!own || own.toISOString().slice(0, 10) !== onFile.eventDate) {
-      return {
-        iso: filed.toISOString(),
-        note: `Event date ${onFile.eventDate} taken from the company's own filing (${onFile.url})${own ? `; the note said ${own.toISOString().slice(0, 10)}` : ""}.`,
-      };
-    }
-  }
-  return { iso: own ? own.toISOString() : undefined, note: null };
-}
+export { resolveEventDate } from "@/lib/agent/thesis-research/catalyst-on-file";
 
 /** How a save (or a check-only save) came back. */
 export interface WriterSaveOutcome {
