@@ -77,3 +77,12 @@ describe("every tool the chat prompt names is one it can call", () => {
     expect(PRINCIPAL_SYSTEM_PROMPT).not.toContain("get_insider_activity");
   });
 });
+
+describe("a dispatch is not a result (2026-09-24: five sent, three dead, the chat had moved on)", () => {
+  it("the chat is told to check each child before reporting a batch, with the writer's reason", () => {
+    expect(PRINCIPAL_SYSTEM_PROMPT).toContain("A dispatch is not a result.");
+    expect(PRINCIPAL_SYSTEM_PROMPT).toContain("wait_for_thesis_refresh(child_run_id, timeout_seconds: 0)");
+    expect(PRINCIPAL_SYSTEM_PROMPT).not.toContain("your job is done in one sentence");
+  });
+});
+

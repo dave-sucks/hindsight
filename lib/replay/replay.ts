@@ -92,18 +92,27 @@ export interface Replay {
   calls: string[];
 }
 
-function readRefusal(r: ReplayResult): { error: string; message: string } | null {
+/**
+ * The refusal, read the way the wrapper reads it — all three protocols
+ * (`{ ok: false }`, `{ status: "FAILED", note }`, `{ success: false }`).
+ * The first version of this read only `ok: false`, so a refused
+ * record_thesis ("no provenance provided", status FAILED) came back
+ * `refused: false` — the exact trap this harness exists to remove, found
+ * 2026-09-25 when a test "passed" on a refused mint.
+ */
+type Classifier = Pick<typeof import("@/lib/agent/gate-rejections"), "detectGateRejection" | "detailFromData">;
+
+function readRefusal(r: ReplayResult, { detectGateRejection, detailFromData }: Classifier): { error: string; message: string } | null {
   if (r?.ok === false) {
     return { error: String(r.error ?? "tool_error"), message: String(r.summary ?? "") };
   }
   const data = r?.data as Record<string, unknown> | undefined;
-  if (data && data.ok === false) {
-    return {
-      error: String(data.error ?? "refused"),
-      message: String(data.message ?? r.summary ?? ""),
-    };
-  }
-  return null;
+  const hit = detectGateRejection(data);
+  if (!hit) return null;
+  return {
+    error: hit.gateCode ?? String(data?.error ?? "refused"),
+    message: detailFromData(data) ?? String(data?.message ?? r.summary ?? ""),
+  };
 }
 
 function quoteStub(quotes: Record<string, number>) {
@@ -132,6 +141,7 @@ export async function replayTool(
   const db = prismaDouble(opts.seed);
   const quotes = opts.quotes ?? {};
   let result: ReplayResult = { ok: false, error: "replay did not run" };
+  let refusal: { error: string; message: string } | null = null;
 
   await jest.isolateModulesAsync(async () => {
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
@@ -204,8 +214,11 @@ export async function replayTool(
       throw new Error(`[replay] "${exportName}" is not a defineTool factory — no execute()`);
     }
     result = (await tool.execute(opts.args ?? {})) as ReplayResult;
+    // The wrapper's own classifier, loaded here so its prisma import sees
+    // the double rather than the real client.
+    const classifier = (await import("@/lib/agent/gate-rejections")) as Classifier;
+    refusal = readRefusal(result, classifier);
   });
 
-  const refusal = readRefusal(result);
   return { result, refused: refusal !== null, refusal, db, calls: db.calls };
 }

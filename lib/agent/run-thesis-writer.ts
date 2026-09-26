@@ -920,10 +920,17 @@ Write the research note now, then call submit_thesis.`;
         ? {
             // The basic search, called directly. The 20260209 version runs
             // its "dynamic filtering" through a code-execution tool that this
-            // loop never provides, so the model spent research steps calling
-            // a tool that couldn't exist ("unavailable tool 'code_execution'",
-            // 6 of 43 writer runs from 09-11, and every step it burned was a
-            // step the submit repair needed on 09-25). DAV-316.
+            // loop never provides. That stray call does not cost steps — it
+            // ENDS the loop: the SDK (ai 6.0.116) files the "unavailable
+            // tool" error as a client tool output but, because the call is
+            // provider-executed, not as a client tool call, so its
+            // "all client calls answered" check fails and the loop stops
+            // after that step. On 2026-09-25 IBRX, BBIO and DYN each ran ONE
+            // step: the submit was refused and the stray call in the same
+            // step ended the run with the refusal unread (agentSteps = 1).
+            // EXEL's refusal step had no stray call and got its second turn.
+            // Do not re-enable the 20260209 search thinking it only costs
+            // steps. DAV-316; the mechanism was found by the discovery review.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             web_search: anthropic.tools.webSearch_20250305({ maxUses: WEB_SEARCH_MAX_USES }) as any,
             submit_thesis: submitThesisTool,
@@ -1019,8 +1026,9 @@ Write the research note now, then call submit_thesis.`;
 
     // ── Decision repair: a refused submit is fixed, not abandoned ────────
     // The loop can end on a refused submit_thesis with the research done
-    // and the decision one field off — the step budget spent (IBRX, BBIO,
-    // DYN on 2026-09-25: four of five catalyst dispatches lost that way).
+    // and the decision one field off — whatever ended it: a stray
+    // provider-executed call in the same step (IBRX, BBIO, DYN on
+    // 2026-09-25, one step each), the step budget, or a stop condition.
     // The refusal goes back to the model with the note it wrote, through
     // the same submit tool, on its own budget. The Run Book promised this.
     const rejected = lastRejected as { raw: unknown; errors: string[] } | null;
@@ -1241,11 +1249,12 @@ export function buildWriterSaveCall(
   existing: { direction: string | null; status: string | null } | null,
 ): WriterSaveCall {
   const T = args.ticker.toUpperCase();
-  // The event date is the company's, when it announced one. The writer
-  // sees it in the data block; if its decision still carries a different
-  // date, the filing's wins and the substitution is written on the stock
-  // (EXEL 2026-09-25: the note guessed a slipped 2027-03-03, the 8-K said
-  // 2026-12-03, and every review counted from the guess).
+  // The event date: the writer's stands; the company's filing on file
+  // fills a missing one and a disagreement is written on the stock, never
+  // overwritten. EXEL 2026-09-25: the writer's 2027-03-03 came from the
+  // September 10 8-K (the review extended); the calendar had found only
+  // the August filing's 2026-12-03. The first version of this code let the
+  // older filing win. See catalyst-on-file.ts.
   const eventDate = resolveEventDate(d, pull);
   const notes = [...(d.notes ?? []), ...(eventDate.note ? [eventDate.note] : [])];
   const rationale = notes.length ? `${d.rationale}\n\n${notes.map((n) => `[${n}]`).join("\n")}` : d.rationale;
@@ -1522,8 +1531,8 @@ const SAVE_RETRY_MAX_STEPS = 3;
 
 /**
  * The one retry, for both refusals a decision can meet: the writer's own
- * check at the end of the research loop (the step budget ran out on a
- * refused submit), and the save (server-built sections, or the world moved
+ * check at the end of the research loop (the loop ended on a refused
+ * submit, for any reason), and the save (server-built sections, or the world moved
  * between check and save). Show the model its decision and the refusal, let
  * it resubmit through the same submit tool on a budget of its own, and
  * return the accepted decision — or null.
