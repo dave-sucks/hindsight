@@ -20,6 +20,10 @@ import { searchCatalystEvents, type CatalystEvent } from "@/lib/market-data/cata
 const DEFAULT_WINDOW: [number, number] = [0, 70];
 
 function describe(e: CatalystEvent): string {
+  if (e.datePrecision === "month" && e.eventDate) {
+    const month = new Date(`${e.eventDate}T00:00:00Z`).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+    return `${e.company} · ${month} (month only — the filing gave no day) · announced ${e.announcedDate}`;
+  }
   const when =
     e.daysAway == null
       ? "date unclear"

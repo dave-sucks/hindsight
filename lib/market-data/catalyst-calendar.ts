@@ -35,6 +35,12 @@ export interface CatalystEvent {
   kind: CatalystKind;
   /** The dated event, YYYY-MM-DD. Null when the filing named the event without a parseable date. */
   eventDate: string | null;
+  /**
+   * "day" when the filing gave a day; "month" when it gave only "February 2027",
+   * in which case `eventDate` is the first of that month and must be read as
+   * approximate. Companies announce a month first and a day later.
+   */
+  datePrecision: "day" | "month" | null;
   /** Calendar days from now to the event; negative is past, null when undated. */
   daysAway: number | null;
   /** When the company announced it. */
@@ -87,18 +93,33 @@ const SEARCH_PAGES = 10;
 
 const MONTH =
   "(?:January|February|March|April|May|June|July|August|September|October|November|December)";
+/** "November 22, 2026" — or just "February 2027", which is how a date is first announced. */
+const DATE = `(?:${MONTH}\\s+\\d{1,2},\\s+20\\d{2}|${MONTH}\\s+20\\d{2})`;
 
-/** Two shapes the sentence takes: the anchor before the date, or after it. */
-function dateNear(text: string, anchors: string[]): { date: string; quote: string } | null {
+/**
+ * Two shapes the sentence takes: the anchor before the date, or after it.
+ *
+ * The windows are short on purpose. Press releases are bullet lists with no
+ * periods, so a long window walks from one bullet into the next: ANAB's
+ * "PDUFA action date of February 2027" was followed by "post-trial hearing
+ * scheduled for October 20, 2026" — a court date — and a 250-character window
+ * that didn't know month-only dates read the court date as the FDA's
+ * (2026-09-24). Knowing "February 2027" is a date makes the nearest one win;
+ * the shorter window is the second lock on the same door.
+ */
+function dateNear(text: string, anchors: string[]): { date: string; precision: "day" | "month"; quote: string } | null {
   for (const anchor of anchors) {
     const a = anchor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     for (const re of [
-      new RegExp(`([^.]{0,90}${a}[^.]{0,250}?(${MONTH}\\s+\\d{1,2},\\s+20\\d{2})[^.]{0,40})`, "i"),
-      new RegExp(`([^.]{0,90}(${MONTH}\\s+\\d{1,2},\\s+20\\d{2})[^.]{0,150}?${a}[^.]{0,40})`, "i"),
+      new RegExp(`([^.]{0,90}${a}[^.]{0,120}?(${DATE})[^.]{0,40})`, "i"),
+      new RegExp(`([^.]{0,90}(${DATE})[^.]{0,100}?${a}[^.]{0,40})`, "i"),
     ]) {
       const m = re.exec(text);
       // The window can open mid-word; start the evidence at a whole one.
-      if (m) return { date: isoOf(chooseDate(m[1], m[2])), quote: tidyQuote(m[1]) };
+      if (m) {
+        const spoken = chooseDate(m[1], m[2]);
+        return { ...isoOf(spoken), quote: tidyQuote(m[1]) };
+      }
     }
   }
   return null;
@@ -117,7 +138,7 @@ const MOVED = /\b(?:from|updated|extended|revised|moved|postponed|delayed|new)\b
 
 function chooseDate(sentence: string, first: string): string {
   if (!MOVED.test(sentence)) return first;
-  const all = sentence.match(new RegExp(`${MONTH}\\s+\\d{1,2},\\s+20\\d{2}`, "gi"));
+  const all = sentence.match(new RegExp(DATE, "gi"));
   return all?.length ? all[all.length - 1] : first;
 }
 
@@ -128,10 +149,12 @@ function tidyQuote(raw: string): string {
   return `…${fromWord}…`;
 }
 
-/** "November 22, 2026" → "2026-11-22". */
-function isoOf(spoken: string): string {
-  const d = new Date(`${spoken} UTC`);
-  return Number.isNaN(d.getTime()) ? spoken : d.toISOString().slice(0, 10);
+/** "November 22, 2026" → 2026-11-22 to the day; "February 2027" → 2027-02-01 to the month. */
+function isoOf(spoken: string): { date: string; precision: "day" | "month" } {
+  const hasDay = /\d{1,2},/.test(spoken);
+  const d = new Date(`${hasDay ? spoken : `${spoken.replace(/\s+(20\d{2})$/, " 1, $1")}`} UTC`);
+  if (Number.isNaN(d.getTime())) return { date: spoken, precision: "day" };
+  return { date: d.toISOString().slice(0, 10), precision: hasDay ? "day" : "month" };
 }
 
 /** Markup out, entities out, whitespace collapsed — the sentence as a person reads it. */
@@ -151,7 +174,7 @@ export function plainText(html: string): string {
 export function findEventDate(
   documents: Array<{ name: string; text: string }>,
   kind: CatalystKind,
-): { date: string; quote: string; url: string } | null {
+): { date: string; precision: "day" | "month"; quote: string; url: string } | null {
   // The press release carries the date far more often than the 8-K cover page,
   // which usually just points at the exhibit.
   const ordered = [...documents].sort(
@@ -372,6 +395,7 @@ export async function searchCatalystEvents(q: CatalystSearchInput): Promise<Cata
       company: display.split("(")[0].trim(),
       kind,
       eventDate: found?.date ?? null,
+      datePrecision: found?.precision ?? null,
       daysAway: found ? daysUntil(found.date, q.now) : null,
       announcedDate,
       quote: found?.quote ?? "",
