@@ -48,9 +48,36 @@ import {
 
 const POLL_INTERVAL_MS = 2_000;
 
+/**
+ * Why a writer run ended with no thesis, in its own words: the run's
+ * recorded error first, else the run_failed event, else the refusal ledger.
+ */
+async function writerFailureReason(childRunId: string): Promise<string> {
+  try {
+    const run = await prisma.researchRun.findUnique({ where: { id: childRunId }, select: { parameters: true } });
+    const err = (run?.parameters as { error?: unknown } | null)?.error;
+    if (typeof err === "string" && err.trim()) return err.trim();
+    const ev = await prisma.runEvent.findFirst({
+      where: { runId: childRunId, type: "run_failed" },
+      orderBy: { createdAt: "desc" },
+      select: { message: true },
+    });
+    if (ev?.message) return ev.message;
+    const led = await prisma.gateRejection.findFirst({
+      where: { runId: childRunId },
+      orderBy: { createdAt: "desc" },
+      select: { detail: true, summary: true },
+    });
+    if (led) return led.detail ?? led.summary;
+  } catch {
+    /* best-effort */
+  }
+  return "no reason recorded — read the run";
+}
+
 export const waitForThesisRefresh = defineTool({
   description:
-    "Block until a previously-dispatched thesis-writer refresh completes. Pass the childRunId returned by dispatch_thesis_research; the tool polls ResearchRun.status every 2s until COMPLETE or FAILED (or timeout). Returns the updated thesis excerpt (snapshot + bull/bear bullets + researchAge) so the agent can proceed to place_trade / update_thesis / etc. with fresh context. Required after dispatch_thesis_research(mode: 'refresh') when the next action depends on fresh research being on the row (e.g. place_trade on a thesis the staleness gate would otherwise refuse).",
+    "Wait for — or just check on — a thesis-writer you dispatched, mint or refresh. Pass the childRunId returned by dispatch_thesis_research. With timeout_seconds: 0 it answers at once: COMPLETE, RUNNING, or FAILED with the writer's own reason. With a longer timeout it polls every 2s until COMPLETE or FAILED (or the timeout). Returns the thesis excerpt (snapshot + bull/bear bullets + researchAge) when there is one. Required after dispatch_thesis_research(mode: 'refresh') when the next action depends on fresh research being on the row; use it before reporting any batch of dispatches as done — a dispatch is not a result.",
   schema: z.object({
     child_run_id: z
       .string()
@@ -60,7 +87,8 @@ export const waitForThesisRefresh = defineTool({
     timeout_seconds: z
       .number()
       .int()
-      .min(30)
+      .min(0)
+      // 0 = a status check, no waiting (the chat asks "did they land?").
       // The V1 cap was 180s against a worker that averaged 523s — waiters
       // timed out on healthy runs by construction. V2's pipeline typically
       // lands in ~200-250s (worst case ~440s, see THESIS_WRITER_V2.md);
@@ -69,7 +97,7 @@ export const waitForThesisRefresh = defineTool({
       .max(480)
       .optional()
       .describe(
-        "Max wait. Default 300s (covers the ~3-4 min typical V2 worker run + headroom). Caps at 480s — the worker's own worst-case budget — to keep the parent agent's wall-time bounded.",
+        "Max wait. 0 = check the status now and return. Default 300s (covers the ~3-4 min typical V2 worker run + headroom). Caps at 480s — the worker's own worst-case budget — to keep the parent agent's wall-time bounded.",
       ),
   }),
   ui: "tool-ui" as const,
@@ -271,15 +299,20 @@ export const waitForThesisRefresh = defineTool({
     }
 
     if (lastStatus === "FAILED") {
+      // The writer's own reason — what the chat was never told on
+      // 2026-09-24 ("all five dispatched", three dead, no word why).
+      const reason = await writerFailureReason(childRunId);
       return {
-        summary: `Refresh FAILED for child ${childRunId.slice(0, 8)}. Decide whether to proceed on stale research or defer.`,
+        summary: `Writer FAILED for ${ticker ?? childRunId.slice(0, 8)}: ${reason}`,
         data: {
           status: "FAILED" as const,
           childRunId,
           ticker,
+          reason,
           thesisExcerpt,
           note:
-            `The thesis-writer worker did not produce a thesis (FAILED). Your options: (1) proceed with the existing pre-refresh research and acknowledge that in your update_thesis rationale, OR (2) defer the action with update_thesis(REVIEWED-only). Do not silently retry — investigate via /runs/${childRunId}.`,
+            `The thesis-writer did not produce a thesis. Reason: ${reason}. ` +
+            `If the reason is fixed, dispatch again; on a refresh you may proceed on the existing research and say so in your update_thesis rationale, or defer with update_thesis(REVIEWED-only). Do not silently retry — the run is at /runs/${childRunId}.`,
           items: [
             ...(ticker
               ? [
