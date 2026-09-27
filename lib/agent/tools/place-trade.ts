@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { isNamedSetup } from "@/lib/agent/knowledge/setups";
+import { isBinaryBet } from "@/lib/agent/knowledge/setups";
 import { recordBuyBlockedByFull } from "@/lib/agent/record-buy-blocked";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
@@ -454,7 +454,7 @@ export const placeTrade = defineTool({
       const [sizingThesis, sizingAnalyst, accountRisk] = await Promise.all([
         prisma.thesis.findUnique({
           where: { id: args.thesis_id },
-          select: { conviction: true, horizon: true, setupId: true },
+          select: { conviction: true, horizon: true, setupId: true, catalystDate: true },
         }),
         effectiveAnalystId
           ? prisma.agentConfig.findUnique({ where: { id: effectiveAnalystId }, select: { riskPct: true } })
@@ -465,11 +465,12 @@ export const placeTrade = defineTool({
           creds: ctx.alpacaCreds,
         }).catch(() => null),
       ]);
-      // A dated binary event: the pre-catalyst setup, or (until the writer
-      // stamps setupId) any CATALYST-horizon thesis.
-      const binary =
-        sizingThesis?.setupId === "PRE_CATALYST" ||
-        (!isNamedSetup(sizingThesis?.setupId) && sizingThesis?.horizon === "CATALYST");
+      // A bet into a dated binary event is half the risk (DAV-328). The
+      // answer is `isBinaryBet` — one function for the entry and the add.
+      // The old test here wanted the setup to be PRE_CATALYST or unnamed, so
+      // AIR, KMX and JBL (CATALYST rows wearing the PEAD setup) were sized
+      // in full the day before their print.
+      const binary = sizingThesis ? isBinaryBet(sizingThesis) : false;
       const riskSized =
         accountRisk?.equity != null
           ? sizeByRisk({

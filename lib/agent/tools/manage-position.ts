@@ -52,6 +52,7 @@ import { lockPositionSales } from "@/lib/proposals/position-lock";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { positionTotalCap, positionBand, sizeByRisk, entrySizeForConviction, ADD_RISK_FRACTION } from "@/lib/agent/position-sizing";
+import { isBinaryBet } from "@/lib/agent/knowledge/setups";
 
 /**
  * Classify an Alpaca submit error — same shape as place_trade / closeOpenPosition.
@@ -734,7 +735,7 @@ export const managePosition = defineTool({
             const band = positionBand({ minPositionSize: ctx.minPositionSize, maxPositionSize: ctx.maxPositionSize });
             const [accountRisk, convictionRow] = await Promise.all([
               loadAccountRisk({ accountId: ctx.accountId, environment: position.environment as "PAPER" | "LIVE", creds }).catch(() => null),
-              auditThesisId ? prisma.thesis.findUnique({ where: { id: auditThesisId }, select: { conviction: true } }).catch(() => null) : Promise.resolve(null),
+              auditThesisId ? prisma.thesis.findUnique({ where: { id: auditThesisId }, select: { conviction: true, horizon: true, setupId: true, catalystDate: true } }).catch(() => null) : Promise.resolve(null),
             ]);
             const floor = position.stopLoss != null ? Number(position.stopLoss) : null;
             const sized =
@@ -746,6 +747,9 @@ export const managePosition = defineTool({
                     entry: sizingPrice,
                     stop: floor,
                     direction: position.direction === "SHORT" ? "SHORT" : "LONG",
+                    // An add into a binary event is a buy into it: the same
+                    // halving the entry took, from the same function.
+                    binary: convictionRow ? isBinaryBet(convictionRow) : false,
                     regime: accountRisk.regime?.regime ?? null,
                     band: { floor: 0, ceiling: band.ceiling, floorClampedByCeiling: false },
                   })
