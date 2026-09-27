@@ -84,6 +84,14 @@ export const PEAD_MAX_RUN_PAST_GAP_PCT = 10;
 export const PULLBACK_NEAR_SMA_PCT = 2;
 /** Pre-catalyst: the entry window before a dated event, in days. */
 export const CATALYST_WINDOW_DAYS: [number, number] = [14, 70];
+
+/**
+ * How close to the event a pre-catalyst entry stops being one (QB ruling
+ * 2026-09-26). The run-up trade sells 1–2 weeks before the date, so a buy
+ * still unfilled three weeks out is a trade that never started; entering
+ * there is holding the coin flip by accident.
+ */
+export const PRE_CATALYST_ENTRY_CUTOFF_DAYS = 21;
 /** Insider cluster: buyers within the window. */
 export const INSIDER_MIN_BUYERS = 3;
 export const INSIDER_WINDOW_DAYS = 30;
@@ -611,9 +619,28 @@ export const SETUPS: Setup[] = [
     entry: {
       template: null,
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
-      confirmation: ["Never the day before the event"],
+      confirmation: [
+        "Never the day before the event",
+        `Never inside the last ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days before the date — by then the run-up either happened or did not`,
+        "A falling chart is never bought at the market: the level sits ABOVE the current price and the run-up has to start before we are in it",
+      ],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      text: "A technical entry (D1 or D5 shape) inside the window, never the day before.",
+      // QB ruling 2026-09-26. The old text asked for a D1 or D5 shape and
+      // nothing else, and D1 carries the Trend Template — an uptrend near
+      // the 52-week high. A biotech walking into an FDA date is rarely
+      // that, so writers kept declining to price at all: on 2026-09-26
+      // BBIO, IBRX and CORT all landed with no buy level, and five Catalyst
+      // names sat inside their window with one priced between them.
+      //
+      // Inside the window the chart sets the LEVEL, never whether there is
+      // one.
+      text:
+        `Inside the window (${CATALYST_WINDOW_DAYS[0]}–${CATALYST_WINDOW_DAYS[1]} days out) this setup always carries a buy level — the first of these the chart offers. ` +
+        "1) A D1 base breakout or a D5 pullback, when the stock actually qualifies. " +
+        "2) Otherwise a RECLAIM: a close above the highest high of the last 20 sessions. No Trend Template — that is the point; a stock drifting into its decision will not pass one. " +
+        `The stop goes under the most recent swing low. Size is already half (the binary multiplier) with the gap-loss cap, which is the risk control — D8's "size is the stop". ` +
+        "Target the prior high or the measured move, and the 2:1 floor applies as everywhere; if no level clears 2:1, park the row with the date it will be priced again rather than writing a level you do not believe. " +
+        `More than ${CATALYST_WINDOW_DAYS[1]} days out, do not guess a level: park it with the date the window opens and the review that wakes it then.`,
     },
     stop: {
       structure: ["the entry setup's structure"],
@@ -629,7 +656,11 @@ export const SETUPS: Setup[] = [
     sizing: `Half the normal risk (DAV-245 ruling 2). If a −50% gap would cost more than ${BINARY_MAX_GAP_LOSS_PCT}% of equity, the position is too big.`,
     trail: { CATALYST: "The structural stop until the event; the event is the exit." },
     manage: { partialAtR: null, beatAndFadeReview: false },
-    time: { count: null, unit: "SESSIONS", text: "The event, or T+30." },
+    time: {
+      count: null,
+      unit: "SESSIONS",
+      text: `The event, or T+30. A buy that has not filled with ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days to go is set down — the run-up did not happen, which is this setup's own first failure sign.`,
+    },
     failureSigns: ["Run-up stalls inside the window", "Negative read-across from a peer's decision"],
     summary:
       "A dated decision. Trade the run-up (buy 6–8 weeks before, sell 1–2 before, never holding the coin flip) or hold through at a size that survives a −60% gap.",

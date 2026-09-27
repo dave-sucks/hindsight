@@ -143,6 +143,8 @@ export interface ResolverThesisInput {
   spentBuyCrossing?: SpentBuyCrossing | null;
   triggers: unknown; // Json column; parsed via triggersArraySchema by caller
   catalystDate: Date | null;
+  /** The setup the plan is written on — the pre-catalyst parking rule reads it. */
+  setupId?: string | null;
   createdAt: Date;
   scoring: unknown; // for entryQualityScore surfacing + the composite
   /** The owning analyst's minimum confidence (0–100), for the plan flag. */
@@ -330,6 +332,19 @@ export function buildResolvedEnvelope(args: {
     // The stock's own triggers — an inherited analyst or account rule is
     // not a plan for this stock.
     ownTriggerCount: thesis.parsedTriggers.filter((t) => ((t as { level?: string }).level ?? "THESIS") === "THESIS").length,
+    // Can this stock ever be bought? The resolved ladder, not the column:
+    // `entryPrice` is a read model and an inherited rule is not a plan, but
+    // an ENTER trigger anywhere in the cascade genuinely can buy it.
+    hasEnterTrigger: thesis.parsedTriggers.some((t) => t.action === "ENTER"),
+    setupId: thesis.setupId ?? null,
+    catalystDate: thesis.catalystDate ?? null,
+    // The furthest-out "N days before the event" review it carries — how a
+    // deliberate park until the window opens is told from a silent skip.
+    eventWakeDaysBefore: thesis.parsedTriggers.reduce<number | null>((max, t) => {
+      const p = t.predicate;
+      if (p.kind !== "REVIEW_CADENCE" || p.from !== "EVENT" || (p.side ?? "AFTER") !== "BEFORE") return max;
+      return Math.max(max ?? 0, p.days);
+    }, null),
     now,
   });
 

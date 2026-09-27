@@ -96,9 +96,19 @@ function thesisRow(over: Record<string, unknown>) {
     stopLoss: 90,
     // A setup is named: a priced row with none is work now (DAV-292).
     setupId: "BASE_BREAKOUT",
-    // No triggers → no cadence rung → nothing fires, no review due →
-    // needsAction stays null → quiet row under "actionable".
-    triggers: [],
+    // A buy trigger and nothing else: no cadence rung, so nothing fires and
+    // no review is due → needsAction stays null → quiet row under
+    // "actionable". The buy matters since DAV-321 — a watched LONG with a
+    // price and no way to buy it is NO_BUY_LEVEL, i.e. not quiet at all.
+    triggers: [
+      {
+        id: "trig-buy",
+        action: "ENTER",
+        predicate: { kind: "PRICE_ABOVE", level: 100 },
+        rationale: "the plan's buy",
+        cooldownDays: 1,
+      },
+    ],
     catalystDate: null,
     maxHoldDays: null,
     lastReviewedAt: null,

@@ -1050,6 +1050,7 @@ export const getTheses = defineTool({
             spentBuyCrossing: spentCrossingByThesisId.get(t.id) ?? null,
             triggers: t.triggers,
             catalystDate: t.catalystDate,
+            setupId: t.setupId ?? null,
             createdAt: t.createdAt,
             scoring: t.scoring,
             minConfidence: ctx.minConfidence ?? null,

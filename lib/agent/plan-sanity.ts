@@ -34,10 +34,12 @@
 import { MIN_RISK_REWARD, riskReward } from "@/lib/agent/thesis-shape";
 import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
+import { CATALYST_WINDOW_DAYS } from "@/lib/agent/knowledge/setups";
 
 export type PlanSanityFlag = {
   kind:
     | "NOTHING_CAN_WAKE"
+    | "NO_BUY_LEVEL"
     | "ENTRY_FAR_FROM_PRICE"
     | "ENTRY_STALE"
     | "ENTRY_RAISED_AWAY"
@@ -78,6 +80,26 @@ export const ENTRY_STALE_DAYS = 28;
 const fmt = (n: number) =>
   `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+/**
+ * A pre-catalyst row legitimately carries no buy level while its event is
+ * beyond the window — pricing a level five months out is a guess. It is a
+ * park rather than a skip only if something will wake it when the window
+ * opens, which means an event-date review at least as far out as the
+ * window's far edge. A 14-days-before review does not count: by then the
+ * window has all but closed (the QB's ruling sets the entry's own cut-off
+ * at 21 days), so it wakes the run too late to act.
+ */
+function parkedUntilWindowOpens(
+  args: { setupId?: string | null; catalystDate?: Date | null; eventWakeDaysBefore?: number | null },
+  asOf: Date,
+): boolean {
+  if (args.setupId !== "PRE_CATALYST") return false;
+  if (!args.catalystDate) return false;
+  const daysOut = (args.catalystDate.getTime() - asOf.getTime()) / 86_400_000;
+  if (daysOut <= CATALYST_WINDOW_DAYS[1]) return false; // inside the window: price it
+  return (args.eventWakeDaysBefore ?? 0) >= CATALYST_WINDOW_DAYS[1];
+}
+
 export function computePlanSanity(args: {
   status: string;
   direction: string | null;
@@ -114,6 +136,22 @@ export function computePlanSanity(args: {
    * analyst or the account). Optional; absent ⇒ no check.
    */
   ownTriggerCount?: number | null;
+  /**
+   * Does the stock carry an ENTER trigger — the thing that can actually buy
+   * it? Separate from `entryPrice`, which is a read model of the ladder and
+   * can be stale. Optional; absent ⇒ no NO_BUY_LEVEL check.
+   */
+  hasEnterTrigger?: boolean | null;
+  /** The setup the plan is written on, for the pre-catalyst parking rule. */
+  setupId?: string | null;
+  /** The dated event, for the same rule. */
+  catalystDate?: Date | null;
+  /**
+   * The largest "N days before the event" review the stock carries. A
+   * pre-catalyst row parked until its window opens has to be woken when it
+   * does; this is how we can tell a deliberate park from a silent skip.
+   */
+  eventWakeDaysBefore?: number | null;
   now?: Date;
 }): PlanSanityFlag[] {
   const {
@@ -131,6 +169,7 @@ export function computePlanSanity(args: {
     spentBuyCrossing,
     now,
   } = args;
+  const asOf = now ?? new Date();
   if (status !== "WATCHING") return [];
   if (direction !== "LONG" && direction !== "SHORT") return [];
 
@@ -146,6 +185,30 @@ export function computePlanSanity(args: {
       text: `${direction} with no buy price, no trigger and no review of its own: nothing can bring this stock back. Price the level you are waiting for (the pullback to a rising average, the base's pivot) with its stop and a target at 2:1 or better, or give it the wake that brings it back (a REVIEW at a price, or a short day-count review), or let it go.`,
     });
   }
+  // ── NO_BUY_LEVEL (DAV-321) ──────────────────────────────────────────
+  // A watched LONG/SHORT with no ENTER trigger cannot become a position, no
+  // matter how often it is reviewed. 21 of 29 watched stocks were in this
+  // state on 2026-09-26, including every Catalyst name but one, which is
+  // why that seat held nothing. Eleven of them HAD a buy level and lost it
+  // in an edit ("Removed: buy above $497" on MSFT); ten never had one.
+  //
+  // NOTHING_CAN_WAKE above asks "can anything reach this stock?" and every
+  // one of the 21 passed it, because they all kept a review clock. This
+  // asks the other question: "can this ever be bought?"
+  //
+  // The one legal way to have no buy level: a pre-catalyst row whose event
+  // is further out than the window, parked WITH the wake that brings it
+  // back when the window opens. EXEL in September, priced in December. A
+  // park with no wake is the silent skip this flag exists to catch.
+  if (args.hasEnterTrigger === false) {
+    if (!parkedUntilWindowOpens(args, asOf)) {
+      flags.push({
+        kind: "NO_BUY_LEVEL",
+        text: `${direction} on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of three ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better; park it with the date it will be priced and the wake that brings it back then; or let it go. A rationale with no plan leaves it here tomorrow.`,
+      });
+    }
+  }
+
   if (currentPrice == null || currentPrice <= 0) return flags;
 
   const isLong = direction === "LONG";
