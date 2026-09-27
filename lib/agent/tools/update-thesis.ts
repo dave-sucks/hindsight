@@ -51,6 +51,12 @@ import {
   type TriggerOp,
   type TriggerOpResult,
 } from "@/lib/agent/triggers/ops";
+import {
+  declinedSaleWhere,
+  declinedSaleWork,
+  foldDeclines,
+} from "@/lib/agent/declined-sale";
+import { thesisFloorStop } from "@/lib/agent/triggers/floor-in-force";
 import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
 import {
   writeThesisUpdate,
@@ -1104,6 +1110,59 @@ export const updateThesis = defineTool({
         const levelDirection = ("direction" in patch ? patch.direction : existing.direction) as string | null;
         const levelStatus = (patch.status ?? existing.status) as string | null;
         const existingTriggers = parseTriggersResilient(existing.triggers).triggers as Trigger[];
+        // DAV-315: did the principal decline a protective sale on this stock
+        // in the last week? If so the ratchet lets this edit move the floor
+        // DOWN — the decline is the human act the one-way rule reserves that
+        // to. Nothing else about the ratchet changes; see `saleDeclined` on
+        // ApplyTriggerOpsInput. A lookup failure falls back to false, which
+        // is the strict behaviour we have today.
+        let saleDeclined: { floorPrice: number | null } | null = null;
+        // No live price, no exemption. The work list errs loud when the
+        // price is unknown (a missing quote is not evidence the decline was
+        // answered); lowering a safety line errs strict — without a quote
+        // nobody can say the price is still past the line (QB review).
+        if (levelStatus === "HOLDING" && ctx.analystId && resolvedPriceAtTime != null) {
+          try {
+            const pos = await prisma.position.findFirst({
+              where: {
+                analystId: ctx.analystId,
+                symbol: existing.ticker,
+                status: "OPEN",
+              },
+              select: { id: true, avgCost: true },
+              orderBy: { openedAt: "desc" },
+            });
+            if (pos) {
+              const rows = await prisma.order.findMany({
+                where: { positionId: pos.id, ...declinedSaleWhere(new Date()) },
+                select: { createdAt: true, rejectionMessage: true },
+              });
+              // The SAME question the work list asks, including "is the
+              // price still past the line". Without the breach test the
+              // exemption outlived the decline by a week and a floor could
+              // be lowered after the price had already recovered.
+              const work = declinedSaleWork({
+                status: "HOLDING",
+                direction: levelDirection,
+                decline: foldDeclines(rows),
+                floorPrice: thesisFloorStop({
+                  triggers: existingTriggers,
+                  direction: levelDirection,
+                  avgCost: Number(pos.avgCost) || null,
+                }),
+                currentPrice: resolvedPriceAtTime ?? null,
+                recentLow: null,
+                now: new Date(),
+              });
+              if (work) saleDeclined = { floorPrice: work.floorPrice };
+            }
+          } catch (err) {
+            console.warn(
+              `[update_thesis] declined-sale lookup failed for ${existing.ticker}; ratchet stays strict:`,
+              err instanceof Error ? err.message : err,
+            );
+          }
+        }
         const applied = applyTriggerOps({
           stored: existingTriggers,
           inherited: inheritedLadder,
@@ -1111,6 +1170,7 @@ export const updateThesis = defineTool({
           direction: levelDirection,
           status: levelStatus,
           actor: "AGENT",
+          saleDeclined,
           // The tape decides which side a re-levelled buy trigger compares on.
           // Without it every re-level was a breakout: the CRM shape, where the
           // analyst wrote "buy the pullback to $203" and the row stored

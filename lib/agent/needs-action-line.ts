@@ -18,6 +18,13 @@ export function needsActionLine(na: NeedsAction): string {
   switch (na.kind) {
     case "PROMOTED_AWAITING_RESOLUTION":
       return "Promoted to live money — the next run has to re-enter it, defer it, or kill it.";
+    case "SALE_DECLINED":
+      return (
+        `Sale declined ${na.lastDeclinedAt.slice(0, 10)}` +
+        (na.declineCount > 1 ? ` (${na.declineCount}×)` : "") +
+        (na.floorPrice != null ? `, still under $${na.floorPrice.toFixed(2)}` : "") +
+        " — no new plan yet."
+      );
     case "TRIGGER_FIRED":
       return `A trigger fired and nothing has answered it: ${na.summary}`;
     case "TRIGGER_MATCHING_NOW":

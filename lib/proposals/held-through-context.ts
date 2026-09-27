@@ -11,25 +11,26 @@
  * Lane 1 was built to fix (SNOW's card, 2026-08-18 run review; MU's trail
  * as of 2026-08-19).
  *
- * This module is the single-position mirror of the batch computation in
- * `lib/agent/tools/get-theses.ts` (heldThroughFloor). Deliberately shares
- * the same rules so the two can't drift:
- *   - same 7-day window (HELD_THROUGH_WINDOW_DAYS),
- *   - same "real decline" filter (REJECTED/EXPIRED staged proposals,
- *     systemic tombstones excluded via isSystemicRejection),
- *   - same protective-only scope (closeReason STOP — a declined TARGET exit
- *     means "let it run", a different and benign hold).
- * If you change a rule here, change it there.
+ * What a "real decline" is now lives in ONE place —
+ * `lib/agent/declined-sale.ts` — and this module, `get_theses` and
+ * `complete_run` all read it from there. It used to be written out twice,
+ * with a comment here asking the next person to keep the copies in sync;
+ * DAV-315 needed a third reader and collapsed them instead.
  *
  * The note NEVER blocks the sale: any failure returns null and the
  * proposal goes out with the trigger's own rationale, same as before.
  */
 
 import { prisma } from "@/lib/prisma";
-import { isSystemicRejection } from "@/lib/proposals/maybe-await-approval";
 import { getBars } from "@/lib/alpaca";
+import {
+  DECLINED_SALE_WINDOW_DAYS,
+  declinedSaleWhere,
+  foldDeclines,
+} from "@/lib/agent/declined-sale";
 
-export const HELD_THROUGH_WINDOW_DAYS = 7;
+/** Re-exported so the historic import path keeps working. */
+export const HELD_THROUGH_WINDOW_DAYS = DECLINED_SALE_WINDOW_DAYS;
 
 /**
  * Pure composition — one plain-language paragraph appended to the proposal
@@ -74,27 +75,12 @@ export async function heldThroughNoteForPosition(args: {
 }): Promise<string | null> {
   const { positionId, ticker, direction } = args;
   try {
-    const cutoff = new Date(
-      Date.now() - HELD_THROUGH_WINDOW_DAYS * 86_400_000,
-    );
-    // Staged proposals only (expiresAt set = the principal actually saw a
-    // card) that ended in a real decline. Mirrors get-theses exactly.
     const declines = await prisma.order.findMany({
-      where: {
-        positionId,
-        intent: "CLOSE",
-        status: { in: ["REJECTED", "EXPIRED"] },
-        expiresAt: { not: null },
-        closeReason: "STOP",
-        createdAt: { gte: cutoff },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { rejectionMessage: true },
+      where: { positionId, ...declinedSaleWhere(new Date()) },
+      select: { createdAt: true, rejectionMessage: true },
     });
-    const real = declines.filter(
-      (d) => !isSystemicRejection(d.rejectionMessage),
-    );
-    if (real.length === 0) return null;
+    const folded = foldDeclines(declines);
+    if (!folded) return null;
 
     // Recent low (LONG) / high (SHORT) over the window — the number that
     // helps the principal pick a better line while declining. Optional.
@@ -118,8 +104,8 @@ export async function heldThroughNoteForPosition(args: {
     }
 
     return buildHeldThroughNote({
-      declineCount: real.length,
-      rejectMessage: real[0].rejectionMessage ?? null,
+      declineCount: folded.declineCount,
+      rejectMessage: folded.rejectMessage,
       recentExtreme,
       direction,
     });

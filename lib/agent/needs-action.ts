@@ -84,6 +84,7 @@ import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
+import type { DeclinedSaleWork } from "@/lib/agent/declined-sale";
 import type { Horizon as StalenessHorizon } from "@/lib/agent/horizon-policy";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -111,6 +112,26 @@ export type NeedsAction =
       paperRealizedPnl?: number | null;
       paperReviewCount?: number | null;
       promotedAt?: string | null;
+    }
+  | {
+      /**
+       * The principal declined (or let expire) a protective sale, the price
+       * is still past the line, and no run has answered it (DAV-315).
+       *
+       * Ranks ABOVE the trigger kinds deliberately. The floor is a standing
+       * order, so while the breach persists TRIGGER_FIRED or
+       * TRIGGER_MATCHING_NOW is true every single day and would win the
+       * precedence race — which is exactly what happened to IOT for nine
+       * days. "This fired and you said no" is the more specific, and more
+       * useful, statement of the same situation.
+       */
+      kind: "SALE_DECLINED";
+      declineCount: number;
+      lastDeclinedAt: string;
+      /** The principal's own words, verbatim. */
+      rejectMessage: string | null;
+      floorPrice: number | null;
+      recentLow: number | null;
     }
   | {
       kind: "TRIGGER_FIRED";
@@ -363,6 +384,13 @@ export interface NeedsActionInput {
    * complete_run. Non-ENTER triggers and REVIEW_DUE still surface.
    */
   hasPendingEntryProposal?: boolean;
+  /**
+   * An unanswered protective sale the principal declined (DAV-315).
+   * Computed by the caller with `declinedSaleWork` — the caller is the only
+   * one that can read the orders and the floor — and passed in so the
+   * precedence decision stays here with every other kind.
+   */
+  declinedSale?: DeclinedSaleWork | null;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -388,6 +416,25 @@ export function computeNeedsAction(
       paperRealizedPnl: thesis.paperRealizedPnl ?? null,
       paperReviewCount: thesis.paperReviewCount ?? null,
       promotedAt: thesis.promotedAt ? thesis.promotedAt.toISOString() : null,
+    };
+  }
+
+  // 0.5) SALE_DECLINED — the principal said no to a protective sale and the
+  //    price is still past the line (DAV-315). Ranks above the trigger kinds
+  //    on purpose: the floor is a standing order, so while the breach lasts
+  //    TRIGGER_FIRED / TRIGGER_MATCHING_NOW is true every day and would win
+  //    the race. It did, on IOT, for nine days — the run kept seeing "the
+  //    floor is breached" and never "and you already told me not to sell
+  //    there." The second sentence is the one that needs answering.
+  if (input.declinedSale) {
+    const d = input.declinedSale;
+    return {
+      kind: "SALE_DECLINED",
+      declineCount: d.declineCount,
+      lastDeclinedAt: d.lastDeclinedAt,
+      rejectMessage: d.rejectMessage,
+      floorPrice: d.floorPrice,
+      recentLow: d.recentLow,
     };
   }
 

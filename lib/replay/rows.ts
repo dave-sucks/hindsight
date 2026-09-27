@@ -89,6 +89,15 @@ export function thesisRow(over: ThesisRowOverrides = {}): Row {
     updatedAt: daysAgo(1),
     // Joined inline: the double projects relations off the row.
     researchRun: { agentConfigId: analystId, agentConfig: { name: "Replay Analyst", setupIds: [] } },
+    /**
+     * The audit log, inline. Without it `project` returns null for a
+     * `select: { updates: {...} }` and `complete_run`'s preflight throws on
+     * `t.updates[0]` — which it did in every complete_run replay test, each
+     * one passing anyway because that tool catches its own crash. Seeding
+     * the `thesisUpdate` store does NOT populate this: the double joins
+     * nothing, rows carry their relations (see the module header).
+     */
+    updates: [],
     ...rest,
   };
 }

@@ -29,6 +29,11 @@ import {
   buildSupersessionMap,
 } from "@/lib/agent/resolved-thesis";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
+import {
+  declinedSaleWhere,
+  declinedSaleWork,
+  foldDeclines,
+} from "@/lib/agent/declined-sale";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -129,7 +134,7 @@ export async function GET(
                 status: "OPEN",
               },
               orderBy: { openedAt: "desc" },
-              select: { quantity: true, avgCost: true, openedAt: true, peakPrice: true },
+              select: { id: true, quantity: true, avgCost: true, openedAt: true, peakPrice: true },
             })
             .catch(() => null)
         : Promise.resolve(null),
@@ -227,6 +232,34 @@ export async function GET(
     now: new Date(),
   });
 
+  // A protective sale the principal declined and nothing has answered
+  // (DAV-315). Read here too, from the same module, so the sheet says
+  // "Sale declined — no new plan yet" instead of leaving the state visible
+  // only inside a run. Best-effort: a lookup failure just omits the flag.
+  let declinedSale = null;
+  if (openPosition) {
+    try {
+      const rows = await prisma.order.findMany({
+        where: { positionId: openPosition.id, ...declinedSaleWhere(new Date()) },
+        select: { createdAt: true, rejectionMessage: true },
+      });
+      declinedSale = declinedSaleWork({
+        status: thesis.status,
+        direction: thesis.direction,
+        decline: foldDeclines(rows),
+        floorPrice: resolved.ladderHealth?.floor?.price ?? null,
+        currentPrice,
+        recentLow: null,
+        now: new Date(),
+      });
+    } catch (err) {
+      console.warn(
+        `[thesis quote] declined-sale lookup failed for ${thesis.ticker}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   // The work-list flag itself (DAV-304). The same pure function get_theses
   // hands the daily run — computed here so the sheet shows the flag a person
   // can test, instead of it existing only inside a run that already ended.
@@ -251,6 +284,7 @@ export async function GET(
       paperReviewCount: thesis.paperReviewCount,
       promotedAt: thesis.promotedAt,
     },
+    declinedSale,
     latestUpdate,
     latestQuote:
       currentPrice != null ? { price: currentPrice, changePct: dayChangePct ?? 0 } : null,
