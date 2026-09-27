@@ -10,10 +10,10 @@
  * obligation, so the ninth fire reached the run indistinguishable from the
  * first.
  *
- * Three cases, three parts of the ruling:
- *   1. the count reaches the run as words                 (get_theses)
- *   2. a state rung asks weekly, a buy on one still daily (shouldFire)
- *   3. an empty row that names nothing does not answer    (complete_run)
+ * Ten cases, three parts of the ruling:
+ *   1–2. the count reaches the run as words                 (get_theses)
+ *   3–7. a state REVIEW asks weekly; a buy and a sale do not (shouldFire)
+ *  8–10. an empty row that names nothing does not answer    (complete_run)
  *
  * Every case asserts through the tool's real entry point, and `crashed`
  * is checked before the refusal — complete_run catches its own crash and
@@ -214,6 +214,32 @@ describe("DAV-329 — a state asks weekly; a buy on the same state still asks da
     } as any;
     expect(shouldFire(buyRung, buyCtx).fires).toBe(true);
   });
+
+  it("6. a protective SALE on the same state keeps asking daily (DAV-229)", () => {
+    // The floor nearly caught this on the way past: slowing a sale to
+    // weekly turns a sale the principal declined on Monday into silence
+    // until the following Monday. Only the REVIEW slows down.
+    for (const action of ["EXIT", "TRIM"]) {
+      const sellRung = {
+        ...reviewRung,
+        id: `sell_${action}`,
+        action,
+        lastFiredAt: at(1, 13),
+      } as unknown as Trigger;
+      expect(shouldFire(sellRung, ctx(1)).fires).toBe(true);
+    }
+  });
+
+  it("7. …and so does one with no cooldown written on it at all", () => {
+    const sellRung = {
+      ...reviewRung,
+      id: "sell_bare",
+      action: "EXIT",
+      cooldownDays: undefined,
+      lastFiredAt: at(1, 13),
+    } as unknown as Trigger;
+    expect(shouldFire(sellRung, ctx(1)).fires).toBe(true);
+  });
 });
 
 /**
@@ -270,7 +296,7 @@ describe("DAV-323 — an empty row that names nothing does not answer a fire", (
       quotes: { ABT: PRICE },
     });
 
-  it("6. the 09-21 shape — an empty row, no trigger named — leaves the run unfinished", async () => {
+  it("8. the 09-21 shape — an empty row, no trigger named — leaves the run unfinished", async () => {
     const { result, crashed } = await completeWith({
       type: "UPDATED",
       triggerId: null,
@@ -288,7 +314,7 @@ describe("DAV-323 — an empty row that names nothing does not answer a fire", (
     expect(said).toContain(REVIEW_RUNG_ID);
   });
 
-  it("7. the same empty row, with the rung named, is a legal answer", async () => {
+  it("9. the same empty row, with the rung named, is a legal answer", async () => {
     const { result, crashed } = await completeWith({
       type: "UPDATED",
       triggerId: REVIEW_RUNG_ID,
@@ -302,7 +328,7 @@ describe("DAV-323 — an empty row that names nothing does not answer a fire", (
     expect(result.summary).not.toMatch(/refused/i);
   });
 
-  it("8. changing the plan answers it too, named or not", async () => {
+  it("10. changing the plan answers it too, named or not", async () => {
     const { result, crashed } = await completeWith({
       type: "UPDATED",
       triggerId: null,

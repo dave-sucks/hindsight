@@ -694,12 +694,16 @@ export function defaultCooldownDaysForPredicate(
       // no change at all. A condition that is true for a fortnight should
       // ask twice, not fourteen times.
       //
-      // A BUY is the other case. These two read the price, so an ENTER on
-      // them fires on the crossing, once, by itself (`shouldFire`). A week's
-      // cooldown there would not quiet a nag — it would swallow the second
-      // crossing. GD, GEV and SYK buy on "back above the 50-day"; a buy
-      // declined on Monday must be able to fire again on Thursday's cross.
-      return action === "ENTER" ? 1 : 7;
+      // Only the REVIEW slows down. A BUY reads the price, so an ENTER on
+      // these fires on the crossing, once, by itself (`shouldFire`); a
+      // week's cooldown there would not quiet a nag, it would swallow the
+      // second crossing (GD, GEV and SYK buy on "back above the 50-day").
+      // A SALE keeps DAV-229: a protective rung is a standing order and
+      // asks every day its condition holds. #719 shipped this as
+      // `ENTER ? 1 : 7`, which quietly put an EXIT on a weekly clock too.
+      // See `effectiveCooldownDays` below — same rule, enforced as a floor
+      // so a written `cooldownDays: 1` can't defeat it.
+      return action === "REVIEW" ? 7 : 1;
     case "GAP_UP":
       // A gap stays "within the last N sessions" for N days; one fire per gap.
       return Math.max(1, p.withinDays ?? 1);
@@ -816,10 +820,13 @@ export const STATE_PREDICATE_MIN_COOLDOWN_DAYS = 7;
  * trading days. Without the floor the only fix is deleting and re-adding
  * the rule by hand.
  *
- * A BUY is exempt and stays on its written value. These predicates read
- * the price, so an ENTER on one fires on the crossing already; a week's
- * cooldown there wouldn't quiet a nag, it would swallow the second
- * crossing. GD, GEV and SYK all buy on "back above the 50-day".
+ * Only a REVIEW is floored. A BUY on one of these reads the price, so it
+ * fires on the crossing already; a week's cooldown there wouldn't quiet a
+ * nag, it would swallow the second crossing, and GD, GEV and SYK all buy
+ * on "back above the 50-day". A SALE — EXIT or TRIM — keeps DAV-229's
+ * standing-order semantics untouched: a protective rung asks every day its
+ * condition holds, and a decline means "did nothing today". Slowing one
+ * down to weekly would turn a declined sell into a silent one.
  */
 export function effectiveCooldownDays(trigger: Trigger): number {
   const isInvalidZero = trigger.cooldownDays === 0 && trigger.action !== "EXIT";
@@ -828,8 +835,7 @@ export function effectiveCooldownDays(trigger: Trigger): number {
       ? trigger.cooldownDays
       : defaultCooldownDaysForPredicate(trigger.predicate, trigger.action);
 
-  const isBuy = trigger.action === "ENTER" || trigger.action === "ADD";
-  if (!isBuy && isStatePredicate(trigger.predicate)) {
+  if (trigger.action === "REVIEW" && isStatePredicate(trigger.predicate)) {
     return Math.max(written, STATE_PREDICATE_MIN_COOLDOWN_DAYS);
   }
   return written;
