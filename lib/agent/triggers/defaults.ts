@@ -672,17 +672,25 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
     case "PRICE_ABOVE":
     case "PRICE_BELOW":
     case "PRICE_MOVE_PCT":
-    case "VS_SMA":
     case "NEAR_SMA":
     case "VOLUME_RATIO":
     case "NEW_HIGH":
-    case "PCT_FROM_52W_HIGH":
     case "RSI":
       // Price and chart conditions: one nudge per day at most.
       return 1;
     case "RS_VS_SPY":
+    case "VS_SMA":
+    case "PCT_FROM_52W_HIGH":
       // A daily-resolution number that stays true for weeks: once a week, not
       // a daily re-ask (it can't "cross" — it doesn't read the price).
+      //
+      // DAV-329 moved VS_SMA and PCT_FROM_52W_HIGH here, where RS_VS_SPY
+      // already was on this exact reasoning. "Below the 200-day" is a STATE,
+      // not a crossing: ABT sat under its 200-day from 09-15 to 09-25 and the
+      // Compounder's review rule fired all nine trading days, every one
+      // "deferred to the next daily review", five of the six runs that
+      // received it writing no change at all. A condition that is true for a
+      // fortnight should ask twice, not fourteen times.
       return 7;
     case "GAP_UP":
       // A gap stays "within the last N sessions" for N days; one fire per gap.

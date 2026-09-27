@@ -45,6 +45,14 @@ export const completeRun = defineTool({
   progressLabel: () => "Wrapping up the run",
 
   execute: async (_args, ctx) => {
+    // DAV-332. The catch below used to mark the run COMPLETE whatever went
+    // wrong — including a throw inside the preflight, which meant every
+    // obligation it was about to check (unaddressed work, the declared-
+    // action check, the ladder warn-gate) was skipped in silence and the
+    // run was recorded as clean. The gate with the largest blast radius in
+    // the system failed OPEN. This flag is how the catch tells "the checks
+    // ran and passed" from "the checks did not run".
+    let preflightFinished = false;
     try {
       // ── Preflight gates (GAPS P0-7 + P0-9c) ──────────────────────────
       // Layer-1 rejection: force the agent to address triggered theses and
@@ -54,6 +62,7 @@ export const completeRun = defineTool({
       // terminal. Skip for podcast segments and unscoped runs.
       if (ctx.runId && ctx.analystId && !ctx.podcastSegmentId) {
         const preflightFailure = await runCompleteRunPreflight(ctx.runId, ctx.analystId, ctx.runMode);
+        preflightFinished = true;
         if (preflightFailure) {
           return {
             summary: `complete_run refused: ${preflightFailure.shortReason}`,
@@ -326,20 +335,43 @@ export const completeRun = defineTool({
         sources: [],
       };
     } catch (err) {
-      console.error(`[tool] complete_run FAILED:`, err instanceof Error ? err.message : err);
-      try {
-        await prisma.researchRun.updateMany({
-          where: { id: ctx.runId, status: "RUNNING" },
-          data: { status: "COMPLETE", completedAt: new Date() },
-        });
-      } catch { /* already tried */ }
+      const msg = err instanceof Error ? err.message : "unknown error";
+      console.error(`[tool] complete_run FAILED:`, msg);
+      // Only a run whose checks actually ran may be marked complete here. A
+      // throw before that leaves it RUNNING, so the obligations are still
+      // owed and the agent can try again in-conversation — the same shape
+      // as a preflight refusal, which is what this effectively is.
+      if (preflightFinished) {
+        try {
+          await prisma.researchRun.updateMany({
+            where: { id: ctx.runId, status: "RUNNING" },
+            data: { status: "COMPLETE", completedAt: new Date() },
+          });
+        } catch { /* already tried */ }
+      } else {
+        // Say it on the run, not just in a log line nobody reads.
+        try {
+          await prisma.runEvent.create({
+            data: {
+              runId: ctx.runId,
+              type: "complete_run_preflight_failed",
+              title: "End-of-run checks did not run",
+              message: `complete_run threw before its preflight finished, so nothing was checked: ${msg}`,
+              payload: { error: msg } as object,
+            },
+          });
+        } catch { /* best effort */ }
+      }
       return {
-        summary: `complete_run failed: ${err instanceof Error ? err.message : "unknown error"}`,
+        summary: preflightFinished
+          ? `complete_run failed: ${msg}`
+          : `complete_run refused: the end-of-run checks could not run (${msg}). The run is still open — try again.`,
         data: {
           ok: false,
           briefing: "skipped" as const,
-          briefingError: err instanceof Error ? err.message : "complete_run failed",
-          error: err instanceof Error ? err.message : "complete_run failed",
+          briefingError: msg,
+          error: msg,
+          preflightRan: preflightFinished,
         },
         sources: [],
       };

@@ -6,7 +6,6 @@
  */
 
 import { z } from "zod";
-import { isNamedSetup } from "@/lib/agent/knowledge/setups";
 import { recordBuyBlockedByFull } from "@/lib/agent/record-buy-blocked";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
@@ -454,7 +453,7 @@ export const placeTrade = defineTool({
       const [sizingThesis, sizingAnalyst, accountRisk] = await Promise.all([
         prisma.thesis.findUnique({
           where: { id: args.thesis_id },
-          select: { conviction: true, horizon: true, setupId: true },
+          select: { conviction: true, horizon: true, setupId: true, catalystDate: true },
         }),
         effectiveAnalystId
           ? prisma.agentConfig.findUnique({ where: { id: effectiveAnalystId }, select: { riskPct: true } })
@@ -465,11 +464,22 @@ export const placeTrade = defineTool({
           creds: ctx.alpacaCreds,
         }).catch(() => null),
       ]);
-      // A dated binary event: the pre-catalyst setup, or (until the writer
-      // stamps setupId) any CATALYST-horizon thesis.
+      // A dated binary event (DAV-328). The HORIZON is the declaration:
+      // CATALYST means "a trade built around a binary event" — the analyst
+      // said so when the thesis was written. The old test also demanded the
+      // setup be PRE_CATALYST or unnamed, so a CATALYST-horizon row that
+      // had since been stamped with any other setup was sized FULL into its
+      // own event. On the book today that is AIR and KMX (decision in one
+      // day), JBL (two) and CYTK — all CATALYST rows wearing a PEAD or
+      // NONE setup, all currently full size.
+      //
+      // Keyed off the horizon rather than `catalystDate` on purpose. The
+      // date column also carries ordinary scheduled earnings: HPE and DOCU
+      // are TARGET-horizon drift names whose next print is 64 and 66 days
+      // out, and halving those is not what D8 is about. Their horizon says
+      // what kind of bet they are, and it isn't a coin flip.
       const binary =
-        sizingThesis?.setupId === "PRE_CATALYST" ||
-        (!isNamedSetup(sizingThesis?.setupId) && sizingThesis?.horizon === "CATALYST");
+        sizingThesis?.setupId === "PRE_CATALYST" || sizingThesis?.horizon === "CATALYST";
       const riskSized =
         accountRisk?.equity != null
           ? sizeByRisk({
