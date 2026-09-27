@@ -287,4 +287,25 @@ describe("DAV-315 — what a decline does NOT unlock", () => {
 
     expect(storedStop(result)).toBe(FLOOR);
   });
+  it("9. with no live price the floor stays where it is — lowering a safety line errs strict", async () => {
+    // QB review: a quote outage is not evidence the price is still past the
+    // line. The work item still fires without a quote (case 1's rule); the
+    // exemption does not.
+    const { result } = await replayTool("update-thesis", "updateThesis", {
+      seed: {
+        thesis: [iotThesis()],
+        position: [iotPosition()],
+        order: [declinedSaleOrder()],
+      },
+      args: {
+        thesis_id: "t_iot",
+        stop_loss: 40.5,
+        rationale: "You declined the $41.40 sale to give it room. Re-drawn to $40.50.",
+      },
+      quotes: {},
+    });
+
+    expect(floorOp(result)?.ok).toBe(false);
+    expect(storedStop(result)).toBe(FLOOR);
+  });
 });

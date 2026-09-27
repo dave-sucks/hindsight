@@ -1117,7 +1117,11 @@ export const updateThesis = defineTool({
         // ApplyTriggerOpsInput. A lookup failure falls back to false, which
         // is the strict behaviour we have today.
         let saleDeclined: { floorPrice: number | null } | null = null;
-        if (levelStatus === "HOLDING" && ctx.analystId) {
+        // No live price, no exemption. The work list errs loud when the
+        // price is unknown (a missing quote is not evidence the decline was
+        // answered); lowering a safety line errs strict — without a quote
+        // nobody can say the price is still past the line (QB review).
+        if (levelStatus === "HOLDING" && ctx.analystId && resolvedPriceAtTime != null) {
           try {
             const pos = await prisma.position.findFirst({
               where: {
