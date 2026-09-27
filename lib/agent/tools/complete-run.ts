@@ -20,6 +20,7 @@ import {
   type DeclineRow,
   type DeclineSummary,
 } from "@/lib/agent/declined-sale";
+import { answersFire, type FireStreakUpdate } from "@/lib/agent/fire-streak";
 import { thesisFloorStop } from "@/lib/agent/triggers/floor-in-force";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
@@ -524,6 +525,22 @@ async function runCompleteRunPreflight(
   // Without PROMOTED in scope, the first live morning run can complete
   // without acting on any promoted rows (production-confirmed failure
   // mode on 2026-05-26 — see GAPS.md P0-1).
+  // DAV-323: the fires this run is answerable for are the ones that were
+  // open when it sat down. Reading "the newest audit row" instead meant
+  // the run's own first write erased the obligation before the preflight
+  // ever looked — write anything on the thesis and the fire stopped
+  // existing, which is why nine days of "below the 200-day" on ABT never
+  // met a gate. It also stops a fire that lands mid-run from being blamed
+  // on a run that had already finished with that name; that one belongs
+  // to tomorrow.
+  const runStartedAt =
+    (
+      await prisma.researchRun.findUnique({
+        where: { id: runId },
+        select: { startedAt: true },
+      })
+    )?.startedAt ?? new Date();
+
   let thesisWhereScope: object;
   if (runMode === "INTRADAY_TACTICAL" || runMode === "THESIS_WRITER") {
     // Single-thesis sub-agents: only the in-scope thesis.
@@ -581,6 +598,7 @@ async function runCompleteRunPreflight(
       paperReviewCount: true,
       promotedAt: true,
       updates: {
+        where: { timestamp: { lt: runStartedAt } },
         orderBy: { timestamp: "desc" },
         take: 1,
         select: { type: true, triggerId: true, timestamp: true },
@@ -609,11 +627,26 @@ async function runCompleteRunPreflight(
       thesisId: { in: theses.map((t: ThesisRow) => t.id) },
       NOT: { type: "TRIGGER_FIRED" },
     },
-    select: { thesisId: true, type: true },
+    select: {
+      thesisId: true,
+      type: true,
+      // DAV-323: which fire an answer is answering, and whether it changed
+      // anything. A fired rung is cleared by a row that names it or by a
+      // row that moved the plan — not by the fourth empty row in a row.
+      triggerId: true,
+      fieldChanges: true,
+      timestamp: true,
+    },
   });
   const addressedThesisIds = new Set<string>(
     runUpdates.map((u: { thesisId: string }) => u.thesisId),
   );
+  const runRowsByThesisId = new Map<string, FireStreakUpdate[]>();
+  for (const u of runUpdates) {
+    const bucket = runRowsByThesisId.get(u.thesisId);
+    if (bucket) bucket.push(u);
+    else runRowsByThesisId.set(u.thesisId, [u]);
+  }
   // REVIEWED is what update_thesis writes for a rationale-only or
   // narrative-only call (see its `isNarrativeOnly` branch). Keying off the
   // TYPE rather than `fieldChanges` is deliberate: the diff builder is
@@ -783,9 +816,22 @@ async function runCompleteRunPreflight(
     // a non-REVIEWED row. IOT's 09-21 run wrote exactly the weak kind.
     const needsSubstantiveAnswer =
       isEnterObligation || needsAction.kind === "SALE_DECLINED";
+    // DAV-323: a non-ENTER fire keeps the weak bar — looking IS the work —
+    // but the row doing the looking has to be about THIS rung. Any row on
+    // the thesis used to clear it, so ABT's "below the 200-day" was
+    // answered four times by an empty row that never mentioned it, and
+    // arrived at its ninth fire reading like its first.
+    const answeredThisFire =
+      needsAction.kind === "TRIGGER_FIRED"
+        ? (runRowsByThesisId.get(t.id) ?? []).some((u) =>
+            answersFire(u, needsAction.triggerId),
+          )
+        : false;
     const resolved = needsSubstantiveAnswer
       ? substantivelyAddressedThesisIds.has(t.id)
-      : addressedThesisIds.has(t.id);
+      : needsAction.kind === "TRIGGER_FIRED"
+        ? answeredThisFire
+        : addressedThesisIds.has(t.id);
     if (resolved) continue;
 
     let detail: string;
@@ -813,7 +859,13 @@ async function runCompleteRunPreflight(
         recentLow: needsAction.recentLow,
       });
     } else if (needsAction.kind === "TRIGGER_FIRED") {
-      detail = `trigger fired: ${needsAction.action} (${needsAction.summary})`;
+      // Name the rung in the refusal, because naming the rung is now how
+      // the run clears it (DAV-323) — a row that changes the plan clears it
+      // too, but if nothing needs changing, this is the way through.
+      detail =
+        `trigger fired: ${needsAction.action} (${needsAction.summary}) — ` +
+        `answer it with update_thesis(trigger_id: "${needsAction.triggerId}") ` +
+        `saying what you checked, or change the plan`;
     } else if (needsAction.kind === "TRIGGER_MATCHING_NOW") {
       detail = `predicate matching now: ${needsAction.action} (${needsAction.predicateSummary}${needsAction.livePrice != null ? ` @ $${needsAction.livePrice.toFixed(2)}` : ""})`;
     } else if (needsAction.kind === "UNPROTECTED_GAIN") {

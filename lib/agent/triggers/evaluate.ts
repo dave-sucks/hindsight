@@ -24,7 +24,7 @@
 import { trailFireLevel } from "./trail";
 import { crossingBaseline } from "./written-price";
 import type { Trigger, TriggerPredicate } from "./types";
-import { defaultCooldownDaysForPredicate } from "./defaults";
+import { effectiveCooldownDays } from "./defaults";
 import type { EarningsReport } from "./earnings";
 import { daysUntilReport } from "./earnings";
 import {
@@ -452,13 +452,10 @@ export function shouldFire(
     if (atBaseline) return { fires: false, reason: "no-crossing" };
   }
 
-  // Read-path defense — see (2) in the docstring above.
-  const isInvalidZero =
-    trigger.cooldownDays === 0 && trigger.action !== "EXIT";
-  const effectiveCooldown =
-    trigger.cooldownDays != null && !isInvalidZero
-      ? trigger.cooldownDays
-      : defaultCooldownDaysForPredicate(trigger.predicate, trigger.action);
+  // Read-path defense — see (2) in the docstring above. The written value,
+  // the per-predicate default behind it, and the weekly floor a state
+  // predicate can't go under, all in one place (./defaults).
+  const effectiveCooldown = effectiveCooldownDays(trigger);
 
   // A heads-up is once per REPORT, and the cooldown is how that is enforced
   // inside one window — so a report this trigger has never fired for is not

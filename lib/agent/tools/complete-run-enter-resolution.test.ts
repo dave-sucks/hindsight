@@ -152,20 +152,42 @@ describe("unaddressed_theses — a fired ENTER needs more than prose", () => {
 });
 
 describe("unaddressed_theses — everything else keeps the weaker bar", () => {
-  it("a REVIEWED row still resolves a non-ENTER obligation", async () => {
-    // Same thesis, but the fired rung is a REVIEW. Looking IS the work
-    // there, so prose remains a valid answer — this is the behavior the
-    // P1-40 fix must not break.
+  /** Same thesis, but the fired rung is a REVIEW. */
+  function firedReviewThesis() {
     const t = firedEnterThesis();
     t.triggers[0].action = "REVIEW";
     t.status = "HOLDING";
-    mockThesisFindMany.mockResolvedValue([t]);
+    return t;
+  }
+
+  it("a REVIEWED row still resolves a non-ENTER obligation — when it names the rung", async () => {
+    // Looking IS the work on a REVIEW, so prose remains a valid answer —
+    // the behavior the P1-40 fix must not break. DAV-323 adds one thing:
+    // the prose has to say which rung it looked at.
+    mockThesisFindMany.mockResolvedValue([firedReviewThesis()]);
     mockThesisUpdateFindMany.mockResolvedValue([
-      { thesisId: "thesis_rare", type: "REVIEWED" },
+      { thesisId: "thesis_rare", type: "REVIEWED", triggerId: "trig_enter" },
     ]);
 
     expect(
       await __test__.runCompleteRunPreflight(RUN_ID, ANALYST_ID, "DAILY"),
     ).toBeNull();
+  });
+
+  it("…and does not when it names nothing and changes nothing (DAV-323)", async () => {
+    // ABT's nine days: the fire asked "you are under the 200-day, now
+    // what", and the answer was a row that mentioned neither.
+    mockThesisFindMany.mockResolvedValue([firedReviewThesis()]);
+    mockThesisUpdateFindMany.mockResolvedValue([
+      { thesisId: "thesis_rare", type: "REVIEWED", triggerId: null },
+    ]);
+
+    const failure = await __test__.runCompleteRunPreflight(
+      RUN_ID,
+      ANALYST_ID,
+      "DAILY",
+    );
+    expect(failure?.kind).toBe("unaddressed_theses");
+    expect(failure?.message).toContain("trig_enter");
   });
 });

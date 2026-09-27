@@ -36,6 +36,7 @@ import { getBars, getDailyRangePcts, getLatestPrices } from "@/lib/alpaca";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { NeedsAction } from "@/lib/agent/needs-action";
+import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
 import {
   buildResolvedEnvelope,
   buildSupersessionMap,
@@ -812,6 +813,34 @@ export const getTheses = defineTool({
         latestUpdates.map((u) => [u.thesisId, u]),
       );
 
+      // DAV-323: a slice of each thesis's log, so a fired trigger can say
+      // how many times it has already asked. One batched scan, capped the
+      // same way the ladder-edit scan above is; when it truncates, the
+      // oldest rows are simply missing and the count reads low, which is
+      // the safe direction — it never invents repetition.
+      const streakRowsByThesisId = new Map<string, FireStreakUpdate[]>();
+      try {
+        const streakScan = await prisma.thesisUpdate.findMany({
+          where: { thesisId: { in: liveTheses.map((t) => t.id) } },
+          orderBy: { timestamp: "desc" },
+          take: Math.min(20 * liveTheses.length, 600),
+          select: {
+            thesisId: true,
+            type: true,
+            triggerId: true,
+            timestamp: true,
+            fieldChanges: true,
+          },
+        });
+        for (const row of streakScan) {
+          const bucket = streakRowsByThesisId.get(row.thesisId);
+          if (bucket) bucket.push(row);
+          else streakRowsByThesisId.set(row.thesisId, [row]);
+        }
+      } catch (err) {
+        console.warn("[get_theses] repeat-fire scan failed; count omitted:", err);
+      }
+
       // Live quotes — one Alpaca call per unique ticker.
       const uniqueTickers = Array.from(
         new Set(liveTheses.map((t) => t.ticker)),
@@ -878,6 +907,7 @@ export const getTheses = defineTool({
               promotedAt: t.promotedAt ?? null,
             },
             latestUpdate: latestByThesisId.get(t.id) ?? null,
+            recentUpdates: streakRowsByThesisId.get(t.id),
             latestQuote,
             now,
             hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),

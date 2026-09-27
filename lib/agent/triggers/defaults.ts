@@ -770,6 +770,71 @@ export function defaultFireModeForAction(
   return action === "EXIT" ? "DIRECT" : "TACTICAL";
 }
 
+/**
+ * Predicates that describe a STATE rather than a moment (DAV-329).
+ *
+ * "Below the 200-day" is not something that happens — it is somewhere the
+ * stock IS, for weeks at a time. A price line is crossed in an instant and
+ * is worth re-asking daily while it is breached; a state that has held for
+ * a fortnight is not news on its fourteenth morning.
+ *
+ * A composite counts only when every child does, so a state ANDed with a
+ * price line keeps the faster clock.
+ */
+export function isStatePredicate(p: TriggerPredicate): boolean {
+  switch (p.kind) {
+    case "VS_SMA":
+    case "PCT_FROM_52W_HIGH":
+    case "RS_VS_SPY":
+      return true;
+    case "AND":
+    case "OR":
+      return p.predicates.length > 0 && p.predicates.every(isStatePredicate);
+    default:
+      return false;
+  }
+}
+
+/** A state rung that isn't a buy asks once a week, not once a day. */
+export const STATE_PREDICATE_MIN_COOLDOWN_DAYS = 7;
+
+/**
+ * The cooldown a rung actually fires on — the one number `shouldFire` uses.
+ *
+ * Three layers:
+ *   1. What is written on the rung.
+ *   2. The per-predicate default, when nothing is written (or when a 0 is
+ *      written on something other than an EXIT, which is the historic bad
+ *      value — a 0 there means "nag every five minutes").
+ *   3. A FLOOR on state predicates that aren't buys.
+ *
+ * Layer 3 is the DAV-329 fix and it has to be a floor, not a default:
+ * #719 set the default for `VS_SMA` to 7 and it changed nothing, because
+ * the Secular Compounder's "below the 200-day → review" rule carries an
+ * explicit `cooldownDays: 1`, and a written 1 beats any default. ABT sat
+ * under its 200-day from 09-15 to 09-25 and that rule fired all nine
+ * trading days. Without the floor the only fix is deleting and re-adding
+ * the rule by hand.
+ *
+ * A BUY is exempt and stays on its written value. These predicates read
+ * the price, so an ENTER on one fires on the crossing already; a week's
+ * cooldown there wouldn't quiet a nag, it would swallow the second
+ * crossing. GD, GEV and SYK all buy on "back above the 50-day".
+ */
+export function effectiveCooldownDays(trigger: Trigger): number {
+  const isInvalidZero = trigger.cooldownDays === 0 && trigger.action !== "EXIT";
+  const written =
+    trigger.cooldownDays != null && !isInvalidZero
+      ? trigger.cooldownDays
+      : defaultCooldownDaysForPredicate(trigger.predicate, trigger.action);
+
+  const isBuy = trigger.action === "ENTER" || trigger.action === "ADD";
+  if (!isBuy && isStatePredicate(trigger.predicate)) {
+    return Math.max(written, STATE_PREDICATE_MIN_COOLDOWN_DAYS);
+  }
+  return written;
+}
+
 export function applyTriggerCooldownDefaults(triggers: Trigger[]): Trigger[] {
   return triggers.map((t) => {
     const needsDefault =
