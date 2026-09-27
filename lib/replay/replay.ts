@@ -84,6 +84,18 @@ export interface Replay {
    * lying in the harness itself.
    */
   refused: boolean;
+  /**
+   * The tool threw. `defineTool` catches every exception and returns an
+   * `ok: false` envelope with no `data`, so a crashed tool is otherwise
+   * shaped exactly like a clean one and `refused` stays false — a test can
+   * assert its way through a tool that never ran a line of its own logic.
+   * Every complete_run replay test did precisely that until 2026-09-26.
+   *
+   * A tool that swallows its own exception (complete_run does, and marks
+   * the run COMPLETE while it is at it) will NOT show up here. That is a
+   * property of the tool, not the harness.
+   */
+  crashed: boolean;
   /** The gate's own code and message when it refused; null when it did not. */
   refusal: { error: string; message: string } | null;
   /** The store after the run — assert the rows the tool actually wrote. */
@@ -220,5 +232,10 @@ export async function replayTool(
     refusal = readRefusal(result, classifier);
   });
 
-  return { result, refused: refusal !== null, refusal, db, calls: db.calls };
+  const crashed =
+    result != null &&
+    result.ok === false &&
+    typeof result.error === "string" &&
+    (result as { data?: unknown }).data === undefined;
+  return { result, refused: refusal !== null, refusal, crashed, db, calls: db.calls };
 }

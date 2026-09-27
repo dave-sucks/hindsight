@@ -83,6 +83,12 @@ const HORIZONS = ["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const;
 // Single source: lib/proposals/held-through-context.ts — the DIRECT
 // (no-agent) proposal path mirrors this batch computation there (DAV-194).
 import { HELD_THROUGH_WINDOW_DAYS } from "@/lib/proposals/held-through-context";
+import {
+  declinedSaleWork,
+  foldDeclines,
+  type DeclineRow,
+  type DeclineSummary,
+} from "@/lib/agent/declined-sale";
 
 const schema = z.object({
   status: z
@@ -507,10 +513,7 @@ export const getTheses = defineTool({
     // floor — level changes are the principal's manual act (protective
     // levels ratchet one way: agents may raise, never lower). The recent
     // low is resolved separately below (needs the ladder-edit scan first).
-    const heldThroughByThesisId = new Map<
-      string,
-      { heldThroughCount: number; rejectMessage: string | null }
-    >();
+    const heldThroughByThesisId = new Map<string, DeclineSummary>();
     const activeTickersForOpenedAt = Array.from(
       new Set(
         theses
@@ -595,10 +598,13 @@ export const getTheses = defineTool({
           const heldThroughCutoff = new Date(
             Date.now() - HELD_THROUGH_WINDOW_DAYS * 86_400_000,
           );
-          const heldThroughByPositionId = new Map<
-            string,
-            { heldThroughCount: number; rejectMessage: string | null }
-          >();
+          // Protective declines only (STOP-tagged, inside the window): a
+          // declined TARGET exit means "let it run" — a different, benign
+          // hold. Bucket the rows and let `foldDeclines` apply the one
+          // definition of a real decline (DAV-315); it also carries
+          // `lastDeclinedAt`, which the work-list item needs and the old
+          // count-and-message fold threw away.
+          const declineRowsByPositionId = new Map<string, DeclineRow[]>();
           for (const o of unapprovedCloses) {
             // Exclude systemic tombstones (dedup, P1-28 cooldown) — only a real
             // decline (rejection or ignored expiry) counts. Sync w/ the L1 gate.
@@ -607,16 +613,17 @@ export const getTheses = defineTool({
               o.positionId,
               (countByPositionId.get(o.positionId) ?? 0) + 1,
             );
-            // Protective declines only (STOP-tagged): a declined TARGET exit
-            // means "let it run" — a different, benign hold. Rows are newest-
-            // first, so the first message seen is the most recent one.
             if (o.closeReason === "STOP" && o.createdAt >= heldThroughCutoff) {
-              const prev = heldThroughByPositionId.get(o.positionId);
-              heldThroughByPositionId.set(o.positionId, {
-                heldThroughCount: (prev?.heldThroughCount ?? 0) + 1,
-                rejectMessage: prev?.rejectMessage ?? o.rejectionMessage ?? null,
-              });
+              declineRowsByPositionId.set(o.positionId, [
+                ...(declineRowsByPositionId.get(o.positionId) ?? []),
+                { createdAt: o.createdAt, rejectionMessage: o.rejectionMessage },
+              ]);
             }
+          }
+          const heldThroughByPositionId = new Map<string, DeclineSummary>();
+          for (const [posId, rows] of declineRowsByPositionId) {
+            const folded = foldDeclines(rows);
+            if (folded) heldThroughByPositionId.set(posId, folded);
           }
           for (const t of theses) {
             if (t.status !== "HOLDING") continue;
@@ -1056,6 +1063,35 @@ export const getTheses = defineTool({
       );
     }
 
+    // ── A declined sale is the run's job (DAV-315) ──────────────────────
+    // Second pass, deliberately: the breach test needs the resolved floor
+    // and the live price, and the resolver runs after needsAction. Applied
+    // last so it wins the precedence race against the floor's own daily
+    // TRIGGER_MATCHING_NOW — which is the race it lost on IOT for nine days.
+    for (const t of theses) {
+      const decline = heldThroughByThesisId.get(t.id);
+      if (!decline) continue;
+      const r = resolvedByThesisId.get(t.id);
+      const work = declinedSaleWork({
+        status: t.status,
+        direction: t.direction,
+        decline,
+        floorPrice: r?.ladderHealth?.floor?.price ?? null,
+        currentPrice: r?.currentPrice ?? null,
+        recentLow: recentLowByThesisId.get(t.id) ?? null,
+        now: resolverNow,
+      });
+      if (!work) continue;
+      needsActionByThesisId.set(
+        t.id,
+        computeNeedsAction({
+          thesis: { id: t.id, status: t.status, triggers: [], createdAt: t.createdAt },
+          now: resolverNow,
+          declinedSale: work,
+        }),
+      );
+    }
+
     // Actionable-detail split: full rows for work-list theses; one-line
     // index entries for the quiet rest. "book" mode keeps everything full.
     // Full-row criteria (review findings #2/#3):
@@ -1239,7 +1275,7 @@ export const getTheses = defineTool({
           if (!stillBreached) return null;
           return {
             floorPrice,
-            heldThroughCount: ht.heldThroughCount,
+            heldThroughCount: ht.declineCount,
             rejectMessage: ht.rejectMessage,
             recentLow: recentLowByThesisId.get(t.id) ?? null,
           };

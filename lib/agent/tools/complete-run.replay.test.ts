@@ -14,6 +14,7 @@
 import {
   replayTool,
   thesisRow,
+  positionRow,
   thesisUpdateRow,
   REPLAY_ANALYST_ID,
   REPLAY_RUN_ID,
@@ -43,11 +44,12 @@ const summaryEvent = () => ({
 
 describe("complete_run's preflight runs for real", () => {
   it("a run with no work output is refused, not quietly completed", async () => {
-    const { result, db } = await replayTool("complete-run", "completeRun", {
+    const { result, db, crashed } = await replayTool("complete-run", "completeRun", {
       seed: { researchRun: [runRow()], thesis: [], runEvent: [] },
       args: {},
     });
 
+    expect(crashed).toBe(false);
     expect(result.summary).toMatch(/refused/i);
     // The point of refusing in preflight: the run is still RUNNING, so the
     // agent can recover in-conversation instead of going terminal.
@@ -55,7 +57,7 @@ describe("complete_run's preflight runs for real", () => {
   });
 
   it("a run that recorded its summary is allowed to finish", async () => {
-    const { result, db } = await replayTool("complete-run", "completeRun", {
+    const { result, db, crashed } = await replayTool("complete-run", "completeRun", {
       seed: {
         researchRun: [runRow()],
         runEvent: [summaryEvent()],
@@ -66,16 +68,21 @@ describe("complete_run's preflight runs for real", () => {
       quotes: { AAA: 101 },
     });
 
+    // Without this the next two assertions both pass on a crash: the tool
+    // catches its own exception AND marks the run COMPLETE on the way out.
+    expect(crashed).toBe(false);
+    expect(result.summary).not.toMatch(/failed/i);
     expect(result.summary).not.toMatch(/refused/i);
     expect(db.store.researchRun[0].status).toBe("COMPLETE");
   });
 
   it("an unscoped run skips the preflight — there is no book to check", async () => {
-    const { result } = await replayTool("complete-run", "completeRun", {
+    const { result, crashed } = await replayTool("complete-run", "completeRun", {
       seed: { researchRun: [runRow({ agentConfigId: null })] },
       args: {},
       ctx: { analystId: undefined },
     });
+    expect(crashed).toBe(false);
     expect(result.summary).not.toMatch(/refused/i);
   });
 
@@ -84,29 +91,43 @@ describe("complete_run's preflight runs for real", () => {
   // of the run is not marked FAILED for the attempt. Production: Secular
   // Theme/SMTC, 2026-05-22, check at 08:15:53, real close at 08:17:30.
   // Since DAV-309 it reads the pick's ACTION, not the prose.
-  it("a run that narrated a close it never made does not finish clean", async () => {
-    const { result, db } = await replayTool("complete-run", "completeRun", {
+  it("a stock marked EXIT with nothing sold does not finish clean", async () => {
+    const { result, db, crashed } = await replayTool("complete-run", "completeRun", {
       seed: {
         researchRun: [runRow()],
         runEvent: [
           {
             ...summaryEvent(),
             payload: {
-              decisionRationale:
-                "I closed $AAA this morning — the floor tripped, so I exited the full position.",
-              rankedPicks: [{ rank: 1, ticker: "AAA", action: "HOLD", direction: "LONG", confidence: 70 }],
+              // snake_case: the tool reads `payload.ranked_picks`. The
+              // camelCase this used to seed was never read, so the check
+              // under test never saw a pick.
+              ranked_picks: [
+                { rank: 1, ticker: "AAA", action: "EXIT", direction: "LONG", confidence: 70 },
+              ],
             },
           },
         ],
-        thesis: [thesisRow({ id: "t1", ticker: "AAA", status: "HOLDING" })],
+        thesis: [
+          thesisRow({
+            id: "t1",
+            ticker: "AAA",
+            status: "HOLDING",
+            updates: [{ type: "UPDATED", triggerId: null, timestamp: new Date() }],
+          }),
+        ],
+        position: [positionRow({ symbol: "AAA" })],
         thesisUpdate: [thesisUpdateRow({ thesisId: "t1", runId: REPLAY_RUN_ID })],
       },
       args: {},
       quotes: { AAA: 91 },
     });
 
-    const said = JSON.stringify(result).toLowerCase();
-    const finishedClean = db.store.researchRun[0].status === "COMPLETE" && !/narrat|refused|fail/.test(said);
-    expect(finishedClean).toBe(false);
+    expect(crashed).toBe(false);
+    // DAV-309: the ACTION is what is checked. EXIT on a stock we hold owes a
+    // close or a sale proposal, and this run made neither.
+    expect(JSON.stringify(result)).toMatch(/AAA/);
+    expect(result.summary).toMatch(/refused/i);
+    expect(db.store.researchRun[0].status).toBe("RUNNING");
   });
 });

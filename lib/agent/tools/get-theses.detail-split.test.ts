@@ -306,10 +306,17 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     expect(row.ticker).toBe("HELD");
     expect(row.snapshot).toBeDefined(); // full weight
 
-    // The standing order still fires — the breach surfaces through the normal
-    // trigger path, every day, exactly as before this PR. Nothing suppressed.
-    expect(row.needsAction?.kind).toBe("TRIGGER_MATCHING_NOW");
-    expect(row.needsAction?.action).toBe("EXIT");
+    // The standing order still fires: the trigger evaluator is untouched and
+    // the sale is still proposed every day the price is past the line.
+    //
+    // What the WORK LIST leads with changed in DAV-315. While the breach
+    // lasts, TRIGGER_MATCHING_NOW on the floor is true every single day, so
+    // it won this race and the run kept being told "the floor is breached"
+    // and never "and you already said no to selling there." IOT ran that way
+    // for nine days. SALE_DECLINED is the more specific statement of the same
+    // situation, and it carries the principal's own note.
+    expect(row.needsAction?.kind).toBe("SALE_DECLINED");
+    expect(row.needsAction?.rejectMessage).toBe("hold, re-propose if it drops more");
 
     // The context rides alongside so the proposal can say "1st day under your
     // $90 floor, recent low $84.20" — informational only.

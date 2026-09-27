@@ -12,6 +12,15 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { updateSegmentBriefing } from "@/lib/podcast/update-segment-briefing";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
+import {
+  declinedSaleLine,
+  declinedSaleWhere,
+  declinedSaleWork,
+  foldDeclines,
+  type DeclineRow,
+  type DeclineSummary,
+} from "@/lib/agent/declined-sale";
+import { thesisFloorStop } from "@/lib/agent/triggers/floor-in-force";
 import { getPendingEntryTickers } from "@/lib/proposals/pending-entry";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -598,6 +607,7 @@ async function runCompleteRunPreflight(
   // Anchor held-row time questions to the paired open position's openedAt for
   // ACTIVE rows, so the gate doesn't flag a 0-day-old position's "max hold"
   // trigger as unaddressed work just because the thesis row is old.
+  const now = new Date();
   const activeOpenedAtTickers = Array.from(
     new Set(
       theses
@@ -606,6 +616,13 @@ async function runCompleteRunPreflight(
     ),
   );
   const positionOpenedAtByTicker = new Map<string, Date>();
+  const avgCostByTicker = new Map<string, number>();
+  // DAV-315: protective sales the principal declined, per ticker. The run
+  // may not finish while one is unanswered, so this preflight has to see
+  // the same declines `get_theses` put on the work list at the start of the
+  // run — same filter, from the same module, or the two drift and the
+  // obligation quietly stops existing.
+  const declineByTicker = new Map<string, DeclineSummary>();
   if (activeOpenedAtTickers.length > 0) {
     try {
       const openPositions = await prisma.position.findMany({
@@ -614,24 +631,49 @@ async function runCompleteRunPreflight(
           symbol: { in: activeOpenedAtTickers },
           status: "OPEN",
         },
-        select: { symbol: true, openedAt: true },
+        select: { id: true, symbol: true, openedAt: true, avgCost: true },
         orderBy: { openedAt: "desc" },
       });
+      const tickerByPositionId = new Map<string, string>();
       for (const p of openPositions) {
         if (!positionOpenedAtByTicker.has(p.symbol)) {
           positionOpenedAtByTicker.set(p.symbol, p.openedAt);
+          tickerByPositionId.set(p.id, p.symbol);
+          const avg = Number(p.avgCost);
+          if (Number.isFinite(avg)) avgCostByTicker.set(p.symbol, avg);
+        }
+      }
+      const positionIds = Array.from(tickerByPositionId.keys());
+      if (positionIds.length > 0) {
+        const declines = await prisma.order.findMany({
+          where: {
+            positionId: { in: positionIds },
+            ...declinedSaleWhere(now),
+          },
+          select: { positionId: true, createdAt: true, rejectionMessage: true },
+        });
+        const byPosition = new Map<string, DeclineRow[]>();
+        for (const d of declines) {
+          byPosition.set(d.positionId, [
+            ...(byPosition.get(d.positionId) ?? []),
+            { createdAt: d.createdAt, rejectionMessage: d.rejectionMessage },
+          ]);
+        }
+        for (const [posId, rows] of byPosition) {
+          const ticker = tickerByPositionId.get(posId);
+          const folded = foldDeclines(rows);
+          if (ticker && folded) declineByTicker.set(ticker, folded);
         }
       }
     } catch (err) {
       console.warn(
-        "[complete_run] open-position openedAt lookup failed; falls back to createdAt:",
+        "[complete_run] open-position openedAt/decline lookup failed; falls back to createdAt:",
         err,
       );
     }
   }
 
   const pendingEntryTickers = await getPendingEntryTickers(analystId);
-  const now = new Date();
   const unaddressed: Array<{
     thesisId: string;
     ticker: string;
@@ -672,6 +714,24 @@ async function runCompleteRunPreflight(
       latestQuote: quotes.get(t.ticker) ?? null,
       now,
       hasPendingEntryProposal: pendingEntryTickers.has(t.ticker),
+      // DAV-315. The floor comes from the thesis's own rungs — the same
+      // number the ratchet protects (`thesisFloorStop`). When it is null the
+      // breach can't be proven and `declinedSaleWork` keeps the obligation
+      // anyway; a preflight that can't see the floor is not evidence the
+      // principal's decline was answered.
+      declinedSale: declinedSaleWork({
+        status: t.status,
+        direction: t.direction,
+        decline: declineByTicker.get(t.ticker) ?? null,
+        floorPrice: thesisFloorStop({
+          triggers: (t.triggers as unknown as Trigger[]) ?? [],
+          direction: t.direction,
+          avgCost: avgCostByTicker.get(t.ticker) ?? null,
+        }),
+        currentPrice: quotes.get(t.ticker)?.price ?? null,
+        recentLow: null,
+        now,
+      }),
     });
     if (needsAction == null) continue;
 
@@ -681,7 +741,13 @@ async function runCompleteRunPreflight(
       (needsAction.kind === "TRIGGER_FIRED" ||
         needsAction.kind === "TRIGGER_MATCHING_NOW") &&
       needsAction.action === "ENTER";
-    const resolved = isEnterObligation
+    // A declined sale takes the strong bar too (DAV-315): the ticket's
+    // words are "a note-only REVIEWED row does not clear it." Answering
+    // means re-drawing the floor or proposing the sale again — both write
+    // a non-REVIEWED row. IOT's 09-21 run wrote exactly the weak kind.
+    const needsSubstantiveAnswer =
+      isEnterObligation || needsAction.kind === "SALE_DECLINED";
+    const resolved = needsSubstantiveAnswer
       ? substantivelyAddressedThesisIds.has(t.id)
       : addressedThesisIds.has(t.id);
     if (resolved) continue;
@@ -702,6 +768,14 @@ async function runCompleteRunPreflight(
       }
       const ctx = ctxBits.length > 0 ? ` (${ctxBits.join(", ")})` : "";
       detail = `PROMOTED — must resolve today${ctx}: call place_trade to re-enter live OR update_thesis(change_status: "WATCHING") to defer`;
+    } else if (needsAction.kind === "SALE_DECLINED") {
+      detail = declinedSaleLine({
+        declineCount: needsAction.declineCount,
+        lastDeclinedAt: needsAction.lastDeclinedAt,
+        rejectMessage: needsAction.rejectMessage,
+        floorPrice: needsAction.floorPrice,
+        recentLow: needsAction.recentLow,
+      });
     } else if (needsAction.kind === "TRIGGER_FIRED") {
       detail = `trigger fired: ${needsAction.action} (${needsAction.summary})`;
     } else if (needsAction.kind === "TRIGGER_MATCHING_NOW") {

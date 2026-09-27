@@ -105,6 +105,23 @@ export interface ApplyTriggerOpsInput {
    * trigger keeps its DEFAULT stamp.
    */
   actor: "AGENT" | "PRINCIPAL" | "SYSTEM";
+  /**
+   * The principal declined or let expire a protective sale on this stock in
+   * the last week, and the price is still past the line (DAV-315).
+   *
+   * This is the ONE case where an agent may move a protective floor DOWN.
+   * The 2026-08-16 ruling — only humans lower a safety line — stands
+   * everywhere else, and it stands here too in substance: the decline IS
+   * the human act. The principal saw the sale, said no, and on IOT even
+   * named the level he wanted ("raise the stop to around $40.50"). Without
+   * this, the only legal answer to that instruction was to do nothing,
+   * which is what happened for nine days.
+   *
+   * Scope is deliberately narrow: LOWERED only. Deleting the floor outright
+   * (REMOVED) or turning off its automatic fire (FIREMODE_DEMOTED) is not
+   * re-planning, and stays refused.
+   */
+  saleDeclined?: boolean;
   /** Live quote — decides which side a re-levelled buy trigger compares on. */
   currentPrice?: number | null;
   /** Stamped on buy triggers this call writes (./written-price). Defaults to `currentPrice`. */
@@ -203,7 +220,11 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   /** The one gate an agent's edit runs on a stock we own. */
   const ratchetReason = (next: Trigger[]): string | null => {
     if (actor !== "AGENT" || !held) return null;
-    const v = protectiveRatchetViolations({ direction, before: stored, after: next, inherited });
+    let v = protectiveRatchetViolations({ direction, before: stored, after: next, inherited });
+    // DAV-315: a declined sale unlocks LOWERING, and only lowering. See the
+    // `saleDeclined` doc on ApplyTriggerOpsInput for why the decline counts
+    // as the human act the one-way rule reserves this to.
+    if (input.saleDeclined) v = v.filter((x) => x.reason !== "LOWERED");
     return v.length ? v.map(describeRatchetViolation).join(" ") : null;
   };
 
