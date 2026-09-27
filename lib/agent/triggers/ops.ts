@@ -52,6 +52,7 @@ import {
   describeRatchetViolation,
   protectiveRatchetViolations,
 } from "./ratchet";
+import { declineReplanAllows } from "@/lib/agent/declined-sale";
 import { MIN_RISK_REWARD, validateThesisShape } from "@/lib/agent/thesis-shape";
 
 export type TriggerOp =
@@ -121,7 +122,7 @@ export interface ApplyTriggerOpsInput {
    * (REMOVED) or turning off its automatic fire (FIREMODE_DEMOTED) is not
    * re-planning, and stays refused.
    */
-  saleDeclined?: boolean;
+  saleDeclined?: { floorPrice: number | null } | null;
   /** Live quote — decides which side a re-levelled buy trigger compares on. */
   currentPrice?: number | null;
   /** Stamped on buy triggers this call writes (./written-price). Defaults to `currentPrice`. */
@@ -221,10 +222,22 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   const ratchetReason = (next: Trigger[]): string | null => {
     if (actor !== "AGENT" || !held) return null;
     let v = protectiveRatchetViolations({ direction, before: stored, after: next, inherited });
-    // DAV-315: a declined sale unlocks LOWERING, and only lowering. See the
-    // `saleDeclined` doc on ApplyTriggerOpsInput for why the decline counts
-    // as the human act the one-way rule reserves this to.
-    if (input.saleDeclined) v = v.filter((x) => x.reason !== "LOWERED");
+    // DAV-315: a declined sale unlocks re-drawing THAT floor, bounded.
+    // `declineReplanAllows` is the whole policy — floor only, absolute level
+    // only, no more than 15% below the line he declined. Everything it does
+    // not explicitly allow stays refused.
+    if (input.saleDeclined) {
+      const declinedFloor = input.saleDeclined.floorPrice;
+      v = v.filter(
+        (x) =>
+          !declineReplanAllows({
+            reason: x.reason,
+            afterPredicate: x.after?.predicate,
+            declinedFloor,
+            direction,
+          }),
+      );
+    }
     return v.length ? v.map(describeRatchetViolation).join(" ") : null;
   };
 

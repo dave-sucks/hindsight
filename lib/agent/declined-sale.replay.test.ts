@@ -220,3 +220,71 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
     expect(JSON.stringify(result)).toContain("IOT");
   });
 });
+
+/**
+ * The three edits the QB landed on the first cut of this PR (2026-09-27).
+ * All three went through because the exemption filtered out every LOWERED
+ * violation while a decline was live. A decline is "not at this price" —
+ * not a week of open season on the stock.
+ */
+describe("DAV-315 — what a decline does NOT unlock", () => {
+  const TRAIL = {
+    id: "trg_trail",
+    predicate: { kind: "TRAILING_FROM_HIGH", pct: 8 },
+    action: "EXIT",
+    rationale: "Seat trail.",
+    cooldownDays: 0,
+    source: "PRINCIPAL",
+  };
+
+  it("6. the floor cannot be dropped to a level that is not a floor ($41.40 → $5)", async () => {
+    const { result } = await replayTool("update-thesis", "updateThesis", {
+      seed: {
+        thesis: [iotThesis()],
+        position: [iotPosition()],
+        order: [declinedSaleOrder()],
+      },
+      args: { thesis_id: "t_iot", stop_loss: 5, rationale: "Giving it lots of room." },
+      quotes: { IOT: PRICE_NEXT_DAY },
+    });
+
+    // 15% below $41.40 is $35.19. $5 is not re-drawing a floor, it is
+    // removing one, and removing one is the principal's act.
+    expect(storedStop(result)).toBe(FLOOR);
+  });
+
+  it("7. the trail is not the line that was declined (8% → 30%)", async () => {
+    const { result } = await replayTool("update-thesis", "updateThesis", {
+      seed: {
+        thesis: [iotThesis({ triggers: [...(iotThesis().triggers as unknown[]), TRAIL] })],
+        position: [iotPosition()],
+        order: [declinedSaleOrder()],
+      },
+      args: {
+        thesis_id: "t_iot",
+        edit_triggers: [{ id: "trg_trail", pct: 30, rationale: "Widen it." }],
+      },
+      quotes: { IOT: PRICE_NEXT_DAY },
+    });
+
+    const op = (
+      result as { data?: { trigger_ops?: Array<{ id: string; ok: boolean }> } }
+    ).data?.trigger_ops?.find((o) => o.id === "trg_trail");
+    expect(op?.ok ?? false).toBe(false);
+  });
+
+  it("8. once the price recovers above the line, the decline is spent", async () => {
+    const { result } = await replayTool("update-thesis", "updateThesis", {
+      seed: {
+        thesis: [iotThesis()],
+        position: [iotPosition()],
+        order: [declinedSaleOrder()],
+      },
+      // $38 is inside the 15% bound, so only the recovery stops this one.
+      args: { thesis_id: "t_iot", stop_loss: 38, rationale: "Room." },
+      quotes: { IOT: 46 },
+    });
+
+    expect(storedStop(result)).toBe(FLOOR);
+  });
+});

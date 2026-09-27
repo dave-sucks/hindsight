@@ -51,7 +51,12 @@ import {
   type TriggerOp,
   type TriggerOpResult,
 } from "@/lib/agent/triggers/ops";
-import { declinedSaleWhere, foldDeclines } from "@/lib/agent/declined-sale";
+import {
+  declinedSaleWhere,
+  declinedSaleWork,
+  foldDeclines,
+} from "@/lib/agent/declined-sale";
+import { thesisFloorStop } from "@/lib/agent/triggers/floor-in-force";
 import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
 import {
   writeThesisUpdate,
@@ -1111,7 +1116,7 @@ export const updateThesis = defineTool({
         // to. Nothing else about the ratchet changes; see `saleDeclined` on
         // ApplyTriggerOpsInput. A lookup failure falls back to false, which
         // is the strict behaviour we have today.
-        let saleDeclined = false;
+        let saleDeclined: { floorPrice: number | null } | null = null;
         if (levelStatus === "HOLDING" && ctx.analystId) {
           try {
             const pos = await prisma.position.findFirst({
@@ -1120,7 +1125,7 @@ export const updateThesis = defineTool({
                 symbol: existing.ticker,
                 status: "OPEN",
               },
-              select: { id: true },
+              select: { id: true, avgCost: true },
               orderBy: { openedAt: "desc" },
             });
             if (pos) {
@@ -1128,7 +1133,24 @@ export const updateThesis = defineTool({
                 where: { positionId: pos.id, ...declinedSaleWhere(new Date()) },
                 select: { createdAt: true, rejectionMessage: true },
               });
-              saleDeclined = foldDeclines(rows) != null;
+              // The SAME question the work list asks, including "is the
+              // price still past the line". Without the breach test the
+              // exemption outlived the decline by a week and a floor could
+              // be lowered after the price had already recovered.
+              const work = declinedSaleWork({
+                status: "HOLDING",
+                direction: levelDirection,
+                decline: foldDeclines(rows),
+                floorPrice: thesisFloorStop({
+                  triggers: existingTriggers,
+                  direction: levelDirection,
+                  avgCost: Number(pos.avgCost) || null,
+                }),
+                currentPrice: resolvedPriceAtTime ?? null,
+                recentLow: null,
+                now: new Date(),
+              });
+              if (work) saleDeclined = { floorPrice: work.floorPrice };
             }
           } catch (err) {
             console.warn(

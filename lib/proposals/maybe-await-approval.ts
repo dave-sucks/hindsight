@@ -53,16 +53,13 @@ export interface AwaitingApprovalResult {
  * close fold and exit cooldown), NOT by a user. Excluded from "did the user
  * decline this exit" reads so a systemic tombstone never counts as a decline.
  */
-const SYSTEMIC_REJECTION_PREFIXES = ["Duplicate close", "Suppressed —"] as const;
-
-/**
- * True when this REJECTED order is a systemic tombstone, not a user
- * rejection. Read by get_theses (unapprovedExitCount) and held-through-context.
- */
-export function isSystemicRejection(rejectionMessage: string | null): boolean {
-  if (!rejectionMessage) return false;
-  return SYSTEMIC_REJECTION_PREFIXES.some((p) => rejectionMessage.startsWith(p));
-}
+// Lives in `lib/agent/declined-sale.ts` with the rest of the
+// what-counts-as-a-decline rule, and is re-exported here so the historic
+// import path keeps working. It moved because this module imports prisma,
+// the mailer and the push client: anything pure that reached for the
+// tombstone test dragged all three along, which broke five jest suites the
+// first time `triggers/ops.ts` needed it.
+export { isSystemicRejection } from "@/lib/agent/declined-sale";
 
 /**
  * Thrown when the approval gate cannot resolve the Account row for a LIVE

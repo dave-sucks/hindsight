@@ -48,11 +48,28 @@
  * exit means "let it run" — a different and benign hold), inside the window,
  * excluding systemic tombstones.
  *
- * Pure except for `isSystemicRejection`, which is itself pure. No database,
- * no clock of its own — callers pass `now`.
+ * Fully pure: a type import and nothing else. That matters —
+ * `triggers/ops.ts` reads the ratchet policy at the bottom of this file,
+ * and ops.ts is imported by trigger tests and client code. An earlier cut
+ * pulled `isSystemicRejection` from `proposals/maybe-await-approval`, which
+ * imports prisma, the mailer and the push client, and five jest suites
+ * stopped loading. No database, no clock of its own — callers pass `now`.
  */
 
-import { isSystemicRejection } from "@/lib/proposals/maybe-await-approval";
+import type { TriggerPredicate } from "@/lib/agent/triggers/types";
+
+/**
+ * Rejection messages the SYSTEM wrote (the retired duplicate-close fold, the
+ * exit cooldown), not the principal. A tombstone is not a decline, so it
+ * never counts as one.
+ */
+const SYSTEMIC_REJECTION_PREFIXES = ["Duplicate close", "Suppressed —"] as const;
+
+/** True when this REJECTED order is a systemic tombstone, not a real decline. */
+export function isSystemicRejection(rejectionMessage: string | null): boolean {
+  if (!rejectionMessage) return false;
+  return SYSTEMIC_REJECTION_PREFIXES.some((p) => rejectionMessage.startsWith(p));
+}
 
 /**
  * How far back a declined protective sale stays the run's job.
@@ -186,4 +203,62 @@ export function declinedSaleLine(w: DeclinedSaleWork): string {
     "Answer it: re-draw the floor to a level you can name and set when to look again, or propose the sale again with today's reasons. A review that changes nothing does not answer it.",
   );
   return parts.join(" ");
+}
+
+
+// ── What a decline actually unlocks (QB ruling, 2026-09-27) ──────────────
+//
+// The first cut of this filtered out every LOWERED violation while a
+// decline was live, which is far too much rope. Three hostile edits landed
+// on the review branch: IOT's floor dropped from $41.40 to $5, an 8% trail
+// widened to 30%, and a floor was lowered after the price had already
+// recovered above it.
+//
+// The decline is the principal saying "not at this price, give it room" —
+// it is not a week-long licence to loosen anything on the stock. So:
+//
+//   • the FLOOR only. A trail's give-back percentage is not the line he
+//     declined, and widening it is a different decision.
+//   • while the price is still past that line. Once it recovers, the floor
+//     held and the decline is spent — `declinedSaleWork` already stops
+//     reporting it, and the write path now asks the same question.
+//   • no more than 15% below the declined line. Past that it isn't
+//     re-drawing a floor, it's removing one, and removing one is his.
+
+/** How far below the declined line a re-drawn floor may sit. */
+export const REPLAN_FLOOR_MAX_DROP_PCT = 15;
+
+/** The lowest level a re-drawn floor may take, given the line that was declined. */
+export function replanFloorBound(declinedFloor: number, direction: string | null): number {
+  const isLong = direction !== "SHORT";
+  const f = REPLAN_FLOOR_MAX_DROP_PCT / 100;
+  return isLong ? declinedFloor * (1 - f) : declinedFloor * (1 + f);
+}
+
+/**
+ * May the ratchet let this one violation through, because a sale on this
+ * stock was declined? Everything not explicitly allowed stays refused.
+ */
+export function declineReplanAllows(input: {
+  /** RatchetViolation.reason */
+  reason: string;
+  /** The predicate the edit would leave in place. */
+  afterPredicate: TriggerPredicate | null | undefined;
+  /** The line whose sale was declined; null = we cannot bound it, so no. */
+  declinedFloor: number | null;
+  direction: string | null;
+}): boolean {
+  // REMOVED and FIREMODE_DEMOTED are not re-planning.
+  if (input.reason !== "LOWERED") return false;
+  if (input.declinedFloor == null || !(input.declinedFloor > 0)) return false;
+  const p = input.afterPredicate;
+  if (!p) return false;
+  const isLong = input.direction !== "SHORT";
+  // An absolute floor, on the side this direction is protected from.
+  const wanted = isLong ? "PRICE_BELOW" : "PRICE_ABOVE";
+  if (p.kind !== wanted) return false;
+  const level = (p as { level?: unknown }).level;
+  if (typeof level !== "number" || !(level > 0)) return false;
+  const bound = replanFloorBound(input.declinedFloor, input.direction);
+  return isLong ? level >= bound : level <= bound;
 }
