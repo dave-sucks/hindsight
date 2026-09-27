@@ -34,12 +34,13 @@
 import { MIN_RISK_REWARD, riskReward } from "@/lib/agent/thesis-shape";
 import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
-import { CATALYST_WINDOW_DAYS } from "@/lib/agent/knowledge/setups";
+import { CATALYST_WINDOW_DAYS, PRE_CATALYST_ENTRY_CUTOFF_DAYS, isNamedSetup } from "@/lib/agent/knowledge/setups";
 
 export type PlanSanityFlag = {
   kind:
     | "NOTHING_CAN_WAKE"
     | "NO_BUY_LEVEL"
+    | "BUY_INSIDE_CUTOFF"
     | "ENTRY_FAR_FROM_PRICE"
     | "ENTRY_STALE"
     | "ENTRY_RAISED_AWAY"
@@ -81,23 +82,43 @@ const fmt = (n: number) =>
   `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /**
- * A pre-catalyst row legitimately carries no buy level while its event is
- * beyond the window — pricing a level five months out is a guess. It is a
- * park rather than a skip only if something will wake it when the window
- * opens, which means an event-date review at least as far out as the
- * window's far edge. A 14-days-before review does not count: by then the
- * window has all but closed (the QB's ruling sets the entry's own cut-off
- * at 21 days), so it wakes the run too late to act.
+ * A dated binary: the pre-catalyst setup, or a CATALYST-horizon row written
+ * before setups were named (BMRN). The same test place_trade sizes by.
  */
-function parkedUntilWindowOpens(
-  args: { setupId?: string | null; catalystDate?: Date | null; eventWakeDaysBefore?: number | null },
+function isDatedBinary(args: { setupId?: string | null; horizon?: string | null }): boolean {
+  return args.setupId === "PRE_CATALYST" || (!isNamedSetup(args.setupId) && args.horizon === "CATALYST");
+}
+
+const daysUntil = (d: Date, asOf: Date) => (d.getTime() - asOf.getTime()) / 86_400_000;
+
+/**
+ * The two honest ways to watch a stock with no buy level (QB ruling
+ * 2026-09-27, checked against all 31 watched rows on the book).
+ *
+ *   1. A dated binary whose event is further out than the buying window.
+ *      Pricing a level five months ahead is a guess. EXEL (156 days), BMRN,
+ *      IBRX, PRAX, CORT.
+ *   2. An earnings-drift name whose print is still ahead. The entry is
+ *      above the gap-day low on days 1–3 AFTER the report; before the gap
+ *      exists there is no level to write. AIR, JBL, KMX the day before.
+ *
+ * Neither needs a trigger to bring it back. This flag is computed when the
+ * row is READ, on every run, so the first run after the window opens — or
+ * after the print — sees NO_BUY_LEVEL on the row by itself. The first
+ * version asked for a "70 days before the event" review on the thesis as
+ * proof of a park; on the real book that parked nothing (no row carries
+ * one) and would have had every run stamping a copy of a seat-level idea
+ * onto five theses.
+ */
+function parkedUntil(
+  args: { setupId?: string | null; horizon?: string | null; catalystDate?: Date | null },
   asOf: Date,
-): boolean {
-  if (args.setupId !== "PRE_CATALYST") return false;
-  if (!args.catalystDate) return false;
-  const daysOut = (args.catalystDate.getTime() - asOf.getTime()) / 86_400_000;
-  if (daysOut <= CATALYST_WINDOW_DAYS[1]) return false; // inside the window: price it
-  return (args.eventWakeDaysBefore ?? 0) >= CATALYST_WINDOW_DAYS[1];
+): "WINDOW_NOT_OPEN" | "PRINT_AHEAD" | null {
+  if (!args.catalystDate) return null;
+  const daysOut = daysUntil(args.catalystDate, asOf);
+  if (isDatedBinary(args) && daysOut > CATALYST_WINDOW_DAYS[1]) return "WINDOW_NOT_OPEN";
+  if (args.setupId === "PEAD" && daysOut >= 0) return "PRINT_AHEAD";
+  return null;
 }
 
 export function computePlanSanity(args: {
@@ -146,12 +167,8 @@ export function computePlanSanity(args: {
   setupId?: string | null;
   /** The dated event, for the same rule. */
   catalystDate?: Date | null;
-  /**
-   * The largest "N days before the event" review the stock carries. A
-   * pre-catalyst row parked until its window opens has to be woken when it
-   * does; this is how we can tell a deliberate park from a silent skip.
-   */
-  eventWakeDaysBefore?: number | null;
+  /** The thesis horizon — a CATALYST row with no named setup is a dated binary too. */
+  horizon?: string | null;
   now?: Date;
 }): PlanSanityFlag[] {
   const {
@@ -196,15 +213,36 @@ export function computePlanSanity(args: {
   // one of the 21 passed it, because they all kept a review clock. This
   // asks the other question: "can this ever be bought?"
   //
-  // The one legal way to have no buy level: a pre-catalyst row whose event
-  // is further out than the window, parked WITH the wake that brings it
-  // back when the window opens. EXEL in September, priced in December. A
-  // park with no wake is the silent skip this flag exists to catch.
+  // Two honest ways to have no buy level, both dated — see `parkedUntil`.
+  // Everything else owes an answer: price it, or let it go.
   if (args.hasEnterTrigger === false) {
-    if (!parkedUntilWindowOpens(args, asOf)) {
+    if (parkedUntil(args, asOf) == null) {
+      const daysOut = args.catalystDate ? Math.round(daysUntil(args.catalystDate, asOf)) : null;
+      const windowOpen =
+        isDatedBinary(args) && daysOut != null && daysOut >= 0 && daysOut <= CATALYST_WINDOW_DAYS[1];
       flags.push({
         kind: "NO_BUY_LEVEL",
-        text: `${direction} on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. Answer it one of three ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better; park it with the date it will be priced and the wake that brings it back then; or let it go. A rationale with no plan leaves it here tomorrow.`,
+        text:
+          `${direction} on the watchlist with no buy trigger: nothing can turn this into a position, however often it is reviewed. ` +
+          (windowOpen
+            ? `The buying window is open — ${daysOut} days to the event. Price the buy now: the pivot or the pullback if the chart offers one, otherwise a close above the highest high of the last 20 sessions, with its stop under the last swing low and a target at 2:1 or better. If no level clears 2:1, let it go. `
+            : "Answer it one of two ways — price the buy at a level you can name (the pivot, the reclaim, the pullback) with its stop and a target at 2:1 or better, or let it go. ") +
+          "A rationale with no plan leaves it here tomorrow.",
+      });
+    }
+  }
+
+  // ── BUY_INSIDE_CUTOFF (DAV-321, ruling 4) ───────────────────────────
+  // MIRM, 2026-09-17: a buy at $97.50 fired nine days before its FDA
+  // decision and was proposed. The run-up trade sells one to two weeks
+  // before the date; a buy still live inside the last three weeks is
+  // holding the coin flip by accident.
+  if (args.hasEnterTrigger === true && isDatedBinary(args) && args.catalystDate) {
+    const daysOut = Math.round(daysUntil(args.catalystDate, asOf));
+    if (daysOut >= 0 && daysOut <= PRE_CATALYST_ENTRY_CUTOFF_DAYS) {
+      flags.push({
+        kind: "BUY_INSIDE_CUTOFF",
+        text: `The event is ${daysOut} day${daysOut === 1 ? "" : "s"} away and the buy is still live. Inside the last ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days a pre-catalyst entry is not a run-up trade, it is holding the decision. Set the plan down — remove the buy, the floor and the target by id — and say whether the name is worth a look after the event.`,
       });
     }
   }

@@ -1051,6 +1051,7 @@ export const getTheses = defineTool({
             triggers: t.triggers,
             catalystDate: t.catalystDate,
             setupId: t.setupId ?? null,
+            horizon: t.horizon ?? null,
             createdAt: t.createdAt,
             scoring: t.scoring,
             minConfidence: ctx.minConfidence ?? null,

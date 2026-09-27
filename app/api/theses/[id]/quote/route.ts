@@ -223,6 +223,7 @@ export async function GET(
       triggers: thesis.triggers,
       catalystDate: thesis.catalystDate,
       setupId: thesis.setupId ?? null,
+      horizon: thesis.horizon ?? null,
       createdAt: thesis.createdAt,
       scoring: thesis.scoring,
       minConfidence: thesis.researchRun?.agentConfig?.minConfidence ?? null,

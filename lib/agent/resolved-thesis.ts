@@ -145,6 +145,8 @@ export interface ResolverThesisInput {
   catalystDate: Date | null;
   /** The setup the plan is written on — the pre-catalyst parking rule reads it. */
   setupId?: string | null;
+  /** The horizon — a CATALYST row with no named setup is a dated binary too. */
+  horizon?: string | null;
   createdAt: Date;
   scoring: unknown; // for entryQualityScore surfacing + the composite
   /** The owning analyst's minimum confidence (0–100), for the plan flag. */
@@ -338,13 +340,7 @@ export function buildResolvedEnvelope(args: {
     hasEnterTrigger: thesis.parsedTriggers.some((t) => t.action === "ENTER"),
     setupId: thesis.setupId ?? null,
     catalystDate: thesis.catalystDate ?? null,
-    // The furthest-out "N days before the event" review it carries — how a
-    // deliberate park until the window opens is told from a silent skip.
-    eventWakeDaysBefore: thesis.parsedTriggers.reduce<number | null>((max, t) => {
-      const p = t.predicate;
-      if (p.kind !== "REVIEW_CADENCE" || p.from !== "EVENT" || (p.side ?? "AFTER") !== "BEFORE") return max;
-      return Math.max(max ?? 0, p.days);
-    }, null),
+    horizon: thesis.horizon ?? null,
     now,
   });
 
