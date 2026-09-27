@@ -143,6 +143,10 @@ export interface ResolverThesisInput {
   spentBuyCrossing?: SpentBuyCrossing | null;
   triggers: unknown; // Json column; parsed via triggersArraySchema by caller
   catalystDate: Date | null;
+  /** The setup the plan is written on — the pre-catalyst parking rule reads it. */
+  setupId?: string | null;
+  /** The horizon — a CATALYST row with no named setup is a dated binary too. */
+  horizon?: string | null;
   createdAt: Date;
   scoring: unknown; // for entryQualityScore surfacing + the composite
   /** The owning analyst's minimum confidence (0–100), for the plan flag. */
@@ -330,6 +334,13 @@ export function buildResolvedEnvelope(args: {
     // The stock's own triggers — an inherited analyst or account rule is
     // not a plan for this stock.
     ownTriggerCount: thesis.parsedTriggers.filter((t) => ((t as { level?: string }).level ?? "THESIS") === "THESIS").length,
+    // Can this stock ever be bought? The resolved ladder, not the column:
+    // `entryPrice` is a read model and an inherited rule is not a plan, but
+    // an ENTER trigger anywhere in the cascade genuinely can buy it.
+    hasEnterTrigger: thesis.parsedTriggers.some((t) => t.action === "ENTER"),
+    setupId: thesis.setupId ?? null,
+    catalystDate: thesis.catalystDate ?? null,
+    horizon: thesis.horizon ?? null,
     now,
   });
 

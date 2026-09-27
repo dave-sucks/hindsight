@@ -76,6 +76,7 @@ export async function GET(
       triggerState: true,
       horizon: true,
       catalystDate: true,
+      setupId: true,
       createdAt: true,
       scoring: true,
       // needsAction inputs (DAV-304) — the same work-list flag the daily run
@@ -221,6 +222,8 @@ export async function GET(
       stopLoss: thesis.stopLoss ?? null,
       triggers: thesis.triggers,
       catalystDate: thesis.catalystDate,
+      setupId: thesis.setupId ?? null,
+      horizon: thesis.horizon ?? null,
       createdAt: thesis.createdAt,
       scoring: thesis.scoring,
       minConfidence: thesis.researchRun?.agentConfig?.minConfidence ?? null,
