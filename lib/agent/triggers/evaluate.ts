@@ -458,7 +458,7 @@ export function shouldFire(
   const effectiveCooldown =
     trigger.cooldownDays != null && !isInvalidZero
       ? trigger.cooldownDays
-      : defaultCooldownDaysForPredicate(trigger.predicate);
+      : defaultCooldownDaysForPredicate(trigger.predicate, trigger.action);
 
   // A heads-up is once per REPORT, and the cooldown is how that is enforced
   // inside one window — so a report this trigger has never fired for is not

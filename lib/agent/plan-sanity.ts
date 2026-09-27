@@ -34,7 +34,7 @@
 import { MIN_RISK_REWARD, riskReward } from "@/lib/agent/thesis-shape";
 import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
-import { CATALYST_WINDOW_DAYS, PRE_CATALYST_ENTRY_CUTOFF_DAYS, isNamedSetup } from "@/lib/agent/knowledge/setups";
+import { CATALYST_WINDOW_DAYS, PRE_CATALYST_ENTRY_CUTOFF_DAYS, isPreCatalystPlay } from "@/lib/agent/knowledge/setups";
 
 export type PlanSanityFlag = {
   kind:
@@ -81,13 +81,9 @@ export const ENTRY_STALE_DAYS = 28;
 const fmt = (n: number) =>
   `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-/**
- * A dated binary: the pre-catalyst setup, or a CATALYST-horizon row written
- * before setups were named (BMRN). The same test place_trade sizes by.
- */
-function isDatedBinary(args: { setupId?: string | null; horizon?: string | null }): boolean {
-  return args.setupId === "PRE_CATALYST" || (!isNamedSetup(args.setupId) && args.horizon === "CATALYST");
-}
+// Which rows live by the buying window is `isPreCatalystPlay` in setups.ts —
+// the same function the sizing rule starts from, so the two cannot drift.
+const isDatedBinary = isPreCatalystPlay;
 
 const daysUntil = (d: Date, asOf: Date) => (d.getTime() - asOf.getTime()) / 86_400_000;
 

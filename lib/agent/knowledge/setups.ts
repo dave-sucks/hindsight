@@ -260,6 +260,47 @@ export function isNamedSetup(id: string | null | undefined): id is SetupId {
   return !!id && (SETUP_IDS as readonly string[]).includes(id);
 }
 
+type BinaryRow = {
+  setupId?: string | null;
+  horizon?: string | null;
+  catalystDate?: Date | string | null;
+};
+
+/**
+ * A pre-catalyst play: the PRE_CATALYST setup, or a CATALYST-horizon row no
+ * setup was named on (BMRN, CYTK). These live by the buying window — parked
+ * until it opens, no buy armed inside the cutoff.
+ */
+export function isPreCatalystPlay(row: BinaryRow): boolean {
+  return row.setupId === "PRE_CATALYST" || (!isNamedSetup(row.setupId) && row.horizon === "CATALYST");
+}
+
+/**
+ * Is a buy on this stock, today, a bet into a dated binary event — half the
+ * risk (playbook E4)? ONE answer for every path that sizes a buy: the entry
+ * (place_trade) and the add (manage_position).
+ *
+ *   - A pre-catalyst play: always.
+ *   - Any other CATALYST-horizon stock: until its event date is behind it.
+ *     AIR, KMX and JBL are CATALYST rows wearing the PEAD setup. Bought the
+ *     day before the print they are a bet on the print — half. Bought on
+ *     days 1–3 after it they are the drift entry, which the setup sizes in
+ *     full; the coin has landed.
+ *   - Everything else: no. HPE and DOCU carry their next print in
+ *     `catalystDate` too (64 and 66 days out) and are TARGET-horizon drift
+ *     names — the date alone never halves a buy.
+ *
+ * "Behind" is the whole event day: a print is before the open or after the
+ * close, and the row stores the day, not the hour.
+ */
+export function isBinaryBet(row: BinaryRow, asOf: Date = new Date()): boolean {
+  if (isPreCatalystPlay(row)) return true;
+  if (row.horizon !== "CATALYST") return false;
+  if (!row.catalystDate) return true;
+  const eventDayEnds = new Date(row.catalystDate).getTime() + 86_400_000;
+  return asOf.getTime() < eventDayEnds;
+}
+
 const trendTemplate =
   "Trend Template passes (chart.trendTemplate — price above a rising 150/200-day, 50-day above both, within 25% of the 52-week high, 30%+ off the low, beating SPY)";
 

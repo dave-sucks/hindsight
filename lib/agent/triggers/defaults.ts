@@ -652,7 +652,10 @@ function defaultTriggersForHorizonInner(
  * rate-limit at 1 day so they don't fan out on every quote tick or
  * intel batch; a review cadence rate-limits at its own interval.
  */
-export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
+export function defaultCooldownDaysForPredicate(
+  p: TriggerPredicate,
+  action?: Trigger["action"],
+): number {
   switch (p.kind) {
     case "SEC_EVENT":
       // No cooldown: one fire per FILING (firedFilings), and filings cluster —
@@ -679,19 +682,24 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
       // Price and chart conditions: one nudge per day at most.
       return 1;
     case "RS_VS_SPY":
-    case "VS_SMA":
-    case "PCT_FROM_52W_HIGH":
       // A daily-resolution number that stays true for weeks: once a week, not
       // a daily re-ask (it can't "cross" — it doesn't read the price).
-      //
-      // DAV-329 moved VS_SMA and PCT_FROM_52W_HIGH here, where RS_VS_SPY
-      // already was on this exact reasoning. "Below the 200-day" is a STATE,
-      // not a crossing: ABT sat under its 200-day from 09-15 to 09-25 and the
-      // Compounder's review rule fired all nine trading days, every one
-      // "deferred to the next daily review", five of the six runs that
-      // received it writing no change at all. A condition that is true for a
-      // fortnight should ask twice, not fourteen times.
       return 7;
+    case "VS_SMA":
+    case "PCT_FROM_52W_HIGH":
+      // DAV-329. On a review, a trim or a sale, "below the 200-day" is a
+      // STATE the rung asks about every day it holds: ABT sat under its
+      // 200-day from 09-15 to 09-25 and the Compounder's review rule fired
+      // all nine trading days, five of the six runs that received it writing
+      // no change at all. A condition that is true for a fortnight should
+      // ask twice, not fourteen times.
+      //
+      // A BUY is the other case. These two read the price, so an ENTER on
+      // them fires on the crossing, once, by itself (`shouldFire`). A week's
+      // cooldown there would not quiet a nag — it would swallow the second
+      // crossing. GD, GEV and SYK buy on "back above the 50-day"; a buy
+      // declined on Monday must be able to fire again on Thursday's cross.
+      return action === "ENTER" ? 1 : 7;
     case "GAP_UP":
       // A gap stays "within the last N sessions" for N days; one fire per gap.
       return Math.max(1, p.withinDays ?? 1);
@@ -716,7 +724,7 @@ export function defaultCooldownDaysForPredicate(p: TriggerPredicate): number {
       // an EARNINGS_BEAT, use 7 — the more conservative default wins.
       return Math.max(
         1,
-        ...p.predicates.map(defaultCooldownDaysForPredicate),
+        ...p.predicates.map((child) => defaultCooldownDaysForPredicate(child, action)),
       );
   }
 }
@@ -767,7 +775,7 @@ export function applyTriggerCooldownDefaults(triggers: Trigger[]): Trigger[] {
     const needsDefault =
       t.cooldownDays == null || (t.cooldownDays === 0 && t.action !== "EXIT");
     return needsDefault
-      ? { ...t, cooldownDays: defaultCooldownDaysForPredicate(t.predicate) }
+      ? { ...t, cooldownDays: defaultCooldownDaysForPredicate(t.predicate, t.action) }
       : t;
   });
 }

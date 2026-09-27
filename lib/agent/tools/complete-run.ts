@@ -77,6 +77,10 @@ export const completeRun = defineTool({
             sources: [],
           };
         }
+      } else {
+        // A podcast segment or an unscoped run owes no checks, so none were
+        // skipped: a later throw here completes the run as it always did.
+        preflightFinished = true;
       }
 
       // Atomic: only transition RUNNING → COMPLETE. Was previously
