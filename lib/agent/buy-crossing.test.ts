@@ -94,7 +94,7 @@ describe("ETN — the buy fired into a full analyst and the crossing is spent", 
     expect(flag!.text).toContain("the buy cannot fire again");
     expect(flag!.text).toContain("This setup has no chase rule");
     expect(flag!.text).toContain("the old level becomes support");
-    expect(flag!.text).toContain("set the plan down");
+    expect(flag!.text).toContain("let the stock go");
   });
 
   it("no other flag catches it — the level sits just UNDER the tape", () => {

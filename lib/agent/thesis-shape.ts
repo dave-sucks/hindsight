@@ -185,8 +185,8 @@ export function validateThesisShape(
         `R/R floor: ${rr.toFixed(2)}:1 is below the mandatory ${args.minRiskReward}:1 minimum ` +
         `(${formula} with entry=$${entry}, target=$${target}, stop=$${stop}). ` +
         `Tighten the stop to a REAL technical level, raise the target to a CITED level, ` +
-        `or — if no level makes the math work — set direction to PASS, or set the plan down: ` +
-        `remove the buy, floor and target by id with remove_trigger_ids (the name stays in view with no plan). ` +
+        `or move the buy to the level where the plan does pay — a pullback to a rising average sits closer to its stop than a breakout does. ` +
+        `If no level on any of your setups makes the math work, let the stock go, with one line why: direction "PASS" on a new thesis, change_status "ARCHIVED" on one that exists. ` +
         `Never fabricate a level to clear the floor.`,
     };
   }

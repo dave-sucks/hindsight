@@ -185,6 +185,66 @@ export function validateEnterTriggerRequired(
   return {
     ok: false,
     reason: "missing-enter-trigger",
-    note: `This thesis carries a plan level (a floor or a target) with no buy level to reach it from. Either finish the plan — set entry_price (the level the buy trigger fires on) — or remove the floor and target triggers and keep the name in view without a plan.`,
+    note: `This thesis carries a plan level (a floor or a target) with no buy level to reach it from. Finish the plan: set entry_price, the level the buy trigger fires on. It does not have to be near today's price — it is the level where you would buy.`,
+  };
+}
+
+/**
+ * A run may move a buy, replace it, or let the stock go. It may not take
+ * the buy off and keep watching.
+ *
+ * Live account, 30 days to 2026-09-28, edits to a buy price by who made
+ * them:
+ *
+ *                   put one on   took one off
+ *   morning runs         4            8
+ *   trigger runs         0            1
+ *   writers              2            4
+ *   the principal's chat 9            0
+ *
+ * Left alone the automatic side drained the book: 21 of 29 watched stocks
+ * could not be bought on 09-26, and the 16 that could on 09-28 were there
+ * because the principal ran a chat per analyst and told it "every watched
+ * stock gets a buy, or is retired with one line why". Most of the thirteen
+ * removals say it in the prompt's own words — "I am setting the plan down"
+ * — because the prompts and every refused plan edit offered exactly that,
+ * by id, as the way out. Adding a buy had to clear 2:1, level order and the
+ * half-plan rule (the chat was refused eleven times on 09-27 doing it);
+ * taking one off had never been refused once.
+ *
+ * So the one move that is refused is the transition: the stock had a buy
+ * before this call and has none after it, it is still a LONG or SHORT on
+ * watch, and it is not waiting on a date. Agents only. The principal's own
+ * edits, a fill, and the automatic set-down when a watched stock breaks its
+ * floor are not touched, and a stock kept on watch with no view (no
+ * direction) never had a plan to lose.
+ */
+export function validateBuyKept(args: {
+  direction: string | null;
+  /** The status after the write. */
+  status: string | null;
+  before: Trigger[];
+  after: Trigger[];
+  /** What the stock is waiting on, in words, when it is waiting on a date. */
+  waitingOn?: string | null;
+}): { ok: true } | { ok: false; reason: "buy-removed"; note: string } {
+  if (args.direction !== "LONG" && args.direction !== "SHORT") return { ok: true };
+  if (args.status !== "WATCHING") return { ok: true };
+  if (args.waitingOn) return { ok: true };
+  const had = args.before.some((t) => t.action === "ENTER");
+  const has = args.after.some((t) => t.action === "ENTER");
+  if (!had || has) return { ok: true };
+  return {
+    ok: false,
+    reason: "buy-removed",
+    note:
+      `This would take the buy off and leave the stock on watch with nothing that can buy it. ` +
+      `A watched stock has a buy price, or it is let go. Three answers: ` +
+      `(1) MOVE the buy to the level where you would buy — edit_triggers on the buy's id, or entry_price, with the structure it sits on. ` +
+      `It does not have to be near today's price: the pivot the stock must reclaim, the average it must pull back to. ` +
+      `A buy above a broken chart costs nothing and fires only if the chart repairs. ` +
+      `(2) REPLACE the plan — new entry_price, stop_loss and target_price in one call, paying 2:1 or better. ` +
+      `(3) LET IT GO — change_status: "ARCHIVED" (a writer sends direction: "PASS") with one line saying why no level on any of your setups works. ` +
+      `It stays on the stock's page and can be researched again.`,
   };
 }

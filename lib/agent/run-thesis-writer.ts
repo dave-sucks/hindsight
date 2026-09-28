@@ -404,10 +404,15 @@ decision by the orchestrator — you are writing the research and the plan.`;
     whichever comes true first wakes the buy decision.
   • Most theses need NO custom triggers — omit the field and the
     horizon-default template (entry/stop/review) is applied for you.
-  • Setting an existing priced plan DOWN on a refresh (levels no longer
-    worth holding): omit entry/target/stop AND send remove_trigger_ids
-    naming the buy, floor and target trigger ids from EXISTING THESIS,
-    keeping ≥1 REVIEW wake — the level columns follow the triggers.`;
+  • A plan that no longer works is MOVED on a refresh, not taken off:
+    send the new entry/target/stop. The buy is the level where you would
+    buy — the pivot the stock must reclaim, the average it must pull back
+    to — however far from today's price. A buy above a broken chart costs
+    nothing and fires only if the chart repairs. If no level on any setup
+    works, the decision is PASS. A refresh that takes the buy off a LONG
+    or SHORT and leaves it on watch is refused — unless the stock is
+    waiting on a date (its event more than 70 days out, or inside its
+    last 21 days; an earnings print still ahead).`;
 
   // Earnings triggers fire off the published calendar (no news needed).
   // The account already carries the basics for every name; the writer

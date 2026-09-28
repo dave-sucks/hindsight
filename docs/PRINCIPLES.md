@@ -147,6 +147,32 @@ happens after a refusal is the section above.
 
 ---
 
+## Count which way the edits push (2026-09-28)
+
+A fix is judged by what it stops failing. A system is judged by where its
+successful edits take the book. Those are different measurements, and for a
+month only the first was taken.
+
+Every rule that refuses a plan has to offer a way out. For a long time the way
+out that every refusal offered, by id, in one call, was deleting the plan and
+keeping the stock on watch. It always landed. Putting a buy on had to clear
+2:1, level order and the half-plan rule. So the cheap move was always off,
+the expensive move was always on, and the book drained: in the 30 days to
+2026-09-28 the runs and writers took a buy off 13 times and put one on 6
+times, and 21 of 29 watched stocks could not be bought. The principal's chat,
+told "every watched stock gets a buy, or is retired with one line why", put
+one on 9 times and took none off.
+
+So, for any refusal or flag:
+
+- **Read the way out it offers.** If the cheapest legal answer leaves the
+  stock, the position or the run in a state nobody wants, that answer will be
+  the one taken.
+- **Count direction, not just outcome.** For any thing the book needs more of
+  (a buy price, a floor under a gain, an answer to a fire), count who adds it
+  and who removes it, by run mode, from the audit rows.
+- **A refusal never hands over the delete.**
+
 ## See also
 
 - [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md) — how the thesis lifecycle implements Layer 1 gates
