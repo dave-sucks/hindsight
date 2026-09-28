@@ -104,10 +104,13 @@ async function main() {
     for (const c of copies) {
       console.log(`  ${t.ticker.padEnd(5)} ${c.bucket.padEnd(32)} ${frozenCopyLine(c)}`);
       if (APPLY) {
-        await applyTriggerDelete(t.id, c.trigger.id, {
-          accountId: ACCOUNT,
-          actorUserId,
-        });
+        await applyTriggerDelete(
+          t.id,
+          c.trigger.id,
+          { accountId: ACCOUNT, actorUserId },
+          // On the stock's Activity, so the line explains itself.
+          frozenCopyLine(c),
+        );
       }
       removedTotal += 1;
     }
