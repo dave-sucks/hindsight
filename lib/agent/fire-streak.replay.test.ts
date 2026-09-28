@@ -4,22 +4,23 @@
  * Production, 2026-09-15 → 09-25 (live account 34f5c589). ABT was bought
  * on 09-11 at $103.66 and fell under its 200-day. The Secular Compounder's
  * "below the 200-day → review" rung (cf39ff35, `cooldownDays: 1`) fired on
- * all nine trading days. The morning runs answered it with, in order: an
- * empty row, a real edit (added a 10-day review), an empty row, an empty
- * row, an empty row — none of them naming the rung. Every one cleared the
- * obligation, so the ninth fire reached the run indistinguishable from the
- * first.
+ * all nine trading days. The morning runs answered it every time, in
+ * words, and once with an edit (added a 10-day review). Nothing told them
+ * it was the same question again, so the ninth fire reached the run
+ * indistinguishable from the first.
  *
- * Ten cases, three parts of the ruling:
- *   1–2. the count reaches the run as words                 (get_theses)
+ * Three parts:
+ *   1–2. the count reaches the run as words                  (get_theses)
  *   3–7. a state REVIEW asks weekly; a buy and a sale do not (shouldFire)
- *  8–10. an empty row that names nothing does not answer    (complete_run)
+ *  8–10. nothing new refuses: the answers the runs really
+ *        wrote still finish the run                          (complete_run)
  *
  * Every case asserts through the tool's real entry point, and `crashed`
  * is checked before the refusal — complete_run catches its own crash and
  * a thrown preflight would otherwise read as a pass.
  */
 import { shouldFire } from "@/lib/agent/triggers/evaluate";
+import { flooredCooldownDays } from "@/lib/agent/triggers/state-cooldown";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import {
   replayTool,
@@ -70,9 +71,9 @@ const abtPosition = () =>
   positionRow({ id: "pos_abt", symbol: "ABT", avgCost: AVG_COST, quantity: 88 });
 
 /**
- * ABT's log from the 09-18 edit onward: one real change, six fires of the
- * same rung, and three empty rows that changed and named nothing. The
- * empty rows must not reset the count — that is the whole finding.
+ * ABT's log from the 09-18 edit onward: one change to the plan, six fires
+ * of the same rung, and three written answers that left the plan as it
+ * was. An answer that changes nothing must not reset the count.
  */
 const fire = (days: number) =>
   thesisUpdateRow({
@@ -85,14 +86,22 @@ const fire = (days: number) =>
     timestamp: at(days, 13),
   });
 
+/** ABT's 09-23 answer, as stored: real words, no edit, no trigger named. */
+const ABT_0923_RATIONALE =
+  "ABT remains technically messy, with price at $103.69 still below the 50-day and just under the 200-day, " +
+  "but I still cannot name a business invalidation 11 days into the hold. There is no second guidance cut, " +
+  "no new Libre safety event, and no sign Exact Sciences integration is failing. This is still a " +
+  "pullback-and-digestion phase, not a thesis break. I hold.";
+
 const emptyRow = (days: number) =>
   thesisUpdateRow({
-    id: `empty_${days}`,
+    id: `held_${days}`,
     thesisId: "t_abt",
     type: "UPDATED",
     triggerId: null,
     fieldChanges: {},
     summary: "Updated ABT thesis",
+    rationale: ABT_0923_RATIONALE,
     timestamp: at(days, 12),
   });
 
@@ -141,10 +150,10 @@ describe("DAV-323 — the run is told how long this has been asking", () => {
     expect(crashed).toBe(false);
     const abt = rowsFrom(result).find((t) => t.ticker === "ABT");
     expect(abt?.needsAction?.kind).toBe("TRIGGER_FIRED");
-    // Six fires since the 09-18 edit. The three empty rows in between
-    // changed nothing, so they don't reset it.
+    // Six fires since the 09-18 edit. The three answers in between left
+    // the plan as it was, so they don't reset it.
     expect(abt?.needsAction?.repeatCount).toBe(6);
-    expect(abt?.needsAction?.repeatLine ?? "").toMatch(/fired 6 times/);
+    expect(abt?.needsAction?.repeatLine ?? "").toMatch(/fired 6 times and the plan has not changed since/);
   });
 
   it("2. a first ask gets no repeat line — there is no history to report", async () => {
@@ -240,14 +249,59 @@ describe("DAV-329 — a state asks weekly; a buy on the same state still asks da
     } as unknown as Trigger;
     expect(shouldFire(sellRung, ctx(1)).fires).toBe(true);
   });
+
+  it("7a. a state tied to a price line keeps the daily clock; two states together wait the week", () => {
+    const withPriceLine = {
+      ...reviewRung,
+      id: "review_and_line",
+      predicate: {
+        kind: "AND",
+        predicates: [
+          { kind: "VS_SMA", period: 200, direction: "BELOW" },
+          { kind: "PRICE_BELOW", level: 100 },
+        ],
+      },
+      lastFiredAt: at(1, 13),
+    } as unknown as Trigger;
+    expect(shouldFire(withPriceLine, ctx(1)).fires).toBe(true);
+
+    const twoStates = {
+      ...reviewRung,
+      id: "review_two_states",
+      predicate: {
+        kind: "OR",
+        predicates: [
+          { kind: "VS_SMA", period: 200, direction: "BELOW" },
+          { kind: "VS_SMA", period: 50, direction: "BELOW" },
+        ],
+      },
+      lastFiredAt: at(1, 13),
+    } as unknown as Trigger;
+    expect(shouldFire(twoStates, ctx(1))).toEqual({ fires: false, reason: "cooldown" });
+  });
+
+  it("7b. the Triggers tab prints the number in force, not just the stored one", () => {
+    // Stored 1, in force 7: printing the stored value would tell the
+    // principal "once a day" about a rule that asks once a week.
+    expect(flooredCooldownDays(reviewRung, reviewRung.cooldownDays)).toBe(7);
+    expect(flooredCooldownDays({ ...reviewRung, action: "EXIT" }, 1)).toBe(1);
+    expect(flooredCooldownDays({ ...reviewRung, action: "ENTER" }, 1)).toBe(1);
+    // A longer stored cooldown is left alone.
+    expect(flooredCooldownDays(reviewRung, 30)).toBe(30);
+    // The sheet's wire type (kind: string) goes through the same function.
+    expect(flooredCooldownDays({ action: "REVIEW", predicate: { kind: "PRICE_BELOW" } }, 1)).toBe(1);
+  });
 });
 
 /**
- * Part 3. The run's own first write used to erase the obligation before
- * the preflight looked, so these three cases all passed identically on
- * main — including the one that answered nothing.
+ * Part 3. QB ruling on the ticket: "two inputs, one obligation, no gate …
+ * nothing new refuses." The first version of this PR held a run whose
+ * answer did not name the trigger. Replayed over the live account's 21
+ * days that would have held 42 (run, stock) pairs — every one of them a
+ * written answer like ABT's below. These three pin that the bar at the
+ * end of the run is where main left it.
  */
-describe("DAV-323 — an empty row that names nothing does not answer a fire", () => {
+describe("DAV-323 — nothing new refuses at the end of the run", () => {
   const runRow = () => ({
     id: REPLAY_RUN_ID,
     status: "RUNNING",
@@ -256,13 +310,6 @@ describe("DAV-323 — an empty row that names nothing does not answer a fire", (
     parameters: {},
     startedAt: at(0, 8),
     completedAt: null,
-  });
-
-  /** The fire that was open when the run sat down. */
-  const openFire = () => ({
-    type: "TRIGGER_FIRED",
-    triggerId: REVIEW_RUNG_ID,
-    timestamp: at(1, 13),
   });
 
   const summaryEvent = () => ({
@@ -275,69 +322,65 @@ describe("DAV-323 — an empty row that names nothing does not answer a fire", (
     createdAt: new Date(),
   });
 
-  const completeWith = (answer: Record<string, unknown>) =>
-    replayTool("complete-run", "completeRun", {
+  const completeWith = (answer: Record<string, unknown> | null) => {
+    const answerRow = answer
+      ? thesisUpdateRow({
+          id: "answer",
+          thesisId: "t_abt",
+          runId: REPLAY_RUN_ID,
+          timestamp: at(0, 12),
+          ...answer,
+        })
+      : null;
+    // The thesis carries its log inline, newest first, the way the
+    // preflight reads it: the run's own answer if it wrote one, else the
+    // fire that was waiting.
+    const openFire = { type: "TRIGGER_FIRED", triggerId: REVIEW_RUNG_ID, timestamp: at(1, 13) };
+    return replayTool("complete-run", "completeRun", {
       seed: {
         researchRun: [runRow()],
-        thesis: [abtThesis({ updates: [openFire()] })],
+        thesis: [abtThesis({ updates: [answerRow ?? openFire] })],
         position: [abtPosition()],
         runEvent: [summaryEvent()],
-        thesisUpdate: [
-          thesisUpdateRow({
-            id: "answer",
-            thesisId: "t_abt",
-            runId: REPLAY_RUN_ID,
-            timestamp: at(0, 12),
-            ...answer,
-          }),
-        ],
+        thesisUpdate: answerRow ? [answerRow] : [],
       },
       args: {},
       quotes: { ABT: PRICE },
     });
+  };
 
-  it("8. the 09-21 shape — an empty row, no trigger named — leaves the run unfinished", async () => {
-    const { result, crashed } = await completeWith({
+  it("8. ABT's 09-23 answer — real words, no edit, no trigger named — finishes the run", async () => {
+    const { result, crashed, refused } = await completeWith({
       type: "UPDATED",
       triggerId: null,
       fieldChanges: {},
       summary: "Updated ABT thesis",
+      rationale: ABT_0923_RATIONALE,
     });
 
     expect(crashed).toBe(false);
-    expect(result.summary).toMatch(/refused/i);
-    // …and refused for THIS reason, not some other preflight complaint:
-    // the message has to name the stock and the rung it is still owed.
-    const said = JSON.stringify(result);
-    expect(said).toContain("ABT");
-    expect(said).toContain("trigger fired");
-    expect(said).toContain(REVIEW_RUNG_ID);
+    expect(refused).toBe(false);
+    expect(result.summary).not.toMatch(/refused/i);
   });
 
-  it("9. the same empty row, with the rung named, is a legal answer", async () => {
+  it("9. the same answer with the trigger named finishes it too", async () => {
     const { result, crashed } = await completeWith({
       type: "UPDATED",
       triggerId: REVIEW_RUNG_ID,
       fieldChanges: {},
       summary: "Reviewed ABT against the 200-day",
-      rationale:
-        "Checked the Q2 print and the guide — both intact. Below the 200-day is price, not the business. Plan stands.",
+      rationale: ABT_0923_RATIONALE,
     });
 
     expect(crashed).toBe(false);
     expect(result.summary).not.toMatch(/refused/i);
   });
 
-  it("10. changing the plan answers it too, named or not", async () => {
-    const { result, crashed } = await completeWith({
-      type: "UPDATED",
-      triggerId: null,
-      fieldChanges: { stopLoss: { from: 92, to: 95 } },
-      summary: "Updated ABT: floor 92 → 95",
-    });
+  it("10. a run that wrote nothing on the stock is still held, as on main", async () => {
+    const { result, crashed } = await completeWith(null);
 
     expect(crashed).toBe(false);
-    expect(result.summary).not.toMatch(/refused/i);
+    expect(result.summary).toMatch(/refused/i);
+    expect(JSON.stringify(result)).toContain("ABT");
   });
 });
-

@@ -25,6 +25,9 @@
 import { randomUUID } from "node:crypto";
 import type { Trigger, TriggerPredicate } from "./types";
 import { triggerBucket } from "./bucket";
+import { flooredCooldownDays } from "./state-cooldown";
+
+export { isStatePredicate, STATE_PREDICATE_MIN_COOLDOWN_DAYS } from "./state-cooldown";
 
 const createId = () => randomUUID();
 
@@ -775,34 +778,6 @@ export function defaultFireModeForAction(
 }
 
 /**
- * Predicates that describe a STATE rather than a moment (DAV-329).
- *
- * "Below the 200-day" is not something that happens — it is somewhere the
- * stock IS, for weeks at a time. A price line is crossed in an instant and
- * is worth re-asking daily while it is breached; a state that has held for
- * a fortnight is not news on its fourteenth morning.
- *
- * A composite counts only when every child does, so a state ANDed with a
- * price line keeps the faster clock.
- */
-export function isStatePredicate(p: TriggerPredicate): boolean {
-  switch (p.kind) {
-    case "VS_SMA":
-    case "PCT_FROM_52W_HIGH":
-    case "RS_VS_SPY":
-      return true;
-    case "AND":
-    case "OR":
-      return p.predicates.length > 0 && p.predicates.every(isStatePredicate);
-    default:
-      return false;
-  }
-}
-
-/** A state rung that isn't a buy asks once a week, not once a day. */
-export const STATE_PREDICATE_MIN_COOLDOWN_DAYS = 7;
-
-/**
  * The cooldown a rung actually fires on — the one number `shouldFire` uses.
  *
  * Three layers:
@@ -835,10 +810,7 @@ export function effectiveCooldownDays(trigger: Trigger): number {
       ? trigger.cooldownDays
       : defaultCooldownDaysForPredicate(trigger.predicate, trigger.action);
 
-  if (trigger.action === "REVIEW" && isStatePredicate(trigger.predicate)) {
-    return Math.max(written, STATE_PREDICATE_MIN_COOLDOWN_DAYS);
-  }
-  return written;
+  return flooredCooldownDays(trigger, written);
 }
 
 export function applyTriggerCooldownDefaults(triggers: Trigger[]): Trigger[] {

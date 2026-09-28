@@ -141,11 +141,11 @@ export type NeedsAction =
       summary: string;
       firedAt: string;
       /**
-       * How many times this rung has fired since anything on the row
-       * changed, and when that was (DAV-323). Absent on a first ask, and
-       * absent when the caller passed no history. ABT's "below the
-       * 200-day → review" reached its ninth fire indistinguishable from
-       * its first; `repeatLine` is that sentence, ready to print.
+       * How many times this rung has fired since the plan last changed,
+       * and when that was (DAV-323). Absent on a first ask, and absent
+       * when the caller passed no history. ABT's "below the 200-day →
+       * review" reached its ninth fire indistinguishable from its first;
+       * `repeatLine` is that sentence, ready to print. An input, not a bar.
        */
       repeatCount?: number;
       unchangedSince?: string | null;
@@ -405,8 +405,8 @@ export interface NeedsActionInput {
   /**
    * A slice of this thesis's audit log — any order (DAV-323). Only a fired
    * trigger reads it, to count how many times the same rung has asked since
-   * anything on the row changed. Omit and the count is simply absent; no
-   * other kind changes.
+   * the plan last changed. Omit and the count is simply absent; no other
+   * kind changes.
    */
   recentUpdates?: FireStreakUpdate[];
 }

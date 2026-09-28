@@ -54,6 +54,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { editableTriggerParts } from "@/lib/agent/triggers/editable";
+import { flooredCooldownDays } from "@/lib/agent/triggers/state-cooldown";
 import {
   chartHasValue,
   conditionForcesReview,
@@ -850,9 +851,10 @@ function TriggerPopoverContent({
           {trigger.cooldownDays &&
           trigger.predicate.kind !== "REVIEW_CADENCE" ? (
             <p className="text-xs text-muted-foreground">
-              {trigger.cooldownDays === 1
+              {/* The number the evaluator uses, not just the stored one. */}
+              {flooredCooldownDays(trigger, trigger.cooldownDays) === 1
                 ? "Fires at most once a day."
-                : `Fires at most once every ${trigger.cooldownDays} days.`}
+                : `Fires at most once every ${flooredCooldownDays(trigger, trigger.cooldownDays)} days.`}
             </p>
           ) : null}
           {editable ? (

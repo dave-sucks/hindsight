@@ -1,33 +1,30 @@
 /**
- * How long a rung has been asking, and what counts as answering it.
+ * How long a rung has been asking.
  *
  * ABT, 2026-09-15 → 09-25. The Secular Compounder's "below the 200-day →
  * review" rule fired on every one of nine trading days. The runs that
- * received it wrote back, in order: an empty row, a real edit (added a
- * 10-day review), an empty row, an empty row, an empty row. Four of the
- * five answers changed nothing and named nothing — and each one cleared
- * the obligation, so the ninth fire reached the run looking exactly like
- * the first. Nothing in its context said "this is the ninth."
+ * received it answered every time, in words: "below the 200-day, but no
+ * second guidance cut, no new Libre safety event … I hold." Once they
+ * added a 10-day review; the other four times the plan stood. The answers
+ * were real. What was missing was on the other side: nothing told the run
+ * it was being asked the same question for the ninth time, so the ninth
+ * answer was the first answer again.
  *
- * Two halves of one idea, kept in one file because they have to agree:
+ * `fireStreak` is that missing INPUT: how many times this rung has fired
+ * since the plan last changed, and when that was. It goes in the row text
+ * the run reads. It refuses nothing (QB ruling on the ticket: two inputs,
+ * one obligation, no gate).
  *
- *   fireStreak  — the INPUT. How many times this rung has fired since
- *                 anything on the row actually changed, and when that was.
- *                 Goes in the row text the run reads.
- *   answersFire — the TEST. Which audit row closes that fire: one that
- *                 names the rung, or one that changed the plan. A row that
- *                 does neither is the ninth empty row.
+ * The count and the date are measured against the same event — the last
+ * change to the plan — so the sentence can't contradict itself. Nine fires
+ * since the condition began but six since the last edit is reported as
+ * six, because "and the plan has not changed since" is the half that
+ * matters.
  *
- * The count and the date are deliberately measured against the same event
- * — the last real change — so the sentence can't contradict itself. Nine
- * fires since the condition began but six since the last edit is reported
- * as six, because "and nothing has changed since" is the half that matters.
- *
- * An attestation does NOT reset the count. A run that looks and says "I
- * checked, the plan stands" has answered that day's fire, but nothing on
- * the row changed, so tomorrow's line still says how long this has run.
- * That is the point: the tenth "I checked" should look different from the
- * first.
+ * A written answer does NOT reset the count. A run that looks and says
+ * "I checked, the plan stands" has answered that day's fire, but the plan
+ * did not move, so the next line still says how long this has run. That is
+ * the point: the tenth "I checked" should look different from the first.
  *
  * Pure — no prisma, no clock of its own. DAV-323.
  */
@@ -42,13 +39,13 @@ export interface FireStreakUpdate {
 
 export interface FireStreak {
   triggerId: string;
-  /** Fires of this rung since the row last changed. Always ≥ 1. */
+  /** Fires of this rung since the plan last changed. Always ≥ 1. */
   fireCount: number;
   /** The oldest fire in the run of them. */
   firstFiredAt: Date;
-  /** When the row last actually changed. Null = not within the rows given. */
+  /** When the plan last changed. Null = not within the rows given. */
   lastChangedAt: Date | null;
-  /** Whole days since the row last changed (or since the first fire). */
+  /** Whole days since the plan last changed (or since the first fire). */
   daysUnchanged: number;
   /** The sentence the run reads. Empty on a first ask — it has no history. */
   line: string;
@@ -74,35 +71,21 @@ function hasAnyFieldChange(fieldChanges: unknown): boolean {
 }
 
 /**
- * Did this row change anything on the thesis?
+ * Did this row change the plan?
  *
  * A fire never counts — a fire is the question, not the answer. A REVIEWED
  * row never counts either: that type exists precisely for "looked, changed
  * nothing." Everything else counts when it carries a diff.
  *
- * Trigger edits do land in the diff (`triggerOps`, 74 of the live account's
- * 236 UPDATED rows in the three weeks to 2026-09-27), so an empty diff on
- * an UPDATED row is now a fair reading of "nothing changed" — but it is
- * only ever half the test here, because `answersFire` also accepts a row
- * that names the rung. An edit whose diff went missing still answers.
+ * What the diff holds is the plan: levels, triggers (`triggerOps`), status,
+ * direction, conviction. It does not hold everything — naming a setup
+ * lands with an empty diff (NOW and SYK, 2026-09-18) — which is why the
+ * sentence says "the plan has not changed", not "nothing has changed".
  */
 export function changedTheRow(u: FireStreakUpdate): boolean {
   if (u.type === "TRIGGER_FIRED" || u.type === "REVIEWED") return false;
   if (ALWAYS_A_CHANGE.has(u.type)) return true;
   return hasAnyFieldChange(u.fieldChanges);
-}
-
-/**
- * Does this audit row answer that fire?
- *
- * Either it names the rung it is answering — `update_thesis(trigger_id:)`,
- * which is how the agent already answers roughly a quarter of its edits —
- * or it changed the plan, which answers by doing rather than saying.
- */
-export function answersFire(u: FireStreakUpdate, triggerId: string): boolean {
-  if (u.type === "TRIGGER_FIRED") return false;
-  if (u.triggerId != null && u.triggerId === triggerId) return true;
-  return changedTheRow(u);
 }
 
 const DAY_MS = 86_400_000;
@@ -164,10 +147,10 @@ function buildLine(
   if (fireCount < 2) return "";
   const day = (lastChangedAt ?? firstFiredAt).toISOString().slice(0, 10);
   const what = lastChangedAt
-    ? `nothing on this row has changed since ${day}`
-    : `nothing on this row has changed since it started firing on ${day}`;
+    ? `the plan has not changed since ${day}`
+    : `the plan has not changed since it started firing on ${day}`;
   return (
     `This has fired ${fireCount} times and ${what} (${daysUnchanged}d). ` +
-    `Either change the plan or say what you checked and why it still stands.`
+    `Either change the plan or say what is different from the last time you answered it.`
   );
 }
