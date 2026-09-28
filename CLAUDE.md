@@ -58,6 +58,7 @@ news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 | Note a code smell outside the rework | `docs/TECH_DEBT.md` |
 | Spec a big multi-PR plan | `docs/plans/<NAME>.md` |
 | Write a daily run review | `docs/run-reviews/<YYYY-MM-DD>.md` |
+| **Start a discovery session (find buyable stocks, review what lands)** | **`docs/prompts/DISCOVERY_SESSION.md`** |
 | Write a discovery run review | `docs/discovery-reviews/<YYYY-MM-DD>-<TICKER>.md` |
 | Kick off a code session | `docs/prompts/SESSION_BOOTSTRAP.md` |
 | Kick off a run-review session | `docs/prompts/REVIEW_DAILY_RUN.md` |
