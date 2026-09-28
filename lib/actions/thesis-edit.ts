@@ -580,6 +580,13 @@ export async function applyTriggerDelete(
   thesisId: string,
   triggerId: string,
   ctx: ThesisEditContext,
+  /**
+   * Why, when it is not a click in the popover. The cleanup of copied
+   * rules (scripts/sweep-frozen-copies.ts) removes a holding's "sell 25%
+   * off the high" because the analyst's own 25% governs instead; logged
+   * bare, that line reads as the principal taking a sale off a stock.
+   */
+  why?: string,
 ): Promise<TriggerDeleteResult> {
   const outcome = await runPrincipalOp(
     thesisId,
@@ -587,8 +594,15 @@ export async function applyTriggerDelete(
     () => ({ op: "remove", id: triggerId }),
     (thesis) => {
       const target = thesis.triggers.find((t) => t.id === triggerId)!;
+      const what = `${predicateSentence(target.predicate)} → ${target.action.toLowerCase()}`;
+      if (why) {
+        return {
+          summary: `Removed a copied rule from ${thesis.ticker} — ${what}`,
+          rationale: `[USER] Removed the "${target.action}" trigger (${predicateSentence(target.predicate)}) in the cleanup of copied rules: ${why}. Don't re-create it on the stock.`,
+        };
+      }
       return {
-        summary: `Principal removed ${thesis.ticker} trigger — ${predicateSentence(target.predicate)} → ${target.action.toLowerCase()}`,
+        summary: `Principal removed ${thesis.ticker} trigger — ${what}`,
         rationale: `[USER] Removed the "${target.action}" trigger (${predicateSentence(target.predicate)}). Don't re-create it unless the thesis materially changes.`,
       };
     },

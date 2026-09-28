@@ -274,22 +274,11 @@ function compounderDefaults(thesis: ThesisShape): Trigger[] {
     });
   }
 
-  out.push(
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_BEAT" },
-      action: "REVIEW",
-      rationale: `Earnings beat — re-score target. Beats often expand the multiple; consider scaling into the next rung.`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
-      action: "REVIEW",
-      rationale: `Earnings miss ≥ 3% — downside surprise tests the core belief. Validate or step back.`,
-      cooldownDays: 7,
-    },
-  );
+  // DAV-322: no earnings review here. Every account is seeded with
+  // "beat → review" and "miss → review" (`accountSeedTriggers`), and a
+  // copy on the stock BEATS the account's, so stamping one froze the
+  // account's wording and number onto the name for good. ASML, WST and
+  // CEG each carried the pair below their own account's.
 
 
   return out;
@@ -316,22 +305,11 @@ function targetDefaults(thesis: ThesisShape): Trigger[] {
       cooldownDays: 1,
     });
   }
-  out.push(
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_BEAT" },
-      action: "REVIEW",
-      rationale: `Beat — possibly a reason to extend the target.`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
-      action: "REVIEW",
-      rationale: `Miss ≥ 3% — re-evaluate target.`,
-      cooldownDays: 7,
-    },
-  );
+  // DAV-322: no earnings review here. Every account is seeded with
+  // "beat → review" and "miss → review" (`accountSeedTriggers`), and a
+  // copy on the stock BEATS the account's, so stamping one froze the
+  // account's wording and number onto the name for good. ASML, WST and
+  // CEG each carried the pair below their own account's.
   return out;
 }
 
@@ -376,22 +354,11 @@ function catalystDefaults(thesis: ThesisShape): Trigger[] {
       cooldownDays: 0, // explicit opt-out — terminal EXIT.
     });
   }
-  out.push(
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_BEAT" },
-      action: "REVIEW",
-      rationale: `Beat — possibly the catalyst.`,
-      cooldownDays: 7,
-    },
-    {
-      id: createId(),
-      predicate: { kind: "EARNINGS_MISS", minSurprisePct: 3 },
-      action: "REVIEW",
-      rationale: `Miss ≥ 3% — possibly the inverse catalyst.`,
-      cooldownDays: 7,
-    },
-  );
+  // DAV-322: no earnings review here. Every account is seeded with
+  // "beat → review" and "miss → review" (`accountSeedTriggers`), and a
+  // copy on the stock BEATS the account's, so stamping one froze the
+  // account's wording and number onto the name for good. ASML, WST and
+  // CEG each carried the pair below their own account's.
   return out;
 }
 
