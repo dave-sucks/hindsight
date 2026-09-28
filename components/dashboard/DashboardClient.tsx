@@ -276,7 +276,7 @@ const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; 
   PROPOSED: { label: 'Pending',        dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
   REJECTED: { label: 'Rejected',       dotClass: 'bg-muted-foreground/40',    tooltip: 'Proposal rejected — never executed' },
   BLOCKED:  { label: 'Blocked',        dotClass: 'bg-negative',               tooltip: 'The analyst tried this and a rule stopped it — read why, and act by hand if you disagree' },
-  PASSED:   { label: 'Passed',         dotClass: 'bg-muted-foreground/40',    tooltip: 'A buy, sell, trim or add trigger fired and the analyst chose not to act — often the right call' },
+  PASSED:   { label: 'Passed',         dotClass: 'bg-muted-foreground/40',    tooltip: 'A buy, add, sale or trim trigger fired and the analyst chose not to act — often the right call' },
   FAILED:   { label: 'Failed',         dotClass: 'bg-negative',               tooltip: 'The run that should have handled this did not finish' },
 };
 

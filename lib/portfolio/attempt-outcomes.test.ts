@@ -144,12 +144,13 @@ describe("an add trigger fires", () => {
 });
 
 describe("a sell line is broken", () => {
-  it("ASML 09-15 — the analyst overrode its own floor: Sale passed", () => {
+  it("ASML 09-15 — the analyst overrode its own floor: Held, not sold", () => {
     const out = lines({
       runs: [run({ id: "r_asml", ticker: "ASML", action: "EXIT", startedAt: at("2026-09-15T14:55:00Z"), analystId: "compounder" })],
       notes: [{ runId: "r_asml", ticker: "ASML", timestamp: at("2026-09-15T14:55:40Z"), rationale: "Reviewed the fired $1580 exit trigger on $ASML and I am overriding it to HOLD. The break came on a market-wide flush." }],
     });
-    expect(out[0]).toMatchObject({ kind: "PASSED", label: "Sale passed", side: "SELL" });
+    // The stock's timeline says "Trigger: Price below $1580 — held". Same word.
+    expect(out[0]).toMatchObject({ kind: "PASSED", label: "Held, not sold", side: "SELL" });
   });
 
   it("SRRK — a sale already waiting for an answer is not a second attempt", () => {
@@ -166,7 +167,7 @@ describe("a sell line is broken", () => {
       runs: [run({ id: "r_srrk2", ticker: "SRRK", action: "EXIT", startedAt: at("2026-09-09T13:50:00Z") })],
       orders: [order({ symbol: "SRRK", intent: "CLOSE", status: "REJECTED", createdAt: at("2026-09-08T21:30:00Z"), updatedAt: at("2026-09-08T23:00:00Z") })],
     });
-    expect(out.map((l) => l.label)).toEqual(["Sale passed"]);
+    expect(out.map((l) => l.label)).toEqual(["Held, not sold"]);
   });
 
   it("a buy order does not answer a sale", () => {
@@ -174,7 +175,7 @@ describe("a sell line is broken", () => {
       runs: [run({ id: "r_z", ticker: "CEG", action: "EXIT", startedAt: at("2026-09-14T19:45:00Z") })],
       orders: [order({ symbol: "CEG", intent: "ADD", createdAt: at("2026-09-14T19:45:20Z") })],
     });
-    expect(out.map((l) => l.label)).toEqual(["Sale passed"]);
+    expect(out.map((l) => l.label)).toEqual(["Held, not sold"]);
   });
 });
 

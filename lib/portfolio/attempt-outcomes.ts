@@ -22,6 +22,8 @@
  *   PASSED    none of the above: the analyst looked and chose not to. Often
  *             the right call, so it is neutral, not an error. The analyst's
  *             sentence is shown as the reason; the TYPE does not depend on it.
+ *             Worded as the stock's own timeline words it: a buy is
+ *             "passed", a sale is "held".
  *
  * Two kinds of attempt:
  *   - a trigger run woken by a trigger whose action is a transaction
@@ -75,6 +77,19 @@ const WORD_OF_ACTION: Record<string, string> = {
   ADD: "Add",
   EXIT: "Sale",
   TRIM: "Trim",
+};
+
+/**
+ * The words for a pass. The stock's own timeline already has them
+ * (`outcomePhrase` in thesis-timeline-utils): a buy that fired and was not
+ * bought is "passed"; a sale that fired and was not sold is "held". One
+ * vocabulary, so the feed and the stock's page never disagree on the word.
+ */
+const PASS_LABEL: Record<string, string> = {
+  ENTER: "Buy passed",
+  ADD: "Add passed",
+  EXIT: "Held, not sold",
+  TRIM: "Held, not trimmed",
 };
 
 const WORD_OF_TOOL: Record<string, string> = {
@@ -277,7 +292,7 @@ export function attemptOutcomes(input: {
       ...base,
       id: `attempt-${run.id}`,
       kind: "PASSED",
-      label: `${word} passed`,
+      label: PASS_LABEL[run.action],
       reason: passReason(note?.rationale) || "The analyst looked and did not act, and wrote no reason.",
     });
   }

@@ -1385,9 +1385,11 @@ export async function getDashboardData(
     /* these tables are the record of what did not happen — their absence must not break the page */
   }
 
-  // Sort descending by timestamp, keep top 40
+  // Sort descending by timestamp. 80, not 40: the attempts above are about
+  // as many again as the trades (42 in the 30 days to 2026-09-28), and at 40
+  // they would push three weeks of trades off the end of the feed.
   activityFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  const trimmedFeed = activityFeed.slice(0, 40);
+  const trimmedFeed = activityFeed.slice(0, 80);
 
   return {
     openTrades,
