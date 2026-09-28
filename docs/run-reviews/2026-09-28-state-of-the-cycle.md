@@ -2,8 +2,8 @@
 
 Written so a fresh session, or Dave walking the app end to end, starts from
 facts. Every number is from the rows of the account that trades
-(`34f5c589…`, davembixler@gmail.com), read on 2026-09-28. Main is the commit
-after the revert of #723.
+(`34f5c589…`, davembixler@gmail.com), read on 2026-09-28. Updated the same
+afternoon, after the copied rules came off the holdings.
 
 ## Read this first: four traps in the data
 
@@ -28,7 +28,7 @@ after the revert of #723.
 | Morning review | Mon/Wed/Fri 08:00 ET; answers what fired | 09-28: 3 of 3 completed; 4 refusals, all fixed in the same run | Working |
 | Buy price hit | The analyst wakes, confirms, proposes the buy | 30 hits → 7 proposals | **Not working** — see below |
 | Approval | Dave approves or declines; proposals expire in about a day | 7 proposals: 5 approved, 2 expired (MIRM, LUXE) | Working |
-| Holding | Sell rules come from the analyst and the account | 6 held. 5 carry old copied rules that override the analyst's | In progress (the builder) |
+| Holding | Sell rules come from the analyst and the account | 6 held. The copied rules came off on 09-28 (27 rules, 6 stocks); each holding keeps its floor and its analyst's trailing sale | Working since 09-28 |
 | Sale proposals | A protective sale is proposed every day its line is broken | 50 proposed: 7 filled, 20 declined, 23 expired | Working. A declined sale has come back as a question since 09-27 |
 | After a sale | The next run looks once: watch again, or let go | 7 sales, 7 accounted for. FIVE let go and IOT re-watched on 09-28 | Working |
 | Seeing it | Activity shows what happened | Trades and proposals show. A blocked action shows only until the run fixes it (minutes). An analyst passing on a buy never shows | **Not working** |
@@ -100,7 +100,6 @@ word, contradicted the soft-watch design, and was reverted the same day
 | HPE's floor is $3.00 under its buy; HPE moves about $3.50 a day | Thesis row, indicator snapshot |
 | The chat was refused 11 times on 09-27 before its edits landed | GD and VST, five each, same message. Cause unknown: the refusal ledger stores the message, not the call |
 | Two flags give opposite orders inside the last 21 days before an event | No buy: "price it". A buy: "take it off". No stock is in that state today; AGIO reaches it about 10-11 |
-| Five holdings carry copied rules | ABT, ASML, WST, CEG, NVDA. NVDA still has "down 7% in a day → add", which the PEAD analyst should never have |
 | Earnings heads-up is 3 days; runs are Mon/Wed/Fri | A Tuesday print can be missed. Not changed |
 
 ## What is live since 09-25
@@ -114,6 +113,10 @@ word, contradicted the soft-watch design, and was reverted the same day
 - A review on "below the 200-day" asks weekly, not daily, and the run is
   told how many times it has already been asked.
 - A held stock's review is told to go down its invalidation conditions.
+- A holding carries only its own plan. Copied rules were removed on 09-28,
+  each with a line on the stock's Activity ("Removed a copied rule from …");
+  new holdings no longer get the account's earnings reviews stamped on them.
+  NVDA no longer has "down 7% in a day → add".
 
 ## Walking it end to end
 
