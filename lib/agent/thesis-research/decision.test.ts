@@ -170,7 +170,8 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
       existingTargetPrice: 130,
     });
     expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("remove_trigger_ids");
+    expect(v.errors.join(" ")).toContain("a save that takes it off is refused");
+    expect(v.errors.join(" ")).not.toMatch(/set the plan down/i);
   });
 
   it("refresh on a priced row: removing the plan triggers (and keeping a REVIEW wake) is accepted", () => {

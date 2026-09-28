@@ -106,11 +106,23 @@ const storedRow = {
   researchUpdatedAt: new Date(),
 };
 
-/** The fix the refusal asks for: take the $76 review off with the buy level. */
+/**
+ * The fix the refusal asks for. The writer had already named the level in
+ * its own REVIEW rung — "pullback to the gap-day midpoint ($67.28) … stop at
+ * $64.16 (gap-day low) and target $78.30" — and written it as a review
+ * instead of a buy. Moved, the plan pays 3.5:1.
+ */
 const fixedPlan = {
   ...fx.submit,
+  setup_id: "MA_PULLBACK" as const,
+  add_triggers: [],
   edit_triggers: [],
-  remove_trigger_ids: [...fx.submit.remove_trigger_ids, "d516a881-b59c-45fe-8897-0720fe8687df"],
+  remove_trigger_ids: [],
+  entry_price: 67.28,
+  stop_loss: 64.16,
+  target_price: 78.3,
+  stop_basis: "Under the September 4 gap-day low at $64.16, 1.4 ATR below the entry.",
+  target_basis: "1.272 Fibonacci extension of the gap move, $78.30 — 3.5R against a $3.12 stop.",
 };
 
 function research(): WriterResearchPhaseOutput {
@@ -150,10 +162,10 @@ beforeEach(() => {
   );
 });
 
-it("DOCU: the save refuses once, the model resubmits with the plan set down whole, and the thesis saves", async () => {
+it("DOCU: the save refuses taking the buy off, the model resubmits with the buy moved to the level it had named, and the thesis saves", async () => {
   mockGenerateText.mockImplementation(async (opts: { messages: Array<{ content: string }>; tools: { submit_thesis: { execute: (a: unknown, o: unknown) => Promise<unknown> } } }) => {
     // The model is shown the refusal in the save's own words.
-    expect(opts.messages[2].content).toMatch(/no buy level/);
+    expect(opts.messages[2].content).toMatch(/take the buy off/);
     await opts.tools.submit_thesis.execute(fixedPlan, { toolCallId: "retry", messages: [] });
     return { text: "", response: { messages: [] } };
   });
@@ -176,6 +188,6 @@ it("DOCU: a retry that doesn't fix it fails the run with the save's reason — o
 
   expect(mockGenerateText).toHaveBeenCalledTimes(1);
   expect(result.status).toBe("FAILED");
-  expect(result.error).toMatch(/no buy level/);
+  expect(result.error).toMatch(/take the buy off/);
   expect(mockThesisUpdate).not.toHaveBeenCalled();
 });

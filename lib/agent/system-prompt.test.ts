@@ -29,10 +29,21 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).not.toContain("THREE legal paths");
     expect(prompt).not.toContain("Retune the buy trigger");
   });
-  it("a fired buy has two answers, and a raise away is named as a flag, not refused", () => {
-    expect(prompt).toContain("a fired buy is a decision with two answers");
-    expect(prompt).toContain("Set the plan down with the reason");
+  it("a fired buy has three answers, and a raise away is named as a flag, not refused", () => {
+    expect(prompt).toContain("a fired buy is a decision with three answers");
+    expect(prompt).toContain("**Move the buy**");
+    expect(prompt).toContain("**Let the stock go**");
     expect(prompt).toContain("ENTRY_RAISED_AWAY");
+  });
+  it("nowhere offers taking the buy off and keeping the stock on watch", () => {
+    // Thirteen buys came off in thirty days, most in a run that wrote
+    // "I am setting the plan down" — the prompt's own words, offered as the
+    // free answer. The only mentions left are the automatic one (a watched
+    // stock that breaks its floor) and the sentence that forbids it.
+    expect(prompt).not.toMatch(/OR set the plan down/);
+    expect(prompt).not.toContain("Set the plan down with the reason");
+    expect(prompt).not.toContain("a watch with no clock and no plan is legal");
+    expect(prompt).toContain("Taking the buy off and keeping the stock on watch is not an answer");
   });
   it("regime and cash are inputs: the cash line names today's names at their buy level", () => {
     expect(prompt).toContain("## Regime and cash");

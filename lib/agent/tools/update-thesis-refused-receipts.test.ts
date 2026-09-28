@@ -108,10 +108,11 @@ beforeEach(() => {
 });
 
 describe("update_thesis — a refused call claims no change (DAV-258)", () => {
-  it("VST 09-11: removing only the buy is refused, and every op says it did not land", async () => {
+  it("VST 09-11: removing the buy is refused, and every op says it did not land", async () => {
     const result = await run({ remove_trigger_ids: [BUY, CADENCE] });
     expect(result.data?.ok).toBe(false);
-    expect(result.data?.error).toBe("missing_enter_trigger");
+    // A watched stock keeps a buy: that is the rule this call breaks first.
+    expect(result.data?.error).toBe("buy_removed");
     expect(mockThesisUpdate).not.toHaveBeenCalled();
 
     const ops = result.data?.trigger_ops as TriggerOpResult[];
@@ -122,17 +123,29 @@ describe("update_thesis — a refused call claims no change (DAV-258)", () => {
     }
   });
 
-  it("the refusal names the exact set-down call, and following it lands", async () => {
+  it("the refusal names the plan by id and the three answers — and the old set-down no longer lands", async () => {
     const refused = await run({ remove_trigger_ids: [BUY, CADENCE] });
     const message = String(refused.data?.message);
-    expect(message).toContain("To set the plan down");
-    // Buy, floor and target by id — not the review cadence, which survives a set-down.
+    expect(message).not.toMatch(/set the plan down/i);
+    expect(message).toContain("MOVE the buy");
+    expect(message).toContain("REPLACE the plan");
+    expect(message).toContain("LET IT GO");
+    // Buy, floor and target by id — not the review cadence.
     const named = [...message.matchAll(/"([0-9a-f-]{36})"/g)].map((m) => m[1]);
     expect(named.sort()).toEqual([BUY, FLOOR, TARGET].sort());
 
     mockThesisUpdate.mockClear();
-    const followed = await run({ remove_trigger_ids: named });
-    expect(followed.data?.error).toBeUndefined();
+    const setDown = await run({ remove_trigger_ids: named });
+    expect(setDown.data?.error).toBe("buy_removed");
+    expect(mockThesisUpdate).not.toHaveBeenCalled();
+  });
+
+  it("the first answer lands: the buy moved, by its id, with the structure it sits on", async () => {
+    const moved = await run({
+      edit_triggers: [{ id: BUY, level: 150, rationale: "Reclaim of the 50-day at $150 — the level the repair has to clear." }],
+      price_at_time: 138.46,
+    });
+    expect(moved.data?.error).toBeUndefined();
     expect(mockThesisUpdate).toHaveBeenCalled();
   });
 });

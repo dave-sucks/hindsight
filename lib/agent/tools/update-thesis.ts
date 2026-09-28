@@ -40,6 +40,7 @@ import {
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
 import { SETUP_IDS, NO_SETUP_FITS, getSetup, isNamedSetup } from "@/lib/agent/knowledge/setups";
+import { waitingOnADate, waitingOnWords } from "@/lib/agent/plan-sanity";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { heldSetupExitOps } from "@/lib/agent/triggers/setup-exits";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
@@ -345,7 +346,7 @@ const updateSchema = z.object({
         "Holding and sold are NOT settable here — they're tool-owned account facts. WATCHING → HOLDING happens automatically when your buy fills (place_trade); HOLDING → retired-sold when your sell fills (close_position) — on the fill, or on the user's approval for a live proposal. Call those tools; the thesis status flips itself. " +
         "WATCHING = PROMOTED → WATCHING only. The legal opt-out path when you decide not to re-enter a just-promoted thesis on the first live run. The conviction stays in the library; the analyst will re-evaluate on subsequent runs. " +
         "INVALIDATED = the belief broke; we no longer believe the thesis (use this when concrete evidence disproves the view — it retires the thesis with reason INVALIDATED). Not allowed on PROMOTED — use WATCHING. " +
-        "ARCHIVED = walked away from coverage without evidence-based invalidation (e.g. agent or user removed it from the watchlist — it retires the thesis with reason DROPPED). Off the watchlist; visible on the stock page as institutional memory. Use it ONLY when you never want this name back. To stop paying for a name, or to shelve a plan that does not work, keep it WATCHING and set the plan down — remove the buy, floor and target by id with remove_trigger_ids (and the review cadence too, if it should have no clock) — that costs nothing and the name stays in view. (A researched-and-declined PASS is NOT this — pass direction: \"PASS\", which lands status=PASSED.) " +
+        "ARCHIVED = you are done watching it, with no evidence the belief broke (it retires the thesis with reason DROPPED). Off the watchlist; it stays on the stock's page as institutional memory and can be researched again. This is how a watched stock is LET GO when no level on any of your setups works. A plan that merely no longer fits is MOVED, not taken off: a watched LONG or SHORT keeps a buy price — the level where you would buy, however far from today. Taking the buy off and keeping the stock on watch is refused. To stop paying for a name, drop its review cadence and keep its price levels. " +
         "For direction flips or completely new beliefs, use record_thesis with parent_thesis_id instead.",
     ),
 
@@ -427,18 +428,27 @@ export function notApplied(results: TriggerOpResult[], error: string): TriggerOp
   return results.map((r) => (r.ok ? { ...r, ok: false, reason } : r));
 }
 
+/** What the stock is waiting on, in words, or null when it is not waiting on a date. */
+function waitingOnThe(row: { setupId: string | null; horizon: string | null; catalystDate: Date | null }): string | null {
+  const w = waitingOnADate(row);
+  return w ? waitingOnWords(w) : null;
+}
+
 /**
- * The exact call that sets a plan down. VST 09-11: the analyst removed only
- * the buy, the half-plan rule refused it, and the message said "remove the
- * floor and target triggers" without saying which — so it guessed. Every plan
- * level on the stored list, by id, removed together, is a call that lands.
+ * The plan that is on the stock now, by id, so a refused edit can be fixed
+ * without guessing which trigger is which.
+ *
+ * This used to be `setDownInstruction`: every refused plan edit ended with
+ * the exact call that DELETES the plan ("To set the plan down, remove all
+ * of them in one call: remove_trigger_ids: [...]"). A refusal that hands
+ * over the delete is an invitation — thirteen plans came off that way in
+ * thirty days. It names the levels now, and the verbs that move them.
  */
-export function setDownInstruction(stored: Trigger[], direction: string | null): string {
+export function planOnTheStock(stored: Trigger[], direction: string | null): string {
   const levels = stored.filter((t) => isPlanLevel(t, direction));
   if (levels.length === 0) return "";
-  const ids = levels.map((t) => `"${t.id}"`).join(", ");
-  const words = levels.map((t) => describeTrigger(t, direction)).join(", ");
-  return `To set the plan down, remove all of them in one call: remove_trigger_ids: [${ids}] (${words}).`;
+  const words = levels.map((t) => `${describeTrigger(t, direction)} (id "${t.id}")`).join(", ");
+  return `On the stock now: ${words}. Move one with edit_triggers: [{ id, level, rationale }], or send entry_price / stop_loss / target_price.`;
 }
 
 /**
@@ -1218,6 +1228,15 @@ export const updateThesis = defineTool({
             entryPrice:
               avgCost ?? (existing.entryPrice != null ? Number(existing.entryPrice) : null),
             avgCost,
+            // A run may move a buy, replace it, or let the stock go — not
+            // take it off and keep watching. A stock waiting on a date
+            // (window not open, last three weeks, print ahead) is exempt.
+            before: existingTriggers,
+            waitingOn: waitingOnThe({
+              setupId: ("setupId" in patch ? patch.setupId : existing.setupId) as string | null,
+              horizon: ("horizon" in patch ? patch.horizon : existing.horizon) as string | null,
+              catalystDate: ("catalystDate" in patch ? patch.catalystDate : existing.catalystDate) as Date | null,
+            }),
           });
           if (!check.ok) {
             return {
@@ -1225,11 +1244,10 @@ export const updateThesis = defineTool({
               data: {
                 ok: false,
                 error: check.error,
-                // Both refusals offer "set the plan down" as an exit; name the
-                // exact ids so the agent doesn't guess (DAV-258 for the half
-                // plan, DAV-262 for the 2:1 floor — MSFT 2026-09-14 was told
-                // to send the whole list again, an argument that no longer exists).
-                message: `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim(),
+                // Name the levels by id so the fix is not a guess (DAV-258,
+                // DAV-262 — MSFT 2026-09-14 was told to send the whole list
+                // again, an argument that no longer exists).
+                message: `${check.message} ${planOnTheStock(existingTriggers, levelDirection)}`.trim(),
                 trigger_ops: notApplied(opResults, check.error),
               },
               sources: [],
