@@ -275,13 +275,21 @@ const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; 
   // Trade-as-Proposal — see docs/plans/TRADE_AS_PROPOSAL.md
   PROPOSED: { label: 'Pending',        dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
   REJECTED: { label: 'Rejected',       dotClass: 'bg-muted-foreground/40',    tooltip: 'Proposal rejected — never executed' },
-  BLOCKED:  { label: 'Blocked',        dotClass: 'bg-negative',               tooltip: 'The analyst tried this and the app refused it, and it has not been redone — read why, and act by hand if you disagree' },
+  BLOCKED:  { label: 'Blocked',        dotClass: 'bg-negative',               tooltip: 'The analyst tried this and a rule stopped it — read why, and act by hand if you disagree' },
+  PASSED:   { label: 'Passed',         dotClass: 'bg-muted-foreground/40',    tooltip: 'A buy, sell, trim or add trigger fired and the analyst chose not to act — often the right call' },
+  FAILED:   { label: 'Failed',         dotClass: 'bg-negative',               tooltip: 'The run that should have handled this did not finish' },
 };
+
+/** The attempts that never became a proposal (lib/portfolio/attempt-outcomes). */
+const isAttempt = (item: ActivityFeedItem) =>
+  item.type === 'BLOCKED' || item.type === 'PASSED' || item.type === 'FAILED';
 
 function getDecisionAction(item: ActivityFeedItem): string {
   if (item.type === 'PROPOSED') return 'PROPOSED';
   if (item.type === 'REJECTED') return 'REJECTED';
   if (item.type === 'BLOCKED') return 'BLOCKED';
+  if (item.type === 'PASSED') return 'PASSED';
+  if (item.type === 'FAILED') return 'FAILED';
   if (item.type === 'OPENED') return item.direction === 'SHORT' ? 'SHORT' : 'INITIATE';
   if (item.type === 'CLOSED') return 'EXIT';
   const lbl = item.label.toLowerCase();
@@ -312,7 +320,7 @@ function getActivitySentence(item: ActivityFeedItem): string {
     }
     return `Position closed by ${src}.`;
   }
-  if (item.type === 'BLOCKED' && item.reason) return item.reason;
+  if (isAttempt(item) && item.reason) return item.reason;
   if (item.reason) return `${item.reason} (via ${src}).`;
   return `${item.label} via ${src}.`;
 }
@@ -360,9 +368,9 @@ function pickToThesisRow(pick: RecentPick, candles?: StockCandle[]): ThesisRowDa
 function ActivityRow({ item }: { item: ActivityFeedItem }) {
   const actionKey = getDecisionAction(item);
   const meta = ACTIVITY_ACTION_STATUS[actionKey] ?? ACTIVITY_ACTION_STATUS.HOLD;
-  // A blocked row says which call was refused ("Sale blocked", "Thesis edit
-  // blocked") — the server names the tool; the generic word is the fallback.
-  const status = item.type === 'BLOCKED' && item.label ? { ...meta, label: item.label } : meta;
+  // An attempt says what it was ("Buy passed", "Sale blocked", "Thesis edit
+  // blocked") — the server names it; the generic word is the fallback.
+  const status = isAttempt(item) && item.label ? { ...meta, label: item.label } : meta;
   // Trade-as-Proposal — render inline [Approve][Reject] when this row is
   // awaiting the user's decision. See docs/plans/TRADE_AS_PROPOSAL.md.
   const isProposed = item.type === 'PROPOSED' && item.orderId != null;
@@ -417,7 +425,13 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
       <HoverCardTrigger
         render={
           <Link
-            href={item.type === 'BLOCKED' ? `/stocks/${item.symbol}` : `/trades/${item.positionId}`}
+            href={
+              isAttempt(item)
+                ? item.runId
+                  ? `/runs/${item.runId}`
+                  : `/stocks/${item.symbol}`
+                : `/trades/${item.positionId}`
+            }
             className="flex items-center gap-1.5 rounded-md p-2 hover:bg-muted/70 transition-colors"
           />
         }
@@ -468,8 +482,8 @@ function HomeBottomSection({ activity, loading, coverage }: {
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
 
   const filteredActivity = activity.filter((a) => {
-    if (activityFilter === 'opens') return a.type === 'OPENED' || a.type === 'BLOCKED';
-    if (activityFilter === 'closes') return a.type === 'CLOSED';
+    if (activityFilter === 'opens') return a.type === 'OPENED' || (isAttempt(a) && a.side !== 'SELL');
+    if (activityFilter === 'closes') return a.type === 'CLOSED' || (isAttempt(a) && a.side === 'SELL');
     if (activityFilter === 'updates') return a.type === 'MODIFIED';
     return true;
   });
