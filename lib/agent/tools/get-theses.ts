@@ -1381,7 +1381,7 @@ export const getTheses = defineTool({
     // through the resolver, the quote fetch and needsAction. Skipped on a
     // ticker-filtered drill-down and for callers that asked for an explicit
     // status scope. Fail-soft: the book still returns if this throws.
-    let soldToReview: Array<{ thesis_id: string; ticker: string; sold_on: string; days_ago: number; ask: string }> = [];
+    const soldToReview: Array<{ thesis_id: string; ticker: string; sold_on: string; days_ago: number; ask: string }> = [];
     if (!tickerFiltered && !(args.status && args.status.length > 0) && ctx.analystId) {
       try {
         const since = new Date(resolverNow.getTime() - RECENTLY_SOLD_WINDOW_DAYS * 86_400_000);
