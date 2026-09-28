@@ -118,7 +118,7 @@ export const thesisDecisionSchema = z.object({
   remove_trigger_ids: z
     .array(z.string())
     .optional()
-    .describe("REFRESH ONLY. Trigger ids to remove. Not for taking the buy off a watched stock: a plan that no longer works is moved (send new levels) or the decision is PASS."),
+    .describe("REFRESH ONLY. Trigger ids to remove. To set a priced plan down, remove the buy, floor and target triggers and keep a REVIEW wake."),
 });
 
 export type ThesisDecisionInput = z.infer<typeof thesisDecisionSchema>;
@@ -322,7 +322,7 @@ export function validateThesisDecision(
     !(d.remove_trigger_ids && d.remove_trigger_ids.length > 0)
   ) {
     errors.push(
-      "levels: you omitted entry/target/stop but the stored plan is priced, and omitting the fields leaves it as it is. To keep the plan, send all three levels. To change it, send the new three — the buy is the level where you would buy, however far from today's price. If no level on any setup works, the answer is direction PASS; a LONG or SHORT on watch keeps a buy price, and a save that takes it off is refused.",
+      "levels: you omitted entry/target/stop but the stored plan is priced, and omitting the fields leaves it as it is. To set the plan down, send `remove_trigger_ids` naming the buy, floor and target trigger ids from EXISTING THESIS (keep ≥1 REVIEW wake; the level columns follow the triggers). To keep the plan, send all three levels.",
     );
   }
 

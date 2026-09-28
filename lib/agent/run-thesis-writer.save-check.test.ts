@@ -172,14 +172,14 @@ describe("FIVE 2026-09-15 — stop and target explanations of 264 and 266 charac
   });
 });
 
-describe("DOCU 2026-09-15 — the writer took the buy off and wrote the level it wanted as a review", () => {
+describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", () => {
   const fx = fixtures.DOCU;
 
   it("passes the writer's own rules (the gap that threw the research away)", () => {
     expect(validateThesisDecision(fx.submit, validateOpts(fx, "DOCU")).ok).toBe(true);
   });
 
-  it("is refused by the save check — a watched stock keeps a buy — before anything is written", async () => {
+  it("is refused by the save check with the save's plan rule, before anything is written", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
     const outcome = await checkDecisionAgainstSave({
@@ -191,56 +191,23 @@ describe("DOCU 2026-09-15 — the writer took the buy off and wrote the level it
     });
     expect(outcome.wouldSave).toBe(false);
     expect(outcome.fixable).toBe(true);
-    expect(outcome.error).toMatch(/take the buy off/);
-    // The way out is a level, a replacement, or letting go — never the delete.
-    expect(outcome.error).not.toMatch(/set the plan down/i);
-    expect(outcome.error).toMatch(/MOVE the buy/);
+    expect(outcome.error).toMatch(/no buy level/);
     expect(mockThesisUpdate).not.toHaveBeenCalled();
     expect(mockWriteThesisUpdate).not.toHaveBeenCalled();
   });
 
-  it("the old way out — take the $76 review off too and keep watching — is refused as well", async () => {
-    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const setDown = {
-      ...fx.submit,
-      edit_triggers: [],
-      remove_trigger_ids: [...fx.submit.remove_trigger_ids, "d516a881-b59c-45fe-8897-0720fe8687df"],
-    };
-    const v = validateThesisDecision(setDown, validateOpts(fx, "DOCU"));
-    const outcome = await checkDecisionAgainstSave({
-      args: writerArgs(fx, "DOCU"),
-      pull: null,
-      decision: v.decision as ValidatedThesisDecision,
-      ctx,
-      existing: { direction: "LONG", status: fx.thesis.status },
-    });
-    expect(outcome.wouldSave).toBe(false);
-    expect(outcome.error).toMatch(/take the buy off/);
-  });
-
-  it("the fix the refusal asks for — the buy moved to the level the writer had named — passes the check and writes nothing", async () => {
-    // The writer's own REVIEW rung said it: "pullback to the gap-day
-    // midpoint ($67.28) … stop at $64.16 … target $78.30". As a buy it
-    // pays 3.5:1.
+  it("the fix the refusal asks for (take the $76 review off too) passes the check and writes nothing", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const fixed = {
       ...fx.submit,
-      setup_id: "MA_PULLBACK" as const,
-      add_triggers: [],
       edit_triggers: [],
-      remove_trigger_ids: [],
-      entry_price: 67.28,
-      stop_loss: 64.16,
-      target_price: 78.3,
-      stop_basis: "Under the September 4 gap-day low at $64.16, 1.4 ATR below the entry.",
-      target_basis: "1.272 Fibonacci extension of the gap move, $78.30 — 3.5R against a $3.12 stop.",
+      remove_trigger_ids: [...fx.submit.remove_trigger_ids, "d516a881-b59c-45fe-8897-0720fe8687df"],
     };
     const v = validateThesisDecision(fixed, validateOpts(fx, "DOCU"));
     expect(v.ok).toBe(true);
     const outcome = await checkDecisionAgainstSave({
       args: writerArgs(fx, "DOCU"),
-      // A priced plan is checked against the live price, as the writer has it.
-      pull: { currentPrice: livePrice.DOCU } as never,
+      pull: null,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
       existing: { direction: "LONG", status: fx.thesis.status },
@@ -260,7 +227,7 @@ describe("submit_thesis runs the save check", () => {
       ticker: "DOCU",
       validate: validateOpts(fx, "DOCU"),
       check: (d) =>
-        checkDecisionAgainstSave({ args: writerArgs(fx, "DOCU"), pull: { currentPrice: livePrice.DOCU } as never, decision: d, ctx, existing: { direction: "LONG", status: fx.thesis.status } }),
+        checkDecisionAgainstSave({ args: writerArgs(fx, "DOCU"), pull: null, decision: d, ctx, existing: { direction: "LONG", status: fx.thesis.status } }),
       onAttempt: () => ++attempts,
       onAccept,
     }) as unknown as { execute: (raw: unknown) => Promise<{ accepted: boolean; errors?: string[] }> };
@@ -277,15 +244,8 @@ describe("submit_thesis runs the save check", () => {
 
     const second = await t.execute({
       ...fx.submit,
-      setup_id: "MA_PULLBACK" as const,
-      add_triggers: [],
       edit_triggers: [],
-      remove_trigger_ids: [],
-      entry_price: 67.28,
-      stop_loss: 64.16,
-      target_price: 78.3,
-      stop_basis: "Under the September 4 gap-day low at $64.16, 1.4 ATR below the entry.",
-      target_basis: "1.272 Fibonacci extension of the gap move, $78.30 — 3.5R against a $3.12 stop.",
+      remove_trigger_ids: [...fx.submit.remove_trigger_ids, "d516a881-b59c-45fe-8897-0720fe8687df"],
     });
     expect(second.accepted).toBe(true);
     expect(onAccept).toHaveBeenCalledTimes(1);

@@ -4,8 +4,7 @@
  *
  * MSFT's buy fired on 07-31, 08-03, 08-04, 08-05, 08-10 and 08-28; six
  * "triggers updated", zero buys, the level raised each time. A fired buy
- * has three honest answers — buy it, move the buy with the structure it sits on,
- * or let the stock go.
+ * has two honest answers — buy it, or set the plan down with the reason.
  * "Retune" survives only as a re-priced condition that cites structure from
  * the chart (a new pivot, a new pullback level). A raise with no structure
  * cited is not refused anywhere; it arrives the next morning as the

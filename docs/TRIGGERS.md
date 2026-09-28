@@ -351,17 +351,7 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   executed levels, and adds the held-side template triggers that are missing
   (`armHeldLadderOnFill`). Never a rewrite: the analyst's target and reviews
   survive the fill.
-- **A plan set-down** (DEMOTE) removes the buy, floor and target triggers. It
-  is automatic only: a watched stock whose price breaks its planned floor
-  loses the plan, and the next run is asked to price it again or let it go.
-- **An agent never takes the last buy off a watched stock and keeps watching**
-  (`buy_removed`, `validateBuyKept` in `triggers/enter-guard.ts`). It moves
-  the buy, replaces the plan, or lets the stock go. Exempt: a stock waiting
-  on a date (its event more than 70 days out, or inside its last 21; an
-  earnings print still ahead), a stock kept on watch with no direction, and
-  the principal's own edits. In the 30 days to 2026-09-28 the runs and writers
-  took a buy off 13 times and put one on 6 times; the principal's chat put one
-  on 9 times and took none off.
+- **A plan set-down** (DEMOTE) removes the buy, floor and target triggers.
 
 Rules run per op on the resulting list; a refused op is returned by id with
 the reason and the rest of the call lands (`data.trigger_ops` on the tool):

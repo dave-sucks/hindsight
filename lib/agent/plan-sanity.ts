@@ -88,9 +88,8 @@ const isDatedBinary = isPreCatalystPlay;
 const daysUntil = (d: Date, asOf: Date) => (d.getTime() - asOf.getTime()) / 86_400_000;
 
 /**
- * The honest ways to watch a stock with no buy level — each one a DATE the
- * stock is waiting on (QB ruling 2026-09-27, checked against all 31 watched
- * rows on the book; the third added 2026-09-28).
+ * The two honest ways to watch a stock with no buy level (QB ruling
+ * 2026-09-27, checked against all 31 watched rows on the book).
  *
  *   1. A dated binary whose event is further out than the buying window.
  *      Pricing a level five months ahead is a guess. EXEL (156 days), BMRN,
@@ -98,12 +97,6 @@ const daysUntil = (d: Date, asOf: Date) => (d.getTime() - asOf.getTime()) / 86_4
  *   2. An earnings-drift name whose print is still ahead. The entry is
  *      above the gap-day low on days 1–3 AFTER the report; before the gap
  *      exists there is no level to write. AIR, JBL, KMX the day before.
- *   3. A dated binary inside its last three weeks. The run-up trade is over
- *      and a buy here is holding the decision, so the buy comes off until
- *      the event has happened (MIRM, 2026-09-21, five days out). Before
- *      this, such a row was told "the buying window is open — price it",
- *      and a row that did was told "the buy is inside the cutoff — take it
- *      off": two flags, opposite orders.
  *
  * Neither needs a trigger to bring it back. This flag is computed when the
  * row is READ, on every run, so the first run after the window opens — or
@@ -113,29 +106,15 @@ const daysUntil = (d: Date, asOf: Date) => (d.getTime() - asOf.getTime()) / 86_4
  * one) and would have had every run stamping a copy of a seat-level idea
  * onto five theses.
  */
-export type WaitingOn = "WINDOW_NOT_OPEN" | "WINDOW_CLOSED" | "PRINT_AHEAD";
-
-export function waitingOnADate(
-  args: { setupId?: string | null; horizon?: string | null; catalystDate?: Date | string | null },
-  asOf: Date = new Date(),
-): WaitingOn | null {
+function parkedUntil(
+  args: { setupId?: string | null; horizon?: string | null; catalystDate?: Date | null },
+  asOf: Date,
+): "WINDOW_NOT_OPEN" | "PRINT_AHEAD" | null {
   if (!args.catalystDate) return null;
-  const daysOut = daysUntil(new Date(args.catalystDate), asOf);
-  if (isDatedBinary(args)) {
-    if (daysOut > CATALYST_WINDOW_DAYS[1]) return "WINDOW_NOT_OPEN";
-    if (daysOut >= 0 && daysOut <= PRE_CATALYST_ENTRY_CUTOFF_DAYS) return "WINDOW_CLOSED";
-  }
+  const daysOut = daysUntil(args.catalystDate, asOf);
+  if (isDatedBinary(args) && daysOut > CATALYST_WINDOW_DAYS[1]) return "WINDOW_NOT_OPEN";
   if (args.setupId === "PEAD" && daysOut >= 0) return "PRINT_AHEAD";
   return null;
-}
-
-/** What the stock is waiting for, in words — for a refusal or a flag. */
-export function waitingOnWords(w: WaitingOn): string {
-  return w === "WINDOW_NOT_OPEN"
-    ? `its event is more than ${CATALYST_WINDOW_DAYS[1]} days out, so the buying window has not opened`
-    : w === "WINDOW_CLOSED"
-      ? `its event is inside the last ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days, so the buy stays off until it has happened`
-      : "its earnings print is still ahead, and the entry is written after it";
 }
 
 export function computePlanSanity(args: {
@@ -230,10 +209,10 @@ export function computePlanSanity(args: {
   // one of the 21 passed it, because they all kept a review clock. This
   // asks the other question: "can this ever be bought?"
   //
-  // The honest ways to have no buy level are all dated — see
-  // `waitingOnADate`. Everything else owes an answer: price it, or let it go.
+  // Two honest ways to have no buy level, both dated — see `parkedUntil`.
+  // Everything else owes an answer: price it, or let it go.
   if (args.hasEnterTrigger === false) {
-    if (waitingOnADate(args, asOf) == null) {
+    if (parkedUntil(args, asOf) == null) {
       const daysOut = args.catalystDate ? Math.round(daysUntil(args.catalystDate, asOf)) : null;
       const windowOpen =
         isDatedBinary(args) && daysOut != null && daysOut >= 0 && daysOut <= CATALYST_WINDOW_DAYS[1];
@@ -259,7 +238,7 @@ export function computePlanSanity(args: {
     if (daysOut >= 0 && daysOut <= PRE_CATALYST_ENTRY_CUTOFF_DAYS) {
       flags.push({
         kind: "BUY_INSIDE_CUTOFF",
-        text: `The event is ${daysOut} day${daysOut === 1 ? "" : "s"} away and the buy is still live. Inside the last ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days a pre-catalyst entry is not a run-up trade, it is holding the decision. Take the buy, the floor and the target off by id — the stock waits for its date — and say whether it is worth a look after the event.`,
+        text: `The event is ${daysOut} day${daysOut === 1 ? "" : "s"} away and the buy is still live. Inside the last ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days a pre-catalyst entry is not a run-up trade, it is holding the decision. Set the plan down — remove the buy, the floor and the target by id — and say whether the name is worth a look after the event.`,
       });
     }
   }
@@ -291,7 +270,7 @@ export function computePlanSanity(args: {
         kind: "ENTRY_STALE",
         text:
           `The buy level ${fmt(entryPrice)} was set ${days} days ago and hasn't filled — the chart it was priced from has moved on. ` +
-          `Re-price it from today's Price structure (the setup's rule, today's numbers), or let the stock go.`,
+          `Re-price it from today's Price structure (the setup's rule, today's numbers), or set the plan down.`,
       });
     }
   }
@@ -308,7 +287,7 @@ export function computePlanSanity(args: {
       kind: "ENTRY_RAISED_AWAY",
       text:
         `The buy level was moved ${isLong ? "above" : "below"} the price ${n === 1 ? "once" : `${n} times`} in the last 30 days with no structure cited (${moves}). ` +
-        `A fired buy has three answers: buy it, move the buy to the level where the setup would be right again, or let the stock go. A re-priced level names the structure it sits on — a pivot, an average, a swing — or it is the buy being avoided.`,
+        `A fired buy has two answers: buy it, or set the plan down and say why. A re-priced level names the structure it sits on — a pivot, an average, a swing — or it is the buy being avoided.`,
     });
   }
 
@@ -338,7 +317,7 @@ export function computePlanSanity(args: {
         `The buy at ${fmt(c.level)} — which fires when the price ${c.crossing === "ABOVE" ? "rises through" : "falls to"} it — fired on ${c.firedAt} and this stock was never bought. ` +
         `It trades at ${fmt(currentPrice)} now, ${past}, ` +
         `so the buy cannot fire again — an ENTER fires on the crossing, and this one is spent. Nothing will act on this plan as written. ` +
-        `${chase} If the move broke the setup instead, move the buy to where the setup would be right again, or let the stock go, and say what changed. Leaving the level where it is is not an answer.`,
+        `${chase} If the move broke the setup instead, set the plan down and say what changed. Leaving the level where it is is not an answer.`,
     });
   }
 
@@ -420,7 +399,7 @@ export function computePlanSanity(args: {
       kind: "COMPOSITE_BELOW_MINIMUM",
       text:
         `This plan scores ${composite}/10 and this analyst only buys at ${(minConfidence / 10).toFixed(1)}/10 or better (its minimum confidence). ` +
-        `The buy will be refused the day the level fires. Re-score honestly if the setup has improved, or let the stock go — moving the buy level does not change this.`,
+        `The buy will be refused the day the level fires. Re-score honestly if the setup has improved, or set the plan down — moving the buy level does not change this.`,
     });
   }
 
@@ -434,7 +413,7 @@ export function computePlanSanity(args: {
         kind: "PLAN_BELOW_RR_FLOOR",
         text:
           `This plan pays ${rr.toFixed(1)}:1 — entry ${fmt(entryPrice)}, target ${fmt(targetPrice)}, stop ${fmt(stopLoss)} — under the ${MIN_RISK_REWARD}:1 floor every write path enforces. ` +
-          `Any level edit will be refused until the plan clears it: raise the target to a cited level, tighten the stop to real structure, move the buy to a level that pays 2:1, or let the stock go.`,
+          `Any level edit will be refused until the plan clears it: raise the target to a cited level, tighten the stop to real structure, or set the plan down.`,
       });
     }
   }

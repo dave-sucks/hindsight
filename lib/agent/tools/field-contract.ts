@@ -50,7 +50,7 @@ export interface Rule {
 
 const RULE_DEFS = {
   RISK_REWARD_FLOOR: {
-    says: "A plan pays at least 2:1: (target − entry) ÷ (entry − stop). Below it the plan is refused with the arithmetic and the three legal answers (a real level, a buy moved to where the plan does pay, or PASS).",
+    says: "A plan pays at least 2:1: (target − entry) ÷ (entry − stop). Below it the plan is refused with the arithmetic and the three legal answers (a real level, PASS, or set the plan down).",
     refusal: "invalid_thesis_shape — names the ratio, the three levels, and the fix.",
     markers: { daily: "2:1", tactical: "2:1", discovery: "2:1", chat: "2:1", writer: "2:1" },
   },
@@ -68,16 +68,6 @@ const RULE_DEFS = {
     says: "Entry, target and stop sit in order against each other and the live price (long: stop < entry < target).",
     refusal: "invalid_thesis_shape — names the three levels and which is out of order.",
     markers: { daily: "target/stop", tactical: "R/R", discovery: "in order", chat: "target/stop", writer: "R/R" },
-  },
-  BUY_KEPT: {
-    says: "A LONG or SHORT on watch keeps a buy price. A run may move it, replace it, or let the stock go; it may not take it off and keep watching — unless the stock is waiting on a date.",
-    refusal: "buy_removed — names the three answers and the plan on the stock by id.",
-    markers: {
-      daily: "Taking the buy off and keeping the stock on watch",
-      tactical: "removes the last buy and leaves the stock on watch",
-      chat: "Taking the buy off and keeping the stock on watch",
-      writer: "takes the buy off",
-    },
   },
   EVENT_DATE: {
     says: "The event date is the company's newest statement. A filing fills a missing date; a disagreement is written on the row, never overwritten.",
@@ -203,7 +193,7 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("direction", "CHOSEN"),
     f("add_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
     f("edit_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
-    f("remove_trigger_ids", "JUDGED", { rule: "BUY_KEPT", note: "A wrong id is refused by id; the rest of the call lands. The last buy on a watched stock does not come off." }),
+    f("remove_trigger_ids", "IDENTITY", { note: "A wrong id is refused by id; the rest of the call lands." }),
     f("change_status", "CHOSEN"),
     f("research_data", "CARRIED"),
     ...RESEARCH_BLOCKS,
@@ -235,7 +225,7 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
     f("add_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
     f("edit_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
-    f("remove_trigger_ids", "JUDGED", { rule: "BUY_KEPT" }),
+    f("remove_trigger_ids", "IDENTITY"),
   ],
 };
 

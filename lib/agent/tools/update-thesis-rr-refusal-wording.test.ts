@@ -107,7 +107,7 @@ beforeEach(() => {
 });
 
 describe("update_thesis — the 2:1 refusal names the ops that exist (DAV-262)", () => {
-  it("MSFT 09-14: a plan under the floor is refused, naming the buy, floor and target by id and the verbs that move them", async () => {
+  it("MSFT 09-14: a plan under the floor is refused with remove_trigger_ids naming the buy, floor and target", async () => {
     // The stop nudged to $450 with the target left at $600: (600 − 518) / (518 − 450) = 1.21.
     const refused = await run({ stop_loss: 450 });
     expect(refused.data?.ok).toBe(false);
@@ -116,44 +116,16 @@ describe("update_thesis — the 2:1 refusal names the ops that exist (DAV-262)",
 
     const message = String(refused.data?.message);
     expect(message).toContain("1.21:1");
-    expect(message).toContain("edit_triggers");
+    expect(message).toContain("remove_trigger_ids");
     expect(message).not.toMatch(/resend triggers|triggers\[\]|pass that array|ACTIVE thesis/);
-    // The plan's three levels by id, not the review cadence.
+    // The set-down call names the plan's three levels by id, not the review cadence.
     const named = [...message.matchAll(/"([0-9a-f-]{36})"/g)].map((m) => m[1]);
     expect(named.sort()).toEqual([BUY, FLOOR, TARGET].sort());
   });
 
-  it("the refusal does not hand over the delete", async () => {
-    // It used to end "To set the plan down, remove all of them in one call:
-    // remove_trigger_ids: [...]" — and on 2026-09-14 that is what MSFT's
-    // run did: "Removed: buy above $497, Removed: sell below $448, Removed:
-    // review above $600". The stock could not be bought again until the
-    // principal's chat put a buy back on 09-27.
-    const message = String((await run({ stop_loss: 450 })).data?.message);
-    expect(message).not.toMatch(/set the plan down/i);
-    expect(message).not.toContain("remove_trigger_ids");
-    expect(message).toContain("move the buy to the level where the plan does pay");
-  });
-
-  it("taking the plan off and keeping the stock on watch is refused", async () => {
-    const refused = await run({ remove_trigger_ids: [BUY, FLOOR, TARGET] });
-    expect(refused.data?.ok).toBe(false);
-    expect(refused.data?.error).toBe("buy_removed");
-    expect(String(refused.data?.message)).toContain("MOVE the buy");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
-  });
-
-  it("moving the buy to where the plan pays lands", async () => {
-    // A pullback to $480 against the same $448 floor and $600 target:
-    // (600 − 480) / (480 − 448) = 3.75.
-    const moved = await run({ entry_price: 480, price_at_time: 505 });
-    expect(moved.data?.error).toBeUndefined();
-    expect(mockThesisUpdate).toHaveBeenCalled();
-  });
-
-  it("letting the stock go lands", async () => {
-    const gone = await run({ change_status: "ARCHIVED", rationale: "No level on the base or the pullback pays 2:1; letting MSFT go." });
-    expect(gone.data?.error).toBeUndefined();
+  it("following the named set-down lands", async () => {
+    const followed = await run({ remove_trigger_ids: [BUY, FLOOR, TARGET] });
+    expect(followed.data?.error).toBeUndefined();
     expect(mockThesisUpdate).toHaveBeenCalled();
   });
 });
