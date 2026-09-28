@@ -104,14 +104,39 @@ The motivating failure for sell rules at all is still IONS: bought $73.83,
 day-one floor at $65, ran +17%, three rubber-stamp reviews, then crashed and
 fired the day-one floor for a LOSS.
 
-As set on 2026-09-14:
+As stored on 2026-09-27, read from the rows of the account that trades
+(`Account.triggers` and `AgentConfig.triggers`, filtered to the account the
+enabled analysts belong to — the database holds a second, empty account whose
+rows are not these):
 
-| Level | Rules |
-|---|---|
-| Account | +7% / −7% day → ADD · review clock 7d · earnings within 3d / beat / miss → REVIEW |
-| PEAD Specialist | 12% off the high, **once up 10%** → EXIT · +10% → REVIEW · −12% → REVIEW |
-| Catalyst Event PM | −10% → REVIEW (the event is the exit; the thesis carries the stop) |
-| Secular Compounder | 15% off the high → REVIEW · below the 200-day → REVIEW · **25% off the high → EXIT** |
+| Level | Rule | Does |
+|---|---|---|
+| Account | up 7% in a day | ADD |
+| Account | every 7 days | REVIEW |
+| Account | reports earnings within 3 days | REVIEW |
+| Account | earnings beat · earnings miss | REVIEW |
+| Account | a material filing | REVIEW |
+| PEAD Specialist | 12% off the high, **once up 10%** | EXIT |
+| PEAD Specialist | up 10% from entry · down 12% from entry | REVIEW |
+| Catalyst Event PM | 10 days before the event date | REVIEW |
+| Catalyst Event PM | 30 days after the event date | REVIEW |
+| Catalyst Event PM | an 8-K under item 8.01 or 7.01 | REVIEW |
+| Secular Compounder | **25% off the high** | EXIT — the only automatic sale |
+| Secular Compounder | 15% off the high | REVIEW |
+| Secular Compounder | below the 200-day | REVIEW — once a week while it holds (§6) |
+| Secular Compounder | up 15% from entry · down 15% from entry | REVIEW |
+| Secular Compounder | down 7% in a day | ADD |
+
+Three things the table used to say that the rows do not:
+
+- The account has no "down 7% in a day → add". It moved to the Secular
+  Compounder on 2026-09-18; trades never average down.
+- The account has no trailing sale. Every automatic sale belongs to an analyst.
+- The Catalyst Event PM has no "down 10% → review". Its reviews are tied to the
+  event date; the thesis carries the stop.
+
+The table is a snapshot. The Triggers tabs are the source: Settings → Triggers
+for the account, each analyst's Triggers tab for the rest.
 
 `armAtGainPct` (TRAILING_FROM_HIGH): the trail has no level until the position
 has once been up that much from entry. `trailFireLevel` in `triggers/trail.ts`
@@ -278,6 +303,17 @@ infinite loop the instant the predicate latches true, so the write path
 overwrites it with the per-kind default (`applyTriggerCooldownDefaults`). The
 standing trail ratchet is stamped `cooldownDays: 0` at mint (terminal EXIT, same
 as the hard stop).
+
+**A review on a state asks once a week, whatever is stored.** "Below the
+200-day", "within X% of the 52-week high" and "beating SPY" describe where a
+stock IS, for weeks at a time, not something that happens. A REVIEW on one of
+them (or on a composite made only of them) has a floor of 7 days
+(`effectiveCooldownDays`; the floor itself is `triggers/state-cooldown.ts`, and
+the Triggers tab prints the number in force). ABT sat under its 200-day from
+2026-09-15 to 09-25 and the Secular Compounder's review, stored at 1 day, fired
+all nine trading days. Only a review slows down: a buy on the same condition
+fires on its crossing, and a sale is a standing order that asks every day its
+condition holds.
 
 ## 7. Cadence + market hours
 
