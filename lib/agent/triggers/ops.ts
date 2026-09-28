@@ -38,7 +38,7 @@ import { triggerBucket } from "./bucket";
 import { predicateSentence } from "./format";
 import { applyTriggerCooldownDefaults } from "./defaults";
 import { stampWrittenPrice } from "./written-price";
-import { validateBuyKept, validateEnterTriggerRequired } from "./enter-guard";
+import { validateEnterTriggerRequired } from "./enter-guard";
 import {
   canonicalLevels,
   levelSlotOf,
@@ -553,7 +553,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
 
 export type LadderCheck =
   | { ok: true; columns: { entryPrice: number | null; targetPrice: number | null; stopLoss: number | null } }
-  | { ok: false; error: "invalid_thesis_shape" | "missing_enter_trigger" | "buy_removed"; message: string };
+  | { ok: false; error: "invalid_thesis_shape" | "missing_enter_trigger"; message: string };
 
 /**
  * Derive the plan from the list and check it once: ordering everywhere, the
@@ -571,28 +571,8 @@ export function checkLadder(input: {
   /** The fill on a held name (position avgCost, else the stored entry). */
   entryPrice?: number | null;
   avgCost?: number | null;
-  /**
-   * The stock's own triggers before this call. With it, an AGENT may not
-   * take the last buy off a watched stock and keep watching — see
-   * `validateBuyKept`. Absent ⇒ no check (the principal, a mint).
-   */
-  before?: Trigger[];
-  /** What the stock is waiting on, in words, when it is waiting on a date. */
-  waitingOn?: string | null;
 }): LadderCheck {
   const { triggers, inherited = [], direction, status } = input;
-  // First, because the other two refusals are about the plan that is LEFT,
-  // and the cheapest way to satisfy either was to leave no plan at all.
-  if (input.actor === "AGENT" && input.before) {
-    const kept = validateBuyKept({
-      direction,
-      status: status ?? "WATCHING",
-      before: input.before,
-      after: triggers,
-      waitingOn: input.waitingOn,
-    });
-    if (!kept.ok) return { ok: false, error: "buy_removed", message: kept.note };
-  }
   const held = status === "HOLDING";
   const columns = canonicalLevels({
     triggers: [

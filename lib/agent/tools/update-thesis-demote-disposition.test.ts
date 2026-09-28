@@ -146,38 +146,12 @@ beforeEach(() => {
 });
 
 describe("update_thesis — the demote disposition (DAV-224)", () => {
-  it("a run may not take the buy off a priced watch and keep watching (2026-09-28)", async () => {
-    // FLIPPED. This call used to go through, and it is the call that
-    // drained the book: thirteen buys came off this way in thirty days,
-    // most with "setting the plan down" in the rationale, and 21 of 29
-    // watched stocks could not be bought. A wake is not a buy.
+  it("a wakes-only resend on a priced directional watch goes through: no re-clock, columns clear, direction kept", async () => {
     mockThesisFindUnique.mockResolvedValue(makeRow());
     const result = await run({
       thesis_id: "thesis_demote_1",
       rationale:
         "Four weekly reviews with nothing to say — setting the plan down. Wake on the pullback to $160 or the next beat.",
-      remove_trigger_ids: ["enter-1", "floor-1", "clock-1"],
-      add_triggers: wakeTriggers,
-    });
-    expect(result.data?.ok).toBe(false);
-    expect(result.data?.error).toBe("buy_removed");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
-  });
-
-  it("the same call on a stock waiting on a date goes through: no re-clock, columns clear, direction kept", async () => {
-    // A dated binary more than 70 days out carries no buy until its window
-    // opens. PRAX, 2026-09-21: the PDUFA moved to December 27 and the buy
-    // came off — that one was right.
-    mockThesisFindUnique.mockResolvedValue(
-      makeRow({
-        horizon: "CATALYST",
-        setupId: "PRE_CATALYST",
-        catalystDate: new Date(Date.now() + 100 * 86_400_000),
-      }),
-    );
-    const result = await run({
-      thesis_id: "thesis_demote_1",
-      rationale: "The decision moved out three months; the buy comes off until the window opens.",
       remove_trigger_ids: ["enter-1", "floor-1", "clock-1"],
       add_triggers: wakeTriggers,
     });
@@ -240,37 +214,21 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     );
   });
 
-  it("removing every trigger is still legal on a watch that has no buy to lose (DAV-209)", async () => {
-    // Zero triggers is a legal state; what a run may not do is CREATE it
-    // out of a priced plan. This row carries only its clock.
-    mockThesisFindUnique.mockResolvedValue(
-      makeRow({
-        entryPrice: null,
-        targetPrice: null,
-        stopLoss: null,
-        triggers: planTriggers.filter((t) => t.id === "clock-1"),
-      }),
-    );
-    const result = await run({
-      thesis_id: "thesis_demote_1",
-      rationale: "Clearing everything.",
-      remove_trigger_ids: ["clock-1"],
-    });
-    expect(result.data?.ok).not.toBe(false);
-    expect(mockThesisUpdate).toHaveBeenCalled();
-    const patch = mockThesisUpdate.mock.calls[0][0].data as Record<string, unknown>;
-    expect(patch.triggers).toEqual([]);
-  });
-
-  it("…and refused when it would take the buy with it", async () => {
+  it("removing every trigger on a directional watch is accepted — zero triggers is legal (DAV-209)", async () => {
+    // FLIPPED 2026-09-08. This used to refuse with missing_enter_trigger on
+    // the "every watch carries a wake" rule. Clearing the ladder now leaves
+    // a name in view with nothing on it, which is a state a person is
+    // allowed to choose; the plan levels go with the rungs that held them.
     mockThesisFindUnique.mockResolvedValue(makeRow());
     const result = await run({
       thesis_id: "thesis_demote_1",
       rationale: "Clearing everything.",
       remove_trigger_ids: ["enter-1", "floor-1", "clock-1"],
     });
-    expect(result.data?.error).toBe("buy_removed");
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
+    expect(result.data?.ok).not.toBe(false);
+    expect(mockThesisUpdate).toHaveBeenCalled();
+    const patch = mockThesisUpdate.mock.calls[0][0].data as Record<string, unknown>;
+    expect(patch.triggers).toEqual([]);
   });
 
   it("promote: a soft watch commits to a full plan through the direction path", async () => {
