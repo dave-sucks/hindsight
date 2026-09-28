@@ -85,6 +85,7 @@ import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import type { Trigger, TriggerPredicate } from "@/lib/agent/triggers/types";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { DeclinedSaleWork } from "@/lib/agent/declined-sale";
+import { fireStreak, type FireStreakUpdate } from "@/lib/agent/fire-streak";
 import type { Horizon as StalenessHorizon } from "@/lib/agent/horizon-policy";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -139,6 +140,16 @@ export type NeedsAction =
       action: NeedsActionVerb;
       summary: string;
       firedAt: string;
+      /**
+       * How many times this rung has fired since the plan last changed,
+       * and when that was (DAV-323). Absent on a first ask, and absent
+       * when the caller passed no history. ABT's "below the 200-day →
+       * review" reached its ninth fire indistinguishable from its first;
+       * `repeatLine` is that sentence, ready to print. An input, not a bar.
+       */
+      repeatCount?: number;
+      unchangedSince?: string | null;
+      repeatLine?: string;
     }
   | {
       kind: "TRIGGER_MATCHING_NOW";
@@ -391,6 +402,13 @@ export interface NeedsActionInput {
    * precedence decision stays here with every other kind.
    */
   declinedSale?: DeclinedSaleWork | null;
+  /**
+   * A slice of this thesis's audit log — any order (DAV-323). Only a fired
+   * trigger reads it, to count how many times the same rung has asked since
+   * the plan last changed. Omit and the count is simply absent; no other
+   * kind changes.
+   */
+  recentUpdates?: FireStreakUpdate[];
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -449,12 +467,26 @@ export function computeNeedsAction(
     // don't re-flag it (the agent would re-attempt place_trade and hit the
     // PENDING_APPROVAL dedup guard). Fall through; non-ENTER work still surfaces.
     if (!(hasPendingEntryProposal && action === "ENTER")) {
+      // DAV-323: how long this same rung has been asking. Absent when the
+      // caller passed no history, or on a first ask.
+      const streak = input.recentUpdates
+        ? fireStreak(input.recentUpdates, latestUpdate.triggerId, now)
+        : null;
       return {
         kind: "TRIGGER_FIRED",
         triggerId: latestUpdate.triggerId,
         action,
         summary: t ? describePredicate(t.predicate) : "(predicate removed)",
         firedAt: latestUpdate.timestamp.toISOString(),
+        ...(streak && streak.line
+          ? {
+              repeatCount: streak.fireCount,
+              unchangedSince: streak.lastChangedAt
+                ? streak.lastChangedAt.toISOString()
+                : null,
+              repeatLine: streak.line,
+            }
+          : {}),
       };
     }
   }

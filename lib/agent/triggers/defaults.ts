@@ -25,6 +25,9 @@
 import { randomUUID } from "node:crypto";
 import type { Trigger, TriggerPredicate } from "./types";
 import { triggerBucket } from "./bucket";
+import { flooredCooldownDays } from "./state-cooldown";
+
+export { isStatePredicate, STATE_PREDICATE_MIN_COOLDOWN_DAYS } from "./state-cooldown";
 
 const createId = () => randomUUID();
 
@@ -694,12 +697,16 @@ export function defaultCooldownDaysForPredicate(
       // no change at all. A condition that is true for a fortnight should
       // ask twice, not fourteen times.
       //
-      // A BUY is the other case. These two read the price, so an ENTER on
-      // them fires on the crossing, once, by itself (`shouldFire`). A week's
-      // cooldown there would not quiet a nag — it would swallow the second
-      // crossing. GD, GEV and SYK buy on "back above the 50-day"; a buy
-      // declined on Monday must be able to fire again on Thursday's cross.
-      return action === "ENTER" ? 1 : 7;
+      // Only the REVIEW slows down. A BUY reads the price, so an ENTER on
+      // these fires on the crossing, once, by itself (`shouldFire`); a
+      // week's cooldown there would not quiet a nag, it would swallow the
+      // second crossing (GD, GEV and SYK buy on "back above the 50-day").
+      // A SALE keeps DAV-229: a protective rung is a standing order and
+      // asks every day its condition holds. #719 shipped this as
+      // `ENTER ? 1 : 7`, which quietly put an EXIT on a weekly clock too.
+      // See `effectiveCooldownDays` below — same rule, enforced as a floor
+      // so a written `cooldownDays: 1` can't defeat it.
+      return action === "REVIEW" ? 7 : 1;
     case "GAP_UP":
       // A gap stays "within the last N sessions" for N days; one fire per gap.
       return Math.max(1, p.withinDays ?? 1);
@@ -768,6 +775,42 @@ export function defaultFireModeForAction(
   action: Trigger["action"],
 ): "TACTICAL" | "DIRECT" {
   return action === "EXIT" ? "DIRECT" : "TACTICAL";
+}
+
+/**
+ * The cooldown a rung actually fires on — the one number `shouldFire` uses.
+ *
+ * Three layers:
+ *   1. What is written on the rung.
+ *   2. The per-predicate default, when nothing is written (or when a 0 is
+ *      written on something other than an EXIT, which is the historic bad
+ *      value — a 0 there means "nag every five minutes").
+ *   3. A FLOOR on state predicates that aren't buys.
+ *
+ * Layer 3 is the DAV-329 fix and it has to be a floor, not a default:
+ * #719 set the default for `VS_SMA` to 7 and it changed nothing, because
+ * the Secular Compounder's "below the 200-day → review" rule carries an
+ * explicit `cooldownDays: 1`, and a written 1 beats any default. ABT sat
+ * under its 200-day from 09-15 to 09-25 and that rule fired all nine
+ * trading days. Without the floor the only fix is deleting and re-adding
+ * the rule by hand.
+ *
+ * Only a REVIEW is floored. A BUY on one of these reads the price, so it
+ * fires on the crossing already; a week's cooldown there wouldn't quiet a
+ * nag, it would swallow the second crossing, and GD, GEV and SYK all buy
+ * on "back above the 50-day". A SALE — EXIT or TRIM — keeps DAV-229's
+ * standing-order semantics untouched: a protective rung asks every day its
+ * condition holds, and a decline means "did nothing today". Slowing one
+ * down to weekly would turn a declined sell into a silent one.
+ */
+export function effectiveCooldownDays(trigger: Trigger): number {
+  const isInvalidZero = trigger.cooldownDays === 0 && trigger.action !== "EXIT";
+  const written =
+    trigger.cooldownDays != null && !isInvalidZero
+      ? trigger.cooldownDays
+      : defaultCooldownDaysForPredicate(trigger.predicate, trigger.action);
+
+  return flooredCooldownDays(trigger, written);
 }
 
 export function applyTriggerCooldownDefaults(triggers: Trigger[]): Trigger[] {

@@ -26,7 +26,12 @@ export function needsActionLine(na: NeedsAction): string {
         " — no new plan yet."
       );
     case "TRIGGER_FIRED":
-      return `A trigger fired and nothing has answered it: ${na.summary}`;
+      // The repeat line only exists once the same rung has asked twice
+      // (DAV-323) — on a first ask there is no history worth a sentence.
+      return (
+        `A trigger fired and nothing has answered it: ${na.summary}` +
+        (na.repeatLine ? ` ${na.repeatLine}` : "")
+      );
     case "TRIGGER_MATCHING_NOW":
       return `A trigger is true right now: ${na.predicateSummary}${na.livePrice != null ? ` (price $${na.livePrice.toFixed(2)})` : ""}`;
     case "UNPROTECTED_GAIN":

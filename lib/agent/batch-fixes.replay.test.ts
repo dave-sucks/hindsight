@@ -331,13 +331,25 @@ describe("DAV-332 — a run that owes no checks still completes", () => {
 // ── DAV-329 ───────────────────────────────────────────────────────────────
 
 describe("DAV-329 — a state re-asks weekly, a crossing daily", () => {
-  it("below-the-200-day and near-the-52-week-high default to a week", () => {
+  it("below-the-200-day and near-the-52-week-high REVIEW on a week", () => {
     // ABT sat under its 200-day for nine trading days and the Compounder's
     // review rule fired all nine.
-    expect(
-      defaultCooldownDaysForPredicate({ kind: "VS_SMA", period: 200, direction: "BELOW" }),
-    ).toBe(7);
-    expect(defaultCooldownDaysForPredicate({ kind: "PCT_FROM_52W_HIGH", max: 5 })).toBe(7);
+    const below200 = { kind: "VS_SMA" as const, period: 200 as const, direction: "BELOW" as const };
+    expect(defaultCooldownDaysForPredicate(below200, "REVIEW")).toBe(7);
+    expect(defaultCooldownDaysForPredicate({ kind: "PCT_FROM_52W_HIGH", max: 5 }, "REVIEW")).toBe(7);
+  });
+
+  it("a SALE on the same state stays daily — a standing order (DAV-229)", () => {
+    // Amended 2026-09-27: this shipped as `ENTER ? 1 : 7`, which put an
+    // EXIT on a weekly clock too. A protective rung asks every day its
+    // condition holds; slowing it turns a declined sell into a silent one.
+    const below200 = { kind: "VS_SMA" as const, period: 200 as const, direction: "BELOW" as const };
+    expect(defaultCooldownDaysForPredicate(below200, "EXIT")).toBe(1);
+    expect(defaultCooldownDaysForPredicate(below200, "TRIM")).toBe(1);
+    // No action given, no way to tell a review from a sale: take the safe
+    // one. Under-firing a protective rung is the worse failure, and the
+    // only production caller (`applyTriggerCooldownDefaults`) always knows.
+    expect(defaultCooldownDaysForPredicate(below200)).toBe(1);
   });
 
   it("a BUY on the same kinds keeps the day: it fires on the crossing, once, by itself", () => {
