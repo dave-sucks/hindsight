@@ -28,7 +28,7 @@ interface PeerMetrics {
 
 async function fetchPeerMetrics(ticker: string): Promise<PeerMetrics> {
   // Candle data via Alpaca (Finnhub `/stock/candle` is paid-only post-2024).
-  // See lib/alpaca.ts:getBars — defaults to feed=iex for free-plan compat.
+  // See lib/alpaca.ts:getBars — consolidated (SIP) bars.
   const todayISO = new Date().toISOString().slice(0, 10);
   const ninetyDaysAgoISO = new Date(Date.now() - 90 * 86400_000)
     .toISOString()

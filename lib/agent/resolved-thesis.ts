@@ -96,7 +96,7 @@ export interface ResolvedEnvelope {
   staleness: "FRESH" | "STALE";
 
   resolvedAt: string;
-  /** 0 if live; up to cache TTL otherwise. Currently always 0 — no cache yet. */
+  /** How old `currentPrice` was when this was resolved, from the time it printed. Null when that time is unknown. */
   quoteAgeMs: number | null;
 }
 
@@ -179,11 +179,15 @@ export interface SupersessionEntry {
 export function buildResolvedEnvelope(args: {
   thesis: ResolverThesisInput;
   currentPrice: number | null;
+  /** When `currentPrice` printed (ISO or unix seconds). */
+  priceAsOf?: string | number | null;
   /** Most-recent terminal sister thesis on the same ticker, if any. */
   supersession?: SupersessionEntry | null;
   now: Date;
 }): ResolvedEnvelope {
   const { thesis, currentPrice, supersession, now } = args;
+  const printedAt =
+    typeof args.priceAsOf === "number" ? args.priceAsOf * 1000 : args.priceAsOf ? new Date(args.priceAsOf).getTime() : NaN;
 
   // entryQuality surfaced flat from nested scoring (was buried under
   // scoring.entryQuality.score — primary cause of the "composite hides
@@ -357,7 +361,7 @@ export function buildResolvedEnvelope(args: {
     supersededBy,
     staleness,
     resolvedAt: now.toISOString(),
-    quoteAgeMs: currentPrice != null ? 0 : null,
+    quoteAgeMs: currentPrice != null && Number.isFinite(printedAt) && printedAt > 0 ? now.getTime() - printedAt : null,
   };
 }
 

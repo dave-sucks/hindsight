@@ -474,7 +474,7 @@ export const updateThesis = defineTool({
   execute: async (args, ctx) => {
     // Resolve priceAtTime defensively. The agent SHOULD pass price_at_time
     // (it just called get_stock_data on this ticker). When it forgets, we
-    // fall back to a fresh Finnhub quote so the timeline row never has a
+    // fall back to a fresh live quote so the timeline row never has a
     // null price for an active update. Cheap (one HTTP call, 30s cache);
     // worth it for the timeline integrity.
     let resolvedPriceAtTime: number | null = args.price_at_time ?? null;

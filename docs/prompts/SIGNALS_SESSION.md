@@ -22,6 +22,6 @@
 
 - **A new kind ships whole** (Door 1 in `LANES.md`): types, schema, evaluator, sentence, popover, tests, one replayed from real data. If no real case exists yet, say so and show the closest real row.
 - **You propose uses, you don't write them.** When a kind or field is live, file a ticket to the Agents lane with the proof and the setup you think it serves. Don't edit agent prompts or `setups.ts`.
-- **Count your calls.** Every job and tool states Finnhub (or other vendor) calls per run in its PR. The trigger check has first claim on the quote budget.
+- **Count your calls.** Every job and tool states its vendor calls per run in its PR. Live prices come from Alpaca (10,000 calls a minute per key), everything else from Finnhub (60). On both, the trigger check has first claim: when a minute runs low, every other caller is refused a quote before it is (`lib/market-data/quote-budget.ts`).
 - **Empty is not ok.** A source that failed or returned nothing is named in words everywhere it's shown — the tool result, the row, the log.
 - **SEC filings return as kinds that actually fire** (for example an 8-K item, or an S-3 / 424B offering on a held name), never as a generic "filing" that nothing evaluates.

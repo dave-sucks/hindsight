@@ -11,6 +11,7 @@ import { finnhub } from "@/lib/agent/research-helpers";
 import { sma } from "@/lib/market-data/price-structure";
 import { getBars } from "@/lib/alpaca";
 import { readPrice, type PriceReading } from "@/lib/market-data/quote-age";
+import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import type { MacroEvent } from "@/lib/discovery/types";
 
 function formatShortDate(iso: string) {
@@ -38,24 +39,14 @@ export const getMarketContext = defineTool({
     // How old SPY's price is, in words when it isn't live (quote-age).
     const spyQuote: { reading: PriceReading | null } = { reading: null };
     // SPY candle via Alpaca (Finnhub /stock/candle is paid-only since
-    // 2024). Same feed=iex story as get-stock-data — see A1 PR.
+    // 2024).
     const spyBarsStart = new Date(Date.now() - 30 * 86400_000)
       .toISOString()
       .slice(0, 10);
-    const [quoteResults, spyBarsResult, earningsDensityResult] =
+    const [live, spyBarsResult, earningsDensityResult] =
       await Promise.all([
-        Promise.all(
-          allSymbols.map(async (sym) => {
-            const res = await finnhub(`/quote?symbol=${sym}`, 2);
-            const d = res.data as Record<string, number> | null;
-            if (sym === "SPY") spyQuote.reading = readPrice({ ticker: "SPY", quote: d, quoteError: res.error, now: new Date() });
-            if (d && typeof d.c === "number" && d.c > 0) {
-              return { symbol: sym, price: d.c, changesPercentage: d.dp ?? 0, dayHigh: d.h ?? d.c, dayLow: d.l ?? d.c };
-            }
-            if (res.error) errors.push(res.error);
-            return null;
-          })
-        ),
+        // SPY, the sector ETFs and VIXY in one call.
+        getLiveQuotes([...allSymbols, "VIXY"], { caller: "other", creds: ctx.alpacaCreds }),
         // Alpaca returns daily bars; convert to the {c, s} shape the
         // downstream code expects.
         (async () => {
@@ -78,10 +69,20 @@ export const getMarketContext = defineTool({
         finnhub(`/calendar/earnings?from=${today}&to=${fiveDaysForward}`, 2),
       ]);
 
+    const quoteResults = allSymbols.map((sym) => {
+      const { quote: d, error } = live[sym] ?? { quote: null };
+      if (sym === "SPY") spyQuote.reading = readPrice({ ticker: "SPY", quote: d, quoteError: error, now: new Date() });
+      if (d) {
+        return { symbol: sym, price: d.c, changesPercentage: d.dp ?? 0, dayHigh: d.h ?? d.c, dayLow: d.l ?? d.c };
+      }
+      if (error) errors.push(error);
+      return null;
+    });
     const spyData = quoteResults[0];
     const sectorsRaw = quoteResults.slice(1).filter(Boolean);
 
-    // VIX: Finnhub first, then VIXY fallback
+    // VIX: the index from Finnhub (Alpaca's stock feed has no indices), then
+    // VIXY.
     let vixLevel: number | null = null;
     let vixChangePct: number | null = null;
     const vixFinnhubResult = await finnhub(`/quote?symbol=${encodeURIComponent("^VIX")}`, 2);
@@ -90,11 +91,10 @@ export const getMarketContext = defineTool({
       vixLevel = vixFinnhub.c;
       vixChangePct = vixFinnhub.dp ?? null;
     } else {
-      const vixyResult = await finnhub("/quote?symbol=VIXY", 2);
-      const vixy = vixyResult.data as Record<string, number> | null;
-      if (vixy && typeof vixy.c === "number" && vixy.c > 0) {
+      const vixy = live.VIXY?.quote;
+      if (vixy) {
         vixLevel = vixy.c;
-        vixChangePct = vixy.dp ?? null;
+        vixChangePct = vixy.dp;
       }
     }
 
@@ -193,9 +193,9 @@ export const getMarketContext = defineTool({
         ],
       },
       sources: [
-        { provider: "Finnhub", title: "SPY Real-Time Quote", url: "https://finnhub.io/docs/api/quote" },
+        { provider: "Alpaca", title: "SPY Real-Time Quote", url: "https://docs.alpaca.markets/reference/stocksnapshots-1" },
         { provider: "Finnhub", title: "CBOE VIX Index", url: "https://finnhub.io/docs/api/quote" },
-        { provider: "Finnhub", title: "S&P 500 Sector ETF Performance", url: "https://finnhub.io/docs/api/quote" },
+        { provider: "Alpaca", title: "S&P 500 Sector ETF Performance", url: "https://docs.alpaca.markets/reference/stocksnapshots-1" },
         { provider: "Alpaca", title: "SPY 30-Day Bars (SMA-20 + Regime)", url: "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/" },
         { provider: "Finnhub", title: "Earnings Calendar (5-Day Density)", url: "https://finnhub.io/docs/api/earnings-calendar" },
       ],

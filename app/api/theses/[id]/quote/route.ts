@@ -97,7 +97,7 @@ export async function GET(
   const ownAnalystId = thesis.researchRun?.agentConfigId ?? null;
   const isHolding = thesis.status === "HOLDING";
 
-  // One parallel batch: the slow Finnhub quote, the StockInfo cache identity,
+  // One parallel batch: the live quote, the StockInfo cache identity,
   // the terminal-sibling supersession lookup (same-analyst scope), and the
   // open position (qty/avgCost for PnL + openedAt). Quote
   // failure is non-fatal — the sheet just omits the price line + PnL.
@@ -231,6 +231,7 @@ export async function GET(
       positionOpenedAt: openPosition?.openedAt ?? null,
     },
     currentPrice,
+    priceAsOf: liveQuote?.t ?? null,
     supersession: supersessionMap.get(thesis.ticker) ?? null,
     now: new Date(),
   });

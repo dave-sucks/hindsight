@@ -5,7 +5,7 @@
  * answer. DAV-239.
  *
  * Output:
- *   - one log line every run: `[vendor-probe] ok=8 empty=0 error=0 (SMMT)`
+ *   - one log line every run: `[vendor-probe] ok=9 empty=0 error=0 (SMMT)`
  *   - an email to the account's digest recipients ONLY when something is
  *     `empty` or `error` — a quiet vendor must never be quiet twice.
  *

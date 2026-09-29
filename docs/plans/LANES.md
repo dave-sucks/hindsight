@@ -90,7 +90,7 @@ lane accepts, edits the catalog and prompts, and says so on the ticket.
 6. **Every fix PR carries a test replayed from the real production input, shown failing on main.**
 7. **The five-line PR message** (net delta and the deletion it names; the acceptance proof; "no new refusal"; "rebased onto main, not stacked"; for prompt changes the exact paragraph removed and added).
 8. **Column drops are two PRs. No stacked PRs. Nothing merges without Dave's click.**
-9. **The quote budget is shared.** One Finnhub key, about 60 calls a minute, used by the trigger check, writers, chat and reviews. The trigger check has first claim. A new job states its calls per run in the PR; nothing burns the production key during market hours for a review. Live quotes are moving to Alpaca.
+9. **The quote budget is shared.** Live prices come from Alpaca (10,000 calls a minute per key), with Finnhub's quote behind it; everything else Finnhub serves shares one key at about 60 calls a minute. The trigger check has first claim on both: when a vendor's minute runs low, chat, writers, reviews and pages are refused a quote and the trigger check is not. A new job states its calls per run in the PR; nothing burns the production Finnhub key during market hours for a review.
 10. **Discovery is manual by design.** Chat is the door; don't restart the weekly cron.
 11. **Plain words** in anything Dave reads: stocks, analysts, runs, triggers, theses, review cadence. No "rungs," "tiers," "soft watch," "clock."
 12. **No ticket ids in docs PR titles or bodies.**

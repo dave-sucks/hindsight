@@ -166,8 +166,18 @@ plus `get_stock_data`.
   router) and the 11 PM `pipeline-cleanup` are **deleted** (2026-09-15).
 
 ### Data Sources
-- Finnhub: quotes, candles, earnings calendar, company metrics,
-  news, recommendations (PRIMARY for all quote data)
+- Alpaca market data: **the live price** (since 2026-09-29) and every bar.
+  One snapshot call prices the whole book off the consolidated tape (SIP),
+  10,000 calls a minute per key; paper, live and env keys all get it
+  (probed with SMMT, SRRK, IOT). `lib/market-data/live-quote.ts` is the one
+  place a live price comes from; Finnhub `/quote` is its fallback.
+  Between 9:30 and the bell the price is the latest trade with its own
+  timestamp; outside the session it is the last close stamped at the bell —
+  pre-market and after-hours prints are on the tape and are not served as
+  the price. The feed is named once: `MARKET_DATA_FEED` in `lib/alpaca.ts`.
+- Finnhub: earnings calendar, company metrics, profile, news,
+  recommendations, filed statements, insider transactions — and the quote
+  fallback
 - FMP: **REMOVED 2026-09-08.** The tier we held refused 26 of the 28
   names on the book ("this value set for 'symbol' is not available under
   your current subscription") while every pull reported "ok" with an
@@ -534,7 +544,8 @@ it with a ticker chip as if it were a traded security.
 - Prisma Json fields (sourcesUsed, parameters) typed as unknown —
   always cast with type guard
 - async params in Next.js App Router: params: Promise<{ id: string }>
-- FMP /quote/ endpoint DEPRECATED — use Finnhub for all quotes
+- Live prices come from `lib/market-data/live-quote.ts` (Alpaca, Finnhub
+  behind it) — never a new direct vendor call
 - Model strategy (post-2026-05-15):
   - **research-run + tactical + discovery**: GPT-5.5 (provider: openai).
     research-run uses temperature 0.2 + maxSteps 65; tactical maxSteps 15;
@@ -590,14 +601,14 @@ it with a ticker chip as if it were a traded security.
 
 ### RECURRING BUGS — READ BEFORE TOUCHING THESE FILES
 
-**NEVER put a live quote in the Next.js Data Cache** (`lib/actions/finnhub.actions.ts` → `getStockQuote`, `lib/agent/research-helpers.ts` → `finnhub()`)
+**NEVER put a live quote in the Next.js Data Cache** (`lib/alpaca.ts` → `marketDataGet`, `lib/actions/finnhub.actions.ts` → `getStockQuote`, `lib/agent/research-helpers.ts` → `finnhub()`)
 - **The rule:** any fetch whose value is "the price right now" uses `cache: 'no-store'`. Never `next: { revalidate: N }`, never `force-cache` — *no matter how small N is*. Slow-moving endpoints (profile, metrics, financials, daily candles) keep the normal cache.
 - **Why `revalidate: 30` does NOT bound staleness to 30s:** the Data Cache is **stale-while-revalidate** — past the window the next request is *still served the stale value* and the refresh happens in the background. On Vercel that cache also persists across invocations and deploys. So the bound is not the revalidate window, it's **how often the surface is hit**. A page loaded once a morning is served whatever was cached last — the prior session's close.
 - **What it looked like (2026-08-14):** the thesis sheet rendered SNOW at `$337.38 +$5.12 +1.54%` at 11:38 AM ET while the live price was `$329.43 −2.36%`. The displayed numbers were a perfectly self-consistent snapshot of the *previous* session's close (note `pc: 337.38` in the live payload) — which is exactly why it never looked like corrupt data.
 - **The tell that localizes it instantly:** on the same sheet, the **1D chart was correct** while the header price was a day stale. Both are "live price," but the chart polls `/api/stocks/intraday` every 30s (`thesis-chart.tsx`) so its second poll always lands fresh, while the header fetches `/api/theses/:id/quote` **once on open** and never re-polls. **Polling masks this bug; single-fetch surfaces expose it.** If a chart and a price label disagree, suspect cache staleness on the single-fetch side, not the vendor.
-- **Confirm before rewriting anything:** `curl "https://finnhub.io/api/v1/quote?symbol=SNOW&token=$FINNHUB_API_KEY"`. If the vendor is right and the app is wrong, it's caching — do not go blame Finnhub/FMP/Alpaca.
-- **Blast radius when it regresses:** `getStockQuote` feeds the sheet header, `/stocks/[symbol]`, `/trades/[id]`, `update_thesis` conviction gates, `complete_run`, and the `lib/alpaca.ts` position-quote fallback. The `finnhub()` helper feeds `get_stock_data` **and the trigger evaluator** — so a stale quote there scores `GAIN_FROM_ENTRY` / `TRAILING_FROM_HIGH` against a wrong price, i.e. protective stops evaluated against yesterday's close right after an overnight gap. Actual fills are unaffected (Alpaca market orders execute at the real price).
-- **The freshness guard:** every Finnhub `/quote` response carries `t` (unix seconds) and nothing read it for months — a day-old quote is structurally identical to a live one. How old a price is, is decided in ONE place: `lib/market-data/quote-age.ts` (`quoteAgeMs`, `freshQuotePrice`, `staleForTrading`, `readPrice`). The trigger evaluator still scores sells and reviews on a stale quote (skipping a stop is the worse failure) but a **buy never fires on one** (DAV-261 — ETN 2026-09-14: at 09:30 Friday's close was served as "now"). `get_stock_data` and `get_market_context` tell the agent, in words, when the price isn't live — a rate-limited quote used to leave the chart measured from the last close with nothing said (NVDA 2026-09-14). The single Finnhub key (~60 calls/min) is shared by the trigger check, writers, chat and reviews.
+- **Confirm before rewriting anything:** ask the vendor directly — `curl -H "APCA-API-KEY-ID: $ALPACA_API_KEY" -H "APCA-API-SECRET-KEY: $ALPACA_API_SECRET" "https://data.alpaca.markets/v2/stocks/snapshots?symbols=SNOW&feed=sip"`. If the vendor is right and the app is wrong, it's caching — do not go blame Finnhub/FMP/Alpaca.
+- **Blast radius when it regresses:** `getStockQuote` feeds the sheet header, `/stocks/[symbol]`, `/trades/[id]`, `update_thesis` conviction gates, `complete_run`, and the `lib/alpaca.ts` position-quote fallback. `getLiveQuotes` (`lib/market-data/live-quote.ts`) feeds `get_stock_data`, `get_market_context`, `getStockQuote` **and the trigger evaluator** — so a stale quote there scores `GAIN_FROM_ENTRY` / `TRAILING_FROM_HIGH` against a wrong price, i.e. protective stops evaluated against yesterday's close right after an overnight gap. Actual fills are unaffected (Alpaca market orders execute at the real price).
+- **The freshness guard:** every quote carries `t` (unix seconds — Alpaca's trade timestamp, or Finnhub's on the fallback) and nothing read it for months — a day-old quote is structurally identical to a live one. How old a price is, is decided in ONE place: `lib/market-data/quote-age.ts` (`quoteAgeMs`, `freshQuotePrice`, `staleForTrading`, `readPrice`). The trigger evaluator still scores sells and reviews on a stale quote (skipping a stop is the worse failure) but a **buy never fires on one** (DAV-261 — ETN 2026-09-14: at 09:30 Friday's close was served as "now"). `get_stock_data` and `get_market_context` tell the agent, in words, when the price isn't live — a rate-limited quote used to leave the chart measured from the last close with nothing said (NVDA 2026-09-14). **The trigger check has first claim on the quote budget** (`lib/market-data/quote-budget.ts`): every vendor reply says how many calls the key has left this minute, and once that falls to the reserve (a fifth of Alpaca's 10,000, 45 of Finnhub's 60) every caller but the trigger check is refused a quote until the minute turns over. On 2026-09-15 the pages' polling spent the one Finnhub key and ~29 stocks went unpriced on a trigger pass.
 
 **Portfolio P&L must be net of deposits — never measure against a fixed baseline** (`lib/portfolio/contributions.ts`, `lib/actions/portfolio.actions.ts`, `components/dashboard/DashboardClient.tsx`, `lib/alpaca.ts`; still-open twin: `lib/actions/analytics.actions.ts`)
 - **The model:** an account's gain is `equity − net contributed capital`, where net contributed = `Σ deposits − Σ withdrawals`. NOT `equity − $100k` and NOT `latestEquityPoint − firstEquityPoint`. A cash deposit raises equity without being a gain; measuring against a fixed seed (or a pre-deposit chart point) reports the deposit itself as profit.

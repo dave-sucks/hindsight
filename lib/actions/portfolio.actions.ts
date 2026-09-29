@@ -611,6 +611,7 @@ export async function getDashboardData(
   const emptyPriceLookup: PriceLookup = {
     prices: {},
     sources: {},
+    asOf: {},
     fetchedAt: new Date().toISOString(),
   };
 

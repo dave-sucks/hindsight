@@ -73,7 +73,8 @@ last 10 sessions' gaps — in `TickerIndicators`. The evaluator reads the
 newest row next to the live quote; a snapshot older than 5 days is ignored
 (logged). No snapshot ⇒ the chart kinds read false. `VOLUME_RATIO` and
 `GAP_UP` also read today's consolidated volume (one batched Alpaca call, ~16
-minutes delayed — Finnhub quotes carry no volume).
+minutes delayed). The live quote itself is Alpaca's too — the whole book in
+one call, Finnhub `/quote` behind it (`lib/market-data/live-quote.ts`).
 
 **Deleted 2026-09-11 (DAV-247):** `SIGNAL_TYPE`, `GUIDANCE_CHANGE`, `FILING`.
 They needed the signal router, which has been off since 2026-05-31, and could
@@ -181,8 +182,8 @@ sharing the pure `evaluateTrigger` in `triggers/evaluate.ts`:
 
 **The Movement-Amount nuance (read this):** a **daily** (`1D`) `PRICE_MOVE_PCT`
 fires on the cron because the evaluator reads the quote's own daily % change
-(`latestQuote.changePct` — Finnhub `dp`, with a prev-close `(c−pc)/pc` fallback
-for thin names; `trigger-evaluator.ts`). It does **not** need candles. The
+(`latestQuote.changePct` — the price against the prior session's close;
+`trigger-evaluator.ts`). It does **not** need candles. The
 multi-day windows (`5D`/`20D`) read the snapshot's closes.
 
 > Historical note: before the Movement-Amount work, ALL `PRICE_MOVE_PCT`
@@ -267,7 +268,7 @@ protective or review rung is a **standing order** (principal ruling
 2026-08-16): it fires every day its condition is true, and a declined or
 expired proposal means "did nothing today", so it asks again tomorrow. An
 **`ENTER` rung fires on the crossing**: the condition is true now and was
-false at the prior session's close (`latestQuote.prevClose`, Finnhub `pc`).
+false at the prior session's close (`latestQuote.prevClose`).
 "Buy above $35" means buy when the price gets there — not "buy now and ask
 every day it is higher", which is what the standing-order reading made of a
 level the price was already past (TOST $35.15 against a $35.16 tape; PLTR,
