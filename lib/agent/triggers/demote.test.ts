@@ -7,7 +7,7 @@
  * never bought).
  */
 
-import { effectiveTriggerAction } from "./types";
+import { effectiveTriggerAction, watchedFloorOnClose } from "./types";
 import { isPlanLevel } from "./price-levels";
 import type { Trigger, TriggerAction, TriggerPredicate } from "./types";
 
@@ -83,6 +83,41 @@ describe("effectiveTriggerAction", () => {
     expect(
       effectiveTriggerAction(t({ kind: "EARNINGS_MISS" }, "EXIT"), WATCH),
     ).toBe("DEMOTE");
+  });
+});
+
+describe("watchedFloorOnClose — a watched plan comes down on a close, never a dip (DAV-337)", () => {
+  // TRV 2026-09-29: floor $359.87, opened $359.51, back to $363.83 that
+  // morning. The five-minute check reads this; the evaluator replay is
+  // lib/inngest/functions/trigger-evaluator.watched-floor-replay.test.ts.
+  const floor = t(below(359.87), "EXIT", "floor");
+
+  it("a watched stock's floor reads the day's close", () => {
+    expect(watchedFloorOnClose(floor, WATCH)).toEqual({ ...floor, predicate: { ...below(359.87), basis: "close" } });
+    expect(watchedFloorOnClose(t(above(80), "EXIT"), WATCH_SHORT).predicate).toEqual({ ...above(80), basis: "close" });
+  });
+
+  it("a held stock's floor is a sale and keeps its own timing", () => {
+    expect(watchedFloorOnClose(floor, HELD)).toBe(floor);
+  });
+
+  it("the buy, the target and the reviews keep their timing", () => {
+    for (const x of [t(above(372.51), "ENTER"), t(above(425), "REVIEW"), t(below(340), "REVIEW")]) {
+      expect(watchedFloorOnClose(x, WATCH)).toBe(x);
+    }
+  });
+
+  it("a two-condition sell reads its price condition on the close; the other condition is untouched", () => {
+    const both = t({ kind: "AND", predicates: [below(359.87), { kind: "VOLUME_RATIO", min: 1.5 }] } as TriggerPredicate, "EXIT");
+    expect(watchedFloorOnClose(both, WATCH).predicate).toEqual({
+      kind: "AND",
+      predicates: [{ ...below(359.87), basis: "close" }, { kind: "VOLUME_RATIO", min: 1.5 }],
+    });
+  });
+
+  it("a floor already on the close is returned as it is", () => {
+    const onClose = t({ ...below(359.87), basis: "close" }, "EXIT");
+    expect(watchedFloorOnClose(onClose, WATCH)).toBe(onClose);
   });
 });
 

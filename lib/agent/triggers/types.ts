@@ -444,3 +444,39 @@ export function effectiveTriggerAction(
 
   return trigger.action;
 }
+
+/**
+ * When a trigger is read, for a thesis in this state (DAV-337).
+ *
+ * On a stock we don't own, a sell trigger sets the plan down (above), and a
+ * plan comes down only on a close past its floor — never an intraday touch.
+ * An undercut of a low that is reclaimed the same day is a shakeout, not a
+ * breakdown: TRV opened at $359.51 on 2026-09-29, under its $359.87 floor,
+ * traded back to $363.83 that morning, and its plan was gone at 09:30. In
+ * the 30 days to that day, three of six floor set-downs were dips like it.
+ *
+ * So on a thesis we don't hold, a sell trigger's price level reads the day's
+ * close (the 16:20 pass). On a stock we hold the floor is a sale and keeps
+ * its own timing. Resolved where triggers are read, never stored, so a buy
+ * never has to rewrite it. The five-minute check, the morning run's snapshot
+ * and the thesis sheet all call this one function. Pure.
+ */
+export function watchedFloorOnClose<T extends { action: string; predicate: TimedPredicate }>(
+  trigger: T,
+  state: { status?: string | null },
+): T {
+  if (state.status === "HOLDING" || trigger.action !== "EXIT") return trigger;
+  const onClose = (p: TimedPredicate): TimedPredicate =>
+    p.kind === "PRICE_ABOVE" || p.kind === "PRICE_BELOW"
+      ? { ...p, basis: "close" }
+      : (p.kind === "AND" || p.kind === "OR") && p.predicates
+        ? { ...p, predicates: p.predicates.map(onClose) }
+        : p;
+  const predicate = onClose(trigger.predicate);
+  return JSON.stringify(predicate) === JSON.stringify(trigger.predicate)
+    ? trigger
+    : ({ ...trigger, predicate } as T);
+}
+
+/** What `watchedFloorOnClose` reads — the server's predicates and the sheet's both have it. */
+type TimedPredicate = { kind: string; basis?: string; predicates?: TimedPredicate[] };

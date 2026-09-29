@@ -126,6 +126,7 @@ import {
 import { FORM_NAMES, ITEM_NAMES } from "@/lib/market-data/sec-events";
 import {
   isDirectEligiblePredicate,
+  watchedFloorOnClose,
   type TriggerPredicate as SharedTriggerPredicate,
 } from "@/lib/agent/triggers/types";
 
@@ -270,6 +271,15 @@ function predicateKindValue(p: TriggerPredicate): {
   }
 }
 
+/**
+ * The predicate as the trigger check reads it for this stock: on one we
+ * don't hold, a floor waits for the close (watchedFloorOnClose, DAV-337).
+ * Display only — the stored trigger and the edit form are untouched.
+ */
+function shownPredicate(trigger: Trigger, held: boolean): TriggerPredicate {
+  return watchedFloorOnClose(trigger, { status: held ? "HOLDING" : null }).predicate;
+}
+
 /** Long-form description for the hover popover. */
 function predicateDescription(p: TriggerPredicate): string {
   switch (p.kind) {
@@ -396,7 +406,8 @@ function TriggerPill({
   endpointBase: string;
   onChanged?: () => void;
 }) {
-  const { kind, value } = predicateKindValue(trigger.predicate);
+  // The timing the check uses: a watched stock's floor reads the close.
+  const { kind, value } = predicateKindValue(shownPredicate(trigger, held));
   // Inherited = stored at a level above this thesis (analyst / account).
   // One treatment for both per the 2026-08-05 design
   // call: a dashed border. The popover names which level it is.
@@ -544,9 +555,8 @@ function TriggerPopoverContent({
         ? "/settings/triggers"
         : null;
 
-  const { kind: kindLabel, value: displayValue } = predicateKindValue(
-    trigger.predicate,
-  );
+  const shown = shownPredicate(trigger, held);
+  const { kind: kindLabel, value: displayValue } = predicateKindValue(shown);
   // Sentence title in foreground — "Exit if price below", "Review if up".
   // On an un-held thesis an EXIT fire takes the plan down instead of
   // selling (effectiveTriggerAction), and the label says so.
@@ -800,7 +810,7 @@ function TriggerPopoverContent({
           rationale (muted), flowing together. */}
       <p className="text-xs leading-relaxed">
         <span className="text-foreground">
-          {predicateDescription(trigger.predicate)}
+          {predicateDescription(shown)}
         </span>
         {trigger.rationale ? (
           <span className="text-muted-foreground"> {trigger.rationale}</span>
