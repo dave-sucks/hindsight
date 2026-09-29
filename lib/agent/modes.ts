@@ -740,7 +740,7 @@ Match semantics: empty array / null numeric = no filter on that dimension. AND a
   • \`read_knowledge_library\` — strategy archetypes + signal taxonomy + source catalog.
 
 **Live market data:**
-  • \`get_market_context\` (SPY/VIX/sectors/macro), \`get_stock_data\` (full per-ticker snapshot), \`get_earnings_data\`, \`get_earnings_calendar\`, \`get_market_movers\`, \`get_sec_filings\`.
+  • \`get_market_context\` (SPY/VIXY's day move/sectors/regime), \`get_stock_data\` (full per-ticker snapshot), \`get_earnings_data\`, \`get_earnings_calendar\`, \`get_market_movers\`, \`get_sec_filings\`.
   • \`web_search\` — Perplexity Sonar over the open web. Use for consensus / sell-side / neutral wire content.
   • \`twitter_search\` — Grok Live Search over X for handle-attributed posts. Returns author + ticker + archetype (TECHNICAL / FUNDAMENTAL / NARRATIVE / OPTIONS_FLOW / CATALYST_EVENT / MACRO) + claim_excerpt + sentiment + recency. **Use for handle attribution, fintwit early calls, and multi-archetype convergence on a name (the same ticker named by technicians + fundamentalists + narrative traders is a stronger signal than any one alone).** Sharp probes only — one ticker, one handle, or one theme per call. Budget-limited.
 
@@ -969,7 +969,7 @@ The archetype's \`promptSkeleton\` is a STARTING POINT for your analystPrompt �
 
 ### Step 4 — Validate with real data (MANDATORY)
 Before suggest_config you MUST:
-- Call **get_market_context** once to anchor the strategy in today's regime (SPY trend, VIX, sector leadership, earnings density).
+- Call **get_market_context** once to anchor the strategy in today's regime (SPY against its averages, VIXY's day move, sector leadership, earnings density).
 - Get REAL tickers for the watchlist off the live market, never out of your training data. Two sources, both firm-wide — call at least one, with \`scope:"all"\`:
   • **get_market_movers** — today's gainers, losers and most-actives. The right seed for momentum, breakout, mean-reversion and volatility strategies.
   • **get_earnings_calendar** — who reports over the next N days. The right seed for earnings, catalyst and event-driven strategies.
@@ -1007,7 +1007,7 @@ If the user wants changes, ask_question for the specific tradeoff, optionally re
 - **read_knowledge_library** — topic:"archetype" | "source" | "signal", optional id. Call without id first to list, then with id to read.
 - **get_market_movers** — today's gainers / losers / most-actives. \`scope:"all"\` for the full list (a brand-new analyst has no watchlist to fence against yet). The watchlist seed for price-driven strategies.
 - **get_earnings_calendar** — who reports over the next N days, with estimates. \`scope:"all"\`. The watchlist seed for earnings / catalyst strategies.
-- **get_market_context** — SPY, VIX, 11 sector ETFs, regime, macro events.
+- **get_market_context** — SPY, VIXY's day move (a VIX-futures ETF, not the VIX level), 11 sector ETFs, the regime, macro events.
 - **get_stock_data** — price, fundamentals, technicals, analyst consensus, news. This is how you check a candidate's sector and market cap against the fence before it goes on the watchlist.
 - **get_earnings_data** — upcoming / recent earnings, EPS beats for one ticker.
 - **get_sec_filings** — recent 10-K/10-Q/8-K/Form 4 for a ticker.

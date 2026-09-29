@@ -136,9 +136,9 @@ export interface Team {
 // ── Shared tools (referenced by multiple teams) ──────────────────────────
 
 const TOOL_GET_MARKET_CONTEXT: ToolEntry = {
-  name: "get_market_context", provider: "finnhub", summary: "SPY, VIX, sector ETFs, macro events, regime classification.",
+  name: "get_market_context", provider: "finnhub", summary: "SPY, VIXY's day move, sector ETFs, macro events, and the regime (SPY against its averages).",
   resources: [
-    { source: "alpaca", title: "Index & sector quotes", description: "SPY, VIXY and 11 sector ETFs in one call.", type: "api", endpointOrPath: "/v2/stocks/snapshots?symbols=SPY,VIXY,XLK,...", exampleOutput: "SPY $542.31 +0.8% · VIX 14.2 · XLK +1.2% (leading)" },
+    { source: "alpaca", title: "Index & sector quotes", description: "SPY, VIXY and 11 sector ETFs in one call. VIXY is an ETF of VIX futures — no plan we have serves the VIX index itself.", type: "api", endpointOrPath: "/v2/stocks/snapshots?symbols=SPY,VIXY,XLK,...", exampleOutput: "SPY $542.31 +0.8% · VIXY −1.7% · XLK +1.2% (leading)" },
     { source: "finnhub", title: "Broad market trend", description: "30 days of SPY candles to determine uptrend/downtrend.", type: "api", endpointOrPath: "/stock/candle?symbol=SPY&resolution=D", exampleOutput: "SPY above SMA-20 ($538.50) → uptrend" },
     { source: "finnhub", title: "Earnings density", description: "How many companies report this week.", type: "api", endpointOrPath: "/calendar/earnings", exampleOutput: "47 companies reporting — elevated density" },
     { source: "fmp", title: "Economic calendar", description: "Major macro events today — Fed, CPI, jobs.", type: "api", endpointOrPath: "/economic_calendar", exampleOutput: "CPI release 8:30 AM (high impact)" },
@@ -427,7 +427,7 @@ export const TOOL_REGISTRY: RegistryTool[] = [
   {
     name: "get_market_context",
     category: "research",
-    summary: "SPY, VIX, 11 sector ETFs, macro events, earnings density, and regime classification.",
+    summary: "SPY, VIXY's day move, 11 sector ETFs, macro events, earnings density, and the regime (SPY against its averages).",
     providers: ["finnhub", "fmp"],
     agents: ["builder", "editor", "agent", "tactical", "discovery"],
     resources: TOOL_GET_MARKET_CONTEXT.resources,

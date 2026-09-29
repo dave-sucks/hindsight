@@ -39,7 +39,7 @@ When you have enough context, write a DETAILED strategy prompt (analystPrompt) �
 If the user wants changes, discuss them, then call suggest_config again with updates.
 
 ## Available Research Tools
-- **get_market_context** — SPY, VIX, 11 sector ETFs, regime classification, macro events, earnings density
+- **get_market_context** — SPY, VIXY's day move (a VIX-futures ETF, not the VIX level), 11 sector ETFs, the regime (SPY against its 50- and 200-day averages), macro events, earnings density
 - **get_market_movers** — today's gainers / losers / most-actives. The watchlist seed for price-driven strategies
 - **get_earnings_calendar** — who reports over the next N days. The watchlist seed for catalyst strategies
 - **get_stock_data** — Price, company profile, financials, technicals, analyst consensus, price targets, news. How a candidate gets checked against the fence

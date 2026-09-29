@@ -1,0 +1,177 @@
+{
+  "_about": "2026-09-28 08:00 ET: get_market_context as the PEAD Specialist's daily run (cmul7491t000004l33395rbsj) received it, verbatim, and SPY's daily indicator snapshot row as of the 2026-09-25 close (what the 06:30 job wrote that morning). The 16.61 reported as \"VIX\" is VIXY's price: Finnhub refuses the VIX index on our plan (probe 2026-09-29). Built read-only by a script.",
+  "runId": "cmul7491t000004l33395rbsj",
+  "at": "2026-09-28T12:00:25.553Z",
+  "result": {
+    "ok": true,
+    "ui": "tool-ui",
+    "groupId": "Researching",
+    "progressLabel": "Checking today's market regime",
+    "summary": "SPY $771.35 (+0.54%). VIX 16.6. Regime: NEUTRAL. 94 earnings 9/28–10/3.",
+    "data": {
+      "spy": {
+        "price": 771.35,
+        "changePct": 0.5435,
+        "dayHigh": 772.28,
+        "dayLow": 766.29,
+        "asOf": "2026-09-25T20:00:00.000Z",
+        "ageMinutes": 3841,
+        "live": false
+      },
+      "vix": {
+        "level": 16.61,
+        "changePct": -1.716
+      },
+      "regime": "NEUTRAL",
+      "spyTrend": null,
+      "sectors": [
+        {
+          "symbol": "XLI",
+          "changePct": 0.9477
+        },
+        {
+          "symbol": "XLK",
+          "changePct": 0.8012
+        },
+        {
+          "symbol": "XLF",
+          "changePct": 0.5685
+        },
+        {
+          "symbol": "XLV",
+          "changePct": 0.4886
+        },
+        {
+          "symbol": "XLP",
+          "changePct": 0.4406
+        },
+        {
+          "symbol": "XLU",
+          "changePct": 0.3811
+        },
+        {
+          "symbol": "XLB",
+          "changePct": 0.2415
+        },
+        {
+          "symbol": "XLY",
+          "changePct": 0.2175
+        },
+        {
+          "symbol": "XLRE",
+          "changePct": -0.2161
+        },
+        {
+          "symbol": "XLE",
+          "changePct": -0.8946
+        },
+        {
+          "symbol": "XLC",
+          "changePct": -0.9036
+        }
+      ],
+      "macroEvents": [],
+      "earningsDensity": {
+        "count": 94,
+        "period": "9/28–10/3"
+      },
+      "tickers": [
+        {
+          "ticker": "SPY",
+          "summary": "$771.35 (+0.54%)"
+        }
+      ]
+    }
+  },
+  "finnhubVixAnswer": {
+    "error": "Market data subscription required for CFD indices."
+  },
+  "spySnapshotRow": {
+    "ticker": "SPY",
+    "asOf": "2026-09-25",
+    "volumeFeed": "sip",
+    "snapshot": {
+      "sma": {
+        "20": 765.35,
+        "50": 761.57,
+        "150": 728.78,
+        "200": 718.45
+      },
+      "asOf": "2026-09-25",
+      "gaps": [],
+      "atr14": 6.64,
+      "low20": 749.6,
+      "closes": [
+        744.78,
+        751.28,
+        747.71,
+        745.4,
+        751.71,
+        754.95,
+        749.17,
+        751.83,
+        754.81,
+        750.72,
+        743.29,
+        742.09,
+        748.28,
+        747.41,
+        738.18,
+        738.93,
+        739.09,
+        740.86,
+        729.46,
+        741.69,
+        747.03,
+        757.67,
+        771.33,
+        769.79,
+        768.56,
+        773.26,
+        773.03,
+        770.56,
+        772.49,
+        777.88,
+        776.34,
+        772.67,
+        767.45,
+        769.06,
+        762.6,
+        765.72,
+        763.47,
+        765.91,
+        766.08,
+        771.1,
+        769.35,
+        767.05,
+        761.78,
+        765.16,
+        773.17,
+        770.19,
+        765.96,
+        762.4,
+        757.83,
+        764.29,
+        760.88,
+        757.39,
+        754.05,
+        762.6,
+        761.69,
+        773.5,
+        773.38,
+        767.81,
+        767.18,
+        771.35
+      ],
+      "high20": 775.3,
+      "low52w": 69.01,
+      "high52w": 779.37,
+      "rsVsSpy": {
+        "1M": 0,
+        "3M": 0,
+        "6M": 0
+      },
+      "volumeAvg20": 43799093
+    }
+  }
+}
