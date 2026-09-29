@@ -16,6 +16,10 @@
  *
  * Rules run per op on the resulting list, and a refused op does not sink
  * the call: the caller gets every result back by id and the rest lands.
+ *   - what a call deletes (a removal, a level sent as null) applies before
+ *     what it writes, so a removal and its replacement in one call is a
+ *     replace; an edit of a trigger the same call deletes comes back by id,
+ *     neither applied — say which;
  *   - one trigger per bucket (and one per plan slot — one buy level, one
  *     floor, one target): adding into an occupied bucket EDITS the trigger
  *     that is there;
@@ -214,6 +218,27 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   const results: TriggerOpResult[] = [];
 
   const inheritedByBucket = new Map(inherited.map((t) => [triggerBucket(t), t]));
+
+  // What a call deletes applies before what it writes (VST 2026-09-28). A
+  // call that removes a trigger and adds its replacement means "replace".
+  // Applied in the order sent, the add landed on the trigger it replaces —
+  // one per bucket made it an edit of that trigger — and the removal then
+  // deleted both. Eight saves lost a trigger that way from 09-15 to 09-28,
+  // HPE's and EME's new buys among them. A level sent as null removes the
+  // slot's trigger, so it is a deletion too.
+  const deletes = (o: TriggerOp) => o.op === "remove" || (o.op === "level" && o.price == null);
+  const deleted = new Set<string>();
+  for (const o of input.ops) {
+    if (o.op === "remove") deleted.add(o.id);
+    else if (o.op === "level" && o.price == null) {
+      for (const t of input.stored) if (levelSlotOf(t, direction) === o.slot) deleted.add(t.id);
+    }
+  }
+  // The one real contradiction: an edit, by id, of a trigger the same call
+  // deletes. Neither is applied; it comes back by id.
+  const contradicted = new Set(
+    input.ops.flatMap((o) => (o.op === "edit" && deleted.has(o.id) ? [o.id] : [])),
+  );
 
   const refuse = (op: TriggerOpResult["op"], id: string, text: string, reason: string) =>
     results.push({ op, id, ok: false, text, reason });
@@ -479,8 +504,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     }
     const occupants = stored.filter((t) => levelSlotOf(t, direction) === slot);
     if (price == null) {
-      if (occupants.length === 0) return;
-      for (const t of occupants) doRemove(t.id);
+      for (const t of occupants) if (!contradicted.has(t.id)) doRemove(t.id);
       return;
     }
     if (!(price > 0) || !Number.isFinite(price)) {
@@ -518,16 +542,26 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     commit(next, { op: "add", id, ok: true, text });
   };
 
-  for (const op of input.ops) {
+  for (const id of contradicted) {
+    const t = input.stored.find((s) => s.id === id);
+    refuse(
+      "edit",
+      id,
+      `Edit and remove: ${t ? describeTrigger(t, direction) : `trigger ${id}`}`,
+      "Edited and removed in the same call — say which: send the edit or the removal, not both.",
+    );
+  }
+
+  for (const op of [...input.ops.filter(deletes), ...input.ops.filter((o) => !deletes(o))]) {
     switch (op.op) {
       case "add":
         doAdd(op.trigger);
         break;
       case "edit":
-        doEdit(op);
+        if (!contradicted.has(op.id)) doEdit(op);
         break;
       case "remove":
-        doRemove(op.id);
+        if (!contradicted.has(op.id)) doRemove(op.id);
         break;
       case "level":
         doLevel(op.slot, op.price, { rationale: op.rationale, basis: op.basis });
