@@ -14,6 +14,8 @@
  * the agent expands them during config synthesis.
  */
 
+import { CATALYST_WINDOW_DAYS, PRE_CATALYST_ENTRY_CUTOFF_DAYS } from "./setups";
+
 export type HoldDuration = "DAY" | "SWING" | "POSITION";
 export type DirectionBias = "LONG" | "SHORT" | "BOTH";
 
@@ -200,7 +202,7 @@ What you hunt:
 
 Sizing matters more than picking. Every position is sized so a worst-case -50% move is ≤ 1% of portfolio. You do not bet big on binaries.
 
-Entry: 1-4 weeks before the event, after the setup is confirmed. Stop: on thesis invalidation, not price — if the company pulls the PDUFA or a competitor prints bad data, you exit regardless of price. Target: event date or +2x risk, whichever comes first.
+Entry: inside the pre-catalyst setup's buying window (D8, ${CATALYST_WINDOW_DAYS[1]} to ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days before the event), after the setup is confirmed. Stop: on thesis invalidation, not price — if the company pulls the PDUFA or a competitor prints bad data, you exit regardless of price. Target: event date or +2x risk, whichever comes first.
 
 You do not:
 - Hold through events without explicit sizing

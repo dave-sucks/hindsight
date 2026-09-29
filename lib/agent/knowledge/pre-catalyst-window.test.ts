@@ -1,0 +1,50 @@
+/**
+ * pre-catalyst-window.test.ts — the one buying window, in words (DAV-338).
+ *
+ * CORT's FDA date is Dec 17. On 2026-09-29 its buy fired 79 days out and
+ * the trigger run proposed a buy, told nothing about the window. The
+ * setup's own numbers (open 70 days out, no buy inside the last 21) are
+ * what plan-sanity and the setup's confirmation already use.
+ */
+import { preCatalystWindowLine } from "./setups";
+
+const CORT = { setupId: "PRE_CATALYST", horizon: "CATALYST", catalystDate: "2026-12-17T00:00:00.000Z" };
+const at = (iso: string) => new Date(iso);
+
+describe("preCatalystWindowLine", () => {
+  it("CORT 2026-09-29: 79 days out, 9 days before the window opens", () => {
+    expect(preCatalystWindowLine(CORT, at("2026-09-29T14:30:18Z"))).toBe(
+      "Buying window: 79 days to the event date (Dec 17), 9 days before this setup's window opens (Oct 8). " +
+        "This setup buys 70 to 21 days before the event.",
+    );
+  });
+
+  it("counts the Eastern trading day, not UTC's — 21:00 ET is still the same day", () => {
+    expect(preCatalystWindowLine(CORT, at("2026-09-30T01:00:00Z"))).toMatch(/^Buying window: 79 days/);
+  });
+
+  it("inside the window", () => {
+    expect(preCatalystWindowLine(CORT, at("2026-10-08T14:00:00Z"))).toBe(
+      "Buying window: 70 days to the event date (Dec 17), inside this setup's window. This setup buys 70 to 21 days before the event.",
+    );
+    expect(preCatalystWindowLine(CORT, at("2026-11-25T14:00:00Z"))).toMatch(/22 days to the event date \(Dec 17\), inside/);
+  });
+
+  it("inside the last 21 days it says the window closed, and when", () => {
+    expect(preCatalystWindowLine(CORT, at("2026-11-26T14:00:00Z"))).toBe(
+      "Buying window: 21 days to the event date (Dec 17), past this setup's window, which closed Nov 26. " +
+        "This setup buys 70 to 21 days before the event.",
+    );
+  });
+
+  it("after the event it says the date has passed", () => {
+    expect(preCatalystWindowLine(CORT, at("2026-12-18T14:00:00Z"))).toMatch(/^Buying window: the event date on file \(Dec 17\) has passed\./);
+  });
+
+  it("an unnamed CATALYST stock lives by the window too; a named other setup and a stock with no date do not", () => {
+    expect(preCatalystWindowLine({ ...CORT, setupId: null }, at("2026-09-29T14:30:00Z"))).toMatch(/^Buying window: 79 days/);
+    expect(preCatalystWindowLine({ ...CORT, setupId: "PEAD" }, at("2026-09-29T14:30:00Z"))).toBeNull();
+    expect(preCatalystWindowLine({ ...CORT, horizon: "TARGET", setupId: "MA_PULLBACK" }, at("2026-09-29T14:30:00Z"))).toBeNull();
+    expect(preCatalystWindowLine({ ...CORT, catalystDate: null }, at("2026-09-29T14:30:00Z"))).toBeNull();
+  });
+});
