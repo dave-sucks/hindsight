@@ -89,8 +89,14 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
   const data = result.data as Record<string, unknown> | null;
   const items = deriveItems(data, args, result.summary);
 
+  // While a call is running there is no progressLabel and no summary yet; an
+  // empty header rendered as a bare chevron on its own line. The tool's own
+  // name is a worse label than a written one, and a better label than none.
   const label =
-    result.progressLabel ?? TOOL_LABELS[toolName] ?? result.summary.slice(0, 60);
+    result.progressLabel ||
+    TOOL_LABELS[toolName] ||
+    result.summary.slice(0, 60) ||
+    humanizeToolName(toolName);
 
   const rawResult = { ...(data ?? {}), _sources: result.sources };
   const sources = loading
@@ -151,9 +157,15 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
               </ToolProgressTickerItem>
             );
           }
+          if (!it.text) return null;
           return <ToolProgressItem key={i}>{it.text}</ToolProgressItem>;
         })
-      : [<ToolProgressItem key="fallback">{result.summary}</ToolProgressItem>];
+      : // A running call has no result yet, so there is nothing to summarise.
+        // Rendering the empty summary anyway drew a bullet with no text beside
+        // it for the whole call — the stray dots under a tool row.
+        result.summary
+        ? [<ToolProgressItem key="fallback">{result.summary}</ToolProgressItem>]
+        : [];
 
   const body = (
     <>
@@ -178,6 +190,12 @@ export function ToolUIRenderer({ toolName, args, result, loading, inGroup }: Pro
  * Tool-specific header labels — shown when a tool doesn't supply its own
  * progressLabel. Keep these short; the per-tool progressLabel is preferred.
  */
+/** "read_analyst_config" → "Read analyst config" — the last-resort header. */
+function humanizeToolName(toolName: string): string {
+  const words = toolName.replace(/[_-]+/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Working";
+}
+
 const TOOL_LABELS: Record<string, string> = {
   read_signals: "Signals",
   read_artifact: "Reading article",
