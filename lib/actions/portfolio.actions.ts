@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { describeRefusalTool } from "@/lib/agent/gate-rejections";
+import { attemptOutcomes, TRADE_TOOLS } from "@/lib/portfolio/attempt-outcomes";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { createClient } from "@/lib/supabase/server";
 import { getAccount, getFundingActivities, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
@@ -156,7 +157,12 @@ export interface SpyBenchmark {
 /** A single item in the homepage activity timeline. */
 export interface ActivityFeedItem {
   id: string;
-  type: "OPENED" | "CLOSED" | "MODIFIED" | "PROPOSED" | "REJECTED" | "BLOCKED";
+  /**
+   * BLOCKED / PASSED / FAILED are the attempts that never became a proposal:
+   * a rule stopped it, the analyst chose not to, or the run broke. PASSED is
+   * neutral — often the right call.
+   */
+  type: "OPENED" | "CLOSED" | "MODIFIED" | "PROPOSED" | "REJECTED" | "BLOCKED" | "PASSED" | "FAILED";
   positionId: string;
   symbol: string;
   direction: string | null;
@@ -181,6 +187,9 @@ export interface ActivityFeedItem {
   shares?: number;
   price?: number;
   closePrice?: number;
+  /** BLOCKED / PASSED / FAILED: the run that made the attempt, and which side it was. */
+  runId?: string;
+  side?: "BUY" | "SELL" | "EITHER";
 }
 
 export interface DashboardData {
@@ -1248,22 +1257,104 @@ export async function getDashboardData(
     });
   }
 
-  // Refused buys. When the analyst tried to buy and place_trade said no
-  // (composite under the analyst's minimum, size outside the band, live
-  // cap), the receipt #565 writes is the only record — nothing else in the
-  // app showed it, so a stock the analyst wanted vanished from view (VST and
-  // CYTK, 2026-09-08). Surface the last two weeks so the principal can read
-  // the reason and buy by hand if they disagree.
+  // ── Attempts that never became a proposal ────────────────────────────
+  // A buy price hit, a sell line broken, a trade tool called — and nothing
+  // reached the principal. In the 30 days to 2026-09-28 that was 23 of 30
+  // buy prices, none of them visible here: a refusal showed only until the
+  // run fixed it (minutes), and an analyst passing on a buy never showed.
+  // The outcome is decided by rows, never by reading what the analyst wrote.
   try {
     const analystIds = dbAgentConfigs.map((a) => a.id);
     const analystNameById = new Map(dbAgentConfigs.map((a) => [a.id, a.name] as const));
-    // Every write tool, not only the buy (2026-09-25): a refused sale, add,
-    // thesis edit or thesis save that was never redone is as much a money
-    // finding as a refused buy. Only OPEN rows: a refusal the analyst
-    // answered (the same tool landed on the stock) is the app working.
+    const since = new Date(Date.now() - 30 * 86_400_000);
+
+    const refusals = await prisma.gateRejection.findMany({
+      where: {
+        tool: { in: TRADE_TOOLS },
+        analystId: { in: analystIds },
+        createdAt: { gte: since },
+      },
+      select: { runId: true, tool: true, ticker: true, summary: true, detail: true, createdAt: true },
+    });
+    const refusedRunIds = Array.from(
+      new Set(refusals.map((r) => r.runId).filter((x): x is string => !!x)),
+    );
+    const runs = await prisma.researchRun.findMany({
+      where: {
+        agentConfigId: { in: analystIds },
+        environment,
+        startedAt: { gte: since },
+        OR: [{ mode: "INTRADAY_TACTICAL" }, { id: { in: refusedRunIds } }],
+      },
+      select: {
+        id: true, mode: true, status: true, startedAt: true, completedAt: true,
+        agentConfigId: true, parameters: true,
+      },
+    });
+    const [orders, notes] = await Promise.all([
+      prisma.order.findMany({
+        // Three days more than the window: a proposal written before it can
+        // still have been waiting for an answer inside it.
+        where: { position: { accountId, environment }, createdAt: { gte: new Date(since.getTime() - 3 * 86_400_000) } },
+        select: { symbol: true, intent: true, status: true, createdAt: true, updatedAt: true },
+      }),
+      prisma.thesisUpdate.findMany({
+        where: {
+          runId: { in: runs.filter((r) => r.mode === "INTRADAY_TACTICAL").map((r) => r.id) },
+          NOT: { type: "TRIGGER_FIRED" },
+        },
+        select: { runId: true, rationale: true, timestamp: true, thesis: { select: { ticker: true } } },
+      }),
+    ]);
+
+    const lines = attemptOutcomes({
+      runs: runs.map((r) => {
+        const p = (r.parameters ?? {}) as Record<string, unknown>;
+        return {
+          id: r.id,
+          mode: r.mode,
+          status: r.status,
+          startedAt: r.startedAt,
+          completedAt: r.completedAt,
+          analystId: r.agentConfigId,
+          ticker: typeof p.ticker === "string" ? p.ticker : null,
+          action: typeof p.action === "string" ? p.action : null,
+          error: typeof p.error === "string" ? p.error : null,
+        };
+      }),
+      orders: orders.map((o) => ({ ...o, intent: String(o.intent), status: String(o.status) })),
+      refusals,
+      notes: notes
+        .filter((n) => n.runId != null)
+        .map((n) => ({ runId: n.runId!, ticker: n.thesis.ticker, rationale: n.rationale, timestamp: n.timestamp })),
+    });
+    for (const l of lines) {
+      activityFeed.push({
+        id: l.id,
+        type: l.kind,
+        positionId: "",
+        symbol: l.ticker,
+        direction: null,
+        timestamp: l.at.toISOString(),
+        label: l.label,
+        source: "agent",
+        reason: l.reason,
+        pnl: null,
+        pnlPct: null,
+        outcome: null,
+        analystName: l.analystId ? analystNameById.get(l.analystId) ?? null : null,
+        runId: l.runId,
+        side: l.side,
+      });
+    }
+
+    // Everything else that was refused and never redone — a thesis edit, a
+    // thesis save (2026-09-25). Only OPEN rows: a refusal the analyst
+    // answered (the same tool landed on the stock) is the app working. The
+    // trade tools are above, by attempt.
     const blocked = await prisma.gateRejection.findMany({
       where: {
-        tool: { not: "complete_run" },
+        tool: { notIn: [...TRADE_TOOLS, "complete_run"] },
         analystId: { in: analystIds },
         resolvedAt: null,
         createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
@@ -1291,12 +1382,14 @@ export async function getDashboardData(
       });
     }
   } catch {
-    /* the receipts table is telemetry — its absence must not break the page */
+    /* these tables are the record of what did not happen — their absence must not break the page */
   }
 
-  // Sort descending by timestamp, keep top 40
+  // Sort descending by timestamp. 80, not 40: the attempts above are about
+  // as many again as the trades (42 in the 30 days to 2026-09-28), and at 40
+  // they would push three weeks of trades off the end of the feed.
   activityFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  const trimmedFeed = activityFeed.slice(0, 40);
+  const trimmedFeed = activityFeed.slice(0, 80);
 
   return {
     openTrades,
